@@ -1,14 +1,18 @@
 "use strict";
 
-// Portability spike. This host serves the very same resources/table.html the
-// Eclipse plugin uses, with stub data instead of SAP. If the page works here
-// unchanged, the UI is portable and only the host has to be written twice.
+// VS Code host for resources/table.html - the same page the Eclipse plugin serves.
+// Eclipse gets its connection from the ABAP project's ADT session; here there is
+// no such thing to borrow, so this host holds its own: settings for the system,
+// the password in the OS credential store, and a plain HTTPS request.
 
 const vscode = require("vscode");
+const https = require("https");
+const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
 const PAGE = path.join(__dirname, "..", "org.selector.adt.ui", "resources", "table.html");
+const SECRET = "selector.password";
 
 // The page expects four globals. In Eclipse they are BrowserFunctions; here they
 // are postMessage, which is the only thing a webview can do. The contract fits
@@ -48,41 +52,152 @@ function pageHtml(initial) {
   return html;
 }
 
-// Fixed rows, shaped exactly like the ABAP resource answers.
-function stub(name, query) {
-  const fields = [
-    { name: "mandt", position: 1, key: true, datatype: "CLNT", length: 3, decimals: 0,
-      text: "Client" },
-    { name: "bukrs", position: 2, key: true, datatype: "CHAR", length: 4, decimals: 0,
-      text: "Company Code" },
-    { name: "butxt", position: 3, key: false, datatype: "CHAR", length: 25, decimals: 0,
-      text: "Name of Company Code" },
-    { name: "land1", position: 4, key: false, datatype: "CHAR", length: 3, decimals: 0,
-      text: "Country/Region Key" }
-  ];
+/* ---------- connection ---------- */
 
-  const rows = [
-    { mandt: "100", bukrs: "0001", butxt: "Stub Industries", land1: "DE" },
-    { mandt: "100", bukrs: "0002", butxt: "Stub Trading", land1: "UA" },
-    { mandt: "100", bukrs: "0003", butxt: "Stub Holding", land1: "US" }
-  ];
+function settings() {
+  const c = vscode.workspace.getConfiguration("selector");
+  return {
+    url: (c.get("url") || "").trim(),
+    client: (c.get("client") || "").trim(),
+    user: (c.get("user") || "").trim(),
+    insecure: c.get("allowInsecureCertificate") === true
+  };
+}
 
-  // The selection panel is the part worth proving. Rather than dropping the
-  // query the page built, send it back as a visible row.
-  rows.push({
-    mandt: "",
-    bukrs: "",
-    butxt: query ? "query: " + query : "query: (none)",
-    land1: ""
+function missing(cfg) {
+  const gaps = [];
+  if (!cfg.url) { gaps.push("selector.url"); }
+  if (!cfg.user) { gaps.push("selector.user"); }
+  return gaps;
+}
+
+// Asked once, then kept by VS Code in the OS credential store. This extension
+// never writes it to a file and never puts it in a URL.
+async function password(context, user) {
+  const stored = await context.secrets.get(SECRET);
+  if (stored) {
+    return stored;
+  }
+  const entered = await vscode.window.showInputBox({
+    prompt: "SAP password for " + user,
+    password: true,
+    ignoreFocusOut: true
   });
+  if (entered) {
+    await context.secrets.store(SECRET, entered);
+  }
+  return entered;
+}
 
-  return JSON.stringify({
-    table: String(name).toLowerCase(),
-    count: rows.length,
-    fields: fields,
-    rows: rows
+function resourcePath(cfg, name, rows, query) {
+  let p = "/sap/bc/adt/zsde/table/" + encodeURIComponent(String(name).toUpperCase())
+        + "?rows=" + encodeURIComponent(rows);
+  if (cfg.client) {
+    p += "&sap-client=" + encodeURIComponent(cfg.client);
+  }
+  if (query) {
+    p += "&" + query;
+  }
+  return p;
+}
+
+function request(cfg, pw, requestPath) {
+  return new Promise(function (resolve, reject) {
+    let base;
+    try {
+      base = new URL(cfg.url);
+    } catch (e) {
+      reject(new Error("selector.url is not a valid URL: " + cfg.url));
+      return;
+    }
+
+    const secure = base.protocol === "https:";
+    const options = {
+      hostname: base.hostname,
+      port: base.port || (secure ? 443 : 80),
+      path: requestPath,
+      method: "GET",
+      headers: {
+        Authorization: "Basic " + Buffer.from(cfg.user + ":" + pw).toString("base64"),
+        Accept: "application/json"
+      }
+    };
+    if (secure) {
+      options.rejectUnauthorized = !cfg.insecure;
+    }
+
+    const req = (secure ? https : http).request(options, function (res) {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", function (chunk) { body += chunk; });
+      res.on("end", function () {
+        resolve({ status: res.statusCode, headers: res.headers, body: body });
+      });
+    });
+    req.on("error", reject);
+    req.end();
   });
 }
+
+/** ADT reports failures as XML; pull the human sentence out of it. */
+function describeFailure(status, body) {
+  const match = /<message[^>]*>([\s\S]*?)<\/message>/.exec(body);
+  const detail = match ? match[1].trim() : body.substring(0, 500).trim();
+  return "HTTP " + status + (detail ? ": " + detail : "");
+}
+
+function describeConnection(error) {
+  const code = String(error.code || "");
+  let text = "Cannot reach the system: " + (error.message || String(error));
+  if (code.indexOf("CERT") !== -1 || code.indexOf("SELF_SIGNED") !== -1) {
+    text += "\n\nThe server certificate could not be verified. Development systems often carry "
+          + "one that cannot be. If you accept that, set selector.allowInsecureCertificate to "
+          + "true - it is off by default because it disables the check entirely.";
+  }
+  return text;
+}
+
+async function fetchTable(context, name, rows, query) {
+  const cfg = settings();
+  const gaps = missing(cfg);
+  if (gaps.length) {
+    return "ERROR:Set " + gaps.join(" and ") + " in the settings first.";
+  }
+
+  const pw = await password(context, cfg.user);
+  if (!pw) {
+    return "ERROR:No password was entered, so the request was not sent.";
+  }
+
+  let response;
+  try {
+    response = await request(cfg, pw, resourcePath(cfg, name, rows, query));
+  } catch (e) {
+    return "ERROR:" + describeConnection(e);
+  }
+
+  if (response.status === 401) {
+    // A wrong password kept in the store would block every later attempt with no
+    // way out, so drop it and say that it was dropped.
+    await context.secrets.delete(SECRET);
+    return "ERROR:HTTP 401: the system rejected user " + cfg.user
+         + ". The stored password has been discarded; loading again will ask for it.";
+  }
+  if (response.status !== 200) {
+    return "ERROR:" + describeFailure(response.status, response.body);
+  }
+  if (!response.body || !response.body.trim()) {
+    // A 200 carrying nothing is not success. Name what actually came back
+    // instead of letting the page fail on an empty parse.
+    return "ERROR:HTTP 200 with an empty body."
+         + " content-type: " + (response.headers["content-type"] || "(none)")
+         + " | content-length: " + (response.headers["content-length"] || "(none)")
+         + " | location: " + (response.headers["location"] || "(none)");
+  }
+  return response.body;
+}
+
+/* ---------- panels ---------- */
 
 function open(context, initial, beside) {
   const panel = vscode.window.createWebviewPanel(
@@ -95,12 +210,10 @@ function open(context, initial, beside) {
   panel.webview.html = pageHtml(initial);
 
   panel.webview.onDidReceiveMessage(
-    function (message) {
+    async function (message) {
       if (message.type === "load") {
-        panel.webview.postMessage({
-          type: "result",
-          payload: stub(message.name, message.query)
-        });
+        const payload = await fetchTable(context, message.name, message.rows, message.query);
+        panel.webview.postMessage({ type: "result", payload: payload });
       } else if (message.type === "open") {
         // What needed surgery on the E4 model in Eclipse is one argument here.
         open(context, message.name, true);
@@ -117,6 +230,10 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand("selector.open", function () {
       open(context, null, false);
+    }),
+    vscode.commands.registerCommand("selector.forgetPassword", async function () {
+      await context.secrets.delete(SECRET);
+      vscode.window.showInformationMessage("SelecTor: the stored password was removed.");
     })
   );
 }
