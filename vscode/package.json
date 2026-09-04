@@ -1,8 +1,8 @@
 {
   "name": "selector-vscode",
   "displayName": "SelecTor",
-  "description": "Portability spike: the SelecTor page running under a VS Code host",
-  "version": "0.1.0",
+  "description": "SAP table explorer - the SelecTor page running under a VS Code host",
+  "version": "0.2.0",
   "publisher": "ysichov",
   "private": true,
   "engines": {
@@ -18,7 +18,36 @@
       {
         "command": "selector.open",
         "title": "SelecTor: Open Data Explorer"
+      },
+      {
+        "command": "selector.forgetPassword",
+        "title": "SelecTor: Forget Password"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "SelecTor",
+      "properties": {
+        "selector.url": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Base URL of the ABAP system, for example `https://host.example.com:44300`."
+        },
+        "selector.client": {
+          "type": "string",
+          "default": "",
+          "description": "SAP client, sent as sap-client. Leave empty to use the system default."
+        },
+        "selector.user": {
+          "type": "string",
+          "default": "",
+          "description": "SAP user. The password is asked once and kept in the OS credential store."
+        },
+        "selector.allowInsecureCertificate": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Accept a server certificate that cannot be verified. Development systems often have one. **Off by default on purpose** - turning it on disables certificate checking for this extension's requests."
+        }
+      }
+    }
   }
 }
