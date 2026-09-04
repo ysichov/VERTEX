@@ -9,12 +9,21 @@ import java.nio.charset.StandardCharsets;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.e4.ui.model.application.ui.MElementContainer;
+import org.eclipse.e4.ui.model.application.ui.MUIElement;
+import org.eclipse.e4.ui.model.application.ui.advanced.MPlaceholder;
+import org.eclipse.e4.ui.model.application.ui.basic.MPart;
+import org.eclipse.e4.ui.model.application.ui.basic.MPartSashContainerElement;
+import org.eclipse.e4.ui.model.application.ui.basic.MPartStack;
+import org.eclipse.e4.ui.model.application.ui.basic.MStackElement;
+import org.eclipse.e4.ui.model.application.ui.basic.MWindow;
+import org.eclipse.e4.ui.workbench.modeling.EModelService;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IWorkbenchPage;
-import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.part.ViewPart;
 import org.osgi.framework.FrameworkUtil;
 
@@ -58,11 +67,14 @@ public class SelectorView extends ViewPart {
 			public Object function(Object[] arguments) {
 				final String table = String.valueOf(arguments[0]);
 				final int rows = (int) Double.parseDouble(String.valueOf(arguments[1]));
+				// The page builds and encodes the selection parameters itself.
+				final String query = arguments.length > 2 && arguments[2] != null
+					? String.valueOf(arguments[2]) : "";
 				// Nothing slow may run here: this callback executes inside the
 				// WebView2 message pump, and blocking it makes Edge time out with
 				// "Waiting for Edge operation to terminate". Hand the work back to
 				// the event loop and return at once.
-				browser.getDisplay().asyncExec(() -> deliver(table, rows));
+				browser.getDisplay().asyncExec(() -> deliver(table, rows, query));
 				return null;
 			}
 		};
@@ -104,7 +116,7 @@ public class SelectorView extends ViewPart {
 	 * Runs on the UI thread, which is also what ensureLoggedOn needs. Fine while
 	 * the request is a reaction to a click; real volumes belong in a Job.
 	 */
-	private String fetch(String table, int rows) {
+	private String fetch(String table, int rows, String query) {
 		IAbapProjectService projectService = AdtProjectServiceFactory.createProjectService();
 		IProject[] projects = projectService.getAvailableAbapProjects();
 		if (projects.length == 0) {
@@ -125,7 +137,11 @@ public class SelectorView extends ViewPart {
 					"Logon to " + project.getName() + " failed: " + logon.getMessage());
 		}
 
-		URI uri = URI.create("/sap/bc/adt/zsde/table/" + table.toUpperCase() + "?rows=" + rows);
+		String path = "/sap/bc/adt/zsde/table/" + table.toUpperCase() + "?rows=" + rows;
+		if (query != null && !query.isEmpty()) {
+			path = path + "&" + query;
+		}
+		URI uri = URI.create(path);
 		IRestResourceFactory factory = AdtRestResourceFactory.createRestResourceFactory();
 		IRestResource resource = factory.createResourceWithStatelessSession(uri,
 				adtProject.getDestinationId());
@@ -134,12 +150,12 @@ public class SelectorView extends ViewPart {
 	}
 
 	/** Does the slow work outside the browser callback, then wakes the page. */
-	private void deliver(String table, int rows) {
+	private void deliver(String table, int rows, String query) {
 		if (this.browser.isDisposed()) {
 			return;
 		}
 		try {
-			this.pending = fetch(table, rows);
+			this.pending = fetch(table, rows, query);
 		} catch (Exception e) {
 			this.pending = "ERROR:" + describe(e);
 		}
@@ -156,12 +172,49 @@ public class SelectorView extends ViewPart {
 	private void openAnother(String table) {
 		try {
 			counter++;
-			getViewSite().getPage().showView(ID, table.toUpperCase() + "@" + counter,
-				IWorkbenchPage.VIEW_ACTIVATE);
-		} catch (PartInitException e) {
+			IViewPart opened = getViewSite().getPage().showView(ID,
+					table.toUpperCase() + "@" + counter, IWorkbenchPage.VIEW_ACTIVATE);
+			splitBeside(opened);
+		} catch (Exception e) {
 			this.pending = "ERROR:" + describe(e);
 			wake();
 		}
+	}
+
+	/**
+	 * showView stacks the new instance on top of this one, where it hides behind
+	 * the current tab. Put it beside instead, so two tables are readable at once.
+	 * <p>
+	 * A 3.x view is placed in the perspective through an MPlaceholder while the
+	 * MPart itself is shared, so it is the placeholder that has to move.
+	 */
+	private void splitBeside(IViewPart opened) {
+		EModelService modelService = getSite().getService(EModelService.class);
+		MPart sourcePart = getSite().getService(MPart.class);
+		MPart openedPart = opened.getSite().getService(MPart.class);
+		if (modelService == null || sourcePart == null || openedPart == null) {
+			throw new IllegalStateException("The E4 model services are not available here.");
+		}
+
+		MWindow window = modelService.getTopLevelWindowFor(sourcePart);
+		MStackElement source = placed(modelService, window, sourcePart);
+		MStackElement moved = placed(modelService, window, openedPart);
+
+		MElementContainer<MUIElement> stack = source.getParent();
+		if (!(stack instanceof MPartSashContainerElement)) {
+			throw new IllegalStateException("Cannot split: this view is not in a part stack.");
+		}
+
+		MPartStack target = modelService.createModelElement(MPartStack.class);
+		modelService.insert(target, (MPartSashContainerElement) stack,
+				EModelService.RIGHT_OF, 0.5f);
+		modelService.move(moved, target);
+		modelService.bringToTop(moved);
+	}
+
+	private static MStackElement placed(EModelService modelService, MWindow window, MPart part) {
+		MPlaceholder placeholder = modelService.findPlaceholderFor(window, part);
+		return placeholder != null ? placeholder : part;
 	}
 
 	/** The table this instance was opened for, encoded in its secondary id. */
