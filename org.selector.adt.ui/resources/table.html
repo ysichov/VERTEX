@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SelecTor</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { font: 12px "Segoe UI", system-ui, sans-serif; color: #1c1c1c; background: #ffffff; }
+  .meta { padding: 6px 10px; background: #f6f6f6; border-bottom: 1px solid #d6d6d6; }
+  .meta b { font-weight: 600; }
+  table { border-collapse: collapse; white-space: nowrap; }
+  th, td { border: 1px solid #e2e2e2; padding: 3px 8px; text-align: left; }
+  th { position: sticky; top: 0; background: #eef2f7; font-weight: 600; cursor: help; }
+  th.key { background: #dbe6f4; }
+  td.num { text-align: right; font-family: Consolas, monospace; }
+  td.empty { color: #b0b0b0; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  tbody tr:hover { background: #eaf2fb; }
+  .message { padding: 12px; white-space: pre-wrap; font-family: Consolas, monospace; }
+</style>
+</head>
+<body>
+<div id="root" class="message">no data</div>
+<script>
+"use strict";
+
+// DDIC types that read better right-aligned in a fixed-width font.
+var NUMERIC = ["INT1", "INT2", "INT4", "INT8", "DEC", "CURR", "QUAN", "FLTP", "NUMC"];
+
+function render(data) {
+  var root = document.getElementById("root");
+
+  if (!data || !data.fields) {
+    root.textContent = "no data";
+    return;
+  }
+  root.className = "";
+  root.innerHTML = "";
+
+  var meta = document.createElement("div");
+  meta.className = "meta";
+  var name = document.createElement("b");
+  name.textContent = data.table;
+  meta.appendChild(name);
+  meta.appendChild(document.createTextNode(
+      " — " + data.count + " rows, " + data.fields.length + " columns"));
+  root.appendChild(meta);
+
+  var headRow = document.createElement("tr");
+  data.fields.forEach(function (f) {
+    var th = document.createElement("th");
+    th.textContent = f.text || f.name;
+    th.title = f.name + " · " + f.datatype + " " + f.length
+             + (f.decimals ? "," + f.decimals : "") + (f.key ? " · key" : "");
+    if (f.key) { th.className = "key"; }
+    headRow.appendChild(th);
+  });
+
+  var thead = document.createElement("thead");
+  thead.appendChild(headRow);
+
+  var tbody = document.createElement("tbody");
+  data.rows.forEach(function (row) {
+    var tr = document.createElement("tr");
+    data.fields.forEach(function (f) {
+      var td = document.createElement("td");
+      var v = row[f.name];
+      if (v === null || v === undefined || v === "") {
+        td.className = "empty";
+        td.textContent = "·";
+      } else {
+        td.textContent = v;
+        if (NUMERIC.indexOf(f.datatype) !== -1) { td.className = "num"; }
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  var table = document.createElement("table");
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  root.appendChild(table);
+}
+
+render(/*DATA*/null/*DATA*/);
+</script>
+</body>
+</html>
