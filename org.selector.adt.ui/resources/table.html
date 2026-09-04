@@ -6,56 +6,92 @@
 <style>
   html, body { margin: 0; padding: 0; }
   body { font: 12px "Segoe UI", system-ui, sans-serif; color: #1c1c1c; background: #ffffff; }
-  .meta { padding: 6px 10px; background: #f6f6f6; border-bottom: 1px solid #d6d6d6; }
-  .meta b { font-weight: 600; }
+  .bar { padding: 6px 10px; background: #f6f6f6; border-bottom: 1px solid #d6d6d6;
+         display: flex; align-items: center; gap: 6px; position: sticky; top: 0; z-index: 2; }
+  .bar label { color: #555; }
+  .bar input { width: 140px; padding: 2px 5px; font: inherit; text-transform: uppercase;
+               border: 1px solid #b8b8b8; }
+  .bar button { padding: 2px 10px; font: inherit; border: 1px solid #b8b8b8; background: #fff;
+                cursor: pointer; }
+  .bar button:hover { background: #eaf2fb; }
+  .bar .status { margin-left: auto; color: #666; }
   table { border-collapse: collapse; white-space: nowrap; }
   th, td { border: 1px solid #e2e2e2; padding: 3px 8px; text-align: left; }
-  th { position: sticky; top: 0; background: #eef2f7; font-weight: 600; cursor: help; }
+  th { position: sticky; top: 33px; background: #eef2f7; font-weight: 600; cursor: help; }
   th.key { background: #dbe6f4; }
   td.num { text-align: right; font-family: Consolas, monospace; }
   td.empty { color: #b0b0b0; }
   tbody tr:nth-child(even) { background: #fafafa; }
   tbody tr:hover { background: #eaf2fb; }
-  .message { padding: 12px; white-space: pre-wrap; font-family: Consolas, monospace; }
+  .message { padding: 12px; white-space: pre-wrap; font-family: Consolas, monospace;
+             color: #a5292a; }
 </style>
 </head>
 <body>
-<div id="root" class="message">no data</div>
+
+<div class="bar">
+  <label for="name">Table</label>
+  <input id="name" spellcheck="false" autocomplete="off">
+  <button id="load">Load</button>
+  <button id="open">Open in new window</button>
+  <span class="status" id="status"></span>
+</div>
+
+<div id="root"></div>
+
 <script>
 "use strict";
 
-// DDIC types that read better right-aligned in a fixed-width font.
 var NUMERIC = ["INT1", "INT2", "INT4", "INT8", "DEC", "CURR", "QUAN", "FLTP", "NUMC"];
+var ROWS = 100;
+
+function status(text) {
+  document.getElementById("status").textContent = text || "";
+}
+
+function message(text) {
+  var root = document.getElementById("root");
+  root.className = "message";
+  root.textContent = text;
+}
+
+function load(name) {
+  if (!name) { return; }
+  status("loading " + name + " ...");
+  // Returns at once. The host answers later by calling sdeReady.
+  sdeLoad(name, ROWS);
+}
+
+// Invoked by the host when the answer is waiting.
+function sdeReady() {
+  var raw = sdeTake();
+  status("");
+  if (typeof raw !== "string") { message("No response from the host."); return; }
+  if (raw.indexOf("ERROR:") === 0) { message(raw.substring(6)); return; }
+  var data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
+    return;
+  }
+  render(data);
+}
 
 function render(data) {
   var root = document.getElementById("root");
-
-  if (!data || !data.fields) {
-    root.textContent = "no data";
-    return;
-  }
   root.className = "";
   root.innerHTML = "";
-
-  var meta = document.createElement("div");
-  meta.className = "meta";
-  var name = document.createElement("b");
-  name.textContent = data.table;
-  meta.appendChild(name);
-  meta.appendChild(document.createTextNode(
-      " — " + data.count + " rows, " + data.fields.length + " columns"));
-  root.appendChild(meta);
 
   var headRow = document.createElement("tr");
   data.fields.forEach(function (f) {
     var th = document.createElement("th");
     th.textContent = f.text || f.name;
-    th.title = f.name + " · " + f.datatype + " " + f.length
-             + (f.decimals ? "," + f.decimals : "") + (f.key ? " · key" : "");
+    th.title = f.name + " " + f.datatype + " " + f.length
+             + (f.decimals ? "," + f.decimals : "") + (f.key ? " key" : "");
     if (f.key) { th.className = "key"; }
     headRow.appendChild(th);
   });
-
   var thead = document.createElement("thead");
   thead.appendChild(headRow);
 
@@ -81,9 +117,33 @@ function render(data) {
   table.appendChild(thead);
   table.appendChild(tbody);
   root.appendChild(table);
+
+  status(data.table + " " + data.count + " rows, " + data.fields.length + " columns");
 }
 
-render(/*DATA*/null/*DATA*/);
+document.getElementById("load").addEventListener("click", function () {
+  load(document.getElementById("name").value.trim().toUpperCase());
+});
+
+document.getElementById("name").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") {
+    load(document.getElementById("name").value.trim().toUpperCase());
+  }
+});
+
+document.getElementById("open").addEventListener("click", function () {
+  var name = document.getElementById("name").value.trim().toUpperCase();
+  if (name) { sdeOpen(name); }
+});
+
+var INITIAL = /*INIT*/null/*INIT*/;
+if (INITIAL) {
+  document.getElementById("name").value = INITIAL;
+  // Wait for the document, so sdeReady exists before the host calls it.
+  window.addEventListener("load", function () { load(INITIAL); });
+} else {
+  message("Type a table name and press Load.");
+}
 </script>
 </body>
 </html>

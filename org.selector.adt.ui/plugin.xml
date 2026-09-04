@@ -10,6 +10,7 @@
             name="SelecTor Data Explorer"
             category="org.selector.adt.ui.category"
             class="org.selector.adt.ui.SelectorView"
+            allowMultiple="true"
             restorable="true"/>
    </extension>
 </plugin>
