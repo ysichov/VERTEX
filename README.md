@@ -93,6 +93,13 @@ unzip -p  <bundle>.jar META-INF/MANIFEST.MF  # what it exports
 
 Use that `javap` and not one from an older JDK on the PATH, which cannot read these class files.
 
+The same JRE also ships `javac`, and the pool works as a classpath wildcard, so the plugin can
+be compile-checked without starting Eclipse:
+
+```
+javac -nowarn -proc:none -classpath "~/.p2/pool/plugins/*" -d /tmp/out org.selector.adt.ui/src/org/selector/adt/ui/*.java
+```
+
 ## Layout
 
 ```
