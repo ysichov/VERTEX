@@ -1,4 +1,4 @@
-# SelecTor_ADT
+# ABAP VERTEX Tools
 
 An Eclipse plugin that brings [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer)
 into ABAP Development Tools: a view inside the ADT workbench that reads table data over the
@@ -39,7 +39,7 @@ in `ADT.md` there. Install that first; without it every request returns 404.
 ## Running it
 
 1. File → Import → General → Existing Projects into Workspace, root directory this repository.
-2. Right-click `org.selector.adt.ui` → Run As → Eclipse Application. A second Eclipse starts
+2. Right-click `org.vertex.abap.ui` → Run As → Eclipse Application. A second Eclipse starts
    with the plugin loaded; that is how plugins are tested, and it is not how the finished plugin
    will be used.
 3. In that second Eclipse, create an ABAP project (ABAP perspective → File → New → ABAP Project).
@@ -97,18 +97,18 @@ The same JRE also ships `javac`, and the pool works as a classpath wildcard, so 
 be compile-checked without starting Eclipse:
 
 ```
-javac -nowarn -proc:none -classpath "~/.p2/pool/plugins/*" -d /tmp/out org.selector.adt.ui/src/org/selector/adt/ui/*.java
+javac -nowarn -proc:none -classpath "~/.p2/pool/plugins/*" -d /tmp/out org.vertex.abap.ui/src/org/vertex/abap/ui/*.java
 ```
 
 ## Layout
 
 ```
-org.selector.adt.ui/
+org.vertex.abap.ui/
 ├── META-INF/MANIFEST.MF   bundle dependencies
 ├── plugin.xml             registers the view at org.eclipse.ui.views
 ├── build.properties       resources/ must be listed, or the page is missing at runtime
 ├── resources/table.html   the grid: renders fields + rows, no SAP knowledge
-└── src/org/selector/adt/ui/
+└── src/org/vertex/abap/ui/
     ├── SelectorView.java       fetches JSON, injects it into the page
     └── JsonContentHandler.java reads a JSON response body as a String
 ```

@@ -1,4 +1,4 @@
-package org.selector.adt.ui;
+package org.vertex.abap.ui;
 
 import java.io.IOException;
 import java.io.InputStream;

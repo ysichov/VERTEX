@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run SelecTor extension",
+      "name": "Run VERTEX extension",
       "type": "extensionHost",
       "request": "launch",
       "args": [

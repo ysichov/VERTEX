@@ -11,8 +11,8 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-const PAGE = path.join(__dirname, "..", "org.selector.adt.ui", "resources", "table.html");
-const SECRET = "selector.password";
+const PAGE = path.join(__dirname, "..", "org.vertex.abap.ui", "resources", "table.html");
+const SECRET = "vertex.password";
 
 // The page expects four globals. In Eclipse they are BrowserFunctions; here they
 // are postMessage, which is the only thing a webview can do. The contract fits
@@ -55,7 +55,7 @@ function pageHtml(initial) {
 /* ---------- connection ---------- */
 
 function settings() {
-  const c = vscode.workspace.getConfiguration("selector");
+  const c = vscode.workspace.getConfiguration("vertex");
   return {
     url: (c.get("url") || "").trim(),
     client: (c.get("client") || "").trim(),
@@ -66,8 +66,8 @@ function settings() {
 
 function missing(cfg) {
   const gaps = [];
-  if (!cfg.url) { gaps.push("selector.url"); }
-  if (!cfg.user) { gaps.push("selector.user"); }
+  if (!cfg.url) { gaps.push("vertex.url"); }
+  if (!cfg.user) { gaps.push("vertex.user"); }
   return gaps;
 }
 
@@ -107,7 +107,7 @@ function request(cfg, pw, requestPath) {
     try {
       base = new URL(cfg.url);
     } catch (e) {
-      reject(new Error("selector.url is not a valid URL: " + cfg.url));
+      reject(new Error("vertex.url is not a valid URL: " + cfg.url));
       return;
     }
 
@@ -151,7 +151,7 @@ function describeConnection(error) {
   let text = "Cannot reach the system: " + (error.message || String(error));
   if (code.indexOf("CERT") !== -1 || code.indexOf("SELF_SIGNED") !== -1) {
     text += "\n\nThe server certificate could not be verified. Development systems often carry "
-          + "one that cannot be. If you accept that, set selector.allowInsecureCertificate to "
+          + "one that cannot be. If you accept that, set vertex.allowInsecureCertificate to "
           + "true - it is off by default because it disables the check entirely.";
   }
   return text;
@@ -201,7 +201,7 @@ async function fetchTable(context, name, rows, query) {
 
 function open(context, initial, beside) {
   const panel = vscode.window.createWebviewPanel(
-    "selector",
+    "vertex",
     initial || "SelecTor",
     beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true }
@@ -228,12 +228,12 @@ function open(context, initial, beside) {
 
 function activate(context) {
   context.subscriptions.push(
-    vscode.commands.registerCommand("selector.open", function () {
+    vscode.commands.registerCommand("vertex.open", function () {
       open(context, null, false);
     }),
-    vscode.commands.registerCommand("selector.forgetPassword", async function () {
+    vscode.commands.registerCommand("vertex.forgetPassword", async function () {
       await context.secrets.delete(SECRET);
-      vscode.window.showInformationMessage("SelecTor: the stored password was removed.");
+      vscode.window.showInformationMessage("VERTEX: the stored password was removed.");
     })
   );
 }
