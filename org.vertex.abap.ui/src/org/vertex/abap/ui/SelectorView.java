@@ -1,4 +1,4 @@
-package org.selector.adt.ui;
+package org.vertex.abap.ui;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -48,7 +48,7 @@ import com.sap.adt.tools.core.project.IAbapProjectService;
  */
 public class SelectorView extends ViewPart {
 
-	public static final String ID = "org.selector.adt.ui.view";
+	public static final String ID = "org.vertex.abap.ui.view";
 
 	private static final String PAGE = "resources/table.html";
 

@@ -1,4 +1,4 @@
-package org.selector.adt.ui;
+package org.vertex.abap.ui;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -18,7 +18,7 @@ import com.sap.adt.project.IAdtCoreProject;
  */
 public class MetricsView extends ViewPart {
 
-	public static final String ID = "org.selector.adt.ui.view.metrics";
+	public static final String ID = "org.vertex.abap.ui.view.metrics";
 
 	/** Not a regular-expression metacharacter, and not legal in ABAP object names. */
 	private static final String SEPARATOR = "~";

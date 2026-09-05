@@ -1,10 +1,10 @@
 Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
-Bundle-Name: SelecTor for ADT
-Bundle-SymbolicName: org.selector.adt.ui;singleton:=true
+Bundle-Name: ABAP VERTEX Tools
+Bundle-SymbolicName: org.vertex.abap.ui;singleton:=true
 Bundle-Version: 0.1.0.qualifier
 Bundle-Vendor: Yurii Sychov
-Automatic-Module-Name: org.selector.adt.ui
+Automatic-Module-Name: org.vertex.abap.ui
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Require-Bundle: org.eclipse.ui,
  org.eclipse.core.runtime,

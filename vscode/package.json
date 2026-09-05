@@ -1,7 +1,7 @@
 {
-  "name": "selector-vscode",
-  "displayName": "SelecTor",
-  "description": "SAP table explorer - the SelecTor page running under a VS Code host",
+  "name": "vertex-abap",
+  "displayName": "ABAP VERTEX Tools",
+  "description": "ABAP Version, Code and Data Explorer - the VERTEX pages under a VS Code host",
   "version": "0.2.0",
   "publisher": "ysichov",
   "private": true,
@@ -16,33 +16,33 @@
   "contributes": {
     "commands": [
       {
-        "command": "selector.open",
-        "title": "SelecTor: Open Data Explorer"
+        "command": "vertex.open",
+        "title": "VERTEX: Open SelecTor"
       },
       {
-        "command": "selector.forgetPassword",
-        "title": "SelecTor: Forget Password"
+        "command": "vertex.forgetPassword",
+        "title": "VERTEX: Forget Password"
       }
     ],
     "configuration": {
-      "title": "SelecTor",
+      "title": "VERTEX",
       "properties": {
-        "selector.url": {
+        "vertex.url": {
           "type": "string",
           "default": "",
           "markdownDescription": "Base URL of the ABAP system, for example `https://host.example.com:44300`."
         },
-        "selector.client": {
+        "vertex.client": {
           "type": "string",
           "default": "",
           "description": "SAP client, sent as sap-client. Leave empty to use the system default."
         },
-        "selector.user": {
+        "vertex.user": {
           "type": "string",
           "default": "",
           "description": "SAP user. The password is asked once and kept in the OS credential store."
         },
-        "selector.allowInsecureCertificate": {
+        "vertex.allowInsecureCertificate": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "Accept a server certificate that cannot be verified. Development systems often have one. **Off by default on purpose** - turning it on disables certificate checking for this extension's requests."

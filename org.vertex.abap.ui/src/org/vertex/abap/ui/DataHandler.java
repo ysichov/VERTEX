@@ -1,4 +1,4 @@
-package org.selector.adt.ui;
+package org.vertex.abap.ui;
 
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
@@ -7,10 +7,10 @@ import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.handlers.HandlerUtil;
 
 /**
- * Opens the metrics view for the selected object, on the system that object
- * belongs to.
+ * Opens the data explorer for the selected table or view, on the system that
+ * object belongs to.
  */
-public class MetricsHandler extends AbstractHandler {
+public class DataHandler extends AbstractHandler {
 
 	/** Distinguishes view instances; Eclipse requires unique secondary ids. */
 	private static int counter = 0;
@@ -24,14 +24,14 @@ public class MetricsHandler extends AbstractHandler {
 		}
 
 		counter++;
-		String secondaryId = MetricsView.encode(context.object.getName(), context.object.getType(),
+		String secondaryId = SelectorView.encode(context.object.getName(),
 				context.project.getName(), counter);
 
 		try {
 			IWorkbenchPage page = HandlerUtil.getActiveWorkbenchWindowChecked(event).getActivePage();
-			page.showView(MetricsView.ID, secondaryId, IWorkbenchPage.VIEW_ACTIVATE);
+			page.showView(SelectorView.ID, secondaryId, IWorkbenchPage.VIEW_ACTIVATE);
 		} catch (Exception e) {
-			throw new ExecutionException("Cannot open the metrics view", e);
+			throw new ExecutionException("Cannot open the data explorer", e);
 		}
 		return null;
 	}

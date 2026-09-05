@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="org.eclipse.ui.views">
+      <category
+            id="org.vertex.abap.ui.category"
+            name="VERTEX"/>
+      <view
+            id="org.vertex.abap.ui.view"
+            name="SelecTor Data Explorer"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.SelectorView"
+            allowMultiple="true"
+            restorable="false"/>
+      <view
+            id="org.vertex.abap.ui.view.metrics"
+            name="VERTEX Metrics"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.MetricsView"
+            allowMultiple="true"
+            restorable="false"/>
+   </extension>
+
+   <!-- Without this the views land in whichever stack the perspective happens to
+        offer, which is usually a narrow strip on the right - useless for a grid.
+        visible="false" only reserves the place; nothing opens on its own. The
+        user can drag them anywhere afterwards and Eclipse remembers. -->
+   <extension point="org.eclipse.ui.perspectiveExtensions">
+      <perspectiveExtension targetID="*">
+         <view
+               id="org.vertex.abap.ui.view"
+               relative="org.eclipse.ui.editorss"
+               relationship="bottom"
+               ratio="0.35"
+               visible="false"
+               closeable="true"
+               moveable="true"/>
+         <view
+               id="org.vertex.abap.ui.view.metrics"
+               relative="org.vertex.abap.ui.view"
+               relationship="stack"
+               visible="false"
+               closeable="true"
+               moveable="true"/>
+      </perspectiveExtension>
+   </extension>
+
+   <extension point="org.eclipse.ui.commands">
+      <command
+            id="org.vertex.abap.ui.command.metrics"
+            name="Metrics"/>
+      <command
+            id="org.vertex.abap.ui.command.data"
+            name="SelecTor"/>
+   </extension>
+
+   <extension point="org.eclipse.ui.handlers">
+      <handler
+            commandId="org.vertex.abap.ui.command.metrics"
+            class="org.vertex.abap.ui.MetricsHandler"/>
+      <handler
+            commandId="org.vertex.abap.ui.command.data"
+            class="org.vertex.abap.ui.DataHandler"/>
+   </extension>
+
+   <!-- One submenu holding every service, rather than one top-level entry each:
+        with several tools a flat list would crowd the context menu of every
+        object. The visibility test sits on the menu, so it is evaluated once
+        instead of once per command.
+
+        Services differ in what they apply to - metrics to code, SelecTor to
+        tables and views. Filtering that needs a PropertyTester, since plugin.xml
+        has no built-in test for ADT object types; worth adding once a service is
+        actually shown where it makes no sense. -->
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution
+            locationURI="popup:org.eclipse.ui.popup.any?after=additions">
+         <menu
+               id="org.vertex.abap.ui.menu"
+               label="VERTEX">
+            <visibleWhen checkEnabled="false">
+               <with variable="selection">
+                  <count value="1"/>
+                  <iterate>
+                     <adapt type="com.sap.adt.tools.core.IAdtObjectReference"/>
+                  </iterate>
+               </with>
+            </visibleWhen>
+            <command
+                  commandId="org.vertex.abap.ui.command.data"
+                  label="SelecTor"
+                  style="push"/>
+            <command
+                  commandId="org.vertex.abap.ui.command.metrics"
+                  label="Metrics"
+                  style="push"/>
+         </menu>
+      </menuContribution>
+   </extension>
+</plugin>

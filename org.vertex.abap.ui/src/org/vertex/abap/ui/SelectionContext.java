@@ -1,4 +1,4 @@
-package org.selector.adt.ui;
+package org.vertex.abap.ui;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
