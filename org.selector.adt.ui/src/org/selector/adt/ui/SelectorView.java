@@ -7,6 +7,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.e4.ui.model.application.ui.MElementContainer;
@@ -18,6 +19,8 @@ import org.eclipse.e4.ui.model.application.ui.basic.MPartStack;
 import org.eclipse.e4.ui.model.application.ui.basic.MStackElement;
 import org.eclipse.e4.ui.model.application.ui.basic.MWindow;
 import org.eclipse.e4.ui.workbench.modeling.EModelService;
+import org.eclipse.jface.viewers.LabelProvider;
+import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
@@ -25,6 +28,7 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.part.ViewPart;
+import org.eclipse.ui.dialogs.ElementListSelectionDialog;
 import org.osgi.framework.FrameworkUtil;
 
 import com.sap.adt.communication.resources.AdtRestResourceFactory;
@@ -54,6 +58,12 @@ public class SelectorView extends ViewPart {
 	private static int counter = 0;
 
 	private Browser browser;
+
+	/** Not a regex metacharacter, and not legal in ABAP object names. */
+	private static final String SEPARATOR = "~";
+
+	/** The system this window talks to, once resolved. */
+	private IProject project;
 
 	/** Answer waiting to be picked up by sdeTake. */
 	private String pending;
@@ -117,14 +127,7 @@ public class SelectorView extends ViewPart {
 	 * the request is a reaction to a click; real volumes belong in a Job.
 	 */
 	private String fetch(String table, int rows, String query) {
-		IAbapProjectService projectService = AdtProjectServiceFactory.createProjectService();
-		IProject[] projects = projectService.getAvailableAbapProjects();
-		if (projects.length == 0) {
-			throw new IllegalStateException(
-					"No ABAP project in this workspace. Create one, then load again.");
-		}
-
-		IProject project = projects[0];
+		IProject project = abapProject();
 		IAdtCoreProject adtProject = project.getAdapter(IAdtCoreProject.class);
 		if (adtProject == null) {
 			throw new IllegalStateException(
@@ -173,7 +176,8 @@ public class SelectorView extends ViewPart {
 		try {
 			counter++;
 			IViewPart opened = getViewSite().getPage().showView(ID,
-					table.toUpperCase() + "@" + counter, IWorkbenchPage.VIEW_ACTIVATE);
+					encode(table.toUpperCase(), abapProject().getName(), counter),
+					IWorkbenchPage.VIEW_ACTIVATE);
 			splitBeside(opened);
 		} catch (Exception e) {
 			this.pending = "ERROR:" + describe(e);
@@ -217,14 +221,70 @@ public class SelectorView extends ViewPart {
 		return placeholder != null ? placeholder : part;
 	}
 
-	/** The table this instance was opened for, encoded in its secondary id. */
-	private String tableOfThisInstance() {
+	static String encode(String table, String project, int counter) {
+		return table + SEPARATOR + project + SEPARATOR + counter;
+	}
+
+	/** One part of the secondary id, or null when it is not there. */
+	private String part(int index) {
 		String secondaryId = getViewSite().getSecondaryId();
 		if (secondaryId == null) {
 			return null;
 		}
-		int at = secondaryId.indexOf('@');
-		return at < 0 ? secondaryId : secondaryId.substring(0, at);
+		String[] parts = secondaryId.split(SEPARATOR, -1);
+		return index < parts.length && !parts[index].isEmpty() ? parts[index] : null;
+	}
+
+	/** The table this instance was opened for. */
+	private String tableOfThisInstance() {
+		return part(0);
+	}
+
+	/**
+	 * The system this window reads from. It travels in the secondary id, because
+	 * that is the only per-instance state Eclipse restores after a restart.
+	 * <p>
+	 * Opened from an object menu there is a project to inherit. Opened through
+	 * Show View there is not: one project is then unambiguous, several are not,
+	 * and the user is asked rather than guessed at.
+	 */
+	private IProject abapProject() {
+		if (this.project != null && this.project.isAccessible()) {
+			return this.project;
+		}
+		String name = part(1);
+		if (name != null) {
+			IProject named = ResourcesPlugin.getWorkspace().getRoot().getProject(name);
+			if (named.exists()) {
+				this.project = named;
+				return this.project;
+			}
+		}
+		IProject[] projects = AdtProjectServiceFactory.createProjectService()
+			.getAvailableAbapProjects();
+		if (projects.length == 0) {
+			throw new IllegalStateException(
+				"No ABAP project in this workspace. Create one, then load again.");
+		}
+		this.project = projects.length == 1 ? projects[0] : ask(projects);
+		return this.project;
+	}
+
+	private IProject ask(IProject[] projects) {
+		ElementListSelectionDialog dialog = new ElementListSelectionDialog(
+			getSite().getShell(), new LabelProvider() {
+				@Override
+				public String getText(Object element) {
+					return ((IProject) element).getName();
+				}
+			});
+		dialog.setTitle("AXE");
+		dialog.setMessage("Which ABAP project should this window read from?");
+		dialog.setElements(projects);
+		if (dialog.open() != Window.OK) {
+			throw new IllegalStateException("No system was chosen, so nothing was read.");
+		}
+		return (IProject) dialog.getFirstResult();
 	}
 
 	private String readPage() throws IOException {

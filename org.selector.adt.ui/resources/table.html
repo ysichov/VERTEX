@@ -4,58 +4,133 @@
 <meta charset="utf-8">
 <title>SelecTor</title>
 <style>
+  /* One palette, three ways of choosing it, because the two hosts report the
+     theme differently:
+       :root                 - the light default
+       prefers-color-scheme  - follows the OS, which is what the browser inside
+                               Eclipse reports
+       body.vscode-*         - the class VS Code puts on the webview body; it
+                               wins over :root by sitting closer to the content,
+                               so a light VS Code on a dark OS still looks right */
+  :root {
+    color-scheme: light;
+    --bg: #ffffff;
+    --fg: #1c1c1c;
+    --muted: #666666;
+    --faint: #b0b0b0;
+    --border: #d6d6d6;
+    --line: #e2e2e2;
+    --surface: #fbfbfb;
+    --surface-2: #f0f0f0;
+    --field-bg: #ffffff;
+    --field-border: #b8b8b8;
+    --hover: #eaf2fb;
+    --th-bg: #eef2f7;
+    --th-key-bg: #dbe6f4;
+    --th-filtered-bg: #cfe3cf;
+    --row-alt: #fafafa;
+    --danger: #a5292a;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #1f1f1f;
+      --fg: #d4d4d4;
+      --muted: #9d9d9d;
+      --faint: #5a5a5a;
+      --border: #3c3c3c;
+      --line: #333333;
+      --surface: #252526;
+      --surface-2: #2d2d30;
+      --field-bg: #3c3c3c;
+      --field-border: #5a5a5a;
+      --hover: #2a3d55;
+      --th-bg: #2b3a4a;
+      --th-key-bg: #35506b;
+      --th-filtered-bg: #2f4d34;
+      --row-alt: #232323;
+      --danger: #f48771;
+    }
+  }
+
+  body.vscode-light {
+    color-scheme: light;
+    --bg: #ffffff; --fg: #1c1c1c; --muted: #666666; --faint: #b0b0b0;
+    --border: #d6d6d6; --line: #e2e2e2; --surface: #fbfbfb; --surface-2: #f0f0f0;
+    --field-bg: #ffffff; --field-border: #b8b8b8; --hover: #eaf2fb;
+    --th-bg: #eef2f7; --th-key-bg: #dbe6f4; --th-filtered-bg: #cfe3cf;
+    --row-alt: #fafafa; --danger: #a5292a;
+  }
+
+  body.vscode-dark, body.vscode-high-contrast {
+    color-scheme: dark;
+    --bg: #1f1f1f; --fg: #d4d4d4; --muted: #9d9d9d; --faint: #5a5a5a;
+    --border: #3c3c3c; --line: #333333; --surface: #252526; --surface-2: #2d2d30;
+    --field-bg: #3c3c3c; --field-border: #5a5a5a; --hover: #2a3d55;
+    --th-bg: #2b3a4a; --th-key-bg: #35506b; --th-filtered-bg: #2f4d34;
+    --row-alt: #232323; --danger: #f48771;
+  }
+
   html, body { margin: 0; padding: 0; height: 100%; }
-  body { font: 12px "Segoe UI", system-ui, sans-serif; color: #1c1c1c; background: #ffffff; }
+  body { font: 12px "Segoe UI", system-ui, sans-serif; color: var(--fg);
+         background: var(--bg); }
+
+  input, select, button { color: var(--fg); background: var(--field-bg);
+                          border: 1px solid var(--field-border); }
 
   .app { display: flex; height: 100%; }
 
   .panel { flex: 0 0 250px; display: flex; flex-direction: column;
-           border-right: 1px solid #d6d6d6; background: #fbfbfb; overflow: auto; }
+           border-right: 1px solid var(--border); background: var(--surface);
+           overflow: auto; }
   .app.collapsed .panel { display: none; }
   .panel-head { display: flex; align-items: center; padding: 6px 6px 6px 10px;
-                background: #f0f0f0; border-bottom: 1px solid #e2e2e2; font-weight: 600; }
+                background: var(--surface-2); border-bottom: 1px solid var(--line);
+                font-weight: 600; }
   .panel-head button { margin-left: auto; }
   .criteria { padding: 4px; }
-  .hint { padding: 10px; color: #777; }
+  .hint { padding: 10px; color: var(--muted); }
 
-  .crit { border: 1px solid #e2e2e2; background: #fff; margin-bottom: 4px; padding: 4px 6px; }
+  .crit { border: 1px solid var(--line); background: var(--bg); margin-bottom: 4px;
+          padding: 4px 6px; }
   .crit-head { display: flex; align-items: center; margin-bottom: 3px; }
-  .crit-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .crit-head button { margin-left: auto; border: none; background: none; color: #a5292a;
-                      cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px; }
+  .crit-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+               white-space: nowrap; }
+  .crit-head button { margin-left: auto; border: none; background: none;
+                      color: var(--danger); cursor: pointer; font-size: 13px;
+                      line-height: 1; padding: 0 2px; }
   .crit-line { display: flex; gap: 3px; }
-  .crit-line select, .crit-line input { font: inherit; border: 1px solid #b8b8b8;
-                                        padding: 1px 3px; min-width: 0; }
+  .crit-line select, .crit-line input { font: inherit; padding: 1px 3px; min-width: 0; }
   .crit-line select { flex: 0 0 auto; }
   .crit-line input { flex: 1 1 auto; text-transform: uppercase; }
 
   .main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-  .bar { padding: 6px 10px; background: #f6f6f6; border-bottom: 1px solid #d6d6d6;
-         display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-  .bar label { color: #555; }
-  .bar input { width: 140px; padding: 2px 5px; font: inherit; text-transform: uppercase;
-               border: 1px solid #b8b8b8; }
-  button { padding: 2px 8px; font: inherit; border: 1px solid #b8b8b8; background: #fff;
-           cursor: pointer; }
-  button:hover { background: #eaf2fb; }
-  .bar .status { margin-left: auto; color: #666; }
+  .bar { padding: 6px 10px; background: var(--surface);
+         border-bottom: 1px solid var(--border); display: flex; align-items: center;
+         gap: 6px; flex: 0 0 auto; }
+  .bar label { color: var(--muted); }
+  .bar input { width: 140px; padding: 2px 5px; font: inherit; text-transform: uppercase; }
+  button { padding: 2px 8px; font: inherit; cursor: pointer; }
+  button:hover { background: var(--hover); }
+  .bar .status { margin-left: auto; color: var(--muted); }
   #expand { display: none; }
   .app.collapsed #expand { display: inline-block; }
 
   .scroll { flex: 1 1 auto; overflow: auto; }
   table { border-collapse: collapse; white-space: nowrap; }
-  th, td { border: 1px solid #e2e2e2; padding: 3px 8px; text-align: left; }
-  th { position: sticky; top: 0; background: #eef2f7; font-weight: 600; cursor: pointer;
-       z-index: 1; }
-  th:hover { background: #dbe6f4; }
-  th.key { background: #dbe6f4; }
-  th.filtered { background: #cfe3cf; }
+  th, td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
+  th { position: sticky; top: 0; background: var(--th-bg); font-weight: 600;
+       cursor: pointer; z-index: 1; }
+  th:hover { background: var(--th-key-bg); }
+  th.key { background: var(--th-key-bg); }
+  th.filtered { background: var(--th-filtered-bg); }
   td.num { text-align: right; font-family: Consolas, monospace; }
-  td.empty { color: #b0b0b0; }
-  tbody tr:nth-child(even) { background: #fafafa; }
-  tbody tr:hover { background: #eaf2fb; }
+  td.empty { color: var(--faint); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: var(--hover); }
   .message { padding: 12px; white-space: pre-wrap; font-family: Consolas, monospace;
-             color: #a5292a; }
+             color: var(--danger); }
 </style>
 </head>
 <body>
