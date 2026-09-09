@@ -8,7 +8,7 @@ renders as HTML.
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | Reads a table, filters work; no joins or pivot yet |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | McCabe, Halstead and the maintainability index per unit |
-| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | Parts of an object and their versions; no diff, no review, one object at a time |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | Parts, their versions and the diff between two of them; no blame, no review, one object at a time |
 
 Status: **early**. All three answer, and each is a fraction of what its backend can do.
 
@@ -137,7 +137,7 @@ org.vertex.abap.ui/
 ├── resources/
 │   ├── table.html         the grid: renders fields + rows, no SAP knowledge
 │   ├── metrics.html       the metrics table, sortable by any column
-│   └── versions.html      parts on the left, the versions of one part on the right
+│   └── versions.html      parts, their versions, and the diff between two of them
 └── src/org/vertex/abap/ui/
     ├── PageView.java           browser, page, ADT read, answer bridge - the shared half
     ├── SelectorView.java       table data: what to request, and opening a second window
@@ -164,10 +164,11 @@ user operates lives in the page, which is what lets the same page run under the 
 - Paging, sorting and a refresh button for the grid. The row limit is a constant in the page and
   the resource has no offset, so a large table stops at the first hundred rows.
 - Conversion exits and F4. Values arrive as stored, so an `ALPHA`-padded key reads as padded.
-- The diff between two versions. The ABAP side is three statements — `COMPUTE_DIFF` takes two
-  source tables — and the work is in the page, on the browser port of AVE's own diff in
-  `html_simulator/`. See stage 9 of `dev_history.md` for why the ABAP will return hunks as JSON
-  rather than finished HTML.
+- The character-level highlight inside a changed line, and the pass that pairs a deletion with the
+  insertion it belongs to. Both exist in AVE already, in the ABAP and in its browser port; see
+  stage 12 of `dev_history.md` for why neither was copied wholesale.
+- Blame, and the review workflow on top of the diff — approve, decline, comment, saved per
+  transport request.
 - A transport request as the unit of work, which is what AVE is for. Both it and a package are
   refused today: they are read object by object, and one blocking request has nowhere to report
   progress. The same limit keeps the metrics of a whole package out.

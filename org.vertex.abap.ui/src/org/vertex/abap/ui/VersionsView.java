@@ -53,7 +53,11 @@ public class VersionsView extends PageView {
 				// already on screen and only the versions are asked for.
 				final String partName = text(arguments, 2);
 				final String partType = text(arguments, 3);
-				queue(() -> read(path(object, type, partName, partType)));
+				// Empty again until a version is picked, and then the answer is
+				// the difference between the two rather than the list.
+				final String from = text(arguments, 4);
+				final String to = text(arguments, 5);
+				queue(() -> read(path(object, type, partName, partType, from, to)));
 				return null;
 			}
 		};
@@ -79,13 +83,20 @@ public class VersionsView extends PageView {
 	 * method, so it carries trailing spaces and, for a class pool, equals signs.
 	 * It has to be encoded rather than pasted into the query.
 	 */
-	private static String path(String object, String type, String partName, String partType) {
+	private static String path(String object, String type, String partName, String partType,
+			String from, String to) {
 		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/versions/")
 				.append(object.toUpperCase());
 		path.append("?type=").append(escape(type));
 		if (!partName.isEmpty()) {
 			path.append("&part=").append(escape(partName));
 			path.append("&ptype=").append(escape(partType));
+		}
+		if (!to.isEmpty()) {
+			// An empty from is the oldest version, which is compared against
+			// nothing at all - the resource reads that as every line added.
+			path.append("&from=").append(escape(from));
+			path.append("&to=").append(escape(to));
 		}
 		return path.toString();
 	}
