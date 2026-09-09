@@ -619,6 +619,27 @@ The rows are asked for separately. Assembling a join means ticking one table aft
 reading the database on every tick to answer a question nobody has asked yet is not free — so the
 statement comes back without a row count and the Run button supplies one.
 
+### Finishing the builder, and a chip that lied
+
+What shipped first was a join you could assemble and not shape: every field of every joined table
+in the SELECT list, and the type and condition the builder proposed with no way to argue. Both
+were already there — `HANDLE_FLD_ACTION` had the codes the field toolbar sends, the model had the
+type and the condition — and both were private. A fourth door.
+
+The field list travels as a **set**, not as the click that changed it: `pick=X` says the list is
+the caller's and the rest name what is in it. That is the same choice as the tables, made for the
+opposite reason. The tables have to be replayed in order because an alias depends on when a table
+was taken in; the fields have no such memory, so sending the set lets the page rebuild the request
+from what is on screen rather than from how it got there.
+
+An empty set needed the flag: without it, "no fields" and "no opinion about the fields" are the
+same absent parameter.
+
+**And a chip that lied.** The pivot's field chips showed the bare field name. Joining SCARR to
+SFLIGHT produced two chips both reading `carrid`, one from each table, doing different things.
+Seen on a screenshot again — the stub had one table in it, which is exactly the case where the bug
+cannot appear.
+
 ### The filters were already reachable
 
 The `WHERE` looked like the part that would have to be rewritten, since it is built from the

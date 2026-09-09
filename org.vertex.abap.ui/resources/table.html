@@ -419,6 +419,29 @@ var mode = "J";
    each is taken under. A key is alias~field, the name the statement uses. */
 var cross = { rows: [], cols: [], vals: [] };
 
+/* The SELECT list as a set of keys, and the join type of each joined table by
+   alias. Both empty means "as the builder proposes": every field selected and
+   the type it chose. Sending a set rather than a history of clicks is what
+   lets the page rebuild the request from what is on screen. */
+var picked = null;
+var jtypes = {};
+
+function buildQuery() {
+  var parts = [];
+  if (picked) {
+    // The flag says the list below is the caller's, even when it is empty -
+    // which is not the same as having no opinion about it.
+    parts.push("pick=X");
+    picked.forEach(function (key, i) {
+      parts.push("sf" + (i + 1) + "=" + encodeURIComponent(key));
+    });
+  }
+  Object.keys(jtypes).forEach(function (alias) {
+    parts.push("j" + alias + "=" + encodeURIComponent(jtypes[alias]));
+  });
+  return parts.join("&");
+}
+
 var AGGREGATES = ["SUM", "COUNT", "MIN", "MAX", "AVG"];
 
 function crossQuery() {
@@ -476,13 +499,16 @@ function loadJoin(rows) {
   // a join wants: otherwise every tick would read the database.
   // The selection panel travels along: a filter typed on the table belongs to
   // the join built from it, and query() already encodes exactly that.
-  sdeJoin(currentTable, taken.join(","), rows || 0, query(), crossQuery());
+  sdeJoin(currentTable, taken.join(","), rows || 0, query(), crossQuery(), buildQuery());
 }
 
 function toggleTaken(tabname) {
   var at = taken.indexOf(tabname);
   if (at === -1) { taken.push(tabname); } else { taken.splice(at, 1); }
-  loadJoin();
+  // A table joining or leaving changes which fields exist at all, so the
+  // SELECT list goes back to what the builder proposes for the new shape.
+  picked = null;
+  loadJoin(0);
 }
 
 function renderJoin(data) {
@@ -504,6 +530,9 @@ function renderJoin(data) {
     root.appendChild(section("Tables around " + data.table, candidateList(data.candidates)));
     if (data.tables && data.tables.length > 0) {
       root.appendChild(section("The join", joinTable(data.tables)));
+    }
+    if (data.fields && data.fields.length > 0) {
+      root.appendChild(section("The SELECT list", fieldPicker(data.fields)));
     }
   } else {
     root.appendChild(crossPanel(data.fields || []));
@@ -568,7 +597,10 @@ function fieldChips(fields) {
     var chip = document.createElement("span");
     chip.className = "chip" + (placed.indexOf(key) === -1 ? "" : " placed");
     chip.title = f.ddtext || key;
-    chip.appendChild(document.createTextNode(f.fieldname.toLowerCase()));
+    // The key, not the bare field name: a join of two tables that both have a
+    // CARRID would otherwise offer two chips with the same label and different
+    // meanings, and the slots below show keys anyway.
+    chip.appendChild(document.createTextNode(key));
 
     // Three buttons rather than dragging: a chip is small and an Eclipse view
     // is smaller, and a drop target that misses is worse than a click.
@@ -719,6 +751,58 @@ function candidateList(candidates) {
   return box;
 }
 
+/* The field list is a set the page owns from the first answer onwards: the
+   resource is told which fields are in, not which one was clicked. */
+function fieldPicker(fields) {
+  if (picked === null) {
+    picked = fields.filter(function (f) { return f.sel === "X" || f.sel === true; })
+                   .map(function (f) { return (f.alias + "~" + f.fieldname).toLowerCase(); });
+  }
+
+  var box = document.createElement("div");
+
+  var bar = document.createElement("div");
+  [["All", function () { picked = fields.map(fieldKey); }],
+   ["None", function () { picked = []; }],
+   ["Keys", function () {
+      picked = fields.filter(function (f) { return f.key === "X" || f.key === true; })
+                     .map(fieldKey);
+    }]].forEach(function (b) {
+    var button = document.createElement("button");
+    button.textContent = b[0];
+    button.addEventListener("click", function () { b[1](); loadJoin(0); });
+    bar.appendChild(button);
+  });
+  box.appendChild(bar);
+
+  var chips = document.createElement("div");
+  chips.className = "chips";
+  fields.forEach(function (f) {
+    var key = fieldKey(f);
+    var chip = document.createElement("label");
+    chip.className = "chip";
+    chip.title = (f.ddtext || "") + "  " + key;
+
+    var tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.checked = picked.indexOf(key) !== -1;
+    tick.addEventListener("change", function () {
+      var at = picked.indexOf(key);
+      if (at === -1) { picked.push(key); } else { picked.splice(at, 1); }
+      loadJoin(0);
+    });
+    chip.appendChild(tick);
+    chip.appendChild(document.createTextNode(" " + key));
+    chips.appendChild(chip);
+  });
+  box.appendChild(chips);
+  return box;
+}
+
+function fieldKey(f) {
+  return (f.alias + "~" + f.fieldname).toLowerCase();
+}
+
 function joinTable(tables) {
   var thead = document.createElement("thead");
   var head = document.createElement("tr");
@@ -730,14 +814,40 @@ function joinTable(tables) {
   thead.appendChild(head);
 
   var tbody = document.createElement("tbody");
-  tables.forEach(function (t) {
+  tables.forEach(function (t, index) {
     var tr = document.createElement("tr");
-    [t.alias, t.tabname + (t.ddtext ? "  " + t.ddtext : ""), t.jtype, t.cond]
-      .forEach(function (text) {
-        var td = document.createElement("td");
-        td.textContent = text || "";
-        tr.appendChild(td);
+    [t.alias, t.tabname + (t.ddtext ? "  " + t.ddtext : "")].forEach(function (text) {
+      var td = document.createElement("td");
+      td.textContent = text || "";
+      tr.appendChild(td);
+    });
+
+    var type = document.createElement("td");
+    // The base table stands in the FROM and joins nothing, so it has no type
+    // to choose - the builder fills one and the statement never uses it.
+    if (index === 0) {
+      type.textContent = "";
+    } else {
+      var pick = document.createElement("select");
+      ["INNER", "LEFT OUTER"].forEach(function (jt) {
+        var option = document.createElement("option");
+        option.value = jt;
+        option.textContent = jt;
+        if (jt === t.jtype) { option.selected = true; }
+        pick.appendChild(option);
       });
+      pick.addEventListener("change", function (e) {
+        jtypes[t.alias] = e.target.value;
+        loadJoin(0);
+      });
+      type.appendChild(pick);
+    }
+    tr.appendChild(type);
+
+    var on = document.createElement("td");
+    on.textContent = t.cond || "";
+    tr.appendChild(on);
+
     tbody.appendChild(tr);
   });
 
