@@ -560,6 +560,58 @@ empty table. Both produce a screen; only one of them is an answer.
 
 ---
 
+## Stage 13 — the join, and a constructor in the way
+
+The fourth service, and the first one whose backend did not hand itself over.
+
+SDE's join builder discovers what the dictionary offers around a table, keeps the join model,
+and generates the statement. All of that is clean code with no control in it. It was simply
+unreachable: the constructor built splitters, HTML viewers and, without a parent, a dialog box,
+and it demanded a reference to the table window itself.
+
+**Counting is not reading.** The first thing I reported was that the joins were not portable,
+because the class holds seventeen `CL_GUI` references against the pivot's zero. Asked what those
+references actually were, they turned out to be nine of HTML-viewer plumbing and six of the
+frontend file dialogs behind the layout files. Candidate discovery, the join model, the statement
+builder: none. The measurement was real and the conclusion from it was wrong, and it would have
+cost a rewrite of a hundred and twenty-nine lines of foreign-key knowledge that already worked.
+
+**Lesson.** A count over a file answers a question about the file, not about the thing you want
+out of it. Read the lines the count is made of before planning around them.
+
+### The way in
+
+`IO_VIEWER` became optional, the base table can be named instead, and without a viewer the
+constructor discovers the candidates, builds the selection and returns before creating a control.
+Nothing else needed guarding: every render method already checks that its own control exists, and
+the ready flag stays false, so nothing pushes a result into a window that is not there. The class
+had been written defensively enough that the door only had to be opened.
+
+`CACHE_WHERE_SELECTION` is skipped with the rest — the filters of a headless caller arrive with
+its request; there is no selection panel to read them from.
+
+### Replaying a stateful builder over a stateless protocol
+
+The builder hands out an alias when a table is first taken into the join and never reuses it. HTTP
+has no session to keep that in, so the client sends its whole selection on every request, in the
+order it made it, and the model is replayed from the base table. Same order, same aliases. A
+client that reorders its own list renames its own columns, which is worth knowing before writing
+one.
+
+`TOGGLE_CANDIDATE` ignores a table name it was never offered — a join quietly missing a table. The
+resource checks the name against what the dictionary proposed and answers 400 with the way to see
+the list, because a silently smaller join is a wrong answer wearing the shape of a right one.
+
+### abaplint, when the system is not there
+
+The SAP connections dropped mid-session, so the usual syntax check against the system was not
+available. `npx @abaplint/cli` parses ABAP locally with no system at all, and it caught a real
+error immediately: a table expression indexing the result of a method call, which is not
+something ABAP allows. It cannot see the SAP standard classes, so it is a parser, not a syntax
+check — but it catches exactly the class of mistake that a careful writer still makes.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

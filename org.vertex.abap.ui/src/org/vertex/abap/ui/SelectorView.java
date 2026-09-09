@@ -43,6 +43,22 @@ public class SelectorView extends PageView {
 			}
 		};
 
+		// The join is a different question about the same table, so it is a
+		// function of its own rather than a mode flag on sdeLoad.
+		new BrowserFunction(this.browser, "sdeJoin") {
+			@Override
+			public Object function(Object[] arguments) {
+				final String table = String.valueOf(arguments[0]);
+				// The tables taken into the join, in the order they were taken:
+				// the builder hands out an alias on first selection and never
+				// reuses it, so the order is what keeps the aliases stable.
+				final String taken = arguments.length > 1 && arguments[1] != null
+					? String.valueOf(arguments[1]) : "";
+				queue(() -> read(joinPath(table, taken)));
+				return null;
+			}
+		};
+
 		new BrowserFunction(this.browser, "sdeOpen") {
 			@Override
 			public Object function(Object[] arguments) {
@@ -65,6 +81,25 @@ public class SelectorView extends PageView {
 			path = path + "&" + query;
 		}
 		return path;
+	}
+
+	/** @param taken comma-separated table names, in the order they were chosen */
+	private static String joinPath(String table, String taken) {
+		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/join/")
+				.append(table.toUpperCase());
+		// The resource stops at the first missing t-parameter, so the numbering
+		// has to be contiguous however gappy the list arrives.
+		int n = 0;
+		for (String raw : taken.split(",", -1)) {
+			String name = raw.trim();
+			if (name.isEmpty()) {
+				continue;
+			}
+			n++;
+			path.append(n == 1 ? "?" : "&");
+			path.append("t").append(n).append("=").append(name.toUpperCase());
+		}
+		return path.toString();
 	}
 
 	private void openAnother(String table) {
