@@ -287,6 +287,9 @@ function sdeReady() {
 function renderPartList(data) {
   parts = data.parts || [];
   renderParts();
+  // Optional on purpose: a host with no tab to rename simply does not define
+  // it, and the VS Code shim is exactly that host today.
+  if (typeof sdeTitle === "function") { sdeTitle(data.object.toUpperCase()); }
   if (parts.length === 0) {
     note("This object has no versionable part.");
     return;
