@@ -401,7 +401,7 @@ function render(data) {
    called T1_MATNR from becoming T2_MATNR under the reader. */
 var taken = [];
 
-function loadJoin() {
+function loadJoin(rows) {
   if (!currentTable) {
     message("Load a table first: the join is built around it.");
     return;
@@ -410,8 +410,10 @@ function loadJoin() {
     message("This host does not offer the join yet.");
     return;
   }
-  status("building the join ...");
-  sdeJoin(currentTable, taken.join(","));
+  status(rows ? "running the join ..." : "building the join ...");
+  // Nought asks for the statement without running it, which is what assembling
+  // a join wants: otherwise every tick would read the database.
+  sdeJoin(currentTable, taken.join(","), rows || 0);
 }
 
 function toggleTaken(tabname) {
@@ -441,9 +443,57 @@ function renderJoin(data) {
 
   var sql = document.createElement("pre");
   sql.textContent = data.sql || "";
-  root.appendChild(section("Statement", sql));
+  var statement = section("Statement", sql);
+  var run = document.createElement("button");
+  run.textContent = "Run";
+  run.addEventListener("click", function () { loadJoin(ROWS); });
+  statement.appendChild(run);
+  root.appendChild(statement);
 
-  status(data.tables ? data.tables.length + " tables in the join" : "");
+  if (data.rows) {
+    root.appendChild(section(data.rows.length + " rows", resultTable(data.rows)));
+    status(data.rows.length + " rows");
+  } else {
+    status(data.tables ? data.tables.length + " tables in the join" : "");
+  }
+}
+
+/* A join result has no field catalogue of its own: the columns are what the
+   statement asked for, under the alias-prefixed names it gave them. So the
+   keys of the first row are the header. */
+function resultTable(rows) {
+  var columns = rows.length ? Object.keys(rows[0]) : [];
+
+  var head = document.createElement("tr");
+  columns.forEach(function (c) {
+    var th = document.createElement("th");
+    th.textContent = c;
+    head.appendChild(th);
+  });
+  var thead = document.createElement("thead");
+  thead.appendChild(head);
+
+  var tbody = document.createElement("tbody");
+  rows.forEach(function (r) {
+    var tr = document.createElement("tr");
+    columns.forEach(function (c) {
+      var td = document.createElement("td");
+      var v = r[c];
+      if (v === null || v === undefined || v === "") {
+        td.className = "empty";
+        td.textContent = "·";
+      } else {
+        td.textContent = v;
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  var table = document.createElement("table");
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  return table;
 }
 
 function section(heading, body) {
@@ -527,7 +577,7 @@ document.getElementById("name").addEventListener("keydown", function (e) {
   if (e.key === "Enter") { load(tableName()); }
 });
 
-document.getElementById("join").addEventListener("click", loadJoin);
+document.getElementById("join").addEventListener("click", function () { loadJoin(0); });
 
 document.getElementById("open").addEventListener("click", function () {
   var name = tableName();

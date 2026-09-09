@@ -6,7 +6,7 @@ renders as HTML.
 
 | Word | Backend | What it does | In VERTEX | Status |
 |---|---|---|---|---|
-| Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | Reads a table, filters work; no joins or pivot yet |
+| Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, and a join built from the dictionary's own foreign keys; no pivot yet |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | McCabe, Halstead and the maintainability index per unit |
 | Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | Parts, their versions and the diff between two of them; no blame, no review, one object at a time |
 
@@ -23,6 +23,7 @@ same WebView2 engine as both editors, one day inside SAP GUI as well.
 Eclipse plugin (Java)  ──ADT session──>  /sap/bc/adt/zsde/table/{name}     ──>  JSON
                                          /sap/bc/adt/zsde/metrics/{name}
                                          /sap/bc/adt/zsde/versions/{name}
+                                         /sap/bc/adt/zsde/join/{name}
         │
         └── hands the JSON to the page for that service, which renders it
 ```

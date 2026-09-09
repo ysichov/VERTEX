@@ -602,6 +602,23 @@ one.
 resource checks the name against what the dictionary proposed and answers 400 with the way to see
 the list, because a silently smaller join is a wrong answer wearing the shape of a right one.
 
+### Running it
+
+`EXECUTE_SQL` turned out to be the same shape as the constructor: two hundred and fifty lines of
+work — normalising the statement, cutting `UP TO` and `ORDER BY` and `GROUP BY` back out of it,
+resolving every `alias~field` to its dictionary type, building the structure, running the dynamic
+`SELECT` — and then three lines that hand the result to the window. It returns the result now and
+rebinds only when there is a window to rebind into.
+
+Seven ways out of that method were a `MESSAGE` the GUI shows and a caller without one cannot see.
+For the resource that is an empty result with no reason attached, which is the failure this
+project keeps refusing, so each of them now also reports its text. The GUI passes neither of the
+new parameters and behaves exactly as before.
+
+The rows are asked for separately. Assembling a join means ticking one table after another, and
+reading the database on every tick to answer a question nobody has asked yet is not free — so the
+statement comes back without a row count and the Run button supplies one.
+
 ### abaplint, when the system is not there
 
 The SAP connections dropped mid-session, so the usual syntax check against the system was not
