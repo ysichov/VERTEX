@@ -1,21 +1,21 @@
 package org.vertex.abap.ui;
 
-/** Code metrics of the selected object. */
-public class MetricsHandler extends ServiceHandler {
+/** Version history of the selected object. */
+public class VersionsHandler extends ServiceHandler {
 
 	@Override
 	protected String viewId() {
-		return MetricsView.ID;
+		return VersionsView.ID;
 	}
 
 	@Override
 	protected String secondaryId(SelectionContext context, int instance) {
-		return MetricsView.encode(context.object.getName(), context.object.getType(),
+		return VersionsView.encode(context.object.getName(), context.object.getType(),
 				context.project.getName(), instance);
 	}
 
 	@Override
 	protected String description() {
-		return "the metrics view";
+		return "the versions view";
 	}
 }

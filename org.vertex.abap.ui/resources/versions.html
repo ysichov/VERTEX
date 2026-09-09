@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>VERTEX Versions</title>
+<style>
+  /* Same three-way palette as the other pages, for the same reason: the hosts
+     report the theme differently. */
+  :root {
+    color-scheme: light;
+    --bg: #ffffff;
+    --fg: #1c1c1c;
+    --muted: #666666;
+    --faint: #b0b0b0;
+    --border: #d6d6d6;
+    --line: #e2e2e2;
+    --surface: #fbfbfb;
+    --surface-2: #f0f0f0;
+    --field-bg: #ffffff;
+    --field-border: #b8b8b8;
+    --hover: #eaf2fb;
+    --th-bg: #eef2f7;
+    --selected: #dbe6f4;
+    --row-alt: #fafafa;
+    --danger: #a5292a;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #1f1f1f;
+      --fg: #d4d4d4;
+      --muted: #9d9d9d;
+      --faint: #5a5a5a;
+      --border: #3c3c3c;
+      --line: #333333;
+      --surface: #252526;
+      --surface-2: #2d2d30;
+      --field-bg: #3c3c3c;
+      --field-border: #5a5a5a;
+      --hover: #2a3d55;
+      --th-bg: #2b3a4a;
+      --selected: #35506b;
+      --row-alt: #232323;
+      --danger: #f48771;
+    }
+  }
+
+  body.vscode-light {
+    color-scheme: light;
+    --bg: #ffffff; --fg: #1c1c1c; --muted: #666666; --faint: #b0b0b0;
+    --border: #d6d6d6; --line: #e2e2e2; --surface: #fbfbfb; --surface-2: #f0f0f0;
+    --field-bg: #ffffff; --field-border: #b8b8b8; --hover: #eaf2fb;
+    --th-bg: #eef2f7; --selected: #dbe6f4; --row-alt: #fafafa; --danger: #a5292a;
+  }
+
+  body.vscode-dark, body.vscode-high-contrast {
+    color-scheme: dark;
+    --bg: #1f1f1f; --fg: #d4d4d4; --muted: #9d9d9d; --faint: #5a5a5a;
+    --border: #3c3c3c; --line: #333333; --surface: #252526; --surface-2: #2d2d30;
+    --field-bg: #3c3c3c; --field-border: #5a5a5a; --hover: #2a3d55;
+    --th-bg: #2b3a4a; --selected: #35506b; --row-alt: #232323; --danger: #f48771;
+  }
+
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body { font: 12px "Segoe UI", system-ui, sans-serif; color: var(--fg);
+         background: var(--bg); }
+
+  button { padding: 2px 8px; font: inherit; cursor: pointer; color: var(--fg);
+           background: var(--field-bg); border: 1px solid var(--field-border); }
+  button:hover { background: var(--hover); }
+
+  .app { display: flex; flex-direction: column; height: 100%; }
+  .bar { padding: 6px 10px; background: var(--surface);
+         border-bottom: 1px solid var(--border); display: flex;
+         align-items: center; gap: 10px; flex: 0 0 auto; }
+  .name { font-weight: 600; }
+  .bar .status { margin-left: auto; color: var(--muted); }
+
+  .panes { flex: 1 1 auto; display: flex; min-height: 0; }
+
+  .parts { flex: 0 0 280px; border-right: 1px solid var(--border);
+           background: var(--surface); overflow: auto; }
+  .parts-head { padding: 5px 10px; background: var(--surface-2);
+                border-bottom: 1px solid var(--line); font-weight: 600;
+                position: sticky; top: 0; }
+  .part { padding: 3px 10px; cursor: pointer; white-space: nowrap;
+          overflow: hidden; text-overflow: ellipsis; }
+  .part:hover { background: var(--hover); }
+  .part.on { background: var(--selected); font-weight: 600; }
+  .part .kind { color: var(--muted); font-weight: normal; margin-left: 6px; }
+
+  .versions { flex: 1 1 auto; min-width: 0; overflow: auto; }
+
+  table { border-collapse: collapse; white-space: nowrap; width: 100%; }
+  th, td { border-bottom: 1px solid var(--line); padding: 3px 8px;
+           text-align: left; }
+  th { position: sticky; top: 0; background: var(--th-bg); font-weight: 600;
+       z-index: 1; }
+  td.num { text-align: right; font-family: Consolas, monospace; }
+  td.mono { font-family: Consolas, monospace; }
+  td.empty { color: var(--faint); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: var(--hover); }
+  .message { padding: 12px; white-space: pre-wrap; font-family: Consolas, monospace;
+             color: var(--danger); }
+  .note { padding: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="bar">
+    <span class="name" id="object"></span>
+    <button id="reload">Reload</button>
+    <span class="status" id="status"></span>
+  </div>
+  <div class="panes">
+    <aside class="parts">
+      <div class="parts-head">Parts</div>
+      <div id="partlist"></div>
+    </aside>
+    <main class="versions"><div id="root"></div></main>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+var parts = [];
+var current = null;
+
+function status(text) {
+  document.getElementById("status").textContent = text || "";
+}
+
+function message(text) {
+  var root = document.getElementById("root");
+  root.className = "message";
+  root.textContent = text;
+}
+
+function note(text) {
+  var root = document.getElementById("root");
+  root.className = "note";
+  root.textContent = text;
+}
+
+/* ---------- data ----------
+   Two requests, not one. The parts of a class are its sections plus one per
+   method, and reading the version directory of every one of them to draw a
+   list of names would pay for eighty reads to show eighty rows. So the parts
+   come first, and the versions of the one that is clicked come second. */
+
+function loadParts() {
+  if (!INITIAL) { return; }
+  status("reading " + INITIAL.name + " ...");
+  sdeLoad(INITIAL.name, INITIAL.type, "", "");
+}
+
+function loadVersions(part) {
+  current = part;
+  renderParts();
+  status("reading versions of " + part.unit + " ...");
+  note("Reading ...");
+  sdeLoad(INITIAL.name, INITIAL.type, part.name, part.part_type);
+}
+
+// Invoked by the host when the answer is waiting.
+function sdeReady() {
+  var raw = sdeTake();
+  status("");
+  if (typeof raw !== "string") { message("No response from the host."); return; }
+  if (raw.indexOf("ERROR:") === 0) { message(raw.substring(6)); return; }
+  var data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
+    return;
+  }
+  // One page, two answers: which one arrived is written in the payload itself.
+  if (data.parts) { renderPartList(data); } else { renderVersions(data); }
+}
+
+/* ---------- parts ---------- */
+
+function renderPartList(data) {
+  parts = data.parts || [];
+  document.getElementById("object").textContent = data.object;
+  renderParts();
+  if (parts.length === 0) {
+    note("This object has no versionable part.");
+    return;
+  }
+  status(parts.length + " parts");
+  note("Pick a part to see its versions.");
+}
+
+function renderParts() {
+  var box = document.getElementById("partlist");
+  box.innerHTML = "";
+  parts.forEach(function (p) {
+    var row = document.createElement("div");
+    row.className = "part" + (current && current.name === p.name
+                              && current.part_type === p.part_type ? " on" : "");
+    row.title = p.name + "  " + p.part_type;
+    row.appendChild(document.createTextNode(p.unit));
+    var kind = document.createElement("span");
+    kind.className = "kind";
+    kind.textContent = p.part_type;
+    row.appendChild(kind);
+    row.addEventListener("click", function () { loadVersions(p); });
+    box.appendChild(row);
+  });
+}
+
+/* ---------- versions ---------- */
+
+// The dictionary keeps them as digits; a reader wants separators.
+function asDate(value) {
+  if (!value || value.length !== 8) { return value || ""; }
+  return value.substring(6, 8) + "." + value.substring(4, 6) + "." + value.substring(0, 4);
+}
+
+function asTime(value) {
+  if (!value || value.length !== 6) { return value || ""; }
+  return value.substring(0, 2) + ":" + value.substring(2, 4) + ":" + value.substring(4, 6);
+}
+
+function cell(tr, text, cls) {
+  var td = document.createElement("td");
+  if (text === "" || text === undefined || text === null) {
+    td.className = "empty";
+    td.textContent = "·";
+  } else {
+    td.textContent = text;
+    if (cls) { td.className = cls; }
+  }
+  tr.appendChild(td);
+  return td;
+}
+
+function renderVersions(data) {
+  var versions = data.versions || [];
+  var root = document.getElementById("root");
+
+  // The name in the payload is a VRSD key, padded to thirty characters and
+  // unreadable. What the reader clicked on is the unit name.
+  var label = current ? current.unit : data.part;
+
+  if (versions.length === 0) {
+    // Not an error: a part that was never changed after its creation has no
+    // version of its own, and a section of a class often has none at all.
+    note("No versions recorded for " + label + ".");
+    return;
+  }
+
+  root.className = "";
+  root.innerHTML = "";
+
+  var headRow = document.createElement("tr");
+  ["Version", "Date", "Time", "Author", "Name", "Request", "Task"].forEach(function (text) {
+    var th = document.createElement("th");
+    th.textContent = text;
+    headRow.appendChild(th);
+  });
+  var thead = document.createElement("thead");
+  thead.appendChild(headRow);
+
+  var tbody = document.createElement("tbody");
+  versions.forEach(function (v) {
+    var tr = document.createElement("tr");
+    cell(tr, v.version, "num");
+    cell(tr, asDate(v.date), "mono");
+    cell(tr, asTime(v.time), "mono");
+    cell(tr, v.author, "mono");
+    cell(tr, v.author_name);
+    cell(tr, v.request, "mono");
+    cell(tr, v.task, "mono");
+    tbody.appendChild(tr);
+  });
+
+  var table = document.createElement("table");
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  root.appendChild(table);
+
+  status(versions.length + " versions of " + label);
+}
+
+/* ---------- wiring ---------- */
+
+document.getElementById("reload").addEventListener("click", function () {
+  if (current) { loadVersions(current); } else { loadParts(); }
+});
+
+var INITIAL = /*INIT*/null/*INIT*/;
+if (INITIAL) {
+  document.getElementById("object").textContent = INITIAL.name;
+  // Wait for the document, so sdeReady exists before the host calls it.
+  window.addEventListener("load", loadParts);
+} else {
+  message("Open this view from the context menu of an ABAP object.");
+}
+</script>
+</body>
+</html>
