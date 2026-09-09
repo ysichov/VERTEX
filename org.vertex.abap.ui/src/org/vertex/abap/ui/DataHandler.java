@@ -1,38 +1,20 @@
 package org.vertex.abap.ui;
 
-import org.eclipse.core.commands.AbstractHandler;
-import org.eclipse.core.commands.ExecutionEvent;
-import org.eclipse.core.commands.ExecutionException;
-import org.eclipse.ui.IWorkbenchPage;
-import org.eclipse.ui.handlers.HandlerUtil;
-
-/**
- * Opens the data explorer for the selected table or view, on the system that
- * object belongs to.
- */
-public class DataHandler extends AbstractHandler {
-
-	/** Distinguishes view instances; Eclipse requires unique secondary ids. */
-	private static int counter = 0;
+/** Table data for the selected table or view. */
+public class DataHandler extends ServiceHandler {
 
 	@Override
-	public Object execute(ExecutionEvent event) throws ExecutionException {
-		SelectionContext context = SelectionContext.of(HandlerUtil.getCurrentSelection(event));
-		if (context.problem != null) {
-			SelectionContext.report(HandlerUtil.getActiveShell(event), context.problem);
-			return null;
-		}
+	protected String viewId() {
+		return SelectorView.ID;
+	}
 
-		counter++;
-		String secondaryId = SelectorView.encode(context.object.getName(),
-				context.project.getName(), counter);
+	@Override
+	protected String secondaryId(SelectionContext context, int instance) {
+		return SelectorView.encode(context.object.getName(), context.project.getName(), instance);
+	}
 
-		try {
-			IWorkbenchPage page = HandlerUtil.getActiveWorkbenchWindowChecked(event).getActivePage();
-			page.showView(SelectorView.ID, secondaryId, IWorkbenchPage.VIEW_ACTIVATE);
-		} catch (Exception e) {
-			throw new ExecutionException("Cannot open the data explorer", e);
-		}
-		return null;
+	@Override
+	protected String description() {
+		return "the data explorer";
 	}
 }

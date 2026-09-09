@@ -374,6 +374,67 @@ exactly the silent success this project keeps refusing.
 
 ---
 
+## Stage 10 — versions: the third backend, and the easy one
+
+AVE was expected to be the hard port and turned out to be the easy one. Where ACE keeps its parse
+result inside a window object with thirty `CL_GUI` references, AVE's whole version layer is
+already free of the GUI — the object handlers, the version directory reader, the version itself,
+the author resolver and, importantly, the diff engine. Not one `CL_GUI` between them.
+
+So there was no way *in* to find. There was a published contract to call:
+
+```abap
+DATA(lo_object) = NEW zcl_ave_object_factory( )->get_instance(
+                      object_type = 'CLAS' object_name = lv_name ).
+DATA(lt_parts)  = lo_object->get_parts( ).
+DATA(lo_vrsd)   = NEW zcl_ave_vrsd( type = ls_part-type name = ls_part-object_name ).
+DATA(lo_ver)    = NEW zcl_ave_version( ls_vrsd ).
+```
+
+A part carries its class, its unit and the VRSD key; a version carries number, date, time,
+author, the author's real name, request and task — with the transport of copies already resolved
+behind it. The factory raises `ZCX_AVE` for an object it cannot find, which is a 404 for free.
+
+### Two requests, not one
+
+The parts of a class are its sections, its local includes and one entry per method. Answering
+parts and versions in a single call would read the version directory once per method just to draw
+a list of names — eighty reads to show eighty rows. So the resource has two shapes, and the page
+asks twice: the parts, then the versions of the part that was clicked. That is AVE's own left and
+middle pane, for AVE's own reason.
+
+### What is deliberately refused
+
+A transport request and a package. Reading them is the whole point of AVE — a change is a
+transport, not an object — and AVE shows a progress bar with an estimate while it works, and asks
+whether to continue when the estimate grows. One blocking HTTP call has nowhere to put any of
+that, so the resource answers 400 and says why, rather than being left to time out and blame the
+network.
+
+### ZCX_AVE says nothing
+
+Its constructor passes `previous` to the superclass and nothing else, so `get_text( )` on the
+exception itself yields the generic class text. The sentence worth showing is always one or two
+links down the chain, and the resource walks it. An error page reading "AVE cannot list the parts
+of ZCL_X" and stopping there would be exactly the silent failure this project keeps refusing.
+
+### The handlers, third copy
+
+`DataHandler` and `MetricsHandler` were the same thirty lines twice: read the selection, refuse
+loudly if it is not an ADT object, count up, open the view. A versions handler would have been the
+third, which is the point at which stage 9's argument applies again — so `ServiceHandler` holds
+the three steps and a handler now names its view, its secondary id and what to say when the
+workbench refuses.
+
+### Not done here
+
+The diff. `ZCL_AVE_POPUP_DIFF=>COMPUTE_DIFF` is a class-method over two source tables — the name
+promises a popup and there is none — so the ABAP side of it is three statements. The work is in
+the page, and AVE has already done half of it: `html_simulator/diff.js` is its diff algorithm
+ported to the browser.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

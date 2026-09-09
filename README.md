@@ -8,9 +8,9 @@ renders as HTML.
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | Reads a table, filters work; no joins or pivot yet |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | McCabe, Halstead and the maintainability index per unit |
-| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | — | Not started |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | Parts of an object and their versions; no diff, no review, one object at a time |
 
-Status: **early**. Two of the three answer, and each is a fraction of what its backend can do.
+Status: **early**. All three answer, and each is a fraction of what its backend can do.
 
 The division of labour is the same for all three: ABAP computes and returns JSON, the page
 renders it, and the view in between is transport. Nothing about a service lives in the host, so
@@ -20,8 +20,9 @@ same WebView2 engine as both editors, one day inside SAP GUI as well.
 ## How it fits together
 
 ```
-Eclipse plugin (Java)  ──ADT session──>  /sap/bc/adt/zsde/table/{name}    ──>  JSON
+Eclipse plugin (Java)  ──ADT session──>  /sap/bc/adt/zsde/table/{name}     ──>  JSON
                                          /sap/bc/adt/zsde/metrics/{name}
+                                         /sap/bc/adt/zsde/versions/{name}
         │
         └── hands the JSON to the page for that service, which renders it
 ```
@@ -35,11 +36,13 @@ the same page can later be driven by a VS Code extension, with a TypeScript host
 this view, and the markup, grid and filters stay identical.
 
 The ABAP side lives in the [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer)
-repository — classes `ZCL_SDE_ADT_RES_TABLE`, `ZCL_SDE_ADT_RES_METRICS`, `ZCL_SDE_ADT_RES_APP`
-and the BAdI registration `ZSDE_ADT_RES_APP`. Its setup, and the traps in registering a custom ADT
-resource, are documented in `ADT.md` there. Install that first; without it every request returns
-404. Metrics additionally need [ACE](https://github.com/ysichov/ACE) in the same system: the
-numbers are its, and without it the resource does not activate.
+repository — one class per service, the application class `ZCL_SDE_ADT_RES_APP` and the BAdI
+registration `ZSDE_ADT_RES_APP`. Its setup, and the traps in registering a custom ADT resource,
+are documented in `ADT.md` there. Install that first; without it every request returns 404.
+
+Each service also needs its own backend in the same system, because the computing is theirs:
+metrics need [ACE](https://github.com/ysichov/ACE), versions need
+[AVE](https://github.com/ysichov/AVE). Without one, that resource does not activate.
 
 ## Prerequisites
 
@@ -62,7 +65,8 @@ numbers are its, and without it the resource does not activate.
 3. In that second Eclipse, create an ABAP project (ABAP perspective → File → New → ABAP Project).
    The plugin takes its session from there, so without a project the view says so and stops.
    The runtime workspace persists, so this is a one-time step.
-4. Right-click any object in the Project Explorer → **VERTEX** → **SelecTor** or **Metrics**. The
+4. Right-click any object in the Project Explorer → **VERTEX** → **SelecTor**, **Metrics** or
+   **Versions**. The
    window inherits the object *and* the system it lives in, so two objects from two projects open
    side by side against two systems.
    Show View → Other… → VERTEX also opens SelecTor with nothing selected, and it then asks which
@@ -131,13 +135,17 @@ org.vertex.abap.ui/
 ├── build.properties       resources/ must be listed, or the page is missing at runtime
 ├── resources/
 │   ├── table.html         the grid: renders fields + rows, no SAP knowledge
-│   └── metrics.html       the metrics table, sortable by any column
+│   ├── metrics.html       the metrics table, sortable by any column
+│   └── versions.html      parts on the left, the versions of one part on the right
 └── src/org/vertex/abap/ui/
     ├── PageView.java           browser, page, ADT read, answer bridge - the shared half
     ├── SelectorView.java       table data: what to request, and opening a second window
     ├── MetricsView.java        code metrics: what to request
-    ├── DataHandler.java        context menu -> SelecTor, on the object's own system
-    ├── MetricsHandler.java     context menu -> Metrics
+    ├── VersionsView.java       version history: parts, then the versions of one
+    ├── ServiceHandler.java     context menu -> a view, on the object's own system
+    ├── DataHandler.java        which view, and what to carry in its secondary id
+    ├── MetricsHandler.java     the same, for metrics
+    ├── VersionsHandler.java    the same, for versions
     ├── SelectionContext.java   the ADT object and project behind a workbench selection
     └── JsonContentHandler.java reads a JSON response body as a String
 ```
@@ -155,7 +163,10 @@ user operates lives in the page, which is what lets the same page run under the 
 - Paging, sorting and a refresh button for the grid. The row limit is a constant in the page and
   the resource has no offset, so a large table stops at the first hundred rows.
 - Conversion exits and F4. Values arrive as stored, so an `ALPHA`-padded key reads as padded.
-- The version explorer, on AVE's data: parts, versions and the diff. The ABAP returns hunks as
-  JSON and the page renders them, on the browser port of AVE's diff that already exists in that
-  repository — see stage 9 of `dev_history.md` for why not finished HTML.
-- The metrics of a whole package, which needs the request to report progress rather than block.
+- The diff between two versions. The ABAP side is three statements — `COMPUTE_DIFF` takes two
+  source tables — and the work is in the page, on the browser port of AVE's own diff in
+  `html_simulator/`. See stage 9 of `dev_history.md` for why the ABAP will return hunks as JSON
+  rather than finished HTML.
+- A transport request as the unit of work, which is what AVE is for. Both it and a package are
+  refused today: they are read object by object, and one blocking request has nowhere to report
+  progress. The same limit keeps the metrics of a whole package out.

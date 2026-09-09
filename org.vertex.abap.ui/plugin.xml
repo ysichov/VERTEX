@@ -19,6 +19,13 @@
             class="org.vertex.abap.ui.MetricsView"
             allowMultiple="true"
             restorable="false"/>
+      <view
+            id="org.vertex.abap.ui.view.versions"
+            name="VERTEX Versions"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.VersionsView"
+            allowMultiple="true"
+            restorable="false"/>
    </extension>
 
    <!-- Without this the views land in whichever stack the perspective happens to
@@ -42,6 +49,13 @@
                visible="false"
                closeable="true"
                moveable="true"/>
+         <view
+               id="org.vertex.abap.ui.view.versions"
+               relative="org.vertex.abap.ui.view"
+               relationship="stack"
+               visible="false"
+               closeable="true"
+               moveable="true"/>
       </perspectiveExtension>
    </extension>
 
@@ -52,6 +66,9 @@
       <command
             id="org.vertex.abap.ui.command.data"
             name="SelecTor"/>
+      <command
+            id="org.vertex.abap.ui.command.versions"
+            name="Versions"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
@@ -61,6 +78,9 @@
       <handler
             commandId="org.vertex.abap.ui.command.data"
             class="org.vertex.abap.ui.DataHandler"/>
+      <handler
+            commandId="org.vertex.abap.ui.command.versions"
+            class="org.vertex.abap.ui.VersionsHandler"/>
    </extension>
 
    <!-- One submenu holding every service, rather than one top-level entry each:
@@ -93,6 +113,10 @@
             <command
                   commandId="org.vertex.abap.ui.command.metrics"
                   label="Metrics"
+                  style="push"/>
+            <command
+                  commandId="org.vertex.abap.ui.command.versions"
+                  label="Versions"
                   style="push"/>
          </menu>
       </menuContribution>
