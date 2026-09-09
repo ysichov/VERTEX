@@ -283,6 +283,97 @@ restores when it recreates views after a restart.
 
 ---
 
+## Stage 9 — metrics: the second backend
+
+VERTEX is one frontend for three ABAP tools: SDE for data, ACE for code, AVE for versions and
+review. Only the first had a way in. Metrics were picked as the first slice of the second, because
+they need no write, no history and no diff: if it broke, there would be one reason.
+
+### Reaching ACE without SAP GUI
+
+`ZCL_ACE_METRICS=>CALCULATE` does not take an object name. It takes the parse result, and that
+lives in `ZCL_ACE_WINDOW`, which has thirty `CL_GUI` references and is built by `ZCL_ACE`'s
+constructor before anything else happens. Instantiating the orchestrator inside an HTTP request
+was never an option.
+
+The way through is one class-method that nothing in ACE advertises as an entry point:
+
+```abap
+DATA ls_source TYPE zif_ace_parse_data=>ts_parse_data.
+zcl_ace_parser=>parse( EXPORTING i_program = lv_program i_include = lv_program
+                       CHANGING  cs_source = ls_source ).
+DATA(ls_result) = zcl_ace_metrics=>calculate( is_parse_data = ls_source
+                                              i_program     = lv_program ).
+```
+
+`ZCL_ACE_PARSER` has no `CL_GUI` reference at all and fills the structure through a CHANGING
+parameter. It also instantiates `ZCL_ACE_PARSE_CALLS_LINE`, which is what fills `TT_CALLS_LINE` —
+the table of unit boundaries the metrics read to find methods. So the whole parse the metrics need
+happens without a window, and the three statements above are the entire backend.
+
+**`i_program` and `i_include` are not the same argument.** Every caller inside ACE passes the same
+value for both, and for a class that is wrong here: a class pool holds nothing but `INCLUDE`
+statements, the method bodies live in its `CM` includes, and `CALCULATE` aggregates
+`tt_progs WHERE program = i_program`. Parsing each include *under the pool* — include the include,
+program the pool — is what makes the methods of a class add up to one object.
+
+### One prefix for three backends
+
+The route was attached to the existing application class rather than to one of its own:
+
+```abap
+router->attach( iv_template      = '/zsde/metrics/{name}'
+                iv_handler_class = 'ZCL_SDE_ADT_RES_METRICS' ).
+```
+
+A second prefix would have meant a second BAdI implementation and a second `STATIC_URI_PATH`
+filter — the hour that stage 1 cost. One frontend spanning three backends does not need three
+registrations; the path prefix is not the identity of the service.
+
+### What went wrong
+
+**The system includes.** `D010INC` returns `<SYSINI>` alongside the real ones, so `SYSTEM-EXIT` and
+`%_CTL_END` arrived as code units of the object under measurement, and were counted into its
+totals. ACE never meets this because it selects `CM%` for a class; the general query does not.
+An angle bracket cannot occur in a repository object name, so that is what the skip tests.
+
+Nothing caught it. The syntax check passed, the local lint passed, the stub run passed — the two
+rows were seen on a screenshot of the finished view.
+
+**A linter arguing with itself.** The first lint run reported parser errors on `IF`, `LOOP`,
+`APPEND` — statements that plainly exist. The source had been HTML-escaped in transit, so the
+linter was parsing `&lt;&gt;` where the code has `<>`. Five lines containing one `<>` and one `&&`
+separated the tool from the code in a single run.
+
+**Lesson.** When a check reports something impossible, check the check. And a screenshot of the
+real thing still finds what three green checks miss.
+
+### The page
+
+`resources/metrics.html` keeps the host contract of `table.html` unchanged — `sdeLoad`, `sdeTake`,
+`sdeReady` — so the fifteen-line VS Code shim covers it as it stands. It was run against a stubbed
+host before Eclipse ever saw it, the same order as the VS Code pilot in stage 6: the page first,
+the connection second.
+
+`MetricsView` stopped being a label and became a second copy of `SelectorView`'s transport half.
+Two copies is where a base class is proposed and not yet written; the version explorer would make
+it three.
+
+### The contract for what comes next
+
+AVE renders finished HTML in ABAP, and porting that as it stands would have been the cheap way in.
+It was rejected: a review is hundreds of approve/decline clicks, and returning a page per click
+recreates the document every time — scroll position, collapsed groups and filter state included.
+AVE has ABAP code whose only job is to restore the scroll position, which is the same cost paid
+from the other side. Measured in SAP GUI, one approve takes one to two seconds.
+
+So the ABAP will return hunks and metadata as JSON and the page will render them, on the browser
+port of AVE's own diff algorithm that already exists in `html_simulator`. Saving leaves the click
+path, which makes an explicit unsaved indicator mandatory: a green tick over a failed write is
+exactly the silent success this project keeps refusing.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps
