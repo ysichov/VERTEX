@@ -418,6 +418,31 @@ exception itself yields the generic class text. The sentence worth showing is al
 links down the chain, and the resource walks it. An error page reading "AVE cannot list the parts
 of ZCL_X" and stopping there would be exactly the silent failure this project keeps refusing.
 
+### What went wrong: a key made of blanks
+
+Every method reported no versions at all. Class sections and programs were fine, which is what
+made it readable: their names carry no internal padding and the methods' do.
+
+A method's entry in the version directory is keyed by the class name padded to thirty characters
+followed by the method name — the blanks in the middle *are* the key. The resource put that name
+through `CONDENSE`, which collapses runs of blanks to one. The key was destroyed on the way out,
+before the client ever saw it, and no round trip could restore it. `CONV string` alone does what
+was actually wanted: it drops the trailing blanks and touches nothing else.
+
+Two further edges came out of the same look:
+
+- `URLEncoder` writes a space as `+`, which stands for a space only under form encoding. A key
+  that is mostly spaces should leave nothing for the other side to interpret, so it is
+  percent-encoded strictly.
+- The same `CONDENSE` sat on the author's name, the request and the task. A person with two
+  spaces in their name is not ours to rewrite.
+
+**Lesson.** The failure was visible for one screenshot and invisible in every check before it,
+because an unknown key answered with an empty version list — which reads exactly like a part
+nobody ever changed. The resource now verifies the key against the object's own parts and answers
+400 naming the padding as the likely cause. A wrong answer that looks like a legitimate one is
+worse than an error, and this project keeps rediscovering it.
+
 ### The handlers, third copy
 
 `DataHandler` and `MetricsHandler` were the same thirty lines twice: read the selection, refuse
