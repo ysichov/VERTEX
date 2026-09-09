@@ -67,7 +67,11 @@ public class SelectorView extends PageView {
 				// aggregate of each measure in a.
 				final String cross = arguments.length > 4 && arguments[4] != null
 					? String.valueOf(arguments[4]) : "";
-				queue(() -> read(joinPath(table, taken, rows, query, cross)));
+				// The rest of the builder, already encoded: which fields are in
+				// the SELECT list, and the join type of each joined table.
+				final String build = arguments.length > 5 && arguments[5] != null
+					? String.valueOf(arguments[5]) : "";
+				queue(() -> read(joinPath(table, taken, rows, query, cross, build)));
 				return null;
 			}
 		};
@@ -98,7 +102,7 @@ public class SelectorView extends PageView {
 
 	/** @param taken comma-separated table names, in the order they were chosen */
 	private static String joinPath(String table, String taken, int rows, String query,
-			String cross) {
+			String cross, String build) {
 		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/join/")
 				.append(table.toUpperCase());
 		// The resource stops at the first missing t-parameter, so the numbering
@@ -123,6 +127,10 @@ public class SelectorView extends PageView {
 		}
 		if (!cross.isEmpty()) {
 			path.append(n == 0 ? "?" : "&").append(cross);
+			n++;
+		}
+		if (!build.isEmpty()) {
+			path.append(n == 0 ? "?" : "&").append(build);
 		}
 		return path.toString();
 	}
