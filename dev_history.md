@@ -645,6 +645,11 @@ error immediately: a table expression indexing the result of a method call, whic
 something ABAP allows. It cannot see the SAP standard classes, so it is a parser, not a syntax
 check — but it catches exactly the class of mistake that a careful writer still makes.
 
+What it cannot catch is anything that depends on the dictionary. It passed the filter code
+cleanly; the system then rejected it, because a free-selection range calls its component `OPTI`
+and not `OPTION`. A parser with no dictionary cannot know the components of a structure, so every
+field name written against a DDIC type is still owed a real check.
+
 ---
 
 ## Stage 14 — the pivot, and the exception that became a rule
