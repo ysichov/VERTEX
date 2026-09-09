@@ -482,6 +482,15 @@ That question is the same for every service, so it moved into `PageView` and Sel
 went with it. A window whose remembered project has since left the workspace asks it too, instead
 of refusing.
 
+**A tab that names an object has to keep up with it.** The title was set once, from the object the
+window was opened on, which was true right up until the input bar changed the object under it. The
+page now reports what it actually loaded and the view renames the tab. It is an optional call:
+a host with no tab to rename does not define it, and the VS Code shim is exactly that host today,
+so the page checks before calling rather than assuming a contract both hosts have not agreed to.
+
+The tab also names the service before the object — `Metrics: ZCL_X` — because two windows can
+stand on one object and Eclipse truncates a tab from the right, eating the object name first.
+
 **The ADT type carries a subtype.** `CLAS/OC` selects the CLAS entry by its head. A head the list
 does not know is added rather than dropped, so a window opened on an object type the service does
 not read still shows what it was opened for and lets the refusal explain itself.

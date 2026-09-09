@@ -1,7 +1,6 @@
 package org.vertex.abap.ui;
 
 import org.eclipse.swt.browser.BrowserFunction;
-import org.eclipse.swt.widgets.Composite;
 
 /**
  * Code metrics of one ABAP object: McCabe complexity, Halstead and the
@@ -29,14 +28,8 @@ public class MetricsView extends PageView {
 	}
 
 	@Override
-	public void createPartControl(Composite parent) {
-		String object = part(0);
-		if (object != null) {
-			// The service goes first: several windows can stand on the same
-			// object, and Eclipse truncates a tab from the right.
-			setPartName("Metrics: " + object);
-		}
-		super.createPartControl(parent);
+	protected String title(String object) {
+		return "Metrics: " + object;
 	}
 
 	@Override

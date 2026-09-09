@@ -300,6 +300,9 @@ function renderTable() {
 function render(data) {
   units = data.units || [];
   document.getElementById("object").textContent = data.program;
+  // Optional on purpose: a host with no tab to rename simply does not define
+  // it, and the VS Code shim is exactly that host today.
+  if (typeof sdeTitle === "function") { sdeTitle(data.object.toUpperCase()); }
 
   if (units.length === 0) {
     // Not an error: a class of nothing but declarations has no code unit. Say

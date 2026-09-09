@@ -1,7 +1,6 @@
 package org.vertex.abap.ui;
 
 import org.eclipse.swt.browser.BrowserFunction;
-import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.IWorkbenchPage;
 
 /**
@@ -27,15 +26,6 @@ public class SelectorView extends PageView {
 	@Override
 	protected String projectName() {
 		return part(1);
-	}
-
-	@Override
-	public void createPartControl(Composite parent) {
-		String table = part(0);
-		if (table != null) {
-			setPartName(table);
-		}
-		super.createPartControl(parent);
 	}
 
 	@Override

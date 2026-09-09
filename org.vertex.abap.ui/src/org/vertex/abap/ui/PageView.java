@@ -71,6 +71,15 @@ public abstract class PageView extends ViewPart {
 	/** The part of the secondary id holding the project name. */
 	protected abstract String projectName();
 
+	/**
+	 * The tab name for the object on display. Several windows can stand on one
+	 * object, so a service that shares that object with another says which it
+	 * is - and it says so first, because Eclipse truncates a tab from the right.
+	 */
+	protected String title(String object) {
+		return object;
+	}
+
 	@Override
 	public void createPartControl(Composite parent) {
 		this.browser = new Browser(parent, SWT.EDGE);
@@ -86,7 +95,27 @@ public abstract class PageView extends ViewPart {
 			}
 		};
 
+		// The page reports what it has loaded, so a window driven from its own
+		// input bar does not keep the name of the object it was opened on.
+		new BrowserFunction(this.browser, "sdeTitle") {
+			@Override
+			public Object function(Object[] arguments) {
+				if (arguments.length > 0 && arguments[0] != null) {
+					String object = String.valueOf(arguments[0]);
+					if (!object.isEmpty()) {
+						setPartName(title(object));
+					}
+				}
+				return null;
+			}
+		};
+
 		addFunctions();
+
+		String opened = part(0);
+		if (opened != null) {
+			setPartName(title(opened));
+		}
 
 		try {
 			this.browser.setText(readPage().replace(PLACEHOLDER, initialLiteral()));

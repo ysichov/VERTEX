@@ -5,7 +5,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 import org.eclipse.swt.browser.BrowserFunction;
-import org.eclipse.swt.widgets.Composite;
 
 /**
  * The version history of one ABAP object: its versionable parts, and for the
@@ -34,14 +33,8 @@ public class VersionsView extends PageView {
 	}
 
 	@Override
-	public void createPartControl(Composite parent) {
-		String object = part(0);
-		if (object != null) {
-			// The service goes first: several windows can stand on the same
-			// object, and Eclipse truncates a tab from the right.
-			setPartName("Versions: " + object);
-		}
-		super.createPartControl(parent);
+	protected String title(String object) {
+		return "Versions: " + object;
 	}
 
 	@Override
