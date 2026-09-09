@@ -413,7 +413,9 @@ function loadJoin(rows) {
   status(rows ? "running the join ..." : "building the join ...");
   // Nought asks for the statement without running it, which is what assembling
   // a join wants: otherwise every tick would read the database.
-  sdeJoin(currentTable, taken.join(","), rows || 0);
+  // The selection panel travels along: a filter typed on the table belongs to
+  // the join built from it, and query() already encodes exactly that.
+  sdeJoin(currentTable, taken.join(","), rows || 0, query());
 }
 
 function toggleTaken(tabname) {
