@@ -23,6 +23,10 @@
     --selected: #dbe6f4;
     --row-alt: #fafafa;
     --danger: #a5292a;
+    --ins-bg: #e8f6ea;
+    --ins-mark: #2c7a39;
+    --del-bg: #fdecec;
+    --del-mark: #a5292a;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -43,6 +47,10 @@
       --selected: #35506b;
       --row-alt: #232323;
       --danger: #f48771;
+      --ins-bg: #17301c;
+      --ins-mark: #6cc07a;
+      --del-bg: #3a1f1f;
+      --del-mark: #f48771;
     }
   }
 
@@ -52,6 +60,7 @@
     --border: #d6d6d6; --line: #e2e2e2; --surface: #fbfbfb; --surface-2: #f0f0f0;
     --field-bg: #ffffff; --field-border: #b8b8b8; --hover: #eaf2fb;
     --th-bg: #eef2f7; --selected: #dbe6f4; --row-alt: #fafafa; --danger: #a5292a;
+    --ins-bg: #e8f6ea; --ins-mark: #2c7a39; --del-bg: #fdecec; --del-mark: #a5292a;
   }
 
   body.vscode-dark, body.vscode-high-contrast {
@@ -60,6 +69,7 @@
     --border: #3c3c3c; --line: #333333; --surface: #252526; --surface-2: #2d2d30;
     --field-bg: #3c3c3c; --field-border: #5a5a5a; --hover: #2a3d55;
     --th-bg: #2b3a4a; --selected: #35506b; --row-alt: #232323; --danger: #f48771;
+    --ins-bg: #17301c; --ins-mark: #6cc07a; --del-bg: #3a1f1f; --del-mark: #f48771;
   }
 
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -108,6 +118,30 @@
   .message { padding: 12px; white-space: pre-wrap; font-family: Consolas, monospace;
              color: var(--danger); }
   .note { padding: 12px; color: var(--muted); }
+
+  tbody tr.pick { cursor: pointer; }
+
+  .diffbar { padding: 5px 10px; background: var(--surface-2);
+             border-bottom: 1px solid var(--line); display: flex;
+             align-items: center; gap: 12px; position: sticky; top: 0; z-index: 2; }
+  .diffbar .back { cursor: pointer; color: var(--muted); }
+  .diffbar .back:hover { color: var(--fg); text-decoration: underline; }
+  .diffbar .counts { color: var(--muted); }
+  .diffbar .counts .ins { color: var(--ins-mark); }
+  .diffbar .counts .del { color: var(--del-mark); }
+
+  table.diff { font-family: Consolas, monospace; white-space: pre; width: auto; }
+  table.diff td { border: none; padding: 0 8px; vertical-align: top; }
+  table.diff td.ln { text-align: right; color: var(--faint); user-select: none;
+                     width: 1%; }
+  table.diff td.mk { width: 1%; user-select: none; }
+  table.diff tr { background: none; }
+  table.diff tr:hover { background: none; }
+  table.diff tr.ins { background: var(--ins-bg); }
+  table.diff tr.ins td.mk { color: var(--ins-mark); }
+  table.diff tr.del { background: var(--del-bg); }
+  table.diff tr.del td.mk { color: var(--del-mark); }
+  table.diff tr.gap td { color: var(--faint); }
 </style>
 </head>
 <body>
@@ -133,6 +167,8 @@
 
 var parts = [];
 var current = null;
+var versions = [];
+var compact = true;
 
 function status(text) {
   document.getElementById("status").textContent = text || "";
@@ -181,17 +217,30 @@ function loadParts() {
   // Parts belong to one object, so another object starts over.
   parts = [];
   current = null;
+  versions = [];
   renderParts();
   status("reading " + name + " ...");
-  sdeLoad(name, objectType(), "", "");
+  sdeLoad(name, objectType(), "", "", "", "");
 }
 
 function loadVersions(part) {
   current = part;
+  versions = [];
   renderParts();
   status("reading versions of " + part.unit + " ...");
   note("Reading ...");
-  sdeLoad(objectName(), objectType(), part.name, part.part_type);
+  sdeLoad(objectName(), objectType(), part.name, part.part_type, "", "");
+}
+
+/* A version is compared with the one below it in the list, which is the change
+   that version made. The oldest has nothing below it, and comparing it against
+   nothing is right: every line of it was added. */
+function loadDiff(index) {
+  var to = versions[index];
+  var from = index + 1 < versions.length ? versions[index + 1].version : "";
+  status("comparing " + (from || "nothing") + " with " + to.version + " ...");
+  note("Comparing ...");
+  sdeLoad(objectName(), objectType(), current.name, current.part_type, from, to.version);
 }
 
 /* The type arrives from the object tree with its subtype - CLAS/OC. Only the
@@ -226,8 +275,10 @@ function sdeReady() {
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
     return;
   }
-  // One page, two answers: which one arrived is written in the payload itself.
-  if (data.parts) { renderPartList(data); } else { renderVersions(data); }
+  // One page, three answers, each named by what it carries.
+  if (data.parts) { renderPartList(data); }
+  else if (data.ops) { renderDiff(data); }
+  else { renderVersions(data); }
 }
 
 /* ---------- parts ---------- */
@@ -288,7 +339,7 @@ function cell(tr, text, cls) {
 }
 
 function renderVersions(data) {
-  var versions = data.versions || [];
+  versions = data.versions || [];
   var root = document.getElementById("root");
 
   // The name in the payload is a VRSD key, padded to thirty characters and
@@ -315,8 +366,11 @@ function renderVersions(data) {
   thead.appendChild(headRow);
 
   var tbody = document.createElement("tbody");
-  versions.forEach(function (v) {
+  versions.forEach(function (v, index) {
     var tr = document.createElement("tr");
+    tr.className = "pick";
+    tr.title = "Compare with the version below it";
+    tr.addEventListener("click", function () { loadDiff(index); });
     cell(tr, v.version, "num");
     cell(tr, asDate(v.date), "mono");
     cell(tr, asTime(v.time), "mono");
@@ -333,6 +387,138 @@ function renderVersions(data) {
   root.appendChild(table);
 
   status(versions.length + (versions.length === 1 ? " version of " : " versions of ") + label);
+}
+
+/* ---------- diff ---------- */
+
+/* Unchanged lines further than this from a change are folded away in compact
+   mode. Three is what a reader needs to place a change; more is scrolling. */
+var CONTEXT = 3;
+
+function showMask(ops) {
+  var show = [];
+  var i, k;
+  for (i = 0; i < ops.length; i++) { show[i] = false; }
+  for (i = 0; i < ops.length; i++) {
+    if (ops[i].op === "=") { continue; }
+    for (k = Math.max(0, i - CONTEXT); k <= Math.min(ops.length - 1, i + CONTEXT); k++) {
+      show[k] = true;
+    }
+  }
+  return show;
+}
+
+/* Line numbers follow the new version, so a deleted line carries none - it is
+   not in the source you would open in the editor. */
+function diffTable(ops) {
+  var show = compact ? showMask(ops) : null;
+  var tbody = document.createElement("tbody");
+  var line = 0;
+  var folded = false;
+
+  ops.forEach(function (o, index) {
+    if (o.op !== "-") { line++; }
+
+    if (show && !show[index]) {
+      if (!folded) {
+        var gap = document.createElement("tr");
+        gap.className = "gap";
+        var td = document.createElement("td");
+        td.colSpan = 3;
+        td.textContent = "⋮";
+        gap.appendChild(td);
+        tbody.appendChild(gap);
+        folded = true;
+      }
+      return;
+    }
+    folded = false;
+
+    var tr = document.createElement("tr");
+    if (o.op === "+") { tr.className = "ins"; }
+    if (o.op === "-") { tr.className = "del"; }
+
+    var ln = document.createElement("td");
+    ln.className = "ln";
+    ln.textContent = o.op === "-" ? "" : String(line);
+
+    var mk = document.createElement("td");
+    mk.className = "mk";
+    mk.textContent = o.op === "=" ? " " : o.op;
+
+    var cd = document.createElement("td");
+    cd.textContent = o.text;
+
+    tr.appendChild(ln);
+    tr.appendChild(mk);
+    tr.appendChild(cd);
+    tbody.appendChild(tr);
+  });
+
+  var table = document.createElement("table");
+  table.className = "diff";
+  table.appendChild(tbody);
+  return table;
+}
+
+function renderDiff(data) {
+  var ops = data.ops || [];
+  var root = document.getElementById("root");
+  root.className = "";
+  root.innerHTML = "";
+
+  var bar = document.createElement("div");
+  bar.className = "diffbar";
+
+  var back = document.createElement("span");
+  back.className = "back";
+  back.textContent = "← Versions";
+  back.addEventListener("click", function () { loadVersions(current); });
+  bar.appendChild(back);
+
+  var what = document.createElement("span");
+  // An empty FROM is the oldest version, compared against nothing.
+  what.textContent = (data.from || "nothing") + " → " + data.to;
+  bar.appendChild(what);
+
+  var counts = document.createElement("span");
+  counts.className = "counts";
+  var ins = document.createElement("span");
+  ins.className = "ins";
+  ins.textContent = "+" + data.added;
+  var del = document.createElement("span");
+  del.className = "del";
+  del.textContent = "−" + data.deleted;
+  counts.appendChild(ins);
+  counts.appendChild(document.createTextNode(" "));
+  counts.appendChild(del);
+  bar.appendChild(counts);
+
+  var toggle = document.createElement("button");
+  toggle.textContent = compact ? "Full" : "Compact";
+  toggle.title = compact ? "Show the whole source"
+                         : "Show only the changes and three lines around them";
+  toggle.addEventListener("click", function () {
+    compact = !compact;
+    renderDiff(data);
+  });
+  bar.appendChild(toggle);
+
+  root.appendChild(bar);
+
+  if (ops.length === 0) {
+    // Not an error, and worth saying plainly: AVE folds away moved lines and
+    // reformatting, so two versions can differ and still have nothing to show.
+    var same = document.createElement("div");
+    same.className = "note";
+    same.textContent = "Nothing to show between these two versions.";
+    root.appendChild(same);
+    status("");
+    return;
+  }
+
+  root.appendChild(diffTable(ops));
+  status(data.added + " added, " + data.deleted + " deleted");
 }
 
 /* ---------- wiring ---------- */

@@ -488,6 +488,45 @@ not read still shows what it was opened for and lets the refusal explain itself.
 
 ---
 
+## Stage 12 — the diff
+
+The last piece of the version explorer, and the cheapest of the three services on the ABAP side:
+`ZCL_AVE_POPUP_DIFF=>COMPUTE_DIFF` is a class-method over two source tables. Its signature carries
+`i_title` and `i_confirm_key`, which read like a progress dialog waiting to happen inside an HTTP
+request — they are never read. The progress indicator lives in the blame builder, one method
+further down, and `compute_diff` reaches only `diff_lines` and `RS_CMP_COMPUTE_DELTA`. Checked
+before calling, not after the first dump.
+
+What it returns is already the right shape to send: `op(1)` and `text`, which serialises to
+`{"op":"+","text":"..."}` — and that is, character for character, the shape AVE's own browser port
+in `html_simulator/diff.js` produces. The two halves were written years apart on two sides of the
+wire and they meet.
+
+### What the page draws, and what it does not
+
+The page renders the operations itself: line numbers following the new version, a marker column,
+and a compact mode that folds unchanged lines more than three from a change. Deleted lines carry
+no number, because they are not in the source you would open in the editor.
+
+What it does *not* do yet is the character-level highlight inside a changed line, and the pairing
+pass that decides which deletion belongs to which insertion. Both exist twice already — in the
+ABAP and in `diff.js` — and porting the renderer wholesale was tempting. It was left out on
+purpose: `diff.js` writes its colours inline (`background:#ffffff`), which would fight the palette
+that makes one page work in a light editor, a dark editor and whatever the OS reports; and taking
+a copy of it would fork a file AVE keeps deliberately in step with its ABAP.
+
+### Reading a version means reading the change it made
+
+Clicking a version compares it with the one below it in the list, not with the newest. That is the
+change *that* version made, which is what a version number means to a reviewer. The oldest has
+nothing below it and is compared against nothing at all — every line added, which is what a first
+version is.
+
+The resource refuses a version number that is not in the directory rather than diffing against an
+empty table. Both produce a screen; only one of them is an answer.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps
