@@ -628,8 +628,10 @@ file exist before the panel is built. Filling the same cache is all a headless c
 and not one line of the `WHERE` logic changed.
 
 That is the third time in this stage that what stood in the way was an entry point rather than the
-code behind it. The tool was written by someone who kept the model separable without having a
-second caller in mind.
+code behind it — and none of the three needed the logic touched. SDE was written the same way this
+front end is being written, with Claude Code, and the separation was habit rather than foresight:
+nothing in it anticipated a second caller. Habit was enough. What it did not produce was a way in,
+because nothing ever asked for one.
 
 The page sends the criteria it already has: a filter typed on the table applies to the join built
 from it, which is what it does in SDE. Filters on a joined table wait for the panel to learn about
