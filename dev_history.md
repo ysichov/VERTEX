@@ -515,6 +515,30 @@ purpose: `diff.js` writes its colours inline (`background:#ffffff`), which would
 that makes one page work in a light editor, a dark editor and whatever the OS reports; and taking
 a copy of it would fork a file AVE keeps deliberately in step with its ABAP.
 
+### What went wrong: the newest version had nothing below it
+
+The first real diff came back as the whole method added, `+198 −0`, with the pair printed as
+`00000 → 99998`. Neither number is a version anybody can look up.
+
+`99998` is AVE's key for the **active** version — the directory keeps it as `0`, and AVE re-keys it
+so that it sorts after the numbered ones, which means the list arrives **oldest first**. The page
+compared the clicked version with the row *below* it, and below the newest there is nothing. So the
+old side was empty and every line counted as added.
+
+`00000` was the same mistake seen from the other end: the page sent an empty FROM, `VERSNO` is
+numeric, and an initial one prints as `00000`. The answer echoed a version number that was never
+asked for.
+
+Three things came out of it. The resource sorts newest first, because that is the order a reader
+wants and the order the "compare with the one below" rule needs. An absent FROM is echoed as
+absent. And `99998` is shown as **active**, since a five-digit sentinel means nothing to the person
+reading it.
+
+**Lesson.** The screen was full of plausible content — a real diff of a real method, only against
+the wrong side. SAP's own *Compare Method Implementations* on the same object took ten seconds to
+open and showed what the answer should have been. A second opinion that already exists is cheaper
+than reasoning about which of your two version numbers is the fake one.
+
 ### Reading a version means reading the change it made
 
 Clicking a version compares it with the one below it in the list, not with the newest. That is the

@@ -238,7 +238,8 @@ function loadVersions(part) {
 function loadDiff(index) {
   var to = versions[index];
   var from = index + 1 < versions.length ? versions[index + 1].version : "";
-  status("comparing " + (from || "nothing") + " with " + to.version + " ...");
+  status("comparing " + (from ? asVersion(from) : "nothing")
+         + " with " + asVersion(to.version) + " ...");
   note("Comparing ...");
   sdeLoad(objectName(), objectType(), current.name, current.part_type, from, to.version);
 }
@@ -314,6 +315,14 @@ function renderParts() {
 
 /* ---------- versions ---------- */
 
+/* AVE keys the active version 99998 so that it sorts after the numbered ones.
+   It is not a number anybody can look up, so it is named. */
+var ACTIVE = "99998";
+
+function asVersion(value) {
+  return value === ACTIVE ? "active" : value;
+}
+
 // The dictionary keeps them as digits; a reader wants separators.
 function asDate(value) {
   if (!value || value.length !== 8) { return value || ""; }
@@ -371,7 +380,7 @@ function renderVersions(data) {
     tr.className = "pick";
     tr.title = "Compare with the version below it";
     tr.addEventListener("click", function () { loadDiff(index); });
-    cell(tr, v.version, "num");
+    cell(tr, asVersion(v.version), "num");
     cell(tr, asDate(v.date), "mono");
     cell(tr, asTime(v.time), "mono");
     cell(tr, v.author, "mono");
@@ -478,7 +487,8 @@ function renderDiff(data) {
 
   var what = document.createElement("span");
   // An empty FROM is the oldest version, compared against nothing.
-  what.textContent = (data.from || "nothing") + " → " + data.to;
+  what.textContent = (data.from ? asVersion(data.from) : "nothing")
+                   + " → " + asVersion(data.to);
   bar.appendChild(what);
 
   var counts = document.createElement("span");
