@@ -1,14 +1,8 @@
 package org.vertex.abap.ui;
 
-import org.eclipse.core.resources.IProject;
-import org.eclipse.jface.viewers.LabelProvider;
-import org.eclipse.jface.window.Window;
 import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.IWorkbenchPage;
-import org.eclipse.ui.dialogs.ElementListSelectionDialog;
-
-import com.sap.adt.tools.core.project.AdtProjectServiceFactory;
 
 /**
  * Table data: the page reads one table and renders the grid, and the selection
@@ -96,38 +90,5 @@ public class SelectorView extends PageView {
 			// Reuse the page's own error path rather than a dialog.
 			fail(describe(e));
 		}
-	}
-
-	/**
-	 * Opened from an object menu there is a project to inherit. Opened through
-	 * Show View there is not: one project is then unambiguous, several are not,
-	 * and the user is asked rather than guessed at.
-	 */
-	@Override
-	protected IProject withoutAProject(String name) {
-		IProject[] projects = AdtProjectServiceFactory.createProjectService()
-			.getAvailableAbapProjects();
-		if (projects.length == 0) {
-			throw new IllegalStateException(
-				"No ABAP project in this workspace. Create one, then load again.");
-		}
-		return projects.length == 1 ? projects[0] : ask(projects);
-	}
-
-	private IProject ask(IProject[] projects) {
-		ElementListSelectionDialog dialog = new ElementListSelectionDialog(
-			getSite().getShell(), new LabelProvider() {
-				@Override
-				public String getText(Object element) {
-					return ((IProject) element).getName();
-				}
-			});
-		dialog.setTitle("VERTEX");
-		dialog.setMessage("Which ABAP project should this window read from?");
-		dialog.setElements(projects);
-		if (dialog.open() != Window.OK) {
-			throw new IllegalStateException("No system was chosen, so nothing was read.");
-		}
-		return (IProject) dialog.getFirstResult();
 	}
 }

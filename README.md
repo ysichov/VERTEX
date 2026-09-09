@@ -65,12 +65,13 @@ metrics need [ACE](https://github.com/ysichov/ACE), versions need
 3. In that second Eclipse, create an ABAP project (ABAP perspective → File → New → ABAP Project).
    The plugin takes its session from there, so without a project the view says so and stops.
    The runtime workspace persists, so this is a one-time step.
-4. Right-click any object in the Project Explorer → **VERTEX** → **SelecTor**, **Metrics** or
-   **Versions**. The
-   window inherits the object *and* the system it lives in, so two objects from two projects open
-   side by side against two systems.
-   Show View → Other… → VERTEX also opens SelecTor with nothing selected, and it then asks which
-   project to read from.
+4. Window → Show View → Other… → **VERTEX**, and pick a service. Each view carries an object
+   type and a name field: type a name, press Enter, and keep using the same window for the next
+   object.
+   Right-click an object in the Project Explorer → **VERTEX** → **SelecTor**, **Metrics** or
+   **Versions** does the same with the fields prefilled, and the window then inherits the system
+   that object lives in — so two objects from two projects open side by side against two systems.
+   Opened with nothing selected, a view asks which ABAP project to read from.
 
 Reopening the SelecTor view re-runs the request; there is no refresh button yet. The metrics page
 has a Reload button of its own.

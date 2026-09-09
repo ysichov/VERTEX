@@ -11,10 +11,13 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.jface.viewers.LabelProvider;
+import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.ui.dialogs.ElementListSelectionDialog;
 import org.eclipse.ui.part.ViewPart;
 import org.osgi.framework.FrameworkUtil;
 
@@ -23,6 +26,7 @@ import com.sap.adt.communication.resources.IRestResource;
 import com.sap.adt.communication.resources.IRestResourceFactory;
 import com.sap.adt.destinations.ui.logon.AdtLogonServiceUIFactory;
 import com.sap.adt.project.IAdtCoreProject;
+import com.sap.adt.tools.core.project.AdtProjectServiceFactory;
 
 /**
  * A view that is nothing but a browser and a way back to ABAP: it loads a page
@@ -180,17 +184,38 @@ public abstract class PageView extends ViewPart {
 	}
 
 	/**
-	 * What to do when the secondary id names no project, or names one this
-	 * workspace no longer has. Opened from an object menu there is always one to
-	 * inherit, so the default refuses and says which case it is; a view that can
-	 * also be opened through Show View overrides this.
+	 * Which system to read from when the secondary id names no project, or names
+	 * one this workspace no longer has. Opened from an object there is one to
+	 * inherit; opened through Show View, or after the workspace changed, there
+	 * is not - one project is then unambiguous, several are not, and the user is
+	 * asked rather than guessed at.
 	 *
 	 * @param name the project the id named, or null when it named none
 	 */
 	protected IProject withoutAProject(String name) {
-		throw new IllegalStateException(name == null
-				? "This window carries no project. Open the view from an ABAP object."
-				: "Project " + name + " is no longer in this workspace.");
+		IProject[] projects = AdtProjectServiceFactory.createProjectService()
+			.getAvailableAbapProjects();
+		if (projects.length == 0) {
+			throw new IllegalStateException(
+				"No ABAP project in this workspace. Create one, then load again.");
+		}
+		if (projects.length == 1) {
+			return projects[0];
+		}
+		ElementListSelectionDialog dialog = new ElementListSelectionDialog(
+			getSite().getShell(), new LabelProvider() {
+				@Override
+				public String getText(Object element) {
+					return ((IProject) element).getName();
+				}
+			});
+		dialog.setTitle("VERTEX");
+		dialog.setMessage("Which ABAP project should this window read from?");
+		dialog.setElements(projects);
+		if (dialog.open() != Window.OK) {
+			throw new IllegalStateException("No system was chosen, so nothing was read.");
+		}
+		return (IProject) dialog.getFirstResult();
 	}
 
 	/** One part of the secondary id, or null when it is not there. */
