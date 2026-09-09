@@ -131,6 +131,22 @@
   tbody tr:hover { background: var(--hover); }
   .message { padding: 12px; white-space: pre-wrap; font-family: Consolas, monospace;
              color: var(--danger); }
+
+  /* The join replaces the grid rather than docking under it. SDE docks it, and
+     that is better when there is room; an Eclipse view rarely has any. */
+  .join { padding: 10px; }
+  .join h3 { margin: 0 0 6px; font-size: 12px; }
+  .join section { margin-bottom: 14px; }
+  .join .cand { padding: 2px 0; }
+  .join .cand label { cursor: pointer; }
+  .join .cand .dir { color: var(--muted); margin-left: 6px; }
+  .join .cand .txt { color: var(--muted); margin-left: 6px; }
+  .join table { margin-top: 4px; }
+  .join pre { margin: 0; padding: 8px; background: var(--surface);
+              border: 1px solid var(--line); overflow: auto;
+              font-family: Consolas, monospace; white-space: pre-wrap; }
+  .join .back { cursor: pointer; color: var(--muted); }
+  .join .back:hover { color: var(--fg); text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -152,6 +168,7 @@
       <label for="name">Table</label>
       <input id="name" spellcheck="false" autocomplete="off">
       <button id="load">Load</button>
+      <button id="join">Join</button>
       <button id="open">Open in new window</button>
       <span class="status" id="status"></span>
     </div>
@@ -319,7 +336,8 @@ function sdeReady() {
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
     return;
   }
-  render(data);
+  // Two questions about the same table, and the answer says which it is.
+  if (data.candidates) { renderJoin(data); } else { render(data); }
 }
 
 function render(data) {
@@ -375,6 +393,132 @@ function render(data) {
   status(data.table + " " + data.count + " rows, " + data.fields.length + " columns");
 }
 
+/* ---------- join ---------- */
+
+/* The tables taken into the join, in the order they were taken. The builder
+   hands out an alias on first selection and never reuses it, and the request
+   replays this list from the base table - so the order is what keeps a column
+   called T1_MATNR from becoming T2_MATNR under the reader. */
+var taken = [];
+
+function loadJoin() {
+  if (!currentTable) {
+    message("Load a table first: the join is built around it.");
+    return;
+  }
+  if (typeof sdeJoin !== "function") {
+    message("This host does not offer the join yet.");
+    return;
+  }
+  status("building the join ...");
+  sdeJoin(currentTable, taken.join(","));
+}
+
+function toggleTaken(tabname) {
+  var at = taken.indexOf(tabname);
+  if (at === -1) { taken.push(tabname); } else { taken.splice(at, 1); }
+  loadJoin();
+}
+
+function renderJoin(data) {
+  var root = document.getElementById("root");
+  root.className = "join";
+  root.innerHTML = "";
+
+  var back = document.createElement("div");
+  var link = document.createElement("span");
+  link.className = "back";
+  link.textContent = "← Data";
+  link.addEventListener("click", function () { load(currentTable); });
+  back.appendChild(link);
+  root.appendChild(back);
+
+  root.appendChild(section("Tables around " + data.table, candidateList(data.candidates)));
+
+  if (data.tables && data.tables.length > 0) {
+    root.appendChild(section("The join", joinTable(data.tables)));
+  }
+
+  var sql = document.createElement("pre");
+  sql.textContent = data.sql || "";
+  root.appendChild(section("Statement", sql));
+
+  status(data.tables ? data.tables.length + " tables in the join" : "");
+}
+
+function section(heading, body) {
+  var box = document.createElement("section");
+  var h = document.createElement("h3");
+  h.textContent = heading;
+  box.appendChild(h);
+  box.appendChild(body);
+  return box;
+}
+
+/* A direction is how the dictionary found the table: out of the base table's
+   foreign keys, into it, its text table, or added by hand. */
+var DIRECTION = { O: "foreign key", I: "used by", T: "text table", M: "added" };
+
+function candidateList(candidates) {
+  var box = document.createElement("div");
+  (candidates || []).forEach(function (c) {
+    var row = document.createElement("div");
+    row.className = "cand";
+
+    var label = document.createElement("label");
+    var tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.checked = c.selected === "X" || c.selected === true;
+    tick.addEventListener("change", function () { toggleTaken(c.tabname); });
+    label.appendChild(tick);
+    label.appendChild(document.createTextNode(" " + c.tabname));
+
+    var dir = document.createElement("span");
+    dir.className = "dir";
+    dir.textContent = DIRECTION[c.direction] || c.direction;
+    label.appendChild(dir);
+
+    if (c.ddtext) {
+      var txt = document.createElement("span");
+      txt.className = "txt";
+      txt.textContent = c.ddtext;
+      label.appendChild(txt);
+    }
+
+    row.appendChild(label);
+    box.appendChild(row);
+  });
+  return box;
+}
+
+function joinTable(tables) {
+  var thead = document.createElement("thead");
+  var head = document.createElement("tr");
+  ["Alias", "Table", "Join", "On"].forEach(function (text) {
+    var th = document.createElement("th");
+    th.textContent = text;
+    head.appendChild(th);
+  });
+  thead.appendChild(head);
+
+  var tbody = document.createElement("tbody");
+  tables.forEach(function (t) {
+    var tr = document.createElement("tr");
+    [t.alias, t.tabname + (t.ddtext ? "  " + t.ddtext : ""), t.jtype, t.cond]
+      .forEach(function (text) {
+        var td = document.createElement("td");
+        td.textContent = text || "";
+        tr.appendChild(td);
+      });
+    tbody.appendChild(tr);
+  });
+
+  var table = document.createElement("table");
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  return table;
+}
+
 /* ---------- wiring ---------- */
 
 document.getElementById("load").addEventListener("click", function () { load(tableName()); });
@@ -382,6 +526,8 @@ document.getElementById("load").addEventListener("click", function () { load(tab
 document.getElementById("name").addEventListener("keydown", function (e) {
   if (e.key === "Enter") { load(tableName()); }
 });
+
+document.getElementById("join").addEventListener("click", loadJoin);
 
 document.getElementById("open").addEventListener("click", function () {
   var name = tableName();
