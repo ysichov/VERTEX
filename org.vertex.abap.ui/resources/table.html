@@ -147,6 +147,22 @@
               font-family: Consolas, monospace; white-space: pre-wrap; }
   .join .back { cursor: pointer; color: var(--muted); }
   .join .back:hover { color: var(--fg); text-decoration: underline; }
+
+  .modes { display: flex; gap: 6px; margin: 6px 0 12px; }
+  .modes button.on { background: var(--selected, var(--hover)); font-weight: 600; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { border: 1px solid var(--line); background: var(--bg); padding: 1px 4px;
+          display: flex; align-items: center; gap: 4px; }
+  .chip .put { border: none; background: none; color: var(--muted); cursor: pointer;
+               padding: 0 2px; font: inherit; }
+  .chip .put:hover { color: var(--fg); }
+  .chip.placed { color: var(--faint); }
+  .slot { padding: 2px 0; display: flex; align-items: center; gap: 6px; }
+  .slot .drop { border: none; background: none; color: var(--danger);
+                cursor: pointer; padding: 0 2px; font: inherit; }
+  .slot select { font: inherit; }
+  .empty-slot { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -393,6 +409,51 @@ function render(data) {
   status(data.table + " " + data.count + " rows, " + data.fields.length + " columns");
 }
 
+/* ---------- join and pivot ---------- */
+
+/* Join or Pivot, the two cards of SDE's tools area. The mode decides which
+   statement the resource generates, so it travels with the request. */
+var mode = "J";
+
+/* The cross: row and column dimensions by key, and measures with the aggregate
+   each is taken under. A key is alias~field, the name the statement uses. */
+var cross = { rows: [], cols: [], vals: [] };
+
+var AGGREGATES = ["SUM", "COUNT", "MIN", "MAX", "AVG"];
+
+function crossQuery() {
+  if (mode !== "P") { return ""; }
+  var parts = [];
+  cross.rows.forEach(function (key, i) {
+    parts.push("r" + (i + 1) + "=" + encodeURIComponent(key));
+  });
+  cross.cols.forEach(function (key, i) {
+    parts.push("c" + (i + 1) + "=" + encodeURIComponent(key));
+  });
+  cross.vals.forEach(function (v, i) {
+    parts.push("v" + (i + 1) + "=" + encodeURIComponent(v.key));
+    if (v.agg) { parts.push("a" + (i + 1) + "=" + v.agg); }
+  });
+  return parts.join("&");
+}
+
+function place(zone, key) {
+  var list = cross[zone];
+  if (zone === "vals") {
+    if (!list.some(function (v) { return v.key === key; })) {
+      list.push({ key: key, agg: "SUM" });
+    }
+  } else if (list.indexOf(key) === -1) {
+    list.push(key);
+  }
+  loadJoin(0);
+}
+
+function unplace(zone, index) {
+  cross[zone].splice(index, 1);
+  loadJoin(0);
+}
+
 /* ---------- join ---------- */
 
 /* The tables taken into the join, in the order they were taken. The builder
@@ -415,7 +476,7 @@ function loadJoin(rows) {
   // a join wants: otherwise every tick would read the database.
   // The selection panel travels along: a filter typed on the table belongs to
   // the join built from it, and query() already encodes exactly that.
-  sdeJoin(currentTable, taken.join(","), rows || 0, query());
+  sdeJoin(currentTable, taken.join(","), rows || 0, query(), crossQuery());
 }
 
 function toggleTaken(tabname) {
@@ -437,10 +498,15 @@ function renderJoin(data) {
   back.appendChild(link);
   root.appendChild(back);
 
-  root.appendChild(section("Tables around " + data.table, candidateList(data.candidates)));
+  root.appendChild(modeCards());
 
-  if (data.tables && data.tables.length > 0) {
-    root.appendChild(section("The join", joinTable(data.tables)));
+  if (mode === "J") {
+    root.appendChild(section("Tables around " + data.table, candidateList(data.candidates)));
+    if (data.tables && data.tables.length > 0) {
+      root.appendChild(section("The join", joinTable(data.tables)));
+    }
+  } else {
+    root.appendChild(crossPanel(data.fields || []));
   }
 
   var sql = document.createElement("pre");
@@ -458,6 +524,116 @@ function renderJoin(data) {
   } else {
     status(data.tables ? data.tables.length + " tables in the join" : "");
   }
+}
+
+function modeCards() {
+  var box = document.createElement("div");
+  box.className = "modes";
+  [["J", "Join"], ["P", "Pivot table"]].forEach(function (m) {
+    var button = document.createElement("button");
+    button.textContent = m[1];
+    if (mode === m[0]) { button.className = "on"; }
+    button.addEventListener("click", function () {
+      mode = m[0];
+      loadJoin(0);
+    });
+    box.appendChild(button);
+  });
+  return box;
+}
+
+/* ---------- the pivot cross ---------- */
+
+function crossPanel(fields) {
+  var box = document.createElement("div");
+  box.appendChild(section("Rows", slotList("rows")));
+  box.appendChild(section("Columns", slotList("cols")));
+  box.appendChild(section("Measures", slotList("vals")));
+  box.appendChild(section("Fields", fieldChips(fields)));
+  return box;
+}
+
+function placedKeys() {
+  return cross.rows.concat(cross.cols)
+    .concat(cross.vals.map(function (v) { return v.key; }));
+}
+
+function fieldChips(fields) {
+  var box = document.createElement("div");
+  box.className = "chips";
+  var placed = placedKeys();
+
+  fields.forEach(function (f) {
+    var key = (f.alias + "~" + f.fieldname).toLowerCase();
+    var chip = document.createElement("span");
+    chip.className = "chip" + (placed.indexOf(key) === -1 ? "" : " placed");
+    chip.title = f.ddtext || key;
+    chip.appendChild(document.createTextNode(f.fieldname.toLowerCase()));
+
+    // Three buttons rather than dragging: a chip is small and an Eclipse view
+    // is smaller, and a drop target that misses is worse than a click.
+    [["R", "rows", "as a row"], ["C", "cols", "as a column"],
+     ["Σ", "vals", "as a measure"]].forEach(function (put) {
+      var button = document.createElement("button");
+      button.className = "put";
+      button.textContent = put[0];
+      button.title = put[2];
+      button.addEventListener("click", function () { place(put[1], key); });
+      chip.appendChild(button);
+    });
+
+    box.appendChild(chip);
+  });
+  return box;
+}
+
+function slotList(zone) {
+  var box = document.createElement("div");
+  var list = cross[zone];
+
+  if (list.length === 0) {
+    var none = document.createElement("div");
+    none.className = "empty-slot";
+    none.textContent = "nothing yet";
+    box.appendChild(none);
+    return box;
+  }
+
+  list.forEach(function (item, index) {
+    var key = zone === "vals" ? item.key : item;
+    var row = document.createElement("div");
+    row.className = "slot";
+
+    var drop = document.createElement("button");
+    drop.className = "drop";
+    drop.textContent = "×";
+    drop.title = "Take it out";
+    drop.addEventListener("click", function () { unplace(zone, index); });
+    row.appendChild(drop);
+
+    row.appendChild(document.createTextNode(key));
+
+    if (zone === "vals") {
+      var pick = document.createElement("select");
+      AGGREGATES.forEach(function (agg) {
+        var option = document.createElement("option");
+        option.value = agg;
+        option.textContent = agg;
+        if (agg === item.agg) { option.selected = true; }
+        pick.appendChild(option);
+      });
+      // The pivot settles an aggregate the field's type cannot carry, so what
+      // comes back may not be what was picked. That is the answer, not a bug.
+      pick.addEventListener("change", function (e) {
+        item.agg = e.target.value;
+        loadJoin(0);
+      });
+      row.appendChild(pick);
+    }
+
+    box.appendChild(row);
+  });
+  return box;
 }
 
 /* A join result has no field catalogue of its own: the columns are what the

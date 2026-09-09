@@ -6,7 +6,7 @@ renders as HTML.
 
 | Word | Backend | What it does | In VERTEX | Status |
 |---|---|---|---|---|
-| Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, and a join built from the dictionary's own foreign keys; no pivot yet |
+| Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | McCabe, Halstead and the maintainability index per unit |
 | Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | Parts, their versions and the diff between two of them; no blame, no review, one object at a time |
 
@@ -165,6 +165,8 @@ user operates lives in the page, which is what lets the same page run under the 
 - Paging, sorting and a refresh button for the grid. The row limit is a constant in the page and
   the resource has no offset, so a large table stops at the first hundred rows.
 - Conversion exits and F4. Values arrive as stored, so an `ALPHA`-padded key reads as padded.
+- Filters on a joined table. The selection panel knows the base table's columns; the join's own
+  are filterable by the resource already, and wait for the panel to learn their names.
 - The character-level highlight inside a changed line, and the pass that pairs a deletion with the
   insertion it belongs to. Both exist in AVE already, in the ABAP and in its browser port; see
   stage 12 of `dev_history.md` for why neither was copied wholesale.
