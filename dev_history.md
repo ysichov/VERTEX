@@ -647,6 +647,37 @@ check — but it catches exactly the class of mistake that a careful writer stil
 
 ---
 
+## Stage 14 — the pivot, and the exception that became a rule
+
+The pivot model was the one part of SDE that needed nothing at all: no control in it, a layout
+that can be set directly, a statement built over the join's own `FROM`. Everything the previous
+stage learned applied again, and `EXECUTE_PIVOT` needed exactly the two changes `EXECUTE_SQL` had
+needed — the result back through a parameter, the reasons back through another, and the window
+required to hand the matrix over rather than to build it.
+
+**The exception I granted myself.** For the join I refused to set the application's global row
+count, on the grounds that a caller over HTTP has no business setting a global. Two hours later I
+set it for the pivot, because the row limit was read from it deeper down and passing a parameter
+meant touching one more signature. Caught it on re-reading, made it a parameter, and the rule
+survived. A rule stated once and broken once is a preference.
+
+### What the page shows
+
+SDE's tools area has two cards, Join and Pivot table, and the page now has the same two. In pivot
+mode the join's fields become chips with three buttons each — row, column, measure — because a
+chip is small, an Eclipse view is smaller, and a drag that misses its target is worse than a
+click. Measures carry an aggregate.
+
+The matrix is spread in ABAP rather than by the database: a dynamically specified SELECT list
+cannot carry the CASE expressions a SQL-side matrix would need, so the statement groups by the
+dimensions and every line of its result is one cell.
+
+An aggregate the field's type cannot carry is settled rather than refused — `SUM` over a character
+field comes back as something that field can do. That is worth knowing at the page: what returns
+is the answer, not necessarily what was asked for, and the statement says which.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

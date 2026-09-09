@@ -63,7 +63,11 @@ public class SelectorView extends PageView {
 				// it does in SDE.
 				final String query = arguments.length > 3 && arguments[3] != null
 					? String.valueOf(arguments[3]) : "";
-				queue(() -> read(joinPath(table, taken, rows, query)));
+				// The pivot cross, already encoded: r/c/v keys with the
+				// aggregate of each measure in a.
+				final String cross = arguments.length > 4 && arguments[4] != null
+					? String.valueOf(arguments[4]) : "";
+				queue(() -> read(joinPath(table, taken, rows, query, cross)));
 				return null;
 			}
 		};
@@ -93,7 +97,8 @@ public class SelectorView extends PageView {
 	}
 
 	/** @param taken comma-separated table names, in the order they were chosen */
-	private static String joinPath(String table, String taken, int rows, String query) {
+	private static String joinPath(String table, String taken, int rows, String query,
+			String cross) {
 		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/join/")
 				.append(table.toUpperCase());
 		// The resource stops at the first missing t-parameter, so the numbering
@@ -114,6 +119,10 @@ public class SelectorView extends PageView {
 		}
 		if (!query.isEmpty()) {
 			path.append(n == 0 ? "?" : "&").append(query);
+			n++;
+		}
+		if (!cross.isEmpty()) {
+			path.append(n == 0 ? "?" : "&").append(cross);
 		}
 		return path.toString();
 	}
