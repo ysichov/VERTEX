@@ -435,6 +435,34 @@ ported to the browser.
 
 ---
 
+## Stage 11 — the context menu was the wrong front door
+
+Right-click an object, find VERTEX near the bottom of a long menu, pick a service — once per
+object. Fine for the first look at something, tiring as the way in.
+
+SelecTor never had that problem, because its page carries the table name and a Load button: open
+the window once and drive it from inside. The two new pages now carry the same thing, an object
+type beside a name field, and the context menu becomes what it should have been from the start —
+a shortcut that prefills, not the only door.
+
+Three consequences, none of them in the pages.
+
+**The type list belongs to the resource, not to the page.** Each page offers the types its service
+reads, but does not enforce them: a type the resource refuses comes back as its own sentence. One
+authority for that rule is enough, and it is the one that can be wrong about it.
+
+**A window can now be opened with nothing selected.** Show View gives no object and therefore no
+project, and until now only SelecTor could handle that — it asked which ABAP project to read from.
+That question is the same for every service, so it moved into `PageView` and SelectorView's copy
+went with it. A window whose remembered project has since left the workspace asks it too, instead
+of refusing.
+
+**The ADT type carries a subtype.** `CLAS/OC` selects the CLAS entry by its head. A head the list
+does not know is added rather than dropped, so a window opened on an object type the service does
+not read still shows what it was opened for and lets the refusal explain itself.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

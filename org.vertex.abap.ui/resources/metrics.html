@@ -76,9 +76,13 @@
 
   .bar { padding: 6px 10px; background: var(--surface);
          border-bottom: 1px solid var(--border); display: flex;
-         align-items: center; gap: 10px; flex: 0 0 auto; }
-  .name { font-weight: 600; }
+         align-items: center; gap: 8px; flex: 0 0 auto; }
   .bar .status { margin-left: auto; color: var(--muted); }
+  .bar select, .bar input { font: inherit; padding: 2px 4px; color: var(--fg);
+                            background: var(--field-bg);
+                            border: 1px solid var(--field-border); }
+  .bar input { width: 240px; text-transform: uppercase; }
+  .bar .shown { color: var(--muted); }
 
   .totals { padding: 6px 10px; background: var(--surface);
             border-bottom: 1px solid var(--border); display: flex;
@@ -103,8 +107,10 @@
 <body>
 
 <div class="bar">
-  <span class="name" id="object"></span>
-  <button id="reload">Reload</button>
+  <select id="type" title="Object type"></select>
+  <input id="name" spellcheck="false" autocomplete="off" placeholder="object name">
+  <button id="load">Load</button>
+  <span class="shown" id="object"></span>
   <span class="status" id="status"></span>
 </div>
 
@@ -151,11 +157,48 @@ function message(text) {
 
 /* ---------- data ---------- */
 
+/* The types this service reads. The page does not enforce the list - a type
+   the resource refuses comes back as its own sentence, and one authority for
+   that rule is enough. */
+var TYPES = [["CLAS", "Class"], ["INTF", "Interface"],
+             ["PROG", "Program"], ["INCL", "Include"]];
+
+function objectName() {
+  return document.getElementById("name").value.trim().toUpperCase();
+}
+
+function objectType() {
+  return document.getElementById("type").value;
+}
+
 function load() {
-  if (!INITIAL) { return; }
-  status("reading " + INITIAL.name + " ...");
+  var name = objectName();
+  if (!name) {
+    message("Type an object name and press Load.");
+    return;
+  }
+  status("reading " + name + " ...");
   // Returns at once. The host answers later by calling sdeReady.
-  sdeLoad(INITIAL.name, INITIAL.type);
+  sdeLoad(name, objectType());
+}
+
+/* The type arrives from the object tree with its subtype - CLAS/OC. Only the
+   head selects the entry; an unknown one is added rather than dropped, so a
+   window opened on it still shows what it was opened for. */
+function fillTypes(chosen) {
+  var head = chosen ? String(chosen).split("/")[0] : "";
+  var known = TYPES.slice();
+  var found = known.some(function (t) { return t[0] === head; });
+  if (head && !found) { known.unshift([head, head]); }
+
+  var box = document.getElementById("type");
+  known.forEach(function (t) {
+    var option = document.createElement("option");
+    option.value = t[0];
+    option.textContent = t[1];
+    if (t[0] === head) { option.selected = true; }
+    box.appendChild(option);
+  });
 }
 
 // Invoked by the host when the answer is waiting.
@@ -256,7 +299,7 @@ function renderTable() {
 
 function render(data) {
   units = data.units || [];
-  document.getElementById("object").textContent = data.object + " (" + data.program + ")";
+  document.getElementById("object").textContent = data.program;
 
   if (units.length === 0) {
     // Not an error: a class of nothing but declarations has no code unit. Say
@@ -268,20 +311,25 @@ function render(data) {
 
   renderTotals(data.totals);
   renderTable();
-  status(units.length + " units");
+  status(units.length + (units.length === 1 ? " unit" : " units"));
 }
 
 /* ---------- wiring ---------- */
 
-document.getElementById("reload").addEventListener("click", load);
+document.getElementById("load").addEventListener("click", load);
+
+document.getElementById("name").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") { load(); }
+});
 
 var INITIAL = /*INIT*/null/*INIT*/;
+fillTypes(INITIAL ? INITIAL.type : null);
 if (INITIAL) {
-  document.getElementById("object").textContent = INITIAL.name;
+  document.getElementById("name").value = INITIAL.name;
   // Wait for the document, so sdeReady exists before the host calls it.
   window.addEventListener("load", load);
 } else {
-  message("Open this view from the context menu of an ABAP object.");
+  message("Type an object name and press Load.");
 }
 </script>
 </body>

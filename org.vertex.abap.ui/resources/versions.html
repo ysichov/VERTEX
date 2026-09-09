@@ -73,9 +73,12 @@
   .app { display: flex; flex-direction: column; height: 100%; }
   .bar { padding: 6px 10px; background: var(--surface);
          border-bottom: 1px solid var(--border); display: flex;
-         align-items: center; gap: 10px; flex: 0 0 auto; }
-  .name { font-weight: 600; }
+         align-items: center; gap: 8px; flex: 0 0 auto; }
   .bar .status { margin-left: auto; color: var(--muted); }
+  .bar select, .bar input { font: inherit; padding: 2px 4px; color: var(--fg);
+                            background: var(--field-bg);
+                            border: 1px solid var(--field-border); }
+  .bar input { width: 240px; text-transform: uppercase; }
 
   .panes { flex: 1 1 auto; display: flex; min-height: 0; }
 
@@ -111,8 +114,9 @@
 
 <div class="app">
   <div class="bar">
-    <span class="name" id="object"></span>
-    <button id="reload">Reload</button>
+    <select id="type" title="Object type"></select>
+    <input id="name" spellcheck="false" autocomplete="off" placeholder="object name">
+    <button id="load">Load</button>
     <span class="status" id="status"></span>
   </div>
   <div class="panes">
@@ -152,10 +156,34 @@ function note(text) {
    list of names would pay for eighty reads to show eighty rows. So the parts
    come first, and the versions of the one that is clicked come second. */
 
+/* The types this service reads. The page does not enforce the list - a type
+   the resource refuses comes back as its own sentence, and one authority for
+   that rule is enough. */
+var TYPES = [["CLAS", "Class"], ["INTF", "Interface"], ["PROG", "Program"],
+             ["INCL", "Include"], ["FUGR", "Function group"], ["FUNC", "Function module"],
+             ["DDLS", "CDS view"], ["TABL", "Table"], ["DOMA", "Domain"],
+             ["DTEL", "Data element"]];
+
+function objectName() {
+  return document.getElementById("name").value.trim().toUpperCase();
+}
+
+function objectType() {
+  return document.getElementById("type").value;
+}
+
 function loadParts() {
-  if (!INITIAL) { return; }
-  status("reading " + INITIAL.name + " ...");
-  sdeLoad(INITIAL.name, INITIAL.type, "", "");
+  var name = objectName();
+  if (!name) {
+    message("Type an object name and press Load.");
+    return;
+  }
+  // Parts belong to one object, so another object starts over.
+  parts = [];
+  current = null;
+  renderParts();
+  status("reading " + name + " ...");
+  sdeLoad(name, objectType(), "", "");
 }
 
 function loadVersions(part) {
@@ -163,7 +191,26 @@ function loadVersions(part) {
   renderParts();
   status("reading versions of " + part.unit + " ...");
   note("Reading ...");
-  sdeLoad(INITIAL.name, INITIAL.type, part.name, part.part_type);
+  sdeLoad(objectName(), objectType(), part.name, part.part_type);
+}
+
+/* The type arrives from the object tree with its subtype - CLAS/OC. Only the
+   head selects the entry; an unknown one is added rather than dropped, so a
+   window opened on it still shows what it was opened for. */
+function fillTypes(chosen) {
+  var head = chosen ? String(chosen).split("/")[0] : "";
+  var known = TYPES.slice();
+  var found = known.some(function (t) { return t[0] === head; });
+  if (head && !found) { known.unshift([head, head]); }
+
+  var box = document.getElementById("type");
+  known.forEach(function (t) {
+    var option = document.createElement("option");
+    option.value = t[0];
+    option.textContent = t[1];
+    if (t[0] === head) { option.selected = true; }
+    box.appendChild(option);
+  });
 }
 
 // Invoked by the host when the answer is waiting.
@@ -187,13 +234,12 @@ function sdeReady() {
 
 function renderPartList(data) {
   parts = data.parts || [];
-  document.getElementById("object").textContent = data.object;
   renderParts();
   if (parts.length === 0) {
     note("This object has no versionable part.");
     return;
   }
-  status(parts.length + " parts");
+  status(parts.length + (parts.length === 1 ? " part" : " parts"));
   note("Pick a part to see its versions.");
 }
 
@@ -286,22 +332,25 @@ function renderVersions(data) {
   table.appendChild(tbody);
   root.appendChild(table);
 
-  status(versions.length + " versions of " + label);
+  status(versions.length + (versions.length === 1 ? " version of " : " versions of ") + label);
 }
 
 /* ---------- wiring ---------- */
 
-document.getElementById("reload").addEventListener("click", function () {
-  if (current) { loadVersions(current); } else { loadParts(); }
+document.getElementById("load").addEventListener("click", loadParts);
+
+document.getElementById("name").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") { loadParts(); }
 });
 
 var INITIAL = /*INIT*/null/*INIT*/;
+fillTypes(INITIAL ? INITIAL.type : null);
 if (INITIAL) {
-  document.getElementById("object").textContent = INITIAL.name;
+  document.getElementById("name").value = INITIAL.name;
   // Wait for the document, so sdeReady exists before the host calls it.
   window.addEventListener("load", loadParts);
 } else {
-  message("Open this view from the context menu of an ABAP object.");
+  message("Type an object name and press Load.");
 }
 </script>
 </body>
