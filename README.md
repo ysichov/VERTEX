@@ -1,14 +1,21 @@
 # ABAP VERTEX Tools
 
-One front end in ABAP Development Tools for three ABAP tools of their own:
-[Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) for data,
-[ACE](https://github.com/ysichov/ACE) for code and [AVE](https://github.com/ysichov/AVE) for
-versions and review. Each is a SAP GUI program; VERTEX gives them a view inside the workbench
-that reads over the developer's existing ADT connection and renders as HTML.
+ABAP **Version**, **Code** and **Data** Explorer — three words, three SAP GUI tools, one front end
+in ABAP Development Tools. Each view reads over the developer's existing ADT connection and
+renders as HTML.
 
-Status: **early**. Two services work. **SelecTor** reads a table with select-options filters and
-draws a read-only grid; no joins and no pivot yet. **Metrics** shows McCabe, Halstead and the
-maintainability index per method of an object. Versions and review are not started.
+| Word | Backend | What it does | In VERTEX | Status |
+|---|---|---|---|---|
+| Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | Reads a table, filters work; no joins or pivot yet |
+| Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | McCabe, Halstead and the maintainability index per unit |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | — | Not started |
+
+Status: **early**. Two of the three answer, and each is a fraction of what its backend can do.
+
+The division of labour is the same for all three: ABAP computes and returns JSON, the page
+renders it, and the view in between is transport. Nothing about a service lives in the host, so
+the same page runs under the VS Code extension in `vscode/` — and, since SAP GUI 8.0 draws on the
+same WebView2 engine as both editors, one day inside SAP GUI as well.
 
 ## How it fits together
 
