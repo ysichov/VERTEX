@@ -54,7 +54,11 @@ public class SelectorView extends PageView {
 				// reuses it, so the order is what keeps the aliases stable.
 				final String taken = arguments.length > 1 && arguments[1] != null
 					? String.valueOf(arguments[1]) : "";
-				queue(() -> read(joinPath(table, taken)));
+				// Nought while the join is still being assembled: the statement
+				// is worth seeing before it is worth running.
+				final int rows = arguments.length > 2 && arguments[2] != null
+					? (int) Double.parseDouble(String.valueOf(arguments[2])) : 0;
+				queue(() -> read(joinPath(table, taken, rows)));
 				return null;
 			}
 		};
@@ -84,7 +88,7 @@ public class SelectorView extends PageView {
 	}
 
 	/** @param taken comma-separated table names, in the order they were chosen */
-	private static String joinPath(String table, String taken) {
+	private static String joinPath(String table, String taken, int rows) {
 		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/join/")
 				.append(table.toUpperCase());
 		// The resource stops at the first missing t-parameter, so the numbering
@@ -98,6 +102,9 @@ public class SelectorView extends PageView {
 			n++;
 			path.append(n == 1 ? "?" : "&");
 			path.append("t").append(n).append("=").append(name.toUpperCase());
+		}
+		if (rows > 0) {
+			path.append(n == 0 ? "?" : "&").append("rows=").append(rows);
 		}
 		return path.toString();
 	}
