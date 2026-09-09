@@ -92,7 +92,11 @@ public class VersionsView extends PageView {
 
 	private static String escape(String value) {
 		try {
-			return URLEncoder.encode(value, StandardCharsets.UTF_8.name());
+			// URLEncoder writes a space as '+', which stands for a space only
+			// under form encoding. A part key is mostly spaces - the class name
+			// padded to thirty characters - so it is percent-encoded strictly,
+			// leaving nothing for the other side to interpret.
+			return URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20");
 		} catch (UnsupportedEncodingException e) {
 			// UTF-8 is guaranteed present; saying so beats a silent fallback.
 			throw new IllegalStateException("UTF-8 is not available in this JRE.", e);
