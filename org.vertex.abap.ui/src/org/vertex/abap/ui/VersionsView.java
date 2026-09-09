@@ -37,7 +37,9 @@ public class VersionsView extends PageView {
 	public void createPartControl(Composite parent) {
 		String object = part(0);
 		if (object != null) {
-			setPartName(object);
+			// The service goes first: several windows can stand on the same
+			// object, and Eclipse truncates a tab from the right.
+			setPartName("Versions: " + object);
 		}
 		super.createPartControl(parent);
 	}
