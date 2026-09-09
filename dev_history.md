@@ -619,6 +619,22 @@ The rows are asked for separately. Assembling a join means ticking one table aft
 reading the database on every tick to answer a question nobody has asked yet is not free — so the
 statement comes back without a row count and the Run button supplies one.
 
+### The filters were already reachable
+
+The `WHERE` looked like the part that would have to be rewritten, since it is built from the
+selection panel and there is no panel. It turned out `BUILD_WHERE` reads a member cache first and
+only falls back to the panel when that cache is empty — because filters restored from a layout
+file exist before the panel is built. Filling the same cache is all a headless caller has to do,
+and not one line of the `WHERE` logic changed.
+
+That is the third time in this stage that what stood in the way was an entry point rather than the
+code behind it. The tool was written by someone who kept the model separable without having a
+second caller in mind.
+
+The page sends the criteria it already has: a filter typed on the table applies to the join built
+from it, which is what it does in SDE. Filters on a joined table wait for the panel to learn about
+its columns.
+
 ### abaplint, when the system is not there
 
 The SAP connections dropped mid-session, so the usual syntax check against the system was not

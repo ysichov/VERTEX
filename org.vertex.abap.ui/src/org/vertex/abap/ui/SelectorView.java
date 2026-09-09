@@ -58,7 +58,12 @@ public class SelectorView extends PageView {
 				// is worth seeing before it is worth running.
 				final int rows = arguments.length > 2 && arguments[2] != null
 					? (int) Double.parseDouble(String.valueOf(arguments[2])) : 0;
-				queue(() -> read(joinPath(table, taken, rows)));
+				// The same selection parameters the grid sends. A filter typed
+				// on the table applies to the join built from it, which is what
+				// it does in SDE.
+				final String query = arguments.length > 3 && arguments[3] != null
+					? String.valueOf(arguments[3]) : "";
+				queue(() -> read(joinPath(table, taken, rows, query)));
 				return null;
 			}
 		};
@@ -88,7 +93,7 @@ public class SelectorView extends PageView {
 	}
 
 	/** @param taken comma-separated table names, in the order they were chosen */
-	private static String joinPath(String table, String taken, int rows) {
+	private static String joinPath(String table, String taken, int rows, String query) {
 		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/join/")
 				.append(table.toUpperCase());
 		// The resource stops at the first missing t-parameter, so the numbering
@@ -105,6 +110,10 @@ public class SelectorView extends PageView {
 		}
 		if (rows > 0) {
 			path.append(n == 0 ? "?" : "&").append("rows=").append(rows);
+			n++;
+		}
+		if (!query.isEmpty()) {
+			path.append(n == 0 ? "?" : "&").append(query);
 		}
 		return path.toString();
 	}
