@@ -12,7 +12,5 @@ Require-Bundle: org.eclipse.ui,
  com.sap.adt.communication,
  com.sap.adt.project,
  com.sap.adt.tools.core.base,
- com.sap.adt.destinations.ui,
- org.eclipse.e4.ui.workbench,
- org.eclipse.e4.ui.model.workbench
+ com.sap.adt.destinations.ui
 Import-Package: org.osgi.framework

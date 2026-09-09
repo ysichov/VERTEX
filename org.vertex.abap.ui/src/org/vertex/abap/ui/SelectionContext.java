@@ -76,6 +76,6 @@ final class SelectionContext {
 
 	/** Nothing here may fail quietly: an invisible no-op is impossible to debug. */
 	static void report(Shell shell, String message) {
-		MessageDialog.openInformation(shell, "AXE", message);
+		MessageDialog.openInformation(shell, "VERTEX", message);
 	}
 }
