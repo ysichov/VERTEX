@@ -1,5 +1,8 @@
 # ABAP VERTEX Tools
 
+[**Install from the VS Code Marketplace**](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)
+· Eclipse ADT: build it from this repository, see below.
+
 ABAP **Version**, **Code** and **Data** Explorer — three words, three SAP GUI tools, one front end
 in ABAP Development Tools. Each view reads over the developer's existing ADT connection and
 renders as HTML.
@@ -8,7 +11,7 @@ renders as HTML.
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | McCabe, Halstead and the maintainability index per unit |
-| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport, a package or one object; its parts, their versions, the diff between two of them, and the review AVE saved for a request. Read-only; no blame |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport, a package or one object; its parts, their versions, the diff between two of them, and the review AVE saved for a request — including approving, declining and commenting on a block. No blame |
 
 Status: **early**. All three answer, and each is a fraction of what its backend can do.
 
@@ -41,7 +44,9 @@ answers them over plain HTTPS, and the markup, grids and filters are not written
 The ABAP side lives in the [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer)
 repository — one class per service, the application class `ZCL_SDE_ADT_RES_APP` and the BAdI
 registration `ZSDE_ADT_RES_APP`. Its setup, and the traps in registering a custom ADT resource,
-are documented in `ADT.md` there. Install that first; without it every request returns 404.
+are documented in `ADT.md` there. Install that first; without it every request returns 404 — and
+a window that gets one opens on a setup page naming what to install, with links, rather than a red
+error, because nothing is broken there.
 
 Each service also needs its own backend in the same system, because the computing is theirs:
 metrics need [ACE](https://github.com/ysichov/ACE), versions need
@@ -81,9 +86,16 @@ Versions have a Load button of their own.
 
 ### In VS Code
 
-The extension in `vscode/` has no dependencies and no build step. Make the folder a normally
-installed extension - a directory junction from `%USERPROFILE%\.vscode\extensions` to it - and
-reload the window.
+Published as
+[**YuriiSychov.vertex-abap**](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap):
+install it from the Extensions view and there is nothing to build.
+
+To run the copy in `vscode/` instead, open that folder in VS Code and press F5. It has no
+dependencies and no build step; `vscode:prepublish` copies the pages in from the Eclipse plugin
+when the package is made, and a checkout reads them across the repository. **Do not** install it
+by making a junction into `%USERPROFILE%\.vscode\extensions` — a folder not named
+`publisher.name-version` is loaded on every scan and cannot be uninstalled, which is a trap worth
+naming because this project fell into it.
 
 It needs the connection Eclipse inherits from the ABAP project. There is no project here, so the
 systems are a list and one of them is active:
@@ -163,9 +175,9 @@ org.vertex.abap.ui/
 ├── plugin.xml             registers the view at org.eclipse.ui.views
 ├── build.properties       resources/ must be listed, or the page is missing at runtime
 ├── resources/
-│   ├── table.html         the grid: renders fields + rows, no SAP knowledge
+│   ├── table.html         the grid, the join builder and the pivot cross
 │   ├── metrics.html       the metrics table, sortable by any column
-│   └── versions.html      parts, their versions, and the diff between two of them
+│   └── versions.html      parts, their versions, the diff, and the saved review
 └── src/org/vertex/abap/ui/
     ├── PageView.java           browser, page, ADT read, answer bridge - the shared half
     ├── SelectorView.java       table data: what to request, and opening a second window
@@ -189,17 +201,22 @@ user operates lives in the page, which is what lets the same page run under the 
   transparent table; `S_TABU_DIS` / `S_TABU_NAM` are not checked anywhere yet. `SE16N` resolves
   both through `VIEW_AUTHORITY_CHECK`, and a refusal has to be a real 403 rather than an empty
   result.
-- Paging, sorting and a refresh button for the grid. The row limit is a constant in the page and
-  the resource has no offset, so a large table stops at the first hundred rows.
+- Paging and a refresh button for the grid. Sorting a column sorts the rows that were read, which
+  is what the SAP GUI grid does too; the row limit is still a constant in the page and the
+  resource has no offset, so a large table stops at the first hundred rows.
 - Conversion exits and F4. Values arrive as stored, so an `ALPHA`-padded key reads as padded.
 - Filters on a joined table. The selection panel knows the base table's columns; the join's own
   are filterable by the resource already, and wait for the panel to learn their names.
+- `ORDER BY` for the join, and editing an ON condition rather than taking what the dictionary
+  proposes.
 - The character-level highlight inside a changed line, and the pass that pairs a deletion with the
   insertion it belongs to. Both exist in AVE already, in the ABAP and in its browser port; see
   stage 12 of `dev_history.md` for why neither was copied wholesale.
-- Blame, and the review workflow on top of the diff — approve, decline, comment, saved per
-  transport request.
-- Approving, declining and commenting. The saved review can be read; changing it is the first
-  thing here that would write to the system, which brings a POST, its CSRF token, and the rule
-  that a green tick over a failed save is the silent success this project keeps refusing.
+- Blame.
+- `C_ALLOW_SELF_REVIEW` in the review resource is on for testing and has to come out: AVE refuses
+  to let a developer approve their own block, and so should this.
+- Optimistic locking is one-sided. A write is refused when the review moved under the page, which
+  is right, but AVE's own save still overwrites without looking.
 - The metrics of a whole package, which needs the same treatment the transport just got.
+- The DDIC side of a review. `TABD`, `DOMD` and `DTED` have no line diff, and their page in AVE is
+  a field table kept as ready-made html; VERTEX says so rather than rendering it.

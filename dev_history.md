@@ -793,6 +793,255 @@ for the good reason that nothing is broken - a review has simply never had anywh
 
 ---
 
+## Stage 17 — drawing what was saved
+
+The summary of stage 16 showed how many blocks an object has and how many of them carry a verdict.
+Clicking a row did nothing, because the blocks themselves were not there yet.
+
+**The plan for this was wrong, and one question corrected it.** The next step looked like a diff
+engine: compute the blocks of a part on the fly, with a progress bar, reusing AVE's pair selection
+so that the hunk keys mean the same thing on both sides. Then came *"и в расчетах в таблице всё же
+готово? просто отрендерить данные?"* — is the computation in the table already done? Reading
+`ZIF_AVE_ACR_TYPES` answered it: `TY_DIFF_DATA-DIFF` is `ZIF_AVE_POPUP_TYPES=>TY_T_DIFF`, the very
+`{op,text}` list our own diff endpoint already returns, and the saved payload clears every hunk's
+html precisely so that the operations are what persists. A prepared review needs no computation at
+all. The work went from a diff engine to a read.
+
+It also closed the hazard named in stage 16: the hunk key is `type~object~n` and carries no version
+pair, so the same key means different lines under a different comparison. The stored diff carries
+its pair in `TY_DIFF_DATA_KEY`, so for saved data the question does not arise.
+
+**What the page cannot work out for itself.** Where a block starts and ends among the operations.
+Reading `ZCL_AVE_ACR_HUNK_INFO=>COLLECT` shows why: a block swallows the context lines inside an
+unfinished ABAP statement (so that a call and its parameters are approved together), keeps a blank
+line when more changes follow, and is dropped entirely when `HAS_VISIBLE_CHANGE` finds no colour in
+its rendering. A client re-deriving "a run of changed lines" would disagree with AVE about how many
+blocks there are, and the numbering the keys are built on would shift.
+
+What survives the save is `START_LINE` — the line of the *new* version a block opens on, counting
+insertions and context but not deletions — and `CHANGE_COUNT`. Replaying that one counter over the
+stored operations places every block exactly, with no rule to keep in step. The resource does it and
+returns `op_from` / `op_to`; a block it cannot place comes back with zero rather than dropped, and
+the page prints it above the diff, because a payload whose blocks and diff disagree has to be seen.
+
+**One rendering.** The action row of a block is a row inside the diff table, and `diffTable` took a
+second, optional argument instead of gaining a twin. Had the review drawn its own diff, the two
+would have drifted — the compact fold alone would have been enough to make them disagree.
+
+**A dictionary object has no lines.** `TABD`, `DOMD` and `DTED` are reviewed in AVE as a table of
+fields, and that page is kept as ready-made html because nothing remains to rebuild it from. The
+resource marks it `ddic` and the page says it does not render that yet, rather than showing an empty
+diff and letting it read as "no changes".
+
+---
+
+## Stage 18 — the law, and what it cost to keep
+
+Stage 17 shipped a review page that was right about what it showed and wrong about how it got
+there. Two things came back at once.
+
+**The objects were in a heap.** A transport touches forty parts, and the table listed them in
+payload order: `GET`, `Public section`, `GET`, `Private section`, `GET` — a method's name means
+something only inside its class, and every class has the same sections. AVE's own report groups them
+by class, and had all along.
+
+Then the rule that governs this project was stated outright: **reuse and reproduce the
+functionality; where you cannot reuse, change the backend until you can.**
+
+It is not a style preference. VERTEX shows the same data as three tools its user already trusts, and
+a second opinion about that data is a bug the moment a reader notices it — they will be comparing
+the two screens.
+
+**First reading: what was already public.** `CAT_ORDER` and `CAT_LABEL` were public class methods on
+`ZCL_AVE_ACR_REPORT`. The ordering around them was not, so the report grew
+`REPORT_OBJECTS( it_obj_stats )`: the objects it lists, in the order it lists them, with the class
+name filled in where the statistics carry none and objects with no changed line left out. `TO_HTML`
+lost forty lines and calls it; the resource calls the same thing. One rule, two front ends.
+
+**Second reading, and this one had been written the wrong way the day before.** The resource located
+each saved block among the diff operations by replaying AVE's line counter — carefully, correctly,
+and entirely by hand. The documentation for it even said the rule "is not one a reader of the result
+can reconstruct", one paragraph above reconstructing it.
+
+The real walk was in `ZCL_AVE_ACR_HUNK_HTML=>COLLECT_ROWS`, cutting the same blocks on its way to
+rendering them. It came out as `HUNK_RANGES( it_diff )`, returning for each block where it starts and
+ends among the operations, the line it opens on, and whether it changes anything visible.
+`COLLECT_ROWS` renders from those ranges; the resource reads them. The hand-written replay is gone.
+
+**Third: the walk that named the blocks.** `ZCL_AVE_ACR_HUNK_INFO=>COLLECT` had a walk of its own,
+because it counts authors and kinds as it goes, and its comment said it must make "the same
+decision" as the renderer. That is a promise kept by reading, and it was already broken. It now
+takes the ranges too and only measures what is inside them: 180 lines became 90, and AVE has one
+walk instead of three.
+
+**Proving a refactor without a system.** `COLLECT_ROWS` is AVE's review rendering and `COLLECT` is
+what the hunk keys are built from; either off by one operation would renumber every block a review
+is filed under. All three walks were transcribed into JavaScript and run against random diffs.
+
+| Compared | Input | Result |
+|---|---|---|
+| `COLLECT_ROWS` before and after | 5000 diffs, 17606 blocks | no difference |
+| `COLLECT` against `HUNK_RANGES` | 20000 diffs, 75722 blocks | one difference, below |
+| Is a start line unique to a block | 21983 ranges | no two share one |
+
+**The one difference was a bug, and it was COLLECT's.** Its walk closed the last block on a sentinel
+`=` appended to the operations — except that a sentinel is also a context line, so when the diff
+ended with an ABAP statement still open, the sentinel was swallowed as "context inside the
+statement" and the final block was never closed. It was rendered, because `COLLECT_ROWS` closes on
+the end of the table, and then discarded, because `COLLECT` did not. The last changed block of such
+a part had no key, no verdict and no place in the counts. Taking the ranges fixes it: 1759 of the
+20000 random diffs ended that way, far more than real ABAP will, since an include usually ends on
+`ENDMETHOD.`, but not never.
+
+---
+
+## Stage 19 — the first write
+
+Everything until here read. Approving, declining and commenting change state on the server, and the
+law decided the shape of it before any design did: **reuse and reproduce; where you cannot reuse,
+change the backend until you can.**
+
+**Most of it was already reusable.** `APPLY_SAVED_PAYLOAD` unpacks a saved review into working
+tables, `BUILD_SAVE_PAYLOAD` packs them back, `SAVE_REVIEW_PAYLOAD` writes. All public, all free of
+`CL_GUI`. The resource loads, hands over, and saves; it knows nothing about what approving means.
+
+**What was not reusable was the middle.** What a reviewer actually does to a block lived inline in
+two places in the SAP GUI front end — approve and undo in the command handler, decline and comment in
+the note dialog's handler — reading and writing the popup's own member tables. It came out as
+`ZCL_AVE_ACR_STATE=>APPLY_REVIEWER_ACTION`, one method for all four, and both old callers now go
+through it. The rule about a repeated message being a double click rather than a second comment, the
+one about a note being filed under whoever wrote it, the one about a thread keeping what the block
+looked like: all of it happens once, for both front ends.
+
+**Two decisions where a quiet default would have destroyed something.**
+
+`APPLY_SAVED_PAYLOAD` drops generated Gateway classes when told to, mirroring a setting in AVE. The
+default is to drop. VERTEX passes false: a write that adds one verdict must take nothing away, and
+the setting is not this program's to act on.
+
+A save writes the whole payload. Two reviewers on one request is the normal case, so a write built
+on a state that has moved since the page read it would carry the other reviewer's approvals off with
+it. The page sends back the stamp it read and a changed one is refused, loudly, with who saved it.
+There is no merge. A merge nobody asked for is exactly how a review would quietly lose work.
+
+**The hosts differ, and only here.** Eclipse posts through the ADT communication layer, which holds
+the destination and carries the CSRF token out of sight. The VS Code host authenticates with basic
+auth and has no such layer, so it fetches a token from the discovery endpoint and sends it back with
+the cookies of the response that issued it. One page, two hosts, and the difference confined to the
+transport.
+
+**Self-review is on, and it is temporary.** `C_ALLOW_SELF_REVIEW` exists because the request being
+tested is entirely the tester's own work, and with AVE's rule on there would be nothing to press. It
+is a named constant rather than a missing check, so removing it is one line and finding it is one
+grep.
+
+---
+
+## Stage 20 — the order the statement is written in
+
+SelecTor's join in the SAP GUI has a strip of chips you drag: the tables of the FROM, and the fields
+of the SELECT, in the order they come out. VERTEX had the lists but no way to order them.
+
+**The stateless replay made this easy rather than hard.** The join request already carries the
+tables as `t1..tN` and the SELECT list as `sf1..sfN`, so the order on screen is already the order in
+the statement. Moving a chip is moving one entry of an array and asking again. Nothing on the server
+changed.
+
+Two drop targets, the same two the GUI has: another chip means "before that one", and a dashed end
+marker means "last". The marker is not decoration — without it there is nothing to drop on after the
+last chip.
+
+**Moving a table throws the SELECT list away, on purpose.** An alias is handed out by position, so
+`T1_MATNR` becomes `T2_MATNR` the moment two tables swap. A field list keyed by alias would then name
+columns that no longer exist. It goes back to what the builder proposes, which is the same thing
+taking a table into the join already did.
+
+The base table is drawn and cannot be moved: the request is replayed from it, so moving it would be
+choosing a different base, which is a different question.
+
+**Three more things the screen itself said, once it was used.**
+
+The tables around SFLIGHT are sixteen, and sixteen checkboxes with a name and a description each is
+a screenful of list before the join comes into view. They are chips in rows now, name and an arrow
+for which way the key points, with the word and the description one hover away. Four rows instead of
+sixteen.
+
+The rows moved to the top of the join. What is being assembled and what it returns belong on screen
+together, and the answer should not be the thing below the fold.
+
+And every change runs the join again. It used to return the statement alone, to keep a tick of a
+checkbox off the database — a defensible rule that turned out to mean the rows on screen belonged to
+an older join than the one being looked at, and that Run had to be pressed after every move. A read
+of a hundred rows is cheaper than that.
+
+**A comment keeps its shape.** The box takes several lines, so the box that shows it has to give
+them back: `white-space: normal` on the cell had been folding a pasted snippet onto one line. AVE
+keeps the line breaks and loses the leading spaces, for the same reason in HTML; one `pre-wrap` in
+its renderer would settle it there too.
+
+---
+
+## Stage 21 — the pivot, and what auto-running turned up
+
+The pivot became the cross SDE draws in the SAP GUI: columns across the top, rows down the left,
+measures beside them, the fields underneath. A field goes into a slot by being dragged onto it, or by
+being clicked and then having a slot clicked — the second way is in the GUI for a reason, and a slot
+in an Eclipse view is small. `MIN_SLOTS` and the growing rule are read from `ZCL_SDE_PIVOT`: one more
+slot than the section holds, never fewer than three.
+
+**The aggregates are asked for, not guessed.** Which ones a field may be taken under is decided by
+`ALLOWED_AGGS` from the internal type, and the internal type never travels to the page. They were
+private instance methods that used no instance state, so they became public class methods and the
+join resource sends the list with every field. A page that offered `SUM` on a `CHAR` field was
+offering something the pivot then quietly turned into `COUNT`.
+
+**Colour by table, six of them, cycled — the GUI's own palette**, defined for both themes. Key
+fields keep the doubled border SDE gives them. The field list breaks into a row per table with its
+own all/none/keys, because a table that starts halfway along a line is one the reader has to hunt
+for.
+
+**Auto-running the join found a real bug.** Pressing *none* returned `HTTP 400: Unknown field
+SFLIGHT-*`. `BUILD_SQL` writes a star when its list is empty, and `EXECUTE_SQL` parses the SELECT
+list with a regular expression that has no case for one. It had never surfaced because assembling a
+join used not to run it.
+
+The fix is not in either of them. A star means *all the fields*, and a caller who cleared the list
+asked for the opposite. Nothing chosen is not everything chosen: the resource now answers an
+explicitly empty list with no statement and no rows, and the page says a statement starts at one
+field. `BUILD_SQL` keeps its fallback, because the GUI reaches it by a different road.
+
+---
+
+## Stage 22 — the half that is missing, and the half that ships
+
+**A plugin without its backend now gets a page, not a red error.** VERTEX is a
+front end and a set of ADT resources, and installing one without the other is a
+setup state rather than a failure: nothing is broken, the ABAP has simply never
+been put there. The hosts tell the two apart at the source, where the status code
+actually is — Eclipse catches `ResourceNotFoundException`, VS Code reads a 404 —
+and mark the answer. Everything else stays a failure.
+
+Each window names the repositories **it** reads. SelecTor needs the resources,
+Metrics needs ACE as well, Versions needs AVE. Naming only the first would send
+somebody who is missing the second to install what they already have. The same
+list is a short line on the start screen, always, because the person who has just
+installed the plugin and typed nothing yet is exactly the one who needs it.
+
+Opening a link had to become a host function. In Eclipse an anchor would navigate
+the view away from the page it is on, and a webview cannot open one at all, so
+`sdeBrowse` goes to `Program.launch` on one side and `openExternal` on the other.
+A host offering neither leaves the address to be copied.
+
+**The extension could not have been published at all.** Its pages are the Eclipse
+plugin's and live in that bundle, read across the repository with a `..` path. A
+vsix carries only the extension folder, so the packaged extension would have
+started with no pages. `vscode:prepublish` copies them in, and the extension
+prefers a local `resources/` when it finds one — one source of truth, one copy
+made at packaging time, and nothing to decide at run time. Confirmed by packaging
+for real: the vsix now carries all three pages.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

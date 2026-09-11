@@ -2,9 +2,25 @@
   "name": "vertex-abap",
   "displayName": "ABAP VERTEX Tools",
   "description": "ABAP Version, Code and Data Explorer - the VERTEX pages under a VS Code host",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ysichov/VERTEX.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ysichov/VERTEX/issues"
+  },
+  "homepage": "https://github.com/ysichov/VERTEX",
+  "keywords": [
+    "abap",
+    "sap",
+    "adt",
+    "sql",
+    "pivot",
+    "code review"
+  ],
   "version": "0.2.0",
-  "publisher": "ysichov",
-  "private": true,
+  "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -46,7 +62,11 @@
           "markdownDescription": "The ABAP systems this extension can read. One of them is active at a time - see `vertex.active`, or the **VERTEX: Switch System** command.",
           "items": {
             "type": "object",
-            "required": ["name", "url", "user"],
+            "required": [
+              "name",
+              "url",
+              "user"
+            ],
             "properties": {
               "name": {
                 "type": "string",
@@ -79,5 +99,8 @@
         }
       }
     }
+  },
+  "scripts": {
+    "vscode:prepublish": "node ./copy-pages.js"
   }
 }

@@ -15,7 +15,14 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-const PAGES = path.join(__dirname, "..", "org.vertex.abap.ui", "resources");
+/* The pages are the Eclipse plugin's, and that is where they are read from in
+   a checkout. A vsix carries only this folder, so vscode:prepublish copies them
+   in and the packaged extension finds them here. One source of truth, one copy
+   made at packaging time, and no guessing at run time about which it is. */
+const PACKAGED = path.join(__dirname, "resources");
+const PAGES = fs.existsSync(PACKAGED)
+  ? PACKAGED
+  : path.join(__dirname, "..", "org.vertex.abap.ui", "resources");
 
 /** Passwords are filed per system: two systems are two users often enough. */
 function secretKey(system) {
@@ -103,17 +110,34 @@ const SERVICES = {
       }
       return p;
     },
-    // request, remote - a review compared against another system is a different
-    // review, so the other system belongs in the request.
+    // request, remote, part, ptype - a review compared against another system is
+    // a different review, so the other system belongs in the request. An empty
+    // part asks for the summary; a named one asks for that object's blocks.
     review: function (args) {
       let p = "/sap/bc/adt/zsde/review/" + upper(args[0]);
+      let lead = "?";
       if (args[1]) {
-        p += "?remote=" + encodeURIComponent(args[1]);
+        p += lead + "remote=" + encodeURIComponent(args[1]);
+        lead = "&";
+      }
+      if (args[2]) {
+        p += lead + "part=" + encodeURIComponent(args[2]);
+        p += "&ptype=" + encodeURIComponent(args[3] || "");
       }
       return p;
+    },
+    // request, remote, part, ptype, body - a write goes to the review's own
+    // path; what it does is in the body, and the answer is the part as it now
+    // stands.
+    act: function (args) {
+      return SERVICES.versions.review(args);
     }
   }
 };
+
+/* Calls that change something on the server, and which of their arguments is
+   the body. Everything not named here reads. */
+const WRITES = { act: 4 };
 
 function upper(value) {
   return encodeURIComponent(String(value || "").toUpperCase());
@@ -146,7 +170,9 @@ const SHIM = [
   "  window.sdeJoin = send('join');",
   "  window.sdeOpen = send('open');",
   "  window.sdeReview = send('review');",
+  "  window.sdeAct = send('act');",
   "  window.sdeTitle = send('title');",
+  "  window.sdeBrowse = send('browse');",
   "  window.sdeTake = function () {",
   "    const taken = pending;",
   "    pending = null;",
@@ -245,7 +271,8 @@ function withClient(system, requestPath) {
        + "sap-client=" + encodeURIComponent(system.client);
 }
 
-function request(system, pw, requestPath) {
+function request(system, pw, requestPath, extra) {
+  const settings = extra || {};
   return new Promise(function (resolve, reject) {
     let base;
     try {
@@ -256,15 +283,24 @@ function request(system, pw, requestPath) {
     }
 
     const secure = base.protocol === "https:";
+    const headers = {
+      Authorization: "Basic " + Buffer.from(system.user + ":" + pw).toString("base64"),
+      Accept: "application/json"
+    };
+    Object.keys(settings.headers || {}).forEach(function (name) {
+      headers[name] = settings.headers[name];
+    });
+    if (settings.body) {
+      headers["Content-Type"] = "application/json; charset=utf-8";
+      headers["Content-Length"] = Buffer.byteLength(settings.body, "utf8");
+    }
+
     const options = {
       hostname: base.hostname,
       port: base.port || (secure ? 443 : 80),
       path: requestPath,
-      method: "GET",
-      headers: {
-        Authorization: "Basic " + Buffer.from(system.user + ":" + pw).toString("base64"),
-        Accept: "application/json"
-      }
+      method: settings.method || "GET",
+      headers: headers
     };
     if (secure) {
       options.rejectUnauthorized = system.allowInsecureCertificate !== true;
@@ -279,8 +315,30 @@ function request(system, pw, requestPath) {
       });
     });
     req.on("error", reject);
+    if (settings.body) {
+      req.write(settings.body, "utf8");
+    }
     req.end();
   });
+}
+
+/* A write needs a CSRF token, and the token belongs to the session that was
+   given it - so the cookies of that response have to travel with it. Eclipse
+   never needed this: its ADT communication layer holds a destination and does
+   the same dance out of sight. */
+async function csrf(system, pw) {
+  const res = await request(system, pw, withClient(system, "/sap/bc/adt/discovery"), {
+    headers: { "x-csrf-token": "fetch" }
+  });
+  const token = res.headers["x-csrf-token"];
+  if (!token || token.toLowerCase() === "required") {
+    throw new Error("HTTP " + res.status + ": " + system.name
+                  + " did not hand out a CSRF token, so nothing was written.");
+  }
+  const cookies = (res.headers["set-cookie"] || [])
+    .map(function (one) { return one.split(";")[0]; })
+    .join("; ");
+  return { token: token, cookies: cookies };
 }
 
 /** ADT reports failures as XML; pull the human sentence out of it. */
@@ -303,8 +361,11 @@ function describeConnection(error) {
   return text;
 }
 
-/** Reads one resource and answers in the shape the page expects. */
-async function fetch(context, requestPath) {
+/**
+ * Reads one resource and answers in the shape the page expects. Given a BODY it
+ * writes instead, which needs a CSRF token first.
+ */
+async function fetch(context, requestPath, body) {
   const chosen = active();
   if (chosen.error) {
     return "ERROR:" + chosen.error;
@@ -320,9 +381,25 @@ async function fetch(context, requestPath) {
     return "ERROR:No password was entered, so the request was not sent.";
   }
 
+  let extra;
+  if (body) {
+    try {
+      const ticket = await csrf(system, pw);
+      extra = {
+        method: "POST",
+        body: body,
+        headers: { "x-csrf-token": ticket.token, Cookie: ticket.cookies }
+      };
+    } catch (e) {
+      // CSRF already says what went wrong in a sentence; a connection failure
+      // does not, and describeConnection is what turns one into words.
+      return "ERROR:" + (e && e.message ? e.message : describeConnection(e));
+    }
+  }
+
   let response;
   try {
-    response = await request(system, pw, withClient(system, requestPath));
+    response = await request(system, pw, withClient(system, requestPath), extra);
   } catch (e) {
     return "ERROR:" + describeConnection(e);
   }
@@ -333,6 +410,13 @@ async function fetch(context, requestPath) {
     await context.secrets.delete(secretKey(system));
     return "ERROR:HTTP 401: " + system.name + " rejected user " + system.user
          + ". The stored password has been discarded; loading again will ask for it.";
+  }
+  if (response.status === 404) {
+    // A resource that is not there is a setup state, not a failure: the
+    // extension is installed here and the ABAP half has never been put on the
+    // system. The page says what to install; it needs to be told which of the
+    // two this is.
+    return "ERROR:NOBACKEND:" + describeFailure(response.status, response.body);
   }
   if (response.status !== 200) {
     return "ERROR:" + describeFailure(response.status, response.body);
@@ -373,6 +457,13 @@ function open(context, service, initial, beside) {
         open(context, service, String(args[0] || ""), true);
         return;
       }
+      if (message.call === "browse") {
+        // Opening a link belongs to the window manager, not to the webview.
+        if (args[0]) {
+          vscode.env.openExternal(vscode.Uri.parse(String(args[0])));
+        }
+        return;
+      }
       if (message.call === "title") {
         // The page reports what it loaded, so a panel driven from its own input
         // bar does not keep the name it was opened with.
@@ -392,7 +483,14 @@ function open(context, service, initial, beside) {
         });
         return;
       }
-      panel.webview.postMessage({ type: "result", payload: await fetch(context, build(args)) });
+      // A writing call carries its body in one of its arguments; WRITES says
+      // which. Everything else reads.
+      const bodyAt = WRITES[message.call];
+      const body = bodyAt === undefined ? undefined : String(args[bodyAt] || "");
+      panel.webview.postMessage({
+        type: "result",
+        payload: await fetch(context, build(args), body)
+      });
     },
     undefined,
     context.subscriptions

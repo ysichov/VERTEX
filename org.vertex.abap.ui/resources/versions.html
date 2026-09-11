@@ -130,6 +130,11 @@
   .review .no { color: var(--del-mark); }
   .review .open { color: var(--muted); }
 
+  /* The band that starts a group. The colour sits on the cell, because the row
+     underneath it is striped and hovered like any other. */
+  tr.group td { background: var(--th-bg); font-weight: 600;
+                border-top: 1px solid var(--border); }
+
   tbody tr.pick { cursor: pointer; }
 
   .diffbar { padding: 5px 10px; background: var(--surface-2);
@@ -153,6 +158,58 @@
   table.diff tr.del { background: var(--del-bg); }
   table.diff tr.del td.mk { color: var(--del-mark); }
   table.diff tr.gap td { color: var(--faint); }
+
+  /* The action row of a block. Part of the diff table so that the block and
+     its lines cannot drift apart: one rendering, with a row added. */
+  table.diff tr.block td { background: var(--surface-2); color: var(--muted);
+                           padding: 4px 8px; white-space: normal;
+                           border-top: 1px solid var(--border); }
+  table.diff tr.block .who { color: var(--fg); font-weight: 600; }
+  table.diff tr.block .ok { color: var(--ins-mark); }
+  table.diff tr.block .no { color: var(--del-mark); }
+  table.diff tr.block .acts { float: right; display: flex; gap: 4px; }
+  table.diff tr.block button { padding: 1px 7px; font-size: 11px; }
+
+  /* The verdict and what was said about the block, each on its own line and
+     each naming who and when - the shape AVE shows under a block. */
+  table.diff tr.said td { background: var(--surface); white-space: normal;
+                          padding: 3px 8px 3px 24px; }
+  table.diff tr.said .who { color: var(--muted); }
+  /* A comment is written in a box and has to come back out of it the same
+     shape: line breaks and the indentation of a pasted snippet are part of
+     what was said, and NORMAL on the cell would fold the lot onto one line. */
+  table.diff tr.said .text { display: block; margin-top: 2px; padding: 4px 8px;
+                             border: 1px solid var(--line); font-style: italic;
+                             white-space: pre-wrap; overflow-wrap: anywhere; }
+  table.diff tr.said .text.no { background: var(--del-bg);
+                                border-color: var(--del-mark); }
+
+  table.diff tr.words td { background: var(--surface); padding: 5px 8px 5px 24px;
+                           white-space: normal; }
+  table.diff tr.words textarea { display: block; width: 70%; min-height: 48px;
+                                 font: inherit; padding: 3px 5px; resize: vertical;
+                                 color: var(--fg); background: var(--field-bg);
+                                 border: 1px solid var(--field-border); }
+  table.diff tr.words .row { margin-top: 4px; display: flex; gap: 6px; }
+  table.diff tr.words .hint { color: var(--muted); margin-left: auto;
+                              align-self: center; }
+  /* The setup page, and the short link that is always on the start screen.
+     A link is a span, not an anchor: a real one would navigate the view away
+     from the page it is on. */
+  .setup { padding: 12px; max-width: 640px; }
+  .setup h3 { margin: 0 0 8px; font-size: 13px; }
+  .setup p { margin: 0 0 8px; color: var(--muted); }
+  .setup ol { margin: 0 0 8px; padding-left: 20px; }
+  .setup li { margin-bottom: 4px; }
+  .setup pre.said { margin: 8px 0 0; padding: 8px; background: var(--surface);
+                    border: 1px solid var(--line); border-radius: 6px;
+                    white-space: pre-wrap; color: var(--muted);
+                    font-family: Consolas, monospace; }
+  .startlink { margin-top: 10px; color: var(--muted);
+               font-family: "Segoe UI", system-ui, sans-serif; }
+  .link { cursor: pointer; text-decoration: underline; }
+  .link.plain { cursor: text; text-decoration: none; user-select: text;
+                font-family: Consolas, monospace; }
 </style>
 </head>
 <body>
@@ -223,6 +280,18 @@ var came_from = null;
    A single object has only the first, so the cards appear with the scope. */
 var mode = "V";
 
+/* The last review summary, kept so that returning to it from one of its
+   objects costs nothing. The object opened out of it is kept beside it, for
+   the same reason the versions keep the part they belong to: the answer names
+   the part by its padded key, and a reader wants the name they clicked. */
+var review = null;
+var review_part = null;
+
+/* The stamp of the review this page is looking at. It goes back with every
+   write, so that a write onto a review somebody else has saved in the meantime
+   is refused instead of overwriting them. */
+var review_saved_at = "";
+
 function objectName() {
   return document.getElementById("name").value.trim().toUpperCase();
 }
@@ -257,9 +326,20 @@ function loadReview() {
     status("");
     return;
   }
+  review_part = null;
   status("reading the review of " + objectName() + " ...");
   note("Reading ...");
-  sdeReview(objectName());
+  sdeReview(objectName(), "", "", "");
+}
+
+/* One object of the review: its blocks and the lines they were cut from, both
+   as they were saved. Nothing is computed - a prepared review already holds
+   the diff, and it stores the operations rather than the rendering. */
+function loadReviewPart(object) {
+  review_part = object;
+  status("reading " + (object.display_name || object.obj_name) + " ...");
+  note("Reading ...");
+  sdeReview(objectName(), "", object.obj_name, object.objtype);
 }
 
 function renderCards() {
@@ -352,7 +432,14 @@ function sdeReady() {
   var raw = sdeTake();
   status("");
   if (typeof raw !== "string") { message("No response from the host."); return; }
-  if (raw.indexOf("ERROR:") === 0) { message(raw.substring(6)); return; }
+  if (raw.indexOf("ERROR:") === 0) {
+    var said = raw.substring(6);
+    // The host marks the one failure that is really a setup state.
+    if (said.indexOf("NOBACKEND:") === 0) { setupPage(said.substring(10)); }
+    else { message(said); }
+    status("");
+    return;
+  }
   var data;
   try {
     data = JSON.parse(raw);
@@ -360,8 +447,11 @@ function sdeReady() {
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
     return;
   }
-  // One page, four answers, each named by what it carries.
+  // One page, five answers, each named by what it carries. The blocks come
+  // before the operations: an object of a review carries both, and it is the
+  // blocks that make it one.
   if (data.parts) { renderPartList(data); }
+  else if (data.blocks) { renderReviewPart(data); }
   else if (data.ops) { renderDiff(data); }
   else if (data.reviewers) { renderReview(data); }
   else { renderVersions(data); }
@@ -522,15 +612,32 @@ function showMask(ops) {
 }
 
 /* Line numbers follow the new version, so a deleted line carries none - it is
-   not in the source you would open in the editor. */
-function diffTable(ops) {
+   not in the source you would open in the editor.
+
+   BLOCKS is the review's, and optional: a plain diff has none. Where one
+   begins, its row goes in ahead of the line. The diff is drawn by this one
+   function either way, so a block and its lines cannot drift apart. */
+function diffTable(ops, blocks) {
   var show = compact ? showMask(ops) : null;
   var tbody = document.createElement("tbody");
   var line = 0;
   var folded = false;
 
+  // OP_FROM counts from one, and a block the payload could not be placed
+  // against carries a zero - its row is drawn above the diff instead.
+  var opens = {};
+  (blocks || []).forEach(function (b) {
+    if (b.op_from > 0) { opens[b.op_from - 1] = b; }
+  });
+
   ops.forEach(function (o, index) {
     if (o.op !== "-") { line++; }
+
+    if (opens[index]) {
+      tbody.appendChild(blockRow(opens[index]));
+      saidRows(opens[index]).forEach(function (row) { tbody.appendChild(row); });
+      folded = false;
+    }
 
     if (show && !show[index]) {
       if (!folded) {
@@ -635,9 +742,291 @@ function renderDiff(data) {
   status(data.added + " added, " + data.deleted + " deleted");
 }
 
+/* What stands above the lines of a block: which block it is, how much it
+   changes, who wrote it, and the verdict it already carries. Read-only - the
+   review is written in AVE, and this page shows what was written. */
+function blockRow(b) {
+  var tr = document.createElement("tr");
+  tr.className = "block";
+  var td = document.createElement("td");
+  td.colSpan = 3;
+
+  var no = document.createElement("span");
+  no.className = "who";
+  no.textContent = "#" + b.hunk_no;
+  td.appendChild(no);
+
+  td.appendChild(document.createTextNode(
+    "  " + b.change_kind + ", " + b.change_count
+    + (b.change_count === 1 ? " line" : " lines")
+    + "  ·  line " + b.start_line
+    + "  ·  " + (b.author_name || b.author)));
+
+  var verdict = document.createElement("span");
+  if (b.action === "A") {
+    verdict.className = "ok";
+    verdict.textContent = "  ·  ✓ approved by " + (b.reviewer_name || b.reviewer);
+  } else if (b.action === "D") {
+    verdict.className = "no";
+    verdict.textContent = "  ·  ✗ declined by " + (b.reviewer_name || b.reviewer);
+  } else {
+    verdict.textContent = "  ·  open";
+  }
+  if (b.changed_at && b.action) {
+    verdict.textContent = verdict.textContent + "  ·  " + asStamp(b.changed_at);
+  }
+  td.appendChild(verdict);
+
+  // A host with no way to write shows the verdict and no buttons, rather than
+  // buttons that do nothing.
+  if (typeof sdeAct === "function") {
+    var acts = document.createElement("span");
+    acts.className = "acts";
+    if (b.action !== "A") { acts.appendChild(actButton(b, "A", "Approve")); }
+    if (b.action !== "D") { acts.appendChild(actButton(b, "D", "Decline")); }
+    acts.appendChild(actButton(b, "C", "Comment"));
+    if (b.action === "A" || b.action === "D") {
+      acts.appendChild(actButton(b, "U", "Undo"));
+    }
+    td.appendChild(acts);
+  }
+
+  tr.appendChild(td);
+  return tr;
+}
+
+/* What was said about a block: one row per message, each naming who and when,
+   with the words in a box of their own. A decline is coloured like one.
+   The note on the block is the last of these, so it is not repeated. */
+function saidRows(block) {
+  return (block.messages || []).map(function (m) {
+    var tr = document.createElement("tr");
+    tr.className = "said";
+    var td = document.createElement("td");
+    td.colSpan = 3;
+
+    var who = document.createElement("span");
+    who.className = "who";
+    who.textContent = (m.author_name || m.author) + "  ·  " + asStamp(m.created_at);
+    td.appendChild(who);
+
+    var text = document.createElement("span");
+    text.className = "text" + (m.is_decline === true || m.is_decline === "X" ? " no" : "");
+    text.textContent = m.text;
+    td.appendChild(text);
+
+    tr.appendChild(td);
+    return tr;
+  });
+}
+
+function actButton(block, action, label) {
+  var button = document.createElement("button");
+  button.textContent = label;
+  button.addEventListener("click", function () {
+    // A decline and a comment are the words that go with them, so they ask.
+    if (action === "D" || action === "C") { askWords(button, block, action); }
+    else { act(block, action, ""); }
+  });
+  return button;
+}
+
+/* The box that takes the words. Inline rather than a dialog, because the block
+   it is about has to stay on screen while they are written, and a box rather
+   than a line, because a review comment is a paragraph as often as not - which
+   is what the GUI opens an editor window for. */
+function askWords(button, block, action) {
+  var head = button.parentNode.parentNode.parentNode;
+  var open = head.parentNode.querySelector("tr.words");
+  if (open) {
+    open.parentNode.removeChild(open);
+    if (open.previousSibling === head) { return; }
+  }
+
+  var tr = document.createElement("tr");
+  tr.className = "words";
+  var td = document.createElement("td");
+  td.colSpan = 3;
+
+  var input = document.createElement("textarea");
+  input.placeholder = action === "D" ? "why this block is declined"
+                                     : "a comment on this block";
+  var row = document.createElement("div");
+  row.className = "row";
+
+  var save = document.createElement("button");
+  save.textContent = action === "D" ? "Decline" : "Comment";
+  var cancel = document.createElement("button");
+  cancel.textContent = "Cancel";
+  var hint = document.createElement("span");
+  hint.className = "hint";
+  hint.textContent = "Ctrl+Enter sends, Esc closes";
+
+  function send() {
+    if (!input.value.trim()) { return; }
+    act(block, action, input.value.trim());
+  }
+  function close() {
+    if (tr.parentNode) { tr.parentNode.removeChild(tr); }
+  }
+  save.addEventListener("click", send);
+  cancel.addEventListener("click", close);
+  input.addEventListener("keydown", function (e) {
+    // Enter is a new line here, so sending needs the modifier.
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { send(); }
+    if (e.key === "Escape") { close(); }
+  });
+
+  row.appendChild(save);
+  row.appendChild(cancel);
+  row.appendChild(hint);
+  td.appendChild(input);
+  td.appendChild(row);
+  tr.appendChild(td);
+
+  // Under the block and under whatever has already been said about it.
+  var at = head.nextSibling;
+  while (at && at.className === "said") { at = at.nextSibling; }
+  head.parentNode.insertBefore(tr, at);
+  input.focus();
+}
+
+/* SAVED_AT is the stamp this page last read. The resource refuses a write built
+   on a state that has since moved, and it is refused rather than merged: a save
+   writes the whole review, and a merge nobody asked for is how approvals get
+   lost. */
+function act(block, action, note) {
+  status("writing ...");
+  sdeAct(objectName(), "", review_part.obj_name, review_part.objtype,
+         JSON.stringify({ hunk_key: block.hunk_key, action: action,
+                          note: note, saved_at: review_saved_at }));
+}
+
+/* ---------- one object of the review ---------- */
+
+function renderReviewPart(data) {
+  var ops = data.ops || [];
+  var blocks = data.blocks || [];
+  review_saved_at = data.saved_at || "";
+  var label = review_part ? (review_part.display_name || review_part.obj_name)
+                          : data.part;
+
+  if (data.saved !== true) {
+    note("No review saved for " + data.request + ".");
+    status("");
+    return;
+  }
+
+  var root = document.getElementById("root");
+  root.className = "";
+  root.innerHTML = "";
+
+  var bar = document.createElement("div");
+  bar.className = "diffbar";
+
+  var back = document.createElement("span");
+  back.className = "back";
+  back.textContent = "← Review";
+  back.addEventListener("click", function () {
+    review_part = null;
+    // The summary is already in hand; asking for it again would only cost a
+    // round trip to be told the same thing.
+    if (review) { renderReview(review); } else { loadReview(); }
+  });
+  bar.appendChild(back);
+
+  var what = document.createElement("span");
+  what.textContent = label + "   "
+                   + (data.versno_old ? asVersion(data.versno_old) : "nothing")
+                   + " → " + asVersion(data.versno_new);
+  bar.appendChild(what);
+
+  var counts = document.createElement("span");
+  counts.className = "counts";
+  var ins = document.createElement("span");
+  ins.className = "ins";
+  ins.textContent = "+" + data.added;
+  var del = document.createElement("span");
+  del.className = "del";
+  del.textContent = "−" + data.deleted;
+  counts.appendChild(ins);
+  counts.appendChild(document.createTextNode(" "));
+  counts.appendChild(del);
+  bar.appendChild(counts);
+
+  var toggle = document.createElement("button");
+  toggle.textContent = compact ? "Full" : "Compact";
+  toggle.title = compact ? "Show the whole source"
+                         : "Show only the changes and three lines around them";
+  toggle.addEventListener("click", function () {
+    compact = !compact;
+    renderReviewPart(data);
+  });
+  bar.appendChild(toggle);
+
+  root.appendChild(bar);
+
+  if (data.ddic === true) {
+    // A dictionary object has no line diff. AVE reviews it as a table of
+    // fields and keeps that page ready-made, because there is nothing left to
+    // rebuild it from. VERTEX does not render it, and says so.
+    var ddic = document.createElement("div");
+    ddic.className = "note";
+    ddic.textContent = "This is a dictionary object. Its review is a table of"
+                     + " fields rather than a line diff, and VERTEX does not"
+                     + " render that page yet.";
+    root.appendChild(ddic);
+    status("");
+    return;
+  }
+
+  if (ops.length === 0) {
+    var same = document.createElement("div");
+    same.className = "note";
+    same.textContent = "The saved review holds no diff for this object.";
+    root.appendChild(same);
+    status("");
+    return;
+  }
+
+  // A block the operations could not be placed against still has to be seen,
+  // with its verdict, rather than quietly disappear.
+  var loose = blocks.filter(function (b) { return !(b.op_from > 0); });
+  if (loose.length > 0) {
+    var orphans = document.createElement("table");
+    orphans.className = "diff";
+    var tbody = document.createElement("tbody");
+    var head = document.createElement("tr");
+    head.className = "gap";
+    var td = document.createElement("td");
+    td.colSpan = 3;
+    td.textContent = loose.length + (loose.length === 1 ? " block is" : " blocks are")
+                   + " not in the saved diff of this object.";
+    head.appendChild(td);
+    tbody.appendChild(head);
+    loose.forEach(function (b) {
+      tbody.appendChild(blockRow(b));
+      saidRows(b).forEach(function (row) { tbody.appendChild(row); });
+    });
+    orphans.appendChild(tbody);
+    root.appendChild(orphans);
+  }
+
+  root.appendChild(diffTable(ops, blocks));
+
+  var approved = blocks.filter(function (b) { return b.action === "A"; }).length;
+  var declined = blocks.filter(function (b) { return b.action === "D"; }).length;
+  status(blocks.length + (blocks.length === 1 ? " block, " : " blocks, ")
+         + approved + " approved, " + declined + " declined, "
+         + (blocks.length - approved - declined) + " open");
+}
+
 /* ---------- the saved review ---------- */
 
 function renderReview(data) {
+  review = data;
+  review_part = null;
+  review_saved_at = data.saved_at || "";
   var root = document.getElementById("root");
   root.className = "review";
   root.innerHTML = "";
@@ -689,7 +1078,11 @@ function asStamp(value) {
   return asDate(digits.substring(0, 8)) + " " + asTime(digits.substring(8, 14));
 }
 
-function table(columns, rows, cells) {
+/* GROUPOF is optional and names the group a row belongs to. A heading goes in
+   wherever that name changes, which is why the rows arrive already in the
+   order AVE puts them in - the page breaks the groups, it does not find
+   them. */
+function table(columns, rows, cells, groupOf) {
   var head = document.createElement("tr");
   columns.forEach(function (c) {
     var th = document.createElement("th");
@@ -700,7 +1093,18 @@ function table(columns, rows, cells) {
   thead.appendChild(head);
 
   var tbody = document.createElement("tbody");
+  var group = null;
   rows.forEach(function (r) {
+    if (groupOf && groupOf(r) !== group) {
+      group = groupOf(r);
+      var band = document.createElement("tr");
+      band.className = "group";
+      var td = document.createElement("td");
+      td.colSpan = columns.length;
+      td.textContent = group;
+      band.appendChild(td);
+      tbody.appendChild(band);
+    }
     var tr = document.createElement("tr");
     cells(tr, r);
     tbody.appendChild(tr);
@@ -723,6 +1127,9 @@ function count(tr, value, cls) {
 function objectTable(objects) {
   return table(["Object", "Type", "Author", "Blocks", "+", "-", "~", "Approved", "Declined", "Open"],
     objects, function (tr, o) {
+      tr.className = "pick";
+      tr.title = "Show the changed blocks of " + (o.display_name || o.obj_name);
+      tr.addEventListener("click", function () { loadReviewPart(o); });
       cell(tr, o.display_name || o.obj_name);
       cell(tr, o.objtype, "mono");
       cell(tr, o.author_name || o.author);
@@ -733,6 +1140,12 @@ function objectTable(objects) {
       count(tr, o.approved, "ok");
       count(tr, o.declined, "no");
       count(tr, o.open, "open");
+    },
+    // A method's name is only a name inside its class, and a section is called
+    // "Public section" in every one of them. Ungrouped, the column reads as a
+    // heap of repeats.
+    function (o) {
+      return o.class_name ? "Class: " + o.class_name : o.group;
     });
 }
 
@@ -758,6 +1171,112 @@ function historyTable(history) {
     });
 }
 
+
+/* ---------- when the ABAP half is not there ----------
+
+   This page is half of VERTEX. The other half is ABAP, and a plugin installed
+   without it reaches a path nothing answers. That is a setup state, not a
+   failure: nothing is broken, the backend has simply never been put there. So
+   it gets a page saying what to install, the way AVE answers a missing table
+   with a setup page of its own rather than an error.
+
+   The host says which of the two it is, because only the host saw the status
+   code. Anything else - a system that is down, a password refused - is a
+   failure and stays one.
+
+   BACKEND is what THIS window reads, and it differs per window: the resources
+   are one repository, and the tool a window reaches into through them is
+   another. Naming only the first would send somebody who is missing the second
+   to install what they already have. */
+
+var BACKEND = [
+  { name: "Simple-Data-Explorer",
+    url: "https://github.com/ysichov/Simple-Data-Explorer",
+    why: "the ADT resources every VERTEX window reads" },
+  { name: "AVE",
+    url: "https://github.com/ysichov/AVE",
+    why: "the version history, the diff and the saved review" }
+];
+
+/* Opening a link is the host's business: in Eclipse it would otherwise
+   navigate the view away from this page, and a webview cannot open one at
+   all. A host that offers nothing leaves the address to be copied. */
+function projectLink(text, url) {
+  var link = document.createElement("span");
+  link.className = "link";
+  if (typeof sdeBrowse === "function") {
+    link.textContent = text || url;
+    link.title = url;
+    link.addEventListener("click", function () { sdeBrowse(url); });
+  } else {
+    link.className = "link plain";
+    link.textContent = url;
+    link.title = "Copy this address into a browser";
+  }
+  return link;
+}
+
+/* The short link, on the start screen, always. Somebody who has just installed
+   the plugin and typed nothing yet is exactly who needs to know where the
+   other half of it lives. */
+function startLink() {
+  var line = document.createElement("div");
+  line.className = "startlink";
+  line.appendChild(document.createTextNode("This window reads ABAP from "));
+  BACKEND.forEach(function (one, i) {
+    if (i > 0) {
+      line.appendChild(document.createTextNode(i + 1 === BACKEND.length ? " and " : ", "));
+    }
+    line.appendChild(projectLink(one.name, one.url));
+  });
+  document.getElementById("root").appendChild(line);
+}
+
+function setupPage(detail) {
+  var root = document.getElementById("root");
+  root.className = "setup";
+  root.innerHTML = "";
+
+  var head = document.createElement("h3");
+  head.textContent = "The ABAP half is not on this system";
+  root.appendChild(head);
+
+  var why = document.createElement("p");
+  why.textContent = "VERTEX is a page and a set of ADT resources. The page is"
+                  + " installed here; the resources answer nothing, so there is"
+                  + " nothing for it to read.";
+  root.appendChild(why);
+
+  var what = document.createElement("ul");
+  BACKEND.forEach(function (one) {
+    var li = document.createElement("li");
+    li.appendChild(projectLink(one.name, one.url));
+    li.appendChild(document.createTextNode(" - " + one.why));
+    what.appendChild(li);
+  });
+  root.appendChild(what);
+
+  var steps = document.createElement("ol");
+  ["Pull each of those with abapGit and activate it.",
+   "Activate ZCL_SDE_ADT_RES_APP with the rest of the resources.",
+   "Register the BAdI implementation ZSDE_ADT_RES_APP on"
+     + " BADI_ADT_REST_RFC_APPLICATION, with the filter STATIC_URI_PATH"
+     + " covering /sap/bc/adt/zsde/* .",
+   "Reopen this window."].forEach(function (step) {
+    var li = document.createElement("li");
+    li.textContent = step;
+    steps.appendChild(li);
+  });
+  root.appendChild(steps);
+
+  if (detail) {
+    var said = document.createElement("pre");
+    said.className = "said";
+    said.textContent = detail;
+    root.appendChild(said);
+  }
+}
+
 /* ---------- wiring ---------- */
 
 document.getElementById("load").addEventListener("click", function () { loadParts(false); });
@@ -774,6 +1293,7 @@ if (INITIAL) {
   window.addEventListener("load", function () { loadParts(false); });
 } else {
   message("Type an object name and press Load.");
+  startLink();
 }
 </script>
 </body>
