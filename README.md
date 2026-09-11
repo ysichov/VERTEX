@@ -118,54 +118,8 @@ no object tree here to right-click, so each page opens empty and its own name fi
 
 ## Talking to ADT
 
-This is the part with no public documentation, so it is written down here.
-
-```java
-IAbapProjectService svc = AdtProjectServiceFactory.createProjectService();
-IProject project = svc.getAvailableAbapProjects()[0];
-String destinationId = project.getAdapter(IAdtCoreProject.class).getDestinationId();
-
-IRestResource r = AdtRestResourceFactory.createRestResourceFactory()
-        .createResourceWithStatelessSession(URI.create("/sap/bc/adt/zsde/table/T001?rows=100"),
-                                            destinationId);
-r.addContentHandler(new JsonContentHandler());
-String json = r.get(new NullProgressMonitor(), String.class);
-```
-
-Points that cost time:
-
-- The URI is **relative to the system root**. The destination supplies host and port.
-- A content handler must be supplied. ADT has `PlainTextContentHandler`, but its package is
-  internal and not exported, so `JsonContentHandler` here implements `IContentHandler<String>`
-  instead — four methods, of which only `deserialize` does anything.
-- Declaring `application/json` matches a response sent as `application/json;charset=utf-8`.
-  ADT compares media types without their parameters.
-- `Require-Bundle` needs `com.sap.adt.communication`, `com.sap.adt.project` and
-  `com.sap.adt.tools.core.base`.
-- These packages are exported with `x-friends` naming only SAP's own bundles, so the compiler
-  reports **Discouraged access**. That is a warning, not an error, and abapGit's ADT_Frontend
-  depends on them the same way.
-
-### Reading the API off the bundles
-
-Web search returns nothing usable for these classes. Read the signatures from the jars instead —
-they are on disk in the p2 pool, and the JRE Eclipse runs on ships `javap`:
-
-```
-ls  ~/.p2/pool/plugins/ | grep com.sap.adt
-unzip -l  <bundle>.jar                       # classes
-unzip -p  <bundle>.jar META-INF/MANIFEST.MF  # what it exports
-~/.p2/pool/plugins/org.eclipse.justj.openjdk.*/jre/bin/javap.exe -classpath <bundle>.jar <fqcn>
-```
-
-Use that `javap` and not one from an older JDK on the PATH, which cannot read these class files.
-
-The same JRE also ships `javac`, and the pool works as a classpath wildcard, so the plugin can
-be compile-checked without starting Eclipse:
-
-```
-javac -nowarn -proc:none -classpath "~/.p2/pool/plugins/*" -d /tmp/out org.vertex.abap.ui/src/org/vertex/abap/ui/*.java
-```
+Reading and writing an ADT resource from Java, the WebView2 callback deadlock, and how to read
+signatures off the bundles when web search has nothing: [ADT_TECH.md](ADT_TECH.md).
 
 ## Layout
 
