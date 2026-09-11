@@ -758,6 +758,41 @@ the tooling rule: a file with escapes in it is written with the editor, not with
 
 ---
 
+## Stage 16 — the review, read first
+
+Approve, decline and comment are the last thing AVE has that VERTEX does not, and they are also
+the first thing that would write. So the stage was split at that line: read the saved review now,
+decide about writing separately.
+
+**Where it lives was the design question.** A review is a different activity from browsing
+versions - its own state, its own persistence, its own navigation - which argues for a service of
+its own. What decided it the other way was the entry point: you review *this transport*, and the
+transport is already on screen. A separate command would have opened empty, asked for the request
+again, and loaded the same scope the versions view had just loaded.
+
+So it is a card, beside Versions, exactly as Join and Pivot are cards inside SelecTor. The project
+now has one idiom for "same scope, another question" instead of two. The card only appears for a
+transport or a package, because in AVE the unit of work is the request and a review of one object
+is not a thing.
+
+And a card rather than a hidden mode for a second reason: that boundary is where writing will
+start. Everything until now only reads. A person should be able to see when they are in the thing
+that saves.
+
+**A fifth resource rather than a fifth branch.** The versions resource answers three questions on
+one path by which parameters arrived - parts, versions, diff - and a fourth condition would have
+meant reading the whole method to know which of them you get.
+
+**Not written, and the page says so.** With no approve button there is nothing to press, which is
+the honest state: AVE prepares a review and this reads it. An approve button that only looked like
+one would be worse than none.
+
+Two answers that are not errors and had to be said as such: a system with no `ZAVE_REVIEW` table,
+and a request with no review saved. AVE answers the first with a setup page rather than a failure,
+for the good reason that nothing is broken - a review has simply never had anywhere to go.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

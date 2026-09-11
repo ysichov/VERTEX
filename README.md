@@ -8,7 +8,7 @@ renders as HTML.
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | McCabe, Halstead and the maintainability index per unit |
-| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport, a package or one object; its parts, their versions and the diff between two of them. No blame, no review yet |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport, a package or one object; its parts, their versions, the diff between two of them, and the review AVE saved for a request. Read-only; no blame |
 
 Status: **early**. All three answer, and each is a fraction of what its backend can do.
 
@@ -25,6 +25,7 @@ Eclipse plugin (Java)  ──ADT session──>  /sap/bc/adt/zsde/table/{name}  
                                          /sap/bc/adt/zsde/metrics/{name}
                                          /sap/bc/adt/zsde/versions/{name}
                                          /sap/bc/adt/zsde/join/{name}
+                                         /sap/bc/adt/zsde/review/{name}
         │
         └── hands the JSON to the page for that service, which renders it
 ```
@@ -198,6 +199,7 @@ user operates lives in the page, which is what lets the same page run under the 
   stage 12 of `dev_history.md` for why neither was copied wholesale.
 - Blame, and the review workflow on top of the diff — approve, decline, comment, saved per
   transport request.
-- The review itself: approve, decline, comment, saved per transport request. The scope it needs
-  now exists; what it still needs is a write path, which nothing in VERTEX has yet.
+- Approving, declining and commenting. The saved review can be read; changing it is the first
+  thing here that would write to the system, which brings a POST, its CSRF token, and the rule
+  that a green tick over a failed save is the silent success this project keeps refusing.
 - The metrics of a whole package, which needs the same treatment the transport just got.
