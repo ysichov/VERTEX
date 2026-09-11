@@ -276,7 +276,7 @@ found by reading the bundles:
   through `IAbapRepositoryBaseNode`.
 
 The project matters because it decides which system answers. Two windows opened from two projects
-showed `ALC` and `E19` side by side — which is the point.
+showed `A4H` and `EXX` side by side — which is the point.
 
 Per-instance state travels in the view's **secondary id**, because that is the only thing Eclipse
 restores when it recreates views after a restart.
