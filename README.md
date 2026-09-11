@@ -21,68 +21,6 @@ every page runs under the VS Code extension in `vscode/` as well — the same fi
 folder. And since SAP GUI 8.0 draws on the same WebView2 engine as both editors, one day inside
 SAP GUI too.
 
-## How it fits together
-
-```
-Eclipse plugin (Java)  ──ADT session──>  /sap/bc/adt/zsde/table/{name}     ──>  JSON
-                                         /sap/bc/adt/zsde/metrics/{name}
-                                         /sap/bc/adt/zsde/versions/{name}
-                                         /sap/bc/adt/zsde/join/{name}
-                                         /sap/bc/adt/zsde/review/{name}
-        │
-        └── hands the JSON to the page for that service, which renders it
-```
-
-Every service registers under the one `/zsde/` prefix, because that prefix is where the ADT node
-is claimed and not the identity of the service: a second one would mean a second BAdI
-implementation and a second filter to get wrong.
-
-The page receives finished JSON from the host and knows nothing about SAP. That is what makes the
-second host possible: `vscode/extension.js` reads the very same files out of `resources/` and
-answers them over plain HTTPS, and the markup, grids and filters are not written twice.
-
-The ABAP side lives in the [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer)
-repository — one class per service, the application class `ZCL_SDE_ADT_RES_APP` and the BAdI
-registration `ZSDE_ADT_RES_APP`. Its setup, and the traps in registering a custom ADT resource,
-are documented in `ADT.md` there. Install that first; without it every request returns 404 — and
-a window that gets one opens on a setup page naming what to install, with links, rather than a red
-error, because nothing is broken there.
-
-Each service also needs its own backend in the same system, because the computing is theirs:
-metrics need [ACE](https://github.com/ysichov/ACE), versions need
-[AVE](https://github.com/ysichov/AVE). Without one, that resource does not activate.
-
-## Prerequisites
-
-- Eclipse with **ABAP Development Tools** from https://tools.hana.ondemand.com/#abap
-- **Eclipse Plug-in Development Environment (PDE)**. The "for Java Developers" package does not
-  include it: Help → Install New Software → the release update site → General Purpose Tools →
-  Eclipse Plug-in Development Environment. The "for RCP and RAP Developers" package has it
-  already.
-- No separate ADT SDK exists and none is needed. The installed ADT bundles are what the plugin
-  compiles against, and PDE uses the running Eclipse as its target platform by default.
-- No JDK install either — Eclipse runs on its own bundled JustJ JRE, named by `-vm` in
-  `eclipse.ini`. Whatever `java -version` reports on the PATH is irrelevant.
-
-## Running it
-
-1. File → Import → General → Existing Projects into Workspace, root directory this repository.
-2. Right-click `org.vertex.abap.ui` → Run As → Eclipse Application. A second Eclipse starts
-   with the plugin loaded; that is how plugins are tested, and it is not how the finished plugin
-   will be used.
-3. In that second Eclipse, create an ABAP project (ABAP perspective → File → New → ABAP Project).
-   The plugin takes its session from there, so without a project the view says so and stops.
-   The runtime workspace persists, so this is a one-time step.
-4. Window → Show View → Other… → **VERTEX**, and pick a service. Each view carries an object
-   type and a name field: type a name, press Enter, and keep using the same window for the next
-   object.
-   Right-click an object in the Project Explorer → **VERTEX** → **SelecTor**, **Metrics** or
-   **Versions** does the same with the fields prefilled, and the window then inherits the system
-   that object lives in — so two objects from two projects open side by side against two systems.
-   Opened with nothing selected, a view asks which ABAP project to read from.
-
-Reopening the SelecTor view re-runs the request; there is no refresh button yet. Metrics and
-Versions have a Load button of their own.
 
 ### In VS Code
 
