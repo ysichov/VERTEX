@@ -119,6 +119,17 @@
              color: var(--danger); }
   .note { padding: 12px; color: var(--muted); }
 
+  .cards { padding: 6px 10px; background: var(--surface-2);
+           border-bottom: 1px solid var(--line); display: flex; gap: 6px; }
+  .cards button.on { background: var(--selected); font-weight: 600; }
+
+  .review { padding: 10px; }
+  .review h3 { margin: 14px 0 4px; font-size: 12px; }
+  .review h3:first-child { margin-top: 0; }
+  .review .ok { color: var(--ins-mark); }
+  .review .no { color: var(--del-mark); }
+  .review .open { color: var(--muted); }
+
   tbody tr.pick { cursor: pointer; }
 
   .diffbar { padding: 5px 10px; background: var(--surface-2);
@@ -153,6 +164,7 @@
     <button id="load">Load</button>
     <span class="status" id="status"></span>
   </div>
+  <div class="cards" id="cards"></div>
   <div class="panes">
     <aside class="parts">
       <div class="parts-head">Parts</div>
@@ -207,6 +219,10 @@ var TYPES = [["TR", "Transport request"], ["DEVC", "Package"],
 var scope = false;
 var came_from = null;
 
+/* Versions or Review, the two questions to ask of the same transport request.
+   A single object has only the first, so the cards appear with the scope. */
+var mode = "V";
+
 function objectName() {
   return document.getElementById("name").value.trim().toUpperCase();
 }
@@ -230,6 +246,32 @@ function loadParts(keepTrail) {
   renderParts();
   status("reading " + name + " ...");
   sdeLoad(name, objectType(), "", "", "", "");
+}
+
+function loadReview() {
+  status("reading the review of " + objectName() + " ...");
+  note("Reading ...");
+  sdeReview(objectName());
+}
+
+function renderCards() {
+  var box = document.getElementById("cards");
+  box.innerHTML = "";
+  // Only a scope has a review: in AVE the unit of work is the request, and a
+  // review of one object is not a thing.
+  if (!scope) { return; }
+
+  [["V", "Versions"], ["R", "Review"]].forEach(function (m) {
+    var button = document.createElement("button");
+    button.textContent = m[1];
+    if (mode === m[0]) { button.className = "on"; }
+    button.addEventListener("click", function () {
+      mode = m[0];
+      renderCards();
+      if (mode === "R") { loadReview(); } else { loadParts(true); }
+    });
+    box.appendChild(button);
+  });
 }
 
 function loadVersions(part) {
@@ -310,9 +352,10 @@ function sdeReady() {
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
     return;
   }
-  // One page, three answers, each named by what it carries.
+  // One page, four answers, each named by what it carries.
   if (data.parts) { renderPartList(data); }
   else if (data.ops) { renderDiff(data); }
+  else if (data.reviewers) { renderReview(data); }
   else { renderVersions(data); }
 }
 
@@ -321,6 +364,8 @@ function sdeReady() {
 function renderPartList(data) {
   parts = data.parts || [];
   scope = data.scope === true;
+  if (!scope) { mode = "V"; }
+  renderCards();
   renderParts();
   // Optional on purpose: a host with no tab to rename simply does not define
   // it, and the VS Code shim is exactly that host today.
@@ -580,6 +625,129 @@ function renderDiff(data) {
 
   root.appendChild(diffTable(ops));
   status(data.added + " added, " + data.deleted + " deleted");
+}
+
+/* ---------- the saved review ---------- */
+
+function renderReview(data) {
+  var root = document.getElementById("root");
+  root.className = "review";
+  root.innerHTML = "";
+
+  if (data.table !== true) {
+    // Not an error: AVE answers this with a setup page rather than a failure,
+    // because nothing is broken - there is nowhere for a review to have been
+    // saved yet.
+    note("This system has no ZAVE_REVIEW table, so no review can have been saved."
+       + " AVE's own documentation says how to create it.");
+    status("");
+    return;
+  }
+  if (data.saved !== true) {
+    note("No review saved for " + data.request + "."
+       + " AVE prepares one; this page only reads it.");
+    status("");
+    return;
+  }
+
+  root.appendChild(heading("Saved " + asStamp(data.saved_at) + " by " + data.saved_by));
+  root.appendChild(section("Objects", objectTable(data.objects || [])));
+  root.appendChild(section("Reviewers", reviewerTable(data.reviewers || [])));
+  if (data.history && data.history.length > 0) {
+    root.appendChild(section("Saves", historyTable(data.history)));
+  }
+
+  var open = (data.objects || []).reduce(function (n, o) { return n + o.open; }, 0);
+  status(open === 0 ? "nothing open" : open + (open === 1 ? " block open" : " blocks open"));
+}
+
+function heading(text) {
+  var h = document.createElement("h3");
+  h.textContent = text;
+  return h;
+}
+
+function section(title, body) {
+  var box = document.createElement("div");
+  box.appendChild(heading(title));
+  box.appendChild(body);
+  return box;
+}
+
+/* A timestamp arrives as the dictionary holds it, digits and a fraction. */
+function asStamp(value) {
+  var digits = String(value || "").split(".")[0];
+  if (digits.length < 14) { return digits; }
+  return asDate(digits.substring(0, 8)) + " " + asTime(digits.substring(8, 14));
+}
+
+function table(columns, rows, cells) {
+  var head = document.createElement("tr");
+  columns.forEach(function (c) {
+    var th = document.createElement("th");
+    th.textContent = c;
+    head.appendChild(th);
+  });
+  var thead = document.createElement("thead");
+  thead.appendChild(head);
+
+  var tbody = document.createElement("tbody");
+  rows.forEach(function (r) {
+    var tr = document.createElement("tr");
+    cells(tr, r);
+    tbody.appendChild(tr);
+  });
+
+  var t = document.createElement("table");
+  t.appendChild(thead);
+  t.appendChild(tbody);
+  return t;
+}
+
+function count(tr, value, cls) {
+  var td = document.createElement("td");
+  td.className = "num" + (value && cls ? " " + cls : "");
+  td.textContent = value ? String(value) : "";
+  tr.appendChild(td);
+  return td;
+}
+
+function objectTable(objects) {
+  return table(["Object", "Type", "Author", "Blocks", "+", "-", "~", "Approved", "Declined", "Open"],
+    objects, function (tr, o) {
+      cell(tr, o.display_name || o.obj_name);
+      cell(tr, o.objtype, "mono");
+      cell(tr, o.author_name || o.author);
+      count(tr, o.hunks);
+      count(tr, o.inserted);
+      count(tr, o.deleted);
+      count(tr, o.modified);
+      count(tr, o.approved, "ok");
+      count(tr, o.declined, "no");
+      count(tr, o.open, "open");
+    });
+}
+
+function reviewerTable(reviewers) {
+  return table(["Reviewer", "Approved", "Declined", "Notes", "Last saved"],
+    reviewers, function (tr, r) {
+      cell(tr, r.reviewer_name || r.reviewer);
+      count(tr, r.approved, "ok");
+      count(tr, r.declined, "no");
+      count(tr, r.notes);
+      cell(tr, asStamp(r.saved_at), "mono");
+    });
+}
+
+function historyTable(history) {
+  return table(["When", "Who", "Approved", "Declined", "Notes"],
+    history, function (tr, h) {
+      cell(tr, asStamp(h.saved_at), "mono");
+      cell(tr, h.saved_by_name || h.saved_by);
+      count(tr, h.approved, "ok");
+      count(tr, h.declined, "no");
+      count(tr, h.notes);
+    });
 }
 
 /* ---------- wiring ---------- */

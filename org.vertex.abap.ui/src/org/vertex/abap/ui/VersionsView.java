@@ -56,6 +56,32 @@ public class VersionsView extends PageView {
 				return null;
 			}
 		};
+
+
+		// The saved review of a transport request: a different question about the
+		// same scope, so a function of its own rather than a flag on sdeLoad.
+		new BrowserFunction(this.browser, "sdeReview") {
+			@Override
+			public Object function(Object[] arguments) {
+				final String request = text(arguments, 0);
+				final String remote = text(arguments, 1);
+				queue(() -> read(reviewPath(request, remote)));
+				return null;
+			}
+		};
+	}
+
+	/**
+	 * @param remote the other development system a review was run against; a
+	 *               review compared with one is a different review, and its
+	 *               approvals are not the ones of the plain review
+	 */
+	private static String reviewPath(String request, String remote) {
+		String path = "/sap/bc/adt/zsde/review/" + request.toUpperCase();
+		if (!remote.isEmpty()) {
+			path = path + "?remote=" + escape(remote);
+		}
+		return path;
 	}
 
 	@Override
