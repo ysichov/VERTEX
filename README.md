@@ -104,9 +104,9 @@ systems are a list and one of them is active:
 "vertex.systems": [
   { "name": "A4H", "url": "https://host:44300", "client": "001", "user": "SYCHOV",
     "allowInsecureCertificate": true },
-  { "name": "E19", "url": "http://host:8000", "client": "100", "user": "YSYCHOV" }
+  { "name": "EXX", "url": "http://host:8XXX", "client": "100", "user": "YSYCHOV" }
 ],
-"vertex.active": "E19"
+"vertex.active": "A4H"
 ```
 
 The url is the ICM port, not the one SAP GUI connects to. An empty `vertex.active` means the
