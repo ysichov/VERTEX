@@ -102,6 +102,23 @@
   tbody tr:hover { background: var(--hover); }
   .message { padding: 12px; white-space: pre-wrap; font-family: Consolas, monospace;
              color: var(--danger); }
+  /* The setup page, and the short link that is always on the start screen.
+     A link is a span, not an anchor: a real one would navigate the view away
+     from the page it is on. */
+  .setup { padding: 12px; max-width: 640px; }
+  .setup h3 { margin: 0 0 8px; font-size: 13px; }
+  .setup p { margin: 0 0 8px; color: var(--muted); }
+  .setup ol { margin: 0 0 8px; padding-left: 20px; }
+  .setup li { margin-bottom: 4px; }
+  .setup pre.said { margin: 8px 0 0; padding: 8px; background: var(--surface);
+                    border: 1px solid var(--line); border-radius: 6px;
+                    white-space: pre-wrap; color: var(--muted);
+                    font-family: Consolas, monospace; }
+  .startlink { margin-top: 10px; color: var(--muted);
+               font-family: "Segoe UI", system-ui, sans-serif; }
+  .link { cursor: pointer; text-decoration: underline; }
+  .link.plain { cursor: text; text-decoration: none; user-select: text;
+                font-family: Consolas, monospace; }
 </style>
 </head>
 <body>
@@ -206,7 +223,14 @@ function sdeReady() {
   var raw = sdeTake();
   status("");
   if (typeof raw !== "string") { message("No response from the host."); return; }
-  if (raw.indexOf("ERROR:") === 0) { message(raw.substring(6)); return; }
+  if (raw.indexOf("ERROR:") === 0) {
+    var said = raw.substring(6);
+    // The host marks the one failure that is really a setup state.
+    if (said.indexOf("NOBACKEND:") === 0) { setupPage(said.substring(10)); }
+    else { message(said); }
+    status("");
+    return;
+  }
   var data;
   try {
     data = JSON.parse(raw);
@@ -317,6 +341,112 @@ function render(data) {
   status(units.length + (units.length === 1 ? " unit" : " units"));
 }
 
+
+/* ---------- when the ABAP half is not there ----------
+
+   This page is half of VERTEX. The other half is ABAP, and a plugin installed
+   without it reaches a path nothing answers. That is a setup state, not a
+   failure: nothing is broken, the backend has simply never been put there. So
+   it gets a page saying what to install, the way AVE answers a missing table
+   with a setup page of its own rather than an error.
+
+   The host says which of the two it is, because only the host saw the status
+   code. Anything else - a system that is down, a password refused - is a
+   failure and stays one.
+
+   BACKEND is what THIS window reads, and it differs per window: the resources
+   are one repository, and the tool a window reaches into through them is
+   another. Naming only the first would send somebody who is missing the second
+   to install what they already have. */
+
+var BACKEND = [
+  { name: "Simple-Data-Explorer",
+    url: "https://github.com/ysichov/Simple-Data-Explorer",
+    why: "the ADT resources every VERTEX window reads" },
+  { name: "ACE",
+    url: "https://github.com/ysichov/ACE",
+    why: "the metrics this window shows" }
+];
+
+/* Opening a link is the host's business: in Eclipse it would otherwise
+   navigate the view away from this page, and a webview cannot open one at
+   all. A host that offers nothing leaves the address to be copied. */
+function projectLink(text, url) {
+  var link = document.createElement("span");
+  link.className = "link";
+  if (typeof sdeBrowse === "function") {
+    link.textContent = text || url;
+    link.title = url;
+    link.addEventListener("click", function () { sdeBrowse(url); });
+  } else {
+    link.className = "link plain";
+    link.textContent = url;
+    link.title = "Copy this address into a browser";
+  }
+  return link;
+}
+
+/* The short link, on the start screen, always. Somebody who has just installed
+   the plugin and typed nothing yet is exactly who needs to know where the
+   other half of it lives. */
+function startLink() {
+  var line = document.createElement("div");
+  line.className = "startlink";
+  line.appendChild(document.createTextNode("This window reads ABAP from "));
+  BACKEND.forEach(function (one, i) {
+    if (i > 0) {
+      line.appendChild(document.createTextNode(i + 1 === BACKEND.length ? " and " : ", "));
+    }
+    line.appendChild(projectLink(one.name, one.url));
+  });
+  document.getElementById("root").appendChild(line);
+}
+
+function setupPage(detail) {
+  var root = document.getElementById("root");
+  root.className = "setup";
+  root.innerHTML = "";
+
+  var head = document.createElement("h3");
+  head.textContent = "The ABAP half is not on this system";
+  root.appendChild(head);
+
+  var why = document.createElement("p");
+  why.textContent = "VERTEX is a page and a set of ADT resources. The page is"
+                  + " installed here; the resources answer nothing, so there is"
+                  + " nothing for it to read.";
+  root.appendChild(why);
+
+  var what = document.createElement("ul");
+  BACKEND.forEach(function (one) {
+    var li = document.createElement("li");
+    li.appendChild(projectLink(one.name, one.url));
+    li.appendChild(document.createTextNode(" - " + one.why));
+    what.appendChild(li);
+  });
+  root.appendChild(what);
+
+  var steps = document.createElement("ol");
+  ["Pull each of those with abapGit and activate it.",
+   "Activate ZCL_SDE_ADT_RES_APP with the rest of the resources.",
+   "Register the BAdI implementation ZSDE_ADT_RES_APP on"
+     + " BADI_ADT_REST_RFC_APPLICATION, with the filter STATIC_URI_PATH"
+     + " covering /sap/bc/adt/zsde/* .",
+   "Reopen this window."].forEach(function (step) {
+    var li = document.createElement("li");
+    li.textContent = step;
+    steps.appendChild(li);
+  });
+  root.appendChild(steps);
+
+  if (detail) {
+    var said = document.createElement("pre");
+    said.className = "said";
+    said.textContent = detail;
+    root.appendChild(said);
+  }
+}
+
 /* ---------- wiring ---------- */
 
 document.getElementById("load").addEventListener("click", load);
@@ -333,6 +463,7 @@ if (INITIAL) {
   window.addEventListener("load", load);
 } else {
   message("Type an object name and press Load.");
+  startLink();
 }
 </script>
 </body>

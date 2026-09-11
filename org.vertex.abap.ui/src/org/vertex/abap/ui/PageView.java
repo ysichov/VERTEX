@@ -16,6 +16,7 @@ import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
+import org.eclipse.swt.program.Program;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.dialogs.ElementListSelectionDialog;
 import org.eclipse.ui.part.ViewPart;
@@ -24,6 +25,7 @@ import org.osgi.framework.FrameworkUtil;
 import com.sap.adt.communication.resources.AdtRestResourceFactory;
 import com.sap.adt.communication.resources.IRestResource;
 import com.sap.adt.communication.resources.IRestResourceFactory;
+import com.sap.adt.communication.resources.ResourceNotFoundException;
 import com.sap.adt.destinations.ui.logon.AdtLogonServiceUIFactory;
 import com.sap.adt.project.IAdtCoreProject;
 import com.sap.adt.tools.core.project.AdtProjectServiceFactory;
@@ -95,6 +97,18 @@ public abstract class PageView extends ViewPart {
 			}
 		};
 
+		// Opening a link must not navigate the view away from the page it is
+		// on, so it goes to whatever the desktop uses for a browser.
+		new BrowserFunction(this.browser, "sdeBrowse") {
+			@Override
+			public Object function(Object[] arguments) {
+				if (arguments.length > 0 && arguments[0] != null) {
+					Program.launch(String.valueOf(arguments[0]));
+				}
+				return null;
+			}
+		};
+
 		// The page reports what it has loaded, so a window driven from its own
 		// input bar does not keep the name of the object it was opened on.
 		new BrowserFunction(this.browser, "sdeTitle") {
@@ -142,7 +156,11 @@ public abstract class PageView extends ViewPart {
 		try {
 			this.pending = work.get();
 		} catch (Exception e) {
-			this.pending = "ERROR:" + describe(e);
+			// A resource that is not there is a setup state, not a failure: the
+			// plugin is installed on this machine and the ABAP half has never
+			// been put on the system. The page says what to install; it needs
+			// to be told which of the two this is.
+			this.pending = "ERROR:" + (missingBackend(e) ? "NOBACKEND:" : "") + describe(e);
 		}
 		wake();
 	}
@@ -172,6 +190,21 @@ public abstract class PageView extends ViewPart {
 	 *             port
 	 */
 	protected String read(String path) {
+		return resource(path).get(new NullProgressMonitor(), String.class);
+	}
+
+	/**
+	 * Writes to one ADT resource over the same session as {@link #read}. The ADT
+	 * communication layer carries the CSRF token for the destination, so nothing
+	 * here has to fetch one.
+	 *
+	 * @param body the request body, already JSON
+	 */
+	protected String write(String path, String body) {
+		return resource(path).post(new NullProgressMonitor(), String.class, body);
+	}
+
+	private IRestResource resource(String path) {
 		IProject project = abapProject();
 		IAdtCoreProject adtProject = project.getAdapter(IAdtCoreProject.class);
 		if (adtProject == null) {
@@ -189,7 +222,7 @@ public abstract class PageView extends ViewPart {
 		IRestResource resource = factory.createResourceWithStatelessSession(URI.create(path),
 				adtProject.getDestinationId());
 		resource.addContentHandler(new JsonContentHandler());
-		return resource.get(new NullProgressMonitor(), String.class);
+		return resource;
 	}
 
 	/**
@@ -266,6 +299,15 @@ public abstract class PageView extends ViewPart {
 		try (InputStream in = entry.openStream()) {
 			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
 		}
+	}
+
+	private static boolean missingBackend(Throwable e) {
+		for (Throwable t = e; t != null; t = t.getCause()) {
+			if (t instanceof ResourceNotFoundException) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	protected static String describe(Throwable e) {

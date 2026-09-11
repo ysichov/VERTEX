@@ -6,10 +6,12 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 import com.sap.adt.communication.content.IContentHandler;
+import com.sap.adt.communication.message.ByteArrayMessageBody;
 import com.sap.adt.communication.message.IMessageBody;
 
 /**
- * Reads an application/json response body as a String.
+ * Carries an application/json body, in either direction: reads a response as a
+ * String, and writes a String as a request.
  * <p>
  * ADT ships PlainTextContentHandler for this, but its package is internal and
  * not exported, so the four methods are implemented here instead.
@@ -27,7 +29,10 @@ public class JsonContentHandler implements IContentHandler<String> {
 
 	@Override
 	public IMessageBody serialize(String data, Charset charset) {
-		throw new UnsupportedOperationException("This handler only reads responses");
+		// The charset ADT offers is whatever the destination prefers; the body is
+		// JSON and JSON is UTF-8, so it is written as UTF-8 and said to be.
+		return new ByteArrayMessageBody("application/json; charset=utf-8",
+				data.getBytes(StandardCharsets.UTF_8));
 	}
 
 	@Override

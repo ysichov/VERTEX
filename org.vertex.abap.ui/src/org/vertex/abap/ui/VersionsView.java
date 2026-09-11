@@ -65,7 +65,31 @@ public class VersionsView extends PageView {
 			public Object function(Object[] arguments) {
 				final String request = text(arguments, 0);
 				final String remote = text(arguments, 1);
-				queue(() -> read(reviewPath(request, remote)));
+				// Empty for the summary of the whole request; named when one of
+				// its objects is opened, and then the answer is that object's
+				// blocks and the lines they were cut from.
+				final String partName = text(arguments, 2);
+				final String partType = text(arguments, 3);
+				queue(() -> read(reviewPath(request, remote, partName, partType)));
+				return null;
+			}
+		};
+
+
+		// Approving, declining and commenting - the first thing in VERTEX that
+		// changes state on the server. The answer is the part as it now stands,
+		// so the page renders one shape whether it asked or wrote.
+		new BrowserFunction(this.browser, "sdeAct") {
+			@Override
+			public Object function(Object[] arguments) {
+				final String request = text(arguments, 0);
+				final String remote = text(arguments, 1);
+				final String partName = text(arguments, 2);
+				final String partType = text(arguments, 3);
+				// Already JSON: the page builds it, because the page is what knows
+				// which block and which words.
+				final String body = text(arguments, 4);
+				queue(() -> write(reviewPath(request, remote, partName, partType), body));
 				return null;
 			}
 		};
@@ -76,12 +100,19 @@ public class VersionsView extends PageView {
 	 *               review compared with one is a different review, and its
 	 *               approvals are not the ones of the plain review
 	 */
-	private static String reviewPath(String request, String remote) {
-		String path = "/sap/bc/adt/zsde/review/" + request.toUpperCase();
+	private static String reviewPath(String request, String remote, String partName, String partType) {
+		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/review/")
+				.append(request.toUpperCase());
+		char lead = '?';
 		if (!remote.isEmpty()) {
-			path = path + "?remote=" + escape(remote);
+			path.append(lead).append("remote=").append(escape(remote));
+			lead = '&';
 		}
-		return path;
+		if (!partName.isEmpty()) {
+			path.append(lead).append("part=").append(escape(partName));
+			path.append("&ptype=").append(escape(partType));
+		}
+		return path.toString();
 	}
 
 	@Override

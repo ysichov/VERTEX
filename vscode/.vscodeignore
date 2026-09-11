@@ -1,0 +1,7 @@
+# What does not belong in the package. The pages are copied in by
+# vscode:prepublish and must stay, so resources/ is not listed here.
+copy-pages.js
+images/icon.js
+.vscode/**
+.gitignore
+**/*.map

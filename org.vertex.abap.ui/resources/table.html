@@ -30,6 +30,9 @@
     --th-filtered-bg: #cfe3cf;
     --row-alt: #fafafa;
     --danger: #a5292a;
+    --c1-bg: #d8ecff; --c1-line: #5797c9; --c2-bg: #dcf5d6; --c2-line: #67a95e;
+    --c3-bg: #fff1c2; --c3-line: #c09a2b; --c4-bg: #f3ddff; --c4-line: #a678c2;
+    --c5-bg: #ffdede; --c5-line: #c87373; --c6-bg: #d9f4ef; --c6-line: #58a99b;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -51,6 +54,9 @@
       --th-filtered-bg: #2f4d34;
       --row-alt: #232323;
       --danger: #f48771;
+      --c1-bg: #1d3448; --c1-line: #4a86b8; --c2-bg: #1f3a22; --c2-line: #5b9553;
+      --c3-bg: #3d3420; --c3-line: #b08d2a; --c4-bg: #33244a; --c4-line: #9268b2;
+      --c5-bg: #3f2424; --c5-line: #b56868; --c6-bg: #1d3a36; --c6-line: #4f9a8d;
     }
   }
 
@@ -61,6 +67,9 @@
     --field-bg: #ffffff; --field-border: #b8b8b8; --hover: #eaf2fb;
     --th-bg: #eef2f7; --th-key-bg: #dbe6f4; --th-filtered-bg: #cfe3cf;
     --row-alt: #fafafa; --danger: #a5292a;
+    --c1-bg: #d8ecff; --c1-line: #5797c9; --c2-bg: #dcf5d6; --c2-line: #67a95e;
+    --c3-bg: #fff1c2; --c3-line: #c09a2b; --c4-bg: #f3ddff; --c4-line: #a678c2;
+    --c5-bg: #ffdede; --c5-line: #c87373; --c6-bg: #d9f4ef; --c6-line: #58a99b;
   }
 
   body.vscode-dark, body.vscode-high-contrast {
@@ -70,6 +79,9 @@
     --field-bg: #3c3c3c; --field-border: #5a5a5a; --hover: #2a3d55;
     --th-bg: #2b3a4a; --th-key-bg: #35506b; --th-filtered-bg: #2f4d34;
     --row-alt: #232323; --danger: #f48771;
+    --c1-bg: #1d3448; --c1-line: #4a86b8; --c2-bg: #1f3a22; --c2-line: #5b9553;
+    --c3-bg: #3d3420; --c3-line: #b08d2a; --c4-bg: #33244a; --c4-line: #9268b2;
+    --c5-bg: #3f2424; --c5-line: #b56868; --c6-bg: #1d3a36; --c6-line: #4f9a8d;
   }
 
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -117,12 +129,24 @@
   #expand { display: none; }
   .app.collapsed #expand { display: inline-block; }
 
-  .scroll { flex: 1 1 auto; overflow: auto; }
-  table { border-collapse: collapse; white-space: nowrap; }
-  th, td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
+  .scroll { flex: 1 1 auto; overflow: auto; padding: 8px; }
+  table { border-collapse: separate; border-spacing: 0; white-space: nowrap;
+          border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  /* SEPARATE collapse keeps the rounded corner, so the grid lines are drawn
+     on two sides of a cell instead of four. */
+  th, td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+           padding: 3px 8px; text-align: left; }
+  tr > :last-child { border-right: none; }
+  tbody tr:last-child > td { border-bottom: none; }
   th { position: sticky; top: 0; background: var(--th-bg); font-weight: 600;
        cursor: pointer; z-index: 1; }
   th:hover { background: var(--th-key-bg); }
+  th .pick { border: none; background: none; color: var(--muted); cursor: pointer;
+             font: inherit; font-weight: normal; padding: 0 2px; margin-left: 6px;
+             visibility: hidden; }
+  th:hover .pick { visibility: visible; }
+  th .pick:hover { color: var(--fg); }
+  th.filtered .pick { visibility: visible; color: var(--fg); }
   th.key { background: var(--th-key-bg); }
   th.filtered { background: var(--th-filtered-bg); }
   td.num { text-align: right; font-family: Consolas, monospace; }
@@ -137,37 +161,138 @@
   .join { padding: 10px; }
   .join h3 { margin: 0 0 6px; font-size: 12px; }
   .join section { margin-bottom: 14px; }
-  .join .cand { padding: 2px 0; }
-  .join .cand label { cursor: pointer; }
-  .join .cand .dir { color: var(--muted); margin-left: 6px; }
-  .join .cand .txt { color: var(--muted); margin-left: 6px; }
+  .chip.cand { cursor: pointer; padding: 1px 6px; }
+  .chip.cand:hover { background: var(--hover); }
+  .chip.cand.on { background: var(--th-key-bg); border-color: var(--field-border);
+                  font-weight: 600; }
+  .chip.cand .dir { color: var(--muted); }
+  .chip.cand.on .dir { color: var(--fg); }
   .join table { margin-top: 4px; }
   .join pre { margin: 0; padding: 8px; background: var(--surface);
-              border: 1px solid var(--line); overflow: auto;
+              border: 1px solid var(--line); border-radius: 8px; overflow: auto;
               font-family: Consolas, monospace; white-space: pre-wrap; }
+  .join pre.none { color: var(--muted); font-family: inherit; }
   .join .back { cursor: pointer; color: var(--muted); }
   .join .back:hover { color: var(--fg); text-decoration: underline; }
 
   .modes { display: flex; gap: 6px; margin: 6px 0 12px; }
-  .modes button.on { background: var(--selected, var(--hover)); font-weight: 600; }
+  .modes button.on { background: var(--th-key-bg); font-weight: 600; }
+  .modes .full { margin-left: auto; }
+
+  /* Ten rows of the answer while the join is being put together: enough to see
+     what comes out, little enough to leave the builder on screen. The rest is
+     a scroll away, or a press of Full view. */
+  .join .preview { max-height: 200px; overflow: auto; }
 
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
-  .chip { border: 1px solid var(--line); background: var(--bg); padding: 1px 4px;
-          display: flex; align-items: center; gap: 4px; }
+  .chip { border: 1px solid var(--line); background: var(--bg); padding: 1px 6px;
+          border-radius: 9px; display: flex; align-items: center; gap: 4px; }
+
+  /* One colour per table, cycled through six, exactly as SDE cycles them in
+     the SAP GUI. A join of four tables is four hundred chips, and which table
+     a field came from should be visible without reading the alias. */
+  .chip.c1 { background: var(--c1-bg); border-color: var(--c1-line); }
+  .chip.c2 { background: var(--c2-bg); border-color: var(--c2-line); }
+  .chip.c3 { background: var(--c3-bg); border-color: var(--c3-line); }
+  .chip.c4 { background: var(--c4-bg); border-color: var(--c4-line); }
+  .chip.c5 { background: var(--c5-bg); border-color: var(--c5-line); }
+  .chip.c6 { background: var(--c6-bg); border-color: var(--c6-line); }
+  .picks .olabel.c1 { color: var(--c1-line); }
+  .picks .olabel.c2 { color: var(--c2-line); }
+  .picks .olabel.c3 { color: var(--c3-line); }
+  .picks .olabel.c4 { color: var(--c4-line); }
+  .picks .olabel.c5 { color: var(--c5-line); }
+  .picks .olabel.c6 { color: var(--c6-line); }
   .chip .put { border: none; background: none; color: var(--muted); cursor: pointer;
                padding: 0 2px; font: inherit; }
   .chip .put:hover { color: var(--fg); }
   .chip.placed { color: var(--faint); }
-  .slot { padding: 2px 0; display: flex; align-items: center; gap: 6px; }
-  .slot .drop { border: none; background: none; color: var(--danger);
-                cursor: pointer; padding: 0 2px; font: inherit; }
-  .slot select { font: inherit; }
-  .empty-slot { color: var(--muted); }
+  /* A key field, marked the way SDE marks one in the SAP GUI: a doubled
+     border. It keeps the table's own tint, because being a key is a fact
+     about the field within its table, not across the join. */
+  .chip.keyfld { border-style: double; border-width: 3px; font-weight: 600; }
+  /* The heading of one table's fields: its alias, then what to do with them. */
+  .picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+           margin: 8px 0 3px; }
+  .picks .olabel { color: var(--muted); font-weight: 600; }
+  button.link { border: none; background: none; color: var(--muted);
+                padding: 0; font: inherit; cursor: pointer; }
+  button.link:hover { color: var(--fg); text-decoration: underline;
+                      background: none; }
+  /* The order the statement is written in. Same chips as everywhere else, with
+     a grab cursor and a dashed end marker, as in the SAP GUI. */
+  .order .orow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+                 padding: 2px 0; }
+  .order .olabel { flex: 0 0 58px; color: var(--muted); }
+  .chip.move { cursor: grab; }
+  .chip.move:active { cursor: grabbing; }
+  .chip.fixed { color: var(--faint); cursor: default; }
+  .chip.end { color: var(--muted); border-style: dashed; }
+  .chip.over { border-color: var(--fg); background: var(--th-key-bg); }
+
+  /* The cross, as SDE draws it: columns across the top, rows down the left,
+     measures beside them. An empty slot is a dashed box with a dot in it, and
+     a section that fills up grows by one more - ZCL_SDE_PIVOT's rule. */
+  .cross .crow { display: flex; align-items: flex-start; gap: 6px;
+                 margin-bottom: 6px; }
+  .czone { border: 1px solid var(--line); background: var(--surface);
+           border-radius: 8px; padding: 5px 8px; }
+  .czone.corner { flex: 0 0 230px; }
+  .czone.down { flex: 0 0 230px; }
+  .chead { font-size: 10px; font-weight: 600; color: var(--muted);
+           text-transform: uppercase; margin-bottom: 3px; }
+  .chead i { font-weight: normal; font-style: normal; color: var(--faint);
+             text-transform: none; }
+  .chint { color: var(--muted); }
+  .holding { border: 1px solid var(--field-border); background: var(--th-key-bg);
+             border-radius: 9px;
+             padding: 1px 7px; margin: 3px 0; display: inline-block;
+             font-family: Consolas, monospace; }
+  .cslots { display: flex; flex-wrap: wrap; gap: 4px; }
+  .czone.down .cslots { flex-direction: column; }
+  .cslot { border: 1px dashed var(--field-border); background: var(--bg);
+           border-radius: 7px;
+           padding: 2px 6px; min-width: 90px; color: var(--faint);
+           text-align: center; cursor: pointer; display: flex;
+           align-items: center; gap: 4px; justify-content: center; }
+  .cslot.fill { border-style: solid; color: var(--fg); justify-content: flex-start;
+                font-family: Consolas, monospace; }
+  .cslot.ready { border-color: var(--fg); color: var(--fg); }
+  .cslot.over { background: var(--th-key-bg); }
+  .cslot .lbl { cursor: grab; }
+  .cslot .lbl:active { cursor: grabbing; }
+  .cslot select { font: inherit; }
+  .cslot .rmx { border: none; background: none; color: var(--danger);
+                cursor: pointer; font: inherit; padding: 0 2px; margin-left: auto; }
+  .avail { border: 1px solid var(--line); background: var(--surface);
+           border-radius: 8px; padding: 6px; }
+  .avchip { cursor: grab; }
+  .avchip:active { cursor: grabbing; }
+  .avchip.held { border-color: var(--fg); background: var(--th-key-bg);
+                 font-weight: 600; }
+  /* The setup page, and the short link that is always on the start screen.
+     A link is a span, not an anchor: a real one would navigate the view away
+     from the page it is on. */
+  .setup { padding: 12px; max-width: 640px; }
+  .setup h3 { margin: 0 0 8px; font-size: 13px; }
+  .setup p { margin: 0 0 8px; color: var(--muted); }
+  .setup ol { margin: 0 0 8px; padding-left: 20px; }
+  .setup li { margin-bottom: 4px; }
+  .setup pre.said { margin: 8px 0 0; padding: 8px; background: var(--surface);
+                    border: 1px solid var(--line); border-radius: 6px;
+                    white-space: pre-wrap; color: var(--muted);
+                    font-family: Consolas, monospace; }
+  .startlink { margin-top: 10px; color: var(--muted);
+               font-family: "Segoe UI", system-ui, sans-serif; }
+  .link { cursor: pointer; text-decoration: underline; }
+  .link.plain { cursor: text; text-decoration: none; user-select: text;
+                font-family: Consolas, monospace; }
 </style>
 </head>
 <body>
 
-<div class="app" id="app">
+<!-- Closed until there is something in it: see addCriterion. -->
+<div class="app collapsed" id="app">
 
   <aside class="panel">
     <div class="panel-head">
@@ -175,7 +300,7 @@
       <button id="collapse" title="Hide the selection panel">&#8249;</button>
     </div>
     <div class="criteria" id="criteria"></div>
-    <div class="hint" id="hint">Click a column header to select on that field.</div>
+    <div class="hint" id="hint">Press the magnifier on a column to select on that field.</div>
   </aside>
 
   <main class="main">
@@ -205,6 +330,9 @@ var ROWS = 100;
 var criteria = [];
 var currentTable = null;
 
+/* The answer on screen. Sorting draws it again without asking for it twice. */
+var shown = null;
+
 function status(text) {
   document.getElementById("status").textContent = text || "";
 }
@@ -222,6 +350,10 @@ function tableName() {
 /* ---------- selection panel ---------- */
 
 function addCriterion(field, text) {
+  // The panel earns its width when there is something in it. Until a column is
+  // clicked it holds one sentence telling the reader to click a column, so it
+  // opens on the click that makes it useful.
+  document.getElementById("app").className = "app";
   for (var i = 0; i < criteria.length; i++) {
     if (criteria[i].field === field) { return; }
   }
@@ -344,7 +476,14 @@ function sdeReady() {
   var raw = sdeTake();
   status("");
   if (typeof raw !== "string") { message("No response from the host."); return; }
-  if (raw.indexOf("ERROR:") === 0) { message(raw.substring(6)); return; }
+  if (raw.indexOf("ERROR:") === 0) {
+    var said = raw.substring(6);
+    // The host marks the one failure that is really a setup state.
+    if (said.indexOf("NOBACKEND:") === 0) { setupPage(said.substring(10)); }
+    else { message(said); }
+    status("");
+    return;
+  }
   var data;
   try {
     data = JSON.parse(raw);
@@ -356,8 +495,33 @@ function sdeReady() {
   if (data.candidates) { renderJoin(data); } else { render(data); }
 }
 
+/* Which column the rows are shown by, and which way. It sorts the rows that
+   were read, not the table: a hundred rows came back and those hundred are
+   what gets ordered. The status line says so, because "sorted by PRICE" would
+   otherwise read as the cheapest flight there is. */
+var sorted = { field: null, down: false };
+
+function sortRows(rows, fields) {
+  if (!sorted.field) { return rows; }
+  var f = null;
+  fields.forEach(function (one) { if (one.name === sorted.field) { f = one; } });
+  var numeric = f && NUMERIC.indexOf(f.datatype) !== -1;
+  var out = rows.slice();
+  out.sort(function (a, b) {
+    var x = a[sorted.field], y = b[sorted.field];
+    if (x === y) { return 0; }
+    // An empty cell has no value to compare, so it goes last either way.
+    if (x === null || x === undefined || x === "") { return 1; }
+    if (y === null || y === undefined || y === "") { return -1; }
+    var less = numeric ? Number(x) < Number(y) : String(x) < String(y);
+    return (less ? -1 : 1) * (sorted.down ? -1 : 1);
+  });
+  return out;
+}
+
 function render(data) {
   currentTable = data.table.toUpperCase();
+  shown = data;
 
   var root = document.getElementById("root");
   root.className = "";
@@ -371,20 +535,43 @@ function render(data) {
   var headRow = document.createElement("tr");
   data.fields.forEach(function (f) {
     var th = document.createElement("th");
-    th.textContent = f.text || f.name;
     th.title = f.name + " " + f.datatype + " " + f.length
              + (f.decimals ? "," + f.decimals : "") + (f.key ? " key" : "")
-             + " - click to select on this field";
+             + " - click to sort on this field";
     if (active[f.name]) { th.className = "filtered"; }
     else if (f.key) { th.className = "key"; }
-    th.addEventListener("click", function () { addCriterion(f.name, f.text); });
+
+    var name = document.createElement("span");
+    name.textContent = (f.text || f.name)
+      + (sorted.field === f.name ? (sorted.down ? " ▼" : " ▲") : "");
+    name.addEventListener("click", function () {
+      // The same column again turns the order round; another column starts
+      // over at the top.
+      if (sorted.field === f.name) { sorted.down = !sorted.down; }
+      else { sorted = { field: f.name, down: false }; }
+      render(shown);
+    });
+    th.appendChild(name);
+
+    // Selecting on a field is its own button. It was the whole header, which
+    // left no plain way to sort and opened a panel on every stray click.
+    var pick = document.createElement("button");
+    pick.className = "pick";
+    pick.textContent = "⌕";
+    pick.title = "Select on " + (f.text || f.name);
+    pick.addEventListener("click", function (e) {
+      e.stopPropagation();
+      addCriterion(f.name, f.text);
+    });
+    th.appendChild(pick);
+
     headRow.appendChild(th);
   });
   var thead = document.createElement("thead");
   thead.appendChild(headRow);
 
   var tbody = document.createElement("tbody");
-  data.rows.forEach(function (row) {
+  sortRows(data.rows, data.fields).forEach(function (row) {
     var tr = document.createElement("tr");
     data.fields.forEach(function (f) {
       var td = document.createElement("td");
@@ -406,7 +593,8 @@ function render(data) {
   table.appendChild(tbody);
   root.appendChild(table);
 
-  status(data.table + " " + data.count + " rows, " + data.fields.length + " columns");
+  status(data.table + " " + data.count + " rows, " + data.fields.length + " columns"
+       + (sorted.field ? " · these " + data.rows.length + " by " + sorted.field : ""));
 }
 
 /* ---------- join and pivot ---------- */
@@ -414,6 +602,10 @@ function render(data) {
 /* Join or Pivot, the two cards of SDE's tools area. The mode decides which
    statement the resource generates, so it travels with the request. */
 var mode = "J";
+
+/* The answer on its own, with everything that builds it put away. A join that
+   returns eighty columns needs the screen; assembling one needs the builder. */
+var full = false;
 
 /* The cross: row and column dimensions by key, and measures with the aggregate
    each is taken under. A key is alias~field, the name the statement uses. */
@@ -442,8 +634,6 @@ function buildQuery() {
   return parts.join("&");
 }
 
-var AGGREGATES = ["SUM", "COUNT", "MIN", "MAX", "AVG"];
-
 function crossQuery() {
   if (mode !== "P") { return ""; }
   var parts = [];
@@ -469,12 +659,12 @@ function place(zone, key) {
   } else if (list.indexOf(key) === -1) {
     list.push(key);
   }
-  loadJoin(0);
+  loadJoin(ROWS);
 }
 
 function unplace(zone, index) {
   cross[zone].splice(index, 1);
-  loadJoin(0);
+  loadJoin(ROWS);
 }
 
 /* ---------- join ---------- */
@@ -495,8 +685,10 @@ function loadJoin(rows) {
     return;
   }
   status(rows ? "running the join ..." : "building the join ...");
-  // Nought asks for the statement without running it, which is what assembling
-  // a join wants: otherwise every tick would read the database.
+  // Every change runs it. The statement alone used to come back, to keep a tick
+  // of a checkbox off the database - but then the rows on screen belonged to an
+  // older join than the one being looked at, and Run had to be pressed after
+  // every move. Stale rows are worse than a read of a hundred.
   // The selection panel travels along: a filter typed on the table belongs to
   // the join built from it, and query() already encodes exactly that.
   sdeJoin(currentTable, taken.join(","), rows || 0, query(), crossQuery(), buildQuery());
@@ -508,10 +700,12 @@ function toggleTaken(tabname) {
   // A table joining or leaving changes which fields exist at all, so the
   // SELECT list goes back to what the builder proposes for the new shape.
   picked = null;
-  loadJoin(0);
+  loadJoin(ROWS);
 }
 
 function renderJoin(data) {
+  shown = data;
+  tintAliases(data.fields);
   var root = document.getElementById("root");
   root.className = "join";
   root.innerHTML = "";
@@ -526,33 +720,66 @@ function renderJoin(data) {
 
   root.appendChild(modeCards());
 
+  // The rows come first. Every change to the join runs it again, so what is
+  // being assembled and what it returns are on screen together, and the answer
+  // is the thing a reader is looking at rather than something below the fold.
+  if (data.rows) {
+    var body = resultTable(data.rows);
+    if (!full) {
+      // The box scrolls rather than the list being cut: ten rows on screen and
+      // the other eighty still reachable without leaving the builder.
+      var window_ = document.createElement("div");
+      window_.className = "preview";
+      window_.appendChild(body);
+      body = window_;
+    }
+    root.appendChild(section(data.rows.length + " rows", body));
+    status(data.rows.length + " rows");
+  } else {
+    status(data.tables ? data.tables.length + " tables in the join" : "");
+  }
+
+  // Full view is the answer with nothing else on screen. What built it is one
+  // press away and unchanged underneath.
+  if (full) { return; }
+
   if (mode === "J") {
+    // The SELECT list is settled before anything draws it, because both the
+    // picker and the order strip read it and neither owns it.
+    if (data.fields && picked === null) {
+      picked = data.fields
+        .filter(function (f) { return f.sel === "X" || f.sel === true; })
+        .map(fieldKey);
+    }
     root.appendChild(section("Tables around " + data.table, candidateList(data.candidates)));
     if (data.tables && data.tables.length > 0) {
       root.appendChild(section("The join", joinTable(data.tables)));
     }
     if (data.fields && data.fields.length > 0) {
-      root.appendChild(section("The SELECT list", fieldPicker(data.fields)));
+      root.appendChild(section("The SELECT list", fieldPicker(data.fields, data.tables)));
+      root.appendChild(section("SELECT", orderStrip(data.tables)));
     }
   } else {
     root.appendChild(crossPanel(data.fields || []));
   }
 
   var sql = document.createElement("pre");
-  sql.textContent = data.sql || "";
-  var statement = section("Statement", sql);
-  var run = document.createElement("button");
-  run.textContent = "Run";
-  run.addEventListener("click", function () { loadJoin(ROWS); });
-  statement.appendChild(run);
-  root.appendChild(statement);
-
-  if (data.rows) {
-    root.appendChild(section(data.rows.length + " rows", resultTable(data.rows)));
-    status(data.rows.length + " rows");
+  if (data.sql) {
+    sql.textContent = data.sql;
   } else {
-    status(data.tables ? data.tables.length + " tables in the join" : "");
+    // Nothing chosen is not everything chosen, so there is no statement to
+    // show and none was run. The resource says so by sending none.
+    sql.className = "none";
+    sql.textContent = "No field is in the SELECT list. A statement starts at one.";
   }
+  var statement = section("Statement", sql);
+  if (data.sql) {
+    var run = document.createElement("button");
+    run.textContent = "Run";
+    run.addEventListener("click", function () { loadJoin(ROWS); });
+    statement.appendChild(run);
+  }
+  root.appendChild(statement);
 }
 
 function modeCards() {
@@ -564,21 +791,95 @@ function modeCards() {
     if (mode === m[0]) { button.className = "on"; }
     button.addEventListener("click", function () {
       mode = m[0];
-      loadJoin(0);
+      loadJoin(ROWS);
     });
     box.appendChild(button);
   });
+
+  var wide = document.createElement("button");
+  wide.className = "full" + (full ? " on" : "");
+  wide.textContent = full ? "Settings" : "Full view";
+  wide.title = full ? "Show what builds the answer again"
+                    : "The answer on its own, with the builder put away";
+  wide.addEventListener("click", function () {
+    full = !full;
+    // Nothing is asked for again: the answer on screen is the one being shown
+    // either way.
+    renderJoin(shown);
+  });
+  box.appendChild(wide);
   return box;
 }
 
-/* ---------- the pivot cross ---------- */
+/* ---------- the pivot cross ----------
+
+   The shape SDE draws in the SAP GUI: columns across the top, rows down the
+   left, measures beside them, and the fields underneath. A field goes into a
+   slot by being dragged onto it, or by being clicked and then having a slot
+   clicked - the second way exists because a drop target that misses is worse
+   than two clicks, and a slot in an Eclipse view is small.
+
+   MIN_SLOTS and the growing rule are ZCL_SDE_PIVOT's: a section shows one more
+   slot than it holds, and never fewer than three. */
+
+var MIN_SLOTS = 3;
+
+/* The field waiting for a slot, and where it was picked up: the field list, or
+   a slot it is being moved out of. Clicking it again puts it down. */
+var holding = null;
 
 function crossPanel(fields) {
   var box = document.createElement("div");
-  box.appendChild(section("Rows", slotList("rows")));
-  box.appendChild(section("Columns", slotList("cols")));
-  box.appendChild(section("Measures", slotList("vals")));
-  box.appendChild(section("Fields", fieldChips(fields)));
+  box.className = "cross";
+
+  var top = document.createElement("div");
+  top.className = "crow";
+  top.appendChild(corner());
+  top.appendChild(zone("cols", "COLUMNS", "field values become result columns", fields));
+  box.appendChild(top);
+
+  var bottom = document.createElement("div");
+  bottom.className = "crow";
+  bottom.appendChild(zone("rows", "ROWS", "grouped, one line each", fields));
+  bottom.appendChild(zone("vals", "MEASURES", "aggregated per row and column", fields));
+  box.appendChild(bottom);
+
+  box.appendChild(fieldChips(fields));
+  return box;
+}
+
+function corner() {
+  var box = document.createElement("div");
+  box.className = "czone corner";
+
+  var head = document.createElement("div");
+  head.className = "chead";
+  head.appendChild(document.createTextNode("PIVOT "));
+  var clear = document.createElement("button");
+  clear.className = "link";
+  clear.textContent = "clear";
+  clear.addEventListener("click", function () {
+    cross = { rows: [], cols: [], vals: [] };
+    holding = null;
+    loadJoin(ROWS);
+  });
+  head.appendChild(clear);
+  box.appendChild(head);
+
+  var hint = document.createElement("div");
+  hint.className = "chint";
+  if (holding) {
+    hint.innerHTML = "";
+    var what = document.createElement("div");
+    what.className = "holding";
+    what.textContent = holding.key;
+    box.appendChild(what);
+    hint.textContent = "Click a slot to drop it there, or the chip again to let go.";
+  } else {
+    hint.textContent = "Drag a field into a slot, or click the field and then the"
+                     + " slot. A section that fills up grows by one more slot.";
+  }
+  box.appendChild(hint);
   return box;
 }
 
@@ -587,83 +888,186 @@ function placedKeys() {
     .concat(cross.vals.map(function (v) { return v.key; }));
 }
 
-function fieldChips(fields) {
-  var box = document.createElement("div");
-  box.className = "chips";
-  var placed = placedKeys();
-
+/* Which aggregates this field may be taken under. The resource says, because
+   ZCL_SDE_PIVOT decides it from the internal type, which never travels. */
+function aggsOf(key, fields) {
+  var found = null;
   fields.forEach(function (f) {
-    var key = (f.alias + "~" + f.fieldname).toLowerCase();
-    var chip = document.createElement("span");
-    chip.className = "chip" + (placed.indexOf(key) === -1 ? "" : " placed");
-    chip.title = f.ddtext || key;
-    // The key, not the bare field name: a join of two tables that both have a
-    // CARRID would otherwise offer two chips with the same label and different
-    // meanings, and the slots below show keys anyway.
-    chip.appendChild(document.createTextNode(key));
-
-    // Three buttons rather than dragging: a chip is small and an Eclipse view
-    // is smaller, and a drop target that misses is worse than a click.
-    [["R", "rows", "as a row"], ["C", "cols", "as a column"],
-     ["Σ", "vals", "as a measure"]].forEach(function (put) {
-      var button = document.createElement("button");
-      button.className = "put";
-      button.textContent = put[0];
-      button.title = put[2];
-      button.addEventListener("click", function () { place(put[1], key); });
-      chip.appendChild(button);
-    });
-
-    box.appendChild(chip);
+    if ((f.alias + "~" + f.fieldname).toLowerCase() === key) { found = f; }
   });
+  if (found && found.aggs && found.aggs.length) { return found.aggs; }
+  return ["COUNT"];
+}
+
+function defaultAgg(key, fields) {
+  var found = null;
+  fields.forEach(function (f) {
+    if ((f.alias + "~" + f.fieldname).toLowerCase() === key) { found = f; }
+  });
+  return (found && found.agg) || "COUNT";
+}
+
+/* Put what is being held into one slot of one section. A field lands once per
+   section: dropping it again moves it rather than doubling it. */
+function drop(zone, index, fields) {
+  if (!holding) { return; }
+  var key = holding.key;
+  var agg = holding.agg;
+  var from = holding.from;
+  holding = null;
+
+  if (from) { cross[from.zone].splice(from.index, 1); }
+
+  var list = cross[zone];
+  var at = -1;
+  list.forEach(function (one, i) {
+    if ((zone === "vals" ? one.key : one) === key) { at = i; }
+  });
+  if (at !== -1) { list.splice(at, 1); }
+
+  var where = Math.min(index, list.length);
+  if (zone === "vals") {
+    list.splice(where, 0, { key: key, agg: agg || defaultAgg(key, fields) });
+  } else {
+    list.splice(where, 0, key);
+  }
+  loadJoin(ROWS);
+}
+
+function slot(zone, index, fields) {
+  var list = cross[zone];
+  var item = list[index];
+  var box = document.createElement("span");
+  box.className = "cslot" + (item ? " fill" : "") + (holding ? " ready" : "");
+
+  box.addEventListener("dragover", function (e) {
+    if (!holding) { return; }
+    e.preventDefault();
+    box.className = box.className + " over";
+  });
+  box.addEventListener("dragleave", function () {
+    box.className = box.className.replace(" over", "");
+  });
+  box.addEventListener("drop", function (e) {
+    e.preventDefault();
+    drop(zone, index, fields);
+  });
+
+  if (!item) {
+    box.textContent = holding ? "+" : "·";
+    box.title = holding ? "Drop " + holding.key + " here" : "";
+    box.addEventListener("click", function () { drop(zone, index, fields); });
+    return box;
+  }
+
+  var key = zone === "vals" ? item.key : item;
+
+  if (zone === "vals") {
+    var pick = document.createElement("select");
+    aggsOf(key, fields).forEach(function (agg) {
+      var option = document.createElement("option");
+      option.value = agg;
+      option.textContent = agg;
+      if (agg === item.agg) { option.selected = true; }
+      pick.appendChild(option);
+    });
+    pick.addEventListener("change", function (e) {
+      item.agg = e.target.value;
+      loadJoin(ROWS);
+    });
+    box.appendChild(pick);
+  }
+
+  var label = document.createElement("span");
+  label.className = "lbl";
+  label.textContent = key;
+  label.title = key + " - drag into another slot";
+  label.draggable = true;
+  label.addEventListener("dragstart", function (e) {
+    holding = { key: key, agg: item.agg, from: { zone: zone, index: index } };
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", key); } catch (x) { }
+  });
+  label.addEventListener("click", function () {
+    // Picking it up out of a slot: clicking a second slot moves it there.
+    if (holding && holding.key === key) { holding = null; }
+    else { holding = { key: key, agg: item.agg, from: { zone: zone, index: index } }; }
+    loadJoin(ROWS);
+  });
+  box.appendChild(label);
+
+  var out = document.createElement("button");
+  out.className = "rmx";
+  out.textContent = "✕";
+  out.title = "Take it out";
+  out.addEventListener("click", function (e) {
+    e.stopPropagation();
+    unplace(zone, index);
+  });
+  box.appendChild(out);
   return box;
 }
 
-function slotList(zone) {
+function zone(name, title, what, fields) {
   var box = document.createElement("div");
-  var list = cross[zone];
+  box.className = "czone" + (name === "rows" ? " down" : "");
 
-  if (list.length === 0) {
-    var none = document.createElement("div");
-    none.className = "empty-slot";
-    none.textContent = "nothing yet";
+  var head = document.createElement("div");
+  head.className = "chead";
+  head.appendChild(document.createTextNode(title + " "));
+  var note = document.createElement("i");
+  note.textContent = "- " + what;
+  head.appendChild(note);
+  box.appendChild(head);
+
+  var slots = document.createElement("div");
+  slots.className = "cslots";
+  var filled = cross[name].length;
+  var total = Math.max(MIN_SLOTS, filled + 1);
+  for (var i = 0; i < total; i++) { slots.appendChild(slot(name, i, fields)); }
+  box.appendChild(slots);
+  return box;
+}
+
+function fieldChips(fields) {
+  var box = document.createElement("div");
+  box.className = "chips avail";
+  var placed = placedKeys();
+
+  if (fields.length === 0) {
+    var none = document.createElement("span");
+    none.className = "olabel";
+    none.textContent = "No fields selected - pick them in the join.";
     box.appendChild(none);
     return box;
   }
 
-  list.forEach(function (item, index) {
-    var key = zone === "vals" ? item.key : item;
-    var row = document.createElement("div");
-    row.className = "slot";
+  fields.forEach(function (f) {
+    var key = (f.alias + "~" + f.fieldname).toLowerCase();
+    var chip = document.createElement("span");
+    chip.className = "chip avchip" + tintOf(f.alias)
+                   + (placed.indexOf(key) === -1 ? "" : " placed")
+                   + (f.key === "X" || f.key === true ? " keyfld" : "")
+                   + (holding && !holding.from && holding.key === key ? " held" : "");
+    // The key, not the bare field name: a join of two tables that both have a
+    // CARRID would otherwise offer two chips with the same label and different
+    // meanings, and the slots show keys anyway.
+    chip.textContent = key;
+    chip.title = (f.ddtext || "") + "  " + key + "  " + (f.datatype || "");
 
-    var drop = document.createElement("button");
-    drop.className = "drop";
-    drop.textContent = "×";
-    drop.title = "Take it out";
-    drop.addEventListener("click", function () { unplace(zone, index); });
-    row.appendChild(drop);
+    chip.draggable = true;
+    chip.addEventListener("dragstart", function (e) {
+      holding = { key: key, agg: null, from: null };
+      e.dataTransfer.effectAllowed = "copy";
+      try { e.dataTransfer.setData("text/plain", key); } catch (x) { }
+    });
+    chip.addEventListener("click", function () {
+      if (holding && !holding.from && holding.key === key) { holding = null; }
+      else { holding = { key: key, agg: null, from: null }; }
+      loadJoin(ROWS);
+    });
 
-    row.appendChild(document.createTextNode(key));
-
-    if (zone === "vals") {
-      var pick = document.createElement("select");
-      AGGREGATES.forEach(function (agg) {
-        var option = document.createElement("option");
-        option.value = agg;
-        option.textContent = agg;
-        if (agg === item.agg) { option.selected = true; }
-        pick.appendChild(option);
-      });
-      // The pivot settles an aggregate the field's type cannot carry, so what
-      // comes back may not be what was picked. That is the answer, not a bug.
-      pick.addEventListener("change", function (e) {
-        item.agg = e.target.value;
-        loadJoin(0);
-      });
-      row.appendChild(pick);
-    }
-
-    box.appendChild(row);
+    box.appendChild(chip);
   });
   return box;
 }
@@ -717,85 +1121,258 @@ function section(heading, body) {
 
 /* A direction is how the dictionary found the table: out of the base table's
    foreign keys, into it, its text table, or added by hand. */
+/* One tint per table, handed out in the order the tables appear and cycled
+   through six - SDE's own rule in the SAP GUI. */
+var TINTS = 6;
+var tints = {};
+
+function tintAliases(fields) {
+  tints = {};
+  var n = 0;
+  (fields || []).forEach(function (f) {
+    if (tints[f.alias] === undefined) { tints[f.alias] = (n++ % TINTS) + 1; }
+  });
+}
+
+/* By alias, or by the alias in front of a key like t1~carrname. */
+function tintOf(alias) {
+  var a = String(alias || "");
+  if (a.indexOf("~") !== -1) { a = a.split("~")[0]; }
+  return tints[a] ? " c" + tints[a] : "";
+}
+
 var DIRECTION = { O: "foreign key", I: "used by", T: "text table", M: "added" };
 
+/* Which way the key points, drawn rather than spelled out: a table this one
+   points at, or one that points back at it. The word is in the tooltip. */
+var ARROW = { O: "→", I: "←", T: "≡", M: "+" };
+
+/* Chips in rows, not a checkbox per line. A table around SFLIGHT can be thirty
+   tables, and thirty lines of name plus description is a screen of list before
+   the join itself comes into view. The name is what a reader picks by; the
+   description is one hover away. */
 function candidateList(candidates) {
   var box = document.createElement("div");
-  (candidates || []).forEach(function (c) {
-    var row = document.createElement("div");
-    row.className = "cand";
+  box.className = "chips";
 
-    var label = document.createElement("label");
-    var tick = document.createElement("input");
-    tick.type = "checkbox";
-    tick.checked = c.selected === "X" || c.selected === true;
-    tick.addEventListener("change", function () { toggleTaken(c.tabname); });
-    label.appendChild(tick);
-    label.appendChild(document.createTextNode(" " + c.tabname));
+  (candidates || []).forEach(function (c) {
+    var chip = document.createElement("span");
+    var on = c.selected === "X" || c.selected === true;
+    chip.className = "chip cand" + (on ? " on" : "");
+    chip.title = (ARROW[c.direction] || "") + " "
+               + (DIRECTION[c.direction] || c.direction)
+               + (c.ddtext ? "  ·  " + c.ddtext : "");
 
     var dir = document.createElement("span");
     dir.className = "dir";
-    dir.textContent = DIRECTION[c.direction] || c.direction;
-    label.appendChild(dir);
+    dir.textContent = ARROW[c.direction] || c.direction;
+    chip.appendChild(dir);
+    chip.appendChild(document.createTextNode(" " + c.tabname));
 
-    if (c.ddtext) {
-      var txt = document.createElement("span");
-      txt.className = "txt";
-      txt.textContent = c.ddtext;
-      label.appendChild(txt);
-    }
-
-    row.appendChild(label);
-    box.appendChild(row);
+    chip.addEventListener("click", function () { toggleTaken(c.tabname); });
+    box.appendChild(chip);
   });
   return box;
 }
 
 /* The field list is a set the page owns from the first answer onwards: the
    resource is told which fields are in, not which one was clicked. */
-function fieldPicker(fields) {
-  if (picked === null) {
-    picked = fields.filter(function (f) { return f.sel === "X" || f.sel === true; })
-                   .map(function (f) { return (f.alias + "~" + f.fieldname).toLowerCase(); });
+/* ---------- the order it is written in ----------
+
+   The tables of the FROM travel as t1..tN and the SELECT list as sf1..sfN, so
+   the order on screen is the order in the statement, and moving a chip is
+   moving one entry of an array. Drop a chip on another to put it before that
+   one, or on the end marker to put it last: the two targets the SAP GUI
+   offers, and the reason it offers a marker at all - there is nothing to drop
+   after the last chip. */
+
+var dragged = null;
+
+function moveIn(list, from, to) {
+  var one = list.splice(from, 1)[0];
+  // Taking it out shifts everything behind it down by one.
+  list.splice(from < to ? to - 1 : to, 0, one);
+}
+
+function orderChip(index, text, title, fixed, onMove, tint) {
+  var chip = document.createElement("span");
+  chip.className = "chip " + (text === null ? "end" : (fixed ? "fixed" : "move")) + (tint || "");
+  chip.textContent = text === null ? "→ end" : text;
+  if (title) { chip.title = title; }
+
+  if (text !== null && !fixed) {
+    chip.draggable = true;
+    chip.addEventListener("dragstart", function (e) {
+      dragged = index;
+      e.dataTransfer.effectAllowed = "move";
+      // Firefox starts no drag at all unless the transfer carries something.
+      try { e.dataTransfer.setData("text/plain", String(index)); } catch (x) { }
+    });
+    chip.addEventListener("dragend", function () { dragged = null; });
   }
+
+  chip.addEventListener("dragover", function (e) {
+    if (dragged === null || dragged === index) { return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    chip.className = chip.className + " over";
+  });
+  chip.addEventListener("dragleave", function () {
+    chip.className = chip.className.replace(" over", "");
+  });
+  chip.addEventListener("drop", function (e) {
+    e.preventDefault();
+    chip.className = chip.className.replace(" over", "");
+    if (dragged === null || dragged === index) { return; }
+    var from = dragged;
+    dragged = null;
+    onMove(from, index);
+  });
+  return chip;
+}
+
+function orderRow(label, items, onMove) {
+  var row = document.createElement("div");
+  row.className = "orow";
+
+  var name = document.createElement("span");
+  name.className = "olabel";
+  name.textContent = label;
+  row.appendChild(name);
+
+  items.forEach(function (item, index) {
+    row.appendChild(orderChip(index, item.text, item.title, item.fixed, onMove, item.tint));
+  });
+  row.appendChild(orderChip(items.length, null, "Put it last", false, onMove, ""));
+  return row;
+}
+
+function orderStrip(tables) {
+  var box = document.createElement("div");
+  box.className = "order";
+
+  // The base table stands in the FROM and the request is replayed from it, so
+  // it is shown and cannot be moved. Moving it would be choosing another base.
+  var rows = [{ text: tables[0].alias + " " + tables[0].tabname,
+                tint: tintOf(tables[0].alias),
+                title: "The base table the join is built around", fixed: true }];
+  taken.forEach(function (tabname, i) {
+    var t = tables[i + 1];
+    rows.push({ text: (t ? t.alias + " " : "") + tabname,
+                tint: t ? tintOf(t.alias) : "",
+                title: "Drop it on another table to put it before that one" });
+  });
+  box.appendChild(orderRow("Tables", rows, function (from, to) {
+    // The first chip is the base, which is not in TAKEN.
+    if (from === 0) { return; }
+    moveIn(taken, from - 1, Math.max(to - 1, 0));
+    // An alias is handed out by position, so moving a table renames its
+    // columns. The SELECT list is keyed by alias and would name fields that no
+    // longer exist, so it goes back to what the builder proposes.
+    picked = null;
+    loadJoin(ROWS);
+  }));
+
+  box.appendChild(orderRow("Fields", (picked || []).map(function (key) {
+    return { text: key, tint: tintOf(key),
+             title: "Drop it on another field to put it before that one" };
+  }), function (from, to) {
+    moveIn(picked, from, to);
+    loadJoin(ROWS);
+  }));
+
+  return box;
+}
+
+function setPicked(keep) {
+  picked = keep;
+  loadJoin(ROWS);
+}
+
+function pickButtons(bar, fields) {
+  [["all", function () { return fields.map(fieldKey); }],
+   ["none", function () { return []; }],
+   ["keys", function () {
+      return fields.filter(function (f) { return f.key === "X" || f.key === true; })
+                   .map(fieldKey);
+    }]].forEach(function (b) {
+    var button = document.createElement("button");
+    button.className = "link";
+    button.textContent = b[0];
+    button.addEventListener("click", function () {
+      // A group's buttons touch that group only: the rest of the list keeps
+      // whatever was ticked in it.
+      var mine = fields.map(fieldKey);
+      var kept = picked.filter(function (k) { return mine.indexOf(k) === -1; });
+      setPicked(kept.concat(b[1]()));
+    });
+    bar.appendChild(button);
+  });
+}
+
+/* One row of chips per table, not one long ribbon. A join of three tables is
+   eighty fields, and a table that starts halfway along a line is a table the
+   reader has to go looking for - which is why the SAP GUI heads each with its
+   alias and gives each its own all/none/keys. */
+function fieldPicker(fields, tables) {
+  var names = {};
+  (tables || []).forEach(function (t) { names[t.alias] = t.tabname; });
 
   var box = document.createElement("div");
 
-  var bar = document.createElement("div");
-  [["All", function () { picked = fields.map(fieldKey); }],
-   ["None", function () { picked = []; }],
-   ["Keys", function () {
-      picked = fields.filter(function (f) { return f.key === "X" || f.key === true; })
-                     .map(fieldKey);
-    }]].forEach(function (b) {
-    var button = document.createElement("button");
-    button.textContent = b[0];
-    button.addEventListener("click", function () { b[1](); loadJoin(0); });
-    bar.appendChild(button);
-  });
-  box.appendChild(bar);
+  var all = document.createElement("div");
+  all.className = "picks";
+  var label = document.createElement("span");
+  label.className = "olabel";
+  label.textContent = "Everything";
+  all.appendChild(label);
+  pickButtons(all, fields);
+  box.appendChild(all);
 
-  var chips = document.createElement("div");
-  chips.className = "chips";
+  var order = [];
+  var byAlias = {};
   fields.forEach(function (f) {
-    var key = fieldKey(f);
-    var chip = document.createElement("label");
-    chip.className = "chip";
-    chip.title = (f.ddtext || "") + "  " + key;
-
-    var tick = document.createElement("input");
-    tick.type = "checkbox";
-    tick.checked = picked.indexOf(key) !== -1;
-    tick.addEventListener("change", function () {
-      var at = picked.indexOf(key);
-      if (at === -1) { picked.push(key); } else { picked.splice(at, 1); }
-      loadJoin(0);
-    });
-    chip.appendChild(tick);
-    chip.appendChild(document.createTextNode(" " + key));
-    chips.appendChild(chip);
+    if (!byAlias[f.alias]) { byAlias[f.alias] = []; order.push(f.alias); }
+    byAlias[f.alias].push(f);
   });
-  box.appendChild(chips);
+
+  order.forEach(function (alias) {
+    var mine = byAlias[alias];
+
+    var head = document.createElement("div");
+    head.className = "picks";
+    var name = document.createElement("span");
+    name.className = "olabel" + tintOf(alias);
+    name.textContent = alias + (names[alias] ? " " + names[alias] : "");
+    head.appendChild(name);
+    pickButtons(head, mine);
+    box.appendChild(head);
+
+    var chips = document.createElement("div");
+    chips.className = "chips";
+    mine.forEach(function (f) {
+      var key = fieldKey(f);
+      var chip = document.createElement("label");
+      chip.className = "chip" + tintOf(f.alias)
+                     + (f.key === "X" || f.key === true ? " keyfld" : "");
+      chip.title = (f.ddtext || "") + "  " + key;
+
+      var tick = document.createElement("input");
+      tick.type = "checkbox";
+      tick.checked = picked.indexOf(key) !== -1;
+      tick.addEventListener("change", function () {
+        var at = picked.indexOf(key);
+        if (at === -1) { picked.push(key); } else { picked.splice(at, 1); }
+        loadJoin(ROWS);
+      });
+      chip.appendChild(tick);
+      // The alias is on the heading above, so the chip carries the field.
+      chip.appendChild(document.createTextNode(" " + f.fieldname.toLowerCase()));
+      chips.appendChild(chip);
+    });
+    box.appendChild(chips);
+  });
+
   return box;
 }
 
@@ -838,7 +1415,7 @@ function joinTable(tables) {
       });
       pick.addEventListener("change", function (e) {
         jtypes[t.alias] = e.target.value;
-        loadJoin(0);
+        loadJoin(ROWS);
       });
       type.appendChild(pick);
     }
@@ -857,6 +1434,109 @@ function joinTable(tables) {
   return table;
 }
 
+
+/* ---------- when the ABAP half is not there ----------
+
+   This page is half of VERTEX. The other half is ABAP, and a plugin installed
+   without it reaches a path nothing answers. That is a setup state, not a
+   failure: nothing is broken, the backend has simply never been put there. So
+   it gets a page saying what to install, the way AVE answers a missing table
+   with a setup page of its own rather than an error.
+
+   The host says which of the two it is, because only the host saw the status
+   code. Anything else - a system that is down, a password refused - is a
+   failure and stays one.
+
+   BACKEND is what THIS window reads, and it differs per window: the resources
+   are one repository, and the tool a window reaches into through them is
+   another. Naming only the first would send somebody who is missing the second
+   to install what they already have. */
+
+var BACKEND = [
+  { name: "Simple-Data-Explorer",
+    url: "https://github.com/ysichov/Simple-Data-Explorer",
+    why: "the ADT resources every VERTEX window reads" }
+];
+
+/* Opening a link is the host's business: in Eclipse it would otherwise
+   navigate the view away from this page, and a webview cannot open one at
+   all. A host that offers nothing leaves the address to be copied. */
+function projectLink(text, url) {
+  var link = document.createElement("span");
+  link.className = "link";
+  if (typeof sdeBrowse === "function") {
+    link.textContent = text || url;
+    link.title = url;
+    link.addEventListener("click", function () { sdeBrowse(url); });
+  } else {
+    link.className = "link plain";
+    link.textContent = url;
+    link.title = "Copy this address into a browser";
+  }
+  return link;
+}
+
+/* The short link, on the start screen, always. Somebody who has just installed
+   the plugin and typed nothing yet is exactly who needs to know where the
+   other half of it lives. */
+function startLink() {
+  var line = document.createElement("div");
+  line.className = "startlink";
+  line.appendChild(document.createTextNode("This window reads ABAP from "));
+  BACKEND.forEach(function (one, i) {
+    if (i > 0) {
+      line.appendChild(document.createTextNode(i + 1 === BACKEND.length ? " and " : ", "));
+    }
+    line.appendChild(projectLink(one.name, one.url));
+  });
+  document.getElementById("root").appendChild(line);
+}
+
+function setupPage(detail) {
+  var root = document.getElementById("root");
+  root.className = "setup";
+  root.innerHTML = "";
+
+  var head = document.createElement("h3");
+  head.textContent = "The ABAP half is not on this system";
+  root.appendChild(head);
+
+  var why = document.createElement("p");
+  why.textContent = "VERTEX is a page and a set of ADT resources. The page is"
+                  + " installed here; the resources answer nothing, so there is"
+                  + " nothing for it to read.";
+  root.appendChild(why);
+
+  var what = document.createElement("ul");
+  BACKEND.forEach(function (one) {
+    var li = document.createElement("li");
+    li.appendChild(projectLink(one.name, one.url));
+    li.appendChild(document.createTextNode(" - " + one.why));
+    what.appendChild(li);
+  });
+  root.appendChild(what);
+
+  var steps = document.createElement("ol");
+  ["Pull each of those with abapGit and activate it.",
+   "Activate ZCL_SDE_ADT_RES_APP with the rest of the resources.",
+   "Register the BAdI implementation ZSDE_ADT_RES_APP on"
+     + " BADI_ADT_REST_RFC_APPLICATION, with the filter STATIC_URI_PATH"
+     + " covering /sap/bc/adt/zsde/* .",
+   "Reopen this window."].forEach(function (step) {
+    var li = document.createElement("li");
+    li.textContent = step;
+    steps.appendChild(li);
+  });
+  root.appendChild(steps);
+
+  if (detail) {
+    var said = document.createElement("pre");
+    said.className = "said";
+    said.textContent = detail;
+    root.appendChild(said);
+  }
+}
+
 /* ---------- wiring ---------- */
 
 document.getElementById("load").addEventListener("click", function () { load(tableName()); });
@@ -865,7 +1545,7 @@ document.getElementById("name").addEventListener("keydown", function (e) {
   if (e.key === "Enter") { load(tableName()); }
 });
 
-document.getElementById("join").addEventListener("click", function () { loadJoin(0); });
+document.getElementById("join").addEventListener("click", function () { loadJoin(ROWS); });
 
 document.getElementById("open").addEventListener("click", function () {
   var name = tableName();
@@ -887,6 +1567,7 @@ if (INITIAL) {
   window.addEventListener("load", function () { load(INITIAL); });
 } else {
   message("Type a table name and press Load.");
+  startLink();
 }
 </script>
 </body>
