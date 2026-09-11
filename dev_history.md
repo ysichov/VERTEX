@@ -704,6 +704,47 @@ is the answer, not necessarily what was asked for, and the statement says which.
 
 ---
 
+## Stage 15 — catching the second host up
+
+Four services had grown in Eclipse and the VS Code host still knew one: the table. Every page had
+learned to ask it for something it could not answer, and the pages had learned to check before
+asking - `if (typeof sdeTitle === "function")`. That guard is honest, and a project where it
+spreads is a project with one host and a museum piece.
+
+**The shim stopped naming arguments.** It used to forward `name, rows, query`, which is the table
+page's own signature; metrics asks with two arguments, versions with six, the join with six others.
+A host that names them needs editing every time a page learns one. It now forwards the argument
+list as it comes, and what the arguments mean belongs to the service:
+
+```js
+window.sdeLoad = send('load');
+window.sdeJoin = send('join');
+```
+
+**The path builders are duplicated, deliberately.** The same four URLs are built twice, once in
+Java and once here, because the two hosts share no language. They sit in one table at the top of
+the extension so the divergence is at least visible in one place. A service the host does not
+answer says so through the page's own error path rather than silently doing nothing.
+
+**What is still not the same.** Eclipse takes its session from the ABAP project and opens a view
+from the object tree; VS Code has neither, so the three commands open an empty page and the input
+bar in each of them is the way in. That bar exists because of stage 11, which was asked for in
+Eclipse - and it is what made the VS Code side possible without inventing a second way to name an
+object.
+
+### A backslash that was eaten twice
+
+The edit that broke this stage open was not the code. Writing these files through a shell heredoc,
+one level of escaping disappeared before Python saw it, so `\n` in a script became a real newline
+in a match string and every replacement of that block failed. It failed loudly, which is the only
+reason it cost minutes rather than a corrupted file.
+
+Two things came out of it. The pages had been written with `String.fromCharCode(10)` for exactly
+this reason since stage 4, and the same trick now keeps the shim's own `join` free of escapes. And
+the tooling rule: a file with escapes in it is written with the editor, not with a heredoc.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps
