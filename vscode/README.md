@@ -36,13 +36,13 @@ active.
 ```json
 "vertex.systems": [
   {
-    "name": "E19",
+    "name": "DEV",
     "url": "https://host.example.com:44300",
     "client": "100",
-    "user": "YSYCHOV"
+    "user": "DEVELOPER"
   }
 ],
-"vertex.active": "E19"
+"vertex.active": "DEV"
 ```
 
 The `url` is the ICM port, not the one SAP GUI connects to. The password is

@@ -22,7 +22,32 @@ folder. And since SAP GUI 8.0 draws on the same WebView2 engine as both editors,
 SAP GUI too.
 
 
-### In VS Code
+## Installing it in Eclipse
+
+Not published yet; this is how the package is made. Eclipse installs **features**, not bare
+plugins, so `org.vertex.abap.feature/` exists to wrap the one plugin, and `category.xml` beside it
+gives the install dialog something to list.
+
+File → Export → Plug-in Development → **Deployable features** → tick
+`org.vertex.abap.feature` → a destination directory → the *Options* tab → **Generate p2
+repository**, and point *Categorize repository* at `category.xml`. What comes out is a p2
+repository: `content.jar`, `artifacts.jar`, `features/` and `plugins/`.
+
+**GitHub Pages is not required.** Two ways to hand that repository over:
+
+| Route | How a user installs it | Cost |
+|---|---|---|
+| Zip it, attach to a GitHub Release | Help → Install New Software → Add → **Archive** → the zip | Nothing to host; no update checks |
+| Publish it at a URL, e.g. GitHub Pages | Help → Install New Software → Add → the URL | Needs Pages on; Eclipse can then check for updates |
+
+The second is what an update site is for, and the only one where *Check for Updates* finds a new
+version. The first is enough to give somebody a build.
+
+The plugin stays a jar (`unpack="false"`): the pages are read with `Bundle.getEntry`, which reads
+from inside one. ADT is declared as a prerequisite rather than shipped, so p2 refuses the install
+on an Eclipse without ADT instead of leaving a plugin that cannot resolve.
+
+## In VS Code
 
 Published as
 [**YuriiSychov.vertex-abap**](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap):
@@ -40,9 +65,9 @@ systems are a list and one of them is active:
 
 ```json
 "vertex.systems": [
-  { "name": "A4H", "url": "https://host:44300", "client": "001", "user": "SYCHOV",
+  { "name": "A4H", "url": "https://host:44300", "client": "001", "user": "DEVELOPER",
     "allowInsecureCertificate": true },
-  { "name": "EXX", "url": "http://host:8XXX", "client": "100", "user": "YSYCHOV" }
+  { "name": "EXX", "url": "http://host:8XXX", "client": "100", "user": "DEVELOPER" }
 ],
 "vertex.active": "A4H"
 ```
