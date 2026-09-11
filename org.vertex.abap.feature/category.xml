@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature id="org.vertex.abap.feature">
+      <category name="org.vertex.abap"/>
+   </feature>
+   <category-def name="org.vertex.abap" label="ABAP VERTEX Tools">
+      <description>
+         ABAP Version, Code and Data Explorer, inside ABAP Development Tools.
+      </description>
+   </category-def>
+</site>
