@@ -4,9 +4,10 @@
 // the same folder. Nothing about a service lives here that does not live there
 // too, which is the whole point of the split.
 //
-// Eclipse gets its connection from the ABAP project's ADT session; here there is
-// no such thing to borrow, so this host holds its own: settings for the system,
-// the password in the OS credential store, and a plain HTTPS request.
+// Eclipse gets its connection from the ABAP project's ADT session, and a window
+// opened from an object inherits the system that object lives in. Here there is
+// no project to inherit from, so the systems are a list in the settings and one
+// of them is active.
 
 const vscode = require("vscode");
 const https = require("https");
@@ -15,7 +16,11 @@ const fs = require("fs");
 const path = require("path");
 
 const PAGES = path.join(__dirname, "..", "org.vertex.abap.ui", "resources");
-const SECRET = "vertex.password";
+
+/** Passwords are filed per system: two systems are two users often enough. */
+function secretKey(system) {
+  return "vertex.password." + system.name;
+}
 
 /* ---------- what each service asks for ----------
 
@@ -165,59 +170,78 @@ function initialLiteral(initial) {
   return "{name:'" + initial.name + "',type:'" + (initial.type || "") + "'}";
 }
 
-/* ---------- connection ---------- */
+/* ---------- the systems ---------- */
 
-function settings() {
-  const c = vscode.workspace.getConfiguration("vertex");
-  return {
-    url: (c.get("url") || "").trim(),
-    client: (c.get("client") || "").trim(),
-    user: (c.get("user") || "").trim(),
-    insecure: c.get("allowInsecureCertificate") === true
-  };
+function systems() {
+  return (vscode.workspace.getConfiguration("vertex").get("systems") || [])
+    .filter(function (s) { return s && s.name; });
 }
 
-function missing(cfg) {
+/**
+ * The system to read from, or a sentence saying why there is none. An empty
+ * vertex.active means the first one: with a single system configured, naming it
+ * again would be ceremony.
+ */
+function active() {
+  const all = systems();
+  if (all.length === 0) {
+    return { error: "No system configured. Put one in vertex.systems: a name, a url and a user." };
+  }
+  const wanted = (vscode.workspace.getConfiguration("vertex").get("active") || "").trim();
+  if (!wanted) {
+    return { system: all[0] };
+  }
+  const found = all.filter(function (s) { return s.name === wanted; });
+  if (found.length === 0) {
+    return {
+      error: "vertex.active names " + wanted + ", which is not in vertex.systems. There is "
+           + all.map(function (s) { return s.name; }).join(", ") + "."
+    };
+  }
+  return { system: found[0] };
+}
+
+function missing(system) {
   const gaps = [];
-  if (!cfg.url) { gaps.push("vertex.url"); }
-  if (!cfg.user) { gaps.push("vertex.user"); }
+  if (!system.url) { gaps.push("url"); }
+  if (!system.user) { gaps.push("user"); }
   return gaps;
 }
 
-// Asked once, then kept by VS Code in the OS credential store. This extension
-// never writes it to a file and never puts it in a URL.
-async function password(context, user) {
-  const stored = await context.secrets.get(SECRET);
+// Asked once per system, then kept by VS Code in the OS credential store. This
+// extension never writes it to a file and never puts it in a URL.
+async function password(context, system) {
+  const stored = await context.secrets.get(secretKey(system));
   if (stored) {
     return stored;
   }
   const entered = await vscode.window.showInputBox({
-    prompt: "SAP password for " + user,
+    prompt: "SAP password for " + system.user + " on " + system.name,
     password: true,
     ignoreFocusOut: true
   });
   if (entered) {
-    await context.secrets.store(SECRET, entered);
+    await context.secrets.store(secretKey(system), entered);
   }
   return entered;
 }
 
 /** The client belongs to every request, not to one of them. */
-function withClient(cfg, requestPath) {
-  if (!cfg.client) {
+function withClient(system, requestPath) {
+  if (!system.client) {
     return requestPath;
   }
   return requestPath + (requestPath.indexOf("?") === -1 ? "?" : "&")
-       + "sap-client=" + encodeURIComponent(cfg.client);
+       + "sap-client=" + encodeURIComponent(system.client);
 }
 
-function request(cfg, pw, requestPath) {
+function request(system, pw, requestPath) {
   return new Promise(function (resolve, reject) {
     let base;
     try {
-      base = new URL(cfg.url);
+      base = new URL(system.url);
     } catch (e) {
-      reject(new Error("vertex.url is not a valid URL: " + cfg.url));
+      reject(new Error("The url of " + system.name + " is not a valid one: " + system.url));
       return;
     }
 
@@ -228,12 +252,12 @@ function request(cfg, pw, requestPath) {
       path: requestPath,
       method: "GET",
       headers: {
-        Authorization: "Basic " + Buffer.from(cfg.user + ":" + pw).toString("base64"),
+        Authorization: "Basic " + Buffer.from(system.user + ":" + pw).toString("base64"),
         Accept: "application/json"
       }
     };
     if (secure) {
-      options.rejectUnauthorized = !cfg.insecure;
+      options.rejectUnauthorized = system.allowInsecureCertificate !== true;
     }
 
     const req = (secure ? https : http).request(options, function (res) {
@@ -262,28 +286,33 @@ function describeConnection(error) {
   if (code.indexOf("CERT") !== -1 || code.indexOf("SELF_SIGNED") !== -1) {
     text += String.fromCharCode(10, 10)
           + "The server certificate could not be verified. Development systems often carry "
-          + "one that cannot be. If you accept that, set vertex.allowInsecureCertificate to "
-          + "true - it is off by default because it disables the check entirely.";
+          + "one that cannot be. If you accept that, set allowInsecureCertificate on this "
+          + "system in vertex.systems - it is off by default because it disables the check "
+          + "entirely.";
   }
   return text;
 }
 
 /** Reads one resource and answers in the shape the page expects. */
 async function fetch(context, requestPath) {
-  const cfg = settings();
-  const gaps = missing(cfg);
+  const chosen = active();
+  if (chosen.error) {
+    return "ERROR:" + chosen.error;
+  }
+  const system = chosen.system;
+  const gaps = missing(system);
   if (gaps.length) {
-    return "ERROR:Set " + gaps.join(" and ") + " in the settings first.";
+    return "ERROR:System " + system.name + " has no " + gaps.join(" and ") + ".";
   }
 
-  const pw = await password(context, cfg.user);
+  const pw = await password(context, system);
   if (!pw) {
     return "ERROR:No password was entered, so the request was not sent.";
   }
 
   let response;
   try {
-    response = await request(cfg, pw, withClient(cfg, requestPath));
+    response = await request(system, pw, withClient(system, requestPath));
   } catch (e) {
     return "ERROR:" + describeConnection(e);
   }
@@ -291,8 +320,8 @@ async function fetch(context, requestPath) {
   if (response.status === 401) {
     // A wrong password kept in the store would block every later attempt with no
     // way out, so drop it and say that it was dropped.
-    await context.secrets.delete(SECRET);
-    return "ERROR:HTTP 401: the system rejected user " + cfg.user
+    await context.secrets.delete(secretKey(system));
+    return "ERROR:HTTP 401: " + system.name + " rejected user " + system.user
          + ". The stored password has been discarded; loading again will ask for it.";
   }
   if (response.status !== 200) {
@@ -373,9 +402,42 @@ function activate(context) {
     vscode.commands.registerCommand("vertex.versions", function () {
       open(context, "versions", null, false);
     }),
+    vscode.commands.registerCommand("vertex.switchSystem", async function () {
+      const all = systems();
+      if (all.length === 0) {
+        vscode.window.showWarningMessage(
+          "VERTEX: there is nothing to switch between. Put your systems in vertex.systems.");
+        return;
+      }
+      const current = active();
+      const picked = await vscode.window.showQuickPick(
+        all.map(function (s) {
+          return {
+            label: s.name,
+            description: s.user + "@" + s.url + (s.client ? " client " + s.client : ""),
+            picked: !current.error && current.system.name === s.name
+          };
+        }),
+        { title: "Read from which system?" }
+      );
+      if (!picked) {
+        return;
+      }
+      await vscode.workspace.getConfiguration("vertex")
+        .update("active", picked.label, vscode.ConfigurationTarget.Global);
+      // Panels already open keep what they last read; the next Load goes to the
+      // system chosen here.
+      vscode.window.showInformationMessage("VERTEX: now reading from " + picked.label + ".");
+    }),
     vscode.commands.registerCommand("vertex.forgetPassword", async function () {
-      await context.secrets.delete(SECRET);
-      vscode.window.showInformationMessage("VERTEX: the stored password was removed.");
+      const chosen = active();
+      if (chosen.error) {
+        vscode.window.showWarningMessage("VERTEX: " + chosen.error);
+        return;
+      }
+      await context.secrets.delete(secretKey(chosen.system));
+      vscode.window.showInformationMessage(
+        "VERTEX: the stored password for " + chosen.system.name + " was removed.");
     })
   );
 }

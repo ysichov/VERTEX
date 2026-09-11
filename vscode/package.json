@@ -29,6 +29,10 @@
         "title": "VERTEX: Open Versions"
       },
       {
+        "command": "vertex.switchSystem",
+        "title": "VERTEX: Switch System"
+      },
+      {
         "command": "vertex.forgetPassword",
         "title": "VERTEX: Forget Password"
       }
@@ -36,25 +40,42 @@
     "configuration": {
       "title": "VERTEX",
       "properties": {
-        "vertex.url": {
+        "vertex.systems": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "The ABAP systems this extension can read. One of them is active at a time - see `vertex.active`, or the **VERTEX: Switch System** command.",
+          "items": {
+            "type": "object",
+            "required": ["name", "url", "user"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "How this system is called in the switch list. Also what its stored password is filed under."
+              },
+              "url": {
+                "type": "string",
+                "markdownDescription": "Base URL, for example `https://host.example.com:44300`. This is the ICM port, not the one SAP GUI connects to."
+              },
+              "client": {
+                "type": "string",
+                "description": "SAP client, sent as sap-client. Leave empty to use the system default."
+              },
+              "user": {
+                "type": "string",
+                "description": "SAP user. The password is asked once and kept in the OS credential store, per system."
+              },
+              "allowInsecureCertificate": {
+                "type": "boolean",
+                "default": false,
+                "markdownDescription": "Accept a server certificate that cannot be verified. Development systems often have one. **Off by default on purpose** - turning it on disables certificate checking for requests to this system."
+              }
+            }
+          }
+        },
+        "vertex.active": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Base URL of the ABAP system, for example `https://host.example.com:44300`."
-        },
-        "vertex.client": {
-          "type": "string",
-          "default": "",
-          "description": "SAP client, sent as sap-client. Leave empty to use the system default."
-        },
-        "vertex.user": {
-          "type": "string",
-          "default": "",
-          "description": "SAP user. The password is asked once and kept in the OS credential store."
-        },
-        "vertex.allowInsecureCertificate": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Accept a server certificate that cannot be verified. Development systems often have one. **Off by default on purpose** - turning it on disables certificate checking for this extension's requests."
+          "markdownDescription": "Which of `vertex.systems` to read from. Empty means the first one."
         }
       }
     }

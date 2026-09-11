@@ -84,9 +84,21 @@ The extension in `vscode/` has no dependencies and no build step. Make the folde
 installed extension - a directory junction from `%USERPROFILE%\.vscode\extensions` to it - and
 reload the window.
 
-It needs the connection Eclipse inherits from the ABAP project: `vertex.url`, `vertex.user` and,
-if the system needs one, `vertex.client` in the settings. The password is asked once and kept in
-the OS credential store.
+It needs the connection Eclipse inherits from the ABAP project. There is no project here, so the
+systems are a list and one of them is active:
+
+```json
+"vertex.systems": [
+  { "name": "ALC", "url": "https://host:44300", "client": "100", "user": "SYCHOV",
+    "allowInsecureCertificate": true },
+  { "name": "E19", "url": "http://host:8000", "client": "100", "user": "YSYCHOV" }
+],
+"vertex.active": "E19"
+```
+
+The url is the ICM port, not the one SAP GUI connects to. An empty `vertex.active` means the
+first. **VERTEX: Switch System** picks another one from a list, and the password is asked once per
+system - two systems are two users often enough.
 
 Then the command palette: **VERTEX: Open SelecTor**, **Open Metrics**, **Open Versions**. There is
 no object tree here to right-click, so each page opens empty and its own name field is the way in.
