@@ -102,6 +102,15 @@ const SERVICES = {
         p += "&to=" + encodeURIComponent(args[5]);
       }
       return p;
+    },
+    // request, remote - a review compared against another system is a different
+    // review, so the other system belongs in the request.
+    review: function (args) {
+      let p = "/sap/bc/adt/zsde/review/" + upper(args[0]);
+      if (args[1]) {
+        p += "?remote=" + encodeURIComponent(args[1]);
+      }
+      return p;
     }
   }
 };
@@ -136,6 +145,7 @@ const SHIM = [
   "  window.sdeLoad = send('load');",
   "  window.sdeJoin = send('join');",
   "  window.sdeOpen = send('open');",
+  "  window.sdeReview = send('review');",
   "  window.sdeTitle = send('title');",
   "  window.sdeTake = function () {",
   "    const taken = pending;",
