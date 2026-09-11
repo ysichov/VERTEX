@@ -403,13 +403,26 @@ a list of names — eighty reads to show eighty rows. So the resource has two sh
 asks twice: the parts, then the versions of the part that was clicked. That is AVE's own left and
 middle pane, for AVE's own reason.
 
-### What is deliberately refused
+### What was refused, and should not have been
 
 A transport request and a package. Reading them is the whole point of AVE — a change is a
-transport, not an object — and AVE shows a progress bar with an estimate while it works, and asks
-whether to continue when the estimate grows. One blocking HTTP call has nowhere to put any of
-that, so the resource answers 400 and says why, rather than being left to time out and blame the
-network.
+transport, not an object — and AVE shows a progress bar with an estimate while it works. One
+blocking HTTP call has nowhere to put that, so the resource answered 400 and said why.
+
+That reasoning was about the wrong method. AVE's progress bar belongs to its *review
+preparation*, which reads every version of every part of every object. Listing a transport is the
+other one: `ZIF_AVE_OBJECT~GET_PARTS` reads the object keys of the request and stops. The
+expensive `GET_PARTS_EXPANDED` sits next to it in the same class and nothing here calls it.
+
+Worse, the answer was already in the design. The parts-then-versions split exists precisely so
+that no single request is long, and that is the progress channel the refusal claimed was missing.
+A transport is now a scope like any other: its objects come back as the parts list, clicking one
+opens it, and a row at the top leads back.
+
+**Lesson.** A refusal is a claim, and this one was never measured — the cost of two methods was
+read off the name of one. The cheapest check would have been to call it.
+
+
 
 ### ZCX_AVE says nothing
 

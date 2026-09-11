@@ -195,10 +195,17 @@ function note(text) {
 /* The types this service reads. The page does not enforce the list - a type
    the resource refuses comes back as its own sentence, and one authority for
    that rule is enough. */
-var TYPES = [["CLAS", "Class"], ["INTF", "Interface"], ["PROG", "Program"],
+var TYPES = [["TR", "Transport request"], ["DEVC", "Package"],
+             ["CLAS", "Class"], ["INTF", "Interface"], ["PROG", "Program"],
              ["INCL", "Include"], ["FUGR", "Function group"], ["FUNC", "Function module"],
              ["DDLS", "CDS view"], ["TABL", "Table"], ["DOMA", "Domain"],
              ["DTEL", "Data element"]];
+
+/* A transport request and a package hold objects, not versionable parts. The
+   left pane shows the same list either way; what a click does differs, and the
+   answer says which it is holding. */
+var scope = false;
+var came_from = null;
 
 function objectName() {
   return document.getElementById("name").value.trim().toUpperCase();
@@ -208,12 +215,14 @@ function objectType() {
   return document.getElementById("type").value;
 }
 
-function loadParts() {
+function loadParts(keepTrail) {
   var name = objectName();
   if (!name) {
     message("Type an object name and press Load.");
     return;
   }
+  // Typing a name is leaving wherever the trail led.
+  if (keepTrail !== true) { came_from = null; }
   // Parts belong to one object, so another object starts over.
   parts = [];
   current = null;
@@ -230,6 +239,31 @@ function loadVersions(part) {
   status("reading versions of " + part.unit + " ...");
   note("Reading ...");
   sdeLoad(objectName(), objectType(), part.name, part.part_type, "", "");
+}
+
+/* Opening an object of a scope keeps the scope, so there is somewhere to go
+   back to. One level is enough: a package holds objects, an object holds parts,
+   and a part holds versions. */
+function drillInto(part) {
+  came_from = { name: objectName(), type: objectType() };
+  document.getElementById("name").value = part.unit;
+  var box = document.getElementById("type");
+  if (!Array.prototype.some.call(box.options, function (o) { return o.value === part.part_type; })) {
+    var option = document.createElement("option");
+    option.value = part.part_type;
+    option.textContent = part.part_type;
+    box.appendChild(option);
+  }
+  box.value = part.part_type;
+  loadParts(true);
+}
+
+function goBack() {
+  if (!came_from) { return; }
+  document.getElementById("name").value = came_from.name;
+  document.getElementById("type").value = came_from.type;
+  came_from = null;
+  loadParts(true);
 }
 
 /* A version is compared with the one below it in the list, which is the change
@@ -286,6 +320,7 @@ function sdeReady() {
 
 function renderPartList(data) {
   parts = data.parts || [];
+  scope = data.scope === true;
   renderParts();
   // Optional on purpose: a host with no tab to rename simply does not define
   // it, and the VS Code shim is exactly that host today.
@@ -301,6 +336,15 @@ function renderPartList(data) {
 function renderParts() {
   var box = document.getElementById("partlist");
   box.innerHTML = "";
+
+  if (came_from) {
+    var back = document.createElement("div");
+    back.className = "part";
+    back.textContent = "← " + came_from.name;
+    back.title = "Back to " + came_from.name;
+    back.addEventListener("click", goBack);
+    box.appendChild(back);
+  }
   parts.forEach(function (p) {
     var row = document.createElement("div");
     row.className = "part" + (current && current.name === p.name
@@ -311,7 +355,11 @@ function renderParts() {
     kind.className = "kind";
     kind.textContent = p.part_type;
     row.appendChild(kind);
-    row.addEventListener("click", function () { loadVersions(p); });
+    row.addEventListener("click", function () {
+      // In a scope the row is an object: open it, rather than ask for versions
+      // of a part it does not have.
+      if (scope) { drillInto(p); } else { loadVersions(p); }
+    });
     box.appendChild(row);
   });
 }
@@ -536,10 +584,10 @@ function renderDiff(data) {
 
 /* ---------- wiring ---------- */
 
-document.getElementById("load").addEventListener("click", loadParts);
+document.getElementById("load").addEventListener("click", function () { loadParts(false); });
 
 document.getElementById("name").addEventListener("keydown", function (e) {
-  if (e.key === "Enter") { loadParts(); }
+  if (e.key === "Enter") { loadParts(false); }
 });
 
 var INITIAL = /*INIT*/null/*INIT*/;
@@ -547,7 +595,7 @@ fillTypes(INITIAL ? INITIAL.type : null);
 if (INITIAL) {
   document.getElementById("name").value = INITIAL.name;
   // Wait for the document, so sdeReady exists before the host calls it.
-  window.addEventListener("load", loadParts);
+  window.addEventListener("load", function () { loadParts(false); });
 } else {
   message("Type an object name and press Load.");
 }

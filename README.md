@@ -8,7 +8,7 @@ renders as HTML.
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | McCabe, Halstead and the maintainability index per unit |
-| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | Parts, their versions and the diff between two of them; no blame, no review, one object at a time |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport, a package or one object; its parts, their versions and the diff between two of them. No blame, no review yet |
 
 Status: **early**. All three answer, and each is a fraction of what its backend can do.
 
@@ -186,6 +186,6 @@ user operates lives in the page, which is what lets the same page run under the 
   stage 12 of `dev_history.md` for why neither was copied wholesale.
 - Blame, and the review workflow on top of the diff — approve, decline, comment, saved per
   transport request.
-- A transport request as the unit of work, which is what AVE is for. Both it and a package are
-  refused today: they are read object by object, and one blocking request has nowhere to report
-  progress. The same limit keeps the metrics of a whole package out.
+- The review itself: approve, decline, comment, saved per transport request. The scope it needs
+  now exists; what it still needs is a write path, which nothing in VERTEX has yet.
+- The metrics of a whole package, which needs the same treatment the transport just got.
