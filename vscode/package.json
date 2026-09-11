@@ -20,6 +20,14 @@
         "title": "VERTEX: Open SelecTor"
       },
       {
+        "command": "vertex.metrics",
+        "title": "VERTEX: Open Metrics"
+      },
+      {
+        "command": "vertex.versions",
+        "title": "VERTEX: Open Versions"
+      },
+      {
         "command": "vertex.forgetPassword",
         "title": "VERTEX: Forget Password"
       }

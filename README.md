@@ -14,8 +14,9 @@ Status: **early**. All three answer, and each is a fraction of what its backend 
 
 The division of labour is the same for all three: ABAP computes and returns JSON, the page
 renders it, and the view in between is transport. Nothing about a service lives in the host, so
-the same page runs under the VS Code extension in `vscode/` — and, since SAP GUI 8.0 draws on the
-same WebView2 engine as both editors, one day inside SAP GUI as well.
+every page runs under the VS Code extension in `vscode/` as well — the same files, from the same
+folder. And since SAP GUI 8.0 draws on the same WebView2 engine as both editors, one day inside
+SAP GUI too.
 
 ## How it fits together
 
