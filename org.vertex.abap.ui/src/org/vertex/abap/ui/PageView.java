@@ -291,9 +291,21 @@ public abstract class PageView extends ViewPart {
 	}
 
 	private String readPage() throws IOException {
-		URL entry = FrameworkUtil.getBundle(getClass()).getEntry(page());
+		return readResource(page());
+	}
+
+	/**
+	 * Reads a file that ships inside the bundle, as text. A page is one such
+	 * file; a library a page needs is another, and neither can be fetched over
+	 * a URL, because the browser is handed its document as a string and so has
+	 * no address to resolve anything against.
+	 *
+	 * @param path bundle-relative, e.g. resources/mermaid.min.js
+	 */
+	protected String readResource(String path) throws IOException {
+		URL entry = FrameworkUtil.getBundle(getClass()).getEntry(path);
 		if (entry == null) {
-			throw new IOException(page() + " is missing from the bundle."
+			throw new IOException(path + " is missing from the bundle."
 					+ " Check that build.properties lists resources/ under bin.includes.");
 		}
 		try (InputStream in = entry.openStream()) {

@@ -35,3 +35,19 @@ pages.forEach(function (name) {
   fs.copyFileSync(path.join(from, name), path.join(to, name));
   console.log("copied " + name);
 });
+
+// A page is given to the webview as a string, so it has no address to load a
+// script from: what it needs, it asks the host for by name and gets as text.
+// Those files live next to the pages and travel with them.
+const libraries = fs.readdirSync(from).filter(function (name) {
+  return name.endsWith(".js");
+});
+if (libraries.length === 0) {
+  console.error("No libraries in " + from + ". The Flow diagram needs mermaid.min.js.");
+  process.exit(1);
+}
+
+libraries.forEach(function (name) {
+  fs.copyFileSync(path.join(from, name), path.join(to, name));
+  console.log("copied " + name);
+});

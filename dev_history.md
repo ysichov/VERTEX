@@ -1042,6 +1042,55 @@ for real: the vsix now carries all three pages.
 
 ---
 
+## Stage 23 — Flow: the picture ACE already draws
+
+**A method's branch scheme instead of its numbers.** The Metrics window got a *Flow*
+toggle; with it pressed, a click on a row replaces the table with the control-structure
+diagram of that unit — `IF`/`CASE`/`LOOP`/`TRY` with the straight stretches folded into
+"N operations" nodes that open when clicked. Escape or *← Units* goes back.
+
+Nothing about that picture was invented here. `ZCL_ACE_CODE_HTML=>BUILD_SCHEME` already
+writes it, for the *Scheme* window in SAP GUI, and it writes mermaid text. So the resource
+returns that string and the page draws it — the same division as everywhere else, and this
+time the law cost almost nothing to keep.
+
+**What ACE had to give up to be asked from outside.** Three things, all of them extractions
+rather than new logic:
+
+- `BUILD_SCHEME` gained `I_OFFSET`. It used to assume its source started at line 1 of the
+  scan, which is true for the whole include the GUI window shows and false for one method
+  cut out of a program. `ANALYZE` already took an offset for exactly this reason; the
+  parameter only had to be forwarded.
+- The walk that finds where each unit begins and ends left `ZCL_ACE_METRICS=>CALCULATE` and
+  became `UNIT_BOUNDARIES`, public, now also carrying each unit's first and last **source
+  line** and its qualified name. The metrics list and the diagram have to agree about which
+  method a row is; a second walk here is precisely how they would stop agreeing.
+- `ENSURE_CALLS_PARSED` left `ZCL_ACE_WINDOW` and became `ZCL_ACE_PARSER=>PARSE_CALLS`.
+  Without it every call folds into an "N operations" node like ordinary code — the parser
+  fills `TT_CALLS` a statement at a time, on demand, and a diagram needs the whole include
+  up front.
+
+On the SDE side, resolving an ADT name to the program ACE parses, and parsing it with all
+its includes, were the metrics resource's private business. `ZCL_SDE_ACE_SOURCE` now holds
+both and `ZCL_SDE_ADT_RES_METRICS` calls it, so `ZCL_SDE_ADT_RES_FLOW` is left with only
+the part that is its own: find the unit, cut its lines out, ask for the scheme.
+
+**The one thing the page decides is a click.** ACE marks the nodes that fold with a
+`sapevent:aceexp_<line>` link, and the page reads the line out of the href and asks again
+with that line added to the open list. It never decides which nodes those are. The other
+link ACE writes, `acego_`, selects code in its source window; there is none here, so it is
+swallowed rather than followed.
+
+**mermaid ships inside the plugin.** The page is handed to the browser as a string —
+`setText` in Eclipse, `webview.html` in VS Code — so it has no address to resolve a
+`<script src>` against, and a CDN would fail silently on a machine behind a corporate
+proxy. So the library is a file next to the pages, the host reads it and returns its text
+through a new `sdeAsset` call, and the page runs it. It is handed over the first time a
+diagram is asked for, not on every open, because it is megabytes and most visits to this
+window never press Flow.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

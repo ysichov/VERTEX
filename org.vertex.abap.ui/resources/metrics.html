@@ -119,6 +119,20 @@
   .link { cursor: pointer; text-decoration: underline; }
   .link.plain { cursor: text; text-decoration: none; user-select: text;
                 font-family: Consolas, monospace; }
+
+  /* Flow. The button stays pressed while the mode is on, because which of
+     the two a click on a row does is not otherwise visible. */
+  button.on { background: var(--th-sorted-bg); border-color: var(--fg); }
+  .bar .unit { color: var(--fg); font-family: Consolas, monospace; }
+  tbody tr.pick { cursor: pointer; }
+  /* The diagram sizes itself; the pane scrolls in both directions rather
+     than shrinking a picture nobody could then read. */
+  .diagram { padding: 10px; }
+  .diagram svg { max-width: none; height: auto; }
+  /* ACE marks a node it can open in the source window. Here there is no
+     source window, so only the stretches that fold carry a hand. */
+  .diagram a[href^="sapevent:aceexp"] { cursor: pointer; }
+  .diagram a { text-decoration: none; }
 </style>
 </head>
 <body>
@@ -127,7 +141,10 @@
   <select id="type" title="Object type"></select>
   <input id="name" spellcheck="false" autocomplete="off" placeholder="object name">
   <button id="load">Load</button>
+  <button id="flow" title="Show the branch scheme of a unit instead of its numbers">Flow</button>
+  <button id="back" hidden title="Back to the unit list">&#8592; Units</button>
   <span class="shown" id="object"></span>
+  <span class="unit" id="unit"></span>
   <span class="status" id="status"></span>
 </div>
 
@@ -158,8 +175,20 @@ var COLUMNS = [
 ];
 
 var units = [];
+var totals = null;
 var sortKey = null;
 var sortDown = true;
+
+/* What the last answer was about. One request is outstanding at a time - a
+   click reaches the host, the host answers - so one name is enough to tell
+   sdeReady which of the three it is holding. */
+var waiting = null;
+
+/* The object the table on screen was read for. Kept apart from the input
+   bar: somebody can type a new name without pressing Load, and a diagram
+   must still be asked for the object whose row was clicked. */
+var loadedObject = "";
+var loadedType = "";
 
 function status(text) {
   document.getElementById("status").textContent = text || "";
@@ -194,7 +223,9 @@ function load() {
     message("Type an object name and press Load.");
     return;
   }
+  closeDiagram();
   status("reading " + name + " ...");
+  waiting = "metrics";
   // Returns at once. The host answers later by calling sdeReady.
   sdeLoad(name, objectType());
 }
@@ -220,6 +251,8 @@ function fillTypes(chosen) {
 
 // Invoked by the host when the answer is waiting.
 function sdeReady() {
+  var kind = waiting;
+  waiting = null;
   var raw = sdeTake();
   status("");
   if (typeof raw !== "string") { message("No response from the host."); return; }
@@ -231,6 +264,8 @@ function sdeReady() {
     status("");
     return;
   }
+  // The library is JavaScript, not an answer to a question about ABAP.
+  if (kind === "asset") { startMermaid(raw); return; }
   var data;
   try {
     data = JSON.parse(raw);
@@ -238,6 +273,7 @@ function sdeReady() {
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
     return;
   }
+  if (kind === "flow") { renderDiagram(data); return; }
   render(data);
 }
 
@@ -306,6 +342,11 @@ function renderTable() {
   var tbody = document.createElement("tbody");
   sorted().forEach(function (u) {
     var tr = document.createElement("tr");
+    if (flowMode) {
+      tr.className = "pick";
+      tr.title = "Branch scheme of " + u.unit_name;
+      tr.addEventListener("click", function () { openUnit(u); });
+    }
     COLUMNS.forEach(function (c) {
       var td = document.createElement("td");
       td.textContent = u[c.key];
@@ -323,6 +364,9 @@ function renderTable() {
 
 function render(data) {
   units = data.units || [];
+  totals = data.totals;
+  loadedObject = data.object;
+  loadedType = data.type;
   document.getElementById("object").textContent = data.program;
   // Optional on purpose: a host with no tab to rename simply does not define
   // it, and the VS Code shim is exactly that host today.
@@ -339,6 +383,145 @@ function render(data) {
   renderTotals(data.totals);
   renderTable();
   status(units.length + (units.length === 1 ? " unit" : " units"));
+}
+
+
+/* ---------- the branch scheme ----------
+
+   The picture is ACE's, not this page's. ZCL_ACE_CODE_HTML=>BUILD_SCHEME
+   writes the same mermaid text the Scheme window draws in SAP GUI, for the
+   one unit that was clicked, and the resource hands it over as a string.
+   What is left here is drawing that string and passing one kind of click
+   back - opening a folded stretch - because that is the only thing the
+   picture cannot answer by itself.
+
+   mermaid is not fetched from anywhere. It sits in the plugin next to this
+   page, and the host reads it and hands over its text the first time a
+   diagram is asked for; until then this window costs what it always did. */
+
+var flowMode = false;
+var shownUnit = null;     // the unit on display, while one is
+var expanded = [];        // stretches the reader opened, by their anchor line
+var mermaidLoaded = false;
+var diagramSeq = 0;
+
+/* mermaid draws its own colours, so it has to be told which way round the
+   page is - and the hosts report that in their own ways. */
+function darkTheme() {
+  var css = document.body.classList;
+  if (css.contains("vscode-dark") || css.contains("vscode-high-contrast")) { return true; }
+  if (css.contains("vscode-light")) { return false; }
+  return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+}
+
+function setFlowMode(on) {
+  flowMode = on;
+  document.getElementById("flow").className = on ? "on" : "";
+  if (!on) { closeDiagram(); }
+  if (units.length > 0 && !shownUnit) { renderTable(); }
+}
+
+function openUnit(unit) {
+  shownUnit = { include: unit.include, name: unit.unit_name };
+  expanded = [];
+  requestDiagram();
+}
+
+/* Every version of the diagram is a fresh question to ABAP, the one after a
+   stretch is opened included. ACE decides what a stretch collapses to, and
+   deciding that here as well is how the two pictures would drift apart. */
+function requestDiagram() {
+  document.getElementById("back").hidden = false;
+  document.getElementById("unit").textContent = shownUnit.name;
+  document.getElementById("totals").className = "totals hidden";
+  status("reading " + shownUnit.name + " ...");
+  if (!mermaidLoaded) {
+    waiting = "asset";
+    sdeAsset("mermaid");
+    return;
+  }
+  waiting = "flow";
+  sdeFlow(loadedObject, loadedType, shownUnit.include, shownUnit.name,
+          expanded.join(","));
+}
+
+function closeDiagram() {
+  if (!shownUnit) { return; }
+  shownUnit = null;
+  expanded = [];
+  document.getElementById("back").hidden = true;
+  document.getElementById("unit").textContent = "";
+  status("");
+  if (units.length > 0) {
+    renderTotals(totals);
+    renderTable();
+    status(units.length + (units.length === 1 ? " unit" : " units"));
+  }
+}
+
+/* The library arrives as text, so it is run here rather than fetched. */
+function startMermaid(source) {
+  var script = document.createElement("script");
+  script.textContent = source;
+  document.head.appendChild(script);
+  if (typeof mermaid === "undefined") {
+    message("mermaid.min.js was read but defined no mermaid object.");
+    return;
+  }
+  // The same settings ACE gives its own diagrams: loose, so that the click
+  // directives in the text survive, and limits a long method cannot hit.
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "loose",
+    theme: darkTheme() ? "dark" : "default",
+    flowchart: { htmlLabels: false, useMaxWidth: false },
+    maxTextSize: 90000000,
+    maxEdges: 100000
+  });
+  mermaidLoaded = true;
+  requestDiagram();
+}
+
+function renderDiagram(data) {
+  var root = document.getElementById("root");
+  if (!data.mermaid) {
+    message("ACE drew nothing for " + data.unit + ".");
+    return;
+  }
+  root.className = "diagram";
+  root.innerHTML = "";
+  diagramSeq = diagramSeq + 1;
+  mermaid.render("vertexflow" + diagramSeq, data.mermaid).then(function (out) {
+    root.innerHTML = out.svg;
+    status(data.unit_type + ", lines " + data.line_from + " to " + data.line_to);
+  }, function (e) {
+    message("mermaid could not draw this diagram." + String.fromCharCode(10)
+            + (e && e.message ? e.message : String(e)));
+  });
+}
+
+/* Which node opens a folded stretch is ACE's decision, and it travels in
+   the diagram: it puts a link on exactly those nodes, and the number in the
+   link is the line the stretch is anchored at. The other link it writes,
+   acego_, selects code in ACE's source window - there is none here, so it
+   does nothing, but it must still not navigate this page anywhere. */
+function onDiagramClick(e) {
+  var node = e.target;
+  var href = "";
+  while (node && node.getAttribute) {
+    href = node.getAttribute("href") || node.getAttribute("xlink:href") || "";
+    if (href) { break; }
+    node = node.parentNode;
+  }
+  if (href.indexOf("sapevent:") !== 0) { return; }
+  e.preventDefault();
+  var at = href.indexOf("aceexp_");
+  if (at < 0) { return; }
+  var line = parseInt(href.substring(at + 7), 10);
+  if (!line) { return; }
+  var already = expanded.indexOf(line);
+  if (already < 0) { expanded.push(line); } else { expanded.splice(already, 1); }
+  requestDiagram();
 }
 
 
@@ -453,6 +636,18 @@ document.getElementById("load").addEventListener("click", load);
 
 document.getElementById("name").addEventListener("keydown", function (e) {
   if (e.key === "Enter") { load(); }
+});
+
+document.getElementById("flow").addEventListener("click", function () {
+  setFlowMode(!flowMode);
+});
+
+document.getElementById("back").addEventListener("click", closeDiagram);
+
+document.getElementById("root").addEventListener("click", onDiagramClick);
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape") { closeDiagram(); }
 });
 
 var INITIAL = /*INIT*/null/*INIT*/;
