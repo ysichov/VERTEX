@@ -1,7 +1,9 @@
 # ABAP VERTEX Tools
 
-**Install:** Eclipse ADT from `https://ysichov.github.io/VERTEX/` ·
-VS Code from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap).
+<img width="164" height="160" alt="image" src="https://github.com/user-attachments/assets/78305aca-51e4-4b6d-8a5f-f2c1ec3764fb" />
+
+[**Install from the VS Code Marketplace**](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap) · Eclipse ADT: install from `https://ysichov.github.io/VERTEX/` or build it from this repository (see below).
+
 
 ABAP **Version**, **Code** and **Data** Explorer — three words, three SAP GUI tools, one front end
 in ABAP Development Tools. Each view reads over the developer's existing ADT connection and
