@@ -1,6 +1,6 @@
 {
   "name": "vertex-abap",
-  "displayName": "ABAP VERTEX Tools",
+  "displayName": "SAP ABAP VERTEX Tools",
   "description": "ABAP Version, Code and Data Explorer - the VERTEX pages under a VS Code host",
   "license": "MIT",
   "repository": {
@@ -19,12 +19,13 @@
     "pivot",
     "code review"
   ],
-  "version": "0.2.1",
+  "version": "0.3.0",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "Visualization",
     "Other"
   ],
   "activationEvents": [],

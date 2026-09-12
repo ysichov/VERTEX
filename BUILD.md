@@ -15,6 +15,18 @@ catalogue. `index.html` is not part of the p2 repository and Eclipse never reads
 because the address is a link people click, and a bare p2 repository answers a browser with a
 404. It tells whoever landed there to paste the address into Help → Install New Software.
 
+**Two files pin the compiler to Java 21, and they are read by different things.**
+`javacSource` and `javacTarget` in `org.vertex.abap.ui/build.properties` are what the
+*export* obeys; `org.vertex.abap.ui/.settings/org.eclipse.jdt.core.prefs` is what the
+workspace build obeys. Neither covers for the other. Without them the build follows
+whichever JRE the workspace bound to the `JavaSE-21` execution environment, and on an
+Eclipse carrying only a newer one that lands at 26 against a compliance of 21. Eclipse
+tolerates the mismatch; the export does not. It fails with *Compliance level '21' is incompatible with target level '26'*, and
+still writes a jar — **with the resources and no class files at all**. That plugin installs
+and does nothing. It cost one release on 12 September 2026, and the log that said so was
+inside the `logs.zip` the export drops into the target folder. Delete that zip before
+committing; it is the export's own log, not part of the repository.
+
 File → Export → Plug-in Development → **Deployable features** → tick
 `org.vertex.abap.feature` → a destination directory → the *Options* tab → **Generate p2
 repository**, and point *Categorize repository* at `category.xml`. What comes out is a p2

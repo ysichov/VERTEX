@@ -1091,6 +1091,57 @@ window never press Flow.
 
 ---
 
+## Stage 24 — the flow, and what it cost to leave the window behind
+
+**The Metrics window became a window with three pictures.** A mode list replaced the
+Flow toggle: *Flow*, *Scheme*, *Metrics*, in that order, with the numbers last. Which
+one a window opens on follows from the object rather than from a preference — a
+program or an include has code above its units, so the order things run in is the
+first thing worth seeing; a class has no such code, its pool is nothing but `INCLUDE`
+statements, so it opens on the list of its methods. The flow takes the whole window,
+because it is about the object and has no unit to point at; the scheme keeps the
+narrow list beside it, because picking a unit is the whole interaction.
+
+**ACE had to learn to exist without a screen.** `ZCL_ACE`'s constructor builds a
+window and an object tree — SAP GUI controls — and an ADT resource has no session to
+build them on. But the analysis never wanted them: every scanner uses the viewer as a
+place to keep the parse, the step table and the depth, and asks it to draw nothing.
+So both constructors took an `I_HEADLESS` flag and return at the line where state ends
+and the first control begins, and `SET_PROGRAM` gave up its data half as
+`PARSE_PROGRAM` — the parse plus the call walk, no controls. Four lines of state, and
+the whole flow becomes reachable from outside.
+
+**`STEPS_FLOW` split the same way**: `BUILD_STEPS_FLOW` is the picture, a function of
+the step table and the parse; the instance method keeps the filter that needs the
+viewer's own code-flow walk, and the drawing. Depth and Only Z needed nothing at all —
+`M_HIST_DEPTH` and `M_ZCODE` were already public, so they became query parameters.
+The window opens at depth 3 rather than ACE's 19: nineteen draws a picture too large
+to read on first sight, and winding it out is one field away.
+
+**Three errors, all from the same step, and none of them findable here.** Making a
+method static takes away the instance, and the compiler says so three separate ways:
+
+- `I_FOCUS` typed `STRING` against a `PROGNAME` field — not type-compatible.
+- `CLEAN_LABEL` and `FORMAT_NODE_LABEL` called by their short form from a static
+  method, which only static methods may be. Both are pure text; both became static.
+- `IS_PARSE_DATA` written to. The drawing is not a pure reader: with a focus it dips
+  back into the parser for bindings nobody resolved yet and fills them in. It became
+  `CS_PARSE_DATA`, CHANGING, because a local copy would throw that work away and the
+  caller would pay for it again.
+
+`abaplint` reported zero parser errors before and after each of them. They are type
+and scope errors, not parse errors, and only the syntax check on the real system found
+them. Which also settled how this half of the work should go: write, push, pull,
+`SAPDiagnose action="syntax"`, fix — and never build the next layer on ABAP that has
+not been through it.
+
+**A day lost to the wrong server.** `arc` points at a local trial on `127.0.0.1:50000`
+that is down after every reboot; QAS is `arc-qas`. Reporting "the system is
+unreachable" for a whole session, and planning around it, was a failure to look at
+where each connector pointed.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps
