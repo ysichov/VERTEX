@@ -26,6 +26,9 @@ SAP GUI too.
 
 ## How it fits together
 
+
+<img width="941" height="626" alt="image" src="https://github.com/user-attachments/assets/5b217864-75df-45c1-9cb8-1b1f8dd0cf1f" />
+
 ```mermaid
 flowchart TB
     subgraph EDITORS["Editors"]
