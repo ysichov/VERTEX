@@ -17,8 +17,8 @@ that have to be installed on the SAP system, and the tools they read:
 | Repository | What it is for |
 |---|---|
 | [Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer) | The ADT resources every VERTEX window reads |
-| [ACE](https://github.com/ysichov/ACE) | The metrics |
 | [AVE](https://github.com/ysichov/AVE) | The version history, the diff and the review |
+| [ACE](https://github.com/ysichov/ACE) | The metrics |
 
 Pull each with [abapGit](https://abapgit.org) and activate it, then register the
 BAdI implementation `ZSDE_ADT_RES_APP` on `BADI_ADT_REST_RFC_APPLICATION` with

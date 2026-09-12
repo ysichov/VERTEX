@@ -1,7 +1,7 @@
 # ABAP VERTEX Tools
 
-[**Install from the VS Code Marketplace**](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)
-· Eclipse ADT: build it from this repository, see below.
+**Install:** Eclipse ADT from `https://ysichov.github.io/VERTEX/` ·
+VS Code from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap).
 
 ABAP **Version**, **Code** and **Data** Explorer — three words, three SAP GUI tools, one front end
 in ABAP Development Tools. Each view reads over the developer's existing ADT connection and
@@ -24,28 +24,25 @@ SAP GUI too.
 
 ## Installing it in Eclipse
 
-Not published yet; this is how the package is made. Eclipse installs **features**, not bare
-plugins, so `org.vertex.abap.feature/` exists to wrap the one plugin, and `category.xml` beside it
-gives the install dialog something to list.
+Installing, and getting back out when a p2 install goes wrong: **[INSTALL.md](INSTALL.md)**.
+Read it before the first install into an Eclipse you care about.
 
-File → Export → Plug-in Development → **Deployable features** → tick
-`org.vertex.abap.feature` → a destination directory → the *Options* tab → **Generate p2
-repository**, and point *Categorize repository* at `category.xml`. What comes out is a p2
-repository: `content.jar`, `artifacts.jar`, `features/` and `plugins/`.
+**Help → Install New Software → Add → Location**, and this address:
 
-**GitHub Pages is not required.** Two ways to hand that repository over:
+```
+https://ysichov.github.io/VERTEX/
+```
 
-| Route | How a user installs it | Cost |
-|---|---|---|
-| Zip it, attach to a GitHub Release | Help → Install New Software → Add → **Archive** → the zip | Nothing to host; no update checks |
-| Publish it at a URL, e.g. GitHub Pages | Help → Install New Software → Add → the URL | Needs Pages on; Eclipse can then check for updates |
+The category **ABAP VERTEX Tools** appears, with the feature under it and its sources beside
+it. ADT has to be installed first: the feature declares the SAP bundles as prerequisites
+rather than shipping them, so p2 refuses the install on an Eclipse without ADT instead of
+leaving a plugin that cannot resolve.
 
-The second is what an update site is for, and the only one where *Check for Updates* finds a new
-version. The first is enough to give somebody a build.
+Then **Window → Show View → Other… → VERTEX**, or right-click an object in the Project
+Explorer → **VERTEX**.
 
-The plugin stays a jar (`unpack="false"`): the pages are read with `Bundle.getEntry`, which reads
-from inside one. ADT is declared as a prerequisite rather than shipped, so p2 refuses the install
-on an Eclipse without ADT instead of leaving a plugin that cannot resolve.
+
+Building the update site and the VS Code package: **[BUILD.md](BUILD.md)**.
 
 ## In VS Code
 
