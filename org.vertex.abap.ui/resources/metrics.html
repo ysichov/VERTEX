@@ -126,8 +126,14 @@
   .bar .unit { color: var(--fg); font-family: Consolas, monospace; }
   tbody tr.pick { cursor: pointer; }
   /* The diagram sizes itself; the pane scrolls in both directions rather
-     than shrinking a picture nobody could then read. */
-  .diagram { padding: 10px; }
+     than shrinking a picture nobody could then read.
+     It keeps a light ground in both themes, because the colours in it are
+     ACE's and they are light: a call is pale pink, a database statement pale
+     blue, a protected block pale green. Rendered on mermaid's dark theme
+     those three keep their fills and get light text written on them, which
+     leaves exactly the nodes that carry the meaning unreadable. A sheet is
+     what ACE shows in SAP GUI too. */
+  .diagram { padding: 10px; background: #ffffff; color: #111111; }
   .diagram svg { max-width: none; height: auto; }
   /* ACE marks a node it can open in the source window. Here there is no
      source window, so only the stretches that fold carry a hand. */
@@ -405,15 +411,6 @@ var expanded = [];        // stretches the reader opened, by their anchor line
 var mermaidLoaded = false;
 var diagramSeq = 0;
 
-/* mermaid draws its own colours, so it has to be told which way round the
-   page is - and the hosts report that in their own ways. */
-function darkTheme() {
-  var css = document.body.classList;
-  if (css.contains("vscode-dark") || css.contains("vscode-high-contrast")) { return true; }
-  if (css.contains("vscode-light")) { return false; }
-  return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-}
-
 function setFlowMode(on) {
   flowMode = on;
   document.getElementById("flow").className = on ? "on" : "";
@@ -473,7 +470,7 @@ function startMermaid(source) {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "loose",
-    theme: darkTheme() ? "dark" : "default",
+    theme: "default",
     flowchart: { htmlLabels: false, useMaxWidth: false },
     maxTextSize: 90000000,
     maxEdges: 100000
