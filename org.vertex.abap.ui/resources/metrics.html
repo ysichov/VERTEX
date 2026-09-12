@@ -90,7 +90,12 @@
   .totals b { color: var(--fg); font-family: Consolas, monospace; }
   .totals.hidden { display: none; }
 
+  /* One row of panes. In flow mode the unit list shrinks to its names and
+     the diagram takes the rest; otherwise the list is the whole window. */
+  .panes { flex: 1 1 auto; display: flex; min-height: 0; }
   .scroll { flex: 1 1 auto; overflow: auto; }
+  body.flow #list { flex: 0 0 auto; max-width: 24rem;
+                    border-right: 1px solid var(--border); }
   table { border-collapse: collapse; white-space: nowrap; }
   th, td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
   th { position: sticky; top: 0; background: var(--th-bg); font-weight: 600;
@@ -122,9 +127,18 @@
 
   /* Flow. The button stays pressed while the mode is on, because which of
      the two a click on a row does is not otherwise visible. */
-  button.on { background: var(--th-sorted-bg); border-color: var(--fg); }
-  .bar .unit { color: var(--fg); font-family: Consolas, monospace; }
   tbody tr.pick { cursor: pointer; }
+  /* The flow is about the whole object, so it gets the whole window. */
+  body.calls #list { display: none; }
+  tbody tr.sel, tbody tr.sel:nth-child(even) { background: var(--th-sorted-bg); }
+  /* The diagram's own controls, next to the button that brings it up. */
+  .bar .tools { display: flex; gap: 4px; align-items: center; }
+  .bar .tools button { min-width: 1.9rem; }
+  /* Depth is a question about following calls, so only the flow asks it. */
+  .bar .depth { display: none; color: var(--muted); gap: 3px; align-items: center; }
+  body.calls .bar .depth { display: flex; }
+  .bar .depth input { width: 3.2rem; font: inherit; padding: 2px 4px; color: var(--fg);
+                      background: var(--field-bg); border: 1px solid var(--field-border); }
   /* The diagram sizes itself; the pane scrolls in both directions rather
      than shrinking a picture nobody could then read.
      It keeps a light ground in both themes, because the colours in it are
@@ -133,8 +147,11 @@
      those three keep their fills and get light text written on them, which
      leaves exactly the nodes that carry the meaning unreadable. A sheet is
      what ACE shows in SAP GUI too. */
-  .diagram { padding: 10px; background: #ffffff; color: #111111; }
-  .diagram svg { max-width: none; height: auto; }
+  #diagram { padding: 10px; background: #ffffff; color: #111111; }
+  #diagram svg { max-width: none; height: auto; }
+  #diagram .hint { color: #666666; font-family: "Segoe UI", system-ui, sans-serif; }
+  #diagram .failed { color: #a5292a; white-space: pre-wrap;
+                     font-family: Consolas, monospace; }
   /* ACE marks a node it can open in the source window. Here there is no
      source window, so only the stretches that fold carry a hand. */
   .diagram a[href^="sapevent:aceexp"] { cursor: pointer; }
@@ -147,16 +164,29 @@
   <select id="type" title="Object type"></select>
   <input id="name" spellcheck="false" autocomplete="off" placeholder="object name">
   <button id="load">Load</button>
-  <button id="flow" title="Show the branch scheme of a unit instead of its numbers">Flow</button>
-  <button id="back" hidden title="Back to the unit list">&#8592; Units</button>
+  <select id="mode" title="What this window draws">
+    <option value="calls">Flow</option>
+    <option value="scheme">Scheme</option>
+    <option value="metrics">Metrics</option>
+  </select>
+  <span class="tools" id="tools" hidden>
+    <label class="depth" id="depthbox" title="How far the flow follows calls">depth
+      <input id="depth" type="number" min="1" max="99" step="1" value="3"></label>
+    <button id="dir" title="Lay the diagram out down the page instead of across">&#8646;</button>
+    <button id="out" title="Smaller">&#8722;</button>
+    <button id="in" title="Larger">+</button>
+    <button id="fit" title="Scale the whole diagram into the pane">Fit</button>
+  </span>
   <span class="shown" id="object"></span>
-  <span class="unit" id="unit"></span>
   <span class="status" id="status"></span>
 </div>
 
 <div class="totals hidden" id="totals"></div>
 
-<div class="scroll"><div id="root"></div></div>
+<div class="panes">
+  <div class="scroll" id="list"><div id="root"></div></div>
+  <div class="scroll" id="diagram" hidden></div>
+</div>
 
 <script>
 "use strict";
@@ -229,7 +259,10 @@ function load() {
     message("Type an object name and press Load.");
     return;
   }
-  closeDiagram();
+  shownUnit = null;
+  expanded = [];
+  lastMermaid = null;
+  if (mode === "scheme") { hint("Pick a method on the left."); }
   status("reading " + name + " ...");
   waiting = "metrics";
   // Returns at once. The host answers later by calling sdeReady.
@@ -255,17 +288,32 @@ function fillTypes(chosen) {
   });
 }
 
-// Invoked by the host when the answer is waiting.
+/* Invoked by the host when the answer is waiting.
+
+   Taking the answer is instant; everything done with it is not. This runs
+   inside the host's own callback - in Eclipse that is the WebView2 message
+   pump - and the page's own rules about not blocking it apply here too:
+   running three megabytes of library, or laying out a diagram, while the
+   pump waits is how Edge ends up giving up on the operation. So the answer
+   is picked up here and handled on the next task. */
 function sdeReady() {
   var kind = waiting;
   waiting = null;
   var raw = sdeTake();
+  setTimeout(function () { answered(kind, raw); }, 0);
+}
+
+function answered(kind, raw) {
   status("");
-  if (typeof raw !== "string") { message("No response from the host."); return; }
+  if (typeof raw !== "string") { lost(kind); return; }
   if (raw.indexOf("ERROR:") === 0) {
     var said = raw.substring(6);
     // The host marks the one failure that is really a setup state.
-    if (said.indexOf("NOBACKEND:") === 0) { setupPage(said.substring(10)); }
+    // A failure while a diagram is being fetched belongs in the diagram pane:
+    // the unit list beside it is still good, and wiping it would cost the
+    // reader the place they had got to.
+    if (kind === "flow" || kind === "asset") { failed(said.replace("NOBACKEND:", "")); }
+    else if (said.indexOf("NOBACKEND:") === 0) { setupPage(said.substring(10)); }
     else { message(said); }
     status("");
     return;
@@ -281,6 +329,19 @@ function sdeReady() {
   }
   if (kind === "flow") { renderDiagram(data); return; }
   render(data);
+}
+
+/* An answer the host never left behind. Whatever went wrong, it must not take
+   the unit list with it: the reader is looking at that list, and a message in
+   its place costs them the place they had got to. */
+function lost(kind) {
+  if (kind === "flow" || kind === "asset") {
+    failed("No response from the host.");
+  } else if (units.length > 0) {
+    status("no response from the host");
+  } else {
+    message("No response from the host.");
+  }
 }
 
 /* ---------- rendering ---------- */
@@ -327,8 +388,13 @@ function renderTable() {
   root.className = "";
   root.innerHTML = "";
 
+  // In flow mode the numbers give way to the diagram: only the name is left,
+  // which is what picking a unit needs. The order stays whatever column was
+  // sorted on, so a list opened on the worst complexity keeps that order.
+  var columns = flowMode() ? COLUMNS.slice(0, 1) : COLUMNS;
+
   var headRow = document.createElement("tr");
-  COLUMNS.forEach(function (c) {
+  columns.forEach(function (c) {
     var th = document.createElement("th");
     th.textContent = c.text + (c.key === sortKey ? (sortDown ? " ▼" : " ▲") : "");
     th.title = "Sort by " + c.text;
@@ -348,12 +414,12 @@ function renderTable() {
   var tbody = document.createElement("tbody");
   sorted().forEach(function (u) {
     var tr = document.createElement("tr");
-    if (flowMode) {
-      tr.className = "pick";
+    if (mode === "scheme") {
+      tr.className = shown(u) ? "pick sel" : "pick";
       tr.title = "Branch scheme of " + u.unit_name;
       tr.addEventListener("click", function () { openUnit(u); });
     }
-    COLUMNS.forEach(function (c) {
+    columns.forEach(function (c) {
       var td = document.createElement("td");
       td.textContent = u[c.key];
       if (c.num) { td.className = "num"; }
@@ -371,6 +437,7 @@ function renderTable() {
 function render(data) {
   units = data.units || [];
   totals = data.totals;
+  var first = loadedObject !== data.object;
   loadedObject = data.object;
   loadedType = data.type;
   document.getElementById("object").textContent = data.program;
@@ -389,6 +456,9 @@ function render(data) {
   renderTotals(data.totals);
   renderTable();
   status(units.length + (units.length === 1 ? " unit" : " units"));
+  // A window opened on an object chooses its own first picture; one the
+  // reader has since set is theirs and stays.
+  if (first) { setMode(modeFor(data.type)); }
 }
 
 
@@ -401,59 +471,209 @@ function render(data) {
    back - opening a folded stretch - because that is the only thing the
    picture cannot answer by itself.
 
+   The list stays beside it, cut down to the names. Reading a class means
+   walking its methods, and a picture that replaced the list would make every
+   step of that walk a step back first.
+
    mermaid is not fetched from anywhere. It sits in the plugin next to this
    page, and the host reads it and hands over its text the first time a
    diagram is asked for; until then this window costs what it always did. */
 
-var flowMode = false;
+/* What the window draws. "metrics" is the table, "scheme" the branch
+   structure of one unit, "calls" the order the units would run in. Which one
+   a window opens on follows from the object: a program has top-level code and
+   a flow to show, a class has methods and nothing above them. */
+var mode = "metrics";
 var shownUnit = null;     // the unit on display, while one is
 var expanded = [];        // stretches the reader opened, by their anchor line
 var mermaidLoaded = false;
 var diagramSeq = 0;
 
-function setFlowMode(on) {
-  flowMode = on;
-  document.getElementById("flow").className = on ? "on" : "";
-  if (!on) { closeDiagram(); }
-  if (units.length > 0 && !shownUnit) { renderTable(); }
+/* How the diagram is laid out and how big it is drawn. Neither leaves the
+   page: both are questions about this drawing, not about the code, and
+   asking ABAP again to turn a picture the reader is already looking at
+   would be a wait for nothing. */
+/* How far the flow follows calls. ACE's own window starts at 19, which draws
+   a picture too big to read the first time; three is enough to see the shape
+   and the reader winds it out from there. */
+var depth = 3;
+
+var direction = "LR";
+// A method is drawn to fit the pane when it is opened: one fixed percentage
+// is wrong in both directions, because a short FORM and a whole PBO event
+// differ by more than an order of magnitude. A scale the reader picks then
+// holds while they stay on that unit - turning it, opening a stretch - and
+// the next unit is fitted again.
+var zoom = 1;
+var refit = true;
+var natural = null;      // the size mermaid drew, before any scaling
+/* Whether the scale on screen is one this page worked out rather than one the
+   reader chose. A fitted diagram follows the pane when the pane changes; a
+   scale somebody set by hand is theirs and is left alone. */
+var fitted = true;
+var fittedFor = null;    // the pane size the current fit was worked out for
+var lastMermaid = null;  // the text ACE sent, kept so it can be redrawn
+var lastCaption = "";
+
+function flowMode() { return mode !== "metrics"; }
+
+/* Whether this row is the one on display. Include and name together, because
+   a program can hold two FORMs of the same name in different includes. */
+function shown(unit) {
+  return !!shownUnit
+      && shownUnit.include === unit.include
+      && shownUnit.name === unit.unit_name;
+}
+
+function setMode(next) {
+  mode = next;
+  document.getElementById("mode").value = next;
+  document.body.classList.toggle("flow", flowMode());
+  document.body.classList.toggle("calls", next === "calls");
+  document.getElementById("diagram").hidden = !flowMode();
+  document.getElementById("tools").hidden = !flowMode();
+  shownUnit = null;
+  expanded = [];
+  lastMermaid = null;
+  refit = true;
+
+  if (units.length > 0) { renderTable(); }
+
+  if (next === "metrics") {
+    status(units.length ? units.length + (units.length === 1 ? " unit" : " units") : "");
+  } else if (next === "scheme") {
+    hint("Pick a method on the left.");
+  } else if (loadedObject) {
+    requestDiagram();
+  }
+}
+
+/* Which picture an object opens on. A program or an include has code above
+   its units - events, top-level statements - so the order things run in is
+   the thing to show first. A class has no such code: its pool is nothing but
+   INCLUDE statements, and until the class map is here the useful first sight
+   of it is the list of its methods. */
+function modeFor(type) {
+  var head = String(type || "").toLowerCase();
+  return head === "prog" || head === "incl" ? "calls" : "scheme";
 }
 
 function openUnit(unit) {
+  if (mode !== "scheme") { return; }
   shownUnit = { include: unit.include, name: unit.unit_name };
   expanded = [];
+  lastMermaid = null;
+  refit = true;
+  renderTable();
   requestDiagram();
+}
+
+/* The diagram pane speaks for itself: a failure there must not take the list
+   with it, which is what message() would do. */
+function hint(text) { note(text, "hint"); }
+function failed(text) { note(text, "failed"); }
+
+function note(text, kind) {
+  var pane = document.getElementById("diagram");
+  pane.innerHTML = "";
+  var box = document.createElement("div");
+  box.className = kind;
+  box.textContent = text;
+  pane.appendChild(box);
 }
 
 /* Every version of the diagram is a fresh question to ABAP, the one after a
    stretch is opened included. ACE decides what a stretch collapses to, and
    deciding that here as well is how the two pictures would drift apart. */
 function requestDiagram() {
-  document.getElementById("back").hidden = false;
-  document.getElementById("unit").textContent = shownUnit.name;
-  document.getElementById("totals").className = "totals hidden";
-  status("reading " + shownUnit.name + " ...");
+  status("reading " + (shownUnit ? shownUnit.name : loadedObject) + " ...");
   if (!mermaidLoaded) {
     waiting = "asset";
     sdeAsset("mermaid");
     return;
   }
   waiting = "flow";
-  sdeFlow(loadedObject, loadedType, shownUnit.include, shownUnit.name,
-          expanded.join(","));
+  if (mode === "calls") {
+    // The flow is the whole object; there is no unit to name.
+    sdeFlow(loadedObject, loadedType, "calls", "", "", "", String(depth));
+  } else {
+    sdeFlow(loadedObject, loadedType, "scheme", shownUnit.include,
+            shownUnit.name, expanded.join(","), "");
+  }
 }
 
-function closeDiagram() {
-  if (!shownUnit) { return; }
-  shownUnit = null;
-  expanded = [];
-  document.getElementById("back").hidden = true;
-  document.getElementById("unit").textContent = "";
-  status("");
-  if (units.length > 0) {
-    renderTotals(totals);
-    renderTable();
-    status(units.length + (units.length === 1 ? " unit" : " units"));
-  }
+/* ---- scale ----
+
+   Nothing is asked of ABAP to resize: the drawing is an SVG with a viewBox,
+   so its own width and height are all that change. The scale a reader picked
+   survives a move to the next method - they picked it to read this class, not
+   this one diagram. */
+
+function setZoom(value) {
+  zoom = Math.max(0.15, Math.min(4, value));
+  applyZoom();
+}
+
+function applyZoom() {
+  var svg = document.querySelector("#diagram svg");
+  if (!svg || !natural) { return; }
+  svg.style.maxWidth = "none";
+  svg.style.width = Math.round(natural.w * zoom) + "px";
+  svg.style.height = Math.round(natural.h * zoom) + "px";
+}
+
+function fitDiagram() {
+  var pane = document.getElementById("diagram");
+  if (!natural || !natural.w || !natural.h) { return; }
+  // Room inside the padding, and never blown up past full size: a short
+  // method stretched over a wide pane reads worse, not better.
+  var room = 20;
+  setZoom(Math.min((pane.clientWidth - room) / natural.w,
+                   (pane.clientHeight - room) / natural.h, 1));
+  fitted = true;
+  fittedFor = { w: pane.clientWidth, h: pane.clientHeight };
+}
+
+/* The pane changes size when the editor's windows are rearranged, and a
+   drawing sized in pixels knows nothing about that. Fitting it again is only
+   right while it is still the fit this page chose. */
+function paneResized() {
+  var pane = document.getElementById("diagram");
+  if (!fitted || !natural || pane.hidden) { return; }
+  if (fittedFor && fittedFor.w === pane.clientWidth
+                && fittedFor.h === pane.clientHeight) { return; }
+  fitDiagram();
+}
+
+/* ---- which way it runs ----
+
+   ACE writes the scheme left to right and says so in two kinds of line: the
+   chart's own header, and the direction inside every frame it draws round a
+   loop or a TRY. Turning the picture is those lines and nothing else, so it
+   happens here. The frames have to turn with the chart, or their bodies run
+   across a diagram that runs down.
+
+   This is the one thing the page knows about the shape of ACE's text. If ACE
+   ever stops writing that header, the toggle says so instead of quietly
+   doing nothing. */
+
+var DIRECTIONS = /^([ \t]*)(flowchart|graph|direction)[ \t]+(LR|RL|TB|TD|BT)\b/gm;
+
+function turned(text, dir) {
+  DIRECTIONS.lastIndex = 0;
+  if (!DIRECTIONS.test(text)) { return null; }
+  DIRECTIONS.lastIndex = 0;
+  return text.replace(DIRECTIONS, "$1$2 " + dir);
+}
+
+function setDirection(value) {
+  direction = value;
+  var button = document.getElementById("dir");
+  button.innerHTML = direction === "LR" ? "&#8646;" : "&#8645;";
+  button.title = direction === "LR"
+    ? "Lay the diagram out down the page instead of across"
+    : "Lay the diagram out across the page instead of down";
+  if (lastMermaid) { draw(); }
 }
 
 /* The library arrives as text, so it is run here rather than fetched. */
@@ -462,7 +682,7 @@ function startMermaid(source) {
   script.textContent = source;
   document.head.appendChild(script);
   if (typeof mermaid === "undefined") {
-    message("mermaid.min.js was read but defined no mermaid object.");
+    failed("mermaid.min.js was read but defined no mermaid object.");
     return;
   }
   // The same settings ACE gives its own diagrams: loose, so that the click
@@ -476,25 +696,66 @@ function startMermaid(source) {
     maxEdges: 100000
   });
   mermaidLoaded = true;
-  requestDiagram();
+  if (mode === "calls" || shownUnit) { requestDiagram(); }
 }
 
 function renderDiagram(data) {
-  var root = document.getElementById("root");
-  if (!data.mermaid) {
-    message("ACE drew nothing for " + data.unit + ".");
+  // A class pool has no entry point of its own, so a flow of no steps is a
+  // real answer. Saying so beats an empty frame the reader has to interpret.
+  if (data.mode === "calls" && !data.steps) {
+    hint("Nothing runs from " + data.program + " on its own."
+         + String.fromCharCode(10)
+         + "A class is entered through its methods; pick Scheme to read one.");
     return;
   }
-  root.className = "diagram";
-  root.innerHTML = "";
+  if (!data.mermaid) {
+    failed("ACE drew nothing for " + (data.unit || data.program) + ".");
+    return;
+  }
+  lastMermaid = data.mermaid;
+  lastCaption = data.mode === "calls"
+    ? data.steps + (data.steps === 1 ? " step" : " steps")
+    : data.unit_type + ", lines " + data.line_from + " to " + data.line_to;
+  draw();
+}
+
+/* Everything that puts a picture on the screen goes through here: a unit just
+   asked for, a stretch just opened, a chart just turned. */
+function draw() {
+  var text = turned(lastMermaid, direction);
+  if (text === null) {
+    failed("This diagram does not say which way it runs, so it cannot be turned."
+           + String.fromCharCode(10)
+           + "ACE must have changed how it writes the chart header.");
+    return;
+  }
+  var pane = document.getElementById("diagram");
   diagramSeq = diagramSeq + 1;
-  mermaid.render("vertexflow" + diagramSeq, data.mermaid).then(function (out) {
-    root.innerHTML = out.svg;
-    status(data.unit_type + ", lines " + data.line_from + " to " + data.line_to);
+  mermaid.render("vertexflow" + diagramSeq, text).then(function (out) {
+    pane.innerHTML = out.svg;
+    pane.scrollTop = 0;
+    pane.scrollLeft = 0;
+    natural = naturalSize(pane.querySelector("svg"));
+    if (refit) {
+      refit = false;
+      fitDiagram();
+    } else {
+      applyZoom();
+    }
+    status(lastCaption);
   }, function (e) {
-    message("mermaid could not draw this diagram." + String.fromCharCode(10)
-            + (e && e.message ? e.message : String(e)));
+    failed("mermaid could not draw this diagram." + String.fromCharCode(10)
+           + (e && e.message ? e.message : String(e)));
   });
+}
+
+/* The size mermaid drew, taken from the viewBox rather than from the element:
+   the element is what gets resized, so measuring it would compound. */
+function naturalSize(svg) {
+  var box = svg && svg.getAttribute("viewBox");
+  if (!box) { return null; }
+  var parts = box.split(/[ ,]+/);
+  return { w: parseFloat(parts[2]), h: parseFloat(parts[3]) };
 }
 
 /* Which node opens a folded stretch is ACE's decision, and it travels in
@@ -503,6 +764,7 @@ function renderDiagram(data) {
    acego_, selects code in ACE's source window - there is none here, so it
    does nothing, but it must still not navigate this page anywhere. */
 function onDiagramClick(e) {
+  if (!shownUnit) { return; }
   var node = e.target;
   var href = "";
   while (node && node.getAttribute) {
@@ -635,17 +897,58 @@ document.getElementById("name").addEventListener("keydown", function (e) {
   if (e.key === "Enter") { load(); }
 });
 
-document.getElementById("flow").addEventListener("click", function () {
-  setFlowMode(!flowMode);
+document.getElementById("mode").addEventListener("change", function () {
+  setMode(document.getElementById("mode").value);
 });
 
-document.getElementById("back").addEventListener("click", closeDiagram);
-
-document.getElementById("root").addEventListener("click", onDiagramClick);
-
-document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") { closeDiagram(); }
+document.getElementById("depth").addEventListener("change", function () {
+  var asked = parseInt(document.getElementById("depth").value, 10);
+  if (!asked || asked < 1) { asked = 1; }
+  if (asked > 99) { asked = 99; }
+  document.getElementById("depth").value = asked;
+  if (asked === depth) { return; }
+  depth = asked;
+  // A different depth is a different picture, so it is fitted again.
+  refit = true;
+  if (mode === "calls" && loadedObject) { requestDiagram(); }
 });
+
+document.getElementById("diagram").addEventListener("click", onDiagramClick);
+
+document.getElementById("dir").addEventListener("click", function () {
+  setDirection(direction === "LR" ? "TB" : "LR");
+});
+document.getElementById("out").addEventListener("click", function () {
+  fitted = false;
+  setZoom(zoom / 1.25);
+});
+document.getElementById("in").addEventListener("click", function () {
+  fitted = false;
+  setZoom(zoom * 1.25);
+});
+document.getElementById("fit").addEventListener("click", fitDiagram);
+
+/* Kept in a variable on purpose: an observer nothing holds on to may be
+   collected, and the callbacks then stop with no sign that they have. */
+var paneWatch = null;
+var paneWatchTimer = null;
+if (typeof ResizeObserver === "function") {
+  paneWatch = new ResizeObserver(function () {
+    // After the layout settles, not during it: a pane being dragged reports a
+    // new size many times a second.
+    clearTimeout(paneWatchTimer);
+    paneWatchTimer = setTimeout(paneResized, 150);
+  });
+  paneWatch.observe(document.getElementById("diagram"));
+}
+
+// Ctrl and the wheel, the way every other drawing in this editor behaves.
+document.getElementById("diagram").addEventListener("wheel", function (e) {
+  if (!e.ctrlKey) { return; }
+  e.preventDefault();
+  fitted = false;
+  setZoom(e.deltaY < 0 ? zoom * 1.1 : zoom / 1.1);
+}, { passive: false });
 
 var INITIAL = /*INIT*/null/*INIT*/;
 fillTypes(INITIAL ? INITIAL.type : null);

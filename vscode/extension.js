@@ -86,22 +86,29 @@ const SERVICES = {
       }
       return p;
     },
-    // name, type, include, unit, expand - the branch scheme of one code unit.
-    // The include comes along because it is what identifies the code: for a
-    // class it is the method's own include, for a program it is not.
+    // name, type, mode, include, unit, expand, depth. The include comes for
+    // the scheme, because it is what identifies the code: for a class it is
+    // the method's own include, for a program it is not. The flow is about
+    // the whole object and names neither.
     flow: function (args) {
       let p = "/sap/bc/adt/zsde/flow/" + upper(args[0])
-            + "?include=" + encodeURIComponent(args[2] || "");
+            + "?mode=" + encodeURIComponent(args[2] || "scheme");
+      if (args[3]) {
+        p += "&include=" + encodeURIComponent(args[3]);
+      }
       if (args[1]) {
         p += "&type=" + encodeURIComponent(args[1]);
       }
-      if (args[3]) {
+      if (args[4]) {
         // A method is named CLASS=>METHOD, which an untouched query string
         // would split at the equals sign.
-        p += "&unit=" + encodeURIComponent(args[3]);
+        p += "&unit=" + encodeURIComponent(args[4]);
       }
-      if (args[4]) {
-        p += "&expand=" + encodeURIComponent(args[4]);
+      if (args[5]) {
+        p += "&expand=" + encodeURIComponent(args[5]);
+      }
+      if (args[6]) {
+        p += "&depth=" + encodeURIComponent(args[6]);
       }
       return p;
     }

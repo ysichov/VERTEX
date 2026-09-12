@@ -59,10 +59,12 @@ public class MetricsView extends PageView {
 			public Object function(Object[] arguments) {
 				final String object = argument(arguments, 0);
 				final String type = argument(arguments, 1);
-				final String include = argument(arguments, 2);
-				final String unit = argument(arguments, 3);
-				final String expand = argument(arguments, 4);
-				queue(() -> read(flowPath(object, type, include, unit, expand)));
+				final String mode = argument(arguments, 2);
+				final String include = argument(arguments, 3);
+				final String unit = argument(arguments, 4);
+				final String expand = argument(arguments, 5);
+				final String depth = argument(arguments, 6);
+				queue(() -> read(flowPath(object, type, mode, include, unit, expand, depth)));
 				return null;
 			}
 		};
@@ -127,16 +129,23 @@ public class MetricsView extends PageView {
 	}
 
 	/**
+	 * @param mode   which picture: the branch scheme of one unit, or the order
+	 *               the whole object's units would run in
 	 * @param unit   the qualified name the metrics row showed, CLASS=&gt;METHOD
 	 *               for a method
 	 * @param expand lines whose folded stretch the reader has opened, as the
 	 *               page echoes them back
+	 * @param depth  how far the flow follows calls; the scheme does not follow
+	 *               any, and passes none
 	 */
-	private static String flowPath(String object, String type, String include, String unit,
-			String expand) {
+	private static String flowPath(String object, String type, String mode, String include,
+			String unit, String expand, String depth) {
 		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/flow/")
 			.append(object.toUpperCase())
-			.append("?include=").append(escape(include));
+			.append("?mode=").append(escape(mode.isEmpty() ? "scheme" : mode));
+		if (!include.isEmpty()) {
+			path.append("&include=").append(escape(include));
+		}
 		if (!type.isEmpty()) {
 			path.append("&type=").append(escape(type));
 		}
@@ -145,6 +154,9 @@ public class MetricsView extends PageView {
 		}
 		if (!expand.isEmpty()) {
 			path.append("&expand=").append(escape(expand));
+		}
+		if (!depth.isEmpty()) {
+			path.append("&depth=").append(escape(depth));
 		}
 		return path.toString();
 	}
