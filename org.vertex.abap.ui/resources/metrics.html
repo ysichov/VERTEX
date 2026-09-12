@@ -50,20 +50,20 @@
 
   body.vscode-light {
     color-scheme: light;
-    --bg: #ffffff; --fg: #1c1c1c; --muted: #666666; --faint: #b0b0b0;
-    --border: #d6d6d6; --line: #e2e2e2; --surface: #fbfbfb;
-    --field-bg: #ffffff; --field-border: #b8b8b8; --hover: #eaf2fb;
-    --th-bg: #eef2f7; --th-sorted-bg: #dbe6f4; --row-alt: #fafafa;
-    --danger: #a5292a;
+    --bg: var(--vscode-editor-background, #ffffff); --fg: var(--vscode-editor-foreground, #1c1c1c); --muted: var(--vscode-descriptionForeground, #666666); --faint: var(--vscode-disabledForeground, #b0b0b0);
+    --border: var(--vscode-panel-border, #d6d6d6); --line: var(--vscode-editorWidget-border, #e2e2e2); --surface: var(--vscode-editorWidget-background, #fbfbfb);
+    --field-bg: var(--vscode-input-background, #ffffff); --field-border: var(--vscode-input-border, #b8b8b8); --hover: var(--vscode-list-hoverBackground, #eaf2fb);
+    --th-bg: var(--vscode-keybindingTable-headerBackground, #eef2f7); --th-sorted-bg: var(--vscode-list-activeSelectionBackground, #dbe6f4); --row-alt: var(--vscode-tree-tableOddRowsBackground, #fafafa);
+    --danger: var(--vscode-errorForeground, #a5292a);
   }
 
   body.vscode-dark, body.vscode-high-contrast {
     color-scheme: dark;
-    --bg: #1f1f1f; --fg: #d4d4d4; --muted: #9d9d9d; --faint: #5a5a5a;
-    --border: #3c3c3c; --line: #333333; --surface: #252526;
-    --field-bg: #3c3c3c; --field-border: #5a5a5a; --hover: #2a3d55;
-    --th-bg: #2b3a4a; --th-sorted-bg: #35506b; --row-alt: #232323;
-    --danger: #f48771;
+    --bg: var(--vscode-editor-background, #1f1f1f); --fg: var(--vscode-editor-foreground, #d4d4d4); --muted: var(--vscode-descriptionForeground, #9d9d9d); --faint: var(--vscode-disabledForeground, #5a5a5a);
+    --border: var(--vscode-panel-border, #3c3c3c); --line: var(--vscode-editorWidget-border, #333333); --surface: var(--vscode-editorWidget-background, #252526);
+    --field-bg: var(--vscode-input-background, #3c3c3c); --field-border: var(--vscode-input-border, #5a5a5a); --hover: var(--vscode-list-hoverBackground, #2a3d55);
+    --th-bg: var(--vscode-keybindingTable-headerBackground, #2b3a4a); --th-sorted-bg: var(--vscode-list-activeSelectionBackground, #35506b); --row-alt: var(--vscode-tree-tableOddRowsBackground, #232323);
+    --danger: var(--vscode-errorForeground, #f48771);
   }
 
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -141,13 +141,21 @@
                       background: var(--field-bg); border: 1px solid var(--field-border); }
   /* The diagram sizes itself; the pane scrolls in both directions rather
      than shrinking a picture nobody could then read.
-     It keeps a light ground in both themes, because the colours in it are
-     ACE's and they are light: a call is pale pink, a database statement pale
-     blue, a protected block pale green. Rendered on mermaid's dark theme
-     those three keep their fills and get light text written on them, which
-     leaves exactly the nodes that carry the meaning unreadable. A sheet is
-     what ACE shows in SAP GUI too. */
+     ACE's colours are light: a call is pale pink, a database statement pale
+     blue, a protected block pale green. Left alone on a dark page they keep
+     those fills and get light text written on them, which leaves exactly the
+     nodes that carry the meaning unreadable. The hue is the meaning, so it is
+     kept and only the lightness is turned over - see darkened(). */
+  /* A sheet in a light window, the window's own ground in a dark one. The
+     three-way palette above decides which, for the same reason it does for
+     everything else here: the hosts report the theme differently. */
   #diagram { padding: 10px; background: #ffffff; color: #111111; }
+  @media (prefers-color-scheme: dark) {
+    #diagram { background: var(--bg); color: var(--fg); }
+  }
+  body.vscode-light #diagram { background: #ffffff; color: #111111; }
+  body.vscode-dark #diagram, body.vscode-high-contrast #diagram {
+    background: var(--bg); color: var(--fg); }
   #diagram svg { max-width: none; height: auto; }
   #diagram .hint { color: #666666; font-family: "Segoe UI", system-ui, sans-serif; }
   #diagram .failed { color: #a5292a; white-space: pre-wrap;
@@ -304,6 +312,10 @@ function sdeReady() {
 }
 
 function answered(kind, raw) {
+  // Kept so that an answer this window drops can leave it as it was: the
+  // request actually being waited for is still on its way, and "reading ..."
+  // is still the truth.
+  var wasSaying = document.getElementById("status").textContent;
   status("");
   if (typeof raw !== "string") { lost(kind); return; }
   if (raw.indexOf("ERROR:") === 0) {
@@ -327,8 +339,28 @@ function answered(kind, raw) {
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
     return;
   }
-  if (kind === "flow") { renderDiagram(data); return; }
-  render(data);
+  /* Which answer this is, read from the answer itself rather than from what
+     was last asked for. Two questions can be in flight at once - a second
+     method clicked while the first is still coming, a depth changed mid
+     request - and the slot that remembered the question has by then been
+     emptied by the first reply. Reading the shape cannot be got wrong that
+     way: a picture carries a mode, a table carries units. */
+  if (data.mode !== undefined) {
+    // Only the picture still being looked at is worth drawing. An answer to a
+    // question the reader has moved on from is dropped, not shown.
+    if (data.mode !== mode) { status(wasSaying); return; }
+    if (data.mode === "scheme"
+        && (!shownUnit
+            || String(data.unit).toUpperCase() !== String(shownUnit.name).toUpperCase())) {
+      status(wasSaying);
+      return;
+    }
+    renderDiagram(data);
+    return;
+  }
+  if (data.units !== undefined) { render(data); return; }
+  message("The host answered something this window does not recognise:"
+          + String.fromCharCode(10) + raw.substring(0, 400));
 }
 
 /* An answer the host never left behind. Whatever went wrong, it must not take
@@ -645,6 +677,99 @@ function paneResized() {
   fitDiagram();
 }
 
+/* ---- colours ----
+
+   ACE writes its node colours as mermaid classDef lines, and every one of
+   them is a pale fill meant for a white page. On a dark one the fill has to
+   go dark and the text light, or the reader gets grey on pink. What must not
+   change is which hue means what: a call stays red, a database statement
+   blue, a protected block green, an event orange. So the hue is taken from
+   the line ACE wrote and only its lightness is turned over. */
+
+/* What the editor is actually painted with.
+
+   VS Code hands a webview its whole palette as CSS variables, so the diagram
+   can sit on the editor's own background whatever theme is loaded, including
+   one nobody has seen. Eclipse hands the browser a bare document and injects
+   nothing, so there the page's own tokens are the best there is - they at
+   least follow the system's light or dark. */
+function themeColour(name, fallback) {
+  var value = "";
+  try {
+    value = getComputedStyle(document.body).getPropertyValue(name) || "";
+  } catch (e) {
+    value = "";
+  }
+  value = value.trim();
+  return value || fallback;
+}
+
+function ground() {
+  return themeColour("--vscode-editor-background", themeColour("--bg", "#ffffff"));
+}
+
+function ink() {
+  return themeColour("--vscode-editor-foreground", themeColour("--fg", "#111111"));
+}
+
+/* Read from the colour itself, not from the class the host set. A theme is
+   free to call itself dark and paint a pale editor, and what decides whether
+   light text can be read is the background, not the name. */
+function darkPage() {
+  var c = channels(ground());
+  if (!c) { return false; }
+  return (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) < 128;
+}
+
+/* Accepts what a stylesheet may hand back: #abc, #aabbcc, rgb(1, 2, 3). */
+function channels(colour) {
+  var text = String(colour || "").trim();
+  var rgb = /^rgba?\(([^)]+)\)$/.exec(text);
+  if (rgb) {
+    var parts = rgb[1].split(",");
+    if (parts.length < 3) { return null; }
+    return [parseInt(parts[0], 10), parseInt(parts[1], 10), parseInt(parts[2], 10)];
+  }
+  var h = text.replace("#", "");
+  if (h.length === 3) { h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]; }
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) { return null; }
+  return [parseInt(h.substring(0, 2), 16),
+          parseInt(h.substring(2, 4), 16),
+          parseInt(h.substring(4, 6), 16)];
+}
+
+/* One colour moved part of the way towards another. */
+function toward(from, to, part) {
+  var a = channels(from), b = channels(to), out = "#";
+  if (!a || !b) { return from; }
+  for (var i = 0; i < 3; i++) {
+    var v = Math.round(a[i] + (b[i] - a[i]) * part);
+    out += (v < 16 ? "0" : "") + v.toString(16);
+  }
+  return out;
+}
+
+function darkened(text) {
+  return text.replace(/^([ \t]*classDef[ \t]+\S+[ \t]+)(.+)$/gm,
+    function (whole, head, rules) {
+      var fill = null, stroke = null;
+      rules.split(",").forEach(function (rule) {
+        var found = /^[ \t]*(fill|stroke)[ \t]*:[ \t]*(#[0-9a-fA-F]{3,6})/.exec(rule);
+        if (!found) { return; }
+        if (found[1] === "fill") { fill = found[2]; } else { stroke = found[2]; }
+      });
+      // The stroke carries the hue at full strength; the fill is that hue
+      // watered down for a white page, so it is the worse thing to read from.
+      var hue = stroke || fill;
+      var bg = ground();
+      var out = [];
+      if (fill) { out.push("fill:" + (hue ? toward(hue, bg, 0.72) : bg)); }
+      if (stroke) { out.push("stroke:" + toward(stroke, ink(), 0.3)); }
+      out.push("color:" + ink());
+      return head + out.join(",");
+    });
+}
+
 /* ---- which way it runs ----
 
    ACE writes the scheme left to right and says so in two kinds of line: the
@@ -685,16 +810,6 @@ function startMermaid(source) {
     failed("mermaid.min.js was read but defined no mermaid object.");
     return;
   }
-  // The same settings ACE gives its own diagrams: loose, so that the click
-  // directives in the text survive, and limits a long method cannot hit.
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: "loose",
-    theme: "default",
-    flowchart: { htmlLabels: false, useMaxWidth: false },
-    maxTextSize: 90000000,
-    maxEdges: 100000
-  });
   mermaidLoaded = true;
   if (mode === "calls" || shownUnit) { requestDiagram(); }
 }
@@ -723,6 +838,7 @@ function renderDiagram(data) {
    asked for, a stretch just opened, a chart just turned. */
 function draw() {
   var text = turned(lastMermaid, direction);
+  if (text !== null && darkPage()) { text = darkened(text); }
   if (text === null) {
     failed("This diagram does not say which way it runs, so it cannot be turned."
            + String.fromCharCode(10)
@@ -730,6 +846,21 @@ function draw() {
     return;
   }
   var pane = document.getElementById("diagram");
+  // The sheet is the editor's own ground, so a theme nobody anticipated still
+  // looks of a piece. Set here rather than in the stylesheet because only the
+  // host knows the colour, and it can change under an open window.
+  pane.style.background = ground();
+  pane.style.color = ink();
+  // Set every time rather than once: the host can change theme under a window
+  // that is already open, and the next picture should follow it.
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "loose",
+    theme: darkPage() ? "dark" : "default",
+    flowchart: { htmlLabels: false, useMaxWidth: false },
+    maxTextSize: 90000000,
+    maxEdges: 100000
+  });
   diagramSeq = diagramSeq + 1;
   mermaid.render("vertexflow" + diagramSeq, text).then(function (out) {
     pane.innerHTML = out.svg;
@@ -932,6 +1063,41 @@ document.getElementById("fit").addEventListener("click", fitDiagram);
    collected, and the callbacks then stop with no sign that they have. */
 var paneWatch = null;
 var paneWatchTimer = null;
+/* A theme can change under an open window. Everything the stylesheet paints
+   follows on its own, because those tokens are var()s pointing at the host's
+   own colours. The diagram does not: its colours were written into the
+   mermaid text when it was drawn, so it has to be drawn again. */
+var themeWatch = null;
+var themeWatchTimer = null;
+
+function themeChanged() {
+  clearTimeout(themeWatchTimer);
+  themeWatchTimer = setTimeout(function () {
+    var pane = document.getElementById("diagram");
+    if (pane.hidden) { return; }
+    pane.style.background = ground();
+    pane.style.color = ink();
+    if (lastMermaid) { draw(); }
+  }, 80);
+}
+
+if (typeof MutationObserver === "function") {
+  // VS Code swaps the class on the body and rewrites the variables on the
+  // root element; which of the two moves depends on the host and the version,
+  // so both are watched.
+  themeWatch = new MutationObserver(themeChanged);
+  themeWatch.observe(document.body,
+    { attributes: true, attributeFilter: ["class", "style"] });
+  themeWatch.observe(document.documentElement,
+    { attributes: true, attributeFilter: ["class", "style"] });
+}
+
+// And the system's own light or dark, which is all Eclipse ever reports.
+if (window.matchMedia) {
+  var scheme = window.matchMedia("(prefers-color-scheme: dark)");
+  if (scheme.addEventListener) { scheme.addEventListener("change", themeChanged); }
+}
+
 if (typeof ResizeObserver === "function") {
   paneWatch = new ResizeObserver(function () {
     // After the layout settles, not during it: a pane being dragged reports a

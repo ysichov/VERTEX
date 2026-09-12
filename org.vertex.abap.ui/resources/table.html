@@ -62,11 +62,11 @@
 
   body.vscode-light {
     color-scheme: light;
-    --bg: #ffffff; --fg: #1c1c1c; --muted: #666666; --faint: #b0b0b0;
-    --border: #d6d6d6; --line: #e2e2e2; --surface: #fbfbfb; --surface-2: #f0f0f0;
-    --field-bg: #ffffff; --field-border: #b8b8b8; --hover: #eaf2fb;
-    --th-bg: #eef2f7; --th-key-bg: #dbe6f4; --th-filtered-bg: #cfe3cf;
-    --row-alt: #fafafa; --danger: #a5292a;
+    --bg: var(--vscode-editor-background, #ffffff); --fg: var(--vscode-editor-foreground, #1c1c1c); --muted: var(--vscode-descriptionForeground, #666666); --faint: var(--vscode-disabledForeground, #b0b0b0);
+    --border: var(--vscode-panel-border, #d6d6d6); --line: var(--vscode-editorWidget-border, #e2e2e2); --surface: var(--vscode-editorWidget-background, #fbfbfb); --surface-2: var(--vscode-sideBar-background, #f0f0f0);
+    --field-bg: var(--vscode-input-background, #ffffff); --field-border: var(--vscode-input-border, #b8b8b8); --hover: var(--vscode-list-hoverBackground, #eaf2fb);
+    --th-bg: var(--vscode-keybindingTable-headerBackground, #eef2f7); --th-key-bg: var(--vscode-list-activeSelectionBackground, #dbe6f4); --th-filtered-bg: #cfe3cf;
+    --row-alt: var(--vscode-tree-tableOddRowsBackground, #fafafa); --danger: var(--vscode-errorForeground, #a5292a);
     --c1-bg: #d8ecff; --c1-line: #5797c9; --c2-bg: #dcf5d6; --c2-line: #67a95e;
     --c3-bg: #fff1c2; --c3-line: #c09a2b; --c4-bg: #f3ddff; --c4-line: #a678c2;
     --c5-bg: #ffdede; --c5-line: #c87373; --c6-bg: #d9f4ef; --c6-line: #58a99b;
@@ -74,11 +74,11 @@
 
   body.vscode-dark, body.vscode-high-contrast {
     color-scheme: dark;
-    --bg: #1f1f1f; --fg: #d4d4d4; --muted: #9d9d9d; --faint: #5a5a5a;
-    --border: #3c3c3c; --line: #333333; --surface: #252526; --surface-2: #2d2d30;
-    --field-bg: #3c3c3c; --field-border: #5a5a5a; --hover: #2a3d55;
-    --th-bg: #2b3a4a; --th-key-bg: #35506b; --th-filtered-bg: #2f4d34;
-    --row-alt: #232323; --danger: #f48771;
+    --bg: var(--vscode-editor-background, #1f1f1f); --fg: var(--vscode-editor-foreground, #d4d4d4); --muted: var(--vscode-descriptionForeground, #9d9d9d); --faint: var(--vscode-disabledForeground, #5a5a5a);
+    --border: var(--vscode-panel-border, #3c3c3c); --line: var(--vscode-editorWidget-border, #333333); --surface: var(--vscode-editorWidget-background, #252526); --surface-2: var(--vscode-sideBar-background, #2d2d30);
+    --field-bg: var(--vscode-input-background, #3c3c3c); --field-border: var(--vscode-input-border, #5a5a5a); --hover: var(--vscode-list-hoverBackground, #2a3d55);
+    --th-bg: var(--vscode-keybindingTable-headerBackground, #2b3a4a); --th-key-bg: var(--vscode-list-activeSelectionBackground, #35506b); --th-filtered-bg: #2f4d34;
+    --row-alt: var(--vscode-tree-tableOddRowsBackground, #232323); --danger: var(--vscode-errorForeground, #f48771);
     --c1-bg: #1d3448; --c1-line: #4a86b8; --c2-bg: #1f3a22; --c2-line: #5b9553;
     --c3-bg: #3d3420; --c3-line: #b08d2a; --c4-bg: #33244a; --c4-line: #9268b2;
     --c5-bg: #3f2424; --c5-line: #b56868; --c6-bg: #1d3a36; --c6-line: #4f9a8d;
