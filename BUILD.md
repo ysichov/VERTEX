@@ -9,8 +9,11 @@ needed to *use* it: installing is in [README.md](README.md), and getting out of 
 Eclipse installs **features**, not bare plugins, so `org.vertex.abap.feature/` wraps the one
 plugin and `category.xml` beside it gives the install dialog something to list.
 
-Empty `docs/` first, keeping `.nojekyll`: the export **adds to** an existing `content.jar`
-instead of replacing it, and three exports in a row leave three builds in the catalogue.
+Empty `docs/` first, keeping `.nojekyll` and `index.html`: the export **adds to** an existing
+`content.jar` instead of replacing it, and three exports in a row leave three builds in the
+catalogue. `index.html` is not part of the p2 repository and Eclipse never reads it; it is there
+because the address is a link people click, and a bare p2 repository answers a browser with a
+404. It tells whoever landed there to paste the address into Help → Install New Software.
 
 File → Export → Plug-in Development → **Deployable features** → tick
 `org.vertex.abap.feature` → a destination directory → the *Options* tab → **Generate p2
