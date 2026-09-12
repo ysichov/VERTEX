@@ -29,41 +29,6 @@ SAP GUI too.
 
 <img width="941" height="626" alt="image" src="https://github.com/user-attachments/assets/5b217864-75df-45c1-9cb8-1b1f8dd0cf1f" />
 
-```mermaid
-flowchart TB
-    subgraph EDITORS["Editors"]
-        direction LR
-        ECL["Eclipse ADT<br/>VERTEX plugin"]
-        VSC["VS Code<br/>VERTEX extension"]
-    end
-
-    PAGES["The same three pages<br/>table.html · versions.html · metrics.html<br/>no SAP knowledge, written once"]
-
-    subgraph HUB["ADT hub · one BAdI · /sap/bc/adt/zsde/* · lives in the SDE repository"]
-        direction LR
-        T["table"]
-        J["join"]
-        V["versions"]
-        R["review"]
-        M["metrics"]
-    end
-
-    subgraph TOOLS["SAP GUI tools · unchanged"]
-        direction LR
-        SDE["SDE<br/>tables, joins, pivot"]
-        AVE["AVE<br/>history, diff, review"]
-        ACE["ACE<br/>metrics"]
-    end
-
-    ECL --- PAGES
-    VSC --- PAGES
-    PAGES -->|"JSON over the ADT session"| HUB
-    T --> SDE
-    J --> SDE
-    V --> AVE
-    R --> AVE
-    M --> ACE
-```
 
 Every service registers under the one `/zsde/` prefix, because that prefix is where the ADT
 node is claimed and not the identity of the service: a second one would mean a second BAdI
