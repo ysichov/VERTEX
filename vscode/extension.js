@@ -85,6 +85,25 @@ const SERVICES = {
         p += "?type=" + encodeURIComponent(args[1]);
       }
       return p;
+    },
+    // name, type, include, unit, expand - the branch scheme of one code unit.
+    // The include comes along because it is what identifies the code: for a
+    // class it is the method's own include, for a program it is not.
+    flow: function (args) {
+      let p = "/sap/bc/adt/zsde/flow/" + upper(args[0])
+            + "?include=" + encodeURIComponent(args[2] || "");
+      if (args[1]) {
+        p += "&type=" + encodeURIComponent(args[1]);
+      }
+      if (args[3]) {
+        // A method is named CLASS=>METHOD, which an untouched query string
+        // would split at the equals sign.
+        p += "&unit=" + encodeURIComponent(args[3]);
+      }
+      if (args[4]) {
+        p += "&expand=" + encodeURIComponent(args[4]);
+      }
+      return p;
     }
   },
 
@@ -167,6 +186,8 @@ const SHIM = [
   "    };",
   "  }",
   "  window.sdeLoad = send('load');",
+  "  window.sdeFlow = send('flow');",
+  "  window.sdeAsset = send('asset');",
   "  window.sdeJoin = send('join');",
   "  window.sdeOpen = send('open');",
   "  window.sdeReview = send('review');",
@@ -432,6 +453,19 @@ async function fetch(context, requestPath, body) {
   return response.body;
 }
 
+/** One of the libraries that travel with the pages, as text. */
+function asset(name) {
+  if (name !== "mermaid") {
+    return "ERROR:This host ships no asset called " + name + ".";
+  }
+  const file = path.join(PAGES, "mermaid.min.js");
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch (e) {
+    return "ERROR:" + file + " could not be read: " + e.message;
+  }
+}
+
 /* ---------- panels ---------- */
 
 function open(context, service, initial, beside) {
@@ -470,6 +504,17 @@ function open(context, service, initial, beside) {
         if (args[0]) {
           panel.title = definition.title + ": " + args[0];
         }
+        return;
+      }
+      if (message.call === "asset") {
+        // A library the page needs, shipped with the extension rather than
+        // fetched: these windows have to work on a machine with no way out to
+        // the internet. The names are a fixed list, so this can never read
+        // anything the extension did not mean to ship.
+        panel.webview.postMessage({
+          type: "result",
+          payload: asset(String(args[0] || ""))
+        });
         return;
       }
 
