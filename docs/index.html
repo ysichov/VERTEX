@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ABAP VERTEX Tools — Eclipse update site</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #ffffff; --fg: #1c1c1c; --muted: #5b5b5b; --line: #e2e2e2;
+    --surface: #f7f8fa; --accent: #12369e; --field: #eef2f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #1f1f1f; --fg: #d4d4d4; --muted: #9d9d9d; --line: #343434;
+      --surface: #262626; --accent: #8ab4f8; --field: #2b3a4a;
+    }
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+  body { font: 15px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  main { max-width: 40rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1rem; margin: 2rem 0 .5rem; }
+  p { margin: 0 0 .9rem; }
+  .lede { color: var(--muted); margin-bottom: 1.75rem; }
+  a { color: var(--accent); }
+  code, .url { font-family: Consolas, "SF Mono", monospace; }
+  .url {
+    display: block; padding: .7rem .9rem; background: var(--field);
+    border: 1px solid var(--line); border-radius: 6px; font-size: 1rem;
+    word-break: break-all; user-select: all; margin-bottom: 1.5rem;
+  }
+  ol { margin: 0 0 .9rem; padding-left: 1.4rem; }
+  li { margin-bottom: .4rem; }
+  .note {
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); border-radius: 4px;
+    padding: .75rem .9rem; margin: 0 0 .9rem; color: var(--muted);
+  }
+  .note strong { color: var(--fg); }
+  footer {
+    margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: .9rem;
+  }
+  footer a { margin-right: 1rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>ABAP VERTEX Tools</h1>
+<p class="lede">
+  ABAP Version, Code and Data Explorer, inside ABAP Development Tools.
+</p>
+
+<p>
+  This address is an <strong>Eclipse update site</strong>, not a page to read.
+  There is nothing here for a browser, which is why you landed on it. Copy it
+  and hand it to Eclipse:
+</p>
+
+<div class="url">https://ysichov.github.io/VERTEX/</div>
+
+<ol>
+  <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
+  <li><strong>Add…</strong>, paste the address above into <em>Location</em>, give it any name.</li>
+  <li>Tick the category <strong>ABAP VERTEX Tools</strong>, then <strong>Next</strong> and <strong>Finish</strong>.</li>
+  <li>Restart Eclipse when it asks.</li>
+</ol>
+
+<p>
+  Then <strong>Window &rarr; Show View &rarr; Other… &rarr; VERTEX</strong>, or
+  right-click an object in the Project Explorer and pick <strong>VERTEX</strong>.
+</p>
+
+<div class="note">
+  <strong>ADT has to be installed first.</strong> The feature declares the SAP
+  bundles as prerequisites rather than shipping them, so p2 refuses the install
+  on an Eclipse without ADT instead of leaving a plugin that cannot resolve.
+</div>
+
+<h2>The other half is ABAP</h2>
+
+<p>
+  VERTEX is a front end and a set of ADT resources. The plugin alone reaches a
+  path nothing answers, and every window will say so. Pull these into the system
+  with abapGit and activate them:
+</p>
+
+<ol>
+  <li><a href="https://github.com/ysichov/Simple-Data-Explorer">Simple Data Explorer</a>
+      — the ADT resources every VERTEX window reads, and the tables, joins and pivot</li>
+  <li><a href="https://github.com/ysichov/ACE">ACE</a> — the metrics and the branch schemes</li>
+  <li><a href="https://github.com/ysichov/AVE">AVE</a> — the versions, diffs and code review</li>
+</ol>
+
+<p>
+  One BAdI registration follows, under <code>/sap/bc/adt/zsde/*</code>. The steps
+  are in the <a href="https://github.com/ysichov/VERTEX#readme">README</a>, and
+  the window tells you the same thing if you open it before the ABAP is there.
+</p>
+
+<h2>VS Code</h2>
+
+<p>
+  The same three pages run under a VS Code extension, from the same files:
+  <a href="https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap">VERTEX ABAP on the Marketplace</a>.
+</p>
+
+<footer>
+  <a href="https://github.com/ysichov/VERTEX">Repository</a>
+  <a href="https://github.com/ysichov/VERTEX#readme">README</a>
+  <a href="https://github.com/ysichov/VERTEX/blob/main/INSTALL.md">Install and uninstall</a>
+</footer>
+
+</main>
+</body>
+</html>
