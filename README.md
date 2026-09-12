@@ -1,6 +1,7 @@
 # ABAP VERTEX Tools
 
-<img width="164" height="160" alt="image" src="https://github.com/user-attachments/assets/78305aca-51e4-4b6d-8a5f-f2c1ec3764fb" />
+<img width="256" height="256" alt="icon" src="https://github.com/user-attachments/assets/077f3c2e-7c3e-4078-a007-d45660adee59" />
+
 
 [**Install from the VS Code Marketplace**](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap) · Eclipse ADT: install from `https://ysichov.github.io/VERTEX/` or build it from this repository (see below).
 
