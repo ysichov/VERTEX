@@ -77,6 +77,14 @@ Then `vsce publish`, or upload the vsix on the Marketplace page. The Marketplace
 upload of a version it already has, so bump `version` in `package.json` first. The publisher in
 `package.json` must match the account exactly.
 
+## The landing page
+
+`docs/index.html` is not part of the p2 repository and Eclipse never reads it. It is there
+because the update-site address is a link people click, and a bare p2 repository answers a
+browser with a 404. It carries two things that go stale on their own: the **version** and a
+short **what's new**. Both are written by hand, next to each other, and both belong in the
+same edit as the version bump below.
+
 ## Versions
 
 The Eclipse bundle and the VS Code extension carry the same number by hand; nothing enforces it.

@@ -41,6 +41,14 @@
     padding: .75rem .9rem; margin: 0 0 .9rem; color: var(--muted);
   }
   .note strong { color: var(--fg); }
+  .build {
+    display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap;
+    margin: 0 0 1.5rem; color: var(--muted); font-size: .9rem;
+  }
+  .build b { font-family: Consolas, "SF Mono", monospace; font-size: 1rem; color: var(--fg); }
+  .news { margin: 0 0 .9rem; padding-left: 1.4rem; }
+  .news li { margin-bottom: .45rem; }
+  .news b { color: var(--fg); }
   footer {
     margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line);
     color: var(--muted); font-size: .9rem;
@@ -69,6 +77,8 @@
 
 <div class="url">https://ysichov.github.io/VERTEX/</div>
 
+<p class="build">Latest build <b>0.3.2</b> &middot; the same number as the VS Code extension.</p>
+
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
   <li><strong>Add…</strong>, paste the address above into <em>Location</em>, give it any name.</li>
@@ -86,6 +96,32 @@
   bundles as prerequisites rather than shipping them, so p2 refuses the install
   on an Eclipse without ADT instead of leaving a plugin that cannot resolve.
 </div>
+
+<h2>What 0.3 added</h2>
+
+<ul class="news">
+  <li><b>Diagrams.</b> The Metrics window draws two of ACE's pictures as well as
+      its numbers: the <em>branch scheme</em> of one method — its
+      <code>IF</code>/<code>CASE</code>/<code>LOOP</code> skeleton, with the
+      straight stretches folded into nodes that open on a click — and the
+      <em>flow</em> of a whole program, the order its units would run in.</li>
+  <li><b>Three modes, one of them chosen for you.</b> Flow, Scheme and Metrics
+      sit in one list. A program opens on its flow, a class on its list of
+      methods, because a class pool has no code of its own to draw.</li>
+  <li><b>Depth.</b> How far the flow follows calls is a field in the bar, and it
+      starts at three rather than ACE's nineteen: that first picture is meant to
+      be read, not squinted at.</li>
+  <li><b>The pictures follow the editor.</b> Scale fits the pane and follows it
+      when the windows are rearranged; the colours are the editor's own, in any
+      theme, and change with it.</li>
+  <li><b>mermaid travels inside the plugin.</b> Nothing is fetched from the
+      internet, which is the only way this works on a machine that has none.</li>
+</ul>
+
+<p>
+  The ABAP side gained a headless path through ACE, so the analysis runs where
+  there is no SAP GUI at all. That is what made the flow possible.
+</p>
 
 <h2>The other half is ABAP</h2>
 
