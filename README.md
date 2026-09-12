@@ -27,7 +27,8 @@ SAP GUI too.
 ## How it fits together
 
 
-<img width="941" height="626" alt="image" src="https://github.com/user-attachments/assets/5b217864-75df-45c1-9cb8-1b1f8dd0cf1f" />
+<img width="936" height="616" alt="image" src="https://github.com/user-attachments/assets/75cec29d-448d-43cb-b1c1-218b0c49a88b" />
+
 
 
 Every service registers under the one `/zsde/` prefix, because that prefix is where the ADT
