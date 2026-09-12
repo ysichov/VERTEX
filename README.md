@@ -24,6 +24,55 @@ folder. And since SAP GUI 8.0 draws on the same WebView2 engine as both editors,
 SAP GUI too.
 
 
+## How it fits together
+
+```mermaid
+flowchart TB
+    subgraph EDITORS["Editors"]
+        direction LR
+        ECL["Eclipse ADT<br/>VERTEX plugin"]
+        VSC["VS Code<br/>VERTEX extension"]
+    end
+
+    PAGES["The same three pages<br/>table.html · versions.html · metrics.html<br/>no SAP knowledge, written once"]
+
+    subgraph HUB["ADT hub · one BAdI · /sap/bc/adt/zsde/* · lives in the SDE repository"]
+        direction LR
+        T["table"]
+        J["join"]
+        V["versions"]
+        R["review"]
+        M["metrics"]
+    end
+
+    subgraph TOOLS["SAP GUI tools · unchanged"]
+        direction LR
+        SDE["SDE<br/>tables, joins, pivot"]
+        AVE["AVE<br/>history, diff, review"]
+        ACE["ACE<br/>metrics"]
+    end
+
+    ECL --- PAGES
+    VSC --- PAGES
+    PAGES -->|"JSON over the ADT session"| HUB
+    T --> SDE
+    J --> SDE
+    V --> AVE
+    R --> AVE
+    M --> ACE
+```
+
+Every service registers under the one `/zsde/` prefix, because that prefix is where the ADT
+node is claimed and not the identity of the service: a second one would mean a second BAdI
+implementation and a second filter to get wrong. The hub lives in the
+[Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) repository even for
+the resources that read AVE and ACE, so there is one thing to install and one registration to
+make.
+
+The page receives finished JSON and knows nothing about SAP. That is what makes the second
+host possible: `vscode/extension.js` reads the very same files and answers them over plain
+HTTPS, and the markup, grids and filters are not written twice.
+
 ## Installing it in Eclipse
 
 Installing, and getting back out when a p2 install goes wrong: **[INSTALL.md](INSTALL.md)**.
