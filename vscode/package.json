@@ -19,7 +19,7 @@
     "pivot",
     "code review"
   ],
-  "version": "0.3.2",
+  "version": "0.4.1",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -28,7 +28,7 @@
     "Visualization",
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished"],
   "icon": "images/icon.png",
   "main": "./extension.js",
   "contributes": {
@@ -52,11 +52,23 @@
       {
         "command": "vertex.forgetPassword",
         "title": "VERTEX: Forget Password"
+      },
+      {
+        "command": "vertex.mcpAddress",
+        "title": "Copy the MCP address for Claude Code or Codex",
+        "category": "VERTEX"
       }
     ],
     "configuration": {
       "title": "VERTEX",
       "properties": {
+        "vertex.mcp.port": {
+          "type": "integer",
+          "default": 37777,
+          "minimum": 0,
+          "maximum": 65535,
+          "markdownDescription": "Local MCP port for Codex, Claude Code and Copilot. Reload the window after changing it. Use a different port for each simultaneous VERTEX window; 0 selects a temporary port. The bearer token is kept in VS Code SecretStorage."
+        },
         "vertex.systems": {
           "type": "array",
           "default": [],
@@ -99,9 +111,16 @@
           "markdownDescription": "Which of `vertex.systems` to read from. Empty means the first one."
         }
       }
-    }
+    },
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "vertex",
+        "label": "VERTEX SAP"
+      }
+    ]
   },
   "scripts": {
+    "test": "node --test test/*.test.js",
     "vscode:prepublish": "node ./copy-pages.js"
   }
 }

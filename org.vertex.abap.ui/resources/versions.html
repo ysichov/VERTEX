@@ -376,7 +376,7 @@ function loadVersions(part) {
    and a part holds versions. */
 function drillInto(part) {
   came_from = { name: objectName(), type: objectType() };
-  document.getElementById("name").value = part.unit;
+  document.getElementById("name").value = part.name;
   var box = document.getElementById("type");
   if (!Array.prototype.some.call(box.options, function (o) { return o.value === part.part_type; })) {
     var option = document.createElement("option");
@@ -499,9 +499,11 @@ function renderParts() {
     kind.textContent = p.part_type;
     row.appendChild(kind);
     row.addEventListener("click", function () {
-      // In a scope the row is an object: open it, rather than ask for versions
-      // of a part it does not have.
-      if (scope) { drillInto(p); } else { loadVersions(p); }
+      // Only containers need expansion. Keep the scope as the resource's
+      // object and pass VRSD keys unchanged as part/ptype (including padding).
+      if (scope && /^(CLAS|INTF|FUGR)$/.test(p.part_type)) {
+        drillInto(p);
+      } else { loadVersions(p); }
     });
     box.appendChild(row);
   });

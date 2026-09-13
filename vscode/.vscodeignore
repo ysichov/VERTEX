@@ -5,3 +5,5 @@ images/icon.js
 .vscode/**
 .gitignore
 **/*.map
+test/**
+*.vsix
