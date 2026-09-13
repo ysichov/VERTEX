@@ -1,13 +1,15 @@
-# ABAP VERTEX Tools
+# SAP ABAP VERTEX Tools
 
 **VERTEX** is the ABAP Version, Code and Data Explorer: one front end over three
-SAP GUI tools, in VS Code and in Eclipse ADT, from the same pages.
+SAP GUI tools, in VS Code and in Eclipse ADT, from the same pages. In VS Code it
+also serves transport reviews to Copilot, Claude Code and Codex over MCP, and
+puts an assistant into SelecTor and Versions.
 
 | Window | What it shows |
 |---|---|
-| **SelecTor** | A table, its selection panel, the join builder and the pivot cross |
-| **Metrics** | Per-unit code metrics of a class, program or function group |
-| **Versions** | The version history of an object, the diff between two versions, and the saved code review of a transport request |
+| **SelecTor** | A table, its selection panel, the join builder and the pivot cross — set up by hand or from a sentence |
+| **Metrics** | ACE's view of a program, class or function group: the flow of a program, the branch scheme of one method, and per-unit code metrics |
+| **Versions** | The version history of an object, the diff between two versions, and the saved code review of a transport request — opened by hand or from a sentence |
 
 ## It needs an ABAP backend
 
@@ -18,7 +20,7 @@ that have to be installed on the SAP system, and the tools they read:
 |---|---|
 | [Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer) | The ADT resources every VERTEX window reads |
 | [AVE](https://github.com/ysichov/AVE) | The version history, the diff and the review |
-| [ACE](https://github.com/ysichov/ACE) | The metrics |
+| [ACE](https://github.com/ysichov/ACE) | The flow, the branch schemes and the metrics |
 
 Pull each with [abapGit](https://abapgit.org) and activate it, then register the
 BAdI implementation `ZSDE_ADT_RES_APP` on `BADI_ADT_REST_RFC_APPLICATION` with
@@ -59,41 +61,75 @@ development systems often have; it is off by default on purpose.
 - **VERTEX: Forget Password**
 - **VERTEX: Copy the MCP address for Claude Code or Codex**
 
-## Review transports with Codex, Claude Code or Copilot
+## Review transports with Copilot, Claude Code or Codex
 
-To work with VS Code closed, use the [standalone stdio server](../mcp/README.md).
-The instructions below describe the alternative server hosted by this extension.
+VERTEX serves two read-only MCP tools. `sap_transport_changes` lists what a
+transport request changed; `sap_transport_diff` gives the changes of one object,
+cut into the blocks of the review AVE saved, with the verdicts and comments
+already given. They cannot prepare a review or approve a block, and a request
+whose review has not been prepared in AVE is reported as such, not as a clean
+transport.
 
-VERTEX exposes `sap_transport_changes` and `sap_transport_diff` through a local,
-authenticated MCP server. These tools read the review already prepared in AVE.
-They cannot prepare a review or approve blocks. An unprepared review is reported
-explicitly, rather than treated as an unchanged transport.
+The same tools come from two servers. Which one depends on where the assistant
+runs:
 
-The server starts when VS Code starts. `vertex.mcp.port` defaults to `37777` and
-the token persists in VS Code SecretStorage. Keep the VERTEX window open and
-select the intended SAP system with **VERTEX: Switch System**.
+| Assistant | Server | Setup |
+|---|---|---|
+| Copilot in this VS Code | this extension | none |
+| Claude Code or Codex, with VS Code open | this extension | one command, below |
+| Claude Code or Codex with VS Code closed, the Claude Desktop chat, any stdio client | [`mcp/server.js`](https://github.com/ysichov/VERTEX/blob/main/mcp/README.md) | [its README](https://github.com/ysichov/VERTEX/blob/main/mcp/README.md) |
 
-For the **Codex VS Code extension**, run **VERTEX: Copy the MCP address for
-Claude Code or Codex**, choose **Codex**, and paste the copied TOML section into
-your user `~/.codex/config.toml` (`%USERPROFILE%\.codex\config.toml` on Windows).
-Replace the existing `[mcp_servers.vertex]` section if present; do not duplicate
-it. The copied configuration includes the local server token, so keep it out of
-version control. Restart the Codex extension and start a new conversation.
-This uses Codex's supported [HTTP MCP configuration](https://developers.openai.com/codex/mcp/).
+The **Assistant** panels in SelecTor and Versions need neither: the extension
+starts Claude Code or Codex for them itself.
 
-For **Claude Code**, choose **Claude Code** in the same command and run the
-copied command in a terminal. If registered previously, first run
-`claude mcp remove vertex --scope user`. Check `claude mcp list` and start a new
-conversation. Copilot discovers the server through the VS Code MCP provider
-(requires VS Code 1.101 or newer); Codex and Claude do not require that API.
+### The server in this extension
 
-Ask: **Review transport ALCK900593 using the VERTEX SAP tools.**
+It starts with VS Code, on `127.0.0.1` at the port `vertex.mcp.port` (default
+`37777`), and answers only requests that carry its token, which VS Code keeps in
+SecretStorage. It reads the SAP system chosen with **VERTEX: Switch System**, so a
+VS Code window with VERTEX has to stay open while an assistant uses it.
 
-Normal window reloads require no registration changes. After changing
-`vertex.mcp.port`, reload VS Code and copy the configuration again. Multiple
-simultaneous VERTEX windows need different ports; a port conflict is reported
-instead of silently connecting to another SAP system. Port `0` opts into a
-temporary port and requires copying the address again after each reload.
+- **Copilot** (VS Code 1.101 or newer): nothing to do. In Copilot Chat's Agent
+  mode, the tools picker lists the server as **VERTEX SAP**.
+- **Claude Code**: run **VERTEX: Copy the MCP address for Claude Code or Codex**,
+  choose **Claude Code**, and run the copied command in a terminal. If `vertex`
+  is registered already, run `claude mcp remove vertex --scope user` first.
+  `claude mcp list` shows it; start a new conversation.
+- **Codex**: the same command, choose **Codex**, and paste the copied section into
+  `~/.codex/config.toml` (`%USERPROFILE%\.codex\config.toml` on Windows),
+  replacing an existing `[mcp_servers.vertex]` rather than adding a second one.
+  Restart the Codex extension and start a new conversation. The section carries
+  the token, so keep that file out of version control. It uses Codex's
+  [HTTP MCP configuration](https://developers.openai.com/codex/mcp/).
+
+A window reload changes nothing about a registration. After changing
+`vertex.mcp.port`, reload VS Code and copy the address again. Two VERTEX windows
+at once need two ports: a port that is already taken is reported, rather than
+the assistant silently reaching another window's SAP system. Port `0` takes a
+temporary port, and then the address has to be copied again after every reload.
+
+Then ask, for example: **Review transport ALCK900593 using the VERTEX SAP tools.**
+
+## Set up SelecTor or Versions with a sentence
+
+**Assistant** in SelecTor's bar opens a chat. Choose Claude Code or Codex and one of the models
+it offers, then write what to show, for example *SFLIGHT for carrier AA, joined with SCARR*.
+
+The assistant reads only the table's layout — fields, keys, texts, the tables the dictionary
+offers to join — and no row of any table. It answers with the state SelecTor is to be put in;
+the extension checks it against the dictionary, and the window fills in the selection panel, the
+join and the pivot and runs the query as if it had been clicked. A plan naming something the
+table does not have is shown as an error and changes nothing.
+
+Versions has the same **Assistant**: *the last change of BUILD_LAYOUT in ZCL_AVE_POPUP*, *the
+review of ALCK900578, the BUILD_LAYOUT part*, *describe the method GET*. It reads what the window
+can show — parts, versions, the change a version made, whole sources, and a saved review with its
+blocks and verdicts — so it describes and reviews code, and it moves the window to what it talks
+about the way the clicks would. That source goes to the model you chose, as it does with the MCP
+review tools; SelecTor's assistant never sees a table row.
+
+It needs the Claude Code or Codex extension installed in this VS Code: VERTEX starts the copy
+that comes with it, with your login, in an empty folder, with no other MCP server and no shell.
 
 ## What it writes
 

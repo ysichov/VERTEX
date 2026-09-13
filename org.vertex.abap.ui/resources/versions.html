@@ -83,7 +83,7 @@
   .app { display: flex; flex-direction: column; height: 100%; }
   .bar { padding: 6px 10px; background: var(--surface);
          border-bottom: 1px solid var(--border); display: flex;
-         align-items: center; gap: 8px; flex: 0 0 auto; }
+         align-items: center; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; }
   .bar .status { margin-left: auto; color: var(--muted); }
   .bar select, .bar input { font: inherit; padding: 2px 4px; color: var(--fg);
                             background: var(--field-bg);
@@ -210,6 +210,34 @@
   .link { cursor: pointer; text-decoration: underline; }
   .link.plain { cursor: text; text-decoration: none; user-select: text;
                 font-family: Consolas, monospace; }
+
+  /* The assistant: a panel on the right, closed until it is asked for. The
+     same panel as SelecTor's. */
+  .chat { display: none; flex: 0 0 300px; flex-direction: column; min-width: 0;
+          border-left: 1px solid var(--border); background: var(--surface); }
+  .chat-head { display: flex; align-items: center; padding: 6px 6px 6px 10px;
+               background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  .chat-head .title { font-weight: 600; margin-right: auto; }
+  .chat-pick { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); }
+  .chat-pick select { flex: 1 1 0; min-width: 0; font: inherit; padding: 1px 3px;
+                      color: var(--fg); background: var(--field-bg);
+                      border: 1px solid var(--field-border); }
+  .chat-log { flex: 1 1 auto; overflow: auto; padding: 6px; }
+  .msg { margin-bottom: 10px; }
+  .msg .who { display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+  .msg .text { white-space: pre-wrap; }
+  .msg.user .text { display: inline-block; padding: 4px 6px; border-radius: 6px;
+                    background: var(--hover); }
+  .msg.error .text { color: var(--danger); }
+  .msg .did { margin-top: 3px; color: var(--muted); font-size: 11px;
+              font-family: Consolas, monospace; }
+  .chat-input { display: flex; flex-direction: column; gap: 4px; padding: 6px;
+                border-top: 1px solid var(--line); }
+  .chat-input textarea { font: inherit; min-height: 48px; resize: vertical; padding: 4px;
+                         color: var(--fg); background: var(--field-bg);
+                         border: 1px solid var(--field-border); }
+  .chat-input .row { display: flex; align-items: center; gap: 6px; }
+  .chat-input .working { margin-right: auto; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -219,6 +247,7 @@
     <select id="type" title="Object type"></select>
     <input id="name" spellcheck="false" autocomplete="off" placeholder="object name">
     <button id="load">Load</button>
+    <button id="assist" title="Say what to open, and let an assistant find it">Assistant</button>
     <span class="status" id="status"></span>
   </div>
   <div class="cards" id="cards"></div>
@@ -228,6 +257,25 @@
       <div id="partlist"></div>
     </aside>
     <main class="versions"><div id="root"></div></main>
+    <aside class="chat" id="chat">
+      <div class="chat-head">
+        <span class="title">Assistant</span>
+        <button id="chatclose" title="Hide the assistant">&#8250;</button>
+      </div>
+      <div class="chat-pick">
+        <select id="who" title="Which assistant"></select>
+        <select id="model" title="Which model"></select>
+      </div>
+      <div class="chat-log" id="chatlog"></div>
+      <div class="chat-input">
+        <textarea id="ask" rows="3"
+                  placeholder="For example: the last change of ZCL_AVE_POPUP=>BUILD_LAYOUT"></textarea>
+        <div class="row">
+          <span class="working" id="working"></span>
+          <button id="send">Send</button>
+        </div>
+      </div>
+    </aside>
   </div>
 </div>
 
@@ -434,6 +482,7 @@ function sdeReady() {
   if (typeof raw !== "string") { message("No response from the host."); return; }
   if (raw.indexOf("ERROR:") === 0) {
     var said = raw.substring(6);
+    stopPlan();
     // The host marks the one failure that is really a setup state.
     if (said.indexOf("NOBACKEND:") === 0) { setupPage(said.substring(10)); }
     else { message(said); }
@@ -444,17 +493,21 @@ function sdeReady() {
   try {
     data = JSON.parse(raw);
   } catch (e) {
+    stopPlan();
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
     return;
   }
   // One page, five answers, each named by what it carries. The blocks come
   // before the operations: an object of a review carries both, and it is the
   // blocks that make it one.
-  if (data.parts) { renderPartList(data); }
-  else if (data.blocks) { renderReviewPart(data); }
-  else if (data.ops) { renderDiff(data); }
-  else if (data.reviewers) { renderReview(data); }
-  else { renderVersions(data); }
+  if (data.parts) { showing = { view: "parts" }; renderPartList(data); }
+  else if (data.blocks) { showing = { view: "review_object" }; renderReviewPart(data); }
+  else if (data.ops) { showing = { view: "diff", version: data.to }; renderDiff(data); }
+  else if (data.reviewers) { showing = { view: "review" }; renderReview(data); }
+  else { showing = { view: "versions" }; renderVersions(data); }
+  // A plan from the assistant goes on from here, when this was the step it
+  // was waiting for.
+  if (pending) { continuePlan(data); }
 }
 
 /* ---------- parts ---------- */
@@ -1279,12 +1332,320 @@ function setupPage(detail) {
   }
 }
 
+/* ---------- the assistant ----------
+
+   Saying what to open instead of clicking down to it. The host hands the
+   request to Claude Code or Codex, with lists as the only thing that assistant
+   can read - parts, versions, the objects of a saved review, never a line of
+   source - and gets back where this window is to go, already checked against
+   the system. The window then goes there the way a person would: the parts
+   first, then the part, then the version; or the review, then its object.
+   Each step waits for the answer of the one before it, because what the next
+   click is on only exists once that answer is on screen. */
+
+var ASSISTANTS = [["claude", "Claude Code"], ["codex", "Codex"]];
+
+/* One request at a time; the name of whoever is answering it, because the
+   choice in the list may change while it runs. */
+var asking = null;
+var chatOpened = false;
+
+/* What the window shows now, as the assistant is told it, and what is left
+   of a plan while its steps are still on their way. */
+var showing = { view: "" };
+var pending = null;
+
+function recall(key) {
+  // Storage can be switched off; the page then simply forgets the choice.
+  try { return window.localStorage.getItem("vertex.assistant." + key) || ""; }
+  catch (e) { return ""; }
+}
+
+function remember(key, value) {
+  try { window.localStorage.setItem("vertex.assistant." + key, value); }
+  catch (e) { /* not kept */ }
+}
+
+function say(kind, who, text, detail) {
+  var log = document.getElementById("chatlog");
+  var box = document.createElement("div");
+  box.className = "msg " + kind;
+  var name = document.createElement("span");
+  name.className = "who";
+  name.textContent = who;
+  box.appendChild(name);
+  var body = document.createElement("div");
+  body.className = "text";
+  body.textContent = text;
+  box.appendChild(body);
+  if (detail) {
+    var did = document.createElement("div");
+    did.className = "did";
+    did.textContent = detail;
+    box.appendChild(did);
+  }
+  log.appendChild(box);
+  log.scrollTop = log.scrollHeight;
+}
+
+function openChat() {
+  document.getElementById("chat").style.display = "flex";
+  if (chatOpened) {
+    document.getElementById("ask").focus();
+    return;
+  }
+  chatOpened = true;
+
+  if (typeof sdeAsk !== "function") {
+    // The page is the same in Eclipse; the host there has no assistant to run.
+    ["ask", "send", "who", "model"].forEach(function (id) {
+      document.getElementById(id).disabled = true;
+    });
+    say("error", "VERTEX", "This host has no assistant yet. It runs in VS Code for now.");
+    return;
+  }
+
+  var who = document.getElementById("who");
+  ASSISTANTS.forEach(function (a) {
+    var option = document.createElement("option");
+    option.value = a[0];
+    option.textContent = a[1];
+    who.appendChild(option);
+  });
+  var kept = recall("who");
+  who.value = ASSISTANTS.some(function (a) { return a[0] === kept; }) ? kept : ASSISTANTS[0][0];
+  askModels();
+  document.getElementById("ask").focus();
+}
+
+/* Claude Code's aliases, or the catalog Codex reports: the host knows which. */
+function askModels() {
+  var box = document.getElementById("model");
+  box.innerHTML = "";
+  var waiting = document.createElement("option");
+  waiting.textContent = "loading ...";
+  box.appendChild(waiting);
+  box.disabled = true;
+  sdeModels(document.getElementById("who").value);
+}
+
+function fillModels(data) {
+  // An answer for an assistant no longer chosen: the one that is has its own
+  // request on the way.
+  if (data.assistant !== document.getElementById("who").value) { return; }
+  var box = document.getElementById("model");
+  box.innerHTML = "";
+  if (data.error) {
+    var none = document.createElement("option");
+    none.textContent = "no models";
+    box.appendChild(none);
+    say("error", "VERTEX", data.error);
+    return;
+  }
+  data.models.forEach(function (m) {
+    var option = document.createElement("option");
+    option.value = m.id;
+    option.textContent = m.label;
+    box.appendChild(option);
+  });
+  var kept = recall("model." + data.assistant);
+  if (data.models.some(function (m) { return m.id === kept; })) { box.value = kept; }
+  box.disabled = false;
+}
+
+/* Where the window is now, as the assistant is told it: names and keys,
+   never a line of source. */
+function pageState() {
+  return {
+    type: objectType(),
+    name: objectName(),
+    view: showing.view,
+    scope: scope,
+    part: current ? current.name : "",
+    part_type: current ? current.part_type : "",
+    version: showing.view === "diff" ? showing.version : "",
+    review_object: review_part ? review_part.obj_name : "",
+    review_type: review_part ? review_part.objtype : ""
+  };
+}
+
+function sendAsk() {
+  if (asking) { return; }
+  var input = document.getElementById("ask");
+  var text = input.value.trim();
+  if (!text) { return; }
+  var who = document.getElementById("who");
+  var model = document.getElementById("model");
+  if (model.disabled) {
+    say("error", "VERTEX", "There is no model to ask yet: the list for "
+        + who.options[who.selectedIndex].text + " did not arrive.");
+    return;
+  }
+  asking = who.options[who.selectedIndex].text;
+  say("user", "You", text);
+  input.value = "";
+  document.getElementById("send").disabled = true;
+  document.getElementById("working").textContent = asking + " is working ...";
+  sdeAsk(who.value, model.value, text, JSON.stringify(pageState()));
+}
+
+// Invoked by the host with a model list or an answer.
+function sdeAssistant(raw) {
+  var data;
+  try { data = JSON.parse(raw); }
+  catch (e) { data = { call: "ask", error: "The host answered with something that is not JSON." }; }
+
+  if (data.call === "models") {
+    fillModels(data);
+    return;
+  }
+
+  var who = (asking || "Assistant") + (data.model ? " · " + data.model : "")
+          + (data.system ? " · " + data.system : "");
+  asking = null;
+  document.getElementById("send").disabled = false;
+  document.getElementById("working").textContent = "";
+
+  if (data.error) {
+    say("error", who, data.error);
+    return;
+  }
+  var plan = data.plan;
+  say("assistant", who, plan.reply || "Done.", plan.name ? describePlan(plan) : "");
+  // An empty name is an answer without a move: the assistant says why.
+  if (plan.name) { applyPlan(plan); }
+}
+
+function describePlan(plan) {
+  var bits = [plan.type + " " + plan.name];
+  if (plan.part) { bits.push(plan.part.replace(/\s+/g, " ") + " (" + plan.part_type + ")"); }
+  if (plan.version) { bits.push("version " + asVersion(plan.version)); }
+  if (plan.review_object) { bits.push("review: " + plan.review_object.replace(/\s+/g, " ")); }
+  else if (plan.view === "review") { bits.push("review"); }
+  return bits.join(" · ");
+}
+
+// A key compares with its blanks: only trailing ones go, and case.
+function sameKey(a, b) {
+  return String(a || "").replace(/\s+$/, "").toUpperCase()
+     === String(b || "").replace(/\s+$/, "").toUpperCase();
+}
+
+/* The first step of a plan: the object, exactly as Load would open it. */
+function applyPlan(plan) {
+  var box = document.getElementById("type");
+  if (!Array.prototype.some.call(box.options, function (o) { return o.value === plan.type; })) {
+    var option = document.createElement("option");
+    option.value = plan.type;
+    option.textContent = plan.type;
+    box.appendChild(option);
+  }
+  box.value = plan.type;
+  document.getElementById("name").value = plan.name;
+  mode = "V";
+  pending = plan.view === "parts" ? null : plan;
+  loadParts(false);
+}
+
+/* The next step, once the answer the last one waited for is on screen. An
+   answer about something else means the person went elsewhere in the
+   meantime, and the rest of the plan is dropped rather than sprung on them. */
+function continuePlan(data) {
+  var plan = pending;
+  pending = null;
+
+  if (data.parts) {
+    if (String(data.object || "").toUpperCase() !== plan.name) { return; }
+    if (plan.view === "review" || plan.view === "review_object") {
+      mode = "R";
+      renderCards();
+      if (plan.view === "review_object") { pending = plan; }
+      loadReview();
+      return;
+    }
+    var part = null;
+    parts.forEach(function (p) {
+      if (sameKey(p.name, plan.part)
+          && String(p.part_type).toUpperCase() === plan.part_type.toUpperCase()) { part = p; }
+    });
+    if (!part) {
+      say("error", "VERTEX", plan.name + " no longer lists " + plan.part.replace(/\s+/g, " ") + ".");
+      return;
+    }
+    if (plan.view === "diff") { pending = plan; }
+    loadVersions(part);
+    return;
+  }
+
+  if (data.versions) {
+    if (!sameKey(data.part, plan.part)) { return; }
+    var index = -1;
+    versions.forEach(function (v, i) {
+      if (v.version === plan.version) { index = i; }
+    });
+    if (index < 0) {
+      say("error", "VERTEX", "Version " + asVersion(plan.version) + " is no longer listed.");
+      return;
+    }
+    loadDiff(index);
+    return;
+  }
+
+  if (data.reviewers) {
+    if (String(data.request || "").toUpperCase() !== plan.name) { return; }
+    var object = null;
+    (data.objects || []).forEach(function (o) {
+      if (sameKey(o.obj_name, plan.review_object)
+          && String(o.objtype).toUpperCase() === plan.review_type.toUpperCase()) { object = o; }
+    });
+    if (!object) {
+      say("error", "VERTEX", "The review no longer lists " + plan.review_object.replace(/\s+/g, " ") + ".");
+      return;
+    }
+    loadReviewPart(object);
+  }
+}
+
+function stopPlan() {
+  if (!pending) { return; }
+  pending = null;
+  say("error", "VERTEX", "The assistant's plan stopped here: SAP answered with an error, shown in the window.");
+}
+
 /* ---------- wiring ---------- */
 
 document.getElementById("load").addEventListener("click", function () { loadParts(false); });
 
 document.getElementById("name").addEventListener("keydown", function (e) {
   if (e.key === "Enter") { loadParts(false); }
+});
+
+document.getElementById("assist").addEventListener("click", function () {
+  var chat = document.getElementById("chat");
+  if (chat.style.display === "flex") { chat.style.display = "none"; } else { openChat(); }
+});
+
+document.getElementById("chatclose").addEventListener("click", function () {
+  document.getElementById("chat").style.display = "none";
+});
+
+document.getElementById("send").addEventListener("click", sendAsk);
+
+document.getElementById("ask").addEventListener("keydown", function (e) {
+  // Enter sends; Shift+Enter is a new line in the request.
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendAsk();
+  }
+});
+
+document.getElementById("who").addEventListener("change", function (e) {
+  remember("who", e.target.value);
+  askModels();
+});
+
+document.getElementById("model").addEventListener("change", function (e) {
+  remember("model." + document.getElementById("who").value, e.target.value);
 });
 
 var INITIAL = /*INIT*/null/*INIT*/;
