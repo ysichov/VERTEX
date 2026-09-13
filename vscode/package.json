@@ -17,15 +17,23 @@
     "adt",
     "sql",
     "pivot",
-    "code review"
+    "code review",
+    "mcp",
+    "ai",
+    "copilot",
+    "claude code",
+    "codex",
+    "reviewer"
   ],
-  "version": "0.4.2",
+  "version": "0.5.0",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Visualization",
+    "AI",
+    "Chat",
     "Other"
   ],
   "activationEvents": ["onStartupFinished"],
