@@ -79,12 +79,12 @@ test("a pivot plan opens the pivot with its slots filled", () => {
 
 test("the host's answer puts the plan on the page and says what was done", () => {
   const { context, elements, calls } = page();
-  context.sdeAssistant(JSON.stringify({ call: "ask", model: "claude-haiku-4-5", system: "ALC",
+  context.sdeAssistant(JSON.stringify({ call: "ask", model: "claude-haiku-4-5", system: "DEV",
     plan: { reply: "SFLIGHT for AA.", table: "SFLIGHT", filters: [AA], join: ["SCARR"], fields: [], pivot: none } }));
   assert.equal(calls[0][0], "join");
   const said = elements.chatlog.children[0];
   assert.equal(said.className, "msg assistant");
-  assert.equal(said.children[0].textContent, "Assistant · claude-haiku-4-5 · ALC");
+  assert.equal(said.children[0].textContent, "Assistant · claude-haiku-4-5 · DEV");
   assert.equal(said.children[1].textContent, "SFLIGHT for AA.");
   assert.equal(said.children[2].textContent, "SFLIGHT · CARRID EQ AA · join SCARR");
 });

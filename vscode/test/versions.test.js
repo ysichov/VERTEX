@@ -22,7 +22,7 @@ function page() {
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   vm.runInContext(script.split("/* ---------- wiring ---------- */")[0], context);
   context.status = context.note = () => {};
-  context.document.getElementById("name").value = "ALCK900578";
+  context.document.getElementById("name").value = "DEVK900578";
   context.document.getElementById("type").value = "TR";
   context.scope = true;
   return { context, elements, calls };
@@ -35,7 +35,7 @@ test("transport VRSD rows retain scope and exact padded part keys", () => {
     context.parts = [{ name, unit: "display label", part_type: type }];
     context.renderParts();
     elements.partlist.children[0].handlers.click();
-    assert.deepEqual(calls[0], ["ALCK900578", "TR", name, type, "", ""]);
+    assert.deepEqual(calls[0], ["DEVK900578", "TR", name, type, "", ""]);
     assert.equal(context.came_from, null);
   }
 });
@@ -48,6 +48,6 @@ test("containers expand by technical name and can return to transport", () => {
     elements.partlist.children[0].handlers.click();
     assert.deepEqual(calls[0], ["Z_CONTAINER", type, "", "", "", ""]);
     context.goBack();
-    assert.deepEqual(calls[1], ["ALCK900578", "TR", "", "", "", ""]);
+    assert.deepEqual(calls[1], ["DEVK900578", "TR", "", "", "", ""]);
   }
 });

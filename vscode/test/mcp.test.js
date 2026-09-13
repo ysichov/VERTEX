@@ -9,7 +9,7 @@ test("MCP authenticates, lists tools, reads a transport and survives reload", as
   const paths = [];
   const deps = { context: { secrets }, fetch: async (_, path) => {
     paths.push(path);
-    return JSON.stringify({ table: true, saved: true, request: "ALCK900578", objects: [] });
+    return JSON.stringify({ table: true, saved: true, request: "DEVK900578", objects: [] });
   } };
   const first = mcp.create(deps);
   const running = await first.start();
@@ -31,10 +31,10 @@ test("MCP authenticates, lists tools, reads a transport and survives reload", as
     const listed = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     assert.deepEqual(listed.body.result.tools.map(t => t.name), ["sap_transport_changes", "sap_transport_diff"]);
     const changes = await rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: {
-      name: "sap_transport_changes", arguments: { request: "alck900578" }
+      name: "sap_transport_changes", arguments: { request: "devk900578" }
     } });
     assert.equal(changes.body.result.isError, undefined);
-    assert.deepEqual(paths, ["/sap/bc/adt/zsde/review/ALCK900578"]);
+    assert.deepEqual(paths, ["/sap/bc/adt/zsde/review/DEVK900578"]);
     const competing = mcp.create({ ...deps, port: Number(new URL(running.url).port) });
     await assert.rejects(competing.start(), /already in use/);
   } finally { await first.stop(); }
