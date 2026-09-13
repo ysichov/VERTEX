@@ -61,6 +61,17 @@ development systems often have; it is off by default on purpose.
 - **VERTEX: Forget Password**
 - **VERTEX: Copy the MCP address for Claude Code or Codex**
 
+## Where MCP comes in
+
+| Who | Uses MCP | Setup |
+|---|---|---|
+| The SelecTor, Versions and Metrics windows, used by hand | No: they read SAP directly over ADT | — |
+| The **Assistant** panels in SelecTor and Versions | Yes, internally | None: for each request the extension hands Claude Code or Codex the window's own MCP address, `/selector` or `/versions` |
+| External assistants: Copilot, the Claude Code and Codex chats, Claude Desktop | Yes | Copilot finds the server by itself; Claude Code and Codex are connected with **VERTEX: Copy the MCP address for Claude Code or Codex**, or through the [standalone `mcp/server.js`](https://github.com/ysichov/VERTEX/blob/main/mcp/README.md) |
+
+MCP is how Claude Code and Codex are given tools in both cases. The difference is
+who connects them: the extension, for one request, or you, once.
+
 ## Review transports with Copilot, Claude Code or Codex
 
 VERTEX serves two read-only MCP tools. `sap_transport_changes` lists what a
@@ -108,7 +119,7 @@ at once need two ports: a port that is already taken is reported, rather than
 the assistant silently reaching another window's SAP system. Port `0` takes a
 temporary port, and then the address has to be copied again after every reload.
 
-Then ask, for example: **Review transport ALCK900593 using the VERTEX SAP tools.**
+Then ask, for example: **Review transport DEVK900123 using the VERTEX SAP tools.**
 
 ## Set up SelecTor or Versions with a sentence
 
@@ -122,11 +133,33 @@ join and the pivot and runs the query as if it had been clicked. A plan naming s
 table does not have is shown as an error and changes nothing.
 
 Versions has the same **Assistant**: *the last change of BUILD_LAYOUT in ZCL_AVE_POPUP*, *the
-review of ALCK900578, the BUILD_LAYOUT part*, *describe the method GET*. It reads what the window
+review of DEVK900123, the BUILD_LAYOUT part*, *describe the method GET*. It reads what the window
 can show — parts, versions, the change a version made, whole sources, and a saved review with its
 blocks and verdicts — so it describes and reviews code, and it moves the window to what it talks
 about the way the clicks would. That source goes to the model you chose, as it does with the MCP
 review tools; SelecTor's assistant never sees a table row.
+
+### Examples
+
+A request can be written in any language; the answer comes back in the language of the
+request.
+
+SelecTor:
+
+- *SFLIGHT for carrier AA, joined with SCARR*
+- *keep only the key fields and the airline name*
+- *SBOOK joined with SCARR: smokers per airline as a pivot*
+- *sum of prices by airline and plane type in SFLIGHT for 2026*
+- *SFLIGHT from 01.01.2026 to 31.03.2026, without carrier LH*
+
+Versions:
+
+- *the last change of BUILD_LAYOUT in ZCL_AVE_POPUP*
+- *versions of program Z_AVE*
+- *what does transport DEVK900123 change?*
+- *the review of DEVK900123, the BUILD_LAYOUT part*
+- *describe the method GET*, with its review open
+- *review the change of ZCL_SDE_ADT_RES_VERSIONS=>GET: risks and open questions*
 
 It needs the Claude Code or Codex extension installed in this VS Code: VERTEX starts the copy
 that comes with it, with your login, in an empty folder, with no other MCP server and no shell.

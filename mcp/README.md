@@ -151,7 +151,7 @@ wrote to stderr.
 
 ## What to ask
 
-“Review transport ALCK900593 using the VERTEX SAP tools.”
+“Review transport DEVK900123 using the VERTEX SAP tools.”
 
 The SAP SDE ADT resources and AVE must already be installed. A review must first
 be prepared in AVE. These tools read saved reviews; they do not generate a review,

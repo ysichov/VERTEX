@@ -69,6 +69,18 @@ with SCARR*, or *the last change of BUILD_LAYOUT in ZCL_AVE_POPUP*.
 In Versions the assistant also reads what the window shows — the change a version made, whole
 sources, a saved review with its blocks and verdicts — so it describes and reviews code as well as
 moving the window there, the way the clicks would. SelecTor's assistant never sees a table row.
+Examples of requests for both windows are in [vscode/README.md](vscode/README.md#examples).
+
+### Where MCP comes in
+
+| Who | Uses MCP | Setup |
+|---|---|---|
+| The SelecTor, Versions and Metrics windows, used by hand | No: they read SAP directly over ADT | — |
+| The **Assistant** panels in SelecTor and Versions | Yes, internally | None: for each request the extension hands Claude Code or Codex the window's own MCP address, `/selector` or `/versions` |
+| External assistants: Copilot, the Claude Code and Codex chats, Claude Desktop | Yes | Copilot finds the server by itself; Claude Code and Codex are connected with **VERTEX: Copy the MCP address for Claude Code or Codex**, or through the [standalone `mcp/server.js`](mcp/README.md) |
+
+MCP is how Claude Code and Codex are given tools in both cases. The difference is
+who connects them: the extension, for one request, or you, once.
 The assistant reads the table's layout (fields, keys, the tables the dictionary offers, never a
 row) and answers with the state SelecTor is to be put in; the page checks it against the
 dictionary, fills in the panel, the join and the pivot as the clicks would, and runs the query
