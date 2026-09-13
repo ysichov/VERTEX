@@ -1399,7 +1399,7 @@ the reply, as long as it needs to be; a request to see something still moves the
   second with a full description of the method. The plan check can tell a wrong key from a right
   one; it cannot tell a poor answer from a good one, and does not pretend to.
 
-Both assistants go out in the extension as 0.4.2.
+Both assistants go out in the extension as 0.5.0, listed under AI and Chat as well.
 
 ---
 
