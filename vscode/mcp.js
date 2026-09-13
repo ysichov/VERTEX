@@ -52,7 +52,7 @@ const TOOLS = [
       properties: {
         request: {
           type: "string",
-          description: "Transport request or task, for example ALCK900593."
+          description: "Transport request or task, for example DEVK900123."
         }
       },
       required: ["request"]
@@ -71,7 +71,7 @@ const TOOLS = [
       properties: {
         request: {
           type: "string",
-          description: "Transport request or task, for example ALCK900593."
+          description: "Transport request or task, for example DEVK900123."
         },
         object: {
           type: "string",
@@ -270,7 +270,7 @@ function mask(ops) {
 async function callTool(deps, name, args) {
   const request = (args && args.request ? String(args.request) : "").trim();
   if (!request) {
-    return fail("Name the transport request, for example ALCK900593.");
+    return fail("Name the transport request, for example DEVK900123.");
   }
 
   if (name === "sap_transport_changes") {

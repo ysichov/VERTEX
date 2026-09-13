@@ -1329,7 +1329,7 @@ would have been a detour around it.
 
 **Versions got the assistant SelecTor has**, on the same runner, the same local server and the
 same check-before-apply. "The last change of BUILD_LAYOUT in ZCL_AVE_POPUP", "the review of
-ALCK900578, the BUILD_LAYOUT part" — and the window goes there. The host side became general on
+DEVK900123, the BUILD_LAYOUT part" — and the window goes there. The host side became general on
 the way: each window with an assistant names its rules, tools, plan shape and check, and the
 address its tools are served at, `/selector` or `/versions`, beside `/mcp`.
 
