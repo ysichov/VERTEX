@@ -14,7 +14,7 @@ renders as HTML.
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
 | Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport, a package or one object; its parts, their versions, the diff between two of them, and the review AVE saved for a request — including approving, declining and commenting on a block. No blame |
-| Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | McCabe, Halstead and the maintainability index per unit |
+| Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit |
 
 Status: **early**. All three answer, and each is a fraction of what its backend can do.
 
@@ -26,12 +26,6 @@ SAP GUI too.
 
 
 ## How it fits together
-
-Claude Code and Codex can also read SAP transport reviews **without VS Code**:
-the [standalone VERTEX MCP server](mcp/README.md) runs as a child process of the
-assistant and connects directly to SAP. It shares the review tools with the
-VS Code extension; no editor or listening MCP port is required.
-
 
 <img width="936" height="616" alt="image" src="https://github.com/user-attachments/assets/75cec29d-448d-43cb-b1c1-218b0c49a88b" />
 
@@ -47,6 +41,39 @@ make.
 The page receives finished JSON and knows nothing about SAP. That is what makes the second
 host possible: `vscode/extension.js` reads the very same files and answers them over plain
 HTTPS, and the markup, grids and filters are not written twice.
+
+## AI assistants
+
+VERTEX brings no agent of its own. It hands SAP to the assistants already in use — Copilot,
+Claude Code, Codex, the Claude Desktop chat — over MCP, with two tools that read the review AVE
+saved for a transport request: `sap_transport_changes` lists what the request changed, and
+`sap_transport_diff` gives the diff cut into AVE's own blocks, with the verdicts and notes
+already given. Both only read. The review has to be prepared in AVE first, and a request without
+one is reported as such, never as a clean transport.
+
+The tools are served two ways, from the same code:
+
+| Server | How it runs | Its SAP connection | Clients |
+|---|---|---|---|
+| Inside the VS Code extension | HTTP on `127.0.0.1:37777` with a bearer token; VS Code must be open | The extension's active system | Copilot finds it by itself; Codex and Claude Code are given its address |
+| [`mcp/server.js`](mcp/README.md) | A child process over stdio; no editor | `VERTEX_SAP_*` environment variables | Claude Code, Codex, the Claude Desktop chat, any stdio client |
+
+Every client keeps its own registration: a server added to Claude Code is not visible in the
+Claude Desktop chat. Setting each one up:
+[vscode/README.md](vscode/README.md#review-transports-with-copilot-claude-code-or-codex) and
+[mcp/README.md](mcp/README.md). The Eclipse plugin serves no MCP.
+
+SelecTor and Versions also take a sentence. **Assistant** in their bar opens a chat: pick Claude
+Code or Codex and the model it offers, and write what to show — *SFLIGHT for carrier AA, joined
+with SCARR*, or *the last change of BUILD_LAYOUT in ZCL_AVE_POPUP*.
+In Versions the assistant also reads what the window shows — the change a version made, whole
+sources, a saved review with its blocks and verdicts — so it describes and reviews code as well as
+moving the window there, the way the clicks would. SelecTor's assistant never sees a table row.
+The assistant reads the table's layout (fields, keys, the tables the dictionary offers, never a
+row) and answers with the state SelecTor is to be put in; the page checks it against the
+dictionary, fills in the panel, the join and the pivot as the clicks would, and runs the query
+itself. It starts the copy of Claude Code or Codex that comes with its VS Code extension, with
+no other MCP server and no shell. VS Code only for now.
 
 ## Installing it in Eclipse
 
@@ -116,7 +143,8 @@ org.vertex.abap.ui/
 ├── build.properties       resources/ must be listed, or the page is missing at runtime
 ├── resources/
 │   ├── table.html         the grid, the join builder and the pivot cross
-│   ├── metrics.html       the metrics table, sortable by any column
+│   ├── metrics.html       Flow, Scheme and Metrics: ACE's diagrams and numbers
+│   ├── mermaid.min.js     draws the diagrams; shipped, never fetched
 │   └── versions.html      parts, their versions, the diff, and the saved review
 └── src/org/vertex/abap/ui/
     ├── PageView.java           browser, page, ADT read, answer bridge - the shared half
@@ -129,6 +157,18 @@ org.vertex.abap.ui/
     ├── VersionsHandler.java    the same, for versions
     ├── SelectionContext.java   the ADT object and project behind a workbench selection
     └── JsonContentHandler.java reads a JSON response body as a String
+vscode/
+├── extension.js           the second host: webviews, the SAP connection, the MCP provider
+├── mcp.js                 the review tools and the local HTTP MCP server
+├── selector.js            SelecTor's assistant: its tool, its plan and the check
+├── versions.js            Versions' assistant: its tools, its plan and the check
+├── assistant.js           starts Claude Code or Codex for one request, shut in
+└── test/                  node --test; no SAP, no editor
+mcp/
+├── server.js              the same tools over stdio, for clients without VS Code
+├── sap.js                 its own SAP reader: the review resource only, no redirects
+├── configure-local.py     writes Codex and Claude Code configuration, password left empty
+└── test/                  the real process against a fake SAP endpoint
 ```
 
 A view is transport and nothing else: it names a path and hands the answer to its page. What the

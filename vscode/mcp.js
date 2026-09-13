@@ -184,7 +184,9 @@ function pad(text, width) {
    walking the diff and the saved verdicts are filed against them, so inventing
    hunks here would put the model's findings on different ground than the
    reviewer's buttons. */
-function diffText(data) {
+/* FULL keeps every line, with the changes still marked: the whole source is
+   what a change is judged against, and AVE hands a model the same choice. */
+function diffText(data, full) {
   const ops = data.ops || [];
   const blocks = data.blocks || [];
   const lines = [];
@@ -202,7 +204,7 @@ function diffText(data) {
     if (b.op_from > 0) { opens[b.op_from - 1] = b; }
   });
 
-  const show = mask(ops);
+  const show = full ? ops.map(function () { return true; }) : mask(ops);
   let line = 0;
   let folded = false;
 
@@ -336,7 +338,12 @@ function fail(text) {
 
 /* ---------- the protocol ---------- */
 
-async function dispatch(deps, message) {
+/* The review tools, unless a caller names another set: the standalone server
+   calls dispatch with two arguments and serves the review alone. */
+const REVIEW = { tools: TOOLS, call: callTool };
+
+async function dispatch(deps, message, set) {
+  const served = set || REVIEW;
   const method = message.method;
 
   if (method === "initialize") {
@@ -348,16 +355,16 @@ async function dispatch(deps, message) {
     };
   }
   if (method === "ping") { return {}; }
-  if (method === "tools/list") { return { tools: TOOLS }; }
+  if (method === "tools/list") { return { tools: served.tools }; }
   if (method === "tools/call") {
     const params = message.params || {};
-    if (!TOOLS.some(function (t) { return t.name === params.name; })) {
+    if (!served.tools.some(function (t) { return t.name === params.name; })) {
       const error = new Error("Unknown tool: " + params.name);
       error.code = -32602;
       throw error;
     }
     try {
-      return await callTool(deps, params.name, params.arguments || {});
+      return await served.call(deps, params.name, params.arguments || {});
     } catch (e) {
       // A tool that fails is an answer, not a broken protocol: the model is
       // told what went wrong and can try something else.
@@ -386,7 +393,16 @@ function create(deps) {
     if (!originAllowed(req)) {
       return send(res, 403, {}, JSON.stringify({ error: "Origin not allowed." }));
     }
-    if (req.url.split("?")[0] !== "/mcp") {
+    // /mcp is the review everybody registers. The other addresses are what a
+    // window hands the assistant it starts - /selector, /versions - and exist
+    // only when the host passed their sets in: separate addresses, so adding
+    // to them never changes what a Copilot, Claude Code or Codex registration
+    // sees.
+    const route = req.url.split("?")[0];
+    const pages = deps.pages || {};
+    const set = route === "/mcp" ? REVIEW
+              : (Object.prototype.hasOwnProperty.call(pages, route) ? pages[route] : null);
+    if (!set) {
       return send(res, 404, {}, "");
     }
     // No SSE stream is offered here, and no session is kept: the specification
@@ -430,12 +446,12 @@ function create(deps) {
 
       // A notification or a response carries no id and gets no answer.
       if (message.id === undefined || message.id === null) {
-        try { await dispatch(deps, message); } catch (e) { /* nothing to answer to */ }
+        try { await dispatch(deps, message, set); } catch (e) { /* nothing to answer to */ }
         return send(res, 202, {}, "");
       }
 
       try {
-        const result = await dispatch(deps, message);
+        const result = await dispatch(deps, message, set);
         send(res, 200, {}, JSON.stringify({ jsonrpc: "2.0", id: message.id, result: result }));
       } catch (e) {
         send(res, 200, {}, JSON.stringify({
@@ -512,6 +528,13 @@ exports.create = create;
 // Shared protocol and tools for the standalone stdio host as well as VS Code.
 exports.dispatch = dispatch;
 exports.TOOLS = TOOLS;
+// The Versions window's assistant reads the review summary the way this
+// server does, and refuses an unprepared review in the same words.
+exports.callTool = callTool;
+exports.read = read;
+exports.reviewPath = reviewPath;
+exports.notReviewable = notReviewable;
+exports.BUDGET = BUDGET;
 // Exported for the tests that check the rendering without a system behind it.
 exports.changesText = changesText;
 exports.diffText = diffText;

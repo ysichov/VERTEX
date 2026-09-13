@@ -6,6 +6,11 @@ the same `sap_transport_changes` and `sap_transport_diff` implementations as the
 VS Code extension. VS Code can be closed. No Node packages need installing;
 use Node.js 22 or newer and keep this repository checkout available.
 
+With VS Code open, the extension serves the same tools itself, and Copilot finds
+them without any setup: see
+[the extension's README](../vscode/README.md#review-transports-with-copilot-claude-code-or-codex).
+The **Assistant** panels in SelecTor and Versions need no MCP setup at all.
+
 ```text
 Claude Code / Codex / MCP client
              | stdio (client starts the process)
@@ -21,7 +26,9 @@ Claude Code / Codex / MCP client
 ## SAP connection
 
 Set these environment variables for the assistant process. The MCP child inherits
-them. For desktop apps, restart the app after configuring its environment.
+them. For desktop apps, restart the app after configuring its environment. Claude
+Desktop is the exception: it takes them from its own configuration file, see
+[Claude Desktop (chat)](#claude-desktop-chat).
 
 | Variable | Meaning |
 |---|---|
@@ -50,6 +57,28 @@ $env:VERTEX_SAP_PASSWORD = $vertexCredential.GetNetworkCredential().Password
 Start the assistant from that terminal. Keep passwords out of repository files.
 One MCP registration targets one SAP system. For multiple systems, register
 separate server names with their respective environments.
+
+## Both at once from the VERTEX settings (Windows)
+
+```powershell
+python mcp/configure-local.py
+```
+
+It takes the SAP system VERTEX already knows — `vertex.systems` and
+`vertex.active` in VS Code's user settings — and writes both registrations for
+this server:
+
+- in `~/.codex/config.toml`, a `[mcp_servers.vertex]` section with that system
+  in `[mcp_servers.vertex.env]`, replacing the old one and keeping every other
+  section; it refuses to replace a section that already holds a password;
+- in `~/.claude.json`, a `vertex` stdio server with the same environment; it
+  refuses when `vertex` is there already, so run
+  `claude mcp remove vertex --scope user` first;
+- before writing, a copy of each file as `*.vertex-backup-<time>`.
+
+It never writes a password. `VERTEX_SAP_PASSWORD` is left empty in both files and
+the server does not start until you fill it in — as plain text, like everything
+in `env`. It needs Node on the path and Python 3.11 or newer.
 
 ## Codex
 
@@ -82,6 +111,43 @@ claude
 Start a new conversation after changing the registration. Other MCP clients,
 including Copilot, can use the same command and arguments as a stdio server.
 The existing VS Code-hosted HTTP mode continues to work independently.
+
+## Claude Desktop (chat)
+
+The chat in Claude Desktop is a separate client: a server registered with
+`claude mcp add` is not visible there. Claude Desktop reads its own file,
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows and
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS;
+**Settings → Developer → Edit Config** opens it.
+
+```json
+{
+  "mcpServers": {
+    "vertex": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["C:/soft/GitHub/VERTEX/mcp/server.js"],
+      "env": {
+        "VERTEX_SAP_URL": "https://sap.example.com:44300",
+        "VERTEX_SAP_USER": "DEVELOPER",
+        "VERTEX_SAP_PASSWORD": "",
+        "VERTEX_SAP_CLIENT": "100"
+      }
+    }
+  }
+}
+```
+
+If the file already has `mcpServers`, add `vertex` inside it rather than a second
+`mcpServers`. Use absolute paths; `where node` prints Node's. The variables go into
+`env` because the app is not started from a terminal, so nothing set in one reaches
+it — which also means the SAP password is stored in this file in plain text. Add
+`"VERTEX_SAP_ALLOW_INSECURE_CERTIFICATE": "true"` only for a development system whose
+certificate cannot be verified.
+
+Quit Claude Desktop completely, not just its window, and start it again. `vertex`
+then appears under **Connectors** in the menu at the bottom left of the chat input.
+If it does not, `%APPDATA%\Claude\logs\mcp-server-vertex.log` holds what the server
+wrote to stderr.
 
 ## What to ask
 

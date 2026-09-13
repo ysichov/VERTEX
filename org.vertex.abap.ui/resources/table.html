@@ -120,7 +120,7 @@
   .main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
   .bar { padding: 6px 10px; background: var(--surface);
          border-bottom: 1px solid var(--border); display: flex; align-items: center;
-         gap: 6px; flex: 0 0 auto; }
+         gap: 6px; flex: 0 0 auto; flex-wrap: wrap; }
   .bar label { color: var(--muted); }
   .bar input { width: 140px; padding: 2px 5px; font: inherit; text-transform: uppercase; }
   button { padding: 2px 8px; font: inherit; cursor: pointer; }
@@ -287,6 +287,31 @@
   .link { cursor: pointer; text-decoration: underline; }
   .link.plain { cursor: text; text-decoration: none; user-select: text;
                 font-family: Consolas, monospace; }
+
+  /* The assistant: a panel on the right, closed until it is asked for. */
+  .chat { display: none; flex: 0 0 300px; flex-direction: column; min-width: 0;
+          border-left: 1px solid var(--border); background: var(--surface); }
+  .chat-head { display: flex; align-items: center; padding: 6px 6px 6px 10px;
+               background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  .chat-head .title { font-weight: 600; margin-right: auto; }
+  .chat-pick { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); }
+  .chat-pick select { flex: 1 1 0; min-width: 0; font: inherit; padding: 1px 3px; }
+  .chat-log { flex: 1 1 auto; overflow: auto; padding: 6px; }
+  .msg { margin-bottom: 10px; }
+  .msg .who { display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+  .msg .text { white-space: pre-wrap; }
+  .msg.user .text { display: inline-block; padding: 4px 6px; border-radius: 6px;
+                    background: var(--hover); }
+  .msg.error .text { color: var(--danger); }
+  .msg .did { margin-top: 3px; color: var(--muted); font-size: 11px;
+              font-family: Consolas, monospace; }
+  .chat-input { display: flex; flex-direction: column; gap: 4px; padding: 6px;
+                border-top: 1px solid var(--line); }
+  .chat-input textarea { font: inherit; min-height: 48px; resize: vertical; padding: 4px;
+                         color: var(--fg); background: var(--field-bg);
+                         border: 1px solid var(--field-border); }
+  .chat-input .row { display: flex; align-items: center; gap: 6px; }
+  .chat-input .working { margin-right: auto; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -311,10 +336,31 @@
       <button id="load">Load</button>
       <button id="join">Join</button>
       <button id="open">Open in new window</button>
+      <button id="assist" title="Say what to show, and let an assistant set it up">Assistant</button>
       <span class="status" id="status"></span>
     </div>
     <div class="scroll"><div id="root"></div></div>
   </main>
+
+  <aside class="chat" id="chat">
+    <div class="chat-head">
+      <span class="title">Assistant</span>
+      <button id="chatclose" title="Hide the assistant">&#8250;</button>
+    </div>
+    <div class="chat-pick">
+      <select id="who" title="Which assistant"></select>
+      <select id="model" title="Which model"></select>
+    </div>
+    <div class="chat-log" id="chatlog"></div>
+    <div class="chat-input">
+      <textarea id="ask" rows="3"
+                placeholder="For example: SFLIGHT for carrier AA, joined with SCARR"></textarea>
+      <div class="row">
+        <span class="working" id="working"></span>
+        <button id="send">Send</button>
+      </div>
+    </div>
+  </aside>
 
 </div>
 
@@ -1537,6 +1583,237 @@ function setupPage(detail) {
   }
 }
 
+/* ---------- the assistant ----------
+
+   Saying what to show instead of clicking it together. The host hands the
+   request to Claude Code or Codex, with the table's layout as the only thing
+   that assistant can read, and gets back the whole state this page is to be
+   put in, already checked against the dictionary. Applying it goes through
+   the same variables and the same load and loadJoin the clicks use, so what
+   comes out is a SelecTor like any other: every filter, chip and slot can be
+   changed by hand afterwards. */
+
+var ASSISTANTS = [["claude", "Claude Code"], ["codex", "Codex"]];
+
+/* One request at a time; the name of whoever is answering it, because the
+   choice in the list may change while it runs. */
+var asking = null;
+var chatOpened = false;
+
+function recall(key) {
+  // Storage can be switched off; the page then simply forgets the choice.
+  try { return window.localStorage.getItem("vertex.assistant." + key) || ""; }
+  catch (e) { return ""; }
+}
+
+function remember(key, value) {
+  try { window.localStorage.setItem("vertex.assistant." + key, value); }
+  catch (e) { /* not kept */ }
+}
+
+function say(kind, who, text, detail) {
+  var log = document.getElementById("chatlog");
+  var box = document.createElement("div");
+  box.className = "msg " + kind;
+  var name = document.createElement("span");
+  name.className = "who";
+  name.textContent = who;
+  box.appendChild(name);
+  var body = document.createElement("div");
+  body.className = "text";
+  body.textContent = text;
+  box.appendChild(body);
+  if (detail) {
+    var did = document.createElement("div");
+    did.className = "did";
+    did.textContent = detail;
+    box.appendChild(did);
+  }
+  log.appendChild(box);
+  log.scrollTop = log.scrollHeight;
+}
+
+function openChat() {
+  document.getElementById("chat").style.display = "flex";
+  if (chatOpened) {
+    document.getElementById("ask").focus();
+    return;
+  }
+  chatOpened = true;
+
+  if (typeof sdeAsk !== "function") {
+    // The page is the same in Eclipse; the host there has no assistant to run.
+    ["ask", "send", "who", "model"].forEach(function (id) {
+      document.getElementById(id).disabled = true;
+    });
+    say("error", "VERTEX", "This host has no assistant yet. It runs in VS Code for now.");
+    return;
+  }
+
+  var who = document.getElementById("who");
+  ASSISTANTS.forEach(function (a) {
+    var option = document.createElement("option");
+    option.value = a[0];
+    option.textContent = a[1];
+    who.appendChild(option);
+  });
+  var kept = recall("who");
+  who.value = ASSISTANTS.some(function (a) { return a[0] === kept; }) ? kept : ASSISTANTS[0][0];
+  askModels();
+  document.getElementById("ask").focus();
+}
+
+/* Claude Code's aliases, or the catalog Codex reports: the host knows which. */
+function askModels() {
+  var box = document.getElementById("model");
+  box.innerHTML = "";
+  var waiting = document.createElement("option");
+  waiting.textContent = "loading ...";
+  box.appendChild(waiting);
+  box.disabled = true;
+  sdeModels(document.getElementById("who").value);
+}
+
+function fillModels(data) {
+  // An answer for an assistant no longer chosen: the one that is has its own
+  // request on the way.
+  if (data.assistant !== document.getElementById("who").value) { return; }
+  var box = document.getElementById("model");
+  box.innerHTML = "";
+  if (data.error) {
+    var none = document.createElement("option");
+    none.textContent = "no models";
+    box.appendChild(none);
+    say("error", "VERTEX", data.error);
+    return;
+  }
+  data.models.forEach(function (m) {
+    var option = document.createElement("option");
+    option.value = m.id;
+    option.textContent = m.label;
+    box.appendChild(option);
+  });
+  var kept = recall("model." + data.assistant);
+  if (data.models.some(function (m) { return m.id === kept; })) { box.value = kept; }
+  box.disabled = false;
+}
+
+/* What is on screen now, as the assistant is told it: names and settings,
+   never a row. */
+function pageState() {
+  var view = document.getElementById("root").className !== "join" ? "table"
+           : (mode === "P" ? "pivot" : "join");
+  return {
+    table: currentTable || "",
+    view: view,
+    filters: criteria
+      .filter(function (c) { return c.low !== "" || c.high !== ""; })
+      .map(function (c) {
+        return { field: c.field, sign: c.sign, option: c.option, low: c.low, high: c.high };
+      }),
+    join: taken.slice(),
+    fields: picked ? picked.slice() : [],
+    pivot: {
+      rows: cross.rows.slice(),
+      cols: cross.cols.slice(),
+      vals: cross.vals.map(function (v) { return { key: v.key, agg: v.agg }; })
+    }
+  };
+}
+
+function sendAsk() {
+  if (asking) { return; }
+  var input = document.getElementById("ask");
+  var text = input.value.trim();
+  if (!text) { return; }
+  var who = document.getElementById("who");
+  var model = document.getElementById("model");
+  if (model.disabled) {
+    say("error", "VERTEX", "There is no model to ask yet: the list for "
+        + who.options[who.selectedIndex].text + " did not arrive.");
+    return;
+  }
+  asking = who.options[who.selectedIndex].text;
+  say("user", "You", text);
+  input.value = "";
+  document.getElementById("send").disabled = true;
+  document.getElementById("working").textContent = asking + " is working ...";
+  sdeAsk(who.value, model.value, text, JSON.stringify(pageState()));
+}
+
+// Invoked by the host with a model list or an answer.
+function sdeAssistant(raw) {
+  var data;
+  try { data = JSON.parse(raw); }
+  catch (e) { data = { call: "ask", error: "The host answered with something that is not JSON." }; }
+
+  if (data.call === "models") {
+    fillModels(data);
+    return;
+  }
+
+  var who = (asking || "Assistant") + (data.model ? " · " + data.model : "")
+          + (data.system ? " · " + data.system : "");
+  asking = null;
+  document.getElementById("send").disabled = false;
+  document.getElementById("working").textContent = "";
+
+  if (data.error) {
+    say("error", who, data.error);
+    return;
+  }
+  var plan = data.plan;
+  say("assistant", who, plan.reply || "Done.", plan.table ? describePlan(plan) : "");
+  // An empty table is an answer without a change: the assistant says why.
+  if (plan.table) { applyPlan(plan); }
+}
+
+function describePlan(plan) {
+  var parts = [plan.table];
+  plan.filters.forEach(function (f) {
+    parts.push((f.sign === "E" ? "not " : "") + f.field.toUpperCase() + " " + f.option + " "
+               + f.low + (f.high ? " .. " + f.high : ""));
+  });
+  if (plan.join.length) { parts.push("join " + plan.join.join(", ")); }
+  if (plan.fields.length) { parts.push(plan.fields.length + " fields"); }
+  var p = plan.pivot;
+  if (p.rows.length || p.cols.length || p.vals.length) {
+    parts.push("pivot: " + p.rows.length + " rows, " + p.cols.length + " columns, "
+               + p.vals.length + " measures");
+  }
+  return parts.join(" · ");
+}
+
+/* The plan on the page, as the clicks would have put it there. Nothing is
+   merged with what was on screen: the host sent the whole state wanted. */
+function applyPlan(plan) {
+  document.getElementById("name").value = plan.table;
+  // Set before anything loads, so load() does not take the new table for a
+  // change of table and throw the new filters away.
+  currentTable = plan.table;
+  criteria = plan.filters.map(function (f) {
+    return { field: f.field, text: f.text, sign: f.sign, option: f.option,
+             low: f.low, high: f.high };
+  });
+  if (criteria.length) { document.getElementById("app").classList.remove("collapsed"); }
+  renderCriteria();
+
+  taken = plan.join.slice();
+  picked = plan.fields.length ? plan.fields.slice() : null;
+  jtypes = {};
+  cross = {
+    rows: plan.pivot.rows.slice(),
+    cols: plan.pivot.cols.slice(),
+    vals: plan.pivot.vals.map(function (v) { return { key: v.key, agg: v.agg }; })
+  };
+  var pivot = cross.rows.length + cross.cols.length + cross.vals.length > 0;
+  mode = pivot ? "P" : "J";
+  full = false;
+  sorted = { field: null, down: false };
+
+  if (pivot || taken.length || picked) { loadJoin(ROWS); } else { load(plan.table); }
+}
+
 /* ---------- wiring ---------- */
 
 document.getElementById("load").addEventListener("click", function () { load(tableName()); });
@@ -1558,6 +1835,34 @@ document.getElementById("collapse").addEventListener("click", function () {
 
 document.getElementById("expand").addEventListener("click", function () {
   document.getElementById("app").classList.remove("collapsed");
+});
+
+document.getElementById("assist").addEventListener("click", function () {
+  var chat = document.getElementById("chat");
+  if (chat.style.display === "flex") { chat.style.display = "none"; } else { openChat(); }
+});
+
+document.getElementById("chatclose").addEventListener("click", function () {
+  document.getElementById("chat").style.display = "none";
+});
+
+document.getElementById("send").addEventListener("click", sendAsk);
+
+document.getElementById("ask").addEventListener("keydown", function (e) {
+  // Enter sends; Shift+Enter is a new line in the request.
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendAsk();
+  }
+});
+
+document.getElementById("who").addEventListener("change", function (e) {
+  remember("who", e.target.value);
+  askModels();
+});
+
+document.getElementById("model").addEventListener("change", function (e) {
+  remember("model." + document.getElementById("who").value, e.target.value);
 });
 
 var INITIAL = /*INIT*/null/*INIT*/;

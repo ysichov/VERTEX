@@ -11,6 +11,9 @@
 
 const vscode = require("vscode");
 const mcp = require("./mcp");
+const selector = require("./selector");
+const versions = require("./versions");
+const assistant = require("./assistant");
 const https = require("https");
 const http = require("http");
 const fs = require("fs");
@@ -202,6 +205,8 @@ const SHIM = [
   "  window.sdeAct = send('act');",
   "  window.sdeTitle = send('title');",
   "  window.sdeBrowse = send('browse');",
+  "  window.sdeAsk = send('ask');",
+  "  window.sdeModels = send('models');",
   "  window.sdeTake = function () {",
   "    const taken = pending;",
   "    pending = null;",
@@ -211,6 +216,11 @@ const SHIM = [
   "    if (e.data && e.data.type === 'result') {",
   "      pending = e.data.payload;",
   "      sdeReady();",
+  "    }",
+  // The assistant answers on a channel of its own: a reply that takes a
+  // minute must not land in the middle of whatever the grid is doing.
+  "    if (e.data && e.data.type === 'assistant' && typeof sdeAssistant === 'function') {",
+  "      sdeAssistant(e.data.payload);",
   "    }",
   "  });",
   "}());",
@@ -525,6 +535,21 @@ function open(context, service, initial, beside) {
         });
         return;
       }
+      if (message.call === "models" || message.call === "ask") {
+        const payload = !ASSISTED[service]
+          ? { error: "This window has no assistant." }
+          : message.call === "models"
+            ? await assistantModels(args)
+            : await assistantAsk(context, service, args);
+        payload.call = message.call;
+        try {
+          await panel.webview.postMessage({ type: "assistant", payload: JSON.stringify(payload) });
+        } catch (e) {
+          // The window was closed while the assistant was still working;
+          // there is nobody left to tell.
+        }
+        return;
+      }
 
       const build = definition[message.call];
       if (!build) {
@@ -550,6 +575,86 @@ function open(context, service, initial, beside) {
   );
 
   return panel;
+}
+
+/* ---------- the window assistants ----------
+
+   The person picks Claude Code or Codex, as they do for the MCP address, and
+   the model that assistant offers. The request goes to that assistant with
+   the window's own endpoint as its only tool source; what it hands back is
+   checked against the system here before the page is given it.
+
+   Each window that has one names what its assistant knows - the rules, the
+   tools, the shape of a plan and the check - and the address its tools are
+   served at, beside the review on the same local server. */
+
+const ASSISTED = {
+  table: { brain: selector, route: "/selector" },
+  versions: { brain: versions, route: "/versions" }
+};
+
+function windowTools() {
+  const pages = {};
+  Object.keys(ASSISTED).forEach(function (service) {
+    const brain = ASSISTED[service].brain;
+    pages[ASSISTED[service].route] = { tools: brain.TOOLS, call: brain.callTool };
+  });
+  return pages;
+}
+
+function assistantExtension(id) {
+  const described = assistant.ASSISTANTS[id];
+  const found = described ? vscode.extensions.getExtension(described.extension) : null;
+  return found ? found.extensionPath : "";
+}
+
+async function assistantModels(args) {
+  const id = String(args[0] || "");
+  try {
+    return { assistant: id,
+             models: await assistant.models({ assistant: id, extensionPath: assistantExtension(id) }) };
+  } catch (e) {
+    return { assistant: id, error: e.message };
+  }
+}
+
+async function assistantAsk(context, service, args) {
+  const id = String(args[0] || "");
+  const brain = ASSISTED[service].brain;
+  const chosen = active();
+  if (chosen.error) {
+    return { error: chosen.error };
+  }
+  let state;
+  try {
+    state = JSON.parse(String(args[3] || "{}"));
+  } catch (e) {
+    return { error: "The page sent a state that is not JSON." };
+  }
+  let running;
+  try {
+    running = await tools.start();
+  } catch (e) {
+    return { error: "The VERTEX tool server did not start, so the assistant would have no tools: "
+                    + e.message };
+  }
+  try {
+    const answer = await assistant.ask({
+      assistant: id,
+      model: String(args[1] || ""),
+      extensionPath: assistantExtension(id),
+      url: running.url.replace(/\/mcp$/, ASSISTED[service].route),
+      token: tools.token,
+      instructions: brain.INSTRUCTIONS,
+      prompt: brain.prompt(String(args[2] || ""), state),
+      schema: brain.PLAN_SCHEMA,
+      tools: brain.TOOLS.map(function (t) { return t.name; })
+    });
+    const plan = await brain.checkPlan({ fetch: fetch, context: context }, answer.plan);
+    return { plan: plan, model: answer.model, system: chosen.system.name };
+  } catch (e) {
+    return { error: e.message, model: e.model || "", system: chosen.system.name };
+  }
 }
 
 /* An agent already in the editor - Copilot, Claude Code, Codex - can be handed
@@ -631,7 +736,7 @@ let tools = null;
 
 function activate(context) {
   const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
-  tools = mcp.create({ fetch: fetch, context: context, port: port });
+  tools = mcp.create({ fetch: fetch, context: context, port: port, pages: windowTools() });
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation
   // so a registered Codex/Claude connection also works after a window reload.

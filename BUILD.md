@@ -66,6 +66,16 @@ nothing to decide at run time. `vscode/resources/` is in `.gitignore` for the sa
 Check the result before publishing: the vsix must list `resources/metrics.html`, `resources/table.html`
 and `resources/versions.html`. Without them the extension installs and every window opens blank.
 
+The tests need Node and nothing else — no SAP system, no editor. Run them from the repository root
+before packaging:
+
+```bash
+node --test mcp/test/*.test.js vscode/test/*.test.js
+```
+
+`test/**` is in `.vscodeignore`, so they do not travel in the vsix; neither does a vsix left lying
+in the folder.
+
 Publishing needs a publisher on the Marketplace and a Personal Access Token from Azure DevOps with
 the Marketplace / Manage scope:
 
@@ -76,6 +86,12 @@ npx @vscode/vsce login YuriiSychov
 Then `vsce publish`, or upload the vsix on the Marketplace page. The Marketplace refuses a second
 upload of a version it already has, so bump `version` in `package.json` first. The publisher in
 `package.json` must match the account exactly.
+
+## The standalone MCP server
+
+`mcp/` has nothing to build or package. `server.js` runs from a checkout under Node 22 or newer and
+imports the tools from `vscode/mcp.js`, so there is one implementation of them, not two. How to
+register it with each assistant is in [mcp/README.md](mcp/README.md).
 
 ## The landing page
 
@@ -88,6 +104,8 @@ same edit as the version bump below.
 ## Versions
 
 The Eclipse bundle and the VS Code extension carry the same number by hand; nothing enforces it.
+They parted at 0.4: the MCP server exists only in the VS Code extension, and the Eclipse bundle is
+still 0.3.2.
 `0.2.1.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.2.1.<build timestamp>` on export,
 so every export is a distinct version and *Check for Updates* can see it.
 

@@ -1247,6 +1247,13 @@ its own, and its rules are about the password it now holds:
 the password left empty, refuses to overwrite an existing `vertex` entry, and backs both files up
 first.
 
+**Two Claudes, two configuration files.** Claude Code used the tools; the chat in Claude
+Desktop, asked the same thing, answered that no VERTEX server was connected. They are different
+clients. `claude mcp add` writes `~/.claude.json`; the chat reads `claude_desktop_config.json`,
+where a local server is a command to start. The standalone server is what fits there, with its
+SAP connection in the entry's `env` — the app is not started from a terminal, so nothing set in
+one reaches it.
+
 ### What went wrong: a label in the name field
 
 In a scope — a transport or a package — the Versions window treated every row as an object to
@@ -1263,6 +1270,136 @@ standalone process over real stdio against a fake SAP endpoint; a bad configurat
 stderr without the password; SAP errors, a redirect and a deadline; the command without Copilot's
 API; the HTTP server keeping its port and token across a restart and refusing a second one on the
 same port; and the two Versions cases. `test/**` and `*.vsix` stay out of the package.
+
+---
+
+## Stage 27 — a sentence instead of the clicks
+
+**SelecTor got a chat.** "Open SFLIGHT for carrier AA, join SCARR" instead of typing the name,
+pressing the magnifier on a column, filling in the panel and picking a chip. The first proposal
+was a model of VERTEX's own — Copilot's through `vscode.lm`, or an API key — and it answered the
+wrong question. VERTEX already knew which AI it talks to: the quick pick of the MCP command,
+Claude Code or Codex. The chat offers the same two, and the model the chosen one offers.
+
+**The assistant configures; SelecTor runs.** What comes back is not an answer about data but
+the whole state of the page — table, filters, join, SELECT list, pivot — in a JSON schema both
+command lines enforce (`--json-schema`, `--output-schema`). The page applies it through the same
+variables and the same `load` and `loadJoin` the clicks use, so every chip it set can be moved
+by hand afterwards. The model sees metadata only. Its one tool, `sap_table_layout`, reads the
+join resource without a row count, which answers with the fields, their texts and keys, the
+tables the dictionary offers and the aggregations the pivot allows, and reads no row. The plan
+is checked against that same answer before the page is given it: a field the table does not
+have is an error in the chat, not a filter quietly missing from the panel.
+
+**Shut in on purpose.** A run starts in an empty temporary folder. Claude Code gets
+`-p --tools "" --strict-mcp-config` and one allowed tool; Codex gets
+`exec --ignore-user-config -s read-only` with the shell, unified exec, plugins and apps switched
+off. The person's own MCP servers are not loaded, and among them are ones that write to SAP and
+ones with free SQL. The tool lives at `/selector` on the same local server, so what Copilot,
+Claude Code and Codex see at `/mcp` does not change. The token reaches the child through its
+environment; the files in the folder name the variable, not the value.
+
+### What went wrong
+
+- **Which Codex.** The `codex` on the path was an npm install of 0.135, and the model the
+  person's configuration names, `gpt-5.6-luna`, was refused as needing a newer one. The copy
+  inside the Codex extension was 0.154 and ran it. VERTEX now starts the executables that come
+  with the two extensions: the same version and the same login the person uses in the editor.
+- **A catalogue is not an entitlement.** Codex lists `gpt-5.4-mini`, and so does its app
+  server, but a ChatGPT login is refused it, and nothing in either list says so. The list stays
+  Codex's own; a refusal reaches the chat in the provider's words.
+- **A key where a name belongs.** Asked for a pivot over 2026, the model wrote the date filter
+  as `t0~fldate`, the key form the pivot uses. The check refused the plan, which is what it is
+  there for. The fix went into the rules and into the tool's own text, which now say that a
+  filter names its field plainly; the model's answer is not corrected behind its back.
+- **Eclipse** has no assistant yet. The panel is there and says so.
+
+Twenty-one tests more, none of them needing SAP, an editor or a model: the plan check against
+the dictionary, the endpoint beside the review, both command lines as they are started and as
+they fail, the model lists, and the page applying a plan. Then two runs of the real Claude Code
+against a stubbed system — the request as it was typed, in 12 seconds, and the pivot, in 9.
+
+**Lesson.** Before proposing a way in, look for the one the project already has. The choice of
+assistant was sitting in `extension.js`, and each of the three options offered instead of it
+would have been a detour around it.
+
+---
+
+## Stage 28 — the same chat in Versions
+
+**Versions got the assistant SelecTor has**, on the same runner, the same local server and the
+same check-before-apply. "The last change of BUILD_LAYOUT in ZCL_AVE_POPUP", "the review of
+ALCK900578, the BUILD_LAYOUT part" — and the window goes there. The host side became general on
+the way: each window with an assistant names its rules, tools, plan shape and check, and the
+address its tools are served at, `/selector` or `/versions`, beside `/mcp`.
+
+**Lists, never source.** The tools are `sap_object_parts`, `sap_part_versions`, and the review
+server's own `sap_transport_changes`, reused rather than restated. The diff tool is not among
+them: a line of source is to the Versions window what a row is to SelecTor. The plan is a
+destination — type, name, view, the part, the version, the object of a review — and the check
+holds it against the parts list, the versions list and the saved review before the window is
+sent anywhere.
+
+**A destination is reached in steps.** The window cannot open a version whose part it has not
+listed, so a plan is walked the way a person clicks: the parts, then the part, then the version;
+or the request, its review, then the object in it. Each step waits for the answer of the one
+before it. An answer about something else means the person went elsewhere meanwhile, and the
+rest of the plan is dropped rather than sprung on them later; an error from SAP stops it with a
+line in the chat. The diff it opens is the one a click opens — a version against the one below
+it — so the assistant reaches nothing a person could not.
+
+**The key made of blanks, once more.** A method's key is its class name padded to thirty
+characters, and a model copying it could have collapsed the blanks as `CONDENSE` once did. The
+tool prints every key as a JSON string, and the check compares keys blank for blank. In the real
+runs the model copied them exactly; were it not to, the plan is refused with the reason.
+
+### What went wrong
+
+- **The disk filled up in the middle of an edit.** Three writes to `versions.html` failed with
+  `ENOSPC`. The file was checked against the repository before anything else — untouched, since
+  the failed writes had written nothing — and the edits were made again once space came back.
+  The space was not taken by this work.
+- **The session's scratch folder vanished**, cleaned up by another Claude Code process starting
+  in the same project. With it went the probe scripts and Stage 25's eighteen checks, which had
+  only ever lived there. The tests that matter were already in `vscode/test`.
+- **The tests left folders behind.** The runner's tests made temporary extensions and never
+  removed them, sixty-five after a few runs. They now clean up after themselves.
+
+Fourteen tests more — the tools and the check against a stubbed system, and the page walking a
+plan step by step, dropping it, and stopping on an error — and two runs of the real Claude Code:
+the last change of a method in 13 seconds, the object of a review in 12.
+
+---
+
+## Stage 29 — a reviewer that could not read
+
+**Tried on E19 the same day, the Versions assistant answered "describe the method GET" with an
+apology.** It could open the object; it could not read it. Stage 28 had carried SelecTor's rule
+across by analogy — never a row, so never a line of source — and the analogy was wrong. A table
+row is business data. A diff is what a review is made of, and the review server had been handing
+diffs to models since Stage 25.
+
+**The assistant now reads what the window shows.** `sap_version_diff` gives the change a version
+made, against the version listed below it or against one named, and with `full` the whole source
+with the changes marked — AVE's own choice between "AI prompt diff" and "AI prompt full".
+`sap_transport_diff` is the review server's, with the blocks, the verdicts and the comments. Both
+render through the one `diffText`, which learned a full mode for it, and a whole source too long
+to read well is cut with a line saying where. A request to describe or review gets its answer in
+the reply, as long as it needs to be; a request to see something still moves the window.
+
+### What went wrong
+
+- **The label named the wrong model.** Asked with sonnet, the chat signed its answers with haiku.
+  The label was the first key of Claude Code's `modelUsage`, a report keyed by model that
+  promises no order. It now names every model the report lists, the one that wrote most first. A
+  plain sonnet run reports sonnet alone, so what put haiku first was not reproduced; the label no
+  longer depends on it.
+- **One answer was the word "test".** Of two runs of the same request against a stubbed system,
+  the first came back with that as its reply — the text of a declined block's comment — and the
+  second with a full description of the method. The plan check can tell a wrong key from a right
+  one; it cannot tell a poor answer from a good one, and does not pretend to.
+
+Both assistants go out in the extension as 0.4.2.
 
 ---
 

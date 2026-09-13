@@ -25,6 +25,7 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
   const context = vm.createContext({ exports: {}, __dirname: path.join(__dirname, ".."),
     console: { log() {} }, require: name => name === "vscode" ? vscode
       : name === "./mcp" ? { create: deps => { assert.equal(deps.port, 37777); return server; } }
+      : name.startsWith("./") ? require(path.join(__dirname, "..", name))
       : require(name) });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../extension.js"), "utf8"), context);
   context.exports.activate({ subscriptions: [] });
