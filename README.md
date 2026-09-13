@@ -45,7 +45,7 @@ HTTPS, and the markup, grids and filters are not written twice.
 ## AI assistants
 
 VERTEX brings no agent of its own. It hands SAP to the assistants already in use — Copilot,
-Claude Code, Codex, the Claude Desktop chat — over MCP, with two tools that read the review AVE
+Claude Code and Codex in VS Code — over MCP, with two tools that read the review AVE
 saved for a transport request: `sap_transport_changes` lists what the request changed, and
 `sap_transport_diff` gives the diff cut into AVE's own blocks, with the verdicts and notes
 already given. Both only read. The review has to be prepared in AVE first, and a request without
@@ -56,10 +56,10 @@ The tools are served two ways, from the same code:
 | Server | How it runs | Its SAP connection | Clients |
 |---|---|---|---|
 | Inside the VS Code extension | HTTP on `127.0.0.1:37777` with a bearer token; VS Code must be open | The extension's active system | Copilot finds it by itself; Codex and Claude Code are given its address |
-| [`mcp/server.js`](mcp/README.md) | A child process over stdio; no editor | `VERTEX_SAP_*` environment variables | Claude Code, Codex, the Claude Desktop chat, any stdio client |
+| [`mcp/server.js`](mcp/README.md) | A child process over stdio; no editor | `VERTEX_SAP_*` environment variables | Development/standalone mode; not part of the tested VS Code workflow |
 
 Every client keeps its own registration: a server added to Claude Code is not visible in the
-Claude Desktop chat. Setting each one up:
+other clients. Setting up the tested VS Code workflow:
 [vscode/README.md](vscode/README.md#review-transports-with-copilot-claude-code-or-codex) and
 [mcp/README.md](mcp/README.md). The Eclipse plugin serves no MCP.
 
@@ -71,13 +71,20 @@ sources, a saved review with its blocks and verdicts — so it describes and rev
 moving the window there, the way the clicks would. SelecTor's assistant never sees a table row.
 Examples of requests for both windows are in [vscode/README.md](vscode/README.md#examples).
 
+### Development status
+
+The tested integrations are GitHub Copilot in VS Code, Claude Code, and Codex in VS Code.
+Claude web, ChatGPT web, Claude Desktop, and other MCP clients are not supported or tested yet.
+The remote HTTP host is experimental and documented for future development only.
+
 ### Where MCP comes in
 
 | Who | Uses MCP | Setup |
 |---|---|---|
 | The SelecTor, Versions and Metrics windows, used by hand | No: they read SAP directly over ADT | — |
 | The **Assistant** panels in SelecTor and Versions | Yes, internally | None: for each request the extension hands Claude Code or Codex the window's own MCP address, `/selector` or `/versions` |
-| External assistants: Copilot, the Claude Code and Codex chats, Claude Desktop | Yes | Copilot finds the server by itself; Claude Code and Codex are connected with **VERTEX: Copy the MCP address for Claude Code or Codex**, or through the [standalone `mcp/server.js`](mcp/README.md) |
+| Supported assistants | Yes | GitHub Copilot in VS Code, Claude Code, and Codex in VS Code |
+| Other chats and MCP clients | Not supported/tested yet | Claude web, ChatGPT web, Claude Desktop, and other clients are development work |
 
 MCP is how Claude Code and Codex are given tools in both cases. The difference is
 who connects them: the extension, for one request, or you, once.

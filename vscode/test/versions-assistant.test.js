@@ -17,7 +17,7 @@ function sap(paths) {
       const q = url.searchParams;
       if (url.pathname.startsWith("/sap/bc/adt/zsde/review/")) {
         if (q.get("part")) {
-          return JSON.stringify({ request: "alck900578", part: q.get("part").toLowerCase(),
+          return JSON.stringify({ request: "devk900578", part: q.get("part").toLowerCase(),
             part_type: "meth", table: true, saved: true, ddic: false, saved_at: "20260913150000",
             versno_old: "00011", versno_new: "00012", added: 1, deleted: 0,
             blocks: [{ hunk_key: "h1", hunk_no: 1, start_line: 2, change_count: 1,
@@ -27,11 +27,11 @@ function sap(paths) {
             ops: [{ op: "=", text: "METHOD build_layout." }, { op: "+", text: "  SORT lt_fields." },
                   { op: "=", text: "ENDMETHOD." }] });
         }
-        if (name === "ALCK900999") {
-          return JSON.stringify({ request: "alck900999", table: true, saved: false, objects: [],
+        if (name === "DEVK900999") {
+          return JSON.stringify({ request: "devk900999", table: true, saved: false, objects: [],
                                   reviewers: [], history: [] });
         }
-        return JSON.stringify({ request: "alck900578", remote: "", table: true, saved: true,
+        return JSON.stringify({ request: "devk900578", remote: "", table: true, saved: true,
           saved_at: "20260913150000", saved_by: "SYCHOV",
           objects: [{ objtype: "METH", obj_name: METHOD, class_name: "ZCL_AVE_POPUP", group: "",
                       display_name: "ZCL_AVE_POPUP=>BUILD_LAYOUT", author: "SYCHOV",
@@ -55,8 +55,8 @@ function sap(paths) {
           part_type: "meth", from: q.get("from"), to: q.get("to"), added: 1, deleted: 1, kept: 20, ops: ops });
       }
       if (name === "NOPE") { return "ERROR:NOBACKEND:HTTP 404: program NOPE does not exist"; }
-      if (name === "ALCK900578") {
-        return JSON.stringify({ object: "alck900578", type: "tr", scope: true, parts: [
+      if (name === "DEVK900578") {
+        return JSON.stringify({ object: "devk900578", type: "tr", scope: true, parts: [
           { class: "", unit: "ZCL_AVE_POPUP", name: "ZCL_AVE_POPUP", part_type: "CLAS" },
           { class: "", unit: "ZEXAMPLE_REPORT", name: "ZEXAMPLE_REPORT", part_type: "REPS" }
         ] });
@@ -67,9 +67,9 @@ function sap(paths) {
             { version: "99998", date: "20260913", time: "101500", author: "SYCHOV",
               author_name: "Yurii Sychov", request: "", task: "" },
             { version: "00012", date: "20260912", time: "170000", author: "SYCHOV",
-              author_name: "Yurii Sychov", request: "ALCK900578", task: "ALCK900579" },
+              author_name: "Yurii Sychov", request: "DEVK900578", task: "DEVK900579" },
             { version: "00011", date: "20260901", time: "090000", author: "MUELLER",
-              author_name: "Anna Mueller", request: "ALCK900500", task: "ALCK900501" }
+              author_name: "Anna Mueller", request: "DEVK900500", task: "DEVK900501" }
           ] });
       }
       return JSON.stringify({ object: "zcl_ave_popup", type: "clas", scope: false, parts: [
@@ -87,7 +87,7 @@ test("parts come with their exact keys, and a scope says what its entries are", 
   const own = await versions.callTool(sap([]), "sap_object_parts", { type: "clas", name: "zcl_ave_popup" });
   assert.match(own.content[0].text, /is an object/);
   assert.ok(own.content[0].text.includes('"' + METHOD + '"  METH  BUILD_LAYOUT'));
-  const scope = await versions.callTool(sap([]), "sap_object_parts", { type: "TR", name: "ALCK900578" });
+  const scope = await versions.callTool(sap([]), "sap_object_parts", { type: "TR", name: "DEVK900578" });
   assert.match(scope.content[0].text, /holds objects/);
   const missing = await versions.callTool(sap([]), "sap_object_parts", { type: "PROG", name: "NOPE" });
   assert.equal(missing.isError, true);
@@ -106,8 +106,8 @@ test("versions are listed without asking for a line of source", async () => {
 });
 
 test("the review summary is read the way the review server reads it", async () => {
-  const result = await versions.callTool(sap([]), "sap_transport_changes", { request: "ALCK900578" });
-  assert.match(result.content[0].text, /Transport ALCK900578 changed 1 object/);
+  const result = await versions.callTool(sap([]), "sap_transport_changes", { request: "DEVK900578" });
+  assert.match(result.content[0].text, /Transport DEVK900578 changed 1 object/);
 });
 
 test("a plan comes back carrying the keys as SAP gave them", async () => {
@@ -118,7 +118,7 @@ test("a plan comes back carrying the keys as SAP gave them", async () => {
     view: "diff", part: METHOD, part_type: "METH", version: "00012",
     review_object: "", review_type: "" });
 
-  const review = await versions.checkPlan(sap([]), { ...empty, type: "TR", name: "ALCK900578",
+  const review = await versions.checkPlan(sap([]), { ...empty, type: "TR", name: "DEVK900578",
     view: "review_object", review_object: METHOD, review_type: "meth" });
   assert.equal(review.review_object, METHOD);
   assert.equal(review.review_type, "METH");
@@ -129,16 +129,16 @@ test("a plan the system does not bear out is refused with the reason", async () 
   await assert.rejects(versions.checkPlan(s, { ...empty, type: "CLAS", name: "ZCL_AVE_POPUP",
     view: "versions", part: "ZCL_AVE_POPUP BUILD_LAYOUT", part_type: "METH" }),
     /has no part "ZCL_AVE_POPUP BUILD_LAYOUT" of type METH\. A method's key is the class name padded/);
-  await assert.rejects(versions.checkPlan(s, { ...empty, type: "TR", name: "ALCK900578",
+  await assert.rejects(versions.checkPlan(s, { ...empty, type: "TR", name: "DEVK900578",
     view: "versions", part: "ZCL_AVE_POPUP", part_type: "CLAS" }),
-    /ZCL_AVE_POPUP is an object in ALCK900578: it is opened as CLAS ZCL_AVE_POPUP/);
+    /ZCL_AVE_POPUP is an object in DEVK900578: it is opened as CLAS ZCL_AVE_POPUP/);
   await assert.rejects(versions.checkPlan(s, { ...empty, type: "CLAS", name: "ZCL_AVE_POPUP",
     view: "diff", part: METHOD, part_type: "METH", version: "7" }),
     /has no version 7/);
   await assert.rejects(versions.checkPlan(s, { ...empty, type: "CLAS", name: "ZCL_AVE_POPUP",
     view: "review" }), /A review belongs to a transport request/);
-  await assert.rejects(versions.checkPlan(s, { ...empty, type: "TR", name: "ALCK900999",
-    view: "review" }), /No review has been prepared in AVE for ALCK900999/);
+  await assert.rejects(versions.checkPlan(s, { ...empty, type: "TR", name: "DEVK900999",
+    view: "review" }), /No review has been prepared in AVE for DEVK900999/);
   await assert.rejects(versions.checkPlan(s, { ...empty, type: "PROG", name: "NOPE",
     view: "parts" }), /The plan opens PROG NOPE, and SAP answered: HTTP 404/);
   await assert.rejects(versions.checkPlan(s, { ...empty, type: "CLAS", name: "ZCL_AVE_POPUP",
@@ -214,7 +214,7 @@ test("the Versions endpoint serves the lists, the sources and the review's own d
                       "sap_transport_changes", "sap_transport_diff"]);
     const diff = await post({ jsonrpc: "2.0", id: 2, method: "tools/call",
       params: { name: "sap_transport_diff",
-                arguments: { request: "ALCK900578", object: METHOD, object_type: "METH" } } });
+                arguments: { request: "DEVK900578", object: METHOD, object_type: "METH" } } });
     assert.match(diff.result.content[0].text, /block 1 · inserted, 1 line/);
     assert.match(diff.result.content[0].text, /\+   SORT lt_fields\./);
   } finally { await server.stop(); }

@@ -79,17 +79,17 @@ test("a diff plan goes parts, then the part, then the version - each after the l
 
 test("a review plan opens the request, its review, then the object in it", () => {
   const { context, calls, answer } = page();
-  context.applyPlan(plan({ type: "TR", name: "ALCK900578", view: "review_object", part: "",
+  context.applyPlan(plan({ type: "TR", name: "DEVK900578", view: "review_object", part: "",
                            part_type: "", version: "", review_object: METHOD, review_type: "METH" }));
-  answer({ object: "alck900578", type: "tr", scope: true, parts: [
+  answer({ object: "devk900578", type: "tr", scope: true, parts: [
     { class: "", unit: "ZCL_AVE_POPUP", name: "ZCL_AVE_POPUP", part_type: "CLAS" }] });
-  assert.deepEqual(calls[1], ["review", "ALCK900578", "", "", ""]);
+  assert.deepEqual(calls[1], ["review", "DEVK900578", "", "", ""]);
   assert.equal(context.mode, "R");
-  answer({ request: "alck900578", table: true, saved: true, saved_at: "20260913150000",
+  answer({ request: "devk900578", table: true, saved: true, saved_at: "20260913150000",
            saved_by: "SYCHOV", reviewers: [], history: [],
            objects: [{ objtype: "METH", obj_name: METHOD, display_name: "ZCL_AVE_POPUP=>BUILD_LAYOUT",
                        hunks: 1, inserted: 1, deleted: 0, modified: 0, approved: 0, declined: 0, open: 1 }] });
-  assert.deepEqual(calls[2], ["review", "ALCK900578", "", METHOD, "METH"]);
+  assert.deepEqual(calls[2], ["review", "DEVK900578", "", METHOD, "METH"]);
 });
 
 test("an answer about something else drops the rest of the plan", () => {
@@ -136,10 +136,10 @@ test("the assistant is told where the window is, never the source", () => {
 
 test("the host's answer is said in the chat and starts the plan", () => {
   const { context, calls, el } = page();
-  context.sdeAssistant(JSON.stringify({ call: "ask", model: "claude-haiku-4-5", system: "QAS",
+  context.sdeAssistant(JSON.stringify({ call: "ask", model: "claude-haiku-4-5", system: "DEV",
     plan: plan({ reply: "The change version 12 made." }) }));
   const said = el("chatlog").children[0];
-  assert.equal(said.children[0].textContent, "Assistant · claude-haiku-4-5 · QAS");
+  assert.equal(said.children[0].textContent, "Assistant · claude-haiku-4-5 · DEV");
   assert.equal(said.children[2].textContent,
                "CLAS ZCL_AVE_POPUP · ZCL_AVE_POPUP BUILD_LAYOUT (METH) · version 00012");
   assert.deepEqual(calls[0], ["load", "ZCL_AVE_POPUP", "CLAS", "", "", "", ""]);

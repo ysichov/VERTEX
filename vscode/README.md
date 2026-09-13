@@ -61,13 +61,20 @@ development systems often have; it is off by default on purpose.
 - **VERTEX: Forget Password**
 - **VERTEX: Copy the MCP address for Claude Code or Codex**
 
+## Development status
+
+The tested integrations are GitHub Copilot in VS Code, Claude Code, and Codex in VS Code.
+Claude web, ChatGPT web, Claude Desktop, and other MCP clients are not supported or tested yet.
+The remote HTTP host is experimental and documented for future development only.
+
 ## Where MCP comes in
 
 | Who | Uses MCP | Setup |
 |---|---|---|
 | The SelecTor, Versions and Metrics windows, used by hand | No: they read SAP directly over ADT | — |
 | The **Assistant** panels in SelecTor and Versions | Yes, internally | None: for each request the extension hands Claude Code or Codex the window's own MCP address, `/selector` or `/versions` |
-| External assistants: Copilot, the Claude Code and Codex chats, Claude Desktop | Yes | Copilot finds the server by itself; Claude Code and Codex are connected with **VERTEX: Copy the MCP address for Claude Code or Codex**, or through the [standalone `mcp/server.js`](https://github.com/ysichov/VERTEX/blob/main/mcp/README.md) |
+| Supported assistants | Yes | GitHub Copilot in VS Code, Claude Code, and Codex in VS Code |
+| Other chats and MCP clients | Not supported/tested yet | Claude web, ChatGPT web, Claude Desktop, and other clients are development work |
 
 MCP is how Claude Code and Codex are given tools in both cases. The difference is
 who connects them: the extension, for one request, or you, once.
@@ -88,7 +95,7 @@ runs:
 |---|---|---|
 | Copilot in this VS Code | this extension | none |
 | Claude Code or Codex, with VS Code open | this extension | one command, below |
-| Claude Code or Codex with VS Code closed, the Claude Desktop chat, any stdio client | [`mcp/server.js`](https://github.com/ysichov/VERTEX/blob/main/mcp/README.md) | [its README](https://github.com/ysichov/VERTEX/blob/main/mcp/README.md) |
+| Claude Code or Codex with VS Code closed | [`mcp/server.js`](https://github.com/ysichov/VERTEX/blob/main/mcp/README.md) | Development/standalone mode; not part of the tested VS Code workflow |
 
 The **Assistant** panels in SelecTor and Versions need neither: the extension
 starts Claude Code or Codex for them itself.

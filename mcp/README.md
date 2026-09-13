@@ -1,5 +1,28 @@
 # VERTEX MCP without VS Code
 
+## Experimental: ChatGPT and Claude web
+
+This is development work only and is not a supported or tested integration.
+The tested integrations are GitHub Copilot in VS Code, Claude Code, and Codex in VS Code.
+Claude web, ChatGPT web, Claude Desktop, and other MCP clients may not work.
+
+The web chats cannot connect to a local `127.0.0.1` or stdio server. For them,
+run the HTTP host below and publish it through Secure MCP Tunnel or another
+trusted HTTPS reverse proxy. The public URL must point to `/mcp` and preserve
+the `Authorization: Bearer <token>` header.
+
+```powershell
+$env:VERTEX_MCP_TOKEN = 'generate-a-long-random-token'
+$env:VERTEX_MCP_HOST = '127.0.0.1'
+$env:VERTEX_MCP_PORT = '37777'
+node mcp/http-server.js
+```
+
+Do not expose the port directly to the internet. Put TLS and access control in
+the tunnel/proxy, then register the resulting HTTPS `/mcp` URL in ChatGPT or
+Claude's connector settings. The server remains read-only and exposes only the
+two transport-review tools.
+
 Claude Code, Codex, or another MCP client launches `server.js` as a child process
 and communicates over stdio. The process reads SAP directly over HTTP(S), using
 the same `sap_transport_changes` and `sap_transport_diff` implementations as the
@@ -28,7 +51,7 @@ Claude Code / Codex / MCP client
 Set these environment variables for the assistant process. The MCP child inherits
 them. For desktop apps, restart the app after configuring its environment. Claude
 Desktop is the exception: it takes them from its own configuration file, see
-[Claude Desktop (chat)](#claude-desktop-chat).
+[the experimental Claude Desktop section below].
 
 | Variable | Meaning |
 |---|---|
@@ -112,7 +135,7 @@ Start a new conversation after changing the registration. Other MCP clients,
 including Copilot, can use the same command and arguments as a stdio server.
 The existing VS Code-hosted HTTP mode continues to work independently.
 
-## Claude Desktop (chat)
+## Experimental: Claude Desktop (chat)
 
 The chat in Claude Desktop is a separate client: a server registered with
 `claude mcp add` is not visible there. Claude Desktop reads its own file,

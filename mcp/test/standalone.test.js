@@ -38,7 +38,7 @@ test("real stdio process reads SAP summary and exact padded diff key without VS 
         part_type: "METH", versno_old: "00001", versno_new: "00002", added: 1, deleted: 0,
         blocks: [], ops: [{ op: "+", text: "WRITE 'standalone'." }] }));
     } else {
-      res.end(JSON.stringify({ table: true, saved: true, request: "ALCK900593", objects: [] }));
+      res.end(JSON.stringify({ table: true, saved: true, request: "DEVK900593", objects: [] }));
     }
   });
   sap.listen(0, "127.0.0.1");
@@ -49,9 +49,9 @@ test("real stdio process reads SAP summary and exact padded diff key without VS 
     const name = "ZCL_TEST".padEnd(30) + "METHOD";
     const result = await run(env, [rpc(0, "initialize", { protocolVersion: "2025-03-26" }),
       { jsonrpc: "2.0", method: "notifications/initialized" }, rpc(1, "tools/list"),
-      rpc(2, "tools/call", { name: "sap_transport_changes", arguments: { request: "alck900593" } }),
+      rpc(2, "tools/call", { name: "sap_transport_changes", arguments: { request: "devk900593" } }),
       rpc(3, "tools/call", { name: "sap_transport_diff", arguments: {
-        request: "ALCK900593", object: name, object_type: "METH" } }),
+        request: "DEVK900593", object: name, object_type: "METH" } }),
       "not json", null, rpc(4, "does-not-exist")]);
     assert.equal(result.code, 0);
     assert.equal(result.stderr, "");
@@ -60,7 +60,7 @@ test("real stdio process reads SAP summary and exact padded diff key without VS 
     assert.equal(replies[0].id, 0);
     assert.equal(replies[0].result.protocolVersion, "2025-03-26");
     assert.equal(replies[1].result.tools.length, 2);
-    assert.match(replies[2].result.content[0].text, /Transport ALCK900593/);
+    assert.match(replies[2].result.content[0].text, /Transport DEVK900593/);
     assert.match(replies[3].result.content[0].text, /WRITE 'standalone'/);
     assert.equal(replies[4].error.code, -32700);
     assert.equal(replies[5].error.code, -32600);
@@ -70,7 +70,7 @@ test("real stdio process reads SAP summary and exact padded diff key without VS 
       assert.equal(request.method, "GET");
       assert.equal(request.url.searchParams.get("sap-client"), "100");
       assert.equal(request.auth, "Basic " + Buffer.from("TEST:not-a-real-secret").toString("base64"));
-      assert.equal(request.url.pathname, "/sap/bc/adt/zsde/review/ALCK900593");
+      assert.equal(request.url.pathname, "/sap/bc/adt/zsde/review/DEVK900593");
     }
     assert.equal(requests[1].url.searchParams.get("part"), name);
     assert.equal(requests[1].url.searchParams.get("ptype"), "METH");
@@ -106,7 +106,7 @@ test("SAP errors, redirects and deadlines are explicit; redirects never forward 
   const read = createReader(configuration(env));
   try {
     const result = await run(env, [rpc(1, "tools/call", {
-      name: "sap_transport_changes", arguments: { request: "ALCK900593" } })]);
+      name: "sap_transport_changes", arguments: { request: "DEVK900593" } })]);
     const reply = JSON.parse(result.stdout);
     assert.equal(reply.result.isError, true);
     assert.match(reply.result.content[0].text, /HTTP 401/);

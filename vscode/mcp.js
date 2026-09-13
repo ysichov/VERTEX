@@ -500,8 +500,10 @@ function create(deps) {
         return new Promise(function (resolve, reject) {
           const server = http.createServer(handler);
           server.on("error", reject);
-          server.listen(deps.port || 0, "127.0.0.1", function () {
-            resolve({ server: server, url: "http://127.0.0.1:" + server.address().port + "/mcp" });
+          const host = deps.host || "127.0.0.1";
+          server.listen(deps.port || 0, host, function () {
+            const address = host === "0.0.0.0" ? "127.0.0.1" : host;
+            resolve({ server: server, url: "http://" + address + ":" + server.address().port + "/mcp" });
           });
         });
       }).catch(function (error) {

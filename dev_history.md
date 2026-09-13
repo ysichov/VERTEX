@@ -1262,7 +1262,7 @@ mostly parts: `REPS ZEXAMPLE_REPORT`, or a method keyed by its class name padded
 thirty characters. Neither is an object, and a label is not a key. Now only `CLAS`, `INTF` and
 `FUGR` expand, by technical name; every other row asks for its versions inside the scope, with
 the version directory's key passed exactly as it came, blanks included — Stage 10 is why that
-last part matters. The test that pins it down uses the very row from the ALCK900578 screenshot.
+last part matters. The test that pins it down uses the very row from the DEVK900578 screenshot.
 
 **The first tests kept in the repository.** Seven of them, run with
 `node --test mcp/test/*.test.js vscode/test/*.test.js`, need neither SAP nor an editor: the
