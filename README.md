@@ -27,6 +27,11 @@ SAP GUI too.
 
 ## How it fits together
 
+Claude Code and Codex can also read SAP transport reviews **without VS Code**:
+the [standalone VERTEX MCP server](mcp/README.md) runs as a child process of the
+assistant and connects directly to SAP. It shares the review tools with the
+VS Code extension; no editor or listening MCP port is required.
+
 
 <img width="936" height="616" alt="image" src="https://github.com/user-attachments/assets/75cec29d-448d-43cb-b1c1-218b0c49a88b" />
 

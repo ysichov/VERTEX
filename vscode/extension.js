@@ -10,6 +10,7 @@
 // of them is active.
 
 const vscode = require("vscode");
+const mcp = require("./mcp");
 const https = require("https");
 const http = require("http");
 const fs = require("fs");
@@ -551,7 +552,95 @@ function open(context, service, initial, beside) {
   return panel;
 }
 
+/* An agent already in the editor - Copilot, Claude Code, Codex - can be handed
+   what VERTEX knows about SAP instead of VERTEX growing an agent of its own.
+   The way in is MCP, and the server is this extension: it already holds the
+   system, the user and the password, so nothing of that has to be passed to
+   another process. */
+function serveTools(context, server) {
+  const label = "VERTEX SAP";
+  const version = vscode.extensions.getExtension("YuriiSychov.vertex-abap");
+  const shown = version && version.packageJSON ? version.packageJSON.version : "0";
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("vertex.mcpAddress", async function () {
+      const client = await vscode.window.showQuickPick(["Codex", "Claude Code"], {
+        title: "Connect VERTEX to which assistant?"
+      });
+      if (!client) { return; }
+      let running;
+      try {
+        running = await server.start();
+      } catch (e) {
+        vscode.window.showErrorMessage("The VERTEX tool server did not start: "
+                                       + (e && e.message ? e.message : String(e)));
+        return;
+      }
+      // Ready to paste: Claude Code and Codex are told where to connect and
+      // with which token. Copilot needs none of this - it is handed the same
+      // address through the provider below.
+      // User scope, not the default local one: local ties the server to the
+      // directory Claude Code happens to be started in, and this one belongs
+      // to the machine, not to a folder.
+      const line = client === "Codex"
+        ? '[mcp_servers.vertex]\nurl = "' + running.url
+          + '"\nhttp_headers = { Authorization = "Bearer ' + server.token + '" }\n'
+        : 'claude mcp add --transport http vertex --scope user ' + running.url
+                 + ' --header "Authorization: Bearer ' + server.token + '"';
+      await vscode.env.clipboard.writeText(line);
+      vscode.window.showInformationMessage(
+        (client === "Codex"
+          ? "Copied Codex configuration. Paste into ~/.codex/config.toml, replacing any existing [mcp_servers.vertex] section, then restart the Codex extension and start a new conversation. "
+          : "Copied the Claude Code terminal command. If vertex is already registered, run claude mcp remove vertex --scope user first. ")
+        + (vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777) === 0
+          ? "Port 0 changes the address on reload. Set vertex.mcp.port for a stable connection."
+          : "The port and token persist across window reloads."));
+    })
+  );
+
+  if (!hasMcpApi()) {
+    // Said once, where it can be seen: the tools simply will not appear
+    // otherwise, and an empty tool list explains nothing.
+    console.log("VERTEX: this VS Code has no vscode.lm MCP API, so no tools are offered.");
+    return;
+  }
+
+  context.subscriptions.push(
+    vscode.lm.registerMcpServerDefinitionProvider("vertex", {
+      provideMcpServerDefinitions: async function () {
+        const running = await server.start();
+        return [
+          new vscode.McpHttpServerDefinition(
+            label,
+            vscode.Uri.parse(running.url),
+            { Authorization: "Bearer " + server.token },
+            shown)
+        ];
+      }
+    })
+  );
+}
+
+function hasMcpApi() {
+  return !!(vscode.lm
+         && typeof vscode.lm.registerMcpServerDefinitionProvider === "function"
+         && typeof vscode.McpHttpServerDefinition === "function");
+}
+
+let tools = null;
+
 function activate(context) {
+  const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
+  tools = mcp.create({ fetch: fetch, context: context, port: port });
+  serveTools(context, tools);
+  // External clients cannot trigger a VS Code MCP provider. Start on activation
+  // so a registered Codex/Claude connection also works after a window reload.
+  if (port !== 0) {
+    tools.start().catch(function (error) {
+      vscode.window.showErrorMessage("VERTEX: " + error.message);
+    });
+  }
+
   context.subscriptions.push(
     vscode.commands.registerCommand("vertex.open", function () {
       open(context, "table", null, false);
@@ -603,6 +692,7 @@ function activate(context) {
 }
 
 function deactivate() {
+  if (tools) { tools.stop(); tools = null; }
 }
 
 exports.activate = activate;

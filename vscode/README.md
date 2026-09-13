@@ -57,6 +57,43 @@ development systems often have; it is off by default on purpose.
 - **VERTEX: Open Versions**
 - **VERTEX: Switch System**
 - **VERTEX: Forget Password**
+- **VERTEX: Copy the MCP address for Claude Code or Codex**
+
+## Review transports with Codex, Claude Code or Copilot
+
+To work with VS Code closed, use the [standalone stdio server](../mcp/README.md).
+The instructions below describe the alternative server hosted by this extension.
+
+VERTEX exposes `sap_transport_changes` and `sap_transport_diff` through a local,
+authenticated MCP server. These tools read the review already prepared in AVE.
+They cannot prepare a review or approve blocks. An unprepared review is reported
+explicitly, rather than treated as an unchanged transport.
+
+The server starts when VS Code starts. `vertex.mcp.port` defaults to `37777` and
+the token persists in VS Code SecretStorage. Keep the VERTEX window open and
+select the intended SAP system with **VERTEX: Switch System**.
+
+For the **Codex VS Code extension**, run **VERTEX: Copy the MCP address for
+Claude Code or Codex**, choose **Codex**, and paste the copied TOML section into
+your user `~/.codex/config.toml` (`%USERPROFILE%\.codex\config.toml` on Windows).
+Replace the existing `[mcp_servers.vertex]` section if present; do not duplicate
+it. The copied configuration includes the local server token, so keep it out of
+version control. Restart the Codex extension and start a new conversation.
+This uses Codex's supported [HTTP MCP configuration](https://developers.openai.com/codex/mcp/).
+
+For **Claude Code**, choose **Claude Code** in the same command and run the
+copied command in a terminal. If registered previously, first run
+`claude mcp remove vertex --scope user`. Check `claude mcp list` and start a new
+conversation. Copilot discovers the server through the VS Code MCP provider
+(requires VS Code 1.101 or newer); Codex and Claude do not require that API.
+
+Ask: **Review transport ALCK900593 using the VERTEX SAP tools.**
+
+Normal window reloads require no registration changes. After changing
+`vertex.mcp.port`, reload VS Code and copy the configuration again. Multiple
+simultaneous VERTEX windows need different ports; a port conflict is reported
+instead of silently connecting to another SAP system. Port `0` opts into a
+temporary port and requires copying the address again after each reload.
 
 ## What it writes
 

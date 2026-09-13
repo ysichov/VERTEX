@@ -1142,6 +1142,130 @@ where each connector pointed.
 
 ---
 
+## Stage 25 — handing the tools to somebody else's agent
+
+**VERTEX does not get an agent of its own.** The editors people already sit in have
+one: Copilot, Claude Code, Codex. They have the loop, the chat, the model picker and
+the user's own subscription, and every one of those is better than what would be
+written here. What none of them has is any idea what SAP is. So the extension stopped
+being only a set of windows and became a **source of tools**.
+
+The way in is **MCP**, because it is the one door all of them open: VS Code registers
+an extension's server through `mcpServerDefinitionProviders`, and Copilot for Eclipse,
+Claude Code and Codex all take a server address. A VS Code-native `languageModelTools`
+registration would have reached Copilot in VS Code and nobody else.
+
+**The pilot is a transport review**, and it needed no ABAP at all. `ZCL_SDE_ADT_RES_REVIEW`
+already computes exactly the right thing — AVE's own change set for a request: which
+objects moved, who changed them, the diff of each against its previous version, cut into
+the same blocks the reviewer approves, carrying the verdicts and the notes already given.
+Two tools read it:
+
+- `sap_transport_changes` — the objects of a request, with block and line counts and
+  whether anything is still open;
+- `sap_transport_diff` — one object, or the whole request up to a size budget, rendered
+  as a unified diff whose hunk headers are AVE's blocks.
+
+The block boundaries are deliberately AVE's rather than recomputed. The saved verdicts
+are filed against them, so hunks cut a second way here would put the model's findings on
+different ground than the reviewer's own buttons.
+
+**The connection is the extension's.** Every tool call goes through the same `fetch()` the
+pages use, so the active system, the user and the password in the OS credential store are
+already there. Nothing is passed to a separate process, and the server learns no secret.
+
+**What a local HTTP server has to get right**, from the specification rather than from
+taste: one endpoint, POST answered with plain JSON, notifications answered `202` with no
+body, `405` for the GET stream that is not offered, the `Origin` header validated,
+binding to `127.0.0.1` only, and a bearer token — "on this machine" is not the same as
+"any process on this machine". The port is the one the system hands out, because several
+windows each run their own server and a fixed number would make the second one fail.
+
+**The first version called an unprepared review a clean transport.** The summary lists
+objects only out of the review AVE has saved, so for a request nobody has prepared yet the
+list is simply empty — and the tool read that as "the request holds no versioned source".
+A model handed that sentence reports that nothing changed. It was found by reading the
+resource again while picking a real transport to try the pilot on, not by a failed run.
+An empty list now has its three meanings told apart: no `ZAVE_REVIEW` table, no saved review, and a saved review with no
+changed line. The first two are tool errors — there is nothing to read, which is not the
+same as nothing to find.
+
+Eighteen checks, run from a scratch script rather than kept in the repository, drove the
+real server over real HTTP with a stubbed system behind it:
+the four guards, the lifecycle, version negotiation, an unknown tool as a protocol error,
+a missing argument as a tool error rather than a crash, the rendering of both tools, and
+the two states in which there is nothing to read.
+
+**Read-only, on purpose.** A tool result goes to the model, so the first version offers
+what a reviewer looks at and nothing that writes. The same reasoning keeps SelecTor out:
+table contents are business data, and a diff is not.
+
+**This does not replace ABAP-AI-Code.** That project exists because in many SAP shops the
+code may not leave the system through a laptop at all; it keeps its own agent, its own
+encrypted keys and its own loop inside the system. Using Copilot or Claude Code means the
+source travels system → laptop → vendor. The two serve different policies, and neither
+makes the other redundant.
+
+---
+
+## Stage 26 — an address that outlives the window, and a server without the editor
+
+**The pilot's address died with the window.** Stage 25 let the system pick the port and drew a
+fresh token on every start, reasoning that several windows each run a server and a fixed number
+would make the second one fail. That was right about windows and wrong about what mattered.
+Copilot never noticed — VS Code asks the provider again and is handed whatever is current — but
+Claude Code and Codex store the address they were given, so every window reload quietly broke
+their registration. The port became a setting, `vertex.mcp.port`, 37777 by default, and the token
+moved into VS Code's SecretStorage, so both survive a reload. A second window on the same port is
+an error naming the setting: falling through to a free port would leave the registered client
+talking to whichever window holds 37777, possibly on a different SAP system. Port `0` keeps the
+old temporary behaviour for whoever wants it.
+
+**A stored address also needs somebody listening.** An external client cannot trigger a VS Code
+MCP provider, and until now the server started only when Copilot or the command asked for it. The
+extension activates at `onStartupFinished` and starts the server itself whenever the port is fixed.
+
+**Codex came in through the same command.** It asks which assistant the address is for: Claude
+Code gets the `claude mcp add` line, Codex a `[mcp_servers.vertex]` section for
+`~/.codex/config.toml`. Both carry the token, which is why the README keeps them out of version
+control.
+
+**Then a server with no editor at all.** `mcp/server.js` is the same two tools behind stdio:
+Claude Code or Codex starts it as a child process, and VS Code may be closed. It does not
+re-implement them — it imports `dispatch` from `vscode/mcp.js`, so a model reads the same texts
+whichever way it connects. What it cannot borrow is the connection, so `mcp/sap.js` reads SAP on
+its own, and its rules are about the password it now holds:
+
+- credentials come from `VERTEX_SAP_*` environment variables — never from VS Code's
+  SecretStorage, never written to disk;
+- only `/sap/bc/adt/zsde/review/` may be requested;
+- redirects are not followed, because Basic credentials would travel wherever `Location` points;
+- every request has a wall-clock deadline and a 16 MiB ceiling on the answer;
+- stdout belongs to MCP alone, and errors on stderr never carry the password.
+
+`mcp/configure-local.py` writes both assistants' configuration from the active VERTEX system with
+the password left empty, refuses to overwrite an existing `vertex` entry, and backs both files up
+first.
+
+### What went wrong: a label in the name field
+
+In a scope — a transport or a package — the Versions window treated every row as an object to
+open, and filled the name field from `unit`, the row's display label. A transport's rows are
+mostly parts: `REPS ZEXAMPLE_REPORT`, or a method keyed by its class name padded to
+thirty characters. Neither is an object, and a label is not a key. Now only `CLAS`, `INTF` and
+`FUGR` expand, by technical name; every other row asks for its versions inside the scope, with
+the version directory's key passed exactly as it came, blanks included — Stage 10 is why that
+last part matters. The test that pins it down uses the very row from the ALCK900578 screenshot.
+
+**The first tests kept in the repository.** Seven of them, run with
+`node --test mcp/test/*.test.js vscode/test/*.test.js`, need neither SAP nor an editor: the
+standalone process over real stdio against a fake SAP endpoint; a bad configuration failing on
+stderr without the password; SAP errors, a redirect and a deadline; the command without Copilot's
+API; the HTTP server keeping its port and token across a restart and refusing a second one on the
+same port; and the two Versions cases. `test/**` and `*.vsix` stay out of the package.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps
