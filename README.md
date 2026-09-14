@@ -3,6 +3,7 @@
 <img width="256" height="256" alt="icon" src="https://github.com/user-attachments/assets/077f3c2e-7c3e-4078-a007-d45660adee59" />
 
 
+
 [**Install from the VS Code Marketplace**](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap) · Eclipse ADT: install from `https://ysichov.github.io/VERTEX/` or build it from this repository (see below).
 
 
@@ -27,8 +28,7 @@ SAP GUI too.
 
 ## How it fits together
 
-<img width="936" height="616" alt="image" src="https://github.com/user-attachments/assets/75cec29d-448d-43cb-b1c1-218b0c49a88b" />
-
+<img width="1154" height="910" alt="image" src="https://github.com/user-attachments/assets/17a655cd-ae1f-4543-8d36-ade417461c79" />
 
 
 Every service registers under the one `/zsde/` prefix, because that prefix is where the ADT
