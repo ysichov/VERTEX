@@ -1,5 +1,8 @@
 # VERTEX MCP without VS Code
 
+For **GitHub Copilot in Eclipse**, follow the [Eclipse MCP setup guide](../eclipse/MCP.md):
+it covers the `servers` JSON format, SAP settings, tool discovery and troubleshooting.
+
 ## Experimental: ChatGPT and Claude web
 
 This is development work only and is not a supported or tested integration.

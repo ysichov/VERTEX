@@ -125,6 +125,9 @@ public abstract class PageView extends ViewPart {
 		};
 
 		addFunctions();
+		if (this instanceof SelectorView || this instanceof VersionsView) {
+			new AssistantBridge(this);
+		}
 
 		String opened = part(0);
 		if (opened != null) {
@@ -191,6 +194,20 @@ public abstract class PageView extends ViewPart {
 	 */
 	protected String read(String path) {
 		return resource(path).get(new NullProgressMonitor(), String.class);
+	}
+
+	/** Logon and project selection stay on SWT; network I/O runs in the worker. */
+	String assistantRead(String path, org.eclipse.swt.widgets.Display display) {
+		final IRestResource[] target = new IRestResource[1];
+		final RuntimeException[] failure = new RuntimeException[1];
+		display.syncExec(() -> {
+			try {
+				if (browser.isDisposed()) throw new IllegalStateException("The VERTEX window was closed.");
+				target[0] = resource(path);
+			} catch (RuntimeException e) { failure[0] = e; }
+		});
+		if (failure[0] != null) throw failure[0];
+		return target[0].get(new NullProgressMonitor(), String.class);
 	}
 
 	/**
