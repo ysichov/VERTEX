@@ -61,7 +61,9 @@ The tools are served two ways, from the same code:
 Every client keeps its own registration: a server added to Claude Code is not visible in the
 other clients. Setting up the tested VS Code workflow:
 [vscode/README.md](vscode/README.md#review-transports-with-copilot-claude-code-or-codex) and
-[mcp/README.md](mcp/README.md). The Eclipse plugin serves no MCP.
+[mcp/README.md](mcp/README.md). For GitHub Copilot in Eclipse, use the
+[Eclipse MCP setup guide](eclipse/MCP.md). The Eclipse plugin's built-in Assistant
+uses a separate private MCP runtime; it is not an external Copilot endpoint.
 
 SelecTor and Versions also take a sentence. **Assistant** in their bar opens a chat: pick Claude
 Code or Codex and the model it offers, and write what to show — *SFLIGHT for carrier AA, joined
@@ -92,7 +94,9 @@ The assistant reads the table's layout (fields, keys, the tables the dictionary 
 row) and answers with the state SelecTor is to be put in; the page checks it against the
 dictionary, fills in the panel, the join and the pivot as the clicks would, and runs the query
 itself. It starts the copy of Claude Code or Codex that comes with its VS Code extension, with
-no other MCP server and no shell. VS Code only for now.
+no other MCP server and no shell. In Eclipse, the same runtime runs through
+Node.js and uses the window's ADT session. Configure executable paths in
+**Window > Preferences > VERTEX Assistant**; see [Eclipse Assistant setup](eclipse/README.md).
 
 ## Installing it in Eclipse
 

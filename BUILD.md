@@ -6,6 +6,11 @@ needed to *use* it: installing is in [README.md](README.md), and getting out of 
 
 ## The Eclipse update site
 
+Before exporting, run `node eclipse/prepare.js` to refresh the bundled Assistant
+runtime from the shared VS Code implementations. Include `assistant/` in the
+export (already listed in `build.properties`). Validate it with
+`node --test eclipse/bridge.test.js vscode/test/*.test.js`.
+
 Eclipse installs **features**, not bare plugins, so `org.vertex.abap.feature/` wraps the one
 plugin and `category.xml` beside it gives the install dialog something to list.
 
@@ -104,7 +109,8 @@ same edit as the version bump below.
 ## Versions
 
 The Eclipse bundle and the VS Code extension carry the same number by hand; nothing enforces it.
-Both now use 0.5.1. The MCP assistant integration remains specific to VS Code.
+Both now use 0.5.1. The built-in Assistant is available in both hosts; Eclipse
+uses a Node bridge and the window's ADT session.
 `0.5.1.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.5.1.<build timestamp>` on export,
 so every export is a distinct version and *Check for Updates* can see it.
 
