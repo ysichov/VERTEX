@@ -99,7 +99,7 @@ const INSTRUCTIONS = [
   "runs the query and shows the rows itself. You never see table contents and cannot ask",
   "for them.",
   "",
-  "- Call sap_table_layout before naming anything of a table. Never guess a table, a field,",
+  "- Use the supplied SAP layouts; call sap_table_layout for any missing layout. Never guess a table, a field,",
   "  a join table or a key.",
   "- filters go on fields of the base table only, named plainly as the tool lists them under",
   "  \"Fields of\" (CARRID), never as an alias~field key. sign I includes, E excludes. option is one",
@@ -107,7 +107,7 @@ const INSTRUCTIONS = [
   "  high, every other option leaves high empty. Values are written as SAP stores them:",
   "  codes in upper case, dates as YYYYMMDD, numbers without separators.",
   "- join lists the tables to join, in order, and only tables sap_table_layout offers. After",
-  "  choosing one, call the tool again with the join so far to see what it offers next.",
+  "  choosing one, use the supplied layout for that exact join or call the tool with the join so far.",
   "- fields is the SELECT list of a join, as alias~field keys from the tool. Leave it empty",
   "  to keep SelecTor's own proposal, which is every field.",
   "- pivot: rows and cols are alias~field keys; vals are keys with an agg the tool lists for",
@@ -121,6 +121,57 @@ const INSTRUCTIONS = [
 function prompt(text, state) {
   return "SelecTor's current state:\n" + JSON.stringify(state || {}, null, 2)
        + "\n\nRequest:\n" + String(text || "");
+}
+
+// Prepare metadata in the host, where SAP access is already available. Individual
+// layouts do not share aliases: only the layout of the exact join defines them.
+async function preparePrompt(deps, text, state) {
+  state = state || {};
+  const requested = new Set((String(text || "").match(/(?:\/[A-Za-z0-9_]+\/)?[A-Za-z][A-Za-z0-9_]{2,29}/g) || []).map(upper));
+  const cache = new Map();
+  const sections = [];
+  async function read(table, join) {
+    const path = layoutPath(table, join);
+    if (!cache.has(path)) {
+      try {
+        cache.set(path, await readLayout(deps, table, join));
+      } catch (error) {
+        cache.set(path, { error: error.message });
+      }
+      const result = cache.get(path);
+      sections.push("Layout request: " + JSON.stringify({ table, join }) + "\n"
+        + (result.error ? "Layout unavailable: " + result.error : layoutText(result.data, table)));
+    }
+    return cache.get(path);
+  }
+  const tables = [...new Set(names([state.table].concat(names(state.join))))];
+  // Recognize table names without assuming a particular SAP naming prefix. SAP
+  // validates identifiers; a word in prose is never accepted as a schema.
+  const keywords = new Set("SELECT JOIN INNER LEFT RIGHT OUTER FROM WHERE GROUP BY HAVING ORDER ASC DESC PIVOT COUNT SUM AVG MIN MAX DISTINCT AND OR NOT NULL AS ON".split(" "));
+  const probes = [...requested].filter(t => !keywords.has(t) && !tables.includes(t));
+  for (const table of tables) { await read(table, []); }
+  for (const table of probes.slice(0, 32)) { await read(table, []); }
+  if (probes.length > 32) { sections.push("Additional identifiers were not prefetched; use sap_table_layout for missing tables."); }
+  const valid = [...cache.entries()].filter(([p, r]) => !r.error
+    && upper(r.data.table) === decodeURIComponent(p.split("/").pop()))
+    .map(([p]) => decodeURIComponent(p.split("/").pop()));
+  // A request may replace the current base (for example SFLIGHT -> SBOOK
+  // to filter CANCELLED). Supply joins rooted at each requested table so the
+  // model can choose the base from the requested filters, not the open page.
+  const bases = [...new Set([upper(state.table)].concat(valid.filter(t => requested.has(t))))].filter(Boolean);
+  for (const base of bases) {
+    const joined = base === upper(state.table) ? names(state.join).slice() : [];
+    let result = await read(base, joined);
+    const pending = new Set(valid.filter(t => t !== base && !joined.includes(t) && requested.has(t)));
+    while (!result.error && pending.size) {
+      const next = (result.data.candidates || []).map(c => upper(c.tabname)).find(t => pending.has(t));
+      if (!next) { break; }
+      pending.delete(next);
+      joined.push(next);
+      result = await read(base, joined);
+    }
+  }
+  return prompt(text, state) + "\n\nSAP metadata (no table contents). Each layout has its own aliases; use the exact join layout for the plan:\n\n" + sections.join("\n\n");
 }
 
 /* ---------- reading the layout ---------- */
@@ -336,6 +387,7 @@ exports.callTool = callTool;
 exports.PLAN_SCHEMA = PLAN_SCHEMA;
 exports.INSTRUCTIONS = INSTRUCTIONS;
 exports.prompt = prompt;
+exports.preparePrompt = preparePrompt;
 exports.checkPlan = checkPlan;
 exports.layoutPath = layoutPath;
 exports.layoutText = layoutText;

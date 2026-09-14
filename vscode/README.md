@@ -63,6 +63,20 @@ development systems often have; it is off by default on purpose.
 
 ## Development status
 
+### Review instructions and conversations
+
+In Versions' Assistant, choose a review profile above the conversation. Expand
+**Review instructions** to edit it. **Save profile** updates the profile with that
+name; enter a new name to create another. The current text is sent with each
+request, including unsaved edits. Built-in profiles cover general review,
+SQL/performance, security and tests.
+
+Follow-up requests include previous messages and their object/version context.
+Profiles and the conversation are kept in the webview's local storage when
+available. **New conversation**, or sending `new conversation`, clears the
+conversation while keeping profiles. This clears messages, not the current view.
+Tool outputs are not archived in the conversation; the assistant can reread sources.
+
 The tested integrations are GitHub Copilot in VS Code, Claude Code, and Codex in VS Code.
 Claude web, ChatGPT web, Claude Desktop, and other MCP clients are not supported or tested yet.
 The remote HTTP host is experimental and documented for future development only.

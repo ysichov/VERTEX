@@ -252,7 +252,7 @@
   </div>
   <div class="cards" id="cards"></div>
   <div class="panes">
-    <aside class="parts">
+    <aside class="parts" id="partspanel">
       <div class="parts-head">Parts</div>
       <div id="partlist"></div>
     </aside>
@@ -266,6 +266,17 @@
         <select id="who" title="Which assistant"></select>
         <select id="model" title="Which model"></select>
       </div>
+      <div class="chat-pick">
+        <select id="reviewpreset" title="Review instructions"></select>
+        <button id="newconversation">New conversation</button>
+      </div>
+      <details style="padding: 6px">
+        <summary>Review instructions</summary>
+        <input id="presetname" placeholder="Profile name" style="width: 95%">
+        <textarea id="presettext" rows="6" style="width: 95%" placeholder="Instructions for this review"></textarea>
+        <button id="savepreset">Save profile</button>
+        <button id="deletepreset">Delete profile</button>
+      </details>
       <div class="chat-log" id="chatlog"></div>
       <div class="chat-input">
         <textarea id="ask" rows="3"
@@ -391,6 +402,7 @@ function loadReviewPart(object) {
 }
 
 function renderCards() {
+  document.getElementById("partspanel").style.display = mode === "R" && scope ? "none" : "";
   var box = document.getElementById("cards");
   box.innerHTML = "";
   // Only a scope has a review: in AVE the unit of work is the request, and a
@@ -1349,6 +1361,59 @@ var ASSISTANTS = [["claude", "Claude Code"], ["codex", "Codex"]];
    choice in the list may change while it runs. */
 var asking = null;
 var chatOpened = false;
+var conversation = [];
+var reviewPresets = [
+  { name: "General review", text: "Review correctness, error handling and boundary cases. Report concrete issues with source locations, impact and suggested fixes. Answer in the user's language." },
+  { name: "SQL and performance", text: "Focus on ABAP SQL, database access in loops, unnecessary reads, internal table access and algorithmic complexity. Explain the conditions under which each issue matters." },
+  { name: "Security", text: "Review authorization checks, injection, sensitive data exposure and validation of external input. Give concrete exploit conditions; distinguish confirmed issues from assumptions." },
+  { name: "Tests", text: "Review test coverage of changed behavior, boundary cases, failures and regressions. Suggest specific missing test scenarios." }
+];
+
+function fillReviewPresets(selected) {
+  var box = document.getElementById("reviewpreset");
+  box.innerHTML = "";
+  reviewPresets.forEach(function (p, i) {
+    var option = document.createElement("option");
+    option.value = String(i);
+    option.textContent = p.name;
+    box.appendChild(option);
+  });
+  box.value = String(Math.max(0, Math.min(Number(selected) || 0, reviewPresets.length - 1)));
+  selectReviewPreset();
+}
+
+function selectReviewPreset() {
+  var p = reviewPresets[Number(document.getElementById("reviewpreset").value)];
+  document.getElementById("presetname").value = p ? p.name : "";
+  document.getElementById("presettext").value = p ? p.text : "";
+  remember("review.selected", document.getElementById("reviewpreset").value);
+}
+
+function saveReviewPreset() {
+  var name = document.getElementById("presetname").value.trim();
+  if (!name) { return; }
+  var index = reviewPresets.findIndex(function (p) { return p.name === name; });
+  var p = { name: name, text: document.getElementById("presettext").value };
+  if (index < 0) { index = reviewPresets.length; reviewPresets.push(p); }
+  else { reviewPresets[index] = p; }
+  remember("review.presets", JSON.stringify(reviewPresets));
+  fillReviewPresets(index);
+}
+
+function deleteReviewPreset() {
+  reviewPresets.splice(Number(document.getElementById("reviewpreset").value), 1);
+  remember("review.presets", JSON.stringify(reviewPresets));
+  fillReviewPresets(0);
+}
+
+function newConversation() {
+  if (asking) { return; }
+  conversation = [];
+  remember("review.conversation", "[]");
+  document.getElementById("chatlog").innerHTML = "";
+  document.getElementById("ask").value = "";
+  document.getElementById("ask").focus();
+}
 
 /* What the window shows now, as the assistant is told it, and what is left
    of a plan while its steps are still on their way. */
@@ -1395,6 +1460,22 @@ function openChat() {
     return;
   }
   chatOpened = true;
+  try {
+    var saved = JSON.parse(recall("review.presets"));
+    if (Array.isArray(saved) && saved.every(function (p) { return p && typeof p.name === "string" && typeof p.text === "string"; })) {
+      reviewPresets = saved;
+    }
+  } catch (e) { /* use bundled profiles */ }
+  fillReviewPresets(recall("review.selected"));
+  try {
+    var history = JSON.parse(recall("review.conversation"));
+    if (Array.isArray(history) && history.every(function (m) {
+      return m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string";
+    })) {
+      conversation = history;
+      conversation.forEach(function (m) { say(m.role, m.role === "user" ? "You" : "Assistant", m.content); });
+    }
+  } catch (e) { /* no saved conversation */ }
 
   if (typeof sdeAsk !== "function") {
     // The page is the same in Eclipse; the host there has no assistant to run.
@@ -1474,6 +1555,7 @@ function sendAsk() {
   var input = document.getElementById("ask");
   var text = input.value.trim();
   if (!text) { return; }
+  if (/^new conversation[.!]?$/i.test(text)) { newConversation(); return; }
   var who = document.getElementById("who");
   var model = document.getElementById("model");
   if (model.disabled) {
@@ -1486,7 +1568,13 @@ function sendAsk() {
   input.value = "";
   document.getElementById("send").disabled = true;
   document.getElementById("working").textContent = asking + " is working ...";
-  sdeAsk(who.value, model.value, text, JSON.stringify(pageState()));
+  var state = pageState();
+  state.conversation = conversation.slice();
+  state.review_instructions = document.getElementById("presettext").value;
+  conversation.push({ role: "user", content: text, state: pageState(), review_instructions: state.review_instructions });
+  remember("review.conversation", JSON.stringify(conversation));
+  document.getElementById("newconversation").disabled = true;
+  sdeAsk(who.value, model.value, text, JSON.stringify(state));
 }
 
 // Invoked by the host with a model list or an answer.
@@ -1503,14 +1591,19 @@ function sdeAssistant(raw) {
   var who = (asking || "Assistant") + (data.model ? " · " + data.model : "")
           + (data.system ? " · " + data.system : "");
   asking = null;
+  document.getElementById("newconversation").disabled = false;
   document.getElementById("send").disabled = false;
   document.getElementById("working").textContent = "";
 
   if (data.error) {
+    conversation.push({ role: "assistant", content: "Request failed: " + data.error });
+    remember("review.conversation", JSON.stringify(conversation));
     say("error", who, data.error);
     return;
   }
   var plan = data.plan;
+  conversation.push({ role: "assistant", content: plan.reply || "Done.", plan: plan });
+  remember("review.conversation", JSON.stringify(conversation));
   say("assistant", who, plan.reply || "Done.", plan.name ? describePlan(plan) : "");
   // An empty name is an answer without a move: the assistant says why.
   if (plan.name) { applyPlan(plan); }
@@ -1630,6 +1723,10 @@ document.getElementById("chatclose").addEventListener("click", function () {
 });
 
 document.getElementById("send").addEventListener("click", sendAsk);
+document.getElementById("newconversation").addEventListener("click", newConversation);
+document.getElementById("reviewpreset").addEventListener("change", selectReviewPreset);
+document.getElementById("savepreset").addEventListener("click", saveReviewPreset);
+document.getElementById("deletepreset").addEventListener("click", deleteReviewPreset);
 
 document.getElementById("ask").addEventListener("keydown", function (e) {
   // Enter sends; Shift+Enter is a new line in the request.

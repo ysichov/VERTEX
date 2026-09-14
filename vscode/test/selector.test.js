@@ -46,6 +46,72 @@ function sap(paths) {
 
 const none = { rows: [], cols: [], vals: [] };
 
+function metadataSap(paths) {
+  return { context: {}, fetch: async (_, path) => {
+    paths.push(path);
+    const url = new URL(path, "http://sap");
+    const table = decodeURIComponent(url.pathname.split("/").pop());
+    if (!["SFLIGHT", "SCARR", "SBOOK"].includes(table)) { return "ERROR:Unknown table " + table; }
+    const join = [...url.searchParams.values()];
+    if (table === "SFLIGHT") {
+      const data = layout(join);
+      if (join.includes("SCARR")) { data.candidates.push({ tabname: "SBOOK" }); }
+      return JSON.stringify(data);
+    }
+    return JSON.stringify({ table, fields: [{ alias: "T0", tabname: table,
+      fieldname: "CARRID", datatype: "CHAR", key: true }], candidates: [], tables: [] });
+  } };
+}
+
+test("request metadata includes each mentioned table and the exact joined aliases", async () => {
+  const paths = [];
+  const text = await selector.preparePrompt(metadataSap(paths), "Соедини sflight и scarr, SFLIGHT", {});
+  assert.deepEqual(paths, ["/sap/bc/adt/zsde/join/SFLIGHT", "/sap/bc/adt/zsde/join/SCARR",
+    "/sap/bc/adt/zsde/join/SFLIGHT?t1=SCARR"]);
+  assert.match(text, /Fields of SCARR/);
+  assert.match(text, /t1~carrname/);
+  assert.match(text, /t1~carrid = t0~carrid/);
+  assert.ok(paths.every(p => !p.includes("rows")));
+});
+
+test("existing joins are retained and new tables follow dictionary candidate order", async () => {
+  const paths = [];
+  const state = { table: "sflight", join: ["scarr"] };
+  await selector.preparePrompt(metadataSap(paths), "Добавь SBOOK", state);
+  assert.ok(paths.includes("/sap/bc/adt/zsde/join/SCARR"));
+  assert.ok(paths.includes("/sap/bc/adt/zsde/join/SBOOK"));
+  assert.ok(paths.includes("/sap/bc/adt/zsde/join/SFLIGHT?t1=SCARR&t2=SBOOK"));
+  assert.deepEqual(state, { table: "sflight", join: ["scarr"] });
+});
+
+test("missing metadata is explicit and does not discard layouts that succeeded", async () => {
+  const text = await selector.preparePrompt(metadataSap([]), "SFLIGHT NOPE", {});
+  assert.match(text, /Fields of SFLIGHT/);
+  assert.match(text, /Layout unavailable: Unknown table NOPE/);
+});
+
+test("changing the base supplies the requested join without inheriting the old join", async () => {
+  const paths = [];
+  const deps = metadataSap(paths);
+  const fetchLayout = deps.fetch;
+  deps.fetch = async (context, path) => {
+    const data = JSON.parse(await fetchLayout(context, path));
+    if (data.table === "SBOOK") {
+      data.candidates = [{ tabname: "SCARR" }];
+      data.fields.push({ alias: "T0", tabname: "SBOOK", fieldname: "CANCELLED", datatype: "CHAR" });
+      if (path.includes("t1=SCARR")) {
+        data.fields.push({ alias: "T1", tabname: "SCARR", fieldname: "CARRNAME", datatype: "CHAR" });
+      }
+    }
+    return JSON.stringify(data);
+  };
+  const text = await selector.preparePrompt(deps, "SBOOK SCARR", { table: "SFLIGHT", join: ["SCARR"] });
+  assert.ok(paths.includes("/sap/bc/adt/zsde/join/SBOOK?t1=SCARR"));
+  assert.ok(!paths.some(p => p.startsWith("/sap/bc/adt/zsde/join/SBOOK?") && p.includes("SFLIGHT")));
+  assert.match(text, /Layout request: \{"table":"SBOOK","join":\["SCARR"\]\}/);
+  assert.match(text, /CANCELLED/);
+});
+
 test("the layout is asked for without a row count, so SAP reads no row", () => {
   const path = selector.layoutPath("sflight", ["scarr", " "]);
   assert.equal(path, "/sap/bc/adt/zsde/join/SFLIGHT?t1=SCARR");
