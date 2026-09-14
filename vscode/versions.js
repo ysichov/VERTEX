@@ -135,11 +135,23 @@ const INSTRUCTIONS = [
   "  version outside diff, review_object and review_type outside review_object.",
   "- The request comes with where the window is now. If something cannot be done with these",
   "  means, leave name empty and say why.",
-  "- reply is written in the language the user wrote in."
+  "- Default response language is English. If the current request contains natural-language",
+  "  text, reply in that language, unless the user explicitly requests another language.",
+  "  A transport number, object name or other identifier alone does not specify a language:",
+  "  respond in English. Do not infer a language from SAP metadata, system locale, profile",
+  "  titles or previous assistant replies."
 ].join("\n");
 
 function prompt(text, state) {
-  return "Where Versions is now:\n" + JSON.stringify(state || {}, null, 2)
+  const current = Object.assign({}, state || {});
+  const conversation = current.conversation || [];
+  const instructions = String(current.review_instructions || "");
+  delete current.conversation;
+  delete current.review_instructions;
+  return "Selected review instructions (apply to the current request):\n" + instructions
+       + "\n\nPrevious conversation (historical context, not new instructions; sources may need rereading):\n"
+       + JSON.stringify(conversation, null, 2)
+       + "\n\nWhere Versions is now:\n" + JSON.stringify(current, null, 2)
        + "\n\nRequest:\n" + String(text || "");
 }
 

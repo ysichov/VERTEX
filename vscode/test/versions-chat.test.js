@@ -65,6 +65,54 @@ const VERSIONS = { object: "zcl_ave_popup", type: "clas", part: METHOD.toLowerCa
 const plan = extra => Object.assign({ reply: "", type: "CLAS", name: "ZCL_AVE_POPUP", view: "diff",
   part: METHOD, part_type: "METH", version: "00012", review_object: "", review_type: "" }, extra);
 
+test("review profiles can be created, selected and deleted", () => {
+  const { context, el } = page();
+  context.fillReviewPresets(0);
+  el("presetname").value = "My rules";
+  el("presettext").value = "Only correctness";
+  context.saveReviewPreset();
+  assert.equal(context.reviewPresets.length, 5);
+  assert.equal(el("presettext").value, "Only correctness");
+  context.deleteReviewPreset();
+  assert.equal(context.reviewPresets.length, 4);
+});
+
+test("follow-ups include prior messages and reset clears them without calling the model", () => {
+  const { context, el, calls } = page();
+  context.openChat();
+  context.fillModels({ assistant: "claude", models: [{ id: "test", label: "Test" }] });
+  el("ask").value = "Review this method";
+  context.sendAsk();
+  assert.equal(el("newconversation").disabled, true);
+  let sent = calls.filter(c => c[0] === "ask");
+  assert.deepEqual(JSON.parse(sent[0][4]).conversation, []);
+  assert.match(JSON.parse(sent[0][4]).review_instructions, /correctness/);
+  context.sdeAssistant(JSON.stringify({ call: "ask", plan: plan({ name: "", reply: "Check the empty input." }) }));
+  el("ask").value = "Explain that issue";
+  context.sendAsk();
+  sent = calls.filter(c => c[0] === "ask");
+  const history = JSON.parse(sent[1][4]).conversation;
+  assert.equal(history.length, 2);
+  assert.equal(history[0].content, "Review this method");
+  assert.equal(history[1].content, "Check the empty input.");
+  context.sdeAssistant(JSON.stringify({ call: "ask", plan: plan({ name: "", reply: "Details" }) }));
+  el("ask").value = "new conversation";
+  context.sendAsk();
+  assert.equal(context.conversation.length, 0);
+  assert.equal(el("chatlog").children.length, 0);
+  assert.equal(calls.filter(c => c[0] === "ask").length, 2);
+});
+
+test("Versions prompt separates selected rules, historical conversation and current location", () => {
+  const versions = require("../versions");
+  const state = { name: "ZCL_TEST", conversation: [{ role: "assistant", content: "Previous finding" }], review_instructions: "Check SQL" };
+  const text = versions.prompt("Explain", state);
+  assert.match(text, /Check SQL/);
+  assert.match(text, /Previous finding/);
+  assert.match(text, /Where Versions is now:\n\{\n  "name": "ZCL_TEST"\n\}/);
+  assert.equal(state.conversation.length, 1);
+});
+
 test("a diff plan goes parts, then the part, then the version - each after the last answer", () => {
   const { context, calls, answer } = page();
   context.applyPlan(plan());

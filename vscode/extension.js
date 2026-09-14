@@ -646,7 +646,9 @@ async function assistantAsk(context, service, args) {
       url: running.url.replace(/\/mcp$/, ASSISTED[service].route),
       token: tools.token,
       instructions: brain.INSTRUCTIONS,
-      prompt: brain.prompt(String(args[2] || ""), state),
+      prompt: brain.preparePrompt
+        ? await brain.preparePrompt({ fetch: fetch, context: context }, String(args[2] || ""), state)
+        : brain.prompt(String(args[2] || ""), state),
       schema: brain.PLAN_SCHEMA,
       tools: brain.TOOLS.map(function (t) { return t.name; })
     });
