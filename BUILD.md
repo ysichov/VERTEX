@@ -104,8 +104,7 @@ same edit as the version bump below.
 ## Versions
 
 The Eclipse bundle and the VS Code extension carry the same number by hand; nothing enforces it.
-They parted at 0.4: the MCP server exists only in the VS Code extension, and the Eclipse bundle is
-still 0.3.2.
-`0.2.1.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.2.1.<build timestamp>` on export,
+Both now use 0.5.1. The MCP assistant integration remains specific to VS Code.
+`0.5.1.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.5.1.<build timestamp>` on export,
 so every export is a distinct version and *Check for Updates* can see it.
 
