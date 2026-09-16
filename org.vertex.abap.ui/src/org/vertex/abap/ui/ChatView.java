@@ -79,6 +79,11 @@ public class ChatView extends PageView {
 	}
 
 	@Override
+	protected String accept(String path) {
+		return path.startsWith("/sap/bc/adt/repository/informationsystem/search") ? "application/xml" : "text/plain";
+	}
+
+	@Override
 	protected void addContentHandlers(IRestResource resource) {
 		super.addContentHandlers(resource);
 		resource.addContentHandler(new TextContentHandler("text/plain"));

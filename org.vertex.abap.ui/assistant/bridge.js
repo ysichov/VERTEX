@@ -8,6 +8,7 @@ const os = require("node:os");
 const assistant = require("./assistant");
 const mcp = require("./mcp");
 const sessionLog = require("./session-log");
+const directSearch = require("./direct-search");
 const encode = value => Buffer.from(value, "utf8").toString("base64");
 const decode = value => Buffer.from(value, "base64").toString("utf8");
 
@@ -39,7 +40,20 @@ const BRAINS = { selector: "./selector", versions: "./versions", chat: "./chat" 
 async function run(request, fetch, api = assistant, open = async () => { throw new Error("This host cannot open objects."); }) {
   if (!Object.hasOwn(BRAINS, request.service)) { throw new Error("Unknown assistant service: " + request.service); }
   const brain = require(BRAINS[request.service]);
-  const options = { assistant: request.assistant, executable: executable(request.assistant, request.executable) };
+  if (request.call === "ask" && request.service === "chat" && directSearch.isObjectName(request.text)) {
+    // No model for a bare object name: search the system and open it.
+    const deps = { fetch, open, context: {} };
+    const tool = async (name, args) => {
+      const result = await brain.callTool(deps, name, args);
+      const text = result.content.map(c => c.text).join("");
+      if (result.isError) { throw new Error(text); }
+      return JSON.parse(text);
+    };
+    const answer = await directSearch.answer(request.text, { system: request.project,
+      search: args => tool("search_sap_objects", args), open: args => tool("open_sap_object", args) });
+    return { call: "ask", model: "", usage: null, direct: true, plan: { answer } };
+  }
+  const options ={ assistant: request.assistant, executable: executable(request.assistant, request.executable) };
   if (request.call === "models") {
     return { call: "models", assistant: request.assistant, models: await api.models(options) };
   }

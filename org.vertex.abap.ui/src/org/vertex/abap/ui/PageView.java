@@ -193,7 +193,25 @@ public abstract class PageView extends ViewPart {
 	 *             port
 	 */
 	protected String read(String path) {
-		return resource(path).get(new NullProgressMonitor(), String.class);
+		return get(resource(path), path);
+	}
+
+	/**
+	 * The media type to ask for, for a view that reads standard ADT resources: some
+	 * of them refuse a request without an Accept header. Null sends none.
+	 */
+	protected String accept(String path) {
+		return null;
+	}
+
+	private String get(IRestResource resource, String path) {
+		String type = accept(path);
+		if (type == null) {
+			return resource.get(new NullProgressMonitor(), String.class);
+		}
+		com.sap.adt.communication.message.IHeaders headers = com.sap.adt.communication.message.HeadersFactory.newHeaders();
+		headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Accept", type));
+		return resource.get(new NullProgressMonitor(), headers, String.class);
 	}
 
 	/** Logon and project selection stay on SWT; network I/O runs in the worker. */
@@ -207,7 +225,7 @@ public abstract class PageView extends ViewPart {
 			} catch (RuntimeException e) { failure[0] = e; }
 		});
 		if (failure[0] != null) throw failure[0];
-		return target[0].get(new NullProgressMonitor(), String.class);
+		return get(target[0], path);
 	}
 
 	/**

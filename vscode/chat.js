@@ -2,6 +2,7 @@
 
 const assistant = require("./assistant");
 const sessionLog = require("./session-log");
+const directSearch = require("./direct-search");
 const RESULT_SCHEMA = {
   type: "object", additionalProperties: false, required: ["answer"],
   properties: { answer: { type: "string" } }
@@ -52,6 +53,15 @@ function create(vscode, codeTools, server) {
     if (typeof prompt !== "string" || !prompt.trim()) { return { answer: "" }; }
     running = true;
     try {
+      if (directSearch.isObjectName(prompt)) {
+        // No model for a bare object name: search the system and open it.
+        const text = await directSearch.answer(prompt, {
+          search: args => codeTools.execute("search_sap_objects", args),
+          open: args => codeTools.execute("open_sap_object", args)
+        });
+        conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: text });
+        return { answer: text, model: "", usage: null, direct: true };
+      }
       const id = subscriptionProvider(vscode);
       const model = vscode.workspace.getConfiguration("vertex.ai").get("model", "") || await defaultModel(id);
       const config = vscode.workspace.getConfiguration("vertex.ai");
