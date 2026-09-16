@@ -1,7 +1,7 @@
 {
   "name": "vertex-abap",
   "displayName": "SAP ABAP VERTEX Tools",
-  "description": "Versions/Reviewer, Data/Code Explorers + special mcp server",
+  "description": "ABAP chat and code reviewer with Save & Activate, Versions/Reviewer, Data/Code Explorers + MCP server",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.5.1",
+  "version": "0.5.4",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -36,11 +36,36 @@
     "Chat",
     "Other"
   ],
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onFileSystem:vertex-sap"
+  ],
   "icon": "images/icon.png",
   "main": "./extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vertex",
+          "title": "VERTEX",
+          "icon": "images/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "vertex": [
+        {
+          "id": "vertex.launcher",
+          "name": "SAP Tools",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
+      {
+        "command": "vertex.showPanel",
+        "title": "VERTEX: Open Panel"
+      },
       {
         "command": "vertex.open",
         "title": "VERTEX: Open SelecTor"
@@ -65,6 +90,18 @@
         "command": "vertex.mcpAddress",
         "title": "Copy the MCP address for Claude Code or Codex",
         "category": "VERTEX"
+      },
+      {
+        "command": "vertex.saveAndActivate",
+        "title": "Save & Activate",
+        "category": "VERTEX",
+        "icon": "$(save)"
+      },
+      {
+        "command": "vertex.reviewCodeChanges",
+        "title": "Review & Activate",
+        "category": "VERTEX",
+        "icon": "$(diff)"
       }
     ],
     "configuration": {
@@ -117,6 +154,23 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Which of `vertex.systems` to read from. Empty means the first one."
+        },
+        "vertex.ai.provider": {
+          "type": "string",
+          "enum": [
+            "claude-subscription",
+            "codex-subscription",
+            "copilot",
+            "anthropic-api",
+            "openai-api"
+          ],
+          "default": "codex-subscription",
+          "markdownDescription": "AI provider used by the VERTEX assistant. API keys are kept in SecretStorage."
+        },
+        "vertex.ai.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model passed to the selected Codex or Claude subscription. Empty uses its default model."
         }
       }
     },
@@ -125,10 +179,39 @@
         "id": "vertex",
         "label": "VERTEX SAP"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "vertex.saveAndActivate",
+          "when": "resourceScheme == vertex-sap",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "vertex.reviewCodeChanges",
+          "when": "resourceScheme == vertex-sap",
+          "group": "1_modification@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "vertex.saveAndActivate",
+          "when": "resourceScheme == vertex-sap",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vertex.reviewCodeChanges",
+          "when": "resourceScheme == vertex-sap",
+          "group": "navigation@2"
+        }
+      ]
+    }
   },
   "scripts": {
     "test": "node --test test/*.test.js",
     "vscode:prepublish": "node ./copy-pages.js"
+  },
+  "dependencies": {
+    "abap-adt-api": "8.4.3"
   }
 }

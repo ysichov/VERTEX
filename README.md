@@ -44,7 +44,19 @@ HTTPS, and the markup, grids and filters are not written twice.
 
 ## AI assistants
 
-VERTEX brings no agent of its own. It hands SAP to the assistants already in use — Copilot,
+### VERTEX chat and code reviewer (VS Code, 0.5.4)
+
+The VERTEX panel in VS Code's Activity Bar has a chat over the active SAP system, run by
+the Claude Code or Codex subscription already installed. Ask *show ZCL_TR_TEXT_DATA* or
+*explain this method*: it searches and reads the source and opens it in an editable tab.
+Edits go through the **Code Change** reviewer — approve or decline each block, ask AI about
+one block, then **Save & Activate** writes only the approved blocks, with a syntax check and
+a conflict check against the current SAP source. Details:
+[vscode/README.md](vscode/README.md#vertex-chat).
+
+### Transport reviews over MCP
+
+Beyond its own chat, VERTEX hands SAP to the assistants already in use — Copilot,
 Claude Code and Codex in VS Code — over MCP, with two tools that read the review AVE
 saved for a transport request: `sap_transport_changes` lists what the request changed, and
 `sap_transport_diff` gives the diff cut into AVE's own blocks, with the verdicts and notes

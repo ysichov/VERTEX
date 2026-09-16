@@ -4,3 +4,4 @@ target/
 
 # Copied in by vscode:prepublish so the vsix carries the pages.
 vscode/resources/
+vscode/node_modules/

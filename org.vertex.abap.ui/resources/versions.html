@@ -534,7 +534,7 @@ function renderPartList(data) {
   // it, and the VS Code shim is exactly that host today.
   if (typeof sdeTitle === "function") { sdeTitle(data.object.toUpperCase()); }
   if (parts.length === 0) {
-    note("This object has no versionable part.");
+    note(scope ? "It holds nothing." : "This object has no versionable part.");
     return;
   }
   status(parts.length + (parts.length === 1 ? " part" : " parts"));

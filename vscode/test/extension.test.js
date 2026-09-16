@@ -11,11 +11,15 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
   let client = "Codex";
   let starts = 0;
   const vscode = {
-    workspace: { getConfiguration: () => ({ get: () => 37777 }) },
+    EventEmitter: class { event = () => ({ dispose() {} }); dispose() {} },
+    workspace: { getConfiguration: () => ({ get: () => 37777 }),
+      registerFileSystemProvider: () => ({ dispose() {} }),
+      registerTextDocumentContentProvider: () => ({ dispose() {} }) },
     extensions: { getExtension: () => ({ packageJSON: { version: "0.4.1" } }) },
     commands: { registerCommand: (name, callback) => { commands.set(name, callback); return {}; } },
     env: { clipboard: { writeText: async text => copied.push(text) } },
-    window: { showQuickPick: async () => client, showInformationMessage() {},
+    window: { registerWebviewViewProvider: () => ({ dispose() {} }),
+      showQuickPick: async () => client, showInformationMessage() {},
       showErrorMessage: message => assert.fail(message) }
   };
   const server = { token: "test-token", start: async () => {
@@ -24,11 +28,17 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
   }, stop() {} };
   const context = vm.createContext({ exports: {}, __dirname: path.join(__dirname, ".."),
     console: { log() {} }, require: name => name === "vscode" ? vscode
-      : name === "./mcp" ? { create: deps => { assert.equal(deps.port, 37777); return server; } }
+      : name === "./mcp" ? { create: deps => {
+        assert.equal(deps.port, 37777);
+        const open = deps.pages["/chat"].tools.find(t => t.name === "open_sap_object");
+        assert.equal(open.annotations.readOnlyHint, true);
+        assert.equal(open.annotations.destructiveHint, false);
+        return server;
+      } }
       : name.startsWith("./") ? require(path.join(__dirname, "..", name))
       : require(name) });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../extension.js"), "utf8"), context);
-  context.exports.activate({ subscriptions: [] });
+  context.exports.activate({ subscriptions: [], workspaceState: { get: (key, fallback) => fallback, async update() {} } });
   assert.equal(starts, 1);
   await commands.get("vertex.mcpAddress")();
   assert.equal(copied[0], '[mcp_servers.vertex]\nurl = "http://127.0.0.1:37777/mcp"\nhttp_headers = { Authorization = "Bearer test-token" }\n');

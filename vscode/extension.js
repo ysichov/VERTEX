@@ -33,6 +33,10 @@ function secretKey(system) {
   return "vertex.password." + system.name;
 }
 
+function providerSecretKey(provider) {
+  return "vertex.provider." + String(provider).toLowerCase() + ".apiKey";
+}
+
 /* ---------- what each service asks for ----------
 
    One entry per view in the Eclipse plugin, and the path builders are the same
@@ -737,8 +741,24 @@ function hasMcpApi() {
 let tools = null;
 
 function activate(context) {
+  const sapCode = require("./code-workbench").register(vscode, context, { active, password });
   const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
-  tools = mcp.create({ fetch: fetch, context: context, port: port, pages: windowTools() });
+  const chatSet = {
+      tools: sapCode.schemas.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        annotations: tool.annotations
+      })),
+    call: async function (_deps, name, args) {
+      const result = await sapCode.execute(name, args);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  };
+  tools = mcp.create({ fetch: fetch, context: context, port: port,
+    pages: Object.assign(windowTools(), { "/chat": chatSet }) });
+  require("./sidebar").register(vscode, context, active,
+    require("./chat").create(vscode, sapCode, tools));
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation
   // so a registered Codex/Claude connection also works after a window reload.
@@ -794,8 +814,43 @@ function activate(context) {
       await context.secrets.delete(secretKey(chosen.system));
       vscode.window.showInformationMessage(
         "VERTEX: the stored password for " + chosen.system.name + " was removed.");
+    }),
+    vscode.commands.registerCommand("vertex.configureApiKey", async function () {
+      const provider = await vscode.window.showQuickPick([
+        { label: "Anthropic", id: "anthropic" },
+        { label: "OpenAI", id: "openai" }
+      ], { title: "Which AI provider?" });
+      if (!provider) { return; }
+      const value = await vscode.window.showInputBox({
+        title: "API key for " + provider.label,
+        prompt: "The key is stored in VS Code SecretStorage, never in settings.json.",
+        password: true,
+        ignoreFocusOut: true,
+        validateInput: text => String(text || "").trim() ? undefined : "Enter an API key."
+      });
+      if (value === undefined) { return; }
+      await context.secrets.store(providerSecretKey(provider.id), value.trim());
+      vscode.window.showInformationMessage(provider.label + " API key saved securely.");
+    }),
+    vscode.commands.registerCommand("vertex.selectProvider", async function () {
+      const values = [
+        ["Claude subscription", "claude-subscription"],
+        ["Codex subscription", "codex-subscription"],
+        ["Copilot", "copilot"],
+        ["Anthropic API", "anthropic-api"],
+        ["OpenAI API", "openai-api"]
+      ];
+      const current = vscode.workspace.getConfiguration("vertex.ai").get("provider", "codex-subscription");
+      const picked = await vscode.window.showQuickPick(values.map(item => ({
+        label: item[0], picked: item[1] === current, id: item[1]
+      })), { title: "Select VERTEX AI provider" });
+      if (!picked) { return; }
+      await vscode.workspace.getConfiguration("vertex.ai").update(
+        "provider", picked.id, vscode.ConfigurationTarget.Global);
+      vscode.window.showInformationMessage("VERTEX: using " + picked.label + ".");
     })
   );
+  return { sapCode };
 }
 
 function deactivate() {
