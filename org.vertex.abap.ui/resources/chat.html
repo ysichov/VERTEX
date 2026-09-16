@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VERTEX Chat</title>
+<style>
+:root { --bg:#ffffff; --fg:#1f2933; --muted:#667085; --border:#cfd6e0; --you:#1d5fa8; --vertex:#23794a;
+        --error:#a5292a; --input:#ffffff; --button:#376caa; --button-fg:#ffffff; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#1e1f22; --fg:#d7dae0; --muted:#8c93a0; --border:#3a3d44; --you:#6cb0f5; --vertex:#6fcf97;
+          --error:#f28b82; --input:#2b2d31; --button:#3f78bd; --button-fg:#ffffff; }
+}
+html, body { height: 100%; }
+body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--fg);
+       font: 13px "Segoe UI", system-ui, sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px;
+         border-bottom: 1px solid var(--border); }
+#system { font-weight: 600; margin-right: auto; }
+select, button, textarea { font: inherit; color: var(--fg); background: var(--input);
+                           border: 1px solid var(--border); border-radius: 3px; }
+select, button { padding: 3px 6px; }
+button { cursor: pointer; }
+button.primary { background: var(--button); color: var(--button-fg); border-color: var(--button); }
+button:disabled, select:disabled { opacity: .6; cursor: default; }
+#messages { flex: 1; overflow-y: auto; padding: 10px 12px; }
+.message { margin: 0 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.vertex { white-space: normal; }
+.vertex p, .vertex ul, .vertex ol { margin: .35em 0; }
+.vertex ul, .vertex ol { padding-left: 1.4em; }
+.vertex code { font-family: Consolas, monospace; background: rgba(127,127,127,.15); padding: 0 3px; border-radius: 3px; }
+.vertex pre { white-space: pre; overflow-x: auto; background: rgba(127,127,127,.15); padding: 6px 8px; border-radius: 3px; }
+.vertex pre code { background: none; padding: 0; }
+.message .who { display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+.you .who, .you { color: var(--you); }
+.vertex .who, .vertex { color: var(--vertex); }
+.error .who, .error { color: var(--error); }
+.hint { color: var(--muted); }
+footer { padding: 8px 12px; border-top: 1px solid var(--border); }
+textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertical; padding: 6px; }
+.actions { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+#working { color: var(--muted); margin-right: auto; }
+</style></head><body>
+<header>
+  <span id="system">Resolving ABAP project ...</span>
+  <select id="who" aria-label="Assistant"><option value="claude">Claude Code</option><option value="codex">Codex</option></select>
+  <select id="model" aria-label="Model" disabled><option>loading ...</option></select>
+  <button id="new" type="button">New conversation</button>
+</header>
+<main id="messages" aria-live="polite">
+  <p class="message hint">Ask about ABAP code on this system: <i>show Z_CALC</i>, <i>explain this method</i>. "This code" is the object in the active ADT editor.</p>
+</main>
+<footer>
+  <textarea id="prompt" placeholder="Ask VERTEX ... (Ctrl+Enter to send)" aria-label="Message"></textarea>
+  <div class="actions"><span id="working"></span><button id="send" class="primary" type="button">Send</button></div>
+</footer>
+<script>
+var INIT = /*INIT*/null/*INIT*/;
+var conversation = [];
+var asking = false;
+// Names this conversation's log file; a new conversation starts a new one.
+function sessionStamp() {
+  var d = new Date(), p = function (n) { return ("0" + n).slice(-2); };
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "_" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+var session = sessionStamp();
+
+function say(kind, who, text) {
+  var item = document.createElement("div");
+  item.className = "message " + kind;
+  var label = document.createElement("span");
+  label.className = "who";
+  label.textContent = who;
+  item.appendChild(label);
+  if (kind === "vertex") { markdown(text, item); } else { item.appendChild(document.createTextNode(text)); }
+  var box = document.getElementById("messages");
+  box.appendChild(item);
+  box.scrollTop = box.scrollHeight;
+}
+
+// The project name arrives through the host's queue, like any other answer.
+function sdeReady() {
+  var raw = sdeTake();
+  if (typeof raw !== "string") { return; }
+  if (raw.indexOf("ERROR:") === 0) {
+    document.getElementById("system").textContent = "No ABAP project";
+    say("error", "VERTEX", raw.substring(6));
+    return;
+  }
+  document.getElementById("system").textContent = raw;
+  if (typeof sdeTitle === "function") { sdeTitle(raw); }
+}
+
+function askModels() {
+  var box = document.getElementById("model");
+  box.innerHTML = "<option>loading ...</option>";
+  box.disabled = true;
+  sdeModels(document.getElementById("who").value);
+}
+
+function send() {
+  if (asking) { return; }
+  var input = document.getElementById("prompt");
+  var text = input.value.trim();
+  if (!text) { return; }
+  var model = document.getElementById("model");
+  if (model.disabled) { say("error", "VERTEX", "The model list has not arrived yet."); return; }
+  var who = document.getElementById("who");
+  asking = who.options[who.selectedIndex].text;
+  say("you", "You", text);
+  input.value = "";
+  document.getElementById("send").disabled = true;
+  document.getElementById("working").textContent = asking + " is working ...";
+  var state = { conversation: conversation.slice() };
+  conversation.push({ role: "user", content: text });
+  sdeAsk(who.value, model.value, text, JSON.stringify(state), session);
+}
+
+function sdeAssistant(raw) {
+  var data;
+  try { data = JSON.parse(raw); } catch (e) { data = { call: "ask", error: "The host answered with something that is not JSON." }; }
+  if (data.call === "models") {
+    if (data.assistant !== document.getElementById("who").value) { return; }
+    var box = document.getElementById("model");
+    box.innerHTML = "";
+    if (data.error) { box.innerHTML = "<option>no models</option>"; say("error", "VERTEX", data.error); return; }
+    data.models.forEach(function (m) {
+      var option = document.createElement("option");
+      option.value = m.id;
+      option.textContent = m.label;
+      box.appendChild(option);
+    });
+    box.disabled = false;
+    return;
+  }
+  var who = "VERTEX" + (data.model ? " · " + data.model : "");
+  asking = false;
+  document.getElementById("send").disabled = false;
+  document.getElementById("working").textContent = "";
+  if (data.error) {
+    conversation.push({ role: "assistant", content: "Request failed: " + data.error });
+    say("error", who, data.error);
+    return;
+  }
+  var answer = data.plan && data.plan.answer ? data.plan.answer : "Done.";
+  conversation.push({ role: "assistant", content: answer });
+  say("vertex", who, answer);
+  if (data.usage) {
+    var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n || 0); };
+    var u = data.usage;
+    var line = document.createElement("div");
+    line.className = "message hint";
+    line.style.fontSize = "11px";
+    line.textContent = k((u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0))
+      + " in (" + k(u.cache_read_input_tokens) + " from cache) · " + k(u.output_tokens) + " out";
+    document.getElementById("messages").appendChild(line);
+  }
+}
+
+// Markdown built as DOM nodes with textContent only, so an answer cannot inject markup.
+function inline(text, parent) {
+  text.split(/(\x60[^\x60]+\x60|\*\*[^*]+\*\*|\*[^*\s][^*]*\*)/).forEach(token => {
+    if (!token) return;
+    let node;
+    if (/^\x60[^\x60]+\x60$/.test(token)) { node = document.createElement('code'); node.textContent = token.slice(1, -1); }
+    else if (/^\*\*[^*]+\*\*$/.test(token)) { node = document.createElement('strong'); node.textContent = token.slice(2, -2); }
+    else if (/^\*[^*\s][^*]*\*$/.test(token)) { node = document.createElement('em'); node.textContent = token.slice(1, -1); }
+    else { node = document.createTextNode(token); }
+    parent.appendChild(node);
+  });
+}
+function markdown(text, target) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  let list = null, paragraph = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*\x60\x60\x60/.test(line)) {
+      const code = [];
+      for (i++; i < lines.length && !/^\s*\x60\x60\x60/.test(lines[i]); i++) { code.push(lines[i]); }
+      const pre = document.createElement('pre'), inner = document.createElement('code');
+      inner.textContent = code.join('\n'); pre.appendChild(inner); target.appendChild(pre);
+      list = paragraph = null; continue;
+    }
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    if (bullet || numbered) {
+      const kind = bullet ? 'UL' : 'OL';
+      if (!list || list.tagName !== kind) { list = document.createElement(kind); target.appendChild(list); }
+      const li = document.createElement('li'); inline((bullet || numbered)[1], li); list.appendChild(li);
+      paragraph = null; continue;
+    }
+    list = null;
+    if (!line.trim()) { paragraph = null; continue; }
+    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    if (heading) {
+      const p = document.createElement('p'), strong = document.createElement('strong');
+      inline(heading[1], strong); p.appendChild(strong); target.appendChild(p); paragraph = null; continue;
+    }
+    if (paragraph) { paragraph.appendChild(document.createElement('br')); }
+    else { paragraph = document.createElement('p'); target.appendChild(paragraph); }
+    inline(line, paragraph);
+  }
+}
+
+document.getElementById("send").addEventListener("click", send);
+document.getElementById("prompt").addEventListener("keydown", function (event) {
+  if (event.key === "Enter" && event.ctrlKey) { event.preventDefault(); send(); }
+});
+document.getElementById("who").addEventListener("change", askModels);
+document.getElementById("new").addEventListener("click", function () {
+  if (asking) { return; }
+  conversation = [];
+  session = sessionStamp();
+  document.getElementById("messages").innerHTML = "";
+});
+
+sdeProject();
+askModels();
+document.getElementById("prompt").focus();
+</script>
+</body></html>

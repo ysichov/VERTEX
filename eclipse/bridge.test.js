@@ -66,3 +66,34 @@ test("the packaged bridge exchanges a model-list result over the private pipe", 
     assert.ok(result.models.some(m => m.id === "sonnet"));
   } finally { clearTimeout(timer); child.kill(); }
 });
+
+test("Chat reads over the host, opens through ADT and passes the active editor", async () => {
+  const paths = [], opened = [];
+  const xml = '<adtcore:objectReferences xmlns:adtcore="http://www.sap.com/adt/core">'
+    + '<adtcore:objectReference adtcore:uri="/sap/bc/adt/programs/programs/z_calc" adtcore:type="PROG/P" adtcore:name="Z_CALC" adtcore:packageName="$TMP" adtcore:description="Calc &amp; test"/>'
+    + '</adtcore:objectReferences>';
+  const result = await run({ call: "ask", service: "chat", assistant: "codex", executable: process.execPath,
+    text: "show Z_CALC", state: { editor: { name: "ZCL_X", type: "CLAS/OC" }, conversation: [] } },
+    async (_, resource) => { paths.push(resource); return resource.endsWith("/source/main") ? "REPORT z_calc." : xml; },
+    { ask: async o => {
+      assert.match(o.prompt, /ZCL_X/);
+      assert.deepEqual(o.tools, ["search_sap_objects", "read_sap_object", "open_sap_object"]);
+      const call = async (name, args) => {
+        const response = await fetch(o.url, { method: "POST", headers: { Authorization: "Bearer " + o.token },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) });
+        return (await response.json()).result;
+      };
+      const read = JSON.parse((await call("read_sap_object", { object_type: "PROG", object_name: "z_calc" })).content[0].text);
+      assert.equal(read.source, "REPORT z_calc.");
+      assert.equal(read.description, "Calc & test");
+      await call("open_sap_object", { object_type: "PROG", object_name: "Z_CALC" });
+      const missing = await call("read_sap_object", { object_type: "CLAS", object_name: "ZCL_NONE" });
+      assert.equal(missing.isError, true);
+      return { model: "test", plan: { answer: "Z_CALC is open." } };
+    } },
+    async target => { opened.push(target); return "OK"; });
+  assert.equal(result.plan.answer, "Z_CALC is open.");
+  assert.deepEqual(opened, [{ uri: "/sap/bc/adt/programs/programs/z_calc", name: "Z_CALC", type: "PROG/P" }]);
+  assert.ok(paths.includes("/sap/bc/adt/programs/programs/z_calc/source/main"));
+  assert.ok(paths.every(p => /^\/sap\/bc\/adt\/(repository\/informationsystem\/search\?operation=quickSearch&query=[A-Za-z0-9_%*+]+&maxResults=[0-9]+&objectType=(PROG%2FP|CLAS%2FOC|FUGR%2FFF)|programs\/programs\/[^/?#]+\/source\/main)$/.test(p)), paths.join("\n"));
+});

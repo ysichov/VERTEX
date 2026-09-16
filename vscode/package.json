@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.5.4",
+  "version": "0.5.5",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -170,7 +170,37 @@
         "vertex.ai.model": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Model passed to the selected Codex or Claude subscription. Empty uses its default model."
+          "markdownDescription": "Model passed to the selected Codex or Claude subscription. Empty uses its weakest model (Claude: haiku; Codex: the last in its catalog)."
+        },
+        "vertex.ai.logPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Folder for a Claude-Code-compatible chat log (`claude_compatible/*.jsonl`). Token usage is always written; the checkboxes below add more. Empty turns logging off."
+        },
+        "vertex.ai.log.questions": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log the text of your chat questions."
+        },
+        "vertex.ai.log.answers": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log the text of the assistant's answers."
+        },
+        "vertex.ai.log.tools": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log SAP tool calls: names, arguments and a summary of each result (object, size, error), without source."
+        },
+        "vertex.ai.log.code": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Also log SAP source inside tool calls and results. Takes effect only with **Log tools**."
+        },
+        "vertex.ai.personalInstructions": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Let Claude Code load your personal CLAUDE.md and auto-memory for VERTEX requests. Off by default: they travel with every SAP request and can show up in answers."
         }
       }
     },

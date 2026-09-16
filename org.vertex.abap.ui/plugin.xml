@@ -30,6 +30,20 @@
             class="org.vertex.abap.ui.VersionsView"
             allowMultiple="true"
             restorable="false"/>
+      <view
+            id="org.vertex.abap.ui.view.chat"
+            name="VERTEX Chat"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.ChatView"
+            allowMultiple="false"
+            restorable="false"/>
+      <view
+            id="org.vertex.abap.ui.view.review"
+            name="VERTEX Review"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.ReviewView"
+            allowMultiple="true"
+            restorable="false"/>
    </extension>
 
    <!-- Without this the views land in whichever stack the perspective happens to
@@ -60,6 +74,14 @@
                visible="false"
                closeable="true"
                moveable="true"/>
+         <view
+               id="org.vertex.abap.ui.view.chat"
+               relative="org.eclipse.ui.editorss"
+               relationship="right"
+               ratio="0.7"
+               visible="false"
+               closeable="true"
+               moveable="true"/>
       </perspectiveExtension>
    </extension>
 
@@ -73,6 +95,10 @@
       <command
             id="org.vertex.abap.ui.command.versions"
             name="Versions"/>
+      <command
+            id="org.vertex.abap.ui.command.activate"
+            name="VERTEX: Activate"
+            description="Activate the object in the editor, with a block review of its inactive changes first"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
@@ -85,6 +111,9 @@
       <handler
             commandId="org.vertex.abap.ui.command.versions"
             class="org.vertex.abap.ui.VersionsHandler"/>
+      <handler
+            commandId="org.vertex.abap.ui.command.activate"
+            class="org.vertex.abap.ui.ActivateHandler"/>
    </extension>
 
    <!-- One submenu holding every service, rather than one top-level entry each:
@@ -123,6 +152,25 @@
                   label="Versions"
                   style="push"/>
          </menu>
+      </menuContribution>
+      <!-- In the context menu of an editor showing an ADT object. -->
+      <menuContribution
+            locationURI="popup:org.eclipse.ui.popup.any?after=additions">
+         <command
+               commandId="org.vertex.abap.ui.command.activate"
+               label="VERTEX: Activate"
+               style="push">
+            <visibleWhen checkEnabled="false">
+               <and>
+                  <with variable="activePart">
+                     <instanceof value="org.eclipse.ui.IEditorPart"/>
+                  </with>
+                  <with variable="activeEditorInput">
+                     <adapt type="com.sap.adt.tools.core.IAdtObjectReference"/>
+                  </with>
+               </and>
+            </visibleWhen>
+         </command>
       </menuContribution>
    </extension>
 </plugin>

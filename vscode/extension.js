@@ -646,6 +646,7 @@ async function assistantAsk(context, service, args) {
     const answer = await assistant.ask({
       assistant: id,
       model: String(args[1] || ""),
+      personalInstructions: vscode.workspace.getConfiguration("vertex.ai").get("personalInstructions", false),
       extensionPath: assistantExtension(id),
       url: running.url.replace(/\/mcp$/, ASSISTED[service].route),
       token: tools.token,
@@ -750,9 +751,15 @@ function activate(context) {
         inputSchema: tool.inputSchema,
         annotations: tool.annotations
       })),
-    call: async function (_deps, name, args) {
-      const result = await sapCode.execute(name, args);
-      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    call: async function (deps, name, args) {
+      const config = vscode.workspace.getConfiguration("vertex.ai");
+      const provider = config.get("provider", "codex-subscription") === "claude-subscription" ? "claude" : "codex";
+      const sessionLog = require("./session-log");
+      return sessionLog.tools(sessionLog.current(config.get("logPath", ""), provider, sessionLog.fromConfig(config)),
+        async function (_deps, toolName, toolArgs) {
+          const result = await sapCode.execute(toolName, toolArgs);
+          return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        })(deps, name, args);
     }
   };
   tools = mcp.create({ fetch: fetch, context: context, port: port,

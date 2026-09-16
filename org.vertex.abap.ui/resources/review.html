@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>VERTEX Review</title>
+<style>body { font: 13px "Segoe UI", system-ui, sans-serif; padding: 12px; } .error { color: #a5292a; white-space: pre-wrap; }</style>
+</head><body><p id="status">Reading the active and the inactive source ...</p>
+<script>
+// The VS Code reviewer page, unchanged: its module is run here and the host
+// stands in for the VS Code webview API.
+var REVIEW_MODULE = /*INIT*/null/*INIT*/;
+var review = (function () {
+  var module = { exports: {} };
+  var require = function (name) {
+    if (name !== "crypto") { throw new Error("The review page cannot load " + name); }
+    return { randomBytes: function (n) {
+      var bytes = new Uint8Array(n);
+      crypto.getRandomValues(bytes);
+      return { toString: function () { return Array.prototype.map.call(bytes, function (b) { return ("0" + b.toString(16)).slice(-2); }).join(""); } };
+    } };
+  };
+  new Function("module", "exports", "require", REVIEW_MODULE)(module, module.exports, require);
+  return module.exports;
+})();
+
+var loaded = null, parts = [], pageState = null;
+
+function fail(text) {
+  var status = document.getElementById("status");
+  if (!status) { alert(text); return; }
+  status.className = "error";
+  status.textContent = text;
+}
+
+window.acquireVsCodeApi = function () {
+  return {
+    getState: function () { return pageState; },
+    setState: function (state) { pageState = state; },
+    postMessage: function (message) {
+      if (!message) { return; }
+      if (message.action === "ask" && parts[message.hunk]) {
+        sdeAskBlock(review.askPrompt(parts[message.hunk], loaded.after, loaded.system, loaded.objectName));
+      } else if (message.action === "apply") {
+        var approved = (message.approved || []).filter(function (i) { return parts[i]; });
+        sdeApply(JSON.stringify({ approved: approved,
+          source: review.reviewedSource(loaded.before, parts, approved) }));
+      }
+    }
+  };
+};
+
+// The host answers the review's actions with the same messages VS Code sends.
+function sdeReviewMessage(json) {
+  window.dispatchEvent(new MessageEvent("message", { data: JSON.parse(json) }));
+}
+
+function sdeReady() {
+  var raw = sdeTake();
+  if (typeof raw !== "string") { fail("No response from the host."); return; }
+  if (raw.indexOf("ERROR:") === 0) { fail(raw.substring(6).replace(/^NOBACKEND:/, "")); return; }
+  try { loaded = JSON.parse(raw); } catch (e) { fail("The host answered with something that is not JSON."); return; }
+  parts = review.hunks(loaded.before, loaded.after);
+  if (!parts.length) {
+    document.getElementById("status").textContent = loaded.objectName
+      + " has no inactive changes: the inactive source equals the active one. Nothing to review or activate.";
+    return;
+  }
+  var html = review.reviewHtml(parts, { before: loaded.before, after: loaded.after,
+    objectName: loaded.objectName, objectType: loaded.objectType, system: loaded.system, ai: false });
+  document.open();
+  document.write(html);
+  document.close();
+}
+
+sdeLoad();
+</script></body></html>
