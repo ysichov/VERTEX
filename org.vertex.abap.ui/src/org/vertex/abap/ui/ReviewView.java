@@ -82,6 +82,11 @@ public class ReviewView extends PageView {
 	}
 
 	@Override
+	protected String accept(String path) {
+		return "text/plain";
+	}
+
+	@Override
 	protected void addContentHandlers(IRestResource resource) {
 		super.addContentHandlers(resource);
 		resource.addContentHandler(new TextContentHandler("text/plain"));

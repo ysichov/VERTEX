@@ -143,6 +143,13 @@ function sdeAssistant(raw) {
   var answer = data.plan && data.plan.answer ? data.plan.answer : "Done.";
   conversation.push({ role: "assistant", content: answer });
   say("vertex", who, answer);
+  if (data.direct) {
+    var direct = document.createElement("div");
+    direct.className = "message hint";
+    direct.style.fontSize = "11px";
+    direct.textContent = "searched the system directly · no tokens";
+    document.getElementById("messages").appendChild(direct);
+  }
   if (data.usage) {
     var k = function (n) { return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n || 0); };
     var u = data.usage;

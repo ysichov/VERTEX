@@ -80,6 +80,7 @@ function register(vscode, context, active, ask) {
 /* One line under an answer: the model and what it cost in tokens. */
 function usageLine(reply) {
   const usage = reply.usage;
+  if (reply.direct) { return "searched the system directly · no tokens"; }
   if (!usage) { return reply.model ? reply.model + " · token usage not reported" : ""; }
   const k = n => n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n || 0);
   const input = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);

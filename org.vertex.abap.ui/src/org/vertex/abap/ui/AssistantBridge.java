@@ -10,7 +10,7 @@ import org.eclipse.swt.widgets.Display;
 
 /** One private child process per request; lifetime is owned by its view. */
 final class AssistantBridge implements AutoCloseable {
-    private static final List<String> FILES = List.of("bridge.js", "assistant.js", "mcp.js", "selector.js", "versions.js", "chat.js", "session-log.js");
+    private static final List<String> FILES = List.of("bridge.js", "assistant.js", "mcp.js", "selector.js", "versions.js", "chat.js", "session-log.js", "direct-search.js");
     private static final String OBJECT = "/sap/bc/adt/(programs/programs/[^/?#]+|oo/classes/[^/?#]+|functions/groups/[^/?#]+/fmodules/[^/?#]+)";
     private final PageView view;
     private final Display display;
@@ -47,6 +47,7 @@ final class AssistantBridge implements AutoCloseable {
                 + ",\"model\":" + quote(text(args, 1)) + ",\"text\":" + quote(text(args, 2))
                 + ",\"log\":" + quote(view instanceof ChatView ? AssistantPreferences.setting("logPath") : "")
                 + ",\"session\":" + quote(text(args, 4))
+                + ",\"project\":" + quote(view instanceof ChatView && call.equals("ask") ? view.abapProject().getName() : "")
                 + ",\"logInclude\":{\"questions\":" + AssistantPreferences.flag("logQuestions")
                 + ",\"answers\":" + AssistantPreferences.flag("logAnswers")
                 + ",\"tools\":" + AssistantPreferences.flag("logTools")

@@ -97,3 +97,17 @@ test("Chat reads over the host, opens through ADT and passes the active editor",
   assert.ok(paths.includes("/sap/bc/adt/programs/programs/z_calc/source/main"));
   assert.ok(paths.every(p => /^\/sap\/bc\/adt\/(repository\/informationsystem\/search\?operation=quickSearch&query=[A-Za-z0-9_%*+]+&maxResults=[0-9]+&objectType=(PROG%2FP|CLAS%2FOC|FUGR%2FFF)|programs\/programs\/[^/?#]+\/source\/main)$/.test(p)), paths.join("\n"));
 });
+
+test("Eclipse chat opens a bare object name without starting an assistant", async () => {
+  const xml = '<adtcore:objectReferences xmlns:adtcore="http://www.sap.com/adt/core">'
+    + '<adtcore:objectReference adtcore:uri="/sap/bc/adt/programs/programs/z_calc" adtcore:type="PROG/P" adtcore:name="Z_CALC" adtcore:packageName="$TMP"/>'
+    + '</adtcore:objectReferences>';
+  const opened = [];
+  const result = await run({ call: "ask", service: "chat", assistant: "claude", executable: "does-not-exist", project: "ALC",
+    text: "Z_CALC", state: {} }, async () => xml,
+    { ask: async () => { throw new Error("no model expected"); } },
+    async target => { opened.push(target); return "OK"; });
+  assert.equal(result.direct, true);
+  assert.match(result.plan.answer, /Opened PROG \*\*Z_CALC\*\*.*ALC/);
+  assert.equal(opened[0].name, "Z_CALC");
+});

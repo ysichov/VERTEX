@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $root 'org.vertex.abap.ui'
-$version = '0.5.5.' + (Get-Date -Format 'yyyyMMddHHmmss')
+$version = '0.5.6.' + (Get-Date -Format 'yyyyMMddHHmmss')
 $out = Join-Path $root ('target/eclipse-' + $version)
 $classes = Join-Path $out 'classes'
 $site = Join-Path $out 'site'
@@ -36,14 +36,14 @@ function Add-Files($zip, [string]$directory, [string]$prefix) {
 $content = Read-ZipText (Join-Path $root 'docs/content.jar') 'content.xml'
 [xml]$metadata = $content
 $old = ($metadata.repository.units.unit | Where-Object { $_.id -eq 'org.vertex.abap.ui' }).version
-if (!$old -or !$old.StartsWith('0.5.1.')) { throw 'Expected a 0.5.1 PDE repository as the packaging template.' }
+if (!$old) { throw 'Expected a PDE-exported repository in docs/ as the packaging template.' }
 $content = $content.Replace($old, $version)
 $content = [regex]::Replace($content, "(name='p2.timestamp' value=')[0-9]+", ('${1}' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()))
 
 $binary = Join-Path $site ('plugins/org.vertex.abap.ui_' + $version + '.jar')
 $zip = [IO.Compression.ZipFile]::Open($binary, 'Create')
 try {
-    $manifest = [IO.File]::ReadAllText((Join-Path $project 'META-INF/MANIFEST.MF')).Replace('0.5.5.qualifier', $version)
+    $manifest = [IO.File]::ReadAllText((Join-Path $project 'META-INF/MANIFEST.MF')).Replace('0.5.6.qualifier', $version)
     Add-Text $zip 'META-INF/MANIFEST.MF' ($manifest.TrimEnd() + "`r`n`r`n")
     Add-Text $zip 'plugin.xml' ([IO.File]::ReadAllText((Join-Path $project 'plugin.xml')))
     Add-Files $zip $classes ''
