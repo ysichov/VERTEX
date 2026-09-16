@@ -10,6 +10,8 @@ import org.eclipse.swt.widgets.Display;
 
 /** One private child process per request; lifetime is owned by its view. */
 final class AssistantBridge implements AutoCloseable {
+    private static final List<String> FILES = List.of("bridge.js", "assistant.js", "mcp.js", "selector.js", "versions.js", "chat.js", "session-log.js");
+    private static final String OBJECT = "/sap/bc/adt/(programs/programs/[^/?#]+|oo/classes/[^/?#]+|functions/groups/[^/?#]+/fmodules/[^/?#]+)";
     private final PageView view;
     private final Display display;
     private final ExecutorService workers = Executors.newCachedThreadPool(r -> {
@@ -33,11 +35,24 @@ final class AssistantBridge implements AutoCloseable {
     private void submit(String call, Object[] args) {
         String assistant = text(args, 0);
         if (!assistant.equals("codex") && !assistant.equals("claude")) return;
-        String service = view instanceof SelectorView ? "selector" : "versions";
+        String service = view instanceof SelectorView ? "selector" : view instanceof ChatView ? "chat" : "versions";
+        String state = text(args, 3).isBlank() ? "{}" : text(args, 3);
+        if (view instanceof ChatView && call.equals("ask")) {
+            // Read here, on the UI thread, at the moment the question is sent.
+            String editor = ((ChatView) view).editorContext();
+            state = "{\"editor\":" + editor + (state.trim().equals("{}") ? "}" : "," + state.trim().substring(1));
+        }
         String request = "{\"call\":" + quote(call) + ",\"assistant\":" + quote(assistant)
                 + ",\"service\":" + quote(service) + ",\"executable\":" + quote(AssistantPreferences.setting(assistant))
                 + ",\"model\":" + quote(text(args, 1)) + ",\"text\":" + quote(text(args, 2))
-                + ",\"state\":" + (text(args, 3).isBlank() ? "{}" : text(args, 3)) + "}";
+                + ",\"log\":" + quote(view instanceof ChatView ? AssistantPreferences.setting("logPath") : "")
+                + ",\"session\":" + quote(text(args, 4))
+                + ",\"logInclude\":{\"questions\":" + AssistantPreferences.flag("logQuestions")
+                + ",\"answers\":" + AssistantPreferences.flag("logAnswers")
+                + ",\"tools\":" + AssistantPreferences.flag("logTools")
+                + ",\"code\":" + AssistantPreferences.flag("logCode") + "}"
+                + ",\"personalInstructions\":" + AssistantPreferences.flag("personalInstructions")
+                + ",\"state\":" + state + "}";
         if (!closed) workers.submit(() -> run(call, assistant, service, request));
     }
 
@@ -49,7 +64,7 @@ final class AssistantBridge implements AutoCloseable {
         });
         try {
             directory = Files.createTempDirectory("vertex-eclipse-");
-            for (String file : List.of("bridge.js", "assistant.js", "mcp.js", "selector.js", "versions.js")) {
+            for (String file : FILES) {
                 Files.writeString(directory.resolve(file), view.readResource("assistant/" + file), StandardCharsets.UTF_8);
             }
             ProcessBuilder builder = new ProcessBuilder(AssistantPreferences.setting("node"), directory.resolve("bridge.js").toString());
@@ -80,6 +95,15 @@ final class AssistantBridge implements AutoCloseable {
                     if (tab < 0) continue;
                     String body = decode(line.substring(tab + 1));
                     if (line.startsWith("RESULT\t")) { deliver(body); return; }
+                    if (line.startsWith("OPEN\t")) {
+                        int newline = body.indexOf('\n');
+                        if (newline < 1) throw new IOException("Invalid SAP bridge request.");
+                        String answer = view instanceof ChatView
+                            ? ((ChatView) view).open(body.substring(newline + 1), display)
+                            : "ERROR:This window cannot open objects.";
+                        send(input, body.substring(0, newline) + "\t" + encode(answer));
+                        continue;
+                    }
                     if (line.startsWith("READ\t")) {
                         int newline = body.indexOf('\n');
                         if (newline < 1) throw new IOException("Invalid SAP bridge request.");
@@ -89,6 +113,9 @@ final class AssistantBridge implements AutoCloseable {
                             // Only the read-only resources used by this window's tools.
                             boolean allowed = service.equals("selector")
                                 ? path.matches("/sap/bc/adt/zsde/join/[^?]+(?:\\?t[0-9]+=.*)?")
+                                : service.equals("chat")
+                                ? path.matches("/sap/bc/adt/repository/informationsystem/search\\?operation=quickSearch&query=[A-Za-z0-9_%*+]+&maxResults=[0-9]+&objectType=(PROG%2FP|CLAS%2FOC|FUGR%2FFF)")
+                                  || path.matches(OBJECT + "/(source/main|includes/(definitions|implementations|macros|testclasses))")
                                 : path.startsWith("/sap/bc/adt/zsde/versions/") || path.startsWith("/sap/bc/adt/zsde/review/");
                             if (!allowed || path.contains("..") || path.matches("(?i).*([?&])(rows|count)=.*"))
                                 throw new IllegalArgumentException("Resource not permitted for the assistant.");
@@ -108,7 +135,7 @@ final class AssistantBridge implements AutoCloseable {
             if (child != null) { stop(child); children.remove(child); }
             if (directory != null) {
                 // Only the known files created in our own temporary directory.
-                for (String file : List.of("bridge.js", "assistant.js", "mcp.js", "selector.js", "versions.js")) {
+                for (String file : FILES) {
                     try { Files.deleteIfExists(directory.resolve(file)); } catch (IOException ignored) {}
                 }
                 try { Files.deleteIfExists(directory); } catch (IOException ignored) {}

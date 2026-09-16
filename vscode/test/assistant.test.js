@@ -83,7 +83,8 @@ test("Claude Code runs shut in: no built-in tool, one MCP server, the token only
     call.child.emit("close", 0);
   });
   const answer = await assistant.ask(common(spawn, "claude", { model: "haiku" }));
-  assert.deepEqual(answer, { plan: PLAN, model: "claude-haiku-4-5-20251001" });
+  assert.deepEqual(answer, { plan: PLAN, model: "claude-haiku-4-5-20251001",
+    usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } });
 
   const call = spawn.calls[0];
   assert.match(call.file, /native-binary[\\/]claude(\.exe)?$/);
@@ -95,6 +96,8 @@ test("Claude Code runs shut in: no built-in tool, one MCP server, the token only
   assert.equal(after(call.args, "--output-format"), "json");
   assert.equal(call.input, "PROMPT");
   assert.equal(call.options.env.VERTEX_WINDOW_TOKEN, "secret-token");
+  assert.equal(call.options.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS, "1");
+  assert.equal(call.options.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1");
   assert.match(config, /"Authorization":"Bearer \$\{VERTEX_WINDOW_TOKEN\}"/);
   assert.doesNotMatch(config, /secret-token/);
   assert.doesNotMatch(call.args.join(" "), /secret-token/);
@@ -112,6 +115,7 @@ test("every model Claude Code reports is named, the one that wrote most first", 
   });
   const answer = await assistant.ask(common(spawn, "claude", { model: "sonnet" }));
   assert.equal(answer.model, "claude-sonnet-5, claude-haiku-4-5-20251001");
+  assert.deepEqual(answer.usage, { input_tokens: 0, output_tokens: 943, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
 });
 
 test("Claude Code's own failure reaches the chat in its own words", async () => {
@@ -183,7 +187,7 @@ test("an assistant that is not there is named, not guessed", async () => {
                        /knows no assistant called copilot/);
 });
 
-test("Codex's model list starts with the model config.toml names, then its catalog", async () => {
+test("Codex's model list starts with its weakest model and marks the one config.toml names", async () => {
   const home = folder("vertex-codex-");
   fs.writeFileSync(path.join(home, "config.toml"),
                    'model = "gpt-5.6-luna"\nmodel_reasoning_effort = "low"\n[profiles.x]\nmodel = "other"\n');
@@ -200,14 +204,14 @@ test("Codex's model list starts with the model config.toml names, then its catal
   const list = await assistant.models({ assistant: "codex", extensionPath: extension("codex"),
                                         codexHome: home, spawn: spawn });
   assert.deepEqual(list, [
+    { id: "gpt-5.5", label: "GPT-5.5" },
     { id: "gpt-5.6-luna", label: "gpt-5.6-luna (config.toml)" },
-    { id: "gpt-6-astra", label: "GPT-6-Astra" },
-    { id: "gpt-5.5", label: "GPT-5.5" }
+    { id: "gpt-6-astra", label: "GPT-6-Astra" }
   ]);
   assert.equal(assistant.configuredCodexModel(folder("vertex-codex-")), "");
 });
 
-test("Claude Code's list is its aliases, with its own default first", async () => {
+test("Claude Code's list is its aliases, the weakest first and its own default last", async () => {
   const list = await assistant.models({ assistant: "claude" });
-  assert.deepEqual(list.map(m => m.id), ["", "fable", "opus", "sonnet", "haiku"]);
+  assert.deepEqual(list.map(m => m.id), ["haiku", "sonnet", "opus", "fable", ""]);
 });

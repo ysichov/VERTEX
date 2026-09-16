@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $root 'org.vertex.abap.ui'
-$version = '0.5.1.' + (Get-Date -Format 'yyyyMMddHHmmss')
+$version = '0.5.5.' + (Get-Date -Format 'yyyyMMddHHmmss')
 $out = Join-Path $root ('target/eclipse-' + $version)
 $classes = Join-Path $out 'classes'
 $site = Join-Path $out 'site'
@@ -43,7 +43,7 @@ $content = [regex]::Replace($content, "(name='p2.timestamp' value=')[0-9]+", ('$
 $binary = Join-Path $site ('plugins/org.vertex.abap.ui_' + $version + '.jar')
 $zip = [IO.Compression.ZipFile]::Open($binary, 'Create')
 try {
-    $manifest = [IO.File]::ReadAllText((Join-Path $project 'META-INF/MANIFEST.MF')).Replace('0.5.1.qualifier', $version)
+    $manifest = [IO.File]::ReadAllText((Join-Path $project 'META-INF/MANIFEST.MF')).Replace('0.5.5.qualifier', $version)
     Add-Text $zip 'META-INF/MANIFEST.MF' ($manifest.TrimEnd() + "`r`n`r`n")
     Add-Text $zip 'plugin.xml' ([IO.File]::ReadAllText((Join-Path $project 'plugin.xml')))
     Add-Files $zip $classes ''

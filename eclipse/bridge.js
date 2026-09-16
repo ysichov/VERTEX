@@ -7,6 +7,7 @@ const path = require("node:path");
 const os = require("node:os");
 const assistant = require("./assistant");
 const mcp = require("./mcp");
+const sessionLog = require("./session-log");
 const encode = value => Buffer.from(value, "utf8").toString("base64");
 const decode = value => Buffer.from(value, "base64").toString("utf8");
 
@@ -33,23 +34,34 @@ function executable(id, explicit) {
   throw new Error("Configure the " + id + " executable in Eclipse Preferences > VERTEX Assistant. Log in using that CLI first.");
 }
 
-async function run(request, fetch, api = assistant) {
-  const brain = request.service === "selector" ? require("./selector") : require("./versions");
+const BRAINS = { selector: "./selector", versions: "./versions", chat: "./chat" };
+
+async function run(request, fetch, api = assistant, open = async () => { throw new Error("This host cannot open objects."); }) {
+  if (!Object.hasOwn(BRAINS, request.service)) { throw new Error("Unknown assistant service: " + request.service); }
+  const brain = require(BRAINS[request.service]);
   const options = { assistant: request.assistant, executable: executable(request.assistant, request.executable) };
   if (request.call === "models") {
     return { call: "models", assistant: request.assistant, models: await api.models(options) };
   }
-  const deps = { fetch, context: {}, port: 0, pages: { "/assistant": { tools: brain.TOOLS, call: brain.callTool } } };
+  // Only the chat logs: one file per conversation, named by the page's session.
+  const log = request.service === "chat" ? sessionLog.create(request.log, request.assistant, request.session, request.logInclude) : null;
+  const deps = { fetch, open, context: {}, port: 0, pages: { "/assistant": { tools: brain.TOOLS, call: sessionLog.tools(log, brain.callTool) } } };
+  if (log) { log.user(request.text); }
   const server = mcp.create(deps);
   try {
     const running = await server.start();
-    const answer = await api.ask({ ...options, model: request.model,
+    const answer = await api.ask({ ...options, model: request.model, personalInstructions: request.personalInstructions === true,
       url: running.url.replace(/\/mcp$/, "/assistant"), token: server.token,
       instructions: brain.INSTRUCTIONS, schema: brain.PLAN_SCHEMA,
       tools: brain.TOOLS.map(t => t.name),
       prompt: brain.preparePrompt ? await brain.preparePrompt(deps, request.text, request.state)
         : brain.prompt(request.text, request.state) });
-    return { call: "ask", model: answer.model, plan: await brain.checkPlan(deps, answer.plan) };
+    const plan = await brain.checkPlan(deps, answer.plan);
+    if (log) { log.assistant({ model: answer.model, usage: answer.usage, text: plan.answer }); }
+    return { call: "ask", model: answer.model, usage: answer.usage || null, plan };
+  } catch (error) {
+    if (log) { log.assistant({ model: error.model || request.model, text: "Request failed: " + error.message }); }
+    throw error;
   } finally { await server.stop(); }
 }
 
@@ -64,13 +76,15 @@ async function main() {
       started = true;
       let request;
       try { request = JSON.parse(decode(line)); } catch { send("RESULT", JSON.stringify({ error: "Invalid assistant request." })); process.exitCode = 1; lines.close(); return; }
-      const fetch = (_, resource) => new Promise((resolve, reject) => {
+      const ask = (kind, payload) => new Promise((resolve, reject) => {
         const id = String(++sequence);
         const timer = setTimeout(() => { pending.delete(id); reject(new Error("Eclipse SAP request timed out.")); }, 60000);
         pending.set(id, { resolve, timer });
-        send("READ", id + "\n" + resource);
+        send(kind, id + "\n" + payload);
       });
-      run(request, fetch).catch(error => ({ call: request.call, assistant: request.assistant, error: error.message, model: error.model || "" }))
+      const fetch = (_, resource) => ask("READ", resource);
+      const open = target => ask("OPEN", JSON.stringify(target));
+      run(request, fetch, assistant, open).catch(error => ({ call: request.call, assistant: request.assistant, error: error.message, model: error.model || "" }))
         .then(result => { send("RESULT", JSON.stringify(result)); lines.close(); });
     } else {
       const split = line.indexOf("\t");

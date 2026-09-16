@@ -28,14 +28,15 @@ const ASSISTANTS = {
 };
 
 // Claude Code reports no list of models, but it takes aliases that always mean
-// the newest of their family - so this list does not go stale. Empty is the
-// model its own settings choose.
+// the newest of their family - so this list does not go stale. The weakest
+// comes first, so it is what a window picks unless told otherwise. Empty is
+// the model Claude Code's own settings choose.
 const CLAUDE_MODELS = [
-  { id: "", label: "Claude Code default" },
-  { id: "fable", label: "fable" },
-  { id: "opus", label: "opus" },
+  { id: "haiku", label: "haiku" },
   { id: "sonnet", label: "sonnet" },
-  { id: "haiku", label: "haiku" }
+  { id: "opus", label: "opus" },
+  { id: "fable", label: "fable" },
+  { id: "", label: "Claude Code default" }
 ];
 
 // Where each platform's Codex lives inside its extension: the folder whose
@@ -124,19 +125,23 @@ async function models(options) {
                     + result.stdout.substring(0, 200));
   }
 
+  // The catalog's own order puts the most capable first; reversed, the weakest
+  // comes first and is what a window picks unless told otherwise.
   const listed = catalog
     .filter(function (m) { return m.visibility === "list"; })
-    .sort(function (a, b) { return (a.priority || 0) - (b.priority || 0); })
+    .sort(function (a, b) { return (b.priority || 0) - (a.priority || 0); })
     .map(function (m) { return { id: m.slug, label: m.display_name || m.slug }; });
 
   // A run ignores the person's config.toml, so the model it names has to be
-  // passed on explicitly - and it comes first, because it is the one they use.
+  // offered explicitly, marked as theirs, in its place in the list.
   const configured = configuredCodexModel(options.codexHome);
   if (!configured) {
-    return [{ id: "", label: "Codex default" }].concat(listed);
+    return listed.concat([{ id: "", label: "Codex default" }]);
   }
-  return [{ id: configured, label: configured + " (config.toml)" }]
-    .concat(listed.filter(function (m) { return m.id !== configured; }));
+  const mark = { id: configured, label: configured + " (config.toml)" };
+  return listed.some(function (m) { return m.id === configured; })
+    ? listed.map(function (m) { return m.id === configured ? mark : m; })
+    : listed.concat([mark]);
 }
 
 /* The top-level model of ~/.codex/config.toml: the lines before its first
@@ -173,6 +178,14 @@ async function ask(options) {
     // The token reaches the child through its environment only: the files in
     // the folder name the variable, never the value.
     env[TOKEN_VAR] = options.token;
+    if (options.assistant === "claude" && !options.personalInstructions) {
+      // No personal CLAUDE.md or auto-memory: they would travel with every SAP
+      // request, be repeated in answers and steer a tool they were not written
+      // for. --setting-sources does not exclude CLAUDE.md, --safe-mode drops
+      // the MCP server too, and --bare refuses the subscription login.
+      env.CLAUDE_CODE_DISABLE_CLAUDE_MDS = "1";
+      env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
+    }
     const timeout = options.timeout || TIMEOUT;
     const result = await collect(options.spawn, file, command.args,
                                  { cwd: dir, env: env, input: command.input, timeout: timeout });
@@ -254,7 +267,21 @@ function readClaude(result) {
     throw named(new Error("Claude Code answered without a plan"
                           + (answer.result ? ": " + answer.result : ".")), model);
   }
-  return { plan: answer.structured_output, model: model };
+  return { plan: answer.structured_output, model: model, usage: totalUsage(answer) };
+}
+
+/* The whole run's tokens: modelUsage covers every model that took part, usage
+   only the main one. */
+function totalUsage(answer) {
+  const models = Object.values(answer.modelUsage || {});
+  if (!models.length) { return answer.usage || null; }
+  return models.reduce(function (sum, m) {
+    sum.input_tokens += m.inputTokens || 0;
+    sum.output_tokens += m.outputTokens || 0;
+    sum.cache_read_input_tokens += m.cacheReadInputTokens || 0;
+    sum.cache_creation_input_tokens += m.cacheCreationInputTokens || 0;
+    return sum;
+  }, { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
 }
 
 /* Every model Claude Code reports for the run, the one that wrote most first.

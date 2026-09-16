@@ -77,7 +77,7 @@
 
 <div class="url">https://ysichov.github.io/VERTEX/</div>
 
-<p class="build">Latest build <b>0.3.2</b>.</p>
+<p class="build">Latest build <b>0.5.5</b>.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -97,30 +97,32 @@
   on an Eclipse without ADT instead of leaving a plugin that cannot resolve.
 </div>
 
-<h2>What 0.3 added</h2>
+<h2>What 0.5.5 added</h2>
 
 <ul class="news">
-  <li><b>Diagrams.</b> The Metrics window draws two of ACE's pictures as well as
-      its numbers: the <em>branch scheme</em> of one method — its
-      <code>IF</code>/<code>CASE</code>/<code>LOOP</code> skeleton, with the
-      straight stretches folded into nodes that open on a click — and the
-      <em>flow</em> of a whole program, the order its units would run in.</li>
-  <li><b>Three modes, one of them chosen for you.</b> Flow, Scheme and Metrics
-      sit in one list. A program opens on its flow, a class on its list of
-      methods, because a class pool has no code of its own to draw.</li>
-  <li><b>Depth.</b> How far the flow follows calls is a field in the bar, and it
-      starts at three rather than ACE's nineteen: that first picture is meant to
-      be read, not squinted at.</li>
-  <li><b>The pictures follow the editor.</b> Scale fits the pane and follows it
-      when the windows are rearranged; the colours are the editor's own, in any
-      theme, and change with it.</li>
-  <li><b>mermaid travels inside the plugin.</b> Nothing is fetched from the
-      internet, which is the only way this works on a machine that has none.</li>
+  <li><b>VERTEX Chat.</b> <strong>Window &rarr; Show View &rarr; VERTEX &rarr; VERTEX Chat</strong>:
+      ask about ABAP code in any language &mdash; <em>show Z_CALC</em>,
+      <em>explain this method</em>. It searches and reads programs, classes and
+      function modules over the ABAP project's own ADT session, and opens them in
+      the ADT editor. It knows the open editors (titles and types, never their
+      content), keeps the conversation until <em>New conversation</em>, and uses
+      the Claude Code or Codex you are already logged in to.</li>
+  <li><b>Review before activation.</b> <strong>VERTEX: Activate</strong> in the
+      editor's context menu shows the inactive changes against the active version,
+      block by block: approve, decline, or ask the chat about one block. Approved
+      blocks are activated through ADT; declined ones stay in the editor, unsaved.
+      Whether to review is a preference: ask, always or never.</li>
+  <li><b>Token usage and an optional log.</b> Every answer shows the tokens it
+      took. With a log folder set, a Claude-Code-compatible JSONL log is written:
+      tokens always; questions, answers, tool calls and source only when ticked.</li>
+  <li><b>Your own instructions stay yours.</b> Claude Code runs without your
+      personal CLAUDE.md and auto-memory unless you allow it, and the weakest model
+      is chosen by default.</li>
 </ul>
 
 <p>
-  The ABAP side gained a headless path through ACE, so the analysis runs where
-  there is no SAP GUI at all. That is what made the flow possible.
+  Settings are in <strong>Window &rarr; Preferences &rarr; VERTEX Assistant</strong>.
+  The chat needs Node.js 22 or newer and Claude Code or Codex installed.
 </p>
 
 <h2>The other half is ABAP</h2>
@@ -152,9 +154,9 @@
 </p>
 
 <p>
-  From 0.4 the extension also hands transport reviews to the AI assistants in the
-  editor &mdash; Copilot, Claude Code, Codex &mdash; over MCP. That part lives only
-  there, which is why its version runs ahead of this one.
+  Both carry version 0.5.5 and the same chat. The extension also hands transport
+  reviews to the AI assistants in the editor &mdash; Copilot, Claude Code, Codex
+  &mdash; over MCP.
 </p>
 
 <footer>

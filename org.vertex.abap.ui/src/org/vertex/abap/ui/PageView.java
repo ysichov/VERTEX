@@ -125,7 +125,7 @@ public abstract class PageView extends ViewPart {
 		};
 
 		addFunctions();
-		if (this instanceof SelectorView || this instanceof VersionsView) {
+		if (this instanceof SelectorView || this instanceof VersionsView || this instanceof ChatView) {
 			new AssistantBridge(this);
 		}
 
@@ -238,8 +238,13 @@ public abstract class PageView extends ViewPart {
 		IRestResourceFactory factory = AdtRestResourceFactory.createRestResourceFactory();
 		IRestResource resource = factory.createResourceWithStatelessSession(URI.create(path),
 				adtProject.getDestinationId());
-		resource.addContentHandler(new JsonContentHandler());
+		addContentHandlers(resource);
 		return resource;
+	}
+
+	/** The VERTEX resources answer JSON; a view reading standard ADT resources adds more. */
+	protected void addContentHandlers(IRestResource resource) {
+		resource.addContentHandler(new JsonContentHandler());
 	}
 
 	/**

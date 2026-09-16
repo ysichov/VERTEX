@@ -2,7 +2,7 @@
 <feature
       id="org.vertex.abap.feature"
       label="ABAP VERTEX Tools"
-      version="0.5.1.qualifier"
+      version="0.5.5.qualifier"
       provider-name="Yurii Sychov">
 
    <description url="https://github.com/ysichov/VERTEX">

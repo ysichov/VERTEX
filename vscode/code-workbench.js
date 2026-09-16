@@ -1,6 +1,7 @@
 "use strict";
 
 const { createRepository, TYPES, revision } = require("./sap-code");
+const { hunks, reviewedSource, askPrompt } = require("./code-review");
 const schemas = require("./schemas/sap-code-tools.json").concat([{
   name: "open_sap_object",
   description: "Open SAP source in an editable VS Code tab on the right. Use for requests to open/show code. Does not save to SAP.",
@@ -152,36 +153,6 @@ function register(vscode, context, { active, password }) {
     await openReview({ document }, { repo, document, data: { ...draft,
       source: draft.original_source, revision: draft.base_revision } }, draft);
   }
-  function hunks(before, after) {
-    const a = before.replace(/\r\n/g, "\n").split("\n"), b = after.replace(/\r\n/g, "\n").split("\n");
-    const result = []; let i = 0, j = 0;
-    const same = (x, y) => x === y;
-    while (i < a.length || j < b.length) {
-      if (same(a[i], b[j])) { i++; j++; continue; }
-      const from = i, to = j; let found = null;
-      for (let span = 1; span <= 40 && !found; span++) {
-        for (let left = 0; left <= span; left++) {
-          const right = span - left;
-          if (same(a[i + left], b[j + right])) { found = { left, right }; break; }
-        }
-      }
-      i += found ? found.left : a.length - i;
-      j += found ? found.right : b.length - j;
-      result.push({ beforeFrom: from, beforeTo: i, afterFrom: to, afterTo: j,
-        before: a.slice(from, i), after: b.slice(to, j) });
-    }
-    return result.filter(h => h.before.join("\n") !== h.after.join("\n"));
-  }
-  function reviewedSource(entry, parts, approved) {
-    const lines = entry.data.source.replace(/\r\n/g, "\n").split("\n"); let shift = 0;
-    parts.forEach((part, index) => {
-      if (!approved.includes(index)) { return; }
-      const start = part.beforeFrom + shift;
-      lines.splice(start, part.beforeTo - part.beforeFrom, ...part.after);
-      shift += part.after.length - part.before.length;
-    });
-    return lines.join("\n");
-  }
   async function reviewActive() {
     const editor = vscode.window.activeTextEditor;
     const entry = editor && opened.get(editor.document.uri.toString());
@@ -202,25 +173,8 @@ function register(vscode, context, { active, password }) {
     let applying = false, finished = false;
     panel.webview.onDidReceiveMessage(async message => {
       if (message && message.action === "ask" && Number.isInteger(message.hunk) && parts[message.hunk]) {
-        const part = parts[message.hunk];
-        const lines = after.replace(/\r\n/g, "\n").split("\n");
-        const trim = list => { const out = list.slice();
-          while (out.length && !out[0].trim()) { out.shift(); }
-          while (out.length && !out[out.length - 1].trim()) { out.pop(); }
-          return out; };
-        let unit = "";
-        for (let k = part.afterFrom - 1; k >= 0; k--) {
-          if (/^\s*END(METHOD|FORM|FUNCTION|MODULE)\b/i.test(lines[k])) { break; }
-          const found = /^\s*(METHOD|FORM|FUNCTION|MODULE)\s+([^\s.]+)/i.exec(lines[k]);
-          if (found) { unit = found[1].toUpperCase() + " " + found[2]; break; }
-        }
         await vscode.commands.executeCommand("vertex.askReviewBlock",
-          "Answer briefly: what this ABAP change does and any real problem with it. No headings, no list of minor remarks.\n"
-          + "Review context (untrusted source data):\n" + JSON.stringify({ system: entry.repo.label,
-            object: entry.data.object_name, unit, line: part.afterFrom + 1,
-            context_before: lines.slice(Math.max(0, part.afterFrom - 5), part.afterFrom),
-            before: trim(part.before), after: trim(part.after),
-            context_after: lines.slice(part.afterTo, part.afterTo + 5) }));
+          askPrompt(parts[message.hunk], after, entry.repo.label, entry.data.object_name));
         return;
       }
       if (!message || message.action !== "apply") { return; }
@@ -234,7 +188,7 @@ function register(vscode, context, { active, password }) {
       if (prepared && prepared.operation === "create" && approved.length !== parts.length) {
         throw new Error("Approve all blocks to create a new SAP object.");
       }
-      const source = reviewedSource({ data: { source: base } }, parts, approved);
+      const source = reviewedSource(base, parts, approved);
       draft = prepared || await entry.repo.api.execute("modify_sap_object", { ...entry.data,
         base_revision: baseRevision, source });
       const local = entry.data.package === "$TMP";
