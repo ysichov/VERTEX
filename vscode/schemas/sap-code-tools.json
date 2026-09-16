@@ -1,0 +1,44 @@
+[
+  {
+    "name": "search_sap_objects",
+    "annotations": { "readOnlyHint": true, "destructiveHint": false },
+    "description": "Search SAP programs, global classes and function modules by name pattern. Returns bounded metadata, no source.",
+    "inputSchema": { "type": "object", "additionalProperties": false, "required": ["query"], "properties": {
+      "query": { "type": "string", "description": "SAP name pattern, e.g. ZCL_*" },
+      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC"] },
+      "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
+    } }
+  },
+  {
+    "name": "read_sap_object",
+    "annotations": { "readOnlyHint": true, "destructiveHint": false },
+    "description": "Read active SAP source and revision. Class main source contains global definition/implementation; read local includes separately when needed.",
+    "inputSchema": { "type": "object", "additionalProperties": false, "required": ["object_type", "object_name"], "properties": {
+      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC"] },
+      "object_name": { "type": "string" },
+      "include": { "type": "string", "enum": ["main", "definitions", "implementations", "macros", "testclasses"] }
+    } }
+  },
+  {
+    "name": "create_sap_object",
+    "annotations": { "readOnlyHint": false, "destructiveHint": false },
+    "description": "Prepare a new SAP source object and open its diff for user review. Does NOT write SAP. Supply complete source. FUNC requires an existing function group; this tool creates source only, not FM parameter metadata.",
+    "inputSchema": { "type": "object", "additionalProperties": false, "required": ["object_type", "object_name", "description", "source"], "properties": {
+      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC"] },
+      "object_name": { "type": "string" }, "description": { "type": "string", "maxLength": 60 },
+      "package": { "type": "string" }, "function_group": { "type": "string" },
+      "source": { "type": "string" }, "transport": { "type": "string" }
+    } }
+  },
+  {
+    "name": "modify_sap_object",
+    "annotations": { "readOnlyHint": false, "destructiveHint": false },
+    "description": "Prepare a reviewed change to one source unit. Read first; pass its revision and complete replacement source. Does NOT write SAP. User applies from the draft editor.",
+    "inputSchema": { "type": "object", "additionalProperties": false, "required": ["object_type", "object_name", "base_revision", "source"], "properties": {
+      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC"] },
+      "object_name": { "type": "string" }, "base_revision": { "type": "string" },
+      "include": { "type": "string", "enum": ["main", "definitions", "implementations", "macros", "testclasses"] },
+      "source": { "type": "string" }, "transport": { "type": "string" }
+    } }
+  }
+]

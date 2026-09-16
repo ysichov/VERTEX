@@ -55,7 +55,10 @@ reads from inside one.
 
 ## The VS Code extension
 
-`vscode/` has no dependencies and no build step of its own. Packaging is
+`vscode/` uses the pinned `abap-adt-api` production dependency for SAP source
+operations. Install the lockfile with `npm ci` from `vscode/` before testing or
+packaging. Do not pass `--no-dependencies` to the packager: the ADT client and
+its runtime dependencies must travel in the VSIX. Packaging is
 [vsce](https://www.npmjs.com/package/@vscode/vsce):
 
 ```bash
