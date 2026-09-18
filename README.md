@@ -47,7 +47,8 @@ SAP GUI too.
 
 ## How it fits together
 
-<img width="1373" height="913" alt="image" src="https://github.com/user-attachments/assets/b657ec1c-49e3-4efc-9d31-6d011cd0c9b0" />
+<img width="1592" height="909" alt="image" src="https://github.com/user-attachments/assets/5d10f36d-08d4-444d-b4bc-440cccaf8056" />
+
 
 
 Every service registers under the one `/vertex/` prefix, because that prefix is where the ADT
