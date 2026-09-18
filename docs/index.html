@@ -104,8 +104,7 @@
       the flow, the branch schemes and the metrics now live in VERTEX's own
       <code>src/</code> as <code>ZCL_VX_*</code>, carried out of Simple Data Explorer
       and ACE with the SAP GUI stripped off. Neither of those has to be installed any
-      more; <a href="https://github.com/ysichov/AVE">AVE</a> is the one tool left
-      beside <code>src/</code>, for the versions and the review.</li>
+      more.</li>
   <li><b>Finding a transport request by whose it is.</b> The Versions bar has a user
       field and a <em>released</em> tick: <strong>Find</strong> lists the open requests
       of that user, yours when the field is empty, and the released ones too when it is
@@ -127,23 +126,29 @@
 
 <p>
   VERTEX is a front end and a set of ADT resources. The plugin alone reaches a
-  path nothing answers, and every window will say so. Pull these into the system
-  with abapGit and activate them:
+  path nothing answers, and every window will say so. There is one thing to pull
+  into the system with abapGit and activate:
+  <a href="https://github.com/ysichov/VERTEX">VERTEX</a> itself, its <code>src/</code>
+  folder — the hub, every ADT resource the windows read (tables, joins, the pivot,
+  the metrics, the branch schemes, the version history, the diff and the code review),
+  and the <code>ZAVE_REVIEW</code> table the review is kept in.
 </p>
 
-<ol>
-  <li><a href="https://github.com/ysichov/VERTEX">VERTEX</a>, its <code>src/</code> folder
-      — the hub itself and the ADT resources every window reads: the tables, the joins,
-      the pivot, the metrics and the branch schemes</li>
-  <li><a href="https://github.com/ysichov/AVE">AVE</a> — the versions, diffs and code review</li>
-</ol>
+<p>
+  <a href="https://github.com/ysichov/Simple-Data-Explorer">Simple Data Explorer</a>,
+  <a href="https://github.com/ysichov/ACE">ACE</a> and
+  <a href="https://github.com/ysichov/AVE">AVE</a> are where that logic was written first. It has
+  since been carried into <code>src/</code> as <code>ZCL_VX_*</code>, the SAP GUI stripped off, so
+  none of them has to be installed — they are the source of the code, not a prerequisite.
+  A system that still carries them is unaffected: each prefix answers under its own filter.
+</p>
 
 <p>
-  <a href="https://github.com/ysichov/Simple-Data-Explorer">Simple Data Explorer</a> and
-  <a href="https://github.com/ysichov/ACE">ACE</a> are where that logic was written first. It has
-  since been carried into <code>src/</code> as <code>ZCL_VX_*</code>, the SAP GUI stripped off, so
-  neither has to be installed any more — they are the source of the code, not a prerequisite.
-  A system that still carries them is unaffected: each prefix answers under its own filter.
+  One step is still outstanding. A code review has to be <strong>prepared</strong> in AVE:
+  VERTEX reads a saved review and adds verdicts to it, but the walk that builds one — over
+  the objects of a transport, their versions and their diffs — has not been carried over yet.
+  A transport whose review was never prepared there is reported as having none, never as a
+  clean transport.
 </p>
 
 <p>

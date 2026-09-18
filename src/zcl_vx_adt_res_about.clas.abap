@@ -60,7 +60,7 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
       ( name = `flow`     template = `/vertex/flow/{name}`     handler = 'ZCL_VX_ADT_RES_FLOW' )
       ( name = `versions` template = `/vertex/versions/{name}` handler = 'ZCL_VX_ADT_RES_VERSIONS' )
       ( name = `join`     template = `/vertex/join/{name}`     handler = 'ZCL_VX_ADT_RES_JOIN' )
-      ( name = `review`   template = `/vertex/review/{name}`   handler = 'ZCL_VX_ADT_RES_REVIEW'   backend = `AVE` )
+      ( name = `review`   template = `/vertex/review/{name}`   handler = 'ZCL_VX_ADT_RES_REVIEW' )
       " The routes with no name in them: what they are asked comes as query
       " parameters, and all of those are optional.
       ( name = `requests` template = `/vertex/requests`        handler = 'ZCL_VX_ADT_RES_REQUESTS' )
@@ -83,14 +83,12 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
                       active  = is_active( ls_service-handler ) ) TO lt_state.
     ENDLOOP.
 
-    " A tool is there when the class its resources start from is active. AVE is
-    " the only one left, and now only for the review: the ACE and Simple Data
-    " Explorer cores, and AVE's own version and diff half, were carried into this
-    " repository as ZCL_VX_*, so a window missing the flow, the metrics, the table,
-    " the join or the versions is missing a VERTEX class rather than an outside
-    " tool - which IS_ACTIVE on the handler already says, without a backend to
-    " blame. ZCL_AVE_ACR_REPOSITORY is what the review still starts from.
-    lt_backend = VALUE #( ( name = `AVE` installed = is_active( 'ZCL_AVE_ACR_REPOSITORY' ) ) ).
+    " Nothing outside this repository is read any more. The Simple Data Explorer,
+    " ACE and AVE cores were all carried in as ZCL_VX_*, so a window missing the
+    " table, the join, the flow, the metrics, the versions or the review is
+    " missing a VERTEX class rather than an outside tool - which IS_ACTIVE on the
+    " handler already says, without a backend to blame. The list stays in the
+    " answer, empty, because a window older than this reads it.
 
     " Who is logged on, too: the finder's user field starts from it, and it is
     " the server that knows who that is, not the page.

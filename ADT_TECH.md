@@ -42,15 +42,20 @@ The flow, the branch schemes and the metrics read a GUI-free core carried here f
 read one carried the same way out of
 [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) as `ZCL_VX_TOOLS`,
 `ZCL_VX_PIVOT`, `ZCL_VX_SQL`, `ZCL_VX_DDIC`, `ZCL_VX_APPL`, `ZCL_VX_COMMON` and
-`ZIF_VX_PIVOT_TYPES`. Both repositories are where that logic was written first, not prerequisites:
-neither has to be installed. Versions, review and requests still read
-[AVE](https://github.com/ysichov/AVE) — the one tool left to install beside `src/` — and without
-it those three resources do not activate.
+`ZIF_VX_PIVOT_TYPES`; the version history, the diff, the transport lookup and the review read one
+carried out of [AVE](https://github.com/ysichov/AVE) as `ZCL_VX_VERSION*`, `ZCL_VX_DIFF*`,
+`ZCL_VX_OBJECT_*` and `ZCL_VX_REVIEW_*`, over the `ZAVE_REVIEW` table that ships in `src/` too. All
+three repositories are where that logic was written first, not prerequisites: nothing but `src/`
+has to be installed.
+
+What has not been carried is the walk that builds a review in the first place. Reading one and
+adding verdicts to it is here; preparing one still runs in AVE's SAP GUI.
 
 A system can therefore have part of the ABAP half and not the rest. Every window asks
 `/sap/bc/adt/vertex/about` when it opens: which services the hub has there, whether each one's class
-is active, and whether AVE is installed. The `ACE` entry beside it in `backends` is read from
-`ZCL_VX_ACE_METRICS`, the ported core in `src/`, not from the ACE repository. What the system does
+is active, and whether AVE is installed. AVE is the only entry left in `backends`, and the `review`
+route still names it: the resource activates without it, but a review has to have been prepared
+there for the route to have anything to answer with. What the system does
 not have is not drawn — the
 Join button, the finder, the Review card, the flow modes — and a line under the bar says what is
 missing and why. A window whose own main service is missing opens on that list instead of a blank

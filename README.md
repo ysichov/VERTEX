@@ -26,11 +26,17 @@ renders as HTML.
 
 Status: **early**. All three answer, and each is a fraction of what it was cut from.
 
-Only [AVE](https://github.com/ysichov/AVE) still has to be installed, for Versions and the review.
-The table, the join, the pivot, the metrics and the flow were carried out of Simple Data Explorer
-and ACE into this repository's `src/` as `ZCL_VX_*`, with the SAP GUI stripped off, so neither of
-those two is a prerequisite any more — they are where the logic was written first, not something
-to install.
+Nothing but this repository's `src/` has to be installed. The table, the join and the pivot were
+carried out of Simple Data Explorer, the flow and the metrics out of ACE, and the version history,
+the diff, the transport lookup and the review out of [AVE](https://github.com/ysichov/AVE) — all
+into `src/` as `ZCL_VX_*`, with the SAP GUI stripped off. None of the three is a prerequisite any
+more; they are where the logic was written first. The `ZAVE_REVIEW` table the review is kept in
+ships in `src/` as well.
+
+One thing has not been carried yet: **preparing** a review. VERTEX reads a saved review and adds
+verdicts to it, but the walk that builds one — over the objects of a transport, their versions and
+their diffs — still runs in AVE's SAP GUI. Until that lands, a transport whose review was never
+prepared there is reported as having none.
 
 The division of labour is the same for all three: ABAP computes and returns JSON, the page
 renders it, and the view in between is transport. Nothing about a service lives in the host, so
@@ -249,3 +255,9 @@ user operates lives in the page, which is what lets the same page run under the 
 - The metrics of a whole package, which needs the same treatment the transport just got.
 - The DDIC side of a review. `TABD`, `DOMD` and `DTED` have no line diff, and their page in AVE is
   a field table kept as ready-made html; VERTEX says so rather than rendering it.
+- The join as a graph in SelecTor, drawn as the page's own svg. The candidates already carry their
+  direction and their parent, and the joined tables their ON condition, so the nodes and the edges
+  are in the join resource's answer already and only the drawing is missing. Not mermaid, which
+  ships here for Flow and Metrics: a node has to be clickable to take its table into the join, and
+  a rendered picture is not. The view stays egocentric, the join so far in the middle and one step
+  of candidates around it, because `DD08L` offers dozens of them around a table like `BKPF`.
