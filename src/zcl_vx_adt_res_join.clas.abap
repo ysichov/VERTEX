@@ -53,7 +53,7 @@ CLASS zcl_vx_adt_res_join DEFINITION
              " the internal type the page never sees, so it says rather than
              " the page guessing and offering a SUM the pivot turns into a
              " COUNT behind its back.
-             aggs      TYPE zcl_sde_pivot=>tt_keys,
+             aggs      TYPE zcl_vx_pivot=>tt_keys,
              agg       TYPE string,
            END OF ty_field,
            tt_field TYPE STANDARD TABLE OF ty_field WITH EMPTY KEY.
@@ -64,9 +64,9 @@ CLASS zcl_vx_adt_res_join DEFINITION
     "! the pivot settles one the field's type can carry.
     METHODS read_pivot
       IMPORTING io_request TYPE REF TO if_adt_rest_request
-      EXPORTING et_rows    TYPE zcl_sde_pivot=>tt_keys
-                et_cols    TYPE zcl_sde_pivot=>tt_keys
-                et_vals    TYPE zcl_sde_pivot=>tt_vals.
+      EXPORTING et_rows    TYPE zcl_vx_pivot=>tt_keys
+                et_cols    TYPE zcl_vx_pivot=>tt_keys
+                et_vals    TYPE zcl_vx_pivot=>tt_vals.
 
     "! Reads the indexed selection parameters f1/s1/o1/l1/h1, f2/... - the same
     "! contract the table resource uses - and checks every label against the
@@ -74,8 +74,8 @@ CLASS zcl_vx_adt_res_join DEFINITION
     "! without a word, which would answer with a filter nobody applied.
     METHODS read_filters
       IMPORTING io_request       TYPE REF TO if_adt_rest_request
-                it_field         TYPE zcl_sde_tools=>tt_jfld
-      RETURNING VALUE(rt_filter) TYPE zcl_sde_tools=>tt_filter
+                it_field         TYPE zcl_vx_tools=>tt_jfld
+      RETURNING VALUE(rt_filter) TYPE zcl_vx_tools=>tt_filter
       RAISING   cx_adt_rest.
 
     METHODS not_found
@@ -114,7 +114,7 @@ CLASS zcl_vx_adt_res_join IMPLEMENTATION.
                                                 default   = 0
                                       IMPORTING value     = lv_rows ).
 
-    IF zcl_sde_sql=>exist_table( lv_name ) <> 1 AND zcl_sde_sql=>exist_view( lv_name ) <> 1.
+    IF zcl_vx_sql=>exist_table( lv_name ) <> 1 AND zcl_vx_sql=>exist_view( lv_name ) <> 1.
       not_found( i_type = `table` i_id = CONV string( lv_name ) ).
     ENDIF.
 
@@ -124,7 +124,7 @@ CLASS zcl_vx_adt_res_join IMPLEMENTATION.
     " time, in the order it was made, and the model is replayed from the base
     " table. Same order, same aliases; a client that reorders its own list
     " renames its columns.
-    DATA(lo_tools) = NEW zcl_sde_tools( i_tabname = lv_name ).
+    DATA(lo_tools) = NEW zcl_vx_tools( i_tabname = lv_name ).
 
     DO c_max_tables TIMES.
       CLEAR lv_take.
@@ -237,16 +237,16 @@ CLASS zcl_vx_adt_res_join IMPLEMENTATION.
                       key       = ls_fld-keyflag
                       ddtext    = ls_fld-ddtext
                       datatype  = ls_fld-datatype
-                      aggs      = zcl_sde_pivot=>allowed_aggs( i_key     = lv_fkey
+                      aggs      = zcl_vx_pivot=>allowed_aggs( i_key     = lv_fkey
                                                                it_fields = lt_jfld )
-                      agg       = zcl_sde_pivot=>default_agg( i_key     = lv_fkey
+                      agg       = zcl_vx_pivot=>default_agg( i_key     = lv_fkey
                                                               it_fields = lt_jfld )
                     ) TO lt_fld.
     ENDLOOP.
 
-    DATA(lt_prows) = VALUE zcl_sde_pivot=>tt_keys( ).
-    DATA(lt_pcols) = VALUE zcl_sde_pivot=>tt_keys( ).
-    DATA(lt_pvals) = VALUE zcl_sde_pivot=>tt_vals( ).
+    DATA(lt_prows) = VALUE zcl_vx_pivot=>tt_keys( ).
+    DATA(lt_pcols) = VALUE zcl_vx_pivot=>tt_keys( ).
+    DATA(lt_pvals) = VALUE zcl_vx_pivot=>tt_vals( ).
     read_pivot( EXPORTING io_request = request
                 IMPORTING et_rows    = lt_prows
                           et_cols    = lt_pcols

@@ -1589,6 +1589,164 @@ three checks in this stage were worthless and said so in the same words as a pas
 
 ---
 
+## Stage 33 — the 500 came from the hub that was being replaced
+
+**The pull landed and four windows answered 500.** All 32 objects were written to ALC between
+14:51:09 and 14:51:42 and activated; a minute later `flow`, `table`, `join` and `versions` failed
+while `metrics` answered. The shape of that split invited a theory — metrics keeps its whole chain
+inside VERTEX and short, the other four reach `ZCL_SDE_*`, `ZCL_AVE_*` or the four core classes —
+and the theory was wrong in a way no amount of reading the new code could have shown.
+
+**It was not a half-activated pool.** `INACTIVE_OBJECTS` came back empty, and every one of the nine
+`ZCL_VX_ADT_RES_*` class pools, every `ZCL_VX_ACE_*` and all three `ZIF_VX_ACE_*` stand at
+`PROGDIR-STATE = 'A'`. So the failure was at runtime, and ST22 had six dumps between 14:52:19 and
+14:54:47, every one of them `SYNTAX_ERROR` raised inside `CL_REST_ROUTER` at its
+`CREATE OBJECT lo_object TYPE (ls_match_info-handler_class)`. The router could not load a handler.
+`SYNTAX_ERROR` is a short dump, not an exception, so the `CATCH cx_sy_create_object_error` two lines
+below never sees it and the request ends as a bare 500 with nothing in the body.
+
+**The dump named the program, and it was the old one.**
+`ZCL_SDE_ADT_RES_FLOW==========CP` — `Method "BUILD_STEPS_FLOW" does not exist. There is, however, a
+method with the similar name "STEPS_FLOW".` Exactly one path reaches that class: the BAdI filter
+`/sap/bc/adt/zsde/*`. The request was never addressed to `/vertex/*` at all. **The moved core was
+never called once.** The half that had been checked so carefully was not in the failing path, and
+the half that was failing had been left behind on purpose.
+
+Why metrics worked follows without the theory: `/zsde/metrics` reaches `ZCL_SDE_ADT_RES_METRICS`,
+which calls `ZCL_ACE_METRICS`, where the names still agree. `/zsde/flow` reaches a resource that
+Stage 32 had rewritten to the new call names while it still pointed at the old classes —
+`BUILD_STEPS_FLOW` is the `ZCL_VX_ACE_FLOW` name; `ZCL_ACE_MERMAID` has `STEPS_FLOW`. The old hub
+was half-renamed and nobody ran it afterwards. The Eclipse plugin actually installed is older than
+the rename; the repository itself has no `/zsde/` address left in it, which is precisely why looking
+in the repository said nothing.
+
+**The collision Stage 32 left open is not there.** `BADI_STRING_COND` has the two implementations on
+distinct `STATIC_URI_PATH` filters — `/sap/bc/adt/zsde/*` to `ZCL_SDE_ADT_RES_APP` and
+`/sap/bc/adt/vertex/*` to `ZCL_VX_ADT_RES_APP` — both active, no overlap, and no ICF node for
+either. Stage 32's last bullet is stale.
+
+**Removing the old hub, and what the cross-references said first.** Nothing outside the nine
+`ZCL_SDE_ADT_RES_*` classes refers to them; `ZCL_SDE_ACE_SOURCE` has no consumers at all; and the
+only includes anywhere on ALC referring to `ZCL_ACE_*` or `ZIF_ACE_*` from outside `Z_ACE` are those
+same three. So the hub goes and `Z_ACE` closes on itself, leaving only its own SAP GUI. Deleted into
+`ALCK900465`: `FLOW`, `JOIN`, `METRICS`, and `REQUESTS` — that last by hand, after ADT refused the
+delete twice with a 404 while the object was still there. Still standing: `REVIEW`, `TABLE`,
+`VERSIONS`, `APP`, `ABOUT` and the registration `ZSDE_ADT_RES_APP`, which ADT will not delete through
+this interface at all. All ten also live in Simple Data Explorer, so deleting them only on the system
+is half the job — the next pull of that repository brings them back.
+
+### What went wrong
+
+- **The wrong half was verified, carefully.** Signatures compared against `git show`, all 32 objects
+  checked for both of their files, no `ZCL_ACE_*` literal left anywhere in `src/`, abaplint at the
+  same eight findings as the SDE hub it came from. Every one of those held. None of them touched the
+  code that was failing, because nobody had checked which address the client was calling.
+- **"Nothing calls `/zsde/*`" was asserted, not measured — and a deletion was built on it.** The
+  reasoning was that the repository has no old addresses left, which says nothing about the plugin
+  installed in Eclipse. `ZCL_SDE_ADT_RES_METRICS` was deleted on that basis and it was the class
+  serving the one window that still worked. Recoverable from Simple Data Explorer, but broken by a
+  step whose stated reason was false.
+- **`is_active` cannot see this failure.** `ZCL_VX_ADT_RES_ABOUT=>is_active` reads `PROGDIR` for
+  `STATE = 'A'`, and its comment promises it reports a class "whose tool is not installed". A class
+  whose load will not build is active by that test, so `about` reports `true` for a route that dumps.
+  The check answers a narrower question than the page asks it.
+- **The diagnosis ran without its own tools.** `SAPDiagnose` was unusable for the whole session: the
+  client materialises the schema default `includeSubpackages: false` and the server rejects that
+  field for every action but `unittest` with `type=DEVC`, so `dumps`, `syntax`, `object_state` and
+  `atc` all failed before reaching SAP. The dump headers came out of `SNAP` instead — `FC`, `AP`,
+  `AI` and `AL` in `FLIST` give the error id, program, include and line, which was enough to reach
+  `CL_REST_ROUTER`. The body is a compressed blob, so the "Error analysis" text that named the class
+  had to be read off a screenshot.
+
+**Lesson.** Before proving the code is right, prove the request reaches it. Four careful checks
+against the new hub could not have failed, because nothing was asking the new hub anything.
+
+**How it ended.** The VS Code extension was rebuilt from the current sources - `vertex-abap-0.5.6.vsix`,
+all eight of its ADT addresses `/sap/bc/adt/vertex/*`, none left on `/zsde/` - installed, and the
+join window opened against ALC. It answered, and ST22 gained nothing: the seven dumps of the day
+stayed seven. That is the moved hub's first execution, and it also settles a second question for
+free - `ZCL_SDE_TOOLS` really does run without a window, not just appear to in the source. The
+Eclipse plugin still has to be exported the same way; until it is, it remains on the addresses being
+removed.
+
+---
+
+## Stage 34 — SDE moves in: the join builder without its window
+
+**The seam was three classes.** The hub calls `ZCL_SDE_SQL` for three statics, `ZCL_SDE_PIVOT` for two
+statics and two types, and `ZCL_SDE_TOOLS`, which `ZCL_VX_ADT_RES_JOIN` instantiates and then drives
+through eleven methods. Copied as they stand, those three reach **18 of the 28 SDE objects, 8080
+lines** — the whole tool with its SAP GUI, which is the same answer ACE gave in Stage 32 and for the
+same reason: in ABAP a `TYPE REF TO` is a hard dependency whether the branch runs or not.
+
+**It widens in four places, and none of them is behaviour.** An optional constructor parameter
+`io_viewer` and the field behind it carry `ZCL_SDE_TABLE_VIEWER` — 2787 lines, counting `rtti`,
+`plugins`, `dragdrop`, `dd_data`, `transmitter`, `text_viewer` and `py_cluster_viewer` behind it. One
+declaration, `on_viewer_sel FOR EVENT selection_done OF ZCL_SDE_SEL_OPT`, carries 739 more.
+`INHERITING FROM ZCL_SDE_POPUP` carries 57, and that base is nothing but four `cl_gui_*` fields.
+`ZCL_SDE_APPL` is read seventeen times — five of them for `GV_ROWS` — and brings `ZCL_SDE_RECEIVER`
+with it.
+
+**The behaviour was already there.** Of the twelve methods the hub calls, exactly one touches the
+window: the constructor. Below the facade every access sits behind `CHECK MO_VIEWER IS BOUND` or
+`CHECK VIEWER_ALIVE( )`, including the pivot's `rebind`, whose comment says *"No window: the caller
+has the matrix in ER_RESULT"*. Stage 13 did that work when it replayed the builder over a stateless
+protocol. Nothing had to be made headless; the types had to stop pointing at a window.
+
+**So the cut is fourteen line ranges, not a rewrite.** `ZCL_VX_TOOLS` is 3049 lines against the
+original's 3270. The constructor keeps only its headless branch; `OPEN_LAYOUT_FOR` — which opens a
+second SAP GUI window — says which table the file belongs to and stops, rather than loading a layout
+against the wrong base; `VIEWER_ALIVE` answers `abap_false`; `FILL_SEL_EXTRAS`, `CACHE_WHERE_SELECTION`
+and `SYNC_SEL_PANEL` keep their names and empty out, so a subclass with a window overrides them; and
+the two `rebind` tails become one hook, `ON_RESULT`. Everything else — `cl_gui_html_viewer`,
+`cl_salv_*`, `cl_gui_frontend_services` — is SAP's own and moved untouched.
+
+`ZCL_VX_APPL` is the one object not copied but rewritten: 160 lines down to 63. Out go the icon table,
+the report controls, and `MT_OBJ`, the registry of live windows. Out too go `TRANSMITTER` and
+`RECEIVER` from `SELECTION_DISPLAY_S` — not for tidiness, but because `ZCL_SDE_RECEIVER` holds a
+reference to `ZCL_SDE_TABLE_VIEWER` and one to `ZCL_SDE_SEL_OPT`, so two fields that are always
+initial without a window would have pulled the entire GUI back in behind a type nobody reads.
+
+Seven objects, and the hub now points at them: `ZCL_VX_SQL`, `ZCL_VX_DDIC`, `ZCL_VX_COMMON`,
+`ZIF_VX_PIVOT_TYPES`, `ZCL_VX_PIVOT`, `ZCL_VX_APPL`, `ZCL_VX_TOOLS`. One `ZCL_SDE_` name is left in
+`src/`, in a comment, and it points at `ZCL_SDE_PLUGINS`, which stays where it is.
+
+### What went wrong
+
+- **The recommended approach was wrong, and reading further is what showed it.** The plan was to
+  mirror Stage 32: two interfaces, `ZIF_VX_VIEW` and `ZIF_VX_SEL`, aliased back into the SDE viewer so
+  one implementation serves both. That works when the seam is fields on a window, as it was for ACE.
+  Here `MT_SEL_TAB`'s row type carries `TYPE REF TO ZCL_SDE_TRANSMITTER` and `ZCL_SDE_RECEIVER`, and
+  the receiver points straight back at the viewer and the selection panel — so an aliased interface
+  re-drags exactly what it was drawn to cut. The hook-and-subclass shape replaced it.
+- **abaplint said nothing, a third time.** `check_syntax` alone does not report an unparseable
+  statement. Garbage appended to a moved class left the count at 44 and named nothing; the rule that
+  catches it is `parser_error`, and with it on the same plant went 81 to 82, named and located. The
+  baseline was then recorded per file so the move could be read as a diff: 81 before, 81 after the
+  seven objects landed, 59 once the hub was repointed — the drop being the `ZCL_SDE_` classes the
+  resources could not resolve. The lesson from Stage 32 held and was not enough: a verifier has to be
+  made to fail on the *kind* of error being made, not on any error at all.
+- **Two sections named the same thing.** The class already had a lowercase `protected section.`, and a
+  second `PROTECTED SECTION` was inserted for the hook. Activation would have refused it; abaplint
+  reported `Expected ENDCLASS` against line 1, which is a true statement about the file and says
+  nothing about where the fault is.
+- **The shell ate the quotes, three times.** Regexes and ABAP literals written through a heredoc lost
+  their backslashes and apostrophes, once silently enough that `TYPE 'S' DISPLAY LIKE 'E'` reached the
+  file as `TYPE S DISPLAY LIKE E`. The linter caught that one. Text with literals in it goes through
+  a file, not a command line.
+
+**Lesson.** The seam is measured, not read. Four references, a script over the reference graph, and
+the size of what each one drags — that is what turned "the whole tool comes with it" into fourteen
+edits.
+
+**Not done here.** SDE's own `ZCL_SDE_TOOLS` still holds a full copy of the logic. Until it becomes a
+subclass of `ZCL_VX_TOOLS` that only adds the window, there are two of everything, and the two will
+drift at the first change. `ZCL_SDE_SQL`, `ZCL_SDE_PIVOT` and `ZCL_SDE_COMMON` likewise have VERTEX
+twins now. The AVE classes are the stage after that: `review` and `versions` account for 46 of the 59
+findings that remain.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps
