@@ -93,9 +93,9 @@ CLASS zcl_vx_adt_res_table IMPLEMENTATION.
                                                 default   = 100
                                       IMPORTING value     = lv_rows ).
 
-    " zcl_sde_sql=>read_any_table swallows a missing table and returns nothing,
+    " zcl_vx_sql=>read_any_table swallows a missing table and returns nothing,
     " so the existence check has to happen here to produce a real 404.
-    IF zcl_sde_sql=>exist_table( lv_name ) <> 1.
+    IF zcl_vx_sql=>exist_table( lv_name ) <> 1.
       not_found( i_type = `table` i_id = CONV string( lv_name ) ).
     ENDIF.
 
@@ -127,7 +127,7 @@ CLASS zcl_vx_adt_res_table IMPLEMENTATION.
     CREATE DATA lr_tab TYPE HANDLE lo_tabtype.
     ASSIGN lr_tab->* TO <lt_data>.
 
-    zcl_sde_sql=>read_any_table( EXPORTING i_tabname   = lv_name
+    zcl_vx_sql=>read_any_table( EXPORTING i_tabname   = lv_name
                                            i_where     = lv_where
                                            i_row_count = lv_rows
                                  CHANGING  cr_tab      = lr_tab
