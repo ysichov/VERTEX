@@ -1,7 +1,6 @@
 # ABAP VERTEX Tools
 
-<img width="256" height="256" alt="icon" src="https://github.com/user-attachments/assets/077f3c2e-7c3e-4078-a007-d45660adee59" />
-
+<img width="1592" height="909" alt="image" src="https://github.com/user-attachments/assets/5d10f36d-08d4-444d-b4bc-440cccaf8056" />
 
 
 ### Install
@@ -46,9 +45,6 @@ SAP GUI too.
 
 
 ## How it fits together
-
-<img width="1592" height="909" alt="image" src="https://github.com/user-attachments/assets/5d10f36d-08d4-444d-b4bc-440cccaf8056" />
-
 
 
 Every service registers under the one `/vertex/` prefix, because that prefix is where the ADT
