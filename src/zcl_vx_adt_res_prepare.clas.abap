@@ -55,7 +55,20 @@ CLASS zcl_vx_adt_res_prepare DEFINITION
     METHODS options_for
       IMPORTING i_trkorr          TYPE trkorr
                 i_remote          TYPE verssysnam
-      RETURNING VALUE(rs_options) TYPE zcl_vx_review_build=>ty_options.
+                io_request        TYPE REF TO if_adt_rest_request
+      RETURNING VALUE(rs_options) TYPE zcl_vx_review_build=>ty_options
+      RAISING   cx_adt_rest.
+
+    "! One of the settings that used to be a checkbox on AVE's selection screen.
+    "! Not passed means AVE's own default for it, which is not always "off" and
+    "! is not this resource's to reinvent: a review prepared here and one
+    "! prepared there have to be the same review.
+    METHODS flag_param
+      IMPORTING io_request    TYPE REF TO if_adt_rest_request
+                i_name        TYPE string
+                i_default     TYPE abap_bool
+      RETURNING VALUE(rv_yes) TYPE abap_bool
+      RAISING   cx_adt_rest.
 
     METHODS bad_request
       IMPORTING i_text TYPE string
@@ -244,8 +257,9 @@ CLASS zcl_vx_adt_res_prepare IMPLEMENTATION.
                      name        = ls_part-unit
                      object_name = ls_part-object_name
                      type        = ls_part-type ).
-    DATA(ls_options) = options_for( i_trkorr = CONV #( lv_trkorr )
-                                    i_remote = CONV #( lv_remote ) ).
+    DATA(ls_options) = options_for( i_trkorr   = CONV #( lv_trkorr )
+                                    i_remote   = CONV #( lv_remote )
+                                    io_request = request ).
     DATA lt_versions TYPE zcl_vx_review_build=>ty_t_version_row.
     DATA lt_diag     TYPE string_table.
 
@@ -356,6 +370,21 @@ CLASS zcl_vx_adt_res_prepare IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD flag_param.
+    DATA lv_value TYPE string.
+    io_request->get_uri_query_parameter( EXPORTING name      = i_name
+                                                   mandatory = abap_false
+                                         IMPORTING value     = lv_value ).
+    TRANSLATE lv_value TO UPPER CASE.
+    " Absent and "switched off" are different answers: a caller that says
+    " nothing gets AVE's default, a caller that says no gets no.
+    rv_yes = COND #( WHEN lv_value IS INITIAL                             THEN i_default
+                     WHEN lv_value = `X` OR lv_value = `TRUE`
+                       OR lv_value = `1` OR lv_value = `ON`               THEN abap_true
+                     ELSE                                                      abap_false ).
+  ENDMETHOD.
+
+
   METHOD options_for.
     " The tasks of the request are what a version carries in its KORRNUM; the
     " request itself is their parent. A request with no tasks stands for both.
@@ -378,15 +407,24 @@ CLASS zcl_vx_adt_res_prepare IMPLEMENTATION.
       " not everything since the last release.
       pair_released          = abap_false
       system                 = i_remote
-      " Blame reads the whole version history of every part and VERTEX draws
-      " none of it yet, so it is not paid for here.
-      blame                  = abap_false
-      " Generated code is reviewed like any other object: leaving it out is a
-      " shop convention, and one taken silently would lose objects from the
-      " review without saying so.
-      ignore_generated       = abap_false
-      ignore_case            = abap_false
-      remove_dup             = abap_false
+      " What used to be the checkboxes of AVE's selection screen, with AVE's own
+      " defaults: P_BLAME, P_ICASE and P_IGNGEN all ship ticked, P_RMDP does not.
+      " They are the caller's to change and not this resource's to decide, and
+      " the defaults are copied rather than chosen - a review prepared from here
+      " and one prepared in AVE have to be the same review. Worth knowing what
+      " each costs: BLAME reads the whole version history of every part, and
+      " IGNORE_GENERATED leaves generated classes out of the review entirely.
+      blame                  = flag_param( io_request = io_request i_name = `blame`
+                                           i_default = abap_true )
+      ignore_case            = flag_param( io_request = io_request i_name = `ignorecase`
+                                           i_default = abap_true )
+      ignore_generated       = flag_param( io_request = io_request i_name = `ignoregenerated`
+                                           i_default = abap_true )
+      remove_dup             = flag_param( io_request = io_request i_name = `removedup`
+                                           i_default = abap_false )
+      " Not settings at all any more: NO_TOC, TWO_PANE and COMPACT chose how
+      " AVE's ABAP drew the review, and DEBUG appended its diagnostics to the
+      " drawing. Nothing here draws.
       no_toc                 = abap_false
       two_pane               = abap_false
       compact                = abap_false
