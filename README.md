@@ -4,7 +4,14 @@
 
 
 
-[**Install from the VS Code Marketplace**](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap) · Eclipse ADT: install from `https://ysichov.github.io/VERTEX/` or build it from this repository (see below).
+### Install
+
+**[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
+· **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
+
+The Eclipse address is pasted into **Help → Install New Software → Add → Location**; the steps, and
+getting back out when a p2 install goes wrong, are in [INSTALL.md](INSTALL.md). Building either half
+from this repository instead: [BUILD.md](BUILD.md).
 
 
 ABAP **Version**, **Code** and **Data** Explorer — three words, three SAP GUI tools, one front end
