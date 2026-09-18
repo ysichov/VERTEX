@@ -14,7 +14,7 @@ Shared lower row "Shared pages": "table.html" / "versions.html" / "metrics.html"
 Within the VS Code host (or an attached clearly bounded subpanel): "Local MCP server", "127.0.0.1:37777/mcp", "Streamable HTTP + bearer token". Small note "Configurable port · Token in SecretStorage".
 Two tool chips within this MCP subpanel: "sap_transport_changes" and "sap_transport_diff". Small note "Read-only · AVE prepared reviews". Show this MCP branch going through the VS Code host HTTP connection to the review endpoint in the lower backend tier. It must be obvious that VS Code must be running and supplies the SAP connection.
 
-Lower pale-blue tier: "SAP ABAP backend" / "ADT hub · one BAdI · /sap/bc/adt/zsde/*" / small "Resources in SDE repository".
+Lower pale-blue tier: "SAP ABAP backend" / "ADT hub · one BAdI · /sap/bc/adt/vertex/*" / small "Resources in SDE repository".
 The shared pages connect downward to this hub labeled "JSON over HTTP(S) / ADT".
 Five endpoint chips horizontally: "table", "join", "versions", "review", "metrics". These are parallel endpoints, NOT a chain: no arrows between endpoint chips.
 A distinct violet MCP route connects specifically to "review".

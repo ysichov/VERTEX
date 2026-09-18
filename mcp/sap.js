@@ -31,7 +31,7 @@ function configuration(env = process.env) {
 function createReader(config) {
   return async function read(_context, resource) {
     // Only the shared review tools may choose a path; credentials never follow redirects.
-    if (!resource.startsWith("/sap/bc/adt/zsde/review/")) {
+    if (!resource.startsWith("/sap/bc/adt/vertex/review/")) {
       throw new Error("The standalone reader only supports the SAP review resource.");
     }
     const url = new URL(resource, config.url);

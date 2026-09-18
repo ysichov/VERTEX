@@ -51,7 +51,7 @@ const SERVICES = {
     title: "SelecTor",
     // name, rows, query
     load: function (args) {
-      let p = "/sap/bc/adt/zsde/table/" + upper(args[0])
+      let p = "/sap/bc/adt/vertex/table/" + upper(args[0])
             + "?rows=" + encodeURIComponent(args[1] || 100);
       if (args[2]) {
         p += "&" + args[2];
@@ -60,7 +60,7 @@ const SERVICES = {
     },
     // table, taken, rows, query, cross, build
     join: function (args) {
-      let p = "/sap/bc/adt/zsde/join/" + upper(args[0]);
+      let p = "/sap/bc/adt/vertex/join/" + upper(args[0]);
       let n = 0;
       // The resource stops at the first missing t-parameter, so the numbering
       // has to be contiguous however gappy the list arrives.
@@ -88,7 +88,7 @@ const SERVICES = {
     title: "Metrics",
     // name, type - the ADT type travels with its subtype, CLAS/OC
     load: function (args) {
-      let p = "/sap/bc/adt/zsde/metrics/" + upper(args[0]);
+      let p = "/sap/bc/adt/vertex/metrics/" + upper(args[0]);
       if (args[1]) {
         p += "?type=" + encodeURIComponent(args[1]);
       }
@@ -99,7 +99,7 @@ const SERVICES = {
     // the method's own include, for a program it is not. The flow is about
     // the whole object and names neither.
     flow: function (args) {
-      let p = "/sap/bc/adt/zsde/flow/" + upper(args[0])
+      let p = "/sap/bc/adt/vertex/flow/" + upper(args[0])
             + "?mode=" + encodeURIComponent(args[2] || "scheme");
       if (args[3]) {
         p += "&include=" + encodeURIComponent(args[3]);
@@ -127,7 +127,7 @@ const SERVICES = {
     title: "Versions",
     // name, type, part, ptype, from, to
     load: function (args) {
-      let p = "/sap/bc/adt/zsde/versions/" + upper(args[0])
+      let p = "/sap/bc/adt/vertex/versions/" + upper(args[0])
             + "?type=" + encodeURIComponent(args[1] || "");
       if (args[2]) {
         // A part name is a VRSD key: thirty characters of object padded with
@@ -148,7 +148,7 @@ const SERVICES = {
     // a different review, so the other system belongs in the request. An empty
     // part asks for the summary; a named one asks for that object's blocks.
     review: function (args) {
-      let p = "/sap/bc/adt/zsde/review/" + upper(args[0]);
+      let p = "/sap/bc/adt/vertex/review/" + upper(args[0]);
       let lead = "?";
       if (args[1]) {
         p += lead + "remote=" + encodeURIComponent(args[1]);
@@ -165,9 +165,28 @@ const SERVICES = {
     // stands.
     act: function (args) {
       return SERVICES.versions.review(args);
+    },
+    // user, released - the transport requests of one user, found by whose they
+    // are rather than by number. An empty user is whoever is logged on: the
+    // server knows who that is, and the page does not. "true" adds the released
+    // requests to the open ones.
+    requests: function (args) {
+      let p = "/sap/bc/adt/vertex/requests";
+      let lead = "?";
+      if (args[0]) {
+        p += lead + "user=" + upper(args[0]);
+        lead = "&";
+      }
+      if (args[1]) {
+        p += lead + "released=" + encodeURIComponent(args[1]);
+      }
+      return p;
     }
   }
 };
+
+/* Which services the ABAP half on a system has, whichever window asks. */
+const ABOUT = "/sap/bc/adt/vertex/about";
 
 /* Calls that change something on the server, and which of their arguments is
    the body. Everything not named here reads. */
@@ -207,6 +226,8 @@ const SHIM = [
   "  window.sdeOpen = send('open');",
   "  window.sdeReview = send('review');",
   "  window.sdeAct = send('act');",
+  "  window.sdeRequests = send('requests');",
+  "  window.sdeAbout = send('about');",
   "  window.sdeTitle = send('title');",
   "  window.sdeBrowse = send('browse');",
   "  window.sdeAsk = send('ask');",
@@ -536,6 +557,15 @@ function open(context, service, initial, beside) {
         panel.webview.postMessage({
           type: "result",
           payload: asset(String(args[0] || ""))
+        });
+        return;
+      }
+      if (message.call === "about") {
+        // What the ABAP half on this system has. Every window asks the same
+        // question when it opens, so it is answered here rather than per service.
+        panel.webview.postMessage({
+          type: "result",
+          payload: await fetch(context, ABOUT)
         });
         return;
       }

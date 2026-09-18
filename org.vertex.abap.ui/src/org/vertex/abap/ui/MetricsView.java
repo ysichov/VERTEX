@@ -121,7 +121,7 @@ public class MetricsView extends PageView {
 	 * resource keeps the part in front of the slash.
 	 */
 	private static String path(String object, String type) {
-		String path = "/sap/bc/adt/zsde/metrics/" + object.toUpperCase();
+		String path = "/sap/bc/adt/vertex/metrics/" + object.toUpperCase();
 		if (type != null && !type.isEmpty()) {
 			path = path + "?type=" + type;
 		}
@@ -140,7 +140,7 @@ public class MetricsView extends PageView {
 	 */
 	private static String flowPath(String object, String type, String mode, String include,
 			String unit, String expand, String depth) {
-		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/flow/")
+		StringBuilder path = new StringBuilder("/sap/bc/adt/vertex/flow/")
 			.append(object.toUpperCase())
 			.append("?mode=").append(escape(mode.isEmpty() ? "scheme" : mode));
 		if (!include.isEmpty()) {

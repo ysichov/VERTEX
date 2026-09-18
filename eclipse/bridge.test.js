@@ -24,7 +24,7 @@ test("Selector prepares SAP layouts, exposes authenticated tools and validates t
     }
   });
   assert.equal(result.plan.fields[0], "t0~carrid");
-  assert.ok(paths.every(p => p === "/sap/bc/adt/zsde/join/SFLIGHT"));
+  assert.ok(paths.every(p => p === "/sap/bc/adt/vertex/join/SFLIGHT"));
   await assert.rejects(fetch(endpoint));
 });
 

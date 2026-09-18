@@ -124,6 +124,16 @@ public abstract class PageView extends ViewPart {
 			}
 		};
 
+		// What the ABAP half on this system has. Every window asks it when it
+		// opens and leaves out what is not there, so it belongs to all of them.
+		new BrowserFunction(this.browser, "sdeAbout") {
+			@Override
+			public Object function(Object[] arguments) {
+				queue(() -> read("/sap/bc/adt/vertex/about"));
+				return null;
+			}
+		};
+
 		addFunctions();
 		if (this instanceof SelectorView || this instanceof VersionsView || this instanceof ChatView) {
 			new AssistantBridge(this);

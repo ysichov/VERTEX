@@ -15,7 +15,7 @@ function sap(paths) {
       const url = new URL(path, "http://sap");
       const name = decodeURIComponent(url.pathname.split("/").pop());
       const q = url.searchParams;
-      if (url.pathname.startsWith("/sap/bc/adt/zsde/review/")) {
+      if (url.pathname.startsWith("/sap/bc/adt/vertex/review/")) {
         if (q.get("part")) {
           return JSON.stringify({ request: "devk900578", part: q.get("part").toLowerCase(),
             part_type: "meth", table: true, saved: true, ddic: false, saved_at: "20260913150000",
@@ -100,7 +100,7 @@ test("versions are listed without asking for a line of source", async () => {
     { type: "CLAS", name: "ZCL_AVE_POPUP", part: METHOD, part_type: "meth" });
   assert.match(result.content[0].text, /99998 is the active version/);
   assert.match(result.content[0].text, /00012\s+20260912/);
-  assert.equal(paths[0], "/sap/bc/adt/zsde/versions/ZCL_AVE_POPUP?type=CLAS&part="
+  assert.equal(paths[0], "/sap/bc/adt/vertex/versions/ZCL_AVE_POPUP?type=CLAS&part="
                + encodeURIComponent(METHOD) + "&ptype=METH");
   assert.doesNotMatch(paths.join(" "), /from=|to=/);
 });

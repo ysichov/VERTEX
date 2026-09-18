@@ -51,3 +51,19 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
   assert.equal(copied.length, 2);
   context.exports.deactivate();
 });
+
+test("Versions finds requests by user on a resource of their own", () => {
+  const context = vm.createContext({ exports: {}, __dirname: path.join(__dirname, ".."), console,
+    require: name => name === "vscode" || name === "./mcp" ? {}
+      : name.startsWith("./") ? require(path.join(__dirname, "..", name)) : require(name) });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../extension.js"), "utf8"), context);
+  const build = vm.runInContext("SERVICES.versions.requests", context);
+  assert.equal(build(["", ""]), "/sap/bc/adt/vertex/requests");
+  assert.equal(build(["sychov", ""]), "/sap/bc/adt/vertex/requests?user=SYCHOV");
+  assert.equal(build(["", "true"]), "/sap/bc/adt/vertex/requests?released=true");
+  assert.equal(build(["sychov", "true"]), "/sap/bc/adt/vertex/requests?user=SYCHOV&released=true");
+  assert.match(vm.runInContext("SHIM", context), /window\.sdeRequests = send\('requests'\);/);
+  // Every window asks the same resource what the system has.
+  assert.match(vm.runInContext("SHIM", context), /window\.sdeAbout = send\('about'\);/);
+  assert.equal(vm.runInContext("ABOUT", context), "/sap/bc/adt/vertex/about");
+});

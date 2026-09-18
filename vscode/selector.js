@@ -177,7 +177,7 @@ async function preparePrompt(deps, text, state) {
 /* ---------- reading the layout ---------- */
 
 function layoutPath(table, join) {
-  let p = "/sap/bc/adt/zsde/join/" + encodeURIComponent(upper(table));
+  let p = "/sap/bc/adt/vertex/join/" + encodeURIComponent(upper(table));
   names(join).forEach(function (name, i) {
     p += (i === 0 ? "?" : "&") + "t" + (i + 1) + "=" + encodeURIComponent(name);
   });
