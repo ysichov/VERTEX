@@ -57,7 +57,15 @@ CLASS zcl_vx_adt_res_versions DEFINITION
     "! header. An include that exists and has content is kept whatever its
     "! history says - the history is the next question, not this one.
     METHODS worth_showing
-      IMPORTING is_part       TYPE zif_ave_object=>ty_part
+      IMPORTING is_part       TYPE zif_vx_object=>ty_part
+      RETURNING VALUE(rv_yes) TYPE abap_bool.
+
+    "! A section include holding nothing but its own header line. AVE's rule,
+    "! carried here rather than read from it: sixteen lines of predicate were
+    "! not worth a dependency on the whole review half. Comment lines carry no
+    "! declaration and do not count against it.
+    CLASS-METHODS is_empty_section
+      IMPORTING it_source     TYPE abaptxt255_tab
       RETURNING VALUE(rv_yes) TYPE abap_bool.
 
     "! The section each method of a class is declared in, as the class builder
@@ -71,7 +79,7 @@ CLASS zcl_vx_adt_res_versions DEFINITION
     "! The section one part belongs to: a section part is its own, a method is
     "! looked up, and anything else belongs to none.
     CLASS-METHODS section_of
-      IMPORTING is_part           TYPE zif_ave_object=>ty_part
+      IMPORTING is_part           TYPE zif_vx_object=>ty_part
                 it_section        TYPE tt_section
       RETURNING VALUE(rv_section) TYPE string.
 
@@ -84,7 +92,7 @@ CLASS zcl_vx_adt_res_versions DEFINITION
       IMPORTING i_text TYPE string
       RAISING   cx_adt_res_bad_request.
 
-    " ZCX_AVE carries no text of its own - its constructor only passes the
+    " ZCX_VX carries no text of its own - its constructor only passes the
     " exception it wrapped - so the sentence worth showing is down the chain.
     CLASS-METHODS reason
       IMPORTING ix_error       TYPE REF TO cx_root
@@ -94,10 +102,10 @@ CLASS zcl_vx_adt_res_versions DEFINITION
     " is refused rather than diffed against nothing, which would report the
     " whole part as added and look like a real answer.
     METHODS source_of
-      IMPORTING io_vrsd          TYPE REF TO zcl_ave_vrsd
+      IMPORTING io_vrsd          TYPE REF TO zcl_vx_vrsd
                 i_versno         TYPE versno
       RETURNING VALUE(rt_source) TYPE abaptxt255_tab
-      RAISING   zcx_ave cx_adt_res_bad_request.
+      RAISING   zcx_vx cx_adt_res_bad_request.
 ENDCLASS.
 
 
@@ -178,10 +186,10 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
     ENDIF.
 
     TRY.
-        DATA(lo_object) = NEW zcl_ave_object_factory( )->get_instance(
+        DATA(lo_object) = NEW zcl_vx_object_factory( )->get_instance(
                               object_type = lv_ave
                               object_name = CONV #( lv_name ) ).
-      CATCH zcx_ave.
+      CATCH zcx_vx.
         " The factory raises this for an object it cannot find. Not a 404: the
         " client reads a 404 as a system without this resource installed, and a
         " request typed on the wrong system would send the user to install it.
@@ -212,7 +220,7 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
                                                      THEN section_of( is_part    = ls_part
                                                                       it_section = lt_section ) ) ) TO lt_part.
           ENDLOOP.
-        CATCH zcx_ave INTO DATA(lx_parts).
+        CATCH zcx_vx INTO DATA(lx_parts).
           bad_request( |AVE cannot list the parts of { lv_name }: { reason( lx_parts ) }| ).
       ENDTRY.
 
@@ -239,7 +247,7 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
       " The parts list is cheap by construction, so it is worth asking.
       TRY.
           DATA(lt_known) = lo_object->get_parts( ).
-        CATCH zcx_ave INTO DATA(lx_known).
+        CATCH zcx_vx INTO DATA(lx_known).
           bad_request( |AVE cannot list the parts of { lv_name }: { reason( lx_known ) }| ).
       ENDTRY.
       IF NOT line_exists( lt_known[ object_name = to_upper( lv_part )
@@ -250,12 +258,12 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
       ENDIF.
 
       TRY.
-          DATA(lo_vrsd) = NEW zcl_ave_vrsd( type = CONV #( to_upper( lv_ptype ) )
+          DATA(lo_vrsd) = NEW zcl_vx_vrsd( type = CONV #( to_upper( lv_ptype ) )
                                             name = CONV #( to_upper( lv_part ) ) ).
 
           IF lv_to IS INITIAL.
             LOOP AT lo_vrsd->vrsd_list INTO DATA(ls_vrsd).
-              DATA(lo_version) = NEW zcl_ave_version( ls_vrsd ).
+              DATA(lo_version) = NEW zcl_vx_version( ls_vrsd ).
               APPEND VALUE #( version     = |{ lo_version->version_number }|
                               date        = |{ lo_version->date }|
                               time        = |{ lo_version->time }|
@@ -277,7 +285,7 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
             ENDIF.
           ENDIF.
 
-        CATCH zcx_ave INTO DATA(lx_ver).
+        CATCH zcx_vx INTO DATA(lx_ver).
           bad_request( |AVE cannot read the versions of { lv_part }: { reason( lx_ver ) }| ).
       ENDTRY.
 
@@ -294,7 +302,7 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
         " section by signature rather than by position, because SAP regenerates
         " those includes in an arbitrary order and a plain line diff reports
         " every moved declaration as a deletion and an insertion far apart.
-        DATA(lt_diff) = zcl_ave_popup_diff=>compute_diff( it_old = lt_old
+        DATA(lt_diff) = zcl_vx_diff=>compute_diff( it_old = lt_old
                                                           it_new = lt_new ).
         DATA lv_added   TYPE i.
         DATA lv_deleted TYPE i.
@@ -369,12 +377,30 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " AVE's own rule, and its own predicate: a newly generated class carries
+    " AVE's rule, carried here: a newly generated class carries
     " 'protected section.' and nothing else, which is not a part to review.
     IF ( is_part-type = 'CPUB' OR is_part-type = 'CPRO' OR is_part-type = 'CPRI' )
-       AND zcl_ave_acr_prepare=>is_empty_section( lt_source ) = abap_true.
+       AND is_empty_section( lt_source ) = abap_true.
       rv_yes = abap_false.
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD is_empty_section.
+    LOOP AT it_source INTO DATA(ls_line).
+      DATA(lv_trimmed) = condense( to_upper( CONV string( ls_line ) ) ).
+      CHECK lv_trimmed IS NOT INITIAL.
+      " Comment lines carry no declaration.
+      IF lv_trimmed(1) = '*' OR lv_trimmed(1) = '"'.
+        CONTINUE.
+      ENDIF.
+      IF lv_trimmed <> `PUBLIC SECTION.`
+         AND lv_trimmed <> `PROTECTED SECTION.`
+         AND lv_trimmed <> `PRIVATE SECTION.`.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+    rv_yes = abap_true.
   ENDMETHOD.
 
 
@@ -446,7 +472,7 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
 
   METHOD source_of.
     LOOP AT io_vrsd->vrsd_list INTO DATA(ls_vrsd) WHERE versno = i_versno.
-      rt_source = NEW zcl_ave_version( ls_vrsd )->get_source( ).
+      rt_source = NEW zcl_vx_version( ls_vrsd )->get_source( ).
       RETURN.
     ENDLOOP.
     bad_request( |Version { i_versno } is not in the version directory of this part.| ).

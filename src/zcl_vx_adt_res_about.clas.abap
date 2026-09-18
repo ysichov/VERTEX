@@ -58,12 +58,12 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
       ( name = `table`    template = `/vertex/table/{name}`    handler = 'ZCL_VX_ADT_RES_TABLE' )
       ( name = `metrics`  template = `/vertex/metrics/{name}`  handler = 'ZCL_VX_ADT_RES_METRICS' )
       ( name = `flow`     template = `/vertex/flow/{name}`     handler = 'ZCL_VX_ADT_RES_FLOW' )
-      ( name = `versions` template = `/vertex/versions/{name}` handler = 'ZCL_VX_ADT_RES_VERSIONS' backend = `AVE` )
+      ( name = `versions` template = `/vertex/versions/{name}` handler = 'ZCL_VX_ADT_RES_VERSIONS' )
       ( name = `join`     template = `/vertex/join/{name}`     handler = 'ZCL_VX_ADT_RES_JOIN' )
       ( name = `review`   template = `/vertex/review/{name}`   handler = 'ZCL_VX_ADT_RES_REVIEW'   backend = `AVE` )
       " The routes with no name in them: what they are asked comes as query
       " parameters, and all of those are optional.
-      ( name = `requests` template = `/vertex/requests`        handler = 'ZCL_VX_ADT_RES_REQUESTS' backend = `AVE` )
+      ( name = `requests` template = `/vertex/requests`        handler = 'ZCL_VX_ADT_RES_REQUESTS' )
       ( name = `about`    template = `/vertex/about`           handler = 'ZCL_VX_ADT_RES_ABOUT' ) ).
   ENDMETHOD.
 
@@ -84,11 +84,13 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
     ENDLOOP.
 
     " A tool is there when the class its resources start from is active. AVE is
-    " the only one left: the ACE and Simple Data Explorer cores were carried into
-    " this repository as ZCL_VX_*, so a window missing the flow, the metrics, the
-    " table or the join is missing a VERTEX class rather than an outside tool -
-    " which IS_ACTIVE on the handler already says, without a backend to blame.
-    lt_backend = VALUE #( ( name = `AVE` installed = is_active( 'ZCL_AVE_OBJECT_FACTORY' ) ) ).
+    " the only one left, and now only for the review: the ACE and Simple Data
+    " Explorer cores, and AVE's own version and diff half, were carried into this
+    " repository as ZCL_VX_*, so a window missing the flow, the metrics, the table,
+    " the join or the versions is missing a VERTEX class rather than an outside
+    " tool - which IS_ACTIVE on the handler already says, without a backend to
+    " blame. ZCL_AVE_ACR_REPOSITORY is what the review still starts from.
+    lt_backend = VALUE #( ( name = `AVE` installed = is_active( 'ZCL_AVE_ACR_REPOSITORY' ) ) ).
 
     " Who is logged on, too: the finder's user field starts from it, and it is
     " the server that knows who that is, not the page.

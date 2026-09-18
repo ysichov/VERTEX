@@ -108,7 +108,7 @@ CLASS zcl_vx_adt_res_review DEFINITION
       RETURNING VALUE(rv_json) TYPE string.
 
     METHODS locate_blocks
-      IMPORTING it_diff  TYPE zif_ave_popup_types=>ty_t_diff
+      IMPORTING it_diff  TYPE zif_vx_vers_types=>ty_t_diff
       CHANGING  ct_block TYPE tt_block.
 
     " What the page asks for: one reviewer action on one block.

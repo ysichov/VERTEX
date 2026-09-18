@@ -103,11 +103,11 @@ CLASS zcl_vx_adt_res_requests IMPLEMENTATION.
     SORT lt_trkorr.
     DELETE ADJACENT DUPLICATES FROM lt_trkorr.
 
-    DATA(lo_author) = NEW zcl_ave_author( ).
+    DATA(lo_author) = NEW zcl_vx_author( ).
     LOOP AT lt_trkorr INTO DATA(lv_trkorr).
       " AVE's own header read, so a description is chosen the way the rest of
       " the Versions window chooses it.
-      DATA(ls_head) = zcl_ave_request=>get_header( lv_trkorr ).
+      DATA(ls_head) = zcl_vx_request=>get_header( lv_trkorr ).
       " Gone between the two reads: deleted in the meantime, and not a request
       " of anybody's any more.
       IF ls_head-found = abap_false.
