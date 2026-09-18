@@ -93,7 +93,7 @@ public class SelectorView extends PageView {
 	}
 
 	private static String path(String table, int rows, String query) {
-		String path = "/sap/bc/adt/zsde/table/" + table.toUpperCase() + "?rows=" + rows;
+		String path = "/sap/bc/adt/vertex/table/" + table.toUpperCase() + "?rows=" + rows;
 		if (query != null && !query.isEmpty()) {
 			path = path + "&" + query;
 		}
@@ -103,7 +103,7 @@ public class SelectorView extends PageView {
 	/** @param taken comma-separated table names, in the order they were chosen */
 	private static String joinPath(String table, String taken, int rows, String query,
 			String cross, String build) {
-		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/join/")
+		StringBuilder path = new StringBuilder("/sap/bc/adt/vertex/join/")
 				.append(table.toUpperCase());
 		// The resource stops at the first missing t-parameter, so the numbering
 		// has to be contiguous however gappy the list arrives.

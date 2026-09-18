@@ -113,11 +113,11 @@ final class AssistantBridge implements AutoCloseable {
                         try {
                             // Only the read-only resources used by this window's tools.
                             boolean allowed = service.equals("selector")
-                                ? path.matches("/sap/bc/adt/zsde/join/[^?]+(?:\\?t[0-9]+=.*)?")
+                                ? path.matches("/sap/bc/adt/vertex/join/[^?]+(?:\\?t[0-9]+=.*)?")
                                 : service.equals("chat")
                                 ? path.matches("/sap/bc/adt/repository/informationsystem/search\\?operation=quickSearch&query=[A-Za-z0-9_%*+]+&maxResults=[0-9]+&objectType=(PROG%2FP|CLAS%2FOC|FUGR%2FFF)")
                                   || path.matches(OBJECT + "/(source/main|includes/(definitions|implementations|macros|testclasses))")
-                                : path.startsWith("/sap/bc/adt/zsde/versions/") || path.startsWith("/sap/bc/adt/zsde/review/");
+                                : path.startsWith("/sap/bc/adt/vertex/versions/") || path.startsWith("/sap/bc/adt/vertex/review/");
                             if (!allowed || path.contains("..") || path.matches("(?i).*([?&])(rows|count)=.*"))
                                 throw new IllegalArgumentException("Resource not permitted for the assistant.");
                             answer = view.assistantRead(path, display);

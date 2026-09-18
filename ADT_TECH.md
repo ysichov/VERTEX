@@ -10,16 +10,18 @@ The rest of the project is in [README.md](README.md); how it was built, wrong tu
 ## How it fits together
 
 ```
-Eclipse plugin (Java)  ──ADT session──>  /sap/bc/adt/zsde/table/{name}     ──>  JSON
-                                         /sap/bc/adt/zsde/metrics/{name}
-                                         /sap/bc/adt/zsde/versions/{name}
-                                         /sap/bc/adt/zsde/join/{name}
-                                         /sap/bc/adt/zsde/review/{name}
+Eclipse plugin (Java)  ──ADT session──>  /sap/bc/adt/vertex/table/{name}     ──>  JSON
+                                         /sap/bc/adt/vertex/metrics/{name}
+                                         /sap/bc/adt/vertex/versions/{name}
+                                         /sap/bc/adt/vertex/join/{name}
+                                         /sap/bc/adt/vertex/review/{name}
+                                         /sap/bc/adt/vertex/requests?user=
+                                         /sap/bc/adt/vertex/about
         │
         └── hands the JSON to the page for that service, which renders it
 ```
 
-Every service registers under the one `/zsde/` prefix, because that prefix is where the ADT node
+Every service registers under the one `/vertex/` prefix, because that prefix is where the ADT node
 is claimed and not the identity of the service: a second one would mean a second BAdI
 implementation and a second filter to get wrong.
 
@@ -27,16 +29,28 @@ The page receives finished JSON from the host and knows nothing about SAP. That 
 second host possible: `vscode/extension.js` reads the very same files out of `resources/` and
 answers them over plain HTTPS, and the markup, grids and filters are not written twice.
 
-The ABAP side lives in the [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer)
-repository — one class per service, the application class `ZCL_SDE_ADT_RES_APP` and the BAdI
-registration `ZSDE_ADT_RES_APP`. Its setup, and the traps in registering a custom ADT resource,
-are documented in `ADT.md` there. Install that first; without it every request returns 404 — and
-a window that gets one opens on a setup page naming what to install, with links, rather than a red
-error, because nothing is broken there.
+The ABAP side lives in this repository, under `src/` — one class per service, the application
+class `ZCL_VX_ADT_RES_APP` and the BAdI registration `ZVX_ADT_RES_APP`. The traps in registering
+a custom ADT resource are documented in `ADT.md` in the
+[Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) repository, where the hub
+was first built. Install `src/` first; without it every request returns 404 — and a window that
+gets one opens on a setup page naming what to install, with links, rather than a red error,
+because nothing is broken there.
 
-Each service also needs its own backend in the same system, because the computing is theirs:
-metrics need [ACE](https://github.com/ysichov/ACE), versions need
-[AVE](https://github.com/ysichov/AVE). Without one, that resource does not activate.
+The flow, the branch schemes and the metrics read a GUI-free core carried here from
+[ACE](https://github.com/ysichov/ACE) as `ZCL_VX_ACE_*`, so those services need nothing else
+installed. The table reader, the join and the pivot still read
+[Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer), and versions and review
+still read [AVE](https://github.com/ysichov/AVE). Without one of those, that resource does not
+activate.
+
+A system can therefore have part of the ABAP half and not the rest. Every window asks
+`/sap/bc/adt/vertex/about` when it opens: which services the hub has there, whether each one's class
+is active, and whether AVE and ACE are installed. What the system does not have is not drawn — the
+Join button, the finder, the Review card, the flow modes — and a line under the bar says what is
+missing and why. A window whose own main service is missing opens on that list instead of a blank
+start. A hub older than `/vertex/about` answers it with a 404; the window then keeps every button and
+reports failures when they happen, as before.
 
 ## Prerequisites
 
@@ -79,7 +93,7 @@ IProject project = svc.getAvailableAbapProjects()[0];
 String destinationId = project.getAdapter(IAdtCoreProject.class).getDestinationId();
 
 IRestResource r = AdtRestResourceFactory.createRestResourceFactory()
-        .createResourceWithStatelessSession(URI.create("/sap/bc/adt/zsde/table/T001?rows=100"),
+        .createResourceWithStatelessSession(URI.create("/sap/bc/adt/vertex/table/T001?rows=100"),
                                             destinationId);
 r.addContentHandler(new JsonContentHandler());
 String json = r.get(new NullProgressMonitor(), String.class);

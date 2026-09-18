@@ -112,7 +112,7 @@ async function read(deps, path) {
 }
 
 function reviewPath(request, part, ptype) {
-  let path = "/sap/bc/adt/zsde/review/" + encodeURIComponent(String(request).toUpperCase());
+  let path = "/sap/bc/adt/vertex/review/" + encodeURIComponent(String(request).toUpperCase());
   if (part) {
     path += "?part=" + encodeURIComponent(part)
           + "&ptype=" + encodeURIComponent(ptype || "");

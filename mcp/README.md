@@ -44,7 +44,7 @@ Claude Code / Codex / MCP client
        VERTEX mcp/server.js
              | HTTPS + SAP credentials
              v
- /sap/bc/adt/zsde/review/<transport>
+ /sap/bc/adt/vertex/review/<transport>
              |
        AVE prepared review
 ```

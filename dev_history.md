@@ -1403,6 +1403,192 @@ Both assistants go out in the extension as 0.5.0, listed under AI and Chat as we
 
 ---
 
+## Stage 30 — finding a request by whose it is
+
+**It started as a review of somebody else's tool.** abap-adt-cli pulls a package onto disk and
+pushes it back over ADT, and reading it for ideas turned up two things about VERTEX. One was a
+claim to check: that ADT drops a trailing newline when it stores a source, which would make the
+check Save & Activate runs after a write fail on a write that had succeeded. The other was a
+question from the user: could the Versions window find transports by user, your own by default?
+
+**The claim did not hold, and nothing was changed for it.** `CL_ADT_REST_PLAIN_TEXT_HANDLER` on
+QAS splits the body of a PUT into lines after appending one more line break, and SAP's comment
+says why: otherwise an empty line at the end of the source would be lost. Reading joins the lines
+with CRLF and adds none after the last. Text ending in a newline is stored with an empty last line
+and comes back ending in CRLF — the same text once line endings are normalised, which is all the
+check compares. Half of the claim is true: a source without an empty last line comes back without
+a newline.
+
+**The window now finds requests.** With Transport request chosen, the bar has a user field, a
+*released* switch and Find. The list is open requests by default; the switch adds released ones
+and those whose release has started. A request whose only link to the user is a task under
+somebody else's request is theirs too, the way SE09 lists it, and the status that counts is the
+request's own — a task is often released long before its request. A row opens the request exactly
+as its typed number would. The field left empty means whoever is logged on, and that is decided in
+ABAP: the server knows who is asking, and the page does not know and should not.
+
+The resource is `/sap/bc/adt/zsde/requests` in the Simple Data Explorer hub — the first route with
+no name in it, since both of its parameters are optional. The header of each request comes from
+`ZCL_AVE_REQUEST=>GET_HEADER` and the full name from `ZCL_AVE_AUTHOR`, so a request reads the same
+in this list as in the rest of the window. Eclipse gained one `BrowserFunction`, VS Code one path
+builder and one line of the shim, and the page one answer shape, told apart by what it carries.
+
+### What went wrong
+
+- **The function that was proposed is not the one used.** The plan put to the user named
+  `TRINT_SELECT_REQUESTS`, SE09's own selection. What it does with a task under somebody else's
+  request lives in its form routines, and those were never read: the connection to QAS dropped
+  TLS handshakes intermittently that day, so single reads got through while every write — several
+  requests in a row — failed, and then the servers disconnected altogether, with E19 not answering
+  at all. Two selects on `E070` state the agreed rule outright, the table AVE itself reads for
+  requests and tasks. The switch was reported, not slipped in.
+- **The page's test harness had no styles.** `loadParts` now shows or hides the finder, and the
+  stub elements the tests build had no `style`, so the existing test that goes back to a
+  transport would have thrown. The stub learned it.
+
+Not yet run against a system. The ABAP passed abaplint against stubs of the SAP classes it calls —
+proved to be checking by errors planted in a copy, which it found — the plugin compiled with javac
+26 at release 21 against the bundle pool, and the page was driven in a browser against a stub
+host. 105 tests pass, five of them new.
+
+The finder worked on QAS as soon as the commit was pulled — the route with no name in it included.
+
+**Lesson.** A standard function counts as reuse only once its behaviour on the case that matters
+has been read. Before that it is a guess carrying SAP's name.
+
+---
+
+## Stage 31 — asking the system what it has
+
+**The finder's first click on QAS opened the setup page**, "The ABAP half is not on this system",
+over a system where every other window was working. Nothing was wrong with the page: the commit
+with the new resource had not been pulled yet, so the router answered 404, and a 404 was all the
+page had ever been told about. It could not tell a hub that is not there from a hub one resource
+older than the window. The user asked for exactly that difference — and then for more: ask every
+service when the window opens, and do not draw a button that cannot work.
+
+**One question instead of one per service.** Pinging each resource would have meant a stub in
+seven classes and, in each window, pings sent one after another, because the host's answer
+channel cannot say which question an error belongs to. `ZCL_SDE_ADT_RES_ABOUT` answers for the
+whole hub at once: every service, whether its handler class has an active version, and whether AVE
+and ACE are installed. The list it reads is the router's own — `fill_router` now loops over
+`ZCL_SDE_ADT_RES_ABOUT=>SERVICES` — so what a window is told and what is served are the same rows.
+Whether a class is active is read from `PROGDIR` rather than by loading it: a resource class whose
+tool had since been removed would otherwise stop the answer with a syntax error.
+
+**What a window does with it.** Each window asks before anything else and waits for the answer
+before reading the object it was opened on. What is missing is not drawn — Versions' finder and
+Review card, SelecTor's Join, Metrics' flow and scheme — and a red line under the bar names it and
+the reason: the hub is older than the window, the class is not active, the tool it reads through is
+not installed. A window whose own main service is missing opens on that list. A system that cannot
+say — no hub, or one older than `/zsde/about` — changes nothing, and its setup page says that a
+hub that old cannot tell what it has. A 404 on a system that has everything is shown as the
+resource's own answer rather than as setup: SelecTor asked for a table that does not exist used to
+open the setup page too. The answer also names who is logged on, and the finder's user field
+starts from it; what somebody has typed there is never replaced.
+
+**The parts of an object became a table** in the same round, at the user's request: type, then
+name, headed by the object. The class pool is gone from it, and from the resource rather than the
+page: it is generated, nothing a developer wrote is in its versions, and `WORTH_SHOWING` is the one
+place that decides which parts are worth a row — the assistant's tools read the same list.
+
+**Then a class was split the way SE80 splits it:** each section, then the methods declared in it,
+each marked the way SE80 marks visibility — a green square, a yellow diamond, a red circle — and
+last, under Other, the local includes. The section of a method comes from the resource: the class
+builder's own `SEOCOMPODF` and `SEOREDEF`, and public for a method implementing an interface.
+ACE was the other candidate, since it knows the section by the include a method is declared in.
+The answer is the same, but it would have cost a parse of the whole class on every open and made
+Versions need ACE installed; the user chose the tables.
+
+### What went wrong
+
+- **The first answer was too narrow.** A sentence for the finder's own 404 was offered first; what
+  was wanted was a way to tell every missing piece apart, in every window.
+- **Still no way into QAS.** The ARC-1 servers had dropped out of the session, `abap-adt` points at
+  the local trial and `fr_abap` at E19, which did not answer. The ABAP was checked with abaplint
+  against stubs — the router and the new class both, with planted errors found — and not on a
+  system.
+- **Metrics has no test harness.** Its startup check was driven once from a throwaway script on a
+  stubbed document — the flow modes removed, the setup list for a missing ACE, nothing changed for
+  a hub that cannot say — rather than from a test in the repository.
+
+117 tests pass across the VS Code, Eclipse bridge and MCP suites, nine of them new; the plugin
+compiles with javac 26 at release 21.
+
+---
+
+## Stage 32 — the ABAP moves in, starting with ACE
+
+**The ABAP half lived in three repositories that are not this one.** Simple Data Explorer held the
+ADT hub and the resources; ACE and AVE held the analysis each of those resources reads through.
+A window therefore needed four clones to work, and the tools it borrows from are the user's own
+projects, which move for reasons of their own. The user asked for the ABAP to live here, renamed
+`ZCL_VX_*`, and — after seeing what the dependencies actually were — for ACE to be rewritten so
+that a portable core could be lifted out rather than the whole tool copied.
+
+**Tracing what "necessary" meant was the first surprise.** Walking the references from the nine
+`ZCL_SDE_ADT_RES_*` classes reaches 110 objects — every class and interface in all three
+repositories, with nothing left over. Not because a resource calls all of them, but because
+`ZCL_SDE_TOOLS` inherits from `ZCL_SDE_POPUP` and is instantiated with `NEW`, `ZCL_SDE_SEL_OPT`
+holds a `TYPE REF TO ZCL_SDE_TABLE_VIEWER`, `ZCL_AVE_ACR_STATE` reaches `ZCL_AVE_POPUP`, and
+`ZCL_ACE` is the GUI controller the flow walk keeps its state on. In ABAP a reference is a hard
+dependency whether or not the branch ever runs, so the whole SAP GUI of all three tools came with
+the ADT half. That is what turned a copy into a refactor.
+
+**ACE first, and the seam was narrower than it looked.** Four things tied the analysis to the
+window, and only one of them was real. The seven `ZCL_ACE_PARSE_*` classes named `ZCL_ACE=>TS_CALLS`
+and its kin, but those were already aliases of `ZIF_ACE_PARSE_DATA` — 21 references, a substitution.
+`ZCL_ACE_CODE_HTML` appeared to need `ZCL_ACE_WINDOW`; the reference was in a comment.
+`BUILD_STEPS_FLOW` was locked inside `ZCL_ACE_MERMAID`, which inherits from `ZCL_ACE_POPUP`, yet the
+method itself touches no instance at all — its own doc comment already said it answers "where there
+is no SAP GUI at all". Only `ZCL_ACE_SOURCE_PARSER` was genuinely entangled, and it reads exactly
+six fields off the controller: `MS_SOURCES`, `M_ZCODE`, `M_HIST_DEPTH`, `MT_CALLS`, `MT_STEPS`,
+`M_STEP`.
+
+**`ZIF_ACE_WALK`, because of the aliases.** Those six became an interface. The obvious alternative —
+a context class owning them — needed about 220 edits across six GUI classes, since `MS_SOURCES`
+alone is read 178 times through `MO_WINDOW->`. Instead `ZCL_ACE_WINDOW` implements the interface and
+aliases each name back into itself, so every one of those references still compiles unchanged;
+`MT_STEPS` and `M_STEP` moved there from `ZCL_ACE`, which cost 33 mechanical edits. `ZCL_ACE_WALK`
+implements the same interface and holds nothing else, for a caller with no GUI. The drawing went to
+`ZCL_ACE_FLOW`. ACE ends 250 lines heavier and 619 lighter across twelve files, and its windows
+behave as before.
+
+The core is 21 objects and reaches no GUI class: the parse, the statement grammar, the metrics, the
+code-to-HTML scheme, the walk and the flow picture. Those are now `ZCL_VX_ACE_*` here, together with
+the ten hub objects — `ZCL_VX_ADT_RES_*`, `ZCL_VX_ACE_SOURCE` and the BAdI registration
+`ZVX_ADT_RES_APP`. The flow resource no longer builds a headless viewer; it creates a
+`ZCL_VX_ACE_WALK`, and calls the parser and the scanner in the order `PARSE_PROGRAM` used to call
+them. What still points outside is `ZCL_SDE_SQL`, `ZCL_SDE_TOOLS`, `ZCL_SDE_PIVOT`, `ZCL_SDE_SEL_OPT`
+and the AVE classes — the next two stages.
+
+### What went wrong
+
+- **The linter said nothing, twice.** The rule is `check_syntax`; `syntax_check` is not a rule name
+  and abaplint accepts the file in silence, reporting a contented "0 issues found" over any amount
+  of broken code. Without SAP's standard objects it also skips the check it does run. Both were
+  caught the same way — by planting an error abaplint had to find, and noticing it did not. The
+  check that finally meant something ran with `https://github.com/abaplint/deps` mounted, and was
+  read as a diff against the same run on the pre-refactor tree: 61 findings before, the same 61
+  after, none of them ours.
+- **The only-Z filter would have gone quiet.** `M_ZCODE` was set in the window's constructor, not
+  declared with its value. A bare `ZCL_ACE_WALK` starts at zero, and zero means "descend into SAP's
+  own code" — so the flow window would have quietly grown the whole standard call tree, with no
+  error to notice. The default now sits on the field where it belongs. This is the one that would
+  have shipped.
+- **Still not run on a system.** `ZIF_ACE_WALK` does not exist on QAS, so a syntax check there would
+  only report it missing; nothing was deployed, because deploying was not asked for. Everything
+  above is checked against stubs, and the walk has not executed once.
+- **The BAdI filter is still `/sap/bc/adt/zsde/*`.** The registration moved and was renamed, but the
+  URI it claims did not change, since changing it means changing every client. Two implementations
+  claiming one prefix cannot both be active, so a system with both SDE and VERTEX installed has a
+  collision waiting. Named, not resolved.
+
+**Lesson.** A tool with no test harness is verified by making the verifier fail first. Two of the
+three checks in this stage were worthless and said so in the same words as a passing one.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

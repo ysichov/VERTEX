@@ -10,7 +10,7 @@ assistant into SelecTor and Versions.
 |---|---|
 | **SelecTor** | A table, its selection panel, the join builder and the pivot cross — set up by hand or from a sentence |
 | **Metrics** | ACE's view of a program, class or function group: the flow of a program, the branch scheme of one method, and per-unit code metrics |
-| **Versions** | The version history of an object, the diff between two versions, and the saved code review of a transport request — opened by hand or from a sentence |
+| **Versions** | The version history of an object, the diff between two versions, and the saved code review of a transport request — opened by hand or from a sentence. A request is found by its number or among the requests of a user, yours by default |
 
 ## It needs an ABAP backend
 
@@ -26,13 +26,13 @@ that have to be installed on the SAP system, and the tools they read:
 
 | Repository | What it is for |
 |---|---|
-| [Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer) | The ADT resources every VERTEX window reads |
+| this repository, `src/` | The ADT resources every VERTEX window reads, and the flow, schemes and metrics |
+| [Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer) | The table reader, the join and the pivot |
 | [AVE](https://github.com/ysichov/AVE) | The version history, the diff and the review |
-| [ACE](https://github.com/ysichov/ACE) | The flow, the branch schemes and the metrics |
 
 Pull each with [abapGit](https://abapgit.org) and activate it, then register the
-BAdI implementation `ZSDE_ADT_RES_APP` on `BADI_ADT_REST_RFC_APPLICATION` with
-the filter `STATIC_URI_PATH` covering `/sap/bc/adt/zsde/*`.
+BAdI implementation `ZVX_ADT_RES_APP` on `BADI_ADT_REST_RFC_APPLICATION` with
+the filter `STATIC_URI_PATH` covering `/sap/bc/adt/vertex/*`.
 
 Until that is done, every window opens on a page saying so, with these links on
 it. Nothing is broken; the backend has simply never been put there.

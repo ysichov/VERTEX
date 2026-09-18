@@ -70,7 +70,7 @@ test("real stdio process reads SAP summary and exact padded diff key without VS 
       assert.equal(request.method, "GET");
       assert.equal(request.url.searchParams.get("sap-client"), "100");
       assert.equal(request.auth, "Basic " + Buffer.from("TEST:not-a-real-secret").toString("base64"));
-      assert.equal(request.url.pathname, "/sap/bc/adt/zsde/review/DEVK900593");
+      assert.equal(request.url.pathname, "/sap/bc/adt/vertex/review/DEVK900593");
     }
     assert.equal(requests[1].url.searchParams.get("part"), name);
     assert.equal(requests[1].url.searchParams.get("ptype"), "METH");
@@ -112,9 +112,9 @@ test("SAP errors, redirects and deadlines are explicit; redirects never forward 
     assert.match(reply.result.content[0].text, /HTTP 401/);
     assert.ok(!result.stdout.includes("Sensitive"));
     status = 302;
-    await assert.rejects(read(null, "/sap/bc/adt/zsde/review/TEST"), /Redirects are not followed/);
+    await assert.rejects(read(null, "/sap/bc/adt/vertex/review/TEST"), /Redirects are not followed/);
     assert.equal(calls, 2);
     status = 0;
-    await assert.rejects(read(null, "/sap/bc/adt/zsde/review/TEST"), /timed out/);
+    await assert.rejects(read(null, "/sap/bc/adt/vertex/review/TEST"), /timed out/);
   } finally { sap.closeAllConnections(); await new Promise(resolve => sap.close(resolve)); }
 });

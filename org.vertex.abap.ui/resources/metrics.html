@@ -115,6 +115,11 @@
   .setup p { margin: 0 0 8px; color: var(--muted); }
   .setup ol { margin: 0 0 8px; padding-left: 20px; }
   .setup li { margin-bottom: 4px; }
+  .setup li.ok { color: var(--ins-mark); }
+  .setup li.no { color: var(--danger); }
+  /* What this system does not have, when a part of the window is left out. */
+  .missing { padding: 4px 10px; color: var(--danger); background: var(--surface);
+             border-bottom: 1px solid var(--line); }
   .setup pre.said { margin: 8px 0 0; padding: 8px; background: var(--surface);
                     border: 1px solid var(--line); border-radius: 6px;
                     white-space: pre-wrap; color: var(--muted);
@@ -189,6 +194,7 @@
   <span class="status" id="status"></span>
 </div>
 
+<div class="missing" id="missing" hidden></div>
 <div class="totals hidden" id="totals"></div>
 
 <div class="panes">
@@ -312,6 +318,8 @@ function sdeReady() {
 }
 
 function answered(kind, raw) {
+  // The first thing a window asks is what the system has.
+  if (kind === "about") { tookAbout(raw); return; }
   // Kept so that an answer this window drops can leave it as it was: the
   // request actually being waited for is still on its way, and "reading ..."
   // is still the truth.
@@ -325,7 +333,7 @@ function answered(kind, raw) {
     // the unit list beside it is still good, and wiping it would cost the
     // reader the place they had got to.
     if (kind === "flow" || kind === "asset") { failed(said.replace("NOBACKEND:", "")); }
-    else if (said.indexOf("NOBACKEND:") === 0) { setupPage(said.substring(10)); }
+    else if (said.indexOf("NOBACKEND:") === 0) { notFound(said.substring(10)); }
     else { message(said); }
     status("");
     return;
@@ -586,6 +594,8 @@ function setMode(next) {
    INCLUDE statements, and until the class map is here the useful first sight
    of it is the list of its methods. */
 function modeFor(type) {
+  // Without the flow resource there is only the one picture.
+  if (!usable("flow")) { return "metrics"; }
   var head = String(type || "").toLowerCase();
   return head === "prog" || head === "incl" ? "calls" : "scheme";
 }
@@ -915,6 +925,105 @@ function onDiagramClick(e) {
 }
 
 
+/* ---------- what this system has ----------
+
+   A window reads more than one resource, and a system can have some of them
+   and not others: a Simple-Data-Explorer older than the window, a resource
+   class that did not activate because the tool it reads through is not
+   installed. So the window asks /vertex/about once, when it opens and before
+   anything else. What the system does not have is not drawn, and a line under
+   the bar says what is missing and why: a button that silently went away
+   explains nothing.
+
+   A system that cannot say - nothing answers there, or its hub is older than
+   the question - changes nothing: every button stays, and a failure is
+   reported when it happens, as it always was. */
+
+var USES = [
+  { service: "metrics", what: "the metrics", main: true },
+  { service: "flow", what: "the flow and the branch scheme" }
+];
+
+var have = null;         // what /vertex/about said, by service; null while unsaid
+var backends = {};       // the tools it named, installed or not
+var afterAbout = null;
+
+function askAbout(then) {
+  if (typeof sdeAbout !== "function") { then(); return; }
+  afterAbout = then;
+  waiting = "about";
+  status("checking what this system has ...");
+  sdeAbout();
+}
+
+function tookAbout(raw) {
+  status("");
+  var data = null;
+  if (typeof raw === "string" && raw.indexOf("ERROR:") !== 0) {
+    try { data = JSON.parse(raw); } catch (e) { data = null; }
+  }
+  if (data && Array.isArray(data.services)) {
+    have = {};
+    data.services.forEach(function (s) { have[s.name] = s; });
+    (data.backends || []).forEach(function (b) { backends[b.name] = !!b.installed; });
+  }
+  applyAbout();
+  var then = afterAbout;
+  afterAbout = null;
+  if (then) { then(); }
+}
+
+/* Without the flow resource the mode list keeps Metrics alone. */
+function applyAbout() {
+  if (!usable("flow")) {
+    var box = document.getElementById("mode");
+    for (var i = box.options.length - 1; i >= 0; i--) {
+      if (box.options[i].value !== "metrics") { box.remove(i); }
+    }
+    if (mode !== "metrics") { setMode("metrics"); }
+  }
+  sayMissing();
+}
+
+/* The window proper starts once the system has said what it has. Without the
+   resource this window is for, there is nothing to start. */
+function startWindow() {
+  if (!usable("metrics")) { setupPage(""); return; }
+  if (INITIAL) { load(); }
+}
+
+/* Unknown counts as usable: only a system that said so loses part of the window. */
+function usable(service) {
+  return have === null || (!!have[service] && !!have[service].active);
+}
+
+function whyMissing(service) {
+  var said = have && have[service];
+  if (!said) { return "the Simple-Data-Explorer there is older than this window"; }
+  if (said.backend && backends[said.backend] === false) {
+    return said.handler + " is not active, because " + said.backend + " is not installed";
+  }
+  return said.handler + " is not active";
+}
+
+function sayMissing() {
+  var lost = USES.filter(function (u) { return !u.main && !usable(u.service); });
+  var line = document.getElementById("missing");
+  line.textContent = lost.length === 0 ? "" : "Not on this system: " + lost.map(function (u) {
+    return u.what + " - " + whyMissing(u.service);
+  }).join("; ") + ".";
+  line.hidden = lost.length === 0;
+}
+
+/* A 404 is a setup state while the system has not said what it has, or when it
+   said part of what this window reads is missing. When it has all of it, the
+   404 is the resource's own answer and is shown as one. */
+function notFound(detail) {
+  if (have !== null && USES.every(function (u) { return usable(u.service); })) { message(detail); }
+  else { setupPage(detail); }
+}
+
+
 /* ---------- when the ABAP half is not there ----------
 
    This page is half of VERTEX. The other half is ABAP, and a plugin installed
@@ -981,14 +1090,32 @@ function setupPage(detail) {
   root.innerHTML = "";
 
   var head = document.createElement("h3");
-  head.textContent = "The ABAP half is not on this system";
-  root.appendChild(head);
-
   var why = document.createElement("p");
-  why.textContent = "VERTEX is a page and a set of ADT resources. The page is"
-                  + " installed here; the resources answer nothing, so there is"
-                  + " nothing for it to read.";
+  if (have === null) {
+    head.textContent = "The ABAP half is not on this system";
+    why.textContent = "VERTEX is a page and a set of ADT resources. The page is"
+                    + " installed here; the resources answer nothing, so there is"
+                    + " nothing for it to read. A Simple-Data-Explorer older than"
+                    + " this window cannot say what it has either: if it is"
+                    + " installed, pull it again.";
+  } else {
+    head.textContent = "Part of the ABAP half is missing on this system";
+    why.textContent = "Simple-Data-Explorer answers here, and says what this window can read:";
+  }
+  root.appendChild(head);
   root.appendChild(why);
+
+  if (have !== null) {
+    var found = document.createElement("ul");
+    USES.forEach(function (u) {
+      var li = document.createElement("li");
+      li.className = usable(u.service) ? "ok" : "no";
+      li.textContent = usable(u.service) ? u.what + " - there"
+                                         : u.what + " - missing: " + whyMissing(u.service);
+      found.appendChild(li);
+    });
+    root.appendChild(found);
+  }
 
   var what = document.createElement("ul");
   BACKEND.forEach(function (one) {
@@ -1000,12 +1127,15 @@ function setupPage(detail) {
   root.appendChild(what);
 
   var steps = document.createElement("ol");
-  ["Pull each of those with abapGit and activate it.",
-   "Activate ZCL_SDE_ADT_RES_APP with the rest of the resources.",
-   "Register the BAdI implementation ZSDE_ADT_RES_APP on"
-     + " BADI_ADT_REST_RFC_APPLICATION, with the filter STATIC_URI_PATH"
-     + " covering /sap/bc/adt/zsde/* .",
-   "Reopen this window."].forEach(function (step) {
+  (have !== null
+    ? ["Pull what is missing or older with abapGit and activate it.",
+       "Reopen this window."]
+    : ["Pull each of those with abapGit and activate it.",
+       "Activate ZCL_VX_ADT_RES_APP with the rest of the resources.",
+       "Register the BAdI implementation ZVX_ADT_RES_APP on"
+         + " BADI_ADT_REST_RFC_APPLICATION, with the filter STATIC_URI_PATH"
+         + " covering /sap/bc/adt/vertex/* .",
+       "Reopen this window."]).forEach(function (step) {
     var li = document.createElement("li");
     li.textContent = step;
     steps.appendChild(li);
@@ -1120,12 +1250,13 @@ var INITIAL = /*INIT*/null/*INIT*/;
 fillTypes(INITIAL ? INITIAL.type : null);
 if (INITIAL) {
   document.getElementById("name").value = INITIAL.name;
-  // Wait for the document, so sdeReady exists before the host calls it.
-  window.addEventListener("load", load);
 } else {
   message("Type an object name and press Load.");
   startLink();
 }
+// Wait for the document, so sdeReady exists before the host calls it. What the
+// system has is asked first; an object the window was opened on is read after.
+window.addEventListener("load", function () { askAbout(startWindow); });
 </script>
 </body>
 </html>

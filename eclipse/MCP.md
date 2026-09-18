@@ -22,7 +22,7 @@ server does not expose `sap_table_layout` or apply plans in Selector.
    `vscode/mcp.js`. Keep the checkout available: copying `server.js` alone is
    insufficient. No `npm install` is needed.
 4. Network access to SAP, a SAP user with the necessary read authorizations,
-   and the SDE review resource `/sap/bc/adt/zsde/review/` installed.
+   and the SDE review resource `/sap/bc/adt/vertex/review/` installed.
 5. A review prepared in AVE for the transport you want to inspect.
 
 VS Code does not need to run. This server uses its own SAP settings; it does

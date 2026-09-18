@@ -160,7 +160,7 @@ function prompt(text, state) {
 /* The same paths the window asks for. The part key is sent as it is: its
    blanks are the key, and encodeURIComponent writes them as %20. */
 function versionsPath(type, name, part, partType, from, to) {
-  let p = "/sap/bc/adt/zsde/versions/" + encodeURIComponent(upper(name))
+  let p = "/sap/bc/adt/vertex/versions/" + encodeURIComponent(upper(name))
         + "?type=" + encodeURIComponent(upper(type));
   if (part) {
     p += "&part=" + encodeURIComponent(part) + "&ptype=" + encodeURIComponent(upper(partType));

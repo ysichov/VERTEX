@@ -33,7 +33,7 @@ function sap(paths) {
     fetch: async (_, path) => {
       paths.push(path);
       const url = new URL(path, "http://sap");
-      if (!url.pathname.startsWith("/sap/bc/adt/zsde/join/")) { return "ERROR:unexpected " + path; }
+      if (!url.pathname.startsWith("/sap/bc/adt/vertex/join/")) { return "ERROR:unexpected " + path; }
       if (url.pathname.endsWith("/NOPE")) { return "ERROR:NOBACKEND:HTTP 404: no table NOPE"; }
       const join = [...url.searchParams.entries()].filter(([k]) => /^t\d+$/.test(k)).map(([, v]) => v);
       if (join.includes("SBOOK")) {
@@ -66,8 +66,8 @@ function metadataSap(paths) {
 test("request metadata includes each mentioned table and the exact joined aliases", async () => {
   const paths = [];
   const text = await selector.preparePrompt(metadataSap(paths), "Соедини sflight и scarr, SFLIGHT", {});
-  assert.deepEqual(paths, ["/sap/bc/adt/zsde/join/SFLIGHT", "/sap/bc/adt/zsde/join/SCARR",
-    "/sap/bc/adt/zsde/join/SFLIGHT?t1=SCARR"]);
+  assert.deepEqual(paths, ["/sap/bc/adt/vertex/join/SFLIGHT", "/sap/bc/adt/vertex/join/SCARR",
+    "/sap/bc/adt/vertex/join/SFLIGHT?t1=SCARR"]);
   assert.match(text, /Fields of SCARR/);
   assert.match(text, /t1~carrname/);
   assert.match(text, /t1~carrid = t0~carrid/);
@@ -78,9 +78,9 @@ test("existing joins are retained and new tables follow dictionary candidate ord
   const paths = [];
   const state = { table: "sflight", join: ["scarr"] };
   await selector.preparePrompt(metadataSap(paths), "Добавь SBOOK", state);
-  assert.ok(paths.includes("/sap/bc/adt/zsde/join/SCARR"));
-  assert.ok(paths.includes("/sap/bc/adt/zsde/join/SBOOK"));
-  assert.ok(paths.includes("/sap/bc/adt/zsde/join/SFLIGHT?t1=SCARR&t2=SBOOK"));
+  assert.ok(paths.includes("/sap/bc/adt/vertex/join/SCARR"));
+  assert.ok(paths.includes("/sap/bc/adt/vertex/join/SBOOK"));
+  assert.ok(paths.includes("/sap/bc/adt/vertex/join/SFLIGHT?t1=SCARR&t2=SBOOK"));
   assert.deepEqual(state, { table: "sflight", join: ["scarr"] });
 });
 
@@ -106,15 +106,15 @@ test("changing the base supplies the requested join without inheriting the old j
     return JSON.stringify(data);
   };
   const text = await selector.preparePrompt(deps, "SBOOK SCARR", { table: "SFLIGHT", join: ["SCARR"] });
-  assert.ok(paths.includes("/sap/bc/adt/zsde/join/SBOOK?t1=SCARR"));
-  assert.ok(!paths.some(p => p.startsWith("/sap/bc/adt/zsde/join/SBOOK?") && p.includes("SFLIGHT")));
+  assert.ok(paths.includes("/sap/bc/adt/vertex/join/SBOOK?t1=SCARR"));
+  assert.ok(!paths.some(p => p.startsWith("/sap/bc/adt/vertex/join/SBOOK?") && p.includes("SFLIGHT")));
   assert.match(text, /Layout request: \{"table":"SBOOK","join":\["SCARR"\]\}/);
   assert.match(text, /CANCELLED/);
 });
 
 test("the layout is asked for without a row count, so SAP reads no row", () => {
   const path = selector.layoutPath("sflight", ["scarr", " "]);
-  assert.equal(path, "/sap/bc/adt/zsde/join/SFLIGHT?t1=SCARR");
+  assert.equal(path, "/sap/bc/adt/vertex/join/SFLIGHT?t1=SCARR");
   assert.doesNotMatch(path, /rows/);
 });
 
@@ -204,7 +204,7 @@ test("the SelecTor endpoint serves its own tool and leaves the review on /mcp al
     const called = await post("/selector", { jsonrpc: "2.0", id: 3, method: "tools/call",
       params: { name: "sap_table_layout", arguments: { table: "SFLIGHT", join: ["SCARR"] } } });
     assert.match(called.body.result.content[0].text, /t1~carrname/);
-    assert.deepEqual(paths, ["/sap/bc/adt/zsde/join/SFLIGHT?t1=SCARR"]);
+    assert.deepEqual(paths, ["/sap/bc/adt/vertex/join/SFLIGHT?t1=SCARR"]);
     const crossed = await post("/selector", { jsonrpc: "2.0", id: 4, method: "tools/call",
       params: { name: "sap_transport_changes", arguments: { request: "X" } } });
     assert.equal(crossed.body.error.code, -32602);

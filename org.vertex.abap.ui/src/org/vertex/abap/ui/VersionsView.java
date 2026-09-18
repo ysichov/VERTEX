@@ -76,6 +76,21 @@ public class VersionsView extends PageView {
 		};
 
 
+		// The transport requests of one user, found by whose they are rather than
+		// by number. An empty user is whoever is logged on: the server knows who
+		// that is, and the page does not.
+		new BrowserFunction(this.browser, "sdeRequests") {
+			@Override
+			public Object function(Object[] arguments) {
+				final String user = text(arguments, 0);
+				// "true" for the released requests as well; empty for open ones.
+				final String released = text(arguments, 1);
+				queue(() -> read(requestsPath(user, released)));
+				return null;
+			}
+		};
+
+
 		// Approving, declining and commenting - the first thing in VERTEX that
 		// changes state on the server. The answer is the part as it now stands,
 		// so the page renders one shape whether it asked or wrote.
@@ -101,7 +116,7 @@ public class VersionsView extends PageView {
 	 *               approvals are not the ones of the plain review
 	 */
 	private static String reviewPath(String request, String remote, String partName, String partType) {
-		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/review/")
+		StringBuilder path = new StringBuilder("/sap/bc/adt/vertex/review/")
 				.append(request.toUpperCase());
 		char lead = '?';
 		if (!remote.isEmpty()) {
@@ -111,6 +126,19 @@ public class VersionsView extends PageView {
 		if (!partName.isEmpty()) {
 			path.append(lead).append("part=").append(escape(partName));
 			path.append("&ptype=").append(escape(partType));
+		}
+		return path.toString();
+	}
+
+	private static String requestsPath(String user, String released) {
+		StringBuilder path = new StringBuilder("/sap/bc/adt/vertex/requests");
+		char lead = '?';
+		if (!user.isEmpty()) {
+			path.append(lead).append("user=").append(escape(user.toUpperCase()));
+			lead = '&';
+		}
+		if (!released.isEmpty()) {
+			path.append(lead).append("released=").append(escape(released));
 		}
 		return path.toString();
 	}
@@ -137,7 +165,7 @@ public class VersionsView extends PageView {
 	 */
 	private static String path(String object, String type, String partName, String partType,
 			String from, String to) {
-		StringBuilder path = new StringBuilder("/sap/bc/adt/zsde/versions/")
+		StringBuilder path = new StringBuilder("/sap/bc/adt/vertex/versions/")
 				.append(object.toUpperCase());
 		path.append("?type=").append(escape(type));
 		if (!partName.isEmpty()) {

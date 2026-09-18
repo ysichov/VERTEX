@@ -129,3 +129,32 @@ test("in Eclipse the panel says there is no assistant and cannot be used", () =>
   assert.match(elements.chatlog.children[0].children[1].textContent, /runs in VS Code for now/);
   assert.deepEqual(calls, []);
 });
+
+test("a system without the join resource gets no Join button, and is told why", () => {
+  const { context, elements, calls } = page();
+  context.sdeAbout = () => calls.push(["about"]);
+  context.askAbout(() => {});
+  context.sdeTake = () => JSON.stringify({ services: [
+    { name: "table", handler: "ZCL_SDE_ADT_RES_TABLE", backend: "", active: true }], backends: [] });
+  context.sdeReady();
+  assert.deepEqual(calls, [["about"]]);
+  assert.equal(elements.join.hidden, true);
+  assert.equal(elements.missing.hidden, false);
+  assert.equal(elements.missing.textContent,
+    "Not on this system: the join builder - the Simple-Data-Explorer there is older than this window.");
+});
+
+test("without the table resource SelecTor opens on what is missing, and reads nothing", () => {
+  const { context, elements, calls } = page();
+  context.INITIAL = "SFLIGHT";
+  context.sdeAbout = () => {};
+  context.askAbout(context.startWindow);
+  context.sdeTake = () => JSON.stringify({ services: [
+    { name: "table", handler: "ZCL_SDE_ADT_RES_TABLE", backend: "", active: false },
+    { name: "join", handler: "ZCL_SDE_ADT_RES_JOIN", backend: "", active: true }], backends: [] });
+  context.sdeReady();
+  assert.deepEqual(calls, []);
+  assert.equal(elements.root.className, "setup");
+  assert.equal(elements.root.children[2].children[0].textContent,
+    "reading a table - missing: ZCL_SDE_ADT_RES_TABLE is not active");
+});

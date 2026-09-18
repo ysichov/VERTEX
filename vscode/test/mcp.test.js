@@ -34,7 +34,7 @@ test("MCP authenticates, lists tools, reads a transport and survives reload", as
       name: "sap_transport_changes", arguments: { request: "devk900578" }
     } });
     assert.equal(changes.body.result.isError, undefined);
-    assert.deepEqual(paths, ["/sap/bc/adt/zsde/review/DEVK900578"]);
+    assert.deepEqual(paths, ["/sap/bc/adt/vertex/review/DEVK900578"]);
     const competing = mcp.create({ ...deps, port: Number(new URL(running.url).port) });
     await assert.rejects(competing.start(), /already in use/);
   } finally { await first.stop(); }
