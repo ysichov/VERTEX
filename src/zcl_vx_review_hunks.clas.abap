@@ -4,8 +4,28 @@ CLASS zcl_vx_review_hunks DEFINITION
   CREATE PRIVATE.
 
   PUBLIC SECTION.
+    "! Where the blocks of a review begin and end in a diff, in order.
+    "! This is the one walk that decides it, and the rule cannot be read back
+    "! off the result: a block swallows the context inside an unfinished
+    "! statement, so that a call and its parameters are approved together, and
+    "! it keeps a blank line when more changes follow.
+    "! Anything that has to say which lines belong to block N reads these.
+    "! Restating the rule elsewhere shifts the block numbering the hunk keys are
+    "! built on the first time the two drift apart.
+    CLASS-METHODS hunk_ranges
+      IMPORTING
+        it_diff       TYPE zif_vx_vers_types=>ty_t_diff
+      RETURNING
+        VALUE(result) TYPE zif_vx_review_types=>ty_t_hunk_range.
 
+    CLASS-METHODS filter_moved_lines
+      IMPORTING
+        it_diff        TYPE zif_vx_vers_types=>ty_t_diff
+        iv_ignore_case TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(result)  TYPE zif_vx_vers_types=>ty_t_diff.
 
+  PRIVATE SECTION.
     CLASS-METHODS normalize_moved_line
       IMPORTING
         iv_text        TYPE string

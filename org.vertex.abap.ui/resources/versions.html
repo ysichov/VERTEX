@@ -537,6 +537,8 @@ function sdeReady() {
   // The first thing a window asks is what the system has, and nothing else is
   // asked until that answer is in.
   if (askingAbout) { tookAbout(raw); return; }
+  // A walk is a sequence of answers that belong to it, not to the view.
+  if (walking) { tookPrepare(raw); return; }
   status("");
   if (typeof raw !== "string") { message("No response from the host."); return; }
   if (raw.indexOf("ERROR:") === 0) {
@@ -1301,17 +1303,17 @@ function renderReview(data) {
   root.innerHTML = "";
 
   if (data.table !== true) {
-    // Not an error: AVE answers this with a setup page rather than a failure,
-    // because nothing is broken - there is nowhere for a review to have been
-    // saved yet.
+    // Not an error: nothing is broken, there is simply nowhere for a review to
+    // have been saved yet.
     note("This system has no ZAVE_REVIEW table, so no review can have been saved."
-       + " AVE's own documentation says how to create it.");
+       + " It ships with the ABAP half, under src/.");
     status("");
     return;
   }
   if (data.saved !== true) {
-    note("No review saved for " + data.request + "."
-       + " AVE prepares one; this page only reads it.");
+    // Not the end of the road either: nothing has been built for this request
+    // yet, and building it is what this window is for.
+    offerPrepare(data.request, data.remote || "");
     status("");
     return;
   }
@@ -1326,6 +1328,115 @@ function renderReview(data) {
   var open = (data.objects || []).reduce(function (n, o) { return n + o.open; }, 0);
   status(open === 0 ? "nothing open" : open + (open === 1 ? " block open" : " blocks open"));
 }
+
+/* ---------- building a review ----------
+
+   A review is built one object at a time. The walk lives here rather than in
+   the ABAP half for two reasons: every call is then short enough that nothing
+   has to survive being slow, and stopping is a matter of not asking again -
+   there is no run to interrupt, no dialog to keep alive, and nothing to
+   estimate beforehand. What each object leaves behind is written before the
+   answer comes back, so a window closed halfway costs the object in hand and
+   nothing that was finished before it. */
+
+var walking = null;
+
+function offerPrepare(request, remote) {
+  var root = document.getElementById("root");
+  root.className = "note";
+  root.innerHTML = "";
+
+  var said = document.createElement("p");
+  said.textContent = "No review has been built for " + request + " yet.";
+  root.appendChild(said);
+
+  var how = document.createElement("p");
+  how.className = "hint";
+  how.textContent = "Building one walks the objects of the request, reads the"
+                  + " versions of each and cuts what changed into blocks. It goes"
+                  + " object by object and keeps what it finishes, so stopping"
+                  + " costs the object it is on and nothing before it.";
+  root.appendChild(how);
+
+  // A host older than this page cannot be asked to build anything, and a
+  // button that throws on the first click is worse than no button: say what is
+  // missing instead.
+  if (typeof sdePrepare !== "function") {
+    var older = document.createElement("p");
+    older.className = "hint";
+    older.textContent = "This window cannot build one: the host it runs in is"
+                      + " older than the page. Update the VERTEX plugin or"
+                      + " extension.";
+    root.appendChild(older);
+    return;
+  }
+
+  var build = document.createElement("button");
+  build.textContent = "Build it";
+  build.addEventListener("click", function () {
+    build.disabled = true;
+    startPrepare(request, remote);
+  });
+  root.appendChild(build);
+}
+
+function startPrepare(request, remote) {
+  walking = { request: request, remote: remote, list: null, at: 0, blocks: 0 };
+  status("reading what " + request + " holds ...");
+  sdePrepare(request, remote, "");
+}
+
+function tookPrepare(raw) {
+  if (typeof raw !== "string") { stopWalk("No response from the host."); return; }
+  if (raw.indexOf("ERROR:") === 0) { stopWalk(raw.substring(6)); return; }
+  var data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    stopWalk("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
+    return;
+  }
+
+  if (walking.list === null) {
+    walking.list = data.objects || [];
+    if (walking.list.length === 0) {
+      stopWalk("This request records no object a review could be built from.");
+      return;
+    }
+  } else {
+    walking.blocks = walking.blocks + (data.hunks || 0);
+    walking.at = walking.at + 1;
+  }
+  stepPrepare();
+}
+
+function stepPrepare() {
+  var walk = walking;
+  if (walk.at >= walk.list.length) {
+    walking = null;
+    status(walk.blocks + (walk.blocks === 1 ? " block built" : " blocks built"));
+    // What was just written is what the window shows next.
+    sdeReview(walk.request, walk.remote, "", "");
+    return;
+  }
+  var one = walk.list[walk.at];
+  status(one.objtype + " " + one.obj_name
+       + " (" + (walk.at + 1) + " of " + walk.list.length + ") ...");
+  sdePrepare(walk.request, walk.remote,
+             JSON.stringify({ objtype: one.objtype, object: one.obj_name }));
+}
+
+/* A walk that cannot go on says where it stopped: what is already written
+   stays written, and asking again picks the list up as it now stands. */
+function stopWalk(said) {
+  var at = walking && walking.list ? walking.at : 0;
+  walking = null;
+  status("");
+  message(said + (at > 0 ? String.fromCharCode(10) + String.fromCharCode(10)
+                         + at + (at === 1 ? " object was" : " objects were")
+                         + " prepared before this and are kept." : ""));
+}
+
 
 function heading(text) {
   var h = document.createElement("h3");

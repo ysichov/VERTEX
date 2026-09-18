@@ -22,6 +22,15 @@ CLASS zcl_vx_adt_res_prepare DEFINITION
     METHODS post REDEFINITION.
 
   PRIVATE SECTION.
+    "! Which object to prepare. It travels in the body rather than the query,
+    "! for the same reason a reviewer action does: a write says what it is
+    "! writing, and both hosts already carry a body for a write and nothing for
+    "! a read.
+    TYPES: BEGIN OF ty_command,
+             objtype  TYPE string,
+             object   TYPE string,
+           END OF ty_command.
+
     "! One object of the request. HUNKS is what the stored review already holds
     "! for it - zero means either that it has not been walked yet or that it
     "! carries no changed line, which are not the same thing and are not worth
@@ -163,19 +172,30 @@ CLASS zcl_vx_adt_res_prepare IMPLEMENTATION.
     request->get_uri_attribute( EXPORTING name      = 'name'
                                           mandatory = abap_true
                                 IMPORTING value     = lv_trkorr ).
-    request->get_uri_query_parameter( EXPORTING name      = 'object'
-                                                mandatory = abap_true
-                                      IMPORTING value     = lv_object ).
-    request->get_uri_query_parameter( EXPORTING name      = 'objtype'
-                                                mandatory = abap_true
-                                      IMPORTING value     = lv_objtype ).
     request->get_uri_query_parameter( EXPORTING name      = 'remote'
                                                 mandatory = abap_false
                                       IMPORTING value     = lv_remote ).
+
+    DATA lv_body TYPE string.
+    request->get_body_data(
+      EXPORTING content_handler = NEW cl_adt_rest_plain_text_handler( content_type = if_rest_media_type=>gc_appl_json )
+      IMPORTING data            = lv_body ).
+
+    DATA ls_cmd TYPE ty_command.
+    /ui2/cl_json=>deserialize( EXPORTING json        = lv_body
+                                         pretty_name = /ui2/cl_json=>pretty_mode-low_case
+                               CHANGING  data        = ls_cmd ).
+    lv_object  = ls_cmd-object.
+    lv_objtype = ls_cmd-objtype.
+
     TRANSLATE lv_trkorr  TO UPPER CASE.
     TRANSLATE lv_object  TO UPPER CASE.
     TRANSLATE lv_objtype TO UPPER CASE.
     TRANSLATE lv_remote  TO UPPER CASE.
+
+    IF lv_object IS INITIAL OR lv_objtype IS INITIAL.
+      bad_request( |A prepare has to name the object it is about.| ).
+    ENDIF.
 
     IF zcl_vx_review_store=>has_review_table( ) = abap_false.
       bad_request( |This system has no ZAVE_REVIEW table, so a review has|

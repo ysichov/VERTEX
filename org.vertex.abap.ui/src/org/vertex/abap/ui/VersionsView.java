@@ -108,6 +108,38 @@ public class VersionsView extends PageView {
 				return null;
 			}
 		};
+
+
+		// Building a review. Asked with nothing in the body it says what the
+		// request holds; asked with an object it prepares that one and writes it.
+		// One object per call: a request of any size is then a walk this page
+		// drives, with nothing long enough to be cut off at the other end, and
+		// stopping is a matter of not asking again.
+		new BrowserFunction(this.browser, "sdePrepare") {
+			@Override
+			public Object function(Object[] arguments) {
+				final String request = text(arguments, 0);
+				final String remote = text(arguments, 1);
+				// Already JSON: the page builds it, because the page is what is
+				// walking the list and knows which object it is on.
+				final String body = text(arguments, 2);
+				if (body.isEmpty()) {
+					queue(() -> read(preparePath(request, remote)));
+				} else {
+					queue(() -> write(preparePath(request, remote), body));
+				}
+				return null;
+			}
+		};
+	}
+
+	private static String preparePath(String request, String remote) {
+		StringBuilder path = new StringBuilder("/sap/bc/adt/vertex/prepare/")
+				.append(request.toUpperCase());
+		if (!remote.isEmpty()) {
+			path.append("?remote=").append(escape(remote));
+		}
+		return path.toString();
 	}
 
 	/**

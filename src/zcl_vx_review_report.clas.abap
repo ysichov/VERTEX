@@ -4,9 +4,26 @@ CLASS zcl_vx_review_report DEFINITION
   CREATE PRIVATE.
 
   PUBLIC SECTION.
-                it_hunk_info  TYPE zif_vx_review_types=>ty_t_hunk_info OPTIONAL
-      RETURNING VALUE(result) TYPE string.
+    "! The objects the review lists, in the order it lists them: the parts of a
+    "! class under their class, everything else in sections by kind. Fills in the
+    "! class name where the statistics carry none, and leaves out an object with
+    "! no changed line, which there is nothing to say about.
+    "! Public because a second front end has to show the same objects in the same
+    "! grouping - reading this rather than restating it is what keeps the two
+    "! from drifting into two opinions about where a method belongs.
+    CLASS-METHODS report_objects
+      IMPORTING it_obj_stats  TYPE zif_vx_review_types=>ty_t_obj_stats
+      RETURNING VALUE(result) TYPE zif_vx_review_types=>ty_t_obj_stats.
 
+    "! Section ordering for non-class objects (lower = earlier).
+    CLASS-METHODS cat_order
+      IMPORTING iv_objtype    TYPE versobjtyp
+      RETURNING VALUE(result) TYPE i.
+
+    "! Section heading for non-class objects, grouped by object kind.
+    CLASS-METHODS cat_label
+      IMPORTING iv_objtype    TYPE versobjtyp
+      RETURNING VALUE(result) TYPE string.
 
 ENDCLASS.
 
