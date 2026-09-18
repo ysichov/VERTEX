@@ -1493,7 +1493,7 @@ function joinTable(tables) {
 /* ---------- what this system has ----------
 
    A window reads more than one resource, and a system can have some of them
-   and not others: a Simple-Data-Explorer older than the window, a resource
+   and not others: a VERTEX hub older than the window, a resource
    class that did not activate because the tool it reads through is not
    installed. So the window asks /vertex/about once, when it opens and before
    anything else. What the system does not have is not drawn, and a line under
@@ -1559,7 +1559,7 @@ function usable(service) {
 
 function whyMissing(service) {
   var said = have && have[service];
-  if (!said) { return "the Simple-Data-Explorer there is older than this window"; }
+  if (!said) { return "the VERTEX hub there is older than this window"; }
   if (said.backend && backends[said.backend] === false) {
     return said.handler + " is not active, because " + said.backend + " is not installed";
   }
@@ -1596,15 +1596,16 @@ function notFound(detail) {
    code. Anything else - a system that is down, a password refused - is a
    failure and stays one.
 
-   BACKEND is what THIS window reads, and it differs per window: the resources
-   are one repository, and the tool a window reaches into through them is
-   another. Naming only the first would send somebody who is missing the second
-   to install what they already have. */
+   BACKEND is what THIS window reads, and it can differ per window: the hub's
+   resources are one repository, and a tool a window still reaches into through
+   them - AVE, behind the versions and the review - is another. Naming only the
+   first would send somebody who is missing the second to install what they
+   already have. */
 
 var BACKEND = [
-  { name: "Simple-Data-Explorer",
-    url: "https://github.com/ysichov/Simple-Data-Explorer",
-    why: "the ADT resources every VERTEX window reads" }
+  { name: "VERTEX",
+    url: "https://github.com/ysichov/VERTEX",
+    why: "its src/ folder: the ADT resources every VERTEX window reads" }
 ];
 
 /* Opening a link is the host's business: in Eclipse it would otherwise
@@ -1652,12 +1653,12 @@ function setupPage(detail) {
     head.textContent = "The ABAP half is not on this system";
     why.textContent = "VERTEX is a page and a set of ADT resources. The page is"
                     + " installed here; the resources answer nothing, so there is"
-                    + " nothing for it to read. A Simple-Data-Explorer older than"
+                    + " nothing for it to read. A VERTEX hub older than"
                     + " this window cannot say what it has either: if it is"
                     + " installed, pull it again.";
   } else {
     head.textContent = "Part of the ABAP half is missing on this system";
-    why.textContent = "Simple-Data-Explorer answers here, and says what this window can read:";
+    why.textContent = "The VERTEX hub answers here, and says what this window can read:";
   }
   root.appendChild(head);
   root.appendChild(why);

@@ -38,15 +38,20 @@ gets one opens on a setup page naming what to install, with links, rather than a
 because nothing is broken there.
 
 The flow, the branch schemes and the metrics read a GUI-free core carried here from
-[ACE](https://github.com/ysichov/ACE) as `ZCL_VX_ACE_*`, so those services need nothing else
-installed. The table reader, the join and the pivot still read
-[Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer), and versions and review
-still read [AVE](https://github.com/ysichov/AVE). Without one of those, that resource does not
-activate.
+[ACE](https://github.com/ysichov/ACE) as `ZCL_VX_ACE_*`; the table reader, the join and the pivot
+read one carried the same way out of
+[Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) as `ZCL_VX_TOOLS`,
+`ZCL_VX_PIVOT`, `ZCL_VX_SQL`, `ZCL_VX_DDIC`, `ZCL_VX_APPL`, `ZCL_VX_COMMON` and
+`ZIF_VX_PIVOT_TYPES`. Both repositories are where that logic was written first, not prerequisites:
+neither has to be installed. Versions, review and requests still read
+[AVE](https://github.com/ysichov/AVE) — the one tool left to install beside `src/` — and without
+it those three resources do not activate.
 
 A system can therefore have part of the ABAP half and not the rest. Every window asks
 `/sap/bc/adt/vertex/about` when it opens: which services the hub has there, whether each one's class
-is active, and whether AVE and ACE are installed. What the system does not have is not drawn — the
+is active, and whether AVE is installed. The `ACE` entry beside it in `backends` is read from
+`ZCL_VX_ACE_METRICS`, the ported core in `src/`, not from the ACE repository. What the system does
+not have is not drawn — the
 Join button, the finder, the Review card, the flow modes — and a line under the bar says what is
 missing and why. A window whose own main service is missing opens on that list instead of a blank
 start. A hub older than `/vertex/about` answers it with a 404; the window then keeps every button and

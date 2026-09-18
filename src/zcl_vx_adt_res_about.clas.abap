@@ -56,8 +56,8 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
     " In the order the routes have always been attached in.
     rt_service = VALUE #(
       ( name = `table`    template = `/vertex/table/{name}`    handler = 'ZCL_VX_ADT_RES_TABLE' )
-      ( name = `metrics`  template = `/vertex/metrics/{name}`  handler = 'ZCL_VX_ADT_RES_METRICS'  backend = `ACE` )
-      ( name = `flow`     template = `/vertex/flow/{name}`     handler = 'ZCL_VX_ADT_RES_FLOW'     backend = `ACE` )
+      ( name = `metrics`  template = `/vertex/metrics/{name}`  handler = 'ZCL_VX_ADT_RES_METRICS' )
+      ( name = `flow`     template = `/vertex/flow/{name}`     handler = 'ZCL_VX_ADT_RES_FLOW' )
       ( name = `versions` template = `/vertex/versions/{name}` handler = 'ZCL_VX_ADT_RES_VERSIONS' backend = `AVE` )
       ( name = `join`     template = `/vertex/join/{name}`     handler = 'ZCL_VX_ADT_RES_JOIN' )
       ( name = `review`   template = `/vertex/review/{name}`   handler = 'ZCL_VX_ADT_RES_REVIEW'   backend = `AVE` )
@@ -83,9 +83,12 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
                       active  = is_active( ls_service-handler ) ) TO lt_state.
     ENDLOOP.
 
-    " A tool is there when the class its resources start from is active.
-    lt_backend = VALUE #( ( name = `AVE` installed = is_active( 'ZCL_AVE_OBJECT_FACTORY' ) )
-                          ( name = `ACE` installed = is_active( 'ZCL_VX_ACE_METRICS' ) ) ).
+    " A tool is there when the class its resources start from is active. AVE is
+    " the only one left: the ACE and Simple Data Explorer cores were carried into
+    " this repository as ZCL_VX_*, so a window missing the flow, the metrics, the
+    " table or the join is missing a VERTEX class rather than an outside tool -
+    " which IS_ACTIVE on the handler already says, without a backend to blame.
+    lt_backend = VALUE #( ( name = `AVE` installed = is_active( 'ZCL_AVE_OBJECT_FACTORY' ) ) ).
 
     " Who is logged on, too: the finder's user field starts from it, and it is
     " the server that knows who that is, not the page.
