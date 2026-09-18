@@ -138,7 +138,7 @@ test("what the system does not have is not drawn, and the line under the bar say
   assert.equal(elements.missing.hidden, false);
   assert.equal(elements.missing.textContent, "Not on this system: the saved review - "
     + "ZCL_SDE_ADT_RES_REVIEW is not active, because AVE is not installed; finding requests - "
-    + "the Simple-Data-Explorer there is older than this window.");
+    + "the VERTEX hub there is older than this window.");
 });
 
 test("without the resource the window is for, it opens on what is missing", () => {

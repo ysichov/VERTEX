@@ -141,7 +141,7 @@ test("a system without the join resource gets no Join button, and is told why", 
   assert.equal(elements.join.hidden, true);
   assert.equal(elements.missing.hidden, false);
   assert.equal(elements.missing.textContent,
-    "Not on this system: the join builder - the Simple-Data-Explorer there is older than this window.");
+    "Not on this system: the join builder - the VERTEX hub there is older than this window.");
 });
 
 test("without the table resource SelecTor opens on what is missing, and reads nothing", () => {
