@@ -179,7 +179,7 @@ wrote to stderr.
 
 “Review transport DEVK900123 using the VERTEX SAP tools.”
 
-The SAP SDE ADT resources and AVE must already be installed. A review must first
+The VERTEX ADT resources (this repository's `src/`) and AVE must already be installed. A review must first
 be prepared in AVE. These tools read saved reviews; they do not generate a review,
 approve blocks, or write SAP data. Missing reviews and backend failures are
 reported as errors, not as a clean transport.

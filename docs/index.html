@@ -134,11 +134,19 @@
 </p>
 
 <ol>
-  <li><a href="https://github.com/ysichov/Simple-Data-Explorer">Simple Data Explorer</a>
-      — the ADT resources every VERTEX window reads, and the tables, joins and pivot</li>
-  <li><a href="https://github.com/ysichov/ACE">ACE</a> — the metrics and the branch schemes</li>
+  <li><a href="https://github.com/ysichov/VERTEX">VERTEX</a>, its <code>src/</code> folder
+      — the hub itself and the ADT resources every window reads: the tables, the joins,
+      the pivot, the metrics and the branch schemes</li>
   <li><a href="https://github.com/ysichov/AVE">AVE</a> — the versions, diffs and code review</li>
 </ol>
+
+<p>
+  <a href="https://github.com/ysichov/Simple-Data-Explorer">Simple Data Explorer</a> and
+  <a href="https://github.com/ysichov/ACE">ACE</a> are where that logic was written first. It has
+  since been carried into <code>src/</code> as <code>ZCL_VX_*</code>, the SAP GUI stripped off, so
+  neither has to be installed any more — they are the source of the code, not a prerequisite.
+  A system that still carries them is unaffected: each prefix answers under its own filter.
+</p>
 
 <p>
   One BAdI registration follows, under <code>/sap/bc/adt/vertex/*</code>. The steps

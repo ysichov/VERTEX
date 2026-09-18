@@ -11,13 +11,19 @@ ABAP **Version**, **Code** and **Data** Explorer — three words, three SAP GUI 
 in ABAP Development Tools. Each view reads over the developer's existing ADT connection and
 renders as HTML.
 
-| Word | Backend | What it does | In VERTEX | Status |
+| Word | Comes from | What it does | In VERTEX | Status |
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
 | Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review AVE saved for a request — including approving, declining and commenting on a block. No blame |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit |
 
-Status: **early**. All three answer, and each is a fraction of what its backend can do.
+Status: **early**. All three answer, and each is a fraction of what it was cut from.
+
+Only [AVE](https://github.com/ysichov/AVE) still has to be installed, for Versions and the review.
+The table, the join, the pivot, the metrics and the flow were carried out of Simple Data Explorer
+and ACE into this repository's `src/` as `ZCL_VX_*`, with the SAP GUI stripped off, so neither of
+those two is a prerequisite any more — they are where the logic was written first, not something
+to install.
 
 The division of labour is the same for all three: ABAP computes and returns JSON, the page
 renders it, and the view in between is transport. Nothing about a service lives in the host, so
@@ -34,9 +40,10 @@ SAP GUI too.
 Every service registers under the one `/vertex/` prefix, because that prefix is where the ADT
 node is claimed and not the identity of the service: a second one would mean a second BAdI
 implementation and a second filter to get wrong. The hub lives in this repository, under
-`src/`, together with the analysis the flow and metrics windows read — so there is one thing
+`src/`, together with everything the windows read except the review — so there is one thing
 to install and one registration to make. The prefix used to be `/zsde/`, from the repository
-the hub was first built in; a system carrying both answers each under its own filter.
+the hub was first built in; that hub is gone, and a system still carrying it answers each prefix
+under its own filter.
 
 The page receives finished JSON and knows nothing about SAP. That is what makes the second
 host possible: `vscode/extension.js` reads the very same files and answers them over plain

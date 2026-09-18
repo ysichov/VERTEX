@@ -26,9 +26,13 @@ that have to be installed on the SAP system, and the tools they read:
 
 | Repository | What it is for |
 |---|---|
-| this repository, `src/` | The ADT resources every VERTEX window reads, and the flow, schemes and metrics |
-| [Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer) | The table reader, the join and the pivot |
+| this repository, `src/` | The ADT resources every VERTEX window reads: the table reader, the join, the pivot, the flow, the schemes and the metrics |
 | [AVE](https://github.com/ysichov/AVE) | The version history, the diff and the review |
+
+[Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer) and
+[ACE](https://github.com/ysichov/ACE) are where the table, join, pivot, metrics and flow logic was
+written first. It has since been carried into `src/` as `ZCL_VX_*`, the SAP GUI stripped off, so
+neither has to be installed any more.
 
 Pull each with [abapGit](https://abapgit.org) and activate it, then register the
 BAdI implementation `ZVX_ADT_RES_APP` on `BADI_ADT_REST_RFC_APPLICATION` with
@@ -257,7 +261,7 @@ Versions:
 - *what does transport DEVK900123 change?*
 - *the review of DEVK900123, the BUILD_LAYOUT part*
 - *describe the method GET*, with its review open
-- *review the change of ZCL_SDE_ADT_RES_VERSIONS=>GET: risks and open questions*
+- *review the change of ZCL_VX_ADT_RES_VERSIONS=>GET: risks and open questions*
 
 It needs the Claude Code or Codex extension installed in this VS Code: VERTEX starts the copy
 that comes with it, with your login, in an empty folder, with no other MCP server and no shell.
