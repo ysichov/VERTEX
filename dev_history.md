@@ -1739,11 +1739,14 @@ Seven objects, and the hub now points at them: `ZCL_VX_SQL`, `ZCL_VX_DDIC`, `ZCL
 the size of what each one drags — that is what turned "the whole tool comes with it" into fourteen
 edits.
 
-**Not done here.** SDE's own `ZCL_SDE_TOOLS` still holds a full copy of the logic. Until it becomes a
-subclass of `ZCL_VX_TOOLS` that only adds the window, there are two of everything, and the two will
-drift at the first change. `ZCL_SDE_SQL`, `ZCL_SDE_PIVOT` and `ZCL_SDE_COMMON` likewise have VERTEX
-twins now. The AVE classes are the stage after that: `review` and `versions` account for 46 of the 59
-findings that remain.
+**Not done here.** SDE's own `ZCL_SDE_TOOLS` still holds a full copy of the logic, as do `ZCL_SDE_SQL`,
+`ZCL_SDE_PIVOT` and `ZCL_SDE_COMMON`. That was first written up here as a drift risk to be closed by
+making the SDE class a subclass of the moved one, which was wrong: a ported project is frozen, so the
+old copy is not going to change and cannot drift. What is open is not a refactor but a decision —
+whether one core can be kept replicated between the two at a price worth paying, and if not, the SDE
+side simply ends. Everything is moving to Eclipse and VS Code, so its SAP GUI has nothing to protect.
+The AVE classes are the stage after: `review` and `versions` account for 46 of the 59 findings that
+remain.
 
 ---
 
