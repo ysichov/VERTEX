@@ -112,8 +112,8 @@ same edit as the version bump below.
 ## Versions
 
 The Eclipse bundle and the VS Code extension carry the same number by hand; nothing enforces it.
-Both now use 0.5.6. The built-in Assistant is available in both hosts; Eclipse
+Both now use 0.5.7. The built-in Assistant is available in both hosts; Eclipse
 uses a Node bridge and the window's ADT session.
-`0.5.6.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.5.6.<build timestamp>` on export,
+`0.5.7.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.5.7.<build timestamp>` on export,
 so every export is a distinct version and *Check for Updates* can see it.
 

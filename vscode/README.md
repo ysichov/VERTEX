@@ -22,17 +22,18 @@ is optional: VERTEX can connect to SAP through ADT HTTP by itself and opens
 source in a normal VS Code text editor when SAP ADT is not installed.
 
 This extension is one half of VERTEX. The other half is a set of ADT resources
-that have to be installed on the SAP system, and the tools they read:
+that have to be installed on the SAP system:
 
 | Repository | What it is for |
 |---|---|
-| this repository, `src/` | The ADT resources every VERTEX window reads: the table reader, the join, the pivot, the flow, the schemes and the metrics |
-| [AVE](https://github.com/ysichov/AVE) | The version history, the diff and the review |
+| this repository, `src/` | Every ADT resource a VERTEX window reads — the table, the join, the pivot, the flow, the schemes, the metrics, the version history, the diff and the review — and the `ZAVE_REVIEW` table the review is kept in |
 
-[Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer) and
-[ACE](https://github.com/ysichov/ACE) are where the table, join, pivot, metrics and flow logic was
-written first. It has since been carried into `src/` as `ZCL_VX_*`, the SAP GUI stripped off, so
-neither has to be installed any more.
+[Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer),
+[ACE](https://github.com/ysichov/ACE) and [AVE](https://github.com/ysichov/AVE) are where that
+logic was written first. It has since been carried into `src/` as `ZCL_VX_*`, the SAP GUI stripped
+off, so none of them has to be installed. One step is still outstanding: a review has to be
+**prepared** in AVE. VERTEX reads one and adds verdicts to it; carrying the preparation over is the
+step after this.
 
 Pull each with [abapGit](https://abapgit.org) and activate it, then register the
 BAdI implementation `ZVX_ADT_RES_APP` on `BADI_ADT_REST_RFC_APPLICATION` with
@@ -269,8 +270,8 @@ that comes with it, with your login, in an empty folder, with no other MCP serve
 ## What it writes
 
 Everything reads, with one exception: approving, declining and commenting in a
-code review writes to `ZAVE_REVIEW` through AVE's own code. A review is prepared
-in AVE; this reads it and adds verdicts to it.
+code review writes to `ZAVE_REVIEW`, through this repository's own `ZCL_VX_REVIEW_*`.
+A review is prepared in AVE; this reads it and adds verdicts to it.
 
 ## Licence
 

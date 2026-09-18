@@ -99,7 +99,7 @@ CLASS zcl_vx_adt_res_review DEFINITION
            tt_op TYPE STANDARD TABLE OF ty_op WITH EMPTY KEY.
 
     METHODS part_body
-      IMPORTING is_payload     TYPE zif_ave_acr_types=>ty_saved_payload
+      IMPORTING is_payload     TYPE zif_vx_review_types=>ty_saved_payload
                 i_trkorr       TYPE trkorr
                 i_part         TYPE versobjnam
                 i_ptype        TYPE versobjtyp
@@ -173,12 +173,12 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
     " Not having the table is a state AVE handles with a setup page rather than
     " an error, and so does this: nothing is broken, there is simply nowhere for
     " a review to have been saved.
-    DATA(lv_table) = zcl_ave_acr_repository=>has_review_table( ).
+    DATA(lv_table) = zcl_vx_review_store=>has_review_table( ).
     DATA(lv_saved) = abap_false.
-    DATA ls_payload TYPE zif_ave_acr_types=>ty_saved_payload.
+    DATA ls_payload TYPE zif_vx_review_types=>ty_saved_payload.
 
     IF lv_table = abap_true.
-      lv_saved = zcl_ave_acr_repository=>load_review_payload(
+      lv_saved = zcl_vx_review_store=>load_review_payload(
                    EXPORTING iv_trkorr  = lv_trkorr
                              iv_remote  = lv_remote
                    CHANGING  cs_payload = ls_payload ).
@@ -202,7 +202,7 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
       " in a section by kind, and an object with no changed line left out. A
       " second opinion about where a method belongs would be a bug on sight,
       " because the report is what a reviewer compares this against.
-      DATA(lt_stat) = zcl_ave_acr_report=>report_objects( ls_payload-obj_stats ).
+      DATA(lt_stat) = zcl_vx_review_report=>report_objects( ls_payload-obj_stats ).
 
       LOOP AT lt_stat INTO DATA(ls_stat).
         DATA(lv_approved) = 0.
@@ -226,7 +226,7 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
                         class_name   = ls_stat-class_name
                         group        = COND string(
                           WHEN ls_stat-class_name IS INITIAL
-                          THEN zcl_ave_acr_report=>cat_label( ls_stat-objtype ) )
+                          THEN zcl_vx_review_report=>cat_label( ls_stat-objtype ) )
                         display_name = ls_stat-display_name
                         author       = ls_stat-author
                         author_name  = ls_stat-author_name
@@ -337,13 +337,13 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
       bad_request( |A decline and a comment are the words that go with them.| ).
     ENDIF.
 
-    IF zcl_ave_acr_repository=>has_review_table( ) = abap_false.
+    IF zcl_vx_review_store=>has_review_table( ) = abap_false.
       bad_request( |This system has no ZAVE_REVIEW table, so a review has|
-                && | nowhere to be written. AVE's documentation says how to create it.| ).
+                && | nowhere to be written. It ships in this repository under src/.| ).
     ENDIF.
 
-    DATA ls_payload TYPE zif_ave_acr_types=>ty_saved_payload.
-    IF zcl_ave_acr_repository=>load_review_payload(
+    DATA ls_payload TYPE zif_vx_review_types=>ty_saved_payload.
+    IF zcl_vx_review_store=>load_review_payload(
          EXPORTING iv_trkorr  = lv_trkorr
                    iv_remote  = lv_remote
          CHANGING  cs_payload = ls_payload ) = abap_false.
@@ -362,18 +362,18 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
                 && | was open. Read it again, then write.| ).
     ENDIF.
 
-    DATA lt_obj_stats  TYPE zif_ave_acr_types=>ty_t_obj_stats.
-    DATA lt_hunk_info  TYPE zif_ave_acr_types=>ty_t_hunk_info.
-    DATA lt_diff_cache TYPE zif_ave_acr_types=>ty_t_diff_cache.
-    DATA lt_diff_data  TYPE zif_ave_acr_types=>ty_t_diff_data.
-    DATA lt_approved   TYPE zif_ave_acr_types=>ty_approved.
-    DATA lt_declined   TYPE zif_ave_acr_types=>ty_approved.
-    DATA lt_notes      TYPE zif_ave_acr_types=>ty_t_decline_notes.
-    DATA lt_threads    TYPE zif_ave_acr_types=>ty_t_hunk_threads.
-    DATA lt_actions    TYPE zif_ave_acr_types=>ty_t_hunk_actions.
-    DATA lt_timings    TYPE zif_ave_acr_types=>ty_t_part_timings.
+    DATA lt_obj_stats  TYPE zif_vx_review_types=>ty_t_obj_stats.
+    DATA lt_hunk_info  TYPE zif_vx_review_types=>ty_t_hunk_info.
+    DATA lt_diff_cache TYPE zif_vx_review_types=>ty_t_diff_cache.
+    DATA lt_diff_data  TYPE zif_vx_review_types=>ty_t_diff_data.
+    DATA lt_approved   TYPE zif_vx_review_types=>ty_approved.
+    DATA lt_declined   TYPE zif_vx_review_types=>ty_approved.
+    DATA lt_notes      TYPE zif_vx_review_types=>ty_t_decline_notes.
+    DATA lt_threads    TYPE zif_vx_review_types=>ty_t_hunk_threads.
+    DATA lt_actions    TYPE zif_vx_review_types=>ty_t_hunk_actions.
+    DATA lt_timings    TYPE zif_vx_review_types=>ty_t_part_timings.
 
-    zcl_ave_acr_state=>apply_saved_payload(
+    zcl_vx_review_state=>apply_saved_payload(
       EXPORTING
         is_payload          = ls_payload
         " AVE drops generated Gateway classes here when its own setting says to.
@@ -399,12 +399,12 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
     ENDIF.
 
     IF c_allow_self_review = abap_false
-       AND zcl_ave_acr_state=>is_own_hunk( iv_hunk_key  = ls_cmd-hunk_key
+       AND zcl_vx_review_state=>is_own_hunk( iv_hunk_key  = ls_cmd-hunk_key
                                            it_hunk_info = lt_hunk_info ) = abap_true.
       bad_request( |A block is reviewed by somebody other than whoever wrote it.| ).
     ENDIF.
 
-    zcl_ave_acr_state=>apply_reviewer_action(
+    zcl_vx_review_state=>apply_reviewer_action(
       EXPORTING
         iv_hunk_key      = ls_cmd-hunk_key
         iv_action        = CONV #( ls_cmd-action )
@@ -417,7 +417,7 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
         ct_hunk_actions  = lt_actions
         ct_hunk_threads  = lt_threads ).
 
-    DATA(ls_next) = zcl_ave_acr_state=>build_save_payload(
+    DATA(ls_next) = zcl_vx_review_state=>build_save_payload(
       is_existing_payload = ls_payload
       iv_trkorr           = lv_trkorr
       it_obj_stats        = lt_obj_stats
@@ -431,7 +431,7 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
       it_hunk_threads     = lt_threads
       it_timings          = lt_timings ).
 
-    IF zcl_ave_acr_repository=>save_review_payload(
+    IF zcl_vx_review_store=>save_review_payload(
          iv_trkorr  = lv_trkorr
          iv_remote  = lv_remote
          is_payload = ls_next ) = abap_false.
@@ -518,7 +518,7 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
       " blocks were cut from is the one taken from the same pair. A part can
       " have more than one row: the comparison against the remote system is
       " another, and it is not this diff.
-      DATA ls_pick  TYPE zif_ave_acr_types=>ty_diff_data.
+      DATA ls_pick  TYPE zif_vx_review_types=>ty_diff_data.
       DATA lv_found TYPE abap_bool.
       LOOP AT is_payload-diff_data INTO DATA(ls_diff).
         IF ls_diff-key-objtype <> i_ptype OR ls_diff-key-objname <> i_part
@@ -590,14 +590,14 @@ CLASS zcl_vx_adt_res_review IMPLEMENTATION.
     " here. AVE cuts its blocks while it walks the diff, and the rule is not one
     " a reader of the result can reproduce: a block swallows the context inside
     " an unfinished statement, and keeps a blank line when more changes follow.
-    " ZCL_AVE_ACR_HUNK_HTML=>HUNK_RANGES is that walk, and the html of a block
+    " ZCL_VX_REVIEW_HUNKS=>HUNK_RANGES is that walk, and the html of a block
     " is rendered from what it returns - so these are the very operations the
     " saved review was cut from.
     "
     " A block is recognised by the line it opens on. Blocks open on strictly
     " increasing lines, because whatever ends one block is a line of the new
     " version, and START_LINE is what the payload keeps.
-    DATA(lt_range) = zcl_ave_acr_hunk_html=>hunk_ranges( it_diff ).
+    DATA(lt_range) = zcl_vx_review_hunks=>hunk_ranges( it_diff ).
 
     LOOP AT ct_block ASSIGNING FIELD-SYMBOL(<block>).
       READ TABLE lt_range INTO DATA(ls_range)
