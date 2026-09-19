@@ -20,13 +20,14 @@ and everything new happens on this side.
 This extension is one half of VERTEX. The other half is the ADT resources in this
 repository's `src/`. Pull it with [abapGit](https://abapgit.org) and activate it.
 
+Until then, every window just shows a page explaining that the backend isn't installed yet.
+
+
 [SAP ABAP Development Tools](https://marketplace.visualstudio.com/items?itemName=SAPSE.adt-vscode)
 is recommended for the ABAP editor, navigation and standard ADT commands. It
 is optional: VERTEX can connect to SAP through ADT HTTP by itself and opens
 source in a normal VS Code text editor when SAP ADT is not installed.
 
-Until that is done, every window opens on a page saying so. Nothing is broken; the
-backend has simply never been put there.
 
 ## Settings
 
@@ -53,32 +54,18 @@ development systems often have; it is off by default on purpose.
 
 ## Commands
 
-- **VERTEX: Search SAP Code** — manual fallback to find programs, global classes and function modules
-  by exact name or wildcard; select a match to open active ABAP source.
-- **VERTEX: Read SAP Code** — open one exact PROG, CLAS or FUNC object.
-- **VERTEX: Read Class Include** — open local definitions, implementations, macros
-  or test classes separately from the class's main source.
-- **VERTEX: Edit SAP Code Draft** — turn the opened SAP source into an editable
-  draft with a before/after diff. No SAP write happens yet.
-- **VERTEX: Create SAP Object Draft** — prepare a program/class in an existing
-  package or a function module in an existing function group.
-- **VERTEX: Apply SAP Code Draft** — review the diff, supply a transport where
-  needed and confirm the target system. SAP locks the object, checks syntax,
-  saves, activates and verifies the active source. Changed active/inactive
-  source is rejected before overwrite. Drafts stay bound to the system/user
-  they were read from even when the active system changes.
-- **VERTEX: Discard SAP Code Draft** — discard a pending change without writing SAP.
-
-The extension API exposes `sapCode.schemas`, `sapCode.instructions`, `sapCode.onEvent` and
-`sapCode.execute(tool, arguments)`. Its JSON tools are `search_sap_objects`,
-`read_sap_object`, `create_sap_object` and `modify_sap_object`; the chat adds
-`open_sap_object` and `review_sap_changes`. Create/modify return a change ID and
-open a draft; applying it is always a separate user action. Prompts live in
-`prompts/tools/sap-code.md`, schemas in `schemas/sap-code-tools.json`.
-
 - **VERTEX: Open Panel** — also available from the VERTEX icon in the Activity Bar.
   The panel holds the VERTEX chat, the active SAP system with system
   selection/settings, and quick-launch buttons for SelecTor, Metrics and Versions.
+- **VERTEX: Open SelecTor**
+- **VERTEX: Open Metrics**
+- **VERTEX: Open Versions**
+- **VERTEX: Switch System**
+- **VERTEX: Forget Password**
+- **VERTEX: Copy the MCP address for Claude Code or Codex**
+- **VERTEX: Review & Activate** — editor title or context menu; opens the block-by-block
+  Code Change panel described below.
+- **VERTEX: Save & Activate** — editor title; saves the whole tab without the block review.
 
 ## VERTEX chat
 
@@ -108,14 +95,7 @@ blocks with context lines:
   checks syntax, saves, activates and verifies the active source. If the active
   or inactive source changed since it was read, nothing is overwritten.
 
-**Save & Activate** in the editor title saves the whole tab without the block
-review. Ctrl+S saves the local copy only, never SAP.
-- **VERTEX: Open SelecTor**
-- **VERTEX: Open Metrics**
-- **VERTEX: Open Versions**
-- **VERTEX: Switch System**
-- **VERTEX: Forget Password**
-- **VERTEX: Copy the MCP address for Claude Code or Codex**
+Ctrl+S saves the local copy only, never SAP.
 
 ## Development status
 
