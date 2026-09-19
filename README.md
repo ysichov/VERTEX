@@ -20,7 +20,7 @@ renders as HTML.
 | Word | Comes from | What it does | In VERTEX | Status |
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
-| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review AVE saved for a request — including approving, declining and commenting on a block. No blame |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review saved for a request — including approving, declining and commenting on a block. No blame |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit |
 
 Status: **early**. All three answer, and each is a fraction of what it was cut from.
@@ -29,13 +29,14 @@ Nothing but this repository's `src/` has to be installed. The table, the join an
 carried out of Simple Data Explorer, the flow and the metrics out of ACE, and the version history,
 the diff, the transport lookup and the review out of [AVE](https://github.com/ysichov/AVE) — all
 into `src/` as `ZCL_VX_*`, with the SAP GUI stripped off. None of the three is a prerequisite any
-more; they are where the logic was written first. The `ZAVE_REVIEW` table the review is kept in
-ships in `src/` as well.
+more: they are where the logic was written first, and they are not developed further — everything
+new happens on this side. The `ZAVE_REVIEW` table the review is kept in ships in `src/` as well.
 
-One thing has not been carried yet: **preparing** a review. VERTEX reads a saved review and adds
-verdicts to it, but the walk that builds one — over the objects of a transport, their versions and
-their diffs — still runs in AVE's SAP GUI. Until that lands, a transport whose review was never
-prepared there is reported as having none.
+Building a review is here too, not only reading one. A Versions window opened on a request that
+has none offers to build it, and walks the objects one at a time — reading the versions of each,
+diffing them, cutting what changed into blocks — writing each object before it moves to the next.
+One object per call, so nothing has to survive being slow and stopping costs the object in hand.
+AVE's SAP GUI writes into the same `ZAVE_REVIEW`, so a review built either way is read by both.
 
 The division of labour is the same for all three: ABAP computes and returns JSON, the page
 renders it, and the view in between is transport. Nothing about a service lives in the host, so
@@ -74,11 +75,11 @@ a conflict check against the current SAP source. Details:
 ### Transport reviews over MCP
 
 Beyond its own chat, VERTEX hands SAP to the assistants already in use — Copilot,
-Claude Code and Codex in VS Code — over MCP, with two tools that read the review AVE
-saved for a transport request: `sap_transport_changes` lists what the request changed, and
-`sap_transport_diff` gives the diff cut into AVE's own blocks, with the verdicts and notes
-already given. Both only read. The review has to be prepared in AVE first, and a request without
-one is reported as such, never as a clean transport.
+Claude Code and Codex in VS Code — over MCP, with two tools that read the review saved
+for a transport request: `sap_transport_changes` lists what the request changed, and
+`sap_transport_diff` gives the diff cut into the blocks AVE's rule cuts, with the verdicts and notes
+already given. Both only read: a review has to have been built first — the Versions window does
+that — and a request without one is reported as such, never as a clean transport.
 
 The tools are served two ways, from the same code:
 
@@ -96,7 +97,7 @@ uses a separate private MCP runtime; it is not an external Copilot endpoint.
 
 SelecTor and Versions also take a sentence. **Assistant** in their bar opens a chat: pick Claude
 Code or Codex and the model it offers, and write what to show — *SFLIGHT for carrier AA, joined
-with SCARR*, or *the last change of BUILD_LAYOUT in ZCL_AVE_POPUP*.
+with SCARR*, or *the last change of COMPUTE_DIFF in ZCL_VX_DIFF*.
 In Versions the assistant also reads what the window shows — the change a version made, whole
 sources, a saved review with its blocks and verdicts — so it describes and reviews code as well as
 moving the window there, the way the clicks would. SelecTor's assistant never sees a table row.

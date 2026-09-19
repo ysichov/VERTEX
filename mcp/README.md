@@ -46,7 +46,7 @@ Claude Code / Codex / MCP client
              v
  /sap/bc/adt/vertex/review/<transport>
              |
-       AVE prepared review
+        the saved review
 ```
 
 ## SAP connection
@@ -180,7 +180,7 @@ wrote to stderr.
 “Review transport DEVK900123 using the VERTEX SAP tools.”
 
 The VERTEX ADT resources (this repository's `src/`) must already be installed. A review must first
-be prepared in AVE. These tools read saved reviews; they do not generate a review,
+have been built — the Versions window does that. These tools read saved reviews; they do not build one,
 approve blocks, or write SAP data. Missing reviews and backend failures are
 reported as errors, not as a clean transport.
 

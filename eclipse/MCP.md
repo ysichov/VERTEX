@@ -1,7 +1,7 @@
 # VERTEX MCP in Eclipse GitHub Copilot
 
 This connects **GitHub Copilot Chat in Eclipse** to VERTEX's standalone Node
-server. It provides two read-only tools for reviews prepared in AVE:
+server. It provides two read-only tools for reviews already built:
 
 - `sap_transport_changes` — objects and review status in a transport.
 - `sap_transport_diff` — changed code and saved review blocks.
@@ -23,7 +23,8 @@ server does not expose `sap_table_layout` or apply plans in Selector.
    insufficient. No `npm install` is needed.
 4. Network access to SAP, a SAP user with the necessary read authorizations,
    and the VERTEX review resource `/sap/bc/adt/vertex/review/` installed.
-5. A review prepared in AVE for the transport you want to inspect.
+5. A review already built for the transport you want to inspect — the Versions
+   window of the VERTEX plugin or extension builds one.
 
 VS Code does not need to run. This server uses its own SAP settings; it does
 not inherit the ADT login or read VS Code SecretStorage.
@@ -114,7 +115,7 @@ verify the SAP connection and permissions.
 | SAP HTTP 401 / 403 | Check credentials/client for 401 and SAP authorizations for 403. |
 | SAP HTTP 404 | Check that the VERTEX ADT review resource is installed and active. |
 | Certificate or connection error | Check SAP origin, VPN/network and CA trust; see the certificate settings above. |
-| No prepared review | Prepare the transport review in AVE first. MCP only reads it. |
+| No review yet | Build it first, in the Versions window. MCP only reads. |
 | Selector Assistant says the host has no assistant | Update the Eclipse VERTEX plugin and follow the separate built-in Assistant guide. Copilot MCP configuration does not enable that panel. |
 
 For startup errors, open Eclipse's **Error Log** view and inspect the latest

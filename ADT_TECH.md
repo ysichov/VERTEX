@@ -30,7 +30,9 @@ second host possible: `vscode/extension.js` reads the very same files out of `re
 answers them over plain HTTPS, and the markup, grids and filters are not written twice.
 
 The ABAP side lives in this repository, under `src/` — one class per service, the application
-class `ZCL_VX_ADT_RES_APP` and the BAdI registration `ZVX_ADT_RES_APP`. The traps in registering
+class `ZCL_VX_ADT_RES_APP` and the BAdI implementation `ZVX_ADT_RES_APP`, which carries its own
+`STATIC_URI_PATH` filter and therefore needs no registering by hand: abapGit brings it like any
+other object. The traps in registering
 a custom ADT resource are documented in `ADT.md` in the
 [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) repository, where the hub
 was first built. Install `src/` first; without it every request returns 404 — and a window that
@@ -48,14 +50,17 @@ carried out of [AVE](https://github.com/ysichov/AVE) as `ZCL_VX_VERSION*`, `ZCL_
 three repositories are where that logic was written first, not prerequisites: nothing but `src/`
 has to be installed.
 
-What has not been carried is the walk that builds a review in the first place. Reading one and
-adding verdicts to it is here; preparing one still runs in AVE's SAP GUI.
+The walk that builds a review is carried too, as `ZCL_VX_REVIEW_BUILD` behind
+`/sap/bc/adt/vertex/prepare/{request}`: asked with nothing it says what the request holds, asked
+with one object it prepares that one and writes it. The loop over the objects belongs to whoever
+is driving, which is what keeps every call short enough that none of it has to survive being
+slow.
 
 A system can therefore have part of the ABAP half and not the rest. Every window asks
 `/sap/bc/adt/vertex/about` when it opens: which services the hub has there, whether each one's class
-is active, and whether AVE is installed. AVE is the only entry left in `backends`, and the `review`
-route still names it: the resource activates without it, but a review has to have been prepared
-there for the route to have anything to answer with. What the system does
+is active. `backends` is empty now and stays in the answer for windows older than that: nothing
+outside this repository is read any more, so a service that is missing is a missing VERTEX class
+and `active` already says so. What the system does
 not have is not drawn — the
 Join button, the finder, the Review card, the flow modes — and a line under the bar says what is
 missing and why. A window whose own main service is missing opens on that list instead of a blank
