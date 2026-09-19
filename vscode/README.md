@@ -1,46 +1,32 @@
 # SAP ABAP VERTEX Tools
 
-**VERTEX** is the ABAP Version, Code and Data Explorer: one front end over three
-SAP GUI tools, in VS Code and in Eclipse ADT, from the same pages. In VS Code it
-also has an ABAP chat and a block-by-block code reviewer with Save & Activate,
-serves transport reviews to Copilot, Claude Code and Codex over MCP, and puts an
-assistant into SelecTor and Versions.
+**VERTEX** is a set of ABAP tools that used to live in the SAP GUI, migrated to
+VS Code and Eclipse ADT as one front end, plus AI integrations: an MCP chat and more.
 
-| Window | What it shows |
-|---|---|
-| **SelecTor** | A table, its selection panel, the join builder and the pivot cross — set up by hand or from a sentence |
-| **Metrics** | ACE's view of a program, class or function group: the flow of a program, the branch scheme of one method, and per-unit code metrics |
-| **Versions** | The version history of an object, the diff between two versions, and the saved code review of a transport request — opened by hand or from a sentence. A request is found by its number or among the requests of a user, yours by default |
+| Window | Grew out of | What it shows |
+|---|---|---|
+| **SelecTor** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | A table, its selection panel, the join builder and the pivot cross — set up by hand or from a sentence |
+| **Metrics** | [ACE](https://github.com/ysichov/ACE) | The flow of a program, the branch scheme of one method, and per-unit code metrics |
+| **Versions/Reviewer** | [AVE](https://github.com/ysichov/AVE), [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Version history, diffs, block-by-block review with comments, and an AI assistant |
+
+Those three programs are where the logic was written, and they are not developed
+further. It has been carried across as `ZCL_VX_*`, with the SAP GUI stripped off,
+and everything new happens on this side.
 
 ## It needs an ABAP backend
 
 ## VS Code prerequisite
+
+This extension is one half of VERTEX. The other half is the ADT resources in this
+repository's `src/`. Pull it with [abapGit](https://abapgit.org) and activate it.
 
 [SAP ABAP Development Tools](https://marketplace.visualstudio.com/items?itemName=SAPSE.adt-vscode)
 is recommended for the ABAP editor, navigation and standard ADT commands. It
 is optional: VERTEX can connect to SAP through ADT HTTP by itself and opens
 source in a normal VS Code text editor when SAP ADT is not installed.
 
-This extension is one half of VERTEX. The other half is a set of ADT resources
-that have to be installed on the SAP system:
-
-| Repository | What it is for |
-|---|---|
-| this repository, `src/` | Every ADT resource a VERTEX window reads — the table, the join, the pivot, the flow, the schemes, the metrics, the version history, the diff and the review — and the `ZAVE_REVIEW` table the review is kept in |
-
-[Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer),
-[ACE](https://github.com/ysichov/ACE) and [AVE](https://github.com/ysichov/AVE) are where that
-logic was written first. It has since been carried into `src/` as `ZCL_VX_*`, the SAP GUI stripped
-off, so none of them has to be installed. One step is still outstanding: a review has to be
-**prepared** in AVE. VERTEX reads one and adds verdicts to it; carrying the preparation over is the
-step after this.
-
-Pull each with [abapGit](https://abapgit.org) and activate it, then register the
-BAdI implementation `ZVX_ADT_RES_APP` on `BADI_ADT_REST_RFC_APPLICATION` with
-the filter `STATIC_URI_PATH` covering `/sap/bc/adt/vertex/*`.
-
-Until that is done, every window opens on a page saying so, with these links on
-it. Nothing is broken; the backend has simply never been put there.
+Until that is done, every window opens on a page saying so. Nothing is broken; the
+backend has simply never been put there.
 
 ## Settings
 
@@ -82,18 +68,6 @@ development systems often have; it is off by default on purpose.
   source is rejected before overwrite. Drafts stay bound to the system/user
   they were read from even when the active system changes.
 - **VERTEX: Discard SAP Code Draft** — discard a pending change without writing SAP.
-
-These source operations use standard SAP ADT directly through the pinned
-`abap-adt-api` client. They require ADT access and SAP development/transport
-authorizations; they do not require MCP or the ABAP-AI-Code/abapGit saver.
-Function module source is supported; parameter interface/RFC metadata and
-creation of function groups are not part of this release. Existing metadata
-is preserved. New FMs begin with an empty parameter interface.
-
-Drafts are held for the current extension session. They are not saved to SAP
-by Ctrl+S. Use Apply SAP Code Draft. If a create/write request or activation
-fails, inspect SAP: a newly created shell or inactive source may remain.
-Such uncertain writes are not automatically retried or deleted.
 
 The extension API exposes `sapCode.schemas`, `sapCode.instructions`, `sapCode.onEvent` and
 `sapCode.execute(tool, arguments)`. Its JSON tools are `search_sap_objects`,
@@ -179,10 +153,9 @@ who connects them: the extension, for one request, or you, once.
 
 VERTEX serves two read-only MCP tools. `sap_transport_changes` lists what a
 transport request changed; `sap_transport_diff` gives the changes of one object,
-cut into the blocks of the review AVE saved, with the verdicts and comments
-already given. They cannot prepare a review or approve a block, and a request
-whose review has not been prepared in AVE is reported as such, not as a clean
-transport.
+cut into the blocks of the saved review, with the verdicts and comments
+already given. They cannot build a review or approve a block, and a request
+that has none built yet is reported as such, not as a clean transport.
 
 The same tools come from two servers. Which one depends on where the assistant
 runs:
@@ -235,8 +208,8 @@ the extension checks it against the dictionary, and the window fills in the sele
 join and the pivot and runs the query as if it had been clicked. A plan naming something the
 table does not have is shown as an error and changes nothing.
 
-Versions has the same **Assistant**: *the last change of BUILD_LAYOUT in ZCL_AVE_POPUP*, *the
-review of DEVK900123, the BUILD_LAYOUT part*, *describe the method GET*. It reads what the window
+Versions has the same **Assistant**: *the last change of COMPUTE_DIFF in ZCL_VX_DIFF*, *the
+review of DEVK900123, the COMPUTE_DIFF part*, *describe the method GET*. It reads what the window
 can show — parts, versions, the change a version made, whole sources, and a saved review with its
 blocks and verdicts — so it describes and reviews code, and it moves the window to what it talks
 about the way the clicks would. That source goes to the model you chose, as it does with the MCP
@@ -257,10 +230,10 @@ SelecTor:
 
 Versions:
 
-- *the last change of BUILD_LAYOUT in ZCL_AVE_POPUP*
-- *versions of program Z_AVE*
+- *the last change of COMPUTE_DIFF in ZCL_VX_DIFF*
+- *versions of program Z_ANY_PROG*
 - *what does transport DEVK900123 change?*
-- *the review of DEVK900123, the BUILD_LAYOUT part*
+- *the review of DEVK900123, the COMPUTE_DIFF part*
 - *describe the method GET*, with its review open
 - *review the change of ZCL_VX_ADT_RES_VERSIONS=>GET: risks and open questions*
 
@@ -271,7 +244,7 @@ that comes with it, with your login, in an empty folder, with no other MCP serve
 
 Everything reads, with one exception: approving, declining and commenting in a
 code review writes to `ZAVE_REVIEW`, through this repository's own `ZCL_VX_REVIEW_*`.
-A review is prepared in AVE; this reads it and adds verdicts to it.
+A review is built by the Versions window; this reads it and adds verdicts to it.
 
 ## Licence
 

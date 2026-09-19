@@ -77,7 +77,7 @@
 
 <div class="url">https://ysichov.github.io/VERTEX/</div>
 
-<p class="build">Latest build <b>0.5.6</b>.</p>
+<p class="build">Latest build <b>0.5.7</b>.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -97,24 +97,22 @@
   on an Eclipse without ADT instead of leaving a plugin that cannot resolve.
 </div>
 
-<h2>What 0.5.6 added</h2>
+<h2>What 0.5.7 added</h2>
 
 <ul class="news">
-  <li><b>One ABAP half instead of three.</b> The table reader, the join, the pivot,
-      the flow, the branch schemes and the metrics now live in VERTEX's own
-      <code>src/</code> as <code>ZCL_VX_*</code>, carried out of Simple Data Explorer
-      and ACE with the SAP GUI stripped off. Neither of those has to be installed any
-      more.</li>
-  <li><b>Finding a transport request by whose it is.</b> The Versions bar has a user
-      field and a <em>released</em> tick: <strong>Find</strong> lists the open requests
-      of that user, yours when the field is empty, and the released ones too when it is
-      ticked. A request is still opened by its number when you have one.</li>
-  <li><b>A class listed by section.</b> The version tree of a class now bands its parts
-      into public, protected and private sections with their methods under each, instead
-      of one flat list of includes.</li>
-  <li><b>A bare object name skips the model.</b> Type nothing but a name in the chat
-      &mdash; <em>ZCL_VX_TOOLS</em> &mdash; and it searches the system and opens the one
-      exact match, or lists what it found. No model is asked, so it costs no tokens.</li>
+  <li><b>One repository to install, and that is all.</b> The version history, the diff,
+      the transport lookup and the code review were carried out of
+      <a href="https://github.com/ysichov/AVE">AVE</a> into VERTEX's own
+      <code>src/</code> as <code>ZCL_VX_*</code>, the way the tables and the metrics were
+      carried out of Simple Data Explorer and ACE before them, with the SAP GUI stripped
+      off on the way. Nothing outside this repository is read any more, and the
+      <code>ZAVE_REVIEW</code> table the review is kept in ships with it.</li>
+  <li><b>A code review is built here now, not only read.</b> Open Versions on a transport
+      request that has none and it offers to build one. It walks the objects of the request
+      one at a time — reading the versions of each, diffing them, cutting what changed into
+      blocks — and writes each object before moving to the next, so nothing has to survive
+      being slow and stopping costs the object in hand rather than the run. A review built
+      here and one built in AVE's own window are the same review in the same table.</li>
 </ul>
 
 <p>
@@ -144,17 +142,16 @@
 </p>
 
 <p>
-  One step is still outstanding. A code review has to be <strong>prepared</strong> in AVE:
-  VERTEX reads a saved review and adds verdicts to it, but the walk that builds one — over
-  the objects of a transport, their versions and their diffs — has not been carried over yet.
-  A transport whose review was never prepared there is reported as having none, never as a
-  clean transport.
+  Building a code review is part of it, not only reading one. A Versions window opened on a
+  transport request that has none offers to build it, and walks the objects one at a time —
+  reading the versions of each, diffing them and cutting what changed into blocks — writing
+  each object before it moves to the next. Stopping halfway costs the object in hand and
+  keeps everything finished before it.
 </p>
 
 <p>
-  One BAdI registration follows, under <code>/sap/bc/adt/vertex/*</code>. The steps
-  are in the <a href="https://github.com/ysichov/VERTEX#readme">README</a>, and
-  the window tells you the same thing if you open it before the ABAP is there.
+  Pulling it is the whole step — there is nothing to register by hand. A window
+  opened before the ABAP is there tells you the same thing.
 </p>
 
 <h2>VS Code</h2>
@@ -165,7 +162,7 @@
 </p>
 
 <p>
-  Both carry version 0.5.6 and the same chat. The extension also hands transport
+  Both carry version 0.5.7 and the same chat. The extension also hands transport
   reviews to the AI assistants in the editor &mdash; Copilot, Claude Code, Codex
   &mdash; over MCP.
 </p>

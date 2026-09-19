@@ -1688,11 +1688,10 @@ function setupPage(detail) {
   (have !== null
     ? ["Pull what is missing or older with abapGit and activate it.",
        "Reopen this window."]
-    : ["Pull each of those with abapGit and activate it.",
-       "Activate ZCL_VX_ADT_RES_APP with the rest of the resources.",
-       "Register the BAdI implementation ZVX_ADT_RES_APP on"
-         + " BADI_ADT_REST_RFC_APPLICATION, with the filter STATIC_URI_PATH"
-         + " covering /sap/bc/adt/vertex/* .",
+    : ["Pull it with abapGit and activate it.",
+       "Nothing to register by hand: the BAdI implementation that claims"
+         + " /sap/bc/adt/vertex/* is an object of the repository and arrives"
+         + " with its filter already on it.",
        "Reopen this window."]).forEach(function (step) {
     var li = document.createElement("li");
     li.textContent = step;
