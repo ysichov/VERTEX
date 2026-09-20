@@ -128,7 +128,7 @@ CLASS ZCL_VX_ACE_PARSER IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " ── then parse_vars and parse_calcs — they read those bindings 
+      " ── then parse_vars and parse_calcs — they read those bindings
       IF lv_key2-name = 'DATA' OR lv_key2-name = 'CLASS-DATA' OR lv_key2-name = 'COMPUTE'.
         DATA(lo_vars2) = NEW zcl_vx_ace_parse_vars( ).
         lo_vars2->zif_vx_ace_stmt_handler~handle(
