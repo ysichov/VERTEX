@@ -181,7 +181,7 @@ CLASS zcl_vx_adt_res_metrics IMPLEMENTATION.
       INTO @DATA(lv_exists).
     IF sy-subrc <> 0.
       RAISE EXCEPTION TYPE cx_adt_res_not_found
-        EXPORTING resource_type = 'package' resource_id = lv_package.
+        EXPORTING resource_type = 'package' resource_id = CONV string( lv_package ).
     ENDIF.
 
     " These are the repository objects ACE can parse as source.  DDIC and
