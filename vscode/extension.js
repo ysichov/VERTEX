@@ -662,7 +662,7 @@ function activate(context) {
       chat: () => require("./chat").create(vscode, sapCode, tools) }, initial);
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", showTools));
   require("./sidebar").register(vscode, context, active,
-    require("./chat").create(vscode, sapCode, tools));
+    require("./chat").create(vscode, sapCode, tools), systems);
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation
   // so a registered Codex/Claude connection also works after a window reload.
@@ -682,7 +682,7 @@ function activate(context) {
     vscode.commands.registerCommand("vertex.versions", function () {
       showTools({ type: "TR" });
     }),
-    vscode.commands.registerCommand("vertex.switchSystem", async function () {
+    vscode.commands.registerCommand("vertex.switchSystem", async function (requested) {
       const all = systems();
       if (all.length === 0) {
         vscode.window.showWarningMessage(
@@ -690,7 +690,7 @@ function activate(context) {
         return;
       }
       const current = active();
-      const picked = await vscode.window.showQuickPick(
+      const picked = requested ? { label: requested } : await vscode.window.showQuickPick(
         all.map(function (s) {
           return {
             label: s.name,

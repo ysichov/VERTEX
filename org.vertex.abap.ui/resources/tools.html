@@ -3,19 +3,32 @@
 <style>
 :root{color-scheme:light dark}*{box-sizing:border-box}
 body{margin:0;height:100vh;display:flex;background:var(--vscode-editor-background,Canvas);color:var(--vscode-editor-foreground,CanvasText);font:13px "Segoe UI",sans-serif}
-#chat{width:30%;min-width:260px;resize:horizontal;overflow:auto;border-right:1px solid #8886}
+#chat{width:30%;min-width:260px;resize:horizontal;overflow:auto;border-right:1px solid #8886;display:none}
+#chat.open{display:block}
 main{flex:1;min-width:0;display:flex;flex-direction:column}
 header{display:flex;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #8886;align-items:center}
-input,select,button{font:inherit;padding:5px;color:inherit;background:var(--vscode-input-background,Field);border:1px solid #8888}
+input,select,button{font:inherit;padding:5px;color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e));border:1px solid #8888}
+select option{color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e))}
+#find-requests{display:none;padding:2px 7px;min-width:2rem}
+dialog{color:var(--vscode-foreground,CanvasText);background:var(--vscode-editor-background,Canvas);border:1px solid var(--vscode-panel-border,#8888);padding:16px}
+dialog::backdrop{background:#0008}
+dialog label{display:block;margin:8px 0}
 #object-name{flex:1;min-width:150px;text-transform:uppercase}iframe{border:0;width:100%;height:100%;display:block}
+#object-type{min-width:150px}#function{min-width:100px}
 #result{flex:1;min-height:0}#notice{padding:8px;white-space:pre-wrap}#notice:empty{display:none}
 </style></head><body>
 <aside id="chat" aria-label="Assistant"><iframe id="conversation" title="VERTEX assistant"></iframe></aside>
 <main><header>
+<button id="chat-toggle" title="Show or hide VERTEX Chat" aria-expanded="false">▸ Chat</button>
 <select id="object-type" aria-label="Object type"></select>
-<input id="object-name" placeholder="Object name" aria-label="Object name" spellcheck="false">
+<input id="object-name" placeholder="Object name" aria-label="Object name" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests">⌕</button>
 <select id="function" aria-label="Function"></select><button id="run">Run</button>
 </header><div id="notice" role="status"></div><iframe id="result" title="Function result"></iframe></main>
+<dialog id="request-dialog"><form method="dialog"><strong>Find transport requests</strong>
+<label>User (empty = current user)<input id="request-user" autocomplete="username" placeholder="Current SAP user"></label>
+<label><input type="checkbox" id="request-released"> Include released requests</label>
+<menu><button value="cancel">Cancel</button><button id="request-find" value="find">Find</button></menu>
+</form></dialog>
 <script>
 /*OBJECT_MODEL*/
 /*TOOL_ROUTES*/
@@ -25,12 +38,16 @@ let current = VertexObjects.normalize(initial || {});
 let sequence = 0, activeRequest = null, queue = [], assistantTarget = null;
 const typeBox = document.getElementById("object-type"), nameBox = document.getElementById("object-name");
 const actionBox = document.getElementById("function"), result = document.getElementById("result");
+const findButton = document.getElementById("find-requests"), requestDialog = document.getElementById("request-dialog");
+const chat = document.getElementById("chat"), chatToggle = document.getElementById("chat-toggle");
+chatToggle.onclick=()=>{const open=chat.classList.toggle("open");chatToggle.setAttribute("aria-expanded",String(open));chatToggle.textContent=(open?"▾":"▸")+" Chat";};
 function notice(text){document.getElementById("notice").textContent=text;}
 VertexObjects.objects.forEach(o=>typeBox.add(new Option(o[1],o[0])));
 function fields(){
   typeBox.value=current.type; nameBox.value=current.name; actionBox.replaceChildren();
   VertexObjects.objects.find(o=>o[0]===current.type)[2].forEach(a=>actionBox.add(new Option(VertexObjects.labels[a],a)));
   actionBox.value=current.action;
+  findButton.style.display = current.type === "TR" ? "inline-block" : "none";
 }
 function navigate(value){
   try{current=VertexObjects.normalize(value);fields();if(current.name) run();}
@@ -45,6 +62,18 @@ function run(){
     ["diff","review"].includes(current.action)?"versions":"metrics";
   mount(result,service,current);
 }
+function findRequests(){
+  const user=document.getElementById("request-user").value.trim();
+  const released=document.getElementById("request-released").checked ? "true" : "";
+  // A finder has no selected request yet. Start Versions, not Review: Review
+  // would otherwise ask the host for /review/ with an empty request number.
+  current={type:"TR",name:"",action:"diff"}; fields();
+  result.onload=()=>{
+    result.onload=null;
+    sdeRequestSearch(user,released);
+  };
+  mount(result,"versions",current);
+}
 function mount(frame,service,state){
   const generation=++sequence;
   frame.dataset.generation=String(generation);
@@ -52,8 +81,11 @@ function mount(frame,service,state){
   const init=service==="table"?state.name:state;
   source=source.replace(["/*INIT*/","null","/*INIT*/"].join(""),()=>JSON.stringify(init).replace(/</g,"\\u003c"));
   const bootstrap="<script>parent.connect(window,"+JSON.stringify(service)+","+generation+");<"+"/script>";
-  const hide=service==="chat"?"":"<style>#name,#type,#load,#mode,#assist,#open{display:none!important}</style>";
-  frame.srcdoc=source.replace("<script>",hide+bootstrap+"<script>");
+  const hide=service==="chat"?"":"<style>#name,#type,#load,#mode,#assist,#open,#finder{display:none!important}</style>";
+  const css=getComputedStyle(document.body);
+  const field=getComputedStyle(document.getElementById("object-name"));
+  const theme="<style>:root{--bg:"+css.backgroundColor+"!important;--fg:"+css.color+"!important;--muted:"+css.color+"!important;--surface:"+css.backgroundColor+"!important;--surface-2:"+css.backgroundColor+"!important;--field-bg:"+field.backgroundColor+"!important;--field-border:"+field.borderColor+"!important;--input:"+field.backgroundColor+"!important;--border:"+field.borderColor+"!important;--line:"+field.borderColor+"!important;--th-bg:"+css.backgroundColor+"!important;--row-alt:"+css.backgroundColor+"!important;--hover:"+field.backgroundColor+"!important}</style>";
+  frame.srcdoc=source.replace("</head>",theme+"</head>").replace("<script>",hide+bootstrap+"<script>");
 }
 function connect(child,service,generation){
   child.VERTEX_ACTION=current.action;
@@ -61,8 +93,10 @@ function connect(child,service,generation){
   const live=()=>owner.contentWindow===child&&owner.dataset.generation===String(generation);
   let pending=null;
   child.sdeTake=()=>{const answer=pending;pending=null;return answer;};
+  child.sdeDeliver=value=>{if(live()){pending=value;child.sdeReady();}};
   const reply=value=>{if(live()){pending=value;child.sdeReady();}};
   child.sdeTitle=()=>{};
+  child.sdeSelectObject=value=>navigate(value);
   child.sdeBrowse=url=>sdeBrowse(url);
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
   child.sdeProject=()=>enqueue({path:"project"},reply,live);
@@ -103,6 +137,8 @@ function sdeAssistant(raw){
 }
 typeBox.onchange=()=>{current=VertexObjects.normalize({type:typeBox.value,name:nameBox.value});fields();};
 document.getElementById("run").onclick=run;
+findButton.onclick=()=>requestDialog.showModal();
+document.getElementById("request-find").onclick=()=>{findRequests();};
 nameBox.onkeydown=e=>{if(e.key==="Enter")run();};
 actionBox.onchange=()=>{if(nameBox.value.trim())run();};
 fields();mount(document.getElementById("conversation"),"chat",null);

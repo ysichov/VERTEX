@@ -155,6 +155,6 @@ const SERVICES = {
     }
   }
 };
-const api = { SERVICES, WRITES: { act: 4, prepare: 2 } };
-if (typeof module !== "undefined") module.exports = api; else root.VertexRoutes = api;
+const routesApi = { SERVICES, WRITES: { act: 4, prepare: 2 } };
+if (typeof module !== "undefined") module.exports = routesApi; else root.VertexRoutes = routesApi;
 })(typeof window === "undefined" ? globalThis : window);

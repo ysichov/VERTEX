@@ -23,12 +23,16 @@ function open(vscode, context, deps, initial) {
   const bridge = `<script>
     const host = acquireVsCodeApi(); let pending;
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
-    for(const call of ["workspace","asset","models","ask","browse"]){
+    for(const call of ["workspace","asset","models","ask","browse","requestSearch"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>host.postMessage({call,args});
     }
     window.addEventListener("message",e=>{
       if(e.data.type==="result"){pending=e.data.payload;sdeReady();}
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
+      if(e.data.type==="requestSearch"){
+        const child=document.getElementById("result").contentWindow;
+        if(child&&typeof child.sdeDeliver==="function")child.sdeDeliver(e.data.payload);
+      }
     });
   <\/script>`;
   panel.webview.html = html(deps.pages, initial).replace("<script>", bridge + "<script>");
@@ -38,6 +42,14 @@ function open(vscode, context, deps, initial) {
       if(message.call === "browse") {
         if(/^https?:\/\//i.test(String(args[0]))) await vscode.env.openExternal(vscode.Uri.parse(args[0]));
         return;
+      }
+      if(message.call === "requestSearch") {
+        const user=String(args[0]||"").trim().toUpperCase();
+        let resource="/sap/bc/adt/vertex/requests";
+        if(user) resource+="?user="+encodeURIComponent(user);
+        if(args[1]) resource+=(user?"&":"?")+"released=true";
+        const payload=await deps.fetch(context,resource);
+        await panel.webview.postMessage({type:"requestSearch",payload}); return;
       }
       if(message.call === "models") {
         const answer = await deps.models(args); answer.call="models";

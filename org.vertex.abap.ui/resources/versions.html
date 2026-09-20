@@ -747,7 +747,15 @@ function fillUser(user) {
 function renderRequests(data) {
   // An empty field was a search for your own; the answer says whose that was.
   fillUser(data.user);
-  var rows = data.requests || [];
+  // A request can have several tasks. The backend may report the parent once
+  // through each task; the finder is a request picker, so show it once.
+  var seen = {};
+  var rows = (data.requests || []).filter(function (row) {
+    if (!row.request || seen[row.request]) { return false; }
+    seen[row.request] = true;
+    return true;
+  });
+  document.getElementById("partspanel").style.display = "none";
   var kind = data.released ? "requests" : "open requests";
   if (rows.length === 0) {
     note("No " + kind + " of " + data.user + ".");
@@ -776,6 +784,14 @@ function renderRequests(data) {
 
 /* A request picked from the list opens exactly as its typed number would. */
 function openRequest(number) {
+  // The unified Tools window owns the object selector in its header. Let it
+  // take the selection too, so the request that was picked is visible there.
+  if (typeof sdeSelectObject === "function") {
+    // Opening a found request is a Versions operation. Review is explicitly
+    // chosen afterwards; it must not be requested merely by selecting a row.
+    sdeSelectObject({ type: "TR", name: number, action: "diff" });
+    return;
+  }
   document.getElementById("type").value = "TR";
   document.getElementById("name").value = number;
   loadParts(false);

@@ -365,7 +365,7 @@ CLASS zcl_vx_adt_res_prepare IMPLEMENTATION.
       bad_request( |ZAVE_REVIEW would not take the write.| ).
     ENDIF.
 
-    DATA(lv_body) =
+    lv_body =
       |\{"request":"{ to_lower( lv_trkorr ) }",| &&
       |"objtype":"{ to_lower( lv_objtype ) }",| &&
       |"object":"{ to_lower( lv_object ) }",| &&

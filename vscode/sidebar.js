@@ -12,7 +12,7 @@ const ACTIONS = Object.freeze({
   settings: "workbench.action.openSettings"
 });
 
-function register(vscode, context, active, ask) {
+function register(vscode, context, active, ask, systems) {
   let currentView, pendingPrompt, ready = false;
   context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async text => {
     pendingPrompt = text;
@@ -28,7 +28,11 @@ function register(vscode, context, active, ask) {
       view.webview.html = html(nonce);
       const refresh = () => {
         const chosen = active();
-        return view.webview.postMessage({ system: chosen.error ? "No system selected" : chosen.system.name, ai: ask.state() });
+        return view.webview.postMessage({
+          system: chosen.error ? "" : chosen.system.name,
+          systems: systems().map(item => item.name),
+          ai: ask.state()
+        });
       };
       const messages = view.webview.onDidReceiveMessage(async message => {
         if (!message || typeof message !== "object") { return; }
@@ -62,7 +66,8 @@ function register(vscode, context, active, ask) {
         if (!Object.hasOwn(ACTIONS, message.action)) { return; }
         try {
           await vscode.commands.executeCommand(ACTIONS[message.action],
-            ...(message.action === "settings" ? ["vertex.systems"] : []));
+            ...(message.action === "settings" ? ["vertex.systems"] :
+              message.action === "system" ? [message.name] : []));
         } catch (error) {
           vscode.window.showErrorMessage("VERTEX: " + error.message);
         }
@@ -108,24 +113,29 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages .vertex code { font-family: var(--vscode-editor-font-family); background: var(--vscode-textCodeBlock-background); padding: 0 3px; border-radius: 3px; }
 #messages .vertex pre { white-space: pre; overflow-x: auto; background: var(--vscode-textCodeBlock-background); padding: 6px 8px; border-radius: 3px; }
 #messages .vertex pre code { background: none; padding: 0; }
-textarea { box-sizing: border-box; width: 100%; resize: vertical; padding: 8px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); font: inherit; }
+textarea, select { box-sizing: border-box; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); font: inherit; }
+textarea { width: 100%; resize: vertical; padding: 8px; }
 button { margin: 8px 0; padding: 8px 12px; border: 0; border-radius: 2px; cursor: pointer; font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
 button:hover { background: var(--vscode-button-hoverBackground); }
 #chat button { width: 100%; }
 .secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
 </style></head><body>
-<h2>VERTEX chat</h2><p id="system" aria-live="polite">Loading system…</p>
+<h2>VERTEX chat</h2><label for="system-select">SAP system</label>
+<select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <p><button class="secondary" data-action="provider" id="provider">AI provider</button> <button class="secondary" data-action="model" id="model">Default model</button> <button class="secondary" data-action="newConversation">New conversation</button></p>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
 <form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX…" aria-label="Message"></textarea><button type="submit">Send</button></form>
 <h2>Quick launch</h2>
 <button class="secondary" data-action="tools">VERTEX Tools</button>
 <button class="secondary" data-action="review">Review &amp; save current code</button>
-<p><button class="secondary" data-action="system">Switch system</button> <button class="secondary" data-action="settings">Configure systems</button></p>
+<p><button class="secondary" data-action="settings">Configure SAP Systems</button></p>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
 document.querySelectorAll('button[data-action]').forEach(button => {
   button.addEventListener('click', () => api.postMessage({ action: button.dataset.action }));
+});
+document.getElementById('system-select').addEventListener('change', event => {
+  api.postMessage({ action: 'system', name: event.target.value });
 });
 document.getElementById('chat').addEventListener('submit', event => {
   event.preventDefault();
@@ -147,8 +157,15 @@ window.addEventListener('message', event => {
     hint.textContent = 'Ask about SAP code, data or a transport.';
     box.appendChild(hint);
   }
-  if (event.data && typeof event.data.system === 'string') {
-    document.getElementById('system').textContent = event.data.system;
+  if (event.data && Array.isArray(event.data.systems)) {
+    const select = document.getElementById('system-select');
+    const selected = event.data.system || '';
+    select.replaceChildren(...event.data.systems.map(name => {
+      const option = new Option(name, name);
+      option.selected = name === selected;
+      return option;
+    }));
+    if (!event.data.systems.length) select.add(new Option('No SAP systems configured', ''));
   }
   if (event.data && event.data.ai) {
     document.getElementById('provider').textContent = event.data.ai.provider;
