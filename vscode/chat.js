@@ -58,13 +58,14 @@ function create(vscode, codeTools, server) {
         conversation = options.state.conversation.filter(m => m && ["user", "assistant"].includes(m.role))
           .map(m => ({ role: m.role, content: String(m.content || "") }));
       }
-      if (directSearch.isObjectName(prompt)) {
+      const request = directSearch.objectRequest(prompt);
+      if (request) {
         let navigation = null;
         // No model for a bare object name: search the system and open it.
-        const text = await directSearch.answer(prompt, {
+        const text = await directSearch.answer(request.query, {
           search: args => codeTools.execute("search_sap_objects", args),
           open: args => {
-            if (options.state && options.state.workspace) {
+            if (!request.openEditor && options.state && options.state.workspace) {
               navigation = objectTools.normalize({type:args.object_type,name:args.object_name,action:"view"});
               return {opened:true};
             }

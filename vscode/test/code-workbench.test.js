@@ -2,10 +2,21 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 function host() {
-  const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [];
+  const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [];
   let selectedSystem = "DEV", mutateDuringConfirmation = false, fileProvider;
   const api = { async execute(tool, args) {
-    if (tool === "read_sap_object") { return { object_name: args.object_name, object_type: "PROG", object_url: "/sap/bc/adt/programs/programs/ztest", include: "main", source: "REPORT ztest.", revision: "original-revision" }; }
+    if (tool === "read_sap_object") {
+      const klass = args.object_type === "CLAS", include = args.include || "main";
+      const source = args.object_type === "FUNC" ? "FUNCTION z_foo.\nENDFUNCTION."
+        : klass && args.object_name === "ZCL_OTHER" ? "CLASS zcl_other DEFINITION.\n  PUBLIC SECTION.\n    METHODS do_it IMPORTING iv_name TYPE string.\nENDCLASS.\nCLASS zcl_other IMPLEMENTATION.\n  METHOD do_it.\n  ENDMETHOD.\nENDCLASS."
+        : !klass ? "REPORT ztest." : include === "definitions"
+        ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS."
+        : include === "main" ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS.\nCLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\n  METHOD caller.\n    DATA lv_count TYPE i.\n    lv_count = 1.\n    run( ).\n    zcl_other=>do_it( ).\n    CALL FUNCTION 'Z_FOO'.\n  ENDMETHOD.\nENDCLASS."
+          : "CLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\nENDCLASS.";
+      return { object_name: args.object_name, object_type: args.object_type === "FUNC" ? "FUNC" : klass ? "CLAS" : "PROG",
+        object_url: klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest",
+        include, source, revision: "original-revision" };
+    }
     return { change_id: "id1", object_name: args.object_name, operation: "modify", object_type: "PROG",
       original_source: "original", source: args.source };
   }, discard() {}, async dispose() {}, async apply(id, payload) { writes.push({ id, ...payload }); return { activated: true, revision: require('../sap-code').revision(payload.source) }; } };
@@ -15,6 +26,7 @@ function host() {
     EventEmitter: class { event = () => ({ dispose() {} }); fire() {} dispose() {} },
     FileType: { File: 1 }, FileChangeType: { Changed: 1 },
     FileSystemError: { FileNotFound: () => Error('not found'), NoPermissions: text => Error(text) },
+    Hover: class { constructor(contents, range) { this.contents = contents; this.range = range; } },
     ConfigurationTarget: { Global: 1 },
     commands: {
       registerCommand: (name, fn) => { commands.set(name, fn); return { dispose() {} }; },
@@ -32,13 +44,15 @@ function host() {
         documents.push(doc); return doc;
       }
     },
-    languages: { setTextDocumentLanguage: async doc => doc },
+    languages: { setTextDocumentLanguage: async doc => doc,
+      registerDefinitionProvider: (selector, provider) => { definitions.push({ selector, provider }); return { dispose() {} }; },
+      registerHoverProvider: (selector, provider) => { hovers.push({ selector, provider }); return { dispose() {} }; } },
     window: {
       createWebviewPanel() {
         const panel = { webview: { html: '', onDidReceiveMessage(fn) { panel.receive = fn; }, async postMessage() {} } };
         panels.push(panel); return panel;
       },
-      async showTextDocument(document, options) { this.activeTextEditor = { document }; diffs.push(["open", options]); },
+      async showTextDocument(document, options) { const editor = { document, get selection() { return document.selection; }, set selection(value) { document.selection = value; } }; this.activeTextEditor = editor; diffs.push(["open", options]); return editor; },
       showInformationMessage() {}, showErrorMessage: text => errors.push(text),
       showQuickPick: async items => items[0], showInputBox: async () => "DEVK900001",
       async showWarningMessage(text, options, action) {
@@ -63,7 +77,7 @@ function host() {
     active: () => ({ system: { name: selectedSystem, url: "https://sap.invalid", user: "USER", client: "100" } }),
     password: async () => "test-secret"
   });
-  return { tools, commands, documents, writes, diffs, prompts, errors, api, panels,
+  return { tools, commands, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers,
     switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; } };
 }
 test("tool preparation opens diff, does not apply; UI applies edited text to the original system", async () => {
@@ -180,4 +194,79 @@ test("open from chat opens editable source beside, preserves edits and supplies 
   assert.equal(h.tools.editorContext().source, h.documents[0].text);
   assert.equal(h.tools.editorContext().base_revision, "original-revision");
   assert.equal(h.writes.length, 0);
+});
+test("F12 moves between a class method declaration and its implementation", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS", include: "implementations" });
+  const definition = h.definitions[0].provider;
+  const toDefinition = await definition.provideDefinition(h.documents[0], { line: 1, character: 9 });
+  assert.match(toDefinition.uri.toString(), /\.definitions\.abap$/);
+  assert.equal(toDefinition.range.start.line, 2);
+  const toImplementation = await definition.provideDefinition(h.documents[1], { line: 2, character: 12 });
+  assert.match(toImplementation.uri.toString(), /\.implementations\.abap$/);
+  assert.equal(toImplementation.range.start.line, 1);
+});
+test("method hover shows its local ABAP signature", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 5, character: 9 });
+  assert.equal(hover.contents[0].value, "IMPORTING\n  iv_text TYPE string");
+});
+test("VERTEX method navigation command opens the counterpart at the method name", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS", include: "implementations" });
+  h.documents[0].selection = { active: { line: 1, character: 9 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents.length, 2);
+  assert.match(h.documents[1].uri.toString(), /\.definitions\.abap$/);
+});
+test("class main source navigation is local and makes no second SAP read", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].selection = { active: { line: 5, character: 9 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents.length, 1);
+  assert.equal(h.documents[0].selection.start.line, 2);
+  assert.equal(h.diffs.filter(item => item[0] === "open").length, 1);
+});
+test("an unqualified local method call goes to its implementation", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].selection = { active: { line: 10, character: 5 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents.length, 1);
+  assert.equal(h.documents[0].selection.start.line, 5);
+});
+test("a local variable use goes to its declaration in the current method", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].selection = { active: { line: 9, character: 7 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents.length, 1);
+  assert.equal(h.documents[0].selection.start.line, 8);
+  await h.commands.get("vertex.navigateBack")();
+  assert.equal(h.documents[0].selection.start.line, 9);
+});
+test("a static class call opens its method implementation", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].selection = { active: { line: 11, character: 16 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents.length, 2);
+  assert.match(h.documents[1].uri.toString(), /\/CLAS\/ZCL_OTHER\.abap$/);
+  assert.equal(h.documents[1].selection.start.line, 5);
+});
+test("static class method hover loads and caches its signature", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 11, character: 16 });
+  assert.equal(hover.contents[0].value, "IMPORTING\n  iv_name TYPE string");
+});
+test("CALL FUNCTION opens the function module source", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].selection = { active: { line: 12, character: 20 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents.length, 2);
+  assert.match(h.documents[1].uri.toString(), /\/FUNC\/Z_FOO\.abap$/);
 });

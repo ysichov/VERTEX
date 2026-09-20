@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.5.8",
+  "version": "0.5.9",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -94,6 +94,16 @@
         "title": "Review & Activate",
         "category": "VERTEX",
         "icon": "$(diff)"
+      },
+      {
+        "command": "vertex.goToClassMethod",
+        "title": "VERTEX: Go to (by context)",
+        "category": "VERTEX"
+      },
+      {
+        "command": "vertex.navigateBack",
+        "title": "VERTEX: Back",
+        "category": "VERTEX"
       }
     ],
     "configuration": {
@@ -213,6 +223,16 @@
           "command": "vertex.reviewCodeChanges",
           "when": "resourceScheme == vertex-sap",
           "group": "1_modification@2"
+        },
+        {
+          "command": "vertex.goToClassMethod",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vertex.navigateBack",
+          "when": "resourceScheme == vertex-sap",
+          "group": "navigation@2"
         }
       ],
       "editor/title": [
@@ -227,7 +247,19 @@
           "group": "navigation@2"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "vertex.goToClassMethod",
+        "key": "f12",
+        "when": "resourceScheme == vertex-sap && editorLangId == abap"
+      },
+      {
+        "command": "vertex.navigateBack",
+        "key": "alt+left",
+        "when": "resourceScheme == vertex-sap"
+      }
+    ]
   },
   "scripts": {
     "test": "node --test test/*.test.js",

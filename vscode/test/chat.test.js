@@ -43,6 +43,7 @@ test("a bare object name is searched and opened without a model", async (t) => {
   assert.equal(direct.isObjectName("Z_CALC"), true);
   assert.equal(direct.isObjectName("ZCL_TR_*"), true);
   assert.equal(direct.isObjectName("show Z_CALC"), false);
+  assert.deepEqual(direct.objectRequest("Open Z_CALC please"), { query: "Z_CALC", openEditor: true });
   assert.equal(direct.isObjectName("123"), false);
   assert.equal(direct.isObjectName("hello"), false);
   assert.equal(direct.isObjectName("ZREPORT"), true);
@@ -65,6 +66,9 @@ test("a bare object name is searched and opened without a model", async (t) => {
   assert.equal(opened.direct, true);
   assert.match(opened.answer, /Opened PROG \*\*Z_CALC\*\*.*QAS/);
   assert.deepEqual(calls[1], ["open_sap_object", { object_type: "PROG", object_name: "Z_CALC" }]);
+  const explicit = await ask("Open Z_CALC please", { state: { workspace: { type: "CLAS", name: "Z_OTHER" } } });
+  assert.equal(explicit.direct, true);
+  assert.deepEqual(calls[3], ["open_sap_object", { object_type: "PROG", object_name: "Z_CALC" }]);
   assert.match((await ask("ZNOTHING")).answer, /No program, class or function module named \*\*ZNOTHING\*\*/);
   assert.equal(asked.mock.callCount(), 0);
 });
