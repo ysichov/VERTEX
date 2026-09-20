@@ -41,7 +41,7 @@ const TOOLS = [
 ];
 
 const PLAN_SCHEMA = {
-  type: "object", additionalProperties: false, required: ["answer"],
+  type: "object", additionalProperties: false, required: ["answer", "navigation"],
   properties: { answer: { type: "string" }, navigation: objectTools.navigationSchema }
 };
 
