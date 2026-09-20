@@ -1,1 +1,26 @@
-<!doctype html><html><body><pre id="code">Reading source…</pre><script>var INITIAL=/*INIT*/null/*INIT*/;function sdeReady(){try{document.getElementById('code').textContent=JSON.parse(sdeTake()).source||'No source returned.'}catch(e){document.getElementById('code').textContent=String(e)}}sdeSource(INITIAL.name,INITIAL.type);</script></body></html>
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:var(--vscode-editor-background,Canvas);color:var(--vscode-editor-foreground,CanvasText);font:13px var(--vscode-editor-font-family,monospace)}
+header{padding:8px;border-bottom:1px solid var(--vscode-panel-border,GrayText);font-family:system-ui}pre{margin:0;padding:12px;tab-size:2}#hint{color:var(--vscode-descriptionForeground,GrayText)}
+</style></head><body><header><span id="title">Reading source…</span><div id="hint">Read only · Select code to ask the assistant</div></header><pre id="code"></pre><script>
+var INITIAL=/*INIT*/null/*INIT*/;
+var fragment=null;
+function sdeContext(){return {type:INITIAL.type,name:INITIAL.name,view:"source"};}
+function sdeSelection(){return fragment;}
+document.addEventListener("selectionchange",function(){
+  var selection=window.getSelection(),code=document.getElementById("code");
+  if(selection&&selection.rangeCount&&code.contains(selection.anchorNode)&&code.contains(selection.focusNode)){
+    var text=selection.toString();fragment=text?{text:text.slice(0,12000),view:sdeContext()}:null;
+  }
+});
+document.getElementById("code").addEventListener("mousedown",function(){fragment=null;});
+function sdeReady(){
+  var raw=sdeTake();
+  try{
+    if(String(raw).startsWith("ERROR:"))throw new Error(String(raw).slice(6));
+    var data=JSON.parse(raw);
+    document.getElementById("title").textContent=(data.object_name||INITIAL.name)+" · View source";
+    document.getElementById("code").textContent=data.source||"No source returned.";
+  }catch(error){document.getElementById("title").textContent="Could not read source";document.getElementById("code").textContent=error.message;}
+}
+if(INITIAL&&INITIAL.name)sdeSource(INITIAL.name,INITIAL.type);
+</script></body></html>

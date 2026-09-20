@@ -17,7 +17,7 @@ public class ToolsView extends ChatView {
         String value = super.readResource(path);
         if (!path.equals("resources/tools.html")) return value;
         StringBuilder bundle = new StringBuilder("{");
-        for (String service : new String[] {"chat", "table", "metrics", "versions"}) {
+        for (String service : new String[] {"chat", "table", "metrics", "versions", "source"}) {
             if (bundle.length() > 1) bundle.append(",");
             bundle.append(AssistantBridge.quote(service)).append(":")
                 .append(AssistantBridge.quote(super.readResource("resources/" + service + ".html"))
@@ -57,6 +57,24 @@ public class ToolsView extends ChatView {
                     if (!asset.equals("mermaid")) throw new IllegalArgumentException("Unknown asset.");
                     try { return readResource("resources/mermaid.min.js"); }
                     catch (IOException e) { throw new IllegalStateException(e); }
+                });
+                return null;
+            }
+        };
+        new BrowserFunction(browser, "sdeSource") {
+            @Override public Object function(Object[] args) {
+                final String name = args.length > 0 ? String.valueOf(args[0]).toUpperCase() : "";
+                final String type = args.length > 1 ? String.valueOf(args[1]).toUpperCase() : "";
+                queue(() -> {
+                    String path;
+                    if (type.equals("PROG")) path = "/sap/bc/adt/programs/programs/" + name + "/source/main";
+                    else if (type.equals("CLAS")) path = "/sap/bc/adt/oo/classes/" + name + "/source/main";
+                    else if (type.equals("FUNC")) path = "/sap/bc/adt/functions/modules/" + name + "/source/main";
+                    else throw new IllegalArgumentException("Source preview is available for programs, classes and function modules.");
+                    String source = read(path);
+                    return "{\"object_name\":" + AssistantBridge.quote(name)
+                        + ",\"object_type\":" + AssistantBridge.quote(type)
+                        + ",\"source\":" + AssistantBridge.quote(source) + "}";
                 });
                 return null;
             }

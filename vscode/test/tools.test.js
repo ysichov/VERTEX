@@ -1,6 +1,19 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict"),vm=require("node:vm"),path=require("node:path");
 const model=require("../object-tools"),workspace=require("../tools-window");
+test("source reads the selected object, preserves selection for chat and reports SAP errors",()=>{
+  const html=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/source.html"),"utf8");
+  const handlers={},elements={title:{},code:{contains:n=>n==="code",addEventListener:(name,fn)=>handlers[name]=fn}};
+  let raw,selection;const calls=[];
+  const c=vm.createContext({document:{getElementById:id=>elements[id],addEventListener:(name,fn)=>handlers[name]=fn},window:{getSelection:()=>selection},sdeSource:(...args)=>calls.push(args),sdeTake:()=>raw});
+  vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1].replace("/*INIT*/null/*INIT*/",JSON.stringify({type:"PROG",name:"Z_TEST"})),c);
+  assert.deepEqual(calls,[["Z_TEST","PROG"]]);
+  raw=JSON.stringify({source:"REPORT z_test."});c.sdeReady();assert.equal(elements.code.textContent,"REPORT z_test.");
+  selection={rangeCount:1,anchorNode:"code",focusNode:"code",toString:()=>"REPORT"};handlers.selectionchange();
+  selection=null;handlers.selectionchange();assert.equal(c.sdeSelection().text,"REPORT");
+  handlers.mousedown();assert.equal(c.sdeSelection(),null);
+  raw="ERROR:SAP unavailable";c.sdeReady();assert.equal(elements.code.textContent,"SAP unavailable");
+});
 test("embedded theme follows all VS Code themes and changes without reloading",()=>{
   const source=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/tools.html"),"utf8");
   const code=source.slice(source.indexOf("function syncTheme("),source.indexOf("new MutationObserver"));
@@ -16,7 +29,7 @@ test("embedded theme follows all VS Code themes and changes without reloading",(
 });
 test("objects expose valid functions and appropriate defaults",()=>{
   assert.equal(model.normalize({type:"TR",name:"devk900001"}).action,"review");
-  assert.equal(model.normalize({type:"CLAS/OC",name:"zcl_test"}).action,"diff");
+  assert.equal(model.normalize({type:"CLAS/OC",name:"zcl_test"}).action,"view");
   assert.equal(model.normalize({type:"DEVC",name:"$TMP",action:"uml"}).type,"DEVC");
   assert.throws(()=>model.normalize({type:"TABL",action:"uml"}));
   assert.throws(()=>model.normalize({type:"CLAS",name:'x"><script>'}));

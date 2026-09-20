@@ -59,13 +59,20 @@ function create(vscode, codeTools, server) {
           .map(m => ({ role: m.role, content: String(m.content || "") }));
       }
       if (directSearch.isObjectName(prompt)) {
+        let navigation = null;
         // No model for a bare object name: search the system and open it.
         const text = await directSearch.answer(prompt, {
           search: args => codeTools.execute("search_sap_objects", args),
-          open: args => codeTools.execute("open_sap_object", args)
+          open: args => {
+            if (options.state && options.state.workspace) {
+              navigation = objectTools.normalize({type:args.object_type,name:args.object_name,action:"view"});
+              return {opened:true};
+            }
+            return codeTools.execute("open_sap_object", args);
+          }
         });
         conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: text });
-        return { answer: text, model: "", usage: null, direct: true };
+        return { answer: text, model: "", usage: null, direct: true, navigation };
       }
       const id = options.assistant || subscriptionProvider(vscode);
       const model = options.model || vscode.workspace.getConfiguration("vertex.ai").get("model", "") || await defaultModel(id);
