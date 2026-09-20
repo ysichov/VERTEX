@@ -9,11 +9,15 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 header{display:flex;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #8886;align-items:center}
 input,select,button{font:inherit;padding:5px;color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e));border:1px solid #8888}
 select option{color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e))}
-#find-requests{display:none;padding:2px 7px;min-width:2rem}
+#object-field{position:relative;flex:1;min-width:150px}
+#find-requests{display:none;position:absolute;right:1px;top:1px;bottom:1px;width:30px;padding:5px;border:0;background:transparent;cursor:pointer}
+#find-requests:hover{background:var(--vscode-toolbar-hoverBackground,#8883)}
+#find-requests:focus-visible{outline:1px solid var(--vscode-focusBorder,Highlight);outline-offset:-2px}
+#find-requests svg{width:14px;height:14px;vertical-align:middle}
 dialog{color:var(--vscode-foreground,CanvasText);background:var(--vscode-editor-background,Canvas);border:1px solid var(--vscode-panel-border,#8888);padding:16px}
 dialog::backdrop{background:#0008}
 dialog label{display:block;margin:8px 0}
-#object-name{flex:1;min-width:150px;text-transform:uppercase}iframe{border:0;width:100%;height:100%;display:block}
+#object-name{width:100%;padding-right:34px;text-transform:uppercase}iframe{border:0;width:100%;height:100%;display:block}
 #object-type{min-width:150px}#function{min-width:100px}
 #result{flex:1;min-height:0}#notice{padding:8px;white-space:pre-wrap}#notice:empty{display:none}
 </style></head><body>
@@ -21,8 +25,8 @@ dialog label{display:block;margin:8px 0}
 <main><header>
 <button id="chat-toggle" title="Show or hide VERTEX Chat" aria-expanded="false">▸ Chat</button>
 <select id="object-type" aria-label="Object type"></select>
-<input id="object-name" placeholder="Object name" aria-label="Object name" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests">⌕</button>
-<select id="function" aria-label="Function"></select><button id="run">Run</button>
+<div id="object-field"><input id="object-name" placeholder="Object name" aria-label="Object name" title="Enter an object name and press Enter" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/></svg></button></div>
+<select id="function" aria-label="Function"></select>
 </header><div id="notice" role="status"></div><iframe id="result" title="Function result"></iframe></main>
 <dialog id="request-dialog"><form method="dialog"><strong>Find transport requests</strong>
 <label>User (empty = current user)<input id="request-user" autocomplete="username" placeholder="Current SAP user"></label>
@@ -82,12 +86,30 @@ function mount(frame,service,state){
   source=source.replace(["/*INIT*/","null","/*INIT*/"].join(""),()=>JSON.stringify(init).replace(/</g,"\\u003c"));
   const bootstrap="<script>parent.connect(window,"+JSON.stringify(service)+","+generation+");<"+"/script>";
   const hide=service==="chat"?"":"<style>#name,#type,#load,#mode,#assist,#open,#finder{display:none!important}</style>";
-  const css=getComputedStyle(document.body);
-  const field=getComputedStyle(document.getElementById("object-name"));
-  const theme="<style>:root{--bg:"+css.backgroundColor+"!important;--fg:"+css.color+"!important;--muted:"+css.color+"!important;--surface:"+css.backgroundColor+"!important;--surface-2:"+css.backgroundColor+"!important;--field-bg:"+field.backgroundColor+"!important;--field-border:"+field.borderColor+"!important;--input:"+field.backgroundColor+"!important;--border:"+field.borderColor+"!important;--line:"+field.borderColor+"!important;--th-bg:"+css.backgroundColor+"!important;--row-alt:"+css.backgroundColor+"!important;--hover:"+field.backgroundColor+"!important}</style>";
-  frame.srcdoc=source.replace("</head>",theme+"</head>").replace("<script>",hide+bootstrap+"<script>");
+  frame.srcdoc=source.replace("<script>",hide+bootstrap+"<script>");
 }
+// iframe documents do not inherit the host's CSS variables or theme updates.
+// Copy the complete VS Code theme onto their body, where existing palettes live.
+function syncTheme(child){
+  const target=child.document.body;
+  if(!target)return;
+  const classes=["vscode-light","vscode-dark","vscode-high-contrast","vscode-high-contrast-light"];
+  classes.forEach(name=>target.classList.toggle(name,document.body.classList.contains(name)));
+  const css=getComputedStyle(document.body);
+  Array.from(target.style).filter(name=>name.startsWith("--vscode-")).forEach(name=>target.style.removeProperty(name));
+  Array.from(css).filter(name=>name.startsWith("--vscode-")).forEach(name=>target.style.setProperty(name,css.getPropertyValue(name)));
+  if(!classes.some(name=>document.body.classList.contains(name)))return;
+  const light=document.body.classList.contains("vscode-light")||document.body.classList.contains("vscode-high-contrast-light");
+  target.style.colorScheme=light?"light":"dark";
+  const mapping={bg:"editor-background",fg:"editor-foreground",muted:"descriptionForeground",faint:"disabledForeground",surface:"editorWidget-background","surface-2":"sideBar-background","field-bg":"input-background",input:"input-background","field-border":"input-border",border:"panel-border",line:"panel-border",hover:"list-hoverBackground","th-bg":"editorWidget-background","row-alt":"editor-background",selected:"list-activeSelectionBackground",button:"button-background","button-fg":"button-foreground"};
+  Object.entries(mapping).forEach(([name,token])=>target.style.setProperty("--"+name,css.getPropertyValue("--vscode-"+token).trim()||css.getPropertyValue("--vscode-editor-background").trim()));
+  Object.entries({"ins-bg":light?"#e8f6ea":"#17301c","ins-mark":light?"#2c7a39":"#6cc07a","del-bg":light?"#fdecec":"#3a1f1f","del-mark":light?"#a5292a":"#f48771"}).forEach(([name,value])=>target.style.setProperty("--"+name,value));
+}
+new MutationObserver(()=>{
+  document.querySelectorAll("iframe").forEach(frame=>{if(frame.contentDocument)syncTheme(frame.contentWindow);});
+}).observe(document.documentElement,{attributes:true,subtree:true,attributeFilter:["class","style"]});
 function connect(child,service,generation){
+  syncTheme(child);
   child.VERTEX_ACTION=current.action;
   const owner=service==="chat"?document.getElementById("conversation"):result;
   const live=()=>owner.contentWindow===child&&owner.dataset.generation===String(generation);
@@ -113,6 +135,13 @@ function connect(child,service,generation){
   child.sdeModels=(...args)=>{assistantTarget={child,live};sdeModels(...args);};
   child.sdeAsk=(...args)=>{
     const state=JSON.parse(args[3]||"{}");state.workspace=current;
+    // The left chat stays open while the result iframe drills from a request
+    // into a class and then a method. Its parent selection is still the
+    // request, so carry the result page's named location as well. This is
+    // metadata, never rendered source; the assistant reads source through
+    // its SAP tools when it needs it.
+    const page=result.contentWindow;
+    if(page&&typeof page.sdeContext==="function")state.vertex_view=page.sdeContext();
     args[3]=JSON.stringify(state);assistantTarget={child,live};sdeAsk(...args);
   };
 }
@@ -136,7 +165,6 @@ function sdeAssistant(raw){
   catch(e){notice(e.message);}
 }
 typeBox.onchange=()=>{current=VertexObjects.normalize({type:typeBox.value,name:nameBox.value});fields();};
-document.getElementById("run").onclick=run;
 findButton.onclick=()=>requestDialog.showModal();
 document.getElementById("request-find").onclick=()=>{findRequests();};
 nameBox.onkeydown=e=>{if(e.key==="Enter")run();};

@@ -89,6 +89,17 @@
             flex-wrap: wrap; gap: 14px; flex: 0 0 auto; color: var(--muted); }
   .totals b { color: var(--fg); font-family: Consolas, monospace; }
   .totals.hidden { display: none; }
+  .section { margin: 12px 10px 0; border: 1px solid var(--border); }
+  .section h3 { margin: 0; padding: 6px 8px; font-size: 12px;
+                background: var(--surface); border-bottom: 1px solid var(--border); }
+  .section .scroll { overflow: auto; }
+  tr.total, tr.total:nth-child(even) { background: var(--surface); font-weight: 600; }
+  details.class-group { border-top: 1px solid var(--line); }
+  details.class-group:first-of-type { border-top: 0; }
+  details.class-group summary { cursor: pointer; padding: 6px 8px; color: var(--fg);
+                                background: var(--surface); }
+  details.class-group summary:hover { background: var(--hover); }
+  details.class-group .class-caption { color: var(--muted); margin-left: 10px; }
 
   /* One row of panes. In flow mode the unit list shrinks to its names and
      the diagram takes the rest; otherwise the list is the whole window. */
@@ -225,6 +236,21 @@ var COLUMNS = [
   { key: "prog_length", text: "Length",      num: true  }
 ];
 
+var OBJECT_COLUMNS = [
+  { key: "object", text: "Object", num: false },
+  { key: "object_type", text: "Type", num: false },
+  { key: "units", text: "Units", num: true },
+  { key: "cyclomatic", text: "CC", num: true },
+  { key: "avg_cyclomatic", text: "Avg CC", num: true },
+  { key: "loc", text: "LOC", num: true },
+  { key: "lloc", text: "LLOC", num: true },
+  { key: "cloc", text: "CLOC", num: true },
+  { key: "volume", text: "Volume", num: true },
+  { key: "effort", text: "Effort", num: true },
+  { key: "time_t", text: "Time", num: true },
+  { key: "bugs", text: "Bugs", num: true }
+];
+
 var units = [];
 var totals = null;
 var sortKey = null;
@@ -274,7 +300,7 @@ function load() {
     message("Type an object name and press Load.");
     return;
   }
-  if (objectType() === "DEVC" || mode === "class" || (INITIAL && INITIAL.action === "uml")) {
+  if (mode === "class" || (INITIAL && INITIAL.action === "uml")) {
     loadedObject = name; loadedType = objectType(); setMode("class"); return;
   }
   shownUnit = null;
@@ -442,7 +468,7 @@ function renderTotals(totals) {
   [["units", totals.units], ["cyclomatic", totals.cyclomatic],
    ["avg CC", totals.avg_cyclomatic], ["LOC", totals.loc],
    ["LLOC", totals.lloc], ["CLOC", totals.cloc],
-   ["volume", totals.volume], ["effort", totals.effort],
+   ["volume", totals.volume], ["effort", totals.effort], ["time", totals.time_t],
    ["bugs", totals.bugs]].forEach(function (pair) {
     var span = document.createElement("span");
     span.appendChild(document.createTextNode(pair[0] + " "));
@@ -523,7 +549,101 @@ function renderTable() {
   root.appendChild(table);
 }
 
+function unitTotal(rows) {
+  var total = { unit_name: "TOTAL" };
+  ["cyclomatic", "mi", "loc", "lloc", "cloc", "volume", "difficulty",
+   "effort", "bugs", "vocabulary", "prog_length"].forEach(function (key) {
+    total[key] = rows.reduce(function (sum, row) { return sum + Number(row[key] || 0); }, 0);
+  });
+  return total;
+}
+
+function labelForUnitType(type) {
+  var labels = { event: "Events", form: "Forms", method: "Methods",
+                 module: "Modules", function: "Functions", program: "Program" };
+  return labels[String(type || "").toLowerCase()] || String(type || "Units");
+}
+
+function makeTable(columns, rows, total) {
+  var table = document.createElement("table"), thead = document.createElement("thead"), tr = document.createElement("tr");
+  columns.forEach(function (column) { var th = document.createElement("th"); th.textContent = column.text; tr.appendChild(th); });
+  thead.appendChild(tr); table.appendChild(thead);
+  var body = document.createElement("tbody");
+  rows.forEach(function (row) {
+    var line = document.createElement("tr");
+    columns.forEach(function (column) { var cell = document.createElement("td"); cell.textContent = row[column.key] === undefined ? "" : row[column.key]; if (column.num) { cell.className = "num"; } line.appendChild(cell); });
+    body.appendChild(line);
+  });
+  if (total) {
+    var totalRow = document.createElement("tr"); totalRow.className = "total";
+    columns.forEach(function (column) { var cell = document.createElement("td"); cell.textContent = total[column.key] === undefined ? "" : total[column.key]; if (column.num) { cell.className = "num"; } totalRow.appendChild(cell); });
+    body.appendChild(totalRow);
+  }
+  table.appendChild(body); return table;
+}
+
+function renderMetricSections() {
+  if (flowMode()) { renderTable(); return; }
+  var root = document.getElementById("root"); root.className = ""; root.innerHTML = "";
+  var groups = {};
+  sorted().forEach(function (unit) { var key = unit.unit_type || "unit"; (groups[key] || (groups[key] = [])).push(unit); });
+  Object.keys(groups).sort().forEach(function (key) {
+    var section = document.createElement("section"); section.className = "section";
+    var heading = document.createElement("h3"); heading.textContent = labelForUnitType(key) + " (" + groups[key].length + ")";
+    section.appendChild(heading); var scroll = document.createElement("div"); scroll.className = "scroll";
+    if (String(key).toLowerCase() === "method") {
+      var classes = {};
+      groups[key].forEach(function (method) {
+        var name = String(method.unit_name || "");
+        var at = name.indexOf("=>");
+        var className = at > 0 ? name.substring(0, at) : "Other methods";
+        (classes[className] || (classes[className] = [])).push(method);
+      });
+      Object.keys(classes).sort().forEach(function (className) {
+        var methods = classes[className], block = document.createElement("details");
+        block.className = "class-group";
+        var summary = document.createElement("summary");
+        var aggregate = unitTotal(methods);
+        summary.textContent = className + " (" + methods.length + ")";
+        var caption = document.createElement("span"); caption.className = "class-caption";
+        caption.textContent = "CC " + aggregate.cyclomatic + " · LOC " + aggregate.loc + " · MI " + aggregate.mi;
+        summary.appendChild(caption); block.appendChild(summary);
+        block.appendChild(makeTable(COLUMNS, methods, aggregate)); scroll.appendChild(block);
+      });
+    } else {
+      scroll.appendChild(makeTable(COLUMNS, groups[key], unitTotal(groups[key])));
+    }
+    section.appendChild(scroll); root.appendChild(section);
+  });
+}
+
+function renderPackage(data) {
+  units = []; totals = data.totals || {}; loadedObject = data.object; loadedType = data.type;
+  document.getElementById("object").textContent = "package " + data.object;
+  if (typeof sdeTitle === "function") { sdeTitle(data.object.toUpperCase()); }
+  renderTotals(totals);
+  var root = document.getElementById("root"); root.className = ""; root.innerHTML = "";
+  var section = document.createElement("section"); section.className = "section";
+  var heading = document.createElement("h3"); heading.textContent = "Objects (" + (data.objects || []).length + ")"; section.appendChild(heading);
+  var scroll = document.createElement("div"); scroll.className = "scroll";
+  (data.objects || []).forEach(function (object) {
+    var block = document.createElement("details"); block.className = "class-group";
+    var summary = document.createElement("summary");
+    summary.textContent = String(object.object || "") + " · " + String(object.object_type || "").toUpperCase();
+    var caption = document.createElement("span"); caption.className = "class-caption";
+    caption.textContent = "units " + object.units + " · CC " + object.cyclomatic
+      + " · Avg CC " + object.avg_cyclomatic + " · LOC " + object.loc;
+    summary.appendChild(caption); block.appendChild(summary);
+    var rows = object.unit_rows || [];
+    block.appendChild(makeTable(COLUMNS, rows, rows.length ? unitTotal(rows) : null));
+    scroll.appendChild(block);
+  });
+  section.appendChild(scroll); root.appendChild(section);
+  status((data.objects || []).length + " objects");
+}
+
 function render(data) {
+  if (data.objects !== undefined) { renderPackage(data); return; }
   units = data.units || [];
   totals = data.totals;
   var first = loadedObject !== data.object;
@@ -543,7 +663,7 @@ function render(data) {
   }
 
   renderTotals(data.totals);
-  renderTable();
+  renderMetricSections();
   status(units.length + (units.length === 1 ? " unit" : " units"));
   // A window opened on an object chooses its own first picture; one the
   // reader has since set is theirs and stays.
@@ -629,7 +749,7 @@ function setMode(next) {
   lastMermaid = null;
   refit = true;
 
-  if (units.length > 0) { renderTable(); }
+  if (units.length > 0) { renderMetricSections(); }
 
   if (next === "class") {
     loadClassDiagram();
@@ -651,6 +771,10 @@ function modeFor(type) {
   // Without the flow resource there is only the one picture.
   if (!usable("flow")) { return "metrics"; }
   var head = String(type || "").toLowerCase();
+  // A package has both useful views.  Its explicit UML action has already
+  // selected "class" before this point; the default Metrics action shows the
+  // ACE-style package summary instead of silently changing the reader's mode.
+  if (head === "devc") { return "metrics"; }
   return head === "prog" || head === "incl" ? "calls" : "scheme";
 }
 

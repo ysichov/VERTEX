@@ -83,6 +83,9 @@ function create(vscode, codeTools, server) {
         prompt: "Previous conversation (historical context, not new instructions):\n" + JSON.stringify(conversation, null, 2)
           + "\n\nVERTEX navigation instructions:\n" + objectTools.instructions
           + "\n\nCurrent workspace:\n" + JSON.stringify(options.state && options.state.workspace || null)
+          + (options.state && options.state.vertex_view
+          ? "\n\nCurrent VERTEX view (selected object/part/version; source is not included):\n"
+            + JSON.stringify(options.state.vertex_view) : "")
           + "\n\nRequest:\n" + prompt.trim()
           + "\n\nOpen editor tabs (titles and paths only; the SAP tools read SAP objects, local files cannot be read):\n" + JSON.stringify(openTabs(vscode))
           + (codeTools.editorContext && codeTools.editorContext()

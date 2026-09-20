@@ -3,11 +3,11 @@
   "use strict";
   const objects = [
     ["TABL", "Table", ["data", "join", "pivot", "diff"]],
-    ["CLAS", "Class", ["diff", "uml", "metrics", "scheme", "flow"]],
-    ["INTF", "Interface", ["diff", "uml"]],
-    ["PROG", "Program", ["diff", "metrics", "scheme", "flow"]],
-    ["INCL", "Include", ["diff", "metrics", "scheme", "flow"]],
-    ["DEVC", "Package", ["diff", "uml"]],
+    ["CLAS", "Class", ["uml", "metrics", "scheme", "flow", "diff"]],
+    ["INTF", "Interface", ["uml", "diff"]],
+    ["PROG", "Program", ["metrics", "scheme", "flow", "diff"]],
+    ["INCL", "Include", ["metrics", "scheme", "flow", "diff"]],
+    ["DEVC", "Package", ["uml", "metrics", "diff"]],
     ["TR", "Transport request", ["review", "diff"]],
     ["FUGR", "Function group", ["diff"]],
     ["FUNC", "Function module", ["diff"]],
@@ -15,13 +15,19 @@
   ];
   const labels = { data: "Data", join: "Join", pivot: "Pivot", diff: "Diff", review: "Review",
     uml: "UML", metrics: "Metrics", scheme: "Scheme", flow: "Flow" };
+  // Visual order is not the default action: Diff belongs at the end of the
+  // picker, while a class/package opened from a version-oriented command must
+  // still start on Diff unless the caller selected a view explicitly.
+  const defaults = { TABL: "data", CLAS: "diff", INTF: "diff", PROG: "diff",
+    INCL: "diff", DEVC: "diff", TR: "review", FUGR: "diff", FUNC: "diff",
+    DDLS: "diff", DOMA: "diff", DTEL: "diff" };
   function normalize(value) {
     const type = String(value.type || "CLAS").toUpperCase().split("/")[0];
     const item = objects.find(o => o[0] === type);
     if (!item) throw new Error("Unsupported object type: " + type);
     const name = String(value.name || "").trim().toUpperCase();
     if (name && !/^[A-Z0-9_/$]+$/.test(name)) throw new Error("Use an exact SAP object name.");
-    const action = value.action || item[2][0];
+    const action = value.action || defaults[type] || item[2][0];
     if (!item[2].includes(action)) throw new Error(labels[action] + " is unavailable for " + item[1]);
     return { type, name, action };
   }

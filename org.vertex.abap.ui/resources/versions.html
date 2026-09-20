@@ -2005,6 +2005,11 @@ function pageState() {
   };
 }
 
+// The Tools-window chat is a sibling iframe. It cannot see this page's
+// selection directly, so the parent asks for this small, source-free context
+// when composing a chat request.
+function sdeContext() { return pageState(); }
+
 function sendAsk() {
   if (asking) { return; }
   var input = document.getElementById("ask");

@@ -1,6 +1,19 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict"),vm=require("node:vm"),path=require("node:path");
 const model=require("../object-tools"),workspace=require("../tools-window");
+test("embedded theme follows all VS Code themes and changes without reloading",()=>{
+  const source=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/tools.html"),"utf8");
+  const code=source.slice(source.indexOf("function syncTheme("),source.indexOf("new MutationObserver"));
+  let active; const tokens=new Map(); const styles=new Map(); const classes=new Set();
+  const child={document:{body:{style:{[Symbol.iterator]:()=>styles.keys(),setProperty:(k,v)=>styles.set(k,v),removeProperty:k=>styles.delete(k)},classList:{toggle:(k,on)=>on?classes.add(k):classes.delete(k)}}}};
+  const context={document:{body:{classList:{contains:k=>k===active}}},getComputedStyle:()=>({[Symbol.iterator]:()=>tokens.keys(),getPropertyValue:k=>tokens.get(k)||""})};
+  vm.createContext(context);vm.runInContext(code,context);
+  for(const [theme,bg,fg,insert] of [["vscode-dark","#182449","#ffffff","#17301c"],["vscode-light","#ffffff","#202020","#e8f6ea"],["vscode-high-contrast","#000000","#ffffff","#17301c"],["vscode-high-contrast-light","#ffffff","#000000","#e8f6ea"]]){
+    active=theme;tokens.set("--vscode-editor-background",bg);tokens.set("--vscode-editor-foreground",fg);
+    context.syncTheme(child);
+    assert.deepEqual([...classes],[theme]);assert.equal(styles.get("--bg"),bg);assert.equal(styles.get("--fg"),fg);assert.equal(styles.get("--ins-bg"),insert);assert.equal(styles.get("--vscode-editor-background"),bg);
+  }
+});
 test("objects expose valid functions and appropriate defaults",()=>{
   assert.equal(model.normalize({type:"TR",name:"devk900001"}).action,"review");
   assert.equal(model.normalize({type:"CLAS/OC",name:"zcl_test"}).action,"diff");
