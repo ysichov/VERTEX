@@ -66,6 +66,49 @@ development systems often have; it is off by default on purpose.
 - **VERTEX: Review & Activate** — editor title or context menu; opens the block-by-block
   Code Change panel described below.
 - **VERTEX: Save & Activate** — editor title; saves the whole tab without the block review.
+- **VERTEX: Go to (by context)** — F12 or double-click in a VERTEX SAP source tab; follows a
+  supported name according to its ABAP context.
+- **VERTEX: Back** — Alt+Left; returns to the preceding location followed by VERTEX navigation.
+
+## Clickable ABAP source
+
+The old SAP GUI was great because every meaningful name was something that could be clicked.
+VERTEX applies that idea to the editable `vertex-sap` source document rather than replacing the
+editor with a read-only code viewer. The aim is that ABAP names become hoverable and clickable as
+their context becomes known.
+
+Currently supported:
+
+- Hover a local variable or conventional class attribute to see its `TYPE` or `LIKE` declaration.
+  The popup shows the declaration itself, without repeating the variable name.
+- Hover a method to see only its parameter sections, with one parameter per line. This applies to
+  local methods immediately and to a supported static `CLASS=>method` call after its target class
+  has been read.
+- Press **F12**, double-click, or run **VERTEX: Go to (by context)** on `METHOD` / `METHODS` to
+  switch between a method declaration and implementation in the same class document. The same
+  action follows an unqualified local call such as `build_layout( )`, and follows a supported
+  variable to its declaration.
+- A static call such as `ZCL_FOO=>bar( )` opens the target class at the implementation of `bar`.
+  `CALL FUNCTION 'Z_FOO'` opens the function module source.
+- **VERTEX: Back** (`Alt+Left`) returns along the locations opened by VERTEX. On a variable
+  declaration, repeating Go to also returns to the previous VERTEX location.
+
+Navigation is provided only for source read through VERTEX and therefore does not depend on an
+ADT project being open. If SAP ABAP Development Tools is available, its own editor navigation and
+context-menu commands remain available too.
+
+### Source view versus editable source
+
+Every object does not have the same action set. The object type determines the available VERTEX
+functions: transports focus on Versions and review; classes and programs can offer source,
+metrics, flow/scheme and diff; packages offer their package-level views. This keeps unavailable
+or meaningless actions out of the toolbar.
+
+**View source** is the default VERTEX view where source is available. It is a read-only,
+contextual page inside the Tools window, useful for inspection and for sending selected fragments
+to the internal chat. Ask the chat explicitly to *open* or *edit* an object — for example,
+*Open ZCL_FOO please* — to open a normal, editable VS Code tab instead. Changes made there are
+still sent to SAP only through **Review & Activate** or **Save & Activate**.
 
 ## VERTEX chat
 

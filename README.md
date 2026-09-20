@@ -182,6 +182,27 @@ system - two systems are two users often enough.
 Then the command palette: **VERTEX: Open SelecTor**, **Open Metrics**, **Open Versions**. There is
 no object tree here to right-click, so each page opens empty and its own name field is the way in.
 
+### Clickable ABAP source
+
+The old SAP GUI made every meaningful name a place to go. VERTEX takes the same direction in
+VS Code: source opened from VERTEX remains an editable `vertex-sap` document, while names in it
+can be inspected and followed. Hovering a supported local variable shows its type; hovering a
+method shows its parameters. **F12**, double-click, or **VERTEX: Go to (by context)** follows
+local methods and declarations inside the current class, and can open a static class call or a
+function module in its own source. **VERTEX: Back** (`Alt+Left`) returns along that navigation.
+
+This is intentionally separate from **View source** in the Tools window. That command is a
+read-only, contextual overview inside VERTEX; an explicit chat request such as *Open ZCL_FOO*
+opens the normal editable VS Code document. The detailed, current navigation matrix is in
+[vscode/README.md](vscode/README.md#clickable-abap-source).
+
+### Object-specific tools
+
+VERTEX no longer offers one generic action list for every SAP object. The selected object type
+defines the functions in its toolbar: a transport exposes Versions and review, a class or program
+can expose source, metrics, flow/scheme and diff, and a package exposes its package-level views.
+The default action is the most useful available view rather than an extra Run button.
+
 ## Talking to ADT
 
 Reading and writing an ADT resource from Java, the WebView2 callback deadlock, and how to read
