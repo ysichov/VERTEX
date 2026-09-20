@@ -3,6 +3,7 @@
 // The sidebar is deliberately one free-prompt surface. Tools remain internal to
 // the orchestrator; it decides which SAP operation is needed.
 const ACTIONS = Object.freeze({
+  tools: "vertex.tools",
   selector: "vertex.open",
   metrics: "vertex.metrics",
   versions: "vertex.versions",
@@ -118,9 +119,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
 <form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX…" aria-label="Message"></textarea><button type="submit">Send</button></form>
 <h2>Quick launch</h2>
-<button class="secondary" data-action="selector">SelecTor</button>
-<button class="secondary" data-action="metrics">Metrics</button>
-<button class="secondary" data-action="versions">Versions</button>
+<button class="secondary" data-action="tools">VERTEX Tools</button>
 <button class="secondary" data-action="review">Review &amp; save current code</button>
 <p><button class="secondary" data-action="system">Switch system</button> <button class="secondary" data-action="settings">Configure systems</button></p>
 <script nonce="${nonce}">

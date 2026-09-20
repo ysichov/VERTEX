@@ -6,37 +6,14 @@
             name="VERTEX Assistant" class="org.vertex.abap.ui.AssistantPreferences"/>
    </extension>
    <extension point="org.eclipse.ui.views">
+      <view id="org.vertex.abap.ui.view.tools" name="VERTEX Tools" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.ToolsView" allowMultiple="true" restorable="false"/>
       <category
             id="org.vertex.abap.ui.category"
             name="VERTEX"/>
-      <view
-            id="org.vertex.abap.ui.view"
-            name="SelecTor Data Explorer"
-            category="org.vertex.abap.ui.category"
-            class="org.vertex.abap.ui.SelectorView"
-            allowMultiple="true"
-            restorable="false"/>
-      <view
-            id="org.vertex.abap.ui.view.metrics"
-            name="VERTEX Metrics"
-            category="org.vertex.abap.ui.category"
-            class="org.vertex.abap.ui.MetricsView"
-            allowMultiple="true"
-            restorable="false"/>
-      <view
-            id="org.vertex.abap.ui.view.versions"
-            name="VERTEX Versions"
-            category="org.vertex.abap.ui.category"
-            class="org.vertex.abap.ui.VersionsView"
-            allowMultiple="true"
-            restorable="false"/>
-      <view
-            id="org.vertex.abap.ui.view.chat"
-            name="VERTEX Chat"
-            category="org.vertex.abap.ui.category"
-            class="org.vertex.abap.ui.ChatView"
-            allowMultiple="false"
-            restorable="false"/>
+
+
+
+
       <view
             id="org.vertex.abap.ui.view.review"
             name="VERTEX Review"
@@ -50,51 +27,13 @@
         offer, which is usually a narrow strip on the right - useless for a grid.
         visible="false" only reserves the place; nothing opens on its own. The
         user can drag them anywhere afterwards and Eclipse remembers. -->
-   <extension point="org.eclipse.ui.perspectiveExtensions">
-      <perspectiveExtension targetID="*">
-         <view
-               id="org.vertex.abap.ui.view"
-               relative="org.eclipse.ui.editorss"
-               relationship="bottom"
-               ratio="0.35"
-               visible="false"
-               closeable="true"
-               moveable="true"/>
-         <view
-               id="org.vertex.abap.ui.view.metrics"
-               relative="org.vertex.abap.ui.view"
-               relationship="stack"
-               visible="false"
-               closeable="true"
-               moveable="true"/>
-         <view
-               id="org.vertex.abap.ui.view.versions"
-               relative="org.vertex.abap.ui.view"
-               relationship="stack"
-               visible="false"
-               closeable="true"
-               moveable="true"/>
-         <view
-               id="org.vertex.abap.ui.view.chat"
-               relative="org.eclipse.ui.editorss"
-               relationship="right"
-               ratio="0.7"
-               visible="false"
-               closeable="true"
-               moveable="true"/>
-      </perspectiveExtension>
-   </extension>
+
 
    <extension point="org.eclipse.ui.commands">
-      <command
-            id="org.vertex.abap.ui.command.metrics"
-            name="Metrics"/>
-      <command
-            id="org.vertex.abap.ui.command.data"
-            name="SelecTor"/>
-      <command
-            id="org.vertex.abap.ui.command.versions"
-            name="Versions"/>
+      <command id="org.vertex.abap.ui.command.tools" name="VERTEX Tools"/>
+
+
+
       <command
             id="org.vertex.abap.ui.command.activate"
             name="VERTEX: Activate"
@@ -102,15 +41,10 @@
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
-      <handler
-            commandId="org.vertex.abap.ui.command.metrics"
-            class="org.vertex.abap.ui.MetricsHandler"/>
-      <handler
-            commandId="org.vertex.abap.ui.command.data"
-            class="org.vertex.abap.ui.DataHandler"/>
-      <handler
-            commandId="org.vertex.abap.ui.command.versions"
-            class="org.vertex.abap.ui.VersionsHandler"/>
+      <handler commandId="org.vertex.abap.ui.command.tools" class="org.vertex.abap.ui.ToolsHandler"/>
+
+
+
       <handler
             commandId="org.vertex.abap.ui.command.activate"
             class="org.vertex.abap.ui.ActivateHandler"/>
@@ -128,30 +62,12 @@
    <extension point="org.eclipse.ui.menus">
       <menuContribution
             locationURI="popup:org.eclipse.ui.popup.any?after=additions">
-         <menu
-               id="org.vertex.abap.ui.menu"
-               label="VERTEX">
-            <visibleWhen checkEnabled="false">
-               <with variable="selection">
-                  <count value="1"/>
-                  <iterate>
-                     <adapt type="com.sap.adt.tools.core.IAdtObjectReference"/>
-                  </iterate>
-               </with>
-            </visibleWhen>
-            <command
-                  commandId="org.vertex.abap.ui.command.data"
-                  label="SelecTor"
-                  style="push"/>
-            <command
-                  commandId="org.vertex.abap.ui.command.metrics"
-                  label="Metrics"
-                  style="push"/>
-            <command
-                  commandId="org.vertex.abap.ui.command.versions"
-                  label="Versions"
-                  style="push"/>
-         </menu>
+         <command commandId="org.vertex.abap.ui.command.tools" label="VERTEX Tools" style="push">
+            <visibleWhen checkEnabled="false"><or>
+               <with variable="selection"><count value="1"/><iterate><adapt type="com.sap.adt.tools.core.IAdtObjectReference"/></iterate></with>
+               <with variable="activeEditorInput"><adapt type="com.sap.adt.tools.core.IAdtObjectReference"/></with>
+            </or></visibleWhen>
+         </command>
       </menuContribution>
       <!-- In the context menu of an editor showing an ADT object. -->
       <menuContribution

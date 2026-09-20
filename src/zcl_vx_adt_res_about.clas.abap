@@ -58,6 +58,7 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
       ( name = `table`    template = `/vertex/table/{name}`    handler = 'ZCL_VX_ADT_RES_TABLE' )
       ( name = `metrics`  template = `/vertex/metrics/{name}`  handler = 'ZCL_VX_ADT_RES_METRICS' )
       ( name = `class`    template = `/vertex/class/{name}`    handler = 'ZCL_VX_ADT_RES_CLASS' )
+      ( name = `package`  template = `/vertex/package/{name}`  handler = 'ZCL_VX_ADT_RES_PACKAGE' )
       ( name = `flow`     template = `/vertex/flow/{name}`     handler = 'ZCL_VX_ADT_RES_FLOW' )
       ( name = `versions` template = `/vertex/versions/{name}` handler = 'ZCL_VX_ADT_RES_VERSIONS' )
       ( name = `join`     template = `/vertex/join/{name}`     handler = 'ZCL_VX_ADT_RES_JOIN' )

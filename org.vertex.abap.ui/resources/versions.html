@@ -466,7 +466,9 @@ function renderCards() {
   });
 }
 
-function loadVersions(part) {
+var autoDiff = false;
+function loadVersions(part, showList) {
+  autoDiff = !showList && typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff";
   current = part;
   versions = [];
   renderParts();
@@ -594,6 +596,7 @@ function renderPartList(data) {
   }
   status(parts.length + (parts.length === 1 ? " part" : " parts"));
   note("Pick a part to see its versions.");
+  if (typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff" && !pending && !scope && parts.length) { loadVersions(parts[0]); }
 }
 
 function renderParts() {
@@ -861,6 +864,7 @@ function renderVersions(data) {
   root.appendChild(table);
 
   status(versions.length + (versions.length === 1 ? " version of " : " versions of ") + label);
+  if (autoDiff && !pending && versions.length) { autoDiff = false; loadDiff(0); }
 }
 
 /* ---------- diff ---------- */
@@ -964,7 +968,7 @@ function renderDiff(data) {
   var back = document.createElement("span");
   back.className = "back";
   back.textContent = "← Versions";
-  back.addEventListener("click", function () { loadVersions(current); });
+  back.addEventListener("click", function () { loadVersions(current, true); });
   bar.appendChild(back);
 
   var what = document.createElement("span");
@@ -1639,7 +1643,11 @@ function applyAbout() {
    resource this window is for, there is nothing to start. */
 function startWindow() {
   if (!usable("versions")) { setupPage(""); return; }
-  if (INITIAL) { loadParts(false); }
+  if (INITIAL) {
+    if (INITIAL.action === "review") {
+      mode = "R"; scope = true; renderCards(); loadReview();
+    } else { loadParts(false); }
+  }
 }
 
 /* A 404 is a setup state while the system has not said what it has, or when it

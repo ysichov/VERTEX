@@ -67,16 +67,8 @@
         "title": "VERTEX: Open Panel"
       },
       {
-        "command": "vertex.open",
-        "title": "VERTEX: Open SelecTor"
-      },
-      {
-        "command": "vertex.metrics",
-        "title": "VERTEX: Open Metrics"
-      },
-      {
-        "command": "vertex.versions",
-        "title": "VERTEX: Open Versions"
+        "command": "vertex.tools",
+        "title": "VERTEX Tools"
       },
       {
         "command": "vertex.switchSystem",

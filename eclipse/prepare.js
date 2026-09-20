@@ -12,3 +12,4 @@ for (const file of ["bridge.js", "chat.js"]) {
   fs.copyFileSync(path.join(__dirname, file), path.join(target, file));
 }
 console.log("Prepared Eclipse assistant runtime.");
+fs.copyFileSync(path.join(root, "org.vertex.abap.ui", "resources", "object-tools.js"), path.join(target, "object-tools.js"));

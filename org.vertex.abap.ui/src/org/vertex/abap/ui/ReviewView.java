@@ -145,7 +145,7 @@ public class ReviewView extends PageView {
 	private void askChat(String text) {
 		try {
 			IWorkbenchPage page = getSite().getPage();
-			ChatView chat = (ChatView) page.showView(ChatView.ID);
+			ChatView chat = (ChatView) page.showView(ToolsView.ID);
 			chat.prompt(text);
 		} catch (Exception e) {
 			post("error", "Cannot open VERTEX Chat: " + describe(e));

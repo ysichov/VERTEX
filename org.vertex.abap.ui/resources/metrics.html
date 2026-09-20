@@ -258,7 +258,7 @@ function message(text) {
    the resource refuses comes back as its own sentence, and one authority for
    that rule is enough. */
 var TYPES = [["CLAS", "Class"], ["INTF", "Interface"],
-             ["PROG", "Program"], ["INCL", "Include"]];
+             ["PROG", "Program"], ["INCL", "Include"], ["DEVC", "Package"]];
 
 function objectName() {
   return document.getElementById("name").value.trim().toUpperCase();
@@ -274,6 +274,9 @@ function load() {
     message("Type an object name and press Load.");
     return;
   }
+  if (objectType() === "DEVC" || mode === "class" || (INITIAL && INITIAL.action === "uml")) {
+    loadedObject = name; loadedType = objectType(); setMode("class"); return;
+  }
   shownUnit = null;
   expanded = [];
   lastMermaid = null;
@@ -288,7 +291,7 @@ function loadClassDiagram() {
   if (!loadedObject) { return; }
   status("reading class definition ...");
   waiting = "class";
-  sdeClass(loadedObject);
+  sdeClass(loadedObject, loadedType);
 }
 
 /* The type arrives from the object tree with its subtype - CLAS/OC. Only the
@@ -382,15 +385,38 @@ function answered(kind, raw) {
 
 function drawClass(raw) {
   if (typeof raw !== "string") { failed("No class definition returned."); return; }
+  if (mode !== "class") { return; }
+  if (raw.indexOf("ERROR:") === 0) { status(""); failed(raw.substring(6)); return; }
+  if (!mermaidLoaded) {
+    pendingClass = raw;
+    waiting = "asset";
+    sdeAsset("mermaid");
+    return;
+  }
   try {
     var data = JSON.parse(raw);
-    var lines = ["classDiagram", "class " + data.class + " {"];
-    (data.methods || []).forEach(function (m) {
-      lines.push("  +" + m.name + "()");
+    var nodes = data.nodes || (data.class ? [{name:data.class,methods:data.methods}] : []);
+    if (!nodes.length) { hint("This package has no classes or interfaces."); status(""); return; }
+    var lines = ["classDiagram", "direction " + direction], ids = new Map();
+    function label(value) { return String(value || "").replace(/[^A-Za-z0-9_/$~]/g, "_"); }
+    function node(name) {
+      if (!ids.has(name)) { var id="n"+ids.size; ids.set(name,id); lines.push('class '+id+'["'+label(name)+'"]'); }
+      return ids.get(name);
+    }
+    nodes.forEach(function(n){node(n.name);});
+    nodes.forEach(function(n){
+      var id=node(n.name);
+      if(n.kind==="interface") lines.push("<<interface>> "+id);
+      (n.methods||[]).forEach(function(m){
+        var visibility={public:"+",protected:"#",private:"-"}[m.visibility]||"";
+        lines.push(id+" : "+visibility+label(m.name).replace(/~/g,"_")+"()"+(m.is_static?"$":""));
+      });
     });
-    lines.push("}");
-    renderMermaid(lines.join("\\n"));
-    status("");
+    (data.edges||[]).forEach(function(e){
+      var arrow={inheritance:"--|>",implementation:"..|>",dependency:"..>"}[e.kind];
+      if(arrow)lines.push(node(e.source)+" "+arrow+" "+node(e.target));
+    });
+    lastMermaid=lines.join("\n"); lastCaption=nodes.length+" classes / interfaces"; refit=true; draw();
   } catch (e) { failed("Invalid class definition: " + e.message); }
 }
 
@@ -521,7 +547,7 @@ function render(data) {
   status(units.length + (units.length === 1 ? " unit" : " units"));
   // A window opened on an object chooses its own first picture; one the
   // reader has since set is theirs and stays.
-  if (first) { setMode(modeFor(data.type)); }
+  if (first) { setMode(INITIAL && INITIAL.action ? ({flow:"calls",uml:"class"}[INITIAL.action] || INITIAL.action) : modeFor(data.type)); }
 }
 
 
@@ -577,6 +603,7 @@ var fitted = true;
 var fittedFor = null;    // the pane size the current fit was worked out for
 var lastMermaid = null;  // the text ACE sent, kept so it can be redrawn
 var lastCaption = "";
+var pendingClass = null;
 
 function flowMode() { return mode !== "metrics"; }
 
@@ -593,6 +620,8 @@ function setMode(next) {
   document.getElementById("mode").value = next;
   document.body.classList.toggle("flow", flowMode());
   document.body.classList.toggle("calls", next === "calls");
+  document.getElementById("list").hidden = next === "class";
+  document.getElementById("totals").classList.toggle("hidden", next === "class");
   document.getElementById("diagram").hidden = !flowMode();
   document.getElementById("tools").hidden = !flowMode();
   shownUnit = null;
@@ -846,7 +875,11 @@ function startMermaid(source) {
     return;
   }
   mermaidLoaded = true;
-  if (mode === "calls" || shownUnit) { requestDiagram(); }
+  if (pendingClass) {
+    var definition = pendingClass;
+    pendingClass = null;
+    drawClass(definition);
+  } else if (mode === "calls" || shownUnit) { requestDiagram(); }
 }
 
 function renderDiagram(data) {
@@ -872,8 +905,9 @@ function renderDiagram(data) {
 /* Everything that puts a picture on the screen goes through here: a unit just
    asked for, a stretch just opened, a chart just turned. */
 function draw() {
-  var text = turned(lastMermaid, direction);
-  if (text !== null && darkPage()) { text = darkened(text); }
+  var isClass = /^classDiagram\b/.test(lastMermaid);
+  var text = isClass ? lastMermaid.replace(/^direction .+$/m, "direction " + direction) : turned(lastMermaid, direction);
+  if (!isClass && text !== null && darkPage()) { text = darkened(text); }
   if (text === null) {
     failed("This diagram does not say which way it runs, so it cannot be turned."
            + String.fromCharCode(10)
@@ -890,7 +924,7 @@ function draw() {
   // that is already open, and the next picture should follow it.
   mermaid.initialize({
     startOnLoad: false,
-    securityLevel: "loose",
+    securityLevel: isClass ? "strict" : "loose",
     theme: darkPage() ? "dark" : "default",
     flowchart: { htmlLabels: false, useMaxWidth: false },
     maxTextSize: 90000000,
@@ -1003,9 +1037,9 @@ function applyAbout() {
   if (!usable("flow")) {
     var box = document.getElementById("mode");
     for (var i = box.options.length - 1; i >= 0; i--) {
-      if (box.options[i].value !== "metrics") { box.remove(i); }
+      if (box.options[i].value === "calls" || box.options[i].value === "scheme") { box.remove(i); }
     }
-    if (mode !== "metrics") { setMode("metrics"); }
+    if (mode === "calls" || mode === "scheme") { setMode("metrics"); }
   }
   sayMissing();
 }
@@ -1013,6 +1047,11 @@ function applyAbout() {
 /* The window proper starts once the system has said what it has. Without the
    resource this window is for, there is nothing to start. */
 function startWindow() {
+  if (INITIAL && (INITIAL.action === "uml" || INITIAL.type === "DEVC")) {
+    var service = INITIAL.type === "DEVC" ? "package" : "class";
+    if (!usable(service)) { message("Update the VERTEX backend: missing " + service + " resource."); return; }
+    load(); return;
+  }
   if (!usable("metrics")) { setupPage(""); return; }
   if (INITIAL) { load(); }
 }

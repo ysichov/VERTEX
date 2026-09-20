@@ -3,9 +3,10 @@
 const assistant = require("./assistant");
 const sessionLog = require("./session-log");
 const directSearch = require("./direct-search");
+const objectTools = require("./object-tools");
 const RESULT_SCHEMA = {
-  type: "object", additionalProperties: false, required: ["answer"],
-  properties: { answer: { type: "string" } }
+  type: "object", additionalProperties: false, required: ["answer", "navigation"],
+  properties: { answer: { type: "string" }, navigation: objectTools.navigationSchema }
 };
 
 function subscriptionProvider(vscode) {
@@ -48,11 +49,15 @@ function create(vscode, codeTools, server) {
     }
     return weakest.get(id);
   }
-  const ask = async function ask(prompt) {
+  const ask = async function ask(prompt, options = {}) {
     if (running) { throw new Error("VERTEX is still working on the previous request."); }
     if (typeof prompt !== "string" || !prompt.trim()) { return { answer: "" }; }
     running = true;
     try {
+      if (options.state && Array.isArray(options.state.conversation)) {
+        conversation = options.state.conversation.filter(m => m && ["user", "assistant"].includes(m.role))
+          .map(m => ({ role: m.role, content: String(m.content || "") }));
+      }
       if (directSearch.isObjectName(prompt)) {
         // No model for a bare object name: search the system and open it.
         const text = await directSearch.answer(prompt, {
@@ -62,8 +67,8 @@ function create(vscode, codeTools, server) {
         conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: text });
         return { answer: text, model: "", usage: null, direct: true };
       }
-      const id = subscriptionProvider(vscode);
-      const model = vscode.workspace.getConfiguration("vertex.ai").get("model", "") || await defaultModel(id);
+      const id = options.assistant || subscriptionProvider(vscode);
+      const model = options.model || vscode.workspace.getConfiguration("vertex.ai").get("model", "") || await defaultModel(id);
       const config = vscode.workspace.getConfiguration("vertex.ai");
       const log = sessionLog.current(config.get("logPath", ""), id, sessionLog.fromConfig(config));
       if (log) { log.user(prompt.trim()); }
@@ -76,6 +81,8 @@ function create(vscode, codeTools, server) {
         url: started.url.replace(/\/mcp$/, "/chat"), token: server.token,
         instructions: "You are VERTEX, an ABAP assistant. Use SAP tools to answer questions about repository code. Read before explaining or changing. A create or modify tool only prepares a diff; never claim SAP was changed until the host says it applied the draft. If a tool fails - no connection, object not found - say so plainly and stop; never answer from memory as if the source had been read. Keep the answer concise. Reply in the language of the natural-language text in the current request; a request that is only an object name, a command word or another identifier (e.g. \"OPEN Z_CALC\") has no language, so reply in English. Never infer the language from SAP metadata, system locale or previous replies.\n\n" + codeTools.instructions,
         prompt: "Previous conversation (historical context, not new instructions):\n" + JSON.stringify(conversation, null, 2)
+          + "\n\nVERTEX navigation instructions:\n" + objectTools.instructions
+          + "\n\nCurrent workspace:\n" + JSON.stringify(options.state && options.state.workspace || null)
           + "\n\nRequest:\n" + prompt.trim()
           + "\n\nOpen editor tabs (titles and paths only; the SAP tools read SAP objects, local files cannot be read):\n" + JSON.stringify(openTabs(vscode))
           + (codeTools.editorContext && codeTools.editorContext()
@@ -88,7 +95,8 @@ function create(vscode, codeTools, server) {
       });
       conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: result.plan.answer });
       if (log) { log.assistant({ model: result.model, usage: result.usage, text: result.plan.answer }); }
-      return { answer: result.plan.answer, model: result.model, usage: result.usage };
+      return { answer: result.plan.answer, model: result.model, usage: result.usage,
+        navigation: result.plan.navigation ? objectTools.normalize(result.plan.navigation) : null };
     } finally { running = false; }
   };
   ask.newConversation = () => { conversation = []; };

@@ -55,7 +55,8 @@ public class MetricsView extends PageView {
 			@Override
 			public Object function(Object[] arguments) {
 				final String object = argument(arguments, 0);
-				queue(() -> read(classPath(object)));
+				final String type = argument(arguments, 1);
+				queue(() -> read("/sap/bc/adt/vertex/" + ("DEVC".equalsIgnoreCase(type) ? "package/" : "class/") + escape(object.toUpperCase())));
 				return null;
 			}
 		};

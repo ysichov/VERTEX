@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>VERTEX Tools</title>
+<style>
+:root{color-scheme:light dark}*{box-sizing:border-box}
+body{margin:0;height:100vh;display:flex;background:var(--vscode-editor-background,Canvas);color:var(--vscode-editor-foreground,CanvasText);font:13px "Segoe UI",sans-serif}
+#chat{width:30%;min-width:260px;resize:horizontal;overflow:auto;border-right:1px solid #8886}
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+header{display:flex;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #8886;align-items:center}
+input,select,button{font:inherit;padding:5px;color:inherit;background:var(--vscode-input-background,Field);border:1px solid #8888}
+#object-name{flex:1;min-width:150px;text-transform:uppercase}iframe{border:0;width:100%;height:100%;display:block}
+#result{flex:1;min-height:0}#notice{padding:8px;white-space:pre-wrap}#notice:empty{display:none}
+</style></head><body>
+<aside id="chat" aria-label="Assistant"><iframe id="conversation" title="VERTEX assistant"></iframe></aside>
+<main><header>
+<select id="object-type" aria-label="Object type"></select>
+<input id="object-name" placeholder="Object name" aria-label="Object name" spellcheck="false">
+<select id="function" aria-label="Function"></select><button id="run">Run</button>
+</header><div id="notice" role="status"></div><iframe id="result" title="Function result"></iframe></main>
+<script>
+/*OBJECT_MODEL*/
+/*TOOL_ROUTES*/
+const bundle = /*BUNDLE*/{};
+const initial = /*INIT*/null/*INIT*/;
+let current = VertexObjects.normalize(initial || {});
+let sequence = 0, activeRequest = null, queue = [], assistantTarget = null;
+const typeBox = document.getElementById("object-type"), nameBox = document.getElementById("object-name");
+const actionBox = document.getElementById("function"), result = document.getElementById("result");
+function notice(text){document.getElementById("notice").textContent=text;}
+VertexObjects.objects.forEach(o=>typeBox.add(new Option(o[1],o[0])));
+function fields(){
+  typeBox.value=current.type; nameBox.value=current.name; actionBox.replaceChildren();
+  VertexObjects.objects.find(o=>o[0]===current.type)[2].forEach(a=>actionBox.add(new Option(VertexObjects.labels[a],a)));
+  actionBox.value=current.action;
+}
+function navigate(value){
+  try{current=VertexObjects.normalize(value);fields();if(current.name) run();}
+  catch(e){notice(e.message);}
+}
+function run(){
+  try{current=VertexObjects.normalize({type:typeBox.value,name:nameBox.value,action:actionBox.value});}
+  catch(e){notice(e.message);return;}
+  if(!current.name){notice("Enter an object name.");return;}
+  notice(""); fields();
+  const service=["data","join","pivot"].includes(current.action)?"table":
+    ["diff","review"].includes(current.action)?"versions":"metrics";
+  mount(result,service,current);
+}
+function mount(frame,service,state){
+  const generation=++sequence;
+  frame.dataset.generation=String(generation);
+  let source=bundle[service];
+  const init=service==="table"?state.name:state;
+  source=source.replace(["/*INIT*/","null","/*INIT*/"].join(""),()=>JSON.stringify(init).replace(/</g,"\\u003c"));
+  const bootstrap="<script>parent.connect(window,"+JSON.stringify(service)+","+generation+");<"+"/script>";
+  const hide=service==="chat"?"":"<style>#name,#type,#load,#mode,#assist,#open{display:none!important}</style>";
+  frame.srcdoc=source.replace("<script>",hide+bootstrap+"<script>");
+}
+function connect(child,service,generation){
+  child.VERTEX_ACTION=current.action;
+  const owner=service==="chat"?document.getElementById("conversation"):result;
+  const live=()=>owner.contentWindow===child&&owner.dataset.generation===String(generation);
+  let pending=null;
+  child.sdeTake=()=>{const answer=pending;pending=null;return answer;};
+  const reply=value=>{if(live()){pending=value;child.sdeReady();}};
+  child.sdeTitle=()=>{};
+  child.sdeBrowse=url=>sdeBrowse(url);
+  child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
+  child.sdeProject=()=>enqueue({path:"project"},reply,live);
+  child.sdeAbout=()=>enqueue({path:"/sap/bc/adt/vertex/about"},reply,live);
+  child.sdeAsset=name=>enqueue({asset:name},reply,live);
+  Object.keys(VertexRoutes.SERVICES[service]||{}).forEach(call=>{
+    const build=VertexRoutes.SERVICES[service][call];
+    if(typeof build!=="function")return;
+    child["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>{
+      const at=VertexRoutes.WRITES[call];
+      enqueue({path:build(args),body:at===undefined?null:(args[at]||null)},reply,live);
+    };
+  });
+  child.sdeModels=(...args)=>{assistantTarget={child,live};sdeModels(...args);};
+  child.sdeAsk=(...args)=>{
+    const state=JSON.parse(args[3]||"{}");state.workspace=current;
+    args[3]=JSON.stringify(state);assistantTarget={child,live};sdeAsk(...args);
+  };
+}
+function enqueue(request,reply,live){queue.push({request,reply,live});pump();}
+function pump(){
+  if(activeRequest)return;
+  while(queue.length){const item=queue.shift();if(item.live()){activeRequest=item;break;}}
+  if(!activeRequest)return;
+  const r=activeRequest.request;
+  if(r.asset)sdeAsset(r.asset);else sdeWorkspace(r.path,r.body);
+}
+function sdeReady(){
+  const raw=sdeTake(),item=activeRequest;activeRequest=null;
+  if(item&&item.live())item.reply(raw);
+  pump();
+}
+function sdeAssistant(raw){
+  const target=assistantTarget;
+  if(target&&target.live())target.child.sdeAssistant(raw);
+  try{const data=JSON.parse(raw);if(!data.error&&data.plan&&data.plan.navigation)navigate(data.plan.navigation);}
+  catch(e){notice(e.message);}
+}
+typeBox.onchange=()=>{current=VertexObjects.normalize({type:typeBox.value,name:nameBox.value});fields();};
+document.getElementById("run").onclick=run;
+nameBox.onkeydown=e=>{if(e.key==="Enter")run();};
+actionBox.onchange=()=>{if(nameBox.value.trim())run();};
+fields();mount(document.getElementById("conversation"),"chat",null);
+if(current.name)run();
+</script></body></html>

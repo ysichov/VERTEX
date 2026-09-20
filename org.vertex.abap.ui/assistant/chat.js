@@ -6,6 +6,7 @@
 
 const TYPES = { PROG: "PROG/P", CLAS: "CLAS/OC", FUNC: "FUGR/FF" };
 const INCLUDES = ["main", "definitions", "implementations", "macros", "testclasses"];
+const objectTools = require("./object-tools");
 
 const TOOLS = [
   {
@@ -41,10 +42,11 @@ const TOOLS = [
 
 const PLAN_SCHEMA = {
   type: "object", additionalProperties: false, required: ["answer"],
-  properties: { answer: { type: "string" } }
+  properties: { answer: { type: "string" }, navigation: objectTools.navigationSchema }
 };
 
 const INSTRUCTIONS = [
+  objectTools.instructions,
   "You are VERTEX, an ABAP assistant inside Eclipse ADT. Use the SAP tools to answer questions about repository code.",
   "When asked to open or show source, use open_sap_object; do not paste the source into the answer unless asked,",
   "and after a successful opening say briefly that it is open. Search first if the exact name or type is unknown;",
@@ -165,11 +167,13 @@ function prompt(text, state) {
        + JSON.stringify(current.conversation || [], null, 2)
        + "\n\nOpen editors in Eclipse (titles and metadata only, never source; read source with the tools):\n"
        + JSON.stringify(current.editor || null)
+       + "\n\nCurrent VERTEX workspace:\n" + JSON.stringify(current.workspace || null)
        + "\n\nRequest:\n" + String(text || "");
 }
 
 async function checkPlan(_deps, plan) {
-  return { answer: String(plan && plan.answer || "").trim() };
+  return { answer: String(plan && plan.answer || "").trim(),
+    navigation: plan && plan.navigation ? objectTools.normalize(plan.navigation) : null };
 }
 
 function ok(text) { return { content: [{ type: "text", text }] }; }

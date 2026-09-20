@@ -1549,7 +1549,13 @@ function applyAbout() {
    resource this window is for, there is nothing to start. */
 function startWindow() {
   if (!usable("table")) { setupPage(""); return; }
-  if (INITIAL) { load(INITIAL); }
+  if (INITIAL) {
+    if (window.VERTEX_ACTION === "join" || window.VERTEX_ACTION === "pivot") {
+      currentTable = INITIAL;
+      mode = window.VERTEX_ACTION === "pivot" ? "P" : "J";
+      loadJoin(0);
+    } else { load(INITIAL); }
+  }
 }
 
 /* Unknown counts as usable: only a system that said so loses part of the window. */
