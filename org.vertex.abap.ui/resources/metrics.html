@@ -181,6 +181,7 @@
     <option value="calls">Flow</option>
     <option value="scheme">Scheme</option>
     <option value="metrics">Metrics</option>
+    <option value="class">UML class</option>
   </select>
   <span class="tools" id="tools" hidden>
     <label class="depth" id="depthbox" title="How far the flow follows calls">depth
@@ -283,6 +284,13 @@ function load() {
   sdeLoad(name, objectType());
 }
 
+function loadClassDiagram() {
+  if (!loadedObject) { return; }
+  status("reading class definition ...");
+  waiting = "class";
+  sdeClass(loadedObject);
+}
+
 /* The type arrives from the object tree with its subtype - CLAS/OC. Only the
    head selects the entry; an unknown one is added rather than dropped, so a
    window opened on it still shows what it was opened for. */
@@ -320,6 +328,7 @@ function sdeReady() {
 function answered(kind, raw) {
   // The first thing a window asks is what the system has.
   if (kind === "about") { tookAbout(raw); return; }
+  if (kind === "class") { drawClass(raw); return; }
   // Kept so that an answer this window drops can leave it as it was: the
   // request actually being waited for is still on its way, and "reading ..."
   // is still the truth.
@@ -369,6 +378,20 @@ function answered(kind, raw) {
   if (data.units !== undefined) { render(data); return; }
   message("The host answered something this window does not recognise:"
           + String.fromCharCode(10) + raw.substring(0, 400));
+}
+
+function drawClass(raw) {
+  if (typeof raw !== "string") { failed("No class definition returned."); return; }
+  try {
+    var data = JSON.parse(raw);
+    var lines = ["classDiagram", "class " + data.class + " {"];
+    (data.methods || []).forEach(function (m) {
+      lines.push("  +" + m.name + "()");
+    });
+    lines.push("}");
+    renderMermaid(lines.join("\\n"));
+    status("");
+  } catch (e) { failed("Invalid class definition: " + e.message); }
 }
 
 /* An answer the host never left behind. Whatever went wrong, it must not take
@@ -579,7 +602,9 @@ function setMode(next) {
 
   if (units.length > 0) { renderTable(); }
 
-  if (next === "metrics") {
+  if (next === "class") {
+    loadClassDiagram();
+  } else if (next === "metrics") {
     status(units.length ? units.length + (units.length === 1 ? " unit" : " units") : "");
   } else if (next === "scheme") {
     hint("Pick a method on the left.");

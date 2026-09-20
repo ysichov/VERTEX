@@ -51,6 +51,15 @@ public class MetricsView extends PageView {
 			}
 		};
 
+		new BrowserFunction(this.browser, "sdeClass") {
+			@Override
+			public Object function(Object[] arguments) {
+				final String object = argument(arguments, 0);
+				queue(() -> read(classPath(object)));
+				return null;
+			}
+		};
+
 		// The branch scheme of one unit. It carries the include as well as the
 		// name, because that is what identifies the code: for a class the two
 		// are the same thing, for a program they are not.
@@ -126,6 +135,10 @@ public class MetricsView extends PageView {
 			path = path + "?type=" + type;
 		}
 		return path;
+	}
+
+	private static String classPath(String object) {
+		return "/sap/bc/adt/vertex/class/" + object.toUpperCase();
 	}
 
 	/**

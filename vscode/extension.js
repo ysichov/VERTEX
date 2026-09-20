@@ -94,6 +94,9 @@ const SERVICES = {
       }
       return p;
     },
+    class: function (args) {
+      return "/sap/bc/adt/vertex/class/" + upper(args[0]);
+    },
     // name, type, mode, include, unit, expand, depth. The include comes for
     // the scheme, because it is what identifies the code: for a class it is
     // the method's own include, for a program it is not. The flow is about
@@ -231,6 +234,7 @@ const SHIM = [
   "    };",
   "  }",
   "  window.sdeLoad = send('load');",
+  "  window.sdeClass = send('class');",
   "  window.sdeFlow = send('flow');",
   "  window.sdeAsset = send('asset');",
   "  window.sdeJoin = send('join');",
