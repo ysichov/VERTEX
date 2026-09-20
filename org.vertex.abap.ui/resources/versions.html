@@ -270,6 +270,12 @@
                          border: 1px solid var(--field-border); }
   .chat-input .row { display: flex; align-items: center; gap: 6px; }
   .chat-input .working { margin-right: auto; color: var(--muted); }
+  #selection-ask { color: var(--fg); background: var(--bg); border: 1px solid var(--border); padding: 14px; max-width: 520px; }
+  #selection-ask::backdrop { background: rgba(0, 0, 0, .45); }
+  #selection-ask label { display: block; margin: 8px 0 4px; }
+  #selection-ask textarea { width: 100%; box-sizing: border-box; color: var(--fg); background: var(--field-bg); border: 1px solid var(--field-border); }
+  #selection-ask pre { max-height: 150px; overflow: auto; white-space: pre-wrap; color: var(--muted); background: var(--surface); padding: 6px; }
+  #selection-ask .row { display: flex; justify-content: end; gap: 6px; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -328,6 +334,13 @@
     </aside>
   </div>
 </div>
+<dialog id="selection-ask">
+  <strong>Ask assistant about selection</strong>
+  <pre id="selection-preview"></pre>
+  <label for="selection-question">Question</label>
+  <textarea id="selection-question" rows="3" placeholder="What does this fragment do?"></textarea>
+  <div class="row"><button id="selection-cancel" type="button">Cancel</button><button id="selection-send" type="button">Ask assistant</button></div>
+</dialog>
 
 <script>
 "use strict";
@@ -2010,6 +2023,22 @@ function pageState() {
 // when composing a chat request.
 function sdeContext() { return pageState(); }
 
+var selectedFragment = "";
+function selectedDiffText() {
+  var selection = window.getSelection();
+  var text = selection ? String(selection.toString()).trim() : "";
+  var node = selection && selection.anchorNode && (selection.anchorNode.nodeType === 1 ? selection.anchorNode : selection.anchorNode.parentElement);
+  return text && node && node.closest && node.closest("table.diff") ? text.slice(0, 12000) : "";
+}
+function askSelection() {
+  selectedFragment = selectedDiffText();
+  if (!selectedFragment) { return; }
+  document.getElementById("selection-preview").textContent = selectedFragment;
+  document.getElementById("selection-question").value = "";
+  document.getElementById("selection-ask").showModal();
+  document.getElementById("selection-question").focus();
+}
+
 function sendAsk() {
   if (asking) { return; }
   var input = document.getElementById("ask");
@@ -2210,6 +2239,25 @@ document.getElementById("who").addEventListener("change", function (e) {
 
 document.getElementById("model").addEventListener("change", function (e) {
   remember("model." + document.getElementById("who").value, e.target.value);
+});
+document.getElementById("root").addEventListener("contextmenu", function (event) {
+  if (selectedDiffText()) { event.preventDefault(); askSelection(); }
+});
+document.getElementById("selection-cancel").addEventListener("click", function () { document.getElementById("selection-ask").close(); });
+document.getElementById("selection-question").addEventListener("keydown", function (event) {
+  // A placeholder is intentionally not submitted text. Tab accepts the
+  // suggested question so it can be edited like ordinary input.
+  if (event.key === "Tab" && !event.shiftKey && !event.target.value.trim()) {
+    event.preventDefault();
+    event.target.value = event.target.placeholder;
+    event.target.select();
+  }
+});
+document.getElementById("selection-send").addEventListener("click", function () {
+  var question = document.getElementById("selection-question").value.trim() || "What does this fragment do?";
+  if (!question || !selectedFragment || typeof sdeAskSelection !== "function") { return; }
+  document.getElementById("selection-ask").close();
+  sdeAskSelection(question, selectedFragment, pageState());
 });
 
 var INITIAL = /*INIT*/null/*INIT*/;

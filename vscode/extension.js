@@ -659,6 +659,7 @@ function activate(context) {
     pages: Object.assign(windowTools(), { "/chat": chatSet }) });
   const showTools = initial => require("./tools-window").open(vscode, context,
     { pages: PAGES, fetch, asset, active, models: assistantModels,
+      source: args => sapCode.execute("read_sap_object", args),
       chat: () => require("./chat").create(vscode, sapCode, tools) }, initial);
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", showTools));
   require("./sidebar").register(vscode, context, active,

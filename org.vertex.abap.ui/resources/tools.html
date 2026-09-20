@@ -62,7 +62,7 @@ function run(){
   catch(e){notice(e.message);return;}
   if(!current.name){notice("Enter an object name.");return;}
   notice(""); fields();
-  const service=["data","join","pivot"].includes(current.action)?"table":
+  const service=current.action==="view"?"source":["data","join","pivot"].includes(current.action)?"table":
     ["diff","review"].includes(current.action)?"versions":"metrics";
   mount(result,service,current);
 }
@@ -124,6 +124,7 @@ function connect(child,service,generation){
   child.sdeProject=()=>enqueue({path:"project"},reply,live);
   child.sdeAbout=()=>enqueue({path:"/sap/bc/adt/vertex/about"},reply,live);
   child.sdeAsset=name=>enqueue({asset:name},reply,live);
+  child.sdeSource=(name,type)=>enqueue({source:[name,type]},reply,live);
   Object.keys(VertexRoutes.SERVICES[service]||{}).forEach(call=>{
     const build=VertexRoutes.SERVICES[service][call];
     if(typeof build!=="function")return;
@@ -142,7 +143,25 @@ function connect(child,service,generation){
     // its SAP tools when it needs it.
     const page=result.contentWindow;
     if(page&&typeof page.sdeContext==="function")state.vertex_view=page.sdeContext();
+    if(!state.selected_fragment&&page&&typeof page.sdeSelection==="function")state.selected_fragment=page.sdeSelection();
+    // A selection in a rendered Diff is an intentional, small piece of code
+    // context. Keep it separate from the question and cap it, so ordinary
+    // selection elsewhere in the window is never silently sent.
+    try{
+      const selection=page&&page.getSelection&&page.getSelection();
+      const text=selection&&String(selection.toString()).trim();
+      const node=selection&&selection.anchorNode&&(selection.anchorNode.nodeType===1?selection.anchorNode:selection.anchorNode.parentElement);
+      if(text&&node&&node.closest&&node.closest("table.diff"))state.selected_fragment={text:text.slice(0,12000),view:state.vertex_view||null};
+    }catch(e){/* an unloaded result frame simply has no selection */}
     args[3]=JSON.stringify(state);assistantTarget={child,live};sdeAsk(...args);
+  };
+  if(service!=="chat")child.sdeAskSelection=(question,fragment,view)=>{
+    if(!live())return;
+    const target=document.getElementById("conversation").contentWindow;
+    if(target&&typeof target.sdeAskSelection==="function"){
+      chat.classList.add("open");chatToggle.setAttribute("aria-expanded","true");chatToggle.textContent="▾ Chat";
+      target.sdeAskSelection(question,fragment,view);
+    }
   };
 }
 function enqueue(request,reply,live){queue.push({request,reply,live});pump();}
@@ -151,7 +170,7 @@ function pump(){
   while(queue.length){const item=queue.shift();if(item.live()){activeRequest=item;break;}}
   if(!activeRequest)return;
   const r=activeRequest.request;
-  if(r.asset)sdeAsset(r.asset);else sdeWorkspace(r.path,r.body);
+  if(r.asset)sdeAsset(r.asset);else if(r.source)sdeSource(...r.source);else sdeWorkspace(r.path,r.body);
 }
 function sdeReady(){
   const raw=sdeTake(),item=activeRequest;activeRequest=null;

@@ -56,6 +56,14 @@ textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertic
 var INIT = /*INIT*/null/*INIT*/;
 var conversation = [];
 var asking = false;
+function recall(key) {
+  try { return window.localStorage.getItem("vertex.chat." + key) || ""; }
+  catch (e) { return ""; }
+}
+function remember(key, value) {
+  try { window.localStorage.setItem("vertex.chat." + key, value); }
+  catch (e) { /* storage is optional */ }
+}
 // Names this conversation's log file; a new conversation starts a new one.
 function sessionStamp() {
   var d = new Date(), p = function (n) { return ("0" + n).slice(-2); };
@@ -96,7 +104,7 @@ function askModels() {
   sdeModels(document.getElementById("who").value);
 }
 
-function send() {
+function send(selectedFragment) {
   if (asking) { return; }
   var input = document.getElementById("prompt");
   var text = input.value.trim();
@@ -110,8 +118,18 @@ function send() {
   document.getElementById("send").disabled = true;
   document.getElementById("working").textContent = asking + " is working ...";
   var state = { conversation: conversation.slice() };
+  if (selectedFragment) { state.selected_fragment = selectedFragment; }
   conversation.push({ role: "user", content: text });
   sdeAsk(who.value, model.value, text, JSON.stringify(state), session);
+}
+
+// A result page can ask a focused question without making a second assistant
+// panel. The fragment is deliberately data in the request state, not part of
+// the question or conversation history.
+function sdeAskSelection(question, fragment, view) {
+  if (asking) { return; }
+  document.getElementById("prompt").value = String(question || "");
+  send({ text: String(fragment || ""), view: view || null });
 }
 
 function sdeAssistant(raw) {
@@ -128,6 +146,8 @@ function sdeAssistant(raw) {
       option.textContent = m.label;
       box.appendChild(option);
     });
+    var kept = recall("model." + data.assistant);
+    if (data.models.some(function (m) { return m.id === kept; })) { box.value = kept; }
     box.disabled = false;
     return;
   }
@@ -210,7 +230,13 @@ document.getElementById("send").addEventListener("click", send);
 document.getElementById("prompt").addEventListener("keydown", function (event) {
   if (event.key === "Enter" && event.ctrlKey) { event.preventDefault(); send(); }
 });
-document.getElementById("who").addEventListener("change", askModels);
+document.getElementById("who").addEventListener("change", function (event) {
+  remember("assistant", event.target.value);
+  askModels();
+});
+document.getElementById("model").addEventListener("change", function (event) {
+  remember("model." + document.getElementById("who").value, event.target.value);
+});
 document.getElementById("new").addEventListener("click", function () {
   if (asking) { return; }
   conversation = [];
@@ -218,6 +244,11 @@ document.getElementById("new").addEventListener("click", function () {
   document.getElementById("messages").innerHTML = "";
 });
 
+var savedAssistant = recall("assistant");
+var assistantBox = document.getElementById("who");
+if (Array.prototype.some.call(assistantBox.options, function (option) { return option.value === savedAssistant; })) {
+  assistantBox.value = savedAssistant;
+}
 sdeProject();
 askModels();
 document.getElementById("prompt").focus();

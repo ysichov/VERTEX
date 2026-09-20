@@ -404,7 +404,9 @@ function answered(kind, raw) {
     renderDiagram(data);
     return;
   }
-  if (data.units !== undefined) { render(data); return; }
+  // A program/class returns code units; a package returns its source objects.
+  // Both are Metrics answers and are rendered by the same entry point.
+  if (data.units !== undefined || data.objects !== undefined) { render(data); return; }
   message("The host answered something this window does not recognise:"
           + String.fromCharCode(10) + raw.substring(0, 400));
 }

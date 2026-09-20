@@ -3,23 +3,23 @@
   "use strict";
   const objects = [
     ["TABL", "Table", ["data", "join", "pivot", "diff"]],
-    ["CLAS", "Class", ["uml", "metrics", "scheme", "flow", "diff"]],
+    ["CLAS", "Class", ["view", "uml", "metrics", "scheme", "flow", "diff"]],
     ["INTF", "Interface", ["uml", "diff"]],
-    ["PROG", "Program", ["metrics", "scheme", "flow", "diff"]],
+    ["PROG", "Program", ["view", "metrics", "scheme", "flow", "diff"]],
     ["INCL", "Include", ["metrics", "scheme", "flow", "diff"]],
     ["DEVC", "Package", ["uml", "metrics", "diff"]],
     ["TR", "Transport request", ["review", "diff"]],
     ["FUGR", "Function group", ["diff"]],
-    ["FUNC", "Function module", ["diff"]],
+    ["FUNC", "Function module", ["view", "diff"]],
     ["DDLS", "CDS", ["diff"]], ["DOMA", "Domain", ["diff"]], ["DTEL", "Data element", ["diff"]]
   ];
-  const labels = { data: "Data", join: "Join", pivot: "Pivot", diff: "Diff", review: "Review",
+  const labels = { view: "View source", data: "Data", join: "Join", pivot: "Pivot", diff: "Diff", review: "Review",
     uml: "UML", metrics: "Metrics", scheme: "Scheme", flow: "Flow" };
   // Visual order is not the default action: Diff belongs at the end of the
   // picker, while a class/package opened from a version-oriented command must
   // still start on Diff unless the caller selected a view explicitly.
-  const defaults = { TABL: "data", CLAS: "diff", INTF: "diff", PROG: "diff",
-    INCL: "diff", DEVC: "diff", TR: "review", FUGR: "diff", FUNC: "diff",
+  const defaults = { TABL: "data", CLAS: "view", INTF: "diff", PROG: "view",
+    INCL: "diff", DEVC: "diff", TR: "review", FUGR: "diff", FUNC: "view",
     DDLS: "diff", DOMA: "diff", DTEL: "diff" };
   function normalize(value) {
     const type = String(value.type || "CLAS").toUpperCase().split("/")[0];

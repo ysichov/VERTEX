@@ -3,7 +3,7 @@ const fs = require("fs"), path = require("path");
 function html(pages, initial) {
   const read = name => fs.readFileSync(path.join(pages, name), "utf8");
   const bundle = {};
-  for (const name of ["chat", "metrics", "versions", "table"]) bundle[name] = read(name + ".html");
+  for (const name of ["chat", "metrics", "versions", "table", "source"]) bundle[name] = read(name + ".html");
   return read("tools.html")
     .replace("/*INIT*/null/*INIT*/", () => JSON.stringify(initial || null).replace(/</g, "\\u003c"))
     .replace("/*OBJECT_MODEL*/", () => read("object-tools.js"))
@@ -23,7 +23,7 @@ function open(vscode, context, deps, initial) {
   const bridge = `<script>
     const host = acquireVsCodeApi(); let pending;
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
-    for(const call of ["workspace","asset","models","ask","browse","requestSearch"]){
+    for(const call of ["workspace","asset","models","ask","browse","requestSearch","source"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>host.postMessage({call,args});
     }
     window.addEventListener("message",e=>{
@@ -50,6 +50,11 @@ function open(vscode, context, deps, initial) {
         if(args[1]) resource+=(user?"&":"?")+"released=true";
         const payload=await deps.fetch(context,resource);
         await panel.webview.postMessage({type:"requestSearch",payload}); return;
+      }
+      if(message.call === "source") {
+        if(!["PROG","CLAS","FUNC"].includes(args[1])) throw new Error("Unsupported source type.");
+        const payload=JSON.stringify(await deps.source({object_name:args[0],object_type:args[1]}));
+        await panel.webview.postMessage({type:"result",payload}); return;
       }
       if(message.call === "models") {
         const answer = await deps.models(args); answer.call="models";
