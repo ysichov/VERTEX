@@ -62,7 +62,7 @@ HTTPS, and the markup, grids and filters are not written twice.
 
 ## AI assistants
 
-### VERTEX chat and code reviewer (VS Code, 0.5.5)
+### VERTEX chat and code reviewer (VS Code, 0.6.0)
 
 The VERTEX panel in VS Code's Activity Bar has a chat over the active SAP system, run by
 the Claude Code or Codex subscription already installed. Ask *show ZCL_TR_TEXT_DATA* or
@@ -192,8 +192,16 @@ local methods and declarations inside the current class, and can open a static c
 function module in its own source. **VERTEX: Back** (`Alt+Left`) returns along that navigation.
 
 This is intentionally separate from **View source** in the Tools window. That command is a
-read-only, contextual overview inside VERTEX; an explicit chat request such as *Open ZCL_FOO*
-opens the normal editable VS Code document. The detailed, current navigation matrix is in
+read-only, contextual overview inside VERTEX: class methods are grouped into the familiar
+`CPUB` / `CPRO` / `CPRI` Parts table and carry the same SE80-style visibility markers as Diff.
+One click opens a method body; double-clicking a method toggles its declaration and body;
+double-clicking a section positions the declaration. A program always remains complete on screen:
+its Parts list only positions to events, forms and local-class implementations. **Back** restores
+the preceding source location. Selecting code sends that fragment and the selected method's
+signature to VERTEX chat; a redefinition is resolved through its inheritance chain.
+
+An explicit chat request such as *Open ZCL_FOO* opens the normal editable VS Code document. The
+detailed, current navigation matrix is in
 [vscode/README.md](vscode/README.md#clickable-abap-source).
 
 ### Object-specific tools

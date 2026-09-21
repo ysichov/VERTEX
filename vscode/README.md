@@ -106,9 +106,18 @@ or meaningless actions out of the toolbar.
 
 **View source** is the default VERTEX view where source is available. It is a read-only,
 contextual page inside the Tools window, useful for inspection and for sending selected fragments
-to the internal chat. Ask the chat explicitly to *open* or *edit* an object — for example,
-*Open ZCL_FOO please* — to open a normal, editable VS Code tab instead. Changes made there are
-still sent to SAP only through **Review & Activate** or **Save & Activate**.
+to the internal chat. For a class, its Parts list reuses the Diff table: `CPUB`, `CPRO`, `CPRI`
+and `METH` rows have the same SE80-style visibility markers. One click shows a method body;
+double-click on the method switches declaration and body; double-click on a section positions its
+declaration. **← Back** restores the prior location. A program is never cut down to one part:
+its Parts list only positions the complete source on an event, form or local-class implementation.
+
+The chat receives a selected fragment together with the selected method's signature, if any. For
+a redefinition VERTEX follows `INHERITING FROM` before asking the assistant, so the context uses
+the original declaration and identifies its owning class. Ask the chat explicitly to *open* or
+*edit* an object — for example, *Open ZCL_FOO please* — to open a normal, editable VS Code tab
+instead. Changes made there are still sent to SAP only through **Review & Activate** or
+**Save & Activate**.
 
 ## VERTEX chat
 
@@ -117,6 +126,9 @@ SAP system. Pick **Claude subscription** or **Codex subscription** and a model
 above the conversation (`vertex.ai.provider`, `vertex.ai.model`); it runs the
 Claude Code or Codex extension installed in this VS Code, with your login. Your
 questions and VERTEX's answers are shown in different colours.
+
+In both the Activity Bar panel and the Tools chat, **Enter** sends a question and
+**Ctrl+Enter** inserts a new line.
 
 Ask in any language, for example *show ZCL_TR_TEXT_DATA*, *explain this method*
 or *add a check for an empty table here*. The chat searches and reads SAP
