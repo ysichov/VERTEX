@@ -15,6 +15,7 @@ CLASS zcl_vx_adt_res_metrics DEFINITION
              include     TYPE string,
              unit_type   TYPE string,
              unit_name   TYPE string,
+             visibility  TYPE string,
              cyclomatic  TYPE i,
              loc         TYPE i,
              lloc        TYPE i,
@@ -124,9 +125,26 @@ CLASS zcl_vx_adt_res_metrics IMPLEMENTATION.
                                                   i_program     = lv_program ).
 
     LOOP AT ls_result-units ASSIGNING FIELD-SYMBOL(<ls_u>).
+      DATA(lv_visibility) = CONV string( `` ).
+      IF <ls_u>-unit_type = 'METHOD'.
+        DATA(lv_method_name) = CONV string( <ls_u>-unit_name ).
+        SPLIT lv_method_name AT '=>' INTO DATA(lv_class_name) lv_method_name.
+        READ TABLE ls_source-tt_calls_line ASSIGNING FIELD-SYMBOL(<ls_call_metric>)
+          WITH KEY include   = <ls_u>-include
+                   class     = lv_class_name
+                   eventtype = 'METHOD'
+                   eventname = lv_method_name.
+        IF sy-subrc = 0.
+          lv_visibility = COND #(
+            WHEN <ls_call_metric>-is_intf = abap_true OR <ls_call_metric>-meth_type = 1 THEN 'public'
+            WHEN <ls_call_metric>-meth_type = 2 THEN 'protected'
+            WHEN <ls_call_metric>-meth_type = 3 THEN 'private' ).
+        ENDIF.
+      ENDIF.
       APPEND VALUE #( include     = to_lower( <ls_u>-include )
                       unit_type   = to_lower( <ls_u>-unit_type )
                       unit_name   = to_lower( <ls_u>-unit_name )
+                      visibility  = lv_visibility
                       cyclomatic  = <ls_u>-cyclomatic
                       loc         = <ls_u>-loc
                       lloc        = <ls_u>-lloc
@@ -218,10 +236,27 @@ CLASS zcl_vx_adt_res_metrics IMPLEMENTATION.
             time_t         = ls_result-total_time_t
             bugs           = ls_result-total_bugs ).
           LOOP AT ls_result-units ASSIGNING FIELD-SYMBOL(<ls_unit>).
+            DATA(lv_visibility2) = CONV string( `` ).
+            IF <ls_unit>-unit_type = 'METHOD'.
+              DATA(lv_method_name2) = CONV string( <ls_unit>-unit_name ).
+              SPLIT lv_method_name2 AT '=>' INTO DATA(lv_class_name2) lv_method_name2.
+              READ TABLE ls_source-tt_calls_line ASSIGNING FIELD-SYMBOL(<ls_call_package>)
+                WITH KEY include   = <ls_unit>-include
+                         class     = lv_class_name2
+                         eventtype = 'METHOD'
+                         eventname = lv_method_name2.
+              IF sy-subrc = 0.
+                lv_visibility2 = COND #(
+                  WHEN <ls_call_package>-is_intf = abap_true OR <ls_call_package>-meth_type = 1 THEN 'public'
+                  WHEN <ls_call_package>-meth_type = 2 THEN 'protected'
+                  WHEN <ls_call_package>-meth_type = 3 THEN 'private' ).
+              ENDIF.
+            ENDIF.
             APPEND VALUE ty_unit(
               include     = to_lower( <ls_unit>-include )
               unit_type   = to_lower( <ls_unit>-unit_type )
               unit_name   = to_lower( <ls_unit>-unit_name )
+              visibility  = lv_visibility2
               cyclomatic  = <ls_unit>-cyclomatic
               loc         = <ls_unit>-loc
               lloc        = <ls_unit>-lloc

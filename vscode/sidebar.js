@@ -12,7 +12,7 @@ const ACTIONS = Object.freeze({
   settings: "workbench.action.openSettings"
 });
 
-function register(vscode, context, active, ask, systems) {
+function register(vscode, context, active, ask, systems, toolContext) {
   let currentView, pendingPrompt, ready = false;
   context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async text => {
     pendingPrompt = text;
@@ -57,7 +57,7 @@ function register(vscode, context, active, ask, systems) {
         if (message.action === "chat") {
           await view.webview.postMessage({ chat: "You: " + message.text });
           try {
-            const reply = await ask(message.text);
+            const reply = await ask(message.text, {state: toolContext() || {}});
             await view.webview.postMessage({ chat: "VERTEX: " + reply.answer, usage: usageLine(reply) });
           }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }

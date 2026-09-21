@@ -893,7 +893,7 @@ function renderVersions(data) {
   root.appendChild(table);
 
   status(versions.length + (versions.length === 1 ? " version of " : " versions of ") + label);
-  if (autoDiff && !pending && versions.length) { autoDiff = false; loadDiff(0); }
+  if (autoDiff && !pending && versions.length) { loadDiff(0); }
 }
 
 /* ---------- diff ---------- */
@@ -1032,6 +1032,20 @@ function renderDiff(data) {
   root.appendChild(bar);
 
   if (ops.length === 0) {
+    // A newly opened Diff should land on the newest *change*, rather than on
+    // a version whose stored source happens to be identical to its predecessor.
+    // The version endpoint cannot know that without calculating the diff, so
+    // advance one pair at a time until a non-empty answer is found.
+    if (autoDiff) {
+      var currentIndex = versions.findIndex(function (version) {
+        return String(version.version) === String(data.to);
+      });
+      if (currentIndex >= 0 && currentIndex + 1 < versions.length) {
+        loadDiff(currentIndex + 1);
+        return;
+      }
+      autoDiff = false;
+    }
     // Not an error, and worth saying plainly: AVE folds away moved lines and
     // reformatting, so two versions can differ and still have nothing to show.
     var same = document.createElement("div");
@@ -1042,6 +1056,7 @@ function renderDiff(data) {
     return;
   }
 
+  autoDiff = false;
   root.appendChild(diffTable(ops));
   status(data.added + " added, " + data.deleted + " deleted");
 }

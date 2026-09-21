@@ -24,6 +24,7 @@ dialog label{display:block;margin:8px 0}
 <aside id="chat" aria-label="Assistant"><iframe id="conversation" title="VERTEX assistant"></iframe></aside>
 <main><header>
 <button id="chat-toggle" title="Show or hide VERTEX Chat" aria-expanded="false">▸ Chat</button>
+<button id="back" title="Back to the previous VERTEX source" hidden>← Back</button>
 <select id="object-type" aria-label="Object type"></select>
 <div id="object-field"><input id="object-name" placeholder="Object name" aria-label="Object name" title="Enter an object name and press Enter" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/></svg></button></div>
 <select id="function" aria-label="Function"></select>
@@ -39,11 +40,12 @@ dialog label{display:block;margin:8px 0}
 const bundle = /*BUNDLE*/{};
 const initial = /*INIT*/null/*INIT*/;
 let current = VertexObjects.normalize(initial || {});
-let sequence = 0, activeRequest = null, queue = [], assistantTarget = null;
+let sequence = 0, activeRequest = null, queue = [], assistantTarget = null, navigation = [];
 const typeBox = document.getElementById("object-type"), nameBox = document.getElementById("object-name");
 const actionBox = document.getElementById("function"), result = document.getElementById("result");
 const findButton = document.getElementById("find-requests"), requestDialog = document.getElementById("request-dialog");
 const chat = document.getElementById("chat"), chatToggle = document.getElementById("chat-toggle");
+const backButton=document.getElementById("back");
 chatToggle.onclick=()=>{const open=chat.classList.toggle("open");chatToggle.setAttribute("aria-expanded",String(open));chatToggle.textContent=(open?"▾":"▸")+" Chat";};
 function notice(text){document.getElementById("notice").textContent=text;}
 VertexObjects.objects.forEach(o=>typeBox.add(new Option(o[1],o[0])));
@@ -53,10 +55,11 @@ function fields(){
   actionBox.value=current.action;
   findButton.style.display = current.type === "TR" ? "inline-block" : "none";
 }
-function navigate(value){
-  try{current=VertexObjects.normalize(value);fields();if(current.name) run();}
+function navigate(value,remember){
+  try{if(remember!==false&&current.name)navigation.push(Object.assign({},current));current=VertexObjects.normalize(value);backButton.hidden=!navigation.length;fields();if(current.name) run();}
   catch(e){notice(e.message);}
 }
+backButton.onclick=()=>{const previous=navigation.pop();if(previous)navigate(previous,false);backButton.hidden=!navigation.length;};
 function run(){
   try{current=VertexObjects.normalize({type:typeBox.value,name:nameBox.value,action:actionBox.value});}
   catch(e){notice(e.message);return;}
@@ -125,6 +128,12 @@ function connect(child,service,generation){
   child.sdeAbout=()=>enqueue({path:"/sap/bc/adt/vertex/about"},reply,live);
   child.sdeAsset=name=>enqueue({asset:name},reply,live);
   child.sdeSource=(name,type)=>enqueue({source:[name,type]},reply,live);
+  child.sdeContextUpdate=state=>{
+    if(!live())return;
+    const value=state&&typeof state==="object"?state:{};
+    value.workspace=current;
+    sdeVertexContext(value);
+  };
   Object.keys(VertexRoutes.SERVICES[service]||{}).forEach(call=>{
     const build=VertexRoutes.SERVICES[service][call];
     if(typeof build!=="function")return;

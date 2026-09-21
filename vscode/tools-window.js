@@ -23,7 +23,7 @@ function open(vscode, context, deps, initial) {
   const bridge = `<script>
     const host = acquireVsCodeApi(); let pending;
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
-    for(const call of ["workspace","asset","models","ask","browse","requestSearch","source"]){
+    for(const call of ["workspace","asset","models","ask","browse","requestSearch","source","vertexContext"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>host.postMessage({call,args});
     }
     window.addEventListener("message",e=>{
@@ -55,6 +55,12 @@ function open(vscode, context, deps, initial) {
         if(!["PROG","CLAS","FUNC"].includes(args[1])) throw new Error("Unsupported source type.");
         const payload=JSON.stringify(await deps.source({object_name:args[0],object_type:args[1]}));
         await panel.webview.postMessage({type:"result",payload}); return;
+      }
+      if(message.call === "vertexContext") {
+        const state=args[0]&&typeof args[0]==="object"?args[0]:{};
+        deps.setContext({workspace:initial||null,vertex_view:state.vertex_view||null,
+          selected_fragment:state.selected_fragment||null});
+        return;
       }
       if(message.call === "models") {
         const answer = await deps.models(args); answer.call="models";

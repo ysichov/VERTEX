@@ -57,7 +57,24 @@ function register(vscode, context, { active, password }) {
     if (!opened.has(key)) {
       const saved = savedEntries[key];
       if (!saved) { throw vscode.FileSystemError.FileNotFound(uri); }
-      opened.set(key, { repo: await repository(saved.key), data: { ...saved.data } });
+      const repo = await repository(saved.key);
+      let data = saved.data && { ...saved.data };
+      // A tab can outlive an extension reload, including an upgrade from a
+      // version which stored only its object metadata.  Do not let that stale
+      // entry make VS Code show its generic "editor could not be opened" page:
+      // reconstruct the read-only buffer from SAP and replace the old state.
+      if (!data || typeof data.source !== "string") {
+        if (!data || !data.object_name || !data.object_type) {
+          throw vscode.FileSystemError.FileNotFound(uri);
+        }
+        data = await repo.api.execute("read_sap_object", {
+          object_name: data.object_name, object_type: data.object_type,
+          include: data.include || "main"
+        });
+        savedEntries[key] = { key: repo.key, data };
+        await context.workspaceState.update("sapEditors", savedEntries);
+      }
+      opened.set(key, { repo, data });
     }
     return opened.get(key);
   }
@@ -240,6 +257,18 @@ function register(vscode, context, { active, password }) {
     }
     return null;
   }
+  function classAnchor(document, at) {
+    const line = document.getText().split(/\r?\n/)[at.line] || "";
+    const pattern = /\b(?:TYPE\s+REF\s+TO|INHERITING\s+FROM)\s+([A-Za-z_/$][A-Za-z0-9_/$]*)\b/ig;
+    let match;
+    while ((match = pattern.exec(line))) {
+      const from = line.indexOf(match[1], match.index);
+      if (at.character >= from && at.character <= from + match[1].length) {
+        return { kind: "class", object_type: "CLAS", object_name: match[1].toUpperCase(), name: match[1].toUpperCase() };
+      }
+    }
+    return null;
+  }
   async function saveSource(entry, source) {
     if (entry.saving) { throw new Error("This SAP object is already being saved."); }
     entry.saving = true;
@@ -327,7 +356,7 @@ function register(vscode, context, { active, password }) {
   }
   async function externalCallTarget(document, at) {
     const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document);
-    const call = current && externalCallAnchor(document, at);
+    const call = current && (externalCallAnchor(document, at) || classAnchor(document, at));
     if (!call) { return undefined; }
     const target = await sourceDocument(current.repo, { object_type: call.object_type, object_name: call.object_name });
     let line = 0, column = 0, length = call.object_name.length;
@@ -345,13 +374,38 @@ function register(vscode, context, { active, password }) {
     if (!call || call.kind !== "method") { return undefined; }
     const key = current.repo.key + "|" + call.object_name + "|" + call.method;
     if (!externalSignatures.has(key)) {
-      externalSignatures.set(key, current.repo.api.execute("read_sap_object", {
-        object_type: "CLAS", object_name: call.object_name
-      }).then(data => methodSignature(data.source, call.method)).catch(() => ""));
+      const resolve = async name => {
+        const data = await current.repo.api.execute("read_sap_object", { object_type: "CLAS", object_name: name });
+        const signature = methodSignature(data.source, call.method);
+        if (signature) { return { signature, owner: name }; }
+        const parent = /\bINHERITING\s+FROM\s+([A-Za-z_/$][A-Za-z0-9_/$]*)/i.exec(data.source);
+        return parent ? resolve(parent[1].toUpperCase()) : null;
+      };
+      externalSignatures.set(key, resolve(call.object_name).catch(() => null));
     }
-    const signature = await externalSignatures.get(key);
-    if (!signature) { return undefined; }
-    return { call, signature };
+    const found = await externalSignatures.get(key);
+    if (!found) { return undefined; }
+    return { call, signature: found.signature, owner: found.owner };
+  }
+  async function inheritedMethodInformation(document, at) {
+    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document);
+    const anchor = current && current.data.object_type === "CLAS" && methodAnchor(document, at);
+    if (!anchor || methodSignature(document.getText(), anchor.name)) { return undefined; }
+    const parent = /\bINHERITING\s+FROM\s+([A-Za-z_/$][A-Za-z0-9_/$]*)/i.exec(document.getText());
+    if (!parent) { return undefined; }
+    const key = current.repo.key + "|" + current.data.object_name + "|" + anchor.name + "|inherited";
+    if (!externalSignatures.has(key)) {
+      const resolve = async name => {
+        const data = await current.repo.api.execute("read_sap_object", { object_type: "CLAS", object_name: name });
+        const signature = methodSignature(data.source, anchor.name);
+        if (signature) { return { signature, owner: name }; }
+        const next = /\bINHERITING\s+FROM\s+([A-Za-z_/$][A-Za-z0-9_/$]*)/i.exec(data.source);
+        return next ? resolve(next[1].toUpperCase()) : null;
+      };
+      externalSignatures.set(key, resolve(parent[1].toUpperCase()).catch(() => null));
+    }
+    const found = await externalSignatures.get(key);
+    return found && { anchor, signature: found.signature, owner: found.owner };
   }
   function variableDeclaration(document, at) {
     const info = variableInformation(document, at);
@@ -409,9 +463,10 @@ function register(vscode, context, { active, password }) {
       const selection = event && event.selections && event.selections.length === 1 && event.selections[0];
       if (!mouse || !event || event.kind !== mouse || !selection || selection.isEmpty
         || event.textEditor.document.uri.scheme !== "vertex-sap") { return; }
-      const anchor = methodAnchor(event.textEditor.document, selection.active)
+    const anchor = methodAnchor(event.textEditor.document, selection.active)
         || variableAnchor(event.textEditor.document, selection.active)
-        || externalCallAnchor(event.textEditor.document, selection.active);
+        || externalCallAnchor(event.textEditor.document, selection.active)
+        || classAnchor(event.textEditor.document, selection.active);
       // A double-click selects exactly the identifier.  Do not navigate on a
       // drag selection: selecting code remains essential for copying and chat.
       if (!anchor || event.textEditor.document.getText(selection).toUpperCase() !== anchor.name) { return; }
@@ -419,7 +474,7 @@ function register(vscode, context, { active, password }) {
         .catch(error => vscode.window.showErrorMessage("VERTEX: " + error.message));
     }));
   }
-  if (typeof vscode.languages.registerDefinitionProvider === "function") {
+  if (vscode.languages && typeof vscode.languages.registerDefinitionProvider === "function") {
     context.subscriptions.push(vscode.languages.registerDefinitionProvider(
       { scheme: "vertex-sap", language: "abap" }, {
         async provideDefinition(document, at) {
@@ -428,7 +483,7 @@ function register(vscode, context, { active, password }) {
         }
       }));
   }
-  if (typeof vscode.languages.registerHoverProvider === "function") {
+  if (vscode.languages && typeof vscode.languages.registerHoverProvider === "function") {
     context.subscriptions.push(vscode.languages.registerHoverProvider(
       { scheme: "vertex-sap", language: "abap" }, {
         async provideHover(document, at) {
@@ -437,6 +492,12 @@ function register(vscode, context, { active, password }) {
             return vscode.Hover ? new vscode.Hover([{ language: "abap", value: method.signature }],
               range(at.line, method.anchor.from, method.anchor.to))
               : { contents: [{ language: "abap", value: method.signature }], range: range(at.line, method.anchor.from, method.anchor.to) };
+          }
+          const inherited = await inheritedMethodInformation(document, at);
+          if (inherited) {
+            const value = "Declared in " + inherited.owner + "\n\n" + inherited.signature;
+            return vscode.Hover ? new vscode.Hover([{ language: "abap", value }], range(at.line, inherited.anchor.from, inherited.anchor.to))
+              : { contents: [{ language: "abap", value }], range: range(at.line, inherited.anchor.from, inherited.anchor.to) };
           }
           const info = variableInformation(document, at);
           if (info) {
@@ -447,8 +508,9 @@ function register(vscode, context, { active, password }) {
           }
           const external = await externalMethodInformation(document, at);
           if (!external) { return undefined; }
-          return vscode.Hover ? new vscode.Hover([{ language: "abap", value: external.signature }])
-            : { contents: [{ language: "abap", value: external.signature }] };
+          const value = "Declared in " + external.owner + "\n\n" + external.signature;
+          return vscode.Hover ? new vscode.Hover([{ language: "abap", value }])
+            : { contents: [{ language: "abap", value }] };
         }
       }));
   }
@@ -645,11 +707,26 @@ function register(vscode, context, { active, password }) {
   return { schemas, onEvent: events.on,
     editorContext() {
       const editor = vscode.window.activeTextEditor;
-      const entry = editor && opened.get(editor.document.uri.toString());
-      if (!entry) { return null; }
+      if (!editor || !editor.document) { return null; }
+      const selection = editor.selection;
+      const selected = selection && !selection.isEmpty && selection.start && selection.end
+        ? editor.document.getText(selection).trim() : "";
+      const selected_fragment = selected ? {
+        text: selected.slice(0, 64000),
+        path: editor.document.uri.scheme === "file" ? editor.document.uri.fsPath : editor.document.uri.toString(),
+        language: editor.document.languageId || "",
+        start_line: selection.start.line + 1,
+        end_line: selection.end.line + 1
+      } : null;
+      const entry = opened.get(editor.document.uri.toString());
+      // An ADT editor tab is owned by another extension, so it is not in
+      // `opened`. Its complete source remains private to that editor; an
+      // explicit selection is nevertheless exactly what the user asked chat
+      // about and is safe, useful context to hand over.
+      if (!entry) { return selected_fragment ? { selected_fragment } : null; }
       return { system: entry.repo.label, object_name: entry.data.object_name,
         object_type: entry.data.object_type, include: entry.data.include,
-        base_revision: entry.data.revision, source: editor.document.getText() };
+        base_revision: entry.data.revision, source: editor.document.getText(), selected_fragment };
     },
     instructions: require("fs").readFileSync(require("path").join(__dirname, "prompts/tools/sap-code.md"), "utf8"), async execute(tool, args) {
     const repo = await repository();

@@ -236,6 +236,25 @@ var COLUMNS = [
   { key: "prog_length", text: "Length",      num: true  }
 ];
 
+/* A class has one implementation pool.  Its include and the repeated class
+   prefix only expose SAP's storage layout, not information the reader needs.
+   The useful distinction between its methods is their visibility instead. */
+var CLASS_COLUMNS = [
+  { key: "unit_name",  text: "Method",     num: false },
+  { key: "visibility", text: "Visibility", num: false },
+  { key: "cyclomatic", text: "CC",         num: true  },
+  { key: "mi",         text: "MI",         num: true  },
+  { key: "loc",        text: "LOC",        num: true  },
+  { key: "lloc",       text: "LLOC",       num: true  },
+  { key: "cloc",       text: "CLOC",       num: true  },
+  { key: "volume",     text: "Volume",     num: true  },
+  { key: "difficulty", text: "Difficulty", num: true  },
+  { key: "effort",     text: "Effort",     num: true  },
+  { key: "bugs",       text: "Bugs",       num: true  },
+  { key: "vocabulary", text: "Vocabulary", num: true  },
+  { key: "prog_length",text: "Length",     num: true  }
+];
+
 var OBJECT_COLUMNS = [
   { key: "object", text: "Object", num: false },
   { key: "object_type", text: "Type", num: false },
@@ -566,14 +585,14 @@ function labelForUnitType(type) {
   return labels[String(type || "").toLowerCase()] || String(type || "Units");
 }
 
-function makeTable(columns, rows, total) {
+function makeTable(columns, rows, total, isClass) {
   var table = document.createElement("table"), thead = document.createElement("thead"), tr = document.createElement("tr");
   columns.forEach(function (column) { var th = document.createElement("th"); th.textContent = column.text; tr.appendChild(th); });
   thead.appendChild(tr); table.appendChild(thead);
   var body = document.createElement("tbody");
   rows.forEach(function (row) {
     var line = document.createElement("tr");
-    columns.forEach(function (column) { var cell = document.createElement("td"); cell.textContent = row[column.key] === undefined ? "" : row[column.key]; if (column.num) { cell.className = "num"; } line.appendChild(cell); });
+    columns.forEach(function (column) { var cell = document.createElement("td"); cell.textContent = cellValue(row, column.key, isClass); if (column.num) { cell.className = "num"; } line.appendChild(cell); });
     body.appendChild(line);
   });
   if (total) {
@@ -582,6 +601,18 @@ function makeTable(columns, rows, total) {
     body.appendChild(totalRow);
   }
   table.appendChild(body); return table;
+}
+
+function classMetrics() { return String(loadedType || "").toUpperCase() === "CLAS"; }
+
+function metricColumns() { return classMetrics() ? CLASS_COLUMNS : COLUMNS; }
+
+function cellValue(row, key, isClass) {
+  var value = row[key] === undefined ? "" : row[key];
+  if (isClass && key === "unit_name") {
+    return String(value).replace(/^.*=>/, "");
+  }
+  return value;
 }
 
 function renderMetricSections() {
@@ -610,10 +641,15 @@ function renderMetricSections() {
         var caption = document.createElement("span"); caption.className = "class-caption";
         caption.textContent = "CC " + aggregate.cyclomatic + " · LOC " + aggregate.loc + " · MI " + aggregate.mi;
         summary.appendChild(caption); block.appendChild(summary);
-        block.appendChild(makeTable(COLUMNS, methods, aggregate)); scroll.appendChild(block);
+        var table = makeTable(metricColumns(), methods, aggregate, classMetrics());
+        if (classMetrics() && Object.keys(classes).length === 1) {
+          scroll.appendChild(table);
+        } else {
+          block.appendChild(table); scroll.appendChild(block);
+        }
       });
     } else {
-      scroll.appendChild(makeTable(COLUMNS, groups[key], unitTotal(groups[key])));
+      scroll.appendChild(makeTable(metricColumns(), groups[key], unitTotal(groups[key]), classMetrics()));
     }
     section.appendChild(scroll); root.appendChild(section);
   });
@@ -637,7 +673,9 @@ function renderPackage(data) {
       + " · Avg CC " + object.avg_cyclomatic + " · LOC " + object.loc;
     summary.appendChild(caption); block.appendChild(summary);
     var rows = object.unit_rows || [];
-    block.appendChild(makeTable(COLUMNS, rows, rows.length ? unitTotal(rows) : null));
+    var objectIsClass = String(object.object_type || "").toUpperCase() === "CLAS";
+    block.appendChild(makeTable(objectIsClass ? CLASS_COLUMNS : COLUMNS, rows,
+      rows.length ? unitTotal(rows) : null, objectIsClass));
     scroll.appendChild(block);
   });
   section.appendChild(scroll); root.appendChild(section);
@@ -651,7 +689,11 @@ function render(data) {
   var first = loadedObject !== data.object;
   loadedObject = data.object;
   loadedType = data.type;
-  document.getElementById("object").textContent = data.program;
+  // A class pool name (ZCL_FOO=====CP) is SAP's implementation include, not
+  // the object the reader asked metrics for.  It remains necessary in the
+  // request for a scheme, but never needs to be presented for a class.
+  document.getElementById("object").textContent = String(data.type || "").toUpperCase() === "CLAS"
+    ? data.object : data.program;
   // Optional on purpose: a host with no tab to rename simply does not define
   // it, and the VS Code shim is exactly that host today.
   if (typeof sdeTitle === "function") { sdeTitle(data.object.toUpperCase()); }
@@ -660,7 +702,7 @@ function render(data) {
     // Not an error: a class of nothing but declarations has no code unit. Say
     // which program was read, so it is clear what was looked at. Totals of
     // zeros would say nothing, and message() hides that row anyway.
-    message("No code units in " + data.program + ".");
+    message("No code units in " + (String(data.type || "").toUpperCase() === "CLAS" ? data.object : data.program) + ".");
     return;
   }
 
@@ -709,7 +751,7 @@ var diagramSeq = 0;
    and the reader winds it out from there. */
 var depth = 3;
 
-var direction = "LR";
+var direction = "TB";
 // A method is drawn to fit the pane when it is opened: one fixed percentage
 // is wrong in both directions, because a short FORM and a whole PBO event
 // differ by more than an order of magnitude. A scale the reader picks then
@@ -984,10 +1026,10 @@ function turned(text, dir) {
 function setDirection(value) {
   direction = value;
   var button = document.getElementById("dir");
-  button.innerHTML = direction === "LR" ? "&#8646;" : "&#8645;";
-  button.title = direction === "LR"
-    ? "Lay the diagram out down the page instead of across"
-    : "Lay the diagram out across the page instead of down";
+  button.innerHTML = direction === "TB" ? "&#8645;" : "&#8646;";
+  button.title = direction === "TB"
+    ? "Lay the diagram out across the page instead of down"
+    : "Lay the diagram out down the page instead of across";
   if (lastMermaid) { draw(); }
 }
 
@@ -1365,7 +1407,7 @@ document.getElementById("depth").addEventListener("change", function () {
 document.getElementById("diagram").addEventListener("click", onDiagramClick);
 
 document.getElementById("dir").addEventListener("click", function () {
-  setDirection(direction === "LR" ? "TB" : "LR");
+  setDirection(direction === "TB" ? "LR" : "TB");
 });
 document.getElementById("out").addEventListener("click", function () {
   fitted = false;

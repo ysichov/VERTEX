@@ -38,6 +38,23 @@ test("the VS Code chat sends the conversation so far, and a new conversation sta
   assert.doesNotMatch(prompts[2], /show Z_CALC|Answer 1/);
 });
 
+test("a selected fragment from an external ADT editor is sent to VERTEX chat", async (t) => {
+  let prompt = "";
+  t.mock.method(assistant, "ask", async options => {
+    prompt = options.prompt;
+    return { plan: { answer: "It is a type declaration." }, model: "haiku", usage: null };
+  });
+  const tools = { schemas: [], instructions: "", execute: async () => ({}), editorContext: () => ({
+    selected_fragment: { text: "TYPES: BEGIN OF ty_part.", path: "C:\\work\\zcl_test.clas.abap", language: "abap", start_line: 15, end_line: 15 }
+  }) };
+  const ask = chat.create(fakeVscode({ provider: "claude-subscription", model: "haiku" }), tools,
+    { start: async () => ({ url: "http://127.0.0.1:1/mcp" }), token: "t" });
+  await ask("а выделенная часть кода");
+  assert.match(prompt, /Selected code fragment/);
+  assert.match(prompt, /TYPES: BEGIN OF ty_part/);
+  assert.doesNotMatch(prompt, /Active SAP editor context/);
+});
+
 test("a bare object name is searched and opened without a model", async (t) => {
   const direct = require("../direct-search");
   assert.equal(direct.isObjectName("Z_CALC"), true);

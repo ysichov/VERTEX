@@ -260,7 +260,16 @@ test("static class method hover loads and caches its signature", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
   const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 11, character: 16 });
-  assert.equal(hover.contents[0].value, "IMPORTING\n  iv_name TYPE string");
+  assert.equal(hover.contents[0].value, "Declared in ZCL_OTHER\n\nIMPORTING\n  iv_name TYPE string");
+});
+test("a class name in TYPE REF TO opens that class", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = "DATA mo_other TYPE REF TO zcl_other.\n";
+  h.documents[0].selection = { active: { line: 0, character: 27 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents.length, 2);
+  assert.match(h.documents[1].uri.toString(), /\/CLAS\/ZCL_OTHER\.abap$/);
 });
 test("CALL FUNCTION opens the function module source", async () => {
   const h = host();
