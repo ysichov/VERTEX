@@ -42,6 +42,13 @@ final class AssistantBridge implements AutoCloseable {
             String editor = ((ChatView) view).editorContext();
             state = "{\"editor\":" + editor + (state.trim().equals("{}") ? "}" : "," + state.trim().substring(1));
         }
+        if (view instanceof ToolsView && call.equals("ask")) {
+            String context = ((ToolsView) view).assistantContext().trim();
+            if (context.startsWith("{") && context.endsWith("}") && !context.equals("{}")) {
+                state = context.substring(0, context.length() - 1)
+                    + (state.trim().equals("{}") ? "}" : "," + state.trim().substring(1));
+            }
+        }
         String request = "{\"call\":" + quote(call) + ",\"assistant\":" + quote(assistant)
                 + ",\"service\":" + quote(service) + ",\"executable\":" + quote(AssistantPreferences.setting(assistant))
                 + ",\"model\":" + quote(text(args, 1)) + ",\"text\":" + quote(text(args, 2))

@@ -484,7 +484,7 @@ function loadVersions(part, showList) {
   autoDiff = !showList && typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff";
   current = part;
   versions = [];
-  renderParts();
+  updatePartSelection();
   status("reading versions of " + part.unit + " ...");
   note("Reading ...");
   sdeLoad(objectName(), objectType(), part.name, part.part_type, "", "");
@@ -612,7 +612,15 @@ function renderPartList(data) {
   if (typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff" && !pending && !scope && parts.length) { loadVersions(parts[0]); }
 }
 
+var partRows = [];
+function updatePartSelection() {
+  partRows.forEach(function (row) {
+    row.element.classList.toggle("on", isCurrent(row.part));
+  });
+}
+
 function renderParts() {
+  partRows = [];
   var box = document.getElementById("partlist");
   box.innerHTML = "";
 
@@ -640,6 +648,7 @@ function renderParts() {
     var p = row.part;
     tr.className = (row.band ? "group " : "") + (p ? "pick" : "") + (p && isCurrent(p) ? " on" : "");
     if (p) {
+      partRows.push({element: tr, part: p});
       tr.title = p.name + "  " + p.part_type;
       tr.addEventListener("click", function () { openPart(p); });
     }

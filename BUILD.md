@@ -57,12 +57,13 @@ reads from inside one.
 
 `vscode/` uses the pinned `abap-adt-api` production dependency for SAP source
 operations. Install the lockfile with `npm ci` from `vscode/` before testing or
-packaging. Do not pass `--no-dependencies` to the packager: the ADT client and
-its runtime dependencies must travel in the VSIX. Packaging is
-[vsce](https://www.npmjs.com/package/@vscode/vsce):
+packaging. Do not call `vsce` directly and never pass `--no-dependencies`: the
+ADT client and its runtime dependencies must travel in the VSIX. Use the checked
+release wrapper; it verifies the dependency and pages inside the candidate ZIP
+before replacing the release artifact:
 
 ```bash
-npx @vscode/vsce package
+./vscode/package.ps1
 ```
 
 The one thing that is not obvious: **the pages live in the Eclipse plugin's bundle**, and a vsix
@@ -71,8 +72,8 @@ carries only the extension folder. `vscode:prepublish` runs `copy-pages.js`, whi
 sibling plugin when running from a checkout. One source of truth, one copy made at packaging time,
 nothing to decide at run time. `vscode/resources/` is in `.gitignore` for the same reason.
 
-Check the result before publishing: the vsix must list `resources/metrics.html`, `resources/table.html`
-and `resources/versions.html`. Without them the extension installs and every window opens blank.
+The wrapper rejects an archive without `abap-adt-api` or the required pages; do
+not upload a hand-built `.vsix`.
 
 The tests need Node and nothing else — no SAP system, no editor. Run them from the repository root
 before packaging:
@@ -112,8 +113,8 @@ same edit as the version bump below.
 ## Versions
 
 The Eclipse bundle and the VS Code extension carry the same number by hand; nothing enforces it.
-Both now use 0.6.0. The built-in Assistant is available in both hosts; Eclipse
+Both now use 0.6.2. The built-in Assistant is available in both hosts; Eclipse
 uses a Node bridge and the window's ADT session.
-`0.6.0.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.6.0.<build timestamp>` on export,
+`0.6.2.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.6.2.<build timestamp>` on export,
 so every export is a distinct version and *Check for Updates* can see it.
 

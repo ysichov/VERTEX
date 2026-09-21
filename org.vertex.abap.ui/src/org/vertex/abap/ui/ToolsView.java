@@ -6,6 +6,8 @@ import org.eclipse.swt.browser.BrowserFunction;
 /** One workspace; all requests use the selected object's ADT session. */
 public class ToolsView extends ChatView {
     public static final String ID = "org.vertex.abap.ui.view.tools";
+    /** Latest small view-specific context, supplied by the nested result frame. */
+    private volatile String vertexContext = "{}";
     @Override protected String page() { return "resources/tools.html"; }
     @Override protected String projectName() { return part(2); }
     @Override protected String title(String object) { return "VERTEX Tools"; }
@@ -33,6 +35,17 @@ public class ToolsView extends ChatView {
     }
     @Override protected void addFunctions() {
         super.addFunctions();
+        new BrowserFunction(browser, "sdeVertexContext") {
+            @Override public Object function(Object[] args) {
+                String value = args.length > 0 && args[0] != null ? String.valueOf(args[0]).trim() : "{}";
+                // This is JSON made by tools.html, not a command. Keep the bridge
+                // bounded nevertheless: source text belongs in an explicit fragment.
+                if (value.length() <= 16000 && value.startsWith("{") && value.endsWith("}")) {
+                    vertexContext = value;
+                }
+                return null;
+            }
+        };
         new BrowserFunction(browser, "sdeWorkspace") {
             @Override public Object function(Object[] args) {
                 String path = args.length > 0 ? String.valueOf(args[0]) : "";
@@ -80,6 +93,7 @@ public class ToolsView extends ChatView {
             }
         };
     }
+    String assistantContext() { return vertexContext; }
     @Override void prompt(String text) {
         browser.execute("document.getElementById('conversation').contentWindow.document.getElementById('prompt').value="
             + AssistantBridge.quote(text));

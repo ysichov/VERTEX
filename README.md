@@ -62,7 +62,7 @@ HTTPS, and the markup, grids and filters are not written twice.
 
 ## AI assistants
 
-### VERTEX chat and code reviewer (VS Code, 0.6.1)
+### VERTEX chat and code reviewer (VS Code, 0.6.2)
 
 The VERTEX panel in VS Code's Activity Bar has a chat over the active SAP system, run by
 the Claude Code or Codex subscription already installed. Ask *show ZCL_TR_TEXT_DATA* or

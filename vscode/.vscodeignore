@@ -7,3 +7,4 @@ images/icon.js
 **/*.map
 test/**
 *.vsix
+package.ps1

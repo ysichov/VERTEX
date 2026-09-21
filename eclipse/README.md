@@ -28,7 +28,7 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. Keep the feature and bundle at `0.5.1.qualifier`.
+then regenerate. Keep the feature and bundle at `0.6.1.qualifier`.
 
 For a local installable archive without replacing the published `docs/` site:
 
@@ -36,7 +36,7 @@ For a local installable archive without replacing the published `docs/` site:
 ./eclipse/package.ps1 -Javac 'path/to/javac.exe' -BundlePool 'path/to/.p2/pool/plugins'
 ```
 
-This compiles Java 21 classes, uses the existing 0.5.1 PDE repository as the
+This compiles Java 21 classes, uses the existing PDE repository as the
 metadata template, and creates a new timestamped site and ZIP under `target/`.
 It refreshes bundled resources, sources, versions and SHA-256 download checksums.
 Install via **Help > Install New Software > Add > Archive** and restart Eclipse.

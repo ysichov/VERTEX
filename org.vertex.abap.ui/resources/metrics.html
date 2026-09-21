@@ -147,6 +147,22 @@
   /* The flow is about the whole object, so it gets the whole window. */
   body.calls #list { display: none; }
   tbody tr.sel, tbody tr.sel:nth-child(even) { background: var(--th-sorted-bg); }
+  /* UML uses the same compact outline vocabulary as Source and Diff.  Metrics
+     still owns the right pane; this is only the navigator for choosing it. */
+  .uml-parts-head,.uml-parts-object { padding: 5px 10px; background: var(--surface);
+    border-bottom: 1px solid var(--border); font-weight: 600; }
+  .uml-parts-object { font-family: Consolas, monospace; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .uml-parts table { width: 100%; table-layout: fixed; }
+  .uml-parts th:first-child,.uml-parts td:first-child { width: 18px; padding: 3px 4px; }
+  .uml-parts th:nth-child(2),.uml-parts td:nth-child(2) { width: 52px; }
+  .uml-parts td.method { font-family: Consolas, monospace; overflow: hidden;
+    text-overflow: ellipsis; }
+  .uml-parts tr.group td { background: var(--surface); font-weight: 600; }
+  .vis { display:inline-block; width:8px; height:8px; }
+  .vis.public { background:#2e9e44; }
+  .vis.protected { background:#d9a400; width:7px; height:7px; transform:rotate(45deg); }
+  .vis.private { background:#d33a2c; border-radius:50%; }
   /* The diagram's own controls, next to the button that brings it up. */
   .bar .tools { display: flex; gap: 4px; align-items: center; }
   .bar .tools button { min-width: 1.9rem; }
@@ -401,6 +417,21 @@ function sdeReady() {
 }
 
 function answered(kind, raw) {
+  if (kind === "scheme-parts") {
+    try {
+      if (String(raw).indexOf("ERROR:") === 0) { throw new Error(String(raw).substring(6)); }
+      var definition = JSON.parse(raw);
+      var declared = definition.methods || ((definition.nodes || []).find(function (n) {
+        return String(n.name).toUpperCase() === String(loadedObject).toUpperCase();
+      }) || {}).methods || [];
+      units.forEach(function (unit) {
+        var method = declared.find(function (m) { return String(m.name).toUpperCase() === umlMethodName(unit).toUpperCase(); });
+        if (method) { unit.visibility = method.visibility; }
+      });
+      if (mode === "scheme") { renderUmlParts(); if (units.length) { openUnit(units[0]); } }
+    } catch (error) { status("Could not read method sections: " + error.message); }
+    return;
+  }
   // The first thing a window asks is what the system has.
   if (kind === "about") { tookAbout(raw); return; }
   if (kind === "class") { drawClass(raw); return; }
@@ -557,55 +588,51 @@ function sorted() {
   return copy;
 }
 
-function renderTable() {
-  var root = document.getElementById("root");
-  root.className = "";
-  root.innerHTML = "";
+var schemeRows = [];
+var UML_SECTIONS = [
+  { key: "public", type: "CPUB", label: "Public section" },
+  { key: "protected", type: "CPRO", label: "Protected section" },
+  { key: "private", type: "CPRI", label: "Private section" }
+];
 
-  // In flow mode the numbers give way to the diagram: only the name is left,
-  // which is what picking a unit needs. The order stays whatever column was
-  // sorted on, so a list opened on the worst complexity keeps that order.
-  var columns = flowMode() ? COLUMNS.slice(0, 1) : COLUMNS;
+function umlVisibility(unit) {
+  var value = String(unit.visibility || unit.section || "").toLowerCase();
+  return /public/.test(value) ? "public" : /protected/.test(value) ? "protected" : /private/.test(value) ? "private" : "";
+}
 
-  var headRow = document.createElement("tr");
-  columns.forEach(function (c) {
-    var th = document.createElement("th");
-    th.textContent = c.text + (c.key === sortKey ? (sortDown ? " ▼" : " ▲") : "");
-    th.title = "Sort by " + c.text;
-    if (c.key === sortKey) { th.className = "sorted"; }
-    th.addEventListener("click", function () {
-      // A second click on the same column reverses it; a new column starts
-      // with the largest value on top, which is what a hotspot list is for.
-      if (sortKey === c.key) { sortDown = !sortDown; }
-      else { sortKey = c.key; sortDown = true; }
-      renderTable();
+function umlMethodName(unit) { return String(unit.unit_name || "").replace(/^.*=>/, ""); }
+
+// In Scheme a class is navigated as source/diff are: visibility bands and a
+// METH row per method. The metric columns belong in Metrics mode, not here.
+function renderUmlParts() {
+  schemeRows = [];
+  var root = document.getElementById("root"), methods = sorted();
+  root.className = "uml-parts"; root.innerHTML = "";
+  var title = document.createElement("div"); title.className = "uml-parts-head"; title.textContent = "Parts"; root.appendChild(title);
+  var object = document.createElement("div"); object.className = "uml-parts-object"; object.textContent = loadedObject || objectName(); root.appendChild(object);
+  var table = document.createElement("table"), head = document.createElement("thead"), header = document.createElement("tr");
+  ["", "Type", "Name"].forEach(function (text) { var th = document.createElement("th"); th.textContent = text; header.appendChild(th); });
+  head.appendChild(header); table.appendChild(head);
+  var body = document.createElement("tbody");
+  UML_SECTIONS.concat([{ key: "", type: "Other", label: "Other" }]).forEach(function (section) {
+    var members = methods.filter(function (unit) { return umlVisibility(unit) === section.key; });
+    if (!members.length) { return; }
+    var group = document.createElement("tr"); group.className = "group";
+    var blank = document.createElement("td"); group.appendChild(blank);
+    var type = document.createElement("td"); type.textContent = section.type; group.appendChild(type);
+    var label = document.createElement("td"); label.textContent = section.label; group.appendChild(label); body.appendChild(group);
+    members.forEach(function (unit) {
+      var row = document.createElement("tr"); row.className = "pick" + (shown(unit) ? " sel" : "");
+      schemeRows.push({element: row, unit: unit});
+      row.title = "Branch scheme of " + umlMethodName(unit);
+      row.addEventListener("click", function () { openUnit(unit); });
+      var icon = document.createElement("td"), mark = document.createElement("span"); mark.className = "vis " + section.key; icon.appendChild(mark); row.appendChild(icon);
+      var kind = document.createElement("td"); kind.textContent = /^(method|meth)$/i.test(unit.unit_type || "method") ? "METH" : String(unit.unit_type).toUpperCase(); row.appendChild(kind);
+      var name = document.createElement("td"); name.className = "method"; name.textContent = umlMethodName(unit); row.appendChild(name);
+      body.appendChild(row);
     });
-    headRow.appendChild(th);
   });
-  var thead = document.createElement("thead");
-  thead.appendChild(headRow);
-
-  var tbody = document.createElement("tbody");
-  sorted().forEach(function (u) {
-    var tr = document.createElement("tr");
-    if (mode === "scheme") {
-      tr.className = shown(u) ? "pick sel" : "pick";
-      tr.title = "Branch scheme of " + u.unit_name;
-      tr.addEventListener("click", function () { openUnit(u); });
-    }
-    columns.forEach(function (c) {
-      var td = document.createElement("td");
-      td.textContent = u[c.key];
-      if (c.num) { td.className = "num"; }
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-
-  var table = document.createElement("table");
-  table.appendChild(thead);
-  table.appendChild(tbody);
-  root.appendChild(table);
+  table.appendChild(body); root.appendChild(table);
 }
 
 function unitTotal(rows) {
@@ -641,7 +668,12 @@ function makeTable(columns, rows, total, isClass) {
   table.appendChild(body); return table;
 }
 
-function classMetrics() { return String(loadedType || "").toUpperCase() === "CLAS"; }
+function classMetrics() {
+  // ADT hosts identify a class as CLAS, CLAS/OC, or the display name Class.
+  // The scheme navigator must not silently fall back to the generic Unit list.
+  var type = String(loadedType || "").toUpperCase();
+  return type === "CLASS" || type === "CLAS" || type.indexOf("CLAS/") === 0;
+}
 
 function metricColumns() { return classMetrics() ? CLASS_COLUMNS : COLUMNS; }
 
@@ -654,7 +686,8 @@ function cellValue(row, key, isClass) {
 }
 
 function renderMetricSections() {
-  if (flowMode()) { renderTable(); return; }
+  if (mode === "scheme" && classMetrics()) { renderUmlParts(); return; }
+  if (flowMode()) { renderUmlParts(); return; }
   var root = document.getElementById("root"); root.className = ""; root.innerHTML = "";
   var groups = {};
   sorted().forEach(function (unit) { var key = unit.unit_type || "unit"; (groups[key] || (groups[key] = [])).push(unit); });
@@ -749,11 +782,11 @@ function render(data) {
   }
 
   renderTotals(data.totals);
-  renderMetricSections();
   status(units.length + (units.length === 1 ? " unit" : " units"));
   // A window opened on an object chooses its own first picture; one the
   // reader has since set is theirs and stays.
   if (first) { setMode(INITIAL && INITIAL.action ? ({flow:"calls",uml:"class"}[INITIAL.action] || INITIAL.action) : modeFor(data.type)); }
+  else { setMode(mode); }
 }
 
 
@@ -835,14 +868,25 @@ function setMode(next) {
   lastMermaid = null;
   refit = true;
 
-  if (units.length > 0) { renderMetricSections(); }
+  var needsSections = next === "scheme" && classMetrics() && units.some(function (unit) { return !umlVisibility(unit); });
+  if (needsSections) {
+    schemeRows = [];
+    var root = document.getElementById("root");
+    root.className = "uml-parts";
+    root.textContent = "Reading method sections ...";
+  } else if (units.length > 0) { renderMetricSections(); }
 
   if (next === "class") {
     loadClassDiagram();
   } else if (next === "metrics") {
     status(units.length ? units.length + (units.length === 1 ? " unit" : " units") : "");
   } else if (next === "scheme") {
-    hint("Pick a method on the left.");
+    if (needsSections) {
+      hint("Reading method sections ...");
+      waiting = "scheme-parts";
+      sdeClass(loadedObject, loadedType);
+    } else if (units.length) { openUnit(units[0]); }
+    else { hint("No code units."); }
   } else if (loadedObject) {
     requestDiagram();
   }
@@ -870,7 +914,7 @@ function openUnit(unit) {
   expanded = [];
   lastMermaid = null;
   refit = true;
-  renderTable();
+  schemeRows.forEach(function (row) { row.element.className = "pick" + (shown(row.unit) ? " sel" : ""); });
   requestDiagram();
 }
 

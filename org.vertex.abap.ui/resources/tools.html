@@ -132,7 +132,10 @@ function connect(child,service,generation){
     if(!live())return;
     const value=state&&typeof state==="object"?state:{};
     value.workspace=current;
-    sdeVertexContext(value);
+    // Eclipse BrowserFunction accepts strings reliably across SWT engines.
+    // Keeping this as JSON also prevents an object proxy from leaking between
+    // the two nested webviews.
+    sdeVertexContext(JSON.stringify(value));
   };
   Object.keys(VertexRoutes.SERVICES[service]||{}).forEach(call=>{
     const build=VertexRoutes.SERVICES[service][call];
