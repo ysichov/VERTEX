@@ -209,18 +209,22 @@ function claudeCommand(options, dir) {
     url: options.url,
     headers: { Authorization: "Bearer ${" + TOKEN_VAR + "}" }
   };
-  fs.writeFileSync(config, JSON.stringify({ mcpServers: servers }));
+  fs.writeFileSync(config, JSON.stringify({ mcpServers: options.tools.length ? servers : {} }));
 
   const args = [
     "-p", "--output-format", "json",
     "--json-schema", JSON.stringify(options.schema),
     "--system-prompt", options.instructions,
-    // No built-in tool at all, and no MCP server but this one.
+    // No built-in tool. For a visible method explanation there are no MCP
+    // tools either: supplying a server would make the CLI run an agent loop
+    // even though the compact source fragment already answers the question.
     "--tools", "",
     "--strict-mcp-config", "--mcp-config", config,
-    "--allowedTools", options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }).join(","),
     "--no-session-persistence"
   ];
+  if (options.tools.length) {
+    args.push("--allowedTools", options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }).join(","));
+  }
   if (options.model) {
     args.push("--model", options.model);
   }

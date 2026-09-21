@@ -73,10 +73,13 @@ test("Chat reads over the host, opens through ADT and passes the active editor",
     + '<adtcore:objectReference adtcore:uri="/sap/bc/adt/programs/programs/z_calc" adtcore:type="PROG/P" adtcore:name="Z_CALC" adtcore:packageName="$TMP" adtcore:description="Calc &amp; test"/>'
     + '</adtcore:objectReferences>';
   const result = await run({ call: "ask", service: "chat", assistant: "codex", executable: process.execPath,
-    text: "show Z_CALC", state: { editor: { name: "ZCL_X", type: "CLAS/OC" }, conversation: [] } },
+    text: "show Z_CALC", state: { editor: { name: "ZCL_X", type: "CLAS/OC" }, conversation: [],
+      vertex_view: { type: "DEVC", name: "Z_APP", view: "uml", object_count: 50 } } },
     async (_, resource) => { paths.push(resource); return resource.endsWith("/source/main") ? "REPORT z_calc." : xml; },
     { ask: async o => {
       assert.match(o.prompt, /ZCL_X/);
+      assert.match(o.prompt, /function-specific metadata/);
+      assert.match(o.prompt, /\"view\":\"uml\"/);
       assert.deepEqual(o.tools, ["search_sap_objects", "read_sap_object", "open_sap_object"]);
       const call = async (name, args) => {
         const response = await fetch(o.url, { method: "POST", headers: { Authorization: "Bearer " + o.token },

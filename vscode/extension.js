@@ -662,10 +662,10 @@ function activate(context) {
     { pages: PAGES, fetch, asset, active, models: assistantModels,
       source: args => sapCode.execute("read_sap_object", args),
       setContext: value => { latestToolsContext = value; },
-      chat: () => require("./chat").create(vscode, sapCode, tools) }, initial);
+      chat: () => require("./chat").create(vscode, sapCode, tools, context.secrets) }, initial);
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", showTools));
   require("./sidebar").register(vscode, context, active,
-    require("./chat").create(vscode, sapCode, tools), systems, () => latestToolsContext);
+    require("./chat").create(vscode, sapCode, tools, context.secrets), systems, () => latestToolsContext);
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation
   // so a registered Codex/Claude connection also works after a window reload.

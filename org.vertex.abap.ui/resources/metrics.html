@@ -180,6 +180,14 @@
      source window, so only the stretches that fold carry a hand. */
   .diagram a[href^="sapevent:aceexp"] { cursor: pointer; }
   .diagram a { text-decoration: none; }
+  /* A dense package UML is readable at Fit only with a closer look. The lens
+     is an inert copy of the SVG: hovering a node magnifies its neighbourhood
+     without moving the diagram or changing the reader's chosen zoom. */
+  .uml-lens { position: fixed; width: 180px; height: 180px; border-radius: 50%;
+              overflow: hidden; pointer-events: none; z-index: 10; display: none;
+              border: 2px solid var(--field-border); background: var(--bg);
+              box-shadow: 0 4px 14px #0006; }
+  .uml-lens svg { position: absolute; max-width: none; }
 </style>
 </head>
 <body>
@@ -285,6 +293,25 @@ var waiting = null;
    must still be asked for the object whose row was clicked. */
 var loadedObject = "";
 var loadedType = "";
+var umlObjectCount = null;
+var umlDiagram = null;
+
+// The chat lives beside several VERTEX functions. Give it the context of the
+// function actually on screen, rather than treating a UML diagram as a source
+// view (and therefore as a method signature). This is deliberately metadata:
+// the assistant can read individual objects through its SAP tools when needed.
+function sdeContext() {
+  var uml = mode === "class" || (INITIAL && INITIAL.action === "uml");
+  var context = { type: loadedType || objectType(), name: loadedObject || objectName(),
+    view: uml ? "uml" : mode };
+  if (umlObjectCount !== null) { context.object_count = umlObjectCount; }
+  if (umlDiagram) { context.uml = umlDiagram; }
+  return context;
+}
+
+function publishContext() {
+  if (typeof sdeContextUpdate === "function") { sdeContextUpdate({ vertex_view: sdeContext() }); }
+}
 
 function status(text) {
   document.getElementById("status").textContent = text || "";
@@ -443,6 +470,17 @@ function drawClass(raw) {
   try {
     var data = JSON.parse(raw);
     var nodes = data.nodes || (data.class ? [{name:data.class,methods:data.methods}] : []);
+    // A UML question is about the graph, not merely the object that happened
+    // to produce it. Keep a compact, textual copy for the assistant: names,
+    // kinds, method names and relationship endpoints are enough to analyse
+    // architecture without sending rendered SVG or executable Mermaid text.
+    umlObjectCount = nodes.length;
+    umlDiagram = {
+      nodes: nodes.map(function(n) { return { name: n.name, kind: n.kind || "class",
+        methods: (n.methods || []).map(function(m) { return m.name; }).slice(0, 100) }; }),
+      edges: (data.edges || []).map(function(e) { return { source: e.source, target: e.target, kind: e.kind }; })
+    };
+    publishContext();
     if (!nodes.length) { hint("This package has no classes or interfaces."); status(""); return; }
     var lines = ["classDiagram", "direction " + direction], ids = new Map();
     function label(value) { return String(value || "").replace(/[^A-Za-z0-9_/$~]/g, "_"); }
@@ -657,6 +695,8 @@ function renderMetricSections() {
 
 function renderPackage(data) {
   units = []; totals = data.totals || {}; loadedObject = data.object; loadedType = data.type;
+  umlObjectCount = (data.objects || []).length;
+  umlDiagram = null;
   document.getElementById("object").textContent = "package " + data.object;
   if (typeof sdeTitle === "function") { sdeTitle(data.object.toUpperCase()); }
   renderTotals(totals);
@@ -684,6 +724,8 @@ function renderPackage(data) {
 
 function render(data) {
   if (data.objects !== undefined) { renderPackage(data); return; }
+  umlObjectCount = null;
+  umlDiagram = null;
   units = data.units || [];
   totals = data.totals;
   var first = loadedObject !== data.object;
@@ -1110,11 +1152,48 @@ function draw() {
     } else {
       applyZoom();
     }
+    if (isClass) { installUmlLens(pane, pane.querySelector("svg")); }
     status(lastCaption);
   }, function (e) {
     failed("mermaid could not draw this diagram." + String.fromCharCode(10)
            + (e && e.message ? e.message : String(e)));
   });
+}
+
+function installUmlLens(pane, svg) {
+  if (!svg) { return; }
+  var lens = document.createElement("div");
+  lens.className = "uml-lens";
+  lens.setAttribute("aria-hidden", "true");
+  var copy = svg.cloneNode(true);
+  lens.appendChild(copy);
+  document.body.appendChild(lens);
+  var radius = 90, factor = 2.5;
+
+  function isNode(element) {
+    while (element && element !== svg) {
+      if (element.matches && element.matches("g.node")) { return true; }
+      element = element.parentNode;
+    }
+    return false;
+  }
+  function hide() { lens.style.display = "none"; }
+  function move(event) {
+    if (!isNode(event.target)) { hide(); return; }
+    var source = svg.getBoundingClientRect();
+    if (!source.width || !source.height) { hide(); return; }
+    var left = Math.min(window.innerWidth - radius * 2 - 8, event.clientX + 16);
+    var top = Math.min(window.innerHeight - radius * 2 - 8, event.clientY + 16);
+    lens.style.left = Math.max(8, left) + "px";
+    lens.style.top = Math.max(8, top) + "px";
+    copy.style.width = Math.round(source.width * factor) + "px";
+    copy.style.height = Math.round(source.height * factor) + "px";
+    copy.style.left = Math.round(radius - (event.clientX - source.left) * factor) + "px";
+    copy.style.top = Math.round(radius - (event.clientY - source.top) * factor) + "px";
+    lens.style.display = "block";
+  }
+  svg.addEventListener("pointermove", move);
+  svg.addEventListener("pointerleave", hide);
 }
 
 /* The size mermaid drew, taken from the viewBox rather than from the element:

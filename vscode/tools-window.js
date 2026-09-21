@@ -58,7 +58,7 @@ function open(vscode, context, deps, initial) {
       }
       if(message.call === "vertexContext") {
         const state=args[0]&&typeof args[0]==="object"?args[0]:{};
-        deps.setContext({workspace:initial||null,vertex_view:state.vertex_view||null,
+        deps.setContext({workspace:state.workspace||initial||null,vertex_view:state.vertex_view||null,
           selected_fragment:state.selected_fragment||null});
         return;
       }

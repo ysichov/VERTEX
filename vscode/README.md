@@ -55,11 +55,13 @@ development systems often have; it is off by default on purpose.
 ## Commands
 
 - **VERTEX: Open Panel** — also available from the VERTEX icon in the Activity Bar.
-  The panel holds the VERTEX chat, the active SAP system with system
-  selection/settings, and quick-launch buttons for SelecTor, Metrics and Versions.
-- **VERTEX: Open SelecTor**
-- **VERTEX: Open Metrics**
-- **VERTEX: Open Versions**
+  The panel holds the VERTEX chat, the active SAP-system selector, provider and
+  model controls, and quick-launch buttons for **VERTEX Tools** and code review.
+- **VERTEX Tools** — opens the unified tools window. Choose an object type,
+  enter its name, then choose the available function (for example Data, View,
+  UML, Metrics, Flow, Scheme, Diff or Versions). The available functions depend
+  on the selected object type; there are no separate SelecTor, Metrics or
+  Versions commands any more.
 - **VERTEX: Switch System**
 - **VERTEX: Forget Password**
 - **VERTEX: Copy the MCP address for Claude Code or Codex**
@@ -112,20 +114,23 @@ double-click on the method switches declaration and body; double-click on a sect
 declaration. **← Back** restores the prior location. A program is never cut down to one part:
 its Parts list only positions the complete source on an event, form or local-class implementation.
 
-The chat receives a selected fragment together with the selected method's signature, if any. For
-a redefinition VERTEX follows `INHERITING FROM` before asking the assistant, so the context uses
-the original declaration and identifies its owning class. Ask the chat explicitly to *open* or
-*edit* an object — for example, *Open ZCL_FOO please* — to open a normal, editable VS Code tab
-instead. Changes made there are still sent to SAP only through **Review & Activate** or
-**Save & Activate**.
+The chat context follows the active function. A source view sends a selected fragment, or the
+currently open method when nothing is selected, together with the method's signature. For a redefinition VERTEX follows `INHERITING FROM`
+before asking the assistant, so the context uses the original declaration and identifies its
+owning class. UML sends the diagram's object, nodes, method names and relationships instead — not
+a method signature — so it can be analysed directly. Ask the chat explicitly to *open* or *edit*
+an object — for example, *Open ZCL_FOO please* — to open a normal, editable VS Code tab instead.
+Changes made there are still sent to SAP only through **Review & Activate** or **Save & Activate**.
 
 ## VERTEX chat
 
 The **VERTEX** panel in the Activity Bar has a free-prompt chat over the active
-SAP system. Pick **Claude subscription** or **Codex subscription** and a model
-above the conversation (`vertex.ai.provider`, `vertex.ai.model`); it runs the
-Claude Code or Codex extension installed in this VS Code, with your login. Your
-questions and VERTEX's answers are shown in different colours.
+SAP system. Pick **Claude subscription**, **Codex subscription** or **Anthropic
+API** and a model above the conversation (`vertex.ai.provider`,
+`vertex.ai.model`). Subscription modes run the installed Claude Code or Codex
+extension with your login. Anthropic API asks for a key and keeps it only in VS
+Code SecretStorage; it can use the same read-only SAP tools. Your questions and
+VERTEX's answers are shown in different colours.
 
 In both the Activity Bar panel and the Tools chat, **Enter** sends a question and
 **Ctrl+Enter** inserts a new line.

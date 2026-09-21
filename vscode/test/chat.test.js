@@ -55,6 +55,56 @@ test("a selected fragment from an external ADT editor is sent to VERTEX chat", a
   assert.doesNotMatch(prompt, /Active SAP editor context/);
 });
 
+test("the active editor's full source is never silently added to a chat prompt", async (t) => {
+  let prompt = "";
+  t.mock.method(assistant, "ask", async options => {
+    prompt = options.prompt;
+    return { plan: { answer: "Done." }, model: "haiku", usage: null };
+  });
+  const tools = { schemas: [], instructions: "", editorContext: () => ({ source: "SECRET_FULL_SOURCE_".repeat(10000) }) };
+  const ask = chat.create(fakeVscode({ provider: "claude-subscription", model: "haiku" }), tools,
+    { start: async () => ({ url: "http://127.0.0.1:1/mcp" }), token: "t" });
+  await ask("explain this method");
+  assert.doesNotMatch(prompt, /SECRET_FULL_SOURCE/);
+});
+
+test("an active UML view is sent as diagram context and is analysed without requesting an object", async (t) => {
+  let prompt = "", instructions = "";
+  t.mock.method(assistant, "ask", async options => {
+    prompt = options.prompt; instructions = options.instructions;
+    return { plan: { answer: "The package has one implementation relationship." }, model: "haiku", usage: null };
+  });
+  const tools = { schemas: [], instructions: "", editorContext: () => null };
+  const ask = chat.create(fakeVscode({ provider: "claude-subscription", model: "haiku" }), tools,
+    { start: async () => ({ url: "http://127.0.0.1:1/mcp" }), token: "t" });
+  await ask("UML видишь?", { state: { vertex_view: { type: "DEVC", name: "Z_AVE", view: "uml",
+    object_count: 2, uml: { nodes: [{ name: "ZCL_A", kind: "class", methods: ["RUN"] },
+      { name: "ZIF_B", kind: "interface", methods: [] }],
+      edges: [{ source: "ZCL_A", target: "ZIF_B", kind: "implementation" }] } } } });
+  assert.match(prompt, /function-specific context/);
+  assert.match(prompt, /ZCL_A/);
+  assert.match(prompt, /implementation/);
+  assert.match(instructions, /supplied code or UML/);
+});
+
+test("a brief question about the visible method cannot read the whole object", async (t) => {
+  let available = [];
+  t.mock.method(assistant, "ask", async options => {
+    available = options.tools;
+    return { plan: { answer: "It appends a diagnostic." }, model: "haiku", usage: null };
+  });
+  const tools = { instructions: "", editorContext: () => null, schemas: [
+    { name: "search_sap_objects", description: "search", inputSchema: {} },
+    { name: "read_sap_object", description: "read", inputSchema: {} },
+    { name: "open_sap_object", description: "open", inputSchema: {} }
+  ] };
+  const ask = chat.create(fakeVscode({ provider: "claude-subscription", model: "haiku" }), tools,
+    { start: async () => ({ url: "http://127.0.0.1:1/mcp" }), token: "t" });
+  await ask("кратко: что делает метод?", { state: { selected_fragment: { kind: "visible_part",
+    text: "METHOD add_cr_diag. APPEND iv_text TO mt_cr_diag. ENDMETHOD." } } });
+  assert.deepEqual(available, []);
+});
+
 test("a bare object name is searched and opened without a model", async (t) => {
   const direct = require("../direct-search");
   assert.equal(direct.isObjectName("Z_CALC"), true);

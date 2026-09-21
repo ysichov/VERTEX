@@ -12,6 +12,14 @@ test("source reads the selected object, preserves selection for chat and reports
   selection={rangeCount:1,anchorNode:"code",focusNode:"code",toString:()=>"REPORT"};handlers.selectionchange();
   selection=null;handlers.selectionchange();assert.equal(c.sdeSelection().text,"REPORT");
   handlers.mousedown();assert.equal(c.sdeSelection(),null);
+  c.allLines=["METHOD add_cr_diag.","  APPEND iv_text TO mt_cr_diag.","ENDMETHOD."];
+  c.selectedPart={name:"add_cr_diag"};c.shownRange={start:1,end:3};
+  assert.match(c.sdeSelection().text,/APPEND iv_text/);
+  assert.equal(c.sdeSelection().view.part,"add_cr_diag");
+  let published;
+  c.sdeContextUpdate=state=>{published=state;};
+  c.publishContext();
+  assert.equal(published.selected_fragment.text,c.sdeSelection().text);
   raw="ERROR:SAP unavailable";c.sdeReady();assert.equal(elements.code.textContent,"SAP unavailable");
 });
 test("embedded theme follows all VS Code themes and changes without reloading",()=>{

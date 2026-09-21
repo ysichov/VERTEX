@@ -62,7 +62,7 @@ HTTPS, and the markup, grids and filters are not written twice.
 
 ## AI assistants
 
-### VERTEX chat and code reviewer (VS Code, 0.6.0)
+### VERTEX chat and code reviewer (VS Code, 0.6.1)
 
 The VERTEX panel in VS Code's Activity Bar has a chat over the active SAP system, run by
 the Claude Code or Codex subscription already installed. Ask *show ZCL_TR_TEXT_DATA* or
@@ -179,8 +179,9 @@ The url is the ICM port, not the one SAP GUI connects to. An empty `vertex.activ
 first. **VERTEX: Switch System** picks another one from a list, and the password is asked once per
 system - two systems are two users often enough.
 
-Then the command palette: **VERTEX: Open SelecTor**, **Open Metrics**, **Open Versions**. There is
-no object tree here to right-click, so each page opens empty and its own name field is the way in.
+Open **VERTEX: Open Panel**, then choose **VERTEX Tools**. Select the object type, enter its name
+and choose its function — for example Data, View, UML, Metrics, Flow, Scheme, Diff or Versions.
+The functions are filtered by object type, so VERTEX does not offer actions that cannot apply.
 
 ### Clickable ABAP source
 
@@ -197,8 +198,9 @@ read-only, contextual overview inside VERTEX: class methods are grouped into the
 One click opens a method body; double-clicking a method toggles its declaration and body;
 double-clicking a section positions the declaration. A program always remains complete on screen:
 its Parts list only positions to events, forms and local-class implementations. **Back** restores
-the preceding source location. Selecting code sends that fragment and the selected method's
-signature to VERTEX chat; a redefinition is resolved through its inheritance chain.
+the preceding source location. Chat context follows the active function: a source view sends a
+selected fragment and method signature, while UML sends its diagram nodes and relationships. A
+redefinition is resolved through its inheritance chain.
 
 An explicit chat request such as *Open ZCL_FOO* opens the normal editable VS Code document. The
 detailed, current navigation matrix is in
