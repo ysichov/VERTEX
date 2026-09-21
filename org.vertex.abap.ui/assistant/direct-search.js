@@ -17,6 +17,14 @@ function isObjectName(text) {
     && (/[_0-9\/$*+]/.test(value) || /^[ZY]/i.test(value));
 }
 
+/** Recognise a small, unambiguous imperative without asking the model. */
+function objectRequest(text) {
+  const value = String(text || "").trim();
+  if (isObjectName(value)) { return { query: value, openEditor: false }; }
+  const found = value.match(/^(?:open|edit|открой)\s+(?:(?:class|program|function|module|класс|программу|функцию)\s+)?([A-Z0-9_\/$*+]{3,40})(?:\s+(?:please|пожалуйста))?[.!]?$/i);
+  return found && isObjectName(found[1]) ? { query: found[1], openEditor: true } : null;
+}
+
 /**
  * search(args) -> { objects: [{ object_name, object_type, description, package }], truncated }
  * open({ object_type, object_name }) -> anything; it throws on failure.
@@ -45,4 +53,4 @@ async function answer(text, { search, open, system }) {
     + "\n\nAsk to open one of them by name and type.";
 }
 
-module.exports = { isObjectName, answer };
+module.exports = { isObjectName, objectRequest, answer };

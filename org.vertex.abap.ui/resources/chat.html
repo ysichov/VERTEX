@@ -49,8 +49,8 @@ textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertic
   <p class="message hint">Ask about ABAP code on this system: <i>show Z_CALC</i>, <i>explain this method</i>. "This code" is the object in the active ADT editor.</p>
 </main>
 <footer>
-  <textarea id="prompt" placeholder="Ask VERTEX ... (Ctrl+Enter to send)" aria-label="Message"></textarea>
-  <div class="actions"><span id="working"></span><button id="send" class="primary" type="button">Send</button></div>
+  <textarea id="prompt" placeholder="Ask VERTEX ... (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea>
+  <div class="actions"><span id="working"></span></div>
 </footer>
 <script>
 var INIT = /*INIT*/null/*INIT*/;
@@ -115,7 +115,6 @@ function send(selectedFragment) {
   asking = who.options[who.selectedIndex].text;
   say("you", "You", text);
   input.value = "";
-  document.getElementById("send").disabled = true;
   document.getElementById("working").textContent = asking + " is working ...";
   var state = { conversation: conversation.slice() };
   if (selectedFragment) { state.selected_fragment = selectedFragment; }
@@ -153,7 +152,6 @@ function sdeAssistant(raw) {
   }
   var who = "VERTEX" + (data.model ? " · " + data.model : "");
   asking = false;
-  document.getElementById("send").disabled = false;
   document.getElementById("working").textContent = "";
   if (data.error) {
     conversation.push({ role: "assistant", content: "Request failed: " + data.error });
@@ -226,9 +224,8 @@ function markdown(text, target) {
   }
 }
 
-document.getElementById("send").addEventListener("click", function () { send(); });
 document.getElementById("prompt").addEventListener("keydown", function (event) {
-  if (event.key === "Enter" && event.ctrlKey) { event.preventDefault(); send(); }
+  if (event.key === "Enter" && !event.ctrlKey) { event.preventDefault(); send(); }
 });
 document.getElementById("who").addEventListener("change", function (event) {
   remember("assistant", event.target.value);

@@ -124,7 +124,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <p><button class="secondary" data-action="provider" id="provider">AI provider</button> <button class="secondary" data-action="model" id="model">Default model</button> <button class="secondary" data-action="newConversation">New conversation</button></p>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
-<form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX…" aria-label="Message"></textarea><button type="submit">Send</button></form>
+<form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
 <h2>Quick launch</h2>
 <button class="secondary" data-action="tools">VERTEX Tools</button>
 <button class="secondary" data-action="review">Review &amp; save current code</button>
@@ -144,6 +144,12 @@ document.getElementById('chat').addEventListener('submit', event => {
   if (!text) return;
   api.postMessage({ action: 'chat', text });
   field.value = '';
+});
+document.getElementById('prompt').addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.ctrlKey) {
+    event.preventDefault();
+    document.getElementById('chat').requestSubmit();
+  }
 });
 window.addEventListener('message', event => {
   if (event.data && typeof event.data.prompt === 'string') {
