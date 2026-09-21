@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $root 'org.vertex.abap.ui'
-$baseVersion = '0.6.2'
+$baseVersion = '0.6.3'
 $version = $baseVersion + '.' + (Get-Date -Format 'yyyyMMddHHmmss')
 $out = Join-Path $root ('target/eclipse-' + $version)
 $classes = Join-Path $out 'classes'

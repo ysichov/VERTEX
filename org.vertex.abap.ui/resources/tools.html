@@ -19,7 +19,7 @@ dialog::backdrop{background:#0008}
 dialog label{display:block;margin:8px 0}
 #object-name{width:100%;padding-right:34px;text-transform:uppercase}iframe{border:0;width:100%;height:100%;display:block}
 #object-type{min-width:150px}#function{min-width:100px}
-#result{flex:1;min-height:0}#notice{padding:8px;white-space:pre-wrap}#notice:empty{display:none}
+#results{flex:1;min-height:0;position:relative}#results iframe{position:absolute;inset:0;display:none}#results iframe.active{display:block}#notice{padding:8px;white-space:pre-wrap}#notice:empty{display:none}
 </style></head><body>
 <aside id="chat" aria-label="Assistant"><iframe id="conversation" title="VERTEX assistant"></iframe></aside>
 <main><header>
@@ -28,7 +28,7 @@ dialog label{display:block;margin:8px 0}
 <select id="object-type" aria-label="Object type"></select>
 <div id="object-field"><input id="object-name" placeholder="Object name" aria-label="Object name" title="Enter an object name and press Enter" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/></svg></button></div>
 <select id="function" aria-label="Function"></select>
-</header><div id="notice" role="status"></div><iframe id="result" title="Function result"></iframe></main>
+</header><div id="notice" role="status"></div><div id="results" aria-label="Function result"></div></main>
 <dialog id="request-dialog"><form method="dialog"><strong>Find transport requests</strong>
 <label>User (empty = current user)<input id="request-user" autocomplete="username" placeholder="Current SAP user"></label>
 <label><input type="checkbox" id="request-released"> Include released requests</label>
@@ -42,7 +42,9 @@ const initial = /*INIT*/null/*INIT*/;
 let current = VertexObjects.normalize(initial || {});
 let sequence = 0, activeRequest = null, queue = [], assistantTarget = null, navigation = [];
 const typeBox = document.getElementById("object-type"), nameBox = document.getElementById("object-name");
-const actionBox = document.getElementById("function"), result = document.getElementById("result");
+const actionBox = document.getElementById("function"), results = document.getElementById("results");
+let result = null;
+const resultFrames = new Map();
 const findButton = document.getElementById("find-requests"), requestDialog = document.getElementById("request-dialog");
 const chat = document.getElementById("chat"), chatToggle = document.getElementById("chat-toggle");
 const backButton=document.getElementById("back");
@@ -67,7 +69,7 @@ function run(){
   notice(""); fields();
   const service=current.action==="view"?"source":["data","join","pivot"].includes(current.action)?"table":
     ["diff","review"].includes(current.action)?"versions":"metrics";
-  mount(result,service,current);
+  mount(service,current);
 }
 function findRequests(){
   const user=document.getElementById("request-user").value.trim();
@@ -75,13 +77,15 @@ function findRequests(){
   // A finder has no selected request yet. Start Versions, not Review: Review
   // would otherwise ask the host for /review/ with an empty request number.
   current={type:"TR",name:"",action:"diff"}; fields();
-  result.onload=()=>{
-    result.onload=null;
-    sdeRequestSearch(user,released);
-  };
-  mount(result,"versions",current);
+  mount("versions",current,()=>sdeRequestSearch(user,released));
 }
-function mount(frame,service,state){
+function mount(service,state,afterLoad){
+  const key=service+":"+state.action;
+  let frame=resultFrames.get(key);
+  const identity=state.type+":"+state.name;
+  if(frame&&frame.dataset.identity===identity){showFrame(frame);if(afterLoad)afterLoad();return;}
+  if(!frame){frame=document.createElement("iframe");frame.title="Function result";resultFrames.set(key,frame);results.appendChild(frame);}
+  frame.dataset.identity=identity;
   const generation=++sequence;
   frame.dataset.generation=String(generation);
   let source=bundle[service];
@@ -89,7 +93,18 @@ function mount(frame,service,state){
   source=source.replace(["/*INIT*/","null","/*INIT*/"].join(""),()=>JSON.stringify(init).replace(/</g,"\\u003c"));
   const bootstrap="<script>parent.connect(window,"+JSON.stringify(service)+","+generation+");<"+"/script>";
   const hide=service==="chat"?"":"<style>#name,#type,#load,#mode,#assist,#open,#finder{display:none!important}</style>";
+  frame.onload=()=>{showFrame(frame);if(afterLoad)afterLoad();};
   frame.srcdoc=source.replace("<script>",hide+bootstrap+"<script>");
+}
+function showFrame(frame){
+  result=frame;
+  resultFrames.forEach(value=>value.classList.toggle("active",value===frame));
+}
+function mountChat(){
+  const frame=document.getElementById("conversation"),generation=++sequence;
+  frame.dataset.generation=String(generation);
+  const bootstrap="<script>parent.connect(window,\"chat\","+generation+");<"+"/script>";
+  frame.srcdoc=bundle.chat.replace("<script>",bootstrap+"<script>");
 }
 // iframe documents do not inherit the host's CSS variables or theme updates.
 // Copy the complete VS Code theme onto their body, where existing palettes live.
@@ -114,13 +129,18 @@ new MutationObserver(()=>{
 function connect(child,service,generation){
   syncTheme(child);
   child.VERTEX_ACTION=current.action;
-  const owner=service==="chat"?document.getElementById("conversation"):result;
+  // A cached page connects while it is still behind the visible page. Resolve
+  // its own frame from the child window; `result` is only the visible frame.
+  const owner=service==="chat"?document.getElementById("conversation"):[...resultFrames.values()].find(frame=>frame.contentWindow===child);
   const live=()=>owner.contentWindow===child&&owner.dataset.generation===String(generation);
   let pending=null;
   child.sdeTake=()=>{const answer=pending;pending=null;return answer;};
   child.sdeDeliver=value=>{if(live()){pending=value;child.sdeReady();}};
   const reply=value=>{if(live()){pending=value;child.sdeReady();}};
   child.sdeTitle=()=>{};
+  // `chat.html` is shared with Eclipse.  Only VS Code supplies this host
+  // capability, where the API key lives in VS Code SecretStorage.
+  child.sdeAnthropicApi=()=>typeof sdeAnthropicApi==="function"&&sdeAnthropicApi();
   child.sdeSelectObject=value=>navigate(value);
   child.sdeBrowse=url=>sdeBrowse(url);
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
@@ -200,6 +220,6 @@ findButton.onclick=()=>requestDialog.showModal();
 document.getElementById("request-find").onclick=()=>{findRequests();};
 nameBox.onkeydown=e=>{if(e.key==="Enter")run();};
 actionBox.onchange=()=>{if(nameBox.value.trim())run();};
-fields();mount(document.getElementById("conversation"),"chat",null);
+fields();mountChat();
 if(current.name)run();
 </script></body></html>

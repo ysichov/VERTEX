@@ -22,6 +22,9 @@ function open(vscode, context, deps, initial) {
   const ask = deps.chat();
   const bridge = `<script>
     const host = acquireVsCodeApi(); let pending;
+    // The embedded chat may offer the direct Anthropic provider in VS Code.
+    // Eclipse hosts the same HTML but deliberately does not define this flag.
+    window.sdeAnthropicApi=()=>true;
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
     for(const call of ["workspace","asset","models","ask","browse","requestSearch","source","vertexContext"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>host.postMessage({call,args});

@@ -41,7 +41,7 @@ textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertic
 </style></head><body>
 <header>
   <span id="system">Resolving ABAP project ...</span>
-  <select id="who" aria-label="Assistant"><option value="claude">Claude Code</option><option value="codex">Codex</option></select>
+  <select id="who" aria-label="Assistant"><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="anthropic-api">Anthropic API</option></select>
   <select id="model" aria-label="Model" disabled><option>loading ...</option></select>
   <button id="new" type="button">New conversation</button>
 </header>
@@ -243,6 +243,12 @@ document.getElementById("new").addEventListener("click", function () {
 
 var savedAssistant = recall("assistant");
 var assistantBox = document.getElementById("who");
+var anthropicOption = assistantBox.querySelector('option[value="anthropic-api"]');
+if (anthropicOption && !(typeof sdeAnthropicApi === "function" && sdeAnthropicApi())) {
+  // The Eclipse embedded browser shares this page but has no SecretStorage
+  // backed Anthropic client, so never offer a provider that cannot answer.
+  anthropicOption.remove();
+}
 if (Array.prototype.some.call(assistantBox.options, function (option) { return option.value === savedAssistant; })) {
   assistantBox.value = savedAssistant;
 }

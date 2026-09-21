@@ -14,6 +14,7 @@ const mcp = require("./mcp");
 const selector = require("./selector");
 const versions = require("./versions");
 const assistant = require("./assistant");
+const anthropic = require("./anthropic");
 const https = require("https");
 const http = require("http");
 const fs = require("fs");
@@ -508,8 +509,8 @@ function assistantExtension(id) {
 async function assistantModels(args) {
   const id = String(args[0] || "");
   try {
-    return { assistant: id,
-             models: await assistant.models({ assistant: id, extensionPath: assistantExtension(id) }) };
+    return { assistant: id, models: id === "anthropic-api" ? anthropic.MODELS
+      : await assistant.models({ assistant: id, extensionPath: assistantExtension(id) }) };
   } catch (e) {
     return { assistant: id, error: e.message };
   }
