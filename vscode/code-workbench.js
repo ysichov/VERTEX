@@ -610,8 +610,14 @@ function register(vscode, context, { active, password }) {
   }
   async function moveTo(editor, result) {
     navigation.push({ document: editor.document, at: editor.selection.active });
-    const target = result.document === editor.document ? editor
-      : await vscode.window.showTextDocument(result.document, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+    // Keep a clean source flow in one editor group.  A dirty SAP buffer is
+    // never replaced: the destination opens beside it so the user can save
+    // or discard the pending change deliberately.
+    const clean = !editor.document.isDirty;
+    const target = result.document === editor.document ? editor : await vscode.window.showTextDocument(result.document, {
+      preview: clean,
+      viewColumn: clean ? vscode.ViewColumn.Active : vscode.ViewColumn.Beside
+    });
     if (target) { selectTarget(target, result.target); }
   }
   async function goBack() {
@@ -620,8 +626,13 @@ function register(vscode, context, { active, password }) {
       vscode.window.showInformationMessage("VERTEX: there is no previous VERTEX navigation position.");
       return;
     }
-    const editor = previous.document === (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document)
-      ? vscode.window.activeTextEditor : await vscode.window.showTextDocument(previous.document, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+    const activeEditor = vscode.window.activeTextEditor;
+    const clean = !activeEditor || !activeEditor.document.isDirty;
+    const editor = previous.document === (activeEditor && activeEditor.document)
+      ? activeEditor : await vscode.window.showTextDocument(previous.document, {
+        preview: clean,
+        viewColumn: clean ? vscode.ViewColumn.Active : vscode.ViewColumn.Beside
+      });
     if (editor) { selectTarget(editor, { range: range(previous.at.line, previous.at.character, previous.at.character) }); }
   }
   async function goToClassMethod(chosenEditor, chosenPosition) {
@@ -645,19 +656,20 @@ function register(vscode, context, { active, password }) {
     goToClassMethod().catch(error => vscode.window.showErrorMessage("VERTEX: " + error.message))));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.navigateBack", () =>
     goBack().catch(error => vscode.window.showErrorMessage("VERTEX: " + error.message))));
+  // VS Code exposes double-click as a mouse selection of exactly one word.
+  // It does not supply a click count, so this is intentionally kept narrow:
+  // only a complete identifier selection may start contextual navigation.
   if (typeof vscode.window.onDidChangeTextEditorSelection === "function") {
     context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
       const mouse = vscode.TextEditorSelectionChangeKind && vscode.TextEditorSelectionChangeKind.Mouse;
       const selection = event && event.selections && event.selections.length === 1 && event.selections[0];
       if (!mouse || !event || event.kind !== mouse || !selection || selection.isEmpty
         || event.textEditor.document.uri.scheme !== "vertex-sap") { return; }
-    const anchor = structuralAnchor(event.textEditor.document, selection.active)
+      const anchor = structuralAnchor(event.textEditor.document, selection.active)
         || methodAnchor(event.textEditor.document, selection.active)
         || variableAnchor(event.textEditor.document, selection.active)
         || externalCallAnchor(event.textEditor.document, selection.active)
         || classAnchor(event.textEditor.document, selection.active);
-      // A double-click selects exactly the identifier.  Do not navigate on a
-      // drag selection: selecting code remains essential for copying and chat.
       if (!anchor || event.textEditor.document.getText(selection).toUpperCase() !== anchor.name) { return; }
       goToClassMethod(event.textEditor, selection.active)
         .catch(error => vscode.window.showErrorMessage("VERTEX: " + error.message));
@@ -687,10 +699,14 @@ function register(vscode, context, { active, password }) {
             const declaration = localDeclaration(source, at.line, variable.name);
             const value = declaration ? variableType(declaration, variable.name)
               : procedure && parameterDeclaration(source, procedure.name, variable.name);
-            if (!value) return undefined;
-            const target = range(at.line, variable.from, variable.to);
-            return vscode.Hover ? new vscode.Hover([{ language: "abap", value }], target)
-              : { contents: [{ language: "abap", value }], range: target };
+            if (value) {
+              const target = range(at.line, variable.from, variable.to);
+              return vscode.Hover ? new vscode.Hover([{ language: "abap", value }], target)
+                : { contents: [{ language: "abap", value }], range: target };
+            }
+            // Not local and not a parameter: continue to the class-level
+            // declaration resolver below (for example mv_ignore_case in a
+            // PRIVATE SECTION) instead of stopping with an empty hover.
           }
           const method = methodInformation(document, at);
           if (method) {

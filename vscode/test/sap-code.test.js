@@ -121,6 +121,19 @@ for (const kind of ["PROG", "CLAS", "FUNC"]) {
     assert.equal(f.calls.filter(c => c[0] === "write").length, 0);
   });
 }
+test("function module read falls back to an unfiltered exact FUGR search", async () => {
+  const f = fixture("FUNC"), search = f.client.searchObject;
+  f.client.searchObject = async (query, filter) => {
+    if (filter === "FUGR/FF") return [];
+    if (filter === undefined) return [{ "adtcore:name": "SAPGUI_PROGRESS_INDICATOR", "adtcore:type": "FUGR/I",
+      "adtcore:uri": f.url, "adtcore:packageName": "SABP" }];
+    return search(query, filter);
+  };
+  const result = await f.repo.execute("read_sap_object", { object_type: "FUNC", object_name: "SAPGUI_PROGRESS_INDICATOR" });
+  assert.equal(result.object_type, "FUNC");
+  assert.equal(result.object_name, "SAPGUI_PROGRESS_INDICATOR");
+  assert.equal(result.source, "original");
+});
 test("class includes use their discovered source URL", async () => {
   const f = fixture("CLAS");
   const result = await f.repo.execute("read_sap_object", { object_type: "CLAS", object_name: "ZTEST", include: "testclasses" });

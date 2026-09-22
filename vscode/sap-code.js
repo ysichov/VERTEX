@@ -45,7 +45,10 @@ function sourcePath(structure, objectUrl, include = "main") {
 function row(item) {
   return {
     object_name: item["adtcore:name"],
-    object_type: Object.keys(TYPES).find(key => TYPES[key] === item["adtcore:type"]),
+    // Some ADT backends expose a function module as its generated include
+    // (`FUGR/I`) rather than the usual module reference (`FUGR/FF`).
+    object_type: Object.keys(TYPES).find(key => TYPES[key] === item["adtcore:type"])
+      || (/^FUGR\//.test(String(item["adtcore:type"])) ? "FUNC" : undefined),
     description: item["adtcore:description"] || "",
     package: item["adtcore:packageName"] || "",
     object_url: adtPath(item["adtcore:uri"])
@@ -74,8 +77,17 @@ function createRepository({ client, systemId, emit = () => {} }) {
   async function resolve(args) {
     const kind = type(args.object_type), objectName = name(args.object_name);
     const found = await client.searchObject(objectName, TYPES[kind], 200);
-    const exact = found.filter(x => x["adtcore:type"] === TYPES[kind]
+    let exact = found.filter(x => x["adtcore:type"] === TYPES[kind]
       && String(x["adtcore:name"]).toUpperCase() === objectName);
+    // Function modules are indexed differently across ADT releases. A
+    // type-filtered quick search can omit a standard FM, while an unfiltered
+    // exact search returns its FUGR reference. Keep both the exact-name and
+    // FUGR-family checks; this is not a fuzzy fallback.
+    if (kind === "FUNC" && !exact.length) {
+      const fallback = await client.searchObject(objectName, undefined, 200);
+      exact = fallback.filter(x => /^FUGR\//.test(String(x["adtcore:type"]))
+        && String(x["adtcore:name"]).toUpperCase() === objectName);
+    }
     if (exact.length !== 1) { throw new Error(kind + " " + objectName + (exact.length ? " is ambiguous." : " was not found.")); }
     return row(exact[0]);
   }

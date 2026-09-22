@@ -21,7 +21,7 @@ function host() {
       original_source: "original", source: args.source };
   }, discard() {}, async dispose() {}, async apply(id, payload) { writes.push({ id, ...payload }); return { activated: true, revision: require('../sap-code').revision(payload.source) }; } };
   const vscode = {
-    ViewColumn: { Beside: -2 },
+    ViewColumn: { Active: -1, Beside: -2 },
     Uri: { parse: value => ({ scheme: value.split(':')[0], toString: () => value }) },
     EventEmitter: class { event = () => ({ dispose() {} }); fire() {} dispose() {} },
     FileType: { File: 1 }, FileChangeType: { Changed: 1 },
@@ -281,6 +281,13 @@ test("local variable hover is preserved", async () => {
   const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 9, character: 5 });
   assert.equal(hover.contents[0].value, "i");
 });
+test("a class attribute hover falls through when no local declaration exists", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ["CLASS ztest DEFINITION.", " PRIVATE SECTION.", "  DATA mv_ignore_case TYPE abap_bool.", "ENDCLASS.", "CLASS ztest IMPLEMENTATION.", " METHOD run.", "  IF mv_ignore_case = abap_true.", "  ENDIF.", " ENDMETHOD.", "ENDCLASS."].join("\n");
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 6, character: 8 });
+  assert.equal(hover.contents[0].value, "abap_bool");
+});
 test("local hover resolves chained multiline declarations and inline declarations", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
@@ -336,11 +343,26 @@ test("an instance method call opens the class inferred from its local reference"
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
   h.documents[0].text = ["METHOD caller.", "  DATA mo_split_2p_wrap TYPE REF TO zcl_other.", "  mo_split_2p_wrap->do_it( ).", "ENDMETHOD."].join("\n");
+  h.documents[0].saved = h.documents[0].text;
   h.documents[0].selection = { active: { line: 2, character: 23 } };
   await h.commands.get("vertex.goToClassMethod")();
   assert.equal(h.documents.length, 2);
   assert.match(h.documents[1].uri.toString(), /\/CLAS\/ZCL_OTHER\.abap$/);
   assert.equal(h.documents[1].selection.start.line, 5);
+  assert.equal(h.diffs.at(-1)[0], "open");
+  assert.equal(h.diffs.at(-1)[1].preview, true);
+  assert.equal(h.diffs.at(-1)[1].viewColumn, -1);
+});
+test("a dirty source opens an external method beside the edited buffer", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ["METHOD caller.", " DATA mo_split_2p_wrap TYPE REF TO zcl_other.", " mo_split_2p_wrap->do_it( ).", "ENDMETHOD."].join("\n");
+  h.documents[0].saved = "original";
+  h.documents[0].selection = { active: { line: 2, character: 23 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.diffs.at(-1)[0], "open");
+  assert.equal(h.diffs.at(-1)[1].preview, false);
+  assert.equal(h.diffs.at(-1)[1].viewColumn, -2);
 });
 test("static class method hover loads and caches its signature", async () => {
   const h = host();
