@@ -22,6 +22,16 @@ try {
         $required = @('extension/package.json', 'extension/node_modules/abap-adt-api/package.json',
             'extension/resources/metrics.html', 'extension/resources/source.html', 'extension/resources/versions.html')
         foreach ($name in $required) { if (!$archive.GetEntry($name)) { throw "VSIX verification failed: missing $name" } }
+        # Opening a ZIP only validates its central directory. Read each entry
+        # now, before promotion, so a truncated compressed stream can never
+        # be installed as the release VSIX.
+        $buffer = New-Object byte[] 65536
+        foreach ($entry in $archive.Entries) {
+            $stream = $entry.Open()
+            try {
+                while ($stream.Read($buffer, 0, $buffer.Length) -gt 0) { }
+            } finally { $stream.Dispose() }
+        }
         $reader = [IO.StreamReader]::new($archive.GetEntry('extension/resources/metrics.html').Open())
         try { $metrics = $reader.ReadToEnd() } finally { $reader.Dispose() }
         $testPage = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString() + '.html')

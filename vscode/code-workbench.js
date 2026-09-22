@@ -131,7 +131,7 @@ function register(vscode, context, { active, password }) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) { return null; }
     const prefix = line.slice(0, from);
     if (/^\s*METHOD\s+$/i.test(prefix)) { return { name: name.toUpperCase(), implementation: true, from, to }; }
-    if (/^\s*(?:CLASS-)?METHODS\s*(?::\s*)?(?:[A-Za-z_]+\s+)*$/i.test(prefix)) {
+    if (/^\s*(?:CLASS-)?METHODS\s*(?::\s*)?$/i.test(prefix)) {
       return { name: name.toUpperCase(), implementation: false, from, to };
     }
     // An unqualified call belongs to this class.  Its useful first stop is
@@ -142,6 +142,42 @@ function register(vscode, context, { active, password }) {
       return { name: name.toUpperCase(), implementation: true, call: true, from, to };
     }
     return null;
+  }
+  const blockOpen = { DO: "ENDDO", LOOP: "ENDLOOP", METHOD: "ENDMETHOD", FORM: "ENDFORM", IF: "ENDIF", CASE: "ENDCASE" };
+  const blockClose = Object.fromEntries(Object.entries(blockOpen).map(([open, close]) => [close, open]));
+  function structuralAnchor(document, at) {
+    const line = document.getText().split(/\r?\n/)[at.line] || "";
+    const match = /^\s*(DO|ENDDO|LOOP|ENDLOOP|METHOD|ENDMETHOD|FORM|ENDFORM|IF|ELSEIF|ELSE|ENDIF|CASE|WHEN|ENDCASE)\b/i.exec(line);
+    if (!match) return null;
+    const from = match.index + match[0].indexOf(match[1]), to = from + match[1].length;
+    if (at.character < from || at.character > to) return null;
+    return { name: match[1].toUpperCase(), from, to, line: at.line };
+  }
+  function structuralTarget(document, at) {
+    const anchor = structuralAnchor(document, at);
+    if (!anchor) return undefined;
+    const lines = document.getText().split(/\r?\n/), frames = [], targets = new Map();
+    lines.forEach((line, index) => {
+      const hit = /^\s*(DO|ENDDO|LOOP|ENDLOOP|METHOD|ENDMETHOD|FORM|ENDFORM|IF|ELSEIF|ELSE|ENDIF|CASE|WHEN|ENDCASE)\b/i.exec(line);
+      if (!hit) return;
+      const word = hit[1].toUpperCase(), column = hit.index + hit[0].indexOf(hit[1]);
+      if (blockOpen[word]) { frames.push({ kind: word, start: { index, column, word }, branches: [] }); return; }
+      if (word === "ELSEIF" || word === "ELSE" || word === "WHEN") {
+        const expected = word === "WHEN" ? "CASE" : "IF";
+        const frame = [...frames].reverse().find(item => item.kind === expected);
+        if (frame) frame.branches.push({ index, column, word });
+        return;
+      }
+      const expected = blockClose[word], frame = frames.length && frames[frames.length - 1];
+      if (!expected || !frame || frame.kind !== expected) return;
+      frames.pop();
+      const end = { index, column, word }, next = pos => ({ document, target: location(document.uri, pos.index, pos.column, pos.word.length) });
+      targets.set(frame.start.index, frame.branches[0] || end);
+      frame.branches.forEach((branch, item) => targets.set(branch.index, frame.branches[item + 1] || end));
+      targets.set(end.index, frame.start);
+    });
+    const target = targets.get(anchor.line);
+    return target && { document, target: location(document.uri, target.index, target.column, target.word.length) };
   }
   function methodLine(source, name, implementation) {
     const lines = source.split(/\r?\n/), exact = new RegExp("^\\s*METHOD\\s+" + name + "\\b", "i");
@@ -194,6 +230,62 @@ function register(vscode, context, { active, password }) {
     const signature = methodSignature(document.getText(), anchor.name);
     return signature ? { anchor, signature } : undefined;
   }
+  // A compact lexer, deliberately statement-based like ACE's CL_CI_SCAN use.
+  // It treats comments and quoted/template literals as opaque, so a period in
+  // either cannot split a declaration or method signature.
+  function abapStatements(source) {
+    const result = []; let text = "", line = 0, start = 0, quote = false, template = false, comment = false, atLineStart = true;
+    const flush = end => { if (text.trim()) result.push({ text: text.replace(/\s+/g, " ").trim(), start, end }); text = ""; };
+    for (let index = 0; index < source.length; index++) {
+      const ch = source[index], next = source[index + 1];
+      if (ch === "\r") continue;
+      if (ch === "\n") { if (!comment) text += " "; comment = false; line++; atLineStart = true; continue; }
+      if (comment) continue;
+      if (atLineStart && /\s/.test(ch)) { text += ch; continue; }
+      if (atLineStart && ch === "*") { comment = true; continue; }
+      atLineStart = false;
+      if (!template && ch === "'" ) { quote = !quote; text += ch; continue; }
+      if (!quote && ch === "|" && next === "|") { text += "||"; index++; continue; }
+      if (!quote && ch === "|") { template = !template; text += ch; continue; }
+      if (!quote && !template && ch === '"') { comment = true; continue; }
+      text += ch;
+      if (!quote && !template && ch === ".") { flush(line); start = line; }
+    }
+    flush(line); return result;
+  }
+  function splitChain(text) {
+    const result = [], current = []; let depth = 0, quote = false, template = false;
+    for (let index = 0; index < text.length; index++) {
+      const ch = text[index], next = text[index + 1];
+      if (!template && ch === "'") quote = !quote;
+      else if (!quote && ch === "|" && next === "|") { current.push(ch, next); index++; continue; }
+      else if (!quote && ch === "|") template = !template;
+      if (!quote && !template && ch === "(") depth++;
+      if (!quote && !template && ch === ")") depth = Math.max(0, depth - 1);
+      if (!quote && !template && !depth && ch === ",") { result.push(current.join("").trim()); current.length = 0; continue; }
+      current.push(ch);
+    }
+    if (current.join("").trim()) result.push(current.join("").trim()); return result;
+  }
+  function parameterDeclaration(source, method, parameter) {
+    for (const statement of abapStatements(source)) {
+      if (!/^(?:CLASS-)?METHODS\b|^FORM\b/i.test(statement.text)) continue;
+      const isForm = /^FORM\b/i.test(statement.text);
+      const members = isForm ? [statement.text.replace(/^FORM\s+/i, "")] : splitChain(statement.text.replace(/^(?:CLASS-)?METHODS\s*:?\s*/i, ""));
+      for (const member of members) {
+        const name = /^\s*([\w/~]+)/.exec(member);
+        if (!name || name[1].toUpperCase() !== method.toUpperCase()) continue;
+        const parameters = /(?:!?(\w+)|(?:VALUE|REFERENCE)\s*\(\s*!?(\w+)\s*\))\s+(TYPE|LIKE)\s+([\s\S]*?)(?=\s+(?:!?\w+|(?:VALUE|REFERENCE)\s*\(\s*!?\w+\s*\))\s+(?:TYPE|LIKE)\b|\s+(?:IMPORTING|EXPORTING|CHANGING|RETURNING|RAISING|EXCEPTIONS)\b|$)/gi;
+        let match;
+        while ((match = parameters.exec(member))) {
+          if ((match[1] || match[2]).toUpperCase() === parameter.toUpperCase()) {
+            return (match[1] || match[2]) + " " + match[3].toUpperCase() + " " + match[4].replace(/\s+/g, " ").trim();
+          }
+        }
+      }
+    }
+    return undefined;
+  }
   function variableAnchor(document, at) {
     const line = document.getText().split(/\r?\n/)[at.line] || "";
     const word = /[A-Za-z0-9_<>]/;
@@ -203,13 +295,13 @@ function register(vscode, context, { active, password }) {
     const name = line.slice(from, to);
     // Restrict this first resolver to ABAP's conventional variable prefixes.
     // It avoids turning every keyword or table component into a false jump.
-    if (!/^(?:[ilrmtg]v|[ilrmtg]s|[ilrmtg]t|[ilrmtg]o|[ilrmtg]r|[cgs]v|[cgs]s|[cgs]t|[cgs]o|[cgs]r)_[A-Za-z0-9_]+$/i.test(name)
+    if (!/^(?:[ilrmtg]v|[ilrmtg]s|[ilrmtg]t|[ilrmtg]o|[ilrmtg]r|[cgs]v|[cgs]s|[cgs]t|[cgs]o|[cgs]r|ty|tt|ts)_[A-Za-z0-9_]+$/i.test(name)
       && !/^<[A-Za-z_][A-Za-z0-9_]*>$/.test(name)) { return null; }
     return { name: name.toUpperCase(), from, to };
   }
   function declarationLine(source, name, at) {
     const lines = source.split(/\r?\n/), escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const declaration = new RegExp("\\b(?:CLASS-)?(?:DATA|CONSTANTS|STATICS|FIELD-SYMBOLS?)\\b[^.]*\\b" + escaped + "\\b|\\b(?:DATA|FINAL)\\s*\\(\\s*" + escaped + "\\s*\\)", "i");
+    const declaration = new RegExp("\\b(?:CLASS-)?(?:DATA|TYPES|CONSTANTS|STATICS|FIELD-SYMBOLS?)\\b[^.]*\\b" + escaped + "\\b|\\b(?:DATA|FINAL)\\s*\\(\\s*" + escaped + "\\s*\\)|\\b(?:IMPORTING|EXPORTING|CHANGING|RETURNING|RAISING)\\b[^.]*\\b" + escaped + "\\b", "i");
     // Prefer the current method's scope.  A same-named local must win over a
     // class attribute, and it also makes the lookup instantaneous.
     let start = at.line, end = at.line;
@@ -222,18 +314,34 @@ function register(vscode, context, { active, password }) {
   function variableType(line, name) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const typed = line.match(new RegExp("\\b" + escaped + "\\b\\s+(TYPE|LIKE)\\s+(.+?)(?:\\s+(?:VALUE|READ-ONLY)\\b|\\.)", "i"));
-    if (typed) { return typed[1].toUpperCase() + " " + typed[2].trim(); }
+    if (typed) { return typed[2].trim(); }
     if (new RegExp("\\b(?:DATA|FINAL)\\s*\\(\\s*" + escaped + "\\s*\\)", "i").test(line)) {
       return "inline declaration — type inferred from the expression";
     }
-    return "declared here";
+    // Keep the declaration visible even when ABAP uses a multiline or
+    // project-specific type form that the compact parser cannot normalize.
+    return line.trim() || "declared in the current scope";
   }
   function variableInformation(document, at) {
     const anchor = variableAnchor(document, at);
     if (!anchor) { return undefined; }
     const source = document.getText(), line = declarationLine(source, anchor.name, at);
     if (line < 0) { return undefined; }
-    const declaration = source.split(/\r?\n/)[line].trim();
+    const lines = source.split(/\r?\n/);
+    let declaration = lines[line] || "";
+    // ABAP method signatures and DATA declarations are often wrapped across
+    // lines. Keep the complete statement available to the type resolver.
+    for (let next = line + 1; next < lines.length && !/\./.test(declaration); next++) {
+      declaration += " " + lines[next].trim();
+    }
+    declaration = declaration.trim();
+    // Do not add a competing variable hover for parameters declared in a
+    // method signature; the method hover remains the single source there.
+    const signatureContext = lines.slice(Math.max(0, line - 8), line + 1).join(" ");
+    if (/\b(?:CLASS-)?METHODS\b[\s\S]*\b(?:IMPORTING|EXPORTING|CHANGING|RETURNING)\b/i.test(signatureContext)
+      || /^\s*(?:IMPORTING|EXPORTING|CHANGING|RETURNING)\b/i.test(declaration)) {
+      return { anchor, line, type: "", declaration, signatureParameter: true };
+    }
     return { anchor, line, type: variableType(declaration, anchor.name), declaration };
   }
   function externalCallAnchor(document, at) {
@@ -442,6 +550,8 @@ function register(vscode, context, { active, password }) {
     const editor = chosenEditor || vscode.window.activeTextEditor;
     const at = chosenPosition || (editor && editor.selection && editor.selection.active);
     if (!editor || !at) { return; }
+    const structure = structuralTarget(editor.document, at);
+    if (structure) { await moveTo(editor, structure); return; }
     const method = await methodCounterpart(editor.document, at);
     const variable = method ? undefined : variableDeclaration(editor.document, at);
     const result = method || variable || await externalCallTarget(editor.document, at);
@@ -463,7 +573,8 @@ function register(vscode, context, { active, password }) {
       const selection = event && event.selections && event.selections.length === 1 && event.selections[0];
       if (!mouse || !event || event.kind !== mouse || !selection || selection.isEmpty
         || event.textEditor.document.uri.scheme !== "vertex-sap") { return; }
-    const anchor = methodAnchor(event.textEditor.document, selection.active)
+    const anchor = structuralAnchor(event.textEditor.document, selection.active)
+        || methodAnchor(event.textEditor.document, selection.active)
         || variableAnchor(event.textEditor.document, selection.active)
         || externalCallAnchor(event.textEditor.document, selection.active)
         || classAnchor(event.textEditor.document, selection.active);
@@ -478,33 +589,65 @@ function register(vscode, context, { active, password }) {
     context.subscriptions.push(vscode.languages.registerDefinitionProvider(
       { scheme: "vertex-sap", language: "abap" }, {
         async provideDefinition(document, at) {
-          const result = await methodCounterpart(document, at);
+          const result = structuralTarget(document, at) || await methodCounterpart(document, at);
           return result && result.target;
         }
       }));
   }
+  // Only identifiers that resolve as methods may trigger signature lookups.
   if (vscode.languages && typeof vscode.languages.registerHoverProvider === "function") {
     context.subscriptions.push(vscode.languages.registerHoverProvider(
       { scheme: "vertex-sap", language: "abap" }, {
         async provideHover(document, at) {
+          const variable = variableAnchor(document, at);
+          if (variable) {
+            const lines = document.getText().split(/\r?\n/);
+            let start = at.line;
+            while (start >= 0 && !/^\s*(?:METHOD|FORM|FUNCTION)\s+/i.test(lines[start])) start--;
+            // Local declarations win; parameters belong to this method only.
+            const escaped = variable.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const scope = lines.slice(Math.max(0, start), at.line + 1)
+              .map(line => /^\*/.test(line) ? "" : line.split('"')[0]).join("\n");
+            const declarations = scope.match(/\b(?:DATA|CONSTANTS|STATICS|FIELD-SYMBOLS)\s*(?::\s*)?[^.]*\./gi) || [];
+            let declaration;
+            const named = new RegExp("^\\s*" + escaped + "\\s+(?:TYPE|LIKE)\\b", "i");
+            for (const statement of declarations) {
+              const members = statement.replace(/^(?:DATA|CONSTANTS|STATICS|FIELD-SYMBOLS)\s*:?\s*/i, "").replace(/\.$/, "").split(",");
+              const member = members.find(item => named.test(item));
+              if (member) { declaration = member.replace(/\s+/g, " ").trim() + "."; break; }
+            }
+            if (!declaration) {
+              const inline = new RegExp("\\b(?:DATA|FINAL|FIELD-SYMBOL)\\s*\\(\\s*" + escaped + "\\s*\\)", "i");
+              if (inline.test(scope)) declaration = "DATA(" + variable.name + ").";
+            }
+            const currentMethod = start < 0 ? null : /^\s*METHOD\s+([\w/~]+)/i.exec(lines[start]);
+            const value = declaration ? variableType(declaration, variable.name)
+              : currentMethod && parameterDeclaration(document.getText(), currentMethod[1], variable.name);
+            if (!value) return undefined;
+            const target = range(at.line, variable.from, variable.to);
+            return vscode.Hover ? new vscode.Hover([{ language: "abap", value }], target)
+              : { contents: [{ language: "abap", value }], range: target };
+          }
           const method = methodInformation(document, at);
           if (method) {
-            return vscode.Hover ? new vscode.Hover([{ language: "abap", value: method.signature }],
-              range(at.line, method.anchor.from, method.anchor.to))
-              : { contents: [{ language: "abap", value: method.signature }], range: range(at.line, method.anchor.from, method.anchor.to) };
+            const target = range(at.line, method.anchor.from, method.anchor.to);
+            return vscode.Hover ? new vscode.Hover([{ language: "abap", value: method.signature }], target)
+              : { contents: [{ language: "abap", value: method.signature }], range: target };
+          }
+          // Resolve locals and parameters before any inherited/external lookup.
+          // This keeps a variable hover immediate and prevents a stale
+          // network signature request from leaving a `Loading...` tooltip.
+          const info = variableInformation(document, at);
+          if (info && !info.signatureParameter) {
+            const target = range(at.line, info.anchor.from, info.anchor.to);
+            return vscode.Hover ? new vscode.Hover([{ language: "abap", value: info.type }], target)
+              : { contents: [{ language: "abap", value: info.type }], range: target };
           }
           const inherited = await inheritedMethodInformation(document, at);
           if (inherited) {
             const value = "Declared in " + inherited.owner + "\n\n" + inherited.signature;
             return vscode.Hover ? new vscode.Hover([{ language: "abap", value }], range(at.line, inherited.anchor.from, inherited.anchor.to))
               : { contents: [{ language: "abap", value }], range: range(at.line, inherited.anchor.from, inherited.anchor.to) };
-          }
-          const info = variableInformation(document, at);
-          if (info) {
-            const text = info.type;
-            const target = range(at.line, info.anchor.from, info.anchor.to);
-            return vscode.Hover ? new vscode.Hover([{ language: "abap", value: text }], target)
-              : { contents: [{ language: "abap", value: text }], range: target };
           }
           const external = await externalMethodInformation(document, at);
           if (!external) { return undefined; }

@@ -206,7 +206,7 @@ test("F12 moves between a class method declaration and its implementation", asyn
   assert.match(toImplementation.uri.toString(), /\.implementations\.abap$/);
   assert.equal(toImplementation.range.start.line, 1);
 });
-test("method hover shows its local ABAP signature", async () => {
+test("editor method hover shows its signature", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
   const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 5, character: 9 });
@@ -219,6 +219,34 @@ test("VERTEX method navigation command opens the counterpart at the method name"
   await h.commands.get("vertex.goToClassMethod")();
   assert.equal(h.documents.length, 2);
   assert.match(h.documents[1].uri.toString(), /\.definitions\.abap$/);
+});
+test("structural navigation matches nested DO and LOOP blocks", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ["METHOD run.", "  DO 2 TIMES.", "    LOOP AT it_tab INTO DATA(ls_row).", "    ENDLOOP.", "  ENDDO.", "ENDMETHOD."].join("\n");
+  h.documents[0].selection = { active: { line: 1, character: 4 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents[0].selection.start.line, 4);
+  h.documents[0].selection = { active: { line: 3, character: 6 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents[0].selection.start.line, 2);
+});
+test("structural navigation walks IF and CASE sibling branches without entering nested blocks", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ["METHOD run.", "  IF outer = abap_true.", "    IF inner = abap_true.", "    ELSE.", "    ENDIF.", "  ELSEIF next = abap_true.", "  ELSE.", "  ENDIF.", "  CASE kind.", "    WHEN 'A'.", "      CASE nested.", "        WHEN 'X'.", "      ENDCASE.", "    WHEN OTHERS.", "  ENDCASE.", "ENDMETHOD."].join("\n");
+  h.documents[0].selection = { active: { line: 1, character: 4 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents[0].selection.start.line, 5);
+  h.documents[0].selection = { active: { line: 5, character: 6 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents[0].selection.start.line, 6);
+  h.documents[0].selection = { active: { line: 8, character: 6 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents[0].selection.start.line, 9);
+  h.documents[0].selection = { active: { line: 9, character: 6 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents[0].selection.start.line, 13);
 });
 test("class main source navigation is local and makes no second SAP read", async () => {
   const h = host();
@@ -246,6 +274,38 @@ test("a local variable use goes to its declaration in the current method", async
   assert.equal(h.documents[0].selection.start.line, 8);
   await h.commands.get("vertex.navigateBack")();
   assert.equal(h.documents[0].selection.start.line, 9);
+});
+test("local variable hover is preserved", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 9, character: 5 });
+  assert.equal(hover.contents[0].value, "i");
+});
+test("local hover resolves chained multiline declarations and inline declarations", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ['METHOD run.', ' DATA: lv_first TYPE i,', '       ls_options TYPE', '         ty_options,', '       lt_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.', ' IF ls_options-enabled = abap_true.', ' ENDIF.', ' DATA(lv_inline) = 1.', ' WRITE lv_inline.', 'ENDMETHOD.'].join('\n');
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], {line: 5, character: 8});
+  assert.equal(hover.contents[0].value, 'ty_options');
+  const inline = await h.hovers[0].provider.provideHover(h.documents[0], {line: 8, character: 10});
+  assert.match(inline.contents[0].value, /inline declaration/);
+});
+test("signature parameter hover shows only its declaration despite nearby calls", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = 'CLASS ztest DEFINITION.\n METHODS run IMPORTING is_options TYPE ty_options.\nENDCLASS.\nCLASS ztest IMPLEMENTATION.\n METHOD run.\n append_diag( EXPORTING iv_text = |{ is_options-system }| ).\n IF is_options-ignore_generated = abap_true.\n ENDIF.\n ENDMETHOD.\nENDCLASS.';
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 6, character: 8 });
+  assert.equal(hover.contents[0].value, "is_options TYPE ty_options");
+});
+test("parameter hover uses the current multiline signature, not a same-named parameter", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ["CLASS ztest DEFINITION.",
+    " METHODS other IMPORTING is_options TYPE wrong_type.",
+    " METHODS run", " IMPORTING", " VALUE(is_options) TYPE ty_options", " iv_text TYPE string", " RAISING cx_error.",
+    "ENDCLASS.", "CLASS ztest IMPLEMENTATION.", " METHOD run.", " IF is_options-ignore_generated = abap_true.", " ENDIF.", " ENDMETHOD.", "ENDCLASS."].join("\n");
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 10, character: 8 });
+  assert.equal(hover.contents[0].value, "is_options TYPE ty_options");
 });
 test("a static class call opens its method implementation", async () => {
   const h = host();

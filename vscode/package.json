@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.6.3",
+  "version": "0.6.5",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -37,6 +37,7 @@
     "Other"
   ],
   "activationEvents": [
+    "*",
     "onStartupFinished",
     "onFileSystem:vertex-sap"
   ],
