@@ -192,6 +192,17 @@ method shows its parameters. **F12**, double-click, or **VERTEX: Go to (by conte
 local methods and declarations inside the current class, and can open a static class call or a
 function module in its own source. **VERTEX: Back** (`Alt+Left`) returns along that navigation.
 
+### Code editor improvements
+
+- Hover now resolves a local declaration or method parameter first, then a class attribute declared
+  in `PUBLIC`, `PROTECTED` or `PRIVATE SECTION`; it shows the compact `TYPE` / `LIKE` result.
+- Method hover reads the complete definition statement, including multiline declarations and
+  chained `METHODS:` entries, and shows the parameter sections.
+- Navigation follows static calls, `CALL FUNCTION`, and instance calls such as
+  `mo_splitter->set_row_sash( )` when the receiver has a visible `TYPE REF TO` declaration.
+  External classes and function modules open as source documents; **Back** returns through every
+  VERTEX drill-down location.
+
 This is intentionally separate from **View source** in the Tools window. That command is a
 read-only, contextual overview inside VERTEX: class methods are grouped into the familiar
 `CPUB` / `CPRO` / `CPRI` Parts table and carry the same SE80-style visibility markers as Diff.

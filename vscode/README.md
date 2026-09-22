@@ -82,16 +82,19 @@ their context becomes known.
 Currently supported:
 
 - Hover a local variable or conventional class attribute to see its `TYPE` or `LIKE` declaration.
-  The popup shows the declaration itself, without repeating the variable name.
+  Lookup prefers the current method, then its parameters, and finally the class sections. The
+  popup shows the compact declaration result without unrelated call-site text.
 - Hover a method to see only its parameter sections, with one parameter per line. This applies to
-  local methods immediately and to a supported static `CLASS=>method` call after its target class
-  has been read.
+  multiline and chained `METHODS:` declarations as well as local methods; a supported static
+  `CLASS=>method` call is resolved after its target class has been read.
 - Press **F12**, double-click, or run **VERTEX: Go to (by context)** on `METHOD` / `METHODS` to
   switch between a method declaration and implementation in the same class document. The same
   action follows an unqualified local call such as `build_layout( )`, and follows a supported
   variable to its declaration.
 - A static call such as `ZCL_FOO=>bar( )` opens the target class at the implementation of `bar`.
-  `CALL FUNCTION 'Z_FOO'` opens the function module source.
+  An instance call such as `mo_splitter->set_row_sash( )` does the same when `mo_splitter` has a
+  visible `TYPE REF TO` declaration. `CALL FUNCTION 'Z_FOO'` opens the function module source,
+  including systems that expose it through an alternate `FUGR/*` ADT reference.
 - **VERTEX: Back** (`Alt+Left`) returns along the locations opened by VERTEX. On a variable
   declaration, repeating Go to also returns to the previous VERTEX location.
 
