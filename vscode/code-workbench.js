@@ -191,20 +191,28 @@ function register(vscode, context, { active, password }) {
     return -1;
   }
   function methodSignature(source, name) {
-    const lines = source.split(/\r?\n/), pattern = new RegExp("\\b" + name + "\\b", "i");
-    for (let start = 0; start < lines.length; start++) {
-      if (!/^\s*(?:CLASS-)?METHODS\b/i.test(lines[start])) { continue; }
-      let statement = lines[start];
-      for (let end = start + 1; end < lines.length && !/\./.test(statement); end++) { statement += "\n" + lines[end]; }
-      if (pattern.test(statement)) {
-        const parameters = statement.match(/\b(?:IMPORTING|EXPORTING|CHANGING|RETURNING|RAISING|EXCEPTIONS)\b[\s\S]*\./i);
-        return parameters ? formatParameters(parameters[0]) : "";
+    const wanted = new RegExp("^\\s*" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
+    for (const statement of abapStatements(source)) {
+      if (/^(?:CLASS-)?METHODS\b/i.test(statement.text)) {
+        const members = splitChain(statement.text.replace(/^(?:CLASS-)?METHODS\s*:?[\s]*/i, ""));
+        const member = members.find(item => wanted.test(item));
+        if (member) {
+          const parameters = member.match(/\b(?:IMPORTING|EXPORTING|CHANGING|RETURNING|RAISING|EXCEPTIONS)\b[\s\S]*\.?$/i);
+          return parameters ? formatParameters(parameters[0]) : "";
+        }
+      }
+      if (/^FORM\b/i.test(statement.text)) {
+        const member = statement.text.replace(/^FORM\s+/i, "");
+        if (wanted.test(member)) {
+          const parameters = member.match(/\b(?:USING|TABLES|CHANGING|RAISING|EXCEPTIONS)\b[\s\S]*\.?$/i);
+          return parameters ? formatParameters(parameters[0]) : "";
+        }
       }
     }
     return "";
   }
   function formatParameters(source) {
-    const sections = source.replace(/\.$/, "").split(/\b(IMPORTING|EXPORTING|CHANGING|RETURNING|RAISING|EXCEPTIONS)\b/i);
+    const sections = source.replace(/\.$/, "").split(/\b(IMPORTING|EXPORTING|CHANGING|RETURNING|RAISING|EXCEPTIONS|USING|TABLES)\b/i);
     const result = [];
     for (let index = 1; index < sections.length; index += 2) {
       const heading = sections[index].toUpperCase(), body = sections[index + 1].replace(/\s+/g, " ").trim();
@@ -239,7 +247,14 @@ function register(vscode, context, { active, password }) {
     for (let index = 0; index < source.length; index++) {
       const ch = source[index], next = source[index + 1];
       if (ch === "\r") continue;
-      if (ch === "\n") { if (!comment) text += " "; comment = false; line++; atLineStart = true; continue; }
+      if (ch === "\n") {
+        if (!comment) text += " "; comment = false; line++; atLineStart = true;
+        // A completed statement may be followed by a newline.  The next
+        // statement starts on that following line, not on the line of its
+        // preceding period.
+        if (!text.trim()) start = line;
+        continue;
+      }
       if (comment) continue;
       if (atLineStart && /\s/.test(ch)) { text += ch; continue; }
       if (atLineStart && ch === "*") { comment = true; continue; }
@@ -279,7 +294,7 @@ function register(vscode, context, { active, password }) {
         let match;
         while ((match = parameters.exec(member))) {
           if ((match[1] || match[2]).toUpperCase() === parameter.toUpperCase()) {
-            return (match[1] || match[2]) + " " + match[3].toUpperCase() + " " + match[4].replace(/\s+/g, " ").trim();
+            return (match[1] || match[2]) + " " + match[3].toUpperCase() + " " + match[4].replace(/\s+/g, " ").replace(/\.$/, "").trim();
           }
         }
       }
@@ -295,9 +310,42 @@ function register(vscode, context, { active, password }) {
     const name = line.slice(from, to);
     // Restrict this first resolver to ABAP's conventional variable prefixes.
     // It avoids turning every keyword or table component into a false jump.
-    if (!/^(?:[ilrmtg]v|[ilrmtg]s|[ilrmtg]t|[ilrmtg]o|[ilrmtg]r|[cgs]v|[cgs]s|[cgs]t|[cgs]o|[cgs]r|ty|tt|ts)_[A-Za-z0-9_]+$/i.test(name)
+    // Both common ABAP parameter conventions are valid: `iv_text` and the
+    // shorter `i_text` / `e_text` / `c_text` used especially by FORMs and
+    // older code.  They must be resolved before falling back to VS Code's
+    // generic word hover.
+    if (!/^(?:(?:[ilrmtg][vstor])|(?:[cgs][vstor])|[iecrpt]|ty|tt|ts)_[A-Za-z0-9_]+$/i.test(name)
       && !/^<[A-Za-z_][A-Za-z0-9_]*>$/.test(name)) { return null; }
     return { name: name.toUpperCase(), from, to };
+  }
+  function procedureAt(source, line) {
+    let current;
+    for (const statement of abapStatements(source)) {
+      if (statement.start > line) break;
+      const opened = /^(METHOD|FORM|FUNCTION)\s+([\w/~]+)/i.exec(statement.text);
+      if (opened) { current = { kind: opened[1].toUpperCase(), name: opened[2], start: statement.start }; continue; }
+      if (/^END(?:METHOD|FORM|FUNCTION)\b/i.test(statement.text)) current = undefined;
+    }
+    return current;
+  }
+  function localDeclaration(source, line, name) {
+    const procedure = procedureAt(source, line);
+    if (!procedure) return undefined;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const named = new RegExp("^\\s*" + escaped + "\\s+(?:TYPE|LIKE)\\b", "i");
+    for (const statement of abapStatements(source)) {
+      if (statement.start < procedure.start || statement.start > line) continue;
+      const declaration = /^(?:DATA|CONSTANTS|STATICS|FIELD-SYMBOLS?)\b\s*:?[\s\S]*$/i.exec(statement.text);
+      if (declaration) {
+        const members = splitChain(declaration[0].replace(/^(?:DATA|CONSTANTS|STATICS|FIELD-SYMBOLS?)\s*:?[\s]*/i, "").replace(/\.$/, ""));
+        const member = members.find(item => named.test(item));
+        if (member) return member.replace(/\s+/g, " ").trim() + ".";
+      }
+      if (new RegExp("\\b(?:DATA|FINAL|FIELD-SYMBOL)\\s*\\(\\s*" + escaped + "\\s*\\)", "i").test(statement.text)) {
+        return "DATA(" + name.toLowerCase() + ").";
+      }
+    }
+    return undefined;
   }
   function declarationLine(source, name, at) {
     const lines = source.split(/\r?\n/), escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -601,28 +649,13 @@ function register(vscode, context, { active, password }) {
         async provideHover(document, at) {
           const variable = variableAnchor(document, at);
           if (variable) {
-            const lines = document.getText().split(/\r?\n/);
-            let start = at.line;
-            while (start >= 0 && !/^\s*(?:METHOD|FORM|FUNCTION)\s+/i.test(lines[start])) start--;
-            // Local declarations win; parameters belong to this method only.
-            const escaped = variable.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const scope = lines.slice(Math.max(0, start), at.line + 1)
-              .map(line => /^\*/.test(line) ? "" : line.split('"')[0]).join("\n");
-            const declarations = scope.match(/\b(?:DATA|CONSTANTS|STATICS|FIELD-SYMBOLS)\s*(?::\s*)?[^.]*\./gi) || [];
-            let declaration;
-            const named = new RegExp("^\\s*" + escaped + "\\s+(?:TYPE|LIKE)\\b", "i");
-            for (const statement of declarations) {
-              const members = statement.replace(/^(?:DATA|CONSTANTS|STATICS|FIELD-SYMBOLS)\s*:?\s*/i, "").replace(/\.$/, "").split(",");
-              const member = members.find(item => named.test(item));
-              if (member) { declaration = member.replace(/\s+/g, " ").trim() + "."; break; }
-            }
-            if (!declaration) {
-              const inline = new RegExp("\\b(?:DATA|FINAL|FIELD-SYMBOL)\\s*\\(\\s*" + escaped + "\\s*\\)", "i");
-              if (inline.test(scope)) declaration = "DATA(" + variable.name + ").";
-            }
-            const currentMethod = start < 0 ? null : /^\s*METHOD\s+([\w/~]+)/i.exec(lines[start]);
+            const source = document.getText();
+            const procedure = procedureAt(source, at.line);
+            // Local declarations win; a parameter is resolved only in this
+            // exact METHOD or FORM.  No source from a call site is involved.
+            const declaration = localDeclaration(source, at.line, variable.name);
             const value = declaration ? variableType(declaration, variable.name)
-              : currentMethod && parameterDeclaration(document.getText(), currentMethod[1], variable.name);
+              : procedure && parameterDeclaration(source, procedure.name, variable.name);
             if (!value) return undefined;
             const target = range(at.line, variable.from, variable.to);
             return vscode.Hover ? new vscode.Hover([{ language: "abap", value }], target)

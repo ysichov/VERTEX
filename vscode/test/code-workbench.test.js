@@ -307,6 +307,22 @@ test("parameter hover uses the current multiline signature, not a same-named par
   const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 10, character: 8 });
   assert.equal(hover.contents[0].value, "is_options TYPE ty_options");
 });
+test("statement lexer resolves chained declarations, comments, and FORM parameters", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ["FORM run", " USING is_options TYPE ty_options \" declaration continues", ".", " DATA: ls_state TYPE", "   ty_state,", "   lv_count TYPE i.", " IF is_options-active = abap_true.", "  WRITE ls_state-name.", " ENDIF.", "ENDFORM."].join("\n");
+  const parameter = await h.hovers[0].provider.provideHover(h.documents[0], { line: 6, character: 8 });
+  assert.equal(parameter.contents[0].value, "is_options TYPE ty_options");
+  const local = await h.hovers[0].provider.provideHover(h.documents[0], { line: 7, character: 10 });
+  assert.equal(local.contents[0].value, "ty_state");
+});
+test("short i_ style method parameters show their exact declaration", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ["CLASS ztest DEFINITION.", " METHODS clean_label IMPORTING i_text TYPE string RETURNING VALUE(rv_text) TYPE string.", "ENDCLASS.", "CLASS ztest IMPLEMENTATION.", " METHOD clean_label.", "  rv_text = i_text.", " ENDMETHOD.", "ENDCLASS."].join("\n");
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 5, character: 13 });
+  assert.equal(hover.contents[0].value, "i_text TYPE string");
+});
 test("a static class call opens its method implementation", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
