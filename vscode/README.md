@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**VERTEX** is a set of ABAP tools that used to live in the SAP GUI, migrated to
+[**VERTEX**](https://github.com/ysichov/VERTEX) is a set of ABAP tools that used to live in the SAP GUI, migrated to
 VS Code and Eclipse ADT as one front end, plus AI integrations: an MCP chat and more.
 
 | Window | Grew out of | What it shows |
