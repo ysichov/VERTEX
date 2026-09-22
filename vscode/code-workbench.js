@@ -404,6 +404,14 @@ function register(vscode, context, { active, password }) {
           name: (inside(classAt, match[1].length) ? match[1] : match[2]).toUpperCase() };
       }
     }
+    const instanceCall = /\b([A-Za-z_][A-Za-z0-9_]*)\s*->\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
+    while ((match = instanceCall.exec(line))) {
+      const objectAt = match.index, methodAt = line.indexOf(match[2], objectAt + match[1].length);
+      if (inside(objectAt, match[1].length) || inside(methodAt, match[2].length)) {
+        return { kind: "instance-method", instance: match[1].toUpperCase(), method: match[2].toUpperCase(),
+          name: (inside(objectAt, match[1].length) ? match[1] : match[2]).toUpperCase() };
+      }
+    }
     const functionCall = /\bCALL\s+FUNCTION\s+['"]?([A-Za-z_/$][A-Za-z0-9_/$]*)/ig;
     while ((match = functionCall.exec(line))) {
       const nameAt = line.indexOf(match[1], match.index);
@@ -412,6 +420,21 @@ function register(vscode, context, { active, password }) {
       }
     }
     return null;
+  }
+  function instanceClass(document, at, instance) {
+    const source = document.getText();
+    let declaration = localDeclaration(source, at.line, instance);
+    if (!declaration) {
+      const line = declarationLine(source, instance, at);
+      if (line >= 0) {
+        const lines = source.split(/\r?\n/);
+        declaration = lines[line] || "";
+        for (let next = line + 1; next < lines.length && !/\./.test(declaration); next++) declaration += " " + lines[next].trim();
+      }
+    }
+    const type = declaration && new RegExp("\\b" + instance.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      + "\\b\\s+TYPE\\s+REF\\s+TO\\s+([A-Za-z_/$][A-Za-z0-9_/$]*)\\b", "i").exec(declaration);
+    return type && type[1].toUpperCase();
   }
   function classAnchor(document, at) {
     const line = document.getText().split(/\r?\n/)[at.line] || "";
@@ -514,6 +537,13 @@ function register(vscode, context, { active, password }) {
     const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document);
     const call = current && (externalCallAnchor(document, at) || classAnchor(document, at));
     if (!call) { return undefined; }
+    if (call.kind === "instance-method") {
+      const objectName = instanceClass(document, at, call.instance);
+      if (!objectName) { return undefined; }
+      call.object_type = "CLAS";
+      call.object_name = objectName;
+      call.kind = "method";
+    }
     const target = await sourceDocument(current.repo, { object_type: call.object_type, object_name: call.object_name });
     let line = 0, column = 0, length = call.object_name.length;
     if (call.kind === "method") {
@@ -637,7 +667,8 @@ function register(vscode, context, { active, password }) {
     context.subscriptions.push(vscode.languages.registerDefinitionProvider(
       { scheme: "vertex-sap", language: "abap" }, {
         async provideDefinition(document, at) {
-          const result = structuralTarget(document, at) || await methodCounterpart(document, at);
+          const result = structuralTarget(document, at) || await methodCounterpart(document, at)
+            || await externalCallTarget(document, at);
           return result && result.target;
         }
       }));

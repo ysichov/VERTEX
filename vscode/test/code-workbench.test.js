@@ -332,6 +332,16 @@ test("a static class call opens its method implementation", async () => {
   assert.match(h.documents[1].uri.toString(), /\/CLAS\/ZCL_OTHER\.abap$/);
   assert.equal(h.documents[1].selection.start.line, 5);
 });
+test("an instance method call opens the class inferred from its local reference", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ["METHOD caller.", "  DATA mo_split_2p_wrap TYPE REF TO zcl_other.", "  mo_split_2p_wrap->do_it( ).", "ENDMETHOD."].join("\n");
+  h.documents[0].selection = { active: { line: 2, character: 23 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents.length, 2);
+  assert.match(h.documents[1].uri.toString(), /\/CLAS\/ZCL_OTHER\.abap$/);
+  assert.equal(h.documents[1].selection.start.line, 5);
+});
 test("static class method hover loads and caches its signature", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
