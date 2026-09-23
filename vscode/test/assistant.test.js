@@ -205,7 +205,7 @@ test("Codex's model list starts with its weakest model and marks the one config.
                                         codexHome: home, spawn: spawn });
   assert.deepEqual(list, [
     { id: "gpt-5.5", label: "GPT-5.5" },
-    { id: "gpt-5.6-luna", label: "gpt-5.6-luna (config.toml)" },
+    { id: "gpt-5.6-luna", label: "GPT-5.6-Luna" },
     { id: "gpt-6-astra", label: "GPT-6-Astra" }
   ]);
   assert.equal(assistant.configuredCodexModel(folder("vertex-codex-")), "");

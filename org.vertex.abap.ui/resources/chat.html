@@ -37,6 +37,7 @@ button:disabled, select:disabled { opacity: .6; cursor: default; }
 footer { padding: 8px 12px; border-top: 1px solid var(--border); }
 textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertical; padding: 6px; }
 .actions { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.actions.top { justify-content: flex-end; margin: 0 0 6px; }
 #working { color: var(--muted); margin-right: auto; }
 #versionid { font: inherit; padding: 3px 6px; color: var(--fg); background: var(--input); border: 1px solid var(--border); }
 </style></head><body>
@@ -44,12 +45,12 @@ textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertic
   <span id="system">Resolving ABAP project ...</span>
   <select id="who" aria-label="Assistant"><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="anthropic-api">Anthropic API</option></select>
   <select id="model" aria-label="Model" disabled><option>loading ...</option></select>
-  <button id="new" type="button">New conversation</button>
 </header>
 <main id="messages" aria-live="polite">
   <p class="message hint">Ask about ABAP code on this system: <i>show Z_CALC</i>, <i>explain this method</i>. "This code" is the object in the active ADT editor.</p>
 </main>
 <footer>
+  <div class="actions top"><button id="new" type="button">New conversation</button></div>
   <textarea id="prompt" placeholder="Ask VERTEX ... (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea>
   <div class="actions"><span id="working"></span></div>
 </footer>
@@ -153,6 +154,30 @@ function specifyVersion() {
   input.focus();
 }
 
+/* In VS Code the chat offers what the VERTEX panel does - its provider, the
+   models Config models switched on, and the chosen one - instead of an
+   assistant list of its own. */
+var shared = false;
+function showShared(state) {
+  shared = true;
+  var who = document.getElementById("who");
+  who.style.display = "none";
+  var provider = document.getElementById("provider");
+  if (!provider) {
+    provider = document.createElement("select");
+    provider.id = "provider"; provider.title = "AI provider"; provider.setAttribute("aria-label", "AI provider");
+    provider.addEventListener("change", function () { sdeAiProvider(provider.value); });
+    who.parentNode.insertBefore(provider, who);
+  }
+  provider.innerHTML = "";
+  (state.providers || []).forEach(function (p) {
+    var option = document.createElement("option");
+    option.value = p.setting; option.textContent = p.short;
+    provider.appendChild(option);
+  });
+  provider.value = state.provider;
+}
+
 function askModels(version) {
   var box = document.getElementById("model");
   box.innerHTML = "<option>loading ...</option>";
@@ -201,6 +226,13 @@ function sdeAssistant(raw) {
       option.textContent = m.label;
       box.appendChild(option);
     });
+    if (data.shared) {
+      // VS Code: the provider and model are the VERTEX panel's own setting.
+      showShared(data.shared);
+      box.value = data.shared.model || (data.models[0] ? data.models[0].id : "");
+      box.disabled = false;
+      return;
+    }
     var kept = data.probed ? data.probed.id : recall("model." + data.assistant);
     if (data.specify) { addVersionOptions(box, data, kept); }
     if (data.probed) { remember("model." + data.assistant, kept); say("vertex", "VERTEX", "Model " + data.probed.label + " selected."); }
@@ -292,6 +324,7 @@ document.getElementById("who").addEventListener("change", function (event) {
 });
 document.getElementById("model").addEventListener("change", function (event) {
   if (event.target.value === SPECIFY) { specifyVersion(); return; }
+  if (shared) { sdeAiModel(event.target.value); return; }
   remember("model." + document.getElementById("who").value, event.target.value);
 });
 document.getElementById("new").addEventListener("click", function () {

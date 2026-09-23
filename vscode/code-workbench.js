@@ -2,6 +2,13 @@
 
 const { createRepository, TYPES, revision } = require("./sap-code");
 const { hunks, reviewedSource, askPrompt } = require("./code-review");
+// Every tool that reaches SAP takes the system by name: the main chat can read
+// in one and prepare a change for another. review_sap_changes works on the
+// open editor tab, which already knows its system.
+const SYSTEM = { type: "string", description: "SAP system name from vertex.systems. Omit for the active system. "
+  + "Use it when the user names a system, or to reach the system an open editor or VERTEX Tools window belongs to." };
+const withSystem = tool => tool.name === "review_sap_changes" ? tool : { ...tool,
+  inputSchema: { ...tool.inputSchema, properties: { ...tool.inputSchema.properties, system: SYSTEM } } };
 const schemas = require("./schemas/sap-code-tools.json").concat([{
   name: "open_sap_object",
   description: "Open SAP source in an editable VS Code tab on the right. Use for requests to open/show code. Does not save to SAP.",
@@ -13,9 +20,9 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
   description: "Open review for manual edits in the active SAP source tab. Shows independently approvable hunks and an Approve all action. Does not save to SAP.",
   annotations: { readOnlyHint: true, destructiveHint: false },
   inputSchema: { type: "object", additionalProperties: false, properties: {} }
-}]);
+}]).map(withSystem);
 
-function register(vscode, context, { active, password }) {
+function register(vscode, context, { active, password, pin, pinned, systems }) {
   const events = require("./agent-events").createEmitter();
   const repositories = new Map(), texts = new Map(), opened = new Map(), drafts = new Map();
   const navigation = [];
@@ -947,17 +954,38 @@ function register(vscode, context, { active, password }) {
       // explicit selection is nevertheless exactly what the user asked chat
       // about and is safe, useful context to hand over.
       if (!entry) { return selected_fragment ? { selected_fragment } : null; }
-      return { system: entry.repo.label, object_name: entry.data.object_name,
+      return { system: entry.repo.label, system_name: JSON.parse(entry.repo.key)[3], object_name: entry.data.object_name,
         object_type: entry.data.object_type, include: entry.data.include,
         base_revision: entry.data.revision, source: editor.document.getText(), selected_fragment };
     },
-    instructions: require("fs").readFileSync(require("path").join(__dirname, "prompts/tools/sap-code.md"), "utf8"), async execute(tool, args) {
+    get instructions() {
+      const names = systems().map(s => s.name);
+      const current = active();
+      const own = pinned ? pinned() : "";
+      return require("fs").readFileSync(require("path").join(__dirname, "prompts/tools/sap-code.md"), "utf8")
+        + "\n\nConfigured SAP systems: " + (names.join(", ") || "none") + ". "
+        + (own ? "This chat belongs to a VERTEX Tools window on " + own + " and works with that system only."
+               : "Active system: " + (current.error ? "none" : current.system.name) + ".");
+    },
+    async execute(tool, args) {
+      const { system, ...rest } = args || {};
+      if (!system) { return run(tool, rest); }
+      const wanted = String(system).trim();
+      const names = systems().map(s => s.name);
+      const found = names.find(n => n.toUpperCase() === wanted.toUpperCase());
+      if (!found) { throw new Error("There is no SAP system " + wanted + ". Configured: " + names.join(", ") + "."); }
+      // A Tools window's chat stays on the window's system.
+      const own = pinned ? pinned() : "";
+      if (own && own !== found) { throw new Error("This window works with " + own + " only; ask in the VERTEX panel's chat to reach " + found + "."); }
+      return pin(found, () => run(tool, rest));
+    } };
+  async function run(tool, args) {
     const repo = await repository();
     if (tool === "open_sap_object") { return showSource(repo, args); }
     if (tool === "review_sap_changes") { return reviewActive(); }
     const result = await repo.api.execute(tool, args);
     if (result.change_id) { await showDraft(repo, result); }
     return result;
-  } };
+  }
 }
 module.exports = { register };

@@ -17,7 +17,12 @@ function allowed(resource, body) {
     : /^\/sap\/bc\/adt\/vertex\/(about|requests|(?:table|join|metrics|flow|class|package|versions|review|prepare)\/[^?]+)(?:\?.*)?$/.test(resource);
 }
 function open(vscode, context, deps, initial) {
-  const panel = vscode.window.createWebviewPanel("vertex.tools", "VERTEX Tools", vscode.ViewColumn.Active,
+  // The window keeps the system that was active when it opened: another one
+  // chosen later is for the windows opened after. The tab names it.
+  const opened = deps.active();
+  const system = opened.error ? "" : opened.system.name;
+  const pin = work => deps.pin ? deps.pin(system, work) : work();
+  const panel = vscode.window.createWebviewPanel("vertex.tools", system ? "VERTEX " + system : "VERTEX Tools", vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   const ask = deps.chat();
   const bridge = `<script>
@@ -26,7 +31,7 @@ function open(vscode, context, deps, initial) {
     // Eclipse hosts the same HTML but deliberately does not define this flag.
     window.sdeAnthropicApi=()=>true;
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
-    for(const call of ["workspace","asset","models","ask","browse","requestSearch","source","vertexContext"]){
+    for(const call of ["workspace","asset","models","ask","browse","requestSearch","source","vertexContext","aiProvider","aiModel","aiConfig"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>host.postMessage({call,args});
     }
     window.addEventListener("message",e=>{
@@ -39,7 +44,23 @@ function open(vscode, context, deps, initial) {
     });
   <\/script>`;
   panel.webview.html = html(deps.pages, initial).replace("<script>", bridge + "<script>");
-  panel.webview.onDidReceiveMessage(async message => {
+  // The chat here offers what the VERTEX panel does: its provider, the models
+  // Config models switched on, and the chosen one - one setting for both.
+  let chatWho = "";
+  const postModels = async () => {
+    let answer;
+    try {
+      const list = await ask.listModels();
+      answer = { call: "models", assistant: chatWho, models: list.models,
+                 shared: { provider: ask.state().provider, providers: ask.state().providers, model: list.model } };
+    } catch (e) { answer = { call: "models", assistant: chatWho, error: e.message }; }
+    await panel.webview.postMessage({ type: "assistant", payload: JSON.stringify(answer) });
+  };
+  const changes = vscode.workspace.onDidChangeConfiguration(event => {
+    if (chatWho && event.affectsConfiguration("vertex.ai")) { void postModels(); }
+  });
+  panel.onDidDispose(() => changes.dispose());
+  panel.webview.onDidReceiveMessage(message => pin(async () => {
     const args = message.args || [];
     try {
       if(message.call === "browse") {
@@ -65,12 +86,13 @@ function open(vscode, context, deps, initial) {
           selected_fragment:state.selected_fragment||null});
         return;
       }
-      if(message.call === "models") {
-        const answer = await deps.models(args); answer.call="models";
-        await panel.webview.postMessage({type:"assistant",payload:JSON.stringify(answer)}); return;
-      }
+      if(message.call === "models") { chatWho=String(args[0]||""); await postModels(); return; }
+      if(message.call === "aiProvider") { await ask.setProvider(args[0]); await postModels(); return; }
+      if(message.call === "aiModel") { await ask.setModel(args[0]); return; }
+      if(message.call === "aiConfig") { ask.configModels(); return; }
       if(message.call === "ask") {
-        const result = await ask(args[2], {assistant:args[0],model:args[1],state:JSON.parse(args[3]||"{}")});
+        // The provider and model are the VERTEX panel's, shared by every window.
+        const result = await ask(args[2], {model:args[1],state:JSON.parse(args[3]||"{}")});
         await panel.webview.postMessage({type:"assistant",payload:JSON.stringify({call:"ask",
           plan:{answer:result.answer,navigation:result.navigation||null},model:result.model,usage:result.usage})}); return;
       }
@@ -87,7 +109,7 @@ function open(vscode, context, deps, initial) {
       await panel.webview.postMessage({type:ai?"assistant":"result",payload:ai?
         JSON.stringify({call:message.call,assistant:args[0],error:error.message}):"ERROR:"+error.message});
     }
-  }, undefined, context.subscriptions);
+  }), undefined, context.subscriptions);
   return panel;
 }
 module.exports={open,html,allowed};

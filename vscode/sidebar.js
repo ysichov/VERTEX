@@ -50,6 +50,11 @@ function register(vscode, context, active, ask, systems, toolContext) {
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
         }
+        if (message.action === "setProvider") {
+          try { await view.webview.postMessage({ ai: await ask.setProvider(message.provider) }); }
+          catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
+          return;
+        }
         if (message.action === "setModel") {
           try { await ask.setModel(message.model); }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
@@ -117,11 +122,14 @@ function html(nonce) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <style nonce="${nonce}">
-body { padding: 16px; color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+html, body { height: 100%; margin: 0; }
+body { box-sizing: border-box; display: flex; flex-direction: column; padding: 16px 16px 8px; color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
 h2 { font-size: 12px; text-transform: uppercase; margin: 8px 0 12px; }
 p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #system { overflow-wrap: anywhere; margin-bottom: 16px; }
-#messages { min-height: 180px; white-space: pre-wrap; }
+#messages { flex: 1 1 auto; min-height: 80px; overflow-y: auto; white-space: pre-wrap; }
+/* The question box and VERTEX Tools stay at the bottom; the answers scroll. */
+.dock { flex: none; }
 #messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; }
 #messages p.you { color: var(--vscode-charts-blue); }
 #messages .vertex { color: var(--vscode-charts-green); white-space: normal; line-height: 1.5; margin: 1em 0; }
@@ -137,25 +145,39 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 #chat button { width: 100%; }
 .secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
 .secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
+.link { color: var(--vscode-textLink-foreground); text-decoration: none; }
+.link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+#llm-settings { margin-left: auto; }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.line button { margin: 4px 0; }
-.chat-head { display: flex; justify-content: flex-end; }
-.chat-head button { margin: 4px 0 6px; padding: 4px 10px; }
+.line button { margin: 4px 0; padding: 4px 10px; }
+.line select { padding: 3px 4px; }
+.chat-head { margin-bottom: 4px; }
+#new-conversation { margin-left: auto; }
 #tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; font-size: 1.7em; font-weight: 600; }
 #tools img { width: 40px; height: 40px; }
 </style></head><body>
-<h2>VERTEX chat</h2>
-<div class="line"><label for="system-select">SAP system</label>
+<div class="line"><a href="#" class="link" id="system-settings" title="Configure SAP systems">SAP system</a>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
-<button class="secondary" data-action="settings">Configure SAP Systems</button></div>
-<div class="line"><button class="secondary" data-action="provider" id="provider">AI provider</button> <select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select> <button class="secondary" data-action="configModels">Config models</button></div>
+<a href="#" class="link" id="llm-settings" title="Providers and the models they offer">LLM Providers</a></div>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
-<div class="chat-head"><button class="secondary" data-action="newConversation">New conversation</button></div>
+<div class="dock">
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div>
 <form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
-<h2>Quick launch</h2>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
+</div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
+document.getElementById('system-settings').addEventListener('click', event => {
+  event.preventDefault();
+  api.postMessage({ action: 'settings' });
+});
+document.getElementById('llm-settings').addEventListener('click', event => {
+  event.preventDefault();
+  api.postMessage({ action: 'configModels' });
+});
+document.getElementById('provider-select').addEventListener('change', event => {
+  api.postMessage({ action: 'setProvider', provider: event.target.value });
+});
 document.getElementById('model-select').addEventListener('change', event => {
   api.postMessage({ action: 'setModel', model: event.target.value });
 });
@@ -202,7 +224,9 @@ window.addEventListener('message', event => {
     if (!event.data.systems.length) select.add(new Option('No SAP systems configured', ''));
   }
   if (event.data && event.data.ai) {
-    document.getElementById('provider').textContent = event.data.ai.provider;
+    const select = document.getElementById('provider-select');
+    select.replaceChildren(...(event.data.ai.providers || []).map(p => new Option(p.short, p.setting)));
+    select.value = event.data.ai.provider;
   }
   if (event.data && event.data.models) {
     const select = document.getElementById('model-select');
@@ -231,6 +255,8 @@ window.addEventListener('message', event => {
       line.textContent = event.data.usage;
       document.getElementById('messages').appendChild(line);
     }
+    const box = document.getElementById('messages');
+    box.scrollTop = box.scrollHeight;
   }
 });
 // Markdown built as DOM nodes with textContent only, so an answer cannot inject markup.

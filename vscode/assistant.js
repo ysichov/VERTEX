@@ -141,15 +141,15 @@ async function models(options) {
     .map(function (m) { return { id: m.slug, label: m.display_name || m.slug }; });
 
   // A run ignores the person's config.toml, so the model it names has to be
-  // offered explicitly, marked as theirs, in its place in the list.
+  // offered explicitly: under its catalog name when the catalog has it, by
+  // its id at the end when it does not.
   const configured = configuredCodexModel(options.codexHome);
   if (!configured) {
     return listed.concat([{ id: "", label: "Codex default" }]);
   }
-  const mark = { id: configured, label: configured + " (config.toml)" };
   return listed.some(function (m) { return m.id === configured; })
-    ? listed.map(function (m) { return m.id === configured ? mark : m; })
-    : listed.concat([mark]);
+    ? listed
+    : listed.concat([{ id: configured, label: configured }]);
 }
 
 /* A Claude model named by its full id - an older version the aliases no longer

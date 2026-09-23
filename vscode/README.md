@@ -56,12 +56,19 @@ development systems often have; it is off by default on purpose.
 
 - **VERTEX: Open Panel** — also available from the VERTEX icon in the Activity Bar.
   The panel holds the VERTEX chat, the active SAP-system selector, provider and
-  model controls, and quick-launch buttons for **VERTEX Tools** and code review.
+  model controls, and the **VERTEX Tools** button.
 - **VERTEX Tools** — opens the unified tools window. Choose an object type,
   enter its name, then choose the available function (for example Data, View,
   UML, Metrics, Flow, Scheme, Diff or Versions). The available functions depend
   on the selected object type; there are no separate SelecTor, Metrics or
   Versions commands any more.
+
+  **Versions** is laid out as AVE's was: the parts of the object on the left, the
+  versions of the chosen part under them — the line between the two is dragged to
+  share the height — and the diff on the right. Picking a version shows the change
+  it made. Pin a version with ◇ and every version picked afterwards is compared with
+  that base instead; **Diff prev** goes back to comparing each version with the one
+  before it. The parts column can be folded away and resized.
 - **VERTEX: Switch System**
 - **VERTEX: Forget Password**
 - **VERTEX: Copy the MCP address for Claude Code or Codex**
@@ -127,13 +134,57 @@ Changes made there are still sent to SAP only through **Review & Activate** or *
 
 ## VERTEX chat
 
-The **VERTEX** panel in the Activity Bar has a free-prompt chat over the active
-SAP system. Pick **Claude subscription**, **Codex subscription** or **Anthropic
-API** and a model above the conversation (`vertex.ai.provider`,
-`vertex.ai.model`). Subscription modes run the installed Claude Code or Codex
-extension with your login. Anthropic API asks for a key and keeps it only in VS
-Code SecretStorage; it can use the same read-only SAP tools. Your questions and
-VERTEX's answers are shown in different colours.
+The **VERTEX** panel in the Activity Bar has a free-prompt chat. The top line holds the
+**SAP system** list — the link opens the system settings — and **LLM Providers**. The question
+box, the provider and model lists and **New conversation** stay at the bottom of the panel; the
+answers scroll above them, questions and answers in different colours.
+
+### Providers
+
+| Provider | What is paid for | What has to be installed |
+|---|---|---|
+| **Claude subscription (Claude Code)** | Your Claude subscription | The Claude Code extension, signed in |
+| **ChatGPT subscription (Codex)** | Your ChatGPT subscription | The Codex (OpenAI) extension, signed in |
+| **Anthropic API (key)** | Tokens, billed to the API key | Nothing — only the key |
+
+A subscription has no public API: it is used only through the vendor's own client, with the
+login made there. VERTEX runs the copy of the CLI that ships inside that VS Code extension, so
+without the extension a subscription provider does not work — VERTEX says which extension is
+missing. It never reads or reuses the client's login token. The Anthropic API calls
+`api.anthropic.com` directly; the key is asked for when that provider is first chosen and is
+kept only in VS Code SecretStorage.
+
+The panel shows the short name — Claude, ChatGPT, Anthropic API. Changing the provider there
+switches at once and clears the chosen model (`vertex.ai.provider`, `vertex.ai.model`).
+
+### Which models are offered
+
+**LLM Providers** opens a table per provider with a checkbox for each model; only the ticked ones
+appear in the model lists, and with no model chosen the weakest ticked one is used. Save refuses a
+table with nothing ticked. Saving also makes that provider the active one, and resets a chosen
+model that is no longer offered. The choice is kept in `vertex.ai.modelConfig`.
+
+- **Claude subscription** lists Claude versions by full id (`claude-opus-5`, `claude-sonnet-4-6`,
+  ...). Claude Code reports no list of its own, so this list is VERTEX's, in `assistant.js`
+  (`CLAUDE_VERSIONS`), and is updated when a new model comes out. The newest of each family is
+  ticked by default. **Check and add** takes any other id and keeps it only after Claude Code has
+  answered one short request with it.
+- **ChatGPT subscription** lists the catalog Codex reports. A model named in
+  `~/.codex/config.toml` is offered too, because VERTEX runs Codex without that file.
+- **Anthropic API** lists what `GET /v1/models` returns for the key.
+
+### Several systems
+
+The panel's chat can reach every system in `vertex.systems`. Name one in the question — *copy
+ZCL_FOO from E19 to QAS* — and the SAP tools run against it; without a name they use the system
+chosen in the panel. A copy is a read in one system and a draft in the other: the draft opens in
+the **Code Change** reviewer with the target system in its title, and nothing is written until
+it is approved there.
+
+A **VERTEX Tools** window keeps the system that was active when it opened, and its tab is named
+after it — *VERTEX E19*. Everything started from the window, its **Ask AI** chat included, works
+against that system; choosing another system in the panel affects only windows opened later. The
+window's chat uses the panel's provider and model.
 
 In both the Activity Bar panel and the Tools chat, **Enter** sends a question and
 **Ctrl+Enter** inserts a new line.
@@ -242,8 +293,8 @@ Then ask, for example: **Review transport DEVK900123 using the VERTEX SAP tools.
 
 ## Set up SelecTor or Versions with a sentence
 
-**Assistant** in SelecTor's bar opens a chat. Choose Claude Code or Codex and one of the models
-it offers, then write what to show, for example *SFLIGHT for carrier AA, joined with SCARR*.
+**Assistant** in SelecTor's bar opens a chat. It uses the provider and model chosen in the VERTEX
+panel; write what to show, for example *SFLIGHT for carrier AA, joined with SCARR*.
 
 The assistant reads only the table's layout — fields, keys, texts, the tables the dictionary
 offers to join — and no row of any table. It answers with the state SelecTor is to be put in;
@@ -280,8 +331,9 @@ Versions:
 - *describe the method GET*, with its review open
 - *review the change of ZCL_VX_ADT_RES_VERSIONS=>GET: risks and open questions*
 
-It needs the Claude Code or Codex extension installed in this VS Code: VERTEX starts the copy
-that comes with it, with your login, in an empty folder, with no other MCP server and no shell.
+A subscription provider needs the Claude Code or Codex extension installed in this VS Code:
+VERTEX starts the copy that comes with it, with your login, in an empty folder, with no other MCP
+server and no shell. See [Providers](#providers).
 
 ## What it writes
 

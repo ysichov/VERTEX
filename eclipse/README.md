@@ -6,13 +6,19 @@ Copilot is not involved. The existing standalone MCP registration is independent
 For **GitHub Copilot Chat in Eclipse**, see [VERTEX MCP setup](MCP.md).
 
 1. Install Node.js 22 or newer.
-2. Install and log in to Codex CLI or Claude Code. Existing VS Code extension
-   binaries are also discovered automatically; VS Code need not be running.
+2. Install and log in to Codex CLI or Claude Code. The assistant runs on your
+   ChatGPT or Claude subscription, and a subscription has no public API: it
+   works only through the vendor's own client, so without one of them the
+   Assistant cannot answer. Existing VS Code extension binaries are also
+   discovered automatically; VS Code need not be running.
 3. Open **Window > Preferences > VERTEX Assistant**. Set the Node executable
    if `node` is not on Eclipse's PATH. Optionally select native Codex/Claude
    executables; on Windows select `.exe`, not `.cmd` wrappers.
 4. Open Selector or Versions on your ABAP project and click **Assistant**.
-   Choose the assistant/model and send a request.
+   Choose the assistant/model and send a request. For Claude the list holds the
+   newest model of each family by full id (Haiku, Sonnet, Opus, Fable); another
+   version is added with **Specify version...**, which checks it with one short
+   request before keeping it.
 
 SAP reads use that window's ADT project and login. No SAP password is put into
 the child environment or its temporary files. Each request starts a private,

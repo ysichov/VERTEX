@@ -146,20 +146,31 @@ function systems() {
  * vertex.active means the first one: with a single system configured, naming it
  * again would be ceremony.
  */
+/* A VERTEX Tools window keeps the system it was opened on. Whatever it sets
+   off - a read, the chat, an assistant's MCP calls - runs inside pinTo, and
+   active() answers with that system instead of vertex.active. */
+const pinnedSystem = new (require("async_hooks").AsyncLocalStorage)();
+
+function pinTo(name, work) {
+  return name ? pinnedSystem.run(name, work) : work();
+}
+
 function active() {
   const all = systems();
   if (all.length === 0) {
     return { error: "No system configured. Put one in vertex.systems: a name, a url and a user." };
   }
-  const wanted = (vscode.workspace.getConfiguration("vertex").get("active") || "").trim();
+  const pinned = pinnedSystem.getStore();
+  const wanted = pinned || (vscode.workspace.getConfiguration("vertex").get("active") || "").trim();
   if (!wanted) {
     return { system: all[0] };
   }
   const found = all.filter(function (s) { return s.name === wanted; });
   if (found.length === 0) {
     return {
-      error: "vertex.active names " + wanted + ", which is not in vertex.systems. There is "
-           + all.map(function (s) { return s.name; }).join(", ") + "."
+      error: (pinned ? "This window reads from " + wanted + ", which is no longer"
+                     : "vertex.active names " + wanted + ", which is not")
+           + " in vertex.systems. There is " + all.map(function (s) { return s.name; }).join(", ") + "."
     };
   }
   return { system: found[0] };
@@ -639,7 +650,8 @@ function hasMcpApi() {
 let tools = null;
 
 function activate(context) {
-  const sapCode = require("./code-workbench").register(vscode, context, { active, password });
+  const sapCode = require("./code-workbench").register(vscode, context, { active, password, pin: pinTo,
+    pinned: () => pinnedSystem.getStore() || "", systems });
   let latestToolsContext = null;
   const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
   const chatSet = {
@@ -661,9 +673,10 @@ function activate(context) {
     }
   };
   tools = mcp.create({ fetch: fetch, context: context, port: port,
+    pin: pinTo, pinned: () => pinnedSystem.getStore() || "",
     pages: Object.assign(windowTools(), { "/chat": chatSet }) });
   const showTools = initial => require("./tools-window").open(vscode, context,
-    { pages: PAGES, fetch, asset, active, models: args => assistantModels(context, args),
+    { pages: PAGES, fetch, asset, active, pin: pinTo, models: args => assistantModels(context, args),
       source: args => sapCode.execute("read_sap_object", args),
       setContext: value => { latestToolsContext = value; },
       chat: () => require("./chat").create(vscode, sapCode, tools, context.secrets) }, initial);
@@ -745,10 +758,10 @@ function activate(context) {
     }),
     vscode.commands.registerCommand("vertex.selectProvider", async function () {
       const values = [
-        ["Claude subscription", "claude-subscription"],
-        ["Codex subscription", "codex-subscription"],
+        ["Claude subscription (Claude Code)", "claude-subscription"],
+        ["ChatGPT subscription (Codex)", "codex-subscription"],
         ["Copilot", "copilot"],
-        ["Anthropic API", "anthropic-api"],
+        ["Anthropic API (key)", "anthropic-api"],
         ["OpenAI API", "openai-api"]
       ];
       const current = vscode.workspace.getConfiguration("vertex.ai").get("provider", "codex-subscription");

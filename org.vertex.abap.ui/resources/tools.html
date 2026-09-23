@@ -3,8 +3,18 @@
 <style>
 :root{color-scheme:light dark}*{box-sizing:border-box}
 body{margin:0;height:100vh;display:flex;background:var(--vscode-editor-background,Canvas);color:var(--vscode-editor-foreground,CanvasText);font:13px "Segoe UI",sans-serif}
-#chat{width:30%;min-width:260px;resize:horizontal;overflow:auto;border-right:1px solid #8886;display:none}
-#chat.open{display:block}
+#chat{width:30%;min-width:260px;flex:none;overflow:hidden;display:none;flex-direction:column}
+#chat.open{display:flex}
+#chat .chat-bar{display:flex;align-items:center;padding:4px 4px 4px 10px;border-bottom:1px solid #8886;font-weight:600}
+#chat .chat-bar span{margin-right:auto}
+#chat-close{border:0;background:transparent;padding:2px 7px;cursor:pointer;font-size:15px;line-height:1}
+#chat-close:hover{background:var(--vscode-toolbar-hoverBackground,#8883)}
+#chat iframe{flex:1;height:auto;min-height:0}
+#chat-split{display:none;flex:none;width:3px;cursor:col-resize;border-left:1px solid #8886}
+#chat.open+#chat-split{display:block}
+#chat-split:hover,#chat-split.dragging{background:var(--vscode-sash-hoverBorder,Highlight)}
+body.dragging{cursor:col-resize;user-select:none}body.dragging iframe{pointer-events:none}
+#chat-toggle.on{color:var(--vscode-button-foreground,HighlightText);background:var(--vscode-button-background,Highlight)}
 main{flex:1;min-width:0;display:flex;flex-direction:column}
 header{display:flex;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #8886;align-items:center}
 input,select,button{font:inherit;padding:5px;color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e));border:1px solid #8888}
@@ -21,9 +31,9 @@ dialog label{display:block;margin:8px 0}
 #object-type{min-width:150px}#function{min-width:100px}
 #results{flex:1;min-height:0;position:relative}#results iframe{position:absolute;inset:0;display:none}#results iframe.active{display:block}#notice{padding:8px;white-space:pre-wrap}#notice:empty{display:none}
 </style></head><body>
-<aside id="chat" aria-label="Assistant"><iframe id="conversation" title="VERTEX assistant"></iframe></aside>
+<aside id="chat" aria-label="Assistant"><div class="chat-bar"><span>Ask AI</span><button id="chat-close" title="Hide the assistant" aria-label="Hide the assistant">&#x2715;</button></div><iframe id="conversation" title="VERTEX assistant"></iframe></aside><div id="chat-split" title="Drag to resize the assistant"></div>
 <main><header>
-<button id="chat-toggle" title="Show or hide VERTEX Chat" aria-expanded="false">▸ Chat</button>
+<button id="chat-toggle" title="Show or hide the assistant" aria-expanded="false">Ask AI</button>
 <button id="back" title="Back to the previous VERTEX source" hidden>← Back</button>
 <select id="object-type" aria-label="Object type"></select>
 <div id="object-field"><input id="object-name" placeholder="Object name" aria-label="Object name" title="Enter an object name and press Enter" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/></svg></button></div>
@@ -48,7 +58,19 @@ const resultFrames = new Map();
 const findButton = document.getElementById("find-requests"), requestDialog = document.getElementById("request-dialog");
 const chat = document.getElementById("chat"), chatToggle = document.getElementById("chat-toggle");
 const backButton=document.getElementById("back");
-chatToggle.onclick=()=>{const open=chat.classList.toggle("open");chatToggle.setAttribute("aria-expanded",String(open));chatToggle.textContent=(open?"▾":"▸")+" Chat";};
+function showChat(open){chat.classList.toggle("open",open);chatToggle.classList.toggle("on",open);chatToggle.setAttribute("aria-expanded",String(open));}
+chatToggle.onclick=()=>showChat(!chat.classList.contains("open"));
+document.getElementById("chat-close").onclick=()=>showChat(false);
+// The line between the assistant and the result, dragged to share the width.
+// Frames swallow mouse moves, so they ignore the pointer while it is held.
+document.getElementById("chat-split").addEventListener("mousedown",e=>{
+  if(e.button!==0)return;e.preventDefault();
+  const split=e.currentTarget,startX=e.clientX,startWidth=chat.getBoundingClientRect().width,room=document.body.getBoundingClientRect().width;
+  split.classList.add("dragging");document.body.classList.add("dragging");
+  const move=ev=>{chat.style.width=Math.max(260,Math.min(room-300,startWidth+ev.clientX-startX))+"px";};
+  const up=()=>{split.classList.remove("dragging");document.body.classList.remove("dragging");document.removeEventListener("mousemove",move);document.removeEventListener("mouseup",up);};
+  document.addEventListener("mousemove",move);document.addEventListener("mouseup",up);
+});
 function notice(text){document.getElementById("notice").textContent=text;}
 VertexObjects.objects.forEach(o=>typeBox.add(new Option(o[1],o[0])));
 function fields(){
@@ -166,6 +188,10 @@ function connect(child,service,generation){
     };
   });
   child.sdeModels=(...args)=>{assistantTarget={child,live};sdeModels(...args);};
+  // VS Code shares the VERTEX panel's provider and model; Eclipse has neither.
+  ["sdeAiProvider","sdeAiModel","sdeAiConfig"].forEach(name=>{
+    if(typeof window[name]==="function")child[name]=(...args)=>{assistantTarget={child,live};window[name](...args);};
+  });
   child.sdeAsk=(...args)=>{
     const state=JSON.parse(args[3]||"{}");state.workspace=current;
     // The left chat stays open while the result iframe drills from a request
@@ -191,7 +217,7 @@ function connect(child,service,generation){
     if(!live())return;
     const target=document.getElementById("conversation").contentWindow;
     if(target&&typeof target.sdeAskSelection==="function"){
-      chat.classList.add("open");chatToggle.setAttribute("aria-expanded","true");chatToggle.textContent="▾ Chat";
+      showChat(true);
       target.sdeAskSelection(question,fragment,view);
     }
   };

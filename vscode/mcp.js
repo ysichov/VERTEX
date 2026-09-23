@@ -399,6 +399,10 @@ function create(deps) {
     // to them never changes what a Copilot, Claude Code or Codex registration
     // sees.
     const route = req.url.split("?")[0];
+    // A window that keeps its own system names it in the address it hands
+    // the assistant, and the calls run against that system.
+    const system = new URL(req.url, "http://localhost").searchParams.get("system") || "";
+    const within = work => system && deps.pin ? deps.pin(system, work) : work();
     const pages = deps.pages || {};
     const set = route === "/mcp" ? REVIEW
               : (Object.prototype.hasOwnProperty.call(pages, route) ? pages[route] : null);
@@ -446,12 +450,12 @@ function create(deps) {
 
       // A notification or a response carries no id and gets no answer.
       if (message.id === undefined || message.id === null) {
-        try { await dispatch(deps, message, set); } catch (e) { /* nothing to answer to */ }
+        try { await within(() => dispatch(deps, message, set)); } catch (e) { /* nothing to answer to */ }
         return send(res, 202, {}, "");
       }
 
       try {
-        const result = await dispatch(deps, message, set);
+        const result = await within(() => dispatch(deps, message, set));
         send(res, 200, {}, JSON.stringify({ jsonrpc: "2.0", id: message.id, result: result }));
       } catch (e) {
         send(res, 200, {}, JSON.stringify({
@@ -487,6 +491,11 @@ function create(deps) {
 
   return {
     get token() { return token; },
+    /** A page's address, carrying the system of the window that asks, if it keeps one. */
+    route: function (url) {
+      const system = deps.pinned ? deps.pinned() : "";
+      return system ? url + "?system=" + encodeURIComponent(system) : url;
+    },
     /** The address, starting the server on first ask. */
     start: function () {
       if (started) { return started; }

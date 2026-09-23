@@ -103,7 +103,26 @@
   .panes { flex: 1 1 auto; display: flex; min-height: 0; }
 
   .parts { flex: 0 0 280px; border-right: 1px solid var(--border);
-           background: var(--surface); overflow: auto; }
+           background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+
+  /* The parts above, the versions of the chosen part below - AVE's layout -
+     with a line between them dragged to share the height. */
+  .partsbox { flex: 1 1 50%; min-height: 60px; overflow: auto; }
+  .vsplit { flex: 0 0 3px; cursor: row-resize; border-top: 1px solid var(--border); }
+  .vsplit:hover, .vsplit.dragging { background: var(--selected); }
+  body.rowdrag { cursor: row-resize; user-select: none; }
+  .versionsbox { flex: 1 1 50%; min-height: 60px; overflow: auto; }
+  .versions-head { padding: 4px 6px 4px 10px; background: var(--surface-2); border-bottom: 1px solid var(--line);
+                   display: flex; align-items: center; gap: 4px; position: sticky; top: 0; z-index: 2; }
+  .versions-head .title { font-weight: 600; margin-right: auto; }
+  .versions-head button { padding: 0 6px; }
+  .versions-head button.on { background: var(--selected); font-weight: 600; }
+  #versionlist .note { padding: 8px 10px; }
+  #versionlist th { position: static; }
+  #versionlist tr.on td { background: var(--selected); font-weight: 600; }
+  #versionlist tr.base td { box-shadow: inset 0 -1px 0 var(--fg); }
+  #versionlist td.pin { cursor: pointer; width: 14px; padding-right: 0; color: var(--muted); }
+  #versionlist tr.base td.pin { color: var(--fg); }
   .parts-head { padding: 5px 6px 5px 10px; background: var(--surface-2);
                 border-bottom: 1px solid var(--line); font-weight: 600;
                 position: sticky; top: 0; display: flex; align-items: center; }
@@ -113,8 +132,9 @@
   /* Folded away, the parts keep a strip with the button that brings them
      back; the width they had comes back with them. */
   .parts.folded { flex-basis: 24px !important; overflow: hidden; }
-  .parts.folded #partlist { display: none; }
+  .parts.folded #partlist, .parts.folded .vsplit, .parts.folded .versionsbox { display: none; }
   .parts.folded .parts-head { flex-direction: column; padding: 5px 0; gap: 6px; }
+  .parts.folded .partsbox { overflow: hidden; }
   .parts.folded .parts-head .title { margin: 0; writing-mode: vertical-rl; }
 
   /* The line between the parts and the versions, dragged to share the width. */
@@ -132,17 +152,17 @@
   .parts-object { padding: 5px 10px; font-weight: 600; font-family: Consolas, monospace;
                   border-bottom: 1px solid var(--line); white-space: nowrap;
                   overflow: hidden; text-overflow: ellipsis; }
-  .parts table { table-layout: fixed; }
-  .parts th { position: static; }
-  .parts th:first-child, .parts td:first-child { width: 52px; }
-  .parts td { overflow: hidden; text-overflow: ellipsis; }
-  .parts tbody tr.on td { background: var(--selected); font-weight: 600; }
+  #partlist table { table-layout: fixed; }
+  #partlist th { position: static; }
+  #partlist th:first-child, #partlist td:first-child { width: 52px; }
+  #partlist td { overflow: hidden; text-overflow: ellipsis; }
+  #partlist tbody tr.on td { background: var(--selected); font-weight: 600; }
 
   /* Visibility, the way SE80 marks it: public a green square, protected a
      yellow diamond, private a red circle. */
   .vis { display: inline-block; width: 8px; height: 8px; }
-  .parts table.sectioned th:first-child, .parts table.sectioned td:first-child { width: 10px; padding-right: 0; }
-  .parts table.sectioned th:nth-child(2) { width: 52px; }
+  #partlist table.sectioned th:first-child, #partlist table.sectioned td:first-child { width: 10px; padding-right: 0; }
+  #partlist table.sectioned th:nth-child(2) { width: 52px; }
   .vis.public { background: #2e9e44; }
   .vis.protected { background: #d9a400; width: 7px; height: 7px; transform: rotate(45deg); }
   .vis.private { background: #d33a2c; border-radius: 50%; }
@@ -313,11 +333,21 @@
   <div class="cards" id="cards"></div>
   <div class="panes">
     <aside class="parts" id="partspanel">
-      <div class="parts-head">
-        <span class="title">Parts</span>
-        <button id="partsfold" title="Hide the parts">&#8249;</button>
+      <div class="partsbox" id="partsbox">
+        <div class="parts-head">
+          <span class="title">Parts</span>
+          <button id="partsfold" title="Hide the parts">&#8249;</button>
+        </div>
+        <div id="partlist"></div>
       </div>
-      <div id="partlist"></div>
+      <div class="vsplit" id="vsplit" title="Drag to share the height"></div>
+      <div class="versionsbox" id="versionsbox">
+        <div class="versions-head">
+          <span class="title">Versions</span>
+          <button id="diffprev" class="on" title="Compare each version with the one before it">Diff prev</button>
+        </div>
+        <div id="versionlist"></div>
+      </div>
     </aside>
     <div class="splitter" id="partssplit" title="Drag to resize the parts"></div>
     <main class="versions"><div id="root"></div></main>
@@ -445,6 +475,8 @@ function loadParts(keepTrail) {
   parts = [];
   current = null;
   versions = [];
+  base = ""; diffPrev = true; picked = -1;
+  versionNote("Pick a part to see its versions.");
   renderParts();
   status("reading " + name + " ...");
   sdeLoad(name, objectType(), "", "", "", "");
@@ -520,10 +552,37 @@ function renderCards() {
 }
 
 var autoDiff = false;
+
+/* A version can be pinned as the base: every version picked after it is then
+   compared with the base instead of with the one before it. Diff prev goes
+   back to the change each version made. */
+var base = "";
+var diffPrev = true;
+var picked = -1;
+
+function showDiffPrev() {
+  var button = document.getElementById("diffprev");
+  button.className = diffPrev ? "on" : "";
+  button.title = diffPrev ? "Compare each version with the one before it"
+                          : "Comparing with the base " + asVersion(base) + " - click to compare with the one before instead";
+}
+
+function versionNote(text) {
+  var list = document.getElementById("versionlist");
+  list.innerHTML = "";
+  var box = document.createElement("div");
+  box.className = "note";
+  box.textContent = text;
+  list.appendChild(box);
+}
+
 function loadVersions(part, showList) {
   autoDiff = !showList && typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff";
   current = part;
   versions = [];
+  base = ""; diffPrev = true; picked = -1;
+  showDiffPrev();
+  versionNote("Reading ...");
   updatePartSelection();
   status("reading versions of " + part.unit + " ...");
   note("Reading ...");
@@ -560,7 +619,10 @@ function goBack() {
    nothing is right: every line of it was added. */
 function loadDiff(index) {
   var to = versions[index];
-  var from = index + 1 < versions.length ? versions[index + 1].version : "";
+  picked = index;
+  markVersions();
+  var from = !diffPrev && base && base !== to.version ? base
+           : index + 1 < versions.length ? versions[index + 1].version : "";
   status("comparing " + (from ? asVersion(from) : "nothing")
          + " with " + asVersion(to.version) + " ...");
   note("Comparing ...");
@@ -893,9 +955,29 @@ function cell(tr, text, cls) {
   return td;
 }
 
+function markVersions() {
+  var rows = document.getElementById("versionlist").querySelectorAll
+    ? document.getElementById("versionlist").querySelectorAll("tbody tr") : [];
+  Array.prototype.forEach.call(rows, function (tr, index) {
+    var v = versions[index];
+    tr.className = "pick" + (index === picked ? " on" : "") + (v && v.version === base ? " base" : "");
+    var pin = tr.firstChild;
+    if (pin) { pin.textContent = v && v.version === base ? "◆" : "◇"; }
+  });
+}
+
+function setBase(version) {
+  base = base === version ? "" : version;
+  diffPrev = !base;
+  showDiffPrev();
+  markVersions();
+  if (picked >= 0) { loadDiff(picked); }
+}
+
 function renderVersions(data) {
   versions = data.versions || [];
-  var root = document.getElementById("root");
+  picked = -1;
+  var list = document.getElementById("versionlist");
 
   // The name in the payload is a VRSD key, padded to thirty characters and
   // unreadable. What the reader clicked on is the unit name.
@@ -904,15 +986,16 @@ function renderVersions(data) {
   if (versions.length === 0) {
     // Not an error: a part that was never changed after its creation has no
     // version of its own, and a section of a class often has none at all.
+    versionNote("No versions recorded for " + label + ".");
     note("No versions recorded for " + label + ".");
     return;
   }
 
-  root.className = "";
-  root.innerHTML = "";
+  list.innerHTML = "";
+  if (!autoDiff) { note("Pick a version to see what it changed, or pin one with ◇ as the base."); }
 
   var headRow = document.createElement("tr");
-  ["Version", "Date", "Time", "Author", "Name", "Request", "Task"].forEach(function (text) {
+  ["", "Version", "Date", "Time", "Author", "Name", "Request", "Task"].forEach(function (text) {
     var th = document.createElement("th");
     th.textContent = text;
     headRow.appendChild(th);
@@ -924,8 +1007,11 @@ function renderVersions(data) {
   versions.forEach(function (v, index) {
     var tr = document.createElement("tr");
     tr.className = "pick";
-    tr.title = "Compare with the version below it";
+    tr.title = "Compare with the base, or with the version below it";
     tr.addEventListener("click", function () { loadDiff(index); });
+    var pin = cell(tr, "◇", "pin");
+    pin.title = "Pin as the base: other versions are compared with it";
+    pin.addEventListener("click", function (e) { e.stopPropagation(); setBase(v.version); });
     cell(tr, asVersion(v.version), "num");
     cell(tr, asDate(v.date), "mono");
     cell(tr, asTime(v.time), "mono");
@@ -939,7 +1025,8 @@ function renderVersions(data) {
   var table = document.createElement("table");
   table.appendChild(thead);
   table.appendChild(tbody);
-  root.appendChild(table);
+  list.appendChild(table);
+  markVersions();
 
   status(versions.length + (versions.length === 1 ? " version of " : " versions of ") + label);
   if (autoDiff && !pending && versions.length) { loadDiff(0); }
@@ -1043,15 +1130,10 @@ function renderDiff(data) {
   var bar = document.createElement("div");
   bar.className = "diffbar";
 
-  var back = document.createElement("span");
-  back.className = "back";
-  back.textContent = "← Versions";
-  back.addEventListener("click", function () { loadVersions(current, true); });
-  bar.appendChild(back);
-
   var what = document.createElement("span");
   // An empty FROM is the oldest version, compared against nothing.
   what.textContent = (data.from ? asVersion(data.from) : "nothing")
+                   + (data.from && data.from === base ? " (base)" : "")
                    + " → " + asVersion(data.to);
   bar.appendChild(what);
 
@@ -2317,6 +2399,37 @@ function stopPlan() {
 }
 
 /* ---------- wiring ---------- */
+
+document.getElementById("diffprev").addEventListener("click", function () {
+  if (!base) { return; }
+  diffPrev = !diffPrev;
+  showDiffPrev();
+  if (picked >= 0) { loadDiff(picked); }
+});
+
+document.getElementById("vsplit").addEventListener("mousedown", function (e) {
+  if (e.button !== 0) { return; }
+  e.preventDefault();
+  var top = document.getElementById("partsbox");
+  var split = e.currentTarget;
+  var startY = e.clientY;
+  var startHeight = top.getBoundingClientRect().height;
+  var room = top.parentNode.getBoundingClientRect().height;
+  split.classList.add("dragging");
+  document.body.classList.add("rowdrag");
+  function move(ev) {
+    var height = Math.max(60, Math.min(room - 80, startHeight + ev.clientY - startY));
+    top.style.flex = "0 0 " + height + "px";
+  }
+  function up() {
+    split.classList.remove("dragging");
+    document.body.classList.remove("rowdrag");
+    document.removeEventListener("mousemove", move);
+    document.removeEventListener("mouseup", up);
+  }
+  document.addEventListener("mousemove", move);
+  document.addEventListener("mouseup", up);
+});
 
 document.getElementById("partsfold").addEventListener("click", function () {
   foldParts(!partsFolded);

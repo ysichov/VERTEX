@@ -17,7 +17,7 @@ test('Diff and Versions selection updates existing rows without rebuilding Parts
   const rows = parts.map(part => ({part, element:{selected:false, classList:{toggle(key, value){rows.find(r=>r.part===part).element.selected=value;}}}}));
   let requests = 0;
   const ctx = vm.createContext({INITIAL:{action:'diff'}, partRows:rows, current:null, versions:[],
-    renderParts(){throw Error('Parts must not be rebuilt on selection');}, status(){}, note(){},
+    renderParts(){throw Error('Parts must not be rebuilt on selection');}, status(){}, note(){}, showDiffPrev(){}, versionNote(){},
     objectName:()=> 'ZCL_TEST', objectType:()=> 'CLAS', sdeLoad(){requests++;}});
   functions('versions', ['isCurrent','updatePartSelection','loadVersions'],ctx);
   ctx.loadVersions(parts[0]);

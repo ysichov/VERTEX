@@ -25,6 +25,14 @@ function objectRequest(text) {
   return found && isObjectName(found[1]) ? { query: found[1], openEditor: true } : null;
 }
 
+/* In VS Code a search names its system by the connection key - url, client,
+   user, name - and only the name belongs in an answer. */
+function systemName(value) {
+  const text = String(value || "");
+  try { const key = JSON.parse(text); if (Array.isArray(key) && key[3]) { return String(key[3]); } } catch (e) { /* a plain name */ }
+  return text;
+}
+
 /**
  * search(args) -> { objects: [{ object_name, object_type, description, package }], truncated }
  * open({ object_type, object_name }) -> anything; it throws on failure.
@@ -33,7 +41,7 @@ function objectRequest(text) {
 async function answer(text, { search, open, system }) {
   const query = String(text).trim().toUpperCase();
   const found = await search({ query, limit: 50 });
-  const label = system || (found && found.system) || "";
+  const label = system || systemName(found && found.system);
   const where = label ? " in system " + label : "";
   const objects = (found && found.objects) || [];
   const exact = objects.filter(o => String(o.object_name).toUpperCase() === query);

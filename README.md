@@ -63,10 +63,13 @@ HTTPS, and the markup, grids and filters are not written twice.
 
 ## AI assistants
 
-### VERTEX chat and code reviewer (VS Code, 0.6.3)
+### VERTEX chat and code reviewer (VS Code, 0.6.9)
 
-The VERTEX panel in VS Code's Activity Bar has a chat over the active SAP system, run by
-the Claude Code or Codex subscription already installed. Ask *show ZCL_TR_TEXT_DATA* or
+The VERTEX panel in VS Code's Activity Bar has a chat over the SAP systems in `vertex.systems`,
+run by a Claude or ChatGPT subscription — through the Claude Code or Codex extension, which has to
+be installed and signed in — or by an Anthropic API key. **LLM Providers** chooses which models
+each provider offers. Name a system in the question to reach it; a VERTEX Tools window keeps the
+system it was opened on. Ask *show ZCL_TR_TEXT_DATA* or
 *explain this method*: it searches and reads the source and opens it in an editable tab.
 Edits go through the **Code Change** reviewer — approve or decline each block, ask AI about
 one block, then **Save & Activate** writes only the approved blocks, with a syntax check and

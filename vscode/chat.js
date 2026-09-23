@@ -16,7 +16,7 @@ function subscriptionProvider(vscode) {
   if (selected === "claude-subscription") { return "claude"; }
   if (selected === "codex-subscription") { return "codex"; }
   if (selected === "anthropic-api") { return "anthropic-api"; }
-  throw new Error("Select Codex subscription, Claude subscription or Anthropic API before using chat.");
+  throw new Error("Select ChatGPT subscription, Claude subscription or Anthropic API before using chat.");
 }
 
 function extensionPath(vscode, id) {
@@ -176,7 +176,8 @@ function create(vscode, codeTools, server, secrets) {
         ? anthropic.ask({ ...requestOptions, apiKey: secrets && await secrets.get("vertex.provider.anthropic.apiKey"),
           tools: toolSchemas, callTool: (name, args) => codeTools.execute(name, args) })
         : (async () => { const started = await server.start(); return assistant.ask({ ...requestOptions,
-          url: started.url.replace(/\/mcp$/, "/chat"), token: server.token }); })()).catch(error => {
+          url: server.route ? server.route(started.url.replace(/\/mcp$/, "/chat")) : started.url.replace(/\/mcp$/, "/chat"),
+          token: server.token }); })()).catch(error => {
         if (log) { log.assistant({ model: error.model || model, text: "Request failed: " + error.message }); }
         conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: "Request failed: " + error.message });
         throw error;
@@ -190,10 +191,12 @@ function create(vscode, codeTools, server, secrets) {
   ask.newConversation = () => { conversation = []; };
   ask.state = () => {
     const config = vscode.workspace.getConfiguration("vertex.ai");
-    return { provider: config.get("provider", "codex-subscription"), model: config.get("model", "") || "weakest model" };
+    const provider = config.get("provider", "codex-subscription");
+    return { provider, short: modelConfig.shortLabel(provider), model: config.get("model", "") || "weakest model",
+             providers: modelConfig.PROVIDERS.map(p => ({ setting: p.setting, short: p.short })) };
   };
   ask.selectProvider = async () => {
-    const values = [["Claude subscription", "claude-subscription"], ["Codex subscription", "codex-subscription"], ["Anthropic API", "anthropic-api"]];
+    const values = modelConfig.PROVIDERS.map(p => [p.label, p.setting]);
     const current = ask.state().provider;
     const picked = await vscode.window.showQuickPick(values.map(x => ({ label: x[0], id: x[1], picked: x[1] === current })), { title: "Select AI provider" });
     if (picked) {
@@ -218,13 +221,32 @@ function create(vscode, codeTools, server, secrets) {
     return { models: modelConfig.apply(vscode, id, await fullModels(id)),
              model: vscode.workspace.getConfiguration("vertex.ai").get("model", "") };
   };
+  // Switching provider from the VERTEX panel's list. A model chosen for the
+  // other provider means nothing here, so the choice starts over; the API
+  // provider asks for its key when none is kept yet.
+  ask.setProvider = async setting => {
+    if (!modelConfig.PROVIDERS.some(p => p.setting === setting)) { return ask.state(); }
+    const config = vscode.workspace.getConfiguration("vertex.ai");
+    if (setting === "anthropic-api" && secrets && !await secrets.get("vertex.provider.anthropic.apiKey")) {
+      const key = await vscode.window.showInputBox({ prompt: "Anthropic API key (stored in VS Code SecretStorage)",
+        password: true, ignoreFocusOut: true });
+      if (!key || !key.trim()) { return ask.state(); }
+      await secrets.store("vertex.provider.anthropic.apiKey", key.trim());
+      full.delete("anthropic-api");
+    }
+    if (config.get("provider", "") !== setting) {
+      await config.update("provider", setting, vscode.ConfigurationTarget.Global);
+      await config.update("model", "", vscode.ConfigurationTarget.Global);
+    }
+    return ask.state();
+  };
   ask.setModel = async model => {
     await vscode.workspace.getConfiguration("vertex.ai").update("model", String(model || ""), vscode.ConfigurationTarget.Global);
     return ask.state();
   };
   ask.configModels = () => {
     full.clear();
-    return modelConfig.open(vscode, fullModels, id => extensionPath(vscode, id));
+    return modelConfig.open(vscode, fullModels, id => extensionPath(vscode, id), id => full.delete(id), secrets);
   };
   return ask;
 }

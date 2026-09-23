@@ -1748,6 +1748,59 @@ side simply ends. Everything is moving to Eclipse and VS Code, so its SAP GUI ha
 The AVE classes are the stage after: `review` and `versions` account for 46 of the 59 findings that
 remain.
 
+## Stage 35 — choosing the model, and which system a window means
+
+The request was small — the model list showed `haiku`, `sonnet`, `opus` with no versions — and it
+opened three questions in turn: what the list is, where it is chosen, and which system a window
+speaks for.
+
+The list for a Claude subscription had been a set of aliases on purpose: Claude Code reports no
+catalog, and an alias always means the newest of its family, so the list could not go stale. That
+reasoning held and was still the wrong answer, because pinning an older version — Opus 5 instead of
+5.5 — is exactly what an alias cannot do. The list became VERTEX's own table of full ids, updated by
+hand when a model comes out, with the newest of each family on by default. The Anthropic API needed
+no such table: `GET /v1/models` answers for the key, the same call ABAP-AI-Code already made. Every
+provider then got one **LLM Providers** table, storing what is switched off for the providers that
+list their own models, so that a model they add later appears on its own.
+
+The same work renamed the providers. "Codex subscription" named the client, not what is paid for:
+the subscription is ChatGPT's, and a subscription has no public API, so it works only through the
+vendor's own client. That is now what the labels and the README say.
+
+A VERTEX Tools window then turned out to be named by nothing and bound to nothing: every window read
+from `vertex.active`, so two windows on two systems were impossible and a tab could not say which
+system it showed. A window now keeps the system it was opened on. Rather than threading a system
+through every fetch, the window's messages run inside an `AsyncLocalStorage` scope and `active()`
+answers from it. The scope does not cross a process boundary, so the address handed to Claude Code
+or Codex carries `?system=`, and the MCP server re-enters the scope for those calls. The panel's
+chat went the other way: its SAP tools take `system`, so one conversation can read in one system and
+draft in another, and the draft still goes through the reviewer, whose title names the target.
+
+### What went wrong
+
+- **Silent fallbacks, twice.** The first Anthropic model list came from the API with no fallback,
+  as intended; the first Claude list kept the aliases *and* added versions, which only made the
+  list longer. Both lists ended as one table, and a table with nothing ticked is refused on Save
+  rather than quietly emptied into a default.
+- **A hover that removed the button.** `button.secondaryHoverBackground` is not defined by every
+  theme; where it is missing, the hover rule set an empty background and the button vanished under
+  the pointer. The hover now keeps the button's background and adds the theme's focus border.
+- **The connection key reached the chat.** A search in VS Code names its system by the repository
+  key — url, client, user, name — and the direct-open answer printed it whole. Only the name is
+  shown now.
+- **Five failing tests were not ours.** The versions tests fail on a clean checkout too — the fake
+  DOM has no `classList`. Each change was compared against that baseline, not against zero.
+
+The Versions window took AVE's layout back in the same landing: the list of versions moved from the
+right-hand pane, where the diff used to replace it behind a *← Versions* link, into the parts column
+under the parts, and the diff keeps the right. That made room for AVE's pinned base — compare any two
+versions, not only a version with its predecessor. Ignoring case and indentation, and hiding versions
+with identical source, stayed out: the diff is computed in ABAP for one pair, so neither can be done
+by the page alone.
+
+**Lesson.** A list that "cannot go stale" is only right while nobody needs an older entry. Ask what
+the list is for before deciding how it is kept.
+
 ---
 
 ## What the practice turned out to be

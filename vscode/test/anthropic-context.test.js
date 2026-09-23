@@ -7,13 +7,14 @@ const chat = require("../chat"), anthropic = require("../anthropic"), workspace 
 
 test("sidebar line-count question sends the published method in one bounded Anthropic request", async t => {
   let receive, state, raw;
-  const panel = { webview: { onDidReceiveMessage: fn => { receive = fn; } } };
+  const panel = { webview: { onDidReceiveMessage: fn => { receive = fn; } }, onDidDispose() {} };
   const settings = { provider: "anthropic-api", model: "test-model" };
   const vscode = { ViewColumn: { Active: 1 }, extensions: { getExtension: () => null },
-    workspace: { getConfiguration: () => ({ get: (key, fallback) => settings[key] ?? fallback }) },
+    workspace: { getConfiguration: () => ({ get: (key, fallback) => settings[key] ?? fallback }),
+      onDidChangeConfiguration: () => ({ dispose() {} }) },
     window: { createWebviewPanel: () => panel, tabGroups: { all: [] } } };
   workspace.open(vscode, { subscriptions: [] }, { pages: path.resolve(__dirname, "../../org.vertex.abap.ui/resources"),
-    chat: () => null, setContext: value => { state = value; } }, null);
+    chat: () => null, active: () => ({ system: { name: "QAS" } }), setContext: value => { state = value; } }, null);
   const elements = { title: {}, code: { addEventListener() {} }, partssplit: { addEventListener() {} } };
   const page = vm.createContext({ document: { getElementById: id => elements[id], addEventListener() {} },
     window: {}, sdeSource() {}, sdeTake: () => raw,

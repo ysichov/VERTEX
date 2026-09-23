@@ -11,11 +11,19 @@
 
 const assistant = require("./assistant");
 
+// id is the assistant, setting what vertex.ai.provider holds. The label names
+// what is paid for and, in brackets, what it runs through; short is for the
+// VERTEX panel's button.
 const PROVIDERS = [
-  { id: "claude", label: "Claude subscription" },
-  { id: "codex", label: "Codex subscription" },
-  { id: "anthropic-api", label: "Anthropic API" }
+  { id: "claude", setting: "claude-subscription", label: "Claude subscription (Claude Code)", short: "Claude" },
+  { id: "codex", setting: "codex-subscription", label: "ChatGPT subscription (Codex)", short: "ChatGPT" },
+  { id: "anthropic-api", setting: "anthropic-api", label: "Anthropic API (key)", short: "Anthropic API" }
 ];
+
+function shortLabel(setting) {
+  const found = PROVIDERS.find(p => p.setting === setting);
+  return found ? found.short : setting;
+}
 
 function read(vscode, id) {
   const all = vscode.workspace.getConfiguration("vertex.ai").get("modelConfig", {}) || {};
@@ -58,21 +66,24 @@ function apply(vscode, id, list) {
 /* ---------- the table ---------- */
 
 /**
- * Opens the table. full(id) is the provider's whole list; extensionPath(id)
- * where its assistant lives, for checking a Claude version.
+ * Opens the table - also where the provider is chosen. full(id) is the
+ * provider's whole list, forget(id) drops what was read of it; extensionPath(id)
+ * is where its assistant lives, for checking a Claude version; secrets keeps
+ * the Anthropic API key.
  */
-function open(vscode, full, extensionPath) {
-  const panel = vscode.window.createWebviewPanel("vertex.modelConfig", "VERTEX: Config models",
+function open(vscode, full, extensionPath, forget, secrets) {
+  const panel = vscode.window.createWebviewPanel("vertex.modelConfig", "VERTEX: LLM Providers",
     vscode.ViewColumn.Active, { enableScripts: true, localResourceRoots: [] });
   const nonce = require("crypto").randomBytes(24).toString("hex");
-  panel.webview.html = html(nonce);
+  const active = PROVIDERS.find(p => p.setting === vscode.workspace.getConfiguration("vertex.ai").get("provider", ""));
+  panel.webview.html = html(nonce, active ? active.id : PROVIDERS[0].id);
   const post = message => panel.webview.postMessage(message);
 
   async function load(id) {
     try {
       post({ provider: id, rows: rows(await full(id), read(vscode, id), id) });
     } catch (e) {
-      post({ provider: id, error: e.message });
+      post({ provider: id, error: e.message, needKey: id === "anthropic-api" });
     }
   }
 
@@ -81,6 +92,17 @@ function open(vscode, full, extensionPath) {
     const id = String(message.provider || "");
     if (!PROVIDERS.some(p => p.id === id)) { return; }
     if (message.action === "load") { await load(id); return; }
+    if (message.action === "key") {
+      if (id !== "anthropic-api" || !secrets) { return; }
+      const key = await vscode.window.showInputBox({ prompt: "Anthropic API key (stored in VS Code SecretStorage)",
+        password: true, ignoreFocusOut: true });
+      if (key && key.trim()) {
+        await secrets.store("vertex.provider.anthropic.apiKey", key.trim());
+        forget(id);
+      }
+      await load(id);
+      return;
+    }
     if (message.action === "check") {
       if (id !== "claude") { return; }
       try {
@@ -107,14 +129,15 @@ function open(vscode, full, extensionPath) {
           ? list.filter(r => r && r.version).map(r => ({ id: String(r.id), label: String(r.label || r.id) }))
           : []
       });
-      // A chosen model just switched off is chosen no longer: the weakest one
+      // The provider saved is the one in use. A model chosen for another
+      // provider, or just switched off, is chosen no longer: the weakest one
       // switched on takes its place.
       const settings = vscode.workspace.getConfiguration("vertex.ai");
-      const selected = { "claude-subscription": "claude", "codex-subscription": "codex",
-                         "anthropic-api": "anthropic-api" }[settings.get("provider", "")];
+      const setting = PROVIDERS.find(p => p.id === id).setting;
+      const switched = settings.get("provider", "") !== setting;
       const current = settings.get("model", "");
-      const reset = selected === id && current
-        && list.some(r => r && !r.on && String(r.id) === current);
+      const reset = !!current && (switched || list.some(r => r && !r.on && String(r.id) === current));
+      if (switched) { await settings.update("provider", setting, vscode.ConfigurationTarget.Global); }
       if (reset) { await settings.update("model", "", vscode.ConfigurationTarget.Global); }
       post({ provider: id, saved: true, reset: reset ? current : "" });
     }
@@ -122,8 +145,9 @@ function open(vscode, full, extensionPath) {
   return panel;
 }
 
-function html(nonce) {
-  const options = PROVIDERS.map(p => '<option value="' + p.id + '">' + p.label + "</option>").join("");
+function html(nonce, selected) {
+  const options = PROVIDERS.map(p => '<option value="' + p.id + '"' + (p.id === selected ? " selected" : "") + ">"
+    + p.label + "</option>").join("");
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
@@ -148,6 +172,7 @@ td.id { font-family: var(--vscode-editor-font-family); }
   <input id="version" placeholder="claude-opus-5" spellcheck="false">
   <button id="check">Check and add</button>
 </div>
+<div class="row" id="keyrow" hidden><button id="key">Enter API key</button></div>
 <div class="row"><button class="primary" id="save">Save</button><span id="said"></span></div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
@@ -180,9 +205,11 @@ function render() {
 function load() {
   rows = []; $("body").className = "note"; $("body").textContent = "Loading ..."; say("");
   $("add").hidden = provider() !== "claude";
+  $("keyrow").hidden = true;
   api.postMessage({ action: "load", provider: provider() });
 }
 $("provider").addEventListener("change", load);
+$("key").addEventListener("click", () => api.postMessage({ action: "key", provider: provider() }));
 $("check").addEventListener("click", () => {
   const model = $("version").value.trim(); if (!model) { return; }
   if (rows.some(r => r.id === model)) { say(model + " is already in the table.", "error"); return; }
@@ -196,7 +223,7 @@ $("save").addEventListener("click", () => {
 });
 window.addEventListener("message", event => {
   const m = event.data; if (!m || m.provider !== provider()) { return; }
-  if (m.error) { $("body").className = "error"; $("body").textContent = m.error; return; }
+  if (m.error) { $("body").className = "error"; $("body").textContent = m.error; $("keyrow").hidden = !m.needKey; return; }
   if (m.rows) { rows = m.rows; render(); return; }
   if (m.probed) {
     $("check").disabled = false; $("version").value = "";
@@ -205,10 +232,10 @@ window.addEventListener("message", event => {
   }
   if (m.probeError) { $("check").disabled = false; say(m.probeError, "error"); return; }
   if (m.saveError) { say(m.saveError, "error"); return; }
-  if (m.saved) { say(m.reset ? "Saved. " + m.reset + " was the default model and is switched off - the default is reset." : "Saved.", "ok"); }
+  if (m.saved) { say(m.reset ? "Saved. " + m.reset + " is no longer offered - the weakest model switched on is used." : "Saved.", "ok"); }
 });
 load();
 </script></body></html>`;
 }
 
-module.exports = { PROVIDERS, read, rows, apply, open };
+module.exports = { PROVIDERS, shortLabel, read, rows, apply, open };
