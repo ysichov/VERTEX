@@ -78,7 +78,11 @@ public class MetricsView extends PageView {
 				final String calc = argument(arguments, 7);
 				// Every event, form and method as its own block - ACE's All Blocks.
 				final String all = argument(arguments, 8);
-				queue(() -> read(flowPath(object, type, mode, include, unit, expand, depth, calc, all)));
+				// Where the walk starts: an event or a form, as in ACE's tree.
+				final String start = argument(arguments, 9);
+				final String startType = argument(arguments, 10);
+				queue(() -> read(flowPath(object, type, mode, include, unit, expand, depth, calc, all,
+						start, startType)));
 				return null;
 			}
 		};
@@ -157,7 +161,8 @@ public class MetricsView extends PageView {
 	 *               any, and passes none
 	 */
 	private static String flowPath(String object, String type, String mode, String include,
-			String unit, String expand, String depth, String calc, String all) {
+			String unit, String expand, String depth, String calc, String all,
+			String start, String startType) {
 		StringBuilder path = new StringBuilder("/sap/bc/adt/vertex/flow/")
 			.append(object.toUpperCase())
 			.append("?mode=").append(escape(mode.isEmpty() ? "scheme" : mode));
@@ -181,6 +186,9 @@ public class MetricsView extends PageView {
 		}
 		if (!all.isEmpty()) {
 			path.append("&all=X");
+		}
+		if (!start.isEmpty()) {
+			path.append("&start=").append(escape(start)).append("&stype=").append(escape(startType));
 		}
 		return path.toString();
 	}

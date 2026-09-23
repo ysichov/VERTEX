@@ -86,6 +86,11 @@ const SERVICES = {
       if (args[8]) {
         p += "&all=X";
       }
+      // Where the walk starts: an event or a form, as a double-click in
+      // ACE's tree chose it. Without one, the whole program.
+      if (args[9]) {
+        p += "&start=" + encodeURIComponent(args[9]) + "&stype=" + encodeURIComponent(args[10] || "");
+      }
       return p;
     }
   },

@@ -53,13 +53,17 @@
 - Scheme and Flow in the theme's colours: blocks a step off the background, decision diamonds
   tinted with the accent, arrow labels on a backing, larger text; ACE's node colours kept.
 - Thin scrollbars in the theme's colours on every VERTEX page.
-- The calls flow draws ACE's calculated path by default, as SAP GUI does while "Show All Steps" is
-  off: only the events the data flow reaches. `ZCL_VX_ACE_FLOW=>PATH_EVENTS` carries ACE's
-  `GET_CODE_FLOW` over, cut to what the flow reads; the flow resource takes `calc=X`, and a
-  Data path | All calls switch sits beside the depth. Needs `src/` pulled.
+- Calls starts where you choose: picking an event or a form in Parts walks the calls from there,
+  as a double-click in ACE's tree does; From: … ✕ goes back to the whole program. The flow
+  resource takes `start` and `stype`. ACE's calculated path is carried over as well
+  (`ZCL_VX_ACE_FLOW=>PATH_EVENTS`, `calc=X`) but not offered in the window: a start point says
+  more plainly what the picture is about. Needs `src/` pulled.
 - A Classes | Methods switch in the calls flow, as ACE's All Blocks: one block per program or
   class by default, or every event, form and method.
 - Fixed: the "Opened … in system" answer printed the connection key instead of the system name.
+- Fixed: Logic drew nothing after the last branch or loop of a method - a method without branches
+  showed only its name. The statements after it and the unit's END line are drawn now
+  (`ZCL_VX_ACE_CODE_HTML=>BUILD_SCHEME`; the same fix went into ACE's `ZCL_ACE_CODE_HTML`).
 
 ## 2026-09-21 — VERTEX 0.6.0: source as navigation
 

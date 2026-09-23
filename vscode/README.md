@@ -60,9 +60,9 @@ development systems often have; it is off by default on purpose.
 - **VERTEX Tools** — opens the unified tools window. Choose an object type,
   enter its name, then choose the available function (for example Data, View,
   UML, Metrics, Calls, Logic, Diff or Versions). **Calls** shows which program, class or
-  method calls which in the whole object (ACE's Calls Flow): **Data path | All calls** keeps
-  only the calls the data passes through or every call, **Classes | Methods** draws a block per
-  class or per method. **Logic** is the flowchart of one method (ACE's Flow Scheme). The available functions depend
+  method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
+  per class or per method, and picking an event or a form in Parts starts the calls there, as a
+  double-click in ACE's tree does (**From: … ✕** goes back to the whole program). **Logic** is the flowchart of one method (ACE's Flow Scheme). The available functions depend
   on the selected object type; there are no separate SelecTor, Metrics or
   Versions commands any more. For a class or a program the window keeps one **Parts** list at
   the left: pick a method, a section, a form or an event there, and every function shows that

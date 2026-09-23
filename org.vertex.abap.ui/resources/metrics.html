@@ -265,8 +265,8 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
     <option value="class">UML class</option>
   </select>
   <span class="tools" id="tools" hidden>
-    <span class="seg depth" id="pathmode"><button data-calc="X" class="on" title="Only the calls the data passes through - ACE's default, with Show All Steps off">Data path</button><button data-calc="" title="Every call of every event - ACE: Show All Steps">All calls</button></span>
     <span class="seg depth" id="blockmode"><button data-all="" class="on" title="One block per program or class - ACE's default, with All Blocks off">Classes</button><button data-all="X" title="Every event, form and method as its own block - ACE: All Blocks">Methods</button></span>
+    <button id="callstart" hidden title="The calls start here - click to draw the whole program again"></button>
     <label class="depth" id="depthbox" title="How far the calls are followed">Depth
       <input id="depth" type="number" min="1" max="99" step="1" value="3"></label>
     <span class="seg" id="dir"><button data-dir="TB" class="on" title="Lay the diagram out down the page">&#8595; Top-down</button><button data-dir="LR" title="Lay the diagram out across the page">&#8594; Left-right</button></span>
@@ -1050,7 +1050,12 @@ var chosenKey = "";
 function sdeSelectPart(chosen) {
   if (!chosen) { return; }
   chosenKey = chosen.key;
-  if (mode === "scheme") {
+  if (mode === "calls") {
+    // Only an event or a form can start the walk, as in ACE.
+    if (chosen.type === "EVENT" || chosen.type === "FORM") {
+      setCallStart({ name: chosen.name, type: chosen.type });
+    }
+  } else if (mode === "scheme") {
     var unit = units.filter(function (u) { return partKeyOf(u.unit_name) === chosen.key; })[0];
     if (unit && !shown(unit)) { openUnit(unit); }
   } else if (mode === "metrics") {
@@ -1110,7 +1115,8 @@ function requestDiagram() {
   waiting = "flow";
   if (mode === "calls") {
     // The flow is the whole object; there is no unit to name.
-    sdeFlow(loadedObject, loadedType, "calls", "", "", "", String(depth), calcPath ? "X" : "", allBlocks ? "X" : "");
+    sdeFlow(loadedObject, loadedType, "calls", "", "", "", String(depth), "", allBlocks ? "X" : "",
+            callStart ? callStart.name : "", callStart ? callStart.type : "");
   } else {
     sdeFlow(loadedObject, loadedType, "scheme", shownUnit.include,
             shownUnit.name, expanded.join(","), "");
@@ -1309,11 +1315,25 @@ function turned(text, dir) {
   return text.replace(DIRECTIONS, "$1$2 " + dir);
 }
 
-/* The calls flow follows the calculated path unless told to show every step,
-   the way ACE does in SAP GUI. */
-var calcPath = true;
 // One block per program or class, as ACE starts in SAP GUI, or every unit.
 var allBlocks = false;
+// Where the calls start: an event or a form picked in the parts, as a
+// double-click in ACE's tree does. Null is the whole program.
+var callStart = null;
+
+function showCallStart() {
+  var button = document.getElementById("callstart");
+  button.hidden = !callStart;
+  button.textContent = callStart ? "From: " + callStart.name + " \u2715" : "";
+}
+
+function setCallStart(start) {
+  callStart = start;
+  showCallStart();
+  lastMermaid = null;
+  refit = true;
+  requestDiagram();
+}
 
 function setDirection(value) {
   direction = value;
@@ -1402,8 +1422,9 @@ function draw() {
     } else {
       applyZoom();
     }
-    if (isClass) { installUmlLens(pane, pane.querySelector("svg")); }
-    else { tintDecisions(pane.querySelector("svg")); }
+    // Tinted first, so the lens copies the picture as it is shown.
+    if (!isClass) { tintDecisions(pane.querySelector("svg")); }
+    installUmlLens(pane, pane.querySelector("svg"));
     status(lastCaption);
   }, function (e) {
     failed("mermaid could not draw this diagram." + String.fromCharCode(10)
@@ -1411,7 +1432,13 @@ function draw() {
   });
 }
 
+/* A magnifier over the node under the pointer - UML, Logic and Calls alike:
+   every mermaid block is a g.node. One per page: the previous drawing's
+   lens goes with it. */
 function installUmlLens(pane, svg) {
+  Array.prototype.forEach.call(document.querySelectorAll(".uml-lens"), function (old) {
+    old.parentNode.removeChild(old);
+  });
   if (!svg) { return; }
   var lens = document.createElement("div");
   lens.className = "uml-lens";
@@ -1768,6 +1795,7 @@ document.getElementById("depth").addEventListener("change", function () {
 
 document.getElementById("diagram").addEventListener("click", onDiagramClick);
 
+document.getElementById("callstart").addEventListener("click", function () { setCallStart(null); });
 Array.prototype.forEach.call(document.querySelectorAll("#blockmode button"), function (button) {
   button.addEventListener("click", function () {
     var want = button.getAttribute("data-all") === "X";
@@ -1781,19 +1809,7 @@ Array.prototype.forEach.call(document.querySelectorAll("#blockmode button"), fun
     requestDiagram();
   });
 });
-Array.prototype.forEach.call(document.querySelectorAll("#pathmode button"), function (button) {
-  button.addEventListener("click", function () {
-    var want = button.getAttribute("data-calc") === "X";
-    if (want === calcPath) { return; }
-    calcPath = want;
-    Array.prototype.forEach.call(document.querySelectorAll("#pathmode button"), function (other) {
-      other.className = (other.getAttribute("data-calc") === "X") === calcPath ? "on" : "";
-    });
-    lastMermaid = null;
-    refit = true;
-    requestDiagram();
-  });
-});
+
 Array.prototype.forEach.call(document.querySelectorAll("#dir button"), function (button) {
   button.addEventListener("click", function () {
     if (button.getAttribute("data-dir") !== direction) { setDirection(button.getAttribute("data-dir")); }

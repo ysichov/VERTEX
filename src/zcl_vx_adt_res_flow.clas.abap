@@ -127,10 +127,66 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
                                           i_include = lv_program
                                 CHANGING  cs_source = lo_walk->ms_sources ).
 
-      zcl_vx_ace_source_parser=>code_execution_scanner(
-        i_program = lv_program
-        i_include = lv_program
-        io_walk   = lo_walk ).
+      " START names where the walk begins, as a double-click on an event or a
+      " form in ACE's tree does: STYPE EVENT or FORM. Without it, the whole
+      " program. The name is matched without regard to case, because the
+      " window lists units as the metrics showed them.
+      DATA lv_start TYPE string.
+      DATA lv_stype TYPE string.
+      request->get_uri_query_parameter( EXPORTING name      = 'start'
+                                                  mandatory = abap_false
+                                                  default   = ''
+                                        IMPORTING value     = lv_start ).
+      request->get_uri_query_parameter( EXPORTING name      = 'stype'
+                                                  mandatory = abap_false
+                                                  default   = ''
+                                        IMPORTING value     = lv_stype ).
+      lv_stype = to_upper( lv_stype ).
+
+      IF lv_start IS NOT INITIAL AND lv_stype = 'EVENT'.
+        DATA(lv_event) = ||.
+        LOOP AT lo_walk->ms_sources-t_events INTO DATA(ls_event).
+          IF to_upper( condense( ls_event-name ) ) = to_upper( condense( lv_start ) ).
+            lv_event = ls_event-name.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+        IF lv_event IS INITIAL.
+          RAISE EXCEPTION TYPE cx_adt_res_not_found
+            EXPORTING resource_type = `event`
+                      resource_id   = lv_start.
+        ENDIF.
+        zcl_vx_ace_source_parser=>code_execution_scanner(
+          i_program = lv_program
+          i_include = lv_program
+          i_evname  = lv_event
+          i_evtype  = 'EVENT'
+          io_walk   = lo_walk ).
+      ELSEIF lv_start IS NOT INITIAL AND lv_stype = 'FORM'.
+        DATA(lv_form) = ||.
+        LOOP AT lo_walk->ms_sources-tt_calls_line INTO DATA(ls_form_line) WHERE eventtype = 'FORM'.
+          IF to_upper( ls_form_line-eventname ) = to_upper( condense( lv_start ) ).
+            lv_form = ls_form_line-eventname.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+        IF lv_form IS INITIAL.
+          RAISE EXCEPTION TYPE cx_adt_res_not_found
+            EXPORTING resource_type = `form`
+                      resource_id   = lv_start.
+        ENDIF.
+        zcl_vx_ace_source_parser=>parse_call_form(
+          i_call_name = lv_form
+          i_program   = lv_program
+          i_include   = lv_program
+          i_stack     = 0
+          io_walk     = lo_walk ).
+      ELSE.
+        zcl_vx_ace_source_parser=>code_execution_scanner(
+          i_program = lv_program
+          i_include = lv_program
+          io_walk   = lo_walk ).
+      ENDIF.
 
       DATA lv_mm TYPE string.
       DATA lt_node_map TYPE zcl_vx_ace_flow=>tt_node_map.
