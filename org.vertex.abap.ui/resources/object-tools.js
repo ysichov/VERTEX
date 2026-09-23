@@ -37,9 +37,11 @@
       action: { type: "string", enum: Object.keys(labels) }
     } }] };
   const instructions = "When asked to run a VERTEX function, return navigation with the exact object type, name and action. "
+    + "Only an explicit request to open, show or switch to a function changes the view. Explaining, describing, reviewing or any question "
+    + "about what is on screen keeps the view: navigation null. "
     + "Use the current workspace object when requested. Ask if the object is ambiguous. Do not claim execution: the UI runs the function after your reply. "
     + "Use null navigation for other answers. Available types and actions: " + JSON.stringify(objects)
-    + ". In Tools, show/view/open source uses action view for PROG, CLAS and FUNC. Return navigation instead of calling open_sap_object for viewing. For explicit editing requests use open_sap_object to open an editable VS Code tab. Default to review for TR, diff for packages and data for tables. Package UML uses DEVC/uml.";
+    + ". In Tools, show/view/open source uses action view for PROG, CLAS and FUNC. Return navigation instead of calling open_sap_object for viewing. For explicit editing requests use open_sap_object to open an editable VS Code tab. Default to review for TR, diff for packages and data for tables. Diff is the version history: versions, history, what changed, compare versions or who changed it all mean action diff, never view. Package UML uses DEVC/uml.";
   const api = { objects, labels, normalize, navigationSchema, instructions };
   if (typeof module !== "undefined") module.exports = api;
   else root.VertexObjects = api;

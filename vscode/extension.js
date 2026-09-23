@@ -649,6 +649,40 @@ function hasMcpApi() {
 
 let tools = null;
 
+/* A Tools window showing a diff tells the panel which part and which two
+   versions are on screen, but not the lines: the panel's chat has no tool to
+   read a diff. So the changed lines are read here, from the window's system,
+   and handed over as the selected fragment - the changes with three lines
+   around each, capped like any fragment. */
+async function withShownDiff(context, state) {
+  const view = state && state.vertex_view;
+  if (!view || view.view !== "diff" || !view.part || !view.version || (state.selected_fragment && state.selected_fragment.text)) {
+    return state;
+  }
+  const route = SERVICES.versions.load([view.name, view.type, view.part, view.part_type,
+                                        view.compared_with || "", view.version, "I"]);
+  const raw = await pinTo(state.system, () => fetch(context, route));
+  if (typeof raw !== "string" || raw.indexOf("ERROR:") === 0) {
+    throw new Error("VERTEX could not read the diff shown in the Tools window: " + String(raw).substring(6));
+  }
+  const data = JSON.parse(raw);
+  const ops = data.ops || [];
+  const near = new Array(ops.length).fill(false);
+  ops.forEach((o, i) => {
+    if (o.op === "=") { return; }
+    for (let k = Math.max(0, i - 3); k <= Math.min(ops.length - 1, i + 3); k++) { near[k] = true; }
+  });
+  const lines = [];
+  ops.forEach((o, i) => {
+    if (near[i]) { lines.push((o.op === "=" ? " " : o.op) + " " + o.text); }
+    else if (lines[lines.length - 1] !== "...") { lines.push("..."); }
+  });
+  if (!lines.length) { return state; }
+  return { ...state, selected_fragment: { view,
+    text: "Diff of " + view.part.trim() + " from " + (view.compared_with || "nothing") + " to " + view.version
+          + " ('-' removed, '+' added):\n" + lines.join("\n") } };
+}
+
 function activate(context) {
   const sapCode = require("./code-workbench").register(vscode, context, { active, password, pin: pinTo,
     pinned: () => pinnedSystem.getStore() || "", systems });
@@ -682,7 +716,8 @@ function activate(context) {
       chat: () => require("./chat").create(vscode, sapCode, tools, context.secrets) }, initial);
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", showTools));
   require("./sidebar").register(vscode, context, active,
-    require("./chat").create(vscode, sapCode, tools, context.secrets), systems, () => latestToolsContext);
+    require("./chat").create(vscode, sapCode, tools, context.secrets), systems,
+    () => withShownDiff(context, latestToolsContext));
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation
   // so a registered Codex/Claude connection also works after a window reload.

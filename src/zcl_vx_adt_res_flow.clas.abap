@@ -101,6 +101,13 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
                                                   mandatory = abap_false
                                                   default   = ''
                                         IMPORTING value     = lv_params ).
+      " CALC=X draws the calculated path only, as ACE does in SAP GUI while
+      " "Show All Steps" is off; without it, every step of every event.
+      DATA lv_calc TYPE string.
+      request->get_uri_query_parameter( EXPORTING name      = 'calc'
+                                                  mandatory = abap_false
+                                                  default   = ''
+                                        IMPORTING value     = lv_calc ).
 
       " The walk needs somewhere to keep the parse, the step table and the
       " depth. That used to be the viewer object, built headless only so the
@@ -131,6 +138,7 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
         EXPORTING it_steps      = CONV zcl_vx_ace_flow=>tt_flow_steps( lo_walk->mt_steps )
                   i_all_methods = CONV boolean( lv_all )
                   i_with_params = CONV boolean( lv_params )
+                  i_calc_path   = xsdbool( to_upper( lv_calc ) = 'X' )
         IMPORTING et_node_map   = lt_node_map
         CHANGING  cs_parse_data = lo_walk->ms_sources
         RECEIVING rv_mm         = lv_mm ).

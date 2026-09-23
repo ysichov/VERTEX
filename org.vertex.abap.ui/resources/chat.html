@@ -40,6 +40,14 @@ textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertic
 .actions.top { justify-content: flex-end; margin: 0 0 6px; }
 #working { color: var(--muted); margin-right: auto; }
 #versionid { font: inherit; padding: 3px 6px; color: var(--fg); background: var(--input); border: 1px solid var(--border); }
+
+/* Thin scrollbars in the theme's own colours instead of the engine's wide default. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--vscode-scrollbarSlider-background, rgba(128, 128, 128, .4)); }
+::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128, 128, 128, .6)); }
+::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground, rgba(128, 128, 128, .8)); }
 </style></head><body>
 <header>
   <span id="system">Resolving ABAP project ...</span>

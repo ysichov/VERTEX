@@ -1,31 +1,57 @@
-# История разработок
+# Release history
 
-## 2026-09-23 — VERTEX 0.6.9: провайдеры, модели и окно со своей системой
+## 2026-09-23 — VERTEX 0.6.9: providers, models and a window with its own system
 
-- Провайдеры названы по тому, за что платят: «Claude subscription (Claude Code)», «ChatGPT
-  subscription (Codex)», «Anthropic API (key)»; в панели — короткие Claude / ChatGPT / Anthropic API.
-  В документации сказано, что подписка работает только через установленное расширение вендора.
-- LLM Providers: таблица моделей для каждого провайдера с чекбоксами, не меньше одной включённой.
-  Для подписки Claude — список версий по полному id (`CLAUDE_VERSIONS`), по умолчанию включена
-  новейшая модель каждого семейства; другой id добавляется после проверочного запроса. Anthropic
-  API берёт список из `GET /v1/models`. Без выбора используется самая слабая включённая модель.
-- Панель VERTEX: сверху ссылки SAP system и LLM Providers, внизу закреплены провайдер, модель,
-  New conversation, поле ввода и кнопка VERTEX Tools с логотипом; Review & save убрана (есть в
-  контекстном меню).
-- Окно VERTEX Tools хранит систему, на которой открыто, и называется по ней («VERTEX E19»); чат
-  окна Ask AI со сплиттером и крестиком, провайдер и модель общие с панелью.
-- Главный чат обращается к любой системе из `vertex.systems`, если она названа в вопросе:
-  перенос кода — чтение в одной системе и черновик в другой через Code Change reviewer.
-- Сплиттеры и сворачивание Parts в Versions, Code Explorer и View source.
-- Versions разложен как в AVE: слева Parts и под ними список версий выбранной части (со
-  сплиттером по высоте), справа diff. Любую версию можно закрепить как базу (◇) и сравнивать
-  с ней остальные; Diff prev возвращает сравнение с предыдущей версией.
-- Переключатели AVE в Versions: TOCs (версии transport-of-copies, по умолчанию скрыты), Dups
-  (скрыть версию, совпадающую с предыдущей, по умолчанию включено) и Case/ind (сравнивать без учёта регистра и
-  отступов, по умолчанию включено). Применяет ABAP-сторона — `ZCL_VX_ADT_RES_VERSIONS` берёт
-  параметры `toc`, `dups`, `ic`; нужен pull `src/`. Без параметра `toc` версии TOC теперь не
-  выводятся — это касается и плагина Eclipse 0.6.3.
-- Исправлено: ответ «Opened … in system» показывал ключ подключения вместо имени системы.
+- Providers are named by what is paid for: "Claude subscription (Claude Code)", "ChatGPT
+  subscription (Codex)", "Anthropic API (key)"; the panel shows the short Claude / ChatGPT /
+  Anthropic API. The documentation says a subscription works only through the vendor's own
+  extension, installed and signed in.
+- LLM Providers: a table of models per provider with a checkbox each; at least one stays on.
+  A Claude subscription lists versions by full id (`CLAUDE_VERSIONS`), the newest of each family
+  on by default; another id is added after one test request. The Anthropic API lists
+  `GET /v1/models`. With no model chosen, the weakest one switched on is used.
+- The VERTEX panel: SAP system and LLM Providers links at the top; provider, model, New
+  conversation, the question box and a VERTEX Tools button with the logo docked at the bottom.
+  Review & save left the panel (it is in the editor's context menu).
+- A VERTEX Tools window keeps the system it was opened on and is named after it ("VERTEX E19");
+  its Ask AI chat has a splitter and a close button and shares the panel's provider and model.
+- The panel's chat reaches any system in `vertex.systems` named in the question: copying code is
+  a read in one system and a draft in the other, through the Code Change reviewer.
+- Splitters and folding for Parts in Versions, Code Explorer and View source.
+- Versions is laid out as AVE's was: Parts on the left with the versions of the chosen part under
+  them (a splitter between), the diff on the right. Any version can be pinned as the base (◇);
+  the Prev | Any switch compares with the previous version or with the base (the active version
+  until one is pinned). The diff shows in one column (Inline) or two (2 pane); in 2 pane, Parts
+  and Versions move to a band above the diff and the base stands on the right. The versions list
+  folds on its own, apart from Parts.
+- AVE's switches in Versions: TOCs (transport-of-copies versions, hidden by default), Dups (hide a
+  version identical to the one before it, on by default) and Case/ind (compare without case and
+  indentation, on by default). The ABAP side applies them — `ZCL_VX_ADT_RES_VERSIONS` takes
+  `toc`, `dups` and `ic`, so `src/` has to be pulled. Without `toc`, TOC versions are no longer
+  listed; that applies to the Eclipse plugin 0.6.3 as well.
+- The panel's chat opens a VERTEX Tools window when a function is asked for ("open table
+  SFLIGHT", "diff of ZCL_FOO"); before, it only said it was opening one.
+- The panel's chat sees what a Tools window shows: Versions reports the part and the versions
+  compared, and the changed lines of the diff are attached to the question, read from the
+  window's system. Fixed: a Tools window's context was lost in VS Code because it arrived as JSON
+  text. Code Explorer reports the method of the scheme on screen; the chat answers from the
+  screen alone only when code or UML is on it, and otherwise reads the method through the SAP
+  tools. Metrics sends its table - every unit and the totals - so the chat answers about the
+  numbers on screen. Explaining never changes the view.
+- Metrics totals are rounded to two places instead of showing float noise.
+- A ? button in Code Explorer opens a help on every metric: what ACE counts, the formula, and
+  how to read the value.
+- Every choice between modes uses one switch template, the mode in force lit: Compact | Full,
+  Inline | 2 pane, Prev | Any, Versions | Review, Join | Pivot table, Settings | Full view and
+  Top-down | Left-right.
+- Scheme and Flow in the theme's colours: blocks a step off the background, decision diamonds
+  tinted with the accent, arrow labels on a backing, larger text; ACE's node colours kept.
+- Thin scrollbars in the theme's colours on every VERTEX page.
+- The calls flow draws ACE's calculated path by default, as SAP GUI does while "Show All Steps" is
+  off: only the events the data flow reaches. `ZCL_VX_ACE_FLOW=>PATH_EVENTS` carries ACE's
+  `GET_CODE_FLOW` over, cut to what the flow reads; the flow resource takes `calc=X`, and a
+  Path | All steps switch sits beside the depth. Needs `src/` pulled.
+- Fixed: the "Opened … in system" answer printed the connection key instead of the system name.
 
 ## 2026-09-21 — VERTEX 0.6.0: source as navigation
 
@@ -39,13 +65,22 @@
 - In both VS Code chats, Enter sends a request and Ctrl+Enter adds a line; the separate Send button
   is gone.
 
-## 2026-09-14 — VERTEX 0.5.4: чат и чтение SAP-кода через ADT
+## 2026-09-14 — VERTEX 0.5.4: chat and reading SAP code through ADT
 
-- Перенесены в расширение VS Code операции поиска и чтения программ, глобальных классов и функциональных модулей SAP.
-- В интерфейсе оставлен свободный чат; SAP-инструменты вызываются его оркестратором. SelecTor, Metrics и Versions сохранены как прежние быстрые запуски.
-- Создание и изменение объектов готовят черновик и diff. Запись в SAP выполняется только после проверки и явного применения черновика.
-- Ключи и пароли не записываются в проект: пароль системы хранится в VS Code SecretStorage, настройки систем находятся в `vertex.systems`.
-- Причина ошибки `certificate has expired`: клиент `abap-adt-api` использовал собственный Axios-транспорт, а настройки TLS VS Code не совпадали с прямым запросом к SAP. Работающий ADT подтвердил доступность системы.
-- Добавлен явный `sap-http.js`: он выполняет запросы напрямую к настроенному SAP-хосту и передаёт `rejectUnauthorized: false`, когда для системы включено `allowInsecureCertificate: true`.
-- Проверка на `https://sap.example.com:44300`: при разрешённом сертификате TLS проходит и сервер отвечает HTTP 401 без пароля; при строгой проверке воспроизводится `CERT_HAS_EXPIRED`.
-- Собран пакет [vertex-abap-0.5.4.vsix](vscode/vertex-abap-0.5.4.vsix). Тесты ADT и рабочей области проходят.
+- Searching and reading programs, global classes and function modules moved into the VS Code
+  extension.
+- The interface keeps a free-prompt chat; its orchestrator calls the SAP tools. SelecTor, Metrics
+  and Versions stay as the earlier quick launches.
+- Creating and changing objects prepares a draft and a diff. Nothing is written to SAP until the
+  draft has been checked and explicitly applied.
+- Keys and passwords are not written into the project: the system password is kept in VS Code
+  SecretStorage, and the systems are configured in `vertex.systems`.
+- The cause of `certificate has expired`: the `abap-adt-api` client used its own Axios transport,
+  and VS Code's TLS settings did not match a direct request to SAP. A working ADT confirmed the
+  system was reachable.
+- An explicit `sap-http.js` was added: it sends requests straight to the configured SAP host and
+  passes `rejectUnauthorized: false` when the system has `allowInsecureCertificate: true`.
+- Checked against `https://sap.example.com:44300`: with the certificate allowed, TLS passes and the
+  server answers HTTP 401 without a password; with strict checking, `CERT_HAS_EXPIRED` is
+  reproduced.
+- Built [vertex-abap-0.5.4.vsix](vscode/vertex-abap-0.5.4.vsix). The ADT and workspace tests pass.

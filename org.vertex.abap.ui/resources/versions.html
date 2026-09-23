@@ -112,11 +112,39 @@
   .vsplit:hover, .vsplit.dragging { background: var(--selected); }
   body.rowdrag { cursor: row-resize; user-select: none; }
   .versionsbox { flex: 1 1 50%; min-height: 60px; overflow: auto; }
-  .versions-head { padding: 4px 6px 4px 10px; background: var(--surface-2); border-bottom: 1px solid var(--line);
-                   display: flex; align-items: center; gap: 4px; position: sticky; top: 0; z-index: 2; }
-  .versions-head .title { font-weight: 600; margin-right: auto; }
-  .versions-head button { padding: 0 6px; }
-  .versions-head button.on { background: var(--selected); font-weight: 600; }
+  /* One line whatever the width: the switches keep to it and the fold arrow
+     stays at its end rather than wrapping into a second row. */
+  .versions-head { padding: 4px 6px; background: var(--surface-2); border-bottom: 1px solid var(--line);
+                   display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; position: sticky; top: 0; z-index: 2;
+                   overflow: hidden; }
+  /* Switches as chips: on carries a lit lower edge and a soft glow in the
+     theme's accent colour. All colours come from the theme. */
+  .versions-head button { --accent: var(--vscode-focusBorder, #0a66c2);
+                          padding: 1px 8px; border-radius: 6px; white-space: nowrap; border: none; flex: 0 1 auto; min-width: 0;
+                          overflow: hidden; text-overflow: ellipsis;
+                          border-bottom: 2px solid transparent; background: var(--field-bg); color: var(--muted);
+                          transition: color .12s, box-shadow .12s, border-color .12s; }
+  .versions-head button:hover { color: var(--fg); }
+  .versions-head button.on { color: var(--fg); border-bottom-color: var(--accent);
+                             box-shadow: 0 3px 8px -3px var(--accent); }
+  /* The versions fold on their own, down to their bar; the parts take the room. */
+  .versions-head button.fold { margin-left: auto; background: transparent; padding: 0 4px; flex: 0 0 auto; }
+  .parts.vfolded .vsplit, .parts.vfolded #versionlist { display: none; }
+  .parts.vfolded .versionsbox { flex: 0 0 auto; min-height: 0; }
+  .parts.vfolded .partsbox { flex: 1 1 auto !important; }
+
+  /* In 2 pane the code needs the width: parts and versions move to a band
+     above the diff, side by side, and the splitters turn with them. */
+  body.top .panes { flex-direction: column; }
+  body.top .versions { min-height: 0; }
+  body.top .parts { flex: 0 0 35%; flex-direction: row; border-right: none; border-bottom: 1px solid var(--border); }
+  body.top #partssplit { cursor: row-resize; margin: -2px 0 0; }
+  body.top .vsplit { cursor: col-resize; border-top: none; border-left: 1px solid var(--border); }
+  body.top .partsbox, body.top .versionsbox { min-height: 0; min-width: 120px; }
+  body.top .parts.folded { flex-basis: 30px !important; }
+  body.top .parts.folded .parts-head { flex-direction: row; padding: 5px 6px 5px 10px; }
+  body.top .parts.folded .parts-head .title { writing-mode: horizontal-tb; margin-right: auto; }
+  body.top .parts.vfolded .versionsbox { flex: 0 0 auto; }
   #versionlist .note { padding: 8px 10px; }
   #versionlist th { position: static; }
   #versionlist tr.on td { background: var(--selected); font-weight: 600; }
@@ -210,6 +238,18 @@
   .diffbar .counts .ins { color: var(--ins-mark); }
   .diffbar .counts .del { color: var(--del-mark); }
 
+  /* A choice between two or more modes: every mode is named, the one in force
+     is lit. One template for every page; --seg-on is the page's raised colour. */
+  .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; vertical-align: middle;
+         background: var(--field-bg); border: 1px solid var(--field-border); }
+  .seg button { --accent: var(--vscode-focusBorder, #0a66c2); min-width: 0; margin: 0;
+                padding: 1px 9px; border: none; border-radius: 5px; background: transparent; color: var(--muted);
+                border-bottom: 2px solid transparent; white-space: nowrap; font-weight: normal; box-shadow: none; }
+  .seg button:hover { color: var(--fg); background: transparent; }
+  .seg button.on { color: var(--fg); background: var(--seg-on); border-bottom-color: var(--accent);
+                   box-shadow: 0 3px 8px -3px var(--accent); font-weight: normal; }
+  .seg { --seg-on: var(--surface-2); }
+
   table.diff { font-family: Consolas, monospace; white-space: pre; width: auto; }
   table.diff td { border: none; padding: 0 8px; vertical-align: top; }
   table.diff td.ln { text-align: right; color: var(--faint); user-select: none;
@@ -222,6 +262,15 @@
   table.diff tr.del { background: var(--del-bg); }
   table.diff tr.del td.mk { color: var(--del-mark); }
   table.diff tr.gap td { color: var(--faint); }
+
+  /* Side by side: the old version on the left, the new one on the right, a
+     deleted line facing the line that replaced it. */
+  table.diff.side { width: 100%; table-layout: fixed; }
+  table.diff.side td.code { white-space: pre-wrap; overflow-wrap: anywhere; }
+  table.diff.side td.code.old { border-right: 1px solid var(--line); }
+  table.diff.side td.del { background: var(--del-bg); }
+  table.diff.side td.ins { background: var(--ins-bg); }
+  table.diff.side td.none { background: var(--surface); }
 
   /* The action row of a block. Part of the diff table so that the block and
      its lines cannot drift apart: one rendering, with a row added. */
@@ -311,6 +360,14 @@
   #selection-ask pre { max-height: 150px; overflow: auto; white-space: pre-wrap; color: var(--muted); background: var(--surface); padding: 6px; }
   #selection-ask .row { display: flex; justify-content: end; gap: 6px; margin-top: 10px; }
   #versionid { font: inherit; padding: 2px 4px; color: var(--fg); background: var(--field-bg); border: 1px solid var(--field-border); }
+
+/* Thin scrollbars in the theme's own colours instead of the engine's wide default. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--vscode-scrollbarSlider-background, rgba(128, 128, 128, .4)); }
+::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128, 128, 128, .6)); }
+::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground, rgba(128, 128, 128, .8)); }
 </style>
 </head>
 <body>
@@ -343,11 +400,11 @@
       <div class="vsplit" id="vsplit" title="Drag to share the height"></div>
       <div class="versionsbox" id="versionsbox">
         <div class="versions-head">
-          <span class="title">Versions</span>
-          <button id="diffprev" class="on" title="Compare each version with the one before it">Diff prev</button>
+          <span id="diffmode"></span>
           <button id="toc">TOCs</button>
           <button id="dups" class="on">Dups</button>
           <button id="icase" class="on">Case/ind</button>
+          <button id="versionsfold" class="fold" title="Hide the versions">&#9662;</button>
         </div>
         <div id="versionlist"></div>
       </div>
@@ -401,6 +458,23 @@ var parts = [];
 var current = null;
 var versions = [];
 var compact = true;
+// How a plain diff is drawn: one column, or the two versions side by side.
+var sideBySide = false;
+
+/* The band above the diff and the column beside it keep their own sizes, so
+   switching back and forth returns to what each was dragged to. */
+var sideSize = { column: "", band: "" };
+
+function placePanels() {
+  var top = sideBySide;
+  if (document.body.classList.contains("top") === top) { return; }
+  var panel = document.getElementById("partspanel");
+  sideSize[top ? "column" : "band"] = panel.style.flexBasis;
+  document.body.classList.toggle("top", top);
+  panel.style.flexBasis = sideSize[top ? "band" : "column"];
+  // The split between parts and versions turns from height to width.
+  document.getElementById("partsbox").style.flex = "";
+}
 
 function status(text) {
   document.getElementById("status").textContent = text || "";
@@ -541,24 +615,20 @@ function renderCards() {
   // review of one object is not a thing.
   if (!scope || !usable("review")) { return; }
 
-  [["V", "Versions"], ["R", "Review"]].forEach(function (m) {
-    var button = document.createElement("button");
-    button.textContent = m[1];
-    if (mode === m[0]) { button.className = "on"; }
-    button.addEventListener("click", function () {
-      mode = m[0];
-      renderCards();
-      if (mode === "R") { loadReview(); } else { loadParts(true); }
-    });
-    box.appendChild(button);
-  });
+  box.appendChild(segmented([["Versions", "The versions of each object in the request"],
+                             ["Review", "The code review saved for the request"]],
+                            mode === "R" ? 1 : 0, function (index) {
+    mode = index === 1 ? "R" : "V";
+    renderCards();
+    if (mode === "R") { loadReview(); } else { loadParts(true); }
+  }));
 }
 
 var autoDiff = false;
 
-/* A version can be pinned as the base: every version picked after it is then
-   compared with the base instead of with the one before it. Diff prev goes
-   back to the change each version made. */
+/* Diff prev on: a version is compared with the one before it - the change it
+   made. Off: with the pinned base, or with the active version when nothing is
+   pinned. Pinning a base turns Diff prev off. */
 var base = "";
 var diffPrev = true;
 var picked = -1;
@@ -585,11 +655,21 @@ function showSwitches() {
     });
 }
 
+/* What a picked version is compared with, as one control: the version before
+   it, or the base - the pinned one, or the active version when none is. */
 function showDiffPrev() {
-  var button = document.getElementById("diffprev");
-  button.className = diffPrev ? "on" : "";
-  button.title = diffPrev ? "Compare each version with the one before it"
-                          : "Comparing with the base " + asVersion(base) + " - click to compare with the one before instead";
+  var holder = document.getElementById("diffmode");
+  holder.innerHTML = "";
+  holder.appendChild(segmented(
+    [["Prev", "Compare each version with the one before it: the change it made"],
+     ["Any", base ? "Compare with the pinned base " + asVersion(base) + "; pin another with ◇ to change it"
+                  : "Compare with any version: pin it with ◇ - until then, the active version"]],
+    diffPrev ? 0 : 1,
+    function (index) {
+      diffPrev = index === 0;
+      showDiffPrev();
+      if (picked >= 0) { loadDiff(picked); }
+    }));
 }
 
 function versionNote(text) {
@@ -646,7 +726,8 @@ function loadDiff(index) {
   var to = versions[index];
   picked = index;
   markVersions();
-  var from = !diffPrev && base && base !== to.version ? base
+  var against = base || ACTIVE;
+  var from = !diffPrev && against !== to.version ? against
            : index + 1 < versions.length ? versions[index + 1].version : "";
   status("comparing " + (from ? asVersion(from) : "nothing")
          + " with " + asVersion(to.version) + " ...");
@@ -706,9 +787,12 @@ function sdeReady() {
   if (data.requests) { showing = { view: "requests" }; renderRequests(data); }
   else if (data.parts) { showing = { view: "parts" }; renderPartList(data); }
   else if (data.blocks) { showing = { view: "review_object" }; renderReviewPart(data); }
-  else if (data.ops) { showing = { view: "diff", version: data.to }; renderDiff(data); }
+  else if (data.ops) { showing = { view: "diff", version: data.to, from: data.from || "" }; renderDiff(data); }
   else if (data.reviewers) { showing = { view: "review" }; renderReview(data); }
   else { showing = { view: "versions" }; renderVersions(data); }
+  // The window tells its host where it is now, so a chat outside it - the
+  // VERTEX panel's - knows which part and which versions are on screen.
+  if (typeof sdeContextUpdate === "function") { sdeContextUpdate({ vertex_view: sdeContext() }); }
   // A plan from the assistant goes on from here, when this was the step it
   // was waiting for.
   if (pending) { continuePlan(data); }
@@ -1146,6 +1230,115 @@ function diffTable(ops, blocks) {
   return table;
 }
 
+/* The same operations in two columns. A run of deleted lines and the run of
+   added lines after it are paired row by row - the old text facing what
+   replaced it - and the shorter side is padded with empty cells. Folding
+   follows the one-column view: a row is shown when any of its lines is.
+   SWAP puts the new version on the left and the old one on the right: that is
+   how a version compared with a base reads, the base standing on the right. */
+function sideTable(ops, swap) {
+  var show = compact ? showMask(ops) : null;
+  var rows = [];
+  var oldLine = 0, newLine = 0, i = 0;
+  while (i < ops.length) {
+    if (ops[i].op === "=") {
+      oldLine++; newLine++;
+      rows.push({ left: { n: oldLine, text: ops[i].text, cls: "" },
+                  right: { n: newLine, text: ops[i].text, cls: "" }, idx: [i] });
+      i++;
+      continue;
+    }
+    var dels = [], adds = [];
+    while (i < ops.length && ops[i].op === "-") { dels.push(i); i++; }
+    while (i < ops.length && ops[i].op === "+") { adds.push(i); i++; }
+    for (var k = 0; k < Math.max(dels.length, adds.length); k++) {
+      var row = { idx: [] };
+      if (k < dels.length) {
+        oldLine++;
+        row.left = { n: oldLine, text: ops[dels[k]].text, cls: "del" };
+        row.idx.push(dels[k]);
+      }
+      if (k < adds.length) {
+        newLine++;
+        row.right = { n: newLine, text: ops[adds[k]].text, cls: "ins" };
+        row.idx.push(adds[k]);
+      }
+      rows.push(row);
+    }
+  }
+
+  var tbody = document.createElement("tbody");
+  var folded = false;
+  rows.forEach(function (row) {
+    var visible = !show || row.idx.some(function (index) { return show[index]; });
+    if (!visible) {
+      if (!folded) {
+        var gap = document.createElement("tr");
+        gap.className = "gap";
+        var td = document.createElement("td");
+        td.colSpan = 4;
+        td.textContent = "⋮";
+        gap.appendChild(td);
+        tbody.appendChild(gap);
+        folded = true;
+      }
+      return;
+    }
+    folded = false;
+    var tr = document.createElement("tr");
+    (swap ? [["right", "old"], ["left", "new"]] : [["left", "old"], ["right", "new"]]).forEach(function (side) {
+      var cell = row[side[0]];
+      var ln = document.createElement("td");
+      ln.className = "ln";
+      ln.textContent = cell ? String(cell.n) : "";
+      var code = document.createElement("td");
+      code.className = "code " + side[1] + " " + (cell ? cell.cls : "none");
+      code.textContent = cell ? cell.text : "";
+      tr.appendChild(ln);
+      tr.appendChild(code);
+    });
+    tbody.appendChild(tr);
+  });
+
+  var table = document.createElement("table");
+  table.className = "diff side";
+  // A fixed layout takes its widths from the first row, and that can be a
+  // fold spanning all four columns - so the widths are given here instead.
+  var cols = document.createElement("colgroup");
+  ["3.5em", "", "3.5em", ""].forEach(function (width) {
+    var col = document.createElement("col");
+    if (width) { col.style.width = width; }
+    cols.appendChild(col);
+  });
+  table.appendChild(cols);
+  table.appendChild(tbody);
+  return table;
+}
+
+/* Two named modes in one control. CHOICES are [label, title] pairs; the
+   picked index is handed to ONPICK, which redraws. */
+function segmented(choices, selected, onPick) {
+  var box = document.createElement("span");
+  box.className = "seg";
+  choices.forEach(function (choice, index) {
+    var button = document.createElement("button");
+    button.textContent = choice[0];
+    button.title = choice[1];
+    button.className = index === selected ? "on" : "";
+    button.addEventListener("click", function () { if (index !== selected) { onPick(index); } });
+    box.appendChild(button);
+  });
+  return box;
+}
+
+var COMPACT_CHOICES = [["Compact", "Only the changes and three lines around them"],
+                       ["Full", "The whole source"]];
+
+/* A diff against the base rather than against the previous version. */
+function baseOnRight(data) {
+  return !diffPrev && !!data.from;
+}
+
 function renderDiff(data) {
   var ops = data.ops || [];
   var root = document.getElementById("root");
@@ -1157,9 +1350,12 @@ function renderDiff(data) {
 
   var what = document.createElement("span");
   // An empty FROM is the oldest version, compared against nothing.
-  what.textContent = (data.from ? asVersion(data.from) : "nothing")
-                   + (data.from && data.from === base ? " (base)" : "")
-                   + " → " + asVersion(data.to);
+  var fromText = (data.from ? asVersion(data.from) : "nothing")
+               + (data.from && data.from === base ? " (base)" : "")
+               + (data.from === ACTIVE && !diffPrev ? " (active)" : "");
+  what.textContent = sideBySide && baseOnRight(data)
+                   ? asVersion(data.to) + " ↔ " + fromText
+                   : fromText + " → " + asVersion(data.to);
   bar.appendChild(what);
 
   var counts = document.createElement("span");
@@ -1175,15 +1371,18 @@ function renderDiff(data) {
   counts.appendChild(del);
   bar.appendChild(counts);
 
-  var toggle = document.createElement("button");
-  toggle.textContent = compact ? "Full" : "Compact";
-  toggle.title = compact ? "Show the whole source"
-                         : "Show only the changes and three lines around them";
-  toggle.addEventListener("click", function () {
-    compact = !compact;
+  bar.appendChild(segmented(COMPACT_CHOICES, compact ? 0 : 1, function (index) {
+    compact = index === 0;
     renderDiff(data);
-  });
-  bar.appendChild(toggle);
+  }));
+
+  bar.appendChild(segmented([["Inline", "The change in one column"],
+                             ["2 pane", "The old version on the left, the new one on the right"]],
+                            sideBySide ? 1 : 0, function (index) {
+    sideBySide = index === 1;
+    placePanels();
+    renderDiff(data);
+  }));
 
   root.appendChild(bar);
 
@@ -1213,7 +1412,7 @@ function renderDiff(data) {
   }
 
   autoDiff = false;
-  root.appendChild(diffTable(ops));
+  root.appendChild(sideBySide ? sideTable(ops, baseOnRight(data)) : diffTable(ops));
   status(data.added + " added, " + data.deleted + " deleted");
 }
 
@@ -1429,15 +1628,10 @@ function renderReviewPart(data) {
   counts.appendChild(del);
   bar.appendChild(counts);
 
-  var toggle = document.createElement("button");
-  toggle.textContent = compact ? "Full" : "Compact";
-  toggle.title = compact ? "Show the whole source"
-                         : "Show only the changes and three lines around them";
-  toggle.addEventListener("click", function () {
-    compact = !compact;
+  bar.appendChild(segmented(COMPACT_CHOICES, compact ? 0 : 1, function (index) {
+    compact = index === 0;
     renderReviewPart(data);
-  });
-  bar.appendChild(toggle);
+  }));
 
   root.appendChild(bar);
 
@@ -2242,6 +2436,9 @@ function pageState() {
     part: current ? current.name : "",
     part_type: current ? current.part_type : "",
     version: showing.view === "diff" ? showing.version : "",
+    // What the version on screen is compared with: the one before it, the
+    // pinned base or the active version. Empty is the oldest, against nothing.
+    compared_with: showing.view === "diff" ? showing.from : "",
     review_object: review_part ? review_part.obj_name : "",
     review_type: review_part ? review_part.objtype : ""
   };
@@ -2440,29 +2637,35 @@ function stopPlan() {
 });
 showSwitches();
 
-document.getElementById("diffprev").addEventListener("click", function () {
-  if (!base) { return; }
-  diffPrev = !diffPrev;
-  showDiffPrev();
-  if (picked >= 0) { loadDiff(picked); }
+document.getElementById("versionsfold").addEventListener("click", function () {
+  var panel = document.getElementById("partspanel");
+  var folded = !panel.classList.contains("vfolded");
+  panel.classList.toggle("vfolded", folded);
+  this.innerHTML = folded ? "&#9656;" : "&#9662;";
+  this.title = folded ? "Show the versions" : "Hide the versions";
 });
+
+showDiffPrev();
 
 document.getElementById("vsplit").addEventListener("mousedown", function (e) {
   if (e.button !== 0) { return; }
   e.preventDefault();
   var top = document.getElementById("partsbox");
   var split = e.currentTarget;
-  var startY = e.clientY;
-  var startHeight = top.getBoundingClientRect().height;
-  var room = top.parentNode.getBoundingClientRect().height;
+  var band = document.body.classList.contains("top");
+  var start = band ? e.clientX : e.clientY;
+  var startSize = band ? top.getBoundingClientRect().width : top.getBoundingClientRect().height;
+  var room = band ? top.parentNode.getBoundingClientRect().width : top.parentNode.getBoundingClientRect().height;
   split.classList.add("dragging");
-  document.body.classList.add("rowdrag");
+  document.body.classList.add(band ? "dragging" : "rowdrag");
   function move(ev) {
-    var height = Math.max(60, Math.min(room - 80, startHeight + ev.clientY - startY));
-    top.style.flex = "0 0 " + height + "px";
+    var size = Math.max(band ? 120 : 60,
+                        Math.min(room - (band ? 120 : 80), startSize + (band ? ev.clientX : ev.clientY) - start));
+    top.style.flex = "0 0 " + size + "px";
   }
   function up() {
     split.classList.remove("dragging");
+    document.body.classList.remove("dragging");
     document.body.classList.remove("rowdrag");
     document.removeEventListener("mousemove", move);
     document.removeEventListener("mouseup", up);
@@ -2480,18 +2683,21 @@ document.getElementById("partssplit").addEventListener("mousedown", function (e)
   e.preventDefault();
   var panel = document.getElementById("partspanel");
   var split = e.currentTarget;
-  var startX = e.clientX;
-  var startWidth = panel.getBoundingClientRect().width;
-  var room = panel.parentNode.getBoundingClientRect().width;
+  var band = document.body.classList.contains("top");
+  var start = band ? e.clientY : e.clientX;
+  var startSize = band ? panel.getBoundingClientRect().height : panel.getBoundingClientRect().width;
+  var room = band ? panel.parentNode.getBoundingClientRect().height : panel.parentNode.getBoundingClientRect().width;
   split.classList.add("dragging");
-  document.body.classList.add("dragging");
+  document.body.classList.add(band ? "rowdrag" : "dragging");
   function move(ev) {
-    var width = Math.max(120, Math.min(room - 200, startWidth + ev.clientX - startX));
-    panel.style.flexBasis = width + "px";
+    var size = Math.max(band ? 80 : 120,
+                        Math.min(room - 200, startSize + (band ? ev.clientY : ev.clientX) - start));
+    panel.style.flexBasis = size + "px";
   }
   function up() {
     split.classList.remove("dragging");
     document.body.classList.remove("dragging");
+    document.body.classList.remove("rowdrag");
     document.removeEventListener("mousemove", move);
     document.removeEventListener("mouseup", up);
   }

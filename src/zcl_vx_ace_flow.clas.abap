@@ -40,12 +40,28 @@ CLASS zcl_vx_ace_flow DEFINITION
         !i_all_methods TYPE boolean DEFAULT abap_false
         !i_type        TYPE string DEFAULT 'CALLS'
         !i_focus       TYPE progname OPTIONAL
+        "! The calculated path only - ACE's default in SAP GUI, where "Show All
+        "! Steps" is off: the units of the events that the data flow reaches.
+        !i_calc_path   TYPE boolean DEFAULT abap_false
       EXPORTING
         !et_node_map   TYPE tt_node_map
       CHANGING
         !cs_parse_data TYPE zif_vx_ace_parse_data=>ts_parse_data
       RETURNING
         VALUE(rv_mm)   TYPE string .
+
+    "! The events on ACE's calculated path, with nothing selected in a tree.
+    "! ACE's GET_CODE_FLOW, cut down to what the calls flow reads of it: the
+    "! event names of the lines it marks ACTIVE_ROOT. Every variable passed to
+    "! or from a call is the seed; the set grows forward through the bindings
+    "! and backward through what each assignment is composed of; an event is
+    "! on the path when a line of it computes a variable of that set.
+    CLASS-METHODS path_events
+      IMPORTING
+        !it_steps        TYPE tt_flow_steps
+        !is_parse_data   TYPE zif_vx_ace_parse_data=>ts_parse_data
+      RETURNING
+        VALUE(rt_events) TYPE string_table .
 
     " Strips CR/LF/TAB from a node label - such characters leak in from
     " CRLF source tokens and break mermaid parsing inside a label string.
@@ -113,6 +129,19 @@ CLASS zcl_vx_ace_flow IMPLEMENTATION.
 
     DATA(copy) = it_steps.
     CLEAR et_node_map.
+
+    " Filter steps to only calculated ones when requested - as ACE's STEPS_FLOW
+    " does when "Show All Steps" is off.
+    IF i_calc_path = abap_true.
+      DATA(lt_active_ev) = path_events( it_steps = it_steps is_parse_data = cs_parse_data ).
+      DATA lt_copy_filt LIKE copy.
+      LOOP AT copy INTO DATA(ls_cp_filt).
+        IF line_exists( lt_active_ev[ table_line = ls_cp_filt-eventname ] ).
+          APPEND ls_cp_filt TO lt_copy_filt.
+        ENDIF.
+      ENDLOOP.
+      copy = lt_copy_filt.
+    ENDIF.
 
 
     " Toggle OFF (default) → aggregate the flow to program/class blocks;
@@ -414,5 +443,126 @@ DATA(lv_maxlen) = 200.
     REPLACE ALL OCCURRENCES OF lv_cr IN rv_text WITH ` `.
     CONDENSE rv_text.
   endmethod.
+
+  METHOD path_events.
+    " ACE's selected-variable row: a name, and where it lives. An empty scope
+    " is a name seen in a call binding, which carries none.
+    TYPES: BEGIN OF lty_sel,
+             name      TYPE string,
+             class     TYPE string,
+             eventtype TYPE string,
+             eventname TYPE string,
+           END OF lty_sel.
+    DATA lt_sel   TYPE STANDARD TABLE OF lty_sel WITH EMPTY KEY.
+    DATA ls_prog  TYPE zif_vx_ace_parse_data=>ts_prog.
+    DATA ls_key   TYPE zif_vx_ace_parse_data=>ts_kword.
+    DATA lv_yes   TYPE abap_bool.
+    DATA lv_ind   TYPE i.
+
+    " 1. Steps deduplicated and in the order they run.
+    DATA(lt_steps) = it_steps.
+    SORT lt_steps BY line eventtype eventname.
+    DELETE ADJACENT DUPLICATES FROM lt_steps COMPARING program include line eventtype eventname.
+    SORT lt_steps BY step.
+
+    " 2. Forward: with nothing selected, every variable of every call binding.
+    "    READ TABLE ... INTO keeps the last row found when the next one is not;
+    "    ACE reads that way, and the path is only the same if this does too.
+    LOOP AT lt_steps INTO DATA(ls_step).
+      READ TABLE is_parse_data-tt_progs WITH KEY include = ls_step-include INTO ls_prog.
+      READ TABLE ls_prog-t_keywords WITH KEY line = ls_step-line INTO ls_key.
+      CLEAR lv_yes.
+      LOOP AT ls_key-tt_calls INTO DATA(ls_call).
+        IF ls_call-bindings IS NOT INITIAL.
+          lv_yes = abap_true.
+        ENDIF.
+      ENDLOOP.
+      CHECK lv_yes = abap_true.
+      LOOP AT ls_key-tt_calls INTO ls_call.
+        LOOP AT ls_call-bindings INTO DATA(ls_bind).
+          IF NOT line_exists( lt_sel[ name = ls_bind-outer ] ).
+            APPEND VALUE #( name = ls_bind-outer ) TO lt_sel.
+          ENDIF.
+          IF NOT line_exists( lt_sel[ name = ls_bind-inner ] ).
+            APPEND VALUE #( name = ls_bind-inner ) TO lt_sel.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
+    ENDLOOP.
+
+    " 3. Backward: a selected variable brings in what it was computed from,
+    "    and a selected parameter brings in the caller's variable.
+    CLEAR: ls_prog, ls_key.
+    LOOP AT lt_steps INTO ls_step.
+      READ TABLE is_parse_data-tt_progs WITH KEY include = ls_step-include INTO ls_prog.
+      LOOP AT is_parse_data-t_calculated INTO DATA(ls_calc)
+          WHERE include = ls_step-include AND class = ls_step-class
+            AND eventtype = ls_step-eventtype AND eventname = ls_step-eventname
+            AND line = ls_step-line.
+        IF line_exists( lt_sel[ name = CONV string( ls_calc-name ) class = ls_calc-class
+                                eventtype = ls_calc-eventtype eventname = ls_calc-eventname ] )
+           OR line_exists( lt_sel[ name = CONV string( ls_calc-name ) class = `` eventtype = `` eventname = `` ] ).
+          LOOP AT is_parse_data-t_composed INTO DATA(ls_comp)
+              WHERE include = ls_step-include AND class = ls_step-class
+                AND eventtype = ls_step-eventtype AND eventname = ls_step-eventname
+                AND line = ls_step-line.
+            IF NOT line_exists( lt_sel[ name = CONV string( ls_comp-name ) class = ls_comp-class
+                                        eventtype = ls_comp-eventtype eventname = ls_comp-eventname ] ).
+              APPEND VALUE #( name      = CONV string( ls_comp-name )
+                              class     = ls_comp-class
+                              eventtype = ls_comp-eventtype
+                              eventname = ls_comp-eventname ) TO lt_sel.
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
+      ENDLOOP.
+      READ TABLE ls_prog-t_keywords WITH KEY line = ls_step-line INTO ls_key.
+      LOOP AT ls_key-tt_calls INTO ls_call.
+        LOOP AT ls_call-bindings INTO ls_bind.
+          IF line_exists( lt_sel[ name = ls_bind-inner ] )
+             AND NOT line_exists( lt_sel[ name = ls_bind-outer ] ).
+            APPEND VALUE #( name = ls_bind-outer ) TO lt_sel.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
+    ENDLOOP.
+
+    " 4. The lines ACE marks ACTIVE_ROOT: the first variable a line computes is
+    "    in the set, and the line is neither a branch keyword nor the frame of
+    "    a unit. Their events are the path.
+    CLEAR: ls_prog, ls_key.
+    LOOP AT lt_steps INTO ls_step.
+      READ TABLE is_parse_data-tt_progs WITH KEY include = ls_step-include INTO ls_prog.
+      READ TABLE ls_prog-t_keywords WITH KEY line = ls_step-line INTO ls_key.
+      IF ls_key-name = 'IF' OR ls_key-name = 'ELSE' OR ls_key-name = 'ENDIF' OR
+         ls_key-name = 'ELSEIF' OR ls_key-name = 'CASE' OR ls_key-name = 'WHEN' OR
+         ls_key-name = 'ENDCASE' OR ls_key-name = 'DO' OR ls_key-name = 'ENDDO' OR
+         ls_key-name = 'LOOP' OR ls_key-name = 'ENDLOOP' OR
+         ls_key-name = 'WHILE' OR ls_key-name = 'ENDWHILE'.
+        CONTINUE.
+      ENDIF.
+      IF ls_key-name = 'PUBLIC' OR ls_key-name = 'ENDCLASS' OR
+         ls_key-name = 'ENDFORM' OR ls_key-name = 'FORM' OR
+         ls_key-name = 'METHOD' OR ls_key-name = 'METHODS' OR
+         ls_key-name = 'ENDMETHOD' OR ls_key-name = 'MODULE'.
+        CONTINUE.
+      ENDIF.
+      CLEAR lv_ind.
+      LOOP AT is_parse_data-t_calculated INTO ls_calc
+          WHERE include = ls_step-include AND class = ls_step-class
+            AND eventtype = ls_step-eventtype AND eventname = ls_step-eventname
+            AND line = ls_step-line.
+        lv_ind = lv_ind + 1.
+        IF lv_ind = 1
+           AND ( line_exists( lt_sel[ name = CONV string( ls_calc-name ) class = ls_calc-class
+                                      eventtype = ls_calc-eventtype eventname = ls_calc-eventname ] )
+              OR line_exists( lt_sel[ name = CONV string( ls_calc-name ) class = `` eventtype = `` eventname = `` ] ) ).
+          IF NOT line_exists( rt_events[ table_line = ls_step-eventname ] ).
+            APPEND ls_step-eventname TO rt_events.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+  ENDMETHOD.
 
 ENDCLASS.

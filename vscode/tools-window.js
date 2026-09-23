@@ -81,8 +81,12 @@ function open(vscode, context, deps, initial) {
         await panel.webview.postMessage({type:"result",payload}); return;
       }
       if(message.call === "vertexContext") {
-        const state=args[0]&&typeof args[0]==="object"?args[0]:{};
-        deps.setContext({workspace:state.workspace||initial||null,vertex_view:state.vertex_view||null,
+        // tools.html sends the state as JSON text (Eclipse's bridge takes
+        // strings only); an object is accepted as well.
+        let state=args[0];
+        if(typeof state==="string"){try{state=JSON.parse(state);}catch(e){state=null;}}
+        if(!state||typeof state!=="object")state={};
+        deps.setContext({system,workspace:state.workspace||initial||null,vertex_view:state.vertex_view||null,
           selected_fragment:state.selected_fragment||null});
         return;
       }

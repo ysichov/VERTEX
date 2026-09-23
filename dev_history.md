@@ -1804,6 +1804,16 @@ TOC switch applies to the list only: a diff reads both its versions whatever the
 `includeSubpackages` to every call — so the check was abaplint against a baseline: the same fourteen
 findings before and after, and a misspelt parameter planted in the new call reported on its line.
 
+The calls flow of `Z_AVE` then disagreed with ACE's own window in SAP GUI: VERTEX drew three
+classes called straight from the program and `/UI2/CL_JSON` under one of them, ACE one class and
+four under it. Neither was wrong. ACE's `STEPS_FLOW` is called with `I_CALC_PATH` whenever "Show
+All Steps" is off, which is its default, and keeps only the events its `GET_CODE_FLOW` marks as the
+calculated path; the port had taken the drawing and left the path behind, so VERTEX always drew
+every step. Of `GET_CODE_FLOW`'s nine stages the flow reads one thing - the event names of the
+lines marked `ACTIVE_ROOT` - so that is what came over, as `PATH_EVENTS`, with ACE's reads left as
+they were: a `READ TABLE ... INTO` that misses keeps the previous row, and only the first variable a
+line computes counts. Changing either would draw a path ACE does not.
+
 **Lesson.** A list that "cannot go stale" is only right while nobody needs an older entry. Ask what
 the list is for before deciding how it is kept.
 

@@ -216,6 +216,37 @@
               border: 2px solid var(--field-border); background: var(--bg);
               box-shadow: 0 4px 14px #0006; }
   .uml-lens svg { position: absolute; max-width: none; }
+
+/* Thin scrollbars in the theme's own colours instead of the engine's wide default. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--vscode-scrollbarSlider-background, rgba(128, 128, 128, .4)); }
+::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128, 128, 128, .6)); }
+::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground, rgba(128, 128, 128, .8)); }
+  /* A choice between two or more modes: every mode is named, the one in force
+     is lit. One template for every page; --seg-on is the page's raised colour. */
+  .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; vertical-align: middle;
+         background: var(--field-bg); border: 1px solid var(--field-border); }
+  .seg button { --accent: var(--vscode-focusBorder, #0a66c2); min-width: 0; margin: 0;
+                padding: 1px 9px; border: none; border-radius: 5px; background: transparent; color: var(--muted);
+                border-bottom: 2px solid transparent; white-space: nowrap; font-weight: normal; box-shadow: none; }
+  .seg button:hover { color: var(--fg); background: transparent; }
+  .seg button.on { color: var(--fg); background: var(--seg-on); border-bottom-color: var(--accent);
+                   box-shadow: 0 3px 8px -3px var(--accent); font-weight: normal; }
+  .seg { --seg-on: var(--vscode-sideBar-background, var(--surface)); }
+
+/* The metrics help: what each column means, as ACE counts it. */
+#metricsdialog { color: var(--fg); background: var(--bg); border: 1px solid var(--border);
+                 padding: 14px 18px; max-width: 760px; max-height: 80vh; overflow: auto; }
+#metricsdialog::backdrop { background: rgba(0, 0, 0, .45); }
+#metricsdialog h3 { margin: 0 0 8px; font-size: 14px; }
+#metricsdialog table { border-collapse: collapse; width: 100%; white-space: normal; }
+#metricsdialog th, #metricsdialog td { border: 1px solid var(--line); padding: 4px 8px; vertical-align: top; text-align: left; }
+#metricsdialog th { position: static; cursor: default; background: var(--th-bg); }
+#metricsdialog code { font-family: Consolas, monospace; }
+#metricsdialog .note { color: var(--muted); margin: 8px 0 0; }
+#metricsdialog .row { display: flex; justify-content: flex-end; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -231,13 +262,15 @@
     <option value="class">UML class</option>
   </select>
   <span class="tools" id="tools" hidden>
+    <span class="seg depth" id="pathmode"><button data-calc="X" class="on" title="Only the events the data flow reaches - ACE's default in SAP GUI">Path</button><button data-calc="" title="Every step of every event - ACE's Show All Steps">All steps</button></span>
     <label class="depth" id="depthbox" title="How far the flow follows calls">depth
       <input id="depth" type="number" min="1" max="99" step="1" value="3"></label>
-    <button id="dir" title="Lay the diagram out down the page instead of across">&#8646;</button>
+    <span class="seg" id="dir"><button data-dir="TB" class="on" title="Lay the diagram out down the page">&#8595; Top-down</button><button data-dir="LR" title="Lay the diagram out across the page">&#8594; Left-right</button></span>
     <button id="out" title="Smaller">&#8722;</button>
     <button id="in" title="Larger">+</button>
     <button id="fit" title="Scale the whole diagram into the pane">Fit</button>
   </span>
+  <button id="metricshelp" title="What each metric means and how it is counted">?</button>
   <span class="shown" id="object"></span>
   <span class="status" id="status"></span>
 </div>
@@ -245,6 +278,28 @@
 <div class="missing" id="missing" hidden></div>
 <div class="totals hidden" id="totals"></div>
 
+<dialog id="metricsdialog" aria-labelledby="metricstitle">
+  <h3 id="metricstitle">Metrics</h3>
+  <table>
+    <thead><tr><th>Metric</th><th>What it counts</th><th>How to read it</th></tr></thead>
+    <tbody>
+      <tr><td>CC</td><td>Cyclomatic complexity: 1 plus one for every <code>IF</code>, <code>ELSEIF</code>, <code>WHEN</code>, <code>CATCH</code>, <code>LOOP</code>, <code>WHILE</code>, <code>DO</code>, <code>CHECK</code>, <code>AT</code> and <code>ON</code>. The number of paths through the unit.</td><td>1&ndash;10 simple, 11&ndash;20 moderate, 21&ndash;50 complex, above 50 hard to test.</td></tr>
+      <tr><td>MI</td><td>Maintainability index: <code>171 &minus; 5.2&middot;ln(Volume) &minus; 0.23&middot;CC &minus; 16.2&middot;ln(LOC)</code>, not scaled to 100, so a small unit can score above 100.</td><td>Above 85 easy to maintain, 65&ndash;85 moderate, below 65 hard. It falls with length, so comments lower it too.</td></tr>
+      <tr><td>LOC</td><td>Lines from the first to the last line of the unit, blank and comment lines included.</td><td>Size, not quality.</td></tr>
+      <tr><td>LLOC</td><td>Logical lines: ABAP statements. A statement spread over several lines counts once.</td><td>The real amount of code.</td></tr>
+      <tr><td>CLOC</td><td>Comment lines.</td><td>Compare with LLOC for how much is explained.</td></tr>
+      <tr><td>Vocabulary</td><td>Halstead &eta;: distinct operators plus distinct operands.</td><td>How many different things the unit handles.</td></tr>
+      <tr><td>Length</td><td>Halstead N: all operators plus all operands.</td><td>Size in tokens.</td></tr>
+      <tr><td>Volume</td><td><code>N &middot; log2(&eta;)</code>: the information content of the unit.</td><td>Above about 1000 for one method is a lot to read.</td></tr>
+      <tr><td>Difficulty</td><td><code>(&eta;1 / 2) &middot; (N2 / &eta;2)</code>: distinct operators against how often operands repeat.</td><td>How hard the unit is to write or understand; above about 30 is high.</td></tr>
+      <tr><td>Effort</td><td><code>Difficulty &middot; Volume</code>.</td><td>Relative mental effort; compare units with each other.</td></tr>
+      <tr><td>Bugs</td><td><code>Volume / 3000</code>: Halstead's estimate of delivered defects.</td><td>An estimate, not a count; above about 0.5 for a method is worth a look.</td></tr>
+      <tr><td>time</td><td><code>Effort / 18</code> seconds (Stroud number), in the line above the table.</td><td>A rough time to write the code.</td></tr>
+    </tbody>
+  </table>
+  <p class="note">TOTAL adds every column up. For CC, LOC, LLOC, CLOC, Volume, Effort and Bugs the sum is meaningful; a sum of MI or Difficulty is not &mdash; read those per unit. <code>avg CC</code> in the line above is the average per unit.</p>
+  <div class="row"><button id="metricsclose">Close</button></div>
+</dialog>
 <div class="panes">
   <div class="scroll" id="list"><div id="root"></div></div>
   <div class="splitter" id="listsplit" title="Drag to resize the parts" hidden></div>
@@ -335,6 +390,23 @@ function sdeContext() {
     view: uml ? "uml" : mode };
   if (umlObjectCount !== null) { context.object_count = umlObjectCount; }
   if (umlDiagram) { context.uml = umlDiagram; }
+  // The unit whose scheme is on screen: "this method" means that one, not
+  // the first of the class.
+  if (shownUnit) { context.part = shownUnit.name; context.include = shownUnit.include; }
+  // The metrics table is what the reader is looking at, so it travels with
+  // the view: numbers, not source. Capped so a large package stays small.
+  if (mode === "metrics" && units.length) {
+    context.metrics = {
+      columns: COLUMNS.map(function (c) { return c.key; }),
+      units: units.slice(0, 200).map(function (u) {
+        var row = {};
+        COLUMNS.forEach(function (c) { if (u[c.key] !== undefined) { row[c.key] = u[c.key]; } });
+        return row;
+      }),
+      truncated: units.length > 200,
+      totals: totals || null
+    };
+  }
   return context;
 }
 
@@ -669,6 +741,12 @@ function labelForUnitType(type) {
   return labels[String(type || "").toLowerCase()] || String(type || "Units");
 }
 
+/* A sum of decimals carries float noise - 205.54999999999998 - that no row
+   shows; two places are what the rows are given in. */
+function rounded(value) {
+  return typeof value === "number" && !Number.isInteger(value) ? Math.round(value * 100) / 100 : value;
+}
+
 function makeTable(columns, rows, total, isClass) {
   var table = document.createElement("table"), thead = document.createElement("thead"), tr = document.createElement("tr");
   columns.forEach(function (column) { var th = document.createElement("th"); th.textContent = column.text; tr.appendChild(th); });
@@ -681,7 +759,7 @@ function makeTable(columns, rows, total, isClass) {
   });
   if (total) {
     var totalRow = document.createElement("tr"); totalRow.className = "total";
-    columns.forEach(function (column) { var cell = document.createElement("td"); cell.textContent = total[column.key] === undefined ? "" : total[column.key]; if (column.num) { cell.className = "num"; } totalRow.appendChild(cell); });
+    columns.forEach(function (column) { var cell = document.createElement("td"); cell.textContent = total[column.key] === undefined ? "" : rounded(total[column.key]); if (column.num) { cell.className = "num"; } totalRow.appendChild(cell); });
     body.appendChild(totalRow);
   }
   table.appendChild(body); return table;
@@ -743,6 +821,7 @@ function renderMetricSections() {
     }
     section.appendChild(scroll); root.appendChild(section);
   });
+  publishContext();
 }
 
 function renderPackage(data) {
@@ -954,6 +1033,7 @@ function openUnit(unit) {
   lastMermaid = null;
   refit = true;
   schemeRows.forEach(function (row) { row.element.className = "pick" + (shown(row.unit) ? " sel" : ""); });
+  publishContext();
   requestDiagram();
 }
 
@@ -984,7 +1064,7 @@ function requestDiagram() {
   waiting = "flow";
   if (mode === "calls") {
     // The flow is the whole object; there is no unit to name.
-    sdeFlow(loadedObject, loadedType, "calls", "", "", "", String(depth));
+    sdeFlow(loadedObject, loadedType, "calls", "", "", "", String(depth), calcPath ? "X" : "");
   } else {
     sdeFlow(loadedObject, loadedType, "scheme", shownUnit.include,
             shownUnit.name, expanded.join(","), "");
@@ -1106,6 +1186,41 @@ function toward(from, to, part) {
   return out;
 }
 
+/* The blocks of a chart stand a little off the editor, with a frame and lines a step brighter than the ground
+   and the editor's own ink - raised, not lit, so a dark theme stays dark. */
+function schemeTheme() {
+  var bg = ground(), fg = ink();
+  // Measured from the ground, not taken from the widget colour: in the dark
+  // themes that one sits a shade off the editor and the blocks disappear.
+  var block = toward(bg, fg, darkPage() ? 0.13 : 0.06);
+  return {
+    background: bg,
+    primaryColor: block, mainBkg: block, nodeBkg: block, clusterBkg: block,
+    primaryBorderColor: toward(bg, fg, 0.4), nodeBorder: toward(bg, fg, 0.4),
+    primaryTextColor: fg, textColor: fg, nodeTextColor: fg,
+    lineColor: toward(bg, fg, 0.55),
+    edgeLabelBackground: bg,
+    fontSize: "14px"
+  };
+}
+
+/* A decision - IF, CASE, a loop's test - is drawn as a diamond. Those carry a
+   tint of the theme's accent, so the branching reads from a distance. A node
+   ACE coloured itself keeps its colour: its hue means something. */
+function tintDecisions(svg) {
+  if (!svg) { return; }
+  var accent = themeColour("--vscode-focusBorder", "#0a66c2");
+  var fill = toward(ground(), accent, darkPage() ? 0.22 : 0.12);
+  // A rule inside the picture, not a style on each shape: mermaid's own
+  // class rules carry !important, and a rule survives the picture being
+  // cloned for the zoom. ACE's own classes are left alone.
+  var own = ["callnode", "dbnode", "tryblk", "event", "method", "form", "constr", "enh", "func"]
+    .map(function (c) { return ":not(." + c + ")"; }).join("");
+  var style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  style.textContent = "g.node" + own + " > polygon { fill: " + fill + " !important; stroke: " + accent + " !important; }";
+  svg.insertBefore(style, svg.firstChild);
+}
+
 function darkened(text) {
   return text.replace(/^([ \t]*classDef[ \t]+\S+[ \t]+)(.+)$/gm,
     function (whole, head, rules) {
@@ -1148,13 +1263,16 @@ function turned(text, dir) {
   return text.replace(DIRECTIONS, "$1$2 " + dir);
 }
 
+/* The calls flow follows the calculated path unless told to show every step,
+   the way ACE does in SAP GUI. */
+var calcPath = true;
+
 function setDirection(value) {
   direction = value;
-  var button = document.getElementById("dir");
-  button.innerHTML = direction === "TB" ? "&#8645;" : "&#8646;";
-  button.title = direction === "TB"
-    ? "Lay the diagram out across the page instead of down"
-    : "Lay the diagram out down the page instead of across";
+  // Both directions are named; the one in force is lit.
+  Array.prototype.forEach.call(document.querySelectorAll("#dir button"), function (button) {
+    button.className = button.getAttribute("data-dir") === direction ? "on" : "";
+  });
   if (lastMermaid) { draw(); }
 }
 
@@ -1218,7 +1336,8 @@ function draw() {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: isClass ? "strict" : "loose",
-    theme: darkPage() ? "dark" : "default",
+    theme: "base",
+    themeVariables: schemeTheme(),
     flowchart: { htmlLabels: false, useMaxWidth: false },
     maxTextSize: 90000000,
     maxEdges: 100000
@@ -1236,6 +1355,7 @@ function draw() {
       applyZoom();
     }
     if (isClass) { installUmlLens(pane, pane.querySelector("svg")); }
+    else { tintDecisions(pane.querySelector("svg")); }
     status(lastCaption);
   }, function (e) {
     failed("mermaid could not draw this diagram." + String.fromCharCode(10)
@@ -1544,6 +1664,13 @@ function setupPage(detail) {
 
 /* ---------- wiring ---------- */
 
+document.getElementById("metricshelp").addEventListener("click", function () {
+  document.getElementById("metricsdialog").showModal();
+});
+document.getElementById("metricsclose").addEventListener("click", function () {
+  document.getElementById("metricsdialog").close();
+});
+
 document.getElementById("listsplit").addEventListener("mousedown", function (e) {
   if (e.button !== 0) { return; }
   e.preventDefault();
@@ -1593,8 +1720,23 @@ document.getElementById("depth").addEventListener("change", function () {
 
 document.getElementById("diagram").addEventListener("click", onDiagramClick);
 
-document.getElementById("dir").addEventListener("click", function () {
-  setDirection(direction === "TB" ? "LR" : "TB");
+Array.prototype.forEach.call(document.querySelectorAll("#pathmode button"), function (button) {
+  button.addEventListener("click", function () {
+    var want = button.getAttribute("data-calc") === "X";
+    if (want === calcPath) { return; }
+    calcPath = want;
+    Array.prototype.forEach.call(document.querySelectorAll("#pathmode button"), function (other) {
+      other.className = (other.getAttribute("data-calc") === "X") === calcPath ? "on" : "";
+    });
+    lastMermaid = null;
+    refit = true;
+    requestDiagram();
+  });
+});
+Array.prototype.forEach.call(document.querySelectorAll("#dir button"), function (button) {
+  button.addEventListener("click", function () {
+    if (button.getAttribute("data-dir") !== direction) { setDirection(button.getAttribute("data-dir")); }
+  });
 });
 document.getElementById("out").addEventListener("click", function () {
   fitted = false;

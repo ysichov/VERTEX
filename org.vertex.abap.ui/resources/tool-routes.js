@@ -78,6 +78,10 @@ const SERVICES = {
       if (args[6]) {
         p += "&depth=" + encodeURIComponent(args[6]);
       }
+      // The calculated path only, as ACE draws it in SAP GUI by default.
+      if (args[7]) {
+        p += "&calc=X";
+      }
       return p;
     }
   },

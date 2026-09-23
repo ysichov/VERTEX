@@ -178,6 +178,17 @@
   .modes { display: flex; gap: 6px; margin: 6px 0 12px; }
   .modes button.on { background: var(--th-key-bg); font-weight: 600; }
   .modes .full { margin-left: auto; }
+  /* A choice between two or more modes: every mode is named, the one in force
+     is lit. One template for every page; --seg-on is the page's raised colour. */
+  .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; vertical-align: middle;
+         background: var(--field-bg); border: 1px solid var(--field-border); }
+  .seg button { --accent: var(--vscode-focusBorder, #0a66c2); min-width: 0; margin: 0;
+                padding: 1px 9px; border: none; border-radius: 5px; background: transparent; color: var(--muted);
+                border-bottom: 2px solid transparent; white-space: nowrap; font-weight: normal; box-shadow: none; }
+  .seg button:hover { color: var(--fg); background: transparent; }
+  .seg button.on { color: var(--fg); background: var(--seg-on); border-bottom-color: var(--accent);
+                   box-shadow: 0 3px 8px -3px var(--accent); font-weight: normal; }
+  .seg { --seg-on: var(--surface-2); }
 
   /* Ten rows of the answer while the join is being put together: enough to see
      what comes out, little enough to leave the builder on screen. The rest is
@@ -318,6 +329,14 @@
   .chat-input .row { display: flex; align-items: center; gap: 6px; }
   .chat-input .working { margin-right: auto; color: var(--muted); }
   #versionid { font: inherit; padding: 2px 4px; color: var(--fg); background: var(--field-bg); border: 1px solid var(--field-border); }
+
+/* Thin scrollbars in the theme's own colours instead of the engine's wide default. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--vscode-scrollbarSlider-background, rgba(128, 128, 128, .4)); }
+::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128, 128, 128, .6)); }
+::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground, rgba(128, 128, 128, .8)); }
 </style>
 </head>
 <body>
@@ -838,31 +857,39 @@ function renderJoin(data) {
   root.appendChild(statement);
 }
 
+/* Two or more named modes in one control. CHOICES are [label, title] pairs;
+   the picked index is handed to ONPICK. The same helper on every page. */
+function segmented(choices, selected, onPick) {
+  var box = document.createElement("span");
+  box.className = "seg";
+  choices.forEach(function (choice, index) {
+    var button = document.createElement("button");
+    button.textContent = choice[0];
+    button.title = choice[1];
+    button.className = index === selected ? "on" : "";
+    button.addEventListener("click", function () { if (index !== selected) { onPick(index); } });
+    box.appendChild(button);
+  });
+  return box;
+}
+
 function modeCards() {
   var box = document.createElement("div");
   box.className = "modes";
-  [["J", "Join"], ["P", "Pivot table"]].forEach(function (m) {
-    var button = document.createElement("button");
-    button.textContent = m[1];
-    if (mode === m[0]) { button.className = "on"; }
-    button.addEventListener("click", function () {
-      mode = m[0];
-      loadJoin(ROWS);
-    });
-    box.appendChild(button);
-  });
-
-  var wide = document.createElement("button");
-  wide.className = "full" + (full ? " on" : "");
-  wide.textContent = full ? "Settings" : "Full view";
-  wide.title = full ? "Show what builds the answer again"
-                    : "The answer on its own, with the builder put away";
-  wide.addEventListener("click", function () {
-    full = !full;
+  box.appendChild(segmented([["Join", "The joined rows"], ["Pivot table", "The rows summed up by the fields chosen"]],
+                            mode === "P" ? 1 : 0, function (index) {
+    mode = index === 1 ? "P" : "J";
+    loadJoin(ROWS);
+  }));
+  var wide = segmented([["Settings", "What builds the answer, and the answer under it"],
+                        ["Full view", "The answer on its own, with the builder put away"]],
+                       full ? 1 : 0, function (index) {
+    full = index === 1;
     // Nothing is asked for again: the answer on screen is the one being shown
     // either way.
     renderJoin(shown);
   });
+  wide.className += " full";
   box.appendChild(wide);
   return box;
 }

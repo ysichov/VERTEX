@@ -63,12 +63,19 @@ development systems often have; it is off by default on purpose.
   on the selected object type; there are no separate SelecTor, Metrics or
   Versions commands any more.
 
+  In Code Explorer, **?** explains every metric: what ACE counts, the formula, and which values
+  are good.
+
   **Versions** is laid out as AVE's was: the parts of the object on the left, the
   versions of the chosen part under them — the line between the two is dragged to
   share the height — and the diff on the right. Picking a version shows the change
   it made. Pin a version with ◇ and every version picked afterwards is compared with
-  that base instead; **Diff prev** goes back to comparing each version with the one
-  before it. The parts column can be folded away and resized.
+  that base instead. **Prev | Any** chooses what a picked version is compared with: the
+  one before it, or any version pinned as the base with ◇ — the active version until one
+  is pinned. **Inline | 2 pane**
+  in the diff's bar shows the change in one column or the two versions side by side; in
+  2 pane the parts and versions move to a band above the diff so the code gets the full
+  width. The versions list folds on its own with the arrow at the right of its bar. The parts column can be folded away and resized.
 
   AVE's three switches sit beside it: **TOCs** shows the versions written by
   transports of copies (off by default), **Dups** hides a version whose source is the
@@ -142,7 +149,9 @@ Changes made there are still sent to SAP only through **Review & Activate** or *
 The **VERTEX** panel in the Activity Bar has a free-prompt chat. The top line holds the
 **SAP system** list — the link opens the system settings — and **LLM Providers**. The question
 box, the provider and model lists and **New conversation** stay at the bottom of the panel; the
-answers scroll above them, questions and answers in different colours.
+answers scroll above them, questions and answers in different colours. Asking for a VERTEX
+function — *open table SFLIGHT*, *show the diff of ZCL_FOO* — opens a **VERTEX Tools** window on
+it.
 
 ### Providers
 

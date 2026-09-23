@@ -75,8 +75,12 @@ function register(vscode, context, active, ask, systems, toolContext) {
         if (message.action === "chat") {
           await view.webview.postMessage({ chat: "You: " + message.text });
           try {
-            const reply = await ask(message.text, {state: toolContext() || {}});
+            const reply = await ask(message.text, {state: (await toolContext()) || {}});
             await view.webview.postMessage({ chat: "VERTEX: " + reply.answer, usage: usageLine(reply) });
+            // The answer names a VERTEX function to run - a table's data, a
+            // class's diff - and the panel has no view of its own for it, so
+            // a Tools window opens on it, on the panel's system.
+            if (reply.navigation) { await vscode.commands.executeCommand("vertex.tools", reply.navigation); }
           }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
