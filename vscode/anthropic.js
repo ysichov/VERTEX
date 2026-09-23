@@ -21,7 +21,7 @@ function models(apiKey) {
             + (answer && answer.error && answer.error.message || text.substring(0, 500))));
           return;
         }
-        const list = answer.data.map(m => ({ id: m.id, label: (m.display_name || m.id) + " (" + m.id + ")" }));
+        const list = answer.data.map(m => ({ id: m.id, label: m.display_name || m.id }));
         if (!list.length) { reject(new Error("Anthropic API listed no models for this key.")); return; }
         const haiku = list.findIndex(m => /haiku/i.test(m.id));
         if (haiku > 0) { list.unshift(list.splice(haiku, 1)[0]); }

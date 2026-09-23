@@ -7,7 +7,6 @@ const ACTIONS = Object.freeze({
   selector: "vertex.open",
   metrics: "vertex.metrics",
   versions: "vertex.versions",
-  review: "vertex.reviewCodeChanges",
   system: "vertex.switchSystem",
   settings: "workbench.action.openSettings"
 });
@@ -32,6 +31,10 @@ function register(vscode, context, active, ask, systems, toolContext) {
           system: chosen.error ? "" : chosen.system.name,
           systems: systems().map(item => item.name),
           ai: ask.state()
+        }).then(async () => {
+          // The model list comes after: it may have to ask the provider.
+          try { await view.webview.postMessage({ models: await ask.listModels() }); }
+          catch (error) { await view.webview.postMessage({ models: { error: error.message } }); }
         });
       };
       const messages = view.webview.onDidReceiveMessage(async message => {
@@ -44,6 +47,11 @@ function register(vscode, context, active, ask, systems, toolContext) {
         }
         if (message.action === "provider" || message.action === "model") {
           try { const state = await ask[message.action === "provider" ? "selectProvider" : "selectModel"](); await view.webview.postMessage({ ai: state }); }
+          catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
+          return;
+        }
+        if (message.action === "setModel") {
+          try { await ask.setModel(message.model); }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
         }
@@ -99,11 +107,15 @@ function usageLine(reply) {
     + k(usage.output_tokens) + " out";
 }
 
+// The extension's own mark, inline: the view loads nothing from disk.
+const LOGO = "data:image/png;base64,"
+  + require("fs").readFileSync(require("path").join(__dirname, "images", "icon.png")).toString("base64");
+
 function html(nonce) {
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <style nonce="${nonce}">
 body { padding: 16px; color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
 h2 { font-size: 12px; text-transform: uppercase; margin: 8px 0 12px; }
@@ -124,18 +136,29 @@ button { margin: 8px 0; padding: 8px 12px; border: 0; border-radius: 2px; cursor
 button:hover { background: var(--vscode-button-hoverBackground); }
 #chat button { width: 100%; }
 .secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+.secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
+.line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.line button { margin: 4px 0; }
+.chat-head { display: flex; justify-content: flex-end; }
+.chat-head button { margin: 4px 0 6px; padding: 4px 10px; }
+#tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; font-size: 1.7em; font-weight: 600; }
+#tools img { width: 40px; height: 40px; }
 </style></head><body>
-<h2>VERTEX chat</h2><label for="system-select">SAP system</label>
+<h2>VERTEX chat</h2>
+<div class="line"><label for="system-select">SAP system</label>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
-<p><button class="secondary" data-action="provider" id="provider">AI provider</button> <button class="secondary" data-action="model" id="model">Default model</button> <button class="secondary" data-action="configModels">Config models</button> <button class="secondary" data-action="newConversation">New conversation</button></p>
+<button class="secondary" data-action="settings">Configure SAP Systems</button></div>
+<div class="line"><button class="secondary" data-action="provider" id="provider">AI provider</button> <select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select> <button class="secondary" data-action="configModels">Config models</button></div>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
+<div class="chat-head"><button class="secondary" data-action="newConversation">New conversation</button></div>
 <form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
 <h2>Quick launch</h2>
-<button class="secondary" data-action="tools">VERTEX Tools</button>
-<button class="secondary" data-action="review">Review &amp; save current code</button>
-<p><button class="secondary" data-action="settings">Configure SAP Systems</button></p>
+<button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
+document.getElementById('model-select').addEventListener('change', event => {
+  api.postMessage({ action: 'setModel', model: event.target.value });
+});
 document.querySelectorAll('button[data-action]').forEach(button => {
   button.addEventListener('click', () => api.postMessage({ action: button.dataset.action }));
 });
@@ -180,7 +203,21 @@ window.addEventListener('message', event => {
   }
   if (event.data && event.data.ai) {
     document.getElementById('provider').textContent = event.data.ai.provider;
-    document.getElementById('model').textContent = event.data.ai.model || 'Default model';
+  }
+  if (event.data && event.data.models) {
+    const select = document.getElementById('model-select');
+    const data = event.data.models;
+    if (data.error) {
+      select.replaceChildren(new Option('no models', ''));
+      select.title = data.error;
+    } else {
+      select.title = 'Model';
+      select.replaceChildren(...data.models.map(m => new Option(m.label, m.id)));
+      // A chosen model no longer switched on is shown as it is, not swapped.
+      if (data.model && !data.models.some(m => m.id === data.model)) { select.add(new Option(data.model + ' (off)', data.model)); }
+      // No model chosen runs the first one switched on, so that is what shows.
+      select.value = data.model || (data.models[0] ? data.models[0].id : '');
+    }
   }
   if (event.data && event.data.chat) {
     const mine = event.data.chat.startsWith('You: ');

@@ -211,7 +211,9 @@ test("Codex's model list starts with its weakest model and marks the one config.
   assert.equal(assistant.configuredCodexModel(folder("vertex-codex-")), "");
 });
 
-test("Claude Code's list is its aliases, the weakest first and its own default last", async () => {
+test("Claude's list is versions by full id, the newest of each family on and the weakest first", async () => {
   const list = await assistant.models({ assistant: "claude" });
-  assert.deepEqual(list.map(m => m.id), ["haiku", "sonnet", "opus", "fable", ""]);
+  assert.deepEqual(list.filter(m => m.on).map(m => m.id),
+    ["claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-opus-5-5", "claude-fable-5-1"]);
+  assert.ok(list.every(m => /^claude-/.test(m.id)));
 });

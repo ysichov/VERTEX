@@ -55,8 +55,9 @@ async function run(request, fetch, api = assistant, open = async () => { throw n
   }
   const options ={ assistant: request.assistant, executable: executable(request.assistant, request.executable) };
   if (request.call === "models") {
-    // Eclipse has no Config models: a Claude version is named in the page.
-    const answer = { call: "models", assistant: request.assistant, models: await api.models(options),
+    // Eclipse has no Config models: Claude's newest of each family is offered,
+    // and another version is named in the page.
+    const answer = { call: "models", assistant: request.assistant, models: (await api.models(options)).filter(m => request.assistant !== "claude" || m.on),
                      specify: request.assistant === "claude" };
     // A version the page asked to be checked: the list stays either way.
     const version = String(request.model || "").trim();

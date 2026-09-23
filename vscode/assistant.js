@@ -27,27 +27,17 @@ const ASSISTANTS = {
   codex: { label: "Codex", extension: "openai.chatgpt" }
 };
 
-// Claude Code reports no list of models, but it takes aliases that always mean
-// the newest of their family - so this list does not go stale. The weakest
-// comes first, so it is what a window picks unless told otherwise. Empty is
-// the model Claude Code's own settings choose.
-const CLAUDE_MODELS = [
-  { id: "haiku", label: "haiku" },
-  { id: "sonnet", label: "sonnet" },
-  { id: "opus", label: "opus" },
-  { id: "fable", label: "fable" },
-  { id: "", label: "Claude Code default" }
-];
-
-// Versions a Claude subscription can be pinned to, by full id - the same ids
-// the Anthropic API lists. Config models offers them switched off; when a new
-// model comes out, add it here.
+// The models a Claude subscription offers, by full id - the same ids the
+// Anthropic API lists; Claude Code reports no list of its own. The newest of
+// each family is on unless Config models says otherwise, and the weakest comes
+// first, so it is what a window picks unless told otherwise. When a new model
+// comes out, add it here.
 const CLAUDE_VERSIONS = [
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-  { id: "claude-opus-5-5", label: "Claude Opus 5.5" },
-  { id: "claude-fable-5-1", label: "Claude Fable 5.1" },
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", on: true },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5", on: true },
+  { id: "claude-opus-5-5", label: "Claude Opus 5.5", on: true },
+  { id: "claude-fable-5-1", label: "Claude Fable 5.1", on: true },
   { id: "claude-opus-5", label: "Claude Opus 5" },
-  { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
   { id: "claude-fable-5", label: "Claude Fable 5" },
   { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
   { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
@@ -55,7 +45,7 @@ const CLAUDE_VERSIONS = [
   { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
   { id: "claude-opus-4-5-20251101", label: "Claude Opus 4.5" },
   { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" }
-].map(function (m) { return { id: m.id, label: m.label + " (" + m.id + ")" }; });
+].map(function (m) { return { id: m.id, label: m.label, on: !!m.on }; });
 
 // Where each platform's Codex lives inside its extension: the folder whose
 // codex-package.json names this target.
@@ -120,12 +110,12 @@ function codexBinary(root) {
 
 /* ---------- models ---------- */
 
-/** What the model list offers: Claude Code's aliases, or Codex's own catalog. */
+/** What the model list offers: Claude's known versions, or Codex's own catalog. */
 async function models(options) {
   const id = options.assistant;
   describe(id);
   if (id === "claude") {
-    return CLAUDE_MODELS;
+    return CLAUDE_VERSIONS;
   }
 
   const file = options.executable || locate(id, options.extensionPath);

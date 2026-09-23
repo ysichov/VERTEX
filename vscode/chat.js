@@ -212,6 +212,16 @@ function create(vscode, codeTools, server, secrets) {
     if (picked) { await vscode.workspace.getConfiguration("vertex.ai").update("model", picked.id, vscode.ConfigurationTarget.Global); }
     return ask.state();
   };
+  // For the model list in the VERTEX panel: what is switched on, and which is chosen.
+  ask.listModels = async () => {
+    const id = subscriptionProvider(vscode);
+    return { models: modelConfig.apply(vscode, id, await fullModels(id)),
+             model: vscode.workspace.getConfiguration("vertex.ai").get("model", "") };
+  };
+  ask.setModel = async model => {
+    await vscode.workspace.getConfiguration("vertex.ai").update("model", String(model || ""), vscode.ConfigurationTarget.Global);
+    return ask.state();
+  };
   ask.configModels = () => {
     full.clear();
     return modelConfig.open(vscode, fullModels, id => extensionPath(vscode, id));

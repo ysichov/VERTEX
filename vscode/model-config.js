@@ -3,10 +3,11 @@
 // Which models VERTEX offers, per provider: the ones a person switched off are
 // left out of every model list, and a Claude version checked by its full id is
 // added to Claude's. Kept in the setting vertex.ai.modelConfig as
-//   { "<provider>": { hidden: [...], shown: [...], versions: [{ id, label }] } }
-// For what the provider lists, hidden is stored: a model it adds later is
-// offered until switched off. Claude's known versions (CLAUDE_VERSIONS) are
-// the other way round - off until switched on, kept in shown.
+//   { "<provider>": { hidden: [...], enabled: [...], versions: [{ id, label }] } }
+// Codex and the Anthropic API list their own models; for them hidden is
+// stored, so a model they add later is offered until switched off. Claude's
+// list is VERTEX's own (CLAUDE_VERSIONS): until it is saved once, the models
+// marked on are on; after that, enabled says which.
 
 const assistant = require("./assistant");
 
@@ -20,30 +21,28 @@ function read(vscode, id) {
   const all = vscode.workspace.getConfiguration("vertex.ai").get("modelConfig", {}) || {};
   const own = all[id] || {};
   return { hidden: Array.isArray(own.hidden) ? own.hidden : [],
-           shown: Array.isArray(own.shown) ? own.shown : [],
+           enabled: Array.isArray(own.enabled) ? own.enabled : null,
            versions: Array.isArray(own.versions) ? own.versions.filter(v => v && v.id) : [] };
 }
 
 async function write(vscode, id, config) {
   const settings = vscode.workspace.getConfiguration("vertex.ai");
   const all = Object.assign({}, settings.get("modelConfig", {}) || {});
-  all[id] = { hidden: config.hidden, shown: config.shown, versions: config.versions };
+  all[id] = id === "claude" ? { enabled: config.enabled, versions: config.versions }
+                            : { hidden: config.hidden };
   await settings.update("modelConfig", all, vscode.ConfigurationTarget.Global);
 }
 
 /** The provider's full list plus the checked versions, each marked on or off. */
 function rows(list, config, id) {
-  const listed = list.map(m => ({ id: m.id, label: m.label, on: config.hidden.indexOf(m.id) < 0 }));
-  if (id === "claude") {
-    assistant.CLAUDE_VERSIONS.forEach(v => {
-      if (!listed.some(m => m.id === v.id)) {
-        listed.push({ id: v.id, label: v.label, known: true, on: config.shown.indexOf(v.id) >= 0 });
-      }
-    });
+  if (id !== "claude") {
+    return list.map(m => ({ id: m.id, label: m.label, on: config.hidden.indexOf(m.id) < 0 }));
   }
+  const listed = list.map(m => ({ id: m.id, label: m.label, on: !!m.on }));
   config.versions.forEach(v => {
     if (!listed.some(m => m.id === v.id)) { listed.push({ id: v.id, label: v.label || v.id, version: true, on: true }); }
   });
+  if (config.enabled) { listed.forEach(m => { m.on = config.enabled.indexOf(m.id) >= 0; }); }
   return listed;
 }
 
@@ -102,8 +101,8 @@ function open(vscode, full, extensionPath) {
         return;
       }
       await write(vscode, id, {
-        hidden: list.filter(r => r && !r.on && !r.known && !r.version).map(r => String(r.id)),
-        shown: list.filter(r => r && r.on && r.known).map(r => String(r.id)),
+        hidden: list.filter(r => r && !r.on).map(r => String(r.id)),
+        enabled: list.filter(r => r && r.on).map(r => String(r.id)),
         versions: id === "claude"
           ? list.filter(r => r && r.version).map(r => ({ id: String(r.id), label: String(r.label || r.id) }))
           : []
