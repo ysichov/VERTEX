@@ -285,6 +285,9 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
                                             no_toc = COND #( WHEN lv_to IS INITIAL THEN lv_no_toc ) ).
 
           IF lv_to IS INITIAL.
+            " The rows go through AVE's own version-row type first, because that
+            " is the shape its duplicate check reads: object type and name to
+            " fetch each source, number, date and time to order them.
             DATA lt_row TYPE zif_vx_vers_types=>ty_t_version_row.
             LOOP AT lo_vrsd->vrsd_list INTO DATA(ls_vrsd).
               DATA(lo_version) = NEW zcl_vx_version( ls_vrsd ).
@@ -305,6 +308,8 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
                 EXPORTING i_ignore_case = lv_ignore_case
                 CHANGING  ct_versions   = lt_row ).
             ENDIF.
+            " What survived, in the flat shape the page reads: every field a
+            " string, dates and times as the dictionary keeps them.
             LOOP AT lt_row INTO DATA(ls_row).
               APPEND VALUE #( version     = |{ ls_row-versno }|
                               date        = |{ ls_row-datum }|
@@ -347,6 +352,8 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
         DATA(lt_diff) = zcl_vx_diff=>compute_diff( it_old         = lt_old
                                                    it_new         = lt_new
                                                    i_ignore_case  = lv_ignore_case ).
+        " The counts head the diff on the page. With IC=X a line that differs
+        " only in case or indentation is kept, not deleted and added again.
         DATA lv_added   TYPE i.
         DATA lv_deleted TYPE i.
         DATA lv_kept    TYPE i.

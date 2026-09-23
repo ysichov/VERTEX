@@ -69,6 +69,11 @@ development systems often have; it is off by default on purpose.
   it made. Pin a version with ◇ and every version picked afterwards is compared with
   that base instead; **Diff prev** goes back to comparing each version with the one
   before it. The parts column can be folded away and resized.
+
+  AVE's three switches sit beside it: **TOCs** shows the versions written by
+  transports of copies (off by default), **Dups** hides a version whose source is the
+  same as the one before it (on), **Case/ind** compares without case and indentation
+  (on). The ABAP side applies them, so they need this release's `src/` pulled.
 - **VERTEX: Switch System**
 - **VERTEX: Forget Password**
 - **VERTEX: Copy the MCP address for Claude Code or Codex**

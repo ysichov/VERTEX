@@ -1794,9 +1794,15 @@ draft in another, and the draft still goes through the reviewer, whose title nam
 The Versions window took AVE's layout back in the same landing: the list of versions moved from the
 right-hand pane, where the diff used to replace it behind a *← Versions* link, into the parts column
 under the parts, and the diff keeps the right. That made room for AVE's pinned base — compare any two
-versions, not only a version with its predecessor. Ignoring case and indentation, and hiding versions
-with identical source, stayed out: the diff is computed in ABAP for one pair, so neither can be done
-by the page alone.
+versions, not only a version with its predecessor. AVE's three switches followed on the ABAP side,
+where the diff is computed: `ZCL_VX_ADT_RES_VERSIONS` takes `toc`, `dups` and `ic`, and each one was
+already written — `ZCL_VX_VRSD`'s `no_toc`, `ZCL_VX_VERS_DATA=>REMOVE_DUPLICATE_VERSIONS`, and
+`COMPUTE_DIFF`'s `i_ignore_case` — carried over from AVE and never reached from the resource. The
+TOC switch applies to the list only: a diff reads both its versions whatever the list shows.
+
+`SAPDiagnose` refused the syntax dry run on QAS for the reason already on record — the client adds
+`includeSubpackages` to every call — so the check was abaplint against a baseline: the same fourteen
+findings before and after, and a misspelt parameter planted in the new call reported on its line.
 
 **Lesson.** A list that "cannot go stale" is only right while nobody needs an older entry. Ask what
 the list is for before deciding how it is kept.
