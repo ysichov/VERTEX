@@ -2,7 +2,7 @@
 
 // JSON-facing repository operations. No VS Code, model, MCP or credentials here.
 const { createHash, randomUUID } = require("crypto");
-const TYPES = Object.freeze({ PROG: "PROG/P", CLAS: "CLAS/OC", FUNC: "FUGR/FF" });
+const TYPES = Object.freeze({ PROG: "PROG/P", CLAS: "CLAS/OC", FUNC: "FUGR/FF", INTF: "INTF/OI" });
 const INCLUDES = ["main", "definitions", "implementations", "macros", "testclasses"];
 const revision = source => createHash("sha256").update(source.replace(/\r\n/g, "\n")).digest("hex");
 const MAX_SOURCE = 2 * 1024 * 1024;
@@ -14,7 +14,7 @@ function name(value, label = "object_name") {
   return value.toUpperCase();
 }
 function type(value) {
-  if (!Object.hasOwn(TYPES, value)) { throw new Error("Supported object_type values: PROG, CLAS, FUNC."); }
+  if (!Object.hasOwn(TYPES, value)) { throw new Error("Supported object_type values: PROG, CLAS, FUNC, INTF."); }
   return value;
 }
 function sourceText(value) {
@@ -123,6 +123,8 @@ function createRepository({ client, systemId, emit = () => {} }) {
   }
   async function create(args) {
     const kind = type(args.object_type), objectName = name(args.object_name);
+    // Interfaces are read and changed, not created.
+    if (kind === "INTF") { throw new Error("Creating an interface is not supported."); }
     sourceText(args.source);
     if (!/^(Z|Y|\/[A-Z0-9_]+\/)/.test(objectName)) { throw new Error("Create an object in a customer namespace."); }
     const matches = await client.searchObject(objectName, TYPES[kind], 200);
@@ -258,7 +260,21 @@ function createRepository({ client, systemId, emit = () => {} }) {
     } catch (error) { emit({ type: "error", task_id, tool, message: error.message }); throw error; }
     finally { executing = false; }
   }
-  return { execute, apply, draft, discard: id => drafts.delete(id),
+  // What the ABAP compiler knows about a name at a position of the source -
+  // ADT's own element info and navigation, what F3 and the hover use in
+  // Eclipse. The source sent is the editor's text, saved or not. Lines count
+  // from 1, columns from 0.
+  const elementInfo = (sourceUrl, source, line, column) =>
+    client.codeCompletionElement(sourceUrl, source, line, column);
+  const definition = (sourceUrl, source, line, start, end) =>
+    client.findDefinition(sourceUrl, source, line, start, end, false);
+  // The active source behind a URL that navigation pointed at - a type pool,
+  // an interface, another class - whatever kind of object it is.
+  const sourceAt = url => client.getObjectSource(adtPath(String(url).split("#")[0]), { version: "active" });
+  // A data element's domain or built-in type, for its hover.
+  const dataElement = async elementName => (await client.getDataElementProperties(
+    "/sap/bc/adt/ddic/dataelements/" + encodeURIComponent(name(elementName, "data element").toLowerCase()))).properties;
+  return { execute, apply, draft, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath };

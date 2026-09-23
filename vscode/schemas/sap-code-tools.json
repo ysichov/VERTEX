@@ -2,10 +2,10 @@
   {
     "name": "search_sap_objects",
     "annotations": { "readOnlyHint": true, "destructiveHint": false },
-    "description": "Search SAP programs, global classes and function modules by name pattern. Returns bounded metadata, no source.",
+    "description": "Search SAP programs, global classes, interfaces and function modules by name pattern. Returns bounded metadata, no source.",
     "inputSchema": { "type": "object", "additionalProperties": false, "required": ["query"], "properties": {
       "query": { "type": "string", "description": "SAP name pattern, e.g. ZCL_*" },
-      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC"] },
+      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC", "INTF"] },
       "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
     } }
   },
@@ -14,7 +14,7 @@
     "annotations": { "readOnlyHint": true, "destructiveHint": false },
     "description": "Read active SAP source and revision. Class main source contains global definition/implementation; read local includes separately when needed.",
     "inputSchema": { "type": "object", "additionalProperties": false, "required": ["object_type", "object_name"], "properties": {
-      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC"] },
+      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC", "INTF"] },
       "object_name": { "type": "string" },
       "include": { "type": "string", "enum": ["main", "definitions", "implementations", "macros", "testclasses"] }
     } }
@@ -35,7 +35,7 @@
     "annotations": { "readOnlyHint": false, "destructiveHint": false },
     "description": "Prepare a reviewed change to one source unit. Read first; pass its revision and complete replacement source. Does NOT write SAP. User applies from the draft editor.",
     "inputSchema": { "type": "object", "additionalProperties": false, "required": ["object_type", "object_name", "base_revision", "source"], "properties": {
-      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC"] },
+      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC", "INTF"] },
       "object_name": { "type": "string" }, "base_revision": { "type": "string" },
       "include": { "type": "string", "enum": ["main", "definitions", "implementations", "macros", "testclasses"] },
       "source": { "type": "string" }, "transport": { "type": "string" }

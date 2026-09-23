@@ -1,5 +1,27 @@
 # Release history
 
+## 2026-09-24 — VERTEX 0.7.2: names SAP knows, wherever they are declared
+
+- Hover and Go to on a variable, parameter, attribute or type ask SAP through ADT's own
+  element info and navigation - what F3 and the hover use in Eclipse - with the text of the tab,
+  saved or not. The guessing from the text is gone, and with it the misses: `ix_error`,
+  `result`. A name SAP cannot describe is said in the hover.
+- Fixed: double-click on the method in `zcl_class=>method(` or `lo_ref->method(` did nothing -
+  the `>` of the arrow was taken as part of the name. Angle brackets now count only around a
+  field symbol, `<ls_row>`.
+- A name declared in another object - `abap_bool` from the type pool, an interface constant, an
+  attribute of another class - shows its declaration in the hover, and double-click or Go to
+  opens it there: a class or a program as its VERTEX tab, any other kind read-only.
+- The hover on a data element names its domain, type and length - `domain: VERSNO  NUMC 5`.
+- Hover, double-click and Go to work inside a read-only view too, so navigation goes on from an
+  interface or a type pool.
+- Interfaces open as VERTEX tabs - read, edited, saved and activated like a program or a class,
+  and found by the chat's SAP tools. Creating one is not offered.
+- Fixed: the hover on a name at its own declaration - `BEGIN OF ty_diff_op` - said "SAP could
+  not describe this name - Definition location found". It shows the declaration now.
+- Double-click or Go to on the class in `NEW zcl_foo( ... )` opens its constructor, as Eclipse
+  does; a class without its own constructor opens at its start.
+
 ## 2026-09-23 — VERTEX 0.7.1: Diff keeps its own parts
 
 - Diff keeps AVE's column - Parts with the versions of the chosen part under them - instead of the
@@ -14,9 +36,6 @@
   Logic diagram asks for a method and Diff waits for a part, instead of opening the first one.
 - A request to open or show a function is answered in one sentence, without a summary of what
   opens.
-- Fixed: hover and Go to skipped a parameter or variable without a conventional prefix -
-  `ix_error`, `result`. Any name with a declaration is resolved now; keywords, structure
-  components and calls are left out.
 
 ## 2026-09-23 — VERTEX 0.7.0: the builder apart from its rows, and View source to the editor
 

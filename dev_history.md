@@ -1838,6 +1838,47 @@ once, and In use is its own switch. A provider's switch is `off: true` beside it
 `vertex.ai.modelConfig`, so switching it off keeps the ticks. The provider in use cannot be switched
 off, and a switched-off one cannot be put in use - the page refuses both, and so does the host.
 
+## Stage 37 — the arrow is not part of the name
+
+Double-click on `load` in `zcl_ave_version_list=>load(` did nothing. The double-click handler only
+navigates when the selection equals the word under the cursor, and `wordAt` counted `<` and `>` as
+name characters for field symbols - so the word was `>load` and never matched the selection
+`load`. The same broke `lo_ref->method(`. Angle brackets now join the name only as a pair around
+it, `<ls_row>`. The test host gained a mouse-selection event so double-click is covered.
+
+The hover on `abap_bool` then showed only `ABAP_BOOL (PROG/PY)`: the declaration line was looked
+for only in the tab's own source, and `abap_bool` lives in the type pool `ABAP`. When ADT's
+navigation points at another URL, that object's active source is now read (`sourceAt`, once per
+URL) and the declaration taken from it. Double-click and Go to open it: a class or a program as its
+editable VERTEX tab, anything else - a type pool, an interface - as a read-only view, because
+VERTEX edits only PROG, CLAS and FUNC. The line comes from the active source, so in an editable
+tab with an unactivated change above it the cursor can land a few lines off.
+
+A data element has no source, so for `versno` the hover still said only what it is. Its domain,
+type and length now come from ADT's data element properties, read once per name. Double-click
+stays on code: a data element is not opened.
+
+The read-only view was a dead end: hover and navigation were bound to `vertex-sap` tabs, and the
+view is a `vertex-source` snapshot, so the hover in it stayed on another extension's Loading. The
+view now keeps its system and ADT source URL, and the providers and double-click take it as well.
+
+`zif_ave_popup_types` still opened read-only: VERTEX edited only PROG, CLAS and FUNC. INTF
+(`INTF/OI`) joined them - an interface is one source, like a program, so reading and saving needed
+no change beyond the type. Creating one is refused in `create_sap_object` and left out of the
+Create command; nobody asked for it.
+
+On a declaration itself ADT's navigation answers HTTP 400 with an info message, "Definition
+location found; where-used list may be possible", instead of a location; arc-1 shows it as
+`I::000`, a message without a class or a number. The hover took it for a failure. That answer is
+now read as "declared here" and the declaration taken from the line. It is recognised by its
+text - there is nothing else to go by, and VERTEX logs on in English.
+
+`NEW zcl_ave_popup(` went nowhere: ADT's navigation on the class name points at the class with
+no line. Eclipse goes to the constructor, and so does VERTEX now - `NEW name(` is read as a call
+of `CONSTRUCTOR`. A class without its own constructor opens at its start.
+
+The VS Code extension went out as 0.7.2 with all of this; Eclipse was not rebuilt.
+
 ---
 
 ## What the practice turned out to be

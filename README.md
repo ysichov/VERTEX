@@ -204,6 +204,13 @@ function module in its own source. **VERTEX: Back** (`Alt+Left`) returns along t
   chained `METHODS:` entries, and shows the parameter sections.
 - Navigation follows static calls, `CALL FUNCTION`, and instance calls such as
   `mo_splitter->set_row_sash( )` when the receiver has a visible `TYPE REF TO` declaration.
+- A name declared in another object - `abap_bool` from the type pool, an interface constant -
+  shows its declaration in the hover; double-click or Go to opens it there, a class or a program
+  as its VERTEX tab and any other kind read-only.
+- The hover on a data element names its domain, type and length.
+- Hover and navigation work inside a read-only view as well.
+- Interfaces open as editable VERTEX tabs, like programs and classes.
+- `NEW zcl_foo( )` leads to the class's constructor.
   External classes and function modules open as source documents; **Back** returns through every
   VERTEX drill-down location.
 

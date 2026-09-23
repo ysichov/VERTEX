@@ -289,51 +289,183 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     }
     if (current.join("").trim()) result.push(current.join("").trim()); return result;
   }
-  function parameterDeclaration(source, method, parameter) {
-    for (const statement of abapStatements(source)) {
-      if (!/^(?:CLASS-)?METHODS\b|^FORM\b/i.test(statement.text)) continue;
-      const isForm = /^FORM\b/i.test(statement.text);
-      const members = isForm ? [statement.text.replace(/^FORM\s+/i, "")] : splitChain(statement.text.replace(/^(?:CLASS-)?METHODS\s*:?\s*/i, ""));
-      for (const member of members) {
-        const name = /^\s*([\w/~]+)/.exec(member);
-        if (!name || name[1].toUpperCase() !== method.toUpperCase()) continue;
-        const parameters = /(?:!?(\w+)|(?:VALUE|REFERENCE)\s*\(\s*!?(\w+)\s*\))\s+(TYPE|LIKE)\s+([\s\S]*?)(?=\s+(?:!?\w+|(?:VALUE|REFERENCE)\s*\(\s*!?\w+\s*\))\s+(?:TYPE|LIKE)\b|\s+(?:IMPORTING|EXPORTING|CHANGING|RETURNING|RAISING|EXCEPTIONS)\b|$)/gi;
-        let match;
-        while ((match = parameters.exec(member))) {
-          if ((match[1] || match[2]).toUpperCase() === parameter.toUpperCase()) {
-            return (match[1] || match[2]) + " " + match[3].toUpperCase() + " " + match[4].replace(/\s+/g, " ").replace(/\.$/, "").trim();
-          }
-        }
+  /* The identifier under the cursor: its text and where it starts and ends
+     on the line. Characters, not patterns - what it is, SAP decides. */
+  function wordAt(document, at) {
+    const line = document.getText().split(/\r?\n/)[at.line] || "";
+    const part = ch => (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9")
+      || ch === "_" || ch === "/";
+    let from = Math.min(at.character, line.length), to = from;
+    while (from > 0 && part(line.charAt(from - 1))) { from--; }
+    while (to < line.length && part(line.charAt(to))) { to++; }
+    // Angle brackets belong to the name only as a field symbol's <...>; the
+    // > of => and -> is not part of the method name after it.
+    if (from < to && line.charAt(from - 1) === "<" && line.charAt(to) === ">") { from--; to++; }
+    return from < to ? { name: line.slice(from, to), from, to } : null;
+  }
+  /* The SAP source a VERTEX tab shows, for asking ADT about it. */
+  function sourceOf(document) {
+    const entry = opened.get(document.uri.toString()) || readOnly.get(document.uri.toString());
+    if (!entry || !entry.repo || !entry.repo.api || typeof entry.repo.api.elementInfo !== "function") { return null; }
+    const url = entry.data.source_url || (entry.data.object_url + "/source/main");
+    return { entry, url };
+  }
+  /* ADT's answer for the name at a position, kept per text and position:
+     the same hover asked twice costs one request. */
+  const adtAnswers = new Map();
+  async function adtAsk(kind, document, at) {
+    const source = sourceOf(document), word = wordAt(document, at);
+    if (!source || !word) { return undefined; }
+    const text = document.getText();
+    const key = [kind, document.uri.toString(), document.version, at.line, word.from].join("|");
+    if (!adtAnswers.has(key)) {
+      if (adtAnswers.size > 200) { adtAnswers.clear(); }
+      adtAnswers.set(key, kind === "info"
+        ? source.entry.repo.api.elementInfo(source.url, text, at.line + 1, word.from)
+        : source.entry.repo.api.definition(source.url, text, at.line + 1, word.from, word.to));
+    }
+    try {
+      return { word, source, answer: await adtAnswers.get(key) };
+    } catch (error) {
+      adtAnswers.delete(key);
+      throw error;
+    }
+  }
+  /* The element info as a hover: what it is and its type, then SAP's text. */
+  function describeElement(info, dataType) {
+    if (!info || typeof info === "string") { return info ? String(info) : ""; }
+    const lines = [String(info.name || "") + (info.type ? "  (" + info.type + ")" : "")];
+    if (dataType) { lines.push(dataType); }
+    (info.components || []).forEach(component => (component.entries || []).forEach(entry => {
+      if (entry.value) { lines.push(entry.key + ": " + entry.value); }
+    }));
+    const doc = String(info.doc || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (doc) { lines.push("", doc); }
+    return lines.join("\n").trim();
+  }
+  /* A data element's properties, read once per system and name. */
+  const dataElements = new Map();
+  async function dataElementOf(repo, name) {
+    const key = repo.key + "|" + String(name).toUpperCase();
+    if (!dataElements.has(key)) {
+      if (dataElements.size > 200) { dataElements.clear(); }
+      dataElements.set(key, repo.api.dataElement(String(name)));
+    }
+    try { return await dataElements.get(key); } catch (error) { dataElements.delete(key); throw error; }
+  }
+  /* `domain: VERSNO  NUMC 5`, or the built-in type when there is no domain. */
+  function describeDataElement(properties) {
+    if (!properties || !properties.dataType) { return ""; }
+    const size = properties.dataTypeLength ? " " + Number(properties.dataTypeLength)
+      + (properties.dataTypeDecimals ? "," + Number(properties.dataTypeDecimals) : "") : "";
+    return (properties.typeName ? "domain: " + properties.typeName.toUpperCase() + "  " : "type: ") + properties.dataType + size;
+  }
+  // ADT's object type codes for the things a hover meets, in words.
+  const ELEMENT_KINDS = { "CLAS/OA": "attribute", "INTF/IA": "attribute", "CLAS/OM": "method", "INTF/IO": "method",
+    "CLAS/OT": "type", "INTF/IT": "type", "CLAS/OE": "event", "INTF/IE": "event",
+    "PROG/PD": "variable", "PROG/PY": "type", "PROG/PU": "form" };
+  /* The declaration SAP's navigation points at, as it is written in this tab:
+     from the declared name to the end of its line, without the closing
+     period or comma - `mv_name TYPE string`, `i_text TYPE string`. */
+  /* The declaration of the name, starting where SAP's navigation points. For
+     a variable or an attribute that is the name itself. For a parameter ADT
+     points at its method - `METHODS constructor` - so the name is looked for
+     further on in that one statement, up to its period. Returns the line and
+     column of the name, and the declaration written there. */
+  async function adtDeclared(document, at) {
+    let asked;
+    try {
+      asked = await adtAsk("definition", document, at);
+    } catch (error) {
+      // On the declaration itself ADT answers with an info message instead
+      // of a location: the name is declared right here. VERTEX logs on in
+      // English, so the text is stable; it carries no message number.
+      if (!/Definition location found; where-used list may be possible/i.test(String(error && error.message))) { throw error; }
+      const word = wordAt(document, at);
+      const lines = document.getText().split(/\r?\n/);
+      const found = declaredIn(document.getText(), { line: at.line + 1, column: word.from }, word.name);
+      if (!found) { return undefined; }
+      const opening = /\bBEGIN\s+OF\s+$/i.exec(lines[at.line].slice(0, word.from));
+      return opening ? { ...found, text: opening[0].trim().toUpperCase() + " " + found.text } : found;
+    }
+    const found = asked && asked.answer;
+    if (!found || !found.url || !found.line) { return undefined; }
+    if (String(found.url).split("#")[0] !== asked.source.url) { return undefined; }
+    return declaredIn(document.getText(), found, asked.word.name);
+  }
+  function declaredIn(text, found, name) {
+    const lines = text.split(String.fromCharCode(10)).map(line => line.split(String.fromCharCode(13)).join(""));
+    const wanted = name.toUpperCase();
+    const isPart = ch => (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_";
+    for (let index = found.line - 1, from = found.column || 0; index < lines.length; index++, from = 0) {
+      const upper = lines[index].toUpperCase();
+      for (let at2 = upper.indexOf(wanted, from); at2 >= 0; at2 = upper.indexOf(wanted, at2 + 1)) {
+        const before = at2 > 0 ? upper.charAt(at2 - 1) : " ", after = upper.charAt(at2 + wanted.length);
+        if (isPart(before) || isPart(after)) { continue; }
+        let piece = lines[index].slice(at2).trim();
+        while (piece.endsWith(".") || piece.endsWith(",")) { piece = piece.slice(0, -1).trim(); }
+        return { line: index, column: at2, text: piece };
       }
+      // The statement ends here: a period outside a comment or a literal is
+      // the end of the METHODS or DATA statement SAP pointed into.
+      if (lines[index].split('"')[0].trim().endsWith(".")) { break; }
     }
     return undefined;
   }
-  // ABAP words a declaration search would otherwise find inside a signature
-  // or a DATA statement - never variables themselves.
-  const ABAP_WORDS = new Set(("DATA TYPE TYPES LIKE REF TO VALUE REFERENCE IMPORTING EXPORTING CHANGING RETURNING "
-    + "RAISING EXCEPTIONS OPTIONAL DEFAULT TABLE OF STANDARD SORTED HASHED KEY WITH UNIQUE NON-UNIQUE EMPTY "
-    + "DEFAULT METHODS CLASS-METHODS METHOD ENDMETHOD FORM ENDFORM USING CONSTANTS STATICS FIELD-SYMBOLS "
-    + "BEGIN END INITIAL LINE STRING ABAP_BOOL ABAP_TRUE ABAP_FALSE IF ELSE ELSEIF ENDIF CASE WHEN ENDCASE "
-    + "LOOP AT INTO ENDLOOP WHILE ENDWHILE DO ENDDO READ WHERE AND OR NOT IS BOUND ASSIGNED ME NEW CONV "
-    + "COND SWITCH THEN APPEND INSERT DELETE MODIFY CLEAR CHECK RETURN EXIT CONTINUE RAISE EXCEPTION "
-    + "TRY CATCH ENDTRY CLEANUP SELECT FROM UP ROWS FIELDS SINGLE CALL FUNCTION SY").split(" "));
-  function variableAnchor(document, at) {
-    const line = document.getText().split(/\r?\n/)[at.line] || "";
-    const word = /[A-Za-z0-9_<>]/;
-    let from = Math.min(at.character, line.length), to = from;
-    while (from > 0 && word.test(line.charAt(from - 1))) { from--; }
-    while (to < line.length && word.test(line.charAt(to))) { to++; }
-    const name = line.slice(from, to);
-    // Any name is looked up - a declaration has to be found before anything
-    // is shown, so a prefix list is not what keeps false jumps out. It had
-    // been: `ix_error`, `result` or `request` got no hover at all. What is
-    // left out is what cannot be a variable here: a keyword, a component
-    // after `-`, and a name followed by `(`, which is a call.
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !/^<[A-Za-z_][A-Za-z0-9_]*>$/.test(name)) { return null; }
-    if (ABAP_WORDS.has(name.toUpperCase())) { return null; }
-    if (from > 0 && line.charAt(from - 1) === "-") { return null; }
-    if (/^\s*\(/.test(line.slice(to)) && !/(?:DATA|FINAL|FIELD-SYMBOL)\s*\(\s*$/i.test(line.slice(0, from))) { return null; }
-    return { name: name.toUpperCase(), from, to };
+  async function adtDeclaration(document, at) {
+    const declared = await adtDeclared(document, at);
+    return declared && declared.text || undefined;
+  }
+  /* Where SAP says the name is defined - in this tab when it is this source. */
+  async function adtDefinition(document, at) {
+    const declared = await adtDeclared(document, at);
+    if (!declared) { return undefined; }
+    return { document, target: location(document.uri, declared.line, declared.column, wordAt(document, at).name.length) };
+  }
+  /* A declaration SAP points at in another object - a type pool, an
+     interface, another class: that object's source is read, once per URL. */
+  const foreignSources = new Map();
+  /* Read-only views of other objects, by URI: the system and the ADT source
+     URL they show, so hover and navigation work inside them too. */
+  const readOnly = new Map();
+  async function adtForeign(document, at) {
+    const asked = await adtAsk("definition", document, at);
+    const found = asked && asked.answer;
+    if (!found || !found.url || !found.line) { return undefined; }
+    const url = String(found.url).split("#")[0];
+    if (url === asked.source.url || typeof asked.source.entry.repo.api.sourceAt !== "function") { return undefined; }
+    const repo = asked.source.entry.repo, key = repo.key + "|" + url;
+    if (!foreignSources.has(key)) {
+      if (foreignSources.size > 50) { foreignSources.clear(); }
+      foreignSources.set(key, repo.api.sourceAt(url));
+    }
+    let source;
+    try { source = await foreignSources.get(key); } catch (error) { foreignSources.delete(key); throw error; }
+    const declared = declaredIn(source, found, asked.word.name);
+    return declared && { ...declared, url, source, repo };
+  }
+  async function readOnlyView(foreign) {
+    const known = [...readOnly.entries()].find(([, item]) => item.repo === foreign.repo
+      && item.data.source_url === foreign.url && item.document && !item.document.isClosed);
+    if (known) { return known[1].document; }
+    const name = decodeURIComponent(foreign.url.replace(/\/(?:source\/main|includes\/\w+)$/, "").split("/").pop()).toUpperCase();
+    const document = await snapshot(foreign.source, name + " (read-only)");
+    readOnly.set(document.uri.toString(), { repo: foreign.repo, document, data: { object_name: name, source_url: foreign.url } });
+    return document;
+  }
+  /* Where SAP says the name is defined, in another object. A class or a
+     program or an interface opens as its VERTEX tab; any other kind opens read-only. */
+  async function adtForeignDefinition(document, at) {
+    const foreign = await adtForeign(document, at);
+    if (!foreign) { return undefined; }
+    const klass = /^\/sap\/bc\/adt\/oo\/classes\/([^/]+)\/(?:source\/main|includes\/(definitions|implementations|macros|testclasses))$/i.exec(foreign.url);
+    const program = /^\/sap\/bc\/adt\/programs\/programs\/([^/]+)\/source\/main$/i.exec(foreign.url);
+    const face = /^\/sap\/bc\/adt\/oo\/interfaces\/([^/]+)\/source\/main$/i.exec(foreign.url);
+    const target = klass || program || face
+      ? (await sourceDocument(foreign.repo, { object_type: klass ? "CLAS" : program ? "PROG" : "INTF",
+        object_name: decodeURIComponent((klass || program || face)[1]).toUpperCase(), ...(klass && klass[2] ? { include: klass[2] } : {}) })).document
+      : await readOnlyView(foreign);
+    return { document: target, target: location(target.uri, foreign.line, foreign.column, wordAt(document, at).name.length) };
   }
   function procedureAt(source, line) {
     let current;
@@ -376,39 +508,6 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     for (let line = 0; line < lines.length; line++) { if (declaration.test(lines[line])) { return line; } }
     return -1;
   }
-  function variableType(line, name) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const typed = line.match(new RegExp("\\b" + escaped + "\\b\\s+(TYPE|LIKE)\\s+(.+?)(?:\\s+(?:VALUE|READ-ONLY)\\b|\\.)", "i"));
-    if (typed) { return typed[2].trim(); }
-    if (new RegExp("\\b(?:DATA|FINAL)\\s*\\(\\s*" + escaped + "\\s*\\)", "i").test(line)) {
-      return "inline declaration — type inferred from the expression";
-    }
-    // Keep the declaration visible even when ABAP uses a multiline or
-    // project-specific type form that the compact parser cannot normalize.
-    return line.trim() || "declared in the current scope";
-  }
-  function variableInformation(document, at) {
-    const anchor = variableAnchor(document, at);
-    if (!anchor) { return undefined; }
-    const source = document.getText(), line = declarationLine(source, anchor.name, at);
-    if (line < 0) { return undefined; }
-    const lines = source.split(/\r?\n/);
-    let declaration = lines[line] || "";
-    // ABAP method signatures and DATA declarations are often wrapped across
-    // lines. Keep the complete statement available to the type resolver.
-    for (let next = line + 1; next < lines.length && !/\./.test(declaration); next++) {
-      declaration += " " + lines[next].trim();
-    }
-    declaration = declaration.trim();
-    // Do not add a competing variable hover for parameters declared in a
-    // method signature; the method hover remains the single source there.
-    const signatureContext = lines.slice(Math.max(0, line - 8), line + 1).join(" ");
-    if (/\b(?:CLASS-)?METHODS\b[\s\S]*\b(?:IMPORTING|EXPORTING|CHANGING|RETURNING)\b/i.test(signatureContext)
-      || /^\s*(?:IMPORTING|EXPORTING|CHANGING|RETURNING)\b/i.test(declaration)) {
-      return { anchor, line, type: "", declaration, signatureParameter: true };
-    }
-    return { anchor, line, type: variableType(declaration, anchor.name), declaration };
-  }
   function externalCallAnchor(document, at) {
     const line = document.getText().split(/\r?\n/)[at.line] || "";
     const inside = (from, length) => at.character >= from && at.character <= from + length;
@@ -427,6 +526,14 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       if (inside(objectAt, match[1].length) || inside(methodAt, match[2].length)) {
         return { kind: "instance-method", instance: match[1].toUpperCase(), method: match[2].toUpperCase(),
           name: (inside(objectAt, match[1].length) ? match[1] : match[2]).toUpperCase() };
+      }
+    }
+    // NEW zcl_foo( ... ) is a call of its constructor, as in Eclipse.
+    const newCall = /\bNEW\s+([A-Za-z_/$][A-Za-z0-9_/$]*)\s*\(/ig;
+    while ((match = newCall.exec(line))) {
+      const classAt = line.indexOf(match[1], match.index + 3);
+      if (inside(classAt, match[1].length)) {
+        return { kind: "constructor", object_type: "CLAS", object_name: match[1].toUpperCase(), name: match[1].toUpperCase() };
       }
     }
     const functionCall = /\bCALL\s+FUNCTION\s+['"]?([A-Za-z_/$][A-Za-z0-9_/$]*)/ig;
@@ -525,7 +632,8 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       include: entry.data.include, system: repo.label, note: "Editable local buffer opened. No changes saved to SAP." };
   }
   async function methodCounterpart(document, at) {
-    const entry = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document);
+    const entry = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
+      || readOnly.get(document.uri.toString());
     if (!entry || entry.data.object_type !== "CLAS") { return undefined; }
     const anchor = methodAnchor(document, at);
     if (!anchor) { return undefined; }
@@ -551,7 +659,8 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       Math.max(0, column), anchor.name.length) };
   }
   async function externalCallTarget(document, at) {
-    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document);
+    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
+      || readOnly.get(document.uri.toString());
     const call = current && (externalCallAnchor(document, at) || classAnchor(document, at));
     if (!call) { return undefined; }
     if (call.kind === "instance-method") {
@@ -563,6 +672,10 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     }
     const target = await sourceDocument(current.repo, { object_type: call.object_type, object_name: call.object_name });
     let line = 0, column = 0, length = call.object_name.length;
+    // A class without its own constructor opens at its start.
+    if (call.kind === "constructor" && methodLine(target.document.getText(), "CONSTRUCTOR", true) >= 0) {
+      call.kind = "method"; call.method = "CONSTRUCTOR";
+    }
     if (call.kind === "method") {
       line = methodLine(target.document.getText(), call.method, true);
       if (line < 0) { return undefined; }
@@ -572,7 +685,8 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     return { document: target.document, target: location(target.document.uri, line, column, length) };
   }
   async function externalMethodInformation(document, at) {
-    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document);
+    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
+      || readOnly.get(document.uri.toString());
     const call = current && externalCallAnchor(document, at);
     if (!call || call.kind !== "method") { return undefined; }
     const key = current.repo.key + "|" + call.object_name + "|" + call.method;
@@ -591,7 +705,8 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     return { call, signature: found.signature, owner: found.owner };
   }
   async function inheritedMethodInformation(document, at) {
-    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document);
+    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
+      || readOnly.get(document.uri.toString());
     const anchor = current && current.data.object_type === "CLAS" && methodAnchor(document, at);
     if (!anchor || methodSignature(document.getText(), anchor.name)) { return undefined; }
     const parent = /\bINHERITING\s+FROM\s+([A-Za-z_/$][A-Za-z0-9_/$]*)/i.exec(document.getText());
@@ -609,14 +724,6 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     }
     const found = await externalSignatures.get(key);
     return found && { anchor, signature: found.signature, owner: found.owner };
-  }
-  function variableDeclaration(document, at) {
-    const info = variableInformation(document, at);
-    if (!info || info.line === at.line) { return undefined; }
-    const anchor = info.anchor, source = document.getText(), line = info.line;
-    const text = source.split(/\r?\n/)[line];
-    return { document, target: location(document.uri, line,
-      Math.max(0, text.toUpperCase().indexOf(anchor.name)), anchor.name.length) };
   }
   function selectTarget(editor, target) {
     const start = target.range.start, end = target.range.end;
@@ -652,18 +759,22 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       });
     if (editor) { selectTarget(editor, { range: range(previous.at.line, previous.at.character, previous.at.character) }); }
   }
-  async function goToClassMethod(chosenEditor, chosenPosition) {
+  // QUIET is a double-click: a word SAP knows nothing about - a keyword - is
+  // simply selected, not answered with a message.
+  async function goToClassMethod(chosenEditor, chosenPosition, quiet) {
     const editor = chosenEditor || vscode.window.activeTextEditor;
     const at = chosenPosition || (editor && editor.selection && editor.selection.active);
     if (!editor || !at) { return; }
     const structure = structuralTarget(editor.document, at);
     if (structure) { await moveTo(editor, structure); return; }
     const method = await methodCounterpart(editor.document, at);
-    const variable = method ? undefined : variableDeclaration(editor.document, at);
-    const result = method || variable || await externalCallTarget(editor.document, at);
+    const variable = method ? undefined : await adtDefinition(editor.document, at);
+    // Standing on the definition itself: going to it again means going back.
+    if (variable && variable.target.range.start.line === at.line && navigation.length) { await goBack(); return; }
+    const result = method || (variable && variable.target.range.start.line !== at.line ? variable : undefined)
+      || await externalCallTarget(editor.document, at) || await adtForeignDefinition(editor.document, at);
     if (!result) {
-      const info = variableInformation(editor.document, at);
-      if (info && info.line === at.line && navigation.length) { await goBack(); return; }
+      if (quiet) { return; }
       vscode.window.showInformationMessage("VERTEX: place the cursor on a method, variable, static class call or CALL FUNCTION name.");
       return;
     }
@@ -681,20 +792,21 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       const mouse = vscode.TextEditorSelectionChangeKind && vscode.TextEditorSelectionChangeKind.Mouse;
       const selection = event && event.selections && event.selections.length === 1 && event.selections[0];
       if (!mouse || !event || event.kind !== mouse || !selection || selection.isEmpty
-        || event.textEditor.document.uri.scheme !== "vertex-sap") { return; }
+        || (event.textEditor.document.uri.scheme !== "vertex-sap"
+          && !readOnly.has(event.textEditor.document.uri.toString()))) { return; }
       const anchor = structuralAnchor(event.textEditor.document, selection.active)
         || methodAnchor(event.textEditor.document, selection.active)
-        || variableAnchor(event.textEditor.document, selection.active)
+        || wordAt(event.textEditor.document, selection.active)
         || externalCallAnchor(event.textEditor.document, selection.active)
         || classAnchor(event.textEditor.document, selection.active);
-      if (!anchor || event.textEditor.document.getText(selection).toUpperCase() !== anchor.name) { return; }
-      goToClassMethod(event.textEditor, selection.active)
+      if (!anchor || event.textEditor.document.getText(selection).toUpperCase() !== String(anchor.name).toUpperCase()) { return; }
+      goToClassMethod(event.textEditor, selection.active, true)
         .catch(error => vscode.window.showErrorMessage("VERTEX: " + error.message));
     }));
   }
   if (vscode.languages && typeof vscode.languages.registerDefinitionProvider === "function") {
     context.subscriptions.push(vscode.languages.registerDefinitionProvider(
-      { scheme: "vertex-sap", language: "abap" }, {
+      [{ scheme: "vertex-sap", language: "abap" }, { scheme: "vertex-source", language: "abap" }], {
         async provideDefinition(document, at) {
           const result = structuralTarget(document, at) || await methodCounterpart(document, at)
             || await externalCallTarget(document, at);
@@ -705,40 +817,38 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   // Only identifiers that resolve as methods may trigger signature lookups.
   if (vscode.languages && typeof vscode.languages.registerHoverProvider === "function") {
     context.subscriptions.push(vscode.languages.registerHoverProvider(
-      { scheme: "vertex-sap", language: "abap" }, {
+      [{ scheme: "vertex-sap", language: "abap" }, { scheme: "vertex-source", language: "abap" }], {
         async provideHover(document, at) {
-          const variable = variableAnchor(document, at);
-          if (variable) {
-            const source = document.getText();
-            const procedure = procedureAt(source, at.line);
-            // Local declarations win; a parameter is resolved only in this
-            // exact METHOD or FORM.  No source from a call site is involved.
-            const declaration = localDeclaration(source, at.line, variable.name);
-            const value = declaration ? variableType(declaration, variable.name)
-              : procedure && parameterDeclaration(source, procedure.name, variable.name);
-            if (value) {
-              const target = range(at.line, variable.from, variable.to);
-              return vscode.Hover ? new vscode.Hover([{ language: "abap", value }], target)
-                : { contents: [{ language: "abap", value }], range: target };
-            }
-            // Not local and not a parameter: continue to the class-level
-            // declaration resolver below (for example mv_ignore_case in a
-            // PRIVATE SECTION) instead of stopping with an empty hover.
-          }
           const method = methodInformation(document, at);
           if (method) {
             const target = range(at.line, method.anchor.from, method.anchor.to);
             return vscode.Hover ? new vscode.Hover([{ language: "abap", value: method.signature }], target)
               : { contents: [{ language: "abap", value: method.signature }], range: target };
           }
-          // Resolve locals and parameters before any inherited/external lookup.
-          // This keeps a variable hover immediate and prevents a stale
-          // network signature request from leaving a `Loading...` tooltip.
-          const info = variableInformation(document, at);
-          if (info && !info.signatureParameter) {
-            const target = range(at.line, info.anchor.from, info.anchor.to);
-            return vscode.Hover ? new vscode.Hover([{ language: "abap", value: info.type }], target)
-              : { contents: [{ language: "abap", value: info.type }], range: target };
+          // Variables, parameters, attributes, types: what the ABAP compiler
+          // says about the name, through ADT - no guessing from the text.
+          let element, declared, dataType;
+          try {
+            element = await adtAsk("info", document, at);
+            declared = await adtDeclaration(document, at);
+            if (!declared) { const foreign = await adtForeign(document, at); declared = foreign && foreign.text; }
+            if (!declared && element && element.answer && element.answer.type === "DTEL/DE") {
+              dataType = describeDataElement(await dataElementOf(element.source.entry.repo, element.answer.name));
+            }
+          } catch (error) {
+            // Said in the hover: VS Code drops a provider's error in silence.
+            const value = "VERTEX: SAP could not describe this name - " + (error && error.message || error);
+            return vscode.Hover ? new vscode.Hover([{ language: "text", value }]) : { contents: [{ language: "text", value }] };
+          }
+          // What the element is, from SAP; how it is declared, from the line
+          // SAP's navigation points at - the element info carries no type.
+          const kind = element && element.answer && typeof element.answer === "object" && ELEMENT_KINDS[element.answer.type];
+          const described = declared ? (kind ? kind + ": " : "") + declared
+            : element && describeElement(element.answer, dataType);
+          if (described) {
+            const target = range(at.line, element.word.from, element.word.to);
+            return vscode.Hover ? new vscode.Hover([{ language: "abap", value: described }], target)
+              : { contents: [{ language: "abap", value: described }], range: target };
           }
           const inherited = await inheritedMethodInformation(document, at);
           if (inherited) {
@@ -887,7 +997,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     if (include) { await showSource(current.repo, { ...current.data, include }); }
   });
   command("vertex.createCode", async () => {
-    const object_type = await vscode.window.showQuickPick(Object.keys(TYPES), { title: "Create SAP object draft" });
+    const object_type = await vscode.window.showQuickPick(Object.keys(TYPES).filter(kind => kind !== "INTF"), { title: "Create SAP object draft" });
     if (!object_type) { return; }
     const object_name = await vscode.window.showInputBox({ title: "New SAP object name" });
     if (!object_name) { return; }

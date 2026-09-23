@@ -118,6 +118,13 @@ Currently supported:
   switch between a method declaration and implementation in the same class document. The same
   action follows an unqualified local call such as `build_layout( )`, and follows a supported
   variable to its declaration.
+- A name declared in another object - `abap_bool` from the type pool, an interface constant,
+  another class's attribute - shows its declaration in the hover, and double-click or Go to
+  opens it there: a class or a program as its VERTEX tab, any other kind read-only.
+- Hover a data element such as `versno` to see its domain, type and length.
+- Hover, double-click and Go to work inside a read-only view too.
+- Interfaces open as editable VERTEX tabs, like programs and classes; creating one is not offered.
+- Double-click the class in `NEW zcl_foo( )` to open its constructor.
 - A static call such as `ZCL_FOO=>bar( )` opens the target class at the implementation of `bar`.
   An instance call such as `mo_splitter->set_row_sash( )` does the same when `mo_splitter` has a
   visible `TYPE REF TO` declaration. `CALL FUNCTION 'Z_FOO'` opens the function module source,
