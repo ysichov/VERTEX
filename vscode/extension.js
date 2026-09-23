@@ -437,7 +437,7 @@ function open(context, service, initial, beside) {
         const payload = !ASSISTED[service]
           ? { error: "This window has no assistant." }
           : message.call === "models"
-            ? await assistantModels(args)
+            ? await assistantModels(context, args)
             : await assistantAsk(context, service, args);
         payload.call = message.call;
         try {
@@ -506,11 +506,14 @@ function assistantExtension(id) {
   return found ? found.extensionPath : "";
 }
 
-async function assistantModels(args) {
+async function assistantModels(context, args) {
   const id = String(args[0] || "");
   try {
-    return { assistant: id, models: id === "anthropic-api" ? anthropic.MODELS
-      : await assistant.models({ assistant: id, extensionPath: assistantExtension(id) }) };
+    // What Config models in the VERTEX panel leaves switched on; versions are
+    // added there too, so the page offers no field of its own for them.
+    return { assistant: id, models: require("./model-config").apply(vscode, id, id === "anthropic-api"
+      ? await anthropic.models(await context.secrets.get(providerSecretKey("anthropic")))
+      : await assistant.models({ assistant: id, extensionPath: assistantExtension(id) })) };
   } catch (e) {
     return { assistant: id, error: e.message };
   }
@@ -660,7 +663,7 @@ function activate(context) {
   tools = mcp.create({ fetch: fetch, context: context, port: port,
     pages: Object.assign(windowTools(), { "/chat": chatSet }) });
   const showTools = initial => require("./tools-window").open(vscode, context,
-    { pages: PAGES, fetch, asset, active, models: assistantModels,
+    { pages: PAGES, fetch, asset, active, models: args => assistantModels(context, args),
       source: args => sapCode.execute("read_sap_object", args),
       setContext: value => { latestToolsContext = value; },
       chat: () => require("./chat").create(vscode, sapCode, tools, context.secrets) }, initial);

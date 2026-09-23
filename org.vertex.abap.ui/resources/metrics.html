@@ -107,6 +107,15 @@
   .scroll { flex: 1 1 auto; overflow: auto; }
   body.flow #list { flex: 0 0 auto; max-width: 24rem;
                     border-right: 1px solid var(--border); }
+  /* The line between the parts and the diagram, dragged to share the width. */
+  .splitter { flex: 0 0 3px; margin-left: -2px; cursor: col-resize; z-index: 3; }
+  .splitter:hover, .splitter.dragging { background: var(--selected); }
+  body.dragging { cursor: col-resize; user-select: none; }
+  /* Folded away, the parts keep a strip with the button that brings them back. */
+  body.flow #list.folded { flex-basis: 24px !important; max-width: 24px; overflow: hidden; }
+  body.flow #list.folded #root > :not(.uml-parts-head) { display: none; }
+  body.flow #list.folded .uml-parts-head { flex-direction: column; padding: 5px 0; gap: 6px; }
+  body.flow #list.folded .uml-parts-head .title { margin: 0; writing-mode: vertical-rl; }
   table { border-collapse: collapse; white-space: nowrap; }
   th, td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
   th { position: sticky; top: 0; background: var(--th-bg); font-weight: 600;
@@ -151,6 +160,9 @@
      still owns the right pane; this is only the navigator for choosing it. */
   .uml-parts-head,.uml-parts-object { padding: 5px 10px; background: var(--surface);
     border-bottom: 1px solid var(--border); font-weight: 600; }
+  .uml-parts-head { display: flex; align-items: center; padding-right: 6px; }
+  .uml-parts-head .title { margin-right: auto; }
+  .uml-parts-head button { padding: 0 6px; }
   .uml-parts-object { font-family: Consolas, monospace; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; }
   .uml-parts table { width: 100%; table-layout: fixed; }
@@ -235,6 +247,7 @@
 
 <div class="panes">
   <div class="scroll" id="list"><div id="root"></div></div>
+  <div class="splitter" id="listsplit" title="Drag to resize the parts" hidden></div>
   <div class="scroll" id="diagram" hidden></div>
 </div>
 
@@ -608,7 +621,13 @@ function renderUmlParts() {
   schemeRows = [];
   var root = document.getElementById("root"), methods = sorted();
   root.className = "uml-parts"; root.innerHTML = "";
-  var title = document.createElement("div"); title.className = "uml-parts-head"; title.textContent = "Parts"; root.appendChild(title);
+  var title = document.createElement("div"); title.className = "uml-parts-head";
+  var caption = document.createElement("span"); caption.className = "title"; caption.textContent = "Parts"; title.appendChild(caption);
+  var fold = document.createElement("button");
+  fold.innerHTML = listFolded ? "&#8250;" : "&#8249;";
+  fold.title = listFolded ? "Show the parts" : "Hide the parts";
+  fold.addEventListener("click", function () { foldList(!listFolded); });
+  title.appendChild(fold); root.appendChild(title);
   var object = document.createElement("div"); object.className = "uml-parts-object"; object.textContent = loadedObject || objectName(); root.appendChild(object);
   var table = document.createElement("table"), head = document.createElement("thead"), header = document.createElement("tr");
   ["", "Type", "Name"].forEach(function (text) { var th = document.createElement("th"); th.textContent = text; header.appendChild(th); });
@@ -846,6 +865,25 @@ var pendingClass = null;
 
 function flowMode() { return mode !== "metrics"; }
 
+/* The parts beside a diagram can be folded to a strip; the splitter between
+   them is there only while both are. */
+var listFolded = false;
+
+function layoutList() {
+  document.getElementById("listsplit").hidden = !flowMode() || mode === "class" || listFolded;
+}
+
+function foldList(folded) {
+  listFolded = folded;
+  document.getElementById("list").classList.toggle("folded", folded);
+  var fold = document.querySelector("#root .uml-parts-head button");
+  if (fold) {
+    fold.innerHTML = folded ? "&#8250;" : "&#8249;";
+    fold.title = folded ? "Show the parts" : "Hide the parts";
+  }
+  layoutList();
+}
+
 /* Whether this row is the one on display. Include and name together, because
    a program can hold two FORMs of the same name in different includes. */
 function shown(unit) {
@@ -860,6 +898,7 @@ function setMode(next) {
   document.body.classList.toggle("flow", flowMode());
   document.body.classList.toggle("calls", next === "calls");
   document.getElementById("list").hidden = next === "class";
+  layoutList();
   document.getElementById("totals").classList.toggle("hidden", next === "class");
   document.getElementById("diagram").hidden = !flowMode();
   document.getElementById("tools").hidden = !flowMode();
@@ -1504,6 +1543,31 @@ function setupPage(detail) {
 }
 
 /* ---------- wiring ---------- */
+
+document.getElementById("listsplit").addEventListener("mousedown", function (e) {
+  if (e.button !== 0) { return; }
+  e.preventDefault();
+  var list = document.getElementById("list");
+  var split = e.currentTarget;
+  var startX = e.clientX;
+  var startWidth = list.getBoundingClientRect().width;
+  var room = list.parentNode.getBoundingClientRect().width;
+  split.classList.add("dragging");
+  document.body.classList.add("dragging");
+  function move(ev) {
+    var width = Math.max(120, Math.min(room - 200, startWidth + ev.clientX - startX));
+    list.style.flexBasis = width + "px";
+    list.style.maxWidth = "none";
+  }
+  function up() {
+    split.classList.remove("dragging");
+    document.body.classList.remove("dragging");
+    document.removeEventListener("mousemove", move);
+    document.removeEventListener("mouseup", up);
+  }
+  document.addEventListener("mousemove", move);
+  document.addEventListener("mouseup", up);
+});
 
 document.getElementById("load").addEventListener("click", load);
 

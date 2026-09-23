@@ -3,11 +3,36 @@
 // Direct Anthropic Messages API. The key stays in VS Code SecretStorage; this
 // module only receives it for the duration of one request.
 const https = require("https");
-const MODELS = [
-  { id: "claude-haiku-4-5-20251001", label: "haiku" },
-  { id: "claude-sonnet-5", label: "sonnet" },
-  { id: "claude-opus-5", label: "opus" }
-];
+
+/* The models this key can use, as GET /v1/models lists them - so a new model
+   shows up without a new VERTEX. A haiku comes first: it is what a request
+   uses when no model was chosen. */
+function models(apiKey) {
+  if (!apiKey) { return Promise.reject(new Error("No Anthropic API key is configured. Choose Anthropic API again and enter a key.")); }
+  return new Promise((resolve, reject) => {
+    const req = https.request({ hostname: "api.anthropic.com", path: "/v1/models?limit=1000", method: "GET",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" } }, res => {
+      let text = ""; res.setEncoding("utf8"); res.on("data", part => { text += part; });
+      res.on("end", () => {
+        let answer;
+        try { answer = JSON.parse(text); } catch (_) { answer = null; }
+        if (res.statusCode !== 200 || !answer || !Array.isArray(answer.data)) {
+          reject(new Error("Anthropic API did not list its models (" + res.statusCode + "): "
+            + (answer && answer.error && answer.error.message || text.substring(0, 500))));
+          return;
+        }
+        const list = answer.data.map(m => ({ id: m.id, label: (m.display_name || m.id) + " (" + m.id + ")" }));
+        if (!list.length) { reject(new Error("Anthropic API listed no models for this key.")); return; }
+        const haiku = list.findIndex(m => /haiku/i.test(m.id));
+        if (haiku > 0) { list.unshift(list.splice(haiku, 1)[0]); }
+        resolve(list);
+      });
+    });
+    req.on("error", reject);
+    req.setTimeout(60000, () => req.destroy(new Error("Anthropic API did not list its models within a minute.")));
+    req.end();
+  });
+}
 
 function request(apiKey, body) {
   return new Promise((resolve, reject) => {
@@ -38,7 +63,7 @@ async function ask(options) {
   const messages = [{ role: "user", content: options.prompt }];
   let usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   for (let round = 0; round < 12; round += 1) {
-    const response = await request(options.apiKey, { model: options.model || MODELS[0].id, max_tokens: 16000,
+    const response = await request(options.apiKey, { model: options.model, max_tokens: 16000,
       system: options.instructions, messages, tools: apiTools });
     let answer;
     try { answer = JSON.parse(response.text); } catch (_) { answer = null; }
@@ -49,14 +74,14 @@ async function ask(options) {
     for (const key of Object.keys(usage)) { usage[key] += Number(answer.usage && answer.usage[key]) || 0; }
     const calls = (answer.content || []).filter(block => block.type === "tool_use");
     const final = calls.find(call => call.name === "submit_vertex_answer");
-    if (final) { return { plan: final.input, model: options.model || MODELS[0].id, usage }; }
+    if (final) { return { plan: final.input, model: options.model, usage }; }
     if (!calls.length) {
       // The Messages API is allowed to answer with text even when tools were
       // offered. A concise explanation of a supplied method is already a
       // useful completed answer; only navigation is absent in that case.
       const text = (answer.content || []).filter(block => block.type === "text")
         .map(block => block.text || "").join("\n").trim();
-      if (text) { return { plan: { answer: text, navigation: null }, model: options.model || MODELS[0].id, usage }; }
+      if (text) { return { plan: { answer: text, navigation: null }, model: options.model, usage }; }
       throw new Error("Anthropic API answered without text or a VERTEX plan.");
     }
     messages.push({ role: "assistant", content: answer.content });
@@ -76,4 +101,4 @@ async function ask(options) {
   throw new Error("Anthropic API did not finish the VERTEX plan.");
 }
 
-module.exports = { MODELS, ask };
+module.exports = { models, ask };

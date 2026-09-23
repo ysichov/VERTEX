@@ -38,6 +38,7 @@ footer { padding: 8px 12px; border-top: 1px solid var(--border); }
 textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertical; padding: 6px; }
 .actions { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
 #working { color: var(--muted); margin-right: auto; }
+#versionid { font: inherit; padding: 3px 6px; color: var(--fg); background: var(--input); border: 1px solid var(--border); }
 </style></head><body>
 <header>
   <span id="system">Resolving ABAP project ...</span>
@@ -97,11 +98,66 @@ function sdeReady() {
   if (typeof sdeTitle === "function") { sdeTitle(raw); }
 }
 
-function askModels() {
+/* A Claude model by its full id - a version the aliases no longer reach. The
+   page asks the host to check it with one short request; what came back
+   stays in the list, the rest is only offered. */
+var SPECIFY = "?version";
+
+function addVersionOptions(box, data, kept) {
+  var listed = data.models.some(function (m) { return m.id === kept; });
+  if (kept && !listed) {
+    var own = document.createElement("option");
+    own.value = kept;
+    own.textContent = data.probed && data.probed.id === kept ? data.probed.label : kept;
+    box.appendChild(own);
+  }
+  var specify = document.createElement("option");
+  specify.value = SPECIFY;
+  specify.textContent = "Specify version...";
+  box.appendChild(specify);
+}
+
+function specifyVersion() {
+  var box = document.getElementById("model");
+  var who = document.getElementById("who").value;
+  box.value = recall("model." + who);
+  if (document.getElementById("versionrow")) { document.getElementById("versionid").focus(); return; }
+  var row = document.createElement("div");
+  row.id = "versionrow";
+  row.style.cssText = "display: flex; gap: 4px; padding: 4px 6px;";
+  var input = document.createElement("input");
+  input.id = "versionid";
+  input.placeholder = "claude-opus-5";
+  input.spellcheck = false;
+  input.style.cssText = "flex: 1 1 0; min-width: 0;";
+  var check = document.createElement("button");
+  check.textContent = "Check";
+  var cancel = document.createElement("button");
+  cancel.textContent = "Cancel";
+  function close() { row.parentNode.removeChild(row); }
+  function go() {
+    var id = input.value.trim();
+    if (!id) { input.focus(); return; }
+    close();
+    say("you", "VERTEX", "Checking " + id + " with Claude Code ...");
+    askModels(id);
+  }
+  check.addEventListener("click", go);
+  cancel.addEventListener("click", close);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { go(); } else if (e.key === "Escape") { close(); }
+  });
+  row.appendChild(input); row.appendChild(check); row.appendChild(cancel);
+  var holder = box.parentNode;
+  holder.parentNode.insertBefore(row, holder.nextSibling);
+  input.focus();
+}
+
+function askModels(version) {
   var box = document.getElementById("model");
   box.innerHTML = "<option>loading ...</option>";
   box.disabled = true;
-  sdeModels(document.getElementById("who").value);
+  sdeModels(document.getElementById("who").value, version || "");
 }
 
 function send(selectedFragment) {
@@ -145,8 +201,11 @@ function sdeAssistant(raw) {
       option.textContent = m.label;
       box.appendChild(option);
     });
-    var kept = recall("model." + data.assistant);
-    if (data.models.some(function (m) { return m.id === kept; })) { box.value = kept; }
+    var kept = data.probed ? data.probed.id : recall("model." + data.assistant);
+    if (data.specify) { addVersionOptions(box, data, kept); }
+    if (data.probed) { remember("model." + data.assistant, kept); say("vertex", "VERTEX", "Model " + data.probed.label + " selected."); }
+    if (data.probeError) { say("error", "VERTEX", data.probeError); }
+    for (var k = 0; k < box.options.length; k += 1) { if (box.options[k].value === kept) { box.value = kept; } }
     box.disabled = false;
     return;
   }
@@ -232,6 +291,7 @@ document.getElementById("who").addEventListener("change", function (event) {
   askModels();
 });
 document.getElementById("model").addEventListener("change", function (event) {
+  if (event.target.value === SPECIFY) { specifyVersion(); return; }
   remember("model." + document.getElementById("who").value, event.target.value);
 });
 document.getElementById("new").addEventListener("click", function () {

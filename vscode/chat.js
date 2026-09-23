@@ -1,6 +1,7 @@
 "use strict";
 
 const assistant = require("./assistant");
+const modelConfig = require("./model-config");
 const anthropic = require("./anthropic");
 const sessionLog = require("./session-log");
 const directSearch = require("./direct-search");
@@ -88,16 +89,22 @@ function create(vscode, codeTools, server, secrets) {
   let running = false;
   // The conversation so far, sent with every request as the Eclipse chat does.
   let conversation = [];
-  const weakest = new Map();
-  // No model chosen in the settings means the weakest one, not the CLI's own default.
-  async function defaultModel(id) {
-    if (id === "anthropic-api") { return anthropic.MODELS[0].id; }
-    if (!weakest.has(id)) {
-      const models = await assistant.models({ assistant: id, extensionPath: extensionPath(vscode, id) });
+  const full = new Map();
+  // Every model the provider has, asked once per provider; the switched-off
+  // ones are left out each time, so a change in Config models counts at once.
+  async function fullModels(id) {
+    if (!full.has(id)) {
+      const models = id === "anthropic-api"
+        ? await anthropic.models(secrets && await secrets.get("vertex.provider.anthropic.apiKey"))
+        : await assistant.models({ assistant: id, extensionPath: extensionPath(vscode, id) });
       if (!models.length) { throw new Error("The " + id + " model list is empty."); }
-      weakest.set(id, models[0].id);
+      full.set(id, models);
     }
-    return weakest.get(id);
+    return full.get(id);
+  }
+  // No model chosen in the settings means the weakest one switched on, not the CLI's own default.
+  async function defaultModel(id) {
+    return modelConfig.apply(vscode, id, await fullModels(id))[0].id;
   }
   const ask = async function ask(prompt, options = {}) {
     if (running) { throw new Error("VERTEX is still working on the previous request."); }
@@ -200,11 +207,14 @@ function create(vscode, codeTools, server, secrets) {
   };
   ask.selectModel = async () => {
     const id = subscriptionProvider(vscode);
-    const models = id === "anthropic-api" ? anthropic.MODELS
-      : await assistant.models({ assistant: id, extensionPath: extensionPath(vscode, id) });
+    const models = modelConfig.apply(vscode, id, await fullModels(id));
     const picked = await vscode.window.showQuickPick(models.map(x => ({ label: x.label, id: x.id })), { title: "Select " + id + " model" });
     if (picked) { await vscode.workspace.getConfiguration("vertex.ai").update("model", picked.id, vscode.ConfigurationTarget.Global); }
     return ask.state();
+  };
+  ask.configModels = () => {
+    full.clear();
+    return modelConfig.open(vscode, fullModels, id => extensionPath(vscode, id));
   };
   return ask;
 }

@@ -175,6 +175,11 @@
           "default": "",
           "markdownDescription": "Model passed to the selected Codex or Claude subscription. Empty uses its weakest model (Claude: haiku; Codex: the last in its catalog)."
         },
+        "vertex.ai.modelConfig": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "Which models VERTEX offers per provider (`claude`, `codex`, `anthropic-api`): `hidden` model ids are left out of every model list, `versions` are Claude models checked by full id. Edited with **Config models** in the VERTEX panel."
+        },
         "vertex.ai.logPath": {
           "type": "string",
           "default": "",

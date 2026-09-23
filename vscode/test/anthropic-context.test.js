@@ -14,7 +14,7 @@ test("sidebar line-count question sends the published method in one bounded Anth
     window: { createWebviewPanel: () => panel, tabGroups: { all: [] } } };
   workspace.open(vscode, { subscriptions: [] }, { pages: path.resolve(__dirname, "../../org.vertex.abap.ui/resources"),
     chat: () => null, setContext: value => { state = value; } }, null);
-  const elements = { title: {}, code: { addEventListener() {} } };
+  const elements = { title: {}, code: { addEventListener() {} }, partssplit: { addEventListener() {} } };
   const page = vm.createContext({ document: { getElementById: id => elements[id], addEventListener() {} },
     window: {}, sdeSource() {}, sdeTake: () => raw,
     sdeContextUpdate: value => receive({ call: "vertexContext", args: [{ ...value,

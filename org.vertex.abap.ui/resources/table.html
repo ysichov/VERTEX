@@ -317,6 +317,7 @@
                          border: 1px solid var(--field-border); }
   .chat-input .row { display: flex; align-items: center; gap: 6px; }
   .chat-input .working { margin-right: auto; color: var(--muted); }
+  #versionid { font: inherit; padding: 2px 4px; color: var(--fg); background: var(--field-bg); border: 1px solid var(--field-border); }
 </style>
 </head>
 <body>
@@ -1794,14 +1795,69 @@ function openChat() {
 }
 
 /* Claude Code's aliases, or the catalog Codex reports: the host knows which. */
-function askModels() {
+/* A Claude model by its full id - a version the aliases no longer reach. The
+   page asks the host to check it with one short request; what came back
+   stays in the list, the rest is only offered. */
+var SPECIFY = "?version";
+
+function addVersionOptions(box, data, kept) {
+  var listed = data.models.some(function (m) { return m.id === kept; });
+  if (kept && !listed) {
+    var own = document.createElement("option");
+    own.value = kept;
+    own.textContent = data.probed && data.probed.id === kept ? data.probed.label : kept;
+    box.appendChild(own);
+  }
+  var specify = document.createElement("option");
+  specify.value = SPECIFY;
+  specify.textContent = "Specify version...";
+  box.appendChild(specify);
+}
+
+function specifyVersion() {
+  var box = document.getElementById("model");
+  var who = document.getElementById("who").value;
+  box.value = recall("model." + who);
+  if (document.getElementById("versionrow")) { document.getElementById("versionid").focus(); return; }
+  var row = document.createElement("div");
+  row.id = "versionrow";
+  row.style.cssText = "display: flex; gap: 4px; padding: 4px 6px;";
+  var input = document.createElement("input");
+  input.id = "versionid";
+  input.placeholder = "claude-opus-5";
+  input.spellcheck = false;
+  input.style.cssText = "flex: 1 1 0; min-width: 0;";
+  var check = document.createElement("button");
+  check.textContent = "Check";
+  var cancel = document.createElement("button");
+  cancel.textContent = "Cancel";
+  function close() { row.parentNode.removeChild(row); }
+  function go() {
+    var id = input.value.trim();
+    if (!id) { input.focus(); return; }
+    close();
+    say("user", "VERTEX", "Checking " + id + " with Claude Code ...");
+    askModels(id);
+  }
+  check.addEventListener("click", go);
+  cancel.addEventListener("click", close);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { go(); } else if (e.key === "Escape") { close(); }
+  });
+  row.appendChild(input); row.appendChild(check); row.appendChild(cancel);
+  var holder = box.parentNode;
+  holder.parentNode.insertBefore(row, holder.nextSibling);
+  input.focus();
+}
+
+function askModels(version) {
   var box = document.getElementById("model");
   box.innerHTML = "";
   var waiting = document.createElement("option");
   waiting.textContent = "loading ...";
   box.appendChild(waiting);
   box.disabled = true;
-  sdeModels(document.getElementById("who").value);
+  sdeModels(document.getElementById("who").value, version || "");
 }
 
 function fillModels(data) {
@@ -1823,8 +1879,11 @@ function fillModels(data) {
     option.textContent = m.label;
     box.appendChild(option);
   });
-  var kept = recall("model." + data.assistant);
-  if (data.models.some(function (m) { return m.id === kept; })) { box.value = kept; }
+  var kept = data.probed ? data.probed.id : recall("model." + data.assistant);
+  if (data.specify) { addVersionOptions(box, data, kept); }
+  if (data.probed) { remember("model." + data.assistant, kept); say("assistant", "VERTEX", "Model " + data.probed.label + " selected."); }
+  if (data.probeError) { say("error", "VERTEX", data.probeError); }
+  for (var k = 0; k < box.options.length; k += 1) { if (box.options[k].value === kept) { box.value = kept; } }
   box.disabled = false;
 }
 
@@ -1992,6 +2051,7 @@ document.getElementById("who").addEventListener("change", function (e) {
 });
 
 document.getElementById("model").addEventListener("change", function (e) {
+  if (e.target.value === SPECIFY) { specifyVersion(); return; }
   remember("model." + document.getElementById("who").value, e.target.value);
 });
 

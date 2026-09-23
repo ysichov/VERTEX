@@ -47,6 +47,11 @@ function register(vscode, context, active, ask, systems, toolContext) {
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
         }
+        if (message.action === "configModels") {
+          try { ask.configModels(); }
+          catch (e) { vscode.window.showErrorMessage(e.message); }
+          return;
+        }
         if (message.action === "newConversation") {
           // A new conversation writes to a new log file.
           require("./session-log").reset();
@@ -122,7 +127,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 </style></head><body>
 <h2>VERTEX chat</h2><label for="system-select">SAP system</label>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
-<p><button class="secondary" data-action="provider" id="provider">AI provider</button> <button class="secondary" data-action="model" id="model">Default model</button> <button class="secondary" data-action="newConversation">New conversation</button></p>
+<p><button class="secondary" data-action="provider" id="provider">AI provider</button> <button class="secondary" data-action="model" id="model">Default model</button> <button class="secondary" data-action="configModels">Config models</button> <button class="secondary" data-action="newConversation">New conversation</button></p>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
 <form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
 <h2>Quick launch</h2>

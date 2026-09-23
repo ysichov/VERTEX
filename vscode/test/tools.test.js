@@ -3,7 +3,7 @@ const test=require("node:test"),assert=require("node:assert/strict"),vm=require(
 const model=require("../object-tools"),workspace=require("../tools-window");
 test("source reads the selected object, preserves selection for chat and reports SAP errors",()=>{
   const html=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/source.html"),"utf8");
-  const handlers={},elements={title:{},code:{contains:n=>n==="code",addEventListener:(name,fn)=>handlers[name]=fn}};
+  const handlers={},elements={title:{},code:{contains:n=>n==="code",addEventListener:(name,fn)=>handlers[name]=fn},partssplit:{addEventListener(){}}};
   let raw,selection;const calls=[];
   const c=vm.createContext({document:{getElementById:id=>elements[id],addEventListener:(name,fn)=>handlers[name]=fn},window:{getSelection:()=>selection},sdeSource:(...args)=>calls.push(args),sdeTake:()=>raw});
   vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1].replace("/*INIT*/null/*INIT*/",JSON.stringify({type:"PROG",name:"Z_TEST"})),c);

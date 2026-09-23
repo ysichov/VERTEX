@@ -39,6 +39,24 @@ const CLAUDE_MODELS = [
   { id: "", label: "Claude Code default" }
 ];
 
+// Versions a Claude subscription can be pinned to, by full id - the same ids
+// the Anthropic API lists. Config models offers them switched off; when a new
+// model comes out, add it here.
+const CLAUDE_VERSIONS = [
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+  { id: "claude-opus-5-5", label: "Claude Opus 5.5" },
+  { id: "claude-fable-5-1", label: "Claude Fable 5.1" },
+  { id: "claude-opus-5", label: "Claude Opus 5" },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
+  { id: "claude-fable-5", label: "Claude Fable 5" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
+  { id: "claude-opus-4-5-20251101", label: "Claude Opus 4.5" },
+  { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" }
+].map(function (m) { return { id: m.id, label: m.label + " (" + m.id + ")" }; });
+
 // Where each platform's Codex lives inside its extension: the folder whose
 // codex-package.json names this target.
 const TRIPLES = {
@@ -142,6 +160,41 @@ async function models(options) {
   return listed.some(function (m) { return m.id === configured; })
     ? listed.map(function (m) { return m.id === configured ? mark : m; })
     : listed.concat([mark]);
+}
+
+/* A Claude model named by its full id - an older version the aliases no longer
+   reach. Claude Code has no list to check it against, so one short request is
+   run with it: the model that answers is the proof, and what is shown. */
+async function probe(options) {
+  describe(options.assistant);
+  if (options.assistant !== "claude") {
+    throw new Error("Only a Claude model is named by version; Codex lists its own.");
+  }
+  const id = String(options.model || "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._\-\[\]]*$/.test(id)) {
+    throw new Error("\"" + id + "\" is not a model id. Write it as Claude names it, for example claude-opus-5.");
+  }
+  const file = options.executable || locate("claude", options.extensionPath);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-probe-"));
+  try {
+    const env = Object.assign({}, process.env,
+      { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" });
+    const result = await collect(options.spawn, file,
+      ["-p", "--output-format", "json", "--tools", "", "--strict-mcp-config",
+       "--no-session-persistence", "--model", id],
+      { cwd: dir, env: env, input: "Reply with the word OK.", timeout: 60000 });
+    if (result.timedOut) { throw new Error("Claude Code did not answer with " + id + " within a minute."); }
+    let answer;
+    try { answer = JSON.parse(result.stdout); } catch (e) { answer = null; }
+    if (!answer || answer.is_error || answer.subtype !== "success") {
+      throw new Error("Claude Code did not accept the model " + id + ": "
+                      + (answer && answer.result || tail(result.stderr || result.stdout)));
+    }
+    const used = modelsUsed(answer.modelUsage);
+    return { id: id, label: used && used !== id ? id + " (" + used + ")" : id };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /* The top-level model of ~/.codex/config.toml: the lines before its first
@@ -387,6 +440,8 @@ exports.TRIPLES = TRIPLES;
 exports.TIMEOUT = TIMEOUT;
 exports.locate = locate;
 exports.models = models;
+exports.probe = probe;
+exports.CLAUDE_VERSIONS = CLAUDE_VERSIONS;
 exports.ask = ask;
 exports.configuredCodexModel = configuredCodexModel;
 exports.codexError = codexError;
