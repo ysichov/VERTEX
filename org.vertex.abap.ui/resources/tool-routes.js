@@ -82,6 +82,10 @@ const SERVICES = {
       if (args[7]) {
         p += "&calc=X";
       }
+      // Every event, form and method as its own block - ACE's All Blocks.
+      if (args[8]) {
+        p += "&all=X";
+      }
       return p;
     }
   },

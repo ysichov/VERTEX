@@ -76,7 +76,9 @@ public class MetricsView extends PageView {
 				final String depth = argument(arguments, 6);
 				// The calculated path only, as ACE draws it in SAP GUI by default.
 				final String calc = argument(arguments, 7);
-				queue(() -> read(flowPath(object, type, mode, include, unit, expand, depth, calc)));
+				// Every event, form and method as its own block - ACE's All Blocks.
+				final String all = argument(arguments, 8);
+				queue(() -> read(flowPath(object, type, mode, include, unit, expand, depth, calc, all)));
 				return null;
 			}
 		};
@@ -155,7 +157,7 @@ public class MetricsView extends PageView {
 	 *               any, and passes none
 	 */
 	private static String flowPath(String object, String type, String mode, String include,
-			String unit, String expand, String depth, String calc) {
+			String unit, String expand, String depth, String calc, String all) {
 		StringBuilder path = new StringBuilder("/sap/bc/adt/vertex/flow/")
 			.append(object.toUpperCase())
 			.append("?mode=").append(escape(mode.isEmpty() ? "scheme" : mode));
@@ -176,6 +178,9 @@ public class MetricsView extends PageView {
 		}
 		if (!calc.isEmpty()) {
 			path.append("&calc=X");
+		}
+		if (!all.isEmpty()) {
+			path.append("&all=X");
 		}
 		return path.toString();
 	}

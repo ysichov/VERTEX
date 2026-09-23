@@ -59,9 +59,14 @@ development systems often have; it is off by default on purpose.
   model controls, and the **VERTEX Tools** button.
 - **VERTEX Tools** — opens the unified tools window. Choose an object type,
   enter its name, then choose the available function (for example Data, View,
-  UML, Metrics, Flow, Scheme, Diff or Versions). The available functions depend
+  UML, Metrics, Calls, Logic, Diff or Versions). **Calls** shows which program, class or
+  method calls which in the whole object (ACE's Calls Flow): **Data path | All calls** keeps
+  only the calls the data passes through or every call, **Classes | Methods** draws a block per
+  class or per method. **Logic** is the flowchart of one method (ACE's Flow Scheme). The available functions depend
   on the selected object type; there are no separate SelecTor, Metrics or
-  Versions commands any more.
+  Versions commands any more. For a class or a program the window keeps one **Parts** list at
+  the left: pick a method, a section, a form or an event there, and every function shows that
+  part; switching the function keeps the list and the choice.
 
   In Code Explorer, **?** explains every metric: what ACE counts, the formula, and which values
   are good.

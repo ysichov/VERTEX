@@ -236,6 +236,9 @@
                    box-shadow: 0 3px 8px -3px var(--accent); font-weight: normal; }
   .seg { --seg-on: var(--vscode-sideBar-background, var(--surface)); }
 
+/* The row of the part chosen in the Tools window. */
+tbody tr.sel td { background: var(--hover); font-weight: 600; }
+
 /* The metrics help: what each column means, as ACE counts it. */
 #metricsdialog { color: var(--fg); background: var(--bg); border: 1px solid var(--border);
                  padding: 14px 18px; max-width: 760px; max-height: 80vh; overflow: auto; }
@@ -256,14 +259,15 @@
   <input id="name" spellcheck="false" autocomplete="off" placeholder="object name">
   <button id="load">Load</button>
   <select id="mode" title="What this window draws">
-    <option value="calls">Flow</option>
-    <option value="scheme">Scheme</option>
+    <option value="calls" title="Which program, class or method calls which - ACE's Calls Flow">Calls</option>
+    <option value="scheme" title="The flowchart of one method: its branches and statements - ACE's Flow Scheme">Logic</option>
     <option value="metrics">Metrics</option>
     <option value="class">UML class</option>
   </select>
   <span class="tools" id="tools" hidden>
-    <span class="seg depth" id="pathmode"><button data-calc="X" class="on" title="Only the events the data flow reaches - ACE's default in SAP GUI">Path</button><button data-calc="" title="Every step of every event - ACE's Show All Steps">All steps</button></span>
-    <label class="depth" id="depthbox" title="How far the flow follows calls">depth
+    <span class="seg depth" id="pathmode"><button data-calc="X" class="on" title="Only the calls the data passes through - ACE's default, with Show All Steps off">Data path</button><button data-calc="" title="Every call of every event - ACE: Show All Steps">All calls</button></span>
+    <span class="seg depth" id="blockmode"><button data-all="" class="on" title="One block per program or class - ACE's default, with All Blocks off">Classes</button><button data-all="X" title="Every event, form and method as its own block - ACE: All Blocks">Methods</button></span>
+    <label class="depth" id="depthbox" title="How far the calls are followed">Depth
       <input id="depth" type="number" min="1" max="99" step="1" value="3"></label>
     <span class="seg" id="dir"><button data-dir="TB" class="on" title="Lay the diagram out down the page">&#8595; Top-down</button><button data-dir="LR" title="Lay the diagram out across the page">&#8594; Left-right</button></span>
     <button id="out" title="Smaller">&#8722;</button>
@@ -513,7 +517,7 @@ function answered(kind, raw) {
         var method = declared.find(function (m) { return String(m.name).toUpperCase() === umlMethodName(unit).toUpperCase(); });
         if (method) { unit.visibility = method.visibility; }
       });
-      if (mode === "scheme") { renderUmlParts(); if (units.length) { openUnit(units[0]); } }
+      if (mode === "scheme") { renderUmlParts(); if (units.length) { openUnit(firstUnit()); } }
     } catch (error) { status("Could not read method sections: " + error.message); }
     return;
   }
@@ -638,7 +642,7 @@ function lost(kind) {
 
 function renderTotals(totals) {
   var box = document.getElementById("totals");
-  box.className = "totals";
+  box.className = mode === "metrics" ? "totals" : "totals hidden";
   box.innerHTML = "";
   [["units", totals.units], ["cyclomatic", totals.cyclomatic],
    ["avg CC", totals.avg_cyclomatic], ["LOC", totals.loc],
@@ -754,6 +758,8 @@ function makeTable(columns, rows, total, isClass) {
   var body = document.createElement("tbody");
   rows.forEach(function (row) {
     var line = document.createElement("tr");
+    line.setAttribute("data-key", partKeyOf(row.unit_name));
+    if (chosenKey && partKeyOf(row.unit_name) === chosenKey) { line.className = "sel"; }
     columns.forEach(function (column) { var cell = document.createElement("td"); cell.textContent = cellValue(row, column.key, isClass); if (column.num) { cell.className = "num"; } line.appendChild(cell); });
     body.appendChild(line);
   });
@@ -978,7 +984,9 @@ function setMode(next) {
   document.body.classList.toggle("calls", next === "calls");
   document.getElementById("list").hidden = next === "class";
   layoutList();
-  document.getElementById("totals").classList.toggle("hidden", next === "class");
+  // The totals are the whole object's numbers: they belong to the table, not
+  // to a diagram of one method or of the calls.
+  document.getElementById("totals").classList.toggle("hidden", next !== "metrics");
   document.getElementById("diagram").hidden = !flowMode();
   document.getElementById("tools").hidden = !flowMode();
   shownUnit = null;
@@ -1003,7 +1011,7 @@ function setMode(next) {
       hint("Reading method sections ...");
       waiting = "scheme-parts";
       sdeClass(loadedObject, loadedType);
-    } else if (units.length) { openUnit(units[0]); }
+    } else if (units.length) { openUnit(firstUnit()); }
     else { hint("No code units."); }
   } else if (loadedObject) {
     requestDiagram();
@@ -1026,8 +1034,46 @@ function modeFor(type) {
   return head === "prog" || head === "incl" ? "calls" : "scheme";
 }
 
+/* The name the VERTEX Tools window knows a part by - shared by every page:
+   capitals, no class in front, spaces folded. */
+function partKeyOf(value) {
+  var text = String(value || "").toUpperCase();
+  var at = text.lastIndexOf("=>");
+  if (at >= 0) { text = text.slice(at + 2); }
+  return text.replace(/\s+/g, " ").replace(/\.$/, "").trim();
+}
+
+/* The part the Tools window chose, kept for the table and the next scheme. */
+var chosenKey = "";
+
+/* The Tools window picked a part in its own list. */
+function sdeSelectPart(chosen) {
+  if (!chosen) { return; }
+  chosenKey = chosen.key;
+  if (mode === "scheme") {
+    var unit = units.filter(function (u) { return partKeyOf(u.unit_name) === chosen.key; })[0];
+    if (unit && !shown(unit)) { openUnit(unit); }
+  } else if (mode === "metrics") {
+    markMetricRow();
+  }
+}
+
+function markMetricRow() {
+  Array.prototype.forEach.call(document.querySelectorAll("#root tr[data-key]"), function (tr) {
+    tr.classList.toggle("sel", tr.getAttribute("data-key") === chosenKey);
+  });
+}
+
+/* The unit the window arrived with or last chose, or the first. */
+function firstUnit() {
+  var key = chosenKey || (INITIAL && INITIAL.part && INITIAL.part.key) || "";
+  return units.filter(function (u) { return partKeyOf(u.unit_name) === key; })[0] || units[0];
+}
+
 function openUnit(unit) {
   if (mode !== "scheme") { return; }
+  chosenKey = partKeyOf(unit.unit_name);
+  if (typeof sdePartShown === "function") { sdePartShown(chosenKey); }
   shownUnit = { include: unit.include, name: unit.unit_name };
   expanded = [];
   lastMermaid = null;
@@ -1064,7 +1110,7 @@ function requestDiagram() {
   waiting = "flow";
   if (mode === "calls") {
     // The flow is the whole object; there is no unit to name.
-    sdeFlow(loadedObject, loadedType, "calls", "", "", "", String(depth), calcPath ? "X" : "");
+    sdeFlow(loadedObject, loadedType, "calls", "", "", "", String(depth), calcPath ? "X" : "", allBlocks ? "X" : "");
   } else {
     sdeFlow(loadedObject, loadedType, "scheme", shownUnit.include,
             shownUnit.name, expanded.join(","), "");
@@ -1266,6 +1312,8 @@ function turned(text, dir) {
 /* The calls flow follows the calculated path unless told to show every step,
    the way ACE does in SAP GUI. */
 var calcPath = true;
+// One block per program or class, as ACE starts in SAP GUI, or every unit.
+var allBlocks = false;
 
 function setDirection(value) {
   direction = value;
@@ -1299,7 +1347,7 @@ function renderDiagram(data) {
   if (data.mode === "calls" && !data.steps) {
     hint("Nothing runs from " + data.program + " on its own."
          + String.fromCharCode(10)
-         + "A class is entered through its methods; pick Scheme to read one.");
+         + "A class is entered through its methods; pick Logic to read one.");
     return;
   }
   if (!data.mermaid) {
@@ -1720,6 +1768,19 @@ document.getElementById("depth").addEventListener("change", function () {
 
 document.getElementById("diagram").addEventListener("click", onDiagramClick);
 
+Array.prototype.forEach.call(document.querySelectorAll("#blockmode button"), function (button) {
+  button.addEventListener("click", function () {
+    var want = button.getAttribute("data-all") === "X";
+    if (want === allBlocks) { return; }
+    allBlocks = want;
+    Array.prototype.forEach.call(document.querySelectorAll("#blockmode button"), function (other) {
+      other.className = (other.getAttribute("data-all") === "X") === allBlocks ? "on" : "";
+    });
+    lastMermaid = null;
+    refit = true;
+    requestDiagram();
+  });
+});
 Array.prototype.forEach.call(document.querySelectorAll("#pathmode button"), function (button) {
   button.addEventListener("click", function () {
     var want = button.getAttribute("data-calc") === "X";

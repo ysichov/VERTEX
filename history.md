@@ -18,6 +18,10 @@
 - The panel's chat reaches any system in `vertex.systems` named in the question: copying code is
   a read in one system and a draft in the other, through the Code Change reviewer.
 - Splitters and folding for Parts in Versions, Code Explorer and View source.
+- The VERTEX Tools window keeps one Parts list for the object, beside every function: View
+  source, Logic, Calls, Metrics, UML and Diff read the part chosen there, and switching the
+  function neither redraws the list nor loses the choice. A class lists its sections and methods
+  from its version history; a program lists its events, forms and methods from ACE's parse.
 - Versions is laid out as AVE's was: Parts on the left with the versions of the chosen part under
   them (a splitter between), the diff on the right. Any version can be pinned as the base (◇);
   the Prev | Any switch compares with the previous version or with the base (the active version
@@ -44,13 +48,17 @@
 - Every choice between modes uses one switch template, the mode in force lit: Compact | Full,
   Inline | 2 pane, Prev | Any, Versions | Review, Join | Pivot table, Settings | Full view and
   Top-down | Left-right.
+- Code Explorer's modes renamed for what they show: Flow is now Calls (which unit calls which),
+  Scheme is now Logic (the flowchart of one method).
 - Scheme and Flow in the theme's colours: blocks a step off the background, decision diamonds
   tinted with the accent, arrow labels on a backing, larger text; ACE's node colours kept.
 - Thin scrollbars in the theme's colours on every VERTEX page.
 - The calls flow draws ACE's calculated path by default, as SAP GUI does while "Show All Steps" is
   off: only the events the data flow reaches. `ZCL_VX_ACE_FLOW=>PATH_EVENTS` carries ACE's
   `GET_CODE_FLOW` over, cut to what the flow reads; the flow resource takes `calc=X`, and a
-  Path | All steps switch sits beside the depth. Needs `src/` pulled.
+  Data path | All calls switch sits beside the depth. Needs `src/` pulled.
+- A Classes | Methods switch in the calls flow, as ACE's All Blocks: one block per program or
+  class by default, or every event, form and method.
 - Fixed: the "Opened … in system" answer printed the connection key instead of the system name.
 
 ## 2026-09-21 — VERTEX 0.6.0: source as navigation

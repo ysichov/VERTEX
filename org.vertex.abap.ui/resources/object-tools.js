@@ -14,7 +14,7 @@
     ["DDLS", "CDS", ["diff"]], ["DOMA", "Domain", ["diff"]], ["DTEL", "Data element", ["diff"]]
   ];
   const labels = { view: "View source", data: "Data", join: "Join", pivot: "Pivot", diff: "Diff", review: "Review",
-    uml: "UML", metrics: "Metrics", scheme: "Scheme", flow: "Flow" };
+    uml: "UML", metrics: "Metrics", scheme: "Logic", flow: "Calls" };
   // Visual order is not the default action: Diff belongs at the end of the
   // picker, while a class/package opened from a version-oriented command must
   // still start on Diff unless the caller selected a view explicitly.
@@ -41,7 +41,7 @@
     + "about what is on screen keeps the view: navigation null. "
     + "Use the current workspace object when requested. Ask if the object is ambiguous. Do not claim execution: the UI runs the function after your reply. "
     + "Use null navigation for other answers. Available types and actions: " + JSON.stringify(objects)
-    + ". In Tools, show/view/open source uses action view for PROG, CLAS and FUNC. Return navigation instead of calling open_sap_object for viewing. For explicit editing requests use open_sap_object to open an editable VS Code tab. Default to review for TR, diff for packages and data for tables. Diff is the version history: versions, history, what changed, compare versions or who changed it all mean action diff, never view. Package UML uses DEVC/uml.";
+    + ". In Tools, show/view/open source uses action view for PROG, CLAS and FUNC. Return navigation instead of calling open_sap_object for viewing. For explicit editing requests use open_sap_object to open an editable VS Code tab. Default to review for TR, diff for packages and data for tables. Logic (action scheme) is the flowchart of one method; Calls (action flow) is which unit calls which in the whole object. Diff is the version history: versions, history, what changed, compare versions or who changed it all mean action diff, never view. Package UML uses DEVC/uml.";
   const api = { objects, labels, normalize, navigationSchema, instructions };
   if (typeof module !== "undefined") module.exports = api;
   else root.VertexObjects = api;

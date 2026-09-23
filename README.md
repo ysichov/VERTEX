@@ -184,7 +184,7 @@ first. **VERTEX: Switch System** picks another one from a list, and the password
 system - two systems are two users often enough.
 
 Open **VERTEX: Open Panel**, then choose **VERTEX Tools**. Select the object type, enter its name
-and choose its function — for example Data, View, UML, Metrics, Flow, Scheme, Diff or Versions.
+and choose its function — for example Data, View, UML, Metrics, Calls, Logic, Diff or Versions.
 The functions are filtered by object type, so VERTEX does not offer actions that cannot apply.
 
 ### Clickable ABAP source
@@ -242,7 +242,7 @@ org.vertex.abap.ui/
 ├── build.properties       resources/ must be listed, or the page is missing at runtime
 ├── resources/
 │   ├── table.html         the grid, the join builder and the pivot cross
-│   ├── metrics.html       Flow, Scheme and Metrics: ACE's diagrams and numbers
+│   ├── metrics.html       Calls, Logic and Metrics: ACE's diagrams and numbers
 │   ├── mermaid.min.js     draws the diagrams; shipped, never fetched
 │   └── versions.html      parts, their versions, the diff, and the saved review
 └── src/org/vertex/abap/ui/

@@ -686,6 +686,7 @@ function loadVersions(part, showList) {
   current = part;
   versions = [];
   base = ""; diffPrev = true; picked = -1;
+  if (typeof sdePartShown === "function" && !scope) { sdePartShown(keyOfPart(part)); }
   showDiffPrev();
   versionNote("Reading ...");
   updatePartSelection();
@@ -820,7 +821,7 @@ function renderPartList(data) {
   }
   status(parts.length + (parts.length === 1 ? " part" : " parts"));
   note("Pick a part to see its versions.");
-  if (typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff" && !pending && !scope && parts.length) { loadVersions(parts[0]); }
+  if (typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff" && !pending && !scope && parts.length) { loadVersions(firstPart()); }
 }
 
 var partRows = [];
@@ -929,6 +930,43 @@ function isCurrent(p) {
 
 /* Only containers need expansion. Keep the scope as the resource's object and
    pass VRSD keys unchanged as part/ptype, padding included. */
+/* The name the VERTEX Tools window knows a part by - shared by every page:
+   capitals, no class in front, spaces folded. */
+function partKeyOf(value) {
+  var text = String(value || "").toUpperCase();
+  var at = text.lastIndexOf("=>");
+  if (at >= 0) { text = text.slice(at + 2); }
+  return text.replace(/\s+/g, " ").replace(/\.$/, "").trim();
+}
+
+function keyOfPart(p) {
+  if (/^(CPUB|CPRO|CPRI)$/.test(p.part_type)) { return p.part_type; }
+  return partKeyOf(p.part_type === "METH" ? p.unit : p.name);
+}
+
+/* The Tools window picked a part in its own list. */
+function sdeSelectPart(chosen) {
+  if (!chosen || scope) { return; }
+  var found = parts.filter(function (p) {
+    return (chosen.vrsd && p.name === chosen.vrsd.name && p.part_type === chosen.vrsd.part_type)
+        || keyOfPart(p) === chosen.key;
+  })[0];
+  if (found && found !== current) { loadVersions(found); }
+}
+
+/* The part the window arrived with, or the first. */
+function firstPart() {
+  var wanted = typeof INITIAL !== "undefined" && INITIAL && INITIAL.part;
+  if (wanted) {
+    var found = parts.filter(function (p) {
+      return (wanted.vrsd && p.name === wanted.vrsd.name && p.part_type === wanted.vrsd.part_type)
+          || keyOfPart(p) === wanted.key;
+    })[0];
+    if (found) { return found; }
+  }
+  return parts[0];
+}
+
 function openPart(p) {
   if (scope && /^(CLAS|INTF|FUGR)$/.test(p.part_type)) { drillInto(p); }
   else { loadVersions(p); }

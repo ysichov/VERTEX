@@ -29,7 +29,27 @@ dialog::backdrop{background:#0008}
 dialog label{display:block;margin:8px 0}
 #object-name{width:100%;padding-right:34px;text-transform:uppercase}iframe{border:0;width:100%;height:100%;display:block}
 #object-type{min-width:150px}#function{min-width:100px}
-#results{flex:1;min-height:0;position:relative}#results iframe{position:absolute;inset:0;display:none}#results iframe.active{display:block}#notice{padding:8px;white-space:pre-wrap}#notice:empty{display:none}
+#work{flex:1;min-height:0;display:flex}
+#results{flex:1;min-width:0;min-height:0;position:relative}
+/* The parts of the object, owned by the window: switching the function leaves
+   them as they are, selection included. */
+#tparts{flex:none;width:260px;overflow:auto;border-right:1px solid #8886;display:none;font-size:12px}
+#tparts.shown{display:block}#tparts.folded{width:26px;overflow:hidden}
+#tparts .head{display:flex;align-items:center;padding:5px 4px 5px 10px;font-weight:600;border-bottom:1px solid #8886;position:sticky;top:0;background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas));z-index:1}
+#tparts .head span{margin-right:auto}#tparts .head button{padding:0 6px;border:0;background:transparent;cursor:pointer}
+#tparts.folded .head{flex-direction:column;padding:5px 0;gap:6px}#tparts.folded .head span{writing-mode:vertical-rl;margin:0}
+#tparts.folded .object,#tparts.folded table{display:none}
+#tparts .object{padding:5px 10px;font-weight:600;font-family:var(--vscode-editor-font-family,Consolas,monospace);border-bottom:1px solid #8886;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tparts table{border-collapse:collapse;width:100%;table-layout:fixed}
+#tparts td{padding:3px 6px;border-bottom:1px solid #8883;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tparts td.vis{width:14px;padding-right:0}#tparts td.kind{width:52px;font-family:var(--vscode-editor-font-family,Consolas,monospace)}
+#tparts tr.group td{font-weight:600}#tparts tr.pick{cursor:pointer}
+#tparts tr.pick:hover td{background:var(--vscode-list-hoverBackground,#8882)}
+#tparts tr.on td{background:var(--vscode-list-activeSelectionBackground,Highlight);color:var(--vscode-list-activeSelectionForeground,inherit);font-weight:600}
+#tparts .mark{display:inline-block;width:8px;height:8px}
+#tparts .mark.public{background:#2e9e44}#tparts .mark.protected{background:#d9a400;width:7px;height:7px;transform:rotate(45deg)}#tparts .mark.private{background:#d33a2c;border-radius:50%}
+#tsplit{flex:none;width:3px;cursor:col-resize;display:none}#tparts.shown:not(.folded)+#tsplit{display:block}
+#tsplit:hover,#tsplit.dragging{background:var(--vscode-sash-hoverBorder,Highlight)}#results iframe{position:absolute;inset:0;display:none}#results iframe.active{display:block}#notice{padding:8px;white-space:pre-wrap}#notice:empty{display:none}
 
 /* Thin scrollbars in the theme's own colours instead of the engine's wide default. */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -46,7 +66,7 @@ dialog label{display:block;margin:8px 0}
 <select id="object-type" aria-label="Object type"></select>
 <div id="object-field"><input id="object-name" placeholder="Object name" aria-label="Object name" title="Enter an object name and press Enter" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/></svg></button></div>
 <select id="function" aria-label="Function"></select>
-</header><div id="notice" role="status"></div><div id="results" aria-label="Function result"></div></main>
+</header><div id="notice" role="status"></div><div id="work"><aside id="tparts" aria-label="Parts"></aside><div id="tsplit" title="Drag to resize the parts"></div><div id="results" aria-label="Function result"></div></div></main>
 <dialog id="request-dialog"><form method="dialog"><strong>Find transport requests</strong>
 <label>User (empty = current user)<input id="request-user" autocomplete="username" placeholder="Current SAP user"></label>
 <label><input type="checkbox" id="request-released"> Include released requests</label>
@@ -92,6 +112,112 @@ function navigate(value,remember){
   catch(e){notice(e.message);}
 }
 backButton.onclick=()=>{const previous=navigation.pop();if(previous)navigate(previous,false);backButton.hidden=!navigation.length;};
+/* ---------- the parts, one list for every function ---------- */
+
+// Which objects have parts, and which functions show one of them.
+const PART_TYPES=["CLAS","INTF","PROG","INCL"];
+const PART_ACTIONS=["view","scheme","flow","metrics","diff","uml"];
+let partsFor="",partsList=[],selectedPart=null,partsFolded=false;
+
+/* The one name every page knows a part by: the method, form or event as it
+   is written, in capitals, without its class. Sections go by their type. */
+function partKey(value){
+  let text=String(value||"").toUpperCase();
+  const at=text.lastIndexOf("=>");if(at>=0)text=text.slice(at+2);
+  return text.replace(/\s+/g," ").replace(/\.$/,"").trim();
+}
+const SECTION_OF={CPUB:"public",CPRO:"protected",CPRI:"private"};
+/* A class or interface: the parts its version history has - sections,
+   methods with their visibility, local includes - as SE80 groups them. */
+function classParts(data){
+  const rows=[],parts=data.parts||[];
+  ["public","protected","private"].forEach(section=>{
+    const type={public:"CPUB",protected:"CPRO",private:"CPRI"}[section];
+    const head=parts.find(p=>p.part_type===type);
+    const members=parts.filter(p=>p.part_type==="METH"&&p.section===section);
+    if(!head&&!members.length)return;
+    rows.push({group:true,section,type,label:{public:"Public section",protected:"Protected section",private:"Private section"}[section],
+      part:head?{key:type,type,name:{public:"Public section",protected:"Protected section",private:"Private section"}[section],vrsd:{name:head.name,part_type:head.part_type}}:null});
+    members.forEach(m=>rows.push({section,part:{key:partKey(m.unit),type:"METH",name:String(m.unit||"").toLowerCase(),vrsd:{name:m.name,part_type:m.part_type}}}));
+  });
+  parts.filter(p=>!SECTION_OF[p.part_type]&&!(p.part_type==="METH"&&p.section)).forEach(p=>
+    rows.push({part:{key:partKey(p.part_type==="METH"?p.unit:p.name),type:p.part_type,name:String(p.unit||p.name||""),vrsd:{name:p.name,part_type:p.part_type}}}));
+  return rows;
+}
+/* A program: its events, forms and local methods, as ACE parses them. */
+function programParts(data){
+  return (data.units||[]).map(u=>{
+    const type=/^(method|meth)$/i.test(u.unit_type||"")?"METH":String(u.unit_type||"").toUpperCase().slice(0,5);
+    return {part:{key:partKey(u.unit_name),type,name:String(u.unit_name||""),include:u.include}};
+  });
+}
+function renderTools(){
+  const box=document.getElementById("tparts");
+  box.textContent="";
+  const head=document.createElement("div");head.className="head";
+  const title=document.createElement("span");title.textContent="Parts";head.appendChild(title);
+  const fold=document.createElement("button");fold.innerHTML=partsFolded?"&#8250;":"&#8249;";
+  fold.title=partsFolded?"Show the parts":"Hide the parts";
+  fold.onclick=()=>{partsFolded=!partsFolded;box.classList.toggle("folded",partsFolded);renderTools();};
+  head.appendChild(fold);box.appendChild(head);
+  const object=document.createElement("div");object.className="object";object.textContent=current.name;box.appendChild(object);
+  const table=document.createElement("table"),body=document.createElement("tbody");
+  partsList.forEach(row=>{
+    const tr=document.createElement("tr");
+    const p=row.part;
+    tr.className=(row.group?"group ":"")+(p?"pick":"")+(p&&selectedPart&&p.key===selectedPart.key?" on":"");
+    if(p){tr.dataset.key=p.key;tr.onclick=()=>pickPart(p);}
+    const vis=document.createElement("td");vis.className="vis";
+    if(row.section){const mark=document.createElement("span");mark.className="mark "+row.section;vis.appendChild(mark);}
+    const kind=document.createElement("td");kind.className="kind";kind.textContent=row.group?row.type:(p?p.type:"");
+    const name=document.createElement("td");name.textContent=row.group?row.label:(p?p.name:"");
+    tr.append(vis,kind,name);body.appendChild(tr);
+  });
+  table.appendChild(body);box.appendChild(table);
+}
+function markPart(key){
+  document.querySelectorAll("#tparts tr.pick").forEach(tr=>tr.classList.toggle("on",tr.dataset.key===key));
+}
+/* A click in the list: the function on screen follows it, nothing is drawn
+   again. */
+function pickPart(p){
+  selectedPart=p;markPart(p.key);
+  if(result&&result.contentWindow&&typeof result.contentWindow.sdeSelectPart==="function"){
+    result.dataset.part=p.key;result.contentWindow.sdeSelectPart(p);
+  }
+}
+/* A page chose a part itself - its first one, say. The list follows it. */
+function partShown(key){
+  const row=partsList.find(r=>r.part&&r.part.key===key);
+  if(!row)return;
+  selectedPart=row.part;markPart(key);
+  if(result)result.dataset.part=key;
+}
+function showsParts(state){
+  return PART_TYPES.includes(String(state.type||"").toUpperCase())&&PART_ACTIONS.includes(state.action)&&!!state.name;
+}
+/* Read once per object: another function of the same object keeps the list. */
+function loadParts(state,then){
+  const identity=state.type+":"+state.name;
+  const box=document.getElementById("tparts");
+  if(!showsParts(state)){box.classList.remove("shown");then();return;}
+  box.classList.add("shown");
+  if(partsFor===identity){then();return;}
+  partsFor=identity;partsList=[];selectedPart=null;renderTools();
+  const klass=["CLAS","INTF"].includes(String(state.type).toUpperCase());
+  const path=klass?VertexRoutes.SERVICES.versions.load([state.name,state.type,"","","",""])
+                  :VertexRoutes.SERVICES.metrics.load([state.name,state.type]);
+  enqueue({path,body:null},raw=>{
+    if(partsFor!==identity)return;
+    try{
+      if(typeof raw!=="string"||raw.indexOf("ERROR:")===0)throw new Error(String(raw).substring(6));
+      const data=JSON.parse(raw);
+      partsList=klass?classParts(data):programParts(data);
+    }catch(e){partsList=[];notice("The parts could not be read: "+e.message);}
+    renderTools();then();
+  },()=>partsFor===identity);
+}
+
 function run(){
   try{current=VertexObjects.normalize({type:typeBox.value,name:nameBox.value,action:actionBox.value});}
   catch(e){notice(e.message);return;}
@@ -99,8 +225,17 @@ function run(){
   notice(""); fields();
   const service=current.action==="view"?"source":["data","join","pivot"].includes(current.action)?"table":
     ["diff","review"].includes(current.action)?"versions":"metrics";
-  mount(service,current);
+  const state=current;
+  loadParts(state,()=>{if(current===state)mount(service,state);});
 }
+document.getElementById("tsplit").addEventListener("mousedown",e=>{
+  if(e.button!==0)return;e.preventDefault();
+  const box=document.getElementById("tparts"),split=e.currentTarget,startX=e.clientX,startWidth=box.getBoundingClientRect().width;
+  split.classList.add("dragging");document.body.classList.add("dragging");
+  const move=ev=>{box.style.width=Math.max(140,Math.min(700,startWidth+ev.clientX-startX))+"px";};
+  const up=()=>{split.classList.remove("dragging");document.body.classList.remove("dragging");document.removeEventListener("mousemove",move);document.removeEventListener("mouseup",up);};
+  document.addEventListener("mousemove",move);document.addEventListener("mouseup",up);
+});
 function findRequests(){
   const user=document.getElementById("request-user").value.trim();
   const released=document.getElementById("request-released").checked ? "true" : "";
@@ -113,16 +248,29 @@ function mount(service,state,afterLoad){
   const key=service+":"+state.action;
   let frame=resultFrames.get(key);
   const identity=state.type+":"+state.name;
-  if(frame&&frame.dataset.identity===identity){showFrame(frame);if(afterLoad)afterLoad();return;}
+  if(frame&&frame.dataset.identity===identity){
+    showFrame(frame);
+    // The page kept its own choice while hidden; the list may have moved on.
+    if(selectedPart&&frame.dataset.part!==selectedPart.key&&typeof frame.contentWindow.sdeSelectPart==="function"){
+      frame.dataset.part=selectedPart.key;frame.contentWindow.sdeSelectPart(selectedPart);
+    }
+    if(afterLoad)afterLoad();return;}
   if(!frame){frame=document.createElement("iframe");frame.title="Function result";resultFrames.set(key,frame);results.appendChild(frame);}
   frame.dataset.identity=identity;
   const generation=++sequence;
   frame.dataset.generation=String(generation);
   let source=bundle[service];
-  const init=service==="table"?state.name:state;
+  const withParts=showsParts(state)&&service!=="table";
+  frame.dataset.part=selectedPart?selectedPart.key:"";
+  const init=service==="table"?state.name:Object.assign({},state,withParts?{part:selectedPart,partsOutside:true}:{});
   source=source.replace(["/*INIT*/","null","/*INIT*/"].join(""),()=>JSON.stringify(init).replace(/</g,"\\u003c"));
   const bootstrap="<script>parent.connect(window,"+JSON.stringify(service)+","+generation+");<"+"/script>";
-  const hide=service==="chat"?"":"<style>#name,#type,#load,#mode,#assist,#open,#finder{display:none!important}</style>";
+  // The window's list stands in for each page's own, so a page drawn beside
+  // it hides its parts - the versions of Diff stay, they are not parts.
+  const ownParts=!withParts?"":service==="source"?".parts,#partssplit{display:none!important}"
+    :service==="versions"?"#partsbox,#vsplit,#partsfold{display:none!important}"
+    :service==="metrics"?"body.flow #list,body.flow #listsplit{display:none!important}":"";
+  const hide=service==="chat"?"":"<style>#name,#type,#load,#mode,#assist,#open,#finder{display:none!important}"+ownParts+"</style>";
   frame.onload=()=>{showFrame(frame);if(afterLoad)afterLoad();};
   frame.srcdoc=source.replace("<script>",hide+bootstrap+"<script>");
 }
@@ -168,6 +316,7 @@ function connect(child,service,generation){
   child.sdeDeliver=value=>{if(live()){pending=value;child.sdeReady();}};
   const reply=value=>{if(live()){pending=value;child.sdeReady();}};
   child.sdeTitle=()=>{};
+  child.sdePartShown=key=>{if(live()&&owner===result)partShown(key);};
   // `chat.html` is shared with Eclipse.  Only VS Code supplies this host
   // capability, where the API key lives in VS Code SecretStorage.
   child.sdeAnthropicApi=()=>typeof sdeAnthropicApi==="function"&&sdeAnthropicApi();
