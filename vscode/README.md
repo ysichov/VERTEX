@@ -59,14 +59,17 @@ development systems often have; it is off by default on purpose.
   model controls, and the **VERTEX Tools** button.
 - **VERTEX Tools** — opens the unified tools window. Choose an object type,
   enter its name, then choose the available function (for example Data, View,
-  UML, Metrics, Calls, Logic, Diff or Versions). **Calls** shows which program, class or
+  UML diagram, Metrics, Calls diagram, Logic diagram, Diff or Versions). **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
   per class or per method, and picking an event or a form in Parts starts the calls there, as a
-  double-click in ACE's tree does (**From: … ✕** goes back to the whole program). **Logic** is the flowchart of one method (ACE's Flow Scheme). The available functions depend
+  double-click in ACE's tree does (**From: … ✕** goes back to the whole program). **Logic diagram** is the flowchart of one method (ACE's Flow Scheme). A magnifier follows the
+  pointer over every diagram; Shift and two fingers on the touchpad (or the wheel) change its strength; Ctrl and a pinch zoom
+  the whole picture. The available functions depend
   on the selected object type; there are no separate SelecTor, Metrics or
   Versions commands any more. For a class or a program the window keeps one **Parts** list at
   the left: pick a method, a section, a form or an event there, and every function shows that
-  part; switching the function keeps the list and the choice.
+  part; switching the function keeps the list and the choice. Diff keeps its own Parts and
+  Versions column, AVE's layout, and opens on the same part.
 
   In Code Explorer, **?** explains every metric: what ACE counts, the formula, and which values
   are good.
@@ -139,7 +142,7 @@ to the internal chat. For a class, its Parts list reuses the Diff table: `CPUB`,
 and `METH` rows have the same SE80-style visibility markers. One click shows a method body;
 double-click on the method switches declaration and body; double-click on a section positions its
 declaration. **← Back** restores the prior location. A program is never cut down to one part:
-its Parts list only positions the complete source on an event, form or local-class implementation.
+its Parts list only positions the complete source on an event, form or local-class implementation. **Open in the Editor** opens the object in the editable VERTEX source editor.
 
 The chat context follows the active function. A source view sends a selected fragment, or the
 currently open method when nothing is selected, together with the method's signature. For a redefinition VERTEX follows `INHERITING FROM`
@@ -178,9 +181,11 @@ switches at once and clears the chosen model (`vertex.ai.provider`, `vertex.ai.m
 
 ### Which models are offered
 
-**LLM Providers** opens a table per provider with a checkbox for each model; only the ticked ones
-appear in the model lists, and with no model chosen the weakest ticked one is used. Save refuses a
-table with nothing ticked. Saving also makes that provider the active one, and resets a chosen
+**LLM Providers** shows every provider at once as a tree: the provider with its own checkbox and
+an **In use** switch, its models underneath with a checkbox each. Only the ticked models appear in
+the model lists, and with no model chosen the weakest ticked one is used. A provider switched off
+keeps its model ticks but is left out of every provider choice; the one in use cannot be switched
+off - choose another first. Save refuses a provider with no model ticked, and resets a chosen
 model that is no longer offered. The choice is kept in `vertex.ai.modelConfig`.
 
 - **Claude subscription** lists Claude versions by full id (`claude-opus-5`, `claude-sonnet-4-6`,

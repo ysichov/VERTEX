@@ -712,6 +712,7 @@ function activate(context) {
   const showTools = initial => require("./tools-window").open(vscode, context,
     { pages: PAGES, fetch, asset, active, pin: pinTo, models: args => assistantModels(context, args),
       source: args => sapCode.execute("read_sap_object", args),
+      openEditor: args => sapCode.execute("open_sap_object", args),
       setContext: value => { latestToolsContext = value; },
       chat: () => require("./chat").create(vscode, sapCode, tools, context.secrets) }, initial);
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", showTools));

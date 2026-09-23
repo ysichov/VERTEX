@@ -55,7 +55,17 @@ async function run(request, fetch, api = assistant, open = async () => { throw n
   }
   const options ={ assistant: request.assistant, executable: executable(request.assistant, request.executable) };
   if (request.call === "models") {
-    return { call: "models", assistant: request.assistant, models: await api.models(options) };
+    // Eclipse has no Config models: Claude's newest of each family is offered,
+    // and another version is named in the page.
+    const answer = { call: "models", assistant: request.assistant, models: (await api.models(options)).filter(m => request.assistant !== "claude" || m.on),
+                     specify: request.assistant === "claude" };
+    // A version the page asked to be checked: the list stays either way.
+    const version = String(request.model || "").trim();
+    if (version) {
+      try { answer.probed = await api.probe({ ...options, model: version }); }
+      catch (e) { answer.probeError = e.message; }
+    }
+    return answer;
   }
   // Only the chat logs: one file per conversation, named by the page's session.
   const log = request.service === "chat" ? sessionLog.create(request.log, request.assistant, request.session, request.logInclude) : null;

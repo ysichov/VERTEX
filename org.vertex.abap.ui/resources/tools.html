@@ -34,7 +34,7 @@ dialog label{display:block;margin:8px 0}
 /* The parts of the object, owned by the window: switching the function leaves
    them as they are, selection included. */
 #tparts{flex:none;width:260px;overflow:auto;border-right:1px solid #8886;display:none;font-size:12px}
-#tparts.shown{display:block}#tparts.folded{width:26px;overflow:hidden}
+#tparts.shown{display:block}#tparts.folded{width:26px!important;overflow:hidden}
 #tparts .head{display:flex;align-items:center;padding:5px 4px 5px 10px;font-weight:600;border-bottom:1px solid #8886;position:sticky;top:0;background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas));z-index:1}
 #tparts .head span{margin-right:auto}#tparts .head button{padding:0 6px;border:0;background:transparent;cursor:pointer}
 #tparts.folded .head{flex-direction:column;padding:5px 0;gap:6px}#tparts.folded .head span{writing-mode:vertical-rl;margin:0}
@@ -107,16 +107,21 @@ function fields(){
   actionBox.value=current.action;
   findButton.style.display = current.type === "TR" ? "inline-block" : "none";
 }
+/* A part a navigation named, waiting for the object's list to arrive. */
+let pendingPart="";
 function navigate(value,remember){
-  try{if(remember!==false&&current.name)navigation.push(Object.assign({},current));current=VertexObjects.normalize(value);backButton.hidden=!navigation.length;fields();if(current.name) run();}
+  try{if(remember!==false&&current.name)navigation.push(Object.assign({},current));current=VertexObjects.normalize(value);
+    if(current.part)choosePart(current.part);backButton.hidden=!navigation.length;fields();if(current.name) run();}
   catch(e){notice(e.message);}
 }
 backButton.onclick=()=>{const previous=navigation.pop();if(previous)navigate(previous,false);backButton.hidden=!navigation.length;};
 /* ---------- the parts, one list for every function ---------- */
 
-// Which objects have parts, and which functions show one of them.
+// Which objects have parts, and which functions show the window's list.
+// Diff keeps its own: parts and the versions under them are one column there,
+// AVE's layout. It is still told which part is chosen, and tells back.
 const PART_TYPES=["CLAS","INTF","PROG","INCL"];
-const PART_ACTIONS=["view","scheme","flow","metrics","diff","uml"];
+const PART_ACTIONS=["view","scheme","flow","metrics","uml"];
 let partsFor="",partsList=[],selectedPart=null,partsFolded=false;
 
 /* The one name every page knows a part by: the method, form or event as it
@@ -175,6 +180,13 @@ function renderTools(){
   });
   table.appendChild(body);box.appendChild(table);
 }
+/* Select a part by name - now if the list is there, when it arrives if not. */
+function choosePart(name){
+  const key=partKey(name);
+  const row=partsList.find(r=>r.part&&r.part.key===key);
+  if(row&&partsFor===current.type+":"+current.name){selectedPart=row.part;markPart(key);}
+  else pendingPart=key;
+}
 function markPart(key){
   document.querySelectorAll("#tparts tr.pick").forEach(tr=>tr.classList.toggle("on",tr.dataset.key===key));
 }
@@ -200,8 +212,10 @@ function showsParts(state){
 function loadParts(state,then){
   const identity=state.type+":"+state.name;
   const box=document.getElementById("tparts");
-  if(!showsParts(state)){box.classList.remove("shown");then();return;}
-  box.classList.add("shown");
+  // Read for every function of an object that has parts - Diff too, which
+  // hides the list but still reports and follows the choice.
+  box.classList.toggle("shown",showsParts(state));
+  if(!PART_TYPES.includes(String(state.type||"").toUpperCase())||!state.name){then();return;}
   if(partsFor===identity){then();return;}
   partsFor=identity;partsList=[];selectedPart=null;renderTools();
   const klass=["CLAS","INTF"].includes(String(state.type).toUpperCase());
@@ -214,6 +228,7 @@ function loadParts(state,then){
       const data=JSON.parse(raw);
       partsList=klass?classParts(data):programParts(data);
     }catch(e){partsList=[];notice("The parts could not be read: "+e.message);}
+    if(pendingPart){const row=partsList.find(r=>r.part&&r.part.key===pendingPart);if(row)selectedPart=row.part;pendingPart="";}
     renderTools();then();
   },()=>partsFor===identity);
 }
@@ -261,8 +276,9 @@ function mount(service,state,afterLoad){
   frame.dataset.generation=String(generation);
   let source=bundle[service];
   const withParts=showsParts(state)&&service!=="table";
+  const carry=PART_TYPES.includes(String(state.type||"").toUpperCase())&&service!=="table"&&!!selectedPart;
   frame.dataset.part=selectedPart?selectedPart.key:"";
-  const init=service==="table"?state.name:Object.assign({},state,withParts?{part:selectedPart,partsOutside:true}:{});
+  const init=service==="table"?state.name:Object.assign({},state,carry?{part:selectedPart}:{},withParts?{partsOutside:true}:{});
   source=source.replace(["/*INIT*/","null","/*INIT*/"].join(""),()=>JSON.stringify(init).replace(/</g,"\\u003c"));
   const bootstrap="<script>parent.connect(window,"+JSON.stringify(service)+","+generation+");<"+"/script>";
   // The window's list stands in for each page's own, so a page drawn beside
@@ -327,6 +343,7 @@ function connect(child,service,generation){
   child.sdeAbout=()=>enqueue({path:"/sap/bc/adt/vertex/about"},reply,live);
   child.sdeAsset=name=>enqueue({asset:name},reply,live);
   child.sdeSource=(name,type)=>enqueue({source:[name,type]},reply,live);
+  if(typeof sdeOpenEditor==="function")child.sdeOpenEditor=(name,type)=>sdeOpenEditor(String(name),String(type));
   child.sdeContextUpdate=state=>{
     if(!live())return;
     const value=state&&typeof state==="object"?state:{};
@@ -404,5 +421,6 @@ document.getElementById("request-find").onclick=()=>{findRequests();};
 nameBox.onkeydown=e=>{if(e.key==="Enter")run();};
 actionBox.onchange=()=>{if(nameBox.value.trim())run();};
 fields();mountChat();
+if(current.part)pendingPart=partKey(current.part);
 if(current.name)run();
 </script></body></html>

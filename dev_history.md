@@ -1819,6 +1819,27 @@ the list is for before deciding how it is kept.
 
 ---
 
+## Stage 36 — the builder and its rows in separate panes
+
+The join and the pivot drew everything in one scrolling column: ten rows of the answer in a
+200-pixel box, the builder under it. A wide join left the reader scrolling the page to reach either.
+Now the rows are a short pane on top (at most a third of the height) and the settings fill the
+larger pane below, each scrolling on its own; Full view removes the settings pane, and the rows get the whole window.
+
+In the same landing View source got Open in the Editor. VS Code reuses `open_sap_object`; Eclipse
+navigates through ADT, and a function module's URI is found by quick search because it goes
+through the function group, which the page never knows. The button calls the host directly rather
+than through `queue()`: that path answers into the page's pending result, which the source page
+is not waiting for. Both hosts were bumped to 0.7.0.
+
+LLM Providers became a tree in the same landing: the provider dropdown hid every table but one,
+and choosing a provider there doubled as choosing the one in use on Save. Now all providers show at
+once, and In use is its own switch. A provider's switch is `off: true` beside its model settings in
+`vertex.ai.modelConfig`, so switching it off keeps the ticks. The provider in use cannot be switched
+off, and a switched-off one cannot be put in use - the page refuses both, and so does the host.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

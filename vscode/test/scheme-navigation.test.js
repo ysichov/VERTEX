@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-test('Scheme loads sections, opens first method and retains Parts after another click', () => {
+test('Scheme loads sections, opens no method until one is picked, and retains Parts after another click', () => {
   const html = fs.readFileSync(process.env.VERTEX_METRICS_HTML || require('node:path').join(__dirname, '../../org.vertex.abap.ui/resources/metrics.html'), 'utf8');
   const elements = {};
   const node = () => ({children: [], classList: {toggle() {}}, appendChild(n) {this.children.push(n);}, addEventListener() {}, set innerHTML(v) {this.children=[];}});
@@ -16,6 +16,9 @@ test('Scheme loads sections, opens first method and retains Parts after another 
   assert.equal(ctx.reads, 1);
   assert.equal(elements.root.children.length, 0, 'Do not render intermediate Other or metrics tables');
   ctx.answered('scheme-parts', JSON.stringify({nodes:[{name:'ZCL_TEST',methods:[{name:'first',visibility:'public'},{name:'second',visibility:'private'}]}]}));
+  // Nothing was named, so nothing is opened for the reader.
+  assert.equal(ctx.shownUnit, null);
+  ctx.openUnit(ctx.units[0]);
   assert.equal(ctx.shownUnit.name, 'ZCL_TEST=>first');
   const table = elements.root.children[2];
   const rows = ctx.schemeRows.map(row => row.element);

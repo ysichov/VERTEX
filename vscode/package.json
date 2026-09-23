@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.6.9",
+  "version": "0.7.1",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -178,7 +178,7 @@
         "vertex.ai.modelConfig": {
           "type": "object",
           "default": {},
-          "markdownDescription": "Which models VERTEX offers per provider (`claude`, `codex`, `anthropic-api`): `hidden` model ids are left out of every model list, `versions` are Claude models checked by full id. Edited with **Config models** in the VERTEX panel."
+          "markdownDescription": "Which models VERTEX offers per provider (`claude`, `codex`, `anthropic-api`): `hidden` model ids are left out of every model list, `versions` are Claude models checked by full id, `off: true` leaves the provider out of every provider choice. Edited with **Config models** in the VERTEX panel."
         },
         "vertex.ai.logPath": {
           "type": "string",

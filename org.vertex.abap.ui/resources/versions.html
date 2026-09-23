@@ -821,7 +821,7 @@ function renderPartList(data) {
   }
   status(parts.length + (parts.length === 1 ? " part" : " parts"));
   note("Pick a part to see its versions.");
-  if (typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff" && !pending && !scope && parts.length) { loadVersions(firstPart()); }
+  if (typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff" && !pending && !scope && parts.length && firstPart()) { loadVersions(firstPart()); }
 }
 
 var partRows = [];
@@ -954,7 +954,7 @@ function sdeSelectPart(chosen) {
   if (found && found !== current) { loadVersions(found); }
 }
 
-/* The part the window arrived with, or the first. */
+/* The part the window arrived with - none if nothing was named. */
 function firstPart() {
   var wanted = typeof INITIAL !== "undefined" && INITIAL && INITIAL.part;
   if (wanted) {
@@ -964,7 +964,7 @@ function firstPart() {
     })[0];
     if (found) { return found; }
   }
-  return parts[0];
+  return null;
 }
 
 function openPart(p) {

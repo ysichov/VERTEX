@@ -63,7 +63,9 @@ test("the packaged bridge exchanges a model-list result over the private pipe", 
     assert.equal(await exit, 0);
     const result = JSON.parse(Buffer.from(output.trim().split("\t")[1], "base64").toString());
     assert.equal(result.call, "models");
-    assert.ok(result.models.some(m => m.id === "sonnet"));
+    // Claude's newest of each family, by full id; another version is named in the page.
+    assert.ok(result.models.some(m => /^claude-sonnet-/.test(m.id)));
+    assert.equal(result.specify, true);
   } finally { clearTimeout(timer); child.kill(); }
 });
 

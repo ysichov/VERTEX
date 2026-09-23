@@ -1,5 +1,31 @@
 # Release history
 
+## 2026-09-23 — VERTEX 0.7.1: Diff keeps its own parts
+
+- Diff keeps AVE's column - Parts with the versions of the chosen part under them - instead of the
+  Tools window's shared Parts list, which it hides. It still opens on the part chosen in the other
+  functions and hands its own choice back to them.
+- The Tools window reads the parts of an object whatever function it is opened on, so a choice made
+  in Diff is known when switching to View source, Logic or Metrics.
+- The folded Parts list shrinks to its strip again; a width set with the splitter had kept it wide.
+- A request naming a method - "the flowchart of ZCL_FOO->BAR" - opens on that method: navigation
+  carries the part, and the Tools window selects it in Parts. Before, the first method opened.
+- Nothing is picked for the reader: without a named part, View source shows the whole object,
+  Logic diagram asks for a method and Diff waits for a part, instead of opening the first one.
+- A request to open or show a function is answered in one sentence, without a summary of what
+  opens.
+
+## 2026-09-23 — VERTEX 0.7.0: the builder apart from its rows, and View source to the editor
+
+- Join and Pivot table in two panes: a short window of rows on top, and the settings below with
+  most of the height, each scrolling on its own. Full view puts the settings away and gives the
+  rows the whole window.
+- View source has an Open in the Editor button: the object opens in the ADT editor in Eclipse and
+  in the VERTEX source editor in VS Code, on the window's own system.
+- LLM Providers (VS Code) shows every provider at once as a tree: a checkbox and an In use switch
+  per provider, its models below. A provider switched off keeps its model ticks and is left out of
+  every provider choice; the one in use cannot be switched off until another is chosen.
+
 ## 2026-09-23 — VERTEX 0.6.9: providers, models and a window with its own system
 
 - Providers are named by what is paid for: "Claude subscription (Claude Code)", "ChatGPT
@@ -48,11 +74,15 @@
 - Every choice between modes uses one switch template, the mode in force lit: Compact | Full,
   Inline | 2 pane, Prev | Any, Versions | Review, Join | Pivot table, Settings | Full view and
   Top-down | Left-right.
-- Code Explorer's modes renamed for what they show: Flow is now Calls (which unit calls which),
-  Scheme is now Logic (the flowchart of one method).
+- Code Explorer's modes renamed for what they show: Flow is now Calls diagram (which unit calls
+  which), Scheme is now Logic diagram (the flowchart of one method), UML class is UML diagram.
 - Scheme and Flow in the theme's colours: blocks a step off the background, decision diamonds
   tinted with the accent, arrow labels on a backing, larger text; ACE's node colours kept.
 - Thin scrollbars in the theme's colours on every VERTEX page.
+- The UML magnifier works on Logic and Calls too, over the whole picture, and only where the
+  text is too small to read at the current scale; Shift and two fingers on the
+  touchpad (or the wheel) set its strength smoothly from 1.5x to 6x; Ctrl and a pinch zoom the
+  whole picture. Calls diagram draws methods by default.
 - Calls starts where you choose: picking an event or a form in Parts walks the calls from there,
   as a double-click in ACE's tree does; From: … ✕ goes back to the whole program. The flow
   resource takes `start` and `stype`. ACE's calculated path is carried over as well

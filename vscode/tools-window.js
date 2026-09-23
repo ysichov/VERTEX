@@ -31,7 +31,7 @@ function open(vscode, context, deps, initial) {
     // Eclipse hosts the same HTML but deliberately does not define this flag.
     window.sdeAnthropicApi=()=>true;
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
-    for(const call of ["workspace","asset","models","ask","browse","requestSearch","source","vertexContext","aiProvider","aiModel","aiConfig"]){
+    for(const call of ["workspace","asset","models","ask","browse","requestSearch","source","openEditor","vertexContext","aiProvider","aiModel","aiConfig"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>host.postMessage({call,args});
     }
     window.addEventListener("message",e=>{
@@ -79,6 +79,12 @@ function open(vscode, context, deps, initial) {
         if(!["PROG","CLAS","FUNC"].includes(args[1])) throw new Error("Unsupported source type.");
         const payload=JSON.stringify(await deps.source({object_name:args[0],object_type:args[1]}));
         await panel.webview.postMessage({type:"result",payload}); return;
+      }
+      if(message.call === "openEditor") {
+        if(!["PROG","CLAS","FUNC"].includes(args[1])) throw new Error("Unsupported source type.");
+        try { await deps.openEditor({object_name:String(args[0]),object_type:args[1]}); }
+        catch(error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+        return;
       }
       if(message.call === "vertexContext") {
         // tools.html sends the state as JSON text (Eclipse's bridge takes

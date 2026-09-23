@@ -216,6 +216,8 @@
               border: 2px solid var(--field-border); background: var(--bg);
               box-shadow: 0 4px 14px #0006; }
   .uml-lens svg { position: absolute; max-width: none; }
+  .uml-lens-zoom { position: absolute; right: 22px; bottom: 14px; z-index: 1; padding: 0 5px; border-radius: 8px;
+                   font-size: 11px; color: var(--fg); background: var(--bg); opacity: .85; }
 
 /* Thin scrollbars in the theme's own colours instead of the engine's wide default. */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -259,13 +261,13 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
   <input id="name" spellcheck="false" autocomplete="off" placeholder="object name">
   <button id="load">Load</button>
   <select id="mode" title="What this window draws">
-    <option value="calls" title="Which program, class or method calls which - ACE's Calls Flow">Calls</option>
-    <option value="scheme" title="The flowchart of one method: its branches and statements - ACE's Flow Scheme">Logic</option>
+    <option value="calls" title="Which program, class or method calls which - ACE's Calls Flow">Calls diagram</option>
+    <option value="scheme" title="The flowchart of one method: its branches and statements - ACE's Flow Scheme">Logic diagram</option>
     <option value="metrics">Metrics</option>
-    <option value="class">UML class</option>
+    <option value="class">UML diagram</option>
   </select>
   <span class="tools" id="tools" hidden>
-    <span class="seg depth" id="blockmode"><button data-all="" class="on" title="One block per program or class - ACE's default, with All Blocks off">Classes</button><button data-all="X" title="Every event, form and method as its own block - ACE: All Blocks">Methods</button></span>
+    <span class="seg depth" id="blockmode"><button data-all="" title="One block per program or class - ACE: All Blocks off">Classes</button><button data-all="X" class="on" title="Every event, form and method as its own block - ACE: All Blocks">Methods</button></span>
     <button id="callstart" hidden title="The calls start here - click to draw the whole program again"></button>
     <label class="depth" id="depthbox" title="How far the calls are followed">Depth
       <input id="depth" type="number" min="1" max="99" step="1" value="3"></label>
@@ -517,7 +519,7 @@ function answered(kind, raw) {
         var method = declared.find(function (m) { return String(m.name).toUpperCase() === umlMethodName(unit).toUpperCase(); });
         if (method) { unit.visibility = method.visibility; }
       });
-      if (mode === "scheme") { renderUmlParts(); if (units.length) { openUnit(firstUnit()); } }
+      if (mode === "scheme") { renderUmlParts(); if (firstUnit()) { openUnit(firstUnit()); } else { hint("Pick a method on the left."); } }
     } catch (error) { status("Could not read method sections: " + error.message); }
     return;
   }
@@ -1011,8 +1013,9 @@ function setMode(next) {
       hint("Reading method sections ...");
       waiting = "scheme-parts";
       sdeClass(loadedObject, loadedType);
-    } else if (units.length) { openUnit(firstUnit()); }
-    else { hint("No code units."); }
+    } else if (!units.length) { hint("No code units."); }
+    else if (firstUnit()) { openUnit(firstUnit()); }
+    else { hint("Pick a method on the left."); }
   } else if (loadedObject) {
     requestDiagram();
   }
@@ -1069,10 +1072,11 @@ function markMetricRow() {
   });
 }
 
-/* The unit the window arrived with or last chose, or the first. */
+/* The unit the window arrived with or last chose - none if nothing was
+   named: the first one is not the reader's choice. */
 function firstUnit() {
   var key = chosenKey || (INITIAL && INITIAL.part && INITIAL.part.key) || "";
-  return units.filter(function (u) { return partKeyOf(u.unit_name) === key; })[0] || units[0];
+  return key ? units.filter(function (u) { return partKeyOf(u.unit_name) === key; })[0] || null : null;
 }
 
 function openUnit(unit) {
@@ -1316,7 +1320,7 @@ function turned(text, dir) {
 }
 
 // One block per program or class, as ACE starts in SAP GUI, or every unit.
-var allBlocks = false;
+var allBlocks = true;
 // Where the calls start: an event or a form picked in the parts, as a
 // double-click in ACE's tree does. Null is the whole program.
 var callStart = null;
@@ -1367,7 +1371,7 @@ function renderDiagram(data) {
   if (data.mode === "calls" && !data.steps) {
     hint("Nothing runs from " + data.program + " on its own."
          + String.fromCharCode(10)
-         + "A class is entered through its methods; pick Logic to read one.");
+         + "A class is entered through its methods; pick Logic diagram to read one.");
     return;
   }
   if (!data.mermaid) {
@@ -1424,7 +1428,9 @@ function draw() {
     }
     // Tinted first, so the lens copies the picture as it is shown.
     if (!isClass) { tintDecisions(pane.querySelector("svg")); }
-    installUmlLens(pane, pane.querySelector("svg"));
+    // UML shows the lens over its boxes only; a flowchart's blocks are thin
+    // and full of gaps, so there it follows the pointer over the whole picture.
+    installUmlLens(pane, pane.querySelector("svg"), !isClass);
     status(lastCaption);
   }, function (e) {
     failed("mermaid could not draw this diagram." + String.fromCharCode(10)
@@ -1432,10 +1438,13 @@ function draw() {
   });
 }
 
+/* How strong the lens is, kept while the window is open. */
+var lensZoom = 2.5;
+
 /* A magnifier over the node under the pointer - UML, Logic and Calls alike:
    every mermaid block is a g.node. One per page: the previous drawing's
    lens goes with it. */
-function installUmlLens(pane, svg) {
+function installUmlLens(pane, svg, anywhere) {
   Array.prototype.forEach.call(document.querySelectorAll(".uml-lens"), function (old) {
     old.parentNode.removeChild(old);
   });
@@ -1445,8 +1454,12 @@ function installUmlLens(pane, svg) {
   lens.setAttribute("aria-hidden", "true");
   var copy = svg.cloneNode(true);
   lens.appendChild(copy);
+  var badge = document.createElement("span");
+  badge.className = "uml-lens-zoom";
+  lens.appendChild(badge);
   document.body.appendChild(lens);
-  var radius = 90, factor = 2.5;
+  var radius = 90;
+  badge.textContent = lensZoom.toFixed(1) + "×";
 
   function isNode(element) {
     while (element && element !== svg) {
@@ -1457,13 +1470,19 @@ function installUmlLens(pane, svg) {
   }
   function hide() { lens.style.display = "none"; }
   function move(event) {
-    if (!isNode(event.target)) { hide(); return; }
+    if (!anywhere && !isNode(event.target)) { hide(); return; }
     var source = svg.getBoundingClientRect();
     if (!source.width || !source.height) { hide(); return; }
+    // Only where it helps: text drawn at 14px in the picture, shown at the
+    // current scale. Readable already - 11px or more on screen - no lens.
+    var box = svg.viewBox && svg.viewBox.baseVal;
+    var scale = box && box.width ? source.width / box.width : 1;
+    if (14 * scale >= 11) { hide(); return; }
     var left = Math.min(window.innerWidth - radius * 2 - 8, event.clientX + 16);
     var top = Math.min(window.innerHeight - radius * 2 - 8, event.clientY + 16);
     lens.style.left = Math.max(8, left) + "px";
     lens.style.top = Math.max(8, top) + "px";
+    var factor = lensZoom;
     copy.style.width = Math.round(source.width * factor) + "px";
     copy.style.height = Math.round(source.height * factor) + "px";
     copy.style.left = Math.round(radius - (event.clientX - source.left) * factor) + "px";
@@ -1471,6 +1490,19 @@ function installUmlLens(pane, svg) {
     lens.style.display = "block";
   }
   svg.addEventListener("pointermove", move);
+  // Shift and two fingers on the touchpad (or the wheel) set how strong the
+  // lens is, smoothly: the change follows how far the fingers moved. With
+  // Shift held the browser turns a vertical scroll into a horizontal one, so
+  // either direction counts. Ctrl and a pinch stay the whole picture's zoom.
+  svg.addEventListener("wheel", function (event) {
+    if (!event.shiftKey || lens.style.display !== "block") { return; }
+    event.preventDefault();
+    event.stopPropagation();
+    var delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    lensZoom = Math.max(1.5, Math.min(6, lensZoom * Math.exp(-delta * 0.01)));
+    badge.textContent = lensZoom.toFixed(1) + "×";
+    move(event);
+  }, { passive: false });
   svg.addEventListener("pointerleave", hide);
 }
 

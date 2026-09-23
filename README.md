@@ -63,12 +63,12 @@ HTTPS, and the markup, grids and filters are not written twice.
 
 ## AI assistants
 
-### VERTEX chat and code reviewer (VS Code, 0.6.9)
+### VERTEX chat and code reviewer (VS Code, 0.7.0)
 
 The VERTEX panel in VS Code's Activity Bar has a chat over the SAP systems in `vertex.systems`,
 run by a Claude or ChatGPT subscription — through the Claude Code or Codex extension, which has to
-be installed and signed in — or by an Anthropic API key. **LLM Providers** chooses which models
-each provider offers. Name a system in the question to reach it; a VERTEX Tools window keeps the
+be installed and signed in — or by an Anthropic API key. **LLM Providers** shows every provider
+with its models as one tree: a provider can be switched off whole, and each model on its own. Name a system in the question to reach it; a VERTEX Tools window keeps the
 system it was opened on. Ask *show ZCL_TR_TEXT_DATA* or
 *explain this method*: it searches and reads the source and opens it in an editable tab.
 Edits go through the **Code Change** reviewer — approve or decline each block, ask AI about
@@ -184,7 +184,7 @@ first. **VERTEX: Switch System** picks another one from a list, and the password
 system - two systems are two users often enough.
 
 Open **VERTEX: Open Panel**, then choose **VERTEX Tools**. Select the object type, enter its name
-and choose its function — for example Data, View, UML, Metrics, Calls, Logic, Diff or Versions.
+and choose its function — for example Data, View, UML, Metrics, Calls diagram, Logic diagram, Diff or Versions.
 The functions are filtered by object type, so VERTEX does not offer actions that cannot apply.
 
 ### Clickable ABAP source

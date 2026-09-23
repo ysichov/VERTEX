@@ -200,10 +200,10 @@ function create(vscode, codeTools, server, secrets) {
     const config = vscode.workspace.getConfiguration("vertex.ai");
     const provider = config.get("provider", "codex-subscription");
     return { provider, short: modelConfig.shortLabel(provider), model: config.get("model", "") || "weakest model",
-             providers: modelConfig.PROVIDERS.map(p => ({ setting: p.setting, short: p.short })) };
+             providers: modelConfig.offered(vscode).map(p => ({ setting: p.setting, short: p.short })) };
   };
   ask.selectProvider = async () => {
-    const values = modelConfig.PROVIDERS.map(p => [p.label, p.setting]);
+    const values = modelConfig.offered(vscode).map(p => [p.label, p.setting]);
     const current = ask.state().provider;
     const picked = await vscode.window.showQuickPick(values.map(x => ({ label: x[0], id: x[1], picked: x[1] === current })), { title: "Select AI provider" });
     if (picked) {
@@ -233,6 +233,8 @@ function create(vscode, codeTools, server, secrets) {
   // provider asks for its key when none is kept yet.
   ask.setProvider = async setting => {
     if (!modelConfig.PROVIDERS.some(p => p.setting === setting)) { return ask.state(); }
+    const chosen = modelConfig.PROVIDERS.find(p => p.setting === setting);
+    if (!modelConfig.isOn(vscode, chosen.id)) { throw new Error(chosen.label + " is switched off in LLM Providers."); }
     const config = vscode.workspace.getConfiguration("vertex.ai");
     if (setting === "anthropic-api" && secrets && !await secrets.get("vertex.provider.anthropic.apiKey")) {
       const key = await vscode.window.showInputBox({ prompt: "Anthropic API key (stored in VS Code SecretStorage)",
