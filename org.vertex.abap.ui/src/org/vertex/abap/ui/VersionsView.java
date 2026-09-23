@@ -52,7 +52,11 @@ public class VersionsView extends PageView {
 				// the difference between the two rather than the list.
 				final String from = text(arguments, 4);
 				final String to = text(arguments, 5);
-				queue(() -> read(path(object, type, partName, partType, from, to)));
+				// AVE's switches over the list, one letter each: T keeps
+				// transport-of-copies versions, D drops duplicates, I ignores
+				// case and indentation.
+				final String flags = text(arguments, 6);
+				queue(() -> read(path(object, type, partName, partType, from, to, flags)));
 				return null;
 			}
 		};
@@ -196,7 +200,7 @@ public class VersionsView extends PageView {
 	 * It has to be encoded rather than pasted into the query.
 	 */
 	private static String path(String object, String type, String partName, String partType,
-			String from, String to) {
+			String from, String to, String flags) {
 		StringBuilder path = new StringBuilder("/sap/bc/adt/vertex/versions/")
 				.append(object.toUpperCase());
 		path.append("?type=").append(escape(type));
@@ -209,6 +213,11 @@ public class VersionsView extends PageView {
 			// nothing at all - the resource reads that as every line added.
 			path.append("&from=").append(escape(from));
 			path.append("&to=").append(escape(to));
+		}
+		if (!partName.isEmpty()) {
+			if (flags.contains("T")) path.append("&toc=X");
+			if (flags.contains("D")) path.append("&dups=X");
+			if (flags.contains("I")) path.append("&ic=X");
 		}
 		return path.toString();
 	}

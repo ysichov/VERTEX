@@ -122,6 +122,9 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
           lt_ver   TYPE tt_version,
           lv_from  TYPE versno,
           lv_to    TYPE versno,
+          lv_toc   TYPE string,
+          lv_dups  TYPE string,
+          lv_ic    TYPE string,
           lt_op    TYPE tt_op,
           lt_old   TYPE abaptxt255_tab,
           lt_new   TYPE abaptxt255_tab,
@@ -161,6 +164,23 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
     request->get_uri_query_parameter( EXPORTING name      = 'to'
                                                 mandatory = abap_false
                                       IMPORTING value     = lv_to ).
+
+    " AVE's three switches over the version list, each off unless asked for:
+    " TOC=X keeps the versions written by transports of copies, DUPS=X drops a
+    " version whose source is the same as the one before it, IC=X compares
+    " without case and indentation - both the diff and the duplicate check.
+    request->get_uri_query_parameter( EXPORTING name      = 'toc'
+                                                mandatory = abap_false
+                                      IMPORTING value     = lv_toc ).
+    request->get_uri_query_parameter( EXPORTING name      = 'dups'
+                                                mandatory = abap_false
+                                      IMPORTING value     = lv_dups ).
+    request->get_uri_query_parameter( EXPORTING name      = 'ic'
+                                                mandatory = abap_false
+                                      IMPORTING value     = lv_ic ).
+    DATA(lv_no_toc)      = xsdbool( to_upper( lv_toc ) <> 'X' ).
+    DATA(lv_remove_dup)  = xsdbool( to_upper( lv_dups ) = 'X' ).
+    DATA(lv_ignore_case) = xsdbool( to_upper( lv_ic ) = 'X' ).
 
     " ADT names an object type differently from AVE's factory, and the DDIC
     " types carry their VRSD part type already.
@@ -258,19 +278,41 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
       ENDIF.
 
       TRY.
-          DATA(lo_vrsd) = NEW zcl_vx_vrsd( type = CONV #( to_upper( lv_ptype ) )
-                                            name = CONV #( to_upper( lv_part ) ) ).
+          " A diff reads both of its versions whatever the list shows, so the
+          " TOC switch belongs to the list alone.
+          DATA(lo_vrsd) = NEW zcl_vx_vrsd( type   = CONV #( to_upper( lv_ptype ) )
+                                            name   = CONV #( to_upper( lv_part ) )
+                                            no_toc = COND #( WHEN lv_to IS INITIAL THEN lv_no_toc ) ).
 
           IF lv_to IS INITIAL.
+            DATA lt_row TYPE zif_vx_vers_types=>ty_t_version_row.
             LOOP AT lo_vrsd->vrsd_list INTO DATA(ls_vrsd).
               DATA(lo_version) = NEW zcl_vx_version( ls_vrsd ).
-              APPEND VALUE #( version     = |{ lo_version->version_number }|
-                              date        = |{ lo_version->date }|
-                              time        = |{ lo_version->time }|
-                              author      = CONV string( lo_version->author )
-                              author_name = CONV string( lo_version->author_name )
-                              request     = CONV string( lo_version->request )
-                              task        = CONV string( lo_version->task )
+              APPEND VALUE #( objtype     = ls_vrsd-objtype
+                              objname     = ls_vrsd-objname
+                              versno      = lo_version->version_number
+                              datum       = lo_version->date
+                              zeit        = lo_version->time
+                              author      = lo_version->author
+                              author_name = lo_version->author_name
+                              korrnum     = lo_version->request
+                              task        = lo_version->task ) TO lt_row.
+            ENDLOOP.
+            " AVE's own check: it reads the sources and keeps the earliest of a
+            " run of identical ones.
+            IF lv_remove_dup = abap_true.
+              zcl_vx_vers_data=>remove_duplicate_versions(
+                EXPORTING i_ignore_case = lv_ignore_case
+                CHANGING  ct_versions   = lt_row ).
+            ENDIF.
+            LOOP AT lt_row INTO DATA(ls_row).
+              APPEND VALUE #( version     = |{ ls_row-versno }|
+                              date        = |{ ls_row-datum }|
+                              time        = |{ ls_row-zeit }|
+                              author      = CONV string( ls_row-author )
+                              author_name = CONV string( ls_row-author_name )
+                              request     = CONV string( ls_row-korrnum )
+                              task        = CONV string( ls_row-task )
                             ) TO lt_ver.
             ENDLOOP.
             " AVE sorts the directory ascending so that 99998, its key for the
@@ -302,8 +344,9 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
         " section by signature rather than by position, because SAP regenerates
         " those includes in an arbitrary order and a plain line diff reports
         " every moved declaration as a deletion and an insertion far apart.
-        DATA(lt_diff) = zcl_vx_diff=>compute_diff( it_old = lt_old
-                                                          it_new = lt_new ).
+        DATA(lt_diff) = zcl_vx_diff=>compute_diff( it_old         = lt_old
+                                                   it_new         = lt_new
+                                                   i_ignore_case  = lv_ignore_case ).
         DATA lv_added   TYPE i.
         DATA lv_deleted TYPE i.
         DATA lv_kept    TYPE i.

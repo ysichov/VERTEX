@@ -345,6 +345,9 @@
         <div class="versions-head">
           <span class="title">Versions</span>
           <button id="diffprev" class="on" title="Compare each version with the one before it">Diff prev</button>
+          <button id="toc">TOCs</button>
+          <button id="dups">Dups</button>
+          <button id="icase" class="on">Case/ind</button>
         </div>
         <div id="versionlist"></div>
       </div>
@@ -560,6 +563,28 @@ var base = "";
 var diffPrev = true;
 var picked = -1;
 
+/* AVE's switches over the list, with AVE's defaults: transport-of-copies
+   versions hidden, duplicates shown, case and indentation ignored. The ABAP
+   side applies them; the page only says which are on. */
+var showToc = false;
+var hideDups = false;
+var ignoreCase = true;
+
+function flags() {
+  return (showToc ? "T" : "") + (hideDups ? "D" : "") + (ignoreCase ? "I" : "");
+}
+
+function showSwitches() {
+  [["toc", showToc, "Versions written by transports of copies are shown", "Versions written by transports of copies are hidden"],
+   ["dups", hideDups, "A version identical to the one before it is hidden", "Every version is shown, identical ones too"],
+   ["icase", ignoreCase, "Case and indentation are ignored when comparing", "Case and indentation count when comparing"]]
+    .forEach(function (s) {
+      var button = document.getElementById(s[0]);
+      button.className = s[1] ? "on" : "";
+      button.title = s[1] ? s[2] : s[3];
+    });
+}
+
 function showDiffPrev() {
   var button = document.getElementById("diffprev");
   button.className = diffPrev ? "on" : "";
@@ -586,7 +611,7 @@ function loadVersions(part, showList) {
   updatePartSelection();
   status("reading versions of " + part.unit + " ...");
   note("Reading ...");
-  sdeLoad(objectName(), objectType(), part.name, part.part_type, "", "");
+  sdeLoad(objectName(), objectType(), part.name, part.part_type, "", "", flags());
 }
 
 /* Opening an object of a scope keeps the scope, so there is somewhere to go
@@ -626,7 +651,7 @@ function loadDiff(index) {
   status("comparing " + (from ? asVersion(from) : "nothing")
          + " with " + asVersion(to.version) + " ...");
   note("Comparing ...");
-  sdeLoad(objectName(), objectType(), current.name, current.part_type, from, to.version);
+  sdeLoad(objectName(), objectType(), current.name, current.part_type, from, to.version, flags());
 }
 
 /* The type arrives from the object tree with its subtype - CLAS/OC. Only the
@@ -2399,6 +2424,21 @@ function stopPlan() {
 }
 
 /* ---------- wiring ---------- */
+
+// TOCs and Dups change which versions there are, so the list is read again;
+// Case/ind changes only the comparison, so the diff on screen is.
+["toc", "dups", "icase"].forEach(function (id) {
+  document.getElementById(id).addEventListener("click", function () {
+    if (id === "toc") { showToc = !showToc; }
+    if (id === "dups") { hideDups = !hideDups; }
+    if (id === "icase") { ignoreCase = !ignoreCase; }
+    showSwitches();
+    if (!current) { return; }
+    if (id === "icase") { if (picked >= 0) { loadDiff(picked); } }
+    else { loadVersions(current, true); }
+  });
+});
+showSwitches();
 
 document.getElementById("diffprev").addEventListener("click", function () {
   if (!base) { return; }

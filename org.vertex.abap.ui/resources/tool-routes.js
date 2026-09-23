@@ -85,7 +85,10 @@ const SERVICES = {
   versions: {
     page: "versions.html",
     title: "Versions",
-    // name, type, part, ptype, from, to
+    // name, type, part, ptype, from, to, flags - the flags are AVE's switches
+    // over the version list, one letter each: T keeps transport-of-copies
+    // versions, D drops a version identical to the one before it, I compares
+    // without case and indentation.
     load: function (args) {
       let p = "/sap/bc/adt/vertex/versions/" + upper(args[0])
             + "?type=" + encodeURIComponent(args[1] || "");
@@ -102,6 +105,10 @@ const SERVICES = {
         p += "&from=" + encodeURIComponent(args[4] || "");
         p += "&to=" + encodeURIComponent(args[5]);
       }
+      const flags = String(args[6] || "");
+      if (args[2] && flags.indexOf("T") >= 0) { p += "&toc=X"; }
+      if (args[2] && flags.indexOf("D") >= 0) { p += "&dups=X"; }
+      if (args[2] && flags.indexOf("I") >= 0) { p += "&ic=X"; }
       return p;
     },
     // request, remote, part, ptype - a review compared against another system is
