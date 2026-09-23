@@ -346,7 +346,7 @@
           <span class="title">Versions</span>
           <button id="diffprev" class="on" title="Compare each version with the one before it">Diff prev</button>
           <button id="toc">TOCs</button>
-          <button id="dups">Dups</button>
+          <button id="dups" class="on">Dups</button>
           <button id="icase" class="on">Case/ind</button>
         </div>
         <div id="versionlist"></div>
@@ -563,11 +563,11 @@ var base = "";
 var diffPrev = true;
 var picked = -1;
 
-/* AVE's switches over the list, with AVE's defaults: transport-of-copies
-   versions hidden, duplicates shown, case and indentation ignored. The ABAP
+/* AVE's switches over the list: transport-of-copies versions hidden,
+   duplicates hidden, case and indentation ignored. The ABAP
    side applies them; the page only says which are on. */
 var showToc = false;
-var hideDups = false;
+var hideDups = true;
 var ignoreCase = true;
 
 function flags() {
