@@ -308,6 +308,15 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     }
     return undefined;
   }
+  // ABAP words a declaration search would otherwise find inside a signature
+  // or a DATA statement - never variables themselves.
+  const ABAP_WORDS = new Set(("DATA TYPE TYPES LIKE REF TO VALUE REFERENCE IMPORTING EXPORTING CHANGING RETURNING "
+    + "RAISING EXCEPTIONS OPTIONAL DEFAULT TABLE OF STANDARD SORTED HASHED KEY WITH UNIQUE NON-UNIQUE EMPTY "
+    + "DEFAULT METHODS CLASS-METHODS METHOD ENDMETHOD FORM ENDFORM USING CONSTANTS STATICS FIELD-SYMBOLS "
+    + "BEGIN END INITIAL LINE STRING ABAP_BOOL ABAP_TRUE ABAP_FALSE IF ELSE ELSEIF ENDIF CASE WHEN ENDCASE "
+    + "LOOP AT INTO ENDLOOP WHILE ENDWHILE DO ENDDO READ WHERE AND OR NOT IS BOUND ASSIGNED ME NEW CONV "
+    + "COND SWITCH THEN APPEND INSERT DELETE MODIFY CLEAR CHECK RETURN EXIT CONTINUE RAISE EXCEPTION "
+    + "TRY CATCH ENDTRY CLEANUP SELECT FROM UP ROWS FIELDS SINGLE CALL FUNCTION SY").split(" "));
   function variableAnchor(document, at) {
     const line = document.getText().split(/\r?\n/)[at.line] || "";
     const word = /[A-Za-z0-9_<>]/;
@@ -315,14 +324,15 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     while (from > 0 && word.test(line.charAt(from - 1))) { from--; }
     while (to < line.length && word.test(line.charAt(to))) { to++; }
     const name = line.slice(from, to);
-    // Restrict this first resolver to ABAP's conventional variable prefixes.
-    // It avoids turning every keyword or table component into a false jump.
-    // Both common ABAP parameter conventions are valid: `iv_text` and the
-    // shorter `i_text` / `e_text` / `c_text` used especially by FORMs and
-    // older code.  They must be resolved before falling back to VS Code's
-    // generic word hover.
-    if (!/^(?:(?:[ilrmtg][vstor])|(?:[cgs][vstor])|[iecrpt]|ty|tt|ts)_[A-Za-z0-9_]+$/i.test(name)
-      && !/^<[A-Za-z_][A-Za-z0-9_]*>$/.test(name)) { return null; }
+    // Any name is looked up - a declaration has to be found before anything
+    // is shown, so a prefix list is not what keeps false jumps out. It had
+    // been: `ix_error`, `result` or `request` got no hover at all. What is
+    // left out is what cannot be a variable here: a keyword, a component
+    // after `-`, and a name followed by `(`, which is a call.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !/^<[A-Za-z_][A-Za-z0-9_]*>$/.test(name)) { return null; }
+    if (ABAP_WORDS.has(name.toUpperCase())) { return null; }
+    if (from > 0 && line.charAt(from - 1) === "-") { return null; }
+    if (/^\s*\(/.test(line.slice(to)) && !/(?:DATA|FINAL|FIELD-SYMBOL)\s*\(\s*$/i.test(line.slice(0, from))) { return null; }
     return { name: name.toUpperCase(), from, to };
   }
   function procedureAt(source, line) {

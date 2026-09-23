@@ -304,6 +304,22 @@ test("signature parameter hover shows only its declaration despite nearby calls"
   const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 6, character: 8 });
   assert.equal(hover.contents[0].value, "is_options TYPE ty_options");
 });
+test("a parameter without a conventional prefix is resolved - ix_error, result", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = ["CLASS ztest DEFINITION.",
+    " PRIVATE SECTION.",
+    "  CLASS-METHODS reason",
+    "   IMPORTING ix_error TYPE REF TO cx_root",
+    "   RETURNING VALUE(rv_text) TYPE string.",
+    "ENDCLASS.", "CLASS ztest IMPLEMENTATION.", " METHOD reason.",
+    "  DATA(lo_error) = ix_error.", "  WHILE lo_error IS BOUND.", "  ENDWHILE.", " ENDMETHOD.", "ENDCLASS."].join("\n");
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 8, character: 22 });
+  assert.equal(hover.contents[0].value, "ix_error TYPE REF TO cx_root");
+  // A keyword is not looked up as a variable.
+  const keyword = await h.hovers[0].provider.provideHover(h.documents[0], { line: 9, character: 3 });
+  assert.ok(!keyword || !/WHILE/i.test(String(keyword.contents[0].value)));
+});
 test("parameter hover uses the current multiline signature, not a same-named parameter", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });

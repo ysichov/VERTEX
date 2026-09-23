@@ -14,6 +14,9 @@
   Logic diagram asks for a method and Diff waits for a part, instead of opening the first one.
 - A request to open or show a function is answered in one sentence, without a summary of what
   opens.
+- Fixed: hover and Go to skipped a parameter or variable without a conventional prefix -
+  `ix_error`, `result`. Any name with a declaration is resolved now; keywords, structure
+  components and calls are left out.
 
 ## 2026-09-23 — VERTEX 0.7.0: the builder apart from its rows, and View source to the editor
 
