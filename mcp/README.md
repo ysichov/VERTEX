@@ -3,6 +3,12 @@
 For **GitHub Copilot in Eclipse**, follow the [Eclipse MCP setup guide](../eclipse/MCP.md):
 it covers the `servers` JSON format, SAP settings, tool discovery and troubleshooting.
 
+
+> **The debugger is not here.** The `debug_*` tools are served only by the VS Code extension -
+> to the VERTEX chat and, as `vertex-debug`, to Claude Code and Codex - because a run is
+> started in WebGUI through VS Code and the listener has to outlive a single call. See
+> [Debug with an assistant](../vscode/README.md#debug-with-an-assistant).
+
 ## Experimental: ChatGPT and Claude web
 
 This is development work only and is not a supported or tested integration.

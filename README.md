@@ -107,6 +107,30 @@ sources, a saved review with its blocks and verdicts — so it describes and rev
 moving the window there, the way the clicks would. SelecTor's assistant never sees a table row.
 Examples of requests for both windows are in [vscode/README.md](vscode/README.md#examples).
 
+### Debugging with an assistant (VS Code, 0.7.3)
+
+Describe the problem - *Z_CALC computes the wrong discount, find out why* - and the assistant
+runs the ABAP debugger itself: it sets breakpoints, starts the program, reads what the program
+held where it stopped, decides where to look next, and ends with a verdict that names the line
+and the values that prove it.
+
+- **Breakpoints with conditions SAP evaluates**, written like an ABAP `IF`
+  (`lv_total > 1000`, `LINES( lt_items ) > 0`): the program stops only when the condition
+  holds, so a loop of a thousand passes costs nothing.
+- **Watchpoints**: a breakpoint in mode *log* records what changed and lets the program run on,
+  without a turn of the assistant.
+- **Short answers**: a stop returns what changed since the last one and a table as its count and
+  first rows; the rest is read on purpose.
+- **Read-only**: breakpoints and a listener, nothing else. No variable is changed, no code is
+  jumped over.
+
+The VERTEX chat has it with no setup. Claude Code and Codex get it from a second MCP server of
+the extension, `vertex-debug`, registered with one command. The program is started in WebGUI:
+SAP never applies ADT breakpoints to a session opened through SAP Logon, so a run from the
+standalone SAP GUI is not caught - by VERTEX or by Eclipse. Details, the tools and the
+condition syntax: [vscode/README.md](vscode/README.md#debug-with-an-assistant). `src/` ships
+`Z_VX_DEBUGGER_TEST`, a one-screen program with a bug that shows only at runtime, to try it on.
+
 ### Development status
 
 The tested integrations are GitHub Copilot in VS Code, Claude Code, and Codex in VS Code.
@@ -211,6 +235,10 @@ function module in its own source. **VERTEX: Back** (`Alt+Left`) returns along t
 - Hover and navigation work inside a read-only view as well.
 - Interfaces open as editable VERTEX tabs, like programs and classes.
 - `NEW zcl_foo( )` leads to the class's constructor.
+- Outline, Ctrl+Shift+O and the breadcrumbs list a class's methods and a program's events,
+  forms and modules.
+- Double-click `IF` / `CASE` to jump to its end; Ctrl+click walks the `ELSEIF` / `ELSE` / `WHEN`
+  branches.
   External classes and function modules open as source documents; **Back** returns through every
   VERTEX drill-down location.
 

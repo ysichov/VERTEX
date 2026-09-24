@@ -160,7 +160,10 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     if (at.character < from || at.character > to) return null;
     return { name: match[1].toUpperCase(), from, to, line: at.line };
   }
-  function structuralTarget(document, at) {
+  /* Double-click jumps from a block's opening to its end and back; with
+     BRANCHES - Ctrl+click and F12 - IF and CASE step through ELSEIF, ELSE
+     and WHEN on the way. */
+  function structuralTarget(document, at, branches) {
     const anchor = structuralAnchor(document, at);
     if (!anchor) return undefined;
     const lines = document.getText().split(/\r?\n/), frames = [], targets = new Map();
@@ -179,7 +182,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       if (!expected || !frame || frame.kind !== expected) return;
       frames.pop();
       const end = { index, column, word }, next = pos => ({ document, target: location(document.uri, pos.index, pos.column, pos.word.length) });
-      targets.set(frame.start.index, frame.branches[0] || end);
+      targets.set(frame.start.index, branches && frame.branches[0] || end);
       frame.branches.forEach((branch, item) => targets.set(branch.index, frame.branches[item + 1] || end));
       targets.set(end.index, frame.start);
     });
@@ -765,7 +768,8 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const editor = chosenEditor || vscode.window.activeTextEditor;
     const at = chosenPosition || (editor && editor.selection && editor.selection.active);
     if (!editor || !at) { return; }
-    const structure = structuralTarget(editor.document, at);
+    // F12 walks the branches; the double-click (QUIET) jumps to the end.
+    const structure = structuralTarget(editor.document, at, !quiet);
     if (structure) { await moveTo(editor, structure); return; }
     const method = await methodCounterpart(editor.document, at);
     const variable = method ? undefined : await adtDefinition(editor.document, at);
@@ -804,11 +808,109 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         .catch(error => vscode.window.showErrorMessage("VERTEX: " + error.message));
     }));
   }
+  /* The tab's structure for Outline, Ctrl+Shift+O, breadcrumbs and sticky
+     scroll, from the text itself - saved or not, no SAP request. A class is
+     its sections with their methods, each method leading to its
+     implementation; a program is its events, forms, modules and local
+     classes. */
+  const EVENT = /^(LOAD-OF-PROGRAM|INITIALIZATION|START-OF-SELECTION|END-OF-SELECTION|TOP-OF-PAGE(?: DURING LINE-SELECTION)?|END-OF-PAGE|AT SELECTION-SCREEN(?: OUTPUT| ON [\w-]+(?: [\w-]+)?)?|AT LINE-SELECTION|AT USER-COMMAND|AT PF\d+)\s*\.?$/i;
+  function outline(source) {
+    const kinds = vscode.SymbolKind || { Class: 4, Method: 5, Interface: 10, Function: 11, Namespace: 2, Event: 23 };
+    const lines = source.split(/\r?\n/);
+    // A plain tree first; VS Code's ranges are immutable, so they are made last.
+    const node = (name, detail, kind, start, end) => ({ name, detail, kind, start, end, at: start, children: [] });
+    const result = [], classes = new Map();
+    let owner, section, block, event;
+    const closeEvent = line => { if (event) { event.end = Math.max(event.start, line - 1); event = undefined; } };
+    for (const statement of abapStatements(source)) {
+      const text = statement.text.replace(/\.$/, "");
+      let hit;
+      if ((hit = /^CLASS\s+([\w/]+)\s+DEFINITION\b(.*)$/i.exec(text))) {
+        if (/\b(?:DEFERRED|LOAD)\b/i.test(hit[2])) { continue; }
+        closeEvent(statement.start);
+        const key = hit[1].toUpperCase();
+        owner = classes.get(key);
+        if (!owner) { owner = { item: node(hit[1], "", kinds.Class, statement.start, statement.end), methods: new Map() }; classes.set(key, owner); result.push(owner.item); }
+        section = undefined; continue;
+      }
+      if ((hit = /^INTERFACE\s+([\w/]+)(.*)$/i.exec(text))) {
+        if (/\b(?:DEFERRED|LOAD)\b/i.test(hit[2])) { continue; }
+        closeEvent(statement.start);
+        owner = { item: node(hit[1], "", kinds.Interface, statement.start, statement.end), methods: new Map() };
+        result.push(owner.item); section = owner.item; continue;
+      }
+      if ((hit = /^CLASS\s+([\w/]+)\s+IMPLEMENTATION$/i.exec(text))) {
+        closeEvent(statement.start);
+        const key = hit[1].toUpperCase();
+        owner = classes.get(key);
+        if (!owner) { owner = { item: node(hit[1], "", kinds.Class, statement.start, statement.end), methods: new Map() }; classes.set(key, owner); result.push(owner.item); }
+        section = undefined; continue;
+      }
+      if (owner && /^END(?:CLASS|INTERFACE)$/i.test(text)) {
+        owner.item.end = Math.max(owner.item.end, statement.end); owner = undefined; section = undefined; continue;
+      }
+      if (owner && (hit = /^(PUBLIC|PROTECTED|PRIVATE)\s+SECTION$/i.exec(text))) {
+        section = node(hit[1].toUpperCase() + " SECTION", "", kinds.Namespace, statement.start, statement.end);
+        owner.item.children.push(section); continue;
+      }
+      if (owner && section && (hit = /^(?:CLASS-)?METHODS\s*:?\s*([\s\S]*)$/i.exec(text))) {
+        for (const member of splitChain(hit[1])) {
+          const name = /^([\w/~]+)/.exec(member);
+          if (!name) { continue; }
+          const item = node(name[1], "", kinds.Method, statement.start, statement.end);
+          section.children.push(item); owner.methods.set(name[1].toUpperCase(), item);
+        }
+        continue;
+      }
+      if (owner && (hit = /^METHOD\s+([\w/~]+)$/i.exec(text))) { block = { owner, name: hit[1], start: statement.start }; continue; }
+      if (block && block.owner && /^ENDMETHOD$/i.test(text)) {
+        // A method leads to its implementation.
+        const known = block.owner.methods.get(block.name.toUpperCase());
+        if (known) { known.start = known.at = block.start; known.end = statement.end; }
+        else { block.owner.item.children.push(node(block.name, "", kinds.Method, block.start, statement.end)); }
+        block = undefined; continue;
+      }
+      if (!owner && !block && (hit = /^(FORM|MODULE|FUNCTION)\s+([\w/]+)/i.exec(text))) {
+        closeEvent(statement.start);
+        block = { kind: hit[1].toLowerCase(), name: hit[2], start: statement.start }; continue;
+      }
+      if (block && !block.owner && /^END(?:FORM|MODULE|FUNCTION)$/i.test(text)) {
+        result.push(node(block.name, block.kind, kinds.Function, block.start, statement.end));
+        block = undefined; continue;
+      }
+      if (!owner && !block && EVENT.test(text)) {
+        closeEvent(statement.start);
+        event = node(text.toUpperCase().replace(/\s+/g, " "), "event", kinds.Event, statement.start, statement.end);
+        result.push(event);
+      }
+    }
+    closeEvent(lines.length);
+    const make = item => {
+      const children = item.children.map(make);
+      // A parent covers its children: a section's methods live in the implementation.
+      const start = Math.min(item.start, ...children.map(child => child.range.start.line));
+      const end = Math.max(item.end, ...children.map(child => child.range.end.line));
+      const text = lines[item.at] || "", column = Math.max(0, text.toUpperCase().indexOf(item.name.toUpperCase().split(" ")[0]));
+      const full = vscode.Range ? new vscode.Range(position(start, 0), position(end, (lines[end] || "").length))
+        : { start: position(start, 0), end: position(end, (lines[end] || "").length) };
+      const chosen = range(item.at, column, Math.min(text.length, column + item.name.length));
+      const symbol = vscode.DocumentSymbol ? new vscode.DocumentSymbol(item.name, item.detail, item.kind, full, chosen)
+        : { name: item.name, detail: item.detail, kind: item.kind, range: full, selectionRange: chosen };
+      symbol.children = children;
+      return symbol;
+    };
+    return result.map(make);
+  }
+  if (vscode.languages && typeof vscode.languages.registerDocumentSymbolProvider === "function") {
+    context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider(
+      [{ scheme: "vertex-sap", language: "abap" }, { scheme: "vertex-source", language: "abap" }],
+      { provideDocumentSymbols: document => outline(document.getText()) }));
+  }
   if (vscode.languages && typeof vscode.languages.registerDefinitionProvider === "function") {
     context.subscriptions.push(vscode.languages.registerDefinitionProvider(
       [{ scheme: "vertex-sap", language: "abap" }, { scheme: "vertex-source", language: "abap" }], {
         async provideDefinition(document, at) {
-          const result = structuralTarget(document, at) || await methodCounterpart(document, at)
+          const result = structuralTarget(document, at, true) || await methodCounterpart(document, at)
             || await externalCallTarget(document, at);
           return result && result.target;
         }

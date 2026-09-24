@@ -2,7 +2,7 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 function host() {
-  const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], selectionListeners = [];
+  const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], selectionListeners = [], symbols = [];
   let selectedSystem = "DEV", mutateDuringConfirmation = false, fileProvider;
   const api = { async execute(tool, args) {
     if (tool === "read_sap_object") {
@@ -47,7 +47,8 @@ function host() {
     },
     languages: { setTextDocumentLanguage: async doc => doc,
       registerDefinitionProvider: (selector, provider) => { definitions.push({ selector, provider }); return { dispose() {} }; },
-      registerHoverProvider: (selector, provider) => { hovers.push({ selector, provider }); return { dispose() {} }; } },
+      registerHoverProvider: (selector, provider) => { hovers.push({ selector, provider }); return { dispose() {} }; },
+      registerDocumentSymbolProvider: (selector, provider) => { symbols.push({ selector, provider }); return { dispose() {} }; } },
     window: {
       createWebviewPanel() {
         const panel = { webview: { html: '', onDidReceiveMessage(fn) { panel.receive = fn; }, async postMessage() {} } };
@@ -79,7 +80,7 @@ function host() {
     active: () => ({ system: { name: selectedSystem, url: "https://sap.invalid", user: "USER", client: "100" } }),
     password: async () => "test-secret"
   });
-  return { tools, commands, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners,
+  return { tools, commands, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners, symbols,
     switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; } };
 }
 test("tool preparation opens diff, does not apply; UI applies edited text to the original system", async () => {
@@ -237,18 +238,28 @@ test("structural navigation walks IF and CASE sibling branches without entering 
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
   h.documents[0].text = ["METHOD run.", "  IF outer = abap_true.", "    IF inner = abap_true.", "    ELSE.", "    ENDIF.", "  ELSEIF next = abap_true.", "  ELSE.", "  ENDIF.", "  CASE kind.", "    WHEN 'A'.", "      CASE nested.", "        WHEN 'X'.", "      ENDCASE.", "    WHEN OTHERS.", "  ENDCASE.", "ENDMETHOD."].join("\n");
+  // Double-click: from the opening straight to the end, and back.
+  const click = async (line, from, to) => {
+    const selection = { isEmpty: false, start: { line, character: from }, end: { line, character: to }, active: { line, character: to } };
+    h.documents[0].getText = function (part) { return part ? this.text.split("\n")[line].slice(from, to) : this.text; };
+    const editor = { document: h.documents[0], selection };
+    h.selectionListeners[0]({ kind: 2, selections: [selection], textEditor: editor });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    return editor.selection.start.line;
+  };
+  assert.equal(await click(1, 2, 4), 7);
+  assert.equal(await click(8, 2, 6), 14);
+  assert.equal(await click(14, 2, 9), 8);
+  // F12 (the command) walks the branches.
   h.documents[0].selection = { active: { line: 1, character: 4 } };
   await h.commands.get("vertex.goToClassMethod")();
   assert.equal(h.documents[0].selection.start.line, 5);
-  h.documents[0].selection = { active: { line: 5, character: 6 } };
-  await h.commands.get("vertex.goToClassMethod")();
-  assert.equal(h.documents[0].selection.start.line, 6);
-  h.documents[0].selection = { active: { line: 8, character: 6 } };
-  await h.commands.get("vertex.goToClassMethod")();
-  assert.equal(h.documents[0].selection.start.line, 9);
-  h.documents[0].selection = { active: { line: 9, character: 6 } };
-  await h.commands.get("vertex.goToClassMethod")();
-  assert.equal(h.documents[0].selection.start.line, 13);
+  // Ctrl+click: through the branches as well.
+  const go = async (line, character) => (await h.definitions[0].provider.provideDefinition(h.documents[0], { line, character })).range.start.line;
+  assert.equal(await go(1, 4), 5);
+  assert.equal(await go(5, 6), 6);
+  assert.equal(await go(8, 6), 9);
+  assert.equal(await go(9, 6), 13);
 });
 test("class main source navigation is local and makes no second SAP read", async () => {
   const h = host();
@@ -363,6 +374,29 @@ test("NEW on a class opens its constructor", async () => {
   await h.commands.get("vertex.goToClassMethod")();
   assert.match(h.documents.at(-1).uri.toString(), /\/CLAS\/ZCL_OTHER\.abap$/);
   assert.equal(h.documents.at(-1).selection.start.line, 7);
+});
+test("outline: a class is its sections and methods, each method at its implementation", async () => {
+  const h = host();
+  const source = ["CLASS zcl_popup DEFINITION PUBLIC.", "  PUBLIC SECTION.", "    METHODS: constructor IMPORTING iv TYPE i,",
+    "      show.", "  PRIVATE SECTION.", "    CLASS-METHODS build.", "ENDCLASS.", "CLASS zcl_popup IMPLEMENTATION.",
+    "  METHOD constructor.", "  ENDMETHOD.", "  METHOD show.", "  ENDMETHOD.", "  METHOD build.", "  ENDMETHOD.", "ENDCLASS."].join("\n");
+  const tree = h.symbols[0].provider.provideDocumentSymbols({ getText: () => source });
+  const flat = items => items.map(item => [item.name, item.selectionRange.start.line, flat(item.children)]);
+  assert.equal(JSON.stringify(flat(tree)), JSON.stringify([["zcl_popup", 0, [
+    ["PUBLIC SECTION", 1, [["constructor", 8, []], ["show", 10, []]]],
+    ["PRIVATE SECTION", 4, [["build", 12, []]]]]]]));
+  assert.equal(tree[0].range.end.line, 14);
+});
+test("outline: a program is its events, forms, modules and local classes", async () => {
+  const h = host();
+  const source = ["REPORT ztest.", "CLASS lcl DEFINITION DEFERRED.", "INITIALIZATION.", "  PERFORM init.", "START-OF-SELECTION.",
+    "  WRITE 'x'.", "FORM init.", "ENDFORM.", "MODULE status_0100 OUTPUT.", "ENDMODULE.", "CLASS lcl DEFINITION.", "  PUBLIC SECTION.",
+    "    METHODS run.", "ENDCLASS.", "CLASS lcl IMPLEMENTATION.", "  METHOD run.", "  ENDMETHOD.", "ENDCLASS."].join("\n");
+  const tree = h.symbols[0].provider.provideDocumentSymbols({ getText: () => source });
+  assert.equal(JSON.stringify(tree.map(item => [item.name, item.detail, item.range.start.line, item.range.end.line])), JSON.stringify([
+    ["INITIALIZATION", "event", 2, 3], ["START-OF-SELECTION", "event", 4, 5], ["init", "form", 6, 7],
+    ["status_0100", "module", 8, 9], ["lcl", "", 10, 17]]));
+  assert.equal(tree[4].children[0].children[0].selectionRange.start.line, 15);
 });
 test("a data element's hover names its domain, type and length", async () => {
   const h = host();

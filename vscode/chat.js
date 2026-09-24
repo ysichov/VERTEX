@@ -177,7 +177,10 @@ function create(vscode, codeTools, server, secrets) {
             + JSON.stringify(fragment) : "")
           + "\n\nRequest:\n" + prompt.trim()
           + "\n\nOpen editor tabs (titles and paths only; the SAP tools read SAP objects, local files cannot be read):\n" + JSON.stringify(openTabs(vscode)), schema: RESULT_SCHEMA,
-        tools: toolSchemas.map(tool => tool.name)
+        tools: toolSchemas.map(tool => tool.name),
+        // A debugging run waits for the user to log on to WebGUI and for the
+        // program to reach its breakpoints; three minutes are too few for that.
+        ...(toolSchemas.length ? { timeout: 600000 } : {})
       };
       const result = await (id === "anthropic-api"
         ? anthropic.ask({ ...requestOptions, apiKey: secrets && await secrets.get("vertex.provider.anthropic.apiKey"),

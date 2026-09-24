@@ -1877,7 +1877,74 @@ text - there is nothing else to go by, and VERTEX logs on in English.
 no line. Eclipse goes to the constructor, and so does VERTEX now - `NEW name(` is read as a call
 of `CONSTRUCTOR`. A class without its own constructor opens at its start.
 
+Outline was empty for a VERTEX tab: VS Code knows nothing inside ABAP until an extension tells it.
+A document symbol provider now builds the tree from the tab's own statements (`abapStatements`),
+without SAP, so it follows unsaved edits. A class shows its sections with the declared methods, but
+each method's range is its implementation, where a click should land; a section's range therefore
+covers its methods in the implementation part too. VS Code's ranges are immutable, so a plain tree is
+built first and turned into symbols last.
+
+Double-click on `CASE` went to the first `WHEN`: IF and CASE walked their branches, which is
+useful but not what a jump from the opening wants. Asked for long ago: `IF` to `ENDIF`. Now the
+double-click jumps from the opening to its end and back, and F12 (VERTEX: Go to) and Ctrl+click
+keep the walk through the branches. The first cut sent VERTEX: Go to to the end as well and so
+broke F12, which is bound to that command, not to the definition provider. VS Code's selection event carries
+no modifier keys, so Ctrl on the double-click itself could not be told apart.
+
+
 The VS Code extension went out as 0.7.2 with all of this; Eclipse was not rebuilt.
+
+## Stage 38 — an assistant at the debugger
+
+The question was whether an assistant could debug ABAP by itself. A probe outside the extension,
+on the same `abap-adt-api` VERTEX uses, answered it step by step on QAS:
+
+- A breakpoint set over ADT stopped nothing on its own. It needs a listener (`debuggerListen`).
+- With a listener, a run from WebGUI stopped; one from the standalone SAP GUI never did - not for
+  ABAP FS, not for the probe, not for Eclipse. SAP's documentation says it outright: ADT
+  breakpoints are not considered in SAP Logon sessions. Terminal mode with SAP GUI's own
+  TerminalID from the registry caught neither SAP GUI nor WebGUI. QAS has one application
+  server, so it was never a server mismatch. Settled: runs start in WebGUI.
+- Stepping line by line and recording what changed traced Z_CALC in 133 steps, first at about
+  3 steps a second, then 5 once only the executed statement's variables were read. The trace
+  showed the planted bug in two neighbouring steps: the customer changes, the total does not
+  reset.
+- A condition on the breakpoint is checked by SAP. `lv_customer_total > 1000` on line 45
+  stopped exactly on orders 4 and 5: two stops, a dozen requests, under a second, against 451
+  requests and 26 seconds for the full trace.
+- The first conditional run lost its second stop. After a stop the program stays under the
+  attached session, and the next stop is the answer to "continue", not a new listener hit;
+  the probe had left the session. "continue" on the last stop throws when the program ends.
+- An Eclipse debug session left open took the stops: one listener per user.
+
+What landed is the pilot of that: `debugger.js` (no VS Code API, like `sap-code.js`) and a
+second tool set in `mcp.js` at `/debug`, so the review at `/mcp` and what its registrations see
+stay unchanged. Breakpoints are sent as the full set and a condition goes in a second round, as
+ABAP FS and Eclipse do. Mode `log` records and continues inside the same session; mode `stop`
+hands the stop to the assistant. A stop returns the stack, five source lines, the variables that
+changed since the last stop and the first rows of a changed table; `debug_read` reads the rest.
+Variables are never changed and the program is never jumped around - the user did not ask for
+it. An open Eclipse or ABAP FS listener is reported, not taken over. The standalone stdio server
+does not get the debugger yet: it has no VS Code to open WebGUI, and a listener has to outlive a
+single call.
+
+The first try of the pilot went to the wrong place: the question was asked in the VERTEX chat,
+whose assistant had only the source tools, and it found the bug by reading the code - Z_CALC's
+planted bug is visible in the text, which makes it a weak test for a debugger. Registering
+`vertex-debug` for Claude Code then tripped twice: the command only copies the line, and a window
+not reloaded after installing still offered the old two entries. So the chat got the debugger as
+well: its `/chat` set now carries the `debug_*` tools beside the source tools (a wrapper whose
+schemas and instructions stay getters - `Object.assign` read the source tools' instructions at
+activation, before any system was known, and a test caught it). A chat answer that may use SAP
+tools waits ten minutes instead of three, for a WebGUI logon and the program's way to its
+breakpoints. Released as VS Code 0.7.3; Eclipse was not rebuilt.
+
+Z_CALC proved the plumbing but not the point: its bug reads off the code. `Z_VX_DEBUGGER_TEST`
+went into `src/` instead - one screen, four order lines, a total that comes out low, no error and
+no line that looks wrong. What goes wrong is what a statement silently does not do, so reading
+the code is slow and a stop in the right place is quick. The answer is deliberately not written
+in the program or in the user-facing documentation.
+
 
 ---
 

@@ -1,5 +1,29 @@
 # Release history
 
+## 2026-09-24 — VERTEX 0.7.3: an assistant at the debugger
+
+- An assistant debugs ABAP by itself: told the problem, it sets breakpoints, starts the program,
+  reads what the program held where it stopped, decides where to look next, and ends with a
+  verdict naming the line and the values that prove it.
+- Breakpoints on a program, include or class line, with a condition SAP evaluates - written like
+  an ABAP `IF`, with `LINES( )`, `STRLEN( )` and the rest - so the program stops only when it
+  holds.
+- Mode *log* makes a breakpoint a watchpoint: it records what changed and lets the program run
+  on, without a turn of the assistant.
+- A stop returns the stack, five source lines, the variables changed since the last stop and the
+  first rows of a changed table; `debug_read` reads a field, a structure or a range of rows.
+- Runs start in WebGUI (`debug_run`). SAP never applies ADT breakpoints to a session opened
+  through SAP Logon, so a run from the standalone SAP GUI is not caught - by VERTEX or Eclipse.
+- Another debugger listening for the same user (Eclipse, ABAP FS) is reported, not taken over
+  unless the user agrees.
+- Nothing is changed: no variable, no jump, no source. `debug_stop`, or closing the window,
+  removes every breakpoint and the listener.
+- The VERTEX chat has the debugger with no setup, and waits up to ten minutes for an answer that
+  uses SAP tools. Claude Code and Codex connect to it as `vertex-debug`: **VERTEX: Copy the MCP
+  address** has a debugger entry for each.
+- `Z_VX_DEBUGGER_TEST` in `src/`: a one-screen invoice that prints the wrong total, with a bug no
+  single line shows - something to try the debugger on. Pull `src/` to get it.
+
 ## 2026-09-24 — VERTEX 0.7.2: names SAP knows, wherever they are declared
 
 - Hover and Go to on a variable, parameter, attribute or type ask SAP through ADT's own
@@ -21,6 +45,11 @@
   not describe this name - Definition location found". It shows the declaration now.
 - Double-click or Go to on the class in `NEW zcl_foo( ... )` opens its constructor, as Eclipse
   does; a class without its own constructor opens at its start.
+- Outline for VERTEX tabs: a class as its sections and methods, each method leading to its
+  implementation; a program as its events, forms, modules and local classes. The same list feeds
+  Ctrl+Shift+O, the breadcrumbs and sticky scroll. It is read from the tab's text, saved or not.
+- Double-click on `IF` or `CASE` goes straight to `ENDIF` / `ENDCASE`, and back. Ctrl+click or
+  F12 still steps through `ELSEIF`, `ELSE` and `WHEN`.
 
 ## 2026-09-23 — VERTEX 0.7.1: Diff keeps its own parts
 

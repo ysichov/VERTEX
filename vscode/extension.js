@@ -584,10 +584,15 @@ function serveTools(context, server) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("vertex.mcpAddress", async function () {
-      const client = await vscode.window.showQuickPick(["Codex", "Claude Code"], {
+      const picked = await vscode.window.showQuickPick(["Codex", "Claude Code",
+        "Codex - debugger", "Claude Code - debugger"], {
         title: "Connect VERTEX to which assistant?"
       });
-      if (!client) { return; }
+      if (!picked) { return; }
+      // The debugger is its own server entry, so the review registration and
+      // what it offers stay as they are.
+      const debug = / - debugger$/.test(picked);
+      const client = picked.replace(/ - debugger$/, "");
       let running;
       try {
         running = await server.start();
@@ -602,16 +607,18 @@ function serveTools(context, server) {
       // User scope, not the default local one: local ties the server to the
       // directory Claude Code happens to be started in, and this one belongs
       // to the machine, not to a folder.
+      const name = debug ? "vertex-debug" : "vertex";
+      const url = debug ? running.url.replace(/\/mcp$/, "/debug") : running.url;
       const line = client === "Codex"
-        ? '[mcp_servers.vertex]\nurl = "' + running.url
+        ? '[mcp_servers.' + name + ']\nurl = "' + url
           + '"\nhttp_headers = { Authorization = "Bearer ' + server.token + '" }\n'
-        : 'claude mcp add --transport http vertex --scope user ' + running.url
+        : 'claude mcp add --transport http ' + name + ' --scope user ' + url
                  + ' --header "Authorization: Bearer ' + server.token + '"';
       await vscode.env.clipboard.writeText(line);
       vscode.window.showInformationMessage(
         (client === "Codex"
-          ? "Copied Codex configuration. Paste into ~/.codex/config.toml, replacing any existing [mcp_servers.vertex] section, then restart the Codex extension and start a new conversation. "
-          : "Copied the Claude Code terminal command. If vertex is already registered, run claude mcp remove vertex --scope user first. ")
+          ? "Copied Codex configuration. Paste into ~/.codex/config.toml, replacing any existing [mcp_servers." + name + "] section, then restart the Codex extension and start a new conversation. "
+          : "Copied the Claude Code terminal command. If " + name + " is already registered, run claude mcp remove " + name + " --scope user first. ")
         + (vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777) === 0
           ? "Port 0 changes the address on reload. Set vertex.mcp.port for a stable connection."
           : "The port and token persist across window reloads."));
@@ -683,13 +690,78 @@ async function withShownDiff(context, state) {
           + " ('-' removed, '+' added):\n" + lines.join("\n") } };
 }
 
+/* The debugger an assistant drives through /debug: one per window, on the
+   active system, with the password VS Code keeps. The listener runs on a
+   stateless session; each stopped program gets a stateful one of its own. */
+function debuggerFor(context) {
+  const crypto = require("crypto");
+  let id = context.globalState.get("vertex.debug.ideId");
+  if (!id) {
+    id = crypto.randomBytes(16).toString("hex").toUpperCase();
+    context.globalState.update("vertex.debug.ideId", id);
+  }
+  const dbg = require("./debugger").create({
+    ideId: id,
+    terminalId: id,
+    openUrl: url => vscode.env.openExternal(vscode.Uri.parse(url)),
+    connect: async function () {
+      const chosen = active();
+      if (chosen.error) { throw new Error(chosen.error); }
+      const system = chosen.system;
+      const pw = await password(context, system);
+      if (!pw) { throw new Error("The SAP password for " + system.name + " was not supplied."); }
+      const { ADTClient } = require("abap-adt-api");
+      const make = function () {
+        const client = new ADTClient(system.url, system.user, pw, system.client || "", "EN", { timeout: 300000 });
+        client.httpClient.httpclient = require("./sap-http").create(system);
+        return client;
+      };
+      const listener = make();
+      return {
+        system, user: String(system.user).toUpperCase(), listener,
+        open: async function () {
+          const client = make();
+          client.stateful = "stateful";
+          await client.login();
+          return client;
+        }
+      };
+    }
+  });
+  // A closed window must not leave breakpoints and a listener behind on SAP.
+  context.subscriptions.push({ dispose: () => { dbg.stop().catch(() => {}); } });
+  return dbg;
+}
+
+/* The source tools with the debugger's added: the schemas and the method the
+   chat is told, and a call that sends debug_* to the debugger. The Anthropic
+   API path calls execute directly, so it gets the answer as text. */
+function withDebugger(sapCode, debugTools) {
+  // Getters, read when asked - as the source tools' own text is: it names the
+  // systems configured at the time. Object.assign would read them now.
+  return Object.create(sapCode, {
+    schemas: { get: () => sapCode.schemas.concat(debugTools.tools) },
+    instructions: { get: () => sapCode.instructions + "\n\n" + debugTools.instructions },
+    execute: { value: async function (name, args) {
+      if (!/^debug_/.test(name)) { return sapCode.execute(name, args); }
+      const answer = await debugTools.call({}, name, args || {});
+      if (answer.isError) { throw new Error(answer.content[0].text); }
+      return answer.content[0].text;
+    } }
+  });
+}
+
 function activate(context) {
   const sapCode = require("./code-workbench").register(vscode, context, { active, password, pin: pinTo,
     pinned: () => pinnedSystem.getStore() || "", systems });
+  // The panel's chat debugs too: its assistant gets the debugger tools beside
+  // the source tools, on the same /chat address, with nothing to register.
+  const debugTools = mcp.debugSet(debuggerFor(context));
+  const chatTools = withDebugger(sapCode, debugTools);
   let latestToolsContext = null;
   const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
   const chatSet = {
-      tools: sapCode.schemas.map(tool => ({
+      tools: chatTools.schemas.map(tool => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
@@ -701,6 +773,7 @@ function activate(context) {
       const sessionLog = require("./session-log");
       return sessionLog.tools(sessionLog.current(config.get("logPath", ""), provider, sessionLog.fromConfig(config)),
         async function (_deps, toolName, toolArgs) {
+          if (/^debug_/.test(toolName)) { return debugTools.call(_deps, toolName, toolArgs); }
           const result = await sapCode.execute(toolName, toolArgs);
           return { content: [{ type: "text", text: JSON.stringify(result) }] };
         })(deps, name, args);
@@ -708,16 +781,16 @@ function activate(context) {
   };
   tools = mcp.create({ fetch: fetch, context: context, port: port,
     pin: pinTo, pinned: () => pinnedSystem.getStore() || "",
-    pages: Object.assign(windowTools(), { "/chat": chatSet }) });
+    pages: Object.assign(windowTools(), { "/chat": chatSet, "/debug": debugTools }) });
   const showTools = initial => require("./tools-window").open(vscode, context,
     { pages: PAGES, fetch, asset, active, pin: pinTo, models: args => assistantModels(context, args),
       source: args => sapCode.execute("read_sap_object", args),
       openEditor: args => sapCode.execute("open_sap_object", args),
       setContext: value => { latestToolsContext = value; },
-      chat: () => require("./chat").create(vscode, sapCode, tools, context.secrets) }, initial);
+      chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets) }, initial);
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", showTools));
   require("./sidebar").register(vscode, context, active,
-    require("./chat").create(vscode, sapCode, tools, context.secrets), systems,
+    require("./chat").create(vscode, chatTools, tools, context.secrets), systems,
     () => withShownDiff(context, latestToolsContext));
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation

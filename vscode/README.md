@@ -91,7 +91,8 @@ development systems often have; it is off by default on purpose.
   (on). The ABAP side applies them, so they need this release's `src/` pulled.
 - **VERTEX: Switch System**
 - **VERTEX: Forget Password**
-- **VERTEX: Copy the MCP address for Claude Code or Codex**
+- **VERTEX: Copy the MCP address for Claude Code or Codex** — the review server, or with a
+  **- debugger** entry the debugger server ([Debug with an assistant](#debug-with-an-assistant))
 - **VERTEX: Review & Activate** — editor title or context menu; opens the block-by-block
   Code Change panel described below.
 - **VERTEX: Save & Activate** — editor title; saves the whole tab without the block review.
@@ -125,6 +126,11 @@ Currently supported:
 - Hover, double-click and Go to work inside a read-only view too.
 - Interfaces open as editable VERTEX tabs, like programs and classes; creating one is not offered.
 - Double-click the class in `NEW zcl_foo( )` to open its constructor.
+- The Outline view lists a class's sections and methods, or a program's events, forms, modules and
+  local classes; a click goes to the implementation. Ctrl+Shift+O, the breadcrumbs and sticky
+  scroll use the same list.
+- Double-click `IF` or `CASE` to jump to `ENDIF` / `ENDCASE` and back; Ctrl+click or F12 walks
+  through `ELSEIF`, `ELSE` and `WHEN`.
 - A static call such as `ZCL_FOO=>bar( )` opens the target class at the implementation of `bar`.
   An instance call such as `mo_splitter->set_row_sash( )` does the same when `mo_splitter` has a
   visible `TYPE REF TO` declaration. `CALL FUNCTION 'Z_FOO'` opens the function module source,
@@ -269,6 +275,7 @@ The remote HTTP host is experimental and documented for future development only.
 | The SelecTor, Versions and Metrics windows, used by hand | No: they read SAP directly over ADT | — |
 | The **Assistant** panels in SelecTor and Versions | Yes, internally | None: for each request the extension hands Claude Code or Codex the window's own MCP address, `/selector` or `/versions` |
 | Supported assistants | Yes | GitHub Copilot in VS Code, Claude Code, and Codex in VS Code |
+| The debugger | Yes: `/chat` for the VERTEX chat, `/debug` for Claude Code and Codex | None for the chat; one command for the others — [Debug with an assistant](#debug-with-an-assistant) |
 | Other chats and MCP clients | Not supported/tested yet | Claude web, ChatGPT web, Claude Desktop, and other clients are development work |
 
 MCP is how Claude Code and Codex are given tools in both cases. The difference is
@@ -321,6 +328,159 @@ the assistant silently reaching another window's SAP system. Port `0` takes a
 temporary port, and then the address has to be copied again after every reload.
 
 Then ask, for example: **Review transport DEVK900123 using the VERTEX SAP tools.**
+
+## Debug with an assistant
+
+An assistant can run the ABAP debugger by itself: set breakpoints, start the program,
+look at what the program held where it stopped, decide where to look next, and end with a
+verdict that names the line and the values that prove it. You describe the problem; you do
+not step through the code.
+
+> *Z_CALC computes the wrong discount. Find out why with the debugger.*
+
+The debugger sets breakpoints and holds a listener. It never changes a variable, never jumps
+over code and never writes source or data.
+
+### Where it runs
+
+| Assistant | How it gets the debugger | Setup |
+|---|---|---|
+| The **VERTEX chat** in the panel | on its own `/chat` address, beside the source tools | none |
+| **Claude Code** or **Codex** | a second MCP server of the extension, `/debug`, registered as `vertex-debug` | once, below |
+
+The debugger runs on the system chosen with **VERTEX: Switch System** (or named in the chat),
+with the password VS Code keeps. A VS Code window with VERTEX has to stay open while it works.
+The standalone MCP server in `mcp/server.js` does not have it.
+
+**Claude Code or Codex**: run **VERTEX: Copy the MCP address for Claude Code or Codex** and
+choose **Claude Code - debugger** or **Codex - debugger**.
+
+- Claude Code: paste the copied command into a terminal and run it. `claude mcp list` then
+  shows `vertex-debug: http://127.0.0.1:37777/debug (HTTP) - Connected`. Start a **new**
+  conversation - one already open does not see a server added after it began.
+- Codex: paste the copied `[mcp_servers.vertex-debug]` section into `~/.codex/config.toml`,
+  restart the Codex extension and start a new conversation.
+
+`vertex-debug` sits beside the review's `vertex`; neither changes the other.
+
+### How a run is caught
+
+1. The assistant sets breakpoints. Setting the first one starts a **listener** for your SAP
+   user - without a listener, SAP lets every breakpoint pass.
+2. It starts the program with `debug_run`: WebGUI opens in your browser on
+   `…/sap/bc/gui/sap/its/webgui` and runs the report at once. Log on there if the browser
+   asks.
+3. The program reaches a breakpoint, the listener catches it, and the assistant reads the stop.
+
+**Runs from the standalone SAP GUI are never caught.** SAP does not apply ADT breakpoints to a
+session opened through SAP Logon - not for VERTEX, not for Eclipse, not for any ADT client
+([SAP's documentation](https://help.sap.com/docs/abap-cloud/abap-development-tools-user-guide/breakpoints-characteristics)).
+They do apply to WebGUI, to the SAP GUI embedded in Eclipse, and to any HTTP or RFC request
+made under your user. A class or a function module is started by you, through whatever calls
+it over HTTP or RFC; the assistant asks.
+
+Use the host name in `vertex.systems` that the server's certificate names (for example
+`https://s4.example.com:44300` rather than an IP address): WebGUI opens at that address, and
+a browser warns about a certificate that does not match it.
+
+**One debugger per user.** SAP gives each stop to one listener. If Eclipse or ABAP FS is
+already debugging for your user, the assistant is told so and does not take over unless you
+agree - otherwise the other debugger would silently lose its stops. Close the other debug
+session, or tell the assistant it may take over.
+
+### Breakpoints: conditions and modes
+
+A breakpoint goes on a line of a program (`PROG`), an include (`INCL`) or a class (`CLAS`,
+counted in its main source, as the VERTEX class tab shows it). Function modules are not yet
+supported. The line has to hold an executable statement; SAP refuses anything else, and the
+refusal is reported.
+
+A **condition** is checked by SAP each time the line is reached; the program stops only when
+it is true, so a thousand passes cost nothing. It is written like the condition of an ABAP `IF`
+([syntax](https://help.sap.com/docs/abap-cloud/abap-development-tools-user-guide/syntax-for-breakpoint-conditions)):
+
+| Condition | Stops |
+|---|---|
+| `lv_total > 1000` | once the total passes 1000 |
+| `ls_order-customer = 'CUST_B'` | on that customer's rows |
+| `sy-tabix = 3` | on the third pass of a loop |
+| `LINES( lt_items ) > 0` | once the table has rows |
+| `sy-subrc <> 0` | after a failed call |
+| `oref IS BOUND AND oref->attr = 'X'` | the second part is checked only if the first holds |
+
+The built-in functions are `LINES( )`, `STRLEN( )`, `XSTRLEN( )` and `INEXACT_DF( )`, with a
+blank inside each bracket. At most 255 characters. A name that does not exist is found only
+when the line runs: the program then stops there with SAP's message, rather than passing.
+
+Each breakpoint has a **mode**:
+
+- **stop** (default) hands the stop to the assistant, which reads, steps and continues.
+- **log** records the variables that changed and lets the program run on at once - a
+  watchpoint. A loop of a hundred passes costs the assistant no turn; it reads the record
+  afterwards.
+
+Setting the same line again replaces its condition and mode.
+
+### What a stop shows
+
+- where the program stands and the top of the stack;
+- five source lines around the statement;
+- the variables that changed since the previous stop - all of them at the first stop;
+- for a table that changed, its row count and first five rows.
+
+That is deliberately little. Everything else is read on purpose with `debug_read`: a field, a
+structure's fields, or rows *from*..*to* of a table (up to 200 at once), by name as ABAP writes
+it - `LS_ORDER`, `GS_INVOICE-ITEMS`, `ME->MV_RATE`.
+
+### The tools
+
+| Tool | Does |
+|---|---|
+| `debug_set_breakpoint` | object type, name, line, optional condition, mode `stop` or `log`; starts the listener |
+| `debug_clear_breakpoints` | removes one breakpoint by id, or all |
+| `debug_run` | opens a report in WebGUI in your browser |
+| `debug_wait` | waits up to 280 s (60 by default) for a stop or the end of the run; returns the stop, what log breakpoints recorded, and runs that ended |
+| `debug_read` | reads one variable at the current stop |
+| `debug_step` | `over`, `into`, `out`, or `continue` to the next stop breakpoint |
+| `debug_status` | system, listener, current stop, breakpoints with ids, and what the answers have cost |
+| `debug_log` | everything log breakpoints recorded in this session |
+| `debug_stop` | lets a stopped program run on, stops listening, removes every breakpoint |
+
+Closing the VS Code window does what `debug_stop` does, so no breakpoint and no listener is
+left behind on SAP.
+
+### What it costs
+
+Every tool answer stays in the assistant's context for the rest of the conversation, so the
+answers are kept short: changes rather than the whole state, tables as a count and a few rows,
+one answer cut at 60,000 characters with a note saying so. A condition instead of stepping is
+the largest saving: on Z_CALC, two conditional stops took a dozen SAP requests and under a
+second, where stepping through every line took 451 requests and 26 seconds. `debug_status`
+reports how many characters the debugger has returned so far, and about how many tokens that
+is; the assistant's own total is shown by the assistant (in the VERTEX chat, under each
+answer).
+
+A chat request that may use SAP tools waits up to ten minutes for its answer, so that a
+debugging run has time for a WebGUI logon and the program's way to its breakpoints.
+
+### A program to try it on
+
+The ABAP side ships `Z_VX_DEBUGGER_TEST`: an invoice of four order lines that should total
+940.00 and prints less. It is one screen long, raises no error, and no single line of it looks
+wrong - the cause shows at runtime, in what a statement did not do. Pull `src/` with abapGit, then
+ask: *Z_VX_DEBUGGER_TEST prints the wrong invoice total. Find out why with the debugger.*
+
+### A session, as it goes
+
+1. You: *Z_CALC computes the wrong discount. Find out why with the debugger.*
+2. The assistant reads Z_CALC, sets a log breakpoint in the loop and a stop breakpoint with a
+   condition where the discount is computed, and calls `debug_run`.
+3. You log on in the browser if asked; the report runs.
+4. `debug_wait` brings back the logged passes and the stop: the running total goes 600, 900,
+   1600 while the customer changes from CUST_A to CUST_B.
+5. The assistant reads what it needs, calls `debug_stop`, and answers: the total is never reset
+   when the customer changes (the line), so CUST_B's discount is computed from 1600 instead
+   of 700 (the values).
 
 ## Set up SelecTor or Versions with a sentence
 

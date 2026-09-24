@@ -33,12 +33,16 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
         const open = deps.pages["/chat"].tools.find(t => t.name === "open_sap_object");
         assert.equal(open.annotations.readOnlyHint, true);
         assert.equal(open.annotations.destructiveHint, false);
+        assert.ok(deps.pages["/debug"], "the debugger has its own address");
+        // The panel's chat gets the debugger tools beside the source tools.
+        assert.ok(deps.pages["/chat"].tools.some(t => t.name === "debug_status"));
         return server;
-      } }
+      }, debugSet: () => ({ tools: [{ name: "debug_status", description: "", inputSchema: {} }], instructions: "debug" }) }
       : name.startsWith("./") ? require(path.join(__dirname, "..", name))
       : require(name) });
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../extension.js"), "utf8"), context);
-  context.exports.activate({ subscriptions: [], workspaceState: { get: (key, fallback) => fallback, async update() {} } });
+  context.exports.activate({ subscriptions: [], workspaceState: { get: (key, fallback) => fallback, async update() {} },
+    globalState: { get: () => undefined, async update() {} } });
   assert.equal(starts, 1);
   await commands.get("vertex.mcpAddress")();
   assert.equal(copied[0], '[mcp_servers.vertex]\nurl = "http://127.0.0.1:37777/mcp"\nhttp_headers = { Authorization = "Bearer test-token" }\n');
@@ -46,9 +50,13 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
   await commands.get("vertex.mcpAddress")();
   assert.match(copied[1], /^claude mcp add --transport http vertex --scope user /);
   assert.match(copied[1], /--header "Authorization: Bearer test-token"$/);
+  // The debugger is registered under its own name and address.
+  client = "Claude Code - debugger";
+  await commands.get("vertex.mcpAddress")();
+  assert.match(copied[2], /^claude mcp add --transport http vertex-debug --scope user http:\/\/127\.0\.0\.1:37777\/debug /);
   client = undefined;
   await commands.get("vertex.mcpAddress")();
-  assert.equal(copied.length, 2);
+  assert.equal(copied.length, 3);
   context.exports.deactivate();
 });
 

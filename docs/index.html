@@ -173,11 +173,19 @@
 </p>
 
 <p>
-  The Eclipse plugin here is 0.7.0; the VS Code extension is 0.7.2, with LLM Providers - a
+  The Eclipse plugin here is 0.7.0; the VS Code extension is 0.7.3, with LLM Providers - a
   model table per provider and an Anthropic API key as a third one - and Tools windows that keep
   their own SAP system. The extension also hands transport
   reviews to the AI assistants in the editor &mdash; Copilot, Claude Code, Codex
   &mdash; over MCP.
+</p>
+
+<p>
+  In VS Code an assistant can also debug ABAP by itself: it sets breakpoints with conditions
+  that SAP evaluates, starts the program in WebGUI, reads what the program held where it
+  stopped, and ends with a verdict naming the line and the values. It changes no variable and
+  no code. The VERTEX chat has it built in; Claude Code and Codex connect to it over MCP.
+  <a href="https://github.com/ysichov/VERTEX/blob/main/vscode/README.md#debug-with-an-assistant">How it works</a>.
 </p>
 
 <footer>
