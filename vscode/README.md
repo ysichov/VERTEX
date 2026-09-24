@@ -450,15 +450,14 @@ session, or tell the assistant it may take over.
 | *SAP did not accept the breakpoint* | The line holds no executable statement, or the object is not active | Pick an executable line; activate the object |
 | *Another debugger already listens for …* | Eclipse or ABAP FS debugs for the same user | Close it, or let the assistant take over |
 | *Debugging is still going on …* | The system was switched while breakpoints were set on the old one | Ask for `debug_stop`, then start again |
-| The chat answers without using any SAP tool | A VERTEX Tools window shows a diff, UML or metrics, or code is selected: the chat then answers about what is on screen only, without tools | Close that window or clear the selection, and ask again |
 | A verdict that does not match what the program does | A small model guessed | Ask again with a stronger model, and ask what the debugger showed |
 
 ### Breakpoints: conditions and modes
 
 A breakpoint goes on a line of a program (`PROG`), an include (`INCL`) or a class (`CLAS`,
-counted in its main source, as the VERTEX class tab shows it). Function modules are not yet
-supported. The line has to hold an executable statement; SAP refuses anything else, and the
-refusal is reported.
+counted in its main source, as the VERTEX class tab shows it). The assistant cannot yet set one
+in a function module; [Visual Debug](#visual-debug-the-debugger-on-screen-pilot) can. The line
+has to hold an executable statement; SAP refuses anything else, and the refusal is reported.
 
 A **condition** is checked by SAP each time the line is reached; the program stops only when
 it is true, so a thousand passes cost nothing. It is written like the condition of an ABAP `IF`
@@ -496,6 +495,63 @@ Setting the same line again replaces its condition and mode.
 That is deliberately little. Everything else is read on purpose with `debug_read`: a field, a
 structure's fields, or rows *from*..*to* of a table (up to 200 at once), by name as ABAP writes
 it - `LS_ORDER`, `GS_INVOICE-ITEMS`, `ME->MV_RATE`.
+
+### Visual Debug: the debugger on screen (pilot)
+
+**Visual Debug** in the Tools window (programs, classes and function modules) shows the same
+debugger the assistant drives - one session, not a second one:
+
+- **The source with its breakpoints.** A click beside a line number sets or removes a
+  breakpoint; a right-click sets a condition and the mode (*stop* or *log*). The lines are those
+  of the active version, which is what the program runs. Breakpoints the assistant set appear
+  here, and those set here are the assistant's too.
+- **Where the program stands.** At a stop the current line is marked and the source follows it,
+  also into another include; **Object source** goes back. **Into** (F5), **Over** (F6),
+  **Return** (F7) and **Continue** (F8) step; a click on a stack level shows that level and its
+  variables.
+- **Every variable at once**, grouped as SAP groups them; parameters and locals are headed by
+  the form, method or event they belong to. Structures and objects unfold in place (object
+  attributes marked public, protected or private); **Initials** shows the variables with an
+  initial value and **SYST** the system fields `SY`, both hidden by default; **Filter** narrows
+  by name. A value that changed since the previous stop is marked. A type SAP names only
+  `\TYPE=%_T...` is shown as the source declares it - `p LENGTH 8 DECIMALS 2` - or, with no
+  declaration, as SAP's technical type.
+- **What is read, and when.** **Globals**, **Locals** and **Params** switch a group's reading
+  on or off: a group switched off is not asked of SAP at all. ADT does not say what a step
+  changed, so after a step over a plain statement only the variables it names are read again
+  (the header says which); after a call, a step out of the routine or a Continue, every group
+  switched on is read.
+- **Visual.** With **Visual** on, Continue (F8) runs as a string of F5 steps: the current line
+  moves through the source as the program goes, no variable is read on the way, and it stops at a
+  stop breakpoint, on **Pause**, or when the programs it began in are no longer on the stack -
+  the program is over and F5 would go on into SAP's own code. SAP's answer to a step does not
+  say where the program now is, so each step asks for the stack - except from one plain statement
+  to the next plain one in a program or include, where the next line is known from ACE's
+  statement map (`/vertex/flow/<program>?mode=statements`, read once per program). A call, a
+  branch, a loop, a class or a function module still asks SAP. When the stack is asked after a
+  plain statement and the program is not where the map said - an exception raised inside `TRY` -
+  the window says so and counts it as *mispredicted*. The statistics show the steps, how many
+  were predicted, the time per step, and SAP's step and stack requests apart. Beside it: the steps, the time, and the time per
+  step - of the whole step and of SAP's step request alone. The variables are read once, when it
+  stops. A log breakpoint met on the way is still recorded.
+- **Values in the source.** At a stop, the mouse on a name in the source shows its value - a
+  field, a component such as `ls_new-price`, a structure's fields, or a table's row count and
+  first rows.
+- **Tables in grids.** A click on a table opens its rows below the source, a hundred at a time,
+  in a tab of its own - as many tables as you like, read again at every stop.
+- **Run** starts the program named in the field in WebGUI, as `debug_run` does. For a class or a
+  function module, name the program that calls it, or start it yourself in WebGUI.
+- **Stop** does what `debug_stop` does: lets the program go, stops listening and removes every
+  breakpoint - the assistant's as well, since they are the same.
+- **Terminate** ends the stopped program where it stands, as the debugger's Exit does; the
+  breakpoints stay and the next run is caught again.
+
+Because the session is shared, a step or **Stop** by the assistant moves this window too, and the
+other way round. The assistant still finds each stop through `debug_wait`, whoever stepped. Like
+the assistant, the window never changes a variable or the code.
+
+This is a pilot: Smart Debugger's history (stepping back), coverage and diagrams are not part of
+it. Visual Debug exists in VS Code only; Eclipse has its own debugger.
 
 ### The tools
 

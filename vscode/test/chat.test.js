@@ -87,10 +87,10 @@ test("an active UML view is sent as diagram context and is analysed without requ
   assert.match(instructions, /supplied code or UML/);
 });
 
-test("a brief question about the visible method cannot read the whole object", async (t) => {
-  let available = [];
+test("a question about the visible method keeps the tools and is told to answer from the screen", async (t) => {
+  let available = [], told = "";
   t.mock.method(assistant, "ask", async options => {
-    available = options.tools;
+    available = options.tools; told = options.instructions;
     return { plan: { answer: "It appends a diagnostic." }, model: "haiku", usage: null };
   });
   const tools = { instructions: "", editorContext: () => null, schemas: [
@@ -102,7 +102,10 @@ test("a brief question about the visible method cannot read the whole object", a
     { start: async () => ({ url: "http://127.0.0.1:1/mcp" }), token: "t" });
   await ask("кратко: что делает метод?", { state: { selected_fragment: { kind: "visible_part",
     text: "METHOD add_cr_diag. APPEND iv_text TO mt_cr_diag. ENDMETHOD." } } });
-  assert.deepEqual(available, []);
+  // A window on screen no longer takes the tools away; the model is told to
+  // answer from what it shows and not to read the object again.
+  assert.deepEqual(available, ["search_sap_objects", "read_sap_object", "open_sap_object"]);
+  assert.match(told, /answer from it and do not read the object again/);
 });
 
 test("a bare object name is searched and opened without a model", async (t) => {

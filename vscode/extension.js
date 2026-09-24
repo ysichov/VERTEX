@@ -762,7 +762,9 @@ function activate(context) {
     pinned: () => pinnedSystem.getStore() || "", systems });
   // The panel's chat debugs too: its assistant gets the debugger tools beside
   // the source tools, on the same /chat address, with nothing to register.
-  const debugTools = mcp.debugSet(debuggerFor(context));
+  // Visual Debug in the Tools window draws this same debugger.
+  const dbg = debuggerFor(context);
+  const debugTools = mcp.debugSet(dbg);
   const chatTools = withDebugger(sapCode, debugTools);
   let latestToolsContext = null;
   const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
@@ -793,6 +795,7 @@ function activate(context) {
       source: args => sapCode.execute("read_sap_object", args),
       openEditor: args => sapCode.execute("open_sap_object", args),
       setContext: value => { latestToolsContext = value; },
+      debugger: dbg,
       chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets) }, initial);
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", showTools));
   require("./sidebar").register(vscode, context, active,

@@ -121,7 +121,7 @@ backButton.onclick=()=>{const previous=navigation.pop();if(previous)navigate(pre
 // Diff keeps its own: parts and the versions under them are one column there,
 // AVE's layout. It is still told which part is chosen, and tells back.
 const PART_TYPES=["CLAS","INTF","PROG","INCL"];
-const PART_ACTIONS=["view","scheme","flow","metrics","uml"];
+const PART_ACTIONS=["view","vdebug","scheme","flow","metrics","uml"];
 let partsFor="",partsList=[],selectedPart=null,partsFolded=false;
 
 /* The one name every page knows a part by: the method, form or event as it
@@ -238,7 +238,8 @@ function run(){
   catch(e){notice(e.message);return;}
   if(!current.name){notice("Enter an object name.");return;}
   notice(""); fields();
-  const service=current.action==="view"?"source":["data","join","pivot"].includes(current.action)?"table":
+  // Visual Debug is a VS Code page: only that host puts it in the bundle.
+  const service=current.action==="view"?"source":current.action==="vdebug"?"debug":["data","join","pivot"].includes(current.action)?"table":
     ["diff","review"].includes(current.action)?"versions":"metrics";
   const state=current;
   loadParts(state,()=>{if(current===state)mount(service,state);});
@@ -344,6 +345,9 @@ function connect(child,service,generation){
   child.sdeAsset=name=>enqueue({asset:name},reply,live);
   child.sdeSource=(name,type)=>enqueue({source:[name,type]},reply,live);
   if(typeof sdeOpenEditor==="function")child.sdeOpenEditor=(name,type)=>sdeOpenEditor(String(name),String(type));
+  // The debugger is VS Code's: a command goes to it and its answer comes back
+  // as any other; what it does on its own arrives through sdeDebugEvent.
+  if(typeof sdeDebug==="function")child.sdeDebug=(command,args)=>enqueue({debug:[String(command),JSON.stringify(args||{})]},reply,live);
   child.sdeContextUpdate=state=>{
     if(!live())return;
     const value=state&&typeof state==="object"?state:{};
@@ -402,7 +406,14 @@ function pump(){
   while(queue.length){const item=queue.shift();if(item.live()){activeRequest=item;break;}}
   if(!activeRequest)return;
   const r=activeRequest.request;
-  if(r.asset)sdeAsset(r.asset);else if(r.source)sdeSource(...r.source);else sdeWorkspace(r.path,r.body);
+  if(r.asset)sdeAsset(r.asset);else if(r.source)sdeSource(...r.source);else if(r.debug)sdeDebug(...r.debug);else sdeWorkspace(r.path,r.body);
+}
+/* The debugger moved - a stop, a step, a breakpoint the assistant set. The
+   Visual Debug page, if it was opened, draws it again. */
+function sdeDebugEvent(raw){
+  const frame=resultFrames.get("debug:vdebug");
+  const page=frame&&frame.contentWindow;
+  if(page&&typeof page.sdeDebugEvent==="function")page.sdeDebugEvent(raw);
 }
 function sdeReady(){
   const raw=sdeTake(),item=activeRequest;activeRequest=null;

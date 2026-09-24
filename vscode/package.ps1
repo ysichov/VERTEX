@@ -20,7 +20,7 @@ try {
     $archive = [IO.Compression.ZipFile]::OpenRead($candidate)
     try {
         $required = @('extension/package.json', 'extension/node_modules/abap-adt-api/package.json',
-            'extension/resources/metrics.html', 'extension/resources/source.html', 'extension/resources/versions.html')
+            'extension/resources/metrics.html', 'extension/resources/source.html', 'extension/resources/versions.html', 'extension/pages/visual-debug.html')
         foreach ($name in $required) { if (!$archive.GetEntry($name)) { throw "VSIX verification failed: missing $name" } }
         # Opening a ZIP only validates its central directory. Read each entry
         # now, before promotion, so a truncated compressed stream can never

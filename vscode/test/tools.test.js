@@ -57,3 +57,29 @@ test("workspace transport permits only VERTEX resources and existing review writ
   }
   assert.equal(workspace.allowed("/sap/bc/adt/vertex/class/ZCL_APP","{}"),false);
 });
+test("Visual Debug is VS Code's: its model offers it, the shared one does not",()=>{
+  assert.deepEqual(model.objects.find(o=>o[0]==="PROG")[2],["view","vdebug","metrics","scheme","flow","diff"]);
+  assert.equal(model.normalize({type:"FUNC",name:"Z_FM",action:"vdebug"}).action,"vdebug");
+  assert.match(model.instructions,/Visual Debug \(action vdebug/);
+  assert.ok(model.navigationSchema.anyOf[1].properties.action.enum.includes("vdebug"));
+  // Eclipse loads the file itself, without the call VS Code makes.
+  const shared=path.resolve(__dirname,"../../org.vertex.abap.ui/resources/object-tools.js");
+  const c=vm.createContext({window:{}});
+  vm.runInContext(require("node:fs").readFileSync(shared,"utf8"),c);
+  assert.throws(()=>c.window.VertexObjects.normalize({type:"PROG",name:"Z",action:"vdebug"}));
+  assert.doesNotMatch(c.window.VertexObjects.instructions,/vdebug/);
+  // The VS Code Tools page carries the page and the call.
+  const page=workspace.html(path.resolve(__dirname,"../../org.vertex.abap.ui/resources"),null);
+  assert.match(page,/VertexObjects\.enable\.apply\(null,\["vdebug"/);
+  assert.match(page,/Visual Debug/);
+});
+test("the Visual Debug page asks the debugger for nothing it has no command for",async()=>{
+  const seen=[];
+  const dbg={picture:()=>({ok:1}),async setBreakpointAt(a){seen.push(a);return {id:"bp1"};},async advance(k){seen.push(k);}};
+  assert.deepEqual(await workspace.debugCommand(dbg,"picture",{}),{ok:1});
+  assert.deepEqual(await workspace.debugCommand(dbg,"set",{url:"/u",line:3,take_over:"yes"}),{id:"bp1"});
+  assert.equal(seen[0].take_over,false);
+  await workspace.debugCommand(dbg,"step",{kind:"over"});
+  assert.equal(seen[1],"over");
+  await assert.rejects(workspace.debugCommand(dbg,"setValue",{}),/no command setValue/);
+});

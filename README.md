@@ -135,6 +135,13 @@ condition syntax: [vscode/README.md](vscode/README.md#debug-with-an-assistant). 
 on the ABAP side - only SAP's standard ADT services, the debug authorisation and WebGUI. `src/` ships
 `Z_VX_DEBUGGER_TEST`, a one-screen program with a bug that shows only at runtime, to try it on.
 
+**Visual Debug** (pilot, VS Code 0.7.4) puts that same debugger on screen in the
+Tools window: the source with breakpoints set by a click, where the program stands, the stack,
+every variable at once in a tree, and tables in grids - the picture of
+[Smart Debugger](https://github.com/ysichov/Smart-Debugger), drawn from ADT. It is one session
+with the assistant's: what either of them does, the other sees.
+[Details](vscode/README.md#visual-debug-the-debugger-on-screen-pilot).
+
 ### Development status
 
 The tested integrations are GitHub Copilot in VS Code, Claude Code, and Codex in VS Code.

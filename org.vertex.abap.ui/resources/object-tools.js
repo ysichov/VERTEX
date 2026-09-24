@@ -38,18 +38,35 @@
   const navigationSchema = { anyOf: [{ type: "null" }, { type: "object", additionalProperties: false,
     required: ["type", "name", "action", "part"], properties: {
       type: { type: "string", enum: objects.map(o => o[0]) }, name: { type: "string" },
-      action: { type: "string", enum: Object.keys(labels) },
+      action: { type: "string", enum: Object.keys(labels) },  // enable() adds to it
       part: { type: ["string", "null"], description: "The method, form or event within the object, when the request names one; otherwise null." }
     } }] };
-  const instructions = "When asked to run a VERTEX function, return navigation with the exact object type, name and action. "
+  // What only one host has: VS Code adds Visual Debug, which Eclipse does not
+  // offer. Read when asked, so an action enabled after loading is in the text.
+  let hostNotes = "";
+  const instructions = () => "When asked to run a VERTEX function, return navigation with the exact object type, name and action. "
     + "Only an explicit request to open, show or switch to a function changes the view. "
     + "A request to open or show is answered with one short sentence naming what opens - no summary, review or description "
     + "of its content, even when that content is supplied as context, unless the request asks for it. Explaining, describing, reviewing or any question "
     + "about what is on screen keeps the view: navigation null. "
     + "Use the current workspace object when requested. Ask if the object is ambiguous. Do not claim execution: the UI runs the function after your reply. "
     + "Use null navigation for other answers. Available types and actions: " + JSON.stringify(objects)
-    + ". In Tools, show/view/open source uses action view for PROG, CLAS and FUNC. Return navigation instead of calling open_sap_object for viewing. For explicit editing requests use open_sap_object to open an editable VS Code tab. A request to fix or change the code is done with modify_sap_object alone: it puts the change into the object's tab, unsaved, for the user to save. Do not also call open_sap_object for it, and return navigation null - no Tools window. Default to review for TR, diff for packages and data for tables. Logic diagram (action scheme) is the flowchart of one method; Calls diagram (action flow) is which unit calls which in the whole object. Diff is the version history: versions, history, what changed, compare versions or who changed it all mean action diff, never view. Package UML uses DEVC/uml. When the request names a method, form or event of the object - CLASS->METHOD, CLASS=>METHOD, 'method X of class Y' - put the object in name and that unit alone in part; otherwise part is null.";
-  const api = { objects, labels, normalize, navigationSchema, instructions };
+    + ". In Tools, show/view/open source uses action view for PROG, CLAS and FUNC. Return navigation instead of calling open_sap_object for viewing. For explicit editing requests use open_sap_object to open an editable VS Code tab. A request to fix or change the code is done with modify_sap_object alone: it puts the change into the object's tab, unsaved, for the user to save. Do not also call open_sap_object for it, and return navigation null - no Tools window. Default to review for TR, diff for packages and data for tables. Logic diagram (action scheme) is the flowchart of one method; Calls diagram (action flow) is which unit calls which in the whole object. Diff is the version history: versions, history, what changed, compare versions or who changed it all mean action diff, never view. Package UML uses DEVC/uml. When the request names a method, form or event of the object - CLASS->METHOD, CLASS=>METHOD, 'method X of class Y' - put the object in name and that unit alone in part; otherwise part is null." + hostNotes;
+  /* A function one host adds for some types: placed after View source, or
+     else before Diff, which stays last in the picker; and named in the
+     assistant's instructions. */
+  function enable(action, label, types, note) {
+    if (labels[action]) return;
+    labels[action] = label;
+    navigationSchema.anyOf[1].properties.action.enum.push(action);
+    types.forEach(type => {
+      const list = objects.find(o => o[0] === type)[2], view = list.indexOf("view"), diff = list.indexOf("diff");
+      list.splice(view >= 0 ? view + 1 : diff >= 0 ? diff : list.length, 0, action);
+    });
+    hostNotes += " " + note;
+  }
+  const api = { objects, labels, normalize, navigationSchema, enable };
+  Object.defineProperty(api, "instructions", { enumerable: true, get: instructions });
   if (typeof module !== "undefined") module.exports = api;
   else root.VertexObjects = api;
 })(typeof window === "undefined" ? globalThis : window);

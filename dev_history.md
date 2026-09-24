@@ -1997,6 +1997,78 @@ two wrong answers both came from Haiku), and a table of symptoms. One row there 
 rather than a fix: while a Tools window shows a diff, UML or metrics, the chat answers without
 tools. Changing that rule was proposed and not decided, so it is written down instead.
 
+It was decided the same day, the other way round: the row came out of the table and the rule out
+of the chat. The rule had been a token guard - a short question about the method on screen should
+not start an agent loop - and it cost more than it saved: the chat lost every tool without saying
+so, `debug_status` came back as "not available", and with several Tools windows open nobody could
+tell which one had switched the tools off, since the context is the last window to report, not
+the one in view. Now the tools always stay; the screen still travels with the question, with an
+instruction to answer from it when it is enough and not to read the object again. The two tests
+that pinned the guard now pin that instruction and the kept tools instead.
+
+## Stage 39 — Visual Debug: the debugger on screen
+
+Smart Debugger shows the whole state of a stopped program at once, but it is a SAP GUI debugger
+script built on `CL_GUI_*` controls; none of its code can run in a webview. What carried over is
+the picture: all variables in trees by group, initial values hidden, objects unfolded by
+visibility, tables in grids of their own, changes since the last stop marked. The pilot takes
+that and leaves out the rest - stepping back, coverage, diagrams.
+
+Two questions were settled before any code. **VS Code only**: Eclipse has its own debugger, to be
+looked at separately. **One session with the assistant**: SAP keeps an IDE's breakpoints by user
+and IDE id, and one listener takes a stop. A second debugger in the same window would have taken
+the assistant's stops at random, and the assistant could not have read the stop on screen. The
+cost is that a step or `debug_stop` from one side moves the other.
+
+What that meant for `debugger.js`:
+
+- **The window must not eat the assistant's news.** `debug_wait` collects stops, ends and
+  problems once. The window reads a separate `picture()` and is woken by `watch()`; a step from
+  the window is `advance()`, the step without the collecting that `debug_step` does after it. A
+  test pins it: a step from the window, then `wait()` still returns the stop.
+- **One request at a time on the stopped session.** Before, only the assistant used it, one tool
+  call after another. Now the window reads variables while the assistant may step, so every use
+  of the stateful session goes through one queue (`exclusive`).
+- **The lines are the active version's.** The source VERTEX shows is the working area; a
+  breakpoint counts lines of what runs. The window reads the active source on the stateless
+  connection.
+- **Breakpoints by source URL**, since the window knows what it shows, not a type and a name:
+  `objectOf()` reads the object back from the URL. That brought function modules in, whose URL
+  names the group. The assistant's tool schema was left as it was.
+
+Visual Debug had to stay out of Eclipse, which loads the same `object-tools.js` and `tools.html`.
+The shared model got `enable()`, which only VS Code calls - in its Node module and in the page it
+builds - and `tools.html` routes to the page and to the debugger only when the host defines
+`sdeDebug`. The page itself lives in `vscode/pages/`, outside the shared resources. Its
+instructions are now read when asked, so the text the assistant gets names the action only
+where it exists.
+
+Checked with tests on a fake SAP and with the page in a browser against a stubbed host. Not yet
+against a live system - which names SAP gives the variable groups, whether a class or function
+module stop reports the URL the breakpoint was set on, and what `ACCESS_KIND` holds for
+attributes are all the first things to see on ALC.
+
+The first run on E19 went through. What it asked for next was speed. ADT has no "what changed" -
+Eclipse compares too - so exactly the changed variables cannot be read. The window now reads again
+only what a plain statement names, and everything switched on after a call, a step out or a
+Continue; group switches turn reading off altogether. And to know what a step costs at all, Visual
+turns Continue into a run of F5 steps with no variables read: `advance(kind, quick)` skips the
+snapshot the assistant gets, and returns the time of SAP's step request and of the whole step. The
+assistant, which has no such run, still gets what changed at the next ordinary stop, against the
+last values read.
+
+The first Visual run measured about 335 ms a step, 160 of them SAP's step request. The rest was
+mostly the stack, asked after every step because SAP's answer to a step carries no position at
+all - not a line, not an include. The idea of skipping it "when the stack does not change" does
+not hold: the stack may not change, but the line does, and nothing else says which. What does is
+ACE: its parse already holds every statement of every include, cut by SAP's own scanner, with its
+keyword and tokens. A new `statements` mode of the flow resource hands that over as a map - start
+and end line and a kind: `decl`, `plain`, `call`, `flow`. From plain to plain the next line is
+certain unless the statement raises; everywhere else the stack is asked. The raise case is not
+hidden: whenever the stack is asked after a plain statement, the window checks that the program
+stands where the map said and reports the miss. Classes and function modules are left out for
+now - their frames count lines in the main source, the map in the include.
+
 
 ---
 

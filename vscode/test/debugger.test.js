@@ -1,6 +1,6 @@
 "use strict";
 const test = require("node:test"), assert = require("node:assert/strict");
-const { create, sourceUrl } = require("../debugger");
+const { create, sourceUrl, objectOf } = require("../debugger");
 
 const URL_MAIN = "/sap/bc/adt/programs/programs/z_calc/source/main";
 
@@ -30,7 +30,8 @@ function fakeSap({ stops = [], conflict = false } = {}) {
       await new Promise(resolve => { released = resolve; });
       return undefined;
     },
-    async debuggerDeleteListener() { calls.push("deleteListener"); if (released) { released(); } }
+    async debuggerDeleteListener() { calls.push("deleteListener"); if (released) { released(); } },
+    async getObjectSource(url, options) { calls.push("source " + url + " " + options.version); return "REPORT z_calc."; }
   };
   const vars = () => stops[position].vars;
   const session = {
@@ -59,6 +60,7 @@ function fakeSap({ stops = [], conflict = false } = {}) {
       return { reachedBreakpoints: stops[position].reached ? [{ id: stops[position].reached }] : [] };
     },
     async getObjectSource() { return Array.from({ length: 60 }, (_, i) => "line " + (i + 1)).join("\n"); },
+    async debuggerGoToStack(position) { calls.push("goto " + position); },
     async logout() { calls.push("logout"); }
   };
   const opened = [];
@@ -77,7 +79,59 @@ const table = (name, rows) => ({ ID: name + "[]", NAME: name, META_TYPE: "table"
 test("a breakpoint URL follows the object type", () => {
   assert.equal(sourceUrl("PROG", "Z_CALC"), URL_MAIN);
   assert.equal(sourceUrl("CLAS", "ZCL_X"), "/sap/bc/adt/oo/classes/zcl_x/source/main");
-  assert.throws(() => sourceUrl("FUNC", "Z_FM"), /not supported/);
+  assert.equal(sourceUrl("FUNC", "Z_FM", "ZFG"), "/sap/bc/adt/functions/groups/zfg/fmodules/z_fm/source/main");
+  assert.throws(() => sourceUrl("FUNC", "Z_FM"), /function group/);
+  assert.throws(() => sourceUrl("DDLS", "Z_V"), /not supported/);
+});
+
+test("a source URL names its object back, and a class's local include is not one", () => {
+  assert.deepEqual(objectOf(URL_MAIN), { objectType: "PROG", name: "Z_CALC" });
+  assert.deepEqual(objectOf("/sap/bc/adt/functions/groups/zfg/fmodules/z_fm/source/main#start=3"),
+    { objectType: "FUNC", name: "Z_FM", group: "ZFG" });
+  assert.equal(objectOf("/sap/bc/adt/oo/classes/zcl_x/includes/implementations"), null);
+});
+
+test("the window sees the stop without taking the assistant's news, and steps without taking it either", async () => {
+  const { dbg, calls } = fakeSap({ stops: [
+    { line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] },
+    { line: 46, vars: [simple("LV_TOTAL", "700.00")] }
+  ] });
+  let told = 0;
+  const unwatch = dbg.watch(() => { told++; });
+  await dbg.setBreakpointAt({ url: URL_MAIN, line: 45 });
+  assert.equal(dbg.picture().breakpoints[0].url, URL_MAIN);
+  while (!dbg.picture().stopped) { await new Promise(r => setTimeout(r, 5)); }
+  assert.equal(dbg.picture().stopped.at, "Z_CALC:45");
+  assert.equal(dbg.picture().stopped.frames[0].url, URL_MAIN);
+  assert.ok(told > 0);
+  // The variables by scope, and what a scope holds.
+  const scopes = await dbg.scopes();
+  assert.deepEqual(scopes.groups.map(g => g.id), ["@GLOBALS"]);
+  const inside = await dbg.children("@GLOBALS");
+  assert.equal(inside[0].value, "600.00");
+  // A step from the window: the assistant's wait still gets the stop.
+  await dbg.advance("over");
+  assert.equal(dbg.picture().stopped.at, "Z_CALC:46");
+  const news = await dbg.wait(1);
+  assert.equal(news.stopped.at, "Z_CALC:46");
+  await dbg.frame(0);
+  assert.ok(calls.some(c => /^goto/.test(c)));
+  // The active source, read on the stateless connection.
+  assert.equal(await dbg.source(URL_MAIN + "#start=1"), "REPORT z_calc.");
+  assert.ok(calls.includes("source " + URL_MAIN + " active"));
+  unwatch();
+  await dbg.stop();
+  assert.equal(dbg.picture().stopped, null);
+});
+
+test("a table's rows are read for the window's grid", async () => {
+  const { dbg } = fakeSap({ stops: [{ line: 23, vars: [table("LT_ORDERS", 3)] }] });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 23 });
+  await dbg.wait(5);
+  const grid = await dbg.tableRows("LT_ORDERS[]", 1, 2);
+  assert.equal(grid.rows, 3);
+  assert.equal(grid.shown.length, 2);
+  await dbg.stop();
 });
 
 test("a condition is attached in a second round, on the line SAP placed", async () => {
@@ -216,4 +270,62 @@ test("a system's webgui address is where WebGUI opens; a bad one is refused", as
   await bad.setBreakpoint({ name: "Z_CALC", line: 45 });
   await assert.rejects(bad.run("Z_CALC"), /not an http\(s\) URL/);
   await bad.stop();
+});
+
+test("a quick step reads no variables, says how long it took, and still stops for the assistant", async () => {
+  const { dbg, calls } = fakeSap({ stops: [
+    { line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] },
+    { line: 46, vars: [simple("LV_TOTAL", "700.00")] },
+    { line: 47, vars: [simple("LV_TOTAL", "800.00")] }
+  ] });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await dbg.wait(5);
+  const before = calls.filter(c => c === "children").length;
+  const timing = await dbg.advance("into", true);
+  assert.equal(typeof timing.sap, "number");
+  assert.ok(timing.total >= timing.sap);
+  assert.equal(calls.filter(c => c === "children").length, before);
+  assert.equal(dbg.picture().stopped.at, "Z_CALC:46");
+  // The next ordinary stop reports the change against the last values read.
+  await dbg.advance("over");
+  const news = await dbg.wait(1);
+  assert.deepEqual(news.stopped.changed, { LV_TOTAL: "800.00" });
+  const read = await dbg.variables(["lv_total"]);
+  assert.equal(read[0].value, "800.00");
+  await dbg.stop();
+});
+
+test("terminate ends the program and keeps the breakpoints and the listener", async () => {
+  const { dbg, calls } = fakeSap({ stops: [{ line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] }] });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await dbg.wait(5);
+  await dbg.terminate();
+  assert.ok(calls.includes("terminateDebuggee"));
+  assert.equal(dbg.picture().stopped, null);
+  assert.equal(dbg.picture().breakpoints.length, 1);
+  const news = await dbg.wait(1);
+  assert.match(news.finished[0].note, /Terminated/);
+  await dbg.stop();
+});
+
+test("a predicted step takes the line it was given and does not ask for the stack", async () => {
+  const { dbg, calls } = fakeSap({ stops: [
+    { line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] },
+    { line: 46, vars: [simple("LV_TOTAL", "700.00")] },
+    { line: 47, vars: [simple("LV_TOTAL", "800.00")] }
+  ] });
+  let stacks = 0;
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await dbg.wait(5);
+  const counted = calls.length;
+  const r = await dbg.advance("into", true, { line: 46 });
+  assert.equal(r.predicted, true);
+  assert.equal(dbg.picture().stopped.at, "Z_CALC:46");
+  assert.equal(dbg.picture().stopped.frames[0].line, 46);
+  assert.deepEqual(calls.slice(counted), ["stepInto"]);
+  // Without a prediction the stack is asked again.
+  const again = await dbg.advance("into", true);
+  assert.equal(again.predicted, undefined);
+  assert.equal(dbg.picture().stopped.at, "Z_CALC:47");
+  await dbg.stop();
 });

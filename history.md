@@ -1,5 +1,30 @@
 # Release history
 
+## 2026-09-24 — VERTEX 0.7.4 (VS Code): Visual Debug
+
+- The VERTEX chat keeps its SAP tools whatever is on screen. A Tools window showing a diff, UML
+  or metrics, or selected code, used to make it answer from the screen alone - without reading,
+  changing or debugging, and with no sign of it; which window counted was the last one to report,
+  not the one in view. What is on screen still comes with the question, and the model is told to
+  answer from it when it is enough.
+- Visual Debug (VS Code, pilot): a Tools function for programs, classes and function modules
+  that shows the debugger on screen - the active source with breakpoints set or removed by a
+  click, a condition and mode on right-click, the current line, the stack, every variable at once
+  grouped as SAP groups them, with changed values marked and initial ones hidden on request, and
+  tables in grids of their own. Steps with F5-F8, Run and Stop. It is the assistant's debugger,
+  not a second one: breakpoints, stops and steps are shared both ways.
+- In Visual Debug the mouse on a name in the source shows its value at a stop; `SY` shows only
+  with SYST; parameters and locals are headed by their routine; an anonymous `\TYPE=%_...` type
+  is shown as the source declares it.
+- Visual Debug reads only what it needs: Globals, Locals and Params switch groups off, and a step over
+  a plain statement reads again only the variables it names. Visual makes Continue (F8) a run of
+  F5 steps that shows the current line as it goes, reads no variables, and measures the time per
+  step; it ends when the program leaves the stack instead of stepping on into SAP's code.
+  Terminate ends the stopped program and keeps the breakpoints.
+- Visual run asks SAP for the stack only where it has to: from one plain statement to the next it
+  takes the line from ACE's statement map - a new `statements` mode of the flow resource, which
+  needs `src/` pulled. A misprediction is reported, not hidden.
+
 ## 2026-09-24 — VERTEX 0.7.3: an assistant at the debugger
 
 - An assistant debugs ABAP by itself: told the problem, it sets breakpoints, starts the program,

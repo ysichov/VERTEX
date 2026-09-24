@@ -31,6 +31,37 @@ CLASS zcl_vx_adt_res_flow DEFINITION
     METHODS expanded
       IMPORTING i_list          TYPE string
       RETURNING VALUE(rt_lines) TYPE zcl_vx_ace_code_html=>tt_lines.
+
+    " The statement map a debugger window steps by: for each include, where
+    " every statement starts and ends and what kind it is. "plain" runs on to
+    " the next statement; "call" and "flow" may go anywhere; "decl" is not
+    " executed at all. The window predicts the next line only from plain to
+    " plain and asks SAP for the stack everywhere else.
+    TYPES: BEGIN OF ty_statement,
+             line TYPE i,
+             to   TYPE i,
+             kw   TYPE string,
+             kind TYPE string,
+           END OF ty_statement,
+           ty_statements TYPE STANDARD TABLE OF ty_statement WITH EMPTY KEY,
+           BEGIN OF ty_include,
+             include    TYPE string,
+             statements TYPE ty_statements,
+           END OF ty_include,
+           ty_includes TYPE STANDARD TABLE OF ty_include WITH EMPTY KEY,
+           BEGIN OF ty_map,
+             program  TYPE string,
+             includes TYPE ty_includes,
+           END OF ty_map.
+
+    METHODS statements
+      IMPORTING i_program    TYPE program
+      RETURNING VALUE(rs_map) TYPE ty_map.
+
+    METHODS kind
+      IMPORTING io_scan  TYPE REF TO cl_ci_scan
+                is_kw    TYPE zif_vx_ace_parse_data=>ts_kword
+      RETURNING VALUE(r) TYPE string.
 ENDCLASS.
 
 
@@ -82,6 +113,14 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
     ls_answer-type    = to_lower( lv_head ).
     ls_answer-program = to_lower( lv_program ).
     ls_answer-mode    = lv_mode.
+
+    IF lv_mode = 'statements'.
+      response->set_body_data(
+        content_handler = NEW cl_adt_rest_plain_text_handler( content_type = if_rest_media_type=>gc_appl_json )
+        data            = /ui2/cl_json=>serialize( data        = statements( lv_program )
+                                                   pretty_name = /ui2/cl_json=>pretty_mode-low_case ) ).
+      RETURN.
+    ENDIF.
 
     IF lv_mode = 'calls'.
 
@@ -309,6 +348,72 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
       CHECK lv_part IS NOT INITIAL AND lv_part CO '0123456789'.
       APPEND CONV i( lv_part ) TO rt_lines.
     ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD statements.
+    " ACE's parse: every include of the program, each with its keyword table
+    " and the scan it came from. Only the level-1 statements of an include
+    " are in its own table, so each include is listed with its own lines.
+    DATA(ls_source) = zcl_vx_ace_source=>parse( i_program ).
+    rs_map-program = to_lower( i_program ).
+    LOOP AT ls_source-tt_progs INTO DATA(ls_prog) WHERE scan IS BOUND.
+      DATA(ls_include) = VALUE ty_include( include = to_lower( ls_prog-include ) ).
+      LOOP AT ls_prog-t_keywords INTO DATA(ls_kw).
+        DATA(ls_statement) = VALUE ty_statement( line = ls_kw-line
+                                                 to   = ls_kw-line
+                                                 kw   = ls_kw-name ).
+        READ TABLE ls_prog-scan->tokens INDEX ls_kw-to INTO DATA(ls_last).
+        IF sy-subrc = 0.
+          ls_statement-to = ls_last-row.
+        ENDIF.
+        ls_statement-kind = kind( io_scan = ls_prog-scan
+                                  is_kw   = ls_kw ).
+        APPEND ls_statement TO ls_include-statements.
+      ENDLOOP.
+      APPEND ls_include TO rs_map-includes.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD kind.
+    " Words padded with blanks, so that a keyword is found whole.
+    CONSTANTS lc_decl TYPE string VALUE
+      ` DATA TYPES CONSTANTS STATICS FIELD-SYMBOLS TABLES NODES PARAMETERS PARAMETER SELECT-OPTIONS SELECTION-SCREEN RANGES CONTROLS`
+      & ` REPORT PROGRAM FUNCTION-POOL CLASS-POOL INTERFACE-POOL TYPE-POOL TYPE-POOLS INCLUDE DEFINE END-OF-DEFINITION`
+      & ` CLASS ENDCLASS INTERFACE ENDINTERFACE METHODS CLASS-METHODS CLASS-DATA EVENTS CLASS-EVENTS ALIASES INTERFACES`
+      & ` PUBLIC PROTECTED PRIVATE `.
+    CONSTANTS lc_flow TYPE string VALUE
+      ` IF ELSEIF ELSE ENDIF CASE WHEN ENDCASE DO ENDDO WHILE ENDWHILE LOOP ENDLOOP AT ENDAT ON ENDON CHECK EXIT CONTINUE RETURN`
+      & ` TRY CATCH CLEANUP ENDTRY SELECT ENDSELECT PROVIDE ENDPROVIDE FORM ENDFORM METHOD ENDMETHOD FUNCTION ENDFUNCTION`
+      & ` MODULE ENDMODULE START-OF-SELECTION END-OF-SELECTION INITIALIZATION LOAD-OF-PROGRAM TOP-OF-PAGE END-OF-PAGE`
+      & ` GET STOP REJECT LEAVE WAIT FETCH OPEN CLOSE `.
+    CONSTANTS lc_call TYPE string VALUE
+      ` PERFORM CALL SUBMIT RAISE NEW +CALL_METHOD SET COMMIT ROLLBACK MESSAGE AUTHORITY-CHECK EXPORT IMPORT `.
+
+    DATA(lv_kw) = ` ` && to_upper( is_kw-name ) && ` `.
+    IF lc_decl CS lv_kw.
+      r = `decl`.
+      RETURN.
+    ENDIF.
+    IF lc_flow CS lv_kw.
+      r = `flow`.
+      RETURN.
+    ENDIF.
+    IF lc_call CS lv_kw.
+      r = `call`.
+      RETURN.
+    ENDIF.
+    " A functional call or a method call inside the statement: STRLEN( ...,
+    " LO_X->RUN( ..., ZCL_Y=>MAKE( ... . An inline DATA( counts too - it is
+    " the safe side: the window asks SAP instead of guessing.
+    LOOP AT io_scan->tokens INTO DATA(ls_token) FROM is_kw-from TO is_kw-to.
+      IF ls_token-str CP '*(' OR ls_token-str CS '->' OR ls_token-str CS '=>'.
+        r = `call`.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+    r = `plain`.
   ENDMETHOD.
 
 ENDCLASS.

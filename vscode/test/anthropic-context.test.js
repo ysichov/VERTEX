@@ -14,7 +14,8 @@ test("sidebar line-count question sends the published method in one bounded Anth
       onDidChangeConfiguration: () => ({ dispose() {} }) },
     window: { createWebviewPanel: () => panel, tabGroups: { all: [] } } };
   workspace.open(vscode, { subscriptions: [] }, { pages: path.resolve(__dirname, "../../org.vertex.abap.ui/resources"),
-    chat: () => null, active: () => ({ system: { name: "QAS" } }), setContext: value => { state = value; } }, null);
+    chat: () => null, active: () => ({ system: { name: "QAS" } }), setContext: value => { state = value; },
+    debugger: { watch: () => () => {}, picture: () => ({}) } }, null);
   const elements = { title: {}, code: { addEventListener() {} }, partssplit: { addEventListener() {} } };
   const page = vm.createContext({ document: { getElementById: id => elements[id], addEventListener() {} },
     window: {}, sdeSource() {}, sdeTake: () => raw,
@@ -47,7 +48,8 @@ test("sidebar line-count question sends the published method in one bounded Anth
     { get: async () => "fake-key" });
   const result = await ask("сколько строк в методе?", { state });
   assert.equal(result.answer, "7 строк."); assert.equal(bodies.length, 1);
-  assert.deepEqual(bodies[0].tools.map(x => x.name), ["submit_vertex_answer"]);
+  // The tools stay; the method on screen answers the question without a call.
+  assert.deepEqual(bodies[0].tools.map(x => x.name), ["read_sap_object", "submit_vertex_answer"]);
   assert.ok(Buffer.byteLength(JSON.stringify(bodies[0])) < 10000);
   assert.doesNotMatch(JSON.stringify(bodies[0]), /UNRELATED_FULL_CLASS/);
   assert.match(bodies[0].messages[0].content, /APPEND iv_text/);
