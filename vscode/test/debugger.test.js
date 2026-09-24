@@ -329,3 +329,27 @@ test("a predicted step takes the line it was given and does not ask for the stac
   assert.equal(dbg.picture().stopped.at, "Z_CALC:47");
   await dbg.stop();
 });
+
+test("a predicted PERFORM adds its frame, a predicted ENDFORM takes it away, and settle asks SAP", async () => {
+  const { dbg, calls } = fakeSap({ stops: [
+    { line: 13, reached: "BP13", vars: [] }, { line: 26, vars: [] }, { line: 14, vars: [] }, { line: 14, vars: [] }
+  ] });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 13 });
+  await dbg.wait(5);
+  const inc = "/sap/bc/adt/programs/programs/z_calc/source/main";
+  await dbg.advance("into", true, { line: 26, enter: { label: "Z_CALC:26 FORM ADD_LINE", url: inc, include: "Z_CALC", program: "Z_CALC" } });
+  let p = dbg.picture().stopped;
+  assert.equal(p.predicted, true);
+  assert.equal(p.frames.length, 2);
+  assert.equal(p.frames[0].label, "Z_CALC:26 FORM ADD_LINE");
+  await assert.rejects(dbg.frame(1), /predicted/);
+  await dbg.advance("into", true, { line: 14, leave: true });
+  p = dbg.picture().stopped;
+  assert.equal(p.frames.length, 1);
+  assert.equal(p.at, "Z_CALC:14");
+  const stacks = calls.length;
+  assert.equal(await dbg.settle(), true);
+  assert.equal(dbg.picture().stopped.predicted, false);
+  assert.equal(await dbg.settle(), false);
+  await dbg.stop();
+});

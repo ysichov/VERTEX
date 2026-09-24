@@ -343,12 +343,37 @@ function placeOf(f,map){
   var next=null;for(var j=at+1;j<list.length;j++){if(list[j].kind!=="decl"){next=list[j];break;}}
   return {here:list[at],next:next};
 }
+var EVENTS=/^(FORM|METHOD|FUNCTION|MODULE|START-OF-SELECTION|END-OF-SELECTION|INITIALIZATION|LOAD-OF-PROGRAM|TOP-OF-PAGE|END-OF-PAGE|AT|GET)$/i;
+function breakpointOn(url,line){return picture.breakpoints.some(function(b){return norm(b.url)===norm(url)&&b.line===line;});}
+/* The source address of a program's include, as the stack gives it. */
+function urlOf(program,include){var p=String(program).toLowerCase(),i=String(include).toLowerCase();
+  return "/sap/bc/adt/programs/"+(i===p?"programs/":"includes/")+encodeURIComponent(i)+"/source/main";}
+/* Where a FORM of the program is, and the first statement it runs. */
+function formIn(map,name){
+  var key=String(name).toUpperCase();
+  for(var include in map){var list=map[include];
+    for(var i=0;i<list.length;i++){if(list[i].kw==="FORM"&&String(list[i].target).toUpperCase()===key){
+      for(var j=i+1;j<list.length;j++){if(list[j].kind!=="decl")return {include:include,first:list[j]};}
+      return null;}}}
+  return null;
+}
+/* The next line without asking SAP, where the text alone decides it:
+   plain to plain; into a plain PERFORM, its FORM's first statement; out of
+   ENDFORM, the statement after the PERFORM that called it. */
 function predicted(f,map){
-  var p=placeOf(f,map);
-  if(!p||!p.next||p.here.kind!=="plain"||p.next.kind!=="plain")return null;
-  // A breakpoint there is SAP's to report.
-  if(picture.breakpoints.some(function(b){return norm(b.url)===norm(f.url)&&b.line===p.next.line;}))return null;
-  return {line:p.next.line};
+  var p=placeOf(f,map);if(!p)return null;
+  if(p.here.kind==="plain"&&p.next&&p.next.kind==="plain"){
+    return breakpointOn(f.url,p.next.line)?null:{line:p.next.line};}
+  if(p.here.kw==="PERFORM"&&p.here.target){
+    var t=formIn(map,p.here.target);if(!t)return null;
+    var url=urlOf(f.program,t.include);if(breakpointOn(url,t.first.line))return null;
+    return {line:t.first.line,enter:{label:t.include+":"+t.first.line+" FORM "+String(p.here.target).toUpperCase(),url:url,include:t.include,program:f.program}};}
+  if(p.here.kw==="ENDFORM"){
+    var all=picture.stopped.frames,caller=all[all.indexOf(f)+1];if(!caller)return null;
+    var cp=placeOf(caller,maps[caller.program]);
+    if(!cp||cp.here.kw!=="PERFORM"||!cp.next||CLOSERS.test(cp.next.kw)||EVENTS.test(cp.next.kw))return null;
+    return breakpointOn(caller.url,cp.next.line)?null:{line:cp.next.line,leave:true};}
+  return null;
 }
 
 /* ---------- Visual: Continue as a run of F5 steps ---------- */
@@ -401,7 +426,16 @@ function runVisual(){
     series=null;$("cont").textContent="Continue";$("cont").title="Continue to the next breakpoint (F8)";
     drawStats(s);stopKey="";lastStep=null;
     // Ended by Stop or Terminate: the program is let go, nothing is read.
-    if(!s.quiet)return refresh();
+    if(s.quiet)return;
+    // Where the run stopped on a predicted line, SAP is asked once where the
+    // program is - the stack a click can use - and the prediction checked.
+    var guess=picture.stopped&&picture.stopped.predicted?picture.stopped:null;
+    if(!guess)return refresh();
+    return debug("settle").then(function(){return debug("picture");}).then(function(p){
+      var a=guess.frames[0],b=p.stopped&&p.stopped.frames[0];
+      if(b&&(p.stopped.frames.length!==guess.frames.length||b.line!==a.line||norm(b.url)!==norm(a.url))){s.missed++;drawStats(s);
+        notice("The statement map had the program at "+guess.at+"; SAP says "+p.stopped.at+". Lines taken from the map may have been wrong before this stop.");}
+      stopKey="";apply(p);});
   }).catch(failed);
 }
 document.addEventListener("keydown",function(e){var k={F5:"into",F6:"over",F7:"out",F8:"cont"}[e.key];if(k&&picture.stopped){e.preventDefault();$(k).onclick();}});

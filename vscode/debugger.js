@@ -389,7 +389,18 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       catch (error) { await end(error); return { sap: Date.now() - started, total: Date.now() - started, ended: true }; }
       const sap = Date.now() - started;
       if (quick === true && expect && Number(expect.line) > 0 && frames.length
+        && !(expect.leave && frames.length < 2)
         && !(result && result.reachedBreakpoints && result.reachedBreakpoints.length)) {
+        // Into a FORM: a frame of its own, known only from the map - no stack
+        // position to switch to until SAP is asked. Out of it: the frame goes.
+        if (expect.enter) {
+          const e = expect.enter;
+          frames.unshift({ label: String(e.label || ""), url: String(e.url || ""), line: Number(expect.line),
+            include: String(e.include || ""), program: String(e.program || ""), system: false, position: undefined });
+        } else if (expect.leave) {
+          frames.shift();
+        }
+        frames.forEach((f, n) => { f.n = n; });
         const top = frames[0];
         top.line = Number(expect.line);
         top.label = String(top.label).replace(/:\d+/, ":" + top.line);
@@ -401,6 +412,17 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       }
       await arrive(result, quick === true);
       return { sap, total: Date.now() - started };
+    });
+  }
+
+  /* After predicted steps, ask SAP where the program really stands: the
+     stack as it is, with positions a click on a level can use. */
+  function settle() {
+    return exclusive(async () => {
+      if (!session || !stopped || !stopped.predicted) { return false; }
+      stopped = null;
+      await arrive(null, true);
+      return true;
     });
   }
 
@@ -497,7 +519,8 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       system: sap ? sap.system.name : "", listening, ended,
       breakpoints: breakpoints.map(b => ({ id: b.id, objectType: b.objectType, name: b.name, url: b.url, line: b.line,
         condition: b.condition || "", mode: b.mode })),
-      stopped: stopped ? { at: stopped.at, breakpoint: stopped.breakpoint, problem: stopped.problem || "", frames } : null
+      stopped: stopped ? { at: stopped.at, breakpoint: stopped.breakpoint, problem: stopped.problem || "", frames,
+        predicted: stopped.predicted === true } : null
     };
   }
 
@@ -555,6 +578,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       mustBeStopped();
       const f = frames[Number(n)];
       if (!f) { throw new Error("There is no stack level " + n + "."); }
+      if (stopped.predicted) { throw new Error("This stack was predicted, not read: its levels can be chosen at the next stop that asks SAP."); }
       await session.client.debuggerGoToStack(f.position);
       frames.forEach(x => { x.current = x === f; });
       changed();
@@ -583,7 +607,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
 
   return { setBreakpoint, clearBreakpoints, wait, step, read, run, stop, status, counted,
     log: () => logged.slice(),
-    setBreakpointAt, advance, terminate, watch, picture, scopes, children, variables, tableRows, frame, source };
+    setBreakpointAt, advance, settle, terminate, watch, picture, scopes, children, variables, tableRows, frame, source };
 }
 
 module.exports = { create, sourceUrl, objectOf, plain };

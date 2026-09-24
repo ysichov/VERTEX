@@ -37,11 +37,15 @@ CLASS zcl_vx_adt_res_flow DEFINITION
     " the next statement; "call" and "flow" may go anywhere; "decl" is not
     " executed at all. The window predicts the next line only from plain to
     " plain and asks SAP for the stack everywhere else.
+    " TARGET names the form of a FORM statement and of a plain PERFORM, so a
+    " step into the call and back out of it can be predicted too. A PERFORM
+    " into another program, on commit or with a dynamic name has none.
     TYPES: BEGIN OF ty_statement,
-             line TYPE i,
-             to   TYPE i,
-             kw   TYPE string,
-             kind TYPE string,
+             line   TYPE i,
+             to     TYPE i,
+             kw     TYPE string,
+             kind   TYPE string,
+             target TYPE string,
            END OF ty_statement,
            ty_statements TYPE STANDARD TABLE OF ty_statement WITH EMPTY KEY,
            BEGIN OF ty_include,
@@ -369,6 +373,21 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
         ENDIF.
         ls_statement-kind = kind( io_scan = ls_prog-scan
                                   is_kw   = ls_kw ).
+        IF ls_kw-name = 'FORM' OR ls_kw-name = 'PERFORM'.
+          READ TABLE ls_prog-scan->tokens INDEX ls_kw-from + 1 INTO DATA(ls_form).
+          IF sy-subrc = 0 AND ls_form-str NA '()'.
+            ls_statement-target = ls_form-str.
+            IF ls_kw-name = 'PERFORM'.
+              LOOP AT ls_prog-scan->tokens INTO DATA(ls_word) FROM ls_kw-from + 2 TO ls_kw-to.
+                IF ls_word-str = 'PROGRAM' OR ls_word-str = 'COMMIT' OR ls_word-str = 'ROLLBACK'
+                OR ls_word-str = 'TASK' OR ls_word-str = 'SUBROUTINE'.
+                  CLEAR ls_statement-target.
+                  EXIT.
+                ENDIF.
+              ENDLOOP.
+            ENDIF.
+          ENDIF.
+        ENDIF.
         APPEND ls_statement TO ls_include-statements.
       ENDLOOP.
       APPEND ls_include TO rs_map-includes.

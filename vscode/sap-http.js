@@ -7,7 +7,9 @@ function create(system) {
   if (!secure && base.protocol !== "http:") { throw new Error("Unsupported SAP URL protocol"); }
   const http = require(secure ? "https" : "http");
   const rejectUnauthorized = system.allowInsecureCertificate !== true;
-  const agent = new http.Agent(secure ? { rejectUnauthorized } : {});
+  // keepAlive: without it every request opened a new connection - and a new
+  // TLS handshake - which a debugger step, two requests at least, paid each time.
+  const agent = new http.Agent(secure ? { rejectUnauthorized, keepAlive: true } : { keepAlive: true });
   return { request(options) {
     return new Promise((resolve, reject) => {
       const url = new URL(options.url, base);
