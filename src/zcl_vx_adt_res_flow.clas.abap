@@ -46,6 +46,7 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              kw     TYPE string,
              kind   TYPE string,
              target TYPE string,
+             owners TYPE string,
            END OF ty_statement,
            ty_statements TYPE STANDARD TABLE OF ty_statement WITH EMPTY KEY,
            BEGIN OF ty_include,
@@ -82,6 +83,15 @@ CLASS zcl_vx_adt_res_flow DEFINITION
                 i_class   TYPE string
                 it_unsure TYPE string_table
       RETURNING VALUE(r)  TYPE string.
+
+    " Whose code the calls of a statement enter, comma-separated: a class, a
+    " function module, or ? where the text does not say - a call through a
+    " reference, a dynamic name, a screen, a SUBMIT. The window steps over a
+    " statement whose calls all go outside Z/Y code, and knows the next line.
+    METHODS owners
+      IMPORTING it_tok   TYPE string_table
+                i_class  TYPE string
+      RETURNING VALUE(r) TYPE string.
 ENDCLASS.
 
 
@@ -481,10 +491,84 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
               ENDIF.
           ENDCASE.
         ENDIF.
+        IF ls_statement-kind = `call`.
+          ls_statement-owners = owners( it_tok  = words( io_scan = ls_prog-scan
+                                                         is_kw   = ls_kw )
+                                        i_class = lv_class ).
+        ENDIF.
         APPEND ls_statement TO ls_include-statements.
       ENDLOOP.
       APPEND ls_include TO rs_map-includes.
     ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD owners.
+    DATA lt_owner TYPE string_table.
+    DATA(lv_count) = lines( it_tok ).
+    IF lv_count = 0.
+      RETURN.
+    ENDIF.
+    " Statements whose way on the text cannot tell: a screen, a transaction,
+    " another program, an exception, a message, a subroutine.
+    CASE it_tok[ 1 ].
+      WHEN 'SUBMIT' OR 'RAISE' OR 'MESSAGE' OR 'LEAVE' OR 'COMMIT' OR 'ROLLBACK' OR 'SET' OR 'PERFORM'.
+        r = `?`.
+        RETURN.
+      WHEN 'CALL'.
+        IF lv_count < 2 OR ( it_tok[ 2 ] <> 'FUNCTION' AND it_tok[ 2 ] <> 'METHOD' ).
+          r = `?`.
+          RETURN.
+        ENDIF.
+    ENDCASE.
+    DO lv_count TIMES.
+      DATA(lv_i) = sy-index.
+      DATA(lv_t) = it_tok[ lv_i ].
+      DATA(lv_owner) = ||.
+      DATA(lv_next) = COND string( WHEN lv_i < lv_count THEN it_tok[ lv_i + 1 ] ).
+      IF lv_t = 'FUNCTION' AND lv_i = 2 AND it_tok[ 1 ] = 'CALL'.
+        " A literal name only: CALL FUNCTION lv_name goes where the data says.
+        IF lv_next CP `'*'` AND strlen( lv_next ) > 2.
+          lv_owner = substring( val = lv_next off = 1 len = strlen( lv_next ) - 2 ).
+        ELSE.
+          lv_owner = `?`.
+        ENDIF.
+      ELSEIF lv_t = 'METHOD' AND lv_i = 2 AND it_tok[ 1 ] = 'CALL'.
+        IF lv_next CS '=>'.
+          SPLIT lv_next AT '=>' INTO lv_owner DATA(lv_rest).
+        ELSEIF lv_next CP 'ME->*' AND i_class IS NOT INITIAL.
+          lv_owner = i_class.
+        ELSEIF lv_next NA '-()' AND i_class IS NOT INITIAL.
+          lv_owner = i_class.
+        ELSE.
+          lv_owner = `?`.
+        ENDIF.
+      ELSEIF lv_t = 'NEW'.
+        lv_owner = lv_next.
+        IF lv_owner CP '*('.
+          lv_owner = substring( val = lv_owner len = strlen( lv_owner ) - 1 ).
+        ENDIF.
+        IF lv_owner IS INITIAL OR lv_owner = '#'.
+          lv_owner = `?`.
+        ENDIF.
+      ELSEIF lv_i > 1 AND it_tok[ lv_i - 1 ] = 'NEW'.
+        CONTINUE.
+      ELSEIF lv_t CS '=>'.
+        SPLIT lv_t AT '=>' INTO lv_owner lv_rest.
+      ELSEIF lv_t CS '->'.
+        lv_owner = COND #( WHEN lv_t CP 'ME->*' AND lv_t NS ')->' AND i_class IS NOT INITIAL THEN i_class ELSE `?` ).
+      ELSEIF lv_t CP '*(' AND i_class IS NOT INITIAL.
+        " Inside a class a bare m( ) may be its own method.
+        lv_owner = i_class.
+      ENDIF.
+      IF lv_owner IS NOT INITIAL.
+        READ TABLE lt_owner WITH KEY table_line = lv_owner TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND lv_owner TO lt_owner.
+        ENDIF.
+      ENDIF.
+    ENDDO.
+    r = concat_lines_of( table = lt_owner sep = `,` ).
   ENDMETHOD.
 
 

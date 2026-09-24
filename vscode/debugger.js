@@ -80,7 +80,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
   let numbered = 0, answers = { calls: 0, chars: 0 };
   let sap = null;              // { system, user, listener, open }
   let frames = [];             // the stack of the stop, for the Visual Debug window
-  let temporary = null;        // the window's run-to point: { id, url, line, adt }
+  let temporaries = [];        // the window's run-to points: { id, url, line, adt }
   let ended = 0;               // runs that ended, counted for the window
   const watchers = new Set();  // the windows showing this debugger
 
@@ -124,7 +124,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     const { listener, user } = on || await system();
     // The window's run-to point goes with them while it lives; it is nobody's
     // breakpoint and is listed nowhere.
-    const all = temporary ? breakpoints.concat([temporary]) : breakpoints;
+    const all = breakpoints.concat(temporaries);
     const wanted = all.map(b => b.url + "#start=" + b.line);
     let answer = await listener.debuggerSetBreakpoints("user", terminalId, ideId, "vertex", wanted, user, "external");
     const placed = answer.filter(a => a.uri);
@@ -419,30 +419,34 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     });
   }
 
-  /* Run on to a line, as F8 to a breakpoint set there for the one run: a
-     loop is passed in one go instead of step by step. A breakpoint of the
-     user's on the way stops it, as F8 would. The point is taken away before
-     the stop is read, so it is never mistaken for one of theirs. */
-  function runTo(url, line) {
+  /* Run on to a line - or to the first of several that the program reaches -
+     as F8 to breakpoints set there for the one run: a loop is passed in one
+     go, a routine left at its next call. A breakpoint of the user's on the
+     way stops it, as F8 would. The points are taken away before the stop is
+     read, so none is ever mistaken for one of theirs. */
+  function runTo(url, lines) {
     return exclusive(async () => {
       mustBeStopped();
-      temporary = { id: "run-to", url: String(url).split("#")[0], line: Number(line) };
-      try { await sync(); } catch (error) { temporary = null; throw error; }
-      if (!temporary.adt) { temporary = null; await sync(); return { placed: false }; }
+      const at = String(url).split("#")[0];
+      temporaries = [].concat(lines).map(Number).filter((n, i, all) => n > 0 && all.indexOf(n) === i)
+        .map((n, i) => ({ id: "run-to-" + i, url: at, line: n }));
+      try { await sync(); } catch (error) { temporaries = []; throw error; }
+      const placed = temporaries.filter(t => t.adt).length;
+      if (!placed) { temporaries = []; await sync(); return { placed: 0 }; }
       stopped = null;
       const started = Date.now();
       let result;
       try { result = await session.client.debuggerStep(STEPS.continue); }
       catch (error) {
-        temporary = null; await sync().catch(() => {});
+        temporaries = []; await sync().catch(() => {});
         await end(error);
-        return { placed: true, sap: Date.now() - started, total: Date.now() - started, ended: true };
+        return { placed, sap: Date.now() - started, total: Date.now() - started, ended: true };
       }
       const sap = Date.now() - started;
-      temporary = null;
+      temporaries = [];
       await sync();
       await arrive(result, true);
-      return { placed: true, sap, total: Date.now() - started };
+      return { placed, sap, total: Date.now() - started };
     });
   }
 

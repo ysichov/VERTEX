@@ -538,7 +538,9 @@ debugger the assistant drives - one session, not a second one:
   breakpoint of yours inside the loop stops it there, as F8 would. With **Z only** on (the
   default), a step that goes from Z/Y code into SAP's own is followed by F7 at once: the call runs
   to its end and the run goes on in your code - as F6 on that call, Z code called from inside it
-  (a BAdI, an exit) passed with it. The map is used on a source
+  (a BAdI, an exit) passed with it. Where the map can tell beforehand that every call of a
+  statement goes outside Z/Y code - `CALL FUNCTION 'BAPI_...'`, `cl_gui_x=>m( )`, `NEW cl_x( )`, a
+  builtin - the run steps over it with F6 and takes the next statement without asking SAP. The map is used on a source
   only where it lines up with it - each statement starting on its line with its keyword - so a
   global class's method include is predicted too; a call into a global class, a branch or a call
   through another reference still asks SAP. When the stack is asked after a
@@ -547,6 +549,15 @@ debugger the assistant drives - one session, not a second one:
   were predicted, the time per step, and SAP's step and stack requests apart. Beside it: the steps, the time, and the time per
   step - of the whole step and of SAP's step request alone. The variables are read once, when it
   stops. A log breakpoint met on the way is still recorded.
+- **Flow.** With **Flow** on, Continue (F8) runs from call to call and records which routine
+  calls which - the program's real flow. In a routine it sets points on every call that may
+  enter Z/Y code and on the routine's end and runs to the first reached, whatever branch the
+  program takes; at a call it goes in (F5), a call outside Z/Y is stepped over (F6) and a step
+  that lands outside Z/Y goes back out (F7); a routine with nothing to call is left at once. With
+  **Visual** on as well, the window draws where the program is at each change of the stack only.
+  When the run stops, **Diagram** shows the flow as a Mermaid chart: **Classes** (classes and
+  programs, with the number of calls between them) or **Methods** (every routine, grouped by
+  its class). SAP's own code appears as one node for what was called.
 - **Values in the source.** At a stop, the mouse on a name in the source shows its value - a
   field, a component such as `ls_new-price`, a structure's fields, or a table's row count and
   first rows.

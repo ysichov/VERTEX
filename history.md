@@ -32,6 +32,8 @@
   method include is predicted too. Run opens SE37 or SE24 for a function module or a class.
 - Z only (on by default): a Visual run that steps from Z/Y code into SAP's own returns at once
   with F7, and goes on in the customer code.
+- Flow: Continue from call to call, recording the program's real flow, and a diagram of it by class or
+  by method. A call whose code the map places outside Z/Y is stepped over.
 - Requests to SAP keep their connection open: before, each one opened a new connection and TLS
   handshake.
 

@@ -2130,6 +2130,22 @@ forever, while SAP went on - and all plain, so nothing asked SAP and nothing cau
 now keeps the statement it arrived at for each level of the stack; where a line holds several and
 the window came there by the stack, not by a prediction, it does not know which one and asks SAP.
 
+Z only first worked after the fact: F5 into the call, see that it is not Z/Y, F7 back - two steps
+and two stacks for every standard call. Where the text already says whose code a call enters,
+that is waste: the map now lists, for a statement with calls, the owner of each - the class of
+`cl=>m( )` and `NEW cl( )`, the function module of a literal `CALL FUNCTION`, the current class
+for `me->m( )` - and ? where only the data knows. A statement whose calls all go outside Z/Y
+is stepped over with F6, and the next statement taken from the map.
+
+A run of 325 steps over Z_ACE suggested what a run is actually good for: the flow, which routine
+calls which, recorded rather than guessed - ACE's Calls diagram walks every branch, a run only the
+one taken. For that the statements in between do not matter at all. A Flow run therefore does not
+step: in a routine it sets points on every call that may enter Z/Y code and on the routine's
+end - on all of them, since which branch runs is the data's to decide - and runs to the first one
+reached; a routine with nothing to call is left with F7 at once. `runTo` took a list of lines for
+it. Every stop records the stack against the one before; each level added is an edge. The picture
+is Mermaid, loaded as Metrics loads it: by class, or by routine grouped by class.
+
 
 ---
 

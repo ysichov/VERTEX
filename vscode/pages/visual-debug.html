@@ -79,6 +79,11 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
 #code .id{cursor:default}
 #tip{position:fixed;z-index:6;display:none;max-width:480px;padding:4px 8px;white-space:pre;overflow:hidden;font:12px var(--vscode-editor-font-family,monospace);background:var(--vscode-editorHoverWidget-background,var(--vscode-editorWidget-background,Canvas));color:var(--vscode-editorHoverWidget-foreground,var(--vscode-editor-foreground,CanvasText));border:1px solid var(--vscode-editorHoverWidget-border,var(--vscode-panel-border,GrayText));pointer-events:none}
 #tip.on{display:block}
+#flowpane{flex:none;height:0;display:none;flex-direction:column;border-top:1px solid var(--vscode-panel-border,GrayText)}
+#flowpane.on{display:flex;height:45%}
+#flowbar{flex:none;display:flex;gap:4px;padding:2px 4px;background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas))}
+#flowbar .grow{flex:1}
+#flowsvg{flex:1;overflow:auto;padding:8px;background:var(--vscode-editor-background,Canvas)}
 #stats{font-family:var(--vscode-editor-font-family,monospace);color:var(--vscode-descriptionForeground,GrayText)}
 #partial{font-weight:400;color:var(--vscode-descriptionForeground,GrayText);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 #bpedit{position:fixed;z-index:5;display:none;padding:8px;background:var(--vscode-editorWidget-background,var(--vscode-editor-background,Canvas));border:1px solid var(--vscode-editorWidget-border,var(--vscode-panel-border,GrayText));box-shadow:0 2px 8px var(--vscode-widget-shadow,rgba(0,0,0,.3));font-family:system-ui,sans-serif}
@@ -99,7 +104,9 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
   <button id="out" title="Step return (F7)" disabled>Return</button>
   <button id="cont" title="Continue to the next breakpoint (F8)" disabled>Continue</button>
   <button id="zonly" class="on" title="In a Visual run, a step that lands outside Z/Y code returns at once (F7): SAP's own code is passed in one go">Z only</button>
-  <button id="visual" title="Continue (F8) as a run of F5 steps, drawn as it goes, without reading variables - and how long a step takes">Visual</button>
+  <button id="flow" title="Continue (F8) from call to call, recording which routine calls which - the program's real flow, drawn as a diagram">Flow</button>
+  <button id="flowshow" hidden title="The flow the last Flow run recorded">Diagram</button>
+  <button id="visual"title="Continue (F8) as a run of F5 steps, drawn as it goes, without reading variables - and how long a step takes">Visual</button>
   <span id="stats" title="Steps of the Visual run: time over steps; SAP is the step request alone"></span>
   <button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Terminate</button>
   <button id="stop" title="Let the program go, stop listening and remove every breakpoint">Stop</button>
@@ -111,6 +118,7 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
     <div id="codehead"><span>Source</span><b id="shownname"></b><button id="home" hidden title="Back to the object's own source">Object source</button></div>
     <pre id="code"></pre>
     <div id="grids"><div id="gridtabs"></div><div id="gridbody"></div></div>
+    <div id="flowpane"><div id="flowbar"><button id="fclasses" class="on">Classes</button><button id="fmethods">Methods</button><span class="grow"></span><button id="fclose" class="x" title="Close">&#215;</button></div><div id="flowsvg"></div></div>
   </div>
   <div class="split" id="split" title="Drag to resize"></div>
   <div id="right">
@@ -138,7 +146,7 @@ var INITIAL=/*INIT*/null/*INIT*/;
 var $=function(id){return document.getElementById(id);};
 /* ---------- talking to the host: one answer per request, in order ---------- */
 var waiting=[];
-function sdeReady(){var raw=sdeTake(),cb=waiting.shift();if(!cb)return;if(String(raw).indexOf("ERROR:")===0){cb.fail(new Error(String(raw).slice(6)));return;}var data;try{data=JSON.parse(raw);}catch(e){cb.fail(e);return;}cb.ok(data);}
+function sdeReady(){var raw=sdeTake(),cb=waiting.shift();if(!cb)return;if(String(raw).indexOf("ERROR:")===0){cb.fail(new Error(String(raw).slice(6)));return;}if(cb.raw){cb.ok(raw);return;}var data;try{data=JSON.parse(raw);}catch(e){cb.fail(e);return;}cb.ok(data);}
 function ask(send){return new Promise(function(ok,fail){waiting.push({ok:ok,fail:fail});send();});}
 function debug(command,args){if(typeof sdeDebug!=="function")return Promise.reject(new Error("Visual Debug needs the VS Code host."));return ask(function(){sdeDebug(command,args||{});});}
 function notice(text){var n=$("notice");n.textContent=text||"";n.classList.toggle("on",!!text);}
@@ -325,6 +333,7 @@ var lastStep=null;
 function unitOf(f){return f?String(f.label).replace(/^\S+\s*/,""):"";}
 Object.keys(STEP).forEach(function(id){$(id).onclick=function(){
   if(id==="cont"&&series){series.stop=true;return;}
+  if(id==="cont"&&$("flow").classList.contains("on")){runFlow();return;}
   if(id==="cont"&&$("visual").classList.contains("on")){runVisual();return;}
   notice("");var f=currentFrame();
   lastStep=f?{kind:STEP[id],url:f.url,line:f.line,depth:picture.stopped.frames.length,unit:unitOf(f)}:null;
@@ -417,6 +426,13 @@ function loopExit(f,map){
   }
   return null;
 }
+/* A statement whose every call the map could place goes outside Z/Y code -
+   a standard function module, class or builtin, never ? (unknown). */
+function outside(st){
+  if(!st||st.kind!=="call"||st.owners==null)return false;
+  var list=String(st.owners).split(",").filter(Boolean);
+  return list.indexOf("?")<0&&list.every(function(o){return !customer(o);});
+}
 var EVENTS=/^(FORM|METHOD|FUNCTION|MODULE|START-OF-SELECTION|END-OF-SELECTION|INITIALIZATION|LOAD-OF-PROGRAM|TOP-OF-PAGE|END-OF-PAGE|AT|GET)$/i;
 function breakpointOn(url,line){return picture.breakpoints.some(function(b){return norm(b.url)===norm(url)&&b.line===line;});}
 /* The source address of a program's include, as the stack gives it. */
@@ -439,6 +455,10 @@ function predicted(f,map){
   var p=placeOf(f,map);if(!p)return null;
   if(p.here.kind==="plain"&&p.next&&p.next.kind==="plain"){
     return breakpointOn(f.url,p.next.line)?null:{line:p.next.line,st:p.next};}
+  // Calls that all go outside Z/Y code, with Z only on: F6 over the
+  // statement, and the next one is where the program goes on.
+  if($("zonly").classList.contains("on")&&outside(p.here)&&p.next&&!CLOSERS.test(p.next.kw)&&!EVENTS.test(p.next.kw)){
+    return breakpointOn(f.url,p.next.line)?null:{line:p.next.line,st:p.next,over:true};}
   // A call: into a FORM by PERFORM, into a METHOD by a standalone call the
   // map could name (lcl=>m( ), me->m( ), m( ), CALL METHOD m).
   var form=p.here.kw==="PERFORM",method=p.here.kw==="+CALL_METHOD"||p.here.kw==="CALL";
@@ -470,11 +490,11 @@ function drawStats(s){
   // the way to the window and back, and drawing.
   var win=s.steps?Math.max(0,Math.round((s.total-s.sap-s.stackMs-s.other)/s.steps)):0;
   $("stats").textContent=s.steps+" steps ("+s.predicted+" predicted) · "+((Date.now()-s.t0)/1000).toFixed(1)+" s · "
-    +avg+" ms/step · SAP step "+sap+" · stack "+stack+" · window "+win+(s.loops?" · "+s.loops+" loops passed":"")+(s.standard?" · "+s.standard+" standard calls passed":"")+(s.missed?" · "+s.missed+" mispredicted":"");
+    +avg+" ms/step · SAP step "+sap+" · stack "+stack+" · window "+win+(s.loops?" · "+s.loops+" loops passed":"")+(s.standard?" · "+s.standard+" standard calls passed":"")+(s.over?" · "+s.over+" stepped over":"")+(s.missed?" · "+s.missed+" mispredicted":"");
 }
 function runVisual(){
   if(!picture.stopped)return;
-  notice("");series={steps:0,sap:0,total:0,stackMs:0,other:0,predicted:0,missed:0,loops:0,standard:0,t0:Date.now(),stop:false};
+  notice("");series={steps:0,sap:0,total:0,stackMs:0,other:0,over:0,predicted:0,missed:0,loops:0,standard:0,t0:Date.now(),stop:false};
   $("cont").textContent="Pause";$("cont").title="Pause the Visual run (F8)";drawButtons();
   var s=series;s.home={};spots=[];
   picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
@@ -484,16 +504,16 @@ function runVisual(){
     return mapFor(f&&f.program).then(function(map){
       var expect=predicted(f,map),from=placeOf(f,map),exit=loopExit(f,map),t=Date.now();
       // SAP gets the line and the frame to add or drop, not the statements.
-      var told=expect?{line:expect.line,enter:expect.enter,leave:expect.leave}:null;
+      var told=expect?{line:expect.line,enter:expect.enter,leave:expect.leave}:null,kind=expect&&expect.over?"over":"into";
       // A loop is not stepped through: F8 to the statement after it.
       var go=exit?debug("runTo",{url:f.url,line:exit.line}).then(function(r){
             if(r.placed){r.loop=true;return r;}
-            return debug("step",{kind:"into",quick:true,expect:told});})
-        :debug("step",{kind:"into",quick:true,expect:told});
+            return debug("step",{kind:kind,quick:true,expect:told});})
+        :debug("step",{kind:kind,quick:true,expect:told});
       return go.then(function(r){
         s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;
         if(r.loop){s.loops++;s.other+=Math.max(0,(r.total||0)-(r.sap||0));from=null;}
-        else if(r.predicted)s.predicted++;else s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
+        else if(r.predicted){s.predicted++;if(expect&&expect.over)s.over++;}else s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
         // Where each level now stands, as far as the run knows it.
         if(r.predicted&&expect){
           if(expect.enter){spots[depth]=expect.from;spots[depth+1]=expect.st;}
@@ -550,6 +570,163 @@ function runVisual(){
   }).catch(failed);
 }
 document.addEventListener("keydown",function(e){var k={F5:"into",F6:"over",F7:"out",F8:"cont"}[e.key];if(k&&picture.stopped){e.preventDefault();$(k).onclick();}});
+/* ---------- Flow: from call to call, and the picture of it ---------- */
+/* For the flow only the calls matter. In a routine the run sets points on
+   every call that may enter Z/Y code and on the routine's end, and runs to
+   the first the program reaches (F8) - whatever branch it takes. At a call it
+   goes in (F5); a call the map places outside Z/Y is stepped over (F6); a
+   step that lands outside Z/Y goes back out (F7); a routine with nothing to
+   call is left at once (F7). With Visual on the window draws where the
+   program is at each change of the stack, not at each step; off, only at the
+   end. */
+var flow={edges:{},nodes:{},order:[]},flowPath=[],flowMode="classes",flowSeq=0,mermaidReady=null;
+var ENDS=/^(ENDMETHOD|ENDFORM|ENDFUNCTION|ENDMODULE)$/,UNITS=/^(METHOD|FORM|FUNCTION|MODULE)$/;
+$("flow").onclick=function(){$("flow").classList.toggle("on");};
+/* The routine a frame is in, and whose it is: a class, or the program. */
+function unitOf(f){
+  var map=maps[f.program],list=map?listFor(f,map):null,u=null;
+  if(list)for(var i=0;i<list.length&&list[i].line<=f.line;i++){if(UNITS.test(list[i].kw)||EVENTS.test(list[i].kw))u=list[i];}
+  var program=String(f.program||"").replace(/=+C[PI]$/,"");
+  if(u&&u.kw==="METHOD"&&u.target)return {owner:u.target.split("=>")[0],name:u.target};
+  if(u&&u.kw==="FORM"&&u.target)return {owner:program,name:"FORM "+u.target};
+  var what=String(f.label||"").replace(/^\S+\s*/,""),pool=/^(.+?)=+C[MUIO]/.exec(String(f.include||""));
+  if(pool&&/^METHOD /i.test(what))return {owner:pool[1],name:pool[1]+"=>"+what.replace(/^METHOD\s+/i,"")};
+  return {owner:program,name:what||String(f.include)};
+}
+function note(from,to){
+  var key=from.name+"|"+to.name;
+  flow.nodes[from.name]=from;flow.nodes[to.name]=to;
+  if(!flow.edges[key]){flow.edges[key]={from:from,to:to,count:0};flow.order.push(key);}
+  flow.edges[key].count++;
+}
+/* The stack against the one before: each level added below the common part is a call. */
+function record(frames){
+  var path=frames.slice().reverse().filter(function(f){return !f.system;}).map(unitOf);
+  var same=0;while(same<path.length&&same<flowPath.length&&path[same].name===flowPath[same].name)same++;
+  for(var i=Math.max(same,1);i<path.length;i++)note(path[i-1],path[i]);
+  flowPath=path;
+}
+function callable(st){return !!st&&st.kind==="call"&&!outside(st)&&!/^(MESSAGE|LEAVE|SET|COMMIT|ROLLBACK)$/.test(st.kw);}
+/* The statements of the routine a statement is in, its end included. */
+function routine(list,at){
+  var a=at,b=at;
+  while(a>0&&!UNITS.test(list[a].kw)&&!EVENTS.test(list[a].kw))a--;
+  for(b=at+1;b<list.length;b++){if(ENDS.test(list[b].kw))break;if(UNITS.test(list[b].kw)||EVENTS.test(list[b].kw)){b--;break;}}
+  return {from:a,to:Math.min(b,list.length-1)};
+}
+function runFlow(){
+  if(!picture.stopped)return;
+  notice("");
+  series={steps:0,sap:0,total:0,stackMs:0,other:0,over:0,predicted:0,missed:0,loops:0,standard:0,t0:Date.now(),stop:false,flow:true};
+  var s=series,draw=$("visual").classList.contains("on"),shown=null;
+  flow={edges:{},nodes:{},order:[]};flowPath=[];s.home={};
+  picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
+  $("cont").textContent="Pause";$("cont").title="Pause the Flow run (F8)";drawButtons();
+  function key(frames){return frames.map(function(f){return f.include+" "+String(f.label).replace(/^\S+\s*/,"");}).join("|");}
+  function took(r,t){s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));drawStats(s);}
+  function arrived(){
+    return debug("picture").then(function(p){
+      picture=p;
+      if(!p.stopped)return false;
+      record(p.stopped.frames);
+      var k=key(p.stopped.frames);
+      if(draw&&k!==shown){shown=k;stopKey="";apply(p);}
+      if(p.stopped.breakpoint)return false;
+      if(!p.stopped.frames.some(function(x){return s.home[x.program];})){s.left=p.stopped.at;return false;}
+      return true;
+    });
+  }
+  function move(){
+    if(s.stop)return Promise.resolve();
+    var f=currentFrame(),depth=picture.stopped.frames.length;
+    return mapFor(f.program).then(function(map){
+      var list=listFor(f,map),p=placeOf(f,map),t=Date.now(),go;
+      if(p&&callable(p.here))go=debug("step",{kind:"into",quick:true});
+      else if(p&&outside(p.here)){
+        String(p.here.owners).split(",").filter(Boolean).forEach(function(o){note(unitOf(f),{owner:o,name:o});});
+        go=debug("step",{kind:"over",quick:true});}
+      else if(p&&ENDS.test(p.here.kw))go=debug("step",{kind:"into",quick:true});
+      else if(p&&list){
+        var r=routine(list,list.indexOf(p.here)),lines=[];
+        for(var i=r.from+1;i<=r.to;i++){if(list[i]!==p.here&&(callable(list[i])||ENDS.test(list[i].kw)))lines.push(list[i].line);}
+        var calls=lines.length&&list.slice(r.from+1,r.to+1).some(function(x){return x!==p.here&&callable(x);});
+        go=!calls?debug("step",{kind:"out",quick:true})
+          :debug("runTo",{url:f.url,lines:lines}).then(function(x){return x.placed?x:debug("step",{kind:"into",quick:true});});
+      }
+      else go=debug("step",{kind:"into",quick:true});
+      return go.then(function(r){
+        took(r,t);if(r.ended)return;
+        return arrived().then(function(on){
+          if(!on)return;
+          // Landed outside Z/Y from our code: back out at once.
+          var top=picture.stopped.frames[0];
+          if(picture.stopped.frames.length>depth&&!customer(top.program)&&customer(f.program)){
+            var t2=Date.now();s.standard++;
+            return debug("step",{kind:"out",quick:true}).then(function(o){took(o,t2);if(o.ended)return;return arrived().then(function(on2){if(on2)return move();});});
+          }
+          return move();
+        });
+      });
+    });
+  }
+  s.done=move().catch(failed).then(function(){
+    if(s.left)notice("The Flow run stopped: the program left "+object.name+" - it is now at "+s.left+".");
+    series=null;$("cont").textContent="Continue";$("cont").title="Continue to the next breakpoint (F8)";
+    drawStats(s);$("flowshow").hidden=!flow.order.length;
+    if(flow.order.length)showFlow();
+    stopKey="";lastStep=null;if(!s.quiet)return refresh();
+  }).catch(failed);
+}
+/* The recorded flow as Mermaid: classes and programs with the calls between
+   them, or every routine, grouped by its class or program. */
+function flowText(mode){
+  var ids={},n=0,out=["flowchart LR"];
+  function id(name){if(!ids[name])ids[name]="n"+(++n);return ids[name];}
+  function label(t){return '"'+String(t).replace(/"/g,"'")+'"';}
+  if(mode==="classes"){
+    var pairs={},order=[];
+    flow.order.forEach(function(k){var e=flow.edges[k],a=e.from.owner,b=e.to.owner;if(a===b)return;
+      var pk=a+"|"+b;if(!pairs[pk]){pairs[pk]={a:a,b:b,c:0};order.push(pk);}pairs[pk].c+=e.count;});
+    order.forEach(function(pk){var x=pairs[pk];out.push("  "+id(x.a)+"["+label(x.a)+"] -->|"+x.c+"| "+id(x.b)+"["+label(x.b)+"]");});
+    if(!order.length)Object.keys(flow.nodes).forEach(function(k){var o=flow.nodes[k].owner;if(!ids[o])out.push("  "+id(o)+"["+label(o)+"]");});
+    return out.join("\n");
+  }
+  var groups={};
+  Object.keys(flow.nodes).forEach(function(k){var u=flow.nodes[k];(groups[u.owner]=groups[u.owner]||[]).push(u);});
+  Object.keys(groups).forEach(function(o){
+    out.push("  subgraph "+id("group "+o)+"["+label(o)+"]");
+    groups[o].forEach(function(u){out.push("    "+id(u.name)+"["+label(u.name.split("=>").pop())+"]");});
+    out.push("  end");
+  });
+  flow.order.forEach(function(k){var e=flow.edges[k];out.push("  "+id(e.from.name)+" -->|"+e.count+"| "+id(e.to.name));});
+  return out.join("\n");
+}
+/* Mermaid arrives from the host as text and runs here, as in Metrics. */
+function loadMermaid(){
+  if(mermaidReady)return mermaidReady;
+  mermaidReady=new Promise(function(ok,fail){
+    if(typeof sdeAsset!=="function"){fail(new Error("The diagram needs the host's Mermaid."));return;}
+    waiting.push({raw:true,ok:function(text){var tag=document.createElement("script");tag.textContent=text;document.head.appendChild(tag);
+      if(typeof mermaid==="undefined")fail(new Error("mermaid.min.js was read but defined no mermaid object."));else ok();},fail:fail});
+    sdeAsset("mermaid");
+  });
+  mermaidReady.catch(function(){mermaidReady=null;});
+  return mermaidReady;
+}
+function showFlow(){
+  $("flowpane").classList.add("on");
+  $("fclasses").classList.toggle("on",flowMode==="classes");$("fmethods").classList.toggle("on",flowMode==="methods");
+  var text=flowText(flowMode),dark=/vscode-(dark|high-contrast)(\s|$)/.test(document.body.className);
+  loadMermaid().then(function(){
+    mermaid.initialize({startOnLoad:false,securityLevel:"strict",theme:dark?"dark":"default",flowchart:{htmlLabels:false,useMaxWidth:false},maxEdges:100000});
+    return mermaid.render("vxflow"+(++flowSeq),text);
+  }).then(function(r){$("flowsvg").innerHTML=r.svg;}).catch(failed);
+}
+$("flowshow").onclick=showFlow;
+$("fclasses").onclick=function(){flowMode="classes";showFlow();};
+$("fmethods").onclick=function(){flowMode="methods";showFlow();};
+$("fclose").onclick=function(){$("flowpane").classList.remove("on");};
+
 /* A Visual run is ended first, then the debugger is asked. */
 function halted(){if(!series)return Promise.resolve();series.stop=true;series.quiet=true;return series.done||Promise.resolve();}
 $("stop").onclick=function(){notice("");halted().then(function(){return debug("stop");}).then(refresh).catch(failed);};
