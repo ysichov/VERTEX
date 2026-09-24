@@ -92,12 +92,13 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
 </style></head><body>
 <header>
   <span id="title">Visual Debug</span>
-  <input id="program" placeholder="Program to run" title="The program started in WebGUI" spellcheck="false">
+  <input id="program" placeholder="Program, or empty for a test" title="A class or a function module is not run by itself: name the program that calls it, started in WebGUI" spellcheck="false">
   <button id="run" title="Start the program in WebGUI - the breakpoints catch it there">Run</button>
   <button id="into" title="Step into (F5)" disabled>Into</button>
   <button id="over" title="Step over (F6)" disabled>Over</button>
   <button id="out" title="Step return (F7)" disabled>Return</button>
   <button id="cont" title="Continue to the next breakpoint (F8)" disabled>Continue</button>
+  <button id="zonly" class="on" title="In a Visual run, a step that lands outside Z/Y code returns at once (F7): SAP's own code is passed in one go">Z only</button>
   <button id="visual" title="Continue (F8) as a run of F5 steps, drawn as it goes, without reading variables - and how long a step takes">Visual</button>
   <span id="stats" title="Steps of the Visual run: time over steps; SAP is the step request alone"></span>
   <button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Terminate</button>
@@ -164,10 +165,21 @@ function paint(node,text){
   }
   node.appendChild(document.createTextNode(text.slice(at)));
 }
+/* Sources already drawn, the last few, kept whole: going back to one - as a
+   run does between a caller and a callee all the time - only puts it back. */
+var drawn=new Map();
 function drawSource(){
-  var code=$("code");code.textContent="";
+  var code=$("code"),key=norm(shown.url),box=drawn.get(key);
   $("shownname").textContent=shown.name;
   $("home").hidden=!object.url||norm(shown.url)===norm(object.url);
+  drawn.delete(key);
+  if(!box){box=document.createElement("div");fill(box);}
+  drawn.set(key,box);
+  while(drawn.size>6)drawn.delete(drawn.keys().next().value);
+  if(code.firstChild!==box){code.textContent="";code.appendChild(box);}
+  markSource();
+}
+function fill(code){
   shown.lines.forEach(function(text,i){
     var n=i+1,row=document.createElement("div");row.className="line";row.id="l"+n;
     var gut=document.createElement("span");gut.className="gut";gut.title="Set or remove a breakpoint";
@@ -177,7 +189,6 @@ function drawSource(){
     var t=document.createElement("span");t.className="txt";paint(t,text);
     row.appendChild(no);row.appendChild(gut);row.appendChild(t);code.appendChild(row);
   });
-  markSource();
 }
 /* Breakpoints and the current line, on the rows already drawn. */
 function markSource(){
@@ -194,9 +205,13 @@ function markSource(){
 function scrollTo(line){var r=$("l"+line);if(r)r.scrollIntoView({block:"center"});}
 /* Show the source at a URL - the object's, or where the program stands. */
 function show(url,name,line){
-  if(norm(url)===norm(shown.url)){markSource();if(line)scrollTo(line);return Promise.resolve();}
+  // The same source - a class's methods share one: only the name above it changes.
+  if(norm(url)===norm(shown.url)){if(name){shown.name=name;$("shownname").textContent=name;}markSource();if(line)scrollTo(line);return Promise.resolve();}
   if(norm(url)===norm(object.url)){shown={url:object.url,lines:object.lines,name:object.name};drawSource();if(line)scrollTo(line);return Promise.resolve();}
-  return debug("source",{url:url}).then(function(d){shown={url:url,lines:String(d.source||"").split(/\r?\n/),name:name||url};drawSource();if(line)scrollTo(line);});
+  // A source read before is not read again.
+  var known=texts[norm(url)];
+  if(known){shown={url:url,lines:known,name:name||url};drawSource();if(line)scrollTo(line);return Promise.resolve();}
+  return debug("source",{url:url}).then(function(d){shown={url:url,lines:String(d.source||"").split(/\r?\n/),name:name||url};texts[norm(url)]=shown.lines;drawSource();if(line)scrollTo(line);});
 }
 $("home").onclick=function(){show(object.url,object.name).catch(failed);};
 
@@ -315,6 +330,9 @@ Object.keys(STEP).forEach(function(id){$(id).onclick=function(){
   lastStep=f?{kind:STEP[id],url:f.url,line:f.line,depth:picture.stopped.frames.length,unit:unitOf(f)}:null;
   debug("step",{kind:STEP[id]}).catch(failed);};});
 $("visual").onclick=function(){$("visual").classList.toggle("on");};
+$("zonly").onclick=function(){$("zonly").classList.toggle("on");};
+/* Customer code: a program, class pool or function group of the Z/Y namespace. */
+function customer(program){return /^(?:SAPL|SAPM|SAPD)?[ZY]/i.test(String(program||""));}
 
 /* ---------- the statement map: stepping without asking for the stack ---------- */
 /* ACE's map of a program, per include: where each statement starts and ends
@@ -332,13 +350,53 @@ function mapFor(program){
 }
 var CLOSERS=/^(ELSE|ELSEIF|WHEN|ENDIF|ENDCASE|ENDLOOP|ENDDO|ENDWHILE|ENDTRY|CATCH|CLEANUP|ENDSELECT|ENDAT|ENDON|ENDPROVIDE|ENDFORM|ENDMETHOD|ENDFUNCTION|ENDMODULE)$/i;
 /* Where the frame stands in its include's statements, and what comes next. */
+/* The sources the window has read, by address, and whether a map include
+   lines up with one: each statement the map places must start there with its
+   keyword. Checked once per source and include; an unread source waits. */
+var texts={},lists={};
+/* Does a map include line up with a source at an offset: each statement
+   placed there starts on its line with its keyword. */
+function fits(list,lines,offset){
+  var checked=0;
+  for(var i=0;i<list.length&&checked<40;i++){var st=list[i];
+    if(st.kind==="decl"||!/^[A-Z][A-Z-]*$/.test(st.kw)||st.kw==="COMPUTE")continue;
+    if(String(lines[st.line+offset-1]||"").trim().toUpperCase().indexOf(st.kw)!==0)return false;
+    checked++;}
+  return checked>=3;
+}
+/* The frame's include from the map, in the lines of the source SAP points
+   at. A program or an include counts its own lines. A global class's frame
+   counts in the class's main source, where the method's include sits further
+   down: the METHOD the stack names is found there and the include shifted to
+   it. Whatever does not line up is not used - the step asks SAP. Kept per
+   source and include; a source not read yet is decided later. */
+function listFor(f,map){
+  var inc=String(f&&f.include||"").toUpperCase(),list=map&&map[inc];if(!list)return null;
+  var key=norm(f.url)+"|"+inc;if(lists[key]!==undefined)return lists[key];
+  var lines=texts[norm(f.url)];if(!lines)return null;
+  var offset=0;
+  if(!fits(list,lines,0)){
+    offset=null;
+    var named=/\bMETHOD\s+(\S+)/i.exec(String(f.label||"")),head=list.filter(function(s){return s.kw==="METHOD";})[0];
+    if(named&&head){
+      var re=new RegExp("^\\s*METHOD\\s+"+named[1].replace(/[\\^$.*+?()[\]{}|\/~]/g,"\\$&")+"\\s*\\.","i");
+      for(var i=0;i<lines.length;i++){if(re.test(lines[i])){offset=i+1-head.line;break;}}
+    }
+    if(offset===null||!fits(list,lines,offset))return lists[key]=null;
+  }
+  return lists[key]=offset?list.map(function(s){return Object.assign({},s,{line:s.line+offset,to:s.to+offset});}):list;
+}
+/* The statement each level of the stack stands on, as the run predicted it,
+   by depth. A line may hold several statements - a = b. c = d. - and SAP
+   names only the line: only a statement the run itself arrived at tells
+   which. Forgotten whenever SAP is asked. */
+var spots=[];
 function placeOf(f,map){
   if(!f||!map)return null;
-  // Lines count in the include only where the frame's source is the include itself.
-  var m=/\/sap\/bc\/adt\/programs\/(?:programs|includes)\/([^/]+)\/source\/main/i.exec(String(f.url||""));
-  if(!m||decodeURIComponent(m[1]).toUpperCase()!==String(f.include).toUpperCase())return null;
-  var list=map[String(f.include).toUpperCase()];if(!list)return null;
-  var at=-1;for(var i=0;i<list.length;i++){if(list[i].line===f.line){at=i;break;}}
+  var list=listFor(f,map);if(!list)return null;
+  var all=picture.stopped?picture.stopped.frames:[],key=all.length-all.indexOf(f);
+  var here=[];for(var i=0;i<list.length;i++){if(list[i].line===f.line)here.push(i);}
+  var at=here.length===1?here[0]:here.indexOf(list.indexOf(spots[key]))>=0?list.indexOf(spots[key]):-1;
   if(at<0)return null;
   var next=null;for(var j=at+1;j<list.length;j++){if(list[j].kind!=="decl"){next=list[j];break;}}
   return {here:list[at],next:next};
@@ -349,7 +407,7 @@ function placeOf(f,map){
 var LOOPS={LOOP:"ENDLOOP",DO:"ENDDO",WHILE:"ENDWHILE"};
 function loopExit(f,map){
   var p=placeOf(f,map);if(!p||!LOOPS[p.here.kw])return null;
-  var list=map[String(f.include).toUpperCase()],at=list.indexOf(p.here),open=p.here.kw,close=LOOPS[open],depth=0;
+  var list=listFor(f,map),at=list.indexOf(p.here),open=p.here.kw,close=LOOPS[open],depth=0;
   for(var i=at;i<list.length;i++){
     if(list[i].kw===open)depth++;
     else if(list[i].kw===close&&--depth===0){
@@ -380,7 +438,7 @@ function unitIn(map,kw,name){
 function predicted(f,map){
   var p=placeOf(f,map);if(!p)return null;
   if(p.here.kind==="plain"&&p.next&&p.next.kind==="plain"){
-    return breakpointOn(f.url,p.next.line)?null:{line:p.next.line};}
+    return breakpointOn(f.url,p.next.line)?null:{line:p.next.line,st:p.next};}
   // A call: into a FORM by PERFORM, into a METHOD by a standalone call the
   // map could name (lcl=>m( ), me->m( ), m( ), CALL METHOD m).
   var form=p.here.kw==="PERFORM",method=p.here.kw==="+CALL_METHOD"||p.here.kw==="CALL";
@@ -388,14 +446,14 @@ function predicted(f,map){
     var t=unitIn(map,form?"FORM":"METHOD",p.here.target);if(!t)return null;
     var url=urlOf(f.program,t.include);if(breakpointOn(url,t.first.line))return null;
     var unit=form?"FORM "+String(p.here.target).toUpperCase():"METHOD "+String(p.here.target).toUpperCase().split("=>").pop();
-    return {line:t.first.line,enter:{label:t.include+":"+t.first.line+" "+unit,url:url,include:t.include,program:f.program}};}
+    return {line:t.first.line,st:t.first,from:p.here,enter:{label:t.include+":"+t.first.line+" "+unit,url:url,include:t.include,program:f.program}};}
   // The end of one: back to the statement after the call it came from.
   if(p.here.kw==="ENDFORM"||p.here.kw==="ENDMETHOD"){
     var all=picture.stopped.frames,caller=all[all.indexOf(f)+1];if(!caller)return null;
     var cp=placeOf(caller,maps[caller.program]);
     var called=cp&&cp.here.target&&(p.here.kw==="ENDFORM"?cp.here.kw==="PERFORM":cp.here.kw==="+CALL_METHOD"||cp.here.kw==="CALL");
     if(!called||!cp.next||CLOSERS.test(cp.next.kw)||EVENTS.test(cp.next.kw))return null;
-    return breakpointOn(caller.url,cp.next.line)?null:{line:cp.next.line,leave:true};}
+    return breakpointOn(caller.url,cp.next.line)?null:{line:cp.next.line,st:cp.next,leave:true};}
   return null;
 }
 
@@ -408,32 +466,56 @@ var series=null;
 function drawStats(s){
   var avg=s.steps?Math.round(s.total/s.steps):0,sap=s.steps?Math.round(s.sap/s.steps):0,asked=s.steps-s.predicted-s.loops;
   var stack=asked?Math.round(s.stackMs/asked):0;
+  // What is left of a step once SAP's requests are taken away: this side -
+  // the way to the window and back, and drawing.
+  var win=s.steps?Math.max(0,Math.round((s.total-s.sap-s.stackMs-s.other)/s.steps)):0;
   $("stats").textContent=s.steps+" steps ("+s.predicted+" predicted) · "+((Date.now()-s.t0)/1000).toFixed(1)+" s · "
-    +avg+" ms/step · SAP step "+sap+" · stack "+stack+(s.loops?" · "+s.loops+" loops passed":"")+(s.missed?" · "+s.missed+" mispredicted":"");
+    +avg+" ms/step · SAP step "+sap+" · stack "+stack+" · window "+win+(s.loops?" · "+s.loops+" loops passed":"")+(s.standard?" · "+s.standard+" standard calls passed":"")+(s.missed?" · "+s.missed+" mispredicted":"");
 }
 function runVisual(){
   if(!picture.stopped)return;
-  notice("");series={steps:0,sap:0,total:0,stackMs:0,predicted:0,missed:0,loops:0,t0:Date.now(),stop:false};
+  notice("");series={steps:0,sap:0,total:0,stackMs:0,other:0,predicted:0,missed:0,loops:0,standard:0,t0:Date.now(),stop:false};
   $("cont").textContent="Pause";$("cont").title="Pause the Visual run (F8)";drawButtons();
-  var s=series;s.home={};
+  var s=series;s.home={};spots=[];
   picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
   function next(){
     if(s.stop)return Promise.resolve();
     var f=currentFrame(),depth=picture.stopped.frames.length;
     return mapFor(f&&f.program).then(function(map){
       var expect=predicted(f,map),from=placeOf(f,map),exit=loopExit(f,map),t=Date.now();
+      // SAP gets the line and the frame to add or drop, not the statements.
+      var told=expect?{line:expect.line,enter:expect.enter,leave:expect.leave}:null;
       // A loop is not stepped through: F8 to the statement after it.
       var go=exit?debug("runTo",{url:f.url,line:exit.line}).then(function(r){
             if(r.placed){r.loop=true;return r;}
-            return debug("step",{kind:"into",quick:true,expect:expect});})
-        :debug("step",{kind:"into",quick:true,expect:expect});
+            return debug("step",{kind:"into",quick:true,expect:told});})
+        :debug("step",{kind:"into",quick:true,expect:told});
       return go.then(function(r){
         s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;
-        if(r.loop){s.loops++;from=null;}
+        if(r.loop){s.loops++;s.other+=Math.max(0,(r.total||0)-(r.sap||0));from=null;}
         else if(r.predicted)s.predicted++;else s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
+        // Where each level now stands, as far as the run knows it.
+        if(r.predicted&&expect){
+          if(expect.enter){spots[depth]=expect.from;spots[depth+1]=expect.st;}
+          else if(expect.leave){spots.length=depth;spots[depth-1]=expect.st;}
+          else spots[depth]=expect.st;
+        }else spots=[];
         drawStats(s);
         if(r.ended)return;
-        return debug("picture").then(function(p){apply(p);if(!p.stopped||p.stopped.breakpoint)return;
+        return debug("picture").then(function(p){
+          // Into SAP's own code from ours, with Z only on: F7 at once - the
+          // call runs to its end and the run goes on in our code.
+          if(p.stopped&&!p.stopped.breakpoint&&$("zonly").classList.contains("on")&&p.stopped.frames.length>depth
+            &&!customer(p.stopped.frames[0].program)&&customer(f.program)){
+            var t2=Date.now();
+            return debug("step",{kind:"out",quick:true}).then(function(o){
+              s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t2;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
+              if(o.ended)return;
+              return debug("picture").then(function(q){apply(q);if(!q.stopped||q.stopped.breakpoint)return;
+                if(!q.stopped.frames.some(function(x){return s.home[x.program];})){s.left=q.stopped.at;return;}
+                return next();});});
+          }
+          apply(p);if(!p.stopped||p.stopped.breakpoint)return;
           // The stack was asked after a plain statement: it must stand on the
           // next statement, unless that closes a block or the step raised.
           if(!r.predicted&&from&&from.here.kind==="plain"&&from.next){
@@ -473,8 +555,11 @@ function halted(){if(!series)return Promise.resolve();series.stop=true;series.qu
 $("stop").onclick=function(){notice("");halted().then(function(){return debug("stop");}).then(refresh).catch(failed);};
 $("terminate").onclick=function(){notice("");halted().then(function(){return debug("terminate");}).then(refresh).catch(failed);};
 $("run").onclick=function(){
-  var p=$("program").value.trim();
-  if(!p){notice("Name the program to start - or start it yourself in WebGUI; the breakpoints catch it there too.");return;}
+  var p=$("program").hidden?String(INITIAL.name):$("program").value.trim();
+  // An empty field for a class or a function module: its own test screen,
+  // SE24 or SE37 with the name filled in; the test is started there with F8.
+  if(!p){notice("");debug("run",{program:INITIAL.name,test:INITIAL.type}).then(function(){
+    $("state").textContent="Opened "+(String(INITIAL.type).toUpperCase()==="FUNC"?"SE37":"SE24")+" in the browser - log on if asked, then start the test with F8.";}).catch(failed);return;}
   notice("");debug("run",{program:p}).then(function(){$("state").textContent="Opened in the browser - log on if asked, the program starts after that.";}).catch(failed);
 };
 
@@ -649,7 +734,9 @@ function readNamed(names){
   }).then(function(){$("partial").textContent=" · read again: "+(wanted.length?wanted.join(", "):"nothing named here");drawVars();});
 }
 function refresh(){return debug("picture").then(apply);}
-function sdeDebugEvent(raw){try{apply(JSON.parse(raw));}catch(e){failed(e);}}
+// During a Visual run the run draws each stop itself; the same stop told
+// again by the debugger would be drawn twice.
+function sdeDebugEvent(raw){if(series)return;try{apply(JSON.parse(raw));}catch(e){failed(e);}}
 
 /* ---------- the window's parts list: jump to the unit in the object ---------- */
 function sdeSelectPart(part){
@@ -673,13 +760,14 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
 (function(){
   if(!INITIAL||!INITIAL.name)return;
   $("title").textContent=INITIAL.name+" · Visual Debug";
-  if(String(INITIAL.type).toUpperCase()==="PROG")$("program").value=INITIAL.name;
+  // A program runs itself; only a class or a function module needs the program that calls it.
+  if(String(INITIAL.type).toUpperCase()==="PROG")$("program").hidden=true;
   ask(function(){sdeSource(INITIAL.name,INITIAL.type);}).then(function(d){
     object.url=d.source_url;object.name=d.object_name||INITIAL.name;
     // The lines a breakpoint counts are those of the active version.
     return debug("source",{url:object.url});
   }).then(function(d){
-    object.lines=String(d.source||"").split(/\r?\n/);
+    object.lines=String(d.source||"").split(/\r?\n/);texts[norm(object.url)]=object.lines;
     shown={url:object.url,lines:object.lines,name:object.name};drawSource();
     if(INITIAL.part)sdeSelectPart(INITIAL.part);
     return refresh();

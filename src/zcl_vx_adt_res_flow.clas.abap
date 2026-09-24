@@ -383,7 +383,7 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
     " method redefined - and a class with a class constructor, which runs
     " first the first time the class is used.
     DATA lt_unsure TYPE string_table.
-    LOOP AT ls_source-tt_progs INTO DATA(ls_pass) WHERE scan IS BOUND.
+    LOOP AT ls_source-tt_progs INTO DATA(ls_pass) WHERE scan IS BOUND AND program = i_program.
       DATA(lv_impl) = ||.
       LOOP AT ls_pass-t_keywords INTO DATA(ls_def) WHERE name = 'CLASS' OR name = 'METHOD'.
         DATA(lt_def) = words( io_scan = ls_pass-scan
@@ -407,7 +407,7 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
       ENDLOOP.
     ENDLOOP.
 
-    LOOP AT ls_source-tt_progs INTO DATA(ls_prog) WHERE scan IS BOUND.
+    LOOP AT ls_source-tt_progs INTO DATA(ls_prog) WHERE scan IS BOUND AND program = i_program.
       DATA(ls_include) = VALUE ty_include( include = to_lower( ls_prog-include ) ).
       " The class whose implementation the statements are in.
       DATA(lv_class) = ||.

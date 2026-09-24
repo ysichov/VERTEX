@@ -506,8 +506,18 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     return { name: v.NAME, type: v.ACTUAL_TYPE_NAME || v.DECLARED_TYPE_NAME || v.TECHNICAL_TYPE, value: plain(v) };
   }
 
-  async function run(program) {
+  /* A program is started in SE38. A function module or a class has no run
+     of its own: its test screen opens - SE37 or SE24 with the name filled in
+     - and the user starts the test there (F8) with the data it asks for. */
+  async function run(program, test) {
     const { system: target } = await system();
+    const name = String(program).toUpperCase();
+    if (!/^[A-Z0-9_/]+$/.test(name)) { throw new Error("Not an object name: " + program); }
+    const kind = String(test || "").toUpperCase();
+    const transaction = kind === "FUNC" ? "SE37 RS38L-NAME=" + name
+      : kind === "CLAS" ? "SE24 SEOCLASS-CLSNAME=" + name
+      : kind ? null : "*SE38 RS38M-PROGRAMM=" + name + ";DYNP_OKCODE=STRT";
+    if (!transaction) { throw new Error("A test run is for a function module or a class, not " + test + "."); }
     if (!breakpoints.length) { throw new Error("Set a breakpoint before running: without one nothing will stop."); }
     // A system can name its own WebGUI address: SAP may redirect its HTTP
     // port to an HTTPS host name this machine does not resolve.
@@ -516,7 +526,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       throw new Error("The WebGUI address of " + target.name + " is not an http(s) URL: " + address + ". Check webgui in vertex.systems.");
     }
     const base = String(address).replace(/\/$/, "");
-    const url = base + "/sap/bc/gui/sap/its/webgui?~transaction=" + encodeURIComponent("*SE38 RS38M-PROGRAMM=" + String(program).toUpperCase() + ";DYNP_OKCODE=STRT")
+    const url = base + "/sap/bc/gui/sap/its/webgui?~transaction=" + encodeURIComponent(transaction)
       + "&sap-client=" + encodeURIComponent(target.client || "") + "&sap-language=EN";
     await openUrl(url);
     return url;

@@ -2103,6 +2103,33 @@ call by the method it enters where the text settles it - `lcl=>m( )`, `me->m( )`
 class inheriting from the class, so that ME may be the subclass with the method redefined, and a
 class constructor, which runs first the first time the class is touched.
 
+A run through Z_ACE went 966 steps deep into SAP's own classes and slowed the whole machine. The
+window was the cause: every change of include redrew the source whole - four thousand lines of
+`CL_GUI_SOURCEEDIT`, a node per word - read it from SAP again though it had it, and drew each
+stop twice, once from the run and once from the debugger's event. Drawn sources are now kept (the
+last six) and put back, read ones are not read again, and the event is ignored while a run draws.
+
+The same run showed why a global class got no prediction: its frames count lines in the class's
+main source, the map in the method's include. The window finds the METHOD the stack names in the
+main source and shifts the include to it; the same check - each statement on its line with its
+keyword - decides whether the shifted map is used.
+
+Z_ACE then ran 115 steps with 110 predicted - and showed the wrong code. The program has local
+classes named as global ones, and ACE's parse of a program brings in the global classes it
+refers to: the map for Z_ACE held the global ZCL_ACE's includes, a call was predicted into one
+of them, and the window drew that include while SAP was elsewhere. The map now holds the
+program's own includes only; a call into a global class is left to SAP. The statistics gained
+a "window" figure - a step's time less SAP's requests - so that what the window itself costs is
+read, not guessed: about 20 ms of a 180 ms step.
+
+In Z_ACE_STANDALONE the line stopped moving. `mv_prog = i_prog. mv_package = i_package.` is two
+statements on one line, and the window found "the statement at this line" by the line alone - the
+first one, every time. The step from the first to the second was predicted, the line did not
+change, and the next step started from the first statement again: the same line, predicted
+forever, while SAP went on - and all plain, so nothing asked SAP and nothing caught it. The window
+now keeps the statement it arrived at for each level of the stack; where a line holds several and
+the window came there by the stack, not by a prediction, it does not know which one and asks SAP.
+
 
 ---
 

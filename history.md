@@ -27,6 +27,11 @@
 - The Visual run also predicts a plain `PERFORM` and its `ENDFORM`, and asks SAP once where it stops.
 - It predicts standalone calls of local methods too, and passes a loop in one F8 to the statement
   after it instead of stepping through it.
+- Visual Debug keeps the last sources it drew instead of redrawing them at every change of
+  include - a long run through large classes had slowed the whole machine. A global class's
+  method include is predicted too. Run opens SE37 or SE24 for a function module or a class.
+- Z only (on by default): a Visual run that steps from Z/Y code into SAP's own returns at once
+  with F7, and goes on in the customer code.
 - Requests to SAP keep their connection open: before, each one opened a new connection and TLS
   handshake.
 

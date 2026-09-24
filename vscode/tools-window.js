@@ -26,7 +26,7 @@ async function debugCommand(dbg, command, a, fetchVertex) {
   switch (command) {
     // ACE's statement map of a program, for stepping without the stack.
     case "statements": {
-      if (!/^[A-Za-z0-9_/$]+$/.test(String(a.program || ""))) { throw new Error("A program name is needed for the statement map."); }
+      if (!/^[A-Za-z0-9_/$=]+$/.test(String(a.program || ""))) { throw new Error("A program name is needed for the statement map."); }
       const raw = await fetchVertex("/sap/bc/adt/vertex/flow/" + encodeURIComponent(String(a.program).toUpperCase()) + "?mode=statements&type=PROG");
       if (typeof raw === "string" && raw.indexOf("ERROR:") === 0) { throw new Error(raw.slice(6)); }
       return typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -45,7 +45,7 @@ async function debugCommand(dbg, command, a, fetchVertex) {
     case "children": return { id: a.id, children: await dbg.children(a.id) };
     case "rows": return dbg.tableRows(a.id, a.from, a.to);
     case "value": return dbg.read(a.name, 1, 5);
-    case "run": return { url: await dbg.run(a.program) };
+    case "run": return { url: await dbg.run(a.program, a.test) };
     case "stop": await dbg.stop(); return {};
     case "terminate": await dbg.terminate(); return {};
     case "settle": return { settled: await dbg.settle() };

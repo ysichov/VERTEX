@@ -372,3 +372,14 @@ test("run to a line: a point for the one run, F8, and the point gone before the 
   assert.equal(refused.placed, false);
   await dbg.stop();
 });
+
+test("a function module or a class opens its test screen, with the name filled in", async () => {
+  const { dbg, opened } = fakeSap();
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await dbg.run("z_fm", "FUNC");
+  assert.match(decodeURIComponent(opened[0]), /~transaction=SE37 RS38L-NAME=Z_FM&/);
+  await dbg.run("zcl_x", "CLAS");
+  assert.match(decodeURIComponent(opened[1]), /~transaction=SE24 SEOCLASS-CLSNAME=ZCL_X&/);
+  await assert.rejects(dbg.run("Z;DYNP_OKCODE=X"), /Not an object name/);
+  await dbg.stop();
+});

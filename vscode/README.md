@@ -535,8 +535,13 @@ debugger the assistant drives - one session, not a second one:
   unless a local class inherits from that class (the method may be redefined) or it has a class
   constructor. A loop is not stepped through: at `LOOP`, `DO` or `WHILE` the run sets a point on
   the statement after the loop's end and runs to it with F8, then goes on step by step; a
-  breakpoint of yours inside the loop stops it there, as F8 would. A branch, a call through
-  another reference, a class or a function module still asks SAP. When the stack is asked after a
+  breakpoint of yours inside the loop stops it there, as F8 would. With **Z only** on (the
+  default), a step that goes from Z/Y code into SAP's own is followed by F7 at once: the call runs
+  to its end and the run goes on in your code - as F6 on that call, Z code called from inside it
+  (a BAdI, an exit) passed with it. The map is used on a source
+  only where it lines up with it - each statement starting on its line with its keyword - so a
+  global class's method include is predicted too; a call into a global class, a branch or a call
+  through another reference still asks SAP. When the stack is asked after a
   plain statement and the program is not where the map said - an exception raised inside `TRY` -
   the window says so and counts it as *mispredicted*. The statistics show the steps, how many
   were predicted, the time per step, and SAP's step and stack requests apart. Beside it: the steps, the time, and the time per
@@ -547,8 +552,9 @@ debugger the assistant drives - one session, not a second one:
   first rows.
 - **Tables in grids.** A click on a table opens its rows below the source, a hundred at a time,
   in a tab of its own - as many tables as you like, read again at every stop.
-- **Run** starts the program named in the field in WebGUI, as `debug_run` does. For a class or a
-  function module, name the program that calls it, or start it yourself in WebGUI.
+- **Run** starts the program in WebGUI, as `debug_run` does. A program runs itself. For a class
+  or a function module, name the program that calls it in the field - or leave it empty for the
+  object's test screen, SE24 or SE37 with the name filled in, and start the test there with F8.
 - **Stop** does what `debug_stop` does: lets the program go, stops listening and removes every
   breakpoint - the assistant's as well, since they are the same.
 - **Terminate** ends the stopped program where it stands, as the debugger's Exit does; the
