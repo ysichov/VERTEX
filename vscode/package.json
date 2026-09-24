@@ -145,6 +145,10 @@
                 "type": "string",
                 "description": "SAP user. The password is asked once and kept in the OS credential store, per system."
               },
+              "webgui": {
+                "type": "string",
+                "markdownDescription": "Optional. Where the debugger opens WebGUI for this system, for example `https://10.0.0.5:44300`, when it is not `url`. Needed when SAP redirects WebGUI to a host name this computer cannot resolve."
+              },
               "allowInsecureCertificate": {
                 "type": "boolean",
                 "default": false,

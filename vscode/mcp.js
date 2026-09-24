@@ -347,6 +347,8 @@ const DEBUG_INSTRUCTIONS = [
   "Method: form a hypothesis, set breakpoints (prefer a condition written like an ABAP IF, or mode log for a watchpoint, over stepping line by line), start the program with debug_run, collect stops with debug_wait, read what matters with debug_read, refine, and end with a verdict that names the line and the values that prove it.",
   "A run started from SAP Logon (standalone SAP GUI) is never caught - SAP's design. Start it with debug_run, which opens WebGUI.",
   "Nothing here changes a variable or the code. Do not ask for more than a question needs: stops return only what changed and tables in short.",
+  "The user may take minutes to log on to WebGUI and start the program: call debug_wait again while it says it is still listening, and if nothing has stopped after a few minutes, ask the user whether the program ran - do not end the session on your own.",
+  "No stop, no verdict: if no breakpoint was reached, say so plainly and do not present a guess from reading the code as a debugging result.",
   "When done, call debug_stop: it lets the program go, stops listening and removes every breakpoint."
 ].join(" ");
 

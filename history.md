@@ -28,6 +28,11 @@
   like any edit - Save & Activate or Review & Activate - or undone. No separate draft and review
   open any more, and no Tools window or old source beside it. Refused while the tab holds edits
   SAP does not have. A new object still opens as a draft.
+- The assistant keeps waiting while the user logs on to WebGUI, asks whether the program ran
+  instead of giving up, and gives no verdict without a stop - a guess from reading the code is not
+  passed off as a debugging result.
+- A system in `vertex.systems` can name a `webgui` address. The debugger opens WebGUI there when a
+  system redirects its HTTP port to an HTTPS host name the computer cannot resolve.
 - `Z_VX_DEBUGGER_TEST` in `src/`: a one-screen invoice that prints the wrong total, with a bug no
   single line shows - something to try the debugger on. Pull `src/` to get it.
 

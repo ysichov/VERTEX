@@ -198,3 +198,22 @@ test("the debugger follows the active system, and refuses to switch while debugg
   await dbg.stop();
   await probe.stop();
 });
+
+test("a system's webgui address is where WebGUI opens; a bad one is refused", async () => {
+  const opened = [];
+  const listener = { async debuggerSetBreakpoints(m, t, i, c, bps) { return bps.map(b => ({ id: "X", uri: { uri: b.split("#")[0], range: { start: { line: Number(b.split("=")[1]) } } } })); },
+    async debuggerListeners() {}, async debuggerListen() { return new Promise(() => {}); }, async debuggerDeleteListener() {} };
+  let webgui = "https://10.0.0.5:44300/";
+  const dbg = create({ ideId: "I", terminalId: "T", openUrl: async url => opened.push(url),
+    connect: async () => ({ key: "DEV", system: { name: "DEV", url: "http://10.0.0.5:8000", client: "100", webgui }, user: "U", listener, open: async () => ({}) }) });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await dbg.run("Z_CALC");
+  assert.match(opened[0], /^https:\/\/10\.0\.0\.5:44300\/sap\/bc\/gui\/sap\/its\/webgui\?/);
+  await dbg.stop();
+  webgui = "ftp://nowhere";
+  const bad = create({ ideId: "I", terminalId: "T", openUrl: async url => opened.push(url),
+    connect: async () => ({ key: "DEV", system: { name: "DEV", url: "http://10.0.0.5:8000", webgui }, user: "U", listener, open: async () => ({}) }) });
+  await bad.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await assert.rejects(bad.run("Z_CALC"), /not an http\(s\) URL/);
+  await bad.stop();
+});

@@ -344,7 +344,13 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
   async function run(program) {
     const { system: target } = await system();
     if (!breakpoints.length) { throw new Error("Set a breakpoint before running: without one nothing will stop."); }
-    const base = String(target.url).replace(/\/$/, "");
+    // A system can name its own WebGUI address: SAP may redirect its HTTP
+    // port to an HTTPS host name this machine does not resolve.
+    const address = target.webgui || target.url;
+    if (!/^https?:\/\/[^/\s]+/i.test(String(address))) {
+      throw new Error("The WebGUI address of " + target.name + " is not an http(s) URL: " + address + ". Check webgui in vertex.systems.");
+    }
+    const base = String(address).replace(/\/$/, "");
     const url = base + "/sap/bc/gui/sap/its/webgui?~transaction=" + encodeURIComponent("*SE38 RS38M-PROGRAMM=" + String(program).toUpperCase() + ";DYNP_OKCODE=STRT")
       + "&sap-client=" + encodeURIComponent(target.client || "") + "&sap-language=EN";
     await openUrl(url);

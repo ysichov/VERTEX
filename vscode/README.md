@@ -388,9 +388,22 @@ They do apply to WebGUI, to the SAP GUI embedded in Eclipse, and to any HTTP or 
 made under your user. A class or a function module is started by you, through whatever calls
 it over HTTP or RFC; the assistant asks.
 
-Use the host name in `vertex.systems` that the server's certificate names (for example
-`https://s4.example.com:44300` rather than an IP address): WebGUI opens at that address, and
-a browser warns about a certificate that does not match it.
+WebGUI opens at the system's `url`. Two things can get in the way:
+
+- **A certificate that names a host.** Use the host name the server's certificate names (for
+  example `https://s4.example.com:44300` rather than an IP address), or the browser warns.
+- **A redirect to a host this computer does not know.** Many systems send WebGUI from their HTTP
+  port to HTTPS on their own full host name - `https://sap-host.corp.example:44300/...` - and the
+  browser answers "cannot find the server". Two ways round it:
+  - Give the system a **`webgui`** address that works from here, and the debugger opens WebGUI
+    there directly:
+    ```json
+    { "name": "DEV", "url": "http://10.0.0.5:8000", "webgui": "https://10.0.0.5:44300",
+      "client": "100", "user": "DEVELOPER" }
+    ```
+  - Or teach this computer the name: one line in `C:\Windows\System32\drivers\etc\hosts`
+    (administrator rights needed), with the address and the name from the failed redirect:
+    `10.0.0.5  sap-host.corp.example`. Then the redirect works as it is.
 
 **One debugger per user.** SAP gives each stop to one listener. If Eclipse or ABAP FS is
 already debugging for your user, the assistant is told so and does not take over unless you

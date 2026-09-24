@@ -7,8 +7,10 @@
 // is better than anything written here would be. What they cannot do is know
 // SAP. That is what this hands them.
 //
-// It is read-only on purpose. A tool result goes to the model, so the first
-// version offers what a reviewer looks at and nothing that writes.
+// The review at /mcp is read-only on purpose. A tool result goes to the model,
+// so it offers what a reviewer looks at and nothing that writes. The debugger
+// at /debug is the one exception, and a narrow one: it sets breakpoints and
+// holds a listener, but changes no code, no data and no variable.
 //
 // The host injects the SAP reader. VS Code uses the same fetch() as its pages,
 // with the active system and SecretStorage password. The standalone stdio
@@ -336,6 +338,134 @@ function fail(text) {
   return { content: [{ type: "text", text: text }], isError: true };
 }
 
+/* ---------- the debugger ---------- */
+
+/* Short on purpose: the assistant's own reasoning does the debugging. This only
+   says how the tools fit together and what must not be done. */
+const DEBUG_INSTRUCTIONS = [
+  "VERTEX debugs ABAP on the user's SAP system through ADT.",
+  "Method: form a hypothesis, set breakpoints (prefer a condition written like an ABAP IF, or mode log for a watchpoint, over stepping line by line), start the program with debug_run, collect stops with debug_wait, read what matters with debug_read, refine, and end with a verdict that names the line and the values that prove it.",
+  "A run started from SAP Logon (standalone SAP GUI) is never caught - SAP's design. Start it with debug_run, which opens WebGUI.",
+  "Nothing here changes a variable or the code. Do not ask for more than a question needs: stops return only what changed and tables in short.",
+  "The user may take minutes to log on to WebGUI and start the program: call debug_wait again while it says it is still listening, and if nothing has stopped after a few minutes, ask the user whether the program ran - do not end the session on your own.",
+  "No stop, no verdict: if no breakpoint was reached, say so plainly and do not present a guess from reading the code as a debugging result.",
+  "When done, call debug_stop: it lets the program go, stops listening and removes every breakpoint."
+].join(" ");
+
+const DEBUG_TOOLS = [
+  {
+    name: "debug_set_breakpoint",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description: "Set a breakpoint and start listening for the user's runs. Mode stop hands the stop to you; mode log records the variables that changed and lets the program run on (a watchpoint, no turn spent). "
+      + "A condition is checked by SAP, which skips every pass where it is false - written like an ABAP IF: lv_total > 1000, LINES( lt_items ) > 0, sy-tabix = 3, oref IS BOUND AND oref->attr = 'X'. Built-in functions need blanks inside the brackets. "
+      + "The same object and line again replaces its condition and mode.",
+    inputSchema: {
+      type: "object", additionalProperties: false,
+      properties: {
+        object_type: { type: "string", enum: ["PROG", "INCL", "CLAS"], description: "PROG by default. A class line counts in its main source." },
+        name: { type: "string", description: "Program, include or class name." },
+        line: { type: "integer", minimum: 1, description: "Line of an executable statement." },
+        condition: { type: "string", description: "Optional, up to 255 characters." },
+        mode: { type: "string", enum: ["stop", "log"], description: "stop (default) or log." },
+        take_over: { type: "boolean", description: "Only when the user agreed: take over from another debugger (Eclipse, ABAP FS) listening for the same user." }
+      },
+      required: ["name", "line"]
+    }
+  },
+  {
+    name: "debug_clear_breakpoints",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description: "Remove one breakpoint by its id from debug_status, or all of them without an id.",
+    inputSchema: { type: "object", additionalProperties: false, properties: { id: { type: "string" } } }
+  },
+  {
+    name: "debug_run",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description: "Start an executable program (report) in WebGUI in the user's browser, so that the breakpoints can catch it. The user may have to log on there. Other objects - a class, a function module - are run by the user; ask them to.",
+    inputSchema: { type: "object", additionalProperties: false, properties: { program: { type: "string" } }, required: ["program"] }
+  },
+  {
+    name: "debug_wait",
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Wait for the program to stop or finish. Returns the stop - where, the stack, the source lines, the variables that changed since the last stop (all of them at the first) and the first rows of any table that changed - plus what log breakpoints recorded since the last call and runs that ended.",
+    inputSchema: { type: "object", additionalProperties: false, properties: { seconds: { type: "integer", minimum: 1, maximum: 280, description: "60 by default." } } }
+  },
+  {
+    name: "debug_read",
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Read one variable at the current stop by name: a field's value, a structure's fields, or rows from..to of a table (at most 200 at a time). Names as ABAP writes them: LS_ORDER, GS_INVOICE-ITEMS, ME->MV_RATE.",
+    inputSchema: {
+      type: "object", additionalProperties: false,
+      properties: { name: { type: "string" }, from: { type: "integer", minimum: 1 }, to: { type: "integer", minimum: 1 } },
+      required: ["name"]
+    }
+  },
+  {
+    name: "debug_step",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description: "Move a stopped program on: over (next statement), into (into a call), out (to the caller), continue (to the next stop breakpoint or the end). Returns what debug_wait returns.",
+    inputSchema: { type: "object", additionalProperties: false, properties: { kind: { type: "string", enum: ["over", "into", "out", "continue"] } }, required: ["kind"] }
+  },
+  {
+    name: "debug_status",
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "The system, whether it listens, where the program stands, the breakpoints with their ids, and how much the debugger answers have cost so far.",
+    inputSchema: { type: "object", additionalProperties: false, properties: {} }
+  },
+  {
+    name: "debug_log",
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Everything the log breakpoints recorded in this debugging session, in order.",
+    inputSchema: { type: "object", additionalProperties: false, properties: {} }
+  },
+  {
+    name: "debug_stop",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description: "End debugging: let a stopped program run on, stop listening, remove every breakpoint.",
+    inputSchema: { type: "object", additionalProperties: false, properties: {} }
+  }
+];
+
+/* An answer cut to the budget, saying so - the same rule as the review. */
+function debugAnswer(dbg, value) {
+  let text = typeof value === "string" ? value : JSON.stringify(value, null, 1);
+  if (text.length > BUDGET) {
+    text = text.substring(0, BUDGET) + "\n... cut at " + BUDGET + " characters. Read a table in smaller ranges with debug_read.";
+  }
+  return ok(dbg.counted(text));
+}
+
+function debugSet(dbg) {
+  return {
+    tools: DEBUG_TOOLS,
+    instructions: DEBUG_INSTRUCTIONS,
+    call: async function (deps, name, args) {
+      switch (name) {
+        case "debug_set_breakpoint": {
+          const bp = await dbg.setBreakpoint(args);
+          return debugAnswer(dbg, "Breakpoint " + bp.id + " at " + bp.name + " line " + bp.line + ", mode " + bp.mode
+            + (bp.condition ? ", condition " + bp.condition : "") + ". Listening for the user's runs.");
+        }
+        case "debug_clear_breakpoints":
+          await dbg.clearBreakpoints(args.id);
+          return debugAnswer(dbg, args.id ? "Removed " + args.id + "." : "Removed every breakpoint.");
+        case "debug_run":
+          return debugAnswer(dbg, "Opened in the browser: " + await dbg.run(args.program)
+            + "\nNow call debug_wait. If the user has to log on, the program starts after that.");
+        case "debug_wait": return debugAnswer(dbg, await dbg.wait(args.seconds));
+        case "debug_read": return debugAnswer(dbg, await dbg.read(args.name, args.from, args.to));
+        case "debug_step": return debugAnswer(dbg, await dbg.step(args.kind));
+        case "debug_status": return debugAnswer(dbg, dbg.status());
+        case "debug_log": return debugAnswer(dbg, dbg.log());
+        case "debug_stop":
+          await dbg.stop();
+          return debugAnswer(dbg, "Stopped: the program runs on, nothing listens, no breakpoint is left.");
+      }
+      return fail("This server has no tool called " + name + ".");
+    }
+  };
+}
+
 /* ---------- the protocol ---------- */
 
 /* The review tools, unless a caller names another set: the standalone server
@@ -351,7 +481,8 @@ async function dispatch(deps, message, set) {
     return {
       protocolVersion: PROTOCOLS.indexOf(asked) >= 0 ? asked : PROTOCOLS[0],
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "vertex", version: deps.version || "0" }
+      serverInfo: { name: "vertex", version: deps.version || "0" },
+      ...(served.instructions ? { instructions: served.instructions } : {})
     };
   }
   if (method === "ping") { return {}; }
@@ -538,6 +669,8 @@ function create(deps) {
 exports.create = create;
 // Shared protocol and tools for the standalone stdio host as well as VS Code.
 exports.dispatch = dispatch;
+exports.debugSet = debugSet;
+exports.DEBUG_TOOLS = DEBUG_TOOLS;
 exports.TOOLS = TOOLS;
 // The Versions window's assistant reads the review summary the way this
 // server does, and refuses an unprepared review in the same words.

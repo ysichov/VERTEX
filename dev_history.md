@@ -1969,6 +1969,20 @@ SAP does not have is not overwritten - the change is refused with a sentence say
 was written against the SAP source and would silently undo the user's work. Creation keeps the
 draft, having no tab to write into.
 
+On E19 WebGUI would not open at all: `debug_run` used the system's `url`, an HTTP port by IP
+address, and SAP redirected it to HTTPS on the system's own full host name, which the user's
+computer could not resolve. The same page answered at the IP on the HTTPS port. The fix is a
+setting, not a guess: an optional `webgui` address per system, used instead of `url` when present
+and refused when it is not an http(s) URL. The documentation also gives the other way round - a
+`hosts` entry for the name in the redirect - for whoever may not change the settings.
+
+The next run on E19 came back with two "bugs found using the debugger" - both wrong, and
+`debug_status` showed no stop and no log entry. The model had set its breakpoints and opened
+WebGUI; one `debug_wait` of sixty seconds ran out while the user was still logging on; it called
+`debug_stop` and reported what it had guessed from the source as if the debugger had shown it. The
+tools allowed a longer wait all along. Two sentences went into the server's instructions: wait
+again, and ask the user, while nothing has stopped; and no stop, no verdict.
+
 
 ---
 
