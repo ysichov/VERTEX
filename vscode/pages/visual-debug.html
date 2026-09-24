@@ -83,6 +83,9 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
 #flowpane.on{display:flex;height:45%}
 #flowbar{flex:none;display:flex;gap:4px;padding:2px 4px;background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas))}
 #flowbar .grow{flex:1}
+#flowbar{align-items:center}
+#fzoom{min-width:3.5em;text-align:center;color:var(--vscode-descriptionForeground,GrayText);font-family:var(--vscode-editor-font-family,monospace)}
+#flowpane.full{position:fixed;inset:0;height:auto;z-index:7}
 #flowsvg{flex:1;overflow:auto;padding:8px;background:var(--vscode-editor-background,Canvas)}
 #stats{font-family:var(--vscode-editor-font-family,monospace);color:var(--vscode-descriptionForeground,GrayText)}
 #partial{font-weight:400;color:var(--vscode-descriptionForeground,GrayText);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -118,7 +121,7 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
     <div id="codehead"><span>Source</span><b id="shownname"></b><button id="home" hidden title="Back to the object's own source">Object source</button></div>
     <pre id="code"></pre>
     <div id="grids"><div id="gridtabs"></div><div id="gridbody"></div></div>
-    <div id="flowpane"><div id="flowbar"><button id="fclasses" class="on">Classes</button><button id="fmethods">Methods</button><span class="grow"></span><button id="fclose" class="x" title="Close">&#215;</button></div><div id="flowsvg"></div></div>
+    <div id="flowpane"><div id="flowbar"><button id="fclasses" class="on">Classes</button><button id="fmethods">Methods</button><span class="grow"></span><button id="fzout" title="Smaller (Ctrl + wheel)">&#8722;</button><span id="fzoom">100%</span><button id="fzin" title="Larger (Ctrl + wheel)">+</button><button id="ffit" title="Fit the diagram into the pane">Fit</button><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Close">&#215;</button></div><div id="flowsvg"></div></div>
   </div>
   <div class="split" id="split" title="Drag to resize"></div>
   <div id="right">
@@ -619,7 +622,10 @@ function runFlow(){
   notice("");
   series={steps:0,sap:0,total:0,stackMs:0,other:0,over:0,predicted:0,missed:0,loops:0,standard:0,t0:Date.now(),stop:false,flow:true};
   var s=series,draw=$("visual").classList.contains("on"),shown=null;
-  flow={edges:{},nodes:{},order:[]};flowPath=[];s.home={};
+  // The record goes on across Continue; a new one starts once the program
+  // has ended, or after Stop or Terminate.
+  if(!flow.order.length||flow.ended!==picture.ended||flow.closed){flow={edges:{},nodes:{},order:[],ended:picture.ended};flowPath=[];}
+  s.home={};
   picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
   $("cont").textContent="Pause";$("cont").title="Pause the Flow run (F8)";drawButtons();
   function key(frames){return frames.map(function(f){return f.include+" "+String(f.label).replace(/^\S+\s*/,"");}).join("|");}
@@ -720,8 +726,31 @@ function showFlow(){
   loadMermaid().then(function(){
     mermaid.initialize({startOnLoad:false,securityLevel:"strict",theme:dark?"dark":"default",flowchart:{htmlLabels:false,useMaxWidth:false},maxEdges:100000});
     return mermaid.render("vxflow"+(++flowSeq),text);
-  }).then(function(r){$("flowsvg").innerHTML=r.svg;}).catch(failed);
+  }).then(function(r){$("flowsvg").innerHTML=r.svg;natural();zoomTo(flowZoom);}).catch(failed);
 }
+/* Zoom: the drawing's own size, scaled; Fit makes it fill the pane. */
+var flowZoom=1,flowSize=null;
+function natural(){
+  var svg=$("flowsvg").querySelector("svg");flowSize=null;if(!svg)return;
+  var box=svg.viewBox&&svg.viewBox.baseVal;
+  flowSize=box&&box.width?{w:box.width,h:box.height}:{w:svg.getBoundingClientRect().width,h:svg.getBoundingClientRect().height};
+  svg.removeAttribute("style");svg.removeAttribute("height");
+}
+function zoomTo(z){
+  flowZoom=Math.max(0.1,Math.min(4,z));$("fzoom").textContent=Math.round(flowZoom*100)+"%";
+  var svg=$("flowsvg").querySelector("svg");if(!svg||!flowSize)return;
+  svg.setAttribute("width",Math.round(flowSize.w*flowZoom));svg.setAttribute("height",Math.round(flowSize.h*flowZoom));
+}
+function fitFlow(){
+  var pane=$("flowsvg");if(!flowSize||pane.clientWidth<40||pane.clientHeight<40)return;
+  zoomTo(Math.min((pane.clientWidth-20)/flowSize.w,(pane.clientHeight-20)/flowSize.h));
+}
+$("fzin").onclick=function(){zoomTo(flowZoom*1.25);};
+$("fzout").onclick=function(){zoomTo(flowZoom/1.25);};
+$("ffit").onclick=fitFlow;
+$("ffull").onclick=function(){$("flowpane").classList.toggle("full");fitFlow();};
+$("flowsvg").addEventListener("wheel",function(e){if(!e.ctrlKey)return;e.preventDefault();zoomTo(flowZoom*(e.deltaY<0?1.1:1/1.1));},{passive:false});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"&&$("flowpane").classList.contains("full")){$("flowpane").classList.remove("full");fitFlow();}});
 $("flowshow").onclick=showFlow;
 $("fclasses").onclick=function(){flowMode="classes";showFlow();};
 $("fmethods").onclick=function(){flowMode="methods";showFlow();};
@@ -729,8 +758,8 @@ $("fclose").onclick=function(){$("flowpane").classList.remove("on");};
 
 /* A Visual run is ended first, then the debugger is asked. */
 function halted(){if(!series)return Promise.resolve();series.stop=true;series.quiet=true;return series.done||Promise.resolve();}
-$("stop").onclick=function(){notice("");halted().then(function(){return debug("stop");}).then(refresh).catch(failed);};
-$("terminate").onclick=function(){notice("");halted().then(function(){return debug("terminate");}).then(refresh).catch(failed);};
+$("stop").onclick=function(){notice("");flow.closed=true;halted().then(function(){return debug("stop");}).then(refresh).catch(failed);};
+$("terminate").onclick=function(){notice("");flow.closed=true;halted().then(function(){return debug("terminate");}).then(refresh).catch(failed);};
 $("run").onclick=function(){
   var p=$("program").hidden?String(INITIAL.name):$("program").value.trim();
   // An empty field for a class or a function module: its own test screen,

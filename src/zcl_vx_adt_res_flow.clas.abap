@@ -520,6 +520,21 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
           r = `?`.
           RETURN.
         ENDIF.
+      WHEN 'CREATE'.
+        " CREATE OBJECT runs the constructor: of the class after TYPE, or of
+        " the reference's static type, which the text does not give. CREATE
+        " DATA runs nothing.
+        IF lv_count >= 2 AND it_tok[ 2 ] = 'OBJECT'.
+          r = `?`.
+          READ TABLE it_tok WITH KEY table_line = 'TYPE' TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0 AND sy-tabix < lv_count.
+            DATA(lv_type) = it_tok[ sy-tabix + 1 ].
+            IF lv_type NA '()'.
+              r = lv_type.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+        RETURN.
     ENDCASE.
     DO lv_count TIMES.
       DATA(lv_i) = sy-index.
@@ -625,7 +640,7 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
       && ` FUNCTION ENDFUNCTION MODULE ENDMODULE START-OF-SELECTION END-OF-SELECTION INITIALIZATION LOAD-OF-PROGRAM`
       && ` TOP-OF-PAGE END-OF-PAGE GET STOP REJECT LEAVE WAIT FETCH OPEN CLOSE `.
     DATA(lv_call) =
-         ` PERFORM CALL SUBMIT RAISE NEW +CALL_METHOD SET COMMIT ROLLBACK MESSAGE AUTHORITY-CHECK EXPORT IMPORT `.
+         ` PERFORM CALL SUBMIT RAISE NEW +CALL_METHOD SET COMMIT ROLLBACK MESSAGE AUTHORITY-CHECK EXPORT IMPORT CREATE `.
 
     DATA(lv_kw) = ` ` && to_upper( is_kw-name ) && ` `.
     IF lv_decl CS lv_kw.

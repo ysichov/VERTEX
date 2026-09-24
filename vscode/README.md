@@ -557,7 +557,9 @@ debugger the assistant drives - one session, not a second one:
   **Visual** on as well, the window draws where the program is at each change of the stack only.
   When the run stops, **Diagram** shows the flow as a Mermaid chart: **Classes** (classes and
   programs, with the number of calls between them) or **Methods** (every routine, grouped by
-  its class). SAP's own code appears as one node for what was called.
+  its class) - kept across Continue until the program ends or Stop or Terminate is pressed -
+  zoomed with −, +, Fit or Ctrl + wheel, and shown on the whole window with ⤢ (Esc
+  goes back). SAP's own code appears as one node for what was called.
 - **Values in the source.** At a stop, the mouse on a name in the source shows its value - a
   field, a component such as `ls_new-price`, a structure's fields, or a table's row count and
   first rows.

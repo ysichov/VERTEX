@@ -2146,6 +2146,12 @@ reached; a routine with nothing to call is left with F7 at once. `runTo` took a 
 it. Every stop records the stack against the one before; each level added is an edge. The picture
 is Mermaid, loaded as Metrics loads it: by class, or by routine grouped by class.
 
+The first Flow run on ZSDE2 went through a whole Z constructor without a stop: `CREATE OBJECT
+<obj>-alv_viewer EXPORTING ...` has no bracket, no arrow and no calling keyword, so the map had
+it as a plain statement, and no point was set on it. `CREATE` is a call now; its owner is the
+class after `TYPE`, or ? where the reference's type decides - and CREATE DATA, which runs
+nothing, is stepped over.
+
 
 ---
 
