@@ -353,3 +353,22 @@ test("a predicted PERFORM adds its frame, a predicted ENDFORM takes it away, and
   assert.equal(await dbg.settle(), false);
   await dbg.stop();
 });
+
+test("run to a line: a point for the one run, F8, and the point gone before the stop is read", async () => {
+  const { dbg, calls, sent } = fakeSap({ stops: [{ line: 18, reached: "BP18", vars: [] }, { line: 22, vars: [] }] });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 18 });
+  await dbg.wait(5);
+  const r = await dbg.runTo(URL_MAIN, 22);
+  assert.equal(r.placed, true);
+  assert.ok(sent.some(list => list.some(b => String(typeof b === "string" ? b : b.uri.uri + "#start=" + b.uri.range.start.line).endsWith("#start=22"))));
+  assert.deepEqual(sent.at(-1), [URL_MAIN + "#start=18"]);
+  assert.ok(calls.includes("stepContinue"));
+  const p = dbg.picture();
+  assert.equal(p.stopped.at, "Z_CALC:22");
+  assert.equal(p.stopped.breakpoint, null);
+  assert.deepEqual(p.breakpoints.map(b => b.line), [18]);
+  // A line SAP does not take is said, and nothing runs.
+  const refused = await dbg.runTo(URL_MAIN, 999);
+  assert.equal(refused.placed, false);
+  await dbg.stop();
+});

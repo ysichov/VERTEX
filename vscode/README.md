@@ -527,8 +527,16 @@ debugger the assistant drives - one session, not a second one:
   the program is over and F5 would go on into SAP's own code. SAP's answer to a step does not
   say where the program now is, so each step asks for the stack - except from one plain statement
   to the next plain one in a program or include, where the next line is known from ACE's
-  statement map (`/vertex/flow/<program>?mode=statements`, read once per program). A call, a
-  branch, a loop, a class or a function module still asks SAP. When the stack is asked after a
+  statement map (`/vertex/flow/<program>?mode=statements`, read once per program). A plain
+  `PERFORM` is predicted too - into its FORM's first statement, with a frame added to the stack,
+  and from `ENDFORM` back to the statement after the call. Such a stack is marked predicted: its
+  levels can be chosen once SAP is asked, which happens when the run stops. A standalone call of
+  a local method - `lcl=>m( )`, `me->m( )`, `m( )`, `CALL METHOD m` - is predicted the same way,
+  unless a local class inherits from that class (the method may be redefined) or it has a class
+  constructor. A loop is not stepped through: at `LOOP`, `DO` or `WHILE` the run sets a point on
+  the statement after the loop's end and runs to it with F8, then goes on step by step; a
+  breakpoint of yours inside the loop stops it there, as F8 would. A branch, a call through
+  another reference, a class or a function module still asks SAP. When the stack is asked after a
   plain statement and the program is not where the map said - an exception raised inside `TRY` -
   the window says so and counts it as *mispredicted*. The statistics show the steps, how many
   were predicted, the time per step, and SAP's step and stack requests apart. Beside it: the steps, the time, and the time per

@@ -66,6 +66,22 @@ CLASS zcl_vx_adt_res_flow DEFINITION
       IMPORTING io_scan  TYPE REF TO cl_ci_scan
                 is_kw    TYPE zif_vx_ace_parse_data=>ts_kword
       RETURNING VALUE(r) TYPE string.
+
+    " A statement's tokens, in capitals.
+    METHODS words
+      IMPORTING io_scan         TYPE REF TO cl_ci_scan
+                is_kw           TYPE zif_vx_ace_parse_data=>ts_kword
+      RETURNING VALUE(rt_words) TYPE string_table.
+
+    " The method a standalone call statement enters, as CLASS=>METHOD - or
+    " nothing where the text does not settle it: a call through a reference
+    " other than ME, an interface method, a dynamic name, or a class a local
+    " class inherits from or that has a class constructor (IT_UNSURE).
+    METHODS callee
+      IMPORTING i_call    TYPE string
+                i_class   TYPE string
+                it_unsure TYPE string_table
+      RETURNING VALUE(r)  TYPE string.
 ENDCLASS.
 
 
@@ -361,8 +377,40 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
     " are in its own table, so each include is listed with its own lines.
     DATA(ls_source) = zcl_vx_ace_source=>parse( i_program ).
     rs_map-program = to_lower( i_program ).
+
+    " First, the classes whose methods a call may not reach by name alone: a
+    " class some local class inherits from - ME may be the subclass, with the
+    " method redefined - and a class with a class constructor, which runs
+    " first the first time the class is used.
+    DATA lt_unsure TYPE string_table.
+    LOOP AT ls_source-tt_progs INTO DATA(ls_pass) WHERE scan IS BOUND.
+      DATA(lv_impl) = ||.
+      LOOP AT ls_pass-t_keywords INTO DATA(ls_def) WHERE name = 'CLASS' OR name = 'METHOD'.
+        DATA(lt_def) = words( io_scan = ls_pass-scan
+                              is_kw   = ls_def ).
+        IF ls_def-name = 'CLASS' AND lines( lt_def ) >= 3.
+          IF lt_def[ 3 ] = 'IMPLEMENTATION'.
+            lv_impl = lt_def[ 2 ].
+          ENDIF.
+          READ TABLE lt_def WITH KEY table_line = 'INHERITING' TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            DATA(lv_at) = sy-tabix + 2.
+            IF lv_at <= lines( lt_def ).
+              APPEND lt_def[ lv_at ] TO lt_unsure.
+            ENDIF.
+          ENDIF.
+        ELSEIF ls_def-name = 'METHOD' AND lines( lt_def ) >= 2 AND lv_impl IS NOT INITIAL.
+          IF lt_def[ 2 ] = 'CLASS_CONSTRUCTOR'.
+            APPEND lv_impl TO lt_unsure.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+
     LOOP AT ls_source-tt_progs INTO DATA(ls_prog) WHERE scan IS BOUND.
       DATA(ls_include) = VALUE ty_include( include = to_lower( ls_prog-include ) ).
+      " The class whose implementation the statements are in.
+      DATA(lv_class) = ||.
       LOOP AT ls_prog-t_keywords INTO DATA(ls_kw).
         DATA(ls_statement) = VALUE ty_statement( line = ls_kw-line
                                                  to   = ls_kw-line
@@ -388,10 +436,94 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
             ENDIF.
           ENDIF.
         ENDIF.
+
+        " Methods: a METHOD statement is named CLASS=>METHOD; a standalone
+        " call - lcl=>run( ), me->run( ), run( ), CALL METHOD run - is named
+        " by the method it enters, where the text settles that.
+        IF ls_kw-name = 'CLASS' OR ls_kw-name = 'ENDCLASS' OR ls_kw-name = 'METHOD'
+        OR ls_kw-name = '+CALL_METHOD' OR ls_kw-name = 'CALL'.
+          DATA(lt_tok) = words( io_scan = ls_prog-scan
+                                is_kw   = ls_kw ).
+          CASE ls_kw-name.
+            WHEN 'CLASS'.
+              IF lines( lt_tok ) >= 3.
+                IF lt_tok[ 3 ] = 'IMPLEMENTATION'.
+                  lv_class = lt_tok[ 2 ].
+                ENDIF.
+              ENDIF.
+            WHEN 'ENDCLASS'.
+              CLEAR lv_class.
+            WHEN 'METHOD'.
+              IF lv_class IS NOT INITIAL AND lines( lt_tok ) >= 2.
+                ls_statement-target = |{ lv_class }=>{ lt_tok[ 2 ] }|.
+              ENDIF.
+            WHEN OTHERS.
+              DATA(lv_call) = ||.
+              IF ls_kw-name = '+CALL_METHOD' AND lines( lt_tok ) >= 1.
+                lv_call = lt_tok[ 1 ].
+              ELSEIF ls_kw-name = 'CALL' AND lines( lt_tok ) >= 3.
+                IF lt_tok[ 2 ] = 'METHOD'.
+                  lv_call = lt_tok[ 3 ].
+                ENDIF.
+              ENDIF.
+              " One call and nothing else: a second call among the tokens -
+              " a chain, a call in a parameter - leaves it to SAP.
+              DATA(lv_calls) = 0.
+              LOOP AT lt_tok INTO DATA(lv_tok).
+                IF lv_tok CP '*(' OR lv_tok CS '->' OR lv_tok CS '=>'.
+                  lv_calls = lv_calls + 1.
+                ENDIF.
+              ENDLOOP.
+              IF lv_call IS NOT INITIAL AND lv_calls <= 1.
+                ls_statement-target = callee( i_call    = lv_call
+                                              i_class   = lv_class
+                                              it_unsure = lt_unsure ).
+              ENDIF.
+          ENDCASE.
+        ENDIF.
         APPEND ls_statement TO ls_include-statements.
       ENDLOOP.
       APPEND ls_include TO rs_map-includes.
     ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD words.
+    LOOP AT io_scan->tokens INTO DATA(ls_token) FROM is_kw-from TO is_kw-to.
+      APPEND to_upper( ls_token-str ) TO rt_words.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD callee.
+    DATA(lv_call) = to_upper( i_call ).
+    IF lv_call CP '*('.
+      lv_call = substring( val = lv_call len = strlen( lv_call ) - 1 ).
+    ENDIF.
+    IF lv_call IS INITIAL OR lv_call CA '~()'.
+      RETURN.
+    ENDIF.
+    DATA(lv_class)  = ||.
+    DATA(lv_method) = ||.
+    IF lv_call CS '=>'.
+      SPLIT lv_call AT '=>' INTO lv_class lv_method.
+    ELSEIF lv_call CP 'ME->*'.
+      lv_class  = to_upper( i_class ).
+      lv_method = substring( val = lv_call off = 4 ).
+    ELSEIF lv_call CS '->'.
+      RETURN.
+    ELSE.
+      lv_class  = to_upper( i_class ).
+      lv_method = lv_call.
+    ENDIF.
+    IF lv_class IS INITIAL OR lv_method IS INITIAL OR lv_method CS '->' OR lv_method CS '=>'.
+      RETURN.
+    ENDIF.
+    READ TABLE it_unsure WITH KEY table_line = lv_class TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      RETURN.
+    ENDIF.
+    r = |{ lv_class }=>{ lv_method }|.
   ENDMETHOD.
 
 

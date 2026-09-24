@@ -2076,6 +2076,33 @@ literal - and a literal may not be longer than 255 characters. A syntax check of
 through `fr_abap` named it at once (`arc-e19`'s SAPDiagnose refused the call over
 `includeSubpackages` again). The lists are now joined with `&&` at run time.
 
+With the map in place the same run took 12 of 31 steps without the stack, 320 ms a step down to
+260. What decided the other 19 was not the stack's depth - a LOOP or a WRITE leaves it as it is -
+but the line, which only data decides at a LOOP, an ENDLOOP or an IF. A plain PERFORM is
+different: where it goes is in the text, and so is where its ENDFORM returns to. The map now
+names the form of each FORM and plain PERFORM; the window adds a frame on the way in and drops it
+on the way out, marks such a stack as predicted - no level of it can be switched to - and asks
+SAP once where the run stopped, checking the prediction against it.
+
+Looking for what else a step costs turned up the transport: the HTTP agent VERTEX gives
+abap-adt-api was created without `keepAlive`, so every request to SAP - every step, every stack -
+opened a new connection with its own TLS handshake. It keeps the connection now, for all of
+VERTEX, not only the debugger. It did not show in the numbers: a step stayed at 159 ms, a stack at
+156 - the time is SAP's own.
+
+That left the steps only data decides. The answer to those was not to predict them but to skip
+them: nobody watches a loop go round, so at a LOOP, DO or WHILE the run now sets a point on the
+statement after the matching end - found in the map by nesting - and runs to it with F8
+(`runTo`). The point is the window's alone: it goes to SAP with the user's breakpoints, is listed
+nowhere, and is taken away before the stop is read, so the stop is never taken for one of the
+user's. A breakpoint of theirs inside the loop still stops it, as F8 would.
+
+Local methods came the way PERFORM did. The map names each METHOD by its class, and a standalone
+call by the method it enters where the text settles it - `lcl=>m( )`, `me->m( )`, `m( )`,
+`CALL METHOD m`. Two things can make the name lie, and the map drops the name for both: a local
+class inheriting from the class, so that ME may be the subclass with the method redefined, and a
+class constructor, which runs first the first time the class is touched.
+
 
 ---
 

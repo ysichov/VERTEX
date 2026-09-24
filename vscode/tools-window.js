@@ -49,6 +49,7 @@ async function debugCommand(dbg, command, a, fetchVertex) {
     case "stop": await dbg.stop(); return {};
     case "terminate": await dbg.terminate(); return {};
     case "settle": return { settled: await dbg.settle() };
+    case "runTo": return dbg.runTo(a.url, a.line);
   }
   throw new Error("Visual Debug has no command " + command + ".");
 }

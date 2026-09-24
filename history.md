@@ -24,6 +24,11 @@
 - Visual run asks SAP for the stack only where it has to: from one plain statement to the next it
   takes the line from ACE's statement map - a new `statements` mode of the flow resource, which
   needs `src/` pulled. A misprediction is reported, not hidden.
+- The Visual run also predicts a plain `PERFORM` and its `ENDFORM`, and asks SAP once where it stops.
+- It predicts standalone calls of local methods too, and passes a loop in one F8 to the statement
+  after it instead of stepping through it.
+- Requests to SAP keep their connection open: before, each one opened a new connection and TLS
+  handshake.
 
 ## 2026-09-24 — VERTEX 0.7.3: an assistant at the debugger
 

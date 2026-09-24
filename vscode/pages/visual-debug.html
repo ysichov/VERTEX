@@ -343,16 +343,33 @@ function placeOf(f,map){
   var next=null;for(var j=at+1;j<list.length;j++){if(list[j].kind!=="decl"){next=list[j];break;}}
   return {here:list[at],next:next};
 }
+/* The statement after the end of the loop that starts here - LOOP, DO or
+   WHILE, matched by nesting. None where that end closes a block or an event
+   too, or where there is nothing after it: the loop is then stepped through. */
+var LOOPS={LOOP:"ENDLOOP",DO:"ENDDO",WHILE:"ENDWHILE"};
+function loopExit(f,map){
+  var p=placeOf(f,map);if(!p||!LOOPS[p.here.kw])return null;
+  var list=map[String(f.include).toUpperCase()],at=list.indexOf(p.here),open=p.here.kw,close=LOOPS[open],depth=0;
+  for(var i=at;i<list.length;i++){
+    if(list[i].kw===open)depth++;
+    else if(list[i].kw===close&&--depth===0){
+      for(var j=i+1;j<list.length;j++){if(list[j].kind!=="decl"){var n=list[j];
+        return CLOSERS.test(n.kw)||EVENTS.test(n.kw)?null:n;}}
+      return null;}
+  }
+  return null;
+}
 var EVENTS=/^(FORM|METHOD|FUNCTION|MODULE|START-OF-SELECTION|END-OF-SELECTION|INITIALIZATION|LOAD-OF-PROGRAM|TOP-OF-PAGE|END-OF-PAGE|AT|GET)$/i;
 function breakpointOn(url,line){return picture.breakpoints.some(function(b){return norm(b.url)===norm(url)&&b.line===line;});}
 /* The source address of a program's include, as the stack gives it. */
 function urlOf(program,include){var p=String(program).toLowerCase(),i=String(include).toLowerCase();
   return "/sap/bc/adt/programs/"+(i===p?"programs/":"includes/")+encodeURIComponent(i)+"/source/main";}
-/* Where a FORM of the program is, and the first statement it runs. */
-function formIn(map,name){
+/* Where a FORM or a METHOD (CLASS=>METHOD) of the program is, and the first
+   statement it runs. */
+function unitIn(map,kw,name){
   var key=String(name).toUpperCase();
   for(var include in map){var list=map[include];
-    for(var i=0;i<list.length;i++){if(list[i].kw==="FORM"&&String(list[i].target).toUpperCase()===key){
+    for(var i=0;i<list.length;i++){if(list[i].kw===kw&&String(list[i].target).toUpperCase()===key){
       for(var j=i+1;j<list.length;j++){if(list[j].kind!=="decl")return {include:include,first:list[j]};}
       return null;}}}
   return null;
@@ -364,14 +381,20 @@ function predicted(f,map){
   var p=placeOf(f,map);if(!p)return null;
   if(p.here.kind==="plain"&&p.next&&p.next.kind==="plain"){
     return breakpointOn(f.url,p.next.line)?null:{line:p.next.line};}
-  if(p.here.kw==="PERFORM"&&p.here.target){
-    var t=formIn(map,p.here.target);if(!t)return null;
+  // A call: into a FORM by PERFORM, into a METHOD by a standalone call the
+  // map could name (lcl=>m( ), me->m( ), m( ), CALL METHOD m).
+  var form=p.here.kw==="PERFORM",method=p.here.kw==="+CALL_METHOD"||p.here.kw==="CALL";
+  if((form||method)&&p.here.target){
+    var t=unitIn(map,form?"FORM":"METHOD",p.here.target);if(!t)return null;
     var url=urlOf(f.program,t.include);if(breakpointOn(url,t.first.line))return null;
-    return {line:t.first.line,enter:{label:t.include+":"+t.first.line+" FORM "+String(p.here.target).toUpperCase(),url:url,include:t.include,program:f.program}};}
-  if(p.here.kw==="ENDFORM"){
+    var unit=form?"FORM "+String(p.here.target).toUpperCase():"METHOD "+String(p.here.target).toUpperCase().split("=>").pop();
+    return {line:t.first.line,enter:{label:t.include+":"+t.first.line+" "+unit,url:url,include:t.include,program:f.program}};}
+  // The end of one: back to the statement after the call it came from.
+  if(p.here.kw==="ENDFORM"||p.here.kw==="ENDMETHOD"){
     var all=picture.stopped.frames,caller=all[all.indexOf(f)+1];if(!caller)return null;
     var cp=placeOf(caller,maps[caller.program]);
-    if(!cp||cp.here.kw!=="PERFORM"||!cp.next||CLOSERS.test(cp.next.kw)||EVENTS.test(cp.next.kw))return null;
+    var called=cp&&cp.here.target&&(p.here.kw==="ENDFORM"?cp.here.kw==="PERFORM":cp.here.kw==="+CALL_METHOD"||cp.here.kw==="CALL");
+    if(!called||!cp.next||CLOSERS.test(cp.next.kw)||EVENTS.test(cp.next.kw))return null;
     return breakpointOn(caller.url,cp.next.line)?null:{line:cp.next.line,leave:true};}
   return null;
 }
@@ -383,14 +406,14 @@ function predicted(f,map){
    Pause. */
 var series=null;
 function drawStats(s){
-  var avg=s.steps?Math.round(s.total/s.steps):0,sap=s.steps?Math.round(s.sap/s.steps):0,asked=s.steps-s.predicted;
+  var avg=s.steps?Math.round(s.total/s.steps):0,sap=s.steps?Math.round(s.sap/s.steps):0,asked=s.steps-s.predicted-s.loops;
   var stack=asked?Math.round(s.stackMs/asked):0;
   $("stats").textContent=s.steps+" steps ("+s.predicted+" predicted) · "+((Date.now()-s.t0)/1000).toFixed(1)+" s · "
-    +avg+" ms/step · SAP step "+sap+" · stack "+stack+(s.missed?" · "+s.missed+" mispredicted":"");
+    +avg+" ms/step · SAP step "+sap+" · stack "+stack+(s.loops?" · "+s.loops+" loops passed":"")+(s.missed?" · "+s.missed+" mispredicted":"");
 }
 function runVisual(){
   if(!picture.stopped)return;
-  notice("");series={steps:0,sap:0,total:0,stackMs:0,predicted:0,missed:0,t0:Date.now(),stop:false};
+  notice("");series={steps:0,sap:0,total:0,stackMs:0,predicted:0,missed:0,loops:0,t0:Date.now(),stop:false};
   $("cont").textContent="Pause";$("cont").title="Pause the Visual run (F8)";drawButtons();
   var s=series;s.home={};
   picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
@@ -398,10 +421,16 @@ function runVisual(){
     if(s.stop)return Promise.resolve();
     var f=currentFrame(),depth=picture.stopped.frames.length;
     return mapFor(f&&f.program).then(function(map){
-      var expect=predicted(f,map),from=placeOf(f,map),t=Date.now();
-      return debug("step",{kind:"into",quick:true,expect:expect}).then(function(r){
+      var expect=predicted(f,map),from=placeOf(f,map),exit=loopExit(f,map),t=Date.now();
+      // A loop is not stepped through: F8 to the statement after it.
+      var go=exit?debug("runTo",{url:f.url,line:exit.line}).then(function(r){
+            if(r.placed){r.loop=true;return r;}
+            return debug("step",{kind:"into",quick:true,expect:expect});})
+        :debug("step",{kind:"into",quick:true,expect:expect});
+      return go.then(function(r){
         s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;
-        if(r.predicted)s.predicted++;else s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
+        if(r.loop){s.loops++;from=null;}
+        else if(r.predicted)s.predicted++;else s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
         drawStats(s);
         if(r.ended)return;
         return debug("picture").then(function(p){apply(p);if(!p.stopped||p.stopped.breakpoint)return;
@@ -510,6 +539,8 @@ function drawVars(){
   }
   scopes.groups.forEach(function(g){if(groupOn(g)&&g.children)group(heading(g.name),g.children);});
   if(scopes.sy&&$("syst").classList.contains("on"))group("SY",[scopes.sy]);
+  // Every group switched off: say so, rather than show a panel that looks broken.
+  if(!table.rows.length){box.innerHTML='<div class="empty">Nothing is read: Globals, Locals, Params and SYST are switched off.</div>';return;}
   box.appendChild(table);
 }
 $("initials").onclick=function(){$("initials").classList.toggle("on");drawVars();};
