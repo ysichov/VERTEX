@@ -347,6 +347,36 @@ not step through the code.
 The debugger sets breakpoints and holds a listener. It never changes a variable, never jumps
 over code and never writes source or data.
 
+### Before you start
+
+- **VERTEX for VS Code 0.7.3 or newer**, with the SAP system in `vertex.systems`.
+- **Nothing on the ABAP side.** The debugger uses only SAP's standard ADT services; the VERTEX
+  classes (`src/`, pulled with abapGit) are not needed for it. They are needed only for the
+  example program `Z_VX_DEBUGGER_TEST` and for the other VERTEX windows.
+- **In SAP**, for your user: the authorisation to debug (the standard object `S_DEVELOP` with
+  object type `DEBUG`), and the WebGUI service active in SICF
+  (`/sap/bc/gui/sap/its/webgui`) - the debugger starts reports there.
+- **For the VERTEX chat**: a provider set up in **LLM Providers**. For Claude Code or Codex:
+  the client installed and signed in.
+- **A strong model.** Debugging is a loop of many steps - set, run, wait, read, decide - and a
+  small model gives up early or "fixes" the wrong line. In the pilot Claude Haiku once answered
+  from reading the code instead of debugging, and once proposed a fix that did not fix anything;
+  Claude Opus found the cause with the values that prove it, and the right fix.
+
+### Quick start
+
+1. Install VERTEX 0.7.3 or newer and reload the window.
+2. Choose the system in the panel's **SAP system** list (or **VERTEX: Switch System**) and
+   enter the password once.
+3. Close any other debugger for your SAP user - an Eclipse debug session, ABAP FS - or tell the
+   assistant it may take over.
+4. For Claude Code or Codex only: register `vertex-debug` once, as described below, and start a
+   new conversation.
+5. Ask: *Z_VX_DEBUGGER_TEST prints the wrong invoice total. Find out why with the debugger.*
+6. When the browser opens WebGUI, log on if asked. The assistant waits for the program.
+7. Read the verdict. Ask it to fix the code if you agree: the change lands in the program's
+   tab, unsaved; save it with **Save & Activate** or **Review & Activate**.
+
 ### Where it runs
 
 | Assistant | How it gets the debugger | Setup |
@@ -409,6 +439,19 @@ WebGUI opens at the system's `url`. Two things can get in the way:
 already debugging for your user, the assistant is told so and does not take over unless you
 agree - otherwise the other debugger would silently lose its stops. Close the other debug
 session, or tell the assistant it may take over.
+
+### If it does not work
+
+| What you see | Why | What to do |
+|---|---|---|
+| The browser says it cannot find the server | SAP redirected WebGUI to a host name this computer does not resolve | Give the system a `webgui` address, or add the name to `hosts` - see above |
+| The browser warns about the certificate | WebGUI opened at an IP address or another name than the certificate's | Use the certificate's host name in `url` or `webgui` |
+| The program ran and nothing stopped | It was started from SAP Logon; or another debugger took the stop; or it started after the assistant gave up waiting | Start it through `debug_run` (WebGUI); close the other debugger; ask the assistant to wait again |
+| *SAP did not accept the breakpoint* | The line holds no executable statement, or the object is not active | Pick an executable line; activate the object |
+| *Another debugger already listens for …* | Eclipse or ABAP FS debugs for the same user | Close it, or let the assistant take over |
+| *Debugging is still going on …* | The system was switched while breakpoints were set on the old one | Ask for `debug_stop`, then start again |
+| The chat answers without using any SAP tool | A VERTEX Tools window shows a diff, UML or metrics, or code is selected: the chat then answers about what is on screen only, without tools | Close that window or clear the selection, and ask again |
+| A verdict that does not match what the program does | A small model guessed | Ask again with a stronger model, and ask what the debugger showed |
 
 ### Breakpoints: conditions and modes
 

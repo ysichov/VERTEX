@@ -81,7 +81,7 @@
   <img src="architecture.jpg" alt="VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*" style="max-width:100%;height:auto;display:block;margin:1.5em 0">
 </p>
 
-<p class="build">Latest build <b>0.7.0</b>.</p>
+<p class="build">Latest build <b>0.7.3</b>.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -101,7 +101,28 @@
   on an Eclipse without ADT instead of leaving a plugin that cannot resolve.
 </div>
 
-<h2>What 0.7.0 adds</h2>
+<h2>What 0.7.3 adds</h2>
+
+<ul class="news">
+  <li><b>Diff keeps its own parts.</b> Diff has AVE's column again - the parts, with the versions
+      of the chosen part under them - opens on the part chosen in the other functions, and hands
+      its own choice back to them.</li>
+  <li><b>A method by name.</b> Ask the Assistant for <i>the flowchart of ZCL_FOO-&gt;BAR</i> and the
+      window opens on that method, picked in Parts. The Tools window reads the parts of an object
+      whatever function it opens on.</li>
+  <li><b>Nothing picked for you.</b> Without a named part, View source shows the whole object,
+      the Logic diagram asks for a method and Diff waits for a part.</li>
+  <li><b>Short answers to "open".</b> A request to open or show a function is answered in one
+      sentence naming what opens.</li>
+  <li><b>The folded Parts list</b> shrinks back to its strip, whatever width the splitter set.</li>
+</ul>
+
+<p>
+  The AI debugger, the enhanced code editor and the Outline of 0.7.1 to 0.7.3 are VS Code
+  features; see below.
+</p>
+
+<h2>What 0.7.0 added</h2>
 
 <ul class="news">
   <li><b>One Parts list for the object.</b> The VERTEX Tools window keeps the parts of a class
@@ -177,7 +198,7 @@
 </p>
 
 <p>
-  The Eclipse plugin here is 0.7.0; the VS Code extension is 0.7.3, with LLM Providers - a
+  The Eclipse plugin here is 0.7.3; the VS Code extension is 0.7.3, with LLM Providers - a
   model table per provider and an Anthropic API key as a third one - and Tools windows that keep
   their own SAP system. The extension also hands transport
   reviews to the AI assistants in the editor &mdash; Copilot, Claude Code, Codex

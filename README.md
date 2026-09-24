@@ -131,7 +131,8 @@ The VERTEX chat has it with no setup. Claude Code and Codex get it from a second
 the extension, `vertex-debug`, registered with one command. The program is started in WebGUI:
 SAP never applies ADT breakpoints to a session opened through SAP Logon, so a run from the
 standalone SAP GUI is not caught - by VERTEX or by Eclipse. Details, the tools and the
-condition syntax: [vscode/README.md](vscode/README.md#debug-with-an-assistant). `src/` ships
+condition syntax: [vscode/README.md](vscode/README.md#debug-with-an-assistant). It needs nothing
+on the ABAP side - only SAP's standard ADT services, the debug authorisation and WebGUI. `src/` ships
 `Z_VX_DEBUGGER_TEST`, a one-screen program with a bug that shows only at runtime, to try it on.
 
 ### Development status

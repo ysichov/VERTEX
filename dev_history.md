@@ -1983,6 +1983,20 @@ WebGUI; one `debug_wait` of sixty seconds ran out while the user was still loggi
 tools allowed a longer wait all along. Two sentences went into the server's instructions: wait
 again, and ask the user, while nothing has stopped; and no stop, no verdict.
 
+Eclipse went out as 0.7.3 as well, its first build since 0.7.0, so the version numbers of the two
+hosts meet again. `docs/` was emptied before the export, as BUILD.md says, and the jar was checked
+for what went wrong once before: 49 classes, the Assistant runtime in `assistant/` with the fix-
+without-navigation rule, and one build in the catalogue. The VS Code vsix was rebuilt through
+`package.ps1` for the release; the earlier packages of this stage had been made with `vsce`
+directly, which BUILD.md forbids because it skips the check of `abap-adt-api` and the pages.
+
+The debugger's documentation then got what a first installation needs: what has to be in place -
+notably that the ABAP side of VERTEX is not needed for it at all, only standard ADT, the debug
+authorisation and WebGUI - a quick start in seven steps, advice to use a strong model (the pilot's
+two wrong answers both came from Haiku), and a table of symptoms. One row there documents a limit
+rather than a fix: while a Tools window shows a diff, UML or metrics, the chat answers without
+tools. Changing that rule was proposed and not decided, so it is written down instead.
+
 
 ---
 

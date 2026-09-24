@@ -35,6 +35,11 @@
   system redirects its HTTP port to an HTTPS host name the computer cannot resolve.
 - `Z_VX_DEBUGGER_TEST` in `src/`: a one-screen invoice that prints the wrong total, with a bug no
   single line shows - something to try the debugger on. Pull `src/` to get it.
+- Eclipse 0.7.3, the first Eclipse build since 0.7.0: it brings the Tools window changes of 0.7.1
+  to Eclipse - Diff with its own Parts and Versions column, a method opened by name, nothing picked
+  without a named part, one-sentence answers to "open", the folded Parts strip - and the
+  Assistant's rule that a fix changes no view. The debugger, the code editor and the Outline stay
+  VS Code features.
 
 ## 2026-09-24 — VERTEX 0.7.2: names SAP knows, wherever they are declared
 
