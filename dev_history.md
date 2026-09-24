@@ -2069,6 +2069,13 @@ hidden: whenever the stack is asked after a plain statement, the window checks t
 stands where the map said and reports the miss. Classes and function modules are left out for
 now - their frames count lines in the main source, the map in the include.
 
+The first version of the map did not reach the system: two pulls left the old class active and
+nothing on the inactive list, and the window got the old "Parameter include could not be found".
+The keyword lists had been written as literals joined with `&`, which the compiler folds into one
+literal - and a literal may not be longer than 255 characters. A syntax check of the source
+through `fr_abap` named it at once (`arc-e19`'s SAPDiagnose refused the call over
+`includeSubpackages` again). The lists are now joined with `&&` at run time.
+
 
 ---
 
