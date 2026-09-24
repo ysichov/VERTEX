@@ -32,9 +32,11 @@ Never concatenate local includes into the main class source.
 
 For modifications supply the exact base_revision from the read and the full
 replacement source of that unit. For creation supply full source, description,
-package (PROG/CLAS) or an existing function_group (FUNC). These tools open a
-draft diff only: do not report a successful SAP save until the host reports
-successful apply and activation. Never attempt to bypass the host's review UI.
+package (PROG/CLAS) or an existing function_group (FUNC). A modification goes
+into the object's editor tab, unsaved; the user saves it with Save & Activate or
+Review & Activate, or undoes it - say so, and do not claim it was saved. It is
+refused while the tab holds unsaved edits that SAP does not have: tell the user.
+A creation opens a draft diff. Never attempt to bypass the host's review UI.
 
 FM source editing preserves existing parameter metadata. Creating/changing the
 FM signature, RFC flags or other metadata is not supported by these tools.

@@ -178,3 +178,23 @@ test("the /debug set answers initialize with its instructions and lists only deb
   assert.match(status.content[0].text, /"listening": false/);
   assert.match(dbg.status().answers, /^1 answers/);
 });
+
+test("the debugger follows the active system, and refuses to switch while debugging", async () => {
+  let active = "QAS";
+  const connected = [];
+  const { dbg: probe } = fakeSap();
+  const listener = { async debuggerSetBreakpoints(m, t, i, c, bps) { return bps.map(b => ({ id: "X", uri: { uri: b.split("#")[0], range: { start: { line: Number(b.split("=")[1]) } } } })); },
+    async debuggerListeners() {}, async debuggerListen() { return new Promise(() => {}); }, async debuggerDeleteListener() {} };
+  const dbg = create({ ideId: "I", terminalId: "T", openUrl: async () => {}, current: () => active,
+    connect: async () => { connected.push(active); return { key: active, system: { name: active, url: "https://" + active.toLowerCase() }, user: "U", listener, open: async () => ({}) }; } });
+  assert.match(dbg.status().system, /not connected/);
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  active = "E19";
+  await assert.rejects(dbg.setBreakpoint({ name: "Z_CALC", line: 50 }), /still going on QAS\. Call debug_stop first/);
+  await dbg.stop();
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 50 });
+  assert.deepEqual(connected, ["QAS", "E19"]);
+  assert.match(dbg.status().system, /^E19/);
+  await dbg.stop();
+  await probe.stop();
+});

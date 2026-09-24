@@ -13,6 +13,8 @@ Those three programs are where the logic was written, and they are not developed
 further. It has been carried across as `ZCL_VX_*`, with the SAP GUI stripped off,
 and everything new happens on this side.
 
+![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](https://raw.githubusercontent.com/ysichov/VERTEX/main/docs/architecture.jpg)
+
 ## It needs an ABAP backend
 
 ## VS Code prerequisite
@@ -214,9 +216,10 @@ model that is no longer offered. The choice is kept in `vertex.ai.modelConfig`.
 
 The panel's chat can reach every system in `vertex.systems`. Name one in the question — *copy
 ZCL_FOO from E19 to QAS* — and the SAP tools run against it; without a name they use the system
-chosen in the panel. A copy is a read in one system and a draft in the other: the draft opens in
-the **Code Change** reviewer with the target system in its title, and nothing is written until
-it is approved there.
+chosen in the panel. A copy is a read in one system and a change in the other: it goes into the
+target system's tab, unsaved, and nothing is written until you save it there. A new object has
+no tab yet: it opens as a draft in the **Code Change** reviewer, with the target system in its
+title.
 
 A **VERTEX Tools** window keeps the system that was active when it opened, and its tab is named
 after it — *VERTEX E19*. Everything started from the window, its **Ask AI** chat included, works
@@ -230,7 +233,10 @@ Ask in any language, for example *show ZCL_TR_TEXT_DATA*, *explain this method*
 or *add a check for an empty table here*. The chat searches and reads SAP
 source itself and opens the object in an editable tab on the right. Follow-up
 requests about "this code" use the active SAP editor tab as context. The chat
-never writes to SAP on its own: a change it proposes arrives as a draft diff.
+never writes to SAP on its own: a change it makes goes into the object's tab, unsaved, and you
+save it with **Save & Activate** or **Review & Activate** - or undo it with Ctrl+Z. If the tab
+already holds edits that SAP does not have, the chat's change is refused rather than written over
+them: save or undo yours first.
 
 ## Code reviewer
 
@@ -348,8 +354,11 @@ over code and never writes source or data.
 | The **VERTEX chat** in the panel | on its own `/chat` address, beside the source tools | none |
 | **Claude Code** or **Codex** | a second MCP server of the extension, `/debug`, registered as `vertex-debug` | once, below |
 
-The debugger runs on the system chosen with **VERTEX: Switch System** (or named in the chat),
-with the password VS Code keeps. A VS Code window with VERTEX has to stay open while it works.
+The debugger runs on the **active** system - the one chosen with **VERTEX: Switch System** or in
+the panel's system list - with the password VS Code keeps. Naming another system in a chat
+question does not move the debugger there; switch first. Switching while breakpoints or a
+stopped program are still on the old system is refused until `debug_stop` has removed them.
+A VS Code window with VERTEX has to stay open while it works.
 The standalone MCP server in `mcp/server.js` does not have it.
 
 **Claude Code or Codex**: run **VERTEX: Copy the MCP address for Claude Code or Codex** and

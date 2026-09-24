@@ -17,8 +17,8 @@ function host() {
         object_url: klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest",
         include, source, revision: "original-revision" };
     }
-    return { change_id: "id1", object_name: args.object_name, operation: "modify", object_type: "PROG",
-      original_source: "original", source: args.source };
+    return { change_id: "id1", object_name: args.object_name, operation: tool === "create_sap_object" ? "create" : "modify",
+      object_type: "PROG", include: "main", original_source: tool === "create_sap_object" ? "" : "REPORT ztest.", source: args.source };
   }, discard() {}, async dispose() {}, async apply(id, payload) { writes.push({ id, ...payload }); return { activated: true, revision: require('../sap-code').revision(payload.source) }; } };
   const vscode = {
     ViewColumn: { Active: -1, Beside: -2 },
@@ -27,6 +27,8 @@ function host() {
     FileType: { File: 1 }, FileChangeType: { Changed: 1 },
     FileSystemError: { FileNotFound: () => Error('not found'), NoPermissions: text => Error(text) },
     Hover: class { constructor(contents, range) { this.contents = contents; this.range = range; } },
+    Range: class { constructor(start, end) { this.start = start; this.end = end; } },
+    WorkspaceEdit: class { constructor() { this.replaced = []; } replace(uri, range, text) { this.replaced.push({ uri, text }); } },
     ConfigurationTarget: { Global: 1 },
     TextEditorSelectionChangeKind: { Mouse: 2 },
     commands: {
@@ -34,6 +36,10 @@ function host() {
       async executeCommand(...args) { diffs.push(args); }
     },
     workspace: {
+      async applyEdit(edit) {
+        edit.replaced.forEach(r => { documents.find(d => d.uri.toString() === r.uri.toString()).text = r.text; });
+        return true;
+      },
       registerTextDocumentContentProvider: () => ({ dispose() {} }),
       registerFileSystemProvider: (scheme, provider) => { fileProvider = provider; return { dispose() {} }; },
       async openTextDocument(value) {
@@ -83,9 +89,33 @@ function host() {
   return { tools, commands, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners, symbols,
     switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; } };
 }
-test("tool preparation opens diff, does not apply; UI applies edited text to the original system", async () => {
+test("an AI change goes into the object's tab unsaved; nothing reaches SAP until the user saves", async () => {
   const h = host();
-  await h.tools.execute("modify_sap_object", { object_name: "ZTEST", source: "draft" });
+  const result = await h.tools.execute("modify_sap_object", { object_name: "ZTEST", object_type: "PROG", source: "REPORT ztest. WRITE 'fixed'." });
+  assert.equal(result.changed_in_tab, true);
+  const tab = h.documents[0];
+  assert.equal(tab.uri.scheme, "vertex-sap");
+  assert.equal(tab.text, "REPORT ztest. WRITE 'fixed'.");
+  assert.equal(tab.isDirty, true);
+  // No draft, no diff, no review panel - and no write.
+  assert.equal(h.diffs.filter(d => d[0] === "vscode.diff").length, 0);
+  assert.equal(h.panels.length, 0);
+  assert.equal(h.writes.length, 0);
+  await h.commands.get("vertex.saveAndActivate")();
+  assert.equal(h.writes.length, 1);
+  assert.equal(h.writes[0].source, "REPORT ztest. WRITE 'fixed'.");
+});
+test("an AI change is refused while the tab holds edits SAP does not have", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "PROG" });
+  h.documents[0].text = "REPORT ztest. WRITE 'mine'.";
+  await assert.rejects(h.tools.execute("modify_sap_object", { object_name: "ZTEST", object_type: "PROG", source: "REPORT ztest. WRITE 'ai'." }),
+    /has changes that are not in SAP/);
+  assert.equal(h.documents[0].text, "REPORT ztest. WRITE 'mine'.");
+});
+test("a new object is prepared as a draft; the UI applies the edited draft to the original system", async () => {
+  const h = host();
+  await h.tools.execute("create_sap_object", { object_type: "PROG", object_name: "ZTEST", package: "$TMP", description: "x", source: "draft" });
   assert.equal(h.writes.length, 0);
   assert.equal(h.diffs[0][0], "vscode.diff");
   h.documents[1].text = "user edited draft";
@@ -125,7 +155,7 @@ test("SAP save failure preserves unsaved editor contents", async () => {
 });
 test("AI drafts use the same review and apply only from its save action", async () => {
   const h = host();
-  await h.tools.execute('modify_sap_object', { object_name: 'ZTEST', source: 'replacement' });
+  await h.tools.execute('create_sap_object', { object_type: 'PROG', object_name: 'ZTEST', package: '$TMP', description: 'x', source: 'replacement' });
   assert.match(h.panels[0].webview.html, /AI Code Change/);
   assert.equal(h.writes.length, 0);
   await h.panels[0].receive({ action: 'apply', approved: [0] });
@@ -178,7 +208,7 @@ test("declined review hunks stay dirty and are included in the next explicit sav
 });
 test("editing while the confirmation is open prevents applying unreviewed text", async () => {
   const h = host();
-  await h.tools.execute("modify_sap_object", { object_name: "ZTEST", source: "draft" });
+  await h.tools.execute("create_sap_object", { object_type: "PROG", object_name: "ZTEST", package: "$TMP", description: "x", source: "draft" });
   h.mutate();
   await h.commands.get("vertex.applyCodeDraft")();
   assert.equal(h.writes.length, 0);

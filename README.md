@@ -1,6 +1,6 @@
 # ABAP VERTEX Tools
 
-<img width="1672" height="941" alt="arch" src="https://github.com/user-attachments/assets/4df47383-e47d-4ed8-bd12-cef89e8b84a5" />
+![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](docs/architecture.jpg)
 
 
 
@@ -72,9 +72,11 @@ be installed and signed in — or by an Anthropic API key. **LLM Providers** sho
 with its models as one tree: a provider can be switched off whole, and each model on its own. Name a system in the question to reach it; a VERTEX Tools window keeps the
 system it was opened on. Ask *show ZCL_TR_TEXT_DATA* or
 *explain this method*: it searches and reads the source and opens it in an editable tab.
-Edits go through the **Code Change** reviewer — approve or decline each block, ask AI about
-one block, then **Save & Activate** writes only the approved blocks, with a syntax check and
-a conflict check against the current SAP source. Details:
+Asked to fix or change code, it writes the change into that tab, unsaved - as if you had typed
+it. You save it like your own edits: **Save & Activate**, or **Review & Activate** through the
+**Code Change** reviewer - approve or decline each block, ask AI about one block, and only the
+approved blocks are written, with a syntax check and a conflict check against the current SAP
+source. Nothing reaches SAP until you save. Details:
 [vscode/README.md](vscode/README.md#vertex-chat).
 
 ### Transport reviews over MCP

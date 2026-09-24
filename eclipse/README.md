@@ -1,5 +1,7 @@
 # Built-in Eclipse Assistant
 
+![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](../docs/architecture.jpg)
+
 The Selector and Versions Assistant panels launch Codex or Claude Code directly.
 Copilot is not involved. The existing standalone MCP registration is independent.
 

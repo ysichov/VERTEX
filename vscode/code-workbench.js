@@ -1206,8 +1206,33 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     if (tool === "open_sap_object") { return showSource(repo, args); }
     if (tool === "review_sap_changes") { return reviewActive(); }
     const result = await repo.api.execute(tool, args);
+    // A change to an existing object goes into its tab, unsaved, like an edit
+    // of the user's own; saving it - Save & Activate or Review & Activate - is
+    // the user's step. A new object has no tab yet and stays a draft.
+    if (result.change_id && result.operation === "modify") { return changeInTab(repo, result); }
     if (result.change_id) { await showDraft(repo, result); }
     return result;
+  }
+  async function changeInTab(repo, draft) {
+    repo.api.discard(draft.change_id);
+    const entry = await sourceDocument(repo, { object_type: draft.object_type,
+      object_name: draft.object_name, include: draft.include });
+    const document = entry.document;
+    const flat = text => String(text).replace(/\r\n/g, "\n");
+    // Unsaved edits in the tab that SAP does not have would be replaced by a
+    // change written against the SAP source: refused rather than lost.
+    if (flat(document.getText()) !== flat(draft.original_source)) {
+      throw new Error("The tab of " + draft.object_name + " has changes that are not in SAP. The change was not applied: "
+        + "save or undo them first, then ask again.");
+    }
+    const edit = new vscode.WorkspaceEdit();
+    const lines = document.getText().split(/\r?\n/);
+    edit.replace(document.uri, new vscode.Range(position(0, 0),
+      position(lines.length - 1, lines[lines.length - 1].length)), draft.source);
+    if (!await vscode.workspace.applyEdit(edit)) { throw new Error("VS Code did not apply the change to the tab of " + draft.object_name + "."); }
+    await vscode.window.showTextDocument(document, { preview: false });
+    return { changed_in_tab: true, object_name: draft.object_name, object_type: draft.object_type, include: draft.include,
+      system: repo.label, note: "The change is in the editor tab and not saved to SAP. The user saves it with Save & Activate or Review & Activate, or undoes it." };
   }
 }
 module.exports = { register };

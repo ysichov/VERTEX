@@ -690,6 +690,10 @@ async function withShownDiff(context, state) {
           + " ('-' removed, '+' added):\n" + lines.join("\n") } };
 }
 
+function systemKey(system) {
+  return JSON.stringify([system.name, system.url, system.client || "", system.user]);
+}
+
 /* The debugger an assistant drives through /debug: one per window, on the
    active system, with the password VS Code keeps. The listener runs on a
    stateless session; each stopped program gets a stateful one of its own. */
@@ -704,6 +708,8 @@ function debuggerFor(context) {
     ideId: id,
     terminalId: id,
     openUrl: url => vscode.env.openExternal(vscode.Uri.parse(url)),
+    // Which system is active now: a window's own, a chat's named one, or vertex.active.
+    current: () => { const chosen = active(); return chosen.error ? "" : systemKey(chosen.system); },
     connect: async function () {
       const chosen = active();
       if (chosen.error) { throw new Error(chosen.error); }
@@ -718,7 +724,7 @@ function debuggerFor(context) {
       };
       const listener = make();
       return {
-        system, user: String(system.user).toUpperCase(), listener,
+        key: systemKey(system), system, user: String(system.user).toUpperCase(), listener,
         open: async function () {
           const client = make();
           client.stateful = "stateful";

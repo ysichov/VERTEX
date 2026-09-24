@@ -33,7 +33,7 @@
   {
     "name": "modify_sap_object",
     "annotations": { "readOnlyHint": false, "destructiveHint": false },
-    "description": "Prepare a reviewed change to one source unit. Read first; pass its revision and complete replacement source. Does NOT write SAP. User applies from the draft editor.",
+    "description": "Change one source unit: the complete replacement source goes into its editor tab, unsaved. Read first; pass its revision. Does NOT write SAP - the user saves with Save & Activate or Review & Activate. Refused if the tab holds unsaved edits SAP does not have.",
     "inputSchema": { "type": "object", "additionalProperties": false, "required": ["object_type", "object_name", "base_revision", "source"], "properties": {
       "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC", "INTF"] },
       "object_name": { "type": "string" }, "base_revision": { "type": "string" },

@@ -1945,6 +1945,30 @@ no line that looks wrong. What goes wrong is what a statement silently does not 
 the code is slow and a stop in the right place is quick. The answer is deliberately not written
 in the program or in the user-facing documentation.
 
+Then a run meant for E19 opened WebGUI on QAS. The debugger connected once, on its first call, and
+kept that connection for the life of the window; the user had switched systems since. It now asks
+which system is active on every call and reconnects when that changed - unless breakpoints or a
+stopped program still live on the old one, which would be left behind there: that is refused with
+a pointer to `debug_stop`. A test for it caught a second slip - `setBreakpoint` added the line to
+its list before checking the system, so even after `debug_stop` the switch was refused.
+
+"Fix it" in the chat opened four windows: the draft, its review, the SAP source tab and a Tools
+window on the version diff. The last two were the navigation instructions at work - an editing
+request was told to open an editable tab, and the model added a diff view on top. Both showed the
+old source, the one with the bug, next to the fix. The first guess here removed the draft's diff
+editor instead, which was not what the user meant, and was undone. The instructions now say a fix
+goes through `modify_sap_object` alone, with no tab and no navigation.
+
+That still left the draft itself, and the user put the finger on it: the review belongs to saving,
+not to the change. A draft was a second, untitled document with no VERTEX menu, whose close asked
+to save it to a local file, while the real tab went on showing the source with the bug. Now a
+change to an existing object is written into that object's tab through a WorkspaceEdit - unsaved,
+undoable - and the repository's draft is discarded at once. Saving is the user's: the tab's Save &
+Activate or Review & Activate, the same as for edits of their own. The one guard: a tab with edits
+SAP does not have is not overwritten - the change is refused with a sentence saying why, since it
+was written against the SAP source and would silently undo the user's work. Creation keeps the
+draft, having no tab to write into.
+
 
 ---
 

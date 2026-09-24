@@ -49,7 +49,7 @@ function plain(v) {
   return "<" + v.META_TYPE + (v.ACTUAL_TYPE_NAME ? " " + v.ACTUAL_TYPE_NAME : "") + ">";
 }
 
-function create({ connect, openUrl, ideId, terminalId }) {
+function create({ connect, current, openUrl, ideId, terminalId }) {
   let listening = false, stopListening = false;
   let session = null;          // { client, debuggee, busy }
   let stopped = null;          // the stop waiting for the assistant
@@ -62,7 +62,19 @@ function create({ connect, openUrl, ideId, terminalId }) {
   let numbered = 0, answers = { calls: 0, chars: 0 };
   let sap = null;              // { system, user, listener, open }
 
+  /* The system the debugger works on is the one active now - chosen with
+     Switch System or named in the chat - not the one of the first call. A
+     change while breakpoints or a stopped program still live on the old one
+     is refused: they would be left behind there. */
   async function system() {
+    const wanted = current ? current() : "";
+    if (sap && wanted && sap.key !== wanted) {
+      if (session || breakpoints.length || listening) {
+        throw new Error("Debugging is still going on " + sap.system.name
+          + ". Call debug_stop first - it removes the breakpoints there - then start again on the other system.");
+      }
+      sap = null;
+    }
     if (!sap) { sap = await connect(); }
     return sap;
   }
@@ -73,8 +85,8 @@ function create({ connect, openUrl, ideId, terminalId }) {
   /* SAP keeps the whole set of this IDE's breakpoints: every change sends
      the full list. A condition is attached in a second round, as ABAP FS and
      Eclipse do - the line has to exist on the server before it can carry one. */
-  async function sync() {
-    const { listener, user } = await system();
+  async function sync(on) {
+    const { listener, user } = on || await system();
     const wanted = breakpoints.map(b => b.url + "#start=" + b.line);
     let answer = await listener.debuggerSetBreakpoints("user", terminalId, ideId, "vertex", wanted, user, "external");
     const placed = answer.filter(a => a.uri);
@@ -96,6 +108,7 @@ function create({ connect, openUrl, ideId, terminalId }) {
     if (!name || !(Number(line) > 0)) { throw new Error("A breakpoint needs the object's name and a line number."); }
     if (mode && mode !== "stop" && mode !== "log") { throw new Error('mode is "stop" or "log".'); }
     const url = sourceUrl(object_type, name);
+    await system();                  // the system is settled before the list changes
     const existing = breakpoints.find(b => b.url === url && b.line === Number(line));
     const entry = existing || { id: "bp" + (++numbered), objectType: String(object_type || "PROG").toUpperCase(),
       name: String(name).toUpperCase(), url, line: Number(line) };
@@ -351,7 +364,7 @@ function create({ connect, openUrl, ideId, terminalId }) {
       const { listener, user } = sap;
       await listener.debuggerDeleteListener("user", terminalId, ideId, user).catch(() => {});
       breakpoints.length = 0;
-      await sync().catch(() => {});
+      await sync(sap).catch(() => {});
     }
     listening = false;
   }

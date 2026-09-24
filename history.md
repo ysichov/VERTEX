@@ -21,6 +21,13 @@
 - The VERTEX chat has the debugger with no setup, and waits up to ten minutes for an answer that
   uses SAP tools. Claude Code and Codex connect to it as `vertex-debug`: **VERTEX: Copy the MCP
   address** has a debugger entry for each.
+- The debugger works on the active system and follows a switch; a switch while breakpoints or a
+  stopped program are still on the old system is refused until `debug_stop`. Before, it kept the
+  system of its first call, and WebGUI opened on QAS after the user had switched to E19.
+- A change the chat makes goes into the object's tab, unsaved, as if typed there; it is saved
+  like any edit - Save & Activate or Review & Activate - or undone. No separate draft and review
+  open any more, and no Tools window or old source beside it. Refused while the tab holds edits
+  SAP does not have. A new object still opens as a draft.
 - `Z_VX_DEBUGGER_TEST` in `src/`: a one-screen invoice that prints the wrong total, with a bug no
   single line shows - something to try the debugger on. Pull `src/` to get it.
 
