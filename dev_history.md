@@ -2152,6 +2152,14 @@ it as a plain statement, and no point was set on it. `CREATE` is a call now; its
 class after `TYPE`, or ? where the reference's type decides - and CREATE DATA, which runs
 nothing, is stepped over.
 
+The same run showed the other half: `CHECK zcl_sde_sql=>exist_table( gv_tname ) = 1.` is a flow
+statement to the map, and Flow set points only on call statements, so the method it calls was
+never entered. A statement's kind says where the program may go next; whether it calls
+something is a separate question. The map now answers it on its own (`calls`), with the owners
+of the calls for any statement that has them. Flow stops at every statement with a call that
+may enter Z/Y code; the F6 prediction stays with call statements alone - after `IF cl=>x( )`
+the condition, not the text, decides the next line.
+
 
 ---
 

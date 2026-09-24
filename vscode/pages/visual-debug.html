@@ -12,6 +12,9 @@ button{--accent:var(--vscode-focusBorder,#0a66c2);cursor:pointer;padding:1px 8px
 button:hover:not(:disabled){color:var(--vscode-editor-foreground,CanvasText)}
 button.on{color:var(--vscode-editor-foreground,CanvasText);border-bottom-color:var(--accent);box-shadow:0 3px 8px -3px var(--accent)}
 button:disabled{opacity:.45;cursor:default}
+/* The two that end something - the program or the whole session - stand out. */
+#terminate,#stop{color:var(--vscode-errorForeground,#c72e0f);--accent:var(--vscode-errorForeground,#c72e0f)}
+#terminate:hover:not(:disabled),#stop:hover:not(:disabled){color:var(--vscode-errorForeground,#c72e0f);border-bottom-color:var(--accent)}
 header{flex:none;padding:6px 8px;border-bottom:1px solid var(--vscode-panel-border,GrayText);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 #title{font-weight:600;margin-right:6px}
 #program{width:150px;font-family:var(--vscode-editor-font-family,monospace)}
@@ -432,7 +435,11 @@ function loopExit(f,map){
 /* A statement whose every call the map could place goes outside Z/Y code -
    a standard function module, class or builtin, never ? (unknown). */
 function outside(st){
-  if(!st||st.kind!=="call"||st.owners==null)return false;
+  return !!st&&st.kind==="call"&&ownersOutside(st);
+}
+/* Every call the map could place goes outside Z/Y - whatever the statement. */
+function ownersOutside(st){
+  if(!st||st.owners==null)return false;
   var list=String(st.owners).split(",").filter(Boolean);
   return list.indexOf("?")<0&&list.every(function(o){return !customer(o);});
 }
@@ -609,7 +616,14 @@ function record(frames){
   for(var i=Math.max(same,1);i<path.length;i++)note(path[i-1],path[i]);
   flowPath=path;
 }
-function callable(st){return !!st&&st.kind==="call"&&!outside(st)&&!/^(MESSAGE|LEAVE|SET|COMMIT|ROLLBACK)$/.test(st.kw);}
+/* A statement a flow run stops at: one with a call inside that may enter
+   Z/Y code - CHECK x=>y( ), IF lo->m( ) and CREATE OBJECT as much as a
+   plain call. A map from before CALLS knew only the kind. */
+function callable(st){
+  if(!st||/^(MESSAGE|LEAVE|SET|COMMIT|ROLLBACK)$/.test(st.kw))return false;
+  var calls=st.calls===undefined?st.kind==="call":st.calls===true;
+  return calls&&!ownersOutside(st);
+}
 /* The statements of the routine a statement is in, its end included. */
 function routine(list,at){
   var a=at,b=at;
@@ -947,9 +961,13 @@ function sdeDebugEvent(raw){if(series)return;try{apply(JSON.parse(raw));}catch(e
 /* ---------- the window's parts list: jump to the unit in the object ---------- */
 function sdeSelectPart(part){
   if(!part||!part.key)return;
-  var key=String(part.key).toUpperCase(),re=new RegExp("^\\s*(?:METHOD|FORM|MODULE|FUNCTION)\\s+"+key.replace(/[\\^$.*+?()[\]{}|\/]/g,"\\$&")+"\\b","i");
+  var key=String(part.key).toUpperCase().replace(/\s+/g," ").trim(),re=new RegExp("^\\s*(?:METHOD|FORM|MODULE|FUNCTION)\\s+"+key.replace(/[\\^$.*+?()[\]{}|\/]/g,"\\$&")+"\\b","i");
+  // An event is its statement as written, compared as View source compares
+  // it: without a comment, the closing period or extra blanks.
+  var bare=function(text){return String(text).replace(/".*$/,"").trim().replace(/\.$/,"").replace(/\s+/g," ").trim().toUpperCase();};
   show(object.url,object.name).then(function(){
-    for(var i=0;i<shown.lines.length;i++){if(re.test(shown.lines[i])||String(shown.lines[i]).trim().toUpperCase().replace(/\.$/,"")===key){scrollTo(i+1);return;}}
+    for(var i=0;i<shown.lines.length;i++){if(re.test(shown.lines[i])||bare(shown.lines[i])===key){scrollTo(i+1);return;}}
+    notice("Not found in the source: "+part.key);
   }).catch(failed);
 }
 /* What the assistant is told this window shows. */

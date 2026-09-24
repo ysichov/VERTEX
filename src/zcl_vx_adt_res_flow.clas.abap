@@ -47,6 +47,9 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              kind   TYPE string,
              target TYPE string,
              owners TYPE string,
+             " A call inside the statement whatever its kind: CHECK x=>y( ),
+             " IF lo->m( ), CREATE OBJECT. A flow run stops at each of them.
+             calls  TYPE abap_bool,
            END OF ty_statement,
            ty_statements TYPE STANDARD TABLE OF ty_statement WITH EMPTY KEY,
            BEGIN OF ty_include,
@@ -491,10 +494,20 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
               ENDIF.
           ENDCASE.
         ENDIF.
-        IF ls_statement-kind = `call`.
-          ls_statement-owners = owners( it_tok  = words( io_scan = ls_prog-scan
-                                                         is_kw   = ls_kw )
-                                        i_class = lv_class ).
+        IF ls_statement-kind <> `decl`.
+          DATA(lt_all) = words( io_scan = ls_prog-scan
+                                is_kw   = ls_kw ).
+          ls_statement-calls = xsdbool( ls_statement-kind = `call` ).
+          LOOP AT lt_all INTO DATA(lv_word).
+            IF lv_word CP '*(' OR lv_word CS '->' OR lv_word CS '=>'.
+              ls_statement-calls = abap_true.
+              EXIT.
+            ENDIF.
+          ENDLOOP.
+          IF ls_statement-calls = abap_true.
+            ls_statement-owners = owners( it_tok  = lt_all
+                                          i_class = lv_class ).
+          ENDIF.
         ENDIF.
         APPEND ls_statement TO ls_include-statements.
       ENDLOOP.
