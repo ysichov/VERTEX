@@ -55,6 +55,13 @@ reads from inside one.
 
 ## The VS Code extension
 
+To run the copy in `vscode/` from source, run `npm ci` there once, open that folder in VS Code and
+press F5. `vscode:prepublish` copies the pages in from the Eclipse plugin when the package is
+made, and a checkout reads them across the repository. **Do not** install it by making a junction
+into `%USERPROFILE%\.vscode\extensions` — a folder not named `publisher.name-version` is loaded on
+every scan and cannot be uninstalled, which is a trap worth naming because this project fell into
+it.
+
 `vscode/` uses the pinned `abap-adt-api` production dependency for SAP source
 operations. Install the lockfile with `npm ci` from `vscode/` before testing or
 packaging. Do not call `vsce` directly and never pass `--no-dependencies`: the

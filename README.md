@@ -14,6 +14,9 @@ The Eclipse address is pasted into **Help → Install New Software → Add → L
 getting back out when a p2 install goes wrong, are in [INSTALL.md](INSTALL.md). Building either half
 from this repository instead: [BUILD.md](BUILD.md).
 
+In Eclipse, VERTEX opens from **Window → Show View → Other… → VERTEX**, or right-click an object
+in the Project Explorer → **VERTEX**.
+
 
 VERTEX is a new set of plugins for VS Code and Eclipse ADT: an **AI Assistant** with MCP, an
 **Enhanced Code Editor**, an **AI-driven ADT debugger**, and the **Version**, **Code** and **Data**
@@ -89,13 +92,6 @@ it. You save it like your own edits: **Save & Activate**, or **Review & Activate
 approved blocks are written, with a syntax check and a conflict check against the current SAP
 source. Nothing reaches SAP until you save. Details:
 [vscode/README.md](vscode/README.md#vertex-chat).
-
-A class or program tab runs its ABAP Unit tests with Ctrl+Shift+F10, as in Eclipse; the results
-appear in VS Code's Test Explorer, a failure linked to its line. Ctrl+Shift+F2 runs the ATC check
-with the system's default variant and puts the findings in the Problems view. Shift+F12 shows
-where the name under the cursor is used, and F1 opens SAP's ABAP keyword documentation.
-View source has **Run Unit Tests** and **Run ATC Check** beside Open in the Editor, and a click on
-the object's name above Parts shows its whole source again.
 
 ### Transport reviews over MCP
 
@@ -187,40 +183,7 @@ no other MCP server and no shell. In Eclipse, the same runtime runs through
 Node.js and uses the window's ADT session. Configure executable paths in
 **Window > Preferences > VERTEX Assistant**; see [Eclipse Assistant setup](eclipse/README.md).
 
-## Installing it in Eclipse
-
-Installing, and getting back out when a p2 install goes wrong: **[INSTALL.md](INSTALL.md)**.
-Read it before the first install into an Eclipse you care about.
-
-**Help → Install New Software → Add → Location**, and this address:
-
-```
-https://ysichov.github.io/VERTEX/
-```
-
-The category **ABAP VERTEX Tools** appears, with the feature under it and its sources beside
-it. ADT has to be installed first: the feature declares the SAP bundles as prerequisites
-rather than shipping them, so p2 refuses the install on an Eclipse without ADT instead of
-leaving a plugin that cannot resolve.
-
-Then **Window → Show View → Other… → VERTEX**, or right-click an object in the Project
-Explorer → **VERTEX**.
-
-
-Building the update site and the VS Code package: **[BUILD.md](BUILD.md)**.
-
 ## In VS Code
-
-Published as
-[**YuriiSychov.vertex-abap**](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap):
-install it from the Extensions view and there is nothing to build.
-
-To run the copy in `vscode/` instead, open that folder in VS Code and press F5. It has no
-dependencies and no build step; `vscode:prepublish` copies the pages in from the Eclipse plugin
-when the package is made, and a checkout reads them across the repository. **Do not** install it
-by making a junction into `%USERPROFILE%\.vscode\extensions` — a folder not named
-`publisher.name-version` is loaded on every scan and cannot be uninstalled, which is a trap worth
-naming because this project fell into it.
 
 It needs the connection Eclipse inherits from the ABAP project. There is no project here, so the
 systems are a list and one of them is active:
@@ -270,6 +233,12 @@ function module in its own source. **VERTEX: Back** (`Alt+Left`) returns along t
   forms and modules.
 - Double-click `IF` / `CASE` to jump to its end; Ctrl+click walks the `ELSEIF` / `ELSE` / `WHEN`
   branches.
+- Ctrl+Shift+F10 runs a class's or program's ABAP Unit tests, as in Eclipse; the results appear in
+  VS Code's Test Explorer, a failure linked to its line.
+- Ctrl+Shift+F2 runs the ATC check with the system's default variant and puts the findings in the
+  Problems view, underlined in the tab. A function module is checked through its function group.
+- Shift+F12 (peek) or Shift+Alt+F12 (list) shows where the name under the cursor is used.
+- F1 opens SAP's ABAP keyword documentation for the statement under the cursor.
   External classes and function modules open as source documents; **Back** returns through every
   VERTEX drill-down location.
 
@@ -278,8 +247,9 @@ read-only, contextual overview inside VERTEX: class methods are grouped into the
 `CPUB` / `CPRO` / `CPRI` Parts table and carry the same SE80-style visibility markers as Diff.
 One click opens a method body; double-clicking a method toggles its declaration and body;
 double-clicking a section positions the declaration. A program always remains complete on screen:
-its Parts list only positions to events, forms and local-class implementations. **Back** restores
-the preceding source location. Chat context follows the active function: a source view sends a
+its Parts list only positions to events, forms and local-class implementations. A click on the
+object's name above Parts shows the whole source again. **Back** restores the preceding source
+location. **Run Unit Tests** and **Run ATC Check** sit beside **Open in the Editor**. Chat context follows the active function: a source view sends a
 selected fragment and method signature, while UML sends its diagram nodes and relationships. A
 redefinition is resolved through its inheritance chain.
 
