@@ -336,6 +336,11 @@ async function fetch(context, requestPath, body) {
     }
   }
 
+  // ADT's quick search answers in XML only; the VERTEX resources in JSON.
+  if (!body && requestPath.startsWith("/sap/bc/adt/repository/informationsystem/search?")) {
+    extra = { headers: { Accept: "application/xml" } };
+  }
+
   let response;
   try {
     response = await request(system, pw, withClient(system, requestPath), extra);

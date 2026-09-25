@@ -50,6 +50,10 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              " A call inside the statement whatever its kind: CHECK x=>y( ),
              " IF lo->m( ), CREATE OBJECT. A flow run stops at each of them.
              calls  TYPE abap_bool,
+             " The calls themselves, comma-separated: CLASS=>METHOD (?=>METHOD
+             " where ACE could not tell the class), PROGRAM FORM NAME, or the
+             " function module's name - so a call stepped over is named too.
+             callees TYPE string,
            END OF ty_statement,
            ty_statements TYPE STANDARD TABLE OF ty_statement WITH EMPTY KEY,
            BEGIN OF ty_include,
@@ -92,6 +96,10 @@ CLASS zcl_vx_adt_res_flow DEFINITION
     " FORM, the name of a function module. The window steps over a statement
     " whose calls all go outside Z/Y code, and stops a flow run at the others.
     METHODS owners
+      IMPORTING it_calls  TYPE zif_vx_ace_parse_data=>tt_calls
+                i_program TYPE program
+      RETURNING VALUE(r)  TYPE string.
+    METHODS callees
       IMPORTING it_calls  TYPE zif_vx_ace_parse_data=>tt_calls
                 i_program TYPE program
       RETURNING VALUE(r)  TYPE string.
@@ -511,6 +519,8 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
             ls_statement-calls  = abap_true.
             ls_statement-owners = owners( it_calls  = ls_kw-tt_calls
                                           i_program = i_program ).
+            ls_statement-callees = callees( it_calls  = ls_kw-tt_calls
+                                            i_program = i_program ).
           ELSEIF ls_statement-kind = `call`.
             " A call ACE does not name - SUBMIT, CALL SCREEN, a dynamic call:
             " where it leads is not known.
@@ -539,6 +549,24 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
     r = concat_lines_of( table = lt_owner sep = `,` ).
+  ENDMETHOD.
+
+
+  METHOD callees.
+    DATA lt_callee TYPE string_table.
+    LOOP AT it_calls INTO DATA(ls_call).
+      DATA(lv_callee) = SWITCH string( ls_call-event
+        WHEN 'METHOD'   THEN COND #( WHEN ls_call-class IS INITIAL THEN `?` ELSE to_upper( ls_call-class ) )
+                             && `=>` && to_upper( ls_call-name )
+        WHEN 'FORM'     THEN |{ i_program } FORM { to_upper( ls_call-name ) }|
+        WHEN 'FUNCTION' THEN to_upper( ls_call-name )
+        ELSE `?` ).
+      READ TABLE lt_callee WITH KEY table_line = lv_callee TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        APPEND lv_callee TO lt_callee.
+      ENDIF.
+    ENDLOOP.
+    r = concat_lines_of( table = lt_callee sep = `,` ).
   ENDMETHOD.
 
 

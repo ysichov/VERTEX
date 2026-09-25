@@ -18,7 +18,9 @@ function allowed(resource, body) {
   if (typeof resource !== "string" || /[\\#]/.test(resource) || /\.\.|%2e|%5c/i.test(resource)) return false;
   return body != null
     ? /^\/sap\/bc\/adt\/vertex\/(review|prepare)\/[^?]+(?:\?.*)?$/.test(resource)
-    : /^\/sap\/bc\/adt\/vertex\/(about|requests|(?:table|join|metrics|flow|class|package|versions|review|prepare)\/[^?]+)(?:\?.*)?$/.test(resource);
+    : /^\/sap\/bc\/adt\/vertex\/(about|requests|(?:table|join|metrics|flow|class|package|versions|review|prepare)\/[^?]+)(?:\?.*)?$/.test(resource)
+      // The object field's mask search: ADT's quick search, read only.
+      || /^\/sap\/bc\/adt\/repository\/informationsystem\/search\?operation=quickSearch&maxResults=\d{1,3}&objectType=[A-Z]{4}%2F[A-Z]{1,2}&query=[A-Z0-9_%*+$]{1,80}$/.test(resource);
 }
 /* What the Visual Debug page may ask of the debugger - no more: it reads,
    sets breakpoints, steps and starts a run, as the debug_* tools do. */
@@ -39,6 +41,7 @@ async function debugCommand(dbg, command, a, fetchVertex) {
       return { id: bp.id };
     }
     case "clear": await dbg.clearBreakpoints(a.id); return {};
+    case "activate": await dbg.activateBreakpoints(a.id, a.active !== false); return {};
     case "step": return (await dbg.advance(a.kind, a.quick === true, a.expect)) || {};
     case "vars": return { variables: await dbg.variables(a.names) };
     case "frame": await dbg.frame(a.n); return {};
@@ -48,6 +51,7 @@ async function debugCommand(dbg, command, a, fetchVertex) {
     case "value": return dbg.read(a.name, 1, 5);
     case "run": return { url: await dbg.run(a.program, a.test) };
     case "stop": await dbg.stop(); return {};
+    case "detach": await dbg.detach(); return {};
     case "terminate": await dbg.terminate(); return {};
     case "settle": return { settled: await dbg.settle() };
     case "runTo": return dbg.runTo(a.url, a.lines || a.line);
@@ -129,6 +133,11 @@ function open(vscode, context, deps, initial) {
         try { await deps.openEditor({object_name:String(args[0]),object_type:args[1]}); }
         catch(error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
         return;
+      }
+      if(message.call === "debug" && args[0] === "copy") {
+        // The step log to the clipboard, through VS Code rather than the page.
+        await vscode.env.clipboard.writeText(String(JSON.parse(args[1]||"{}").text||""));
+        await panel.webview.postMessage({type:"result",payload:"{}"}); return;
       }
       if(message.call === "debug") {
         const payload=JSON.stringify(await debugCommand(deps.debugger,String(args[0]),JSON.parse(args[1]||"{}"),

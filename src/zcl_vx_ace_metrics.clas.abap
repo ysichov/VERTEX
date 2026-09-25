@@ -606,6 +606,45 @@ CLASS ZCL_VX_ACE_METRICS IMPLEMENTATION.
 
     ENDLOOP.
 
+    " A report with no event, form, module or method anywhere runs its code
+    " as the implicit START-OF-SELECTION. The main source is then that one
+    " unit, from the statement after REPORT to the last - otherwise such a
+    " program has nothing to measure or to draw. A pool always has units in
+    " its other includes, so it never gets here.
+    IF rt_boundaries IS INITIAL AND is_prog-include = is_prog-program.
+      DATA(lv_has_units) = abap_false.
+      LOOP AT is_parse_data-t_events TRANSPORTING NO FIELDS
+        WHERE program = is_prog-program AND stmnt_from > 0.
+        lv_has_units = abap_true.
+        EXIT.
+      ENDLOOP.
+      LOOP AT is_parse_data-tt_calls_line TRANSPORTING NO FIELDS
+        WHERE program = is_prog-program
+          AND index   > 0
+          AND ( eventtype = 'METHOD' OR eventtype = 'FORM'
+             OR eventtype = 'MODULE' OR eventtype = 'FUNCTION' ).
+        lv_has_units = abap_true.
+        EXIT.
+      ENDLOOP.
+      IF lv_has_units = abap_false.
+        DATA(lv_first) = 1.
+        READ TABLE lo_scan->statements INDEX 1 INTO DATA(ls_first).
+        IF sy-subrc = 0 AND ls_first-from > 0.
+          READ TABLE lo_scan->tokens INDEX ls_first-from INTO DATA(ls_first_tok).
+          IF sy-subrc = 0 AND ( to_upper( ls_first_tok-str ) = 'REPORT' OR to_upper( ls_first_tok-str ) = 'PROGRAM' ).
+            lv_first = 2.
+          ENDIF.
+        ENDIF.
+        IF lines( lo_scan->statements ) >= lv_first.
+          INSERT VALUE ts_unit_boundary( stmt_from = lv_first
+                                         stmt_to   = lines( lo_scan->statements )
+                                         unit_type = 'EVENT'
+                                         unit_name = 'START-OF-SELECTION'
+                                         class     = '' ) INTO TABLE rt_boundaries.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
     " The source lines the two statements sit on. The scan holds a row per
     " token, so the unit starts where its opening statement's first token is
     " and ends where the closing statement's last one is. The qualified name

@@ -209,7 +209,7 @@ test("nothing is read or stepped without a stopped program", async () => {
 
 test("a run opens WebGUI on the system, and needs a breakpoint first", async () => {
   const { dbg, opened } = fakeSap();
-  await assert.rejects(dbg.run("Z_CALC"), /Set a breakpoint/);
+  await assert.rejects(dbg.run("Z_CALC"), /Set or activate a breakpoint/);
   await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
   await dbg.run("z_calc");
   assert.match(opened[0], /^https:\/\/sap\.example:44300\/sap\/bc\/gui\/sap\/its\/webgui\?~transaction=/);
@@ -225,6 +225,28 @@ test("stop removes every breakpoint and the listener", async () => {
   assert.deepEqual(sent.at(-1), []);
   assert.ok(calls.includes("deleteListener"));
   assert.equal(dbg.status().listening, false);
+});
+
+test("a deactivated breakpoint stays in the list and leaves SAP; activated, it goes back", async () => {
+  const { dbg, sent } = fakeSap();
+  const bp = await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await dbg.activateBreakpoints(bp.id, false);
+  assert.deepEqual(sent.at(-1), []);
+  assert.equal(dbg.picture().breakpoints[0].active, false);
+  assert.equal(dbg.status().breakpoints[0].inactive, true);
+  await dbg.activateBreakpoints(undefined, true);
+  assert.equal(sent.at(-1).length, 1);
+  assert.equal(dbg.picture().breakpoints[0].active, true);
+});
+
+test("detach lets go and stops listening, but keeps the breakpoints for the next run", async () => {
+  const { dbg, sent, calls } = fakeSap();
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await dbg.detach();
+  assert.deepEqual(sent.at(-1), []);
+  assert.ok(calls.includes("deleteListener"));
+  assert.equal(dbg.status().listening, false);
+  assert.equal(dbg.picture().breakpoints.length, 1);
 });
 
 test("the /debug set answers initialize with its instructions and lists only debug tools", async () => {

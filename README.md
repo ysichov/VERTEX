@@ -15,9 +15,13 @@ getting back out when a p2 install goes wrong, are in [INSTALL.md](INSTALL.md). 
 from this repository instead: [BUILD.md](BUILD.md).
 
 
-ABAP **Version**, **Code** and **Data** Explorer — three words, three SAP GUI tools, one front end
-in ABAP Development Tools. Each view reads over the developer's existing ADT connection and
+VERTEX is a new set of plugins for VS Code and Eclipse ADT: an **AI Assistant** with MCP, an
+**Enhanced Code Editor**, an **AI-driven ADT debugger**, and the **Version**, **Code** and **Data**
+Explorers — three words, three tools that grew out of SAP GUI programs. The code editor and the
+debugger are VS Code features. Each view reads over the developer's existing ADT connection and
 renders as HTML.
+
+The three explorers:
 
 | Word | Comes from | What it does | In VERTEX | Status |
 |---|---|---|---|---|
@@ -26,6 +30,13 @@ renders as HTML.
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit |
 
 Status: **early**. All three answer, and each is a fraction of what it was cut from.
+
+Two more earlier projects gave VERTEX their principles and functions, not their code:
+[Smart Debugger](https://github.com/ysichov/Smart-Debugger), whose picture of a stopped program —
+source, stack, every variable at once — is drawn here from ADT as Visual Debug, and
+[ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code), whose AI-assisted editing with a
+block-by-block review before Save & Activate is now the Code Change reviewer. Like the three above,
+they are not developed further.
 
 Nothing but this repository's `src/` has to be installed. The table, the join and the pivot were
 carried out of Simple Data Explorer, the flow and the metrics out of ACE, and the version history,
@@ -139,7 +150,9 @@ on the ABAP side - only SAP's standard ADT services, the debug authorisation and
 Tools window: the source with breakpoints set by a click, where the program stands, the stack,
 every variable at once in a tree, and tables in grids - the picture of
 [Smart Debugger](https://github.com/ysichov/Smart-Debugger), drawn from ADT. It is one session
-with the assistant's: what either of them does, the other sees.
+with the assistant's: what either of them does, the other sees. Since 0.7.5 a Flow or Rec run
+is also drawn as a top-down chart of the calls and can be replayed stop by stop, with the source
+line, the running block, the stack and the values moving together.
 [Details](vscode/README.md#visual-debug-the-debugger-on-screen-pilot).
 
 ### Development status

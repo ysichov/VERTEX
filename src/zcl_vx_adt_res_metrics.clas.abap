@@ -117,7 +117,8 @@ CLASS zcl_vx_adt_res_metrics IMPLEMENTATION.
     zcl_vx_ace_source=>resolve( EXPORTING i_name     = lv_name
                                            i_type     = lv_type
                                  IMPORTING ev_type    = lv_head
-                                           ev_program = lv_program ).
+                                           ev_program = lv_program
+                                           ev_include = DATA(lv_fm_include) ).
 
     DATA(ls_source) = zcl_vx_ace_source=>parse( lv_program ).
 
@@ -125,6 +126,10 @@ CLASS zcl_vx_adt_res_metrics IMPLEMENTATION.
                                                   i_program     = lv_program ).
 
     LOOP AT ls_result-units ASSIGNING FIELD-SYMBOL(<ls_u>).
+      " A function module is one include of its group: its own units only.
+      IF lv_fm_include IS NOT INITIAL AND to_upper( <ls_u>-include ) <> lv_fm_include.
+        CONTINUE.
+      ENDIF.
       DATA(lv_visibility) = CONV string( `` ).
       IF <ls_u>-unit_type = 'METHOD'.
         DATA(lv_method_name) = CONV string( <ls_u>-unit_name ).

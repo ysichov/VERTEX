@@ -19,7 +19,12 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 header{display:flex;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #8886;align-items:center}
 input,select,button{font:inherit;padding:5px;color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e));border:1px solid #8888}
 select option{color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e))}
-#object-field{position:relative;flex:1;min-width:150px}
+#object-field{position:relative;flex:0 1 380px;min-width:150px}
+#object-matches{display:none;position:absolute;left:0;right:0;top:100%;z-index:20;max-height:320px;overflow:auto;background:var(--vscode-editorSuggestWidget-background,var(--vscode-input-background,Canvas));border:1px solid var(--vscode-editorSuggestWidget-border,#8888)}
+#object-matches.on{display:block}
+#object-matches div{padding:3px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#object-matches div.sel,#object-matches div:hover{color:var(--vscode-list-activeSelectionForeground,HighlightText);background:var(--vscode-list-activeSelectionBackground,Highlight)}
+#object-matches small{opacity:.7;margin-left:8px}
 #find-requests{display:none;position:absolute;right:1px;top:1px;bottom:1px;width:30px;padding:5px;border:0;background:transparent;cursor:pointer}
 #find-requests:hover{background:var(--vscode-toolbar-hoverBackground,#8883)}
 #find-requests:focus-visible{outline:1px solid var(--vscode-focusBorder,Highlight);outline-offset:-2px}
@@ -64,7 +69,7 @@ dialog label{display:block;margin:8px 0}
 <button id="chat-toggle" title="Show or hide the assistant" aria-expanded="false">Ask AI</button>
 <button id="back" title="Back to the previous VERTEX source" hidden>← Back</button>
 <select id="object-type" aria-label="Object type"></select>
-<div id="object-field"><input id="object-name" placeholder="Object name" aria-label="Object name" title="Enter an object name and press Enter" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/></svg></button></div>
+<div id="object-field"><input id="object-name" placeholder="Object name or mask: Z_VX*" aria-label="Object name" title="Enter an object name and press Enter; a name with * or + lists what matches" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/></svg></button><div id="object-matches" role="listbox"></div></div>
 <select id="function" aria-label="Function"></select>
 </header><div id="notice" role="status"></div><div id="work"><aside id="tparts" aria-label="Parts"></aside><div id="tsplit" title="Drag to resize the parts"></div><div id="results" aria-label="Function result"></div></div></main>
 <dialog id="request-dialog"><form method="dialog"><strong>Find transport requests</strong>
@@ -120,7 +125,7 @@ backButton.onclick=()=>{const previous=navigation.pop();if(previous)navigate(pre
 // Which objects have parts, and which functions show the window's list.
 // Diff keeps its own: parts and the versions under them are one column there,
 // AVE's layout. It is still told which part is chosen, and tells back.
-const PART_TYPES=["CLAS","INTF","PROG","INCL"];
+const PART_TYPES=["CLAS","INTF","PROG","INCL","FUNC"];
 const PART_ACTIONS=["view","vdebug","scheme","flow","metrics","uml"];
 let partsFor="",partsList=[],selectedPart=null,partsFolded=false;
 
@@ -214,7 +219,8 @@ function loadParts(state,then){
   const box=document.getElementById("tparts");
   // Read for every function of an object that has parts - Diff too, which
   // hides the list but still reports and follows the choice.
-  box.classList.toggle("shown",showsParts(state));
+  // A function module shows the list only when it has local FORMs after it.
+  box.classList.toggle("shown",showsParts(state)&&String(state.type).toUpperCase()!=="FUNC");
   if(!PART_TYPES.includes(String(state.type||"").toUpperCase())||!state.name){then();return;}
   if(partsFor===identity){then();return;}
   partsFor=identity;partsList=[];selectedPart=null;renderTools();
@@ -228,6 +234,7 @@ function loadParts(state,then){
       const data=JSON.parse(raw);
       partsList=klass?classParts(data):programParts(data);
     }catch(e){partsList=[];notice("The parts could not be read: "+e.message);}
+    if(String(state.type).toUpperCase()==="FUNC")box.classList.toggle("shown",showsParts(state)&&partsList.some(r=>r.part&&r.part.type==="FORM"));
     if(pendingPart){const row=partsList.find(r=>r.part&&r.part.key===pendingPart);if(row)selectedPart=row.part;pendingPart="";}
     renderTools();then();
   },()=>partsFor===identity);
@@ -429,7 +436,53 @@ function sdeAssistant(raw){
 typeBox.onchange=()=>{current=VertexObjects.normalize({type:typeBox.value,name:nameBox.value});fields();};
 findButton.onclick=()=>requestDialog.showModal();
 document.getElementById("request-find").onclick=()=>{findRequests();};
-nameBox.onkeydown=e=>{if(e.key==="Enter")run();};
+/* A name with * or +: ADT's quick search lists what matches, of the chosen
+   type; a pick fills the name and runs. A request number has its own finder. */
+const ADT_TYPES={TABL:"TABL/DT",CLAS:"CLAS/OC",INTF:"INTF/OI",PROG:"PROG/P",INCL:"PROG/I",DEVC:"DEVC/K",FUGR:"FUGR/F",FUNC:"FUGR/FF",DDLS:"DDLS/DF",DOMA:"DOMA/DD",DTEL:"DTEL/DE"};
+const matchBox=document.getElementById("object-matches");let matchAt=-1;
+function closeMatches(){matchBox.classList.remove("on");matchBox.replaceChildren();matchAt=-1;}
+function pick(name){nameBox.value=name;closeMatches();run();}
+/* A plain name that SAP does not know is searched as NAME*: what was meant
+   is usually the start of a name. A name SAP knows runs as before. */
+function searchMask(exact){
+  const typed=nameBox.value.trim().toUpperCase(),mask=exact?typed+"*":typed,kind=ADT_TYPES[typeBox.value];
+  if(!kind){notice("A mask is not searched for this type.");return;}
+  if(!/^[A-Z0-9_/$*+]{1,40}$/.test(mask)){notice("Use letters, digits, _ / $ and the wildcards * and +.");return;}
+  notice("Searching "+mask+"...");
+  enqueue({path:"/sap/bc/adt/repository/informationsystem/search?operation=quickSearch&maxResults=100&objectType="+encodeURIComponent(kind)+"&query="+encodeURIComponent(mask)},raw=>{
+    if(String(raw).startsWith("ERROR:")){notice(String(raw).slice(6));return;}
+    const doc=new DOMParser().parseFromString(String(raw),"application/xml"),found=[];
+    for(const r of doc.getElementsByTagNameNS("*","objectReference")){
+      const type=r.getAttribute("adtcore:type")||"",name=r.getAttribute("adtcore:name")||"";
+      if(type===kind&&name)found.push({name,description:r.getAttribute("adtcore:description")||""});
+    }
+    // Found as typed - or not found at all: the quick search may leave out
+    // an object the function itself can still open (a standard function
+    // module, filtered by type), so the function is asked and says what it finds.
+    if(exact&&(!found.length||found.some(f=>f.name===typed))){notice("");run();return;}
+    notice(found.length?(exact?typed+" was not found - names starting with it:":""):"Nothing matches "+mask+".");
+    matchBox.replaceChildren(...found.map((f,i)=>{const d=document.createElement("div");d.setAttribute("role","option");
+      d.textContent=f.name;const small=document.createElement("small");small.textContent=f.description;d.appendChild(small);
+      d.onmousedown=e=>{e.preventDefault();pick(f.name);};return d;}));
+    matchAt=-1;matchBox.classList.toggle("on",found.length>0);
+  },()=>true);
+}
+function moveMatch(step){const items=matchBox.children;if(!items.length)return;
+  if(matchAt>=0)items[matchAt].classList.remove("sel");matchAt=(matchAt+step+items.length)%items.length;
+  items[matchAt].classList.add("sel");items[matchAt].scrollIntoView({block:"nearest"});}
+nameBox.onkeydown=e=>{
+  if(matchBox.classList.contains("on")){
+    if(e.key==="ArrowDown"){e.preventDefault();moveMatch(1);return;}
+    if(e.key==="ArrowUp"){e.preventDefault();moveMatch(-1);return;}
+    if(e.key==="Escape"){closeMatches();return;}
+    if(e.key==="Enter"&&matchAt>=0){e.preventDefault();pick(matchBox.children[matchAt].firstChild.textContent);return;}
+  }
+  if(e.key!=="Enter")return;
+  if(/[*+]/.test(nameBox.value))searchMask(false);
+  else if(ADT_TYPES[typeBox.value]&&nameBox.value.trim()){closeMatches();searchMask(true);}
+  else{closeMatches();run();}
+};
+nameBox.onblur=()=>setTimeout(closeMatches,150);
 actionBox.onchange=()=>{if(nameBox.value.trim())run();};
 fields();mountChat();
 if(current.part)pendingPart=partKey(current.part);

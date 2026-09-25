@@ -1,5 +1,51 @@
 # Release history
 
+## 2026-09-25 — VERTEX 0.7.5 (VS Code): the flow chart and its player
+
+- The flow chart runs top-down, the caller above its callees, and sits in the right column. The
+  number on an arrow is how many times that call was made. In Methods each routine is its own
+  block, class above and method below, coloured by its class, with no class frames, so the levels
+  follow the stack depth. SAP standard is dashed blue, and a standard call stepped over is named
+  down to its method (needs `src/` pulled).
+- With Visual on, the chart follows the run: the block running now is filled green, dark green
+  once called again. It moves without a redraw, and the chart is drawn again only when a block or
+  an arrow appears. Every drawing fits the pane until the zoom is set by hand. In Flow the source
+  line moves at every stop.
+- A player for the recorded run: ⏮ ◀ ▶ ⏭, a slider, and ⏵ at 1-10 stops a second or max. The
+  source line, the green block, the stack and the values move together, from the record alone,
+  and ms per frame shows what the window takes.
+- Rec, beside Visual, records every stop while it is on, from any source: manual steps, the
+  assistant, breakpoints. Continue then steps as Visual does and draws nothing until
+  the run ends, then the player replays it statement by statement. Flow and Rec read a routine's
+  parameters and locals where it starts and ends.
+- A click on a block moves the player to the next time the run entered that routine. A standard
+  block shows its own source.
+- Stack is a table as in SAP's debugger: depth number, event type, event, program, include, line.
+  The caller's frames below the object (the SE37 or SE24 test frame, the screen) are hidden
+  behind one line that shows them, and they stay off the flow chart. A function module is a
+  block of its own name there, not its group's program.
+- The Tools object field is narrower. A name with `*` or `+` lists the matching objects of the
+  chosen type, through ADT's quick search; a plain name that is not found lists the names
+  starting with it.
+- A report written without any event, form or method (its code is the implicit
+  START-OF-SELECTION) now has that one unit for Metrics and the Logic diagram, instead of "No code
+  units" (needs `src/` pulled).
+- A function module shows Parts only when it has local FORMs after its ENDFUNCTION; the list is
+  that include's units, from ACE (needs `src/` pulled). The Eclipse sources carry the same change, but the
+  plugin was not built.
+- Terminate and Stop became Exit program and Detach. Detach lets the program go and stops
+  listening but keeps the breakpoints for the next Run in SAP. Removing every breakpoint is Clear
+  all, in the Breakpoints bar. A breakpoint can be deactivated and activated again without
+  losing its condition and mode (Ctrl+click, its box, its checkbox, Deactivate all).
+- Fitting the chart never enlarges it past its own size.
+- In Stack, with the caller's frames hidden, depth counts from the object: its own frame is 1.
+- Hovering a table or a structure in the source shows a small grid with column names, not lines of
+  values joined by bars.
+- The right column's sections (Stack, Breakpoints, Variables, Diagram, Log) are shown or hidden by
+  switches at its top and resized by dragging the lines between them. Diagram and Log are separate
+  sections, and the header's Diagram · Log button is gone.
+- The chart takes its dark or light colours from the pane's real background, so dark themes work.
+
 ## 2026-09-24 — VERTEX 0.7.4 (VS Code): Visual Debug
 
 - The VERTEX chat keeps its SAP tools whatever is on screen. A Tools window showing a diff, UML

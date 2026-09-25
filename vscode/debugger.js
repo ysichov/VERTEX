@@ -122,7 +122,8 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
      Eclipse do - the line has to exist on the server before it can carry one. */
   async function sync(on) {
     const { listener, user } = on || await system();
-    const all = breakpoints;
+    const all = breakpoints.filter(b => b.active !== false);
+    for (const b of breakpoints) { if (b.active === false) { b.adt = null; } }
     const wanted = all.map(b => b.url + "#start=" + b.line);
     let answer = await listener.debuggerSetBreakpoints("user", terminalId, ideId, "vertex", wanted, user, "external");
     const placed = answer.filter(a => a.uri);
@@ -147,6 +148,8 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
      points SAP placed. */
   async function scoped(list) {
     const client = session.client, user = sap.user;
+    // A deactivated breakpoint stays in the list and goes to no SAP scope.
+    list = list.filter(b => b.active !== false);
     const wanted = list.map(b => b.url + "#start=" + b.line);
     let answer = await client.debuggerSetBreakpoints("user", terminalId, ideId, "vertex", wanted, user, "debugger");
     let placed = answer.filter(a => a.uri);
@@ -175,6 +178,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       name: String(name).toUpperCase(), url, line: Number(line) };
     entry.condition = condition ? String(condition) : "";
     entry.mode = mode || "stop";
+    entry.active = true;             // set again, a deactivated one is on again
     if (!existing) { breakpoints.push(entry); }
     const errors = await sync();
     if (!entry.adt) {
@@ -195,6 +199,17 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     if (!object) { throw new Error("A breakpoint cannot be set in this source from here: " + url); }
     return setBreakpoint({ object_type: object.objectType, name: object.name, function_group: object.group,
       line, condition, mode, take_over });
+  }
+
+  /* On or off without losing it: an inactive breakpoint keeps its line,
+     condition and mode here and is not in SAP. No id: every one. */
+  async function activateBreakpoints(id, active) {
+    const list = id ? breakpoints.filter(b => b.id === id) : breakpoints;
+    if (id && !list.length) { throw new Error("There is no breakpoint " + id + "."); }
+    for (const b of list) { b.active = active !== false; }
+    await sync();
+    await rescope();
+    changed();
   }
 
   async function clearBreakpoints(id) {
@@ -550,7 +565,10 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       : kind === "CLAS" ? "SE24 SEOCLASS-CLSNAME=" + name
       : kind ? null : "*SE38 RS38M-PROGRAMM=" + name + ";DYNP_OKCODE=STRT";
     if (!transaction) { throw new Error("A test run is for a function module or a class, not " + test + "."); }
-    if (!breakpoints.length) { throw new Error("Set a breakpoint before running: without one nothing will stop."); }
+    if (!breakpoints.some(b => b.active !== false)) { throw new Error("Set or activate a breakpoint before running: without one nothing will stop."); }
+    // After Detach the breakpoints are kept here but not in SAP, and nothing
+    // listens: both come back before the run starts.
+    if (!listening) { await sync(); await listen(false); }
     // A system can name its own WebGUI address: SAP may redirect its HTTP
     // port to an HTTPS host name this machine does not resolve.
     const address = target.webgui || target.url;
@@ -584,6 +602,15 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     changed();
   }
 
+  /* Let the program go and stop listening, as stop does, but keep the
+     breakpoints for the next run: SAP forgets them, this list does not. */
+  async function detach() {
+    const kept = breakpoints.map(b => ({ ...b, adt: null }));
+    await stop();
+    breakpoints.push(...kept);
+    changed();
+  }
+
   /* ---------- what the Visual Debug window reads ---------- */
 
   /* Everything the window draws, read without taking the assistant's news. */
@@ -591,7 +618,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     return {
       system: sap ? sap.system.name : "", listening, ended,
       breakpoints: breakpoints.map(b => ({ id: b.id, objectType: b.objectType, name: b.name, url: b.url, line: b.line,
-        condition: b.condition || "", mode: b.mode })),
+        condition: b.condition || "", mode: b.mode, active: b.active !== false })),
       stopped: stopped ? { at: stopped.at, breakpoint: stopped.breakpoint, problem: stopped.problem || "", frames,
         predicted: stopped.predicted === true } : null
     };
@@ -695,7 +722,8 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       system: sap ? sap.system.name + " / " + sap.user : "not connected yet",
       listening,
       stopped: stopped ? stopped.at : null,
-      breakpoints: breakpoints.map(b => ({ id: b.id, at: b.name + ":" + b.line, mode: b.mode, condition: b.condition || undefined })),
+      breakpoints: breakpoints.map(b => ({ id: b.id, at: b.name + ":" + b.line, mode: b.mode, condition: b.condition || undefined,
+        inactive: b.active === false || undefined })),
       logged: logged.length,
       answers: answers.calls + " answers, " + answers.chars + " characters (about " + Math.round(answers.chars / 4) + " tokens)"
     };
@@ -703,7 +731,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
 
   function counted(text) { answers.calls++; answers.chars += text.length; return text; }
 
-  return { setBreakpoint, clearBreakpoints, wait, step, read, run, stop, status, counted,
+  return { setBreakpoint, clearBreakpoints, activateBreakpoints, wait, step, read, run, stop, detach, status, counted,
     log: () => logged.slice(),
     setBreakpointAt, advance, runTo, settle, terminate, watch, picture, scopes, children, variables, tableRows, frame, source,
     classMethods };

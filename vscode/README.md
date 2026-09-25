@@ -1,17 +1,22 @@
 # SAP ABAP VERTEX Tools
 
-[**VERTEX**](https://github.com/ysichov/VERTEX) is a set of ABAP tools that used to live in the SAP GUI, migrated to
-VS Code and Eclipse ADT as one front end, plus AI integrations: an MCP chat and more.
+[**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT:
+AI assistant and MCP, an enhanced ABAP editor, an AI-driven debugger and explorers for code,
+versions and data. Several of them grew out of earlier SAP GUI tools.
 
-| Window | Grew out of | What it shows |
+| Tool | Grew out of | What it does |
 |---|---|---|
-| **SelecTor** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | A table, its selection panel, the join builder and the pivot cross — set up by hand or from a sentence |
-| **Metrics** | [ACE](https://github.com/ysichov/ACE) | The flow of a program, the branch scheme of one method, and per-unit code metrics |
-| **Versions/Reviewer** | [AVE](https://github.com/ysichov/AVE), [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Version history, diffs, block-by-block review with comments, and an AI assistant |
+| **AI Assistant** | — | Chat, code, any SAP system |
+| **Enhanced Code Editor** | — | Hover, navigation, outline |
+| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Conditional breakpoints, verdict, Visual Debug |
+| **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE), [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | History, diff, block-by-block review with comments |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics, UML, logic, calls |
+| **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, joins, pivots |
 
-Those three programs are where the logic was written, and they are not developed
-further. It has been carried across as `ZCL_VX_*`, with the SAP GUI stripped off,
-and everything new happens on this side.
+The projects named above are where the ideas were worked out first, and they are not developed
+further. Their principles and functions were carried over, and the ABAP logic of the SAP GUI
+explorers now lives in `src/` as `ZCL_VX_*`, with the SAP GUI stripped off. Everything new
+happens on this side.
 
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](https://raw.githubusercontent.com/ysichov/VERTEX/main/docs/architecture.jpg)
 
@@ -60,7 +65,9 @@ development systems often have; it is off by default on purpose.
   The panel holds the VERTEX chat, the active SAP-system selector, provider and
   model controls, and the **VERTEX Tools** button.
 - **VERTEX Tools** — opens the unified tools window. Choose an object type,
-  enter its name, then choose the available function (for example Data, View,
+  enter its name (a name with `*` or `+`, such as `Z_VX*`, lists the objects of that type that
+  match; pick one with the mouse or the arrow keys and Enter; a plain name that is not found
+  lists the names starting with it), then choose the available function (for example Data, View,
   UML diagram, Metrics, Calls diagram, Logic diagram, Diff or Versions). **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
   per class or per method, and picking an event or a form in Parts starts the calls there, as a
@@ -506,8 +513,8 @@ debugger the assistant drives - one session, not a second one:
   of the active version, which is what the program runs. Breakpoints the assistant set appear
   here, and those set here are the assistant's too.
 - **Where the program stands.** At a stop the current line is marked and the source follows it,
-  also into another include; **Object source** goes back. **Into** (F5), **Over** (F6),
-  **Return** (F7) and **Continue** (F8) step; a click on a stack level shows that level and its
+  also into another include; **Object source** goes back. **Single Step** (F5), **Execute** (F6),
+  **Return** (F7) and **Continue** (F8) step, named and drawn as in the classic debugger; a click on a stack level shows that level and its
   variables.
 - **Every variable at once**, grouped as SAP groups them; parameters and locals are headed by
   the form, method or event they belong to. Structures and objects unfold in place (object
@@ -557,10 +564,38 @@ debugger the assistant drives - one session, not a second one:
   **Visual** on as well, the window draws where the program is at each change of the stack only.
   When the run stops, **Diagram** shows the flow as a Mermaid chart: **Classes** (classes and
   programs, with the number of calls between them) or **Methods** (every routine, grouped by
-  its class) - kept across Continue until the program ends or Stop or Terminate is pressed -
+  its class) - kept across Continue until the program ends or Detach or Exit program is pressed -
   zoomed with −, +, Fit or Ctrl + wheel, and shown on the whole window with ⤢ (Esc
-  goes back). SAP's own code appears as one node for what was called.
-- **Log.** Beside Classes and Methods, **Log** lists every step of the Visual and Flow runs:
+  goes back). SAP's own code appears as one node for what was called. The chart runs top-down,
+  the caller above its callees; SAP standard is dashed grey, and the number on an arrow is how
+  many times that call was made. The chart sits in the right column under Variables; with Visual
+  on it is redrawn during the run, each time the stack changes. The block running now is filled
+  green, dark green once it has been called more than once; the mark moves on the drawn chart,
+  which is drawn again only when a new block or arrow appears. SAP standard is dashed blue.
+  In **Methods** each routine is one block, class above and method below, coloured by its class
+  with no frame around a class, so the levels follow the stack depth.
+  ⏮ ◀ ▶ ⏭ and a slider move through the recorded stops and ⏵ replays them: the source line and the green block
+  move together with the Stack as it was at that stop (marked recorded), from the record alone,
+  at 1, 2, 3, 5 or 10 stops a second or as fast as the window draws (max), with the
+  milliseconds each stop took on screen (kept after the replay). Flow and Rec read a routine's
+  Parameters and Locals where it starts and where it ends; the player shows them in Variables,
+  and at the stops between, the values last read in that routine.
+  A click on a block moves the player to the next time the run entered that routine, its source
+  shown here; a SAP standard block the run stepped over shows its source (class, function module
+  or program). **Stack** is a table as in SAP's debugger: depth number, event type, event,
+  program, include and line, the deepest level on top. The frames below the object - SE37's or
+  SE24's test frame, the screen - are folded into one line, and are not on the chart; a function
+  module's block carries its name.
+- **Rec.** Beside Visual. While it is on, every stop goes into the record, whoever made it:
+  F5-F8 in this window, the assistant's steps, a breakpoint - and into the step log, with the key
+  and the time of a step made here. Continue (F8) then takes the same F5
+  steps as Visual but draws nothing until the run ends. The player replays the record statement by
+  statement. Each drawing fits the pane, never above 100 %, until the zoom is set
+  by hand with −, + or Ctrl + wheel; Fit returns to fitting.
+- **Sections.** The right column holds Stack, Breakpoints, Variables, Diagram and Log. Each is
+  shown or hidden by its switch at the top of the column, and the line between two visible
+  sections drags to resize them. Diagram opens by itself when a run has recorded something.
+- **Log.** A section of its own; it lists every step of the Visual and Flow runs:
   what was done (F5, F6, F7, F8 and to which points, predicted or not), from where, to where, and
   how long it took, SAP's share apart. A filter narrows it, **Copy** takes it as text. It is kept
   like the flow, the last 5000 steps. A line under the buttons says, at each step, what the run
@@ -570,15 +605,20 @@ debugger the assistant drives - one session, not a second one:
   first rows.
 - **Tables in grids.** A click on a table opens its rows below the source, a hundred at a time,
   in a tab of its own - as many tables as you like, read again at every stop.
-- **Run** starts the program in WebGUI, as `debug_run` does. A program runs itself. For a class
+- **Run in SAP** (first in the header, with the SAP execute clock) starts the program in WebGUI, as `debug_run` does. A program runs itself. For a class
   or a function module, name the program that calls it in the field - or leave it empty for the
   object's test screen, SE24 or SE37 with the name filled in, and start the test there with F8.
-- **Stop** does what `debug_stop` does: lets the program go, stops listening and removes every
-  breakpoint - the assistant's as well, since they are the same.
-- **Terminate** ends the stopped program where it stands, as the debugger's Exit does; the
+- **Detach** lets the program go and stops listening, but keeps the breakpoints in the list:
+  **Run in SAP** sets them in SAP again and listens before it starts the next run.
+- **Exit program** ends the stopped program where it stands, as the debugger's Exit does; the
   breakpoints stay and the next run is caught again.
+- A breakpoint can be switched off without losing it: Ctrl+click on its dot, **Deactivate** in its
+  right-click box, its checkbox in Breakpoints, or **Deactivate all**. It keeps its line,
+  condition and mode, shows as a grey ring, and is not in SAP until it is activated again.
+- **Clear all**, in the Breakpoints bar, removes every breakpoint - the assistant's as well, since
+  they are the same. The assistant's `debug_stop` still lets go and removes them all at once.
 
-Because the session is shared, a step or **Stop** by the assistant moves this window too, and the
+Because the session is shared, a step or `debug_stop` by the assistant moves this window too, and the
 other way round. The assistant still finds each stop through `debug_wait`, whoever stepped. Like
 the assistant, the window never changes a variable or the code.
 

@@ -13,6 +13,9 @@ CLASS zcl_vx_ace_source DEFINITION
                 i_type     TYPE string
       EXPORTING ev_type    TYPE string
                 ev_program TYPE program
+                " A function module: the include that holds it, in its group's
+                " program - its FUNCTION and the local FORMs written after it.
+                ev_include TYPE program
       RAISING   cx_adt_res_not_found
                 cx_adt_res_bad_request.
 
@@ -35,6 +38,7 @@ CLASS zcl_vx_ace_source IMPLEMENTATION.
           lv_clstype  TYPE seoclstype,
           lv_progname TYPE progname.
 
+    CLEAR: ev_program, ev_include.
     lv_name = to_upper( i_name ).
     lv_type = to_upper( i_type ).
 
@@ -76,10 +80,29 @@ CLASS zcl_vx_ace_source IMPLEMENTATION.
         ENDIF.
         ev_program = lv_name.
 
+      WHEN 'FUNC'.
+        DATA(lv_funcname) = CONV rs38l_fnam( lv_name ).
+        SELECT SINGLE pname, include FROM tfdir
+          WHERE funcname = @lv_funcname
+          INTO @DATA(ls_fm).
+        IF sy-subrc <> 0.
+          RAISE EXCEPTION TYPE cx_adt_res_not_found
+            EXPORTING resource_type = `function module`
+                      resource_id   = lv_name.
+        ENDIF.
+        ev_program = ls_fm-pname.
+        " SAPL<group> holds L<group>U<nn>; a namespace stays in front:
+        " /NS/SAPLGRP holds /NS/LGRPU<nn>.
+        FIND FIRST OCCURRENCE OF `SAPL` IN ls_fm-pname MATCH OFFSET DATA(lv_at).
+        IF sy-subrc = 0.
+          ev_include = |{ substring( val = ls_fm-pname len = lv_at ) }L| &&
+                       |{ substring( val = ls_fm-pname off = lv_at + 4 ) }U{ ls_fm-include }|.
+        ENDIF.
+
       WHEN OTHERS.
         RAISE EXCEPTION TYPE cx_adt_res_bad_request
           EXPORTING explanation = |Type { lv_type } is not supported here.| &&
-                                  | ACE reads CLAS, INTF, PROG and INCL.|.
+                                  | ACE reads CLAS, INTF, PROG, INCL and FUNC.|.
     ENDCASE.
   ENDMETHOD.
 

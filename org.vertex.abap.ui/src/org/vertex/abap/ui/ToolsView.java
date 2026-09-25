@@ -57,7 +57,9 @@ public class ToolsView extends ChatView {
                     if (path.equals("project")) return abapProject().getName();
                     String route = body == null ? "(about|requests|(table|join|metrics|flow|class|package|versions|review|prepare)/[^?]+)"
                         : "(review|prepare)/[^?]+";
-                    if (!path.matches("/sap/bc/adt/vertex/" + route + "(\\?.*)?")
+                    // The object field's mask search: ADT's quick search, read only.
+                    boolean search = body == null && path.matches("/sap/bc/adt/repository/informationsystem/search\\?operation=quickSearch&maxResults=\\d{1,3}&objectType=[A-Z]{4}%2F[A-Z]{1,2}&query=[A-Z0-9_%*+$]{1,80}");
+                    if (!search && !path.matches("/sap/bc/adt/vertex/" + route + "(\\?.*)?")
                         || path.contains("..") || path.contains("#") || path.contains("\\")
                         || path.toLowerCase().contains("%2e") || path.toLowerCase().contains("%5c"))
                         throw new IllegalArgumentException("Unsupported VERTEX resource.");
