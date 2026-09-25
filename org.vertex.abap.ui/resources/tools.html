@@ -351,6 +351,8 @@ function connect(child,service,generation){
   child.sdeAbout=()=>enqueue({path:"/sap/bc/adt/vertex/about"},reply,live);
   child.sdeAsset=name=>enqueue({asset:name},reply,live);
   child.sdeSource=(name,type)=>enqueue({source:[name,type]},reply,live);
+  // A class part's current text, read from the include SAP keeps it in.
+  child.sdePart=(name,type,part,ptype)=>enqueue({path:VertexRoutes.SERVICES.versions.load([name,type,part,ptype])+"&now=X"},reply,live);
   if(typeof sdeOpenEditor==="function")child.sdeOpenEditor=(name,type)=>sdeOpenEditor(String(name),String(type));
   // The debugger is VS Code's: a command goes to it and its answer comes back
   // as any other; what it does on its own arrives through sdeDebugEvent.

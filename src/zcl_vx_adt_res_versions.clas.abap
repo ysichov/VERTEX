@@ -60,6 +60,14 @@ CLASS zcl_vx_adt_res_versions DEFINITION
       IMPORTING is_part       TYPE zif_vx_object=>ty_part
       RETURNING VALUE(rv_yes) TYPE abap_bool.
 
+    "! The include a class part is kept in, when it is one: a section's
+    "! generated include (CU, CO, CI), a method's (CMnnn), or a local include
+    "! by its own name.
+    "! Empty for any other part.
+    CLASS-METHODS part_include
+      IMPORTING is_part           TYPE zif_vx_object=>ty_part
+      RETURNING VALUE(rv_include) TYPE program.
+
     "! A section include holding nothing but its own header line. AVE's rule,
     "! carried here rather than read from it: sixteen lines of predicate were
     "! not worth a dependency on the whole review half. Comment lines carry no
@@ -154,6 +162,13 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
     request->get_uri_query_parameter( EXPORTING name      = 'ptype'
                                                 mandatory = abap_false
                                       IMPORTING value     = lv_ptype ).
+    " now=X with a part: its current text, read from the include SAP keeps it
+    " in - a section is one include, a local include another. Nothing is cut
+    " out of an assembled source.
+    DATA lv_now TYPE string.
+    request->get_uri_query_parameter( EXPORTING name      = 'now'
+                                                mandatory = abap_false
+                                      IMPORTING value     = lv_now ).
 
     " Both present, the answer is the difference between those two versions of
     " the part. An empty FROM is the oldest version compared against nothing,
@@ -275,6 +290,35 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
         bad_request( |{ lv_part } of type { lv_ptype } is not a part of { lv_name }.| &&
                      | Ask for the parts list first; a method key carries the class name| &&
                      | padded to thirty characters and every blank of it matters.| ).
+      ENDIF.
+
+      IF to_upper( lv_now ) = 'X'.
+        DATA(lv_include) = part_include( lt_known[ object_name = to_upper( lv_part )
+                                                   type        = to_upper( lv_ptype ) ] ).
+        IF lv_include IS INITIAL.
+          bad_request( |{ lv_part } of type { lv_ptype } is not kept in an include of its own.| ).
+        ENDIF.
+        DATA lt_now TYPE abaptxt255_tab.
+        READ REPORT lv_include INTO lt_now.
+        IF sy-subrc <> 0.
+          not_found( i_type = `include` i_id = CONV #( lv_include ) ).
+        ENDIF.
+        TYPES: BEGIN OF ty_now,
+                 part      TYPE string,
+                 part_type TYPE string,
+                 include   TYPE string,
+                 source    TYPE string,
+               END OF ty_now.
+        response->set_body_data(
+          content_handler = NEW cl_adt_rest_plain_text_handler( content_type = if_rest_media_type=>gc_appl_json )
+          data            = /ui2/cl_json=>serialize(
+                              data        = VALUE ty_now( part      = to_upper( lv_part )
+                                                          part_type = to_upper( lv_ptype )
+                                                          include   = lv_include
+                                                          source    = concat_lines_of( table = lt_now
+                                                                                       sep   = cl_abap_char_utilities=>newline ) )
+                              pretty_name = /ui2/cl_json=>pretty_mode-low_case ) ).
+        RETURN.
       ENDIF.
 
       TRY.
@@ -402,18 +446,8 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
         rv_yes = abap_false.
         RETURN.
 
-      WHEN 'CPUB' OR 'CPRO' OR 'CPRI'.
-        " A section's part name is the class; its text lives in a generated
-        " include of its own.
-        DATA(lv_class) = CONV seoclsname( is_part-class ).
-        lv_include = SWITCH program( is_part-type
-          WHEN 'CPUB' THEN cl_oo_classname_service=>get_pubsec_name( lv_class )
-          WHEN 'CPRO' THEN cl_oo_classname_service=>get_prosec_name( lv_class )
-          ELSE cl_oo_classname_service=>get_prisec_name( lv_class ) ).
-
-      WHEN 'CINC' OR 'CDEF' OR 'REPS'.
-        " The local includes carry their own program name as the part name.
-        lv_include = is_part-object_name.
+      WHEN 'CPUB' OR 'CPRO' OR 'CPRI' OR 'CINC' OR 'CDEF' OR 'REPS'.
+        lv_include = part_include( is_part ).
 
       WHEN OTHERS.
         " A method, a program, a DDIC object: not something that gets generated
@@ -433,6 +467,40 @@ CLASS zcl_vx_adt_res_versions IMPLEMENTATION.
        AND is_empty_section( lt_source ) = abap_true.
       rv_yes = abap_false.
     ENDIF.
+
+    " A class's local includes are generated with a comment and nothing else
+    " ("use this source file for ..."). ABAP's own scanner says whether any
+    " statement is there; one that holds none is not a part to show.
+    IF is_part-type = 'CINC' OR is_part-type = 'CDEF'.
+      DATA lt_tokens     TYPE STANDARD TABLE OF stokes WITH EMPTY KEY.
+      DATA lt_statements TYPE STANDARD TABLE OF sstmnt WITH EMPTY KEY.
+      SCAN ABAP-SOURCE lt_source TOKENS INTO lt_tokens STATEMENTS INTO lt_statements.
+      IF lt_statements IS INITIAL.
+        rv_yes = abap_false.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD part_include.
+    CASE is_part-type.
+      WHEN 'CPUB' OR 'CPRO' OR 'CPRI'.
+        " A section's part name is the class; its text lives in a generated
+        " include of its own.
+        DATA(lv_class) = CONV seoclsname( is_part-class ).
+        rv_include = SWITCH program( is_part-type
+          WHEN 'CPUB' THEN cl_oo_classname_service=>get_pubsec_name( lv_class )
+          WHEN 'CPRO' THEN cl_oo_classname_service=>get_prosec_name( lv_class )
+          ELSE cl_oo_classname_service=>get_prisec_name( lv_class ) ).
+      WHEN 'CINC' OR 'CDEF' OR 'REPS'.
+        " The local includes carry their own program name as the part name.
+        rv_include = is_part-object_name.
+      WHEN 'METH'.
+        " Each method is an include of its own, CMnnn, which the class keeps
+        " a directory of.
+        rv_include = cl_oo_classname_service=>get_method_include(
+                       VALUE seocpdkey( clsname = is_part-class cpdname = is_part-unit ) ).
+    ENDCASE.
   ENDMETHOD.
 
 

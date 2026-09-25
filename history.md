@@ -30,6 +30,13 @@
 - A report written without any event, form or method (its code is the implicit
   START-OF-SELECTION) now has that one unit for Metrics and the Logic diagram, instead of "No code
   units" (needs `src/` pulled).
+- A class's local includes that hold only SAP's generated comment are no longer listed in Parts
+  or Diff (needs `src/` pulled).
+- In a class, a section, a method or a local include picked in Parts is read from the include SAP
+  keeps it in (CU/CO/CI, CMnnn, CCDEF...) and shown as it is, numbered from 1 (needs `src/`
+  pulled).
+- View source drops the Parts column when the object has no parts, and folds it with a button when
+  it has.
 - A function module shows Parts only when it has local FORMs after its ENDFUNCTION; the list is
   that include's units, from ACE (needs `src/` pulled). The Eclipse sources carry the same change, but the
   plugin was not built.
