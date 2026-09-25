@@ -90,6 +90,12 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
 #fzoom{min-width:3.5em;text-align:center;color:var(--vscode-descriptionForeground,GrayText);font-family:var(--vscode-editor-font-family,monospace)}
 #flowpane.full{position:fixed;inset:0;height:auto;z-index:7}
 #flowsvg{flex:1;overflow:auto;padding:8px;background:var(--vscode-editor-background,Canvas)}
+.logbar{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.logbar input{width:260px;font-family:var(--vscode-editor-font-family,monospace)}
+#logcount{color:var(--vscode-descriptionForeground,GrayText)}
+table.grid.log td:nth-child(3),table.grid.log td:nth-child(4){max-width:320px;overflow:hidden;text-overflow:ellipsis}
+#why{flex-basis:100%;font:11px var(--vscode-editor-font-family,monospace);color:var(--vscode-descriptionForeground,GrayText);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#why:empty{display:none}
 #stats{font-family:var(--vscode-editor-font-family,monospace);color:var(--vscode-descriptionForeground,GrayText)}
 #partial{font-weight:400;color:var(--vscode-descriptionForeground,GrayText);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 #bpedit{position:fixed;z-index:5;display:none;padding:8px;background:var(--vscode-editorWidget-background,var(--vscode-editor-background,Canvas));border:1px solid var(--vscode-editorWidget-border,var(--vscode-panel-border,GrayText));box-shadow:0 2px 8px var(--vscode-widget-shadow,rgba(0,0,0,.3));font-family:system-ui,sans-serif}
@@ -117,6 +123,7 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
   <button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Terminate</button>
   <button id="stop" title="Let the program go, stop listening and remove every breakpoint">Stop</button>
   <span id="state">Click beside a line number to set a breakpoint; right-click for a condition.</span>
+  <div id="why"></div>
 </header>
 <div id="notice"></div>
 <main>
@@ -124,7 +131,7 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
     <div id="codehead"><span>Source</span><b id="shownname"></b><button id="home" hidden title="Back to the object's own source">Object source</button></div>
     <pre id="code"></pre>
     <div id="grids"><div id="gridtabs"></div><div id="gridbody"></div></div>
-    <div id="flowpane"><div id="flowbar"><button id="fclasses" class="on">Classes</button><button id="fmethods">Methods</button><span class="grow"></span><button id="fzout" title="Smaller (Ctrl + wheel)">&#8722;</button><span id="fzoom">100%</span><button id="fzin" title="Larger (Ctrl + wheel)">+</button><button id="ffit" title="Fit the diagram into the pane">Fit</button><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Close">&#215;</button></div><div id="flowsvg"></div></div>
+    <div id="flowpane"><div id="flowbar"><button id="fclasses" class="on">Classes</button><button id="fmethods">Methods</button><button id="flog" title="Every step of the Visual and Flow runs: what was done, from where, to where, how long">Log</button><span class="grow"></span><button id="fzout" title="Smaller (Ctrl + wheel)">&#8722;</button><span id="fzoom">100%</span><button id="fzin" title="Larger (Ctrl + wheel)">+</button><button id="ffit" title="Fit the diagram into the pane">Fit</button><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Close">&#215;</button></div><div id="flowsvg"></div></div>
   </div>
   <div class="split" id="split" title="Drag to resize"></div>
   <div id="right">
@@ -187,7 +194,10 @@ function drawSource(){
   $("shownname").textContent=shown.name;
   $("home").hidden=!object.url||norm(shown.url)===norm(object.url);
   drawn.delete(key);
-  if(!box){box=document.createElement("div");fill(box);}
+  // A picture is kept with the text it was drawn from: a source drawn before
+  // its text had come is drawn again once it has.
+  if(!box||box.drawnFrom!==shown.lines){box=document.createElement("div");fill(box);box.drawnFrom=shown.lines;}
+  if(!shown.lines.length){drawn.delete(key);if(code.firstChild!==box){code.textContent="";code.appendChild(box);}markSource();return;}
   drawn.set(key,box);
   while(drawn.size>6)drawn.delete(drawn.keys().next().value);
   if(code.firstChild!==box){code.textContent="";code.appendChild(box);}
@@ -364,42 +374,58 @@ function mapFor(program){
   }).catch(function(e){maps[program]=null;notice("No statement map for "+program+" - every step asks SAP for the stack: "+(e&&e.message||e));return null;});
 }
 var CLOSERS=/^(ELSE|ELSEIF|WHEN|ENDIF|ENDCASE|ENDLOOP|ENDDO|ENDWHILE|ENDTRY|CATCH|CLEANUP|ENDSELECT|ENDAT|ENDON|ENDPROVIDE|ENDFORM|ENDMETHOD|ENDFUNCTION|ENDMODULE)$/i;
-/* Where the frame stands in its include's statements, and what comes next. */
-/* The sources the window has read, by address, and whether a map include
-   lines up with one: each statement the map places must start there with its
-   keyword. Checked once per source and include; an unread source waits. */
-var texts={},lists={};
-/* Does a map include line up with a source at an offset: each statement
-   placed there starts on its line with its keyword. */
-function fits(list,lines,offset){
-  var checked=0;
-  for(var i=0;i<list.length&&checked<40;i++){var st=list[i];
-    if(st.kind==="decl"||!/^[A-Z][A-Z-]*$/.test(st.kw)||st.kw==="COMPUTE")continue;
-    if(String(lines[st.line+offset-1]||"").trim().toUpperCase().indexOf(st.kw)!==0)return false;
-    checked++;}
-  return checked>=3;
+/* Where the frame stands in its include's statements, and what comes next.
+   The map counts lines in an include; a frame counts them in the source at
+   its address. Which lines match which is taken from SAP, never from reading
+   the text: a program or an include at its own address counts the same lines;
+   a global class counts in its main source, and ADT's class structure says on
+   which line there each method starts. Anything else is not predicted. */
+var texts={},lists={},methodsAt={};
+function classUrl(url){var u=String(url||"").split("#")[0].toLowerCase(),at=u.indexOf("/sap/bc/adt/oo/classes/");return at===0&&u.slice(-12)==="/source/main";}
+function includeAt(url){
+  var u=String(url||"").split("#")[0].toLowerCase();
+  var parts=u.split("/");
+  // /sap/bc/adt/programs/(programs|includes)/<name>/source/main
+  if(parts.length===9&&parts[4]==="programs"&&(parts[5]==="programs"||parts[5]==="includes")&&parts[7]==="source"&&parts[8]==="main")
+    return decodeURIComponent(parts[6]).toUpperCase();
+  return "";
 }
-/* The frame's include from the map, in the lines of the source SAP points
-   at. A program or an include counts its own lines. A global class's frame
-   counts in the class's main source, where the method's include sits further
-   down: the METHOD the stack names is found there and the include shifted to
-   it. Whatever does not line up is not used - the step asks SAP. Kept per
-   source and include; a source not read yet is decided later. */
+/* A class frame's method starts, read once per class before its first step. */
+function methodsFor(f){
+  if(!f||!classUrl(f.url)||methodsAt[norm(f.url)])return Promise.resolve();
+  return debug("methods",{url:f.url}).then(function(d){methodsAt[norm(f.url)]=d.methods||{};})
+    .catch(function(){methodsAt[norm(f.url)]={};});
+}
 function listFor(f,map){
   var inc=String(f&&f.include||"").toUpperCase(),list=map&&map[inc];if(!list)return null;
-  var key=norm(f.url)+"|"+inc;if(lists[key]!==undefined)return lists[key];
-  var lines=texts[norm(f.url)];if(!lines)return null;
-  var offset=0;
-  if(!fits(list,lines,0)){
-    offset=null;
-    var named=/\bMETHOD\s+(\S+)/i.exec(String(f.label||"")),head=list.filter(function(s){return s.kw==="METHOD";})[0];
-    if(named&&head){
-      var re=new RegExp("^\\s*METHOD\\s+"+named[1].replace(/[\\^$.*+?()[\]{}|\/~]/g,"\\$&")+"\\s*\\.","i");
-      for(var i=0;i<lines.length;i++){if(re.test(lines[i])){offset=i+1-head.line;break;}}
-    }
-    if(offset===null||!fits(list,lines,offset))return lists[key]=null;
+  var key=norm(f.url)+"|"+inc+"|"+String(f.unit||"").toUpperCase();if(lists[key]!==undefined)return lists[key];
+  var offset=null;
+  if(includeAt(f.url)===inc)offset=0;
+  else if(classUrl(f.url)){
+    var starts=methodsAt[norm(f.url)];if(!starts)return null;
+    var head=list.filter(function(s){return s.kw==="METHOD";})[0],start=starts[String(f.unit||"").toUpperCase()];
+    if(head&&start)offset=start-head.line;
   }
+  if(offset===null)return lists[key]=null;
   return lists[key]=offset?list.map(function(s){return Object.assign({},s,{line:s.line+offset,to:s.to+offset});}):list;
+}
+/* What a run knew and decided at the last step, in one line under the
+   buttons: whether the map came, how it met the frame, the statement it
+   found, and the step it took. Said, so that a run that predicts nothing
+   shows why. */
+function explain(f,map,p,what){
+  var inc=String(f&&f.include||"").toUpperCase(),parts=[];
+  if(!map)parts.push("no map for "+(f&&f.program));
+  else if(!map[inc])parts.push("map has no "+inc+" (has "+Object.keys(map).slice(0,4).join(", ")+(Object.keys(map).length>4?", ...":"")+")");
+  else{
+    var list=listFor(f,map);
+    if(list)parts.push(inc+": "+list.length+" statements, "+(includeAt(f.url)===inc?"by include":"by method, from line "+list[0].line));
+    else parts.push(inc+" not used for "+String(f&&f.url).split("#")[0]+(classUrl(f&&f.url)?" (method "+(f.unit||"?")+" "+(methodsAt[norm(f.url)]?"not in the class structure":"structure not read")+")":""));
+  }
+  if(p)parts.push("line "+f.line+": "+p.here.kw+" "+p.here.kind+(p.here.calls?" with a call":"")+(p.here.owners?" ("+p.here.owners+")":"")+(p.next?", next "+p.next.line:""));
+  else if(map&&f)parts.push("line "+f.line+": no statement starts here");
+  if(what)parts.push(what);
+  $("why").textContent=parts.join(" · ");
 }
 /* The statement each level of the stack stands on, as the run predicted it,
    by depth. A line may hold several statements - a = b. c = d. - and SAP
@@ -441,7 +467,9 @@ function outside(st){
 function ownersOutside(st){
   if(!st||st.owners==null)return false;
   var list=String(st.owners).split(",").filter(Boolean);
-  return list.indexOf("?")<0&&list.every(function(o){return !customer(o);});
+  // No owner named is not "outside": it is unknown - a bare m( ) in a class
+  // include, whose class the map does not know. Unknown is looked into.
+  return list.length>0&&list.indexOf("?")<0&&list.every(function(o){return !customer(o);});
 }
 var EVENTS=/^(FORM|METHOD|FUNCTION|MODULE|START-OF-SELECTION|END-OF-SELECTION|INITIALIZATION|LOAD-OF-PROGRAM|TOP-OF-PAGE|END-OF-PAGE|AT|GET)$/i;
 function breakpointOn(url,line){return picture.breakpoints.some(function(b){return norm(b.url)===norm(url)&&b.line===line;});}
@@ -506,21 +534,26 @@ function runVisual(){
   if(!picture.stopped)return;
   notice("");series={steps:0,sap:0,total:0,stackMs:0,other:0,over:0,predicted:0,missed:0,loops:0,standard:0,t0:Date.now(),stop:false};
   $("cont").textContent="Pause";$("cont").title="Pause the Visual run (F8)";drawButtons();
-  var s=series;s.home={};spots=[];
+  var s=series;s.home={};spots=[];fresh();logStart();
   picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
   function next(){
     if(s.stop)return Promise.resolve();
     var f=currentFrame(),depth=picture.stopped.frames.length;
-    return mapFor(f&&f.program).then(function(map){
+    return mapFor(f&&f.program).then(function(map){return methodsFor(f).then(function(){return map;});}).then(function(map){
       var expect=predicted(f,map),from=placeOf(f,map),exit=loopExit(f,map),t=Date.now();
       // SAP gets the line and the frame to add or drop, not the statements.
       var told=expect?{line:expect.line,enter:expect.enter,leave:expect.leave}:null,kind=expect&&expect.over?"over":"into";
+      var doing=exit?"F8 to "+exit.line+" past the loop":expect?(expect.over?"F6":"F5")+", predicted "+expect.line:"F5, stack asked";
+      explain(f,map,from,doing);
+      lastMove={action:doing,from:String(f.label),detail:from?"line "+from.here.line+" "+from.here.kw+" "+from.here.kind+(from.here.calls?" with a call":"")+" ("+(from.here.owners||"no owner")+")"
+        :!map?"no map for "+f.program:"not placed: "+f.include+" line "+f.line};
       // A loop is not stepped through: F8 to the statement after it.
       var go=exit?debug("runTo",{url:f.url,line:exit.line}).then(function(r){
             if(r.placed){r.loop=true;return r;}
             return debug("step",{kind:kind,quick:true,expect:told});})
         :debug("step",{kind:kind,quick:true,expect:told});
       return go.then(function(r){
+        if(lastMove){lastMove.ms=Date.now()-t;lastMove.sap=r.sap||0;}
         s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;
         if(r.loop){s.loops++;s.other+=Math.max(0,(r.total||0)-(r.sap||0));from=null;}
         else if(r.predicted){s.predicted++;if(expect&&expect.over)s.over++;}else s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
@@ -533,15 +566,16 @@ function runVisual(){
         drawStats(s);
         if(r.ended)return;
         return debug("picture").then(function(p){
+          logStep(p);
           // Into SAP's own code from ours, with Z only on: F7 at once - the
           // call runs to its end and the run goes on in our code.
           if(p.stopped&&!p.stopped.breakpoint&&$("zonly").classList.contains("on")&&p.stopped.frames.length>depth
             &&!customer(p.stopped.frames[0].program)&&customer(f.program)){
-            var t2=Date.now();
-            return debug("step",{kind:"out",quick:true}).then(function(o){
+            var t2=Date.now();lastMove={action:"outside Z/Y: F7",from:String(p.stopped.frames[0].label)};
+            return debug("step",{kind:"out",quick:true}).then(function(o){if(lastMove){lastMove.ms=Date.now()-t2;lastMove.sap=o.sap||0;}
               s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t2;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
               if(o.ended)return;
-              return debug("picture").then(function(q){apply(q);if(!q.stopped||q.stopped.breakpoint)return;
+              return debug("picture").then(function(q){logStep(q);apply(q);if(!q.stopped||q.stopped.breakpoint)return;
                 if(!q.stopped.frames.some(function(x){return s.home[x.program];})){s.left=q.stopped.at;return;}
                 return next();});});
           }
@@ -631,9 +665,12 @@ function routine(list,at){
   for(b=at+1;b<list.length;b++){if(ENDS.test(list[b].kw))break;if(UNITS.test(list[b].kw)||EVENTS.test(list[b].kw)){b--;break;}}
   return {from:a,to:Math.min(b,list.length-1)};
 }
+/* Each run reads the statement maps again: the ABAP side may have been
+   pulled since the window opened, and a map kept from before would be wrong. */
+function fresh(){maps={};lists={};methodsAt={};}
 function runFlow(){
   if(!picture.stopped)return;
-  notice("");
+  notice("");fresh();logStart();
   series={steps:0,sap:0,total:0,stackMs:0,other:0,over:0,predicted:0,missed:0,loops:0,standard:0,t0:Date.now(),stop:false,flow:true};
   var s=series,draw=$("visual").classList.contains("on"),shown=null;
   // The record goes on across Continue; a new one starts once the program
@@ -643,10 +680,10 @@ function runFlow(){
   picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
   $("cont").textContent="Pause";$("cont").title="Pause the Flow run (F8)";drawButtons();
   function key(frames){return frames.map(function(f){return f.include+" "+String(f.label).replace(/^\S+\s*/,"");}).join("|");}
-  function took(r,t){s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));drawStats(s);}
+  function took(r,t){if(lastMove){lastMove.ms=Date.now()-t;lastMove.sap=r.sap||0;}s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));drawStats(s);}
   function arrived(){
     return debug("picture").then(function(p){
-      picture=p;
+      picture=p;logStep(p);
       if(!p.stopped)return false;
       record(p.stopped.frames);
       var k=key(p.stopped.frames);
@@ -659,21 +696,32 @@ function runFlow(){
   function move(){
     if(s.stop)return Promise.resolve();
     var f=currentFrame(),depth=picture.stopped.frames.length;
-    return mapFor(f.program).then(function(map){
-      var list=listFor(f,map),p=placeOf(f,map),t=Date.now(),go;
-      if(p&&callable(p.here))go=debug("step",{kind:"into",quick:true});
+    return mapFor(f.program).then(function(map){return methodsFor(f).then(function(){return map;});}).then(function(map){
+      var list=listFor(f,map),p=placeOf(f,map),t=Date.now(),go,why,detail="";
+      if(p&&callable(p.here)){why="a call: F5";go=debug("step",{kind:"into",quick:true});}
       else if(p&&outside(p.here)){
         String(p.here.owners).split(",").filter(Boolean).forEach(function(o){note(unitOf(f),{owner:o,name:o});});
-        go=debug("step",{kind:"over",quick:true});}
-      else if(p&&ENDS.test(p.here.kw))go=debug("step",{kind:"into",quick:true});
+        why="outside Z/Y: F6";go=debug("step",{kind:"over",quick:true});}
+      else if(p&&ENDS.test(p.here.kw)){why="the end: F5 back";go=debug("step",{kind:"into",quick:true});}
       else if(p&&list){
         var r=routine(list,list.indexOf(p.here)),lines=[];
         for(var i=r.from+1;i<=r.to;i++){if(list[i]!==p.here&&(callable(list[i])||ENDS.test(list[i].kw)))lines.push(list[i].line);}
         var calls=lines.length&&list.slice(r.from+1,r.to+1).some(function(x){return x!==p.here&&callable(x);});
+        why=!calls?"nothing to call in lines "+list[r.from].line+"-"+list[r.to].line+": F7":"points on "+lines.join(", ")+": F8";
+        // Every statement of the routine with a call in it, and what the run
+        // made of it - so a call it did not stop at shows in the log.
+        var weighed=[];
+        for(var k=r.from+1;k<=r.to;k++){var x=list[k];
+          if(!(x.calls===true||x.kind==="call"))continue;
+          weighed.push(x.line+" "+x.kw+" ("+(x.owners||"no owner")+"): "+(x===p.here?"here":callable(x)?"point":ownersOutside(x)?"outside Z/Y":"skipped"));}
+        detail=weighed.length?weighed.join("; "):"no statement with a call in lines "+list[r.from].line+"-"+list[r.to].line;
         go=!calls?debug("step",{kind:"out",quick:true})
           :debug("runTo",{url:f.url,lines:lines}).then(function(x){return x.placed?x:debug("step",{kind:"into",quick:true});});
       }
-      else go=debug("step",{kind:"into",quick:true});
+      else{why="F5, not placed";go=debug("step",{kind:"into",quick:true});}
+      if(!detail&&p)detail="line "+p.here.line+" "+p.here.kw+" "+p.here.kind+(p.here.calls?" with a call":"")+" ("+(p.here.owners||"no owner")+")";
+      if(!p)detail=!map?"no map for "+f.program:!list?"map not used for "+f.include+" at "+String(f.url).split("#")[0]:"no statement starts at line "+f.line;
+      explain(f,map,p,why);lastMove={action:why,from:String(f.label),detail:detail};
       return go.then(function(r){
         took(r,t);if(r.ended)return;
         return arrived().then(function(on){
@@ -681,7 +729,7 @@ function runFlow(){
           // Landed outside Z/Y from our code: back out at once.
           var top=picture.stopped.frames[0];
           if(picture.stopped.frames.length>depth&&!customer(top.program)&&customer(f.program)){
-            var t2=Date.now();s.standard++;
+            var t2=Date.now();s.standard++;lastMove={action:"outside Z/Y: F7",from:String(top.label)};
             return debug("step",{kind:"out",quick:true}).then(function(o){took(o,t2);if(o.ended)return;return arrived().then(function(on2){if(on2)return move();});});
           }
           return move();
@@ -692,7 +740,7 @@ function runFlow(){
   s.done=move().catch(failed).then(function(){
     if(s.left)notice("The Flow run stopped: the program left "+object.name+" - it is now at "+s.left+".");
     series=null;$("cont").textContent="Continue";$("cont").title="Continue to the next breakpoint (F8)";
-    drawStats(s);$("flowshow").hidden=!flow.order.length;
+    drawStats(s);$("flowshow").hidden=!flow.order.length&&!steplog.rows.length;
     if(flow.order.length)showFlow();
     stopKey="";lastStep=null;if(!s.quiet)return refresh();
   }).catch(failed);
@@ -733,8 +781,48 @@ function loadMermaid(){
   mermaidReady.catch(function(){mermaidReady=null;});
   return mermaidReady;
 }
+/* ---------- the step log: every step of a run, to look through afterwards ---------- */
+/* Kept like the flow: across Continue, anew once the program has ended or
+   after Stop or Terminate. The last 5000 steps. */
+var steplog={rows:[],ended:null,closed:false},lastMove=null,logFilter="";
+function logStart(){if(steplog.closed||steplog.ended!==picture.ended)steplog={rows:[],ended:picture.ended,closed:false};}
+function logStep(p){
+  var m=lastMove;lastMove=null;if(!m)return;
+  var s=(p||picture).stopped,top=s&&s.frames[0];
+  steplog.rows.push({n:steplog.rows.length?steplog.rows[steplog.rows.length-1].n+1:1,action:m.action,from:m.from,
+    to:s?String(top&&top.label||s.at)+(s.predicted?" (predicted)":""):"program ended",ms:m.ms||0,sap:m.sap||0,detail:m.detail||""});
+  if(steplog.rows.length>5000)steplog.rows.shift();
+  $("flowshow").hidden=false;
+  if(flowMode==="log"&&$("flowpane").classList.contains("on"))drawLog();
+}
+function logText(rows){return rows.map(function(r){return r.n+"\t"+r.ms+" ms (SAP "+r.sap+")\t"+r.from+"\t-> "+r.to+"\t"+r.action+(r.detail?"\t| "+r.detail:"");}).join("\n");}
+function shownRows(){var f=logFilter.toUpperCase();return steplog.rows.filter(function(r){return !f||(r.action+" "+r.from+" "+r.to+" "+r.detail).toUpperCase().indexOf(f)>=0;});}
+function drawLog(){
+  var box=$("flowsvg"),rows=shownRows();
+  if(!$("logfilter")){
+    box.innerHTML='<div class="logbar"><input id="logfilter" placeholder="Filter the steps" spellcheck="false"><button id="logcopy" title="Copy the steps shown, as text">Copy</button><span id="logcount"></span></div><div id="logrows"></div>';
+    $("logfilter").value=logFilter;
+    $("logfilter").oninput=function(){logFilter=$("logfilter").value;drawLog();};
+    $("logcopy").onclick=function(){var text=logText(shownRows());
+      (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject(new Error("no clipboard"))).then(function(){$("logcount").textContent="copied";})
+        .catch(function(){var t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();$("logcount").textContent="copied";});};
+  }
+  $("logcount").textContent=rows.length+" of "+steplog.rows.length+" steps";
+  var table=document.createElement("table");table.className="grid log";
+  var head=document.createElement("tr");["#","ms","from","to","step","why"].forEach(function(t){var th=document.createElement("th");th.textContent=t;head.appendChild(th);});table.appendChild(head);
+  rows.slice(-1000).forEach(function(r){var tr=document.createElement("tr");
+    [r.n,r.ms+" ("+r.sap+")",r.from,r.to,r.action,r.detail].forEach(function(v){var td=document.createElement("td");td.textContent=v;td.title=v;tr.appendChild(td);});table.appendChild(tr);});
+  var list=$("logrows");list.textContent="";list.appendChild(table);list.scrollTop=list.scrollHeight;
+}
+function showLog(){
+  flowMode="log";$("flowpane").classList.add("on");
+  ["fclasses","fmethods"].forEach(function(id){$(id).classList.remove("on");});$("flog").classList.add("on");
+  $("flowsvg").innerHTML="";drawLog();
+}
+$("flog").onclick=showLog;
 function showFlow(){
-  $("flowpane").classList.add("on");
+  if(flowMode==="log"){showLog();return;}
+  $("flowpane").classList.add("on");$("flog").classList.remove("on");
   $("fclasses").classList.toggle("on",flowMode==="classes");$("fmethods").classList.toggle("on",flowMode==="methods");
   var text=flowText(flowMode),dark=/vscode-(dark|high-contrast)(\s|$)/.test(document.body.className);
   loadMermaid().then(function(){
@@ -772,8 +860,8 @@ $("fclose").onclick=function(){$("flowpane").classList.remove("on");};
 
 /* A Visual run is ended first, then the debugger is asked. */
 function halted(){if(!series)return Promise.resolve();series.stop=true;series.quiet=true;return series.done||Promise.resolve();}
-$("stop").onclick=function(){notice("");flow.closed=true;halted().then(function(){return debug("stop");}).then(refresh).catch(failed);};
-$("terminate").onclick=function(){notice("");flow.closed=true;halted().then(function(){return debug("terminate");}).then(refresh).catch(failed);};
+$("stop").onclick=function(){notice("");flow.closed=true;steplog.closed=true;halted().then(function(){return debug("stop");}).then(refresh).catch(failed);};
+$("terminate").onclick=function(){notice("");flow.closed=true;steplog.closed=true;halted().then(function(){return debug("terminate");}).then(refresh).catch(failed);};
 $("run").onclick=function(){
   var p=$("program").hidden?String(INITIAL.name):$("program").value.trim();
   // An empty field for a class or a function module: its own test screen,
@@ -959,8 +1047,11 @@ function refresh(){return debug("picture").then(apply);}
 function sdeDebugEvent(raw){if(series)return;try{apply(JSON.parse(raw));}catch(e){failed(e);}}
 
 /* ---------- the window's parts list: jump to the unit in the object ---------- */
+var partWaiting=null;
 function sdeSelectPart(part){
   if(!part||!part.key)return;
+  // Chosen before the object's source has come: done once it has.
+  if(!object.lines.length){partWaiting=part;return;}
   var key=String(part.key).toUpperCase().replace(/\s+/g," ").trim(),re=new RegExp("^\\s*(?:METHOD|FORM|MODULE|FUNCTION)\\s+"+key.replace(/[\\^$.*+?()[\]{}|\/]/g,"\\$&")+"\\b","i");
   // An event is its statement as written, compared as View source compares
   // it: without a comment, the closing period or extra blanks.
@@ -993,7 +1084,7 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
   }).then(function(d){
     object.lines=String(d.source||"").split(/\r?\n/);texts[norm(object.url)]=object.lines;
     shown={url:object.url,lines:object.lines,name:object.name};drawSource();
-    if(INITIAL.part)sdeSelectPart(INITIAL.part);
+    if(partWaiting||INITIAL.part){var chosen=partWaiting||INITIAL.part;partWaiting=null;sdeSelectPart(chosen);}
     return refresh();
   }).catch(failed);
 })();

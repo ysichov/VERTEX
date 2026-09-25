@@ -560,6 +560,11 @@ debugger the assistant drives - one session, not a second one:
   its class) - kept across Continue until the program ends or Stop or Terminate is pressed -
   zoomed with −, +, Fit or Ctrl + wheel, and shown on the whole window with ⤢ (Esc
   goes back). SAP's own code appears as one node for what was called.
+- **Log.** Beside Classes and Methods, **Log** lists every step of the Visual and Flow runs:
+  what was done (F5, F6, F7, F8 and to which points, predicted or not), from where, to where, and
+  how long it took, SAP's share apart. A filter narrows it, **Copy** takes it as text. It is kept
+  like the flow, the last 5000 steps. A line under the buttons says, at each step, what the run
+  knew and decided - the map, the statement, the step.
 - **Values in the source.** At a stop, the mouse on a name in the source shows its value - a
   field, a component such as `ls_new-price`, a structure's fields, or a table's row count and
   first rows.

@@ -34,6 +34,9 @@
   with F7, and goes on in the customer code.
 - Flow: Continue from call to call, recording the program's real flow, and a diagram of it by class or
   by method. A call whose code the map places outside Z/Y is stepped over.
+- A log of every step of a run, filtered and copied as text, and a line saying what each step
+  decided. The run-to points of Flow and of a passed loop now reach the program being debugged -
+  before, they went to the breakpoints of the next run and were never hit.
 - Requests to SAP keep their connection open: before, each one opened a new connection and TLS
   handshake.
 

@@ -2160,6 +2160,48 @@ of the calls for any statement that has them. Flow stops at every statement with
 may enter Z/Y code; the F6 prediction stays with call statements alone - after `IF cl=>x( )`
 the condition, not the text, decides the next line.
 
+On ALC the map was there - active, fresh, the window reloaded - and still nothing was predicted
+and no call stopped. The check that lets a map be used on a source had demanded that every
+statement it looked at start its line with its keyword, and one that did not switched the map
+off for the whole include, silently. `ENDIF. LOOP AT ...` is enough for that. The keyword may now
+stand after a period or a colon too, nine statements in ten must stand where the map says, a
+statement whose own line did not check out is never predicted from or to, and a map that does
+not line up says so, with the count.
+
+That was the wrong answer, and the user said why: patterns over the text are one guess on top of
+another, and each new program finds a hole in them. ACE never read the text to follow a run - it
+took the include and the line from the debugger. ADT's stack does not give a class frame's line
+in its include, but SAP says the rest itself. A frame at the address of a program or an include
+counts the same lines as the map of that include, by construction. A frame of a global class
+counts in the class's main source, and ADT's class structure (`classComponents`) gives each
+method's implementation line there; the frame's method is the stack's `eventName`. The offset is
+that line less the METHOD line in the map. Nothing is compared with the text any more; what fits
+neither case is not predicted.
+
+A line of diagnosis under the buttons then showed the map, the statement and the points all
+right - `points on 110, 111, 112, 127, 128, 129, ...: F8` - and the program running past 127 to
+the user's breakpoint at 132. The points had never worked. ADT keeps two sets of breakpoints:
+scope "external", for the runs to come, and scope "debugger", the set of the program being
+debugged, sent on its own session. `runTo` had put its points into the external set, which a
+program already stopped in the debugger does not look at. Every loop "passed" so far had in fact
+run to the user's next breakpoint, and the counter counted points placed, not points reached; the
+fake SAP of the tests stopped wherever it was told, so no test could see it. The same held for a
+breakpoint the user set by a click while stopped: it was for the next run, not this one. The
+points now go into the stopped program's own set, beside the user's breakpoints with their
+conditions, and are taken out of it before the stop is read; a change to the user's breakpoints
+reaches that set too. The fake SAP keeps the two sets apart, so the test now checks the scope.
+
+With the points working, Flow on ZSDE2 still left out a call the Visual run showed: from the
+constructor's line 124 into `GET_FIELD...`. The call is written bare, `get_field...( )`, in a
+method include of a global class; the map could not say whose it was and left the owner empty,
+and the window read an empty list of owners as "all outside Z/Y". The deeper fault was the map
+guessing calls from tokens at all, when ACE resolves every call of a statement itself - ME,
+SUPER and references by their declared class, CREATE OBJECT as its constructor, FORMs and
+function modules by name. The map now takes a statement's calls and their owners from ACE's
+`parse_calls`; my token reading of owners is gone. An empty owner list counts as unknown, and the
+step log gained a column saying, for every statement of the routine with a call, what the run
+made of it - so a Flow run and a Visual run over the same program can be laid side by side.
+
 
 ---
 

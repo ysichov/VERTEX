@@ -7,7 +7,7 @@ const URL_MAIN = "/sap/bc/adt/programs/programs/z_calc/source/main";
 /* A fake SAP: the program stops at the lines in STOPS in turn, then ends.
    Each stop carries the variables the program has there. */
 function fakeSap({ stops = [], conflict = false } = {}) {
-  const calls = [], sent = [];
+  const calls = [], sent = [], scopedSent = [];
   let released = null, position = -1;
   const hit = { DEBUGGEE_ID: "D1", PRG_CURR: "Z_CALC", INCL_CURR: "Z_CALC", LINE_CURR: stops[0] && stops[0].line };
   let delivered = false;
@@ -36,6 +36,16 @@ function fakeSap({ stops = [], conflict = false } = {}) {
   const vars = () => stops[position].vars;
   const session = {
     stateful: "stateful",
+    // The stopped program's own breakpoints, scope "debugger".
+    async debuggerSetBreakpoints(mode, terminal, ide, clientId, bps, user, scope) {
+      scopedSent.push({ scope, bps });
+      return bps.map(b => {
+        const text = typeof b === "string" ? b : b.uri.uri + "#start=" + b.uri.range.start.line;
+        const [uri, start] = text.split("#start=");
+        if (Number(start) === 999) { return { kind: "line", clientId, errorMessage: "Line 999 is not executable" }; }
+        return { kind: "line", clientId, id: "S" + start, uri: { uri, range: { start: { line: Number(start) } } } };
+      });
+    },
     async debuggerAttach() { calls.push("attach"); position = 0; return {}; },
     async debuggerStackTrace() {
       const s = stops[position];
@@ -70,7 +80,7 @@ function fakeSap({ stops = [], conflict = false } = {}) {
     connect: async () => ({ system: { name: "QAS", url: "https://sap.example:44300", client: "100" }, user: "SYCHOV",
       listener, open: async () => session })
   });
-  return { dbg, calls, sent, opened };
+  return { dbg, calls, sent, opened, scopedSent };
 }
 
 const simple = (name, value) => ({ ID: name, NAME: name, META_TYPE: "simple", VALUE: value });
@@ -355,14 +365,17 @@ test("a predicted PERFORM adds its frame, a predicted ENDFORM takes it away, and
 });
 
 test("run to a line: a point for the one run, F8, and the point gone before the stop is read", async () => {
-  const { dbg, calls, sent } = fakeSap({ stops: [{ line: 18, reached: "BP18", vars: [] }, { line: 22, vars: [] }] });
+  const { dbg, calls, sent, scopedSent } = fakeSap({ stops: [{ line: 18, reached: "BP18", vars: [] }, { line: 22, vars: [] }] });
   await dbg.setBreakpoint({ name: "Z_CALC", line: 18 });
   await dbg.wait(5);
+  const before = sent.length;
   const r = await dbg.runTo(URL_MAIN, [22, 30]);
   assert.equal(r.placed, 2);
-  assert.ok(sent.some(list => list.length === 3));
-  assert.ok(sent.some(list => list.some(b => String(typeof b === "string" ? b : b.uri.uri + "#start=" + b.uri.range.start.line).endsWith("#start=22"))));
-  assert.deepEqual(sent.at(-1), [URL_MAIN + "#start=18"]);
+  // The points go to the stopped program (scope "debugger"), beside the user's,
+  // never to the breakpoints of the runs to come.
+  assert.equal(sent.length, before);
+  assert.ok(scopedSent.some(x => x.scope === "debugger" && x.bps.length === 3));
+  assert.deepEqual(scopedSent.at(-1), { scope: "debugger", bps: [URL_MAIN + "#start=18"] });
   assert.ok(calls.includes("stepContinue"));
   const p = dbg.picture();
   assert.equal(p.stopped.at, "Z_CALC:22");
@@ -383,4 +396,19 @@ test("a function module or a class opens its test screen, with the name filled i
   assert.match(decodeURIComponent(opened[1]), /~transaction=SE24 SEOCLASS-CLSNAME=ZCL_X&/);
   await assert.rejects(dbg.run("Z;DYNP_OKCODE=X"), /Not an object name/);
   await dbg.stop();
+});
+
+test("a class's method starts come from ADT's class structure, read once", async () => {
+  let asked = 0;
+  const listener = { async classComponents(url) { asked++; assert.equal(url, "/sap/bc/adt/oo/classes/zcl_x");
+    return { "adtcore:name": "ZCL_X", "adtcore:type": "CLAS/OC", links: [], components: [
+      { "adtcore:name": "run", "adtcore:type": "CLAS/OM/public", components: [], links: [
+        { rel: "http://www.sap.com/adt/relations/source/definitionIdentifier", href: "/sap/bc/adt/oo/classes/zcl_x/source/main#start=12,10" },
+        { rel: "http://www.sap.com/adt/relations/source/implementationIdentifier", href: "/sap/bc/adt/oo/classes/zcl_x/source/main#start=40,9" }] },
+      { "adtcore:name": "mv_a", "adtcore:type": "CLAS/OA", components: [], links: [] }] }; } };
+  const dbg = create({ ideId: "I", terminalId: "T", openUrl: async () => {},
+    connect: async () => ({ key: "Q", system: { name: "Q", url: "https://q" }, user: "U", listener, open: async () => ({}) }) });
+  assert.deepEqual(await dbg.classMethods("/sap/bc/adt/oo/classes/zcl_x/source/main#start=41"), { RUN: 40 });
+  await dbg.classMethods("/sap/bc/adt/oo/classes/zcl_x/source/main");
+  assert.equal(asked, 1);
 });

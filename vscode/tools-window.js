@@ -33,6 +33,7 @@ async function debugCommand(dbg, command, a, fetchVertex) {
     }
     case "picture": return dbg.picture();
     case "source": return { url: a.url, source: await dbg.source(a.url) };
+    case "methods": return { url: a.url, methods: await dbg.classMethods(a.url) };
     case "set": {
       const bp = await dbg.setBreakpointAt({ url: a.url, line: a.line, condition: a.condition, mode: a.mode, take_over: a.take_over === true });
       return { id: bp.id };

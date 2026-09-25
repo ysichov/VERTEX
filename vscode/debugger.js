@@ -122,9 +122,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
      Eclipse do - the line has to exist on the server before it can carry one. */
   async function sync(on) {
     const { listener, user } = on || await system();
-    // The window's run-to point goes with them while it lives; it is nobody's
-    // breakpoint and is listed nowhere.
-    const all = breakpoints.concat(temporaries);
+    const all = breakpoints;
     const wanted = all.map(b => b.url + "#start=" + b.line);
     let answer = await listener.debuggerSetBreakpoints("user", terminalId, ideId, "vertex", wanted, user, "external");
     const placed = answer.filter(a => a.uri);
@@ -140,6 +138,31 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       }
     }
     return answer.filter(a => !a.uri).map(a => a.errorMessage).filter(Boolean);
+  }
+
+  /* The breakpoints of the program stopped now. "external" breakpoints are
+     for the runs to come; the one being debugged has its own set, scope
+     "debugger", sent on its session: the user's breakpoints with their
+     conditions, and the window's run-to points while they live. Returns the
+     points SAP placed. */
+  async function scoped(list) {
+    const client = session.client, user = sap.user;
+    const wanted = list.map(b => b.url + "#start=" + b.line);
+    let answer = await client.debuggerSetBreakpoints("user", terminalId, ideId, "vertex", wanted, user, "debugger");
+    let placed = answer.filter(a => a.uri);
+    if (list.some(b => b.condition)) {
+      const withConditions = list.map(b => {
+        const p = placed.find(a => a.uri.uri === b.url && a.uri.range.start.line === b.line);
+        return p && b.condition ? { ...p, condition: b.condition } : p;
+      }).filter(Boolean);
+      answer = await client.debuggerSetBreakpoints("user", terminalId, ideId, "vertex", withConditions, user, "debugger");
+      placed = answer.filter(a => a.uri);
+    }
+    return placed;
+  }
+  /* A change to the user's breakpoints reaches the program stopped now too. */
+  function rescope() {
+    return exclusive(async () => { if (session) { await scoped(breakpoints); } }).catch(() => {});
   }
 
   async function setBreakpoint({ object_type, name, line, condition, mode, take_over, function_group }) {
@@ -160,6 +183,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       throw new Error("SAP did not accept the breakpoint at " + entry.name + " line " + entry.line
         + (errors.length ? ": " + errors.join("; ") : ". Is the line executable and the object active?"));
     }
+    await rescope();
     changed();
     await listen(take_over === true);
     return entry;
@@ -182,6 +206,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       breakpoints.length = 0;
     }
     await sync();
+    await rescope();
     changed();
   }
 
@@ -257,7 +282,8 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
         : await snapshot(stack);
       frames = stack.stack.map((f, n) => ({ n, label: where(f) + (f.eventName ? " " + f.eventType + " " + f.eventName : ""),
         url: f.uri && f.uri.uri || "", line: f.line, position: f.stackUri || f.stackPosition, current: n === 0,
-        program: f.programName || "", include: f.includeName || "", system: f.systemProgram === true }));
+        program: f.programName || "", include: f.includeName || "", system: f.systemProgram === true,
+        unit: String(f.eventName || ""), unitType: String(f.eventType || "") }));
       if (logs) {
         logged.push({ n: logged.length + 1, breakpoint: bp.id, at: where(top), changed: state.changed });
         if (!quick) {
@@ -430,21 +456,23 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       const at = String(url).split("#")[0];
       temporaries = [].concat(lines).map(Number).filter((n, i, all) => n > 0 && all.indexOf(n) === i)
         .map((n, i) => ({ id: "run-to-" + i, url: at, line: n }));
-      try { await sync(); } catch (error) { temporaries = []; throw error; }
-      const placed = temporaries.filter(t => t.adt).length;
-      if (!placed) { temporaries = []; await sync(); return { placed: 0 }; }
+      // Into the stopped program's own set, beside the user's breakpoints.
+      let set;
+      try { set = await scoped(breakpoints.concat(temporaries)); } catch (error) { temporaries = []; throw error; }
+      const placed = temporaries.filter(t => set.some(a => a.uri.uri === t.url && a.uri.range.start.line === t.line)).length;
+      temporaries = [];
+      if (!placed) { await scoped(breakpoints); return { placed: 0 }; }
       stopped = null;
       const started = Date.now();
       let result;
       try { result = await session.client.debuggerStep(STEPS.continue); }
       catch (error) {
-        temporaries = []; await sync().catch(() => {});
         await end(error);
         return { placed, sap: Date.now() - started, total: Date.now() - started, ended: true };
       }
       const sap = Date.now() - started;
-      temporaries = [];
-      await sync();
+      // Gone before the stop is read, so it is never taken for the user's.
+      await scoped(breakpoints);
       await arrive(result, true);
       return { placed, sap, total: Date.now() - started };
     });
@@ -637,6 +665,31 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     return listener.getObjectSource(String(url).split("#")[0], { version: "active" });
   }
 
+  /* Where each method of a global class starts in its main source, as ADT's
+     class structure says: METHOD name -> line. What a stack frame of the
+     class counts its lines in, SAP's own answer rather than a reading of the text. */
+  const methodLines = new Map();
+  async function classMethods(url) {
+    const object = String(url).split("#")[0].replace(/\/source\/main$/, "");
+    if (methodLines.has(object)) { return methodLines.get(object); }
+    const { listener } = await system();
+    const root = await listener.classComponents(object);
+    const found = {};
+    (function walk(node) {
+      if (!node) { return; }
+      if (/^CLAS\/OM|^INTF\/IO/.test(String(node["adtcore:type"] || ""))) {
+        const links = node.links || [];
+        const link = links.find(l => /implementation/i.test(String(l.rel || "")) && /#start=\d+/.test(String(l.href || "")))
+          || links.find(l => /#start=\d+/.test(String(l.href || "")) && /\/source\/main#/.test(String(l.href || "")));
+        const at = link && /#start=(\d+)/.exec(String(link.href));
+        if (at) { found[String(node["adtcore:name"]).toUpperCase()] = Number(at[1]); }
+      }
+      (node.components || []).forEach(walk);
+    })(root);
+    methodLines.set(object, found);
+    return found;
+  }
+
   function status() {
     return {
       system: sap ? sap.system.name + " / " + sap.user : "not connected yet",
@@ -652,7 +705,8 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
 
   return { setBreakpoint, clearBreakpoints, wait, step, read, run, stop, status, counted,
     log: () => logged.slice(),
-    setBreakpointAt, advance, runTo, settle, terminate, watch, picture, scopes, children, variables, tableRows, frame, source };
+    setBreakpointAt, advance, runTo, settle, terminate, watch, picture, scopes, children, variables, tableRows, frame, source,
+    classMethods };
 }
 
 module.exports = { create, sourceUrl, objectOf, plain };

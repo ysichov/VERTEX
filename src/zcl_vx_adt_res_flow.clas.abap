@@ -87,14 +87,14 @@ CLASS zcl_vx_adt_res_flow DEFINITION
                 it_unsure TYPE string_table
       RETURNING VALUE(r)  TYPE string.
 
-    " Whose code the calls of a statement enter, comma-separated: a class, a
-    " function module, or ? where the text does not say - a call through a
-    " reference, a dynamic name, a screen, a SUBMIT. The window steps over a
-    " statement whose calls all go outside Z/Y code, and knows the next line.
+    " Whose code the calls ACE found in a statement enter, comma-separated:
+    " the class of a method (? where ACE could not tell), the program of a
+    " FORM, the name of a function module. The window steps over a statement
+    " whose calls all go outside Z/Y code, and stops a flow run at the others.
     METHODS owners
-      IMPORTING it_tok   TYPE string_table
-                i_class  TYPE string
-      RETURNING VALUE(r) TYPE string.
+      IMPORTING it_calls  TYPE zif_vx_ace_parse_data=>tt_calls
+                i_program TYPE program
+      RETURNING VALUE(r)  TYPE string.
 ENDCLASS.
 
 
@@ -389,6 +389,18 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
     " and the scan it came from. Only the level-1 statements of an include
     " are in its own table, so each include is listed with its own lines.
     DATA(ls_source) = zcl_vx_ace_source=>parse( i_program ).
+    " The calls of every statement, as ACE resolves them - ME, SUPER and
+    " references by their declared class, CREATE OBJECT as its constructor.
+    " ACE parses them on demand, one include at a time.
+    DATA lt_names TYPE STANDARD TABLE OF program WITH EMPTY KEY.
+    LOOP AT ls_source-tt_progs INTO DATA(ls_name) WHERE program = i_program.
+      APPEND ls_name-include TO lt_names.
+    ENDLOOP.
+    LOOP AT lt_names INTO DATA(lv_name).
+      zcl_vx_ace_parser=>parse_calls( EXPORTING i_program = i_program
+                                                i_include = lv_name
+                                      CHANGING  cs_source = ls_source ).
+    ENDLOOP.
     rs_map-program = to_lower( i_program ).
 
     " First, the classes whose methods a call may not reach by name alone: a
@@ -495,18 +507,15 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
           ENDCASE.
         ENDIF.
         IF ls_statement-kind <> `decl`.
-          DATA(lt_all) = words( io_scan = ls_prog-scan
-                                is_kw   = ls_kw ).
-          ls_statement-calls = xsdbool( ls_statement-kind = `call` ).
-          LOOP AT lt_all INTO DATA(lv_word).
-            IF lv_word CP '*(' OR lv_word CS '->' OR lv_word CS '=>'.
-              ls_statement-calls = abap_true.
-              EXIT.
-            ENDIF.
-          ENDLOOP.
-          IF ls_statement-calls = abap_true.
-            ls_statement-owners = owners( it_tok  = lt_all
-                                          i_class = lv_class ).
+          IF ls_kw-tt_calls IS NOT INITIAL.
+            ls_statement-calls  = abap_true.
+            ls_statement-owners = owners( it_calls  = ls_kw-tt_calls
+                                          i_program = i_program ).
+          ELSEIF ls_statement-kind = `call`.
+            " A call ACE does not name - SUBMIT, CALL SCREEN, a dynamic call:
+            " where it leads is not known.
+            ls_statement-calls  = abap_true.
+            ls_statement-owners = `?`.
           ENDIF.
         ENDIF.
         APPEND ls_statement TO ls_include-statements.
@@ -518,84 +527,17 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
 
   METHOD owners.
     DATA lt_owner TYPE string_table.
-    DATA(lv_count) = lines( it_tok ).
-    IF lv_count = 0.
-      RETURN.
-    ENDIF.
-    " Statements whose way on the text cannot tell: a screen, a transaction,
-    " another program, an exception, a message, a subroutine.
-    CASE it_tok[ 1 ].
-      WHEN 'SUBMIT' OR 'RAISE' OR 'MESSAGE' OR 'LEAVE' OR 'COMMIT' OR 'ROLLBACK' OR 'SET' OR 'PERFORM'.
-        r = `?`.
-        RETURN.
-      WHEN 'CALL'.
-        IF lv_count < 2 OR ( it_tok[ 2 ] <> 'FUNCTION' AND it_tok[ 2 ] <> 'METHOD' ).
-          r = `?`.
-          RETURN.
-        ENDIF.
-      WHEN 'CREATE'.
-        " CREATE OBJECT runs the constructor: of the class after TYPE, or of
-        " the reference's static type, which the text does not give. CREATE
-        " DATA runs nothing.
-        IF lv_count >= 2 AND it_tok[ 2 ] = 'OBJECT'.
-          r = `?`.
-          READ TABLE it_tok WITH KEY table_line = 'TYPE' TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0 AND sy-tabix < lv_count.
-            DATA(lv_type) = it_tok[ sy-tabix + 1 ].
-            IF lv_type NA '()'.
-              r = lv_type.
-            ENDIF.
-          ENDIF.
-        ENDIF.
-        RETURN.
-    ENDCASE.
-    DO lv_count TIMES.
-      DATA(lv_i) = sy-index.
-      DATA(lv_t) = it_tok[ lv_i ].
-      DATA(lv_owner) = ||.
-      DATA(lv_next) = COND string( WHEN lv_i < lv_count THEN it_tok[ lv_i + 1 ] ).
-      IF lv_t = 'FUNCTION' AND lv_i = 2 AND it_tok[ 1 ] = 'CALL'.
-        " A literal name only: CALL FUNCTION lv_name goes where the data says.
-        IF lv_next CP `'*'` AND strlen( lv_next ) > 2.
-          lv_owner = substring( val = lv_next off = 1 len = strlen( lv_next ) - 2 ).
-        ELSE.
-          lv_owner = `?`.
-        ENDIF.
-      ELSEIF lv_t = 'METHOD' AND lv_i = 2 AND it_tok[ 1 ] = 'CALL'.
-        IF lv_next CS '=>'.
-          SPLIT lv_next AT '=>' INTO lv_owner DATA(lv_rest).
-        ELSEIF lv_next CP 'ME->*' AND i_class IS NOT INITIAL.
-          lv_owner = i_class.
-        ELSEIF lv_next NA '-()' AND i_class IS NOT INITIAL.
-          lv_owner = i_class.
-        ELSE.
-          lv_owner = `?`.
-        ENDIF.
-      ELSEIF lv_t = 'NEW'.
-        lv_owner = lv_next.
-        IF lv_owner CP '*('.
-          lv_owner = substring( val = lv_owner len = strlen( lv_owner ) - 1 ).
-        ENDIF.
-        IF lv_owner IS INITIAL OR lv_owner = '#'.
-          lv_owner = `?`.
-        ENDIF.
-      ELSEIF lv_i > 1 AND it_tok[ lv_i - 1 ] = 'NEW'.
-        CONTINUE.
-      ELSEIF lv_t CS '=>'.
-        SPLIT lv_t AT '=>' INTO lv_owner lv_rest.
-      ELSEIF lv_t CS '->'.
-        lv_owner = COND #( WHEN lv_t CP 'ME->*' AND lv_t NS ')->' AND i_class IS NOT INITIAL THEN i_class ELSE `?` ).
-      ELSEIF lv_t CP '*(' AND i_class IS NOT INITIAL.
-        " Inside a class a bare m( ) may be its own method.
-        lv_owner = i_class.
+    LOOP AT it_calls INTO DATA(ls_call).
+      DATA(lv_owner) = SWITCH string( ls_call-event
+        WHEN 'METHOD'   THEN COND #( WHEN ls_call-class IS INITIAL THEN `?` ELSE to_upper( ls_call-class ) )
+        WHEN 'FORM'     THEN CONV string( i_program )
+        WHEN 'FUNCTION' THEN to_upper( ls_call-name )
+        ELSE `?` ).
+      READ TABLE lt_owner WITH KEY table_line = lv_owner TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        APPEND lv_owner TO lt_owner.
       ENDIF.
-      IF lv_owner IS NOT INITIAL.
-        READ TABLE lt_owner WITH KEY table_line = lv_owner TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND lv_owner TO lt_owner.
-        ENDIF.
-      ENDIF.
-    ENDDO.
+    ENDLOOP.
     r = concat_lines_of( table = lt_owner sep = `,` ).
   ENDMETHOD.
 
