@@ -1,35 +1,23 @@
 # ABAP VERTEX Tools
 
-![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](docs/architecture.jpg)
+VERTEX is a set of plugins for VS Code and Eclipse ADT: an AI assistant with MCP, an enhanced ABAP
+editor, an AI-driven ADT debugger, and explorers for code, versions and data. Each window reads over
+the developer's existing ADT connection and renders as HTML; the ABAP side is this repository's
+`src/`.
 
-VERTEX is a new set of plugins for VS Code and Eclipse ADT: an **AI Assistant** with MCP, an
-**Enhanced Code Editor**, an **AI-driven ADT debugger**, and the **Version**, **Code** and **Data**
-Explorers — three words, three tools that grew out of SAP GUI programs. The code editor and the
-debugger are VS Code features. Each view reads over the developer's existing ADT connection and
-renders as HTML.
-
-The three explorers:
-
-| Word | Comes from | What it does | In VERTEX | Status |
+| Tool | Grew out of | What it does | VS Code | Eclipse |
 |---|---|---|---|---|
-| Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
-| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review saved for a request — including approving, declining and commenting on a block. No blame |
-| Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit |
+| **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system; code changes land in the tab, reviewed block by block before activation | ✓ | ✓ |
+| **Enhanced Code Editor** | — | Hover, navigation, outline, ABAP Unit, ATC, where-used, keyword documentation | ✓ | — |
+| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Conditional breakpoints and a verdict from the assistant; Visual Debug on screen | ✓ | — |
+| **Versions** | [AVE](https://github.com/ysichov/AVE) | History, diff, code review of a whole transport | ✓ | ✓ |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics, UML, logic, calls | ✓ | ✓ |
+| **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, joins, pivots | ✓ | ✓ |
 
-Status: **early**. All three answer, and each is a fraction of what it was cut from.
+The projects named above are where the ideas were worked out first, and they are not developed
+further; everything new happens here.
 
-Two more earlier projects gave VERTEX their principles and functions, not their code:
-[Smart Debugger](https://github.com/ysichov/Smart-Debugger), whose picture of a stopped program —
-source, stack, every variable at once — is drawn here from ADT as Visual Debug, and
-[ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code), whose AI-assisted editing with a
-block-by-block review before Save & Activate is now the Code Change reviewer. Like the three above,
-they are not developed further.
-
-Building a review is here too, not only reading one. A Versions window opened on a request that
-has none offers to build it, and walks the objects one at a time — reading the versions of each,
-diffing them, cutting what changed into blocks — writing each object before it moves to the next.
-One object per call, so nothing has to survive being slow and stopping costs the object in hand.
-AVE's SAP GUI writes into the same `ZAVE_REVIEW`, so a review built either way is read by both.
+![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](docs/architecture.jpg)
 
 ## Install
 
@@ -63,7 +51,9 @@ Explorer → **VERTEX**.
 
 ### SAP
 
-On the SAP system, nothing but this repository's `src/` has to be installed. The table, the join and the pivot were
+On the SAP system, nothing but this repository's `src/` has to be installed: pull it with
+[abapGit](https://abapgit.org) and activate it. Until then every VERTEX window shows a page saying
+the backend is missing. The table, the join and the pivot were
 carried out of Simple Data Explorer, the flow and the metrics out of ACE, and the version history,
 the diff, the transport lookup and the review out of [AVE](https://github.com/ysichov/AVE) — all
 into `src/` as `ZCL_VX_*`, with the SAP GUI stripped off. None of the three is a prerequisite any
@@ -72,177 +62,62 @@ new happens on this side. The `ZAVE_REVIEW` table the review is kept in ships in
 
 Building either half from this repository instead: [BUILD.md](BUILD.md).
 
-## In VS Code
+## What each host has
 
-Open **VERTEX: Open Panel**, then choose **VERTEX Tools**. Select the object type, enter its name
-and choose its function — for example Data, View, UML, Metrics, Calls diagram, Logic diagram, Diff or Versions.
-The functions are filtered by object type, so VERTEX does not offer actions that cannot apply.
+### VS Code
 
-### Clickable ABAP source
+- **VERTEX Tools** — pick an object type and a name; the functions offered depend on the type
+  (Data, View source, UML, Metrics, Calls and Logic diagrams, Diff, Versions, Visual Debug).
+- **The ABAP editor** — hover, Go to, outline, Save & Activate and the block-by-block
+  Review & Activate; Ctrl+Shift+F10 runs ABAP Unit into the Test Explorer, Ctrl+Shift+F2 runs ATC
+  into the Problems view, Shift+F12 shows where-used, F1 opens the keyword documentation.
+- **VERTEX chat** — Claude or ChatGPT through a subscription or an Anthropic API key, over every
+  system in `vertex.systems`; it reads, explains and changes code, and nothing reaches SAP until
+  you save.
+- **The debugger for an assistant** — *Z_CALC computes the wrong discount, find out why*: the
+  assistant sets conditional breakpoints, runs the program in WebGUI and ends with the line and the
+  values that prove it. Visual Debug shows the same session on screen, with a flow chart of the
+  calls and a player for the recorded run.
+- **Assistant in SelecTor and Versions** — a sentence instead of the clicks: *SFLIGHT for carrier
+  AA, joined with SCARR*.
 
-The old SAP GUI made every meaningful name a place to go. VERTEX takes the same direction in
-VS Code: source opened from VERTEX remains an editable `vertex-sap` document, while names in it
-can be inspected and followed. Hovering a supported local variable shows its type; hovering a
-method shows its parameters. **F12**, double-click, or **VERTEX: Go to (by context)** follows
-local methods and declarations inside the current class, and can open a static class call or a
-function module in its own source. **VERTEX: Back** (`Alt+Left`) returns along that navigation.
+Everything, with its settings and commands: [vscode/README.md](vscode/README.md).
 
-### Code editor improvements
+### Eclipse ADT
 
-- Hover now resolves a local declaration or method parameter first, then a class attribute declared
-  in `PUBLIC`, `PROTECTED` or `PRIVATE SECTION`; it shows the compact `TYPE` / `LIKE` result.
-- Method hover reads the complete definition statement, including multiline declarations and
-  chained `METHODS:` entries, and shows the parameter sections.
-- Navigation follows static calls, `CALL FUNCTION`, and instance calls such as
-  `mo_splitter->set_row_sash( )` when the receiver has a visible `TYPE REF TO` declaration.
-- A name declared in another object - `abap_bool` from the type pool, an interface constant -
-  shows its declaration in the hover; double-click or Go to opens it there, a class or a program
-  as its VERTEX tab and any other kind read-only.
-- The hover on a data element names its domain, type and length.
-- Hover and navigation work inside a read-only view as well.
-- Interfaces open as editable VERTEX tabs, like programs and classes.
-- `NEW zcl_foo( )` leads to the class's constructor.
-- Outline, Ctrl+Shift+O and the breadcrumbs list a class's methods and a program's events,
-  forms and modules.
-- Double-click `IF` / `CASE` to jump to its end; Ctrl+click walks the `ELSEIF` / `ELSE` / `WHEN`
-  branches.
-- Ctrl+Shift+F10 runs a class's or program's ABAP Unit tests, as in Eclipse; the results appear in
-  VS Code's Test Explorer, a failure linked to its line.
-- Ctrl+Shift+F2 runs the ATC check with the system's default variant and puts the findings in the
-  Problems view, underlined in the tab. A function module is checked through its function group.
-- Shift+F12 (peek) or Shift+Alt+F12 (list) shows where the name under the cursor is used.
-- F1 opens SAP's ABAP keyword documentation for the statement under the cursor.
-  External classes and function modules open as source documents; **Back** returns through every
-  VERTEX drill-down location.
+- **VERTEX Tools** — the same pages as in VS Code, opened from **Window → Show View → VERTEX** or
+  the context menu of an object, on that object's own ADT project.
+- **VERTEX Assistant** — the chat over the ABAP project's system, and the Assistant panels in
+  SelecTor and Versions, run by Codex or Claude Code.
+- **VERTEX: Activate** — ADT's activation, optionally after the block review.
 
-This is intentionally separate from **View source** in the Tools window. That command is a
-read-only, contextual overview inside VERTEX: class methods are grouped into the familiar
-`CPUB` / `CPRO` / `CPRI` Parts table and carry the same SE80-style visibility markers as Diff.
-One click opens a method body; double-clicking a method toggles its declaration and body;
-double-clicking a section positions the declaration. A program always remains complete on screen:
-its Parts list only positions to events, forms and local-class implementations. A click on the
-object's name above Parts shows the whole source again. **Back** restores the preceding source
-location. **Run Unit Tests** and **Run ATC Check** sit beside **Open in the Editor**. Chat context follows the active function: a source view sends a
-selected fragment and method signature, while UML sends its diagram nodes and relationships. A
-redefinition is resolved through its inheritance chain.
+Setup of the assistant: [eclipse/README.md](eclipse/README.md).
 
-An explicit chat request such as *Open ZCL_FOO* opens the normal editable VS Code document. The
-detailed, current navigation matrix is in
-[vscode/README.md](vscode/README.md#clickable-abap-source).
+### Other assistants over MCP
 
-### Object-specific tools
+GitHub Copilot, Claude Code and Codex get two read-only tools for transport reviews:
+`sap_transport_changes` lists what a request changed, and `sap_transport_diff` gives the diff in
+review blocks with the verdicts already given. The VS Code extension serves them itself; without VS
+Code, [mcp/](mcp/README.md) serves them over stdio. Setup:
+[in VS Code](vscode/README.md#review-transports-with-copilot-claude-code-or-codex) ·
+[Copilot in Eclipse](eclipse/MCP.md) · [without VS Code](mcp/README.md). The tested clients are
+Copilot in VS Code, Claude Code and Codex; others are not supported yet.
 
-VERTEX no longer offers one generic action list for every SAP object. The selected object type
-defines the functions in its toolbar: a transport exposes Versions and review, a class or program
-can expose source, metrics, flow/scheme and diff, and a package exposes its package-level views.
-The default action is the most useful available view rather than an extra Run button.
+## The explorers today
 
-## AI assistants
+| Word | Comes from | What it does | In VERTEX | Status |
+|---|---|---|---|---|
+| Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review saved for a request — including approving, declining and commenting on a block. No blame |
+| Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit |
 
-### VERTEX chat and code reviewer (VS Code, 0.7.0)
+Status: **early**. All three answer, and each is a fraction of what it was cut from.
 
-The VERTEX panel in VS Code's Activity Bar has a chat over the SAP systems in `vertex.systems`,
-run by a Claude or ChatGPT subscription — through the Claude Code or Codex extension, which has to
-be installed and signed in — or by an Anthropic API key. **LLM Providers** shows every provider
-with its models as one tree: a provider can be switched off whole, and each model on its own. Name a system in the question to reach it; a VERTEX Tools window keeps the
-system it was opened on. Ask *show ZCL_TR_TEXT_DATA* or
-*explain this method*: it searches and reads the source and opens it in an editable tab.
-Asked to fix or change code, it writes the change into that tab, unsaved - as if you had typed
-it. You save it like your own edits: **Save & Activate**, or **Review & Activate** through the
-**Code Change** reviewer - approve or decline each block, ask AI about one block, and only the
-approved blocks are written, with a syntax check and a conflict check against the current SAP
-source. Nothing reaches SAP until you save. Details:
-[vscode/README.md](vscode/README.md#vertex-chat).
-
-### Transport reviews over MCP
-
-Beyond its own chat, VERTEX hands SAP to the assistants already in use — Copilot,
-Claude Code and Codex in VS Code — over MCP, with two tools that read the review saved
-for a transport request: `sap_transport_changes` lists what the request changed, and
-`sap_transport_diff` gives the diff cut into the blocks AVE's rule cuts, with the verdicts and notes
-already given. Both only read: a review has to have been built first — the Versions window does
-that — and a request without one is reported as such, never as a clean transport.
-
-The tools are served two ways, from the same code:
-
-| Server | How it runs | Its SAP connection | Clients |
-|---|---|---|---|
-| Inside the VS Code extension | HTTP on `127.0.0.1:37777` with a bearer token; VS Code must be open | The extension's active system | Copilot finds it by itself; Codex and Claude Code are given its address |
-| [`mcp/server.js`](mcp/README.md) | A child process over stdio; no editor | `VERTEX_SAP_*` environment variables | Development/standalone mode; not part of the tested VS Code workflow |
-
-Every client keeps its own registration: a server added to Claude Code is not visible in the
-other clients. Setting up the tested VS Code workflow:
-[vscode/README.md](vscode/README.md#review-transports-with-copilot-claude-code-or-codex) and
-[mcp/README.md](mcp/README.md). For GitHub Copilot in Eclipse, use the
-[Eclipse MCP setup guide](eclipse/MCP.md). The Eclipse plugin's built-in Assistant
-uses a separate private MCP runtime; it is not an external Copilot endpoint.
-
-SelecTor and Versions also take a sentence. **Assistant** in their bar opens a chat: pick Claude
-Code or Codex and the model it offers, and write what to show — *SFLIGHT for carrier AA, joined
-with SCARR*, or *the last change of COMPUTE_DIFF in ZCL_VX_DIFF*.
-In Versions the assistant also reads what the window shows — the change a version made, whole
-sources, a saved review with its blocks and verdicts — so it describes and reviews code as well as
-moving the window there, the way the clicks would. SelecTor's assistant never sees a table row.
-Examples of requests for both windows are in [vscode/README.md](vscode/README.md#examples).
-
-### Debugging with an assistant (VS Code, 0.7.3)
-
-Describe the problem - *Z_CALC computes the wrong discount, find out why* - and the assistant
-runs the ABAP debugger itself: it sets breakpoints, starts the program, reads what the program
-held where it stopped, decides where to look next, and ends with a verdict that names the line
-and the values that prove it.
-
-- **Breakpoints with conditions SAP evaluates**, written like an ABAP `IF`
-  (`lv_total > 1000`, `LINES( lt_items ) > 0`): the program stops only when the condition
-  holds, so a loop of a thousand passes costs nothing.
-- **Watchpoints**: a breakpoint in mode *log* records what changed and lets the program run on,
-  without a turn of the assistant.
-- **Short answers**: a stop returns what changed since the last one and a table as its count and
-  first rows; the rest is read on purpose.
-- **Read-only**: breakpoints and a listener, nothing else. No variable is changed, no code is
-  jumped over.
-
-The VERTEX chat has it with no setup. Claude Code and Codex get it from a second MCP server of
-the extension, `vertex-debug`, registered with one command. The program is started in WebGUI:
-SAP never applies ADT breakpoints to a session opened through SAP Logon, so a run from the
-standalone SAP GUI is not caught - by VERTEX or by Eclipse. Details, the tools and the
-condition syntax: [vscode/README.md](vscode/README.md#debug-with-an-assistant). It needs nothing
-on the ABAP side - only SAP's standard ADT services, the debug authorisation and WebGUI. `src/` ships
-`Z_VX_DEBUGGER_TEST`, a one-screen program with a bug that shows only at runtime, to try it on.
-
-**Visual Debug** (pilot, VS Code 0.7.4) puts that same debugger on screen in the
-Tools window: the source with breakpoints set by a click, where the program stands, the stack,
-every variable at once in a tree, and tables in grids - the picture of
-[Smart Debugger](https://github.com/ysichov/Smart-Debugger), drawn from ADT. It is one session
-with the assistant's: what either of them does, the other sees. Since 0.7.5 a Flow or Rec run
-is also drawn as a top-down chart of the calls and can be replayed stop by stop, with the source
-line, the running block, the stack and the values moving together.
-[Details](vscode/README.md#visual-debug-the-debugger-on-screen-pilot).
-
-### Development status
-
-The tested integrations are GitHub Copilot in VS Code, Claude Code, and Codex in VS Code.
-Claude web, ChatGPT web, Claude Desktop, and other MCP clients are not supported or tested yet.
-The remote HTTP host is experimental and documented for future development only.
-
-### Where MCP comes in
-
-| Who | Uses MCP | Setup |
-|---|---|---|
-| The SelecTor, Versions and Metrics windows, used by hand | No: they read SAP directly over ADT | — |
-| The **Assistant** panels in SelecTor and Versions | Yes, internally | None: for each request the extension hands Claude Code or Codex the window's own MCP address, `/selector` or `/versions` |
-| Supported assistants | Yes | GitHub Copilot in VS Code, Claude Code, and Codex in VS Code |
-| Other chats and MCP clients | Not supported/tested yet | Claude web, ChatGPT web, Claude Desktop, and other clients are development work |
-
-MCP is how Claude Code and Codex are given tools in both cases. The difference is
-who connects them: the extension, for one request, or you, once.
-The assistant reads the table's layout (fields, keys, the tables the dictionary offers, never a
-row) and answers with the state SelecTor is to be put in; the page checks it against the
-dictionary, fills in the panel, the join and the pivot as the clicks would, and runs the query
-itself. It starts the copy of Claude Code or Codex that comes with its VS Code extension, with
-no other MCP server and no shell. In Eclipse, the same runtime runs through
-Node.js and uses the window's ADT session. Configure executable paths in
-**Window > Preferences > VERTEX Assistant**; see [Eclipse Assistant setup](eclipse/README.md).
+Building a review is here too, not only reading one. A Versions window opened on a request that
+has none offers to build it, and walks the objects one at a time — reading the versions of each,
+diffing them, cutting what changed into blocks — writing each object before it moves to the next.
+One object per call, so nothing has to survive being slow and stopping costs the object in hand.
+AVE's SAP GUI writes into the same `ZAVE_REVIEW`, so a review built either way is read by both.
 
 ## How it fits together
 
@@ -271,44 +146,7 @@ signatures off the bundles when web search has nothing: [ADT_TECH.md](ADT_TECH.m
 
 ### Layout
 
-```
-org.vertex.abap.ui/
-├── META-INF/MANIFEST.MF   bundle dependencies
-├── plugin.xml             registers the view at org.eclipse.ui.views
-├── build.properties       resources/ must be listed, or the page is missing at runtime
-├── resources/
-│   ├── table.html         the grid, the join builder and the pivot cross
-│   ├── metrics.html       Calls, Logic and Metrics: ACE's diagrams and numbers
-│   ├── mermaid.min.js     draws the diagrams; shipped, never fetched
-│   └── versions.html      parts, their versions, the diff, and the saved review
-└── src/org/vertex/abap/ui/
-    ├── PageView.java           browser, page, ADT read, answer bridge - the shared half
-    ├── SelectorView.java       table data: what to request, and opening a second window
-    ├── MetricsView.java        code metrics: what to request
-    ├── VersionsView.java       version history: parts, then the versions of one
-    ├── ServiceHandler.java     context menu -> a view, on the object's own system
-    ├── DataHandler.java        which view, and what to carry in its secondary id
-    ├── MetricsHandler.java     the same, for metrics
-    ├── VersionsHandler.java    the same, for versions
-    ├── SelectionContext.java   the ADT object and project behind a workbench selection
-    └── JsonContentHandler.java reads a JSON response body as a String
-vscode/
-├── extension.js           the second host: webviews, the SAP connection, the MCP provider
-├── mcp.js                 the review tools and the local HTTP MCP server
-├── selector.js            SelecTor's assistant: its tool, its plan and the check
-├── versions.js            Versions' assistant: its tools, its plan and the check
-├── assistant.js           starts Claude Code or Codex for one request, shut in
-└── test/                  node --test; no SAP, no editor
-mcp/
-├── server.js              the same tools over stdio, for clients without VS Code
-├── sap.js                 its own SAP reader: the review resource only, no redirects
-├── configure-local.py     writes Codex and Claude Code configuration, password left empty
-└── test/                  the real process against a fake SAP endpoint
-```
-
-A view is transport and nothing else: it names a path and hands the answer to its page. What the
-user operates lives in the page, which is what lets the same page run under the VS Code host in
-`vscode/`.
+What each folder and file of the repository is for: [BUILD.md](BUILD.md#repository-layout).
 
 ## Acknowledgements
 

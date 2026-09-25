@@ -22,13 +22,13 @@ happens on this side.
 
 ## It needs an ABAP backend
 
-## VS Code prerequisite
-
-This extension is one half of VERTEX. The other half is the ADT resources in this
-repository's `src/`. Pull it with [abapGit](https://abapgit.org) and activate it.
+This extension is one half of VERTEX. The other half is the ADT resources in the
+[VERTEX repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src). Pull it with
+[abapGit](https://abapgit.org) and activate it.
 
 Until then, every window just shows a page explaining that the backend isn't installed yet.
 
+## VS Code prerequisite
 
 [SAP ABAP Development Tools](https://marketplace.visualstudio.com/items?itemName=SAPSE.adt-vscode)
 is recommended for the ABAP editor, navigation and standard ADT commands. It
@@ -68,7 +68,9 @@ development systems often have; it is off by default on purpose.
   enter its name (a package opens in View source with its objects in Parts; a name with `*` or `+`, such as `Z_VX*`, lists the objects of that type that
   match; pick one with the mouse or the arrow keys and Enter; a plain name that is not found
   lists the names starting with it), then choose the available function (for example Data, View,
-  UML diagram, Metrics, Calls diagram, Logic diagram, Diff or Versions). **Calls diagram** shows which program, class or
+  UML diagram, Metrics, Calls diagram, Logic diagram, Diff or Versions). Only the functions that
+  apply to the chosen type are offered: a transport has Versions and its review, a class or a
+  program source, metrics, diagrams and diff, a package its package-level views. **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
   per class or per method, and picking an event or a form in Parts starts the calls there, as a
   double-click in ACE's tree does (**From: … ✕** goes back to the whole program). **Logic diagram** is the flowchart of one method (ACE's Flow Scheme). A magnifier follows the
