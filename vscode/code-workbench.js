@@ -938,6 +938,9 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
               dataType = describeDataElement(await dataElementOf(element.source.entry.repo, element.answer.name));
             }
           } catch (error) {
+            // SAP answers 400 where the cursor is on no name it knows - a
+            // keyword, a literal: nothing to describe, and no hover for it.
+            if (error && error.err === 400) { return undefined; }
             // Said in the hover: VS Code drops a provider's error in silence.
             const value = "VERTEX: SAP could not describe this name - " + (error && error.message || error);
             return vscode.Hover ? new vscode.Hover([{ language: "text", value }]) : { contents: [{ language: "text", value }] };
@@ -1085,17 +1088,32 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   const tests = vscode.tests.createTestController("vertexAbapUnit", "ABAP Unit");
   const testedObjects = new Map();
   context.subscriptions.push(tests);
+  // The source a VERTEX tab can hold behind an ADT URI: /sap/bc/adt/oo/classes/zcl_x/includes/testclasses,
+  // .../programs/programs/z/source/main, .../functions/groups/g/fmodules/f/source/main. Anything else is not one.
+  function sourceAddress(uri) {
+    const path = String(uri || "").split("#")[0];
+    const named = (object_type, value, include = "main") => ({ object_type, include, object_name: decodeURIComponent(value).toUpperCase() });
+    let found = /^\/sap\/bc\/adt\/oo\/classes\/([^/]+)(?:\/includes\/(\w+)|\/source\/main)?$/.exec(path);
+    if (found) {
+      return ["main", "definitions", "implementations", "macros", "testclasses"].includes(found[2] || "main")
+        ? named("CLAS", found[1], found[2]) : undefined;
+    }
+    if ((found = /^\/sap\/bc\/adt\/oo\/interfaces\/([^/]+)(?:\/source\/main)?$/.exec(path))) { return named("INTF", found[1]); }
+    if ((found = /^\/sap\/bc\/adt\/programs\/programs\/([^/]+)(?:\/source\/main)?$/.exec(path))) { return named("PROG", found[1]); }
+    if ((found = /^\/sap\/bc\/adt\/functions\/groups\/[^/]+\/fmodules\/([^/]+)(?:\/source\/main)?$/.exec(path))) { return named("FUNC", found[1]); }
+    return undefined;
+  }
+  // Lines count from 1 in ADT, columns from 0.
+  async function sourceLocation(repo, uri, line, column) {
+    const address = sourceAddress(uri);
+    if (!address) { return undefined; }
+    const entry = await sourceDocument(repo, address);
+    return new vscode.Location(entry.document.uri, position(Math.max(0, line - 1), column || 0));
+  }
   // A stack line points at an include and a line: /sap/bc/adt/oo/classes/zcl_x/includes/testclasses#start=19,0.
   async function failureLocation(repo, uri) {
-    const found = /^\/sap\/bc\/adt\/(oo\/classes|programs\/programs)\/([^/#]+)(?:\/includes\/(\w+))?[^#]*#.*?start=(\d+)(?:,(\d+))?/
-      .exec(String(uri || ""));
-    if (!found) { return undefined; }
-    const object_type = found[1] === "oo/classes" ? "CLAS" : "PROG";
-    const include = found[3] || "main";
-    if (object_type === "PROG" && include !== "main") { return undefined; }
-    const entry = await sourceDocument(repo, { object_type, include,
-      object_name: decodeURIComponent(found[2]).toUpperCase() });
-    return new vscode.Location(entry.document.uri, position(Number(found[4]) - 1, Number(found[5] || 0)));
+    const found = /#.*?start=(\d+)(?:,(\d+))?/.exec(String(uri || ""));
+    return found ? sourceLocation(repo, uri, Number(found[1]), Number(found[2] || 0)) : undefined;
   }
   async function alertMessage(repo, alert) {
     const message = new vscode.TestMessage([alert.title, ...(alert.details || [])].filter(Boolean).join("\n"));
@@ -1148,7 +1166,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   tests.createRunProfile("Run", vscode.TestRunProfileKind.Run, runTests, true);
   // The object comes from the active tab, or - from View source - by name,
   // in which case its tab is opened (not shown) to carry the failure links.
-  async function unitTestsOf(object) {
+  async function checkedObject(object, what) {
     let entry, document;
     if (object) {
       entry = await sourceDocument(await repository(), { object_name: object.object_name, object_type: object.object_type });
@@ -1158,8 +1176,12 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       if (!document || document.uri.scheme !== "vertex-sap") { throw new Error("Open a SAP source tab first."); }
       entry = await fileEntry(document.uri);
     }
+    if (document.isDirty) { throw new Error("The tab has changes that are not in SAP. Save & Activate first: " + what + " runs the active source."); }
+    return { entry, document };
+  }
+  async function unitTestsOf(object) {
+    const { entry, document } = await checkedObject(object, "ABAP Unit");
     if (!["CLAS", "PROG"].includes(entry.data.object_type)) { throw new Error("ABAP Unit runs for a class or a program."); }
-    if (document.isDirty) { throw new Error("The tab has changes that are not in SAP. Save & Activate first: ABAP Unit runs the active source."); }
     const id = entry.repo.key + "|" + entry.data.object_url;
     let root = tests.items.get(id);
     if (!root) {
@@ -1173,6 +1195,131 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     try { await runTests(new vscode.TestRunRequest([root]), cancel.token); } finally { cancel.dispose(); }
   }
   command("vertex.runUnitTests", () => unitTestsOf());
+  // ATC findings go to the Problems view: priority 1 an error, 2 a warning,
+  // 3 and below information. A run replaces what the last run of the same
+  // object put there.
+  const atcProblems = vscode.languages.createDiagnosticCollection("ATC");
+  const atcShown = new Map();
+  context.subscriptions.push(atcProblems);
+  async function atcOf(object) {
+    const { entry } = await checkedObject(object, "ATC");
+    // ATC checks repository objects; a function module is not one, its
+    // function group is. A run on the module's own URI checks nothing.
+    const group = entry.data.object_type === "FUNC"
+      && /^(\/sap\/bc\/adt\/functions\/groups\/[^/]+)\/fmodules\//.exec(entry.data.object_url);
+    if (entry.data.object_type === "FUNC" && !group) { throw new Error("The function group of " + entry.data.object_name + " is not in its ADT URI: " + entry.data.object_url); }
+    const checkedUrl = group ? group[1] : entry.data.object_url;
+    const checkedName = group ? "function group " + decodeURIComponent(checkedUrl.split("/").pop()).toUpperCase()
+      + " of " + entry.data.object_name : entry.data.object_name;
+    const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
+      title: "ATC: " + checkedName }, () => entry.repo.api.atcCheck(checkedUrl));
+    const key = entry.repo.key + "|" + entry.data.object_url;
+    for (const uri of atcShown.get(key) || []) { atcProblems.delete(uri); }
+    const byDocument = new Map(), elsewhere = [];
+    for (const finding of result.findings) {
+      const location = await sourceLocation(entry.repo, finding.uri, finding.line, finding.column);
+      if (!location) { elsewhere.push(finding); continue; }
+      const severity = finding.priority === 1 ? vscode.DiagnosticSeverity.Error
+        : finding.priority === 2 ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Information;
+      const diagnostic = new vscode.Diagnostic(location.range, finding.message, severity);
+      diagnostic.source = "ATC " + finding.priority;
+      diagnostic.code = finding.check;
+      const list = byDocument.get(location.uri.toString()) || { uri: location.uri, items: [] };
+      list.items.push(diagnostic);
+      byDocument.set(location.uri.toString(), list);
+    }
+    for (const { uri, items } of byDocument.values()) { atcProblems.set(uri, items); }
+    atcShown.set(key, [...byDocument.values()].map(list => list.uri));
+    // FINDING_STATS is the count per priority ("0,0,0"), already in the summary below.
+    for (const info of (result.infos || []).filter(info => info.type !== "FINDING_STATS")) {
+      vscode.window.showWarningMessage("VERTEX: ATC " + info.type + ": " + info.description);
+    }
+    // A finding in a source VERTEX cannot open as a tab is named, not dropped.
+    if (elsewhere.length) {
+      vscode.window.showWarningMessage("VERTEX: ATC: " + elsewhere.length + " finding(s) in sources VERTEX cannot open: "
+        + elsewhere.map(f => f.object_name + " (" + f.message + ")").join("; ").slice(0, 1500));
+    }
+    const count = result.findings.length;
+    vscode.window.showInformationMessage("VERTEX: ATC " + checkedName + ": "
+      + (count ? count + " finding(s)" : "no findings") + " (variant " + result.variant + ").");
+    if (count) { await vscode.commands.executeCommand("workbench.actions.view.problems"); }
+  }
+  command("vertex.runAtc", () => atcOf());
+  // Where-used as VS Code's references: Shift+F12 peeks them, Shift+Alt+F12
+  // lists them. SAP searches the saved source, so a tab with unsaved changes
+  // is refused - the cursor would point at a different place than SAP's.
+  // Each object found is read once to give its places a tab to open.
+  // The SAP source behind a VERTEX tab, for where-used and documentation.
+  function tabSource(document) {
+    const entry = opened.get(document.uri.toString()) || readOnly.get(document.uri.toString());
+    return entry && entry.repo ? { entry, url: entry.data.source_url || (entry.data.object_url + "/source/main") } : null;
+  }
+  async function referencesAt(document, at) {
+    const source = tabSource(document), word = wordAt(document, at);
+    if (!source || !word) { return []; }
+    if (document.isDirty) { throw new Error("The tab has changes that are not in SAP. Save & Activate first: where-used searches the saved source."); }
+    const places = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window,
+      title: "Where-used: " + word.name }, () => source.entry.repo.api.whereUsed(source.url, at.line + 1, word.from));
+    const locations = [], elsewhere = new Set(), tabs = new Map();
+    for (const place of places) {
+      const address = sourceAddress(place.uri);
+      if (!address) { elsewhere.add(place.uri || place.object); continue; }
+      const key = [address.object_type, address.object_name, address.include].join("|");
+      if (!tabs.has(key)) { tabs.set(key, (await sourceDocument(source.entry.repo, address)).document.uri); }
+      // A use SAP gives without a line is the object as a whole: its first line.
+      const start = position(Math.max(0, place.line - 1), place.column);
+      // SAP sends the line's text with each place: a line that does not
+      // hold it is a wrong place, named rather than shown.
+      const tab = (await vscode.workspace.openTextDocument(tabs.get(key))).getText().split(/\r?\n/)[start.line] || "";
+      const flat = text => String(text).replace(/\s+/g, " ").trim().toUpperCase();
+      if (place.content && !flat(tab).includes(flat(place.content))) {
+        elsewhere.add(address.object_name + " line " + place.line + " (SAP: " + String(place.content).trim().slice(0, 60) + ")");
+        continue;
+      }
+      const end = place.end_line ? position(place.end_line - 1, place.end_column) : start;
+      locations.push(new vscode.Location(tabs.get(key), new vscode.Range(start, end)));
+    }
+    // A place VERTEX cannot open as a tab - a program include, a function
+    // group's own include - is named, not dropped.
+    if (elsewhere.size) {
+      vscode.window.showWarningMessage("VERTEX: where-used of " + word.name + " also found " + elsewhere.size
+        + " place(s) it cannot show - a source VERTEX does not open as a tab, or a line that does not hold SAP's text: "
+        + [...elsewhere].join(", ").slice(0, 1500));
+    }
+    return locations;
+  }
+  if (vscode.languages && typeof vscode.languages.registerReferenceProvider === "function") {
+    context.subscriptions.push(vscode.languages.registerReferenceProvider(
+      [{ scheme: "vertex-sap", language: "abap" }, { scheme: "vertex-source", language: "abap" }], {
+        async provideReferences(document, at) {
+          try { return await referencesAt(document, at); }
+          catch (error) { vscode.window.showErrorMessage("VERTEX: where-used: " + String(error.message || error).slice(0, 3000)); throw error; }
+        }
+      }));
+  }
+  // ABAP keyword documentation in a panel beside the source. SAP's page is
+  // shown without its scripts, in the theme's colours.
+  let docPanel;
+  command("vertex.abapDocumentation", async () => {
+    const editor = vscode.window.activeTextEditor;
+    const document = editor && editor.document, source = document && tabSource(document);
+    if (!source) { throw new Error("Open a SAP source tab first."); }
+    const at = editor.selection.active;
+    const html = await source.entry.repo.api.documentation(source.url, document.getText(), at.line + 1, at.character);
+    if (!docPanel) {
+      docPanel = vscode.window.createWebviewPanel("vertexAbapDocumentation", "ABAP Documentation",
+        { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true }, { enableScripts: false });
+      docPanel.onDidDispose(() => { docPanel = undefined; });
+    }
+    const body = String(html).replace(/<script\b[\s\S]*?<\/script>/gi, "");
+    docPanel.webview.html = '<!DOCTYPE html><html><head><meta charset="utf-8">'
+      + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\';">'
+      + '<style>html,body,body *{background:var(--vscode-editor-background)!important;color:var(--vscode-editor-foreground)!important;'
+      + 'border-color:var(--vscode-panel-border)!important}body{font-family:var(--vscode-font-family);padding:8px 16px}'
+      + 'pre,code{font-family:var(--vscode-editor-font-family)}a{color:var(--vscode-textLink-foreground)!important}</style></head><body>'
+      + body + '</body></html>';
+    docPanel.reveal(vscode.ViewColumn.Beside, true);
+  });
   command("vertex.saveAndActivate", async () => {
     const document = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
     if (!document || document.uri.scheme !== "vertex-sap") { throw new Error("Open a SAP source tab first."); }
@@ -1249,7 +1396,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     repositories.clear(); texts.clear(); opened.clear(); drafts.clear();
   } });
   // Host/agent interface: create/modify only PREPARE and open a diff. Apply is UI-only.
-  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf,
+  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf,
     editorContext() {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !editor.document) { return null; }

@@ -5,6 +5,9 @@ function host() {
   const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], selectionListeners = [], symbols = [];
   const unitRuns = [], testRuns = [], testItems = new Map();
   let unitResult = [];
+  const atcRuns = [], problems = new Map(), infos = [], usedAsks = [], docAsks = [], references = [], warnings = [];
+  let usedResult = [];
+  let atcResult = { variant: "DEFAULT", infos: [], findings: [] };
   let selectedSystem = "DEV", mutateDuringConfirmation = false, fileProvider;
   const api = { async execute(tool, args) {
     if (tool === "read_sap_object") {
@@ -16,12 +19,14 @@ function host() {
         : include === "main" ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS.\nCLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\n  METHOD caller.\n    DATA lv_count TYPE i.\n    lv_count = 1.\n    run( ).\n    zcl_other=>do_it( ).\n    CALL FUNCTION 'Z_FOO'.\n  ENDMETHOD.\nENDCLASS."
           : "CLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\nENDCLASS.";
       return { object_name: args.object_name, object_type: args.object_type === "FUNC" || args.object_type === "INTF" ? args.object_type : klass ? "CLAS" : "PROG",
-        object_url: klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest",
+        object_url: klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : args.object_type === "FUNC" ? "/sap/bc/adt/functions/groups/z_grp/fmodules/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest",
         include, source, revision: "original-revision" };
     }
     return { change_id: "id1", object_name: args.object_name, operation: tool === "create_sap_object" ? "create" : "modify",
       object_type: "PROG", include: "main", original_source: tool === "create_sap_object" ? "" : "REPORT ztest.", source: args.source };
-  }, async unitTests(url) { unitRuns.push(url); return unitResult; }, discard() {}, async dispose() {}, async apply(id, payload) { writes.push({ id, ...payload }); return { activated: true, revision: require('../sap-code').revision(payload.source) }; } };
+  }, async unitTests(url) { unitRuns.push(url); return unitResult; }, async atcCheck(url) { atcRuns.push(url); return atcResult; },
+    async whereUsed(url, line, column) { usedAsks.push([url, line, column]); return usedResult; },
+    async documentation(url, source, line, column) { docAsks.push([url, line, column]); return "<h1>DATA</h1><script>alert(1)</script>"; }, discard() {}, async dispose() {}, async apply(id, payload) { writes.push({ id, ...payload }); return { activated: true, revision: require('../sap-code').revision(payload.source) }; } };
   const vscode = {
     ViewColumn: { Active: -1, Beside: -2 },
     Uri: { parse: value => ({ scheme: value.split(':')[0], toString: () => value }) },
@@ -29,13 +34,16 @@ function host() {
     FileType: { File: 1 }, FileChangeType: { Changed: 1 },
     FileSystemError: { FileNotFound: () => Error('not found'), NoPermissions: text => Error(text) },
     Hover: class { constructor(contents, range) { this.contents = contents; this.range = range; } },
-    Range: class { constructor(start, end) { this.start = start; this.end = end; } },
+    Range: class { constructor(start, end) { if (!start || start.line === undefined || !end || end.line === undefined) { throw new Error("Invalid arguments"); } this.start = start; this.end = end; } },
     WorkspaceEdit: class { constructor() { this.replaced = []; } replace(uri, range, text) { this.replaced.push({ uri, text }); } },
     ConfigurationTarget: { Global: 1 },
-    Location: class { constructor(uri, range) { this.uri = uri; this.range = range; } },
+    Location: class { constructor(uri, at) { this.uri = uri; this.range = at.start ? at : new vscode.Range(at, at); } },
     TestMessage: class { constructor(message) { this.message = message; } },
     TestRunRequest: class { constructor(include) { this.include = include; } },
     TestRunProfileKind: { Run: 1 },
+    Diagnostic: class { constructor(range, message, severity) { this.range = range; this.message = message; this.severity = severity; } },
+    DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2 },
+    ProgressLocation: { Notification: 15, Window: 10 },
     CancellationTokenSource: class { token = { isCancellationRequested: false }; dispose() {} },
     tests: { createTestController: () => ({ dispose() {}, createRunProfile() {},
       items: { get: id => testItems.get(id), add: i => testItems.set(i.id, i), [Symbol.iterator]: () => testItems.entries() },
@@ -73,18 +81,20 @@ function host() {
     languages: { setTextDocumentLanguage: async doc => doc,
       registerDefinitionProvider: (selector, provider) => { definitions.push({ selector, provider }); return { dispose() {} }; },
       registerHoverProvider: (selector, provider) => { hovers.push({ selector, provider }); return { dispose() {} }; },
+      createDiagnosticCollection: () => ({ set: (uri, items) => problems.set(uri.toString(), items), delete: uri => problems.delete(uri.toString()), dispose() {} }),
+      registerReferenceProvider: (selector, provider) => { references.push(provider); return { dispose() {} }; },
       registerDocumentSymbolProvider: (selector, provider) => { symbols.push({ selector, provider }); return { dispose() {} }; } },
     window: {
       createWebviewPanel() {
-        const panel = { webview: { html: '', onDidReceiveMessage(fn) { panel.receive = fn; }, async postMessage() {} } };
+        const panel = { webview: { html: '', onDidReceiveMessage(fn) { panel.receive = fn; }, async postMessage() {} }, onDidDispose() {}, reveal() {} };
         panels.push(panel); return panel;
       },
       async showTextDocument(document, options) { const editor = { document, get selection() { return document.selection; }, set selection(value) { document.selection = value; } }; this.activeTextEditor = editor; diffs.push(["open", options]); return editor; },
       onDidChangeTextEditorSelection: fn => { selectionListeners.push(fn); return { dispose() {} }; },
-      showInformationMessage() {}, showErrorMessage: text => errors.push(text),
+      showInformationMessage: text => infos.push(text), withProgress: (options, work) => work(), showErrorMessage: text => errors.push(text),
       showQuickPick: async items => items[0], showInputBox: async () => "DEVK900001",
       async showWarningMessage(text, options, action) {
-        prompts.push(text);
+        prompts.push(text); warnings.push(text);
         if (mutateDuringConfirmation) { documents[1].version++; documents[1].text = "changed after confirmation"; }
         return action || "Apply";
       }
@@ -105,7 +115,7 @@ function host() {
     active: () => ({ system: { name: selectedSystem, url: "https://sap.invalid", user: "USER", client: "100" } }),
     password: async () => "test-secret"
   });
-  return { tools, commands, unitRuns, testRuns, setUnitResult: value => { unitResult = value; }, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners, symbols,
+  return { tools, commands, usedAsks, docAsks, references, warnings, setUsedResult: value => { usedResult = value; }, setActive: editor => { vscode.window.activeTextEditor = editor; }, atcRuns, problems, infos, setAtcResult: value => { atcResult = value; }, unitRuns, testRuns, setUnitResult: value => { unitResult = value; }, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners, symbols,
     switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; } };
 }
 test("an AI change goes into the object's tab unsaved; nothing reaches SAP until the user saves", async () => {
@@ -466,6 +476,12 @@ test("SAP failing to describe a name is said in the hover, not dropped", async (
   const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 9, character: 7 });
   assert.match(hover.contents[0].value, /SAP could not describe this name - HTTP 500/);
 });
+test("a keyword SAP answers with 400 for gets no hover", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.api.elementInfo = async () => { throw Object.assign(new Error("Incorrect cursor position"), { err: 400 }); };
+  assert.equal(await h.hovers[0].provider.provideHover(h.documents[0], { line: 9, character: 7 }), undefined);
+});
 test("a static class call opens its method implementation", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
@@ -571,7 +587,7 @@ test("Run ABAP Unit Tests reports each method in the Test Explorer, a failure at
   assert.deepEqual([state, label, ms], ["failed", "broken", 500]);
   assert.equal(messages[0].message, "Expected 1, got 2\nTest BROKEN");
   assert.match(messages[0].location.uri.toString(), /ZTEST\.testclasses\.abap$/);
-  assert.deepEqual([messages[0].location.range.line, messages[0].location.range.character], [18, 4]);
+  assert.deepEqual([messages[0].location.range.start.line, messages[0].location.range.start.character], [18, 4]);
 });
 test("Run ABAP Unit Tests refuses a tab with changes SAP does not have", async () => {
   const h = host();
@@ -580,4 +596,67 @@ test("Run ABAP Unit Tests refuses a tab with changes SAP does not have", async (
   await h.commands.get("vertex.runUnitTests")();
   assert.equal(h.unitRuns.length, 0);
   assert.match(h.errors[0], /Save & Activate first/);
+});
+
+test("Run ATC Check puts each finding in Problems at its line, by priority; a new run replaces the last", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.setAtcResult({ variant: "DEFAULT", infos: [], findings: [
+    { object_name: "ZTEST", priority: 1, check: "Extended check", message: "Unused variable", uri: "/sap/bc/adt/oo/classes/ztest/source/main", line: 3, column: 2 },
+    { object_name: "ZTEST", priority: 3, check: "Naming", message: "Prefix", uri: "/sap/bc/adt/oo/classes/ztest/includes/testclasses", line: 7, column: 0 }] });
+  await h.commands.get("vertex.runAtc")();
+  assert.deepEqual(h.atcRuns, ["/sap/bc/adt/oo/classes/ztest"]);
+  const main = [...h.problems.entries()].find(([uri]) => /ZTEST\.abap$/.test(uri))[1];
+  assert.deepEqual([main[0].message, main[0].severity, main[0].code, main[0].range.start.line, main[0].range.start.character],
+    ["Unused variable", 0, "Extended check", 2, 2]);
+  const tests = [...h.problems.entries()].find(([uri]) => /testclasses\.abap$/.test(uri))[1];
+  assert.equal(tests[0].severity, 2);
+  assert.match(h.infos.at(-1), /ZTEST: 2 finding\(s\) \(variant DEFAULT\)/);
+  h.setAtcResult({ variant: "DEFAULT", infos: [], findings: [] });
+  await h.commands.get("vertex.runAtc")();
+  assert.equal(h.problems.size, 0);
+  assert.match(h.infos.at(-1), /no findings/);
+});
+
+test("Run ATC Check on a function module checks its function group", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "Z_FOO", object_type: "FUNC" });
+  await h.commands.get("vertex.runAtc")();
+  assert.deepEqual(h.atcRuns, ["/sap/bc/adt/functions/groups/z_grp"]);
+  assert.match(h.infos.at(-1), /function group Z_GRP of Z_FOO: no findings/);
+});
+
+test("where-used gives each place as a location in the tab of its object; a place VERTEX cannot open is named", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  const tab = h.documents[0];
+  h.setUsedResult([
+    { object: "ZTEST", uri: "/sap/bc/adt/oo/classes/ztest/source/main", line: 11, column: 4, end_line: 11, end_column: 7 },
+    { object: "ZINCL", uri: "/sap/bc/adt/programs/includes/zincl/source/main", line: 3, column: 0, end_line: 3, end_column: 3 }]);
+  const found = await h.references[0].provideReferences(tab, { line: 6, character: 10 });
+  assert.equal(h.usedAsks.length, 1);
+  assert.deepEqual(h.usedAsks[0].slice(1), [7, 2]);
+  assert.equal(found.length, 1);
+  assert.match(found[0].uri.toString(), /ZTEST\.abap$/);
+  assert.deepEqual([found[0].range.start.line, found[0].range.start.character, found[0].range.end.character], [10, 4, 7]);
+  assert.match(h.warnings.at(-1), /programs\/includes\/zincl/);
+});
+test("where-used refuses a tab with changes SAP does not have", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text += "\n* edit";
+  await assert.rejects(h.references[0].provideReferences(h.documents[0], { line: 6, character: 10 }), /Save & Activate first/);
+  assert.equal(h.usedAsks.length, 0);
+});
+test("ABAP Documentation shows SAP's page for the cursor, without its scripts", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  const editor = { document: h.documents[0], selection: { active: { line: 9, character: 4 } } };
+  h.setActive(editor);
+  await h.commands.get("vertex.abapDocumentation")();
+  assert.deepEqual(h.docAsks[0].slice(1), [10, 4]);
+  const page = h.panels.at(-1).webview.html;
+  assert.match(page, /<h1>DATA<\/h1>/);
+  assert.doesNotMatch(page, /alert/);
+  assert.match(page, /var\(--vscode-editor-background\)/);
 });

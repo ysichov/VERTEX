@@ -224,3 +224,27 @@ test("invalid bounds and missing revisions fail before writes", async () => {
   await assert.rejects(f.repo.execute("apply", {}), /Unknown/);
   assert.equal(f.calls.length, 0);
 });
+
+test("where-used counts a place inside a class method from where SAP says the method starts", async () => {
+  const mapped = [];
+  const client = {
+    async usageReferences() { return [{ objectIdentifier: "ABAPFULLNAME;ZCL_A" }, { objectIdentifier: "" }]; },
+    async usageReferenceSnippets(used) {
+      assert.equal(used.length, 1);
+      return [{ objectIdentifier: "ABAPFULLNAME;ZCL_A", snippets: [
+        { content: "show_source( ).", description: "", uri: { uri: "/sap/bc/adt/oo/classes/zcl_a/source/main", type: "CLAS/OM", name: "RUN",
+          start: { line: 3, column: 4 }, end: { line: 3, column: 15 } } },
+        { content: "show_source( ).", description: "", uri: { uri: "/sap/bc/adt/oo/classes/zcl_a/source/main", type: "CLAS/OM", name: "RUN",
+          start: { line: 5, column: 4 }, end: { line: 5, column: 15 } } },
+        { content: "PERFORM x.", description: "", uri: { uri: "/sap/bc/adt/programs/programs/zp/source/main",
+          start: { line: 12, column: 2 }, end: { line: 12, column: 9 } } }] }];
+    },
+    async fragmentMappings(url, type, name) { mapped.push([url, type, name]); return { uri: url, line: 100, column: 2 }; }
+  };
+  const places = await createRepository({ client, systemId: "S" }).whereUsed("/sap/bc/adt/oo/classes/zcl_b/source/main", 7, 9);
+  assert.deepEqual(mapped, [["/sap/bc/adt/oo/classes/zcl_a/source/main", "CLAS/OM", "RUN"]]);
+  assert.deepEqual(places.map(p => [p.uri, p.line, p.column, p.end_line]), [
+    ["/sap/bc/adt/oo/classes/zcl_a/source/main", 102, 4, 102],
+    ["/sap/bc/adt/oo/classes/zcl_a/source/main", 104, 4, 104],
+    ["/sap/bc/adt/programs/programs/zp/source/main", 12, 2, 12]]);
+});

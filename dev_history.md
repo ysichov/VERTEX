@@ -2243,6 +2243,48 @@ the user is not looking at. View source got the same run as a button beside Open
 the page is shared with Eclipse, so the button shows only where the host defines
 `sdeRunUnitTests` - VS Code does, Eclipse not yet.
 
+ATC followed the same way. ADT runs it in three calls: the customizing names the system's default
+variant, the variant opens a worklist, a run over the object fills it. The findings are not a
+test tree but places in source, so they went to the Problems view as diagnostics rather than to
+the Test Explorer. The URI parser written for the unit-test stack became the general one for "which
+VERTEX tab holds this ADT source": class includes, programs, function modules, interfaces. A
+finding outside those - a program include, say - is named in a warning instead of being dropped,
+and a system without a default variant is an error, not a guess at one.
+
+The first function module checked came back with "0,0,0" - no findings in any priority - and so
+did a Z module with an unused variable and a `SELECT SINGLE *` planted in it. ATC checks
+repository objects, and a function module is not one, its function group is; the run now goes over
+the group. It still found nothing, and ATC in SAP GUI on the same group said the same - "passed the
+chosen checks without any finding". The zeros were the DEFAULT variant's, not VERTEX's: it does not
+flag either planted line there. Whether a run over the module's own URI had checked anything was
+never settled; the group is the object ATC knows, so that stayed. The per-priority
+counts SAP sends back as an info (`FINDING_STATS`) had been shown as a warning; they are left out,
+the summary carries the count.
+
+Where-used and the keyword documentation came next, both already in `abap-adt-api`. Where-used is
+two ADT calls - the objects that use the name, then the places in each - and it went into VS
+Code's reference provider, so Shift+F12 and the references list are the native ones. SAP searches
+the saved source, and a cursor in an unsaved tab points somewhere else, so that is refused. Each
+object found is read once to have a tab its places can open. The documentation is SAP's HTML page
+for the position, shown in a webview without its scripts and repainted in the theme's colours; its
+own links are left dead for now.
+
+The first where-used on a class method landed on `PRIVATE SECTION` and `DATA` lines. A place
+inside a class comes back as a fragment, `#type=CLAS/OM;name=<method>;start=N`, with N counted
+from that method; `urifragmentmappings` tells where the method starts in the source, and the line
+is counted on from there. SAP also sends each place's line text, so a line that does not hold it
+is named in the warning instead of being shown - a wrong place is not passed off as a right one. F1 was taken for it in SAP tabs, as in Eclipse, at the cost of
+the command palette key there.
+
+The hover said "SAP could not describe this name - Incorrect cursor position" over every keyword,
+which was true and too much. It was told apart by what SAP answered, not by the word: ADT returns
+HTTP 400 for a position with no name it knows, and the library keeps the status on its exception.
+That answer gives no hover; a failed connection or a 500 is still said in one.
+
+View source opened on the whole class, but once a part was picked there was no way back to it
+except Back, step by step. The object's name above the Parts list now asks the page for the whole
+source (`sdeShowWhole`); only View source answers, so on other pages the click does nothing.
+
 ---
 
 ## What the practice turned out to be

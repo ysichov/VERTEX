@@ -292,20 +292,56 @@ function createRepository({ client, systemId, emit = () => {} }) {
     if (applying || executing) { throw new Error("SAP session is busy. Wait for the current operation to finish."); }
     executing = true;
     try {
-      const customizing = await client.atcCustomizing();
+      // Which of the three ADT calls SAP refused is part of the error.
+      const step = async (name, call) => {
+        try { return await call(); } catch (error) { throw new Error("ATC " + name + ": " + (error && error.message || error)); }
+      };
+      const customizing = await step("customizing (GET /atc/customizing)", () => client.atcCustomizing());
       const property = customizing.properties.find(p => p.name === "systemCheckVariant");
       const variant = property && String(property.value || "");
       if (!variant) { throw new Error("SAP has no default ATC check variant (ATC customizing, systemCheckVariant)."); }
-      const worklist = await client.atcCheckVariant(variant);
-      const run = await client.createAtcRun(worklist, adtPath(objectUrl), 1000);
-      const result = await client.atcWorklists(run.id, run.timestamp, "", false);
+      const worklist = await step("worklist for variant " + variant + " (POST /atc/worklists)", () => client.atcCheckVariant(variant));
+      const run = await step("run on worklist " + worklist + " (POST /atc/runs)", () => client.createAtcRun(worklist, adtPath(objectUrl), 1000));
+      const result = await step("findings of run " + run.id + " (GET /atc/worklists)", () => client.atcWorklists(run.id, run.timestamp, "", false));
       return { variant, infos: run.infos, findings: result.objects.flatMap(object => object.findings.map(finding => ({
         object_name: object.name, object_type: object.type, priority: finding.priority,
         check: finding.checkTitle, message: finding.messageTitle,
         uri: finding.location.uri, line: finding.location.range.start.line, column: finding.location.range.start.column }))) };
     } finally { executing = false; }
   }
-  return { execute, apply, draft, unitTests, atcCheck, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
+  // Where-used, what Ctrl+Shift+G does in Eclipse: SAP names the objects
+  // that use the name at line/column of the saved source, then the places
+  // in each. Lines count from 1, columns from 0.
+  async function whereUsed(sourceUrl, line, column) {
+    const references = await client.usageReferences(adtPath(sourceUrl), line, column);
+    const used = references.filter(reference => reference.objectIdentifier);
+    const found = used.length ? await client.usageReferenceSnippets(used) : [];
+    // A place inside a class comes as a fragment - #type=CLAS/OM;name=<method>
+    // - its line counted from that fragment. SAP maps the fragment to where
+    // it starts in the source; the place's line is counted on from there.
+    const fragments = new Map();
+    const places = [];
+    for (const object of found) {
+      for (const snippet of object.snippets) {
+        const at = snippet.uri, start = at.start || { line: 0, column: 0 }, end = at.end || start;
+        let uri = at.uri, line = start.line, endLine = end.line;
+        if (at.type && at.name) {
+          const key = [at.uri, at.type, at.name].join("|");
+          if (!fragments.has(key)) { fragments.set(key, await client.fragmentMappings(adtPath(at.uri), at.type, at.name)); }
+          const fragment = fragments.get(key);
+          uri = fragment.uri; line = fragment.line + start.line - 1; endLine = fragment.line + end.line - 1;
+        }
+        places.push({ object: object.objectIdentifier, uri, content: snippet.content || "", description: snippet.description,
+          line, column: start.column, end_line: endLine, end_column: end.column });
+      }
+    }
+    return places;
+  }
+  // The ABAP keyword documentation for the statement at line/column, as
+  // F1 gives it in Eclipse: SAP's own HTML page.
+  const documentation = (sourceUrl, source, line, column) =>
+    client.abapDocumentation(adtPath(sourceUrl), source, line, column);
+  return { execute, apply, draft, unitTests, atcCheck, whereUsed, documentation, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath };

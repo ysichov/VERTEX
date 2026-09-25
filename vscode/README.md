@@ -111,6 +111,16 @@ development systems often have; it is off by default on purpose.
   fail, the time, the alert text, and a link to the line where the failure was raised. A tab with
   unsaved changes is refused: the tests run the active source. The same run is the **Run Unit
   Tests** button beside Open in the Editor in a VERTEX Tools View source.
+- **Where-used** — Shift+F12 (peek) or Shift+Alt+F12 (list) in a SAP tab: the places that use
+  the name under the cursor, from SAP's where-used over the saved source. A place in a source
+  VERTEX cannot open as a tab is named in a warning.
+- **VERTEX: ABAP Documentation** — F1 or the context menu in a SAP tab: SAP's keyword
+  documentation for the statement under the cursor, beside the source. In these tabs F1 replaces
+  the command palette key; Ctrl+Shift+P still opens it.
+- **VERTEX: Run ATC Check** — Ctrl+Shift+F2, the checklist in the editor title, or **Run ATC
+  Check** in View source. Checks the object with the system's default ATC variant; the findings
+  appear in the Problems view and underlined in the tab, priority 1 as errors, 2 as warnings,
+  3 as information. A new run replaces the last one's findings for that object.
 - **VERTEX: Go to (by context)** — F12 or double-click in a VERTEX SAP source tab; follows a
   supported name according to its ABAP context.
 - **VERTEX: Back** — Alt+Left; returns to the preceding location followed by VERTEX navigation.
@@ -735,7 +745,7 @@ A review is built by the Versions window; this reads it and adds verdicts to it.
 
 The VS Code extension talks to SAP ADT through
 [abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello Urbani (MIT): reading
-and writing source, activation, the debugger, ABAP Unit. It travels inside the VSIX with its
+and writing source, activation, the debugger, ABAP Unit, ATC, where-used, keyword documentation. It travels inside the VSIX with its
 licence, as do the other npm packages it depends on (MIT, Apache-2.0, BSD-3-Clause), each in its
 own folder. The Eclipse plugin does not use it: it works through the platform and ADT only.
 

@@ -91,7 +91,9 @@ source. Nothing reaches SAP until you save. Details:
 [vscode/README.md](vscode/README.md#vertex-chat).
 
 A class or program tab runs its ABAP Unit tests with Ctrl+Shift+F10, as in Eclipse; the results
-appear in VS Code's Test Explorer, a failure linked to its line.
+appear in VS Code's Test Explorer, a failure linked to its line. Ctrl+Shift+F2 runs the ATC check
+with the system's default variant and puts the findings in the Problems view. Shift+F12 shows
+where the name under the cursor is used, and F1 opens SAP's ABAP keyword documentation.
 
 ### Transport reviews over MCP
 
@@ -299,7 +301,7 @@ signatures off the bundles when web search has nothing: [ADT_TECH.md](ADT_TECH.m
 
 The VS Code extension talks to SAP ADT through
 [abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello Urbani (MIT): reading
-and writing source, activation, the debugger, ABAP Unit. It travels inside the VSIX with its
+and writing source, activation, the debugger, ABAP Unit, ATC, where-used, keyword documentation. It travels inside the VSIX with its
 licence, as do the other npm packages it depends on (MIT, Apache-2.0, BSD-3-Clause), each in its
 own folder. The Eclipse plugin does not use it: it works through the platform and ADT only.
 

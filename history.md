@@ -1,6 +1,6 @@
 # Release history
 
-## 2026-09-25 — VERTEX 0.7.6 (VS Code): ABAP Unit
+## 2026-09-25 — VERTEX 0.7.6 (VS Code): ABAP Unit, ATC, where-used, documentation
 
 - **Run ABAP Unit Tests** (Ctrl+Shift+F10, or the beaker in the editor title) runs the test
   classes of the class or program in the tab, as Eclipse does. VS Code's Test Explorer shows the
@@ -8,6 +8,26 @@
   SAP's alert text and opens the line where it was raised. Risk level harmless, every duration.
   A tab with unsaved changes is refused, because SAP runs the active source. Run again from the
   Test Explorer as well.
+- **Run ATC Check** (Ctrl+Shift+F2, the checklist in the editor title, or the button in View
+  source) checks the class, program, function module or interface with the system's default ATC
+  variant, as Eclipse does without a variant of its own. The findings go to VS Code's Problems
+  view and are underlined in the tab: priority 1 an error, 2 a warning, 3 information, the check's
+  title beside the message. A new run of the object replaces the last one. A finding in a source
+  VERTEX cannot open as a tab is named in a warning. A tab with unsaved changes is refused.
+  A function module is checked through its function group, since ATC checks repository objects
+  and a module is not one; the findings are the whole group's.
+- **Where-used** in a SAP tab through VS Code's references: Shift+F12 peeks the places that use the
+  name under the cursor, Shift+Alt+F12 lists them. SAP searches the saved source, so a tab with
+  unsaved changes is refused; each object found opens as a VERTEX tab at its line, and a place in a
+  source VERTEX cannot open as a tab (a program include, say) is named in a warning.
+- **ABAP Documentation** (F1 in a SAP tab, or the context menu) shows SAP's keyword documentation
+  for the statement under the cursor in a panel beside the source, in the theme's colours. F1
+  there no longer opens the command palette; Ctrl+Shift+P still does. Links inside the page do not
+  navigate.
+- Hovering a keyword (`REPORT`, `TYPES`...) shows nothing: SAP answers there with HTTP 400, "no
+  name at this position", which is no longer put in a hover. Other SAP errors still are.
+- In View source, a click on the object's name above Parts shows the whole source again after a
+  part was picked; Back returns to the part.
 - The READMEs credit [abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello
   Urbani (MIT), through which the VS Code extension talks to ADT.
 - View source of a class or program has **Run Unit Tests** beside Open in the Editor, with the

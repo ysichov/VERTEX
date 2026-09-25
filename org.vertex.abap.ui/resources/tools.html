@@ -44,12 +44,12 @@ dialog label{display:block;margin:8px 0}
 #tparts .head span{margin-right:auto}#tparts .head button{padding:0 6px;border:0;background:transparent;cursor:pointer}
 #tparts.folded .head{flex-direction:column;padding:5px 0;gap:6px}#tparts.folded .head span{writing-mode:vertical-rl;margin:0}
 #tparts.folded .object,#tparts.folded table{display:none}
-#tparts .object{padding:5px 10px;font-weight:600;font-family:var(--vscode-editor-font-family,Consolas,monospace);border-bottom:1px solid #8886;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tparts .object{cursor:pointer;padding:5px 10px;font-weight:600;font-family:var(--vscode-editor-font-family,Consolas,monospace);border-bottom:1px solid #8886;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #tparts table{border-collapse:collapse;width:100%;table-layout:fixed}
 #tparts td{padding:3px 6px;border-bottom:1px solid #8883;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #tparts td.vis{width:14px;padding-right:0}#tparts td.kind{width:52px;font-family:var(--vscode-editor-font-family,Consolas,monospace)}
 #tparts tr.group td{font-weight:600}#tparts tr.pick{cursor:pointer}
-#tparts tr.pick:hover td{background:var(--vscode-list-hoverBackground,#8882)}
+#tparts .object:hover,#tparts tr.pick:hover td{background:var(--vscode-list-hoverBackground,#8882)}
 #tparts tr.on td{background:var(--vscode-list-activeSelectionBackground,Highlight);color:var(--vscode-list-activeSelectionForeground,inherit);font-weight:600}
 #tparts .mark{display:inline-block;width:8px;height:8px}
 #tparts .mark.public{background:#2e9e44}#tparts .mark.protected{background:#d9a400;width:7px;height:7px;transform:rotate(45deg)}#tparts .mark.private{background:#d33a2c;border-radius:50%}
@@ -171,6 +171,13 @@ function renderTools(){
   fold.onclick=()=>{partsFolded=!partsFolded;box.classList.toggle("folded",partsFolded);renderTools();};
   head.appendChild(fold);box.appendChild(head);
   const object=document.createElement("div");object.className="object";object.textContent=current.name;box.appendChild(object);
+  // The object's name shows its whole source again, where the page can.
+  object.title="Show the whole "+current.name;
+  object.onclick=()=>{
+    const page=result&&result.contentWindow;
+    if(!page||typeof page.sdeShowWhole!=="function")return;
+    selectedPart=null;markPart(null);result.dataset.part="";page.sdeShowWhole();
+  };
   const table=document.createElement("table"),body=document.createElement("tbody");
   partsList.forEach(row=>{
     const tr=document.createElement("tr");
@@ -359,6 +366,7 @@ function connect(child,service,generation){
   child.sdePart=(name,type,part,ptype)=>enqueue({path:VertexRoutes.SERVICES.versions.load([name,type,part,ptype])+"&now=X"},reply,live);
   if(typeof sdeOpenEditor==="function")child.sdeOpenEditor=(name,type)=>sdeOpenEditor(String(name),String(type));
   if(typeof sdeRunUnitTests==="function")child.sdeRunUnitTests=(name,type)=>sdeRunUnitTests(String(name),String(type));
+  if(typeof sdeRunAtc==="function")child.sdeRunAtc=(name,type)=>sdeRunAtc(String(name),String(type));
   // The debugger is VS Code's: a command goes to it and its answer comes back
   // as any other; what it does on its own arrives through sdeDebugEvent.
   if(typeof sdeDebug==="function")child.sdeDebug=(command,args)=>enqueue({debug:[String(command),JSON.stringify(args||{})]},reply,live);

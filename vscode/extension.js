@@ -800,6 +800,7 @@ function activate(context) {
       source: args => sapCode.execute("read_sap_object", args),
       openEditor: args => sapCode.execute("open_sap_object", args),
       runUnitTests: args => sapCode.runUnitTests(args),
+      runAtc: args => sapCode.runAtc(args),
       setContext: value => { latestToolsContext = value; },
       debugger: dbg,
       chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets) }, initial);

@@ -103,6 +103,17 @@
         "icon": "$(beaker)"
       },
       {
+        "command": "vertex.abapDocumentation",
+        "title": "ABAP Documentation",
+        "category": "VERTEX"
+      },
+      {
+        "command": "vertex.runAtc",
+        "title": "Run ATC Check",
+        "category": "VERTEX",
+        "icon": "$(checklist)"
+      },
+      {
         "command": "vertex.goToClassMethod",
         "title": "VERTEX: Go to (by context)",
         "category": "VERTEX"
@@ -231,6 +242,11 @@
     "menus": {
       "editor/context": [
         {
+          "command": "vertex.abapDocumentation",
+          "when": "editorLangId == abap && (resourceScheme == vertex-sap || resourceScheme == vertex-source)",
+          "group": "navigation@3"
+        },
+        {
           "command": "vertex.saveAndActivate",
           "when": "resourceScheme == vertex-sap",
           "group": "1_modification@1"
@@ -266,6 +282,11 @@
           "command": "vertex.runUnitTests",
           "when": "resourceScheme == vertex-sap",
           "group": "navigation@3"
+        },
+        {
+          "command": "vertex.runAtc",
+          "when": "resourceScheme == vertex-sap",
+          "group": "navigation@4"
         }
       ]
     },
@@ -283,6 +304,16 @@
       {
         "command": "vertex.runUnitTests",
         "key": "ctrl+shift+f10",
+        "when": "resourceScheme == vertex-sap"
+      },
+      {
+        "command": "vertex.abapDocumentation",
+        "key": "f1",
+        "when": "editorTextFocus && editorLangId == abap && (resourceScheme == vertex-sap || resourceScheme == vertex-source)"
+      },
+      {
+        "command": "vertex.runAtc",
+        "key": "ctrl+shift+f2",
         "when": "resourceScheme == vertex-sap"
       }
     ]
