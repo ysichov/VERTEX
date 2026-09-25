@@ -2,22 +2,6 @@
 
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](docs/architecture.jpg)
 
-
-
-
-### Install
-
-**[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
-· **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
-
-The Eclipse address is pasted into **Help → Install New Software → Add → Location**; the steps, and
-getting back out when a p2 install goes wrong, are in [INSTALL.md](INSTALL.md). Building either half
-from this repository instead: [BUILD.md](BUILD.md).
-
-In Eclipse, VERTEX opens from **Window → Show View → Other… → VERTEX**, or right-click an object
-in the Project Explorer → **VERTEX**.
-
-
 VERTEX is a new set of plugins for VS Code and Eclipse ADT: an **AI Assistant** with MCP, an
 **Enhanced Code Editor**, an **AI-driven ADT debugger**, and the **Version**, **Code** and **Data**
 Explorers — three words, three tools that grew out of SAP GUI programs. The code editor and the
@@ -41,40 +25,117 @@ source, stack, every variable at once — is drawn here from ADT as Visual Debug
 block-by-block review before Save & Activate is now the Code Change reviewer. Like the three above,
 they are not developed further.
 
-Nothing but this repository's `src/` has to be installed. The table, the join and the pivot were
-carried out of Simple Data Explorer, the flow and the metrics out of ACE, and the version history,
-the diff, the transport lookup and the review out of [AVE](https://github.com/ysichov/AVE) — all
-into `src/` as `ZCL_VX_*`, with the SAP GUI stripped off. None of the three is a prerequisite any
-more: they are where the logic was written first, and they are not developed further — everything
-new happens on this side. The `ZAVE_REVIEW` table the review is kept in ships in `src/` as well.
-
 Building a review is here too, not only reading one. A Versions window opened on a request that
 has none offers to build it, and walks the objects one at a time — reading the versions of each,
 diffing them, cutting what changed into blocks — writing each object before it moves to the next.
 One object per call, so nothing has to survive being slow and stopping costs the object in hand.
 AVE's SAP GUI writes into the same `ZAVE_REVIEW`, so a review built either way is read by both.
 
-The division of labour is the same for all three: ABAP computes and returns JSON, the page
-renders it, and the view in between is transport. Nothing about a service lives in the host, so
-every page runs under the VS Code extension in `vscode/` as well — the same files, from the same
-folder. And since SAP GUI 8.0 draws on the same WebView2 engine as both editors, one day inside
-SAP GUI too.
+## Install
 
+**[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
+· **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
-## How it fits together
+### VS Code
 
+Install the extension from the Marketplace, then give it the connection Eclipse would take from the
+ABAP project. There is no project here, so the systems are a list and one of them is active:
 
-Every service registers under the one `/vertex/` prefix, because that prefix is where the ADT
-node is claimed and not the identity of the service: a second one would mean a second BAdI
-implementation and a second filter to get wrong. The hub lives in this repository, under
-`src/`, together with everything the windows read except the review — so there is one thing
-to install and one registration to make. The prefix used to be `/zsde/`, from the repository
-the hub was first built in; that hub is gone, and a system still carrying it answers each prefix
-under its own filter.
+```json
+"vertex.systems": [
+  { "name": "A4H", "url": "https://host:44300", "client": "001", "user": "DEVELOPER",
+    "allowInsecureCertificate": true },
+  { "name": "EXX", "url": "http://host:8XXX", "client": "100", "user": "DEVELOPER" }
+],
+"vertex.active": "A4H"
+```
 
-The page receives finished JSON and knows nothing about SAP. That is what makes the second
-host possible: `vscode/extension.js` reads the very same files and answers them over plain
-HTTPS, and the markup, grids and filters are not written twice.
+The url is the ICM port, not the one SAP GUI connects to. An empty `vertex.active` means the
+first. **VERTEX: Switch System** picks another one from a list, and the password is asked once per
+system - two systems are two users often enough.
+
+### Eclipse
+
+The update site address is pasted into **Help → Install New Software → Add → Location**; the
+steps, and getting back out when a p2 install goes wrong, are in [INSTALL.md](INSTALL.md). VERTEX
+then opens from **Window → Show View → Other… → VERTEX**, or right-click an object in the Project
+Explorer → **VERTEX**.
+
+### SAP
+
+On the SAP system, nothing but this repository's `src/` has to be installed. The table, the join and the pivot were
+carried out of Simple Data Explorer, the flow and the metrics out of ACE, and the version history,
+the diff, the transport lookup and the review out of [AVE](https://github.com/ysichov/AVE) — all
+into `src/` as `ZCL_VX_*`, with the SAP GUI stripped off. None of the three is a prerequisite any
+more: they are where the logic was written first, and they are not developed further — everything
+new happens on this side. The `ZAVE_REVIEW` table the review is kept in ships in `src/` as well.
+
+Building either half from this repository instead: [BUILD.md](BUILD.md).
+
+## In VS Code
+
+Open **VERTEX: Open Panel**, then choose **VERTEX Tools**. Select the object type, enter its name
+and choose its function — for example Data, View, UML, Metrics, Calls diagram, Logic diagram, Diff or Versions.
+The functions are filtered by object type, so VERTEX does not offer actions that cannot apply.
+
+### Clickable ABAP source
+
+The old SAP GUI made every meaningful name a place to go. VERTEX takes the same direction in
+VS Code: source opened from VERTEX remains an editable `vertex-sap` document, while names in it
+can be inspected and followed. Hovering a supported local variable shows its type; hovering a
+method shows its parameters. **F12**, double-click, or **VERTEX: Go to (by context)** follows
+local methods and declarations inside the current class, and can open a static class call or a
+function module in its own source. **VERTEX: Back** (`Alt+Left`) returns along that navigation.
+
+### Code editor improvements
+
+- Hover now resolves a local declaration or method parameter first, then a class attribute declared
+  in `PUBLIC`, `PROTECTED` or `PRIVATE SECTION`; it shows the compact `TYPE` / `LIKE` result.
+- Method hover reads the complete definition statement, including multiline declarations and
+  chained `METHODS:` entries, and shows the parameter sections.
+- Navigation follows static calls, `CALL FUNCTION`, and instance calls such as
+  `mo_splitter->set_row_sash( )` when the receiver has a visible `TYPE REF TO` declaration.
+- A name declared in another object - `abap_bool` from the type pool, an interface constant -
+  shows its declaration in the hover; double-click or Go to opens it there, a class or a program
+  as its VERTEX tab and any other kind read-only.
+- The hover on a data element names its domain, type and length.
+- Hover and navigation work inside a read-only view as well.
+- Interfaces open as editable VERTEX tabs, like programs and classes.
+- `NEW zcl_foo( )` leads to the class's constructor.
+- Outline, Ctrl+Shift+O and the breadcrumbs list a class's methods and a program's events,
+  forms and modules.
+- Double-click `IF` / `CASE` to jump to its end; Ctrl+click walks the `ELSEIF` / `ELSE` / `WHEN`
+  branches.
+- Ctrl+Shift+F10 runs a class's or program's ABAP Unit tests, as in Eclipse; the results appear in
+  VS Code's Test Explorer, a failure linked to its line.
+- Ctrl+Shift+F2 runs the ATC check with the system's default variant and puts the findings in the
+  Problems view, underlined in the tab. A function module is checked through its function group.
+- Shift+F12 (peek) or Shift+Alt+F12 (list) shows where the name under the cursor is used.
+- F1 opens SAP's ABAP keyword documentation for the statement under the cursor.
+  External classes and function modules open as source documents; **Back** returns through every
+  VERTEX drill-down location.
+
+This is intentionally separate from **View source** in the Tools window. That command is a
+read-only, contextual overview inside VERTEX: class methods are grouped into the familiar
+`CPUB` / `CPRO` / `CPRI` Parts table and carry the same SE80-style visibility markers as Diff.
+One click opens a method body; double-clicking a method toggles its declaration and body;
+double-clicking a section positions the declaration. A program always remains complete on screen:
+its Parts list only positions to events, forms and local-class implementations. A click on the
+object's name above Parts shows the whole source again. **Back** restores the preceding source
+location. **Run Unit Tests** and **Run ATC Check** sit beside **Open in the Editor**. Chat context follows the active function: a source view sends a
+selected fragment and method signature, while UML sends its diagram nodes and relationships. A
+redefinition is resolved through its inheritance chain.
+
+An explicit chat request such as *Open ZCL_FOO* opens the normal editable VS Code document. The
+detailed, current navigation matrix is in
+[vscode/README.md](vscode/README.md#clickable-abap-source).
+
+### Object-specific tools
+
+VERTEX no longer offers one generic action list for every SAP object. The selected object type
+defines the functions in its toolbar: a transport exposes Versions and review, a class or program
+can expose source, metrics, flow/scheme and diff, and a package exposes its package-level views.
+The default action is the most useful available view rather than an extra Run button.
 
 ## AI assistants
 
@@ -183,101 +244,32 @@ no other MCP server and no shell. In Eclipse, the same runtime runs through
 Node.js and uses the window's ADT session. Configure executable paths in
 **Window > Preferences > VERTEX Assistant**; see [Eclipse Assistant setup](eclipse/README.md).
 
-## In VS Code
+## How it fits together
 
-It needs the connection Eclipse inherits from the ABAP project. There is no project here, so the
-systems are a list and one of them is active:
+The division of labour is the same for all three: ABAP computes and returns JSON, the page
+renders it, and the view in between is transport. Nothing about a service lives in the host, so
+every page runs under the VS Code extension in `vscode/` as well — the same files, from the same
+folder. And since SAP GUI 8.0 draws on the same WebView2 engine as both editors, one day inside
+SAP GUI too.
 
-```json
-"vertex.systems": [
-  { "name": "A4H", "url": "https://host:44300", "client": "001", "user": "DEVELOPER",
-    "allowInsecureCertificate": true },
-  { "name": "EXX", "url": "http://host:8XXX", "client": "100", "user": "DEVELOPER" }
-],
-"vertex.active": "A4H"
-```
+Every service registers under the one `/vertex/` prefix, because that prefix is where the ADT
+node is claimed and not the identity of the service: a second one would mean a second BAdI
+implementation and a second filter to get wrong. The hub lives in this repository, under
+`src/`, together with everything the windows read except the review — so there is one thing
+to install and one registration to make. The prefix used to be `/zsde/`, from the repository
+the hub was first built in; that hub is gone, and a system still carrying it answers each prefix
+under its own filter.
 
-The url is the ICM port, not the one SAP GUI connects to. An empty `vertex.active` means the
-first. **VERTEX: Switch System** picks another one from a list, and the password is asked once per
-system - two systems are two users often enough.
+The page receives finished JSON and knows nothing about SAP. That is what makes the second
+host possible: `vscode/extension.js` reads the very same files and answers them over plain
+HTTPS, and the markup, grids and filters are not written twice.
 
-Open **VERTEX: Open Panel**, then choose **VERTEX Tools**. Select the object type, enter its name
-and choose its function — for example Data, View, UML, Metrics, Calls diagram, Logic diagram, Diff or Versions.
-The functions are filtered by object type, so VERTEX does not offer actions that cannot apply.
-
-### Clickable ABAP source
-
-The old SAP GUI made every meaningful name a place to go. VERTEX takes the same direction in
-VS Code: source opened from VERTEX remains an editable `vertex-sap` document, while names in it
-can be inspected and followed. Hovering a supported local variable shows its type; hovering a
-method shows its parameters. **F12**, double-click, or **VERTEX: Go to (by context)** follows
-local methods and declarations inside the current class, and can open a static class call or a
-function module in its own source. **VERTEX: Back** (`Alt+Left`) returns along that navigation.
-
-### Code editor improvements
-
-- Hover now resolves a local declaration or method parameter first, then a class attribute declared
-  in `PUBLIC`, `PROTECTED` or `PRIVATE SECTION`; it shows the compact `TYPE` / `LIKE` result.
-- Method hover reads the complete definition statement, including multiline declarations and
-  chained `METHODS:` entries, and shows the parameter sections.
-- Navigation follows static calls, `CALL FUNCTION`, and instance calls such as
-  `mo_splitter->set_row_sash( )` when the receiver has a visible `TYPE REF TO` declaration.
-- A name declared in another object - `abap_bool` from the type pool, an interface constant -
-  shows its declaration in the hover; double-click or Go to opens it there, a class or a program
-  as its VERTEX tab and any other kind read-only.
-- The hover on a data element names its domain, type and length.
-- Hover and navigation work inside a read-only view as well.
-- Interfaces open as editable VERTEX tabs, like programs and classes.
-- `NEW zcl_foo( )` leads to the class's constructor.
-- Outline, Ctrl+Shift+O and the breadcrumbs list a class's methods and a program's events,
-  forms and modules.
-- Double-click `IF` / `CASE` to jump to its end; Ctrl+click walks the `ELSEIF` / `ELSE` / `WHEN`
-  branches.
-- Ctrl+Shift+F10 runs a class's or program's ABAP Unit tests, as in Eclipse; the results appear in
-  VS Code's Test Explorer, a failure linked to its line.
-- Ctrl+Shift+F2 runs the ATC check with the system's default variant and puts the findings in the
-  Problems view, underlined in the tab. A function module is checked through its function group.
-- Shift+F12 (peek) or Shift+Alt+F12 (list) shows where the name under the cursor is used.
-- F1 opens SAP's ABAP keyword documentation for the statement under the cursor.
-  External classes and function modules open as source documents; **Back** returns through every
-  VERTEX drill-down location.
-
-This is intentionally separate from **View source** in the Tools window. That command is a
-read-only, contextual overview inside VERTEX: class methods are grouped into the familiar
-`CPUB` / `CPRO` / `CPRI` Parts table and carry the same SE80-style visibility markers as Diff.
-One click opens a method body; double-clicking a method toggles its declaration and body;
-double-clicking a section positions the declaration. A program always remains complete on screen:
-its Parts list only positions to events, forms and local-class implementations. A click on the
-object's name above Parts shows the whole source again. **Back** restores the preceding source
-location. **Run Unit Tests** and **Run ATC Check** sit beside **Open in the Editor**. Chat context follows the active function: a source view sends a
-selected fragment and method signature, while UML sends its diagram nodes and relationships. A
-redefinition is resolved through its inheritance chain.
-
-An explicit chat request such as *Open ZCL_FOO* opens the normal editable VS Code document. The
-detailed, current navigation matrix is in
-[vscode/README.md](vscode/README.md#clickable-abap-source).
-
-### Object-specific tools
-
-VERTEX no longer offers one generic action list for every SAP object. The selected object type
-defines the functions in its toolbar: a transport exposes Versions and review, a class or program
-can expose source, metrics, flow/scheme and diff, and a package exposes its package-level views.
-The default action is the most useful available view rather than an extra Run button.
-
-## Talking to ADT
+### Talking to ADT
 
 Reading and writing an ADT resource from Java, the WebView2 callback deadlock, and how to read
 signatures off the bundles when web search has nothing: [ADT_TECH.md](ADT_TECH.md).
 
-## Acknowledgements
-
-The VS Code extension talks to SAP ADT through
-[abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello Urbani (MIT): reading
-and writing source, activation, the debugger, ABAP Unit, ATC, where-used, keyword documentation. It travels inside the VSIX with its
-licence, as do the other npm packages it depends on (MIT, Apache-2.0, BSD-3-Clause), each in its
-own folder. The Eclipse plugin does not use it: it works through the platform and ADT only.
-
-## Layout
+### Layout
 
 ```
 org.vertex.abap.ui/
@@ -317,6 +309,14 @@ mcp/
 A view is transport and nothing else: it names a path and hands the answer to its page. What the
 user operates lives in the page, which is what lets the same page run under the VS Code host in
 `vscode/`.
+
+## Acknowledgements
+
+The VS Code extension talks to SAP ADT through
+[abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello Urbani (MIT): reading
+and writing source, activation, the debugger, ABAP Unit, ATC, where-used, keyword documentation. It travels inside the VSIX with its
+licence, as do the other npm packages it depends on (MIT, Apache-2.0, BSD-3-Clause), each in its
+own folder. The Eclipse plugin does not use it: it works through the platform and ADT only.
 
 ## Next
 
