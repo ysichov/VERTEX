@@ -274,7 +274,38 @@ function createRepository({ client, systemId, emit = () => {} }) {
   // A data element's domain or built-in type, for its hover.
   const dataElement = async elementName => (await client.getDataElementProperties(
     "/sap/bc/adt/ddic/dataelements/" + encodeURIComponent(name(elementName, "data element").toLowerCase()))).properties;
-  return { execute, apply, draft, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
+  // ABAP Unit on an object, what Ctrl+Shift+F10 does in Eclipse: SAP runs
+  // the test classes and returns classes, methods, times and alerts. Risk
+  // level harmless only, as Eclipse's default; every duration.
+  async function unitTests(objectUrl) {
+    if (applying || executing) { throw new Error("SAP session is busy. Wait for the current operation to finish."); }
+    executing = true;
+    try {
+      return await client.unitTestRun(adtPath(objectUrl), { harmless: true, dangerous: false, critical: false,
+        short: true, medium: true, long: true });
+    } finally { executing = false; }
+  }
+  // ATC on an object with the system's default check variant, as Eclipse
+  // runs it without a variant of its own: the variant opens a worklist, the
+  // run fills it, the worklist carries the findings with their places.
+  async function atcCheck(objectUrl) {
+    if (applying || executing) { throw new Error("SAP session is busy. Wait for the current operation to finish."); }
+    executing = true;
+    try {
+      const customizing = await client.atcCustomizing();
+      const property = customizing.properties.find(p => p.name === "systemCheckVariant");
+      const variant = property && String(property.value || "");
+      if (!variant) { throw new Error("SAP has no default ATC check variant (ATC customizing, systemCheckVariant)."); }
+      const worklist = await client.atcCheckVariant(variant);
+      const run = await client.createAtcRun(worklist, adtPath(objectUrl), 1000);
+      const result = await client.atcWorklists(run.id, run.timestamp, "", false);
+      return { variant, infos: run.infos, findings: result.objects.flatMap(object => object.findings.map(finding => ({
+        object_name: object.name, object_type: object.type, priority: finding.priority,
+        check: finding.checkTitle, message: finding.messageTitle,
+        uri: finding.location.uri, line: finding.location.range.start.line, column: finding.location.range.start.column }))) };
+    } finally { executing = false; }
+  }
+  return { execute, apply, draft, unitTests, atcCheck, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath };

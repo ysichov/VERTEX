@@ -3,6 +3,8 @@ const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 function host() {
   const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], selectionListeners = [], symbols = [];
+  const unitRuns = [], testRuns = [], testItems = new Map();
+  let unitResult = [];
   let selectedSystem = "DEV", mutateDuringConfirmation = false, fileProvider;
   const api = { async execute(tool, args) {
     if (tool === "read_sap_object") {
@@ -19,7 +21,7 @@ function host() {
     }
     return { change_id: "id1", object_name: args.object_name, operation: tool === "create_sap_object" ? "create" : "modify",
       object_type: "PROG", include: "main", original_source: tool === "create_sap_object" ? "" : "REPORT ztest.", source: args.source };
-  }, discard() {}, async dispose() {}, async apply(id, payload) { writes.push({ id, ...payload }); return { activated: true, revision: require('../sap-code').revision(payload.source) }; } };
+  }, async unitTests(url) { unitRuns.push(url); return unitResult; }, discard() {}, async dispose() {}, async apply(id, payload) { writes.push({ id, ...payload }); return { activated: true, revision: require('../sap-code').revision(payload.source) }; } };
   const vscode = {
     ViewColumn: { Active: -1, Beside: -2 },
     Uri: { parse: value => ({ scheme: value.split(':')[0], toString: () => value }) },
@@ -30,6 +32,23 @@ function host() {
     Range: class { constructor(start, end) { this.start = start; this.end = end; } },
     WorkspaceEdit: class { constructor() { this.replaced = []; } replace(uri, range, text) { this.replaced.push({ uri, text }); } },
     ConfigurationTarget: { Global: 1 },
+    Location: class { constructor(uri, range) { this.uri = uri; this.range = range; } },
+    TestMessage: class { constructor(message) { this.message = message; } },
+    TestRunRequest: class { constructor(include) { this.include = include; } },
+    TestRunProfileKind: { Run: 1 },
+    CancellationTokenSource: class { token = { isCancellationRequested: false }; dispose() {} },
+    tests: { createTestController: () => ({ dispose() {}, createRunProfile() {},
+      items: { get: id => testItems.get(id), add: i => testItems.set(i.id, i), [Symbol.iterator]: () => testItems.entries() },
+      createTestItem(id, label, uri) {
+        const i = { id, label, uri, children: { add: child => { child.parent = i; }, replace() {} } };
+        return i;
+      },
+      createTestRun() {
+        const run = { results: [], enqueued() {}, end() { run.ended = true; }, appendOutput() {},
+          passed: (i, ms) => run.results.push(["passed", i.label, ms]), failed: (i, m, ms) => run.results.push(["failed", i.label, m, ms]),
+          errored: (i, m) => run.results.push(["errored", i.label, m]) };
+        testRuns.push(run); return run;
+      } }) },
     TextEditorSelectionChangeKind: { Mouse: 2 },
     commands: {
       registerCommand: (name, fn) => { commands.set(name, fn); return { dispose() {} }; },
@@ -86,7 +105,7 @@ function host() {
     active: () => ({ system: { name: selectedSystem, url: "https://sap.invalid", user: "USER", client: "100" } }),
     password: async () => "test-secret"
   });
-  return { tools, commands, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners, symbols,
+  return { tools, commands, unitRuns, testRuns, setUnitResult: value => { unitResult = value; }, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners, symbols,
     switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; } };
 }
 test("an AI change goes into the object's tab unsaved; nothing reaches SAP until the user saves", async () => {
@@ -533,4 +552,32 @@ test("a parameter SAP locates at its method is found in that METHODS statement",
   await h.commands.get("vertex.goToClassMethod")();
   assert.equal(h.documents[0].selection.start.line, 5);
   assert.equal(h.documents[0].selection.start.character, 5);
+});
+
+test("Run ABAP Unit Tests reports each method in the Test Explorer, a failure at its line", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.setUnitResult([{ "adtcore:name": "LTC_A", alerts: [], testmethods: [
+    { "adtcore:name": "OK", executionTime: 0.012, alerts: [] },
+    { "adtcore:name": "BROKEN", executionTime: 0.5, alerts: [{ kind: "failedAssertion", severity: "critical",
+      title: "Expected 1, got 2", details: ["Test BROKEN"], stack: [
+        { "adtcore:uri": "/sap/bc/adt/oo/classes/ztest/includes/testclasses#start=19,4" }] }] }] }]);
+  await h.commands.get("vertex.runUnitTests")();
+  assert.deepEqual(h.unitRuns, ["/sap/bc/adt/oo/classes/ztest"]);
+  const run = h.testRuns[0];
+  assert.equal(run.ended, true);
+  assert.deepEqual(run.results[0], ["passed", "ok", 12]);
+  const [state, label, messages, ms] = run.results[1];
+  assert.deepEqual([state, label, ms], ["failed", "broken", 500]);
+  assert.equal(messages[0].message, "Expected 1, got 2\nTest BROKEN");
+  assert.match(messages[0].location.uri.toString(), /ZTEST\.testclasses\.abap$/);
+  assert.deepEqual([messages[0].location.range.line, messages[0].location.range.character], [18, 4]);
+});
+test("Run ABAP Unit Tests refuses a tab with changes SAP does not have", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text += "\n* edit";
+  await h.commands.get("vertex.runUnitTests")();
+  assert.equal(h.unitRuns.length, 0);
+  assert.match(h.errors[0], /Save & Activate first/);
 });

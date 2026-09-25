@@ -65,7 +65,7 @@ development systems often have; it is off by default on purpose.
   The panel holds the VERTEX chat, the active SAP-system selector, provider and
   model controls, and the **VERTEX Tools** button.
 - **VERTEX Tools** — opens the unified tools window. Choose an object type,
-  enter its name (a name with `*` or `+`, such as `Z_VX*`, lists the objects of that type that
+  enter its name (a package opens in View source with its objects in Parts; a name with `*` or `+`, such as `Z_VX*`, lists the objects of that type that
   match; pick one with the mouse or the arrow keys and Enter; a plain name that is not found
   lists the names starting with it), then choose the available function (for example Data, View,
   UML diagram, Metrics, Calls diagram, Logic diagram, Diff or Versions). **Calls diagram** shows which program, class or
@@ -105,6 +105,12 @@ development systems often have; it is off by default on purpose.
 - **VERTEX: Review & Activate** — editor title or context menu; opens the block-by-block
   Code Change panel described below.
 - **VERTEX: Save & Activate** — editor title; saves the whole tab without the block review.
+- **VERTEX: Run ABAP Unit Tests** — Ctrl+Shift+F10 or the beaker in the editor title of a class
+  or program tab, as in Eclipse. SAP runs the object's test classes (risk level harmless, every
+  duration) and VS Code's Test Explorer shows object, test class and test method with pass or
+  fail, the time, the alert text, and a link to the line where the failure was raised. A tab with
+  unsaved changes is refused: the tests run the active source. The same run is the **Run Unit
+  Tests** button beside Open in the Editor in a VERTEX Tools View source.
 - **VERTEX: Go to (by context)** — F12 or double-click in a VERTEX SAP source tab; follows a
   supported name according to its ABAP context.
 - **VERTEX: Back** — Alt+Left; returns to the preceding location followed by VERTEX navigation.
@@ -724,6 +730,14 @@ server and no shell. See [Providers](#providers).
 Everything reads, with one exception: approving, declining and commenting in a
 code review writes to `ZAVE_REVIEW`, through this repository's own `ZCL_VX_REVIEW_*`.
 A review is built by the Versions window; this reads it and adds verdicts to it.
+
+## Acknowledgements
+
+The VS Code extension talks to SAP ADT through
+[abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello Urbani (MIT): reading
+and writing source, activation, the debugger, ABAP Unit. It travels inside the VSIX with its
+licence, as do the other npm packages it depends on (MIT, Apache-2.0, BSD-3-Clause), each in its
+own folder. The Eclipse plugin does not use it: it works through the platform and ADT only.
 
 ## Licence
 

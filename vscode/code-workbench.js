@@ -1080,6 +1080,99 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     await showDraft(current.repo, draft);
   });
   command("vertex.reviewCodeChanges", reviewActive);
+  // ABAP Unit in VS Code's Test Explorer: object, then its test classes, then
+  // their methods, as the ABAP Unit view shows them in Eclipse.
+  const tests = vscode.tests.createTestController("vertexAbapUnit", "ABAP Unit");
+  const testedObjects = new Map();
+  context.subscriptions.push(tests);
+  // A stack line points at an include and a line: /sap/bc/adt/oo/classes/zcl_x/includes/testclasses#start=19,0.
+  async function failureLocation(repo, uri) {
+    const found = /^\/sap\/bc\/adt\/(oo\/classes|programs\/programs)\/([^/#]+)(?:\/includes\/(\w+))?[^#]*#.*?start=(\d+)(?:,(\d+))?/
+      .exec(String(uri || ""));
+    if (!found) { return undefined; }
+    const object_type = found[1] === "oo/classes" ? "CLAS" : "PROG";
+    const include = found[3] || "main";
+    if (object_type === "PROG" && include !== "main") { return undefined; }
+    const entry = await sourceDocument(repo, { object_type, include,
+      object_name: decodeURIComponent(found[2]).toUpperCase() });
+    return new vscode.Location(entry.document.uri, position(Number(found[4]) - 1, Number(found[5] || 0)));
+  }
+  async function alertMessage(repo, alert) {
+    const message = new vscode.TestMessage([alert.title, ...(alert.details || [])].filter(Boolean).join("\n"));
+    for (const frame of alert.stack || []) {
+      message.location = await failureLocation(repo, frame["adtcore:uri"]);
+      if (message.location) { break; }
+    }
+    return message;
+  }
+  async function runTests(request, token) {
+    const roots = new Set();
+    for (const item of request.include || [...tests.items].map(([, item]) => item)) {
+      let root = item;
+      while (root.parent) { root = root.parent; }
+      roots.add(root);
+    }
+    const run = tests.createTestRun(request);
+    try {
+      for (const root of roots) {
+        if (token.isCancellationRequested) { break; }
+        const { repo, data } = testedObjects.get(root.id);
+        run.enqueued(root);
+        const classes = await repo.api.unitTests(data.object_url);
+        root.children.replace([]);
+        if (!classes.length) {
+          run.errored(root, new vscode.TestMessage(data.object_name + " has no test classes that SAP ran."));
+          continue;
+        }
+        for (const clas of classes) {
+          const classItem = tests.createTestItem(root.id + "/" + clas["adtcore:name"], clas["adtcore:name"]);
+          root.children.add(classItem);
+          if (clas.alerts.length) {
+            run.errored(classItem, await Promise.all(clas.alerts.map(alert => alertMessage(repo, alert))));
+          }
+          for (const method of clas.testmethods) {
+            const methodItem = tests.createTestItem(classItem.id + "/" + method["adtcore:name"], method["adtcore:name"].toLowerCase());
+            classItem.children.add(methodItem);
+            const duration = Math.round(Number(method.executionTime || 0) * 1000);
+            if (method.alerts.length) {
+              run.failed(methodItem, await Promise.all(method.alerts.map(alert => alertMessage(repo, alert))), duration);
+            } else { run.passed(methodItem, duration); }
+          }
+        }
+      }
+    } catch (error) {
+      run.appendOutput(String(error.message || error).replace(/\r?\n/g, "\r\n") + "\r\n");
+      vscode.window.showErrorMessage("VERTEX: ABAP Unit: " + String(error.message || error).slice(0, 3000));
+    } finally { run.end(); }
+  }
+  tests.createRunProfile("Run", vscode.TestRunProfileKind.Run, runTests, true);
+  // The object comes from the active tab, or - from View source - by name,
+  // in which case its tab is opened (not shown) to carry the failure links.
+  async function unitTestsOf(object) {
+    let entry, document;
+    if (object) {
+      entry = await sourceDocument(await repository(), { object_name: object.object_name, object_type: object.object_type });
+      document = entry.document;
+    } else {
+      document = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
+      if (!document || document.uri.scheme !== "vertex-sap") { throw new Error("Open a SAP source tab first."); }
+      entry = await fileEntry(document.uri);
+    }
+    if (!["CLAS", "PROG"].includes(entry.data.object_type)) { throw new Error("ABAP Unit runs for a class or a program."); }
+    if (document.isDirty) { throw new Error("The tab has changes that are not in SAP. Save & Activate first: ABAP Unit runs the active source."); }
+    const id = entry.repo.key + "|" + entry.data.object_url;
+    let root = tests.items.get(id);
+    if (!root) {
+      root = tests.createTestItem(id, entry.data.object_name, document.uri);
+      root.description = entry.data.object_type + " · " + entry.repo.label;
+      tests.items.add(root);
+    }
+    testedObjects.set(id, { repo: entry.repo, data: entry.data });
+    await vscode.commands.executeCommand("workbench.view.testing.focus");
+    const cancel = new vscode.CancellationTokenSource();
+    try { await runTests(new vscode.TestRunRequest([root]), cancel.token); } finally { cancel.dispose(); }
+  }
+  command("vertex.runUnitTests", () => unitTestsOf());
   command("vertex.saveAndActivate", async () => {
     const document = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
     if (!document || document.uri.scheme !== "vertex-sap") { throw new Error("Open a SAP source tab first."); }
@@ -1156,7 +1249,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     repositories.clear(); texts.clear(); opened.clear(); drafts.clear();
   } });
   // Host/agent interface: create/modify only PREPARE and open a diff. Apply is UI-only.
-  return { schemas, onEvent: events.on,
+  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf,
     editorContext() {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !editor.document) { return null; }

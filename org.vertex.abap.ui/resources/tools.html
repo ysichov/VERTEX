@@ -125,7 +125,7 @@ backButton.onclick=()=>{const previous=navigation.pop();if(previous)navigate(pre
 // Which objects have parts, and which functions show the window's list.
 // Diff keeps its own: parts and the versions under them are one column there,
 // AVE's layout. It is still told which part is chosen, and tells back.
-const PART_TYPES=["CLAS","INTF","PROG","INCL","FUNC"];
+const PART_TYPES=["CLAS","INTF","PROG","INCL","FUNC","DEVC"];
 const PART_ACTIONS=["view","vdebug","scheme","flow","metrics","uml"];
 let partsFor="",partsList=[],selectedPart=null,partsFolded=false;
 
@@ -211,6 +211,8 @@ function partShown(key){
   if(result)result.dataset.part=key;
 }
 function showsParts(state){
+  // A package's parts are its objects, a list only View source walks through.
+  if(String(state.type||"").toUpperCase()==="DEVC"&&state.action!=="view")return false;
   return PART_TYPES.includes(String(state.type||"").toUpperCase())&&PART_ACTIONS.includes(state.action)&&!!state.name;
 }
 /* Read once per object: another function of the same object keeps the list. */
@@ -224,7 +226,9 @@ function loadParts(state,then){
   if(!PART_TYPES.includes(String(state.type||"").toUpperCase())||!state.name){then();return;}
   if(partsFor===identity){then();return;}
   partsFor=identity;partsList=[];selectedPart=null;renderTools();
-  const klass=["CLAS","INTF"].includes(String(state.type).toUpperCase());
+  // A class and a package both come from the version resource: a class's
+  // sections and methods, a package's objects.
+  const klass=["CLAS","INTF","DEVC"].includes(String(state.type).toUpperCase());
   const path=klass?VertexRoutes.SERVICES.versions.load([state.name,state.type,"","","",""])
                   :VertexRoutes.SERVICES.metrics.load([state.name,state.type]);
   enqueue({path,body:null},raw=>{
@@ -354,6 +358,7 @@ function connect(child,service,generation){
   // A class part's current text, read from the include SAP keeps it in.
   child.sdePart=(name,type,part,ptype)=>enqueue({path:VertexRoutes.SERVICES.versions.load([name,type,part,ptype])+"&now=X"},reply,live);
   if(typeof sdeOpenEditor==="function")child.sdeOpenEditor=(name,type)=>sdeOpenEditor(String(name),String(type));
+  if(typeof sdeRunUnitTests==="function")child.sdeRunUnitTests=(name,type)=>sdeRunUnitTests(String(name),String(type));
   // The debugger is VS Code's: a command goes to it and its answer comes back
   // as any other; what it does on its own arrives through sdeDebugEvent.
   if(typeof sdeDebug==="function")child.sdeDebug=(command,args)=>enqueue({debug:[String(command),JSON.stringify(args||{})]},reply,live);

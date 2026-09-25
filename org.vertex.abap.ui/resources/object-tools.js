@@ -7,7 +7,7 @@
     ["INTF", "Interface", ["uml", "diff"]],
     ["PROG", "Program", ["view", "metrics", "scheme", "flow", "diff"]],
     ["INCL", "Include", ["metrics", "scheme", "flow", "diff"]],
-    ["DEVC", "Package", ["uml", "metrics", "diff"]],
+    ["DEVC", "Package", ["view", "uml", "metrics", "diff"]],
     ["TR", "Transport request", ["review", "diff"]],
     ["FUGR", "Function group", ["diff"]],
     ["FUNC", "Function module", ["view", "diff"]],

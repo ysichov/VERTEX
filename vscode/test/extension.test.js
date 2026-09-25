@@ -12,6 +12,7 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
   let starts = 0;
   const vscode = {
     EventEmitter: class { event = () => ({ dispose() {} }); dispose() {} },
+    TestRunProfileKind: { Run: 1 }, tests: { createTestController: () => ({ dispose() {}, createRunProfile() {} }) },
     workspace: { getConfiguration: () => ({ get: () => 37777 }),
       registerFileSystemProvider: () => ({ dispose() {} }),
       registerTextDocumentContentProvider: () => ({ dispose() {} }) },

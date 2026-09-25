@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.7.5",
+  "version": "0.7.6",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -95,6 +95,12 @@
         "title": "Review & Activate",
         "category": "VERTEX",
         "icon": "$(diff)"
+      },
+      {
+        "command": "vertex.runUnitTests",
+        "title": "Run ABAP Unit Tests",
+        "category": "VERTEX",
+        "icon": "$(beaker)"
       },
       {
         "command": "vertex.goToClassMethod",
@@ -255,6 +261,11 @@
           "command": "vertex.reviewCodeChanges",
           "when": "resourceScheme == vertex-sap",
           "group": "navigation@2"
+        },
+        {
+          "command": "vertex.runUnitTests",
+          "when": "resourceScheme == vertex-sap",
+          "group": "navigation@3"
         }
       ]
     },
@@ -267,6 +278,11 @@
       {
         "command": "vertex.navigateBack",
         "key": "alt+left",
+        "when": "resourceScheme == vertex-sap"
+      },
+      {
+        "command": "vertex.runUnitTests",
+        "key": "ctrl+shift+f10",
         "when": "resourceScheme == vertex-sap"
       }
     ]

@@ -103,7 +103,7 @@
   .panes { flex: 1 1 auto; display: flex; min-height: 0; }
 
   .parts { flex: 0 0 280px; border-right: 1px solid var(--border);
-           background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+           background: var(--bg); overflow: hidden; display: flex; flex-direction: column; }
 
   /* The parts above, the versions of the chosen part below - AVE's layout -
      with a line between them dragged to share the height. */
@@ -191,6 +191,10 @@
   .vis { display: inline-block; width: 8px; height: 8px; }
   #partlist table.sectioned th:first-child, #partlist table.sectioned td:first-child { width: 10px; padding-right: 0; }
   #partlist table.sectioned th:nth-child(2) { width: 52px; }
+  /* Like the Parts list of every other function: no head row to see (it stays
+     in the table, where it sets the column widths) and no stripes. */
+  #partlist thead { visibility: collapse; }
+  #partlist tbody tr:nth-child(even) { background: none; }
   .vis.public { background: #2e9e44; }
   .vis.protected { background: #d9a400; width: 7px; height: 7px; transform: rotate(45deg); }
   .vis.private { background: #d33a2c; border-radius: 50%; }
@@ -856,6 +860,8 @@ function renderParts() {
   }
   var sectioned = !scope && parts.some(function (p) { return !!p.section; });
   var rows = sectioned ? bySection() : parts.map(function (p) { return { part: p, section: "" }; });
+  // The same list as the window's Parts for every other function: the column
+  // heads stay for the widths but are not shown, and a method is in lower case.
   var list = table(sectioned ? ["", "Type", "Name"] : ["Type", "Name"], rows, function (tr, row) {
     var p = row.part;
     tr.className = (row.band ? "group " : "") + (p ? "pick" : "") + (p && isCurrent(p) ? " on" : "");
@@ -882,7 +888,7 @@ function renderParts() {
       return;
     }
     cell(tr, p.part_type, "mono");
-    cell(tr, row.band ? row.label : p.unit);
+    cell(tr, row.band ? row.label : (p.part_type === "METH" ? String(p.unit || "").toLowerCase() : p.unit));
   });
   if (sectioned) { list.className = "sectioned"; }
   box.appendChild(list);

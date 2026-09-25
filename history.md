@@ -1,5 +1,19 @@
 # Release history
 
+## 2026-09-25 — VERTEX 0.7.6 (VS Code): ABAP Unit
+
+- **Run ABAP Unit Tests** (Ctrl+Shift+F10, or the beaker in the editor title) runs the test
+  classes of the class or program in the tab, as Eclipse does. VS Code's Test Explorer shows the
+  object, its test classes and their methods with pass or fail and the time; a failure carries
+  SAP's alert text and opens the line where it was raised. Risk level harmless, every duration.
+  A tab with unsaved changes is refused, because SAP runs the active source. Run again from the
+  Test Explorer as well.
+- The READMEs credit [abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello
+  Urbani (MIT), through which the VS Code extension talks to ADT.
+- View source of a class or program has **Run Unit Tests** beside Open in the Editor, with the
+  same result. The Eclipse sources carry the button hidden, since the plugin has no host call for
+  it and was not built.
+
 ## 2026-09-25 — VERTEX 0.7.5 (VS Code): the flow chart and its player
 
 - The flow chart runs top-down, the caller above its callees, and sits in the right column. The
@@ -35,6 +49,11 @@
 - In a class, a section, a method or a local include picked in Parts is read from the include SAP
   keeps it in (CU/CO/CI, CMnnn, CCDEF...) and shown as it is, numbered from 1 (needs `src/`
   pulled).
+- Diff's parts list, a package's drilled-in class included, looks like the Parts list of every
+  other function: no Type / Name head row, methods in lower case.
+- A package has View source: Parts lists its objects, and a program, class or function module
+  picked there is shown with its source.
+- Diff's parts column has the theme's editor background, not a panel shade of its own.
 - View source drops the Parts column when the object has no parts, and folds it with a button when
   it has.
 - A function module shows Parts only when it has local FORMs after its ENDFUNCTION; the list is

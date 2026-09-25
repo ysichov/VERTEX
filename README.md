@@ -90,6 +90,9 @@ approved blocks are written, with a syntax check and a conflict check against th
 source. Nothing reaches SAP until you save. Details:
 [vscode/README.md](vscode/README.md#vertex-chat).
 
+A class or program tab runs its ABAP Unit tests with Ctrl+Shift+F10, as in Eclipse; the results
+appear in VS Code's Test Explorer, a failure linked to its line.
+
 ### Transport reviews over MCP
 
 Beyond its own chat, VERTEX hands SAP to the assistants already in use — Copilot,
@@ -291,6 +294,14 @@ The default action is the most useful available view rather than an extra Run bu
 
 Reading and writing an ADT resource from Java, the WebView2 callback deadlock, and how to read
 signatures off the bundles when web search has nothing: [ADT_TECH.md](ADT_TECH.md).
+
+## Acknowledgements
+
+The VS Code extension talks to SAP ADT through
+[abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello Urbani (MIT): reading
+and writing source, activation, the debugger, ABAP Unit. It travels inside the VSIX with its
+licence, as do the other npm packages it depends on (MIT, Apache-2.0, BSD-3-Clause), each in its
+own folder. The Eclipse plugin does not use it: it works through the platform and ADT only.
 
 ## Layout
 
