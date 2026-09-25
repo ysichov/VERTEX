@@ -179,7 +179,8 @@ contextual page inside the Tools window, useful for inspection and for sending s
 to the internal chat. For a class, its Parts list reuses the Diff table: `CPUB`, `CPRO`, `CPRI`
 and `METH` rows have the same SE80-style visibility markers. One click shows a method body;
 double-click on the method switches declaration and body; double-click on a section positions its
-declaration. **← Back** restores the prior location. A program is never cut down to one part:
+declaration. A click on the object's name above the Parts list shows the whole source again;
+**← Back** returns to the part. **← Back** restores the prior location. A program is never cut down to one part:
 its Parts list only positions the complete source on an event, form or local-class implementation. **Open in the Editor** opens the object in the editable VERTEX source editor.
 
 The chat context follows the active function. A source view sends a selected fragment, or the

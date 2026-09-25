@@ -24,8 +24,7 @@
   for the statement under the cursor in a panel beside the source, in the theme's colours. F1
   there no longer opens the command palette; Ctrl+Shift+P still does. Links inside the page do not
   navigate.
-- Hovering a keyword (`REPORT`, `TYPES`...) shows nothing: SAP answers there with HTTP 400, "no
-  name at this position", which is no longer put in a hover. Other SAP errors still are.
+- Fixed: hovering a keyword (`REPORT`, `TYPES`...) showed "SAP could not describe this name".
 - In View source, a click on the object's name above Parts shows the whole source again after a
   part was picked; Back returns to the part.
 - The READMEs credit [abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello

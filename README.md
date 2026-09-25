@@ -94,6 +94,8 @@ A class or program tab runs its ABAP Unit tests with Ctrl+Shift+F10, as in Eclip
 appear in VS Code's Test Explorer, a failure linked to its line. Ctrl+Shift+F2 runs the ATC check
 with the system's default variant and puts the findings in the Problems view. Shift+F12 shows
 where the name under the cursor is used, and F1 opens SAP's ABAP keyword documentation.
+View source has **Run Unit Tests** and **Run ATC Check** beside Open in the Editor, and a click on
+the object's name above Parts shows its whole source again.
 
 ### Transport reviews over MCP
 
