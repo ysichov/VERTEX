@@ -29,7 +29,7 @@ The projects named above are where the ideas were worked out first, and they are
 further; everything new happens here.
 
 
-### VS Code
+### SAP Systems Configuration in the VS Code
 
 Install the extension from the Marketplace, then give it the connection Eclipse would take from the
 ABAP project. There is no project here, so the systems are a list and one of them is active.
@@ -71,7 +71,7 @@ Building either half from this repository instead: [BUILD.md](BUILD.md).
 
 ## What each host has
 
-### SAP Systems COnfiguration in the VS Code 
+### VS Code 
 
 - **VERTEX Tools** — pick an object type and a name; the functions offered depend on the type
   (Data, View source, UML, Metrics, Calls and Logic diagrams, Diff, Versions, Visual Debug).
