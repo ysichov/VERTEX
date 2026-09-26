@@ -1,5 +1,26 @@
 # Release history
 
+## 2026-09-26 — VERTEX 0.7.7 (VS Code): the chat runs the tests and ATC
+
+- **The chat runs ABAP Unit**: *run the tests for ZCL_FOO*, *do the tests of this class pass*.
+  The tool takes the object by name and type, so no tab has to be open, and answers with the
+  test classes, how many methods passed, how many failed and each failure's message. The tree
+  appears in the Test Explorer as it does for Ctrl+Shift+F10, and the run is refused while that
+  object's tab holds unsaved edits, because SAP runs the active source.
+- **The chat runs ATC**: *run ATC on ZCL_FOO*, *check the code quality*. The answer carries the
+  system's check variant and the findings with their priority, check and message, the first 50 of
+  them when there are more; all of them go to the Problems view as Ctrl+Shift+F2 puts them. A
+  function module is checked through its function group, as in the editor.
+- Where-used and the keyword documentation did **not** become tools. SAP answers both for a
+  position in the source, not for a name, and finding a name's position would mean reading the
+  ABAP as text. Asked for either, the chat says which key does it in the open tab: Shift+F12 and
+  F1.
+- The documentation caught up with 0.7.6, which shipped these four editor features while two
+  pages that describe VERTEX did not say so: the Marketplace page listed the editor as "Hover,
+  navigation, outline", and the update site's page still named 0.7.5 as the VS Code build.
+- The Eclipse plugin is unchanged and stays at 0.7.3; it was not rebuilt, and its chat has
+  neither tool.
+
 ## 2026-09-25 — VERTEX 0.7.6 (VS Code): ABAP Unit, ATC, where-used, documentation
 
 - **Run ABAP Unit Tests** (Ctrl+Shift+F10, or the beaker in the editor title) runs the test

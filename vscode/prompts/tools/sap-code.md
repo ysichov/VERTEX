@@ -38,6 +38,22 @@ Review & Activate, or undoes it - say so, and do not claim it was saved. It is
 refused while the tab holds unsaved edits that SAP does not have: tell the user.
 A creation opens a draft diff. Never attempt to bypass the host's review UI.
 
+Run the tests of an object with run_abap_unit - run the tests, run ABAP Unit,
+do the tests pass, test this class. Run ATC with run_atc_check - run ATC, check
+the code quality, check it against the standards. Both take the object by name
+and type, so no tab has to be open; both run the active SAP source and are
+refused while the object's tab holds unsaved edits - say that rather than
+saving anything. Report what the tool returned: how many test methods passed
+and failed with the failure messages, or the ATC variant and the findings by
+priority. Do not claim a pass or a clean check the tool did not report, and do
+not read the source to guess a result. The Test Explorer and the Problems view
+show the same run, so there is nothing to open for the user.
+
+Where-used and the ABAP keyword documentation are editor commands, not tools:
+where-used is Shift+F12 and the documentation is F1 in a VERTEX source tab.
+When asked for either, say which key does it in the open tab. Do not answer a
+where-used question from a search or from reading the source.
+
 FM source editing preserves existing parameter metadata. Creating/changing the
 FM signature, RFC flags or other metadata is not supported by these tools.
 Report that limitation when a requested change needs it.

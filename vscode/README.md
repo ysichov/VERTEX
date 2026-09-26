@@ -7,7 +7,7 @@ versions and data. Several of them grew out of earlier SAP GUI tools.
 | Tool | Grew out of | What it does |
 |---|---|---|
 | **AI Assistant** | — | Chat, code, any SAP system |
-| **Enhanced Code Editor** | — | Hover, navigation, outline |
+| **Enhanced Code Editor** | — | Hover, navigation, outline, ABAP Unit, ATC, where-used, keyword documentation |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Conditional breakpoints, verdict, Visual Debug |
 | **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE), [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | History, diff, block-by-block review with comments |
 | **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics, UML, logic, calls |
@@ -201,6 +201,14 @@ box, the provider and model lists and **New conversation** stay at the bottom of
 answers scroll above them, questions and answers in different colours. Asking for a VERTEX
 function — *open table SFLIGHT*, *show the diff of ZCL_FOO* — opens a **VERTEX Tools** window on
 it.
+
+The chat also runs the two checks the editor has: *run the tests for ZCL_FOO* runs ABAP Unit on
+the object and answers with how many test methods passed, how many failed and why, and *run ATC
+on ZCL_FOO* answers with the variant and the findings by priority. Both need no open tab, both
+show the same run in the Test Explorer and the Problems view, and both are refused while that
+object's tab holds unsaved edits — the run needs the active SAP source. Where-used and the
+keyword documentation stay editor commands, Shift+F12 and F1 in a source tab: SAP answers them
+for a position in the source, not for a name, so the chat says which key does it instead.
 
 ### Providers
 

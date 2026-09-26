@@ -198,7 +198,12 @@
 </p>
 
 <p>
-  The Eclipse plugin here is 0.7.3; the VS Code extension is 0.7.5, with LLM Providers - a
+  The Eclipse plugin here is 0.7.3; the VS Code extension is 0.7.7, whose chat runs the tests and
+  ATC on an object it is asked about and answers with the result. Its ABAP editor runs the
+  test classes of the object in the tab into the Test Explorer (Ctrl+Shift+F10), checks it with
+  ATC into the Problems view (Ctrl+Shift+F2), answers where-used through VS Code's references
+  (Shift+F12), and shows SAP's keyword documentation beside the source (F1), beside the hover,
+  Go to and Outline it already had. It also carries LLM Providers - a
   model table per provider and an Anthropic API key as a third one - and Tools windows that keep
   their own SAP system. The extension also hands transport
   reviews to the AI assistants in the editor &mdash; Copilot, Claude Code, Codex

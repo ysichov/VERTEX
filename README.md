@@ -73,7 +73,8 @@ Building either half from this repository instead: [BUILD.md](BUILD.md).
   into the Problems view, Shift+F12 shows where-used, F1 opens the keyword documentation.
 - **VERTEX chat** — Claude or ChatGPT through a subscription or an Anthropic API key, over every
   system in `vertex.systems`; it reads, explains and changes code, and nothing reaches SAP until
-  you save.
+  you save. *Run the tests for ZCL_FOO* and *run ATC on ZCL_FOO* are answered by running them:
+  the result in the chat, the same run in the Test Explorer and the Problems view.
 - **The debugger for an assistant** — *Z_CALC computes the wrong discount, find out why*: the
   assistant sets conditional breakpoints, runs the program in WebGUI and ends with the line and the
   values that prove it. Visual Debug shows the same session on screen, with a flow chart of the

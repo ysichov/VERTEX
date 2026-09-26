@@ -2285,6 +2285,43 @@ View source opened on the whole class, but once a part was picked there was no w
 except Back, step by step. The object's name above the Parts list now asks the page for the whole
 source (`sdeShowWhole`); only View source answers, so on other pages the click does nothing.
 
+## Stage 41 — the pages that describe VERTEX fell behind the editor
+
+0.7.6 gave the VS Code editor ABAP Unit, ATC, where-used and the keyword documentation, and the
+release notes and this repository's README said so the same day. Two other pages did not. The
+Marketplace page (`vscode/README.md`) documents each of the four commands in its body, so the
+gap was only its summary table at the top, which still read "Hover, navigation, outline" - the
+line a reader on the Marketplace sees first and often the only one. The update site's page
+(`docs/index.html`) named 0.7.5 as the VS Code build and described LLM Providers as the newest
+thing in it.
+
+Both were written for the landing they were part of, not audited afterwards, which is how a
+table cell survives four features. The fix is the cell and the paragraph, and it ships as 0.7.7,
+whose vsix also carries that README: the README is the Marketplace page, and there is no other
+way to correct it. The Eclipse plugin has none of these four features and was not rebuilt, so
+the update site still says 0.7.3 for it.
+
+**The half of them that could become tools.** The four features are editor commands, and the
+chat could not ask for any of them. Two of them took nothing to hand over: `unitTestsOf` and
+`atcOf` already accepted an object by name and type, because View source calls them that way, so
+`run_abap_unit` and `run_atc_check` only had to be schemas in `code-workbench.js` and two lines
+in the dispatcher. What they lacked was an answer. A run wrote into the Test Explorer and the
+Problems view and returned nothing, which is enough for a button and useless for a chat: "see
+the Test Explorer" is not an answer. `runTests` now counts the classes, the passes, the failures
+and their messages into a summary and returns it, and ATC returns its variant and its findings,
+the first 50 when there are more. The unit run's `catch` shows SAP's refusal in the Test
+Explorer and swallows it; a caller waiting for an answer is thrown to instead, or it would be
+told a clean run that never happened.
+
+The other two stayed out. `usageReferences` and `abapDocumentation` are asked for a line and a
+column of the saved source, not for a name. Where-used of an object as a whole would work -
+ADT's line and column are optional - but where-used of a method, which is what the request
+usually means, would mean finding `BAR` in the text, and this repository does not read ABAP as
+text. The keyword documentation has no name-only call in `abap-adt-api` at all; answering *show
+help for LOOP AT* would mean a new ADT endpoint. So the instructions tell the chat to name the
+key instead - Shift+F12, F1 - rather than guess from a search or from the source, which is the
+failure mode worth preventing: a plausible where-used answer with nothing behind it.
+
 ---
 
 ## What the practice turned out to be

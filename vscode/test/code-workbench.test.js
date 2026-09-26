@@ -598,6 +598,51 @@ test("Run ABAP Unit Tests refuses a tab with changes SAP does not have", async (
   assert.match(h.errors[0], /Save & Activate first/);
 });
 
+test("run_abap_unit answers the assistant with the counts and the failures, not only the Test Explorer", async () => {
+  const h = host();
+  h.setUnitResult([{ "adtcore:name": "LTC_A", alerts: [], testmethods: [
+    { "adtcore:name": "OK", executionTime: 0.012, alerts: [] },
+    { "adtcore:name": "BROKEN", executionTime: 0.5, alerts: [{ kind: "failedAssertion", severity: "critical",
+      title: "Expected 1, got 2", details: [], stack: [] }] }] }]);
+  const answer = await h.tools.execute("run_abap_unit", { object_name: "ZTEST", object_type: "CLAS" });
+  assert.deepEqual(h.unitRuns, ["/sap/bc/adt/oo/classes/ztest"]);
+  assert.deepEqual([answer.object_name, answer.test_classes, answer.passed, answer.failed],
+    ["ZTEST", 1, 1, 1]);
+  assert.deepEqual(JSON.parse(JSON.stringify(answer.failures)),
+    [{ test_class: "LTC_A", test_method: "BROKEN", message: "Expected 1, got 2" }]);
+});
+
+test("run_abap_unit says an object has no test classes, and refuses what is not a class or a program", async () => {
+  const h = host();
+  const empty = await h.tools.execute("run_abap_unit", { object_name: "ZTEST", object_type: "CLAS" });
+  assert.deepEqual([empty.test_classes, empty.note], [0, "SAP ran no test classes for this object."]);
+  await assert.rejects(h.tools.execute("run_abap_unit", { object_name: "Z_FOO", object_type: "FUNC" }),
+    /ABAP Unit runs for a class or a program/);
+});
+
+test("run_atc_check answers the assistant with the variant and the findings", async () => {
+  const h = host();
+  h.setAtcResult({ variant: "DEFAULT", infos: [], findings: [
+    { object_name: "ZTEST", priority: 1, check: "Extended check", message: "Unused variable",
+      uri: "/sap/bc/adt/oo/classes/ztest/source/main", line: 3, column: 2 }] });
+  const answer = await h.tools.execute("run_atc_check", { object_name: "ZTEST", object_type: "CLAS" });
+  assert.deepEqual(h.atcRuns, ["/sap/bc/adt/oo/classes/ztest"]);
+  assert.deepEqual([answer.checked, answer.variant, answer.findings], ["ZTEST", "DEFAULT", 1]);
+  assert.deepEqual(JSON.parse(JSON.stringify(answer.shown)), [{ object_name: "ZTEST", priority: 1,
+    check: "Extended check", message: "Unused variable", line: 3 }]);
+});
+
+test("the two run tools are offered to the assistant, each taking a system", () => {
+  const h = host();
+  const named = name => h.tools.schemas.find(tool => tool.name === name);
+  for (const name of ["run_abap_unit", "run_atc_check"]) {
+    assert.ok(named(name), name + " is not in the schemas");
+    assert.ok(named(name).inputSchema.properties.system, name + " does not take a system");
+    assert.deepEqual([...named(name).inputSchema.required], ["object_name", "object_type"]);
+  }
+  assert.deepEqual([...named("run_abap_unit").inputSchema.properties.object_type.enum], ["CLAS", "PROG"]);
+});
+
 test("Run ATC Check puts each finding in Problems at its line, by priority; a new run replaces the last", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });

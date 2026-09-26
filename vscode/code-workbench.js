@@ -16,6 +16,24 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
   annotations: { readOnlyHint: true, destructiveHint: false },
   inputSchema: require("./schemas/sap-code-tools.json").find(t => t.name === "read_sap_object").inputSchema
 }, {
+  name: "run_abap_unit",
+  description: "Run the ABAP Unit tests of a class or program in SAP and return the result: test classes, passed, failed and the failure messages. "
+    + "Use for requests to run tests, run unit tests or check that the tests pass. The tree also appears in VS Code's Test Explorer. "
+    + "Runs the active SAP source: refused while the object's tab holds unsaved changes.",
+  annotations: { readOnlyHint: true, destructiveHint: false },
+  inputSchema: { type: "object", additionalProperties: false, required: ["object_name", "object_type"],
+    properties: { object_name: { type: "string", description: "Exact SAP object name." },
+      object_type: { type: "string", enum: ["CLAS", "PROG"], description: "CLAS for a global class, PROG for a program." } } }
+}, {
+  name: "run_atc_check",
+  description: "Run an ATC check on a SAP object with the system's default check variant and return the findings with their priority, check and message. "
+    + "Use for requests to run ATC, check code quality or check an object against the standards. The findings also appear in VS Code's Problems view. "
+    + "A function module is checked through its function group. Refused while the object's tab holds unsaved changes.",
+  annotations: { readOnlyHint: true, destructiveHint: false },
+  inputSchema: { type: "object", additionalProperties: false, required: ["object_name", "object_type"],
+    properties: { object_name: { type: "string", description: "Exact SAP object name." },
+      object_type: { type: "string", enum: ["CLAS", "PROG", "INTF", "FUNC"], description: "CLAS, PROG, INTF or FUNC." } } }
+}, {
   name: "review_sap_changes",
   description: "Open review for manual edits in the active SAP source tab. Shows independently approvable hunks and an Approve all action. Does not save to SAP.",
   annotations: { readOnlyHint: true, destructiveHint: false },
@@ -1123,7 +1141,10 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     }
     return message;
   }
+  // The Test Explorer ignores what a run returns; the assistant's tool reads
+  // it, because a chat answer cannot be "see the Test Explorer".
   async function runTests(request, token) {
+    const summary = { objects: [] };
     const roots = new Set();
     for (const item of request.include || [...tests.items].map(([, item]) => item)) {
       let root = item;
@@ -1135,17 +1156,24 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       for (const root of roots) {
         if (token.isCancellationRequested) { break; }
         const { repo, data } = testedObjects.get(root.id);
+        const counted = { object_name: data.object_name, object_type: data.object_type,
+          test_classes: 0, passed: 0, failed: 0, failures: [] };
+        summary.objects.push(counted);
         run.enqueued(root);
         const classes = await repo.api.unitTests(data.object_url);
         root.children.replace([]);
         if (!classes.length) {
           run.errored(root, new vscode.TestMessage(data.object_name + " has no test classes that SAP ran."));
+          counted.note = "SAP ran no test classes for this object.";
           continue;
         }
+        counted.test_classes = classes.length;
         for (const clas of classes) {
           const classItem = tests.createTestItem(root.id + "/" + clas["adtcore:name"], clas["adtcore:name"]);
           root.children.add(classItem);
           if (clas.alerts.length) {
+            clas.alerts.forEach(alert => counted.failures.push({ test_class: clas["adtcore:name"],
+              test_method: "", message: alert.title }));
             run.errored(classItem, await Promise.all(clas.alerts.map(alert => alertMessage(repo, alert))));
           }
           for (const method of clas.testmethods) {
@@ -1153,15 +1181,20 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
             classItem.children.add(methodItem);
             const duration = Math.round(Number(method.executionTime || 0) * 1000);
             if (method.alerts.length) {
+              counted.failed += 1;
+              method.alerts.forEach(alert => counted.failures.push({ test_class: clas["adtcore:name"],
+                test_method: method["adtcore:name"], message: alert.title }));
               run.failed(methodItem, await Promise.all(method.alerts.map(alert => alertMessage(repo, alert))), duration);
-            } else { run.passed(methodItem, duration); }
+            } else { counted.passed += 1; run.passed(methodItem, duration); }
           }
         }
       }
     } catch (error) {
+      summary.error = String(error.message || error);
       run.appendOutput(String(error.message || error).replace(/\r?\n/g, "\r\n") + "\r\n");
       vscode.window.showErrorMessage("VERTEX: ABAP Unit: " + String(error.message || error).slice(0, 3000));
     } finally { run.end(); }
+    return summary;
   }
   tests.createRunProfile("Run", vscode.TestRunProfileKind.Run, runTests, true);
   // The object comes from the active tab, or - from View source - by name,
@@ -1192,7 +1225,12 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     testedObjects.set(id, { repo: entry.repo, data: entry.data });
     await vscode.commands.executeCommand("workbench.view.testing.focus");
     const cancel = new vscode.CancellationTokenSource();
-    try { await runTests(new vscode.TestRunRequest([root]), cancel.token); } finally { cancel.dispose(); }
+    let summary;
+    try { summary = await runTests(new vscode.TestRunRequest([root]), cancel.token); } finally { cancel.dispose(); }
+    // The run swallowed SAP's refusal to keep the Test Explorer readable; a
+    // caller waiting for an answer is told instead of getting an empty one.
+    if (summary && summary.error) { throw new Error(summary.error); }
+    return { system: entry.repo.label, ...(summary && summary.objects[0] ? summary.objects[0] : {}) };
   }
   command("vertex.runUnitTests", () => unitTestsOf());
   // ATC findings go to the Problems view: priority 1 an error, 2 a warning,
@@ -1243,6 +1281,13 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     vscode.window.showInformationMessage("VERTEX: ATC " + checkedName + ": "
       + (count ? count + " finding(s)" : "no findings") + " (variant " + result.variant + ").");
     if (count) { await vscode.commands.executeCommand("workbench.actions.view.problems"); }
+    // The findings are in the Problems view; the assistant needs them as data.
+    // Bounded, because a check of a large function group returns hundreds.
+    return { system: entry.repo.label, checked: checkedName, variant: result.variant, findings: count,
+      shown: result.findings.slice(0, 50).map(finding => ({ object_name: finding.object_name,
+        priority: finding.priority, check: finding.check, message: finding.message, line: finding.line })),
+      ...(count > 50 ? { note: "The first 50 of " + count + " findings; all of them are in the Problems view." } : {}),
+      ...(elsewhere.length ? { not_openable: elsewhere.length } : {}) };
   }
   command("vertex.runAtc", () => atcOf());
   // Where-used as VS Code's references: Shift+F12 peeks them, Shift+Alt+F12
@@ -1445,6 +1490,8 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const repo = await repository();
     if (tool === "open_sap_object") { return showSource(repo, args); }
     if (tool === "review_sap_changes") { return reviewActive(); }
+    if (tool === "run_abap_unit") { return unitTestsOf(args); }
+    if (tool === "run_atc_check") { return atcOf(args); }
     const result = await repo.api.execute(tool, args);
     // A change to an existing object goes into its tab, unsaved, like an edit
     // of the user's own; saving it - Save & Activate or Review & Activate - is
