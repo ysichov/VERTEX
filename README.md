@@ -18,7 +18,7 @@ which is which.
 | Tool | Grew out of | What it does | VS Code | Eclipse | ABAP backend |
 |---|---|---|---|---|---|
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | ✓ | — | not needed |
-| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values | ✓ | — | not needed |
+| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values; the VERTEX chat has it built in, Claude Code and Codex reach it over MCP as `vertex-debug` | ✓ | — | not needed |
 | **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | ✓ | — | runs without it; ACE's statement map makes stepping cheaper and puts a stepped-over call's method on the chart |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | ✓ | ✓ | not needed |
 | **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | ✓ | ✓ | needed |
@@ -103,13 +103,25 @@ Setup of the assistant: [eclipse/README.md](eclipse/README.md).
 
 ### Other assistants over MCP
 
-GitHub Copilot, Claude Code and Codex get two read-only tools for transport reviews:
+The extension serves two MCP servers, and an assistant can take either.
+
+**The transport review.** GitHub Copilot, Claude Code and Codex get two read-only tools:
 `sap_transport_changes` lists what a request changed, and `sap_transport_diff` gives the diff in
 review blocks with the verdicts already given. The VS Code extension serves them itself; without VS
 Code, [mcp/](mcp/README.md) serves them over stdio. Setup:
 [in VS Code](vscode/README.md#review-transports-with-copilot-claude-code-or-codex) ·
 [Copilot in Eclipse](eclipse/MCP.md) · [without VS Code](mcp/README.md). The tested clients are
 Copilot in VS Code, Claude Code and Codex; others are not supported yet.
+
+**The debugger.** Claude Code and Codex get the whole ADT debugger as a second MCP server of the
+extension, `/debug`, registered as `vertex-debug`: `debug_set_breakpoint` (with a condition SAP
+evaluates, or mode `log` for a watchpoint), `debug_run`, `debug_wait`, `debug_read`, `debug_step`,
+`debug_status`, `debug_log`, `debug_clear_breakpoints` and `debug_stop`. Nothing there changes a
+variable or the code. It is the same session the VERTEX chat and Visual Debug drive, so a step
+made in one is seen by the others. It runs on the active system, needs a VS Code window with
+VERTEX open — the run is started in WebGUI and the listener has to outlive a single call — and
+for that reason the standalone server in [mcp/](mcp/README.md) does not have it. Setup and the
+tools one by one: [Debug with an assistant](vscode/README.md#debug-with-an-assistant).
 
 ## The explorers today
 

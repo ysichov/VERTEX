@@ -23,6 +23,10 @@
   assistant work over ADT alone. Visual Debug is in between: it runs without the backend, and
   ACE's statement map from it makes stepping cheaper and puts a stepped-over call's method on the
   chart. The second, duplicate table the repository's README had grown is gone.
+- The repository's README described the MCP side as the two transport tools alone. The debugger
+  is served over MCP too - `/debug`, registered as `vertex-debug` for Claude Code and Codex, the
+  nine `debug_*` tools, the same session Visual Debug draws - and was documented only on the
+  Marketplace page. The README now names both servers.
 - The Marketplace page never said **where** the systems are configured, only what to write. It now
   opens with a **First run**: install, pull `src/` with abapGit, add the systems through
   Ctrl+Shift+P → Preferences: Open User Settings (JSON), open the panel, open an object. The
