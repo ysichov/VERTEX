@@ -7,11 +7,11 @@
 
 VERTEX is a set of plugins for VS Code and Eclipse ADT: an AI assistant with MCP, an enhanced ABAP
 editor, an AI-driven ADT debugger, and explorers for code, versions and data. Each window reads over
-the developer's existing ADT connection and renders as HTML; the ABAP side is this repository's
-`src/`.
+the developer's existing ADT connection and renders as HTML.
 
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](docs/architecture.jpg)
 
+ the ABAP side is this repository's `src/`. But it is optional. Check features list.
 
 | Tool | Grew out of | What it does | VS Code | Eclipse |
 |---|---|---|---|---|
