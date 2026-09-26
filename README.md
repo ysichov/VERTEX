@@ -5,6 +5,14 @@ editor, an AI-driven ADT debugger, and explorers for code, versions and data. Ea
 the developer's existing ADT connection and renders as HTML; the ABAP side is this repository's
 `src/`.
 
+## Install
+
+**[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
+· **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
+
+![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](docs/architecture.jpg)
+
+
 | Tool | Grew out of | What it does | VS Code | Eclipse |
 |---|---|---|---|---|
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system; code changes land in the tab, reviewed block by block before activation | ✓ | ✓ |
@@ -17,12 +25,6 @@ the developer's existing ADT connection and renders as HTML; the ABAP side is th
 The projects named above are where the ideas were worked out first, and they are not developed
 further; everything new happens here.
 
-![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](docs/architecture.jpg)
-
-## Install
-
-**[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
-· **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
 ### VS Code
 
