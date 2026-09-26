@@ -71,7 +71,7 @@ Building either half from this repository instead: [BUILD.md](BUILD.md).
 
 ## What each host has
 
-### VS Code
+### SAP Systems COnfiguration in the VS Code 
 
 - **VERTEX Tools** — pick an object type and a name; the functions offered depend on the type
   (Data, View source, UML, Metrics, Calls and Logic diagrams, Diff, Versions, Visual Debug).
