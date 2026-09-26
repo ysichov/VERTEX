@@ -4,14 +4,19 @@
 AI assistant and MCP, an enhanced ABAP editor, an AI-driven debugger and explorers for code,
 versions and data. Several of them grew out of earlier SAP GUI tools.
 
-| Tool | Grew out of | What it does |
-|---|---|---|
-| **AI Assistant** | — | Chat, code, any SAP system |
-| **Enhanced Code Editor** | — | Hover, navigation, outline, ABAP Unit, ATC, where-used, keyword documentation |
-| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Conditional breakpoints, verdict, Visual Debug |
-| **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE), [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | History, diff, block-by-block review with comments |
-| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics, UML, logic, calls |
-| **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, joins, pivots |
+The ABAP side, this repository's [`src/`](https://github.com/ysichov/VERTEX/tree/main/src), is
+optional: the editor, the debugger and the assistant work over ADT alone, and only the three
+explorers read it. The last column says which is which.
+
+| Tool | Grew out of | What it does | ABAP backend |
+|---|---|---|---|
+| **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | not needed |
+| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values | not needed |
+| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | runs without it; ACE's statement map makes stepping cheaper and puts a stepped-over call's method on the chart |
+| **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
+| **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | needed |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method | needed |
+| **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | needed |
 
 The projects named above are where the ideas were worked out first, and they are not developed
 further. Their principles and functions were carried over, and the ABAP logic of the SAP GUI
@@ -20,23 +25,13 @@ happens on this side.
 
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](https://raw.githubusercontent.com/ysichov/VERTEX/main/docs/architecture.jpg)
 
-## What needs an ABAP backend and what does not
+## The ABAP backend
 
-The editor, the debugger and the assistant work over ADT alone: a system in the settings is all
-they need. The explorers are the other half of VERTEX - the ADT resources in the
-[repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src), pulled with
-[abapGit](https://abapgit.org) and activated. A window that needs them and does not find them
-shows a page saying so; nothing else is affected.
-
-| Tool | What it does | ABAP backend |
-|---|---|---|
-| **ABAP editor** | Hover, Go to, Outline, Save & Activate, Review & Activate, ABAP Unit, ATC, where-used, keyword documentation | not needed |
-| **AI-driven debugger** | Breakpoints with conditions SAP evaluates, the run in WebGUI, the stops, the verdict | not needed |
-| **Visual Debug** | The same session on screen: source, breakpoints, stack, variables, the flow chart of a recorded run | works without it; ACE's statement map makes stepping cheaper and names the calls on the chart |
-| **AI assistant and chat** | Reads, explains and changes code, runs the tests and ATC, drives the debugger | not needed |
-| **Versions / Reviewer** | History, diff, the review of a transport, and the MCP transport tools | needed |
-| **Code Explorer** | Metrics, UML, Calls and Logic diagrams | needed |
-| **Data Explorer (SelecTor)** | Tables, joins, pivots | needed |
+Versions, Code Explorer and SelecTor read the ADT resources in the
+[repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src): pull them with
+[abapGit](https://abapgit.org) and activate them. A window that needs them and does not find them
+shows a page saying so; nothing else is affected, and the editor, the debugger and the assistant
+never ask for them.
 
 ## VS Code prerequisite
 
