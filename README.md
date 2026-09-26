@@ -27,7 +27,9 @@ further; everything new happens here.
 ### VS Code
 
 Install the extension from the Marketplace, then give it the connection Eclipse would take from the
-ABAP project. There is no project here, so the systems are a list and one of them is active:
+ABAP project. There is no project here, so the systems are a list and one of them is active.
+They live in VS Code's settings: **Ctrl+Shift+P → Preferences: Open User Settings (JSON)**, and
+the entries go into that file.
 
 ```json
 "vertex.systems": [

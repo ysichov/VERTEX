@@ -40,7 +40,9 @@ source in a normal VS Code text editor when SAP ADT is not installed.
 
 The Eclipse plugin inherits its connection from the ABAP project. There is no
 project to inherit from here, so the systems are a list and one of them is
-active.
+active. They live in VS Code's own settings file: **Ctrl+Shift+P →
+Preferences: Open User Settings (JSON)**, and the entries below go into it.
+Workspace settings (`.vscode/settings.json`) work too and override the user's.
 
 ```json
 "vertex.systems": [
