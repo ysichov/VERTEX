@@ -54,8 +54,21 @@ Explorer → **VERTEX**.
 ### SAP
 
 On the SAP system, nothing but this repository's `src/` has to be installed: pull it with
-[abapGit](https://abapgit.org) and activate it. Until then every VERTEX window shows a page saying
-the backend is missing. The table, the join and the pivot were
+[abapGit](https://abapgit.org) and activate it. It is not needed for all of VERTEX - the editor,
+the debugger and the assistant run over ADT alone, and only the explorers read the hub:
+
+| Tool | What it does | ABAP backend |
+|---|---|---|
+| **ABAP editor** | Hover, Go to, Outline, Save & Activate, Review & Activate, ABAP Unit, ATC, where-used, keyword documentation | not needed |
+| **AI-driven debugger** | Breakpoints with conditions SAP evaluates, the run in WebGUI, the stops, the verdict | not needed |
+| **Visual Debug** | The same session on screen: source, breakpoints, stack, variables, the flow chart of a recorded run | works without it; ACE's statement map makes stepping cheaper and names the calls on the chart |
+| **AI assistant and chat** | Reads, explains and changes code, runs the tests and ATC, drives the debugger | not needed |
+| **Versions / Reviewer** | History, diff, the review of a transport, and the MCP transport tools | needed |
+| **Code Explorer** | Metrics, UML, Calls and Logic diagrams | needed |
+| **Data Explorer (SelecTor)** | Tables, joins, pivots | needed |
+
+A window that needs the backend and does not find it says so, and the rest goes on working.
+The table, the join and the pivot were
 carried out of Simple Data Explorer, the flow and the metrics out of ACE, and the version history,
 the diff, the transport lookup and the review out of [AVE](https://github.com/ysichov/AVE) — all
 into `src/` as `ZCL_VX_*`, with the SAP GUI stripped off. None of the three is a prerequisite any

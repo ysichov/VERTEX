@@ -20,13 +20,23 @@ happens on this side.
 
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](https://raw.githubusercontent.com/ysichov/VERTEX/main/docs/architecture.jpg)
 
-## It needs an ABAP backend
+## What needs an ABAP backend and what does not
 
-This extension is one half of VERTEX. The other half is the ADT resources in the
-[VERTEX repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src). Pull it with
-[abapGit](https://abapgit.org) and activate it.
+The editor, the debugger and the assistant work over ADT alone: a system in the settings is all
+they need. The explorers are the other half of VERTEX - the ADT resources in the
+[repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src), pulled with
+[abapGit](https://abapgit.org) and activated. A window that needs them and does not find them
+shows a page saying so; nothing else is affected.
 
-Until then, every window just shows a page explaining that the backend isn't installed yet.
+| Tool | What it does | ABAP backend |
+|---|---|---|
+| **ABAP editor** | Hover, Go to, Outline, Save & Activate, Review & Activate, ABAP Unit, ATC, where-used, keyword documentation | not needed |
+| **AI-driven debugger** | Breakpoints with conditions SAP evaluates, the run in WebGUI, the stops, the verdict | not needed |
+| **Visual Debug** | The same session on screen: source, breakpoints, stack, variables, the flow chart of a recorded run | works without it; ACE's statement map makes stepping cheaper and names the calls on the chart |
+| **AI assistant and chat** | Reads, explains and changes code, runs the tests and ATC, drives the debugger | not needed |
+| **Versions / Reviewer** | History, diff, the review of a transport, and the MCP transport tools | needed |
+| **Code Explorer** | Metrics, UML, Calls and Logic diagrams | needed |
+| **Data Explorer (SelecTor)** | Tables, joins, pivots | needed |
 
 ## VS Code prerequisite
 
@@ -35,6 +45,23 @@ is recommended for the ABAP editor, navigation and standard ADT commands. It
 is optional: VERTEX can connect to SAP through ADT HTTP by itself and opens
 source in a normal VS Code text editor when SAP ADT is not installed.
 
+
+## First run
+
+1. **Install the extension** from the Marketplace and reload the window.
+2. **For the explorers, install the ABAP backend**: pull the
+   [VERTEX repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src) with
+   [abapGit](https://abapgit.org) on the SAP system and activate it. The editor, the debugger and
+   the assistant do not wait for this step; Versions, Code Explorer and SelecTor show a page
+   saying the backend is missing until it is done.
+3. **Name your system**: **Ctrl+Shift+P → Preferences: Open User Settings (JSON)**, and add
+   `vertex.systems` and `vertex.active` as in *Settings* below. The `url` is the ICM port, not the
+   one SAP GUI connects to.
+4. **Open VERTEX** from its icon in the Activity Bar, or **Ctrl+Shift+P → VERTEX: Open Panel**.
+   The top line shows the active system; **VERTEX: Switch System** picks another.
+5. **Open an object**: **VERTEX Tools** in the panel, pick a type, type a name - `Z*` lists what
+   matches - and pick a function. SAP asks for the password once per system, and keeps it in the
+   operating system's credential store. Or just ask the chat: *open table SFLIGHT*.
 
 ## Settings
 

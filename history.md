@@ -15,6 +15,15 @@
   position in the source, not for a name, and finding a name's position would mean reading the
   ABAP as text. Asked for either, the chat says which key does it in the open tab: Shift+F12 and
   F1.
+- **What needs the ABAP backend, and what does not**, is now a table in every page that describes
+  VERTEX. The documentation said the backend was needed, full stop; it is needed by the explorers
+  - Versions, Code Explorer, SelecTor - while the editor, the debugger and the assistant work over
+  ADT alone. Visual Debug is in between: it runs without the backend, and ACE's statement map from
+  it makes stepping cheaper and names the calls on the chart.
+- The Marketplace page never said **where** the systems are configured, only what to write. It now
+  opens with a **First run**: install, pull `src/` with abapGit, add the systems through
+  Ctrl+Shift+P → Preferences: Open User Settings (JSON), open the panel, open an object. The
+  repository's README names that command too.
 - The documentation caught up with 0.7.6, which shipped these four editor features while two
   pages that describe VERTEX did not say so: the Marketplace page listed the editor as "Hover,
   navigation, outline", and the update site's page still named 0.7.5 as the VS Code build.

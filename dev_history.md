@@ -2301,6 +2301,19 @@ whose vsix also carries that README: the README is the Marketplace page, and the
 way to correct it. The Eclipse plugin has none of these four features and was not rebuilt, so
 the update site still says 0.7.3 for it.
 
+**The backend was not the prerequisite the documentation made of it.** Every page opened with
+"it needs an ABAP backend", and the VS Code first run put pulling `src/` before anything else.
+That was true when the windows were all there was. Since then the editor, the ABAP Unit and ATC
+runs, where-used, the documentation, the chat's source tools and the whole debugger have been
+built on ADT through `abap-adt-api`, and none of them asks the hub anything. What reads
+`/sap/bc/adt/vertex/*` is the explorers: `table` and `join` for SelecTor, `metrics` and `flow`
+for Code Explorer, `versions`, `review`, `prepare` and `requests` for Versions and the MCP
+transport tools. Visual Debug sits between the two - it works without the hub, and without it
+`flow?mode=statements` is missing, so every step asks SAP for the stack and a stepped-over call
+shows its class without its method; the page already says so in a notice. The pages now carry a
+table of that, grouped the way a reader meets the tools: editor, debugger, assistant, then the
+three explorers. The rows were read off the code, not off memory.
+
 **The half of them that could become tools.** The four features are editor commands, and the
 chat could not ask for any of them. Two of them took nothing to hand over: `unitTestsOf` and
 `atcOf` already accepted an object by name and type, because View source calls them that way, so

@@ -54,6 +54,10 @@
     color: var(--muted); font-size: .9rem;
   }
   footer a { margin-right: 1rem; }
+  .needs { border-collapse: collapse; width: 100%; margin: 0 0 .9rem; font-size: .92rem; }
+  .needs th, .needs td { border: 1px solid var(--line); padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  .needs th { background: var(--surface); }
+  .needs td:last-child { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -159,8 +163,24 @@
 <h2>The other half is ABAP</h2>
 
 <p>
-  VERTEX is a front end and a set of ADT resources. The plugin alone reaches a
-  path nothing answers, and every window will say so. There is one thing to pull
+  Not all of VERTEX waits for it. The editor, the debugger and the assistant work
+  over ADT alone; the explorers are what reads the hub, and a window that needs it
+  and does not find it says so while the rest goes on working.
+</p>
+
+<table class="needs">
+  <tr><th>Tool</th><th>What it does</th><th>ABAP backend</th></tr>
+  <tr><td><b>ABAP editor</b> (VS Code)</td><td>Hover, Go to, Outline, Save &amp; Activate, Review &amp; Activate, ABAP Unit, ATC, where-used, keyword documentation</td><td>not needed</td></tr>
+  <tr><td><b>AI-driven debugger</b> (VS Code)</td><td>Breakpoints with conditions SAP evaluates, the run in WebGUI, the stops, the verdict</td><td>not needed</td></tr>
+  <tr><td><b>Visual Debug</b> (VS Code)</td><td>The same session on screen: source, breakpoints, stack, variables, the flow chart of a recorded run</td><td>works without it; ACE's statement map makes stepping cheaper and names the calls on the chart</td></tr>
+  <tr><td><b>AI assistant and chat</b></td><td>Reads, explains and changes code, runs the tests and ATC, drives the debugger</td><td>not needed</td></tr>
+  <tr><td><b>Versions / Reviewer</b></td><td>History, diff, the review of a transport</td><td>needed</td></tr>
+  <tr><td><b>Code Explorer</b></td><td>Metrics, UML, Calls and Logic diagrams</td><td>needed</td></tr>
+  <tr><td><b>Data Explorer (SelecTor)</b></td><td>Tables, joins, pivots</td><td>needed</td></tr>
+</table>
+
+<p>
+  There is one thing to pull
   into the system with abapGit and activate:
   <a href="https://github.com/ysichov/VERTEX">VERTEX</a> itself, its <code>src/</code>
   folder — the hub, every ADT resource the windows read (tables, joins, the pivot,
