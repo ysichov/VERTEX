@@ -44,11 +44,38 @@
   "icon": "images/icon.png",
   "main": "./extension.js",
   "contributes": {
+    "breakpoints": [
+      {
+        "language": "abap"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "vertex-abap",
+        "label": "VERTEX SAP Breakpoints",
+        "languages": [
+          "abap"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [],
+            "properties": {}
+          }
+        }
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "vertex",
           "title": "VERTEX",
+          "icon": "images/activity.svg"
+        }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "vertex-debug",
+          "title": "VERTEX Debug",
           "icon": "images/activity.svg"
         }
       ]
@@ -60,12 +87,39 @@
           "name": "SAP Tools",
           "type": "webview"
         }
+      ],
+      "vertex-debug": [
+        {
+          "id": "vertex.visualDebug",
+          "name": "Debugger",
+          "type": "webview"
+        }
       ]
     },
     "commands": [
       {
         "command": "vertex.valueOrigin",
         "title": "VERTEX: Analyze Variable Value Origin"
+      },
+      {
+        "command": "vertex.openVisualDebug",
+        "title": "VERTEX: Open Visual Debug"
+      },
+      {
+        "command": "vertex.debugInto",
+        "title": "VERTEX: Debug Single Step"
+      },
+      {
+        "command": "vertex.debugOver",
+        "title": "VERTEX: Debug Execute"
+      },
+      {
+        "command": "vertex.debugOut",
+        "title": "VERTEX: Debug Return"
+      },
+      {
+        "command": "vertex.debugContinue",
+        "title": "VERTEX: Debug Continue"
       },
       {
         "command": "vertex.showPanel",
@@ -246,6 +300,21 @@
     "menus": {
       "editor/context": [
         {
+          "command": "vertex.openVisualDebug",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap",
+          "group": "navigation@8"
+        },
+        {
+          "command": "vertex.runUnitTests",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap",
+          "group": "navigation@10"
+        },
+        {
+          "command": "vertex.runAtc",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap",
+          "group": "navigation@11"
+        },
+        {
           "command": "vertex.valueOrigin",
           "when": "editorLangId == abap",
           "group": "navigation@9"
@@ -309,6 +378,26 @@
         "command": "vertex.navigateBack",
         "key": "alt+left",
         "when": "resourceScheme == vertex-sap"
+      },
+      {
+        "command": "vertex.debugInto",
+        "key": "f5",
+        "when": "resourceScheme == vertex-sap && editorLangId == abap"
+      },
+      {
+        "command": "vertex.debugOver",
+        "key": "f6",
+        "when": "resourceScheme == vertex-sap && editorLangId == abap"
+      },
+      {
+        "command": "vertex.debugOut",
+        "key": "f7",
+        "when": "resourceScheme == vertex-sap && editorLangId == abap"
+      },
+      {
+        "command": "vertex.debugContinue",
+        "key": "f8",
+        "when": "resourceScheme == vertex-sap && editorLangId == abap"
       },
       {
         "command": "vertex.runUnitTests",

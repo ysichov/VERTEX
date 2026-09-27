@@ -93,8 +93,25 @@ function parse(source) {
   return parsed;
 }
 function buildIndex(sources) {
-  const procedures = [], signatures = new Map(), interfaces = new Map(), dependencies = new Map();
+  const procedures = [], signatures = new Map(), interfaces = new Map(), dependencies = new Map(), referenceTypes = new Map();
   for (const source of sources) {
+    // ACE resolves reference declarations in its scanner pass. Keep that
+    // fact with this source; a CM include normally has no CLASS DEFINITION.
+    for (const ref of source.aceRefs || []) {
+      const name = U(ref.name), type = U(ref.class);
+      if (!name || !type) continue;
+      const key = source.id + ':' + name;
+      if (!referenceTypes.has(key)) referenceTypes.set(key, new Set());
+      referenceTypes.get(key).add(type);
+    }
+    // The relation is emitted by ACE for the complete class, so it remains
+    // available even when this source is only a generated CM method include.
+    for (const implementation of source.aceImplementations || []) {
+      const owner = U(implementation.class), face = U(implementation.interface);
+      if (!owner || !face) continue;
+      if (!interfaces.has(owner)) interfaces.set(owner, new Set());
+      interfaces.get(owner).add(face);
+    }
     const global = { id: source.id + ':GLOBAL', name: 'GLOBAL', owner: '', source, body: [], start: 0, end: source.text.length + 1, line: 1 };
     const aceProcedures = new Map();
     const aceProcedure = unit => {
@@ -159,8 +176,18 @@ function buildIndex(sources) {
       signatures.set(key, params);
     }
   }
+  // ACE can expose a method both through an assembled class unit and through
+  // its CM include.  They are two representations of one ABAP procedure, not
+  // two dispatch targets.  Keep the richest body before resolving calls.
+  const selected = new Map(), globals = [];
+  for (const procedure of procedures) {
+    if (procedure.name === 'GLOBAL') { globals.push(procedure); continue; }
+    const key = procedure.owner + '~' + procedure.name, previous = selected.get(key);
+    const score = p => p.body.length * 1000000 + Math.max(0, p.end - p.start);
+    if (!previous || score(procedure) > score(previous)) selected.set(key, procedure);
+  }
   const signature = p => signatures.get(p.owner + '~' + p.name) || (p.name.includes('~') ? signatures.get(p.name) : null) || [];
-  return { procedures, signatures, interfaces, dependencies, signature };
+  return { procedures: [...globals, ...selected.values()], signatures, interfaces, dependencies, referenceTypes, signature };
 }
 function argumentsOf(call, p, s, inherited, signature) {
   const ts = call.args, result = { $context: (inherited.$context || '') + '/' + p.id + ':' + s.offset };
@@ -207,6 +234,9 @@ function resolver(index) {
     const key = p.id + name + before; if (resolving.has(key)) return new Set(); resolving.add(key);
     const result = new Set();
     try {
+      // This is an ACE type result, not a source-text declaration heuristic.
+      // It retains an interface receiver's type in a method CM include.
+      for (const type of index.referenceTypes.get(p.source.id + ':' + name) || []) result.add(type);
       const b = bound[name]; if (b) for (const t of types(b.actual, b.p, b.s.offset, b.inherited, depth + 1)) result.add(t);
       for (const s of p.body) {
         if (s.offset >= before) break;
@@ -338,7 +368,10 @@ function analyze(sources, target, options = {}) {
       if (call.receiver && call.receiver !== 'ME' && call.arrow === '->') edge(trace(p, call.receiver, s.offset, bound, depth + 1), parent, 'dispatch receiver');
       for (const callee of matches) {
         const formal = index.signature(callee).find(x => x.mode === 'RETURNING'); if (!formal) continue; returned = true;
-        const n = node('call', s.text, p, s, { callee: callee.owner + '->' + callee.name, possible: matches.length > 1 });
+        // The parent definition already owns the complete ABAP statement.
+        // Repeating it here only obscures that this node denotes its returned
+        // value, rather than a second execution of the statement.
+        const n = node('call', 'RETURNING ' + formal.name + suffix, p, s, { callee: callee.owner + '->' + callee.name, possible: matches.length > 1 });
         edge(n, parent, 'return' + suffix);
         edge(trace(callee, formal.name + suffix, callee.end, argumentsOf(call, p, s, bound, index.signature(callee)), depth + 1), n, 'RETURNING ' + formal.name);
       }
@@ -377,7 +410,13 @@ function analyze(sources, target, options = {}) {
   const p = index.procedures.filter(p => p.source.id === source.id && p.start <= before && p.end >= before).sort((a, b) => b.start - a.start)[0];
   if (!p) throw new Error('No procedure at selected location.');
   const root = trace(p, U(target.variable), before);
-  return { root, nodes, edges, calls: [...calls.values()], truncated, mode: 'static', notice: 'Backward source dependencies across calls. Possible dispatch targets and branches are alternatives; loop order, database contents and runtime values are not inferred.' };
+  // The graph is walked backward, so discovery order is dependency order, not
+  // source order.  The call-path panel is a source navigator: keep its rows in
+  // the order in which the corresponding ABAP statements appear.
+  const orderedCalls = [...calls.values()].sort((left, right) =>
+    String(left.source).localeCompare(String(right.source)) || left.line - right.line ||
+    String(left.caller).localeCompare(String(right.caller)) || String(left.method).localeCompare(String(right.method)));
+  return { root, nodes, edges, calls: orderedCalls, truncated, mode: 'static', notice: 'Backward source dependencies across calls. Possible dispatch targets and branches are alternatives; loop order, database contents and runtime values are not inferred.' };
 }
 function variableAt(source, offset) {
   // Editor hit testing only. The selected SAP source is parsed by ACE.

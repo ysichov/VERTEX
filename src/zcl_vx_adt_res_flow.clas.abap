@@ -93,6 +93,11 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              statements TYPE tt_origin_statements,
            END OF ty_origin_include,
            tt_origin_includes TYPE STANDARD TABLE OF ty_origin_include WITH EMPTY KEY,
+           BEGIN OF ty_origin_implementation,
+             class     TYPE string,
+             interface TYPE string,
+           END OF ty_origin_implementation,
+           tt_origin_implementations TYPE STANDARD TABLE OF ty_origin_implementation WITH EMPTY KEY,
            BEGIN OF ty_origin,
              schema_version TYPE i,
              program TYPE string,
@@ -101,6 +106,7 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              params TYPE zif_vx_ace_parse_data=>tt_params,
              refs TYPE zif_vx_ace_parse_data=>tt_refvar,
              classes TYPE zif_vx_ace_parse_data=>tt_class_defs,
+             implementations TYPE tt_origin_implementations,
            END OF ty_origin.
     METHODS origin
       IMPORTING i_program TYPE program
@@ -452,6 +458,27 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
     rs_origin-params = ls_source-t_params.
     rs_origin-refs = ls_source-tt_refvar.
     rs_origin-classes = ls_source-tt_class_defs.
+    " Preserve the scanner's class-to-interface relation explicitly. A
+    " generated CM include does not carry the INTERFACES statement itself,
+    " yet its interface method is a concrete dispatch target for value origin.
+    LOOP AT ls_source-tt_progs INTO DATA(ls_relation_prog) WHERE program = i_program AND scan IS BOUND.
+      DATA(lv_relation_class) = VALUE string( ).
+      READ TABLE ls_source-tt_class_defs INTO DATA(ls_relation_class_def)
+        WITH KEY def_include = ls_relation_prog-include.
+      IF sy-subrc = 0.
+        lv_relation_class = ls_relation_class_def-class.
+      ENDIF.
+      CHECK lv_relation_class IS NOT INITIAL.
+      LOOP AT ls_relation_prog-scan->statements INTO DATA(ls_relation_stmt).
+        READ TABLE ls_relation_prog-scan->tokens INDEX ls_relation_stmt-from INTO DATA(ls_relation_first).
+        CHECK sy-subrc = 0 AND ls_relation_first-str = 'INTERFACES'.
+        READ TABLE ls_relation_prog-scan->tokens INDEX ls_relation_stmt-from + 1 INTO DATA(ls_relation_interface).
+        CHECK sy-subrc = 0 AND ls_relation_interface-str IS NOT INITIAL.
+        APPEND VALUE ty_origin_implementation(
+          class = lv_relation_class interface = ls_relation_interface-str )
+          TO rs_origin-implementations.
+      ENDLOOP.
+    ENDLOOP.
     LOOP AT ls_source-tt_progs INTO DATA(ls_prog) WHERE program = i_program AND scan IS BOUND.
       DATA(ls_include) = VALUE ty_origin_include( include = ls_prog-include ).
       LOOP AT ls_prog-source_tab INTO DATA(lv_source_line).

@@ -9,12 +9,22 @@ loads ACE indexes and referenced customer sources (`Z*`, `Y*`, `/namespace/`) fr
 the same SAP system automatically; standard ABAP objects remain analysis boundaries.
 No other source tabs need to be open. Save and activate edits first.
 
-The contributing call path and expandable dependency tree link to the exact include
-and line. Structure copies, NEW/factory calls, RETURNING and CHANGING lead into
+The collapsible static call stack and expandable dependency tree link to the exact include
+and line. A normal click reuses the standard VS Code ABAP editor; Ctrl+Click opens beside.
+The extension enables the native ABAP breakpoint gutter in that editor: click its
+leftmost margin to add or remove a point; it synchronizes to the same SAP debugger
+session. Structure copies, NEW/factory calls, RETURNING and CHANGING lead into
 callee calculations. SELECT statements expose their table and host-variable inputs.
+ACE reference types and class-to-interface relations resolve an interface call to its
+concrete implementation, even where the calculation is held in a CM include.
+Right-click a VERTEX source tab and choose **VERTEX: Open Visual Debug** to reveal
+the right-hand debugger panel for that object without replacing the source editor;
+the stopped SAP line is highlighted in the editor.
+In a VERTEX ABAP source tab, F5/F6/F7/F8 are
+Single Step/Execute/Return/Continue for the shared stopped SAP session.
 Possible dispatch targets, branch conditions and loop boundaries remain explicit;
 the view does not claim a concrete database-dependent iteration order or runtime
-values. Full dependency SVG and Mermaid text are available below the tree.
+values. A selectable, copyable analysis log is available below the tree.
 This command is in the source editor; Visual Debug does not yet expose it.
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT:

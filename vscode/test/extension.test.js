@@ -45,6 +45,10 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
   context.exports.activate({ subscriptions: [], workspaceState: { get: (key, fallback) => fallback, async update() {} },
     globalState: { get: () => undefined, async update() {} } });
   assert.equal(starts, 1);
+  // The regular VERTEX editor can open the same Visual Debug session and
+  // route F5-F8 to it; the commands themselves stay inactive until invoked.
+  for (const name of ["vertex.openVisualDebug", "vertex.debugInto", "vertex.debugOver",
+    "vertex.debugOut", "vertex.debugContinue"]) assert.ok(commands.has(name), name);
   await commands.get("vertex.mcpAddress")();
   assert.equal(copied[0], '[mcp_servers.vertex]\nurl = "http://127.0.0.1:37777/mcp"\nhttp_headers = { Authorization = "Bearer test-token" }\n');
   client = "Claude Code";

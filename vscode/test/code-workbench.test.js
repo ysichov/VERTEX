@@ -2,7 +2,7 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 function host() {
-  const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], selectionListeners = [], symbols = [];
+  const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], selectionListeners = [], symbols = [], breakpointListeners = [];
   const unitRuns = [], testRuns = [], testItems = new Map();
   let unitResult = [];
   const atcRuns = [], problems = new Map(), infos = [], usedAsks = [], docAsks = [], references = [], warnings = [];
@@ -18,9 +18,9 @@ function host() {
         ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS."
         : include === "main" ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS.\nCLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\n  METHOD caller.\n    DATA lv_count TYPE i.\n    lv_count = 1.\n    run( ).\n    zcl_other=>do_it( ).\n    CALL FUNCTION 'Z_FOO'.\n  ENDMETHOD.\nENDCLASS."
           : "CLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\nENDCLASS.";
+      const object_url = klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : args.object_type === "FUNC" ? "/sap/bc/adt/functions/groups/z_grp/fmodules/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest";
       return { object_name: args.object_name, object_type: args.object_type === "FUNC" || args.object_type === "INTF" ? args.object_type : klass ? "CLAS" : "PROG",
-        object_url: klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : args.object_type === "FUNC" ? "/sap/bc/adt/functions/groups/z_grp/fmodules/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest",
-        include, source, revision: "original-revision" };
+        object_url, source_url: object_url + "/source/main", include, source, revision: "original-revision" };
     }
     return { change_id: "id1", object_name: args.object_name, operation: tool === "create_sap_object" ? "create" : "modify",
       object_type: "PROG", include: "main", original_source: tool === "create_sap_object" ? "" : "REPORT ztest.", source: args.source };
@@ -62,6 +62,7 @@ function host() {
       registerCommand: (name, fn) => { commands.set(name, fn); return { dispose() {} }; },
       async executeCommand(...args) { diffs.push(args); }
     },
+    debug: { onDidChangeBreakpoints: fn => { breakpointListeners.push(fn); return { dispose() {} }; } },
     workspace: {
       async applyEdit(edit) {
         edit.replaced.forEach(r => { documents.find(d => d.uri.toString() === r.uri.toString()).text = r.text; });
@@ -116,7 +117,8 @@ function host() {
     password: async () => "test-secret"
   });
   return { tools, commands, usedAsks, docAsks, references, warnings, setUsedResult: value => { usedResult = value; }, setActive: editor => { vscode.window.activeTextEditor = editor; }, atcRuns, problems, infos, setAtcResult: value => { atcResult = value; }, unitRuns, testRuns, setUnitResult: value => { unitResult = value; }, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners, symbols,
-    switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; } };
+    switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; },
+    fireBreakpoints: change => breakpointListeners.forEach(fn => fn(change)) };
 }
 test("an AI change goes into the object's tab unsaved; nothing reaches SAP until the user saves", async () => {
   const h = host();
@@ -133,6 +135,25 @@ test("an AI change goes into the object's tab unsaved; nothing reaches SAP until
   await h.commands.get("vertex.saveAndActivate")();
   assert.equal(h.writes.length, 1);
   assert.equal(h.writes[0].source, "REPORT ztest. WRITE 'fixed'.");
+});
+test("a breakpoint placed in the standard VERTEX editor gutter is synchronized to SAP", async () => {
+  const h = host(), calls = [], cleared = [];
+  h.tools.attachDebugger({
+    async setBreakpointAt(args) { calls.push(args); return { id: 'sap-bp-1' }; },
+    async clearBreakpoints(id) { cleared.push(id); }
+  });
+  await h.tools.execute('open_sap_object', { object_name: 'ZTEST', object_type: 'PROG' });
+  const point = { id: 'vs-bp-1', location: { uri: h.documents[0].uri, range: { start: { line: 0 } } }, condition: 'sy-subrc = 0' };
+  h.fireBreakpoints({ added: [point] });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/sap/bc/adt/programs/programs/ztest/source/main');
+  assert.equal(calls[0].line, 1);
+  assert.equal(calls[0].condition, 'sy-subrc = 0');
+  assert.equal(calls[0].mode, 'stop');
+  h.fireBreakpoints({ removed: [point] });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(cleared, ['sap-bp-1']);
 });
 test("an AI change is refused while the tab holds edits SAP does not have", async () => {
   const h = host();

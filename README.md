@@ -3,8 +3,18 @@
 VS Code test build **0.7.8** adds **Analyze Variable Value Origin** to the ABAP editor.
 It reads ACE's statement/token/call/parameter index from the VERTEX backend, loads
 referenced customer objects (`Z*`, `Y*`, `/namespace/`) automatically and traces structure components through RETURNING
-and CHANGING. The view shows contributing call paths, expandable calculations,
-source links and Mermaid text. Update `ZCL_VX_ADT_RES_FLOW` in SAP for `mode=origin`
+and CHANGING. The view shows a collapsible static call stack, expandable calculations
+and a copyable analysis log. A source link opens the standard VS Code ABAP editor in
+the same group; Ctrl+Click opens it beside. The extension enables the native ABAP
+breakpoint gutter there: click its leftmost margin to add or remove a point; it
+synchronizes to SAP.
+Interface dispatch is resolved to its concrete class method from ACE's reference and
+class-to-interface facts, including generated CM method includes.
+Right-click that source and choose **VERTEX: Open Visual Debug** to reveal a
+right-hand debugger panel for the current object; the source stays in its normal
+editor and its actual stopped line is highlighted. While the source tab is active, F5/F6/F7/F8 mean
+Single Step/Execute/Return/Continue for that same stopped SAP session.
+Update `ZCL_VX_ADT_RES_FLOW` in SAP for `mode=origin`
 before testing; the command requires active source. Branches and polymorphic targets
 are alternatives, and database-dependent loop order is shown as an analysis boundary.
 This is a static dependency slice, not a solved runtime execution trace.

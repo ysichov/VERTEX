@@ -43,6 +43,8 @@ test('demo traces the returned amount through factories, CHANGING, all modifier 
   assert(g.nodes.some(n => n.text === 'rs_result = ls_context.'));
   assert(g.calls.some(c => c.callees.includes('ZCL_CALC_FACADE->RUN')));
   assert(g.calls.some(c => c.callees.includes('ZCL_PRICING_FACTORY->CREATE')));
+  const facadeCalls = g.calls.filter(c => c.source === 'zcl_calc_facade.clas.abap');
+  assert.deepEqual(facadeCalls.map(c => c.line), [...facadeCalls.map(c => c.line)].sort((a, b) => a - b));
   const modifiers = g.calls.find(c => c.method === 'APPLY');
   assert.equal(modifiers.callees.length, 5);
   assert.equal(modifiers.possible, true);
@@ -143,14 +145,64 @@ test('ACE RETURNING keeps a structure component through rs_result = ls_context',
   assert(g.nodes.some(n => n.text === 'ls_context-amount = iv_price * 2.'));
   assert(g.nodes.some(n => n.text === 'price = 15.'));
   assert(g.nodes.some(n => n.location === 'ZCL_CALC_FACADE->RUN'));
-  assert(g.nodes.some(n => n.kind === 'call' && n.text.includes('NEW zcl_calc_facade')));
+  assert(g.nodes.some(n => n.kind === 'call' && n.text === 'RETURNING RS_RESULT-AMOUNT'));
 });
 
-test('view exposes a call path and navigable dependency tree, with escaped code', () => {
+test('ACE reference types keep an interface dispatch on its implementation', () => {
+  const { sourcesFromAce } = require('../value-origin-ace');
+  const t = (str, row, col) => ({ str, row, col });
+  const facade = sourcesFromAce({ schema_version: 1, includes: [{ include: 'ZCL_CALC_FACADE===============CM002', source: [
+    'METHOD run.', 'DATA(lo_strategy) = zcl_pricing_factory=>create( ).', 'rs_result = lo_strategy->calculate_base( ).', 'ENDMETHOD.'
+  ], statements: [
+    { idx: 1, line: 1, tokens: [t('METHOD', 1, 0), t('RUN', 1, 7)] },
+    { idx: 2, line: 2, tokens: [t('DATA(LO_STRATEGY)', 2, 0), t('=', 2, 18), t('ZCL_PRICING_FACTORY=>CREATE(', 2, 20), t(')', 2, 47)] },
+    { idx: 3, line: 3, tokens: [t('RS_RESULT', 3, 0), t('=', 3, 10), t('LO_STRATEGY->CALCULATE_BASE(', 3, 12), t(')', 3, 39)] },
+    { idx: 4, line: 4, tokens: [t('ENDMETHOD', 4, 0)] }
+  ] }], params: [{ class: 'ZCL_CALC_FACADE', event: 'RUN', param: 'RS_RESULT', type: 'R' }],
+  refs: [{ name: 'LO_STRATEGY', class: 'ZIF_PRICING_STRATEGY' }],
+  implementations: [{ class: 'ZCL_PRICE_ROAD', interface: 'ZIF_PRICING_STRATEGY' }],
+  units: [{ include: 'ZCL_CALC_FACADE===============CM002', class: 'ZCL_CALC_FACADE', eventtype: 'METHOD', eventname: 'RUN', index: 1, end_idx: 4 }] }, { object_name: 'ZCL_CALC_FACADE', object_type: 'CLAS' }, 'ace');
+  facade.push({ id: 'factory', objectName: 'ZCL_PRICING_FACTORY', objectType: 'CLAS', text: 'CLASS zcl_pricing_factory DEFINITION. PUBLIC SECTION. CLASS-METHODS create RETURNING VALUE(ro_strategy) TYPE REF TO zif_pricing_strategy. ENDCLASS. CLASS zcl_pricing_factory IMPLEMENTATION. METHOD create. ro_strategy = NEW zcl_price_road( ). ENDMETHOD. ENDCLASS.' });
+  facade.push({ id: 'road', objectName: 'ZCL_PRICE_ROAD', objectType: 'CLAS', text: 'CLASS zcl_price_road DEFINITION. PUBLIC SECTION. INTERFACES zif_pricing_strategy. ENDCLASS. CLASS zcl_price_road IMPLEMENTATION. METHOD zif_pricing_strategy~calculate_base. rs_result = 42. ENDMETHOD. ENDCLASS.' });
+  facade.unshift({ id: 'report', text: 'result = NEW zcl_calc_facade( )->run( ).\nWRITE result.' });
+  const call = analyze(facade, { source: 'report', line: 2, variable: 'result' }).calls.find(c => c.method === 'CALCULATE_BASE');
+  assert.deepEqual(call.callees, ['ZCL_PRICE_ROAD->ZIF_PRICING_STRATEGY~CALCULATE_BASE']);
+  assert.equal(call.possible, false);
+});
+
+test('assembled and CM ACE representations resolve to one method target', () => {
+  const { sourcesFromAce } = require('../value-origin-ace');
+  const t = (str, row, col) => ({ str, row, col });
+  const source = sourcesFromAce({ schema_version: 1, includes: [{ include: 'ZCALC=========================CM001', source: ['METHOD run.', 'rs = iv.', 'ENDMETHOD.'], statements: [
+    { idx: 1, line: 1, tokens: [t('METHOD', 1, 0), t('RUN', 1, 7)] },
+    { idx: 2, line: 2, tokens: [t('RS', 2, 0), t('=', 2, 3), t('IV', 2, 5)] },
+    { idx: 3, line: 3, tokens: [t('ENDMETHOD', 3, 0)] }
+  ] }], params: [{ class: 'ZCALC', event: 'RUN', param: 'RS', type: 'R' }, { class: 'ZCALC', event: 'RUN', param: 'IV', type: 'I' }], units: [{ include: 'ZCALC=========================CM001', class: 'ZCALC', eventtype: 'METHOD', eventname: 'RUN', index: 1, end_idx: 3 }] }, { object_name: 'ZCALC', object_type: 'CLAS' }, 'ace');
+  source.push({ id: 'assembled', objectName: 'ZCALC', objectType: 'CLAS', text: 'METHOD run.\nENDMETHOD.', aceStatements: [
+    { aceIndex: 1, line: 1, offset: 0, tokens: [{ kind: 'word', value: 'METHOD', offset: 0, endOffset: 6 }, { kind: 'word', value: 'RUN', offset: 7, endOffset: 10 }] },
+    { aceIndex: 2, line: 2, offset: 12, tokens: [{ kind: 'word', value: 'ENDMETHOD', offset: 12, endOffset: 21 }] }
+  ], aceUnits: [{ class: 'ZCALC', eventtype: 'METHOD', eventname: 'RUN', index: 1, end_idx: 2 }] });
+  source.unshift({ id: 'report', text: 'price = 3.\nresult = NEW zcalc( )->run( iv = price ).\nWRITE result.' });
+  const g = analyze(source, { source: 'report', line: 3, variable: 'result' });
+  assert.equal(g.nodes.filter(n => n.kind === 'call' && n.text === 'RETURNING RS').length, 1);
+  assert(g.nodes.some(n => n.text === 'rs = iv.'));
+});
+
+test('view exposes a collapsible static call stack and navigable dependency tree, with escaped code', () => {
   const { html } = require('../value-origin-view');
   const g = graph("x = '<script>'.\nWRITE x.", 'x', 2);
   const page = html(g, 'test');
-  assert(page.includes('Call path contributing'));
+  assert(page.includes('Static call stack contributing'));
+  assert(page.includes('Copyable analysis log'));
+  assert(page.includes('DEPENDENCIES (source → consumer)'));
+  assert(!page.includes('<svg'));
+  assert(page.includes('openBeside:e.ctrlKey||e.metaKey'));
+  assert(page.includes('Ctrl+Click opens beside'));
+  const demo = analyze(require('./fixtures/value-origin-demo.json'), { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' });
+  const stack = html(demo, 'test');
+  assert(stack.includes('class="call-frame"'));
+  assert(!stack.includes('No deeper call dependency'));
+  assert.equal((stack.match(/ZVERTEX_DEBUG_LAB → ZCL_CALC_FACADE-&gt;RUN/g) || []).length, 1);
   assert(page.includes('class="children"'));
   assert(page.includes('data-node="n0"'));
   assert(page.includes('&lt;script&gt;'));

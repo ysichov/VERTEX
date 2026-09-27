@@ -20,7 +20,7 @@ function sourcesFromAce(payload, object, prefix) {
     });
     return { id: prefix + '/' + encodeURIComponent(inc.include) + '.abap', name: inc.include.toUpperCase(),
       objectName: object.object_name.toUpperCase(), objectType: object.object_type, text: source,
-      aceStatements: statements, aceParams: payload.params || [], aceUnits: (payload.units || []).filter(u => u.include.toUpperCase() === inc.include.toUpperCase()), aceRefs: payload.refs || [], aceClasses: payload.classes || [] };
+      aceStatements: statements, aceParams: payload.params || [], aceUnits: (payload.units || []).filter(u => u.include.toUpperCase() === inc.include.toUpperCase()), aceRefs: payload.refs || [], aceClasses: payload.classes || [], aceImplementations: payload.implementations || [] };
   });
 }
 function locateTarget(sources, documentText, objectName, line, variable, column = 0) {

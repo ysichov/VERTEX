@@ -2,7 +2,11 @@
 
 The VS Code 0.7.8 test build includes ACE-backed Value Origin analysis in its ABAP
 editor. It requires the updated `ZCL_VX_ADT_RES_FLOW` backend (`mode=origin`).
-This analysis UI is not available in Eclipse; no Eclipse release was built for it.
+That backend also supplies ACE's concrete class-to-interface relation for interface dispatch.
+This analysis UI, including standard VS Code editor navigation and gutter-breakpoint
+synchronization, is not available in Eclipse; no Eclipse release was built for it.
+The VS Code-only right-hand Visual Debug panel, its stopped-line highlight and
+its F5-F8 source-editor shortcuts are also not available in Eclipse.
 
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](../docs/architecture.jpg)
 

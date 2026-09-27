@@ -43,6 +43,24 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
 function register(vscode, context, { active, password, pin, pinned, systems }) {
   const events = require("./agent-events").createEmitter();
   const repositories = new Map(), texts = new Map(), opened = new Map(), drafts = new Map();
+  let debuggerApi, breakpointQueue = Promise.resolve(), breakpointListenerAttached = false;
+  const nativeBreakpoints = new Map();
+  let stopFollow = 0;
+  const stopDecoration = vscode.window.createTextEditorDecorationType
+    ? vscode.window.createTextEditorDecorationType({ isWholeLine: true,
+      backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
+      overviewRulerColor: new vscode.ThemeColor('editor.findMatchHighlightForeground'),
+      overviewRulerLane: vscode.OverviewRulerLane && vscode.OverviewRulerLane.Full }) : null;
+  if (stopDecoration) context.subscriptions.push(stopDecoration);
+  const sourceLineIn = (from, line, to) => {
+    const expected = String(from || '').split(/\r?\n/)[line - 1]?.trim();
+    if (!expected) return line;
+    const lines = String(to || '').split(/\r?\n/);
+    if (lines[line - 1]?.trim() === expected) return line;
+    const matches = [];
+    for (let index = 0; index < lines.length; index++) if (lines[index].trim() === expected) matches.push(index + 1);
+    return matches.length === 1 ? matches[0] : line;
+  };
   require('./value-origin-view').register(vscode, context, async (document, target, progress, cancelled) => {
     const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
     if (document.isDirty) throw new Error('Save and activate the source before ACE analysis. ACE reads active SAP code.');
@@ -64,9 +82,21 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const result = await collectSources(initial, load, { maxSources: 240, cancelled, progress });
     for (const source of result.sources) {
       if (source.id === mapped.source && source.text.split('\r').join('').trimEnd() === document.getText().split('\r').join('').trimEnd()) source.document = document;
-      else source.document = await snapshot(source.text, source.name);
     }
-    return { ...result, target: mapped };
+    const openSource = async (source, node) => {
+      // ACE snapshots are analysis input only. Navigation must use a normal
+      // vertex-sap document so editor features such as debugger breakpoints
+      // remain available instead of opening a read-only vertex-source tab.
+      if (source.document) return { document: source.document, line: node.line };
+      // ACE include names (for example ================CM002) are analysis
+      // locations, not dependable editable ADT documents. Open the class's
+      // main source, then map the exact ACE statement into it.
+      const destination = (await sourceDocument(repo, {
+        object_type: source.objectType, object_name: source.objectName
+      })).document;
+      return { document: destination, line: sourceLineIn(source.text, node.line, destination.getText()) };
+    };
+    return { ...result, target: mapped, openSource };
   });
   const navigation = [];
   const externalSignatures = new Map();
@@ -676,6 +706,110 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     await vscode.window.showTextDocument(entry.document, { preview: false, viewColumn: vscode.ViewColumn.Beside });
     return { opened: true, object_name: entry.data.object_name, object_type: entry.data.object_type,
       include: entry.data.include, system: repo.label, note: "Editable local buffer opened. No changes saved to SAP." };
+  }
+  async function breakpointTarget(point) {
+    const location = point && point.location;
+    if (!location || location.uri.scheme !== 'vertex-sap') return null;
+    // VS Code retains native points across an extension reload, while our
+    // in-memory map is new. Rehydrate the editor entry from workspace state
+    // so those existing points can be sent back to SAP without a manual
+    // remove/add click.
+    const entry = opened.get(location.uri.toString()) || await fileEntry(location.uri).catch(() => null);
+    if (!entry || !['PROG', 'CLAS', 'FUNC'].includes(entry.data.object_type)) return null;
+    const line = location.range.start.line + 1;
+    if (entry.data.object_type !== 'CLAS' || entry.data.include === 'main') {
+      return { url: entry.data.source_url, line };
+    }
+    // The normal class editor can show definitions/implementations, whereas
+    // ADT debugger points are anchored in the class main source.  Locate the
+    // same source line there before handing it to SAP.
+    const main = await sourceDocument(entry.repo, { object_type: 'CLAS', object_name: entry.data.object_name });
+    return { url: main.data.source_url, line: sourceLineIn(entry.document.getText(), line, main.document.getText()) };
+  }
+  async function addNativeBreakpoint(point) {
+    const target = await breakpointTarget(point); if (!target || !debuggerApi) return;
+    const old = nativeBreakpoints.get(point.id);
+    if (old) { await debuggerApi.clearBreakpoints(old); nativeBreakpoints.delete(point.id); }
+    const placed = await debuggerApi.setBreakpointAt({ url: target.url, line: target.line,
+      condition: point.condition || '', mode: 'stop' });
+    nativeBreakpoints.set(point.id, placed.id);
+  }
+  function showStoppedLine(picture) {
+    if (!stopDecoration) return;
+    const frame = picture && picture.stopped && (picture.stopped.frames || []).find(item => item.current)
+      || picture && picture.stopped && (picture.stopped.frames || [])[0];
+    const wanted = String(frame && frame.url || '').split('#')[0];
+    const editors = vscode.window.visibleTextEditors || (vscode.window.activeTextEditor ? [vscode.window.activeTextEditor] : []);
+    for (const editor of editors) {
+      const entry = editor && editor.document && opened.get(editor.document.uri.toString());
+      const same = frame && entry && String(entry.data.source_url || '').split('#')[0] === wanted;
+      const line = same ? Math.max(0, Number(frame.line || 1) - 1) : -1;
+      const text = same ? (editor.document.getText().split(/\r?\n/)[line] || '') : '';
+      editor.setDecorations(stopDecoration, same ? [range(line, 0, text.length)] : []);
+      if (same && editor === vscode.window.activeTextEditor && typeof editor.revealRange === 'function') {
+        editor.revealRange(range(line, 0, text.length));
+      }
+    }
+  }
+  async function followStoppedFrame(picture) {
+    const frame = picture && picture.stopped && (picture.stopped.frames || []).find(item => item.current)
+      || picture && picture.stopped && (picture.stopped.frames || [])[0];
+    const object = require('./debugger').objectOf(frame && frame.url);
+    if (!object) return;
+    const request = ++stopFollow;
+    try {
+      const url = String(frame.url).split('#')[0];
+      let entry = [...opened.values()].find(item => String(item.data.source_url || '').split('#')[0] === url);
+      if (!entry) {
+        const repo = await repository();
+        entry = await sourceDocument(repo, { object_type: object.objectType, object_name: object.name });
+      }
+      if (request !== stopFollow) return;
+      const editor = await vscode.window.showTextDocument(entry.document, { preview: false, viewColumn: vscode.ViewColumn.Active });
+      if (request !== stopFollow) return;
+      const line = Math.max(0, Number(frame.line || 1) - 1);
+      const text = entry.document.getText().split(/\r?\n/)[line] || '';
+      if (vscode.Selection) editor.selection = new vscode.Selection(position(line, 0), position(line, 0));
+      if (typeof editor.revealRange === 'function') editor.revealRange(range(line, 0, text.length));
+      showStoppedLine(picture);
+    } catch (error) {
+      vscode.window.showWarningMessage('VERTEX: could not open the stopped source: ' + String(error.message || error));
+    }
+  }
+  function attachDebugger(api) {
+    debuggerApi = api;
+    if (typeof api.watch === 'function' && typeof api.picture === 'function') {
+      context.subscriptions.push(api.watch(() => {
+        const picture = api.picture();
+        showStoppedLine(picture);
+        if (picture.stopped) void followStoppedFrame(picture);
+        else stopFollow++;
+      }));
+      showStoppedLine(api.picture());
+    }
+    const restoreNativeBreakpoints = () => {
+      const points = vscode.debug && Array.isArray(vscode.debug.breakpoints) ? vscode.debug.breakpoints : [];
+      if (!points.length) return;
+      breakpointQueue = breakpointQueue.then(async () => {
+        for (const point of points) await addNativeBreakpoint(point);
+      }).catch(error => {
+        vscode.window.showErrorMessage('VERTEX breakpoint restore: ' + String(error.message || error));
+      });
+    };
+    restoreNativeBreakpoints();
+    if (!vscode.debug || typeof vscode.debug.onDidChangeBreakpoints !== 'function' || breakpointListenerAttached) return;
+    breakpointListenerAttached = true;
+    context.subscriptions.push(vscode.debug.onDidChangeBreakpoints(change => {
+      breakpointQueue = breakpointQueue.then(async () => {
+        for (const point of change.removed || []) {
+          const id = nativeBreakpoints.get(point.id);
+          if (id) { await debuggerApi.clearBreakpoints(id); nativeBreakpoints.delete(point.id); }
+        }
+        for (const point of [...(change.added || []), ...(change.changed || [])]) await addNativeBreakpoint(point);
+      }).catch(error => {
+        vscode.window.showErrorMessage('VERTEX breakpoint: ' + String(error.message || error));
+      });
+    }));
   }
   async function methodCounterpart(document, at) {
     const entry = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
@@ -1466,7 +1600,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     repositories.clear(); texts.clear(); opened.clear(); drafts.clear();
   } });
   // Host/agent interface: create/modify only PREPARE and open a diff. Apply is UI-only.
-  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf,
+  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger,
     editorContext() {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !editor.document) { return null; }

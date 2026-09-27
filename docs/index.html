@@ -63,9 +63,11 @@
 <body>
 <main>
   <p>VS Code test build 0.7.8 adds ACE-backed Value Origin in the ABAP source editor:
-  contributing call paths, structure-component dependencies through RETURNING and
-  CHANGING, and clickable calculations. Update ZCL_VX_ADT_RES_FLOW in SAP for the
-  origin index before testing. Branches and database-dependent loop order remain
+  a collapsible static call stack, structure-component dependencies through RETURNING and
+  CHANGING, clickable calculations and a copyable analysis log. Links open the standard
+  VS Code editor; its gutter breakpoints synchronize to SAP. Update ZCL_VX_ADT_RES_FLOW in SAP for the
+  origin index before testing. Interface calls resolve to concrete class implementations, including CM
+  method includes. Branches and database-dependent loop order remain
   explicit analysis boundaries. This is not an Eclipse release.</p>
 
 <header>
@@ -248,6 +250,8 @@
   breakpoints set by a click, the current line, the stack, every variable at once and tables in
   grids. It is one session with the assistant's, so what either does, the other sees. Since
   0.7.5 a recorded run is drawn as a top-down chart of the calls and replayed stop by stop.
+  In a VERTEX source tab, <b>VERTEX: Open Visual Debug</b> reveals a right-hand panel for the
+  current object without replacing the source, and highlights its stopped line; F5-F8 step that same session.
   <a href="https://github.com/ysichov/VERTEX/blob/main/vscode/README.md#visual-debug-the-debugger-on-screen-pilot">Details</a>.
 </p>
 

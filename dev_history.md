@@ -15,6 +15,22 @@ same-line assignments, ACE composite tokens and method includes, load failures a
 read-only endpoint/schema handling. VSIX remains 0.7.8 for testing. ABAP activation
 could not be verified because the configured local SAP endpoint refused connection.
 
+Interface dispatch exposed a gap in the first index response: an implementation can be analyzed
+from a generated CM include that does not contain its `INTERFACES` declaration. The backend now
+emits the ACE-scanned class-to-interface relation alongside reference types; the dependency engine
+uses those facts to select the concrete `CLASS->INTERFACE~METHOD` implementation without regex parsing.
+
+Value Origin links open the standard VS Code editor (or beside it with Ctrl+Click).
+The test manifest contributes ABAP breakpoint support, so VS Code exposes its native
+leftmost-gutter click in that editor; those breakpoints synchronize to the same SAP
+debugger session as Visual Debug.
+
+The standard source editor can now reveal a right-hand Visual Debug panel for its
+current object, while its source stays in the normal editor and highlights the
+actual stopped line. Its F5-F8 bindings are limited to `vertex-sap` ABAP documents
+and call the shared debugger's into/over/out/continue operations; other VS Code
+editors retain their normal shortcut behavior.
+
 How SelecTor got out of SAP GUI and into two editors, in the order it actually happened —
 including the wrong turns, because those were the expensive part.
 

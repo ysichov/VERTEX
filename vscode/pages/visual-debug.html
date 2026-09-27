@@ -131,6 +131,10 @@ table.grid.log td:nth-child(3),table.grid.log td:nth-child(4){max-width:320px;ov
 #bpedit.on{display:flex;flex-direction:column;gap:6px}
 #bpedit input{width:300px;font-family:var(--vscode-editor-font-family,monospace)}
 #bpedit .btns{display:flex;gap:6px;justify-content:flex-end}
+/* In VS Code's docked debugger, the real source lives in the standard editor.
+   Keeping another rendered copy here is noisy and can drift from that editor. */
+body.vertex-docked-debug #left,body.vertex-docked-debug .split{display:none}
+body.vertex-docked-debug #right{width:100%}
 ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-button{display:none}
 ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
 ::-webkit-scrollbar-thumb{border-radius:4px;background:var(--vscode-scrollbarSlider-background,rgba(128,128,128,.4))}
@@ -1467,6 +1471,7 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
   $("title").textContent=INITIAL.name+" · Visual Debug";
   // A program runs itself; only a class or a function module needs the program that calls it.
   if(String(INITIAL.type).toUpperCase()==="PROG")$("program").hidden=true;
+  if(document.body.classList.contains("vertex-docked-debug")){refresh().catch(failed);return;}
   ask(function(){sdeSource(INITIAL.name,INITIAL.type);}).then(function(d){
     object.url=d.source_url;object.name=d.object_name||INITIAL.name;
     // The lines a breakpoint counts are those of the active version.

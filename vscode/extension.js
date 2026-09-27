@@ -769,6 +769,7 @@ function activate(context) {
   // the source tools, on the same /chat address, with nothing to register.
   // Visual Debug in the Tools window draws this same debugger.
   const dbg = debuggerFor(context);
+  sapCode.attachDebugger(dbg);
   const debugTools = mcp.debugSet(dbg);
   const chatTools = withDebugger(sapCode, debugTools);
   let latestToolsContext = null;
@@ -804,7 +805,87 @@ function activate(context) {
       setContext: value => { latestToolsContext = value; },
       debugger: dbg,
       chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets) }, initial);
+  // The normal source tab remains the sole code editor.  The debugger is a
+  // docked panel, not another editor tab showing a second copy of that source.
+  let dockedDebugView = null, dockedDebugSource = null;
+  const dockedDebugInitial = () => !dockedDebugSource ? null : {
+    name: dockedDebugSource.object_name,
+    type: dockedDebugSource.object_type
+  };
+  const postDockedPicture = () => {
+    if (dockedDebugView) void dockedDebugView.webview.postMessage({ type: "debug", payload: JSON.stringify(dbg.picture()) });
+  };
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider("vertex.visualDebug", {
+    resolveWebviewView(view) {
+      dockedDebugView = view;
+      view.webview.options = { enableScripts: true };
+      view.webview.html = require("./tools-window").debugHtml(dockedDebugInitial());
+      const unwatch = dbg.watch(postDockedPicture);
+      const receive = view.webview.onDidReceiveMessage(async message => {
+        try {
+          if (message.call === "source") {
+            const args = message.args || [];
+            const type = String(args[1] || "").toUpperCase();
+            if (!["PROG", "CLAS", "FUNC"].includes(type)) { throw new Error("Unsupported source type."); }
+            const source = await pinTo(dockedDebugSource && dockedDebugSource.system_name, () =>
+              sapCode.execute("read_sap_object", { object_name: String(args[0] || ""), object_type: type }));
+            await view.webview.postMessage({ type: "result", payload: JSON.stringify(source) });
+            return;
+          }
+          if (message.call !== "debug") { throw new Error("Unsupported VERTEX Debug request."); }
+          const args = message.args || [];
+          const command = String(args[0] || "");
+          const commandArgs = JSON.parse(String(args[1] || "{}"));
+          const answer = await pinTo(dockedDebugSource && dockedDebugSource.system_name, () =>
+            require("./tools-window").debugCommand(dbg, command, commandArgs,
+              resource => fetch(context, resource)));
+          await view.webview.postMessage({ type: "result", payload: JSON.stringify(answer) });
+        } catch (error) {
+          await view.webview.postMessage({ type: "result", payload: "ERROR:" + error.message });
+        }
+      });
+      view.onDidDispose(() => {
+        if (dockedDebugView === view) { dockedDebugView = null; }
+        unwatch(); receive.dispose();
+      });
+      postDockedPicture();
+    }
+  }, { webviewOptions: { retainContextWhenHidden: true } }));
+  const openVisualDebug = () => {
+    const source = sapCode.editorContext();
+    if (!source || !source.object_name) {
+      vscode.window.showWarningMessage("VERTEX: open a VERTEX ABAP source tab first.");
+      return;
+    }
+    dockedDebugSource = source;
+    if (dockedDebugView) {
+      dockedDebugView.webview.html = require("./tools-window").debugHtml(dockedDebugInitial());
+      dockedDebugView.show(true);
+      postDockedPicture();
+    } else {
+      vscode.commands.executeCommand("workbench.view.extension.vertex-debug").catch(error =>
+        vscode.window.showErrorMessage("VERTEX: could not open Debug panel: " + error.message));
+    }
+  };
+  // F5-F8 are deliberately scoped in package.json to a VERTEX ABAP editor.
+  // A stopped program is shared with Visual Debug, so stepping here redraws
+  // the already open visual tab without a second debugger session.
+  const stepFromSource = async kind => {
+    if (!dbg.picture().stopped) {
+      vscode.window.showWarningMessage("VERTEX: no stopped ABAP program. Open Visual Debug and run to a breakpoint first.");
+      return;
+    }
+    try { await dbg.advance(kind); }
+    catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+  };
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", showTools));
+  context.subscriptions.push(
+    vscode.commands.registerCommand("vertex.openVisualDebug", openVisualDebug),
+    vscode.commands.registerCommand("vertex.debugInto", () => stepFromSource("into")),
+    vscode.commands.registerCommand("vertex.debugOver", () => stepFromSource("over")),
+    vscode.commands.registerCommand("vertex.debugOut", () => stepFromSource("out")),
+    vscode.commands.registerCommand("vertex.debugContinue", () => stepFromSource("continue"))
+  );
   require("./sidebar").register(vscode, context, active,
     require("./chat").create(vscode, chatTools, tools, context.secrets), systems,
     () => withShownDiff(context, latestToolsContext));

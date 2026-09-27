@@ -1,22 +1,11 @@
 "use strict";
-const { analyze, mermaid, variableAt } = require('./value-origin');
+const { analyze, variableAt } = require('./value-origin');
 const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 function html(graph, nonce) {
-  // Local SVG: no CDN, network, Mermaid execution or source-defined links.
-  const width = 1100, row = 100;
-  const positions = new Map(graph.nodes.map((n, i) => [n.id, { x: 190, y: i * row + 20 }]));
-  const paths = graph.edges.map((e, i) => {
-    const a = positions.get(e.from), b = positions.get(e.to), x = 20 + i % 15 * 9;
-    return `<path d="M190 ${a.y + 25} H${x} V${b.y + 25} H185" marker-end="url(#arrow)"><title>${escape(e.label)}</title></path>`;
-  }).join('');
-  const cards = graph.nodes.map(n => {
-    const pos = positions.get(n.id);
-    return `<foreignObject x="${pos.x}" y="${pos.y}" width="890" height="90"><div xmlns="http://www.w3.org/1999/xhtml"><button data-node="${n.id}">${escape(n.kind)} · ${escape(n.location || n.sourceName || n.source)}:${n.line}${n.callee ? `<br/><small>calls ${escape(n.callee)}${n.possible ? ' (possible)' : ''}</small>` : ''}<br/><strong>${escape(n.text)}</strong></button></div></foreignObject>`;
-  }).join('');
   const byId = new Map(graph.nodes.map(n => [n.id, n])), expanded = new Set();
   function tree(id, depth = 0, label = '') {
     const n = byId.get(id); if (!n) return '';
-    const caption = `<span class="edge">${escape(label)}</span> <code>${escape(n.text)}</code> <button class="location" data-node="${n.id}">${escape(n.location || n.sourceName || n.source)}:${n.line}</button>`;
+    const caption = `<span class="edge">${escape(label)}</span> <code>${escape(n.text)}</code> <button class="location" title="Open source here; Ctrl+Click opens beside" data-node="${n.id}">${escape(n.location || n.sourceName || n.source)}:${n.line}</button>`;
     if (expanded.has(id)) return `<div class="leaf">↳ ${caption} <small>shared dependency</small></div>`;
     expanded.add(id);
     const children = graph.edges.filter(e => e.to === id);
@@ -24,23 +13,52 @@ function html(graph, nonce) {
     return `<details class="node" ${depth < 4 ? 'open' : ''}><summary>${caption}</summary><div class="children">${children.map(e => tree(e.from, depth + 1, e.label)).join('')}</div></details>`;
   }
   const dependencyTree = tree(graph.root);
-  const callPath = (graph.calls || []).map(c => {
-    const at = graph.nodes.find(n => n.source === c.source && n.line === c.line);
-    return `<li><code>${escape(c.caller)} → ${escape(c.callees.join(' | ') || c.method + ' (unresolved)')}</code>${c.possible ? ' <span class="edge">possible targets</span>' : ''} ${at ? `<button class="location" data-node="${at.id}">line ${c.line}</button>` : ''}</li>`;
-  }).join('');
+  // The dependency graph is traversed backward.  Render call frames from its
+  // edges rather than the flat, de-duplicated navigation list, otherwise the
+  // nesting which explains how a value crosses methods is lost.
+  const incoming = new Map();
+  for (const e of graph.edges) incoming.set(e.to, [...(incoming.get(e.to) || []), e]);
+  const callFor = n => (graph.calls || []).find(c => c.source === n.source && c.line === n.line);
+  const renderedFrames = new Set();
+  function callFrames(id, depth = 0, ancestors = new Set()) {
+    if (ancestors.has(id)) return '';
+    const nextAncestors = new Set(ancestors); nextAncestors.add(id);
+    const children = [...(incoming.get(id) || [])].sort((a, b) => (byId.get(a.from)?.line || 0) - (byId.get(b.from)?.line || 0));
+    return children.map(e => {
+      const n = byId.get(e.from); if (!n) return '';
+      const nested = callFrames(n.id, depth + (n.kind === 'call' ? 1 : 0), nextAncestors);
+      if (n.kind !== 'call') return nested;
+      const found = callFor(n), caller = found?.caller || n.location || n.sourceName || n.source;
+      const targets = n.callee || found?.callees?.join(' | ') || found?.method + ' (unresolved)';
+      const frameKey = `${n.source}:${n.line}:${caller}:${targets}`;
+      if (renderedFrames.has(frameKey)) return '';
+      renderedFrames.add(frameKey);
+      const caption = `<code>${escape(caller)} → ${escape(targets)}</code>${n.possible || found?.possible ? ' <span class="edge">possible targets</span>' : ''} <button class="location" title="Open source here; Ctrl+Click opens beside" data-node="${n.id}">line ${n.line}</button>`;
+      return nested ? `<details class="call-frame" ${depth === 0 ? 'open' : ''}><summary>${caption}</summary><ul class="call-stack">${nested}</ul></details>` : `<div class="call-frame">${caption}</div>`;
+    }).join('');
+  }
+  const callPath = callFrames(graph.root);
+  const logLine = n => `[${n.id}] ${n.kind} · ${n.location || n.sourceName || n.source}:${n.line}${n.callee ? ` · calls ${n.callee}${n.possible ? ' (possible target)' : ''}` : ''}\n  ${n.text}`;
+  const analysisLog = [
+    'VALUE ORIGIN — STATIC ACE ANALYSIS',
+    graph.notice,
+    '', 'NODES (selected variable backwards):',
+    ...graph.nodes.map(logLine),
+    '', 'DEPENDENCIES (source → consumer):',
+    ...graph.edges.map(e => `${e.from} → ${e.to}  [${e.label}]`)
+  ].join('\n');
   return `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'"><style>
   body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background)}
   button{width:100%;text-align:left;background:var(--vscode-editorWidget-background);color:var(--vscode-foreground);border:1px solid var(--vscode-focusBorder);padding:8px;cursor:pointer;white-space:normal;overflow:auto;max-height:85px}
-  path{fill:none;stroke:var(--vscode-descriptionForeground)}polygon{fill:var(--vscode-descriptionForeground)}pre{white-space:pre-wrap}strong{font-family:var(--vscode-editor-font-family)}
-  .children{border-left:1px solid var(--vscode-panel-border);margin-left:8px;padding-left:16px}.node,.leaf{margin:8px 0;padding:6px;background:var(--vscode-editorWidget-background)}summary{cursor:pointer;overflow-wrap:anywhere}code{white-space:pre-wrap;font-family:var(--vscode-editor-font-family)}.location{width:auto;max-width:100%;padding:2px 5px;margin-left:6px;color:var(--vscode-textLink-foreground);border-color:var(--vscode-panel-border)}.edge,small{color:var(--vscode-descriptionForeground)}.unknown,.boundary,.warning{border-left:3px solid var(--vscode-editorWarning-foreground);padding-left:10px}li{margin:8px 0}.diagram{overflow:auto}
-  </style></head><body><h2>Value origin — ACE backward analysis</h2><p>${escape(graph.notice)}</p><p>${graph.truncated ? 'Graph limit reached; analysis is incomplete.' : ''} Expand dependencies and click a source location to inspect the calculation.</p>
+  pre{white-space:pre-wrap}strong{font-family:var(--vscode-editor-font-family)}
+  .children{border-left:1px solid var(--vscode-panel-border);margin-left:8px;padding-left:16px}.node,.leaf{margin:8px 0;padding:6px;background:var(--vscode-editorWidget-background)}summary{cursor:pointer;overflow-wrap:anywhere}code{white-space:pre-wrap;font-family:var(--vscode-editor-font-family)}.location{width:auto;max-width:100%;padding:2px 5px;margin-left:6px;color:var(--vscode-textLink-foreground);border-color:var(--vscode-panel-border)}.edge,small{color:var(--vscode-descriptionForeground)}.unknown,.boundary,.warning{border-left:3px solid var(--vscode-editorWarning-foreground);padding-left:10px}.call-frame{margin:6px 0;padding:6px 8px;border-left:2px solid var(--vscode-textLink-foreground);background:var(--vscode-editorWidget-background)}.call-stack{margin:6px 0 0 10px;padding-left:12px;border-left:1px solid var(--vscode-panel-border);list-style:none}.analysis-log{max-height:560px;overflow:auto;user-select:text;padding:12px;background:var(--vscode-textCodeBlock-background);border:1px solid var(--vscode-panel-border)}
+  </style></head><body><h2>Value origin — ACE backward analysis</h2><p>${escape(graph.notice)}</p><p>${graph.truncated ? 'Graph limit reached; analysis is incomplete.' : ''} Expand dependencies and click a source location to inspect the calculation. Ctrl+Click opens it beside the current editor.</p>
   ${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
   ${(graph.skipped || []).length ? `<p class="edge">System dependencies were kept as analysis boundaries: ${escape(graph.skipped.join(', '))}</p>` : ''}
-  <details open><summary>Call path contributing to the selected value</summary><ul>${callPath || '<li>No resolved calls.</li>'}</ul></details>
+  <details open><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>
   <h3>Backward dependencies</h3>${dependencyTree}
-  <details><summary>Full dependency diagram</summary><div class="diagram"><svg width="${width}" height="${graph.nodes.length * row + 30}"><defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><polygon points="0 0, 7 3, 0 6"/></marker></defs>${paths}${cards}</svg></div></details>
-  <details><summary>Mermaid text</summary><pre>${escape(mermaid(graph))}</pre></details>
-  <script nonce="${nonce}">const api=acquireVsCodeApi();document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node});});</script></body></html>`;
+  <details><summary>Copyable analysis log</summary><p class="edge">Select text and copy it with Ctrl+C.</p><pre class="analysis-log">${escape(analysisLog)}</pre></details>
+  <script nonce="${nonce}">const api=acquireVsCodeApi();document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,openBeside:e.ctrlKey||e.metaKey});});</script></body></html>`;
 }
 function register(vscode, context, getSources) {
   context.subscriptions.push(vscode.commands.registerCommand('vertex.valueOrigin', async () => {
@@ -52,7 +70,7 @@ function register(vscode, context, getSources) {
       const target = { source: editor.document.uri.toString(), line: editor.selection.active.line + 1, column: editor.selection.active.character, variable };
       const loaded = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Value origin — ACE call index', cancellable: true },
         (progress, token) => getSources(editor.document, target, name => progress.report({ message: name }), () => token.isCancellationRequested));
-      const sources = loaded.sources, documents = new Map(sources.map(s => [s.id, s.document]));
+      const sources = loaded.sources, originViewColumn = editor.viewColumn || vscode.ViewColumn.One;
       const graph = analyze(sources, loaded.target);
       graph.warnings = loaded.warnings;
       graph.skipped = loaded.skipped;
@@ -62,9 +80,12 @@ function register(vscode, context, getSources) {
       panel.webview.onDidReceiveMessage(async message => {
         const n = graph.nodes.find(n => message && n.id === message.node);
         if (!n) return;
-        const document = documents.get(n.source); if (!document) return;
-        const at = new vscode.Position(Math.min(document.lineCount - 1, n.line - 1), 0);
-        await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One, selection: new vscode.Range(at, at), preview: false });
+        const source = sources.find(s => s.id === n.source); if (!source) return;
+        const opened = await loaded.openSource(source, n);
+        const document = opened.document, line = opened.line || n.line;
+        const at = new vscode.Position(Math.min(document.lineCount - 1, line - 1), 0);
+        await vscode.window.showTextDocument(document, { viewColumn: message.openBeside ? vscode.ViewColumn.Beside : originViewColumn,
+          selection: new vscode.Range(at, at), preview: !message.openBeside });
       });
     } catch (e) { vscode.window.showErrorMessage('VERTEX: ' + e.message); }
   }));

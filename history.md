@@ -6,7 +6,16 @@
   loads referenced objects in the originating SAP system. The ABAP backend class
   `ZCL_VX_ADT_RES_FLOW` must be updated together with the VSIX.
 - Backward dependencies follow component copies, NEW/factory returns and CHANGING;
-  the view exposes contributing call paths and clickable calculation trees.
+  the view exposes a collapsible call stack, clickable calculation trees and a copyable log.
+- ACE now returns class-to-interface relations and reference types, so an interface call in a
+  generated CM include resolves to its concrete implementation instead of an unresolved declaration.
+- Value Origin source links reuse the standard VS Code ABAP editor (Ctrl+Click opens beside).
+  The test VSIX contributes ABAP breakpoint support, so a click in that editor's
+  leftmost gutter adds or removes a native point, synchronized to the shared SAP
+  debugger session.
+- A VERTEX source tab now offers **Open Visual Debug**, which reveals the right-hand
+  debugger panel for that object without duplicating its source and highlights the
+  actual stopped line. F5/F6/F7/F8 in that tab step the same SAP session.
 - Branch alternatives, unresolved calls and database-dependent loop order are
   explicit. This is static dependency analysis, not a solved execution trace.
 - Package View source is the default; report parts (`REPS`) route to `PROG`.

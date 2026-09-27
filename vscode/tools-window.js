@@ -14,6 +14,25 @@ function html(pages, initial) {
     .replace("/*TOOL_ROUTES*/", () => read("tool-routes.js"))
     .replace("/*BUNDLE*/{}", () => JSON.stringify(bundle).replace(/</g, "\\u003c"));
 }
+// The docked panel deliberately contains only the debugger page.  Its source
+// stays in the normal VS Code editor next to it; unlike Tools it has no object
+// picker, chat or duplicate source tab.
+function debugHtml(initial) {
+  const bridge = `<script>
+    const host=acquireVsCodeApi();let pending;
+    window.sdeTake=()=>{const value=pending;pending=null;return value;};
+    window.sdeDebug=(command,args)=>host.postMessage({call:"debug",args:[command,JSON.stringify(args||{})]});
+    window.sdeSource=(name,type)=>host.postMessage({call:"source",args:[name,type]});
+    window.addEventListener("message",event=>{
+      if(event.data.type==="result"){pending=event.data.payload;sdeReady();}
+      if(event.data.type==="debug")sdeDebugEvent(event.data.payload);
+    });
+  <\/script>`;
+  return fs.readFileSync(path.join(__dirname, "pages", "visual-debug.html"), "utf8")
+    .replace("/*INIT*/null/*INIT*/", () => JSON.stringify(initial || null).replace(/</g, "\\u003c"))
+    .replace("<body>", "<body class=\"vertex-docked-debug\">")
+    .replace("<script>", bridge + "<script>");
+}
 function allowed(resource, body) {
   if (typeof resource !== "string" || /[\\#]/.test(resource) || /\.\.|%2e|%5c/i.test(resource)) return false;
   return body != null
@@ -193,4 +212,4 @@ function open(vscode, context, deps, initial) {
   }), undefined, context.subscriptions);
   return panel;
 }
-module.exports={open,html,allowed,debugCommand};
+module.exports={open,html,debugHtml,allowed,debugCommand};
