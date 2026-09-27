@@ -124,8 +124,9 @@ function open(vscode, context, deps, initial) {
         await panel.webview.postMessage({type:"requestSearch",payload}); return;
       }
       if(message.call === "source") {
-        if(!["PROG","CLAS","FUNC"].includes(args[1])) throw new Error("Unsupported source type.");
-        const payload=JSON.stringify(await deps.source({object_name:args[0],object_type:args[1]}));
+        const type=args[1] === "REPS" ? "PROG" : args[1];
+        if(!["PROG","CLAS","FUNC"].includes(type)) throw new Error("Unsupported source type.");
+        const payload=JSON.stringify(await deps.source({object_name:args[0],object_type:type}));
         await panel.webview.postMessage({type:"result",payload}); return;
       }
       if(message.call === "openEditor") {

@@ -1,5 +1,14 @@
 # ABAP VERTEX Tools
 
+VS Code test build **0.7.8** adds **Analyze Variable Value Origin** to the ABAP editor.
+It reads ACE's statement/token/call/parameter index from the VERTEX backend, loads
+referenced objects automatically and traces structure components through RETURNING
+and CHANGING. The view shows contributing call paths, expandable calculations,
+source links and Mermaid text. Update `ZCL_VX_ADT_RES_FLOW` in SAP for `mode=origin`
+before testing; the command requires active source. Branches and polymorphic targets
+are alternatives, and database-dependent loop order is shown as an analysis boundary.
+This is a static dependency slice, not a solved runtime execution trace.
+
 ## Install
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**

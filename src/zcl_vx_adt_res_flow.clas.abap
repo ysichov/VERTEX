@@ -70,6 +70,42 @@ CLASS zcl_vx_adt_res_flow DEFINITION
       IMPORTING i_program    TYPE program
       RETURNING VALUE(rs_map) TYPE ty_map.
 
+    " Lossless ACE facts for backward slicing. No source parser in the client:
+    " token positions, statement identities and call/parameter bindings come
+    " from the same scan used by the Calls diagram.
+    TYPES: BEGIN OF ty_origin_token,
+             str TYPE string,
+             row TYPE i,
+             col TYPE i,
+             kind TYPE string,
+           END OF ty_origin_token,
+           tt_origin_tokens TYPE STANDARD TABLE OF ty_origin_token WITH EMPTY KEY,
+           BEGIN OF ty_origin_statement,
+             idx TYPE i,
+             line TYPE i,
+             tokens TYPE tt_origin_tokens,
+             calls TYPE zif_vx_ace_parse_data=>tt_calls,
+           END OF ty_origin_statement,
+           tt_origin_statements TYPE STANDARD TABLE OF ty_origin_statement WITH EMPTY KEY,
+           BEGIN OF ty_origin_include,
+             include TYPE string,
+             source TYPE string_table,
+             statements TYPE tt_origin_statements,
+           END OF ty_origin_include,
+           tt_origin_includes TYPE STANDARD TABLE OF ty_origin_include WITH EMPTY KEY,
+           BEGIN OF ty_origin,
+             schema_version TYPE i,
+             program TYPE string,
+             includes TYPE tt_origin_includes,
+             units TYPE zif_vx_ace_parse_data=>tt_calls_line,
+             params TYPE zif_vx_ace_parse_data=>tt_params,
+             refs TYPE zif_vx_ace_parse_data=>tt_refvar,
+             classes TYPE zif_vx_ace_parse_data=>tt_class_defs,
+           END OF ty_origin.
+    METHODS origin
+      IMPORTING i_program TYPE program
+      RETURNING VALUE(rs_origin) TYPE ty_origin.
+
     METHODS kind
       IMPORTING io_scan  TYPE REF TO cl_ci_scan
                 is_kw    TYPE zif_vx_ace_parse_data=>ts_kword
@@ -154,6 +190,14 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
     ls_answer-type    = to_lower( lv_head ).
     ls_answer-program = to_lower( lv_program ).
     ls_answer-mode    = lv_mode.
+
+    IF lv_mode = 'origin'.
+      response->set_body_data(
+        content_handler = NEW cl_adt_rest_plain_text_handler( content_type = if_rest_media_type=>gc_appl_json )
+        data = /ui2/cl_json=>serialize( data = origin( lv_program )
+                                       pretty_name = /ui2/cl_json=>pretty_mode-low_case ) ).
+      RETURN.
+    ENDIF.
 
     IF lv_mode = 'statements'.
       response->set_body_data(
@@ -391,6 +435,39 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+
+  METHOD origin.
+    DATA(ls_source) = zcl_vx_ace_source=>parse( i_program ).
+    DATA lt_names TYPE STANDARD TABLE OF program WITH EMPTY KEY.
+    LOOP AT ls_source-tt_progs INTO DATA(ls_name) WHERE program = i_program.
+      APPEND ls_name-include TO lt_names.
+    ENDLOOP.
+    LOOP AT lt_names INTO DATA(lv_name).
+      zcl_vx_ace_parser=>parse_calls( EXPORTING i_program = i_program i_include = lv_name
+                                    CHANGING cs_source = ls_source ).
+    ENDLOOP.
+    rs_origin-schema_version = 1.
+    rs_origin-program = i_program.
+    rs_origin-units = ls_source-tt_calls_line.
+    rs_origin-params = ls_source-t_params.
+    rs_origin-refs = ls_source-tt_refvar.
+    rs_origin-classes = ls_source-tt_class_defs.
+    LOOP AT ls_source-tt_progs INTO DATA(ls_prog) WHERE program = i_program AND scan IS BOUND.
+      DATA(ls_include) = VALUE ty_origin_include( include = ls_prog-include ).
+      LOOP AT ls_prog-source_tab INTO DATA(lv_source_line).
+        APPEND CONV string( lv_source_line ) TO ls_include-source.
+      ENDLOOP.
+      LOOP AT ls_prog-t_keywords INTO DATA(ls_kw) WHERE sub IS INITIAL.
+        DATA(ls_statement) = VALUE ty_origin_statement( idx = ls_kw-index line = ls_kw-line calls = ls_kw-tt_calls ).
+        LOOP AT ls_prog-scan->tokens INTO DATA(ls_token) FROM ls_kw-from TO ls_kw-to.
+          APPEND VALUE #( str = ls_token-str row = ls_token-row col = ls_token-col
+                          kind = CONV string( ls_token-type ) ) TO ls_statement-tokens.
+        ENDLOOP.
+        APPEND ls_statement TO ls_include-statements.
+      ENDLOOP.
+      APPEND ls_include TO rs_origin-includes.
+    ENDLOOP.
+  ENDMETHOD.
 
   METHOD statements.
     " ACE's parse: every include of the program, each with its keyword table

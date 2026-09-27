@@ -43,6 +43,31 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
 function register(vscode, context, { active, password, pin, pinned, systems }) {
   const events = require("./agent-events").createEmitter();
   const repositories = new Map(), texts = new Map(), opened = new Map(), drafts = new Map();
+  require('./value-origin-view').register(vscode, context, async (document, target, progress, cancelled) => {
+    const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
+    if (document.isDirty) throw new Error('Save and activate the source before ACE analysis. ACE reads active SAP code.');
+    const activeSource = await selected.repo.api.sourceAt(selected.data.source_url);
+    if (revision(document.getText()) !== revision(activeSource)) throw new Error('This editor differs from active SAP source. Activate your changes or reopen the active source before ACE analysis.');
+    const { sourcesFromAce, locateTarget } = require('./value-origin-ace');
+    const { collectSources } = require('./value-origin');
+    const repo = selected.repo;
+    const load = async (name, type) => {
+      if (cancelled()) throw new Error('Value origin cancelled.');
+      const dirty = [...opened.values()].find(e => e.repo === repo && e.data.object_name === name && e.document?.isDirty);
+      if (dirty) throw new Error(name + ' has unsaved edits; ACE reads its active version.');
+      progress(name);
+      const data = await repo.api.execute('read_origin_index', { object_name: name, object_type: type });
+      return sourcesFromAce(data, { object_name: name, object_type: type }, document.uri.toString() + '/ace');
+    };
+    const initial = await load(selected.data.object_name, selected.data.object_type);
+    const mapped = locateTarget(initial, document.getText(), selected.data.object_name, target.line, target.variable, target.column);
+    const result = await collectSources(initial, load, { maxSources: 240, cancelled, progress });
+    for (const source of result.sources) {
+      if (source.id === mapped.source && source.text.split('\r').join('').trimEnd() === document.getText().split('\r').join('').trimEnd()) source.document = document;
+      else source.document = await snapshot(source.text, source.name);
+    }
+    return { ...result, target: mapped };
+  });
   const navigation = [];
   const externalSignatures = new Map();
   let sequence = 0;

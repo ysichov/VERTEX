@@ -22,6 +22,15 @@ test("source reads the selected object, preserves selection for chat and reports
   assert.equal(published.selected_fragment.text,c.sdeSelection().text);
   raw="ERROR:SAP unavailable";c.sdeReady();assert.equal(elements.code.textContent,"SAP unavailable");
 });
+test("package source opens report parts through the program reader",()=>{
+  const html=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/source.html"),"utf8");
+  const element=()=>({addEventListener(){},hidden:false}),elements={title:element(),code:{...element(),contains:()=>false},partssplit:element(),back:element(),openeditor:element(),rununit:element(),runatc:element(),partsfold:element(),hint:element()};
+  const parts={hidden:false,classList:{toggle:()=>false}};const calls=[];
+  const c=vm.createContext({document:{body:{classList:{add(){},remove(){}}},getElementById:id=>elements[id],querySelector:()=>parts,querySelectorAll:()=>[],addEventListener(){},createElement:null},window:{getSelection:()=>null},sdeSource:(...args)=>calls.push(args)});
+  vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1].replace("/*INIT*/null/*INIT*/",JSON.stringify({type:"DEVC",name:"Z_RIG"})),c);
+  c.sdeSelectPart({type:"REPS",name:"ZVERTEX_DEBUG_LAB"});
+  assert.deepEqual(calls,[["ZVERTEX_DEBUG_LAB","PROG"]]);
+});
 test("embedded theme follows all VS Code themes and changes without reloading",()=>{
   const source=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/tools.html"),"utf8");
   const code=source.slice(source.indexOf("function syncTheme("),source.indexOf("new MutationObserver"));
@@ -38,6 +47,7 @@ test("embedded theme follows all VS Code themes and changes without reloading",(
 test("objects expose valid functions and appropriate defaults",()=>{
   assert.equal(model.normalize({type:"TR",name:"devk900001"}).action,"review");
   assert.equal(model.normalize({type:"CLAS/OC",name:"zcl_test"}).action,"view");
+  assert.equal(model.normalize({type:"DEVC",name:"z_rig"}).action,"view");
   assert.equal(model.normalize({type:"DEVC",name:"$TMP",action:"uml"}).type,"DEVC");
   assert.throws(()=>model.normalize({type:"TABL",action:"uml"}));
   assert.throws(()=>model.normalize({type:"CLAS",name:'x"><script>'}));

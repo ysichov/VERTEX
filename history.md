@@ -1,5 +1,18 @@
 # Release history
 
+## 2026-09-27 — VS Code 0.7.8 test build (not published)
+
+- Value Origin now consumes the ACE index (`flow?mode=origin`) and automatically
+  loads referenced objects in the originating SAP system. The ABAP backend class
+  `ZCL_VX_ADT_RES_FLOW` must be updated together with the VSIX.
+- Backward dependencies follow component copies, NEW/factory returns and CHANGING;
+  the view exposes contributing call paths and clickable calculation trees.
+- Branch alternatives, unresolved calls and database-dependent loop order are
+  explicit. This is static dependency analysis, not a solved execution trace.
+- Package View source is the default; report parts (`REPS`) route to `PROG`.
+- The backend activation/live SAP test remains pending; the available local SAP
+  connection was unreachable during development. Eclipse was not rebuilt.
+
 ## 2026-09-26 — VERTEX 0.7.7 (VS Code): the chat runs the tests and ATC
 
 - **The chat runs ABAP Unit**: *run the tests for ZCL_FOO*, *do the tests of this class pass*.

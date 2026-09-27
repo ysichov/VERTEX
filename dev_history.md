@@ -1,5 +1,20 @@
 # Development history
 
+## 2026-09-27 — ACE-backed interprocedural Value Origin
+
+The initial local analyzer could not connect a returned structure component to a
+NEW call. Added an ACE index response containing scan tokens with positions,
+statement identities, calls/bindings, units and parameter metadata. The VS Code
+loader reads the dependency closure in the editor's SAP system, preserves include
+locations, and refuses stale/unsaved root source instead of mixing revisions.
+The dependency engine consumes those facts and projects components across copies,
+RETURNING and CHANGING, resolves factory-created references, and retains conditional
+and loop boundaries. Its offline scanner serves fixtures; production SAP source
+uses ACE's statement boundaries. Tests include the debugger_tests calculation rig,
+same-line assignments, ACE composite tokens and method includes, load failures and
+read-only endpoint/schema handling. VSIX remains 0.7.8 for testing. ABAP activation
+could not be verified because the configured local SAP endpoint refused connection.
+
 How SelecTor got out of SAP GUI and into two editors, in the order it actually happened —
 including the wrong turns, because those were the expensive part.
 

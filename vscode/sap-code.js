@@ -245,7 +245,17 @@ function createRepository({ client, systemId, emit = () => {} }) {
     if (failure) { throw failure; }
     return outcome;
   }
-  const handlers = { search_sap_objects: search, read_sap_object: read,
+  async function originIndex(args) {
+    const objectName = name(args.object_name), objectType = type(args.object_type);
+    const response = await client.httpClient.request('/sap/bc/adt/vertex/flow/' + encodeURIComponent(objectName)
+      + '?mode=origin&type=' + objectType, { method: 'GET', headers: { Accept: 'application/json' } });
+    const result = JSON.parse(response.body);
+    if (result.schema_version !== 1 || !Array.isArray(result.includes)) {
+      throw new Error('Update the VERTEX ABAP backend (ZCL_VX_ADT_RES_FLOW): the ACE origin index is unavailable.');
+    }
+    return result;
+  }
+  const handlers = { read_origin_index: originIndex, search_sap_objects: search, read_sap_object: read,
     create_sap_object: create, modify_sap_object: modify };
   async function execute(tool, args) {
     if (applying || executing) { throw new Error("SAP session is busy. Use separate sessions for parallel operations."); }

@@ -1,5 +1,9 @@
 # Built-in Eclipse Assistant
 
+The VS Code 0.7.8 test build includes ACE-backed Value Origin analysis in its ABAP
+editor. It requires the updated `ZCL_VX_ADT_RES_FLOW` backend (`mode=origin`).
+This analysis UI is not available in Eclipse; no Eclipse release was built for it.
+
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](../docs/architecture.jpg)
 
 The Selector and Versions Assistant panels launch Codex or Claude Code directly.

@@ -1,5 +1,21 @@
 # SAP ABAP VERTEX Tools
 
+## Testing Value Origin (0.7.8)
+
+Update the ABAP backend class `ZCL_VX_ADT_RES_FLOW` from this repository, then install
+the test VSIX. In an active SAP source editor, put the cursor on a variable such as
+`ls_result-amount` and run **VERTEX: Analyze Variable Value Origin**. The command
+loads ACE indexes and referenced sources from the same SAP system automatically.
+No other source tabs need to be open. Save and activate edits first.
+
+The contributing call path and expandable dependency tree link to the exact include
+and line. Structure copies, NEW/factory calls, RETURNING and CHANGING lead into
+callee calculations. SELECT statements expose their table and host-variable inputs.
+Possible dispatch targets, branch conditions and loop boundaries remain explicit;
+the view does not claim a concrete database-dependent iteration order or runtime
+values. Full dependency SVG and Mermaid text are available below the tree.
+This command is in the source editor; Visual Debug does not yet expose it.
+
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT:
 AI assistant and MCP, an enhanced ABAP editor, an AI-driven debugger and explorers for code,
 versions and data. Several of them grew out of earlier SAP GUI tools.

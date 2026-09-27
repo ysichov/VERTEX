@@ -39,6 +39,17 @@ async function change(f) {
   return f.repo.execute("modify_sap_object", { object_type: "PROG", object_name: "ZTEST",
     base_revision: read.revision, source: "replacement" });
 }
+test('origin index is a read-only ACE request and refuses older backend schemas', async () => {
+  const f = fixture(); const seen = [];
+  f.client.httpClient = { async request(url, options) { seen.push([url, options]); return { body: JSON.stringify({ schema_version: 1, includes: [] }) }; } };
+  const result = await f.repo.execute('read_origin_index', { object_name: 'ztest', object_type: 'PROG' });
+  assert.equal(result.schema_version, 1);
+  assert.equal(seen[0][0], '/sap/bc/adt/vertex/flow/ZTEST?mode=origin&type=PROG');
+  assert.equal(seen[0][1].method, 'GET');
+  assert.deepEqual(f.calls, []);
+  f.client.httpClient.request = async () => ({ body: JSON.stringify({ mermaid: 'old endpoint' }) });
+  await assert.rejects(f.repo.execute('read_origin_index', { object_name: 'ztest', object_type: 'PROG' }), /Update the VERTEX ABAP backend/);
+});
 test("activation runs after releasing the editing lock and can recover a saved draft", async () => {
   const f = fixture();
   let locked = false;

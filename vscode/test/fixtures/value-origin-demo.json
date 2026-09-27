@@ -1,0 +1,72 @@
+[
+  {
+    "id": "zvertex_debug_lab.prog.abap",
+    "name": "ZVERTEX_DEBUG_LAB",
+    "text": "REPORT zvertex_debug_lab.\n\nPARAMETERS p_clean RADIOBUTTON GROUP sc DEFAULT 'X'.\nPARAMETERS p_prec  RADIOBUTTON GROUP sc.\nPARAMETERS p_state RADIOBUTTON GROUP sc.\nPARAMETERS p_pipe  RADIOBUTTON GROUP sc.\nPARAMETERS p_multi RADIOBUTTON GROUP sc.\n\nSTART-OF-SELECTION.\n  DATA(lv_scenario) = COND char12( WHEN p_prec = abap_true THEN 'PRECISION'\n                                    WHEN p_state = abap_true THEN 'STATE'\n                                    WHEN p_pipe = abap_true THEN 'PIPELINE'\n                                    WHEN p_multi = abap_true THEN 'MULTI'\n                                    ELSE 'CLEAN' ).\n  DATA(ls_result) = NEW zcl_calc_facade( )->run( iv_scenario = lv_scenario ).\n  WRITE: / 'Returned result:', ls_result-amount, ls_result-currency.\n"
+  },
+  {
+    "id": "zcl_calc_facade.clas.abap",
+    "name": "ZCL_CALC_FACADE",
+    "text": "CLASS zcl_calc_facade DEFINITION PUBLIC FINAL CREATE PUBLIC.\n  PUBLIC SECTION. METHODS run IMPORTING iv_scenario TYPE char12 RETURNING VALUE(rs_result) TYPE zif_calc_types=>ty_context.\n  PRIVATE SECTION. METHODS modifier_for IMPORTING iv_name TYPE char30 RETURNING VALUE(ro_modifier) TYPE REF TO zif_calc_modifier.\nENDCLASS.\nCLASS zcl_calc_facade IMPLEMENTATION.\n  METHOD modifier_for.\n    CASE iv_name.\n      WHEN 'ZCL_MOD_FUEL'. ro_modifier = NEW zcl_mod_fuel( ).\n      WHEN 'ZCL_MOD_CUSTOMS'. ro_modifier = NEW zcl_mod_customs( ).\n      WHEN 'ZCL_MOD_HAZARD'. ro_modifier = NEW zcl_mod_hazard( ).\n      WHEN 'ZCL_MOD_DISCOUNT'. ro_modifier = NEW zcl_mod_discount( ).\n      WHEN 'ZCL_MOD_TAX'. ro_modifier = NEW zcl_mod_tax( ).\n    ENDCASE.\n  ENDMETHOD.\n  METHOD run.\n    DATA(lo_log) = NEW zcl_calc_log( ).\n    DATA(lo_data_provider) = NEW zcl_calc_data_provider( ).\n    DATA(ls_context) = lo_data_provider->get_shipment( iv_scenario ).\n    DATA(lo_strategy) = zcl_pricing_factory=>create( ls_context-transport_type ).\n    lo_strategy->calculate_base( CHANGING cs_context = ls_context ).\n    lo_log->add( iv_step = 'BASE_PRICE' iv_amount = ls_context-amount iv_text = 'ROAD strategy result' ).\n    DATA(lo_config_repo) = NEW zcl_calc_config_repo( ).\n    DATA(lt_steps) = lo_config_repo->get_pipeline( iv_scenario ).\n    LOOP AT lt_steps INTO DATA(ls_step).\n      DATA(lo_modifier) = modifier_for( ls_step-name ).\n      IF lo_modifier IS BOUND. lo_modifier->apply( EXPORTING iv_scenario = iv_scenario io_log = lo_log CHANGING cs_context = ls_context ). ENDIF.\n    ENDLOOP.\n    rs_result = ls_context.\n    WRITE: / 'Shipment', ls_context-shipment_id, 'final amount:', ls_context-amount, ls_context-currency.\n    ULINE. lo_log->display( ).\n  ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zcl_calc_data_provider.clas.abap",
+    "name": "ZCL_CALC_DATA_PROVIDER",
+    "text": "CLASS zcl_calc_data_provider DEFINITION PUBLIC FINAL CREATE PUBLIC.\n  PUBLIC SECTION. METHODS get_shipment IMPORTING iv_scenario TYPE char12 RETURNING VALUE(rs_context) TYPE zif_calc_types=>ty_context.\n  PRIVATE SECTION. CLASS-DATA mv_last_hazard TYPE abap_bool.\nENDCLASS.\nCLASS zcl_calc_data_provider IMPLEMENTATION.\n  METHOD get_shipment.\n    rs_context = VALUE #( shipment_id = '4712' transport_type = 'ROAD' country_from = 'CN' country_to = 'DE'\n                          weight_kg = '1200' volume_m3 = '8.5' distance_km = '1287' delay_days = 4 currency = 'EUR' ).\n    IF iv_scenario = 'STATE' OR iv_scenario = 'MULTI'.\n      \" BUG02: static state leaked from an earlier shipment.\n      mv_last_hazard = abap_true. rs_context-hazardous = mv_last_hazard.\n    ENDIF.\n  ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zcl_pricing_factory.clas.abap",
+    "name": "ZCL_PRICING_FACTORY",
+    "text": "CLASS zcl_pricing_factory DEFINITION PUBLIC FINAL CREATE PRIVATE.\n  PUBLIC SECTION. CLASS-METHODS create IMPORTING iv_transport TYPE char4 RETURNING VALUE(ro_strategy) TYPE REF TO zif_pricing_strategy.\nENDCLASS.\nCLASS zcl_pricing_factory IMPLEMENTATION.\n  METHOD create. ro_strategy = NEW zcl_price_road( ). ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zcl_price_road.clas.abap",
+    "name": "ZCL_PRICE_ROAD",
+    "text": "CLASS zcl_price_road DEFINITION PUBLIC FINAL CREATE PUBLIC. PUBLIC SECTION. INTERFACES zif_pricing_strategy. ENDCLASS.\nCLASS zcl_price_road IMPLEMENTATION.\n  METHOD zif_pricing_strategy~calculate_base.\n    DATA(lv_chargeable_weight) = cs_context-weight_kg + 2 * 25.\n    cs_context-amount = lv_chargeable_weight * '5.42' * cs_context-distance_km / 1000.\n  ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zcl_calc_config_repo.clas.abap",
+    "name": "ZCL_CALC_CONFIG_REPO",
+    "text": "CLASS zcl_calc_config_repo DEFINITION PUBLIC FINAL CREATE PUBLIC.\n  PUBLIC SECTION. METHODS get_pipeline IMPORTING iv_scenario TYPE char12 RETURNING VALUE(rt_steps) TYPE zif_calc_types=>tt_steps.\nENDCLASS.\nCLASS zcl_calc_config_repo IMPLEMENTATION.\n  METHOD get_pipeline.\n    DATA(lv_config_scenario) = COND char12( WHEN iv_scenario = 'PIPELINE' OR iv_scenario = 'MULTI' THEN iv_scenario ELSE 'CLEAN' ).\n    SELECT step_no, modifier_class AS name FROM zlog_pipeline WHERE scenario_id = @lv_config_scenario ORDER BY step_no INTO CORRESPONDING FIELDS OF TABLE @rt_steps.\n  ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zcl_mod_customs.clas.abap",
+    "name": "ZCL_MOD_CUSTOMS",
+    "text": "CLASS zcl_mod_customs DEFINITION PUBLIC FINAL CREATE PUBLIC. PUBLIC SECTION. INTERFACES zif_calc_modifier. ENDCLASS.\nCLASS zcl_mod_customs IMPLEMENTATION.\n  METHOD zif_calc_modifier~apply.\n    cs_context-customs_amount = cs_context-amount * CONV decfloat34( '0.12' ). cs_context-amount = cs_context-amount + cs_context-customs_amount.\n    io_log->add( iv_step = me->zif_calc_modifier~name( ) iv_amount = cs_context-amount iv_text = 'CN -> DE customs duty' ).\n  ENDMETHOD.\n  METHOD zif_calc_modifier~name. rv_name = 'ZCL_MOD_CUSTOMS'. ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zcl_mod_discount.clas.abap",
+    "name": "ZCL_MOD_DISCOUNT",
+    "text": "CLASS zcl_mod_discount DEFINITION PUBLIC FINAL CREATE PUBLIC. PUBLIC SECTION. INTERFACES zif_calc_modifier. ENDCLASS.\nCLASS zcl_mod_discount IMPLEMENTATION.\n  METHOD zif_calc_modifier~apply.\n    cs_context-discount_amount = cs_context-amount * CONV decfloat34( '0.07' ). cs_context-amount = cs_context-amount - cs_context-discount_amount.\n    io_log->add( iv_step = me->zif_calc_modifier~name( ) iv_amount = cs_context-amount iv_text = 'GOLD volume discount' ).\n  ENDMETHOD.\n  METHOD zif_calc_modifier~name. rv_name = 'ZCL_MOD_DISCOUNT'. ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zcl_mod_fuel.clas.abap",
+    "name": "ZCL_MOD_FUEL",
+    "text": "CLASS zcl_mod_fuel DEFINITION PUBLIC FINAL CREATE PUBLIC. PUBLIC SECTION. INTERFACES zif_calc_modifier. ENDCLASS.\nCLASS zcl_mod_fuel IMPLEMENTATION.\n  METHOD zif_calc_modifier~apply.\n    DATA(lv_percent) = CONV decfloat34( '0.08736' ).\n    IF iv_scenario = 'PRECISION' OR iv_scenario = 'MULTI'. lv_percent = CONV decfloat34( '0.09' ). ENDIF.\n    cs_context-fuel_amount = cs_context-amount * lv_percent. cs_context-amount = cs_context-amount + cs_context-fuel_amount.\n    io_log->add( iv_step = me->zif_calc_modifier~name( ) iv_amount = cs_context-amount iv_text = 'Fuel surcharge applied' ).\n  ENDMETHOD.\n  METHOD zif_calc_modifier~name. rv_name = 'ZCL_MOD_FUEL'. ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zcl_mod_hazard.clas.abap",
+    "name": "ZCL_MOD_HAZARD",
+    "text": "CLASS zcl_mod_hazard DEFINITION PUBLIC FINAL CREATE PUBLIC. PUBLIC SECTION. INTERFACES zif_calc_modifier. ENDCLASS.\nCLASS zcl_mod_hazard IMPLEMENTATION.\n  METHOD zif_calc_modifier~apply.\n    IF cs_context-hazardous = abap_true. cs_context-amount = cs_context-amount * CONV decfloat34( '1.08' ). ENDIF.\n    io_log->add( iv_step = me->zif_calc_modifier~name( ) iv_amount = cs_context-amount iv_text = 'Hazard cargo decision' ).\n  ENDMETHOD.\n  METHOD zif_calc_modifier~name. rv_name = 'ZCL_MOD_HAZARD'. ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zcl_mod_tax.clas.abap",
+    "name": "ZCL_MOD_TAX",
+    "text": "CLASS zcl_mod_tax DEFINITION PUBLIC FINAL CREATE PUBLIC. PUBLIC SECTION. INTERFACES zif_calc_modifier. ENDCLASS.\nCLASS zcl_mod_tax IMPLEMENTATION.\n  METHOD zif_calc_modifier~apply.\n    cs_context-tax_amount = cs_context-amount * CONV decfloat34( '0.19' ). cs_context-amount = cs_context-amount + cs_context-tax_amount.\n    io_log->add( iv_step = me->zif_calc_modifier~name( ) iv_amount = cs_context-amount iv_text = 'VAT applied' ).\n  ENDMETHOD.\n  METHOD zif_calc_modifier~name. rv_name = 'ZCL_MOD_TAX'. ENDMETHOD.\nENDCLASS.\n"
+  },
+  {
+    "id": "zif_calc_modifier.intf.abap",
+    "name": "ZIF_CALC_MODIFIER",
+    "text": "INTERFACE zif_calc_modifier PUBLIC.\n  METHODS apply IMPORTING iv_scenario TYPE char12 io_log TYPE REF TO zcl_calc_log CHANGING cs_context TYPE zif_calc_types=>ty_context.\n  METHODS name RETURNING VALUE(rv_name) TYPE char30.\nENDINTERFACE.\n"
+  },
+  {
+    "id": "zif_pricing_strategy.intf.abap",
+    "name": "ZIF_PRICING_STRATEGY",
+    "text": "INTERFACE zif_pricing_strategy PUBLIC.\n  METHODS calculate_base CHANGING cs_context TYPE zif_calc_types=>ty_context.\nENDINTERFACE.\n"
+  },
+  {
+    "id": "zif_calc_types.intf.abap",
+    "name": "ZIF_CALC_TYPES",
+    "text": "INTERFACE zif_calc_types PUBLIC.\n  TYPES: BEGIN OF ty_context, shipment_id TYPE char10, transport_type TYPE char4, country_from TYPE land1, country_to TYPE land1,\n           weight_kg TYPE decfloat34, volume_m3 TYPE decfloat34, distance_km TYPE decfloat34, hazardous TYPE abap_bool,\n           delay_days TYPE i, amount TYPE decfloat34, currency TYPE waers, fuel_amount TYPE decfloat34, customs_amount TYPE decfloat34,\n           discount_amount TYPE decfloat34, tax_amount TYPE decfloat34, END OF ty_context,\n         BEGIN OF ty_step, step_no TYPE zlog_pipeline-step_no, name TYPE zlog_pipeline-modifier_class, END OF ty_step,\n         tt_steps TYPE STANDARD TABLE OF ty_step WITH EMPTY KEY,\n         BEGIN OF ty_log, step TYPE char30, amount TYPE decfloat34, text TYPE string, END OF ty_log,\n         tt_log TYPE STANDARD TABLE OF ty_log WITH EMPTY KEY.\nENDINTERFACE.\n"
+  }
+]
