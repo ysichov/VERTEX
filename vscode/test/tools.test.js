@@ -85,6 +85,7 @@ test("Visual Debug is VS Code's: its model offers it, the shared one does not",(
   const docked=workspace.debugHtml({name:"Z_TEST",type:"PROG"});
   assert.match(docked,/Z_TEST/);
   assert.match(docked,/window\.sdeDebug=/);
+  assert.match(docked,/window\.sdeAsset=/);
   assert.doesNotMatch(docked,/sdeOpenEditor/);
 });
 test("the Visual Debug page asks the debugger for nothing it has no command for",async()=>{

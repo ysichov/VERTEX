@@ -127,6 +127,10 @@ function buildIndex(sources) {
     const externalOwner = U(source.aceOwner);
     if (externalOwner && externalOwner !== U(source.objectName)) dependencies.set(externalOwner, source.aceOwnerType || 'CLAS');
     const global = { id: source.id + ':GLOBAL', name: 'GLOBAL', owner: '', source, body: [], start: 0, end: source.text.length + 1, line: 1 };
+    // ACE lists interface METHOD declarations in its unit table as well.
+    // They are signatures, not executable bodies and must never become a
+    // call target ahead of a class implementation.
+    const interfaceSource = source.objectType === 'INTF' || source.aceOwnerType === 'INTF';
     const aceProcedures = new Map();
     const aceProcedure = unit => {
       const owner = U(unit.class || source.objectName), name = U(unit.eventname);
@@ -143,7 +147,7 @@ function buildIndex(sources) {
     procedures.push(global); let owner = ['CLAS', 'INTF'].includes(source.objectType) ? source.objectName : '', current = global, conditions = [];
     for (const raw of parse(source).statements) {
       const ts = raw.tokens, first = val(ts, 0), s = { ...raw, assignment: assignment(ts), call: callOf(ts) };
-      const aceUnit = source.aceUnits?.find(unit => {
+      const aceUnit = !interfaceSource && source.aceUnits?.find(unit => {
         const kind = U(unit.eventtype);
         return ['METHOD', 'FORM', 'FUNCTION'].includes(kind) && raw.aceIndex >= unit.index && (!unit.end_idx || raw.aceIndex <= unit.end_idx);
       });
@@ -199,6 +203,23 @@ function buildIndex(sources) {
     const key = procedure.owner + '~' + procedure.name, previous = selected.get(key);
     const score = p => p.body.length * 1000000 + Math.max(0, p.end - p.start);
     if (!previous || score(procedure) > score(previous)) selected.set(key, procedure);
+  }
+  // CM includes number their method body from 1. The editor, however, shows
+  // the assembled class source. Attach every procedure to the matching METHOD
+  // statement in the richest loaded class source so both the shown number and
+  // the navigation position are meaningful to the reader.
+  for (const procedure of selected.values()) {
+    const candidates = [];
+    for (const source of sources) {
+      if (U(source.objectName) !== procedure.owner || source.objectType === 'INTF' || source.aceOwnerType === 'INTF') continue;
+      const statement = parse(source).statements.find(raw => val(raw.tokens, 0) === 'METHOD' && pathAt(raw.tokens, 1)?.name === procedure.name);
+      if (statement) candidates.push({ source, statement });
+    }
+    candidates.sort((a, b) => b.source.text.length - a.source.text.length);
+    if (candidates.length) {
+      procedure.navigationSource = candidates[0].source;
+      procedure.navigationLine = candidates[0].statement.line;
+    }
   }
   const signature = p => signatures.get(p.owner + '~' + p.name) || (p.name.includes('~') ? signatures.get(p.name) : null) || [];
   return { procedures: [...globals, ...selected.values()], signatures, interfaces, dependencies, referenceTypes, signature };
@@ -271,9 +292,20 @@ function resolver(index) {
     // by the inferred concrete references and known implementors below.
     for (const owner of aceTargets) owners.add(owner);
     const result = [];
+    const executable = candidate => candidate.source.objectType !== 'INTF' && candidate.source.aceOwnerType !== 'INTF';
     for (const candidate of index.procedures) {
       const named = candidate.name === call.method || candidate.name.endsWith('~' + call.method);
-      if (named && (owners.has(candidate.owner) || [...owners].some(owner => index.interfaces.get(candidate.owner)?.has(owner)))) result.push(candidate);
+      if (executable(candidate) && named && (owners.has(candidate.owner) || [...owners].some(owner => index.interfaces.get(candidate.owner)?.has(owner)))) result.push(candidate);
+    }
+    // A dynamic receiver can remain unknown even though ACE has supplied the
+    // complete source closure.  That must widen the static call set, not cut
+    // the backward path: all loaded implementations of the named method are
+    // alternatives.  The caller renders these as "possible targets".
+    if (!result.length && call.arrow === '->' && !call.owner) {
+      for (const candidate of index.procedures) {
+        if (executable(candidate) && (candidate.name === call.method || candidate.name.endsWith('~' + call.method))) result.push(candidate);
+      }
+      result.possible = result.length > 0;
     }
     return result;
   }
@@ -292,7 +324,9 @@ function analyze(sources, target, options = {}) {
   function record(call, p, s, matches) {
     const key = p.id + ':' + s.offset + ':' + call.method;
     calls.set(key, { source: p.source.id, line: s.line, caller: p.owner ? p.owner + '->' + p.name : p.source.objectName || p.source.name || p.source.id,
-      method: call.method, callees: matches.map(c => c.owner + '->' + c.name), possible: matches.length !== 1 });
+      method: call.method, callees: matches.map(c => c.owner + '->' + c.name),
+      targets: matches.map(c => ({ label: c.owner + '->' + c.name, source: (c.navigationSource || c.source).id, line: c.navigationLine || c.line })),
+      possible: matches.length !== 1 || matches.possible === true });
   }
   function conditions(s, p, parent, bound, depth) {
     for (const c of s.conditions) {
@@ -351,7 +385,10 @@ function analyze(sources, target, options = {}) {
       }
     }
     for (const c of candidates) {
-      const n = node(c.sql ? 'select' : c.call ? 'call' : 'calculation', c.s.text, p, c.s, { conditional: !!c.s.conditions.length });
+      const n = node(c.sql ? 'select' : c.call ? 'call' : 'calculation', c.s.text, p, c.s, {
+        conditional: !!c.s.conditions.length, component: c.suffix || '',
+        componentTransfer: !!c.a && !!c.suffix && !!onlyPath(c.a.expression)
+      });
       edge(n, root, c.s.conditions.length ? 'possible definition' : 'definition');
       conditions(c.s, p, n, bound, depth);
       if (c.clear) edge(node('literal', 'Initial value', p, c.s), n, 'CLEAR');
@@ -385,7 +422,7 @@ function analyze(sources, target, options = {}) {
         // The parent definition already owns the complete ABAP statement.
         // Repeating it here only obscures that this node denotes its returned
         // value, rather than a second execution of the statement.
-        const n = node('call', 'RETURNING ' + formal.name + suffix, p, s, { callee: callee.owner + '->' + callee.name, possible: matches.length > 1 });
+        const n = node('call', 'RETURNING ' + formal.name + suffix, p, s, { callee: callee.owner + '->' + callee.name, possible: matches.length > 1 || matches.possible === true });
         edge(n, parent, 'return' + suffix);
         edge(trace(callee, formal.name + suffix, callee.end, argumentsOf(call, p, s, bound, index.signature(callee)), depth + 1), n, 'RETURNING ' + formal.name);
       }
@@ -424,6 +461,35 @@ function analyze(sources, target, options = {}) {
   const p = index.procedures.filter(p => p.source.id === source.id && p.start <= before && p.end >= before).sort((a, b) => b.start - a.start)[0];
   if (!p) throw new Error('No procedure at selected location.');
   const root = trace(p, U(target.variable), before);
+  // A method declaration is a navigation fallback, not a contribution to the
+  // value. Prefer the first actual BSE node inside each resolved callee as a
+  // call target, so a stack link opens a participating expression.
+  const component = U(target.variable).split('-').pop();
+  for (const call of calls.values()) for (const destination of call.targets || []) {
+    // A generic "value" node is the method's formal parameter and normally
+    // points at its declaration.  It is not useful navigation evidence.  A
+    // calculation/select node is an actual statement that participates in the
+    // selected component, and is therefore the place a call-path link should
+    // land.
+    const evidence = nodes
+      .filter(node => node.location === destination.label && ['calculation', 'select'].includes(node.kind))
+      .sort((left, right) => {
+        const leftMatches = U(left.component).split('-').pop() === component ? 0 : 1;
+        const rightMatches = U(right.component).split('-').pop() === component ? 0 : 1;
+        return leftMatches - rightMatches || left.line - right.line;
+      })[0];
+    if (evidence) { destination.source = evidence.source; destination.line = evidence.line; destination.evidence = true; }
+    // The concise call stack is a stack of transformations of the selected
+    // component. Factory/configuration calls still exist in the dependency
+    // tree, but do not masquerade as amount calculations.
+    destination.writesSelectedValue = nodes.some(node => {
+      if (node.location !== destination.label || node.kind !== 'calculation') return false;
+      const left = U(node.text).split('=').shift().trim();
+      return left === component || left.endsWith('-' + component) ||
+        (node.componentTransfer && U(node.component).split('-').pop() === component);
+    });
+  }
+  for (const call of calls.values()) call.transformsSelectedValue = (call.targets || []).some(destination => destination.writesSelectedValue);
   // The graph is walked backward, so discovery order is dependency order, not
   // source order.  The call-path panel is a source navigator: keep its rows in
   // the order in which the corresponding ABAP statements appear.
@@ -450,7 +516,11 @@ async function collectSources(initial, load, options = {}) {
     if (options.cancelled?.()) throw new Error('Value origin cancelled.');
     const idx = buildIndex([sources[cursor]]);
     for (const [name, type] of idx.dependencies) {
-      if (visited.has(name) || idx.interfaces.has(name) || name === 'ME' || name === 'OBJECT') continue;
+      // A declaration in a foreign CU is not a loaded implementation. Only
+      // local fixture declarations can satisfy a dependency without an object
+      // request; ACE snapshots carry declarations from other global objects.
+      const localDeclaration = !sources[cursor].objectName && !sources[cursor].aceStatements && idx.interfaces.has(name);
+      if (visited.has(name) || localDeclaration || name === 'ME' || name === 'OBJECT') continue;
       visited.add(name);
       if (options.customerOnly !== false && !customerObject(name)) { skipped.push(name); continue; }
       if (sources.length >= limit) { warnings.push('Source limit reached: ' + name); continue; }

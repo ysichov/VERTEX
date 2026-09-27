@@ -1,5 +1,7 @@
 # SAP ABAP VERTEX Tools
 
+Value Origin's 0.7.8 test build now loads implementations even when ACE has already supplied their declarations through foreign CU includes.
+
 ## Testing Value Origin (0.7.8)
 
 Update the ABAP backend class `ZCL_VX_ADT_RES_FLOW` from this repository, then install
@@ -17,6 +19,7 @@ session. Structure copies, NEW/factory calls, RETURNING and CHANGING lead into
 callee calculations. SELECT statements expose their table and host-variable inputs.
 ACE reference types and class-to-interface relations resolve an interface call to its
 concrete implementation, even where the calculation is held in a CM include.
+The ACE response records the owner of each include, which loads a complete foreign class rather than only its CU declaration.
 F12/double-click does not treat the interface `METHODS` declaration as an invocation target.
 Normal contextual navigation always remains in the active editor group; Ctrl+Click from Value Origin is the explicit beside action.
 Right-click a VERTEX source tab and choose **VERTEX: Open Visual Debug** to reveal

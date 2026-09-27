@@ -40,6 +40,16 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
   inputSchema: { type: "object", additionalProperties: false, properties: {} }
 }]).map(withSystem);
 
+const sourceLineIn = (from, line, to) => {
+  const expected = String(from || '').split(/\r?\n/)[line - 1]?.trim();
+  if (!expected) return line;
+  const lines = String(to || '').split(/\r?\n/);
+  if (lines[line - 1]?.trim() === expected) return line;
+  const matches = [];
+  for (let index = 0; index < lines.length; index++) if (lines[index].trim() === expected) matches.push(index + 1);
+  return matches.length === 1 ? matches[0] : line;
+};
+
 function register(vscode, context, { active, password, pin, pinned, systems }) {
   const events = require("./agent-events").createEmitter();
   const repositories = new Map(), texts = new Map(), opened = new Map(), drafts = new Map();
@@ -52,15 +62,6 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       overviewRulerColor: new vscode.ThemeColor('editor.findMatchHighlightForeground'),
       overviewRulerLane: vscode.OverviewRulerLane && vscode.OverviewRulerLane.Full }) : null;
   if (stopDecoration) context.subscriptions.push(stopDecoration);
-  const sourceLineIn = (from, line, to) => {
-    const expected = String(from || '').split(/\r?\n/)[line - 1]?.trim();
-    if (!expected) return line;
-    const lines = String(to || '').split(/\r?\n/);
-    if (lines[line - 1]?.trim() === expected) return line;
-    const matches = [];
-    for (let index = 0; index < lines.length; index++) if (lines[index].trim() === expected) matches.push(index + 1);
-    return matches.length === 1 ? matches[0] : line;
-  };
   require('./value-origin-view').register(vscode, context, async (document, target, progress, cancelled) => {
     const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
     if (document.isDirty) throw new Error('Save and activate the source before ACE analysis. ACE reads active SAP code.');
@@ -760,10 +761,10 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     try {
       const url = String(frame.url).split('#')[0];
       let entry = [...opened.values()].find(item => String(item.data.source_url || '').split('#')[0] === url);
-      if (!entry) {
-        const repo = await repository();
-        entry = await sourceDocument(repo, { object_type: object.objectType, object_name: object.name });
-      }
+      // Stopping in a callee must not fill the editor with every class on the
+      // runtime stack. The docked debugger already names the current frame;
+      // follow it only when the user has that source tab open.
+      if (!entry) return;
       if (request !== stopFollow) return;
       const editor = await vscode.window.showTextDocument(entry.document, { preview: false, viewColumn: vscode.ViewColumn.Active });
       if (request !== stopFollow) return;

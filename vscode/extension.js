@@ -832,6 +832,11 @@ function activate(context) {
             await view.webview.postMessage({ type: "result", payload: JSON.stringify(source) });
             return;
           }
+          if (message.call === "asset") {
+            const name = String((message.args || [])[0] || "");
+            await view.webview.postMessage({ type: "result", payload: asset(name) });
+            return;
+          }
           if (message.call !== "debug") { throw new Error("Unsupported VERTEX Debug request."); }
           const args = message.args || [];
           const command = String(args[0] || "");

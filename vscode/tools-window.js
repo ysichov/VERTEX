@@ -23,6 +23,7 @@ function debugHtml(initial) {
     window.sdeTake=()=>{const value=pending;pending=null;return value;};
     window.sdeDebug=(command,args)=>host.postMessage({call:"debug",args:[command,JSON.stringify(args||{})]});
     window.sdeSource=(name,type)=>host.postMessage({call:"source",args:[name,type]});
+    window.sdeAsset=name=>host.postMessage({call:"asset",args:[name]});
     window.addEventListener("message",event=>{
       if(event.data.type==="result"){pending=event.data.payload;sdeReady();}
       if(event.data.type==="debug")sdeDebugEvent(event.data.payload);

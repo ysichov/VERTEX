@@ -1,5 +1,7 @@
 # ABAP VERTEX Tools
 
+Value Origin's 0.7.8 test build now distinguishes a referenced class declaration from a loaded implementation, so foreign CU includes no longer suppress loading the complete class.
+
 VS Code test build **0.7.8** adds **Analyze Variable Value Origin** to the ABAP editor.
 It reads ACE's statement/token/call/parameter index from the VERTEX backend, loads
 referenced customer objects (`Z*`, `Y*`, `/namespace/`) automatically and traces structure components through RETURNING
@@ -10,6 +12,7 @@ breakpoint gutter there: click its leftmost margin to add or remove a point; it
 synchronizes to SAP.
 Interface dispatch is resolved to its concrete class method from ACE's reference and
 class-to-interface facts, including generated CM method includes.
+ACE include ownership is carried explicitly, so a foreign `CU` causes its complete class pool to load.
 F12 or double-click on an interface invocation never opens its `METHODS` declaration as a false target.
 Ordinary contextual navigation stays in the current editor group, including from a dirty source tab.
 Right-click that source and choose **VERTEX: Open Visual Debug** to reveal a

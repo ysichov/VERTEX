@@ -107,6 +107,11 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              units TYPE zif_vx_ace_parse_data=>tt_calls_line,
              params TYPE zif_vx_ace_parse_data=>tt_params,
              refs TYPE zif_vx_ace_parse_data=>tt_refvar,
+             " ACE Flow facts: every statement's calculated target and the
+             " variables it is composed from. Value Origin consumes these
+             " directly; it must not rediscover them in the client.
+             calculated TYPE zif_vx_ace_parse_data=>tt_calculated,
+             composed TYPE zif_vx_ace_parse_data=>tt_composed,
              classes TYPE zif_vx_ace_parse_data=>tt_class_defs,
              implementations TYPE tt_origin_implementations,
            END OF ty_origin.
@@ -459,6 +464,8 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
     rs_origin-units = ls_source-tt_calls_line.
     rs_origin-params = ls_source-t_params.
     rs_origin-refs = ls_source-tt_refvar.
+    rs_origin-calculated = ls_source-t_calculated.
+    rs_origin-composed = ls_source-t_composed.
     rs_origin-classes = ls_source-tt_class_defs.
     " Preserve the scanner's class-to-interface relation explicitly. A
     " generated CM include does not carry the INTERFACES statement itself,

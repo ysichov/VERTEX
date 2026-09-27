@@ -1,5 +1,7 @@
 # Development history
 
+The persistent unresolved dispatch came from collectSources skipping every name in the index's interfaces map, which also contains CLASS declarations. A foreign CU therefore suppressed loading its CP/CM sources. Replacing the empty CU regression fixture with a real CLASS declaration reproduced the failure. The loader now allows these global object requests; a transport-level calculation-rig regression verifies base-price arithmetic and all five modifier implementations after loading the closure.
+
 ## 2026-09-27 — ACE-backed interprocedural Value Origin
 
 The initial local analyzer could not connect a returned structure component to a
@@ -22,6 +24,10 @@ uses those facts to select the concrete `CLASS->INTERFACE~METHOD` implementation
 Editor navigation now resolves calls before requesting ADT's definition and refuses an interface
 `METHODS` declaration as a target of an invocation.
 It also uses the active editor group for every ordinary navigation; only Value Origin's explicit Ctrl+Click opens beside.
+
+The live closure exposed a further ACE transport gap: `ZCL_PRICE_ROAD` appeared only as a CU include under
+the pricing factory. `ts_prog-class` is now emitted for each include, so the client requests the actual
+class pool and obtains its CM implementation rather than treating a foreign declaration include as complete code.
 
 Value Origin links open the standard VS Code editor (or beside it with Ctrl+Click).
 The test manifest contributes ABAP breakpoint support, so VS Code exposes its native

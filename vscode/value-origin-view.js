@@ -1,11 +1,16 @@
 "use strict";
 const { analyze, variableAt } = require('./value-origin');
 const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// ACE method includes start at line 1, whereas the editable class document
+// contains every method.  openSource translates the include position to that
+// document; never replace its answer with the include-local line.
+const navigationLine = (opened, requestedLine) => opened?.line || requestedLine;
 function html(graph, nonce) {
   const byId = new Map(graph.nodes.map(n => [n.id, n])), expanded = new Set();
   function tree(id, depth = 0, label = '') {
     const n = byId.get(id); if (!n) return '';
-    const caption = `<span class="edge">${escape(label)}</span> <code>${escape(n.text)}</code> <button class="location" title="Open source here; Ctrl+Click opens beside" data-node="${n.id}">${escape(n.location || n.sourceName || n.source)}:${n.line}</button>`;
+    const transfer = n.componentTransfer ? ` <span class="edge">transfers ${escape(n.component.slice(1))}</span>` : '';
+    const caption = `<span class="edge">${escape(label)}</span> <code>${escape(n.text)}</code>${transfer} <button class="location" title="Open source here; Ctrl+Click opens beside" data-node="${n.id}">${escape(n.location || n.sourceName || n.source)}:${n.line}</button>`;
     if (expanded.has(id)) return `<div class="leaf">↳ ${caption} <small>shared dependency</small></div>`;
     expanded.add(id);
     const children = graph.edges.filter(e => e.to === id);
@@ -13,35 +18,33 @@ function html(graph, nonce) {
     return `<details class="node" ${depth < 4 ? 'open' : ''}><summary>${caption}</summary><div class="children">${children.map(e => tree(e.from, depth + 1, e.label)).join('')}</div></details>`;
   }
   const dependencyTree = tree(graph.root);
-  // The dependency graph is traversed backward.  Render call frames from its
-  // edges rather than the flat, de-duplicated navigation list, otherwise the
-  // nesting which explains how a value crosses methods is lost.
-  const incoming = new Map();
-  for (const e of graph.edges) incoming.set(e.to, [...(incoming.get(e.to) || []), e]);
-  const callFor = n => (graph.calls || []).find(c => c.source === n.source && c.line === n.line);
-  const renderedFrames = new Set();
-  function callFrames(id, depth = 0, ancestors = new Set()) {
-    if (ancestors.has(id)) return '';
-    const nextAncestors = new Set(ancestors); nextAncestors.add(id);
-    const children = [...(incoming.get(id) || [])].sort((a, b) => (byId.get(a.from)?.line || 0) - (byId.get(b.from)?.line || 0));
-    return children.map(e => {
-      const n = byId.get(e.from); if (!n) return '';
-      const nested = callFrames(n.id, depth + (n.kind === 'call' ? 1 : 0), nextAncestors);
-      if (n.kind !== 'call') return nested;
-      const found = callFor(n), caller = found?.caller || n.location || n.sourceName || n.source;
-      const targets = n.callee || found?.callees?.join(' | ') || found?.method + ' (unresolved)';
-      const frameKey = `${n.source}:${n.line}:${caller}:${targets}`;
-      if (renderedFrames.has(frameKey)) return '';
-      renderedFrames.add(frameKey);
-      // The call index owns the caller's statement location. A nested node
-      // can belong to an interface signature, which must never steal this
-      // navigation target.
-      const source = found?.source || n.source, line = found?.line || n.line;
-      const caption = `<code>${escape(caller)} → ${escape(targets)}</code>${n.possible || found?.possible ? ' <span class="edge">possible targets</span>' : ''} <button class="location" title="Open the calling statement; Ctrl+Click opens beside" data-node="${n.id}" data-source="${escape(source)}" data-line="${line}">line ${line}</button>`;
-      return nested ? `<details class="call-frame" ${depth === 0 ? 'open' : ''}><summary>${caption}</summary><ul class="call-stack">${nested}</ul></details>` : `<div class="call-frame">${caption}</div>`;
-    }).join('');
-  }
-  const callPath = callFrames(graph.root);
+  // Call depth is not graph depth. The dependency graph also contains field
+  // copies and actual/formal bindings, so walking its edges made a misleading
+  // pseudo-stack with duplicates. Build the stack from calls only: a call is
+  // nested strictly below a call whose resolved target is its caller.
+  const callFrames = () => {
+    const calls = (graph.calls || []).filter(call => call.transformsSelectedValue).sort((a, b) => a.line - b.line || a.caller.localeCompare(b.caller));
+    const targetNames = new Set(calls.flatMap(call => (call.targets || []).map(target => target.label)));
+    const roots = calls.filter(call => !targetNames.has(call.caller));
+    const frame = (found, depth = 0, ancestors = new Set()) => {
+      const key = `${found.source}:${found.line}:${found.caller}:${found.method}`;
+      if (ancestors.has(key)) return '<div class="call-frame"><small>recursive call</small></div>';
+      const nextAncestors = new Set(ancestors); nextAncestors.add(key);
+      // A call-stack row describes a dispatch. Its link therefore opens the
+      // resolved implementation, never the interface METHODS declaration or
+      // merely the caller. Each alternative has its own target link.
+      const targetLinks = (found?.targets || []).map(target =>
+        `<button class="location" title="Open the contributing calculation; Ctrl+Click opens beside" data-node="" data-source="${escape(target.source)}" data-line="${target.line}">${escape(target.label)}</button>`).join(' ');
+      const fallback = found.callees?.join(' | ') || found.method + ' (unresolved)';
+      const caption = `<code>${escape(found.caller)} → ${targetLinks || escape(fallback)}</code>${found.possible ? ' <span class="edge">possible targets</span>' : ''}`;
+      const targetSet = new Set((found.targets || []).map(target => target.label));
+      const children = calls.filter(call => targetSet.has(call.caller));
+      const nested = children.map(child => frame(child, depth + 1, nextAncestors)).join('');
+      return nested ? `<details class="call-frame" ${depth < 2 ? 'open' : ''}><summary>${caption}</summary><ul class="call-stack">${nested}</ul></details>` : `<div class="call-frame">${caption}</div>`;
+    };
+    return roots.map(root => frame(root)).join('');
+  };
+  const callPath = callFrames();
   const logLine = n => `[${n.id}] ${n.kind} · ${n.location || n.sourceName || n.source}:${n.line}${n.callee ? ` · calls ${n.callee}${n.possible ? ' (possible target)' : ''}` : ''}\n  ${n.text}`;
   const analysisLog = [
     'VALUE ORIGIN — STATIC ACE ANALYSIS',
@@ -63,7 +66,7 @@ function html(graph, nonce) {
   ${(graph.skipped || []).length ? `<p class="edge">System dependencies were kept as analysis boundaries: ${escape(graph.skipped.join(', '))}</p>` : ''}
   <details><summary>ACE source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact objects whose ACE index was loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No ACE sources were loaded.')}</pre></details>
   <details open><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>
-  <h3>Backward dependencies</h3>${dependencyTree}
+  <details><summary>Backward dependencies — data flow, not call-stack depth</summary>${dependencyTree}</details>
   <details><summary>Copyable analysis log</summary><p class="edge">Select text and copy it with Ctrl+C.</p><pre class="analysis-log">${escape(analysisLog)}</pre></details>
   <script nonce="${nonce}">const api=acquireVsCodeApi();document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,source:b.dataset.source,line:Number(b.dataset.line)||0,openBeside:e.ctrlKey||e.metaKey});});</script></body></html>`;
 }
@@ -87,10 +90,10 @@ function register(vscode, context, getSources) {
       panel.webview.html = html(graph, require('crypto').randomBytes(18).toString('hex'));
       panel.webview.onDidReceiveMessage(async message => {
         const n = graph.nodes.find(n => message && n.id === message.node);
-        if (!n) return;
-        const source = sources.find(s => s.id === (message.source || n.source)); if (!source) return;
-        const opened = await loaded.openSource(source, { ...n, line: message.line || n.line });
-        const document = opened.document, line = message.line || opened.line || n.line;
+        const source = sources.find(s => s.id === (message.source || n?.source)); if (!source) return;
+        const requestedLine = message.line || n?.line || 1;
+        const opened = await loaded.openSource(source, { ...(n || {}), line: requestedLine });
+        const document = opened.document, line = navigationLine(opened, requestedLine);
         const at = new vscode.Position(Math.min(document.lineCount - 1, line - 1), 0);
         await vscode.window.showTextDocument(document, { viewColumn: message.openBeside ? vscode.ViewColumn.Beside : originViewColumn,
           selection: new vscode.Range(at, at), preview: !message.openBeside });
@@ -98,4 +101,4 @@ function register(vscode, context, getSources) {
     } catch (e) { vscode.window.showErrorMessage('VERTEX: ' + e.message); }
   }));
 }
-module.exports = { register, html };
+module.exports = { register, html, navigationLine };

@@ -1,5 +1,7 @@
 # Release history
 
+- 0.7.8 test build: fixed declaration-only ACE includes suppressing full class loading. The regression covers factory dispatch and five modifier implementations.
+
 ## 2026-09-27 — VS Code 0.7.8 test build (not published)
 
 - Value Origin now consumes the ACE index (`flow?mode=origin`) and automatically
@@ -10,6 +12,7 @@
 - ACE now returns class-to-interface relations and reference types, so an interface call in a
   generated CM include resolves to its concrete implementation instead of an unresolved declaration.
 - F12/double-click no longer routes an interface invocation to its `METHODS` declaration.
+- ACE include ownership now loads a complete foreign class pool when its CU was encountered in the caller snapshot.
 - Ordinary context navigation keeps the active editor group even from a dirty source tab.
 - Value Origin source links reuse the standard VS Code ABAP editor (Ctrl+Click opens beside).
   The test VSIX contributes ABAP breakpoint support, so a click in that editor's

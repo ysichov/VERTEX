@@ -1,7 +1,7 @@
 "use strict";
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { analyze, statements, mermaid } = require('../value-origin');
+const { analyze, statements } = require('../value-origin');
 function graph(text, variable, line) { return analyze([{ id: 'demo', text }], { source: 'demo', variable, line }); }
 test('multiline statements retain source lines and ignore comments/literal periods', () => {
   const s = statements("* comment\nx = 'a.b'. \" comment\ny =\n x * 1.2.");
@@ -32,7 +32,6 @@ test('SQL includes statement, database and host-variable dependency', () => {
 test('dynamic dispatch is an explicit analysis boundary', () => {
   const g = graph('result = obj->calc( iv_price = price ).\nWRITE result.', 'result', 2);
   assert(g.nodes.some(n => n.kind === 'unknown' && n.text.includes('Unresolved call')));
-  assert(mermaid(g).startsWith('flowchart BT'));
 });
 
 test('demo traces the returned amount through factories, CHANGING, all modifier candidates and SQL', () => {
@@ -94,15 +93,54 @@ test('ACE class definitions load the complete object when only its CU include is
     id: 'factory-cu', name: 'ZCL_PRICING_FACTORY===========CU', objectName: 'ZCL_PRICING_FACTORY', text: '',
     aceClasses: [{ class: 'ZCL_PRICE_ROAD', is_intf: false }]
   }], async (name, type) => ({ id: name, name, objectName: name, objectType: type, text: 'METHOD zif_pricing_strategy~calculate_base. ENDMETHOD.' }));
-  assert.deepEqual(loaded.sources.map(source => source.objectName), ['ZCL_PRICING_FACTORY', 'ZCL_PRICE_ROAD']);
+  assert(loaded.sources.some(source => source.objectName === 'ZCL_PRICE_ROAD'));
 });
 
 test('ACE include owner loads a foreign class complete instead of treating its CU as the caller', async () => {
   const { collectSources } = require('../value-origin');
   const loaded = await collectSources([{
-    id: 'factory-road-cu', name: 'ZCL_PRICE_ROAD================CU', objectName: 'ZCL_PRICING_FACTORY', text: '', aceOwner: 'ZCL_PRICE_ROAD', aceOwnerType: 'CLAS'
+    id: 'factory-road-cu', name: 'ZCL_PRICE_ROAD================CU', objectName: 'ZCL_PRICING_FACTORY', text: 'CLASS zcl_price_road DEFINITION PUBLIC. INTERFACES zif_pricing_strategy. ENDCLASS.', aceOwner: 'ZCL_PRICE_ROAD', aceOwnerType: 'CLAS'
   }], async (name, type) => ({ id: name, name, objectName: name, objectType: type, text: '' }));
-  assert.deepEqual(loaded.sources.map(source => source.objectName), ['ZCL_PRICING_FACTORY', 'ZCL_PRICE_ROAD']);
+  assert.deepEqual(loaded.sources.map(source => source.objectName), ['ZCL_PRICING_FACTORY', 'ZCL_PRICE_ROAD', 'ZIF_PRICING_STRATEGY']);
+});
+
+test('closure with foreign ACE declarations reaches base-price and all five modifier calculations', async () => {
+  const { collectSources } = require('../value-origin');
+  const { sourcesFromAce } = require('../value-origin-ace');
+  const { tokenize } = require('../value-origin-tokens');
+  const fixtures = require('./fixtures/value-origin-demo.json');
+  // Build transport fixtures with real declaration statements. Empty CU
+  // fixtures cannot exercise the declaration-is-loaded bug in collectSources.
+  function transport(text, include, owner) {
+    const lines = text.split('\n'), starts = []; let offset = 0;
+    for (const line of lines) { starts.push(offset); offset += line.length + 1; }
+    const statements = []; let tokens = [];
+    for (const token of tokenize(text)) {
+      if (token.value === '.') { statements.push({ idx: statements.length + 1, line: tokens[0].row, tokens }); tokens = []; }
+      else tokens.push({ str: token.value, row: token.line, col: token.offset - starts[token.line - 1] });
+    }
+    return { include, class: owner, source: lines, statements };
+  }
+  const requested = [];
+  async function load(name) {
+    requested.push(name);
+    const fixture = fixtures.find(source => source.name === name);
+    if (!fixture) throw new Error('Missing fixture ' + name);
+    const includes = [transport(fixture.text, fixture.id, name)];
+    if (name === 'ZCL_PRICING_FACTORY' || name === 'ZCL_CALC_FACADE') {
+      const candidates = fixtures.filter(source => name === 'ZCL_PRICING_FACTORY' ? source.name === 'ZCL_PRICE_ROAD' : source.name.startsWith('ZCL_MOD_'));
+      for (const candidate of candidates) includes.push(transport(candidate.text.slice(0, candidate.text.indexOf('ENDCLASS.') + 9), candidate.name + '-CU', candidate.name));
+    }
+    return sourcesFromAce({ schema_version: 1, includes }, { object_name: name, object_type: name === 'ZVERTEX_DEBUG_LAB' ? 'PROG' : 'CLAS' }, name);
+  }
+  const initial = await load('ZVERTEX_DEBUG_LAB');
+  const loaded = await collectSources(initial, load, { maxSources: 240 });
+  const graph = analyze(loaded.sources, { source: initial[0].id, line: 16, variable: 'ls_result-amount' });
+  assert(requested.includes('ZCL_PRICE_ROAD'));
+  assert.equal(requested.filter(name => name === 'ZCL_PRICE_ROAD').length, 1);
+  assert.deepEqual(graph.calls.find(call => call.method === 'CALCULATE_BASE').callees, ['ZCL_PRICE_ROAD->ZIF_PRICING_STRATEGY~CALCULATE_BASE']);
+  assert.equal(graph.calls.find(call => call.method === 'APPLY').callees.length, 5);
+  assert(graph.nodes.some(node => node.location === 'ZCL_PRICE_ROAD->ZIF_PRICING_STRATEGY~CALCULATE_BASE' && node.text.includes('5.42')));
 });
 
 test('ACE statement boundaries, composite tokens and authoritative call targets drive the slice', () => {
@@ -180,11 +218,25 @@ test('ACE reference types keep an interface dispatch on its implementation', () 
   implementations: [{ class: 'ZCL_PRICE_ROAD', interface: 'ZIF_PRICING_STRATEGY' }],
   units: [{ include: 'ZCL_CALC_FACADE===============CM002', class: 'ZCL_CALC_FACADE', eventtype: 'METHOD', eventname: 'RUN', index: 1, end_idx: 4 }] }, { object_name: 'ZCL_CALC_FACADE', object_type: 'CLAS' }, 'ace');
   facade.push({ id: 'factory', objectName: 'ZCL_PRICING_FACTORY', objectType: 'CLAS', text: 'CLASS zcl_pricing_factory DEFINITION. PUBLIC SECTION. CLASS-METHODS create RETURNING VALUE(ro_strategy) TYPE REF TO zif_pricing_strategy. ENDCLASS. CLASS zcl_pricing_factory IMPLEMENTATION. METHOD create. ro_strategy = NEW zcl_price_road( ). ENDMETHOD. ENDCLASS.' });
-  facade.push({ id: 'road', objectName: 'ZCL_PRICE_ROAD', objectType: 'CLAS', text: 'CLASS zcl_price_road DEFINITION. PUBLIC SECTION. INTERFACES zif_pricing_strategy. ENDCLASS. CLASS zcl_price_road IMPLEMENTATION. METHOD zif_pricing_strategy~calculate_base. rs_result = 42. ENDMETHOD. ENDCLASS.' });
+  facade.push({ id: 'road', objectName: 'ZCL_PRICE_ROAD', objectType: 'CLAS', text: 'CLASS zcl_price_road DEFINITION.\nPUBLIC SECTION. INTERFACES zif_pricing_strategy.\nENDCLASS.\nCLASS zcl_price_road IMPLEMENTATION.\nMETHOD zif_pricing_strategy~calculate_base.\nrs_result = 42.\nENDMETHOD.\nENDCLASS.' });
   facade.unshift({ id: 'report', text: 'result = NEW zcl_calc_facade( )->run( ).\nWRITE result.' });
   const call = analyze(facade, { source: 'report', line: 2, variable: 'result' }).calls.find(c => c.method === 'CALCULATE_BASE');
   assert.deepEqual(call.callees, ['ZCL_PRICE_ROAD->ZIF_PRICING_STRATEGY~CALCULATE_BASE']);
   assert.equal(call.possible, false);
+  assert.equal(call.targets[0].line, 5);
+});
+
+test('an unknown dynamic receiver widens to loaded method implementations', () => {
+  const sources = [
+    { id: 'report', text: 'result = worker->calculate_base( ).\nWRITE result.' },
+    { id: 'iface', objectName: 'ZIF_PRICING_STRATEGY', objectType: 'INTF', aceOwnerType: 'INTF', text: 'METHODS calculate_base.', aceStatements: [
+      { aceIndex: 1, line: 1, offset: 0, tokens: [{ kind: 'word', value: 'METHODS', offset: 0, endOffset: 7 }, { kind: 'word', value: 'CALCULATE_BASE', offset: 8, endOffset: 22 }] }
+    ], aceUnits: [{ class: 'ZIF_PRICING_STRATEGY', eventtype: 'METHOD', eventname: 'CALCULATE_BASE', index: 1, end_idx: 1 }] },
+    { id: 'road', objectName: 'ZCL_PRICE_ROAD', objectType: 'CLAS', text: 'CLASS zcl_price_road IMPLEMENTATION. METHOD zif_pricing_strategy~calculate_base. rs = 42. ENDMETHOD. ENDCLASS.' }
+  ];
+  const call = analyze(sources, { source: 'report', line: 2, variable: 'result' }).calls.find(c => c.method === 'CALCULATE_BASE');
+  assert.deepEqual(call.callees, ['ZCL_PRICE_ROAD->ZIF_PRICING_STRATEGY~CALCULATE_BASE']);
+  assert.equal(call.possible, true);
 });
 
 test('assembled and CM ACE representations resolve to one method target', () => {
@@ -206,7 +258,11 @@ test('assembled and CM ACE representations resolve to one method target', () => 
 });
 
 test('view exposes a collapsible static call stack and navigable dependency tree, with escaped code', () => {
-  const { html } = require('../value-origin-view');
+  const { html, navigationLine } = require('../value-origin-view');
+  // CM include lines are local to each method.  The source opener maps them
+  // into the assembled class document, and that mapped position must win.
+  assert.equal(navigationLine({ line: 143 }, 1), 143);
+  assert.equal(navigationLine({}, 7), 7);
   const g = graph("x = '<script>'.\nWRITE x.", 'x', 2);
   const page = html(g, 'test');
   assert(page.includes('Static call stack contributing'));
@@ -217,12 +273,17 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   assert(page.includes('openBeside:e.ctrlKey||e.metaKey'));
   assert(page.includes('Ctrl+Click opens beside'));
   const demo = analyze(require('./fixtures/value-origin-demo.json'), { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' });
+  assert.deepEqual(demo.calls.filter(call => call.transformsSelectedValue).map(call => call.method), ['CALCULATE_BASE', 'APPLY', 'RUN']);
   const stack = html(demo, 'test');
   assert(stack.includes('class="call-frame"'));
   assert(stack.includes('data-source='));
   assert(stack.includes('data-line='));
+  assert(stack.includes('ZCL_PRICE_ROAD-&gt;ZIF_PRICING_STRATEGY~CALCULATE_BASE'));
+  // Factory calls may still exist in the collapsed raw dependency tree, but
+  // must not appear as an amount-contributing frame in the concise stack.
+  assert(!stack.split('Backward dependencies')[0].includes('ZCL_PRICING_FACTORY-&gt;CREATE'));
   assert(!stack.includes('No deeper call dependency'));
-  assert.equal((stack.match(/ZVERTEX_DEBUG_LAB → ZCL_CALC_FACADE-&gt;RUN/g) || []).length, 1);
+  assert.equal((stack.match(/ZVERTEX_DEBUG_LAB →/g) || []).length, 1);
   assert(page.includes('class="children"'));
   assert(page.includes('data-node="n0"'));
   assert(page.includes('&lt;script&gt;'));

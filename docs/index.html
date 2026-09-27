@@ -62,12 +62,13 @@
 </head>
 <body>
 <main>
+  <p>VS Code 0.7.8 Value Origin now loads complete implementations for classes previously encountered only as foreign CU declarations.</p>
   <p>VS Code test build 0.7.8 adds ACE-backed Value Origin in the ABAP source editor:
   a collapsible static call stack, structure-component dependencies through RETURNING and
   CHANGING, clickable calculations and a copyable analysis log. Links open the standard
   VS Code editor; its gutter breakpoints synchronize to SAP. Update ZCL_VX_ADT_RES_FLOW in SAP for the
   origin index before testing. Interface calls resolve to concrete class implementations, including CM
-  method includes; a double-click never treats their METHODS declaration as the target. Branches and database-dependent loop order remain
+  method includes; ACE include ownership loads complete foreign classes. A double-click never treats their METHODS declaration as the target. Branches and database-dependent loop order remain
   explicit analysis boundaries. Normal navigation stays in its editor group. This is not an Eclipse release.</p>
 
 <header>
