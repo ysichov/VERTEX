@@ -429,6 +429,16 @@ test("a name declared in an interface opens that interface as a VERTEX tab", asy
   assert.match(h.documents.at(-1).uri.toString(), /^vertex-sap:.*\/INTF\/ZIF_TYPES\.abap$/);
   assert.equal(h.documents.at(-1).selection.start.line, 1);
 });
+test("an interface method invocation never falls back to its METHODS declaration", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  h.documents[0].text = "METHOD run.\n  DATA lo_strategy TYPE REF TO zif_pricing_strategy.\n  lo_strategy->calculate_base( ).\nENDMETHOD.";
+  h.documents[0].saved = h.documents[0].text;
+  h.api.definition = async () => ({ url: "/sap/bc/adt/oo/interfaces/zif_pricing_strategy/source/main", line: 2, column: 10 });
+  h.documents[0].selection = { active: { line: 2, character: 18 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.documents.length, 1);
+});
 test("on the declaration itself SAP's info answer is not an error: the line is the declaration", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
@@ -538,7 +548,7 @@ test("an instance method call opens the class inferred from its local reference"
   assert.equal(h.diffs.at(-1)[1].preview, true);
   assert.equal(h.diffs.at(-1)[1].viewColumn, -1);
 });
-test("a dirty source opens an external method beside the edited buffer", async () => {
+test("a dirty source keeps contextual navigation in the active editor group", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
   h.documents[0].text = ["METHOD caller.", " DATA mo_split_2p_wrap TYPE REF TO zcl_other.", " mo_split_2p_wrap->do_it( ).", "ENDMETHOD."].join("\n");
@@ -546,8 +556,8 @@ test("a dirty source opens an external method beside the edited buffer", async (
   h.documents[0].selection = { active: { line: 2, character: 23 } };
   await h.commands.get("vertex.goToClassMethod")();
   assert.equal(h.diffs.at(-1)[0], "open");
-  assert.equal(h.diffs.at(-1)[1].preview, false);
-  assert.equal(h.diffs.at(-1)[1].viewColumn, -2);
+  assert.equal(h.diffs.at(-1)[1].preview, true);
+  assert.equal(h.diffs.at(-1)[1].viewColumn, -1);
 });
 test("static class method hover loads and caches its signature", async () => {
   const h = host();

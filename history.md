@@ -9,6 +9,8 @@
   the view exposes a collapsible call stack, clickable calculation trees and a copyable log.
 - ACE now returns class-to-interface relations and reference types, so an interface call in a
   generated CM include resolves to its concrete implementation instead of an unresolved declaration.
+- F12/double-click no longer routes an interface invocation to its `METHODS` declaration.
+- Ordinary context navigation keeps the active editor group even from a dirty source tab.
 - Value Origin source links reuse the standard VS Code ABAP editor (Ctrl+Click opens beside).
   The test VSIX contributes ABAP breakpoint support, so a click in that editor's
   leftmost gutter adds or removes a native point, synchronized to the shared SAP

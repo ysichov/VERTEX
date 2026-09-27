@@ -846,6 +846,13 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     if (call.kind === "instance-method") {
       const objectName = instanceClass(document, at, call.instance);
       if (!objectName) { return undefined; }
+      // An interface declaration is not the target of an invocation.  The
+      // concrete implementation is selected by ACE for Value Origin; opening
+      // METHODS <name> here used to turn a double-click into the wrong
+      // direction of navigation.
+      if (objectName.startsWith("ZIF_") || objectName.startsWith("YIF_") || objectName.includes("/IF_")) {
+        return { interfaceDispatch: true };
+      }
       call.object_type = "CLAS";
       call.object_name = objectName;
       call.kind = "method";
@@ -914,13 +921,12 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   }
   async function moveTo(editor, result) {
     navigation.push({ document: editor.document, at: editor.selection.active });
-    // Keep a clean source flow in one editor group.  A dirty SAP buffer is
-    // never replaced: the destination opens beside it so the user can save
-    // or discard the pending change deliberately.
-    const clean = !editor.document.isDirty;
+    // Context navigation is one reading flow.  It must not create a second
+    // editor group merely because the source tab is dirty; VS Code keeps that
+    // dirty tab in the same group and the user can still return with Back.
     const target = result.document === editor.document ? editor : await vscode.window.showTextDocument(result.document, {
-      preview: clean,
-      viewColumn: clean ? vscode.ViewColumn.Active : vscode.ViewColumn.Beside
+      preview: true,
+      viewColumn: vscode.ViewColumn.Active
     });
     if (target) { selectTarget(target, result.target); }
   }
@@ -931,11 +937,10 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       return;
     }
     const activeEditor = vscode.window.activeTextEditor;
-    const clean = !activeEditor || !activeEditor.document.isDirty;
     const editor = previous.document === (activeEditor && activeEditor.document)
       ? activeEditor : await vscode.window.showTextDocument(previous.document, {
-        preview: clean,
-        viewColumn: clean ? vscode.ViewColumn.Active : vscode.ViewColumn.Beside
+        preview: true,
+        viewColumn: vscode.ViewColumn.Active
       });
     if (editor) { selectTarget(editor, { range: range(previous.at.line, previous.at.character, previous.at.character) }); }
   }
@@ -949,11 +954,19 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const structure = structuralTarget(editor.document, at, !quiet);
     if (structure) { await moveTo(editor, structure); return; }
     const method = await methodCounterpart(editor.document, at);
-    const variable = method ? undefined : await adtDefinition(editor.document, at);
+    // Resolve an ABAP call before asking ADT for a declaration.  ADT's
+    // definition of LO_STRATEGY->CALCULATE_BASE is the interface METHODS
+    // line, whereas the useful destination of a call is its implementation.
+    const external = method ? undefined : await externalCallTarget(editor.document, at);
+    if (external?.interfaceDispatch) {
+      if (!quiet) vscode.window.showInformationMessage("VERTEX: this is an interface dispatch. Use Value Origin to open the ACE-resolved implementation.");
+      return;
+    }
+    const variable = method || external ? undefined : await adtDefinition(editor.document, at);
     // Standing on the definition itself: going to it again means going back.
     if (variable && variable.target.range.start.line === at.line && navigation.length) { await goBack(); return; }
-    const result = method || (variable && variable.target.range.start.line !== at.line ? variable : undefined)
-      || await externalCallTarget(editor.document, at) || await adtForeignDefinition(editor.document, at);
+    const result = method || external || (variable && variable.target.range.start.line !== at.line ? variable : undefined)
+      || await adtForeignDefinition(editor.document, at);
     if (!result) {
       if (quiet) { return; }
       vscode.window.showInformationMessage("VERTEX: place the cursor on a method, variable, static class call or CALL FUNCTION name.");
@@ -1089,7 +1102,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         async provideDefinition(document, at) {
           const result = structuralTarget(document, at, true) || await methodCounterpart(document, at)
             || await externalCallTarget(document, at);
-          return result && result.target;
+          return result && !result.interfaceDispatch && result.target;
         }
       }));
   }

@@ -88,6 +88,23 @@ test('dependency closure keeps standard ABAP classes outside the customer-code s
   assert.equal(loaded.warnings.length, 0);
 });
 
+test('ACE class definitions load the complete object when only its CU include is in the caller snapshot', async () => {
+  const { collectSources } = require('../value-origin');
+  const loaded = await collectSources([{
+    id: 'factory-cu', name: 'ZCL_PRICING_FACTORY===========CU', objectName: 'ZCL_PRICING_FACTORY', text: '',
+    aceClasses: [{ class: 'ZCL_PRICE_ROAD', is_intf: false }]
+  }], async (name, type) => ({ id: name, name, objectName: name, objectType: type, text: 'METHOD zif_pricing_strategy~calculate_base. ENDMETHOD.' }));
+  assert.deepEqual(loaded.sources.map(source => source.objectName), ['ZCL_PRICING_FACTORY', 'ZCL_PRICE_ROAD']);
+});
+
+test('ACE include owner loads a foreign class complete instead of treating its CU as the caller', async () => {
+  const { collectSources } = require('../value-origin');
+  const loaded = await collectSources([{
+    id: 'factory-road-cu', name: 'ZCL_PRICE_ROAD================CU', objectName: 'ZCL_PRICING_FACTORY', text: '', aceOwner: 'ZCL_PRICE_ROAD', aceOwnerType: 'CLAS'
+  }], async (name, type) => ({ id: name, name, objectName: name, objectType: type, text: '' }));
+  assert.deepEqual(loaded.sources.map(source => source.objectName), ['ZCL_PRICING_FACTORY', 'ZCL_PRICE_ROAD']);
+});
+
 test('ACE statement boundaries, composite tokens and authoritative call targets drive the slice', () => {
   const { sourcesFromAce, locateTarget } = require('../value-origin-ace');
   // Deliberately no periods: boundaries below come exclusively from ACE.
@@ -194,6 +211,7 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   const page = html(g, 'test');
   assert(page.includes('Static call stack contributing'));
   assert(page.includes('Copyable analysis log'));
+  assert(page.includes('ACE source closure'));
   assert(page.includes('DEPENDENCIES (source → consumer)'));
   assert(!page.includes('<svg'));
   assert(page.includes('openBeside:e.ctrlKey||e.metaKey'));
@@ -201,6 +219,8 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   const demo = analyze(require('./fixtures/value-origin-demo.json'), { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' });
   const stack = html(demo, 'test');
   assert(stack.includes('class="call-frame"'));
+  assert(stack.includes('data-source='));
+  assert(stack.includes('data-line='));
   assert(!stack.includes('No deeper call dependency'));
   assert.equal((stack.match(/ZVERTEX_DEBUG_LAB → ZCL_CALC_FACADE-&gt;RUN/g) || []).length, 1);
   assert(page.includes('class="children"'));

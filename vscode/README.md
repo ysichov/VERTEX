@@ -17,6 +17,8 @@ session. Structure copies, NEW/factory calls, RETURNING and CHANGING lead into
 callee calculations. SELECT statements expose their table and host-variable inputs.
 ACE reference types and class-to-interface relations resolve an interface call to its
 concrete implementation, even where the calculation is held in a CM include.
+F12/double-click does not treat the interface `METHODS` declaration as an invocation target.
+Normal contextual navigation always remains in the active editor group; Ctrl+Click from Value Origin is the explicit beside action.
 Right-click a VERTEX source tab and choose **VERTEX: Open Visual Debug** to reveal
 the right-hand debugger panel for that object without replacing the source editor;
 the stopped SAP line is highlighted in the editor.

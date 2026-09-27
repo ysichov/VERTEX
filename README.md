@@ -10,6 +10,8 @@ breakpoint gutter there: click its leftmost margin to add or remove a point; it
 synchronizes to SAP.
 Interface dispatch is resolved to its concrete class method from ACE's reference and
 class-to-interface facts, including generated CM method includes.
+F12 or double-click on an interface invocation never opens its `METHODS` declaration as a false target.
+Ordinary contextual navigation stays in the current editor group, including from a dirty source tab.
 Right-click that source and choose **VERTEX: Open Visual Debug** to reveal a
 right-hand debugger panel for the current object; the source stays in its normal
 editor and its actual stopped line is highlighted. While the source tab is active, F5/F6/F7/F8 mean

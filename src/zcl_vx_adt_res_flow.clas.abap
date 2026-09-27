@@ -89,6 +89,8 @@ CLASS zcl_vx_adt_res_flow DEFINITION
            tt_origin_statements TYPE STANDARD TABLE OF ty_origin_statement WITH EMPTY KEY,
            BEGIN OF ty_origin_include,
              include TYPE string,
+             class   TYPE string,
+             is_intf TYPE boolean,
              source TYPE string_table,
              statements TYPE tt_origin_statements,
            END OF ty_origin_include,
@@ -480,7 +482,13 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
       ENDLOOP.
     ENDLOOP.
     LOOP AT ls_source-tt_progs INTO DATA(ls_prog) WHERE program = i_program AND scan IS BOUND.
-      DATA(ls_include) = VALUE ty_origin_include( include = ls_prog-include ).
+      DATA(ls_include) = VALUE ty_origin_include( include = ls_prog-include class = ls_prog-class ).
+      IF ls_include-class IS NOT INITIAL.
+        READ TABLE ls_source-tt_class_defs WITH KEY class = ls_include-class INTO DATA(ls_include_class).
+        IF sy-subrc = 0.
+          ls_include-is_intf = ls_include_class-is_intf.
+        ENDIF.
+      ENDIF.
       LOOP AT ls_prog-source_tab INTO DATA(lv_source_line).
         APPEND CONV string( lv_source_line ) TO ls_include-source.
       ENDLOOP.

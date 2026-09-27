@@ -3,6 +3,8 @@
 The VS Code 0.7.8 test build includes ACE-backed Value Origin analysis in its ABAP
 editor. It requires the updated `ZCL_VX_ADT_RES_FLOW` backend (`mode=origin`).
 That backend also supplies ACE's concrete class-to-interface relation for interface dispatch.
+The VS Code navigation layer does not open an interface `METHODS` declaration for an invocation.
+It also keeps ordinary contextual navigation in the same VS Code editor group.
 This analysis UI, including standard VS Code editor navigation and gutter-breakpoint
 synchronization, is not available in Eclipse; no Eclipse release was built for it.
 The VS Code-only right-hand Visual Debug panel, its stopped-line highlight and

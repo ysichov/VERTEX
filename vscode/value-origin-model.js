@@ -112,6 +112,20 @@ function buildIndex(sources) {
       if (!interfaces.has(owner)) interfaces.set(owner, new Set());
       interfaces.get(owner).add(face);
     }
+    // ACE source parsing may expose a referenced class only as its CU
+    // declaration include under the caller's program.  That is enough to
+    // name ZCL_PRICE_ROAD, but not enough to reach its CM implementation.
+    // Request each ACE-discovered class as an object of its own; this is a
+    // scanner fact, not a source-text search.
+    for (const definition of source.aceClasses || []) {
+      const name = U(definition.class);
+      if (name) dependencies.set(name, definition.is_intf ? 'INTF' : 'CLAS');
+    }
+    // A foreign CU may be parsed as part of the caller's ACE snapshot. Its
+    // owner comes from ACE's ts_prog-class field. Load that owner separately
+    // so its CP/CM implementation participates in the backward slice.
+    const externalOwner = U(source.aceOwner);
+    if (externalOwner && externalOwner !== U(source.objectName)) dependencies.set(externalOwner, source.aceOwnerType || 'CLAS');
     const global = { id: source.id + ':GLOBAL', name: 'GLOBAL', owner: '', source, body: [], start: 0, end: source.text.length + 1, line: 1 };
     const aceProcedures = new Map();
     const aceProcedure = unit => {

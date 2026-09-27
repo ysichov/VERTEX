@@ -19,7 +19,7 @@ function sourcesFromAce(payload, object, prefix) {
       return { tokens, line: s.line, offset: start, text: source.slice(start, end) + (source[end] === '.' ? '.' : ''), aceCalls: s.calls || [], aceIndex: s.idx };
     });
     return { id: prefix + '/' + encodeURIComponent(inc.include) + '.abap', name: inc.include.toUpperCase(),
-      objectName: object.object_name.toUpperCase(), objectType: object.object_type, text: source,
+      objectName: object.object_name.toUpperCase(), objectType: object.object_type, aceOwner: String(inc.class || '').toUpperCase(), aceOwnerType: inc.is_intf ? 'INTF' : 'CLAS', text: source,
       aceStatements: statements, aceParams: payload.params || [], aceUnits: (payload.units || []).filter(u => u.include.toUpperCase() === inc.include.toUpperCase()), aceRefs: payload.refs || [], aceClasses: payload.classes || [], aceImplementations: payload.implementations || [] };
   });
 }

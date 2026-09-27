@@ -33,7 +33,11 @@ function html(graph, nonce) {
       const frameKey = `${n.source}:${n.line}:${caller}:${targets}`;
       if (renderedFrames.has(frameKey)) return '';
       renderedFrames.add(frameKey);
-      const caption = `<code>${escape(caller)} → ${escape(targets)}</code>${n.possible || found?.possible ? ' <span class="edge">possible targets</span>' : ''} <button class="location" title="Open source here; Ctrl+Click opens beside" data-node="${n.id}">line ${n.line}</button>`;
+      // The call index owns the caller's statement location. A nested node
+      // can belong to an interface signature, which must never steal this
+      // navigation target.
+      const source = found?.source || n.source, line = found?.line || n.line;
+      const caption = `<code>${escape(caller)} → ${escape(targets)}</code>${n.possible || found?.possible ? ' <span class="edge">possible targets</span>' : ''} <button class="location" title="Open the calling statement; Ctrl+Click opens beside" data-node="${n.id}" data-source="${escape(source)}" data-line="${line}">line ${line}</button>`;
       return nested ? `<details class="call-frame" ${depth === 0 ? 'open' : ''}><summary>${caption}</summary><ul class="call-stack">${nested}</ul></details>` : `<div class="call-frame">${caption}</div>`;
     }).join('');
   }
@@ -42,6 +46,8 @@ function html(graph, nonce) {
   const analysisLog = [
     'VALUE ORIGIN — STATIC ACE ANALYSIS',
     graph.notice,
+    '', 'ACE SOURCE CLOSURE:',
+    ...(graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`),
     '', 'NODES (selected variable backwards):',
     ...graph.nodes.map(logLine),
     '', 'DEPENDENCIES (source → consumer):',
@@ -55,10 +61,11 @@ function html(graph, nonce) {
   </style></head><body><h2>Value origin — ACE backward analysis</h2><p>${escape(graph.notice)}</p><p>${graph.truncated ? 'Graph limit reached; analysis is incomplete.' : ''} Expand dependencies and click a source location to inspect the calculation. Ctrl+Click opens it beside the current editor.</p>
   ${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
   ${(graph.skipped || []).length ? `<p class="edge">System dependencies were kept as analysis boundaries: ${escape(graph.skipped.join(', '))}</p>` : ''}
+  <details><summary>ACE source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact objects whose ACE index was loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No ACE sources were loaded.')}</pre></details>
   <details open><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>
   <h3>Backward dependencies</h3>${dependencyTree}
   <details><summary>Copyable analysis log</summary><p class="edge">Select text and copy it with Ctrl+C.</p><pre class="analysis-log">${escape(analysisLog)}</pre></details>
-  <script nonce="${nonce}">const api=acquireVsCodeApi();document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,openBeside:e.ctrlKey||e.metaKey});});</script></body></html>`;
+  <script nonce="${nonce}">const api=acquireVsCodeApi();document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,source:b.dataset.source,line:Number(b.dataset.line)||0,openBeside:e.ctrlKey||e.metaKey});});</script></body></html>`;
 }
 function register(vscode, context, getSources) {
   context.subscriptions.push(vscode.commands.registerCommand('vertex.valueOrigin', async () => {
@@ -74,15 +81,16 @@ function register(vscode, context, getSources) {
       const graph = analyze(sources, loaded.target);
       graph.warnings = loaded.warnings;
       graph.skipped = loaded.skipped;
+      graph.sourceClosure = sources.map(source => ({ name: source.name, objectName: source.aceOwner || source.objectName, objectType: source.aceOwner ? source.aceOwnerType : source.objectType }));
       graph.nodes.forEach(n => { n.sourceName = sources.find(s => s.id === n.source)?.name || n.source; });
       const panel = vscode.window.createWebviewPanel('vertex.valueOrigin', 'Value origin', vscode.ViewColumn.Beside, { enableScripts: true });
       panel.webview.html = html(graph, require('crypto').randomBytes(18).toString('hex'));
       panel.webview.onDidReceiveMessage(async message => {
         const n = graph.nodes.find(n => message && n.id === message.node);
         if (!n) return;
-        const source = sources.find(s => s.id === n.source); if (!source) return;
-        const opened = await loaded.openSource(source, n);
-        const document = opened.document, line = opened.line || n.line;
+        const source = sources.find(s => s.id === (message.source || n.source)); if (!source) return;
+        const opened = await loaded.openSource(source, { ...n, line: message.line || n.line });
+        const document = opened.document, line = message.line || opened.line || n.line;
         const at = new vscode.Position(Math.min(document.lineCount - 1, line - 1), 0);
         await vscode.window.showTextDocument(document, { viewColumn: message.openBeside ? vscode.ViewColumn.Beside : originViewColumn,
           selection: new vscode.Range(at, at), preview: !message.openBeside });

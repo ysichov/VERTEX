@@ -19,6 +19,9 @@ Interface dispatch exposed a gap in the first index response: an implementation 
 from a generated CM include that does not contain its `INTERFACES` declaration. The backend now
 emits the ACE-scanned class-to-interface relation alongside reference types; the dependency engine
 uses those facts to select the concrete `CLASS->INTERFACE~METHOD` implementation without regex parsing.
+Editor navigation now resolves calls before requesting ADT's definition and refuses an interface
+`METHODS` declaration as a target of an invocation.
+It also uses the active editor group for every ordinary navigation; only Value Origin's explicit Ctrl+Click opens beside.
 
 Value Origin links open the standard VS Code editor (or beside it with Ctrl+Click).
 The test manifest contributes ABAP breakpoint support, so VS Code exposes its native
