@@ -11,12 +11,12 @@ function html(graph, nonce) {
   }).join('');
   const cards = graph.nodes.map(n => {
     const pos = positions.get(n.id);
-    return `<foreignObject x="${pos.x}" y="${pos.y}" width="890" height="90"><div xmlns="http://www.w3.org/1999/xhtml"><button data-node="${n.id}">${escape(n.kind)} · ${escape(n.sourceName || n.source)}:${n.line}<br/><strong>${escape(n.text)}</strong></button></div></foreignObject>`;
+    return `<foreignObject x="${pos.x}" y="${pos.y}" width="890" height="90"><div xmlns="http://www.w3.org/1999/xhtml"><button data-node="${n.id}">${escape(n.kind)} · ${escape(n.location || n.sourceName || n.source)}:${n.line}${n.callee ? `<br/><small>calls ${escape(n.callee)}${n.possible ? ' (possible)' : ''}</small>` : ''}<br/><strong>${escape(n.text)}</strong></button></div></foreignObject>`;
   }).join('');
   const byId = new Map(graph.nodes.map(n => [n.id, n])), expanded = new Set();
   function tree(id, depth = 0, label = '') {
     const n = byId.get(id); if (!n) return '';
-    const caption = `<span class="edge">${escape(label)}</span> <code>${escape(n.text)}</code> <button class="location" data-node="${n.id}">${escape(n.sourceName || n.source)}:${n.line}</button>`;
+    const caption = `<span class="edge">${escape(label)}</span> <code>${escape(n.text)}</code> <button class="location" data-node="${n.id}">${escape(n.location || n.sourceName || n.source)}:${n.line}</button>`;
     if (expanded.has(id)) return `<div class="leaf">↳ ${caption} <small>shared dependency</small></div>`;
     expanded.add(id);
     const children = graph.edges.filter(e => e.to === id);
@@ -35,6 +35,7 @@ function html(graph, nonce) {
   .children{border-left:1px solid var(--vscode-panel-border);margin-left:8px;padding-left:16px}.node,.leaf{margin:8px 0;padding:6px;background:var(--vscode-editorWidget-background)}summary{cursor:pointer;overflow-wrap:anywhere}code{white-space:pre-wrap;font-family:var(--vscode-editor-font-family)}.location{width:auto;max-width:100%;padding:2px 5px;margin-left:6px;color:var(--vscode-textLink-foreground);border-color:var(--vscode-panel-border)}.edge,small{color:var(--vscode-descriptionForeground)}.unknown,.boundary,.warning{border-left:3px solid var(--vscode-editorWarning-foreground);padding-left:10px}li{margin:8px 0}.diagram{overflow:auto}
   </style></head><body><h2>Value origin — ACE backward analysis</h2><p>${escape(graph.notice)}</p><p>${graph.truncated ? 'Graph limit reached; analysis is incomplete.' : ''} Expand dependencies and click a source location to inspect the calculation.</p>
   ${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
+  ${(graph.skipped || []).length ? `<p class="edge">System dependencies were kept as analysis boundaries: ${escape(graph.skipped.join(', '))}</p>` : ''}
   <details open><summary>Call path contributing to the selected value</summary><ul>${callPath || '<li>No resolved calls.</li>'}</ul></details>
   <h3>Backward dependencies</h3>${dependencyTree}
   <details><summary>Full dependency diagram</summary><div class="diagram"><svg width="${width}" height="${graph.nodes.length * row + 30}"><defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><polygon points="0 0, 7 3, 0 6"/></marker></defs>${paths}${cards}</svg></div></details>
@@ -54,6 +55,7 @@ function register(vscode, context, getSources) {
       const sources = loaded.sources, documents = new Map(sources.map(s => [s.id, s.document]));
       const graph = analyze(sources, loaded.target);
       graph.warnings = loaded.warnings;
+      graph.skipped = loaded.skipped;
       graph.nodes.forEach(n => { n.sourceName = sources.find(s => s.id === n.source)?.name || n.source; });
       const panel = vscode.window.createWebviewPanel('vertex.valueOrigin', 'Value origin', vscode.ViewColumn.Beside, { enableScripts: true });
       panel.webview.html = html(graph, require('crypto').randomBytes(18).toString('hex'));

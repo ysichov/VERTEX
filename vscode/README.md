@@ -5,7 +5,8 @@
 Update the ABAP backend class `ZCL_VX_ADT_RES_FLOW` from this repository, then install
 the test VSIX. In an active SAP source editor, put the cursor on a variable such as
 `ls_result-amount` and run **VERTEX: Analyze Variable Value Origin**. The command
-loads ACE indexes and referenced sources from the same SAP system automatically.
+loads ACE indexes and referenced customer sources (`Z*`, `Y*`, `/namespace/`) from
+the same SAP system automatically; standard ABAP objects remain analysis boundaries.
 No other source tabs need to be open. Save and activate edits first.
 
 The contributing call path and expandable dependency tree link to the exact include

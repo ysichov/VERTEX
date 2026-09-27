@@ -75,6 +75,17 @@ test('loading closure reads unopened references once, reports failures and honor
   await assert.rejects(collectSources([{ id: 'r', text: '' }], async () => {}, { cancelled: () => true }), /cancelled/);
 });
 
+test('dependency closure keeps standard ABAP classes outside the customer-code source limit', async () => {
+  const { collectSources } = require('../value-origin');
+  const seen = [];
+  const loaded = await collectSources([{ id: 'r', name: 'ZROOT', text: 'a = NEW cl_abap_classdescr( ). b = NEW znext( ).' }], async name => {
+    seen.push(name); return { id: name, name, text: '' };
+  }, { maxSources: 2 });
+  assert.deepEqual(seen, ['ZNEXT']);
+  assert.deepEqual(loaded.skipped, ['CL_ABAP_CLASSDESCR']);
+  assert.equal(loaded.warnings.length, 0);
+});
+
 test('ACE statement boundaries, composite tokens and authoritative call targets drive the slice', () => {
   const { sourcesFromAce, locateTarget } = require('../value-origin-ace');
   // Deliberately no periods: boundaries below come exclusively from ACE.
@@ -103,12 +114,36 @@ test('ACE parameters and method includes work without an assembled class declara
     { idx: 1, line: 1, tokens: [{ str: 'METHOD', row: 1, col: 0 }, { str: 'RUN', row: 1, col: 7 }] },
     { idx: 2, line: 2, tokens: [{ str: 'RS-AMOUNT', row: 2, col: 0 }, { str: '=', row: 2, col: 10 }, { str: 'IV', row: 2, col: 12 }, { str: '*', row: 2, col: 15 }, { str: '2', row: 2, col: 17 }] },
     { idx: 3, line: 3, tokens: [{ str: 'ENDMETHOD', row: 3, col: 0 }] }
-  ] }], params: [{ class: 'ZCALC', name: 'RUN', param: 'RS', type: 'R' }, { class: 'ZCALC', name: 'RUN', param: 'IV', type: 'I' }], units: [] }, { object_name: 'ZCALC', object_type: 'CLAS' }, 'ace');
+  ] }], params: [{ class: 'ZCALC', event: 'RUN', param: 'RS', type: 'R' }, { class: 'ZCALC', event: 'RUN', param: 'IV', type: 'I' }], units: [] }, { object_name: 'ZCALC', object_type: 'CLAS' }, 'ace');
   sources.unshift({ id: 'report', text: 'price = 7.\nresult = NEW zcalc( )->run( iv = price ).\nWRITE result-amount.' });
   const g = analyze(sources, { source: 'report', line: 3, variable: 'result-amount' });
   assert(g.nodes.some(n => n.text === 'price = 7.'));
   assert(g.nodes.some(n => n.source.includes('CM001') && n.text === 'rs-amount = iv * 2.'));
+  assert(g.nodes.some(n => n.location === 'ZCALC->RUN'));
   assert(sources[1].aceStatements[1].tokens.some(t => t.kind === 'symbol' && t.value === '*'));
+});
+
+test('ACE RETURNING keeps a structure component through rs_result = ls_context', () => {
+  const { sourcesFromAce } = require('../value-origin-ace');
+  const t = (str, row, col) => ({ str, row, col });
+  const facade = sourcesFromAce({ schema_version: 1, includes: [{ include: 'ZCL_CALC_FACADE===============CM002', source: [
+    'METHOD run.', 'ls_context-amount = iv_price * 2.', 'rs_result = ls_context.', 'ENDMETHOD.'
+  ], statements: [
+    { idx: 1, line: 1, tokens: [t('METHOD',1,0),t('RUN',1,7)] },
+    { idx: 2, line: 2, tokens: [t('LS_CONTEXT-AMOUNT',2,0),t('=',2,18),t('IV_PRICE',2,20),t('*',2,29),t('2',2,31)] },
+    { idx: 3, line: 3, tokens: [t('RS_RESULT',3,0),t('=',3,10),t('LS_CONTEXT',3,12)] },
+    { idx: 4, line: 4, tokens: [t('ENDMETHOD',4,0)] }
+  ] }], params: [
+    { class: 'ZCL_CALC_FACADE', event: 'RUN', param: 'RS_RESULT', type: 'R' },
+    { class: 'ZCL_CALC_FACADE', event: 'RUN', param: 'IV_PRICE', type: 'I' }
+  ], units: [{ include: 'ZCL_CALC_FACADE===============CM002', class: 'ZCL_CALC_FACADE', eventtype: 'METHOD', eventname: 'RUN', index: 1, end_idx: 4 }] }, { object_name: 'ZCL_CALC_FACADE', object_type: 'CLAS' }, 'ace');
+  facade.unshift({ id: 'report', objectName: 'ZVERTEX_DEBUG_LAB', text: 'price = 15.\nls_result = NEW zcl_calc_facade( )->run( iv_price = price ).\nWRITE ls_result-amount.' });
+  const g = analyze(facade, { source: 'report', line: 3, variable: 'ls_result-amount' });
+  assert(g.nodes.some(n => n.text === 'rs_result = ls_context.'));
+  assert(g.nodes.some(n => n.text === 'ls_context-amount = iv_price * 2.'));
+  assert(g.nodes.some(n => n.text === 'price = 15.'));
+  assert(g.nodes.some(n => n.location === 'ZCL_CALC_FACADE->RUN'));
+  assert(g.nodes.some(n => n.kind === 'call' && n.text.includes('NEW zcl_calc_facade')));
 });
 
 test('view exposes a call path and navigable dependency tree, with escaped code', () => {

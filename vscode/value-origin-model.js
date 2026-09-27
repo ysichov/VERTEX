@@ -96,9 +96,27 @@ function buildIndex(sources) {
   const procedures = [], signatures = new Map(), interfaces = new Map(), dependencies = new Map();
   for (const source of sources) {
     const global = { id: source.id + ':GLOBAL', name: 'GLOBAL', owner: '', source, body: [], start: 0, end: source.text.length + 1, line: 1 };
+    const aceProcedures = new Map();
+    const aceProcedure = unit => {
+      const owner = U(unit.class || source.objectName), name = U(unit.eventname);
+      const key = owner + '~' + name;
+      if (!aceProcedures.has(key)) {
+        const startStatement = parse(source).statements.find(s => s.aceIndex === unit.index);
+        const endStatement = parse(source).statements.find(s => s.aceIndex > unit.end_idx);
+        const procedure = { id: source.id + ':' + key, name, owner, source, body: [], start: startStatement?.offset || 0,
+          end: endStatement?.offset || source.text.length + 1, line: unit.line || 1 };
+        aceProcedures.set(key, procedure); procedures.push(procedure);
+      }
+      return aceProcedures.get(key);
+    };
     procedures.push(global); let owner = ['CLAS', 'INTF'].includes(source.objectType) ? source.objectName : '', current = global, conditions = [];
     for (const raw of parse(source).statements) {
       const ts = raw.tokens, first = val(ts, 0), s = { ...raw, assignment: assignment(ts), call: callOf(ts) };
+      const aceUnit = source.aceUnits?.find(unit => {
+        const kind = U(unit.eventtype);
+        return ['METHOD', 'FORM', 'FUNCTION'].includes(kind) && raw.aceIndex >= unit.index && (!unit.end_idx || raw.aceIndex <= unit.end_idx);
+      });
+      if (aceUnit) current = aceProcedure(aceUnit);
       if (['CLASS', 'INTERFACE'].includes(first) && ts[1]?.value !== '-') { owner = val(ts, 1); if (!interfaces.has(owner)) interfaces.set(owner, new Set()); }
       if (owner && !interfaces.has(owner)) interfaces.set(owner, new Set());
       if (first === 'INTERFACES') interfaces.get(owner)?.add(val(ts, 1));
@@ -106,9 +124,12 @@ function buildIndex(sources) {
         const start = first === 'METHODS' ? 1 : 3, p = pathAt(ts, start); if (p) signatures.set(owner + '~' + p.name, parameters(ts.slice(p.end)));
       }
       if (['METHOD', 'FORM', 'FUNCTION'].includes(first)) {
-        const p = pathAt(ts, 1), unit = source.aceUnits?.find(u => u.index === s.aceIndex && U(u.eventtype) === first);
-        current = { id: source.id + ':' + (unit?.class || owner) + ':' + p?.name, name: U(unit?.eventname || p?.name), owner: U(unit?.class || owner), source, body: [], start: s.offset, end: source.text.length + 1, line: s.line };
-        procedures.push(current); conditions = []; continue;
+        if (!aceUnit) {
+          const p = pathAt(ts, 1);
+          current = { id: source.id + ':' + owner + ':' + p?.name, name: U(p?.name), owner: U(owner), source, body: [], start: s.offset, end: source.text.length + 1, line: s.line };
+          procedures.push(current);
+        }
+        conditions = []; continue;
       }
       if (['ENDMETHOD', 'ENDFORM', 'ENDFUNCTION'].includes(first)) { current.end = s.offset; current = global; conditions = []; continue; }
       if (['ENDIF', 'ENDCASE', 'ENDLOOP', 'ENDDO', 'ENDWHILE', 'ENDTRY'].includes(first)) conditions.pop();
@@ -130,7 +151,9 @@ function buildIndex(sources) {
       }
     }
     for (const param of source.aceParams || []) {
-      const key = U(param.class) + '~' + U(param.name), params = signatures.get(key) || [];
+      // ACE ts_params names the method in EVENT; NAME is the class/unit name
+      // in other ACE tables and is deliberately only a legacy fallback here.
+      const key = U(param.class || source.objectName) + '~' + U(param.event || param.name), params = signatures.get(key) || [];
       const mode = { I: 'IMPORTING', E: 'EXPORTING', C: 'CHANGING', R: 'RETURNING' }[param.type];
       if (mode && !params.some(p => p.name === U(param.param))) params.push({ name: U(param.param), mode, preferred: param.preferred === 'X' });
       signatures.set(key, params);
@@ -218,12 +241,13 @@ function analyze(sources, target, options = {}) {
   const limit = options.maxNodes || 1200; let truncated = false;
   const node = (kind, label, p, s, extra = {}) => {
     if (nodes.length >= limit) { truncated = true; return null; }
-    const id = 'n' + nodes.length; nodes.push({ id, kind, text: label, source: p.source.id, line: s.line || p.line, ...extra }); return id;
+    const location = p.owner && p.name !== 'GLOBAL' ? p.owner + '->' + p.name : (p.source.objectName || p.source.name || p.source.id);
+    const id = 'n' + nodes.length; nodes.push({ id, kind, text: label, source: p.source.id, location, line: s.line || p.line, ...extra }); return id;
   };
   const edge = (from, to, label) => { if (from && to && !edges.some(e => e.from === from && e.to === to && e.label === label)) edges.push({ from, to, label }); };
   function record(call, p, s, matches) {
     const key = p.id + ':' + s.offset + ':' + call.method;
-    calls.set(key, { source: p.source.id, line: s.line, caller: p.owner ? p.owner + '->' + p.name : p.source.name || p.source.id,
+    calls.set(key, { source: p.source.id, line: s.line, caller: p.owner ? p.owner + '->' + p.name : p.source.objectName || p.source.name || p.source.id,
       method: call.method, callees: matches.map(c => c.owner + '->' + c.name), possible: matches.length !== 1 });
   }
   function conditions(s, p, parent, bound, depth) {
@@ -268,7 +292,7 @@ function analyze(sources, target, options = {}) {
     if (!candidates.length || candidates.every(c => c.s.conditions.length)) {
       const formal = Object.keys(bound).find(k => !k.startsWith('$') && contains(k, name)), b = formal && bound[formal];
       const output = index.signature(p).find(param => param.mode === 'RETURNING' && contains(param.name, name));
-      if (output) edge(node('literal', 'Initial RETURNING value: ' + name, p, { line: p.line }), root, 'unassigned return path');
+      if (output) edge(node('literal', 'No assignment in loaded ACE statements: ' + name, p, { line: p.line }), root, 'assignment not found');
       else if (b && b.mode !== 'IMPORTING') { const n = node('parameter', text(b.actual) + name.slice(formal.length) + ' → ' + name, b.p, b.s); edge(n, root, 'actual → formal'); expression(b.actual, b.p, b.s, n, b.inherited, depth + 1, name.slice(formal.length)); }
       else {
         const loop = p.body.find(s => s.offset < before && val(s.tokens, 0) === 'LOOP' && (() => { const i = find(s.tokens, 'INTO'), a = val(s.tokens, i + 1) === 'DATA' ? i + 3 : i + 1; return contains(pathAt(s.tokens, a)?.name || '?', name); })());
@@ -314,7 +338,7 @@ function analyze(sources, target, options = {}) {
       if (call.receiver && call.receiver !== 'ME' && call.arrow === '->') edge(trace(p, call.receiver, s.offset, bound, depth + 1), parent, 'dispatch receiver');
       for (const callee of matches) {
         const formal = index.signature(callee).find(x => x.mode === 'RETURNING'); if (!formal) continue; returned = true;
-        const n = node('call', callee.owner + '->' + callee.name + (matches.length > 1 ? ' (possible target)' : ''), p, s);
+        const n = node('call', s.text, p, s, { callee: callee.owner + '->' + callee.name, possible: matches.length > 1 });
         edge(n, parent, 'return' + suffix);
         edge(trace(callee, formal.name + suffix, callee.end, argumentsOf(call, p, s, bound, index.signature(callee)), depth + 1), n, 'RETURNING ' + formal.name);
       }
@@ -363,19 +387,24 @@ function variableAt(source, offset) {
   while (end < source.length && part(source[end])) end++;
   return start < end ? U(source.slice(start, end)) : null;
 }
+function customerObject(name) {
+  const text = U(name);
+  return text.startsWith('Z') || text.startsWith('Y') || text.startsWith('/');
+}
 async function collectSources(initial, load, options = {}) {
-  const sources = initial.slice(), warnings = [], visited = new Set(initial.flatMap(s => [U(s.name), U(s.objectName)])), limit = options.maxSources || 80;
+  const sources = initial.slice(), warnings = [], skipped = [], visited = new Set(initial.flatMap(s => [U(s.name), U(s.objectName)])), limit = options.maxSources || 80;
   for (let cursor = 0; cursor < sources.length; cursor++) {
     if (options.cancelled?.()) throw new Error('Value origin cancelled.');
     const idx = buildIndex([sources[cursor]]);
     for (const [name, type] of idx.dependencies) {
       if (visited.has(name) || idx.interfaces.has(name) || name === 'ME' || name === 'OBJECT') continue;
       visited.add(name);
+      if (options.customerOnly !== false && !customerObject(name)) { skipped.push(name); continue; }
       if (sources.length >= limit) { warnings.push('Source limit reached: ' + name); continue; }
       try { const loaded = await load(name, type); for (const source of Array.isArray(loaded) ? loaded : [loaded]) { if (!sources.some(s => s.id === source.id)) sources.push(source); } options.progress?.(name); }
       catch (e) { warnings.push(name + ': ' + e.message); }
     }
   }
-  return { sources, warnings };
+  return { sources, warnings, skipped };
 }
-module.exports = { analyze, buildIndex, collectSources, variableAt };
+module.exports = { analyze, buildIndex, collectSources, variableAt, customerObject };

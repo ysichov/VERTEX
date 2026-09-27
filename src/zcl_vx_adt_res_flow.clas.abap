@@ -457,9 +457,23 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
       LOOP AT ls_prog-source_tab INTO DATA(lv_source_line).
         APPEND CONV string( lv_source_line ) TO ls_include-source.
       ENDLOOP.
-      LOOP AT ls_prog-t_keywords INTO DATA(ls_kw) WHERE sub IS INITIAL.
-        DATA(ls_statement) = VALUE ty_origin_statement( idx = ls_kw-index line = ls_kw-line calls = ls_kw-tt_calls ).
-        LOOP AT ls_prog-scan->tokens INTO DATA(ls_token) FROM ls_kw-from TO ls_kw-to.
+      " t_keywords deliberately contains only the outer navigation statements.
+      " Value origin needs every scanner statement inside METHOD / FORM too:
+      " for example, RS_RESULT = LS_CONTEXT.  The scanner is the ACE parser's
+      " canonical token stream, so no second text parser is introduced here.
+      LOOP AT ls_prog-scan->statements INTO DATA(ls_scan_statement).
+        DATA(lv_idx) = sy-tabix.
+        READ TABLE ls_prog-scan->tokens INDEX ls_scan_statement-from INTO DATA(ls_first_token).
+        CHECK sy-subrc = 0.
+
+        DATA(ls_keyword) = VALUE zif_vx_ace_parse_data=>ts_kword( ).
+        READ TABLE ls_prog-t_keywords WITH KEY index = lv_idx INTO ls_keyword.
+        DATA(ls_statement) = VALUE ty_origin_statement(
+          idx   = lv_idx
+          line  = ls_first_token-row
+          calls = ls_keyword-tt_calls ).
+        LOOP AT ls_prog-scan->tokens INTO DATA(ls_token)
+             FROM ls_scan_statement-from TO ls_scan_statement-to.
           APPEND VALUE #( str = ls_token-str row = ls_token-row col = ls_token-col
                           kind = CONV string( ls_token-type ) ) TO ls_statement-tokens.
         ENDLOOP.
