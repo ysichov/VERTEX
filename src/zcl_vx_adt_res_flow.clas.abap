@@ -95,6 +95,19 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              statements TYPE tt_origin_statements,
            END OF ty_origin_include,
            tt_origin_includes TYPE STANDARD TABLE OF ty_origin_include WITH EMPTY KEY,
+           " A backend Flow step is the unit the BSE log consumes. Its
+           " calculated/composed facts are attached here, not joined later by
+           " JavaScript from two unrelated top-level arrays.
+           BEGIN OF ty_origin_flow_step,
+             include TYPE string,
+             class TYPE string,
+             eventtype TYPE string,
+             eventname TYPE string,
+             line TYPE i,
+             calculated TYPE zif_vx_ace_parse_data=>tt_calculated,
+             composed TYPE zif_vx_ace_parse_data=>tt_composed,
+           END OF ty_origin_flow_step,
+           tt_origin_flow_steps TYPE STANDARD TABLE OF ty_origin_flow_step WITH EMPTY KEY,
            BEGIN OF ty_origin_implementation,
              class     TYPE string,
              interface TYPE string,
@@ -112,6 +125,7 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              " directly; it must not rediscover them in the client.
              calculated TYPE zif_vx_ace_parse_data=>tt_calculated,
              composed TYPE zif_vx_ace_parse_data=>tt_composed,
+             flow_steps TYPE tt_origin_flow_steps,
              classes TYPE zif_vx_ace_parse_data=>tt_class_defs,
              implementations TYPE tt_origin_implementations,
            END OF ty_origin.
@@ -520,6 +534,25 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
                           kind = CONV string( ls_token-type ) ) TO ls_statement-tokens.
         ENDLOOP.
         APPEND ls_statement TO ls_include-statements.
+        DATA(ls_flow_step) = VALUE ty_origin_flow_step(
+          include = ls_prog-include
+          class = ls_prog-class
+          line = ls_first_token-row ).
+        LOOP AT ls_source-tt_calls_line INTO DATA(ls_flow_unit)
+            WHERE include = ls_prog-include AND index <= lv_idx AND end_idx >= lv_idx.
+          ls_flow_step-eventtype = ls_flow_unit-eventtype.
+          ls_flow_step-eventname = ls_flow_unit-eventname.
+          EXIT.
+        ENDLOOP.
+        LOOP AT ls_source-t_calculated INTO DATA(ls_flow_calculated)
+            WHERE include = ls_prog-include AND line = ls_first_token-row.
+          APPEND ls_flow_calculated TO ls_flow_step-calculated.
+        ENDLOOP.
+        LOOP AT ls_source-t_composed INTO DATA(ls_flow_composed)
+            WHERE include = ls_prog-include AND line = ls_first_token-row.
+          APPEND ls_flow_composed TO ls_flow_step-composed.
+        ENDLOOP.
+        APPEND ls_flow_step TO rs_origin-flow_steps.
       ENDLOOP.
       APPEND ls_include TO rs_origin-includes.
     ENDLOOP.

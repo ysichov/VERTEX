@@ -496,7 +496,36 @@ function analyze(sources, target, options = {}) {
   const orderedCalls = [...calls.values()].sort((left, right) =>
     String(left.source).localeCompare(String(right.source)) || left.line - right.line ||
     String(left.caller).localeCompare(String(right.caller)) || String(left.method).localeCompare(String(right.method)));
-  return { root, nodes, edges, calls: orderedCalls, truncated, mode: 'static', notice: 'Backward source dependencies across calls. Possible dispatch targets and branches are alternatives; loop order, database contents and runtime values are not inferred.' };
+  // The point inventory comes from ACE Flow, not from the client parser. The
+  // client only marks whether the already-built backward slice reached it.
+  const flow = sources.flatMap(source => (source.aceFlowSteps || []).flatMap(step => (step.calculated || []).map(change => {
+    const dependencies = (step.composed || []).map(dependency => String(dependency.name));
+    const included = nodes.some(node => node.source === source.id && node.line === change.line && node.kind === 'calculation');
+    const owner = U(change.class || source.aceOwner || source.objectName);
+    const event = U(change.eventname);
+    return { id: source.id + ':' + change.line + ':' + U(change.name), source: source.id, include: source.name, line: change.line,
+      scope: owner && event ? owner + '→' + event : (owner || source.name), changed: String(change.name), dependencies, included,
+      reason: included ? 'Reached by the backward slice of the selected value.' : 'Not reached by the backward slice of the selected value.' };
+  })));
+  // A composed variable belongs to the calculation that produces it, not to
+  // the initial selected value. Link every dependency to that calculation in
+  // the same ACE execution scope; unresolved values remain terminal inputs.
+  for (const point of flow) point.links = point.dependencies.map(name => {
+    const candidates = flow.filter(candidate => candidate.source === point.source && candidate.scope === point.scope && U(candidate.changed) === U(name));
+    candidates.sort((left, right) => Math.abs(left.line - point.line) - Math.abs(right.line - point.line));
+    return { name, pointId: candidates[0]?.id || '' };
+  });
+  for (const point of flow) {
+    const condition = nodes.filter(node => node.kind === 'condition' && node.source === point.source && node.location === point.scope && node.line <= point.line).sort((left, right) => right.line - left.line)[0];
+    point.condition = condition && {
+      text: condition.text,
+      inputs: edges.filter(edge => edge.to === condition.id).map(edge => nodes.find(node => node.id === edge.from)?.text).filter(Boolean)
+    };
+  }
+  const flowLog = nodes.map(node => ({ source: node.source, scope: node.location || node.source, line: node.line, text: node.text,
+    included: true, reason: edges.filter(edge => edge.to === node.id).map(edge => edge.label).join(', ') || 'selected value' }));
+  return { root, nodes, edges, calls: orderedCalls, flow, flowLog, selectedVariable: U(target.variable), selectedSource: target.source,
+    selectedLine: target.line, truncated, mode: 'static', notice: 'Backward source dependencies across calls. Possible dispatch targets and branches are alternatives; loop order, database contents and runtime values are not inferred.' };
 }
 function variableAt(source, offset) {
   // Editor hit testing only. The selected SAP source is parsed by ACE.

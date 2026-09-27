@@ -19,10 +19,14 @@ function sourcesFromAce(payload, object, prefix) {
       return { tokens, line: s.line, offset: start, text: source.slice(start, end) + (source[end] === '.' ? '.' : ''), aceCalls: s.calls || [], aceIndex: s.idx };
     });
     const ownFlow = rows => rows.filter(row => String(row.include || '').toUpperCase() === inc.include.toUpperCase());
+    const aceFlowSteps = ownFlow(payload.flow_steps || []);
+    if (!aceFlowSteps.length) for (const change of ownFlow(payload.calculated || [])) aceFlowSteps.push({ ...change,
+      calculated: [change], composed: ownFlow(payload.composed || []).filter(item => item.line === change.line) });
     return { id: prefix + '/' + encodeURIComponent(inc.include) + '.abap', name: inc.include.toUpperCase(),
       objectName: object.object_name.toUpperCase(), objectType: object.object_type, aceOwner: String(inc.class || '').toUpperCase(), aceOwnerType: inc.is_intf ? 'INTF' : 'CLAS', text: source,
       aceStatements: statements, aceParams: payload.params || [], aceUnits: (payload.units || []).filter(u => u.include.toUpperCase() === inc.include.toUpperCase()), aceRefs: payload.refs || [], aceClasses: payload.classes || [], aceImplementations: payload.implementations || [],
-      aceCalculated: ownFlow(payload.calculated || []), aceComposed: ownFlow(payload.composed || []) };
+      aceCalculated: ownFlow(payload.calculated || []), aceComposed: ownFlow(payload.composed || []),
+      aceFlowSteps };
   });
 }
 function locateTarget(sources, documentText, objectName, line, variable, column = 0) {

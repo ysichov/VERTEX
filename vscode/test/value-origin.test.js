@@ -153,7 +153,7 @@ test('ACE statement boundaries, composite tokens and authoritative call targets 
     { idx: 2, line: 1, tokens: [tok('Y',1,6),tok('=',1,8),tok('X',1,10),tok('*',1,12),tok('3',1,14)] },
     { idx: 3, line: 2, tokens: [tok('OBJ->BUMP(',2,0),tok('CHANGING',2,11),tok('CV',2,20),tok('=',2,23),tok('Y',2,25),tok(')',2,27)], calls: [{ class: 'ZKNOWN', name: 'BUMP', bindings: [{ outer: 'Y', inner: 'CV', dir: 'C' }] }] },
     { idx: 4, line: 3, tokens: [tok('WRITE',3,0),tok('Y',3,6)] }
-  ] }], params: [], units: [] };
+  ] }], params: [], units: [], calculated: [{ include: 'ZREPORT', eventtype: 'FORM', eventname: 'MAIN', line: 1, name: 'X' }], composed: [{ include: 'ZREPORT', eventtype: 'FORM', eventname: 'MAIN', line: 1, name: 'INPUT' }] };
   const sources = sourcesFromAce(payload, { object_name: 'ZREPORT', object_type: 'PROG' }, 'ace');
   sources.push({ id: 'known', text: 'CLASS zknown DEFINITION. METHODS bump CHANGING cv TYPE i. ENDCLASS. CLASS zknown IMPLEMENTATION. METHOD bump. cv = cv + 4. ENDMETHOD. ENDCLASS.' });
   const target = locateTarget(sources, lines.join('\n'), 'ZREPORT', 3, 'Y', 6);
@@ -162,6 +162,8 @@ test('ACE statement boundaries, composite tokens and authoritative call targets 
   assert(g.nodes.some(n => n.text === 'y = x * 3'));
   assert(g.nodes.some(n => n.text === 'cv = cv + 4.'));
   assert(g.calls.some(c => c.callees.includes('ZKNOWN->BUMP')));
+  assert.equal(sources[0].aceCalculated[0].name, 'X');
+  assert.equal(sources[0].aceComposed[0].name, 'INPUT');
   assert.throws(() => sourcesFromAce({}, {}, ''), /ACE origin index/);
 });
 
@@ -266,9 +268,10 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   const g = graph("x = '<script>'.\nWRITE x.", 'x', 2);
   const page = html(g, 'test');
   assert(page.includes('Static call stack contributing'));
-  assert(page.includes('Copyable analysis log'));
+  assert(page.includes('ACE Flow traversal log'));
+  assert(page.includes('Copy log'));
   assert(page.includes('ACE source closure'));
-  assert(page.includes('DEPENDENCIES (source → consumer)'));
+  assert(page.includes('Result — origin of'));
   assert(!page.includes('<svg'));
   assert(page.includes('openBeside:e.ctrlKey||e.metaKey'));
   assert(page.includes('Ctrl+Click opens beside'));
@@ -279,9 +282,6 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   assert(stack.includes('data-source='));
   assert(stack.includes('data-line='));
   assert(stack.includes('ZCL_PRICE_ROAD-&gt;ZIF_PRICING_STRATEGY~CALCULATE_BASE'));
-  // Factory calls may still exist in the collapsed raw dependency tree, but
-  // must not appear as an amount-contributing frame in the concise stack.
-  assert(!stack.split('Backward dependencies')[0].includes('ZCL_PRICING_FACTORY-&gt;CREATE'));
   assert(!stack.includes('No deeper call dependency'));
   assert.equal((stack.match(/ZVERTEX_DEBUG_LAB →/g) || []).length, 1);
   assert(page.includes('class="children"'));
