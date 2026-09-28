@@ -4,9 +4,113 @@ const assert = require('node:assert/strict');
 const { analyze, statements } = require('../value-origin');
 const { tokenize } = require('../value-origin-tokens');
 function graph(text, variable, line) { return analyze([{ id: 'demo', text }], { source: 'demo', variable, line }); }
+test('execution flow enters resolved methods even when flow facts and event names are empty', () => {
+  const sources = require('./fixtures/value-origin-demo.json').map(source => {
+    const aceStatements = statements(source.text).map((s, i) => ({ ...s, tokens: s.tokens.filter(t => t.value !== '.'), offset: s.tokens[0].offset, aceIndex: i + 1, aceCalls: [] }));
+    return { ...source, aceStatements, aceFlowSteps: aceStatements.map(s => ({ statement_index: s.aceIndex, line: s.line, calculated: [], composed: [], eventname: '' })) };
+  });
+  const g = analyze(sources, { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' });
+  const flow = g.executionFlow;
+  const run = flow.findIndex(s => s.type === 'call' && /->\s*run\s*\(/i.test(s.text));
+  assert(run >= 0);
+  assert(flow.slice(run + 1).some(s => s.depth === 1 && /ZCL_CALC_FACADE->RUN/.test(s.scope || s.caller)));
+  assert(flow.some(s => s.depth >= 2 && /ZCL_PRICE_ROAD/.test(s.scope || s.caller)));
+  assert(flow.some(s => /rs_result = ls_context/i.test(s.text)));
+  assert(!flow.some(s => /^ENDIF\./i.test(s.text)));
+  const { html } = require('../value-origin-view');
+  const page = html(g, 'test');
+  const data = JSON.parse(page.match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]);
+  assert.equal(data.nodes.length, flow.length);
+  assert.deepEqual(data.nodes.map(n => n.text), flow.map(s => s.text || s.caller));
+  for (const edge of data.edges) {
+    const parent = data.nodes.find(n => n.id === edge.from);
+    const child = data.nodes.find(n => n.id === edge.to);
+    assert.equal(child.depth, parent.depth + 1);
+  }
+  const runChildren = data.edges.filter(e => e.from === 'flow' + run);
+  assert(runChildren.length > 1, 'RUN operators must be siblings under the call');
+  assert(!page.includes('subgraph '));
+  assert(page.includes('class="execution-node" data-flow='));
+  assert(page.includes('class="execution-leaf" data-flow='));
+  assert(page.includes('window.bseMermaidToggle'));
+  assert(page.includes("host.addEventListener('dblclick'"));
+  assert(page.includes('data-view="tree"'));
+  assert(page.includes('data-view="diagram"'));
+  assert(page.includes('data-mermaid-direction="TD"'));
+  assert(page.includes('data-mermaid-direction="LR"'));
+  assert(page.includes("flowchart '+direction"));
+  assert(page.includes('installUmlLens'));
+  assert(page.includes("lensZoom=2.5"));
+  assert(page.includes("const isNode=element=>{while(element&&element!==svg)"));
+  assert(page.includes("event.shiftKey"));
+  assert(page.includes('id="mermaid-lens"'));
+  assert(page.includes('aria-pressed="false"'));
+  assert(page.includes('id="mermaid-zoom" type="range" min="10" max="100"'));
+  assert(page.includes('bse-expandable'));
+  assert(page.includes('bse-code-link'));
+  assert(page.includes("element.classList.add('bse-navigable')"));
+  assert(page.includes("Click </> or double-click to open source"));
+  assert(page.includes("g.node.bse-navigable rect"));
+  assert(page.includes('dataset.bseNode'));
+  assert(!page.includes('body.data-mode .flow-code,body.data-mode .code-location{display:none}'));
+  assert(page.includes("svg.style.background=background"));
+  assert(page.includes("::-webkit-slider-thumb"));
+  assert(page.includes("host.addEventListener('dblclick'"));
+  assert(page.includes("g.node.bse-expandable rect"));
+  assert(page.includes("#mermaid-graph g.node.bse-expandable rect"));
+  assert(page.includes("stroke-width','3px','important'"));
+  assert(page.includes('selectView'));
+  assert(!page.includes('bse-splitter'));
+  assert(page.includes('flow-call'));
+  assert(page.includes('title="Open source; Ctrl+Click opens beside"'));
+  assert(page.includes('syntax-keyword'));
+  assert(page.includes('syntax-string'));
+  assert(page.includes("host.style.display='inline-block'"));
+  assert(!page.includes("subtree:true,attributeFilter:['class','style']"));
+  assert(page.includes("if(!shown.size)graph.nodes.filter"));
+  assert(page.includes('class="flow-data"'));
+  assert(page.includes('data-mode="data"'));
+  assert(page.includes('data-mode="formula"'));
+  assert(page.includes('id="bse-formula-pane"'));
+  assert(page.includes('Formula derivation — click a branch to expand its input formulas'));
+  assert(!page.includes('formula-depth'));
+  assert(page.includes('selectMode'));
+  assert(data.nodes.some(node => /=/.test(node.dataText)));
+  assert(!data.nodes.some(node => /^DATA\s*\(/i.test(node.dataText)));
+  assert(page.includes('data-calculated'));
+  assert(page.includes('data-composed'));
+  assert(page.includes('data-technical'));
+  assert(page.includes('body.data-mode .data-technical{display:none}'));
+  assert(page.includes('button.data-composed{display:inline!important;width:auto!important'));
+  assert(page.includes('Origin — Backward Symbolic Execution'));
+  assert(page.includes("heading.insertAdjacentElement('afterend'"));
+  assert(page.includes('box-shadow:0 3px 8px -3px var(--accent)'));
+  const formulaStart = page.indexOf('Formula derivation — click a branch'), formulaEnd = page.indexOf('bse-diagram-pane', formulaStart);
+  const formula = page.slice(formulaStart, formulaEnd).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+  assert.match(formula, /cs_context\s*-\s*amount\s*=/i);
+  assert.doesNotMatch(formula, /rs_result\s*=\s*ls_context/i);
+  assert.doesNotMatch(formula, /lo_data_provider\s*=\s*NEW/i);
+});
 test('multiline statements retain source lines and ignore comments/literal periods', () => {
   const s = statements("* comment\nx = 'a.b'. \" comment\ny =\n x * 1.2.");
   assert.equal(s.length, 2); assert.equal(s[1].line, 3); assert.equal(s[1].end, 4);
+});
+test('formula mode renders substitutions as independently collapsible branches', () => {
+  const { html } = require('../value-origin-view');
+  const page = html(graph('b = 2.\nc = 3.\na = b + c.\nWRITE a.', 'a', 4), 'test');
+  assert(page.includes('class="formula-node"'));
+  assert(page.includes('class="formula-children"'));
+  assert(page.includes('data-mode="formula"'));
+  assert(page.includes('b = 2.'));
+  assert(page.includes('c = 3.'));
+});
+test('formula mode bypasses transparent transfers to the calculation that changes the selected value', () => {
+  const { html } = require('../value-origin-view');
+  const page = html(graph('amount = 5.\nresult = amount.\nWRITE result.', 'result', 3), 'test');
+  const start = page.indexOf('Formula derivation — click a branch'), end = page.indexOf('<div id="bse-diagram-pane"', start);
+  const formula = page.slice(start, end).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+  assert.match(formula, /amount\s*=\s*5\s*\./);
+  assert.doesNotMatch(formula, /result\s*=\s*amount\s*\./);
 });
 test('overwrites and self updates use previous definitions', () => {
   const g = graph('x = 2.\nx = x * 3.\ny = x + 1.\nWRITE y.', 'y', 4);
@@ -61,10 +165,11 @@ test('demo traces the returned amount through factories, CHANGING, all modifier 
   assert.equal(modifiers.possible, true);
   for (const name of ['customs', 'discount', 'fuel', 'hazard', 'tax']) assert(g.nodes.some(n => n.kind === 'calculation' && n.source === 'zcl_mod_' + name + '.clas.abap'));
   assert(g.nodes.some(n => n.kind === 'database' && n.text.includes('zlog_pipeline')));
+  assert(g.nodes.some(n => n.kind === 'database' && n.text.includes('zlog_shipment')));
   assert(g.nodes.some(n => n.kind === 'select' && n.text.includes('ORDER BY step_no')));
   assert(g.nodes.some(n => n.kind === 'loop'));
   assert(!g.calls.some(c => ['DECFLOAT34', 'CHAR12'].includes(c.method)));
-  assert(g.nodes.some(n => n.kind === 'literal' && n.text.includes('1200')));
+  assert(!g.nodes.some(n => n.kind === 'literal' && n.text.includes('1200')));
 });
 
 test('field copies preserve suffixes and multiple assignments on one line preserve order', () => {
@@ -284,7 +389,7 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   assert(page.includes('Copy log'));
   assert(page.includes('ACE source closure'));
   assert(page.includes('Execution flow — changes and parameter transfers to'));
-  assert(!page.includes('<svg'));
+  assert(page.includes('&lt;script&gt;'));
   assert(page.includes('openBeside:e.ctrlKey||e.metaKey'));
   assert(page.includes('Ctrl+Click opens beside'));
   const demo = analyze(require('./fixtures/value-origin-demo.json'), { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' });

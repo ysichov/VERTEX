@@ -59,6 +59,11 @@ test("workspace embeds pages without breaking script boundaries or initial state
   new vm.Script(scripts[0][1]);
   assert.match(html,/const initial = {"type":"DEVC","name":"ZAPP","action":"uml"}/);
 });
+test("Tools mounts a selected view before the optional Parts request completes",()=>{
+  const page=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/tools.html"),"utf8");
+  const run=page.slice(page.indexOf("function run(){"),page.indexOf('document.getElementById("tsplit")'));
+  assert.match(run,/mount\(service,state,applyPart\);\s*loadParts\(state,applyPart\);/);
+});
 test("workspace transport permits only VERTEX resources and existing review writes",()=>{
   assert.equal(workspace.allowed("/sap/bc/adt/vertex/package/%2FABC%2FAPP",null),true);
   assert.equal(workspace.allowed("/sap/bc/adt/vertex/review/DEVK123","{}"),true);

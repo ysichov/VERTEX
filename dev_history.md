@@ -1,5 +1,11 @@
 # Development history
 
+Mermaid execution-flow layout uses top-down caller-to-operator edges. Operators in the same invocation are siblings in execution order; enclosing subgraphs and the sequential edge chain were removed.
+
+## 2026-09-28 — Execution-flow hierarchy repair
+
+Retained procedure ids on resolved targets instead of looking up executable sources through editor navigation addresses. The relevance mask now uses reached statement identities without requiring populated per-step calculated facts. Procedure bodies supply method scope when flow event names are empty. The new demo regression exercises nested execution flow and diagram parity; existing tests previously covered BSE nodes only. Mermaid clicks now resolve flow indices to their original source locations.
+
 The persistent unresolved dispatch came from collectSources skipping every name in the index's interfaces map, which also contains CLASS declarations. A foreign CU therefore suppressed loading its CP/CM sources. Replacing the empty CU regression fixture with a real CLASS declaration reproduced the failure. The loader now allows these global object requests; a transport-level calculation-rig regression verifies base-price arithmetic and all five modifier implementations after loading the closure.
 
 ## 2026-09-27 — ACE-backed interprocedural Value Origin

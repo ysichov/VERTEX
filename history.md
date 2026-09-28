@@ -1,5 +1,9 @@
 # Release history
 
+- Value Origin Mermaid: operators are siblings beneath their call node; stack depth is shown without enclosing frames.
+
+- 2026-09-28: Value Origin execution flow retains resolved method identities and statement identities when entering callees. Mermaid source navigation handles execution-flow nodes. A regression checks nested RUN/base-price steps and parity between text and diagram.
+
 - 0.7.8 test build: fixed declaration-only ACE includes suppressing full class loading. The regression covers factory dispatch and five modifier implementations.
 
 ## 2026-09-27 — VS Code 0.7.8 test build (not published)

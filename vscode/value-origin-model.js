@@ -343,14 +343,14 @@ function analyze(sources, target, options = {}) {
   const node = (kind, label, p, s, extra = {}) => {
     if (nodes.length >= limit) { truncated = true; return null; }
     const location = p.owner && p.name !== 'GLOBAL' ? p.owner + '->' + p.name : (p.source.objectName || p.source.name || p.source.id);
-    const id = 'n' + nodes.length; nodes.push({ id, kind, text: label, source: p.source.id, location, line: s.line || p.line, ...extra }); return id;
+    const id = 'n' + nodes.length; nodes.push({ id, kind, text: label, source: p.source.id, location, line: s.line || p.line, statementIndex: s.aceIndex, statementOffset: s.offset, procedureId: p.id, ...extra }); return id;
   };
   const edge = (from, to, label) => { if (from && to && !edges.some(e => e.from === from && e.to === to && e.label === label)) edges.push({ from, to, label }); };
   function record(call, p, s, matches) {
     const key = p.id + ':' + s.offset + ':' + call.method;
-    calls.set(key, { source: p.source.id, line: s.line, text: s.text, caller: p.owner ? p.owner + '->' + p.name : p.source.objectName || p.source.name || p.source.id,
+    calls.set(key, { source: p.source.id, line: s.line, statementIndex: s.aceIndex || s.idx || 0, text: s.text, caller: p.owner ? p.owner + '->' + p.name : p.source.objectName || p.source.name || p.source.id,
       method: call.method, callees: matches.map(c => c.owner + '->' + c.name),
-      targets: matches.map(c => ({ label: c.owner + '->' + c.name, source: (c.navigationSource || c.source).id, line: c.navigationLine || c.line })),
+      targets: matches.map(c => ({ label: c.owner + '->' + c.name, procedureId: c.id, source: (c.navigationSource || c.source).id, line: c.navigationLine || c.line })),
       possible: matches.length !== 1 || matches.possible === true });
   }
   function conditions(s, p, parent, bound, depth) {
@@ -548,42 +548,46 @@ function analyze(sources, target, options = {}) {
   // ACE owns execution order. BSE contributes only the relevance mask; never
   // reconstruct this order from its backward dependency edges.
   const operationKinds = new Set(['calculation', 'select', 'call', 'parameter']);
-  const relevantCalculationAt = (source, line) => nodes.some(node => node.source === source && node.line === line && (node.kind === 'calculation' || node.kind === 'select'));
-  const relevantTransferAt = (source, line) => nodes.some(node => node.source === source && node.line === line && (node.kind === 'call' || node.kind === 'parameter'));
   const stepsBySource = new Map();
   for (const source of sources) {
-    const statements = new Map((source.aceStatements || []).map(statement => [statement.idx, statement]));
+    const statements = new Map((source.aceStatements || []).map(statement => [statement.aceIndex ?? statement.idx, statement]));
     const stepIds = new Set();
     const steps = (source.aceFlowSteps || []).filter(step => {
       const statement = statements.get(step.statement_index || step.idx) || (source.aceStatements || []).find(item => item.line === step.line);
-      const hasOwnCalculation = (step.calculated || []).length > 0 && relevantCalculationAt(source.id, step.line);
-      const hasOwnTransfer = (statement?.aceCalls || []).length > 0 && relevantTransferAt(source.id, step.line);
+      const reached = statement && nodes.some(node => node.source === source.id && operationKinds.has(node.kind) &&
+        (node.statementIndex !== undefined ? node.statementIndex === statement.aceIndex : node.statementOffset === statement.offset));
       const stepId = step.line + ':' + (step.statement_index || step.idx || 0);
-      if (stepIds.has(stepId) || !(hasOwnCalculation || hasOwnTransfer)) return false;
+      if (stepIds.has(stepId) || !reached) return false;
       stepIds.add(stepId);
       return true;
     }).map(step => ({
       source: source.id, line: step.line, statementIndex: step.statement_index || step.idx || 0, text: (statements.get(step.statement_index || step.idx) || (source.aceStatements || []).find(item => item.line === step.line))?.text || (step.calculated || []).map(change => change.name).join(', '),
-      scope: source.aceOwner || source.objectName || source.name
+      calculated: (step.calculated || []).map(change => String(change.name)), composed: (step.composed || []).map(item => String(item.name)),
+      scope: (source.aceOwner || source.objectName || source.name) + '->' + (index.procedures.find(p => p.source.id === source.id && p.body.some(s => s.aceIndex === (step.statement_index || step.idx)))?.name || step.eventname || 'GLOBAL'),
+      event: index.procedures.find(p => p.source.id === source.id && p.body.some(s => s.aceIndex === (step.statement_index || step.idx)))?.name || U(step.eventname)
     })).sort((left, right) => left.line - right.line);
     stepsBySource.set(source.id, steps);
   }
   const callsAt = new Map();
-  for (const call of orderedCalls.filter(call => call.transformsSelectedValue)) {
-    const key = call.source + ':' + call.line;
+  for (const call of orderedCalls) {
+    const key = call.source + ':' + call.line + ':' + call.statementIndex;
     if (!callsAt.has(key)) callsAt.set(key, []);
     callsAt.get(key).push(call);
   }
   const executionFlow = [];
-  const emitFlow = (source, depth = 0, active = new Set()) => {
-    if (active.has(source)) return;
-    const next = new Set(active); next.add(source);
-    for (const step of stepsBySource.get(source) || []) {
-      const relatedCalls = callsAt.get(source + ':' + step.line) || [];
+  const emitFlow = (source, depth = 0, active = new Set(), event = '') => {
+    const activeKey = source + ':' + event;
+    if (active.has(activeKey)) return;
+    const next = new Set(active); next.add(activeKey);
+    for (const step of (stepsBySource.get(source) || []).filter(step => !event || step.event === event)) {
+      const relatedCalls = callsAt.get(source + ':' + step.line + ':' + step.statementIndex) || [];
       if (!relatedCalls.length) executionFlow.push({ type: 'operation', depth, ...step });
       for (const call of relatedCalls) {
         executionFlow.push({ type: 'call', depth, source: call.source, line: call.line, text: call.text, caller: call.caller, targets: call.targets || [] });
-        for (const target of call.targets || []) emitFlow(target.source, depth + 1, next);
+        for (const target of call.targets || []) {
+          const procedure = index.procedures.find(p => p.id === target.procedureId);
+          if (procedure) emitFlow(procedure.source.id, depth + 1, next, procedure.name);
+        }
       }
     }
   };

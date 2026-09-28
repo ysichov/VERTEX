@@ -260,7 +260,18 @@ function run(){
   const service=current.action==="view"?"source":current.action==="vdebug"?"debug":["data","join","pivot"].includes(current.action)?"table":
     ["diff","review"].includes(current.action)?"versions":"metrics";
   const state=current;
-  loadParts(state,()=>{if(current===state)mount(service,state);});
+  // A page must not wait for its optional Parts list.  The first request for
+  // a class or program previously made View source appear to hang because the
+  // versions/metrics request completed before its iframe was even created.
+  // Mount source (or the diagram) immediately and let the independent list
+  // arrive beside it.  A named part is applied when either side becomes ready.
+  if(partsFor!==state.type+":"+state.name)selectedPart=null;
+  const applyPart=()=>{
+    if(current!==state||!selectedPart||!result||typeof result.contentWindow.sdeSelectPart!=="function")return;
+    result.dataset.part=selectedPart.key;result.contentWindow.sdeSelectPart(selectedPart);
+  };
+  mount(service,state,applyPart);
+  loadParts(state,applyPart);
 }
 document.getElementById("tsplit").addEventListener("mousedown",e=>{
   if(e.button!==0)return;e.preventDefault();

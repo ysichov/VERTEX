@@ -1,5 +1,7 @@
 # SAP ABAP VERTEX Tools
 
+Value Origin diagrams attach each method's operations to its call node, in execution order. Sibling operations appear side by side, and nested calls add stack levels without enclosing frames.
+
 Value Origin's 0.7.8 test build now loads implementations even when ACE has already supplied their declarations through foreign CU includes.
 
 ## Testing Value Origin (0.7.8)
