@@ -104,6 +104,7 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              eventtype TYPE string,
              eventname TYPE string,
              line TYPE i,
+             statement_index TYPE i,
              calculated TYPE zif_vx_ace_parse_data=>tt_calculated,
              composed TYPE zif_vx_ace_parse_data=>tt_composed,
            END OF ty_origin_flow_step,
@@ -537,7 +538,8 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
         DATA(ls_flow_step) = VALUE ty_origin_flow_step(
           include = ls_prog-include
           class = ls_prog-class
-          line = ls_first_token-row ).
+          line = ls_first_token-row
+          statement_index = lv_idx ).
         LOOP AT ls_source-tt_calls_line INTO DATA(ls_flow_unit)
             WHERE include = ls_prog-include AND index <= lv_idx AND end_idx >= lv_idx.
           ls_flow_step-eventtype = ls_flow_unit-eventtype.
@@ -546,11 +548,15 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
         ENDLOOP.
         LOOP AT ls_source-t_calculated INTO DATA(ls_flow_calculated)
             WHERE include = ls_prog-include AND line = ls_first_token-row.
-          APPEND ls_flow_calculated TO ls_flow_step-calculated.
+          IF line_exists( ls_statement-tokens[ str = ls_flow_calculated-name ] ).
+            APPEND ls_flow_calculated TO ls_flow_step-calculated.
+          ENDIF.
         ENDLOOP.
         LOOP AT ls_source-t_composed INTO DATA(ls_flow_composed)
             WHERE include = ls_prog-include AND line = ls_first_token-row.
-          APPEND ls_flow_composed TO ls_flow_step-composed.
+          IF line_exists( ls_statement-tokens[ str = ls_flow_composed-name ] ).
+            APPEND ls_flow_composed TO ls_flow_step-composed.
+          ENDIF.
         ENDLOOP.
         APPEND ls_flow_step TO rs_origin-flow_steps.
       ENDLOOP.

@@ -2,6 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { analyze, statements } = require('../value-origin');
+const { tokenize } = require('../value-origin-tokens');
 function graph(text, variable, line) { return analyze([{ id: 'demo', text }], { source: 'demo', variable, line }); }
 test('multiline statements retain source lines and ignore comments/literal periods', () => {
   const s = statements("* comment\nx = 'a.b'. \" comment\ny =\n x * 1.2.");
@@ -23,6 +24,17 @@ test('static returning call binds actual expression to formal', () => {
   const g = graph('CLASS price DEFINITION.\nMETHODS calc IMPORTING iv_price TYPE i RETURNING VALUE(rv) TYPE i.\nENDCLASS.\nCLASS price IMPLEMENTATION.\nMETHOD calc.\nrv = iv_price * 2.\nENDMETHOD.\nENDCLASS.\np_price = 15.\nresult = price=>calc( iv_price = p_price ).\nWRITE result.', 'result', 11);
   assert(g.nodes.some(n => n.kind === 'parameter' && n.text === 'p_price → IV_PRICE'));
   assert(g.nodes.some(n => n.text === 'p_price = 15.'));
+});
+test('frontend unfolds a local DATA COND assignment omitted by ACE', () => {
+  const source = {
+    id: 'screen', objectName: 'ZSCREEN', objectType: 'PROG',
+    text: "DATA(lv_scenario) = COND char12( WHEN p_prec = abap_true THEN 'PRECISION' ELSE 'CLEAN' ).\nresult = factory=>run( iv_scenario = lv_scenario ).\nWRITE result.",
+    // Simulate an older ACE scanner which knows the call but not inline DATA.
+    aceStatements: [{ line: 2, offset: 93, text: 'result = factory=>run( iv_scenario = lv_scenario ).', tokens: tokenize('result = factory=>run( iv_scenario = lv_scenario )'), aceCalls: [] }]
+  };
+  const g = analyze([source], { source: 'screen', line: 3, variable: 'lv_scenario' });
+  assert(g.nodes.some(n => n.text.startsWith('DATA(lv_scenario)')));
+  assert(g.nodes.some(n => n.text.includes('P_PREC')));
 });
 test('SQL includes statement, database and host-variable dependency', () => {
   const g = graph("key = 'CN'.\nSELECT SINGLE rate FROM zrates WHERE country = @key INTO @price.\nWRITE price.", 'price', 3);
@@ -271,7 +283,7 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   assert(page.includes('ACE Flow traversal log'));
   assert(page.includes('Copy log'));
   assert(page.includes('ACE source closure'));
-  assert(page.includes('Result — origin of'));
+  assert(page.includes('Execution flow — changes and parameter transfers to'));
   assert(!page.includes('<svg'));
   assert(page.includes('openBeside:e.ctrlKey||e.metaKey'));
   assert(page.includes('Ctrl+Click opens beside'));

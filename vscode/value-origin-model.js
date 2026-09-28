@@ -92,6 +92,31 @@ function parse(source) {
   cache.set(source.id, parsed); if (cache.size > 128) cache.delete(cache.keys().next().value);
   return parsed;
 }
+function localStatements(source) {
+  const tokens = tokenize(source.text), statements = []; let part = [];
+  for (const token of tokens) {
+    if (token.kind === 'symbol' && token.value === '.') {
+      if (part.length) statements.push({ tokens: part, line: part[0].line, offset: part[0].offset,
+        text: source.text.slice(part[0].offset, token.endOffset) });
+      part = [];
+    } else part.push(token);
+  }
+  return statements;
+}
+function radioGroups(sources) {
+  const groups = new Map();
+  for (const source of sources) for (const statement of localStatements(source)) {
+    const ts = statement.tokens;
+    if (val(ts, 0) !== 'PARAMETERS') continue;
+    const parameter = pathAt(ts, 1), radio = find(ts, 'RADIOBUTTON'), group = find(ts, 'GROUP');
+    if (!parameter || radio < 0 || group < 0 || !word(ts[group + 1])) continue;
+    const name = parameter.name, key = val(ts, group + 1);
+    if (!groups.has(key)) groups.set(key, { group: key, choices: [], default: '' });
+    const entry = groups.get(key); entry.choices.push({ name, label: name });
+    const def = find(ts, 'DEFAULT'); if (def >= 0 && ts[def + 1]) entry.default = name;
+  }
+  return [...groups.values()];
+}
 function buildIndex(sources) {
   const procedures = [], signatures = new Map(), interfaces = new Map(), dependencies = new Map(), referenceTypes = new Map();
   for (const source of sources) {
@@ -242,8 +267,8 @@ function argumentsOf(call, p, s, inherited, signature) {
   for (const b of ace?.bindings || []) {
     if (!b.inner || !b.outer) continue;
     const name = U(b.inner), mode = { I: 'EXPORTING', E: 'IMPORTING', C: 'CHANGING' }[b.dir] || 'EXPORTING';
-    if (result[name]) result[name].mode = mode;
-    else result[name] = { actual: tokenize(b.outer), p, s, inherited, mode };
+    if (result[name]) { result[name].mode = mode; result[name].aceBinding = true; }
+    else result[name] = { actual: tokenize(b.outer), p, s, inherited, mode, aceBinding: true };
   }
   return result;
 }
@@ -323,7 +348,7 @@ function analyze(sources, target, options = {}) {
   const edge = (from, to, label) => { if (from && to && !edges.some(e => e.from === from && e.to === to && e.label === label)) edges.push({ from, to, label }); };
   function record(call, p, s, matches) {
     const key = p.id + ':' + s.offset + ':' + call.method;
-    calls.set(key, { source: p.source.id, line: s.line, caller: p.owner ? p.owner + '->' + p.name : p.source.objectName || p.source.name || p.source.id,
+    calls.set(key, { source: p.source.id, line: s.line, text: s.text, caller: p.owner ? p.owner + '->' + p.name : p.source.objectName || p.source.name || p.source.id,
       method: call.method, callees: matches.map(c => c.owner + '->' + c.name),
       targets: matches.map(c => ({ label: c.owner + '->' + c.name, source: (c.navigationSource || c.source).id, line: c.navigationLine || c.line })),
       possible: matches.length !== 1 || matches.possible === true });
@@ -366,6 +391,20 @@ function analyze(sources, target, options = {}) {
         }
       }
       if (candidate) { if (!s.conditions.length) candidates.length = 0; candidates.push(candidate); }
+    }
+    // Older ACE scanners can omit inline declarations such as
+    // DATA(lv_scenario) = COND ... .  Do not merge them into ACE's procedure
+    // graph (that changes its method boundaries); use one only when ACE has
+    // no definition for the requested local name.
+    if (!candidates.length && p.source.aceStatements) {
+      for (const raw of localStatements(p.source)) {
+        if (raw.offset >= before) continue;
+        const a = assignment(raw.tokens);
+        if (a && contains(a.name, name)) {
+          candidates.push({ s: { ...raw, assignment: a, call: callOf(raw.tokens), conditions: [] }, a,
+            suffix: name.slice(a.name.length) });
+        }
+      }
     }
     if (!candidates.length || candidates.every(c => c.s.conditions.length)) {
       const formal = Object.keys(bound).find(k => !k.startsWith('$') && contains(k, name)), b = formal && bound[formal];
@@ -419,12 +458,22 @@ function analyze(sources, target, options = {}) {
       if (call.receiver && call.receiver !== 'ME' && call.arrow === '->') edge(trace(p, call.receiver, s.offset, bound, depth + 1), parent, 'dispatch receiver');
       for (const callee of matches) {
         const formal = index.signature(callee).find(x => x.mode === 'RETURNING'); if (!formal) continue; returned = true;
+        const bindings = argumentsOf(call, p, s, bound, index.signature(callee));
         // The parent definition already owns the complete ABAP statement.
         // Repeating it here only obscures that this node denotes its returned
         // value, rather than a second execution of the statement.
         const n = node('call', 'RETURNING ' + formal.name + suffix, p, s, { callee: callee.owner + '->' + callee.name, possible: matches.length > 1 || matches.possible === true });
         edge(n, parent, 'return' + suffix);
-        edge(trace(callee, formal.name + suffix, callee.end, argumentsOf(call, p, s, bound, index.signature(callee)), depth + 1), n, 'RETURNING ' + formal.name);
+        edge(trace(callee, formal.name + suffix, callee.end, bindings, depth + 1), n, 'RETURNING ' + formal.name);
+        // A returned value also depends on the values supplied to this call.
+        // Keep the actual argument visible even when the callee reaches it
+        // only through another dispatch or an ACE analysis boundary.
+        for (const [name, binding] of Object.entries(bindings)) {
+          if (name.startsWith('$') || !binding.aceBinding || !['EXPORTING', 'CHANGING'].includes(binding.mode)) continue;
+          const argument = node('parameter', name + ' = ' + text(binding.actual), p, s);
+          edge(argument, n, 'argument ' + name);
+          expression(binding.actual, p, s, argument, bound, depth + 1);
+        }
       }
       if (!returned) edge(node('unknown', 'Unresolved call: ' + text(ts), p, s), parent, 'call boundary');
       return;
@@ -496,6 +545,49 @@ function analyze(sources, target, options = {}) {
   const orderedCalls = [...calls.values()].sort((left, right) =>
     String(left.source).localeCompare(String(right.source)) || left.line - right.line ||
     String(left.caller).localeCompare(String(right.caller)) || String(left.method).localeCompare(String(right.method)));
+  // ACE owns execution order. BSE contributes only the relevance mask; never
+  // reconstruct this order from its backward dependency edges.
+  const operationKinds = new Set(['calculation', 'select', 'call', 'parameter']);
+  const relevantCalculationAt = (source, line) => nodes.some(node => node.source === source && node.line === line && (node.kind === 'calculation' || node.kind === 'select'));
+  const relevantTransferAt = (source, line) => nodes.some(node => node.source === source && node.line === line && (node.kind === 'call' || node.kind === 'parameter'));
+  const stepsBySource = new Map();
+  for (const source of sources) {
+    const statements = new Map((source.aceStatements || []).map(statement => [statement.idx, statement]));
+    const stepIds = new Set();
+    const steps = (source.aceFlowSteps || []).filter(step => {
+      const statement = statements.get(step.statement_index || step.idx) || (source.aceStatements || []).find(item => item.line === step.line);
+      const hasOwnCalculation = (step.calculated || []).length > 0 && relevantCalculationAt(source.id, step.line);
+      const hasOwnTransfer = (statement?.aceCalls || []).length > 0 && relevantTransferAt(source.id, step.line);
+      const stepId = step.line + ':' + (step.statement_index || step.idx || 0);
+      if (stepIds.has(stepId) || !(hasOwnCalculation || hasOwnTransfer)) return false;
+      stepIds.add(stepId);
+      return true;
+    }).map(step => ({
+      source: source.id, line: step.line, statementIndex: step.statement_index || step.idx || 0, text: (statements.get(step.statement_index || step.idx) || (source.aceStatements || []).find(item => item.line === step.line))?.text || (step.calculated || []).map(change => change.name).join(', '),
+      scope: source.aceOwner || source.objectName || source.name
+    })).sort((left, right) => left.line - right.line);
+    stepsBySource.set(source.id, steps);
+  }
+  const callsAt = new Map();
+  for (const call of orderedCalls.filter(call => call.transformsSelectedValue)) {
+    const key = call.source + ':' + call.line;
+    if (!callsAt.has(key)) callsAt.set(key, []);
+    callsAt.get(key).push(call);
+  }
+  const executionFlow = [];
+  const emitFlow = (source, depth = 0, active = new Set()) => {
+    if (active.has(source)) return;
+    const next = new Set(active); next.add(source);
+    for (const step of stepsBySource.get(source) || []) {
+      const relatedCalls = callsAt.get(source + ':' + step.line) || [];
+      if (!relatedCalls.length) executionFlow.push({ type: 'operation', depth, ...step });
+      for (const call of relatedCalls) {
+        executionFlow.push({ type: 'call', depth, source: call.source, line: call.line, text: call.text, caller: call.caller, targets: call.targets || [] });
+        for (const target of call.targets || []) emitFlow(target.source, depth + 1, next);
+      }
+    }
+  };
+  emitFlow(target.source);
   // The point inventory comes from ACE Flow, not from the client parser. The
   // client only marks whether the already-built backward slice reached it.
   const flow = sources.flatMap(source => (source.aceFlowSteps || []).flatMap(step => (step.calculated || []).map(change => {
@@ -524,7 +616,7 @@ function analyze(sources, target, options = {}) {
   }
   const flowLog = nodes.map(node => ({ source: node.source, scope: node.location || node.source, line: node.line, text: node.text,
     included: true, reason: edges.filter(edge => edge.to === node.id).map(edge => edge.label).join(', ') || 'selected value' }));
-  return { root, nodes, edges, calls: orderedCalls, flow, flowLog, selectedVariable: U(target.variable), selectedSource: target.source,
+  return { root, nodes, edges, calls: orderedCalls, flow, executionFlow, flowLog, scenarios: radioGroups(sources), selectedVariable: U(target.variable), selectedSource: target.source,
     selectedLine: target.line, truncated, mode: 'static', notice: 'Backward source dependencies across calls. Possible dispatch targets and branches are alternatives; loop order, database contents and runtime values are not inferred.' };
 }
 function variableAt(source, offset) {

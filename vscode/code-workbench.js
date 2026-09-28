@@ -89,10 +89,15 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       // vertex-sap document so editor features such as debugger breakpoints
       // remain available instead of opening a read-only vertex-source tab.
       if (source.document) return { document: source.document, line: node.line };
-      // ACE include names (for example ================CM002) are analysis
-      // locations, not dependable editable ADT documents. Open the class's
-      // main source, then map the exact ACE statement into it.
-      const destination = (await sourceDocument(repo, {
+      // Class-method links must use the same destination as Ctrl+Click in
+      // ABAP code.  Mapping an ACE snapshot line into a separate include can
+      // point at line 1 even though the method itself is available.
+      if (String(node.location || '').includes('->')) {
+        const [owner, method] = String(node.location).split('->');
+        return openClassMethod(source.repo || repo, owner || source.objectName, method, node.line);
+      }
+      let destination;
+      destination = (await sourceDocument(repo, {
         object_type: source.objectType, object_name: source.objectName
       })).document;
       return { document: destination, line: sourceLineIn(source.text, node.line, destination.getText()) };
@@ -871,6 +876,15 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       column = Math.max(0, text.toUpperCase().indexOf(call.method)); length = call.method.length;
     }
     return { document: target.document, target: location(target.document.uri, line, column, length) };
+  }
+  async function openClassMethod(repo, className, method, methodLineNumber = 1) {
+    const target = await sourceDocument(repo, { object_type: "CLAS", object_name: className });
+    const implementation = methodLine(target.document.getText(), method, true);
+    if (implementation < 0) { throw new Error("VERTEX: method implementation is unavailable: " + className + "->" + method); }
+    // ACE CM line 1 is METHOD <name>. Convert its local line to the assembled
+    // class document rather than abandoning the click at an include boundary.
+    const line = Math.min(target.document.lineCount - 1, implementation + Math.max(0, methodLineNumber - 1));
+    return { document: target.document, line: line + 1 };
   }
   async function externalMethodInformation(document, at) {
     const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
