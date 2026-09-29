@@ -155,6 +155,20 @@
   tbody tr.pick { cursor: pointer; }
   /* The flow is about the whole object, so it gets the whole window. */
   body.calls #list { display: none; }
+  /* An opened Calls block renders its Logic in this same scrollable canvas.
+     It is not a popup: it stays readable and cannot cover neighbouring calls. */
+  #diagram .hybrid-logic { margin: 18px 0 6px; min-width: max-content;
+                            border: 1px solid var(--field-border);
+                            border-left: 4px solid var(--vscode-focusBorder, #0a66c2);
+                            background: var(--surface); }
+  #diagram .hybrid-logic-head { display: flex; align-items: center; gap: 8px;
+                                 padding: 6px 8px; font-weight: 600; }
+  #diagram .hybrid-logic-head button { margin-left: auto; }
+  #diagram .hybrid-logic svg { display: block; margin: 0 8px 8px; }
+  /* Calls itself is the hybrid view: every source-backed block is clickable. */
+  body.calls #diagram g.node { cursor: pointer; }
+  body.calls #diagram g.node.hybrid-open rect { stroke: var(--vscode-focusBorder, #0a66c2) !important;
+                                                 stroke-width: 3px !important; }
   tbody tr.sel, tbody tr.sel:nth-child(even) { background: var(--th-sorted-bg); }
   /* UML uses the same compact outline vocabulary as Source and Diff.  Metrics
      still owns the right pane; this is only the navigator for choosing it. */
@@ -262,6 +276,7 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
   <button id="load">Load</button>
   <select id="mode" title="What this window draws">
     <option value="calls" title="Which program, class or method calls which - ACE's Calls Flow">Calls diagram</option>
+    <option value="hybrid" title="Calls diagram whose method blocks open their own Logic diagram">Calls + Logic</option>
     <option value="scheme" title="The flowchart of one method: its branches and statements - ACE's Flow Scheme">Logic diagram</option>
     <option value="metrics">Metrics</option>
     <option value="class">UML diagram</option>
@@ -538,7 +553,7 @@ function answered(kind, raw) {
     // A failure while a diagram is being fetched belongs in the diagram pane:
     // the unit list beside it is still good, and wiping it would cost the
     // reader the place they had got to.
-    if (kind === "flow" || kind === "asset") { failed(said.replace("NOBACKEND:", "")); }
+    if (kind === "flow" || kind === "hybrid" || kind === "asset") { failed(said.replace("NOBACKEND:", "")); }
     else if (said.indexOf("NOBACKEND:") === 0) { notFound(said.substring(10)); }
     else { message(said); }
     status("");
@@ -551,6 +566,15 @@ function answered(kind, raw) {
     data = JSON.parse(raw);
   } catch (e) {
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
+    return;
+  }
+  // The outer Calls graph stays on screen while a method's scheme is read.
+  // The response is a `scheme`, while the displayed mode remains `hybrid`.
+  if (kind === "hybrid") {
+    if (!hybridPending || mode !== "hybrid" || data.mode !== "scheme") { return; }
+    hybridLogic = { node: hybridPending, diagram: data };
+    hybridPending = null;
+    draw();
     return;
   }
   /* Which answer this is, read from the answer itself rather than from what
@@ -631,7 +655,7 @@ function drawClass(raw) {
    the unit list with it: the reader is looking at that list, and a message in
    its place costs them the place they had got to. */
 function lost(kind) {
-  if (kind === "flow" || kind === "asset") {
+  if (kind === "flow" || kind === "hybrid" || kind === "asset") {
     failed("No response from the host.");
   } else if (units.length > 0) {
     status("no response from the host");
@@ -949,6 +973,11 @@ var fittedFor = null;    // the pane size the current fit was worked out for
 var lastMermaid = null;  // the text ACE sent, kept so it can be redrawn
 var lastCaption = "";
 var pendingClass = null;
+/* Calls is cheap. The nested scheme is only requested for a block the reader
+   has opened, and is kept until the Calls graph changes. */
+var hybridNodes = [];
+var hybridLogic = null;
+var hybridPending = null;
 
 function flowMode() { return mode !== "metrics"; }
 
@@ -983,7 +1012,8 @@ function setMode(next) {
   mode = next;
   document.getElementById("mode").value = next;
   document.body.classList.toggle("flow", flowMode());
-  document.body.classList.toggle("calls", next === "calls");
+  document.body.classList.toggle("calls", next === "calls" || next === "hybrid");
+  document.body.classList.toggle("hybrid", next === "hybrid");
   document.getElementById("list").hidden = next === "class";
   layoutList();
   // The totals are the whole object's numbers: they belong to the table, not
@@ -994,6 +1024,9 @@ function setMode(next) {
   shownUnit = null;
   expanded = [];
   lastMermaid = null;
+  hybridNodes = [];
+  hybridLogic = null;
+  hybridPending = null;
   refit = true;
 
   var needsSections = next === "scheme" && classMetrics() && units.some(function (unit) { return !umlVisibility(unit); });
@@ -1053,7 +1086,7 @@ var chosenKey = "";
 function sdeSelectPart(chosen) {
   if (!chosen) { return; }
   chosenKey = chosen.key;
-  if (mode === "calls") {
+  if (mode === "calls" || mode === "hybrid") {
     // Only an event or a form can start the walk, as in ACE.
     if (chosen.type === "EVENT" || chosen.type === "FORM") {
       setCallStart({ name: chosen.name, type: chosen.type });
@@ -1117,7 +1150,7 @@ function requestDiagram() {
     return;
   }
   waiting = "flow";
-  if (mode === "calls") {
+  if (mode === "calls" || mode === "hybrid") {
     // The flow is the whole object; there is no unit to name.
     sdeFlow(loadedObject, loadedType, "calls", "", "", "", String(depth), "", allBlocks ? "X" : "",
             callStart ? callStart.name : "", callStart ? callStart.type : "");
@@ -1362,7 +1395,7 @@ function startMermaid(source) {
     var definition = pendingClass;
     pendingClass = null;
     drawClass(definition);
-  } else if (mode === "calls" || shownUnit) { requestDiagram(); }
+  } else if (mode === "calls" || mode === "hybrid" || shownUnit) { requestDiagram(); }
 }
 
 function renderDiagram(data) {
@@ -1379,6 +1412,7 @@ function renderDiagram(data) {
     return;
   }
   lastMermaid = data.mermaid;
+  hybridNodes = data.mode === "calls" ? (data.node_map || []) : [];
   lastCaption = data.mode === "calls"
     ? data.steps + (data.steps === 1 ? " step" : " steps")
     : data.unit_type + ", lines " + data.line_from + " to " + data.line_to;
@@ -1428,6 +1462,8 @@ function draw() {
     }
     // Tinted first, so the lens copies the picture as it is shown.
     if (!isClass) { tintDecisions(pane.querySelector("svg")); }
+    if ((mode === "calls" || mode === "hybrid") && hybridLogic) { markHybridNode(pane.querySelector("svg"), hybridLogic.node); }
+    if ((mode === "calls" || mode === "hybrid") && hybridLogic) { renderHybridLogic(pane, hybridLogic); }
     // UML shows the lens over its boxes only; a flowchart's blocks are thin
     // and full of gaps, so there it follows the pointer over the whole picture.
     installUmlLens(pane, pane.querySelector("svg"), !isClass);
@@ -1435,6 +1471,45 @@ function draw() {
   }, function (e) {
     failed("mermaid could not draw this diagram." + String.fromCharCode(10)
            + (e && e.message ? e.message : String(e)));
+  });
+}
+
+function markHybridNode(svg, opened) {
+  if (!svg || !opened) { return; }
+  Array.prototype.forEach.call(svg.querySelectorAll("g.node"), function (node) {
+    var match = String(node.id || "").match(/flowchart-(\d+)-/);
+    if (match && String(match[1]) === String(opened.node_id)) { node.classList.add("hybrid-open"); }
+  });
+}
+
+/* Calls and Logic are separate Mermaid drawings: joining their source would
+   duplicate generated ids and make layout/clicks unreliable. The card still
+   lives inside the Calls canvas, so opening a method expands the diagram
+   instead of navigating away from it. */
+function renderHybridLogic(pane, opened) {
+  var card = document.createElement("section");
+  card.className = "hybrid-logic";
+  var head = document.createElement("div");
+  head.className = "hybrid-logic-head";
+  head.textContent = "Logic inside " + (opened.node.class ? opened.node.class + "->" : "") + opened.node.name;
+  var close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "Close";
+  close.title = "Close this method's Logic diagram";
+  close.addEventListener("click", function () { hybridLogic = null; draw(); });
+  head.appendChild(close);
+  card.appendChild(head);
+  var host = document.createElement("div");
+  card.appendChild(host);
+  pane.appendChild(card);
+  var logic = turned(opened.diagram.mermaid, direction);
+  if (darkPage()) { logic = darkened(logic); }
+  diagramSeq = diagramSeq + 1;
+  mermaid.render("vertexhybrid" + diagramSeq, logic).then(function (out) {
+    host.innerHTML = out.svg;
+    tintDecisions(host.querySelector("svg"));
+  }, function (error) {
+    host.textContent = "Could not draw Logic: " + (error && error.message ? error.message : String(error));
   });
 }
 
@@ -1521,6 +1596,24 @@ function naturalSize(svg) {
    acego_, selects code in ACE's source window - there is none here, so it
    does nothing, but it must still not navigate this page anywhere. */
 function onDiagramClick(e) {
+  if (mode === "calls" || mode === "hybrid") {
+    var element = e.target;
+    while (element && element !== e.currentTarget) {
+      if (element.matches && element.matches("g.node")) {
+        var match = String(element.id || "").match(/flowchart-(\d+)-/);
+        var mapped = match && hybridNodes.filter(function (item) {
+          return String(item.node_id) === match[1];
+        })[0];
+        if (mapped && mapped.include && mapped.name) { requestHybridLogic(mapped); }
+        else if (!hybridNodes.length) {
+          status("This SAP backend does not yet return the Calls node map. Activate ZCL_VX_ADT_RES_FLOW, then reload this diagram.");
+        }
+        return;
+      }
+      element = element.parentNode;
+    }
+    return;
+  }
   if (!shownUnit) { return; }
   var node = e.target;
   var href = "";
@@ -1538,6 +1631,21 @@ function onDiagramClick(e) {
   var already = expanded.indexOf(line);
   if (already < 0) { expanded.push(line); } else { expanded.splice(already, 1); }
   requestDiagram();
+}
+
+function requestHybridLogic(node) {
+  if (hybridLogic && String(hybridLogic.node.node_id) === String(node.node_id)) {
+    hybridLogic = null;
+    draw();
+    return;
+  }
+  hybridPending = node;
+  status("reading Logic inside " + (node.class ? node.class + "->" : "") + node.name + " ...");
+  waiting = "hybrid";
+  // A Calls graph can cross class pools. Its map tells us which class owns
+  // the block, so a nested method is never looked up in the entry program.
+  sdeFlow(node.class || loadedObject, node.class ? "CLAS" : loadedType,
+          "scheme", node.include, node.name, "", "");
 }
 
 
@@ -1594,9 +1702,9 @@ function applyAbout() {
   if (!usable("flow")) {
     var box = document.getElementById("mode");
     for (var i = box.options.length - 1; i >= 0; i--) {
-      if (box.options[i].value === "calls" || box.options[i].value === "scheme") { box.remove(i); }
+      if (box.options[i].value === "calls" || box.options[i].value === "hybrid" || box.options[i].value === "scheme") { box.remove(i); }
     }
-    if (mode === "calls" || mode === "scheme") { setMode("metrics"); }
+    if (mode === "calls" || mode === "hybrid" || mode === "scheme") { setMode("metrics"); }
   }
   sayMissing();
 }
@@ -1822,7 +1930,7 @@ document.getElementById("depth").addEventListener("change", function () {
   depth = asked;
   // A different depth is a different picture, so it is fitted again.
   refit = true;
-  if (mode === "calls" && loadedObject) { requestDiagram(); }
+  if ((mode === "calls" || mode === "hybrid") && loadedObject) { requestDiagram(); }
 });
 
 document.getElementById("diagram").addEventListener("click", onDiagramClick);
