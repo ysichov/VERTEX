@@ -71,7 +71,7 @@
          background: var(--bg); display: flex; flex-direction: column; }
 
   button { padding: 2px 8px; font: inherit; cursor: pointer; color: var(--fg);
-           background: var(--field-bg); border: 1px solid var(--field-border); }
+           background: var(--field-bg); border: 1px solid var(--field-border); border-radius: 4px; }
   button:hover { background: var(--hover); }
 
   .bar { padding: 6px 10px; background: var(--surface);
@@ -80,7 +80,7 @@
   .bar .status { margin-left: auto; color: var(--muted); }
   .bar select, .bar input { font: inherit; padding: 2px 4px; color: var(--fg);
                             background: var(--field-bg);
-                            border: 1px solid var(--field-border); }
+                            border: 1px solid var(--field-border); border-radius: 4px; }
   .bar input { width: 240px; text-transform: uppercase; }
   .bar .shown { color: var(--muted); }
 
@@ -985,6 +985,7 @@ var natural = null;      // the size mermaid drew, before any scaling
    scale somebody set by hand is theirs and is left alone. */
 var fitted = true;
 var fittedFor = null;    // the pane size the current fit was worked out for
+var fitQueued = false;
 var lastMermaid = null;  // the text ACE sent, kept so it can be redrawn
 var lastCaption = "";
 var pendingClass = null;
@@ -992,7 +993,6 @@ var pendingClass = null;
    has opened, and is kept until the Calls graph changes. */
 var hybridLogics = [];
 var hybridPending = null;
-var hybridFitQueued = false;
 
 function flowMode() { return mode !== "metrics"; }
 
@@ -1207,19 +1207,44 @@ function applyZoom() {
 
 function fitDiagram() {
   var pane = document.getElementById("diagram");
-  if (!natural || !natural.w || !natural.h) { return; }
+  if (!natural || !natural.w || !natural.h || fitQueued) { return; }
+  fitQueued = true;
+  /* Measure at 1:1. Measuring a drawing after it has already been scaled
+     makes CSS margins and the relative Logic-card offsets part of the next
+     natural size, so successive Fit clicks used to shrink the result. */
+  setZoom(1);
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
   // Room inside the padding, and never blown up past full size: a short
   // method stretched over a wide pane reads worse, not better.
   var room = 20;
-  var scale = Math.min((pane.clientWidth - room) / natural.w,
-                       (pane.clientHeight - room) / natural.h, 1);
+  /* A Logic card can start below and to the right of its Calls node. Fit the
+     union of the drawings as they are actually placed. Do not use scrollWidth:
+     the absolute connector SVG deliberately has canvas width and feeds that
+     value back into itself after every redraw. */
+  var paneBox = pane.getBoundingClientRect();
+  var left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
   Array.prototype.forEach.call(pane.querySelectorAll("svg"), function (svg) {
-    var size = naturalSize(svg);
-    if (size && size.w) { scale = Math.min(scale, (pane.clientWidth - room) / size.w, 1); }
+    if (svg.classList.contains("hybrid-connector")) { return; }
+    var box = svg.getBoundingClientRect();
+    if (!box.width || !box.height) { return; }
+    left = Math.min(left, box.left - paneBox.left + pane.scrollLeft);
+    top = Math.min(top, box.top - paneBox.top + pane.scrollTop);
+    right = Math.max(right, box.right - paneBox.left + pane.scrollLeft);
+    bottom = Math.max(bottom, box.bottom - paneBox.top + pane.scrollTop);
   });
+  var contentWidth = isFinite(right) ? Math.max(natural.w, right - left) : natural.w;
+  var contentHeight = isFinite(bottom) ? Math.max(natural.h, bottom - top) : natural.h;
+  var scale = Math.min((pane.clientWidth - room) / contentWidth,
+                       (pane.clientHeight - room) / contentHeight, 1);
   setZoom(scale);
   fitted = true;
   fittedFor = { w: pane.clientWidth, h: pane.clientHeight };
+      fitQueued = false;
+      });
+    });
+  });
 }
 
 /* The pane changes size when the editor's windows are rearranged, and a
@@ -1450,7 +1475,7 @@ function renderDiagram(data) {
 
 /* Everything that puts a picture on the screen goes through here: a unit just
    asked for, a stretch just opened, a chart just turned. */
-function draw() {
+function draw(preserveViewport) {
   var isClass = /^classDiagram\b/.test(lastMermaid);
   var text = isClass ? lastMermaid.replace(/^direction .+$/m, "direction " + direction) : turned(lastMermaid, direction);
   if (!isClass && text !== null && darkPage()) { text = darkened(text); }
@@ -1461,6 +1486,7 @@ function draw() {
     return;
   }
   var pane = document.getElementById("diagram");
+  var priorViewport = preserveViewport ? { left: pane.scrollLeft, top: pane.scrollTop } : null;
   // The sheet is the editor's own ground, so a theme nobody anticipated still
   // looks of a piece. Set here rather than in the stylesheet because only the
   // host knows the colour, and it can change under an open window.
@@ -1480,8 +1506,13 @@ function draw() {
   diagramSeq = diagramSeq + 1;
   mermaid.render("vertexflow" + diagramSeq, text).then(function (out) {
     pane.innerHTML = out.svg;
-    pane.scrollTop = 0;
-    pane.scrollLeft = 0;
+    if (priorViewport) {
+      pane.scrollTop = priorViewport.top;
+      pane.scrollLeft = priorViewport.left;
+    } else {
+      pane.scrollTop = 0;
+      pane.scrollLeft = 0;
+    }
     natural = naturalSize(pane.querySelector("svg"));
     if (refit) {
       refit = false;
@@ -1533,6 +1564,8 @@ function renderHybridLogic(pane, opened) {
   var host = document.createElement("div");
   card.appendChild(host);
   pane.appendChild(card);
+  /* Calls and every opened Logic block form one dynamic diagram, so the
+     direction control applies to both rather than silently mixing layouts. */
   var logic = turned(removeEmbeddedLogicTitle(opened.diagram.mermaid, opened.node), direction);
   if (darkPage()) { logic = darkened(logic); }
   diagramSeq = diagramSeq + 1;
@@ -1540,65 +1573,67 @@ function renderHybridLogic(pane, opened) {
     host.innerHTML = out.svg;
     tintDecisions(host.querySelector("svg"));
     applyZoom();
-    placeHybridLogic(pane, card, host.querySelector("svg"), opened.node, true);
+    placeHybridLogic(pane, card, host.querySelector("svg"), opened.node);
   }, function (error) {
     host.textContent = "Could not draw Logic: " + (error && error.message ? error.message : String(error));
-  });
-}
-
-/* Opening a card changes the picture's width. Preserve a reader's manual
-   zoom, but refresh the automatic Fit that was chosen for the unexpanded
-   Calls picture. Coalescing the requests matters when several cards finish
-   rendering in the same browser frame. */
-function scheduleHybridFit() {
-  if (!fitted || hybridFitQueued) { return; }
-  hybridFitQueued = true;
-  requestAnimationFrame(function () {
-    requestAnimationFrame(function () {
-      hybridFitQueued = false;
-      if (fitted) { fitDiagram(); }
-    });
   });
 }
 
 /* Keep the caller visible and make the inner flow its continuation. The
    independent Mermaid drawings cannot share a layout engine, so the small
    placement step aligns their entry/exit points and adds the missing edge. */
-function placeHybridLogic(pane, card, logicSvg, caller, refitAfterPlacement) {
+function placeHybridLogic(pane, card, logicSvg, caller) {
   if (!logicSvg || !caller) { return; }
   var outer = Array.prototype.filter.call(pane.querySelectorAll("svg g.node"), function (node) {
     return !logicSvg.contains(node) && String(node.textContent || "").replace(/\s+/g, "") === caller.key;
   })[0];
   var first = logicSvg.querySelector("g.node");
   if (!outer || !first) { return; }
-  /* Each expansion starts at its caller's left edge. Centering a very wide
-     operation under a narrow method would push it off the canvas; the arrow
-     still lands vertically on the operation's upper edge. */
+  var leftRight = direction === "LR";
+  /* A hybrid is one diagram with its Calls parent. In LR it continues to the
+     right; in TB it continues below. Relative placement is needed for TB so
+     following cards retain their rows, while LR needs an absolute card. */
+  card.style.position = leftRight ? "absolute" : "relative";
+  card.style.margin = leftRight ? "0" : "18px 0 6px";
   card.style.left = "0px";
+  card.style.top = "0px";
   requestAnimationFrame(function () {
     var paneBox = pane.getBoundingClientRect(), outerBox = outer.getBoundingClientRect(), cardBox = card.getBoundingClientRect();
-    var wanted = outerBox.left - paneBox.left + pane.scrollLeft;
-    var current = cardBox.left - paneBox.left + pane.scrollLeft;
-    /* `left` moves the visual card but leaves its flow row intact. Margin
-       altered the next card's row and made later expansions jump left. */
-    card.style.left = Math.max(0, Math.round(wanted - current)) + "px";
+    var firstBox = first.getBoundingClientRect();
+    if (leftRight) {
+      var wantedLeft = outerBox.right - paneBox.left + pane.scrollLeft + 28;
+      var firstLeft = firstBox.left - cardBox.left;
+      var wantedTop = outerBox.top + outerBox.height / 2 - paneBox.top + pane.scrollTop;
+      var firstMiddle = firstBox.top - cardBox.top + firstBox.height / 2;
+      card.style.left = Math.max(0, Math.round(wantedLeft - firstLeft)) + "px";
+      card.style.top = Math.max(0, Math.round(wantedTop - firstMiddle)) + "px";
+    } else {
+      var wanted = outerBox.left - paneBox.left + pane.scrollLeft;
+      var current = cardBox.left - paneBox.left + pane.scrollLeft;
+      /* `left` moves the visual card but leaves its flow row intact. Margin
+         altered the next card's row and made later expansions jump left. */
+      card.style.left = Math.max(0, Math.round(wanted - current)) + "px";
+    }
     requestAnimationFrame(function () {
-      drawHybridConnector(pane, outer, logicSvg.querySelector("g.node"));
-      if (refitAfterPlacement) { scheduleHybridFit(); }
+      drawHybridConnector(pane, outer, logicSvg.querySelector("g.node"), leftRight);
     });
   });
 }
 
-function drawHybridConnector(pane, outer, first) {
+function drawHybridConnector(pane, outer, first, leftRight) {
   var key = String(outer.textContent || "").replace(/\s+/g, "");
   Array.prototype.forEach.call(pane.querySelectorAll('.hybrid-connector[data-hybrid-key="' + key + '"]'), function (old) { old.remove(); });
   if (!outer || !first) { return; }
   var paneBox = pane.getBoundingClientRect(), from = outer.getBoundingClientRect(), to = first.getBoundingClientRect();
-  var x1 = from.left + from.width / 2 - paneBox.left + pane.scrollLeft;
-  var y1 = from.bottom - paneBox.top + pane.scrollTop;
-  var x2 = to.left + Math.min(to.width / 2, from.width / 2) - paneBox.left + pane.scrollLeft;
-  var y2 = to.top - paneBox.top + pane.scrollTop;
-  if (y2 <= y1) { return; }
+  var x1 = leftRight ? from.right - paneBox.left + pane.scrollLeft
+                     : from.left + from.width / 2 - paneBox.left + pane.scrollLeft;
+  var y1 = leftRight ? from.top + from.height / 2 - paneBox.top + pane.scrollTop
+                     : from.bottom - paneBox.top + pane.scrollTop;
+  var x2 = leftRight ? to.left - paneBox.left + pane.scrollLeft
+                     : to.left + Math.min(to.width / 2, from.width / 2) - paneBox.left + pane.scrollLeft;
+  var y2 = leftRight ? to.top + to.height / 2 - paneBox.top + pane.scrollTop
+                     : to.top - paneBox.top + pane.scrollTop;
+  if ((!leftRight && y2 <= y1) || (leftRight && x2 <= x1)) { return; }
   var ns = "http://www.w3.org/2000/svg";
   var svg = document.createElementNS(ns, "svg");
   svg.classList.add("hybrid-connector");
@@ -1768,7 +1803,7 @@ function requestHybridLogic(node) {
   var already = hybridLogics.findIndex(function (opened) { return opened.node.key === node.key; });
   if (already >= 0) {
     hybridLogics.splice(already, 1);
-    draw();
+    draw(true);
     return;
   }
   hybridPending = node;
@@ -2155,7 +2190,10 @@ if (typeof ResizeObserver === "function") {
     clearTimeout(paneWatchTimer);
     paneWatchTimer = setTimeout(paneResized, 150);
   });
-  paneWatch.observe(document.getElementById("diagram"));
+  /* #diagram is the scrollable content canvas: a hybrid Logic card makes it
+     taller, which is not a viewport resize. Watch its fixed flex parent and
+     then compare #diagram's client size in paneResized(). */
+  paneWatch.observe(document.querySelector(".panes"));
 }
 
 // Ctrl and the wheel, the way every other drawing in this editor behaves.

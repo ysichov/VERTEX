@@ -574,12 +574,20 @@ function analyze(sources, target, options = {}) {
     if (!callsAt.has(key)) callsAt.set(key, []);
     callsAt.get(key).push(call);
   }
+  // A pair of editor breakpoints limits only the entry procedure.  A called
+  // method is still shown as a complete frame: its source lines are not in
+  // the same coordinate system as the editor breakpoints.
+  const flowBounds = target.flowBounds && target.flowBounds.source === target.source &&
+    Number.isInteger(target.flowBounds.from) && Number.isInteger(target.flowBounds.to) &&
+    target.flowBounds.from < target.flowBounds.to ? target.flowBounds : null;
   const executionFlow = [];
   const emitFlow = (source, depth = 0, active = new Set(), event = '') => {
     const activeKey = source + ':' + event;
     if (active.has(activeKey)) return;
     const next = new Set(active); next.add(activeKey);
-    for (const step of (stepsBySource.get(source) || []).filter(step => !event || step.event === event)) {
+    for (const step of (stepsBySource.get(source) || []).filter(step =>
+      (!event || step.event === event) && (!flowBounds || source !== target.source ||
+        (step.line >= flowBounds.from && step.line <= flowBounds.to)))) {
       const relatedCalls = callsAt.get(source + ':' + step.line + ':' + step.statementIndex) || [];
       if (!relatedCalls.length) executionFlow.push({ type: 'operation', depth, ...step });
       for (const call of relatedCalls) {
@@ -599,8 +607,10 @@ function analyze(sources, target, options = {}) {
     const included = nodes.some(node => node.source === source.id && node.line === change.line && node.kind === 'calculation');
     const owner = U(change.class || source.aceOwner || source.objectName);
     const event = U(change.eventname);
+    const statement = (source.aceStatements || []).find(item => item.line === change.line);
     return { id: source.id + ':' + change.line + ':' + U(change.name), source: source.id, include: source.name, line: change.line,
       scope: owner && event ? owner + '→' + event : (owner || source.name), changed: String(change.name), dependencies, included,
+      text: statement?.text || String(change.name),
       reason: included ? 'Reached by the backward slice of the selected value.' : 'Not reached by the backward slice of the selected value.' };
   })));
   // A composed variable belongs to the calculation that produces it, not to
@@ -618,9 +628,28 @@ function analyze(sources, target, options = {}) {
       inputs: edges.filter(edge => edge.to === condition.id).map(edge => nodes.find(node => node.id === edge.from)?.text).filter(Boolean)
     };
   }
+  // FLOW is the ACE flow already collected for BSE.  Editor breakpoints only
+  // bound the source currently being analysed; referenced objects retain their
+  // own complete coordinate range.
+  const boundedFlow = flowBounds ? flow.filter(point => point.source !== target.source ||
+    (point.line >= flowBounds.from && point.line <= flowBounds.to)) : flow;
+  // ACE's calculated records are deliberately a sparse BSE slice.  Full FLOW
+  // needs the actual ABAP statement stream instead: calls, conditions, loops
+  // and writes must remain visible even when they do not calculate a value.
+  const fullFlow = sources.flatMap(source => localStatements(source).flatMap((statement, statementIndex) => {
+    const first = val(statement.tokens, 0);
+    if (['CLASS', 'ENDCLASS', 'INTERFACE', 'ENDINTERFACE', 'METHOD', 'ENDMETHOD', 'FORM', 'ENDFORM'].includes(first)) return [];
+    const procedure = index.procedures.find(item => item.source.id === source.id &&
+      statement.offset >= item.start && statement.offset < item.end && item.name !== 'GLOBAL') ||
+      index.procedures.find(item => item.source.id === source.id && item.name === 'GLOBAL');
+    const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included);
+    return [{ id: source.id + ':full:' + statement.offset, source: source.id, line: statement.line, statementIndex,
+      text: statement.text, changed: statement.text, scope: (source.aceOwner || source.objectName || source.name) + '→' + (procedure?.name || 'GLOBAL'), included: isBse }];
+  })).filter(point => !flowBounds || point.source !== target.source || (point.line >= flowBounds.from && point.line <= flowBounds.to));
   const flowLog = nodes.map(node => ({ source: node.source, scope: node.location || node.source, line: node.line, text: node.text,
     included: true, reason: edges.filter(edge => edge.to === node.id).map(edge => edge.label).join(', ') || 'selected value' }));
-  return { root, nodes, edges, calls: orderedCalls, flow, executionFlow, flowLog, scenarios: radioGroups(sources), selectedVariable: U(target.variable), selectedSource: target.source,
+  const selectedProgram = sources.find(source => source.id === target.source)?.objectName || sources.find(source => source.id === target.source)?.name || target.source;
+  return { root, nodes, edges, calls: orderedCalls, flow, boundedFlow, fullFlow, executionFlow, flowBounds, flowLog, scenarios: radioGroups(sources), selectedVariable: U(target.variable), selectedSource: target.source, selectedProgram,
     selectedLine: target.line, truncated, mode: 'static', notice: 'Backward source dependencies across calls. Possible dispatch targets and branches are alternatives; loop order, database contents and runtime values are not inferred.' };
 }
 function variableAt(source, offset) {

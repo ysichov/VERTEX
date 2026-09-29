@@ -17,10 +17,10 @@ body.dragging{cursor:col-resize;user-select:none}body.dragging iframe{pointer-ev
 #chat-toggle.on{color:var(--vscode-button-foreground,HighlightText);background:var(--vscode-button-background,Highlight)}
 main{flex:1;min-width:0;display:flex;flex-direction:column}
 header{display:flex;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #8886;align-items:center}
-input,select,button{font:inherit;padding:5px;color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e));border:1px solid #8888}
+input,select,button{font:inherit;padding:5px;color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e));border:1px solid #8888;border-radius:4px}
 select option{color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e))}
 #object-field{position:relative;flex:0 1 380px;min-width:150px}
-#object-matches{display:none;position:absolute;left:0;right:0;top:100%;z-index:20;max-height:320px;overflow:auto;background:var(--vscode-editorSuggestWidget-background,var(--vscode-input-background,Canvas));border:1px solid var(--vscode-editorSuggestWidget-border,#8888)}
+#object-matches{display:none;position:absolute;left:0;right:0;top:100%;z-index:20;max-height:320px;overflow:auto;background:var(--vscode-editorSuggestWidget-background,var(--vscode-input-background,Canvas));border:1px solid var(--vscode-editorSuggestWidget-border,#8888);border-radius:4px}
 #object-matches.on{display:block}
 #object-matches div{padding:3px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #object-matches div.sel,#object-matches div:hover{color:var(--vscode-list-activeSelectionForeground,HighlightText);background:var(--vscode-list-activeSelectionBackground,Highlight)}

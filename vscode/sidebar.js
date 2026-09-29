@@ -142,9 +142,9 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages .vertex code { font-family: var(--vscode-editor-font-family); background: var(--vscode-textCodeBlock-background); padding: 0 3px; border-radius: 3px; }
 #messages .vertex pre { white-space: pre; overflow-x: auto; background: var(--vscode-textCodeBlock-background); padding: 6px 8px; border-radius: 3px; }
 #messages .vertex pre code { background: none; padding: 0; }
-textarea, select { box-sizing: border-box; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); font: inherit; }
+textarea, select { box-sizing: border-box; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 4px; font: inherit; }
 textarea { width: 100%; resize: vertical; padding: 8px; }
-button { margin: 8px 0; padding: 8px 12px; border: 0; border-radius: 2px; cursor: pointer; font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+button { margin: 8px 0; padding: 8px 12px; border: 0; border-radius: 4px; cursor: pointer; font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
 button:hover { background: var(--vscode-button-hoverBackground); }
 #chat button { width: 100%; }
 .secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
@@ -157,7 +157,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 .line select { padding: 3px 4px; }
 .chat-head { margin-bottom: 4px; }
 #new-conversation { margin-left: auto; }
-#tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; font-size: 1.7em; font-weight: 600; }
+#tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 6px; font-size: 1.7em; font-weight: 600; }
 #tools img { width: 40px; height: 40px; }
 </style></head><body>
 <div class="line"><a href="#" class="link" id="system-settings" title="Configure SAP systems">SAP system</a>

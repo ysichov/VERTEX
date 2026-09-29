@@ -34,8 +34,8 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(page.includes('class="execution-leaf" data-flow='));
   assert(page.includes('window.bseMermaidToggle'));
   assert(page.includes("host.addEventListener('dblclick'"));
-  assert(page.includes('data-view="tree"'));
-  assert(page.includes('data-view="diagram"'));
+  assert(page.includes('data-view-toggle'));
+  assert(page.includes('vertex-segment-toggle'));
   assert(page.includes('data-mermaid-direction="TD"'));
   assert(page.includes('data-mermaid-direction="LR"'));
   assert(page.includes("flowchart '+direction"));
@@ -69,8 +69,9 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(!page.includes("subtree:true,attributeFilter:['class','style']"));
   assert(page.includes("if(!shown.size)drawing.nodes.filter"));
   assert(page.includes('class="flow-data"'));
-  assert(page.includes('data-mode="data"'));
-  assert(page.includes('data-mode="formula"'));
+  assert(page.includes('<option value="data">Data</option>'));
+  assert(page.includes('data-mode-select'));
+  assert(page.includes('<option value="formula">Formula</option>'));
   assert(page.includes('id="bse-formula-pane"'));
   assert(page.includes('Formula derivation — click a branch to expand its input formulas'));
   assert(!page.includes('formula-depth'));
@@ -95,12 +96,22 @@ test('multiline statements retain source lines and ignore comments/literal perio
   const s = statements("* comment\nx = 'a.b'. \" comment\ny =\n x * 1.2.");
   assert.equal(s.length, 2); assert.equal(s[1].line, 3); assert.equal(s[1].end, 4);
 });
+test('execution flow is limited by the enclosing editor breakpoints', () => {
+  const text = 'a = 1.\nb = a + 1.\nc = b + 1.\nWRITE c.';
+  const source = { id: 'demo', text, aceStatements: statements(text).map((s, i) => ({ ...s, aceIndex: i + 1, aceCalls: [] })) };
+  source.aceFlowSteps = source.aceStatements.map(step => ({ statement_index: step.aceIndex, line: step.line, calculated: [], composed: [] }));
+  const bounded = analyze([source], { source: 'demo', line: 3, variable: 'c', flowBounds: { source: 'demo', from: 2, to: 3 } });
+  assert.deepEqual(bounded.flowBounds, { source: 'demo', from: 2, to: 3 });
+  assert(bounded.boundedFlow.every(point => point.source !== 'demo' || (point.line >= 2 && point.line <= 3)));
+  const { html } = require('../value-origin-view');
+  assert.match(html(bounded, 'test'), /BSE FLOW.*breakpoints 2–3/);
+});
 test('formula mode renders substitutions as independently collapsible branches', () => {
   const { html } = require('../value-origin-view');
   const page = html(graph('b = 2.\nc = 3.\na = b + c.\nWRITE a.', 'a', 4), 'test');
   assert(page.includes('class="formula-node"'));
   assert(page.includes('class="formula-children"'));
-  assert(page.includes('data-mode="formula"'));
+  assert(page.includes('<option value="formula">Formula</option>'));
   assert(page.includes('b = 2.'));
   assert(page.includes('c = 3.'));
 });
