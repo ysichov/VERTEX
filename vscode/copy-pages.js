@@ -40,7 +40,7 @@ pages.forEach(function (name) {
 // script from: what it needs, it asks the host for by name and gets as text.
 // Those files live next to the pages and travel with them.
 const libraries = fs.readdirSync(from).filter(function (name) {
-  return name.endsWith(".js");
+  return name.endsWith(".js") || name.endsWith(".css");
 });
 if (libraries.length === 0) {
   console.error("No libraries in " + from + ". The Flow diagram needs mermaid.min.js.");

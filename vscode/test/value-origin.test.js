@@ -115,6 +115,13 @@ test('formula mode renders substitutions as independently collapsible branches',
   assert(page.includes('b = 2.'));
   assert(page.includes('c = 3.'));
 });
+test('raw Value Origin HTML keeps data expressions hidden and inline links compact', () => {
+  const { html } = require('../value-origin-view');
+  const page = html(graph("DATA(lv_scenario) = COND char12( WHEN p = abap_true THEN 'X' ELSE 'Y' ).\nDATA(ls_result) = NEW zcl_calc_facade( )->run( iv_scenario = lv_scenario ).", 'ls_result', 2), 'test');
+  assert.match(page, /\.flow-data\{display:none\}/);
+  assert.match(page, /button:not\(\.data-composed\)/);
+  assert.match(page, /\.data-composed\{display:inline;width:auto/);
+});
 test('formula mode bypasses transparent transfers to the calculation that changes the selected value', () => {
   const { html } = require('../value-origin-view');
   const page = html(graph('amount = 5.\nresult = amount.\nWRITE result.', 'result', 3), 'test');

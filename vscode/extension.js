@@ -118,6 +118,8 @@ const SHIM = [
 
 function pageHtml(service, initial) {
   let html = fs.readFileSync(path.join(PAGES, SERVICES[service].page), "utf8");
+  const controls = fs.readFileSync(path.join(PAGES, "vertex-controls.css"), "utf8");
+  html = html.replace("</head>", "<style>" + controls + "</style></head>");
   html = html.replace("<script>", SHIM + String.fromCharCode(10) + "<script>");
   html = html.replace("/*INIT*/null/*INIT*/", initialLiteral(initial));
   return html;

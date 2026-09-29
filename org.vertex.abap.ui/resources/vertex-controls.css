@@ -1,0 +1,68 @@
+/* Shared VERTEX controls.
+ *
+ * Two meanings only:
+ * - .vertex-toggle / .on: an independent on/off switch (Visual Debug).
+ * - .vertex-segment-toggle / .active: one of mutually exclusive values
+ *   (Diff-style Prev / Any, Tree / Diagram, Full / BSE).
+ */
+.vertex-toggle {
+  --accent: var(--vscode-focusBorder, #0a66c2);
+  cursor: pointer;
+  padding: 1px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--vscode-input-background, Field);
+  color: var(--vscode-descriptionForeground, GrayText);
+  white-space: nowrap;
+  transition: color .12s, box-shadow .12s, border-color .12s;
+}
+
+.vertex-toggle:hover:not(:disabled) {
+  color: var(--vscode-editor-foreground, CanvasText);
+}
+
+.vertex-toggle.on {
+  color: var(--vscode-editor-foreground, CanvasText);
+  border-bottom-color: var(--accent);
+  box-shadow: 0 3px 8px -3px var(--accent);
+}
+
+.vertex-segment-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 7px;
+  vertical-align: middle;
+  background: var(--vscode-input-background, Field);
+  --seg-on: var(--vscode-editorWidget-background, var(--vscode-input-background, Field));
+}
+
+.vertex-segment-toggle button {
+  --accent: var(--vscode-focusBorder, #0a66c2);
+  min-width: 0;
+  margin: 0;
+  padding: 1px 9px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, GrayText);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  font-weight: normal;
+  box-shadow: none;
+}
+
+.vertex-segment-toggle button:hover {
+  color: var(--vscode-editor-foreground, CanvasText);
+  background: transparent;
+}
+
+.vertex-segment-toggle button.active {
+  color: var(--vscode-editor-foreground, CanvasText);
+  background: var(--seg-on);
+  border-bottom-color: var(--accent);
+  box-shadow: 0 3px 8px -3px var(--accent);
+  font-weight: normal;
+}

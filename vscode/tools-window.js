@@ -18,6 +18,7 @@ function html(pages, initial) {
 // stays in the normal VS Code editor next to it; unlike Tools it has no object
 // picker, chat or duplicate source tab.
 function debugHtml(initial) {
+  const controls = fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8");
   const bridge = `<script>
     const host=acquireVsCodeApi();let pending;
     window.sdeTake=()=>{const value=pending;pending=null;return value;};
@@ -28,8 +29,12 @@ function debugHtml(initial) {
       if(event.data.type==="result"){pending=event.data.payload;sdeReady();}
       if(event.data.type==="debug")sdeDebugEvent(event.data.payload);
     });
+    document.addEventListener("DOMContentLoaded",()=>document.querySelectorAll(
+      "#visual,#rec,#zonly,#fclasses,#fmethods,#initials,#globals,#locals,#params,[data-pane]"
+    ).forEach(button=>button.classList.add("vertex-toggle")));
   <\/script>`;
   return fs.readFileSync(path.join(__dirname, "pages", "visual-debug.html"), "utf8")
+    .replace("</head>", "<style>" + controls + "</style></head>")
     .replace("/*INIT*/null/*INIT*/", () => JSON.stringify(initial || null).replace(/</g, "\\u003c"))
     .replace("<body>", "<body class=\"vertex-docked-debug\">")
     .replace("<script>", bridge + "<script>");
