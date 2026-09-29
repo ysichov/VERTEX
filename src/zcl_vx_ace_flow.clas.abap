@@ -225,14 +225,10 @@ CLASS zcl_vx_ace_flow IMPLEMENTATION.
         " Remember the real source unit behind this node for click navigation
         " (use the raw step values, not the aggregated label).
         APPEND VALUE ts_node_map( node_id = lv_node_id
-                                  " Use the resolved entity values. For a call
-                                  " discovered through a program, the raw step
-                                  " can have no class although the displayed
-                                  " node has one (CALL_LINE resolved it).
-                                  class   = entity-class
+                                  class   = <copy>-class
                                   event   = entity-event
                                   name    = entity-eventname
-                                  include = entity-include ) TO et_node_map.
+                                  include = <copy>-include ) TO et_node_map.
       ENDIF.
     ENDLOOP.
 

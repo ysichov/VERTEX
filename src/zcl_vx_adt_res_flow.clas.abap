@@ -22,9 +22,6 @@ CLASS zcl_vx_adt_res_flow DEFINITION
              line_from TYPE i,
              line_to   TYPE i,
              steps     TYPE i,
-             " The Calls renderer needs the source identity behind every
-             " Mermaid block to open the same unit in the Logic renderer.
-             node_map  TYPE zcl_vx_ace_flow=>tt_node_map,
              mermaid   TYPE string,
            END OF ty_answer.
 
@@ -358,7 +355,6 @@ CLASS zcl_vx_adt_res_flow IMPLEMENTATION.
       " own, so none is a legitimate answer - and the window should say so
       " rather than show an empty frame.
       ls_answer-steps   = lines( lo_walk->mt_steps ).
-      ls_answer-node_map = lt_node_map.
       ls_answer-mermaid = lv_mm.
 
     ELSE.
