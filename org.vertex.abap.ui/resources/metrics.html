@@ -284,6 +284,7 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
     <button id="out" title="Smaller">&#8722;</button>
     <button id="in" title="Larger">+</button>
     <button id="fit" title="Scale the whole diagram into the pane">Fit</button>
+    <button id="lens" aria-pressed="false" title="Enable magnifier for small text">Lens off</button>
   </span>
   <button id="metricshelp" title="What each metric means and how it is counted">?</button>
   <span class="shown" id="object"></span>
@@ -1491,6 +1492,15 @@ function draw() {
     // Tinted first, so the lens copies the picture as it is shown.
     if (!isClass) { tintDecisions(pane.querySelector("svg")); }
     if (mode === "calls") {
+      // Depth and start-point changes replace the Calls graph. An opened
+      // Logic card belongs to its parent node, not to the old graph, so keep
+      // it only while that exact method still exists in the fresh result.
+      var liveCalls = Array.prototype.map.call(pane.querySelectorAll("svg g.node"), function (node) {
+        return String(node.textContent || "").replace(/\s+/g, "");
+      });
+      hybridLogics = hybridLogics.filter(function (opened) {
+        return liveCalls.indexOf(opened.node.key) >= 0;
+      });
       hybridLogics.forEach(function (opened) {
         markHybridNode(pane.querySelector("svg"), opened.node);
         renderHybridLogic(pane, opened);
@@ -1632,6 +1642,7 @@ function removeEmbeddedLogicTitle(source, caller) {
 
 /* How strong the lens is, kept while the window is open. */
 var lensZoom = 2.5;
+var lensEnabled = false;
 
 /* A magnifier over the node under the pointer - UML, Logic and Calls alike:
    every mermaid block is a g.node. One per page: the previous drawing's
@@ -1640,7 +1651,7 @@ function installUmlLens(pane, svg, anywhere) {
   Array.prototype.forEach.call(document.querySelectorAll(".uml-lens"), function (old) {
     old.parentNode.removeChild(old);
   });
-  if (!svg) { return; }
+  if (!svg || !lensEnabled) { return; }
   var lens = document.createElement("div");
   lens.className = "uml-lens";
   lens.setAttribute("aria-hidden", "true");
@@ -2084,6 +2095,19 @@ document.getElementById("in").addEventListener("click", function () {
   setZoom(zoom * 1.25);
 });
 document.getElementById("fit").addEventListener("click", fitDiagram);
+document.getElementById("lens").addEventListener("click", function () {
+  lensEnabled = !lensEnabled;
+  var button = document.getElementById("lens");
+  button.textContent = lensEnabled ? "Lens on" : "Lens off";
+  button.classList.toggle("on", lensEnabled);
+  button.setAttribute("aria-pressed", lensEnabled ? "true" : "false");
+  if (!lensEnabled) {
+    Array.prototype.forEach.call(document.querySelectorAll(".uml-lens"), function (lens) { lens.remove(); });
+  } else if (lastMermaid) {
+    // The lens attaches pointer handlers to the current SVG; no data reload.
+    draw();
+  }
+});
 
 /* Kept in a variable on purpose: an observer nothing holds on to may be
    collected, and the callbacks then stop with no sign that they have. */
