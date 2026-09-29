@@ -69,3 +69,18 @@ START-OF-SELECTION.
     WRITE: / ls_kw-index UNDER 'Index', ls_first_token-row UNDER 'Line',
              ls_kw-name UNDER 'Keyword', lv_text UNDER 'Tokens'.
   ENDLOOP.
+
+  DATA lt_slice LIKE ls_prog-source_tab.
+  LOOP AT ls_prog-source_tab INTO DATA(lv_source_line) FROM lv_from TO lv_to.
+    APPEND lv_source_line TO lt_slice.
+  ENDLOOP.
+  DATA(lv_mermaid) = zcl_vx_ace_code_html=>build_scheme(
+    it_source = lt_slice it_kw = ls_prog-t_keywords io_scan = ls_prog-scan
+    i_title = |{ lv_class }=>{ lv_method }| i_offset = lv_from ).
+  ULINE.
+  WRITE: / 'Mermaid returned to the frontend'.
+  ULINE.
+  SPLIT lv_mermaid AT cl_abap_char_utilities=>newline INTO TABLE DATA(lt_mermaid_lines).
+  LOOP AT lt_mermaid_lines INTO DATA(lv_mermaid_line).
+    WRITE: / lv_mermaid_line.
+  ENDLOOP.

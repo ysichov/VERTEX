@@ -74,7 +74,9 @@ CLASS zcl_vx_ace_code_html DEFINITION
 
     TYPES:
       BEGIN OF ts_line,
-        line  TYPE i,
+        line  TYPE i,       " diagram statement position
+        source_line TYPE i, " physical line in the requested source slice
+        stmt_index TYPE i,  " CL_CI_SCAN statement index when available
         text  TYPE string,
         word  TYPE string,   " first word, uppercased
         depth TYPE i,
@@ -152,6 +154,7 @@ CLASS zcl_vx_ace_code_html DEFINITION
                 it_kw          TYPE zif_vx_ace_parse_data=>tt_kword
                 io_scan        TYPE REF TO cl_ci_scan OPTIONAL
                 i_offset       TYPE i DEFAULT 1
+                i_statement_rows TYPE abap_bool DEFAULT abap_false
       RETURNING VALUE(rt_lines) TYPE tt_line.
 
     "! First word of a statement line, uppercased ('' for comments/blank).
@@ -459,15 +462,34 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
     DATA lt_stmt  TYPE tt_stmt.
     DATA lt_block TYPE tt_block.
 
-    " Pass 1 — one entry per source line.
-    LOOP AT it_source ASSIGNING <lv_src>.
-      APPEND INITIAL LINE TO rt_lines ASSIGNING FIELD-SYMBOL(<ls_line>).
-      <ls_line>-line = sy-tabix.
-      <ls_line>-text = <lv_src>.
-      " 'P' rather than a blank: a string template drops trailing blanks,
-      " so data-kind=" " would reach the page as an empty attribute.
-      <ls_line>-kind = 'P'.
-    ENDLOOP.
+    " The source view has one entry per physical line. A diagram must not:
+    " ACE permits several complete statements on one line, each with its own
+    " control-flow meaning. Preserve the physical line separately for links.
+    IF i_statement_rows = abap_true AND io_scan IS BOUND.
+      LOOP AT io_scan->statements INTO DATA(ls_row_stmt).
+        DATA(lv_row_stmt_index) = sy-tabix.
+        READ TABLE io_scan->tokens INDEX ls_row_stmt-from INTO DATA(ls_row_token).
+        CHECK sy-subrc = 0.
+        DATA(lv_source_line) = ls_row_token-row - i_offset + 1.
+        CHECK lv_source_line > 0 AND lv_source_line <= lines( it_source ).
+        APPEND VALUE #( line        = lines( rt_lines ) + 1
+                        source_line = lv_source_line
+                        stmt_index  = lv_row_stmt_index
+                        text        = scan_stmt_text( io_scan = io_scan
+                                                      i_stmt_index = lv_row_stmt_index )
+                        kind        = 'P' ) TO rt_lines.
+      ENDLOOP.
+    ELSE.
+      LOOP AT it_source ASSIGNING <lv_src>.
+        APPEND INITIAL LINE TO rt_lines ASSIGNING FIELD-SYMBOL(<ls_line>).
+        <ls_line>-line = sy-tabix.
+        <ls_line>-source_line = sy-tabix.
+        <ls_line>-text = <lv_src>.
+        " 'P' rather than a blank: a string template drops trailing blanks,
+        " so data-kind=" " would reach the page as an empty attribute.
+        <ls_line>-kind = 'P'.
+      ENDLOOP.
+    ENDIF.
 
     " Pass 2 — statement keywords come from the parser's scan, so a line is
     " only a structure line if a statement really starts there. Reading the
@@ -485,7 +507,14 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
         READ TABLE io_scan->tokens INDEX ls_sst-from INTO DATA(ls_stok).
         CHECK sy-subrc = 0.
         DATA(lv_srow) = ls_stok-row - i_offset + 1.
-        CHECK lv_srow > 0 AND lv_srow <= lines( rt_lines ).
+        IF i_statement_rows = abap_true.
+          READ TABLE rt_lines ASSIGNING <ls_line>
+            WITH KEY stmt_index = lv_sidx.
+          CHECK sy-subrc = 0.
+          lv_srow = <ls_line>-line.
+        ELSE.
+          CHECK lv_srow > 0 AND lv_srow <= lines( rt_lines ).
+        ENDIF.
         APPEND VALUE #( index = lv_sidx
                         line  = lv_srow
                         word  = to_upper( ls_stok-str ) ) TO lt_stmt.
@@ -511,16 +540,30 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
     " Calls still come from T_KEYWORDS: ACE resolves their target there.
     LOOP AT it_kw INTO DATA(ls_kw).
       CHECK ls_kw-tt_calls IS NOT INITIAL.
-      DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
-      lv_vline = lv_vline - i_offset + 1.
-      READ TABLE rt_lines ASSIGNING <ls_line> INDEX lv_vline.
-      CHECK sy-subrc = 0.
+      UNASSIGN <ls_line>.
+      IF i_statement_rows = abap_true AND io_scan IS BOUND.
+        READ TABLE rt_lines ASSIGNING <ls_line> WITH KEY stmt_index = ls_kw-index.
+        IF sy-subrc <> 0.
+          LOOP AT io_scan->statements INTO DATA(ls_call_stmt).
+            IF ls_call_stmt-from = ls_kw-from AND ls_call_stmt-to = ls_kw-to.
+              READ TABLE rt_lines ASSIGNING <ls_line> WITH KEY stmt_index = sy-tabix.
+              EXIT.
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
+      ELSE.
+        DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
+        lv_vline = lv_vline - i_offset + 1.
+        READ TABLE rt_lines ASSIGNING <ls_line> INDEX lv_vline.
+      ENDIF.
+      CHECK <ls_line> IS ASSIGNED.
       <ls_line>-call = abap_true.
       LOOP AT ls_kw-tt_calls INTO DATA(ls_call).
         CHECK ls_call-name IS NOT INITIAL.
         <ls_line>-call_names = |{ <ls_line>-call_names } { to_upper( ls_call-name ) }|.
       ENDLOOP.
       <ls_line>-call_names = |{ <ls_line>-call_names } |.
+      UNASSIGN <ls_line>.
     ENDLOOP.
     SORT lt_stmt BY index.
 
@@ -683,7 +726,7 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
   METHOD build_scheme.
 
     DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan
-                              i_offset = i_offset ).
+                              i_offset = i_offset i_statement_rows = abap_true ).
 
     " Running count of plain statements, so the number of operations between
     " any two lines is one subtraction rather than a scan.
@@ -848,7 +891,8 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
         " A loop over plain statements is a node — until it is clicked, then
         " its body is drawn inside a frame like any other loop.
         IF lv_inner = 0.
-          READ TABLE it_expanded TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
+          READ TABLE it_expanded TRANSPORTING NO FIELDS
+            WITH KEY table_line = ls_line-source_line.
           IF sy-subrc <> 0. lv_is_loop = abap_false. ENDIF.
         ENDIF.
       ENDIF.
@@ -916,7 +960,7 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
         " Clicking the first statement folds the loop back into one node
         IF lv_lfirst IS NOT INITIAL.
           lv_clicks = lv_clicks && |  click { lv_lfirst }| &&
-                      | "sapevent:aceexp_{ ls_line-line }" _self\n|.
+                      | "sapevent:aceexp_{ ls_line-source_line }" _self\n|.
           lv_prev_node = lv_lchain.
           lv_prev_line = ls_line-all.
           lv_prev_depth = ls_line-depth.
@@ -985,12 +1029,12 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
       IF ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE'.
         " A loop drawn as a node holds its body hidden: click opens it up
         lv_clicks = lv_clicks && |  click { lv_node }| &&
-                    | "sapevent:aceexp_{ ls_line-line }" _self\n|.
+                    | "sapevent:aceexp_{ ls_line-source_line }" _self\n|.
       ELSE.
         " Clicking a structure node selects that stretch of code in the source
         " window. Line numbers ride in the action name because the control
         " percent encodes '?', '=' and '&', leaving a query string unreadable.
-        lv_clicks = lv_clicks && |  click { lv_node } "sapevent:acego_{ ls_line-line }_| &&
+        lv_clicks = lv_clicks && |  click { lv_node } "sapevent:acego_{ ls_line-source_line }_| &&
                     |{ COND i( WHEN ls_line-all > ls_line-line THEN ls_line-all
                                WHEN ls_line-end > ls_line-line THEN ls_line-end
                                ELSE ls_line-line ) }" _self\n|.
@@ -1045,7 +1089,8 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
       " Do not let that collapse the operations that ACE found after METHOD
       " on this very row: they are distinct scanner statements and receive
       " distinct nodes, while METHOD/ENDMETHOD remain grammar only.
-      IF ls_line-line = lv_root AND lv_root_stmt > 0 AND io_scan IS BOUND.
+      IF ls_line-line = lv_root AND lv_root_stmt > 0 AND io_scan IS BOUND
+        AND lines( lt_lines ) = lines( it_source ).
         LOOP AT io_scan->statements INTO DATA(ls_inline_stmt) FROM lv_root_stmt + 1.
           DATA(lv_inline_stmt_index) = sy-tabix.
           READ TABLE io_scan->tokens INDEX ls_inline_stmt-from INTO DATA(ls_inline_token).
@@ -1200,7 +1245,10 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
     DATA(lv_ops) = lv_to_cnt - lv_fr_cnt.
     CHECK lv_ops > 0.
 
-    READ TABLE it_expanded TRANSPORTING NO FIELDS WITH KEY table_line = i_to.
+    READ TABLE it_lines INTO DATA(ls_anchor_line) WITH KEY line = i_to.
+    DATA(lv_anchor_source) = COND i( WHEN sy-subrc = 0
+                                     THEN ls_anchor_line-source_line ELSE i_to ).
+    READ TABLE it_expanded TRANSPORTING NO FIELDS WITH KEY table_line = lv_anchor_source.
     DATA(lv_expanded) = xsdbool( sy-subrc = 0 OR i_expand_all = abap_true ).
 
     " Calls are what the flow is about, so they always get a node of their
@@ -1270,7 +1318,7 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
 
     " Expanded stretches fold back up from their first node
     IF lv_expanded = abap_true AND lv_first IS NOT INITIAL.
-      cv_clicks = cv_clicks && |click { lv_first } "sapevent:aceexp_{ i_to }" _self\n|.
+      cv_clicks = cv_clicks && |click { lv_first } "sapevent:aceexp_{ lv_anchor_source }" _self\n|.
     ENDIF.
     r_node = lv_chain.
 
@@ -1301,7 +1349,10 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
     cv_mm = cv_mm && |  { lv_id }["{ lines( it_pend ) } operations"]\n|.
     cv_edges = cv_edges && |  { i_prev }{ arrow( i_label ) }{ lv_id }\n|.
     " Opens the whole stretch this chunk belongs to
-    cv_clicks = cv_clicks && |click { lv_id } "sapevent:aceexp_{ i_anchor }" _self\n|.
+    READ TABLE it_lines INTO DATA(ls_anchor_line) WITH KEY line = i_anchor.
+    DATA(lv_anchor_source) = COND i( WHEN sy-subrc = 0
+                                     THEN ls_anchor_line-source_line ELSE i_anchor ).
+    cv_clicks = cv_clicks && |click { lv_id } "sapevent:aceexp_{ lv_anchor_source }" _self\n|.
     IF cv_first IS INITIAL. cv_first = lv_id. ENDIF.
     r_node = lv_id.
 
