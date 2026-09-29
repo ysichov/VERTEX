@@ -481,7 +481,21 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
         DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
         lv_vline = lv_vline - i_offset + 1.
         CHECK lv_vline > 0 AND lv_vline <= lines( rt_lines ).
-        APPEND VALUE #( index = ls_kw-index
+        " T_KEYWORDS is a navigation table. Older ACE versions leave INDEX
+        " initial even though FROM/TO still identify the scanner statement.
+        " Structures, on the other hand, reference CL_CI_SCAN statement
+        " indexes. Bridge the two ACE representations here; do not infer
+        " syntax from the source text.
+        DATA(lv_stmt_index) = ls_kw-index.
+        IF lv_stmt_index <= 0 AND io_scan IS BOUND.
+          LOOP AT io_scan->statements INTO DATA(ls_scan_stmt).
+            IF ls_scan_stmt-from = ls_kw-from AND ls_scan_stmt-to = ls_kw-to.
+              lv_stmt_index = sy-tabix.
+              EXIT.
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
+        APPEND VALUE #( index = lv_stmt_index
                         line  = lv_vline
                         word  = to_upper( ls_kw-name ) ) TO lt_stmt.
         " The parser already resolved what this statement invokes — the same

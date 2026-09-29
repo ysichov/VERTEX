@@ -1506,9 +1506,8 @@ function draw() {
         renderHybridLogic(pane, opened);
       });
     }
-    // UML shows the lens over its boxes only; a flowchart's blocks are thin
-    // and full of gaps, so there it follows the pointer over the whole picture.
-    installUmlLens(pane, pane.querySelector("svg"), !isClass);
+    // One lens implementation serves UML, Logic and every opened Calls card.
+    installUmlLens(pane, !isClass);
     status(lastCaption);
   }, function (e) {
     failed("mermaid could not draw this diagram." + String.fromCharCode(10)
@@ -1647,16 +1646,19 @@ var lensEnabled = false;
 /* A magnifier over the node under the pointer - UML, Logic and Calls alike:
    every mermaid block is a g.node. One per page: the previous drawing's
    lens goes with it. */
-function installUmlLens(pane, svg, anywhere) {
+function installUmlLens(pane, anywhere) {
   Array.prototype.forEach.call(document.querySelectorAll(".uml-lens"), function (old) {
     old.parentNode.removeChild(old);
   });
-  if (!svg || !lensEnabled) { return; }
+  var sources = Array.prototype.filter.call(pane.querySelectorAll("svg"), function (svg) {
+    return !svg.classList.contains("hybrid-connector");
+  });
+  if (!sources.length || !lensEnabled) { return; }
   var lens = document.createElement("div");
   lens.className = "uml-lens";
   lens.setAttribute("aria-hidden", "true");
-  var copy = svg.cloneNode(true);
-  lens.appendChild(copy);
+  var copy = null;
+  var copiedSource = null;
   var badge = document.createElement("span");
   badge.className = "uml-lens-zoom";
   lens.appendChild(badge);
@@ -1664,7 +1666,7 @@ function installUmlLens(pane, svg, anywhere) {
   var radius = 90;
   badge.textContent = lensZoom.toFixed(1) + "×";
 
-  function isNode(element) {
+  function isNode(element, svg) {
     while (element && element !== svg) {
       if (element.matches && element.matches("g.node")) { return true; }
       element = element.parentNode;
@@ -1673,23 +1675,19 @@ function installUmlLens(pane, svg, anywhere) {
   }
   function hide() { lens.style.display = "none"; }
   function move(event) {
-    if (!anywhere && !isNode(event.target)) { hide(); return; }
+    var svg = event.currentTarget;
+    if (!anywhere && !isNode(event.target, svg)) { hide(); return; }
     var source = svg.getBoundingClientRect();
     if (!source.width || !source.height) { hide(); return; }
-    // Ask the rendered Mermaid DOM, not a nominal SVG font size. Multi-line
-    // labels have one <text> per block, so divide its on-screen box by the
-    // real number of child lines before taking the smallest visible label.
-    var smallest = Infinity;
-    Array.prototype.forEach.call(svg.querySelectorAll("g.node text"), function (text) {
-      var rect = text.getBoundingClientRect();
-      var lines = Array.prototype.filter.call(text.children, function (child) {
-        return String(child.tagName || "").toLowerCase() === "tspan";
-      }).length || 1;
-      if (rect.height) { smallest = Math.min(smallest, rect.height / lines); }
-    });
-    // Eight physical pixels is where a label genuinely becomes difficult to
-    // read. No text metrics means no lens rather than a speculative one.
-    if (!isFinite(smallest) || smallest >= 8) { hide(); return; }
+    // Lens on is an explicit reader choice. Do not second-guess it using a
+    // heuristic text-size threshold: that made the lens flicker on diagrams
+    // whose Mermaid DOM reports different line metrics between SVGs.
+    if (copiedSource !== svg) {
+      if (copy) { copy.remove(); }
+      copy = svg.cloneNode(true);
+      lens.insertBefore(copy, badge);
+      copiedSource = svg;
+    }
     var left = Math.min(window.innerWidth - radius * 2 - 8, event.clientX + 16);
     var top = Math.min(window.innerHeight - radius * 2 - 8, event.clientY + 16);
     lens.style.left = Math.max(8, left) + "px";
@@ -1701,21 +1699,23 @@ function installUmlLens(pane, svg, anywhere) {
     copy.style.top = Math.round(radius - (event.clientY - source.top) * factor) + "px";
     lens.style.display = "block";
   }
-  svg.addEventListener("pointermove", move);
+  sources.forEach(function (svg) {
+    svg.addEventListener("pointermove", move);
   // Shift and two fingers on the touchpad (or the wheel) set how strong the
   // lens is, smoothly: the change follows how far the fingers moved. With
   // Shift held the browser turns a vertical scroll into a horizontal one, so
   // either direction counts. Ctrl and a pinch stay the whole picture's zoom.
-  svg.addEventListener("wheel", function (event) {
-    if (!event.shiftKey || lens.style.display !== "block") { return; }
-    event.preventDefault();
-    event.stopPropagation();
-    var delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-    lensZoom = Math.max(1.5, Math.min(6, lensZoom * Math.exp(-delta * 0.01)));
-    badge.textContent = lensZoom.toFixed(1) + "×";
-    move(event);
-  }, { passive: false });
-  svg.addEventListener("pointerleave", hide);
+    svg.addEventListener("wheel", function (event) {
+      if (!event.shiftKey || lens.style.display !== "block") { return; }
+      event.preventDefault();
+      event.stopPropagation();
+      var delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+      lensZoom = Math.max(1.5, Math.min(6, lensZoom * Math.exp(-delta * 0.01)));
+      badge.textContent = lensZoom.toFixed(1) + "×";
+      move(event);
+    }, { passive: false });
+    svg.addEventListener("pointerleave", hide);
+  });
 }
 
 /* The size mermaid drew, taken from the viewBox rather than from the element:
@@ -2104,8 +2104,8 @@ document.getElementById("lens").addEventListener("click", function () {
   if (!lensEnabled) {
     Array.prototype.forEach.call(document.querySelectorAll(".uml-lens"), function (lens) { lens.remove(); });
   } else if (lastMermaid) {
-    // The lens attaches pointer handlers to the current SVG; no data reload.
-    draw();
+    // Attach to the current SVGs only; a toggle must never relayout Calls.
+    installUmlLens(document.getElementById("diagram"), !/^classDiagram\b/.test(lastMermaid));
   }
 });
 
