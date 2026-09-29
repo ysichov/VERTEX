@@ -195,7 +195,8 @@ function open(vscode, context, deps, initial) {
         // The provider and model are the VERTEX panel's, shared by every window.
         const result = await ask(args[2], {model:args[1],state:JSON.parse(args[3]||"{}")});
         await panel.webview.postMessage({type:"assistant",payload:JSON.stringify({call:"ask",
-          plan:{answer:result.answer,navigation:result.navigation||null},model:result.model,usage:result.usage})}); return;
+          plan:{answer:result.answer,navigation:result.navigation||null},model:result.model,usage:result.usage,
+          direct:result.direct,choices:result.choices||[]})}); return;
       }
       let payload;
       if(message.call === "asset") payload=deps.asset(args[0]);

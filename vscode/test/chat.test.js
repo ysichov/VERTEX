@@ -142,3 +142,24 @@ test("a bare object name is searched and opened without a model", async (t) => {
   assert.match((await ask("ZNOTHING")).answer, /No program, class or function module named \*\*ZNOTHING\*\*/);
   assert.equal(asked.mock.callCount(), 0);
 });
+
+test("a name pattern with one result opens it without asking again", async () => {
+  const direct = require("../direct-search");
+  const opened = [];
+  const text = await direct.answer("ZVERTEX*LAB", {
+    system: "ALC",
+    search: async () => ({ objects: [{ object_type: "PROG", object_name: "ZVERTEX_DEBUG_LAB", package: "Z_RIG" }] }),
+    open: async object => { opened.push(object); }
+  });
+  assert.match(text, /Opened PROG \*\*ZVERTEX_DEBUG_LAB\*\*.*ALC/);
+  assert.deepEqual(opened, [{ object_type: "PROG", object_name: "ZVERTEX_DEBUG_LAB" }]);
+});
+
+test("multiple search results are returned as openable choices", async () => {
+  const direct = require("../direct-search");
+  let choices = [];
+  await direct.answer("ZTEST*", { search: async () => ({ objects: [
+    { object_type: "PROG", object_name: "ZTEST_ONE" }, { object_type: "CLAS", object_name: "ZTEST_TWO" }
+  ] }), open: async () => { throw new Error("must not open ambiguously"); }, choices: found => { choices = found; } });
+  assert.deepEqual(choices.map(choice => choice.object_name), ["ZTEST_ONE", "ZTEST_TWO"]);
+});

@@ -38,15 +38,18 @@ function systemName(value) {
  * open({ object_type, object_name }) -> anything; it throws on failure.
  * Returns the answer text for the chat.
  */
-async function answer(text, { search, open, system }) {
+async function answer(text, { search, open, system, choices = () => {} }) {
   const query = String(text).trim().toUpperCase();
   const found = await search({ query, limit: 50 });
   const label = system || systemName(found && found.system);
   const where = label ? " in system " + label : "";
   const objects = (found && found.objects) || [];
   const exact = objects.filter(o => String(o.object_name).toUpperCase() === query);
-  if (!query.includes("*") && !query.includes("+") && exact.length === 1) {
-    const object = exact[0];
+  // A pattern can still resolve to exactly one object.  The result count is
+  // what determines whether a choice is needed, not the spelling of the
+  // query: a solitary ZVERTEX*LAB result should open just like ZVERTEX_DEBUG_LAB.
+  if (objects.length === 1 || exact.length === 1) {
+    const object = exact[0] || objects[0];
     await open({ object_type: object.object_type, object_name: object.object_name });
     return "Opened " + object.object_type + " **" + object.object_name + "**"
       + (object.package ? " (package " + object.package + ")" : "") + where + ".";
@@ -54,7 +57,10 @@ async function answer(text, { search, open, system }) {
   if (!objects.length) {
     return "No program, class or function module named **" + query + "**" + where + ".";
   }
-  const list = (exact.length > 1 ? exact : objects).map(o => "- " + o.object_type + " **" + o.object_name + "**"
+  const listed = exact.length > 1 ? exact : objects;
+  choices(listed.map(o => ({ object_type: o.object_type, object_name: o.object_name,
+    description: o.description || '', package: o.package || '' })));
+  const list = listed.map(o => "- " + o.object_type + " **" + o.object_name + "**"
     + (o.description ? " — " + o.description : "") + (o.package ? " (" + o.package + ")" : ""));
   return (exact.length > 1 ? "Several objects are named **" + query + "**" : "Found for **" + query + "**") + where + ":\n\n"
     + list.join("\n") + (found.truncated ? "\n\nMore matches exist; narrow the pattern." : "")

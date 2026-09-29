@@ -14,5 +14,5 @@ test('all executable scripts in the generated Value Origin page parse', () => {
     if (match[1].includes('application/json') || !match[2].trim()) continue;
     assert.doesNotThrow(() => new vm.Script(match[2]), 'inline script ' + (++count));
   }
-  assert.equal(count, 2);
+  assert.equal(count, 3);
 });

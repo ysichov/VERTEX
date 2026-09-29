@@ -50,6 +50,20 @@ test('origin index is a read-only ACE request and refuses older backend schemas'
   f.client.httpClient.request = async () => ({ body: JSON.stringify({ mermaid: 'old endpoint' }) });
   await assert.rejects(f.repo.execute('read_origin_index', { object_name: 'ztest', object_type: 'PROG' }), /Update the VERTEX ABAP backend/);
 });
+test('value origin reads only the configured pipeline for one scenario', async () => {
+  const f = fixture(), seen = [];
+  f.client.httpClient = { async request(url, options) {
+    seen.push([url, options]);
+    return { body: JSON.stringify({ rows: [{ STEP_NO: '20', MODIFIER_CLASS: 'zcl_mod_tax' },
+      { STEP_NO: '10', MODIFIER_CLASS: 'zcl_mod_fuel' }] }) };
+  } };
+  const result = await f.repo.execute('read_value_origin_pipeline', { scenario: 'pipeline' });
+  assert.deepEqual(result, { table: 'ZLOG_PIPELINE', scenario: 'PIPELINE', steps: [
+    { step_no: 10, modifier_class: 'ZCL_MOD_FUEL' }, { step_no: 20, modifier_class: 'ZCL_MOD_TAX' }
+  ] });
+  assert.equal(seen[0][0], '/sap/bc/adt/vertex/table/ZLOG_PIPELINE?rows=100&f1=SCENARIO_ID&s1=I&o1=EQ&l1=PIPELINE');
+  assert.equal(seen[0][1].method, 'GET');
+});
 test("activation runs after releasing the editing lock and can recover a saved draft", async () => {
   const f = fixture();
   let locked = false;

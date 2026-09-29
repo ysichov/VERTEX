@@ -102,7 +102,17 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       })).document;
       return { document: destination, line: sourceLineIn(source.text, node.line, destination.getText()) };
     };
-    return { ...result, target: mapped, openSource };
+    // ZCL_CALC_CONFIG_REPO=>GET_PIPELINE deliberately uses the CLEAN
+    // configuration for every non-pipeline scenario.  The selector controls
+    // lv_scenario, while this is lv_config_scenario from that method.
+    const scenarioCode = choice => ({ P_CLEAN: 'CLEAN', P_PREC: 'CLEAN', P_STATE: 'CLEAN',
+      P_PIPE: 'PIPELINE', P_MULTI: 'MULTI' })[String(choice || '').toUpperCase()] || '';
+    const loadPipeline = async choice => {
+      const scenario = scenarioCode(choice);
+      if (!scenario) return null;
+      return repo.api.execute('read_value_origin_pipeline', { scenario });
+    };
+    return { ...result, target: mapped, openSource, loadPipeline };
   });
   const navigation = [];
   const externalSignatures = new Map();

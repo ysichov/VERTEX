@@ -255,7 +255,28 @@ function createRepository({ client, systemId, emit = () => {} }) {
     }
     return result;
   }
-  const handlers = { read_origin_index: originIndex, search_sap_objects: search, read_sap_object: read,
+  // Value Origin needs the actual configured modifier sequence, not every
+  // implementation that static dispatch happened to find.  Keep this a
+  // deliberately narrow, read-only operation: it cannot become a general
+  // table browser (that remains SelecTor), and it exposes only the three
+  // fields required to explain the runtime pipeline.
+  async function valueOriginPipeline(args) {
+    const scenario = name(args && args.scenario, 'scenario').slice(0, 12);
+    const path = '/sap/bc/adt/vertex/table/ZLOG_PIPELINE?rows=100'
+      + '&f1=SCENARIO_ID&s1=I&o1=EQ&l1=' + encodeURIComponent(scenario);
+    const response = await client.httpClient.request(path, { method: 'GET', headers: { Accept: 'application/json' } });
+    let data;
+    try { data = JSON.parse(response.body); }
+    catch (_) { throw new Error('ZLOG_PIPELINE returned invalid JSON.'); }
+    if (!Array.isArray(data.rows)) throw new Error('ZLOG_PIPELINE did not return table rows.');
+    const field = (row, key) => row[key] ?? row[key.toLowerCase()] ?? row[key.toUpperCase()] ?? '';
+    const steps = data.rows.map(row => ({ step_no: Number(field(row, 'STEP_NO')) || 0,
+      modifier_class: String(field(row, 'MODIFIER_CLASS')).toUpperCase() }))
+      .filter(row => row.modifier_class)
+      .sort((left, right) => left.step_no - right.step_no);
+    return { table: 'ZLOG_PIPELINE', scenario, steps };
+  }
+  const handlers = { read_origin_index: originIndex, read_value_origin_pipeline: valueOriginPipeline, search_sap_objects: search, read_sap_object: read,
     create_sap_object: create, modify_sap_object: modify };
   async function execute(tool, args) {
     if (applying || executing) { throw new Error("SAP session is busy. Use separate sessions for parallel operations."); }

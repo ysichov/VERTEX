@@ -67,7 +67,7 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(page.includes('syntax-string'));
   assert(page.includes("host.style.display='inline-block'"));
   assert(!page.includes("subtree:true,attributeFilter:['class','style']"));
-  assert(page.includes("if(!shown.size)graph.nodes.filter"));
+  assert(page.includes("if(!shown.size)drawing.nodes.filter"));
   assert(page.includes('class="flow-data"'));
   assert(page.includes('data-mode="data"'));
   assert(page.includes('data-mode="formula"'));

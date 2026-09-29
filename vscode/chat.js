@@ -117,7 +117,7 @@ function create(vscode, codeTools, server, secrets) {
       }
       const request = directSearch.objectRequest(prompt);
       if (request) {
-        let navigation = null;
+        let navigation = null, choices = [];
         // No model for a bare object name: search the system and open it.
         const text = await directSearch.answer(request.query, {
           search: args => codeTools.execute("search_sap_objects", args),
@@ -127,10 +127,11 @@ function create(vscode, codeTools, server, secrets) {
               return {opened:true};
             }
             return codeTools.execute("open_sap_object", args);
-          }
+          },
+          choices: found => { choices = found; }
         });
         conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: text });
-        return { answer: text, model: "", usage: null, direct: true, navigation };
+        return { answer: text, model: "", usage: null, direct: true, navigation, choices };
       }
       const id = options.assistant || subscriptionProvider(vscode);
       const model = options.model || vscode.workspace.getConfiguration("vertex.ai").get("model", "") || await defaultModel(id);
