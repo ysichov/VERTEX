@@ -1645,10 +1645,11 @@ function installUmlLens(pane, svg, anywhere) {
     var source = svg.getBoundingClientRect();
     if (!source.width || !source.height) { hide(); return; }
     // Only where it helps: text drawn at 14px in the picture, shown at the
-    // current scale. Readable already - 11px or more on screen - no lens.
+    // current scale. Nine pixels is the point where labels actually stop
+    // being readable; showing the lens earlier obscures a usable diagram.
     var box = svg.viewBox && svg.viewBox.baseVal;
     var scale = box && box.width ? source.width / box.width : 1;
-    if (14 * scale >= 11) { hide(); return; }
+    if (14 * scale >= 9) { hide(); return; }
     var left = Math.min(window.innerWidth - radius * 2 - 8, event.clientX + 16);
     var top = Math.min(window.innerHeight - radius * 2 - 8, event.clientY + 16);
     lens.style.left = Math.max(8, left) + "px";

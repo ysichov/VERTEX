@@ -1268,10 +1268,10 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
     " A compact demo method can put METHOD, its only executable statement and
     " ENDMETHOD on one physical line. The root node already represents the
     " method; do not repeat those wrappers in the operation node.
-    REPLACE FIRST OCCURRENCE OF REGEX `(?i)^\s*METHOD\s+[^.]+\.\s*`
-      IN r_text WITH ``.
-    REPLACE FIRST OCCURRENCE OF REGEX `(?i)\s*ENDMETHOD\.\s*$`
-      IN r_text WITH ``.
+    REPLACE FIRST OCCURRENCE OF REGEX `^\s*METHOD\s+[^.]+\.\s*`
+      IN r_text WITH `` IGNORING CASE.
+    REPLACE FIRST OCCURRENCE OF REGEX `\s*ENDMETHOD\.\s*$`
+      IN r_text WITH `` IGNORING CASE.
     CONDENSE r_text.
   ENDMETHOD.
 
