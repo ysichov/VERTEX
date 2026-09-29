@@ -991,6 +991,7 @@ var pendingClass = null;
    has opened, and is kept until the Calls graph changes. */
 var hybridLogics = [];
 var hybridPending = null;
+var hybridFitQueued = false;
 
 function flowMode() { return mode !== "metrics"; }
 
@@ -1530,16 +1531,31 @@ function renderHybridLogic(pane, opened) {
     host.innerHTML = out.svg;
     tintDecisions(host.querySelector("svg"));
     applyZoom();
-    placeHybridLogic(pane, card, host.querySelector("svg"), opened.node);
+    placeHybridLogic(pane, card, host.querySelector("svg"), opened.node, true);
   }, function (error) {
     host.textContent = "Could not draw Logic: " + (error && error.message ? error.message : String(error));
+  });
+}
+
+/* Opening a card changes the picture's width. Preserve a reader's manual
+   zoom, but refresh the automatic Fit that was chosen for the unexpanded
+   Calls picture. Coalescing the requests matters when several cards finish
+   rendering in the same browser frame. */
+function scheduleHybridFit() {
+  if (!fitted || hybridFitQueued) { return; }
+  hybridFitQueued = true;
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      hybridFitQueued = false;
+      if (fitted) { fitDiagram(); }
+    });
   });
 }
 
 /* Keep the caller visible and make the inner flow its continuation. The
    independent Mermaid drawings cannot share a layout engine, so the small
    placement step aligns their entry/exit points and adds the missing edge. */
-function placeHybridLogic(pane, card, logicSvg, caller) {
+function placeHybridLogic(pane, card, logicSvg, caller, refitAfterPlacement) {
   if (!logicSvg || !caller) { return; }
   var outer = Array.prototype.filter.call(pane.querySelectorAll("svg g.node"), function (node) {
     return !logicSvg.contains(node) && String(node.textContent || "").replace(/\s+/g, "") === caller.key;
@@ -1549,13 +1565,18 @@ function placeHybridLogic(pane, card, logicSvg, caller) {
   /* Each expansion starts at its caller's left edge. Centering a very wide
      operation under a narrow method would push it off the canvas; the arrow
      still lands vertically on the operation's upper edge. */
-  card.style.marginLeft = "0px";
+  card.style.left = "0px";
   requestAnimationFrame(function () {
     var paneBox = pane.getBoundingClientRect(), outerBox = outer.getBoundingClientRect(), cardBox = card.getBoundingClientRect();
     var wanted = outerBox.left - paneBox.left + pane.scrollLeft;
     var current = cardBox.left - paneBox.left + pane.scrollLeft;
-    card.style.marginLeft = Math.max(0, Math.round(wanted - current)) + "px";
-    requestAnimationFrame(function () { drawHybridConnector(pane, outer, logicSvg.querySelector("g.node")); });
+    /* `left` moves the visual card but leaves its flow row intact. Margin
+       altered the next card's row and made later expansions jump left. */
+    card.style.left = Math.max(0, Math.round(wanted - current)) + "px";
+    requestAnimationFrame(function () {
+      drawHybridConnector(pane, outer, logicSvg.querySelector("g.node"));
+      if (refitAfterPlacement) { scheduleHybridFit(); }
+    });
   });
 }
 
@@ -1644,12 +1665,20 @@ function installUmlLens(pane, svg, anywhere) {
     if (!anywhere && !isNode(event.target)) { hide(); return; }
     var source = svg.getBoundingClientRect();
     if (!source.width || !source.height) { hide(); return; }
-    // Only where it helps: text drawn at 14px in the picture, shown at the
-    // current scale. Nine pixels is the point where labels actually stop
-    // being readable; showing the lens earlier obscures a usable diagram.
-    var box = svg.viewBox && svg.viewBox.baseVal;
-    var scale = box && box.width ? source.width / box.width : 1;
-    if (14 * scale >= 9) { hide(); return; }
+    // Ask the rendered Mermaid DOM, not a nominal SVG font size. Multi-line
+    // labels have one <text> per block, so divide its on-screen box by the
+    // real number of child lines before taking the smallest visible label.
+    var smallest = Infinity;
+    Array.prototype.forEach.call(svg.querySelectorAll("g.node text"), function (text) {
+      var rect = text.getBoundingClientRect();
+      var lines = Array.prototype.filter.call(text.children, function (child) {
+        return String(child.tagName || "").toLowerCase() === "tspan";
+      }).length || 1;
+      if (rect.height) { smallest = Math.min(smallest, rect.height / lines); }
+    });
+    // Eight physical pixels is where a label genuinely becomes difficult to
+    // read. No text metrics means no lens rather than a speculative one.
+    if (!isFinite(smallest) || smallest >= 8) { hide(); return; }
     var left = Math.min(window.innerWidth - radius * 2 - 8, event.clientX + 16);
     var top = Math.min(window.innerHeight - radius * 2 - 8, event.clientY + 16);
     lens.style.left = Math.max(8, left) + "px";

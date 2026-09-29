@@ -227,6 +227,13 @@ CLASS zcl_vx_ace_code_html DEFINITION
                 i_no_comments TYPE abap_bool DEFAULT abap_false
       RETURNING VALUE(r_text) TYPE string.
 
+    "! Text of one ACE scanner statement. Unlike a source line, a scanner
+    "! statement remains distinct when several statements share that line.
+    CLASS-METHODS scan_stmt_text
+      IMPORTING io_scan       TYPE REF TO cl_ci_scan
+                i_stmt_index  TYPE i
+      RETURNING VALUE(r_text) TYPE string.
+
     "! One source line without its comment. A star in the first column makes
     "! the whole line one; anywhere else a comment starts at the first
     "! quotation mark that is not inside a literal.
@@ -699,6 +706,19 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
       lv_root = ls_root-line.
       EXIT.
     ENDLOOP.
+    " ACE has one keyword entry per statement, even when a compact demo puts
+    " METHOD, operations and ENDMETHOD on one physical row. Keep the root's
+    " scanner index so those following operations can be rendered separately.
+    DATA(lv_root_index) = 0.
+    LOOP AT it_kw INTO DATA(ls_root_kw) WHERE name = 'METHOD'.
+      DATA(lv_root_kw_line) = COND i( WHEN ls_root_kw-v_line > 0
+                                      THEN ls_root_kw-v_line ELSE ls_root_kw-line ).
+      lv_root_kw_line = lv_root_kw_line - i_offset + 1.
+      IF lv_root_kw_line = lv_root.
+        lv_root_index = ls_root_kw-index.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
 
     " Edges are collected separately and appended after every node and frame
     " has been declared: an edge written inside a subgraph pulls its nodes
@@ -1013,6 +1033,38 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
       lv_prev_node  = lv_node.
       lv_prev_depth = ls_line-depth.
       lv_prev_line  = ls_line-line.
+
+      " The line model deliberately has one row per displayed source line.
+      " Do not let that collapse the operations that ACE found after METHOD
+      " on this very row: they are distinct scanner statements and receive
+      " distinct nodes, while METHOD/ENDMETHOD remain grammar only.
+      IF ls_line-line = lv_root AND lv_root_index > 0 AND io_scan IS BOUND.
+        LOOP AT it_kw INTO DATA(ls_inline_kw) WHERE index > lv_root_index.
+          DATA(lv_inline_line) = COND i( WHEN ls_inline_kw-v_line > 0
+                                         THEN ls_inline_kw-v_line ELSE ls_inline_kw-line ).
+          lv_inline_line = lv_inline_line - i_offset + 1.
+          IF lv_inline_line <> lv_root.
+            EXIT.
+          ENDIF.
+          IF ls_inline_kw-name = 'ENDMETHOD' OR ls_inline_kw-name = 'ENDFORM'
+             OR ls_inline_kw-name = 'ENDMODULE'.
+            EXIT.
+          ENDIF.
+          CHECK c_decls NS | { ls_inline_kw-name } |.
+          DATA(lv_inline_text) = scan_stmt_text( io_scan = io_scan
+                                                   i_stmt_index = ls_inline_kw-index ).
+          CHECK lv_inline_text IS NOT INITIAL.
+          DATA(lv_inline_node) = |p{ ls_inline_kw-index }|.
+          rv_mm = rv_mm && |  { lv_inline_node }("{ scheme_label( lv_inline_text ) }")\n|.
+          IF ls_inline_kw-tt_calls IS NOT INITIAL.
+            lv_styles = lv_styles && |class { lv_inline_node } callnode\n|.
+          ELSEIF c_side CS | { ls_inline_kw-name } |.
+            lv_styles = lv_styles && |class { lv_inline_node } dbnode\n|.
+          ENDIF.
+          lv_edges = lv_edges && |  { lv_prev_node } --> { lv_inline_node }\n|.
+          lv_prev_node = lv_inline_node.
+        ENDLOOP.
+      ENDIF.
     ENDLOOP.
 
     " Frames still open at the end of the source
@@ -1265,13 +1317,19 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
                             ELSE |{ r_text } { lv_part }| ).
       IF strlen( r_text ) > 120. EXIT. ENDIF.
     ENDLOOP.
-    " A compact demo method can put METHOD, its only executable statement and
-    " ENDMETHOD on one physical line. The root node already represents the
-    " method; do not repeat those wrappers in the operation node.
-    REPLACE FIRST OCCURRENCE OF REGEX `^\s*METHOD\s+[^.]+\.\s*`
-      IN r_text WITH `` IGNORING CASE.
-    REPLACE FIRST OCCURRENCE OF REGEX `\s*ENDMETHOD\.\s*$`
-      IN r_text WITH `` IGNORING CASE.
+    CONDENSE r_text.
+  ENDMETHOD.
+
+
+  METHOD scan_stmt_text.
+    CHECK io_scan IS BOUND.
+    READ TABLE io_scan->statements INDEX i_stmt_index INTO DATA(ls_stmt).
+    CHECK sy-subrc = 0.
+    LOOP AT io_scan->tokens INTO DATA(ls_token) FROM ls_stmt-from TO ls_stmt-to.
+      CHECK ls_token-str IS NOT INITIAL.
+      r_text = COND string( WHEN r_text IS INITIAL THEN ls_token-str
+                            ELSE |{ r_text } { ls_token-str }| ).
+    ENDLOOP.
     CONDENSE r_text.
   ENDMETHOD.
 
