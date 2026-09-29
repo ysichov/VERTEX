@@ -702,23 +702,27 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
     " carries the qualified name — no extra start node above it.
     DATA(lv_root) = 0.
     LOOP AT lt_lines INTO DATA(ls_root)
-      WHERE kind = 'O' AND ( word = 'METHOD' OR word = 'FORM' OR word = 'MODULE' ).
+      WHERE ( kind = 'O' OR kind = 'S' )
+        AND ( word = 'METHOD' OR word = 'FORM' OR word = 'MODULE' ).
       lv_root = ls_root-line.
       EXIT.
     ENDLOOP.
-    " ACE has one keyword entry per statement, even when a compact demo puts
-    " METHOD, operations and ENDMETHOD on one physical row. Keep the root's
-    " scanner index so those following operations can be rendered separately.
-    DATA(lv_root_index) = 0.
-    LOOP AT it_kw INTO DATA(ls_root_kw) WHERE name = 'METHOD'.
-      DATA(lv_root_kw_line) = COND i( WHEN ls_root_kw-v_line > 0
-                                      THEN ls_root_kw-v_line ELSE ls_root_kw-line ).
-      lv_root_kw_line = lv_root_kw_line - i_offset + 1.
-      IF lv_root_kw_line = lv_root.
-        lv_root_index = ls_root_kw-index.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
+    " ACE has one scanner statement per operation, even when a compact demo
+    " puts METHOD, operations and ENDMETHOD on one physical row. T_KEYWORDS
+    " is a navigation table and can have no statement index, so use the scan
+    " itself as the operation identity.
+    DATA(lv_root_stmt) = 0.
+    IF io_scan IS BOUND.
+      LOOP AT io_scan->statements INTO DATA(ls_root_stmt).
+        READ TABLE io_scan->tokens INDEX ls_root_stmt-from INTO DATA(ls_root_token).
+        CHECK sy-subrc = 0.
+        DATA(lv_root_stmt_line) = ls_root_token-row - i_offset + 1.
+        IF lv_root_stmt_line = lv_root AND to_upper( ls_root_token-str ) = 'METHOD'.
+          lv_root_stmt = sy-tabix.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
 
     " Edges are collected separately and appended after every node and frame
     " has been declared: an edge written inside a subgraph pulls its nodes
@@ -1038,27 +1042,31 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
       " Do not let that collapse the operations that ACE found after METHOD
       " on this very row: they are distinct scanner statements and receive
       " distinct nodes, while METHOD/ENDMETHOD remain grammar only.
-      IF ls_line-line = lv_root AND lv_root_index > 0 AND io_scan IS BOUND.
-        LOOP AT it_kw INTO DATA(ls_inline_kw) WHERE index > lv_root_index.
-          DATA(lv_inline_line) = COND i( WHEN ls_inline_kw-v_line > 0
-                                         THEN ls_inline_kw-v_line ELSE ls_inline_kw-line ).
-          lv_inline_line = lv_inline_line - i_offset + 1.
+      IF ls_line-line = lv_root AND lv_root_stmt > 0 AND io_scan IS BOUND.
+        LOOP AT io_scan->statements INTO DATA(ls_inline_stmt) FROM lv_root_stmt + 1.
+          DATA(lv_inline_stmt_index) = sy-tabix.
+          READ TABLE io_scan->tokens INDEX ls_inline_stmt-from INTO DATA(ls_inline_token).
+          CHECK sy-subrc = 0.
+          DATA(lv_inline_line) = ls_inline_token-row - i_offset + 1.
           IF lv_inline_line <> lv_root.
             EXIT.
           ENDIF.
-          IF ls_inline_kw-name = 'ENDMETHOD' OR ls_inline_kw-name = 'ENDFORM'
-             OR ls_inline_kw-name = 'ENDMODULE'.
+          DATA(lv_inline_word) = to_upper( ls_inline_token-str ).
+          IF lv_inline_word = 'ENDMETHOD' OR lv_inline_word = 'ENDFORM'
+             OR lv_inline_word = 'ENDMODULE'.
             EXIT.
           ENDIF.
-          CHECK c_decls NS | { ls_inline_kw-name } |.
+          CHECK c_decls NS | { lv_inline_word } |.
           DATA(lv_inline_text) = scan_stmt_text( io_scan = io_scan
-                                                   i_stmt_index = ls_inline_kw-index ).
+                                                   i_stmt_index = lv_inline_stmt_index ).
           CHECK lv_inline_text IS NOT INITIAL.
-          DATA(lv_inline_node) = |p{ ls_inline_kw-index }|.
+          DATA(lv_inline_node) = |p{ lv_inline_stmt_index }|.
           rv_mm = rv_mm && |  { lv_inline_node }("{ scheme_label( lv_inline_text ) }")\n|.
-          IF ls_inline_kw-tt_calls IS NOT INITIAL.
+          READ TABLE it_kw INTO DATA(ls_inline_kw)
+            WITH KEY from = ls_inline_stmt-from to = ls_inline_stmt-to.
+          IF sy-subrc = 0 AND ls_inline_kw-tt_calls IS NOT INITIAL.
             lv_styles = lv_styles && |class { lv_inline_node } callnode\n|.
-          ELSEIF c_side CS | { ls_inline_kw-name } |.
+          ELSEIF c_side CS | { lv_inline_word } |.
             lv_styles = lv_styles && |class { lv_inline_node } dbnode\n|.
           ENDIF.
           lv_edges = lv_edges && |  { lv_prev_node } --> { lv_inline_node }\n|.
