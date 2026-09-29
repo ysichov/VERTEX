@@ -1044,11 +1044,8 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
                                          cv_edges  = lv_edges
                                          cv_clicks = lv_clicks
                                          cv_styles = lv_styles ).
-      IF lv_closes = abap_true.
-        rv_mm = rv_mm && |  e{ ls_last-line }("{ scheme_label( ls_last-text ) }")\n|.
-        lv_edges = lv_edges && |  { lv_prev_node }{ arrow( lv_lbl ) }e{ ls_last-line }\n|.
-        CLEAR lv_lbl.
-      ENDIF.
+      " ENDMETHOD/ENDFORM/ENDMODULE only closes the grammar. It is not an
+      " operation, so the diagram ends at the last executable node.
     ENDIF.
 
     IF lv_styles IS NOT INITIAL.
@@ -1268,6 +1265,14 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
                             ELSE |{ r_text } { lv_part }| ).
       IF strlen( r_text ) > 120. EXIT. ENDIF.
     ENDLOOP.
+    " A compact demo method can put METHOD, its only executable statement and
+    " ENDMETHOD on one physical line. The root node already represents the
+    " method; do not repeat those wrappers in the operation node.
+    REPLACE FIRST OCCURRENCE OF REGEX `(?i)^\s*METHOD\s+[^.]+\.\s*`
+      IN r_text WITH ``.
+    REPLACE FIRST OCCURRENCE OF REGEX `(?i)\s*ENDMETHOD\.\s*$`
+      IN r_text WITH ``.
+    CONDENSE r_text.
   ENDMETHOD.
 
 

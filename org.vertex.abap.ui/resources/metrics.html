@@ -157,14 +157,9 @@
   body.calls #list { display: none; }
   /* An opened Calls block renders its Logic in this same scrollable canvas.
      It is not a popup: it stays readable and cannot cover neighbouring calls. */
-  #diagram .hybrid-logic { margin: 18px 0 6px; min-width: max-content;
-                            border: 1px solid var(--field-border);
-                            border-left: 4px solid var(--vscode-focusBorder, #0a66c2);
-                            background: var(--surface); }
-  #diagram .hybrid-logic-head { display: flex; align-items: center; gap: 8px;
-                                 padding: 6px 8px; font-weight: 600; }
-  #diagram .hybrid-logic-head button { margin-left: auto; }
-  #diagram .hybrid-logic svg { display: block; margin: 0 8px 8px; }
+  #diagram .hybrid-logic { margin: 18px 0 6px; min-width: max-content; position: relative; z-index: 1; }
+  #diagram .hybrid-logic svg { display: block; }
+  #diagram .hybrid-connector { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
   /* Calls itself is the hybrid view: every source-backed block is clickable. */
   body.calls #diagram g.node { cursor: pointer; }
   body.calls #diagram g.node.hybrid-open rect { stroke: var(--vscode-focusBorder, #0a66c2) !important;
@@ -207,7 +202,7 @@
   /* A sheet in a light window, the window's own ground in a dark one. The
      three-way palette above decides which, for the same reason it does for
      everything else here: the hosts report the theme differently. */
-  #diagram { padding: 10px; background: #ffffff; color: #111111; }
+  #diagram { position: relative; padding: 10px; background: #ffffff; color: #111111; }
   @media (prefers-color-scheme: dark) {
     #diagram { background: var(--bg); color: var(--fg); }
   }
@@ -276,7 +271,6 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
   <button id="load">Load</button>
   <select id="mode" title="What this window draws">
     <option value="calls" title="Which program, class or method calls which - ACE's Calls Flow">Calls diagram</option>
-    <option value="hybrid" title="Calls diagram whose method blocks open their own Logic diagram">Calls + Logic</option>
     <option value="scheme" title="The flowchart of one method: its branches and statements - ACE's Flow Scheme">Logic diagram</option>
     <option value="metrics">Metrics</option>
     <option value="class">UML diagram</option>
@@ -553,7 +547,7 @@ function answered(kind, raw) {
     // A failure while a diagram is being fetched belongs in the diagram pane:
     // the unit list beside it is still good, and wiping it would cost the
     // reader the place they had got to.
-    if (kind === "flow" || kind === "hybrid" || kind === "asset") { failed(said.replace("NOBACKEND:", "")); }
+    if (kind === "flow" || kind === "hybrid-units" || kind === "hybrid" || kind === "asset") { failed(said.replace("NOBACKEND:", "")); }
     else if (said.indexOf("NOBACKEND:") === 0) { notFound(said.substring(10)); }
     else { message(said); }
     status("");
@@ -568,11 +562,31 @@ function answered(kind, raw) {
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
     return;
   }
+  // Calls first asks the existing Metrics endpoint for the class's unit list;
+  // that supplies the method include. It then asks the unchanged Logic route.
+  if (kind === "hybrid-units") {
+    if (!hybridPending || mode !== "calls" || !Array.isArray(data.units)) { return; }
+    var wanted = String(hybridPending.name).toUpperCase();
+    var unit = data.units.filter(function (item) {
+      var name = String(item.unit_name || "").toUpperCase();
+      return name === wanted || name.slice(name.lastIndexOf("=>") + 2) === wanted;
+    })[0];
+    if (!unit || !unit.include) {
+      failed("Logic unit " + hybridPending.name + " was not found in " + hybridPending.class + ".");
+      hybridPending = null;
+      return;
+    }
+    hybridPending.include = unit.include;
+    hybridPending.unit = unit.unit_name;
+    waiting = "hybrid";
+    sdeFlow(hybridPending.class, "CLAS", "scheme", unit.include, unit.unit_name, "", "");
+    return;
+  }
   // The outer Calls graph stays on screen while a method's scheme is read.
-  // The response is a `scheme`, while the displayed mode remains `hybrid`.
+  // The response is a `scheme`, while the displayed mode remains `calls`.
   if (kind === "hybrid") {
-    if (!hybridPending || mode !== "hybrid" || data.mode !== "scheme") { return; }
-    hybridLogic = { node: hybridPending, diagram: data };
+    if (!hybridPending || mode !== "calls" || data.mode !== "scheme") { return; }
+    hybridLogics.push({ node: hybridPending, diagram: data });
     hybridPending = null;
     draw();
     return;
@@ -655,7 +669,7 @@ function drawClass(raw) {
    the unit list with it: the reader is looking at that list, and a message in
    its place costs them the place they had got to. */
 function lost(kind) {
-  if (kind === "flow" || kind === "hybrid" || kind === "asset") {
+  if (kind === "flow" || kind === "hybrid-units" || kind === "hybrid" || kind === "asset") {
     failed("No response from the host.");
   } else if (units.length > 0) {
     status("no response from the host");
@@ -975,8 +989,7 @@ var lastCaption = "";
 var pendingClass = null;
 /* Calls is cheap. The nested scheme is only requested for a block the reader
    has opened, and is kept until the Calls graph changes. */
-var hybridNodes = [];
-var hybridLogic = null;
+var hybridLogics = [];
 var hybridPending = null;
 
 function flowMode() { return mode !== "metrics"; }
@@ -1012,8 +1025,7 @@ function setMode(next) {
   mode = next;
   document.getElementById("mode").value = next;
   document.body.classList.toggle("flow", flowMode());
-  document.body.classList.toggle("calls", next === "calls" || next === "hybrid");
-  document.body.classList.toggle("hybrid", next === "hybrid");
+  document.body.classList.toggle("calls", next === "calls");
   document.getElementById("list").hidden = next === "class";
   layoutList();
   // The totals are the whole object's numbers: they belong to the table, not
@@ -1024,8 +1036,7 @@ function setMode(next) {
   shownUnit = null;
   expanded = [];
   lastMermaid = null;
-  hybridNodes = [];
-  hybridLogic = null;
+  hybridLogics = [];
   hybridPending = null;
   refit = true;
 
@@ -1086,7 +1097,7 @@ var chosenKey = "";
 function sdeSelectPart(chosen) {
   if (!chosen) { return; }
   chosenKey = chosen.key;
-  if (mode === "calls" || mode === "hybrid") {
+  if (mode === "calls") {
     // Only an event or a form can start the walk, as in ACE.
     if (chosen.type === "EVENT" || chosen.type === "FORM") {
       setCallStart({ name: chosen.name, type: chosen.type });
@@ -1150,7 +1161,7 @@ function requestDiagram() {
     return;
   }
   waiting = "flow";
-  if (mode === "calls" || mode === "hybrid") {
+  if (mode === "calls") {
     // The flow is the whole object; there is no unit to name.
     sdeFlow(loadedObject, loadedType, "calls", "", "", "", String(depth), "", allBlocks ? "X" : "",
             callStart ? callStart.name : "", callStart ? callStart.type : "");
@@ -1173,11 +1184,23 @@ function setZoom(value) {
 }
 
 function applyZoom() {
-  var svg = document.querySelector("#diagram svg");
-  if (!svg || !natural) { return; }
-  svg.style.maxWidth = "none";
-  svg.style.width = Math.round(natural.w * zoom) + "px";
-  svg.style.height = Math.round(natural.h * zoom) + "px";
+  Array.prototype.forEach.call(document.querySelectorAll("#diagram svg"), function (svg) {
+    var size = naturalSize(svg);
+    if (!size || !size.w || !size.h) { return; }
+    svg.style.maxWidth = "none";
+    svg.style.width = Math.round(size.w * zoom) + "px";
+    svg.style.height = Math.round(size.h * zoom) + "px";
+  });
+  if (hybridLogics.length) {
+    requestAnimationFrame(function () {
+      var pane = document.getElementById("diagram");
+      hybridLogics.forEach(function (opened) {
+        var card = pane.querySelector('.hybrid-logic[data-hybrid-key="' + opened.node.key + '"]');
+        var logic = card && card.querySelector("svg");
+        if (card && logic) { placeHybridLogic(pane, card, logic, opened.node); }
+      });
+    });
+  }
 }
 
 function fitDiagram() {
@@ -1186,8 +1209,13 @@ function fitDiagram() {
   // Room inside the padding, and never blown up past full size: a short
   // method stretched over a wide pane reads worse, not better.
   var room = 20;
-  setZoom(Math.min((pane.clientWidth - room) / natural.w,
-                   (pane.clientHeight - room) / natural.h, 1));
+  var scale = Math.min((pane.clientWidth - room) / natural.w,
+                       (pane.clientHeight - room) / natural.h, 1);
+  Array.prototype.forEach.call(pane.querySelectorAll("svg"), function (svg) {
+    var size = naturalSize(svg);
+    if (size && size.w) { scale = Math.min(scale, (pane.clientWidth - room) / size.w, 1); }
+  });
+  setZoom(scale);
   fitted = true;
   fittedFor = { w: pane.clientWidth, h: pane.clientHeight };
 }
@@ -1395,7 +1423,7 @@ function startMermaid(source) {
     var definition = pendingClass;
     pendingClass = null;
     drawClass(definition);
-  } else if (mode === "calls" || mode === "hybrid" || shownUnit) { requestDiagram(); }
+  } else if (mode === "calls" || shownUnit) { requestDiagram(); }
 }
 
 function renderDiagram(data) {
@@ -1412,7 +1440,6 @@ function renderDiagram(data) {
     return;
   }
   lastMermaid = data.mermaid;
-  hybridNodes = data.mode === "calls" ? (data.node_map || []) : [];
   lastCaption = data.mode === "calls"
     ? data.steps + (data.steps === 1 ? " step" : " steps")
     : data.unit_type + ", lines " + data.line_from + " to " + data.line_to;
@@ -1462,8 +1489,12 @@ function draw() {
     }
     // Tinted first, so the lens copies the picture as it is shown.
     if (!isClass) { tintDecisions(pane.querySelector("svg")); }
-    if ((mode === "calls" || mode === "hybrid") && hybridLogic) { markHybridNode(pane.querySelector("svg"), hybridLogic.node); }
-    if ((mode === "calls" || mode === "hybrid") && hybridLogic) { renderHybridLogic(pane, hybridLogic); }
+    if (mode === "calls") {
+      hybridLogics.forEach(function (opened) {
+        markHybridNode(pane.querySelector("svg"), opened.node);
+        renderHybridLogic(pane, opened);
+      });
+    }
     // UML shows the lens over its boxes only; a flowchart's blocks are thin
     // and full of gaps, so there it follows the pointer over the whole picture.
     installUmlLens(pane, pane.querySelector("svg"), !isClass);
@@ -1477,8 +1508,7 @@ function draw() {
 function markHybridNode(svg, opened) {
   if (!svg || !opened) { return; }
   Array.prototype.forEach.call(svg.querySelectorAll("g.node"), function (node) {
-    var match = String(node.id || "").match(/flowchart-(\d+)-/);
-    if (match && String(match[1]) === String(opened.node_id)) { node.classList.add("hybrid-open"); }
+    if (String(node.textContent || "").replace(/\s+/g, "") === opened.key) { node.classList.add("hybrid-open"); }
   });
 }
 
@@ -1489,28 +1519,94 @@ function markHybridNode(svg, opened) {
 function renderHybridLogic(pane, opened) {
   var card = document.createElement("section");
   card.className = "hybrid-logic";
-  var head = document.createElement("div");
-  head.className = "hybrid-logic-head";
-  head.textContent = "Logic inside " + (opened.node.class ? opened.node.class + "->" : "") + opened.node.name;
-  var close = document.createElement("button");
-  close.type = "button";
-  close.textContent = "Close";
-  close.title = "Close this method's Logic diagram";
-  close.addEventListener("click", function () { hybridLogic = null; draw(); });
-  head.appendChild(close);
-  card.appendChild(head);
+  card.dataset.hybridKey = opened.node.key;
   var host = document.createElement("div");
   card.appendChild(host);
   pane.appendChild(card);
-  var logic = turned(opened.diagram.mermaid, direction);
+  var logic = turned(removeEmbeddedLogicTitle(opened.diagram.mermaid, opened.node), direction);
   if (darkPage()) { logic = darkened(logic); }
   diagramSeq = diagramSeq + 1;
   mermaid.render("vertexhybrid" + diagramSeq, logic).then(function (out) {
     host.innerHTML = out.svg;
     tintDecisions(host.querySelector("svg"));
+    applyZoom();
+    placeHybridLogic(pane, card, host.querySelector("svg"), opened.node);
   }, function (error) {
     host.textContent = "Could not draw Logic: " + (error && error.message ? error.message : String(error));
   });
+}
+
+/* Keep the caller visible and make the inner flow its continuation. The
+   independent Mermaid drawings cannot share a layout engine, so the small
+   placement step aligns their entry/exit points and adds the missing edge. */
+function placeHybridLogic(pane, card, logicSvg, caller) {
+  if (!logicSvg || !caller) { return; }
+  var outer = Array.prototype.filter.call(pane.querySelectorAll("svg g.node"), function (node) {
+    return !logicSvg.contains(node) && String(node.textContent || "").replace(/\s+/g, "") === caller.key;
+  })[0];
+  var first = logicSvg.querySelector("g.node");
+  if (!outer || !first) { return; }
+  /* Each expansion starts at its caller's left edge. Centering a very wide
+     operation under a narrow method would push it off the canvas; the arrow
+     still lands vertically on the operation's upper edge. */
+  card.style.marginLeft = "0px";
+  requestAnimationFrame(function () {
+    var paneBox = pane.getBoundingClientRect(), outerBox = outer.getBoundingClientRect(), cardBox = card.getBoundingClientRect();
+    var wanted = outerBox.left - paneBox.left + pane.scrollLeft;
+    var current = cardBox.left - paneBox.left + pane.scrollLeft;
+    card.style.marginLeft = Math.max(0, Math.round(wanted - current)) + "px";
+    requestAnimationFrame(function () { drawHybridConnector(pane, outer, logicSvg.querySelector("g.node")); });
+  });
+}
+
+function drawHybridConnector(pane, outer, first) {
+  var key = String(outer.textContent || "").replace(/\s+/g, "");
+  Array.prototype.forEach.call(pane.querySelectorAll('.hybrid-connector[data-hybrid-key="' + key + '"]'), function (old) { old.remove(); });
+  if (!outer || !first) { return; }
+  var paneBox = pane.getBoundingClientRect(), from = outer.getBoundingClientRect(), to = first.getBoundingClientRect();
+  var x1 = from.left + from.width / 2 - paneBox.left + pane.scrollLeft;
+  var y1 = from.bottom - paneBox.top + pane.scrollTop;
+  var x2 = to.left + Math.min(to.width / 2, from.width / 2) - paneBox.left + pane.scrollLeft;
+  var y2 = to.top - paneBox.top + pane.scrollTop;
+  if (y2 <= y1) { return; }
+  var ns = "http://www.w3.org/2000/svg";
+  var svg = document.createElementNS(ns, "svg");
+  svg.classList.add("hybrid-connector");
+  svg.dataset.hybridKey = key;
+  svg.setAttribute("width", Math.max(pane.scrollWidth, pane.clientWidth));
+  svg.setAttribute("height", Math.max(pane.scrollHeight, pane.clientHeight));
+  var defs = document.createElementNS(ns, "defs"), marker = document.createElementNS(ns, "marker");
+  marker.setAttribute("id", "hybrid-arrow"); marker.setAttribute("markerWidth", "8"); marker.setAttribute("markerHeight", "8");
+  marker.setAttribute("refX", "7"); marker.setAttribute("refY", "4"); marker.setAttribute("orient", "auto");
+  var head = document.createElementNS(ns, "path"); head.setAttribute("d", "M0,0 L8,4 L0,8 Z"); head.setAttribute("fill", "#777");
+  marker.appendChild(head); defs.appendChild(marker); svg.appendChild(defs);
+  var path = document.createElementNS(ns, "path");
+  path.setAttribute("d", "M " + x1 + " " + y1 + " L " + x2 + " " + y2);
+  path.setAttribute("fill", "none"); path.setAttribute("stroke", "#777"); path.setAttribute("stroke-width", "1.5");
+  path.setAttribute("marker-end", "url(#hybrid-arrow)"); svg.appendChild(path);
+  pane.appendChild(svg);
+}
+
+/* The outer Calls block already names CLASS->METHOD. A second root node with
+   exactly that name says nothing new and wastes vertical space. Drop that
+   root and its outgoing links; the first real operation(s) become the Logic
+   graph's entry points. */
+function removeEmbeddedLogicTitle(source, caller) {
+  var removed = ["start"];
+  var className = String(caller.class || "").toUpperCase();
+  var methodName = String(caller.name || "").toUpperCase();
+  String(source || "").split("\n").forEach(function (line) {
+    var declaration = line.match(/^\s*([A-Za-z][A-Za-z0-9_]*)\s*[\[(]/);
+    var text = line.toUpperCase();
+    if (declaration && className && text.indexOf(className) >= 0 && text.indexOf(methodName) >= 0) {
+      removed.push(declaration[1]);
+    }
+  });
+  return String(source || "").split("\n").filter(function (line) {
+    return !removed.some(function (id) {
+      return new RegExp("\\b" + id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(line);
+    });
+  }).join("\n");
 }
 
 /* How strong the lens is, kept while the window is open. */
@@ -1596,18 +1692,12 @@ function naturalSize(svg) {
    acego_, selects code in ACE's source window - there is none here, so it
    does nothing, but it must still not navigate this page anywhere. */
 function onDiagramClick(e) {
-  if (mode === "calls" || mode === "hybrid") {
+  if (mode === "calls") {
     var element = e.target;
     while (element && element !== e.currentTarget) {
       if (element.matches && element.matches("g.node")) {
-        var match = String(element.id || "").match(/flowchart-(\d+)-/);
-        var mapped = match && hybridNodes.filter(function (item) {
-          return String(item.node_id) === match[1];
-        })[0];
-        if (mapped && mapped.include && mapped.name) { requestHybridLogic(mapped); }
-        else if (!hybridNodes.length) {
-          status("This SAP backend does not yet return the Calls node map. Activate ZCL_VX_ADT_RES_FLOW, then reload this diagram.");
-        }
+        var match = String(element.textContent || "").match(/([A-Z][A-Z0-9_/$]*)\s*(?:->|=>)\s*([A-Z][A-Z0-9_~]*)/i);
+        if (match) { requestHybridLogic({ class: match[1].toUpperCase(), name: match[2].toUpperCase(), key: String(element.textContent || "").replace(/\s+/g, "") }); }
         return;
       }
       element = element.parentNode;
@@ -1634,18 +1724,18 @@ function onDiagramClick(e) {
 }
 
 function requestHybridLogic(node) {
-  if (hybridLogic && String(hybridLogic.node.node_id) === String(node.node_id)) {
-    hybridLogic = null;
+  var already = hybridLogics.findIndex(function (opened) { return opened.node.key === node.key; });
+  if (already >= 0) {
+    hybridLogics.splice(already, 1);
     draw();
     return;
   }
   hybridPending = node;
   status("reading Logic inside " + (node.class ? node.class + "->" : "") + node.name + " ...");
-  waiting = "hybrid";
-  // A Calls graph can cross class pools. Its map tells us which class owns
-  // the block, so a nested method is never looked up in the entry program.
-  sdeFlow(node.class || loadedObject, node.class ? "CLAS" : loadedType,
-          "scheme", node.include, node.name, "", "");
+  // Reuse Logic view's normal discovery rather than adding a Calls-specific
+  // backend contract: it returns the method's exact CM include.
+  waiting = "hybrid-units";
+  sdeLoad(node.class, "CLAS");
 }
 
 
@@ -1702,9 +1792,9 @@ function applyAbout() {
   if (!usable("flow")) {
     var box = document.getElementById("mode");
     for (var i = box.options.length - 1; i >= 0; i--) {
-      if (box.options[i].value === "calls" || box.options[i].value === "hybrid" || box.options[i].value === "scheme") { box.remove(i); }
+      if (box.options[i].value === "calls" || box.options[i].value === "scheme") { box.remove(i); }
     }
-    if (mode === "calls" || mode === "hybrid" || mode === "scheme") { setMode("metrics"); }
+    if (mode === "calls" || mode === "scheme") { setMode("metrics"); }
   }
   sayMissing();
 }
@@ -1930,7 +2020,7 @@ document.getElementById("depth").addEventListener("change", function () {
   depth = asked;
   // A different depth is a different picture, so it is fitted again.
   refit = true;
-  if ((mode === "calls" || mode === "hybrid") && loadedObject) { requestDiagram(); }
+  if (mode === "calls" && loadedObject) { requestDiagram(); }
 });
 
 document.getElementById("diagram").addEventListener("click", onDiagramClick);
