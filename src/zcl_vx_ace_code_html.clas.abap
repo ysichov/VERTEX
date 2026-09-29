@@ -476,47 +476,10 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
     " The scan is not always at hand though — the whole-class view and any
     " include that was not parsed arrive without keywords — so fall back to
     " the first word rather than showing no folding at all.
-    IF it_kw IS NOT INITIAL.
-      LOOP AT it_kw INTO DATA(ls_kw).
-        DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
-        lv_vline = lv_vline - i_offset + 1.
-        CHECK lv_vline > 0 AND lv_vline <= lines( rt_lines ).
-        " T_KEYWORDS is a navigation table. Older ACE versions leave INDEX
-        " initial even though FROM/TO still identify the scanner statement.
-        " Structures, on the other hand, reference CL_CI_SCAN statement
-        " indexes. Bridge the two ACE representations here; do not infer
-        " syntax from the source text.
-        DATA(lv_stmt_index) = ls_kw-index.
-        IF lv_stmt_index <= 0 AND io_scan IS BOUND.
-          LOOP AT io_scan->statements INTO DATA(ls_scan_stmt).
-            IF ls_scan_stmt-from = ls_kw-from AND ls_scan_stmt-to = ls_kw-to.
-              lv_stmt_index = sy-tabix.
-              EXIT.
-            ENDIF.
-          ENDLOOP.
-        ENDIF.
-        APPEND VALUE #( index = lv_stmt_index
-                        line  = lv_vline
-                        word  = to_upper( ls_kw-name ) ) TO lt_stmt.
-        " The parser already resolved what this statement invokes — the same
-        " table the editor's double-click navigates by. No need to recognise
-        " calls by their first token.
-        CHECK ls_kw-tt_calls IS NOT INITIAL.
-        READ TABLE rt_lines ASSIGNING <ls_line> INDEX lv_vline.
-        CHECK sy-subrc = 0.
-        <ls_line>-call = abap_true.
-        " Names of what is invoked here, so the renderer can pick those
-        " identifiers out of the line and mark them as calls.
-        LOOP AT ls_kw-tt_calls INTO DATA(ls_call).
-          CHECK ls_call-name IS NOT INITIAL.
-          <ls_line>-call_names = |{ <ls_line>-call_names } { to_upper( ls_call-name ) }|.
-        ENDLOOP.
-        <ls_line>-call_names = |{ <ls_line>-call_names } |.
-      ENDLOOP.
-      SORT lt_stmt BY index.
-    ELSEIF io_scan IS BOUND.
-      " No keyword table (source popup): the scan alone is enough — every
-      " statement's first token carries both its row and its keyword.
+    IF io_scan IS BOUND.
+      " CL_CI_SCAN is ACE's complete statement stream. T_KEYWORDS is for
+      " navigation/calls and may omit statement indexes, so it must not
+      " drive CASE/WHEN/IF block reconstruction.
       LOOP AT io_scan->statements INTO DATA(ls_sst).
         DATA(lv_sidx) = sy-tabix.
         READ TABLE io_scan->tokens INDEX ls_sst-from INTO DATA(ls_stok).
@@ -527,6 +490,16 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
                         line  = lv_srow
                         word  = to_upper( ls_stok-str ) ) TO lt_stmt.
       ENDLOOP.
+    ELSEIF it_kw IS NOT INITIAL.
+      LOOP AT it_kw INTO DATA(ls_kw_stmt).
+        DATA(lv_kw_line) = COND i( WHEN ls_kw_stmt-v_line > 0
+                                    THEN ls_kw_stmt-v_line ELSE ls_kw_stmt-line ).
+        lv_kw_line = lv_kw_line - i_offset + 1.
+        CHECK lv_kw_line > 0 AND lv_kw_line <= lines( rt_lines ).
+        APPEND VALUE #( index = ls_kw_stmt-index
+                        line  = lv_kw_line
+                        word  = to_upper( ls_kw_stmt-name ) ) TO lt_stmt.
+      ENDLOOP.
     ELSE.
       LOOP AT rt_lines ASSIGNING <ls_line>.
         DATA(lv_fw) = first_word( <ls_line>-text ).
@@ -534,6 +507,22 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
         APPEND VALUE #( index = sy-tabix line = sy-tabix word = lv_fw ) TO lt_stmt.
       ENDLOOP.
     ENDIF.
+
+    " Calls still come from T_KEYWORDS: ACE resolves their target there.
+    LOOP AT it_kw INTO DATA(ls_kw).
+      CHECK ls_kw-tt_calls IS NOT INITIAL.
+      DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
+      lv_vline = lv_vline - i_offset + 1.
+      READ TABLE rt_lines ASSIGNING <ls_line> INDEX lv_vline.
+      CHECK sy-subrc = 0.
+      <ls_line>-call = abap_true.
+      LOOP AT ls_kw-tt_calls INTO DATA(ls_call).
+        CHECK ls_call-name IS NOT INITIAL.
+        <ls_line>-call_names = |{ <ls_line>-call_names } { to_upper( ls_call-name ) }|.
+      ENDLOOP.
+      <ls_line>-call_names = |{ <ls_line>-call_names } |.
+    ENDLOOP.
+    SORT lt_stmt BY index.
 
     " The line's own word is the FIRST statement starting on it — that is
     " what the fold marker and the scheme label refer to.
