@@ -349,6 +349,7 @@ const DEBUG_INSTRUCTIONS = [
   "Nothing here changes a variable or the code. Do not ask for more than a question needs: stops return only what changed and tables in short.",
   "The user may take minutes to log on to WebGUI and start the program: call debug_wait again while it says it is still listening, and if nothing has stopped after a few minutes, ask the user whether the program ran - do not end the session on your own.",
   "No stop, no verdict: if no breakpoint was reached, say so plainly and do not present a guess from reading the code as a debugging result.",
+  "A run can die of a short dump instead of finishing, and SAP tells the debugger nothing about the difference: ST22 does. When an answer carries dumped, the program did not finish - report the runtime error it names and where it happened, and do not read the ending as a normal one.",
   "When done, call debug_stop: it lets the program go, stops listening and removes every breakpoint."
 ].join(" ");
 
@@ -387,8 +388,14 @@ const DEBUG_TOOLS = [
   {
     name: "debug_wait",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    description: "Wait for the program to stop or finish. Returns the stop - where, the stack, the source lines, the variables that changed since the last stop (all of them at the first) and the first rows of any table that changed - plus what log breakpoints recorded since the last call and runs that ended.",
+    description: "Wait for the program to stop or finish. Returns the stop - where, the stack, the source lines, the variables that changed since the last stop (all of them at the first) and the first rows of any table that changed - plus what log breakpoints recorded since the last call, runs that ended, and any short dump this user got since the run started.",
     inputSchema: { type: "object", additionalProperties: false, properties: { seconds: { type: "integer", minimum: 1, maximum: 280, description: "60 by default." } } }
+  },
+  {
+    name: "debug_dumps",
+    annotations: { readOnlyHint: true, destructiveHint: false },
+    description: "Ask ST22 now whether this user has a new short dump since the run started. Use it after debug_stop or a Detach, when the program was let go and no stop or step can report how it ended, or whenever a run seems to have vanished. Answers with the runtime error, its short text and the include and line it happened on.",
+    inputSchema: { type: "object", additionalProperties: false, properties: {} }
   },
   {
     name: "debug_read",
@@ -403,7 +410,7 @@ const DEBUG_TOOLS = [
   {
     name: "debug_step",
     annotations: { readOnlyHint: false, destructiveHint: false },
-    description: "Move a stopped program on: over (next statement), into (into a call), out (to the caller), continue (to the next stop breakpoint or the end). Returns what debug_wait returns.",
+    description: "Move a stopped program on: over (next statement), into (into a call), out (to the caller), continue (to the next stop breakpoint or the end). Returns what debug_wait returns. A step that ends the run answers with ended, and with dumped when ST22 says it died of a short dump rather than finishing.",
     inputSchema: { type: "object", additionalProperties: false, properties: { kind: { type: "string", enum: ["over", "into", "out", "continue"] } }, required: ["kind"] }
   },
   {
@@ -453,6 +460,11 @@ function debugSet(dbg) {
           return debugAnswer(dbg, "Opened in the browser: " + await dbg.run(args.program)
             + "\nNow call debug_wait. If the user has to log on, the program starts after that.");
         case "debug_wait": return debugAnswer(dbg, await dbg.wait(args.seconds));
+        case "debug_dumps": {
+          const news = await dbg.checkDumps();
+          return debugAnswer(dbg, news.found.length ? news
+            : "No new short dump for this user since the run started.");
+        }
         case "debug_read": return debugAnswer(dbg, await dbg.read(args.name, args.from, args.to));
         case "debug_step": return debugAnswer(dbg, await dbg.step(args.kind));
         case "debug_status": return debugAnswer(dbg, dbg.status());

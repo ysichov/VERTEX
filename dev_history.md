@@ -1,51 +1,5 @@
 # Development history
 
-Mermaid execution-flow layout uses top-down caller-to-operator edges. Operators in the same invocation are siblings in execution order; enclosing subgraphs and the sequential edge chain were removed.
-
-## 2026-09-28 — Execution-flow hierarchy repair
-
-Retained procedure ids on resolved targets instead of looking up executable sources through editor navigation addresses. The relevance mask now uses reached statement identities without requiring populated per-step calculated facts. Procedure bodies supply method scope when flow event names are empty. The new demo regression exercises nested execution flow and diagram parity; existing tests previously covered BSE nodes only. Mermaid clicks now resolve flow indices to their original source locations.
-
-The persistent unresolved dispatch came from collectSources skipping every name in the index's interfaces map, which also contains CLASS declarations. A foreign CU therefore suppressed loading its CP/CM sources. Replacing the empty CU regression fixture with a real CLASS declaration reproduced the failure. The loader now allows these global object requests; a transport-level calculation-rig regression verifies base-price arithmetic and all five modifier implementations after loading the closure.
-
-## 2026-09-27 — ACE-backed interprocedural Value Origin
-
-The initial local analyzer could not connect a returned structure component to a
-NEW call. Added an ACE index response containing scan tokens with positions,
-statement identities, calls/bindings, units and parameter metadata. The VS Code
-loader reads the dependency closure in the editor's SAP system, preserves include
-locations, and refuses stale/unsaved root source instead of mixing revisions.
-The dependency engine consumes those facts and projects components across copies,
-RETURNING and CHANGING, resolves factory-created references, and retains conditional
-and loop boundaries. Its offline scanner serves fixtures; production SAP source
-uses ACE's statement boundaries. Tests include the debugger_tests calculation rig,
-same-line assignments, ACE composite tokens and method includes, load failures and
-read-only endpoint/schema handling. VSIX remains 0.7.8 for testing. ABAP activation
-could not be verified because the configured local SAP endpoint refused connection.
-
-Interface dispatch exposed a gap in the first index response: an implementation can be analyzed
-from a generated CM include that does not contain its `INTERFACES` declaration. The backend now
-emits the ACE-scanned class-to-interface relation alongside reference types; the dependency engine
-uses those facts to select the concrete `CLASS->INTERFACE~METHOD` implementation without regex parsing.
-Editor navigation now resolves calls before requesting ADT's definition and refuses an interface
-`METHODS` declaration as a target of an invocation.
-It also uses the active editor group for every ordinary navigation; only Value Origin's explicit Ctrl+Click opens beside.
-
-The live closure exposed a further ACE transport gap: `ZCL_PRICE_ROAD` appeared only as a CU include under
-the pricing factory. `ts_prog-class` is now emitted for each include, so the client requests the actual
-class pool and obtains its CM implementation rather than treating a foreign declaration include as complete code.
-
-Value Origin links open the standard VS Code editor (or beside it with Ctrl+Click).
-The test manifest contributes ABAP breakpoint support, so VS Code exposes its native
-leftmost-gutter click in that editor; those breakpoints synchronize to the same SAP
-debugger session as Visual Debug.
-
-The standard source editor can now reveal a right-hand Visual Debug panel for its
-current object, while its source stays in the normal editor and highlights the
-actual stopped line. Its F5-F8 bindings are limited to `vertex-sap` ABAP documents
-and call the shared debugger's into/over/out/continue operations; other VS Code
-editors retain their normal shortcut behavior.
-
 How SelecTor got out of SAP GUI and into two editors, in the order it actually happened —
 including the wrong turns, because those were the expensive part.
 
@@ -2381,6 +2335,223 @@ help for LOOP AT* would mean a new ADT endpoint. So the instructions tell the ch
 key instead - Shift+F12, F1 - rather than guess from a search or from the source, which is the
 failure mode worth preventing: a plausible where-used answer with nothing behind it.
 
+## Stage 42 — Value Origin stops reading ABAP as text
+
+The initial local analyzer could not connect a returned structure component to a
+NEW call. Added an ACE index response containing scan tokens with positions,
+statement identities, calls/bindings, units and parameter metadata. The VS Code
+loader reads the dependency closure in the editor's SAP system, preserves include
+locations, and refuses stale/unsaved root source instead of mixing revisions.
+The dependency engine consumes those facts and projects components across copies,
+RETURNING and CHANGING, resolves factory-created references, and retains conditional
+and loop boundaries. Its offline scanner serves fixtures; production SAP source
+uses ACE's statement boundaries. Tests include the debugger_tests calculation rig,
+same-line assignments, ACE composite tokens and method includes, load failures and
+read-only endpoint/schema handling. VSIX remains 0.7.9 for testing. ABAP activation
+could not be verified because the configured local SAP endpoint refused connection.
+
+Interface dispatch exposed a gap in the first index response: an implementation can be analyzed
+from a generated CM include that does not contain its `INTERFACES` declaration. The backend now
+emits the ACE-scanned class-to-interface relation alongside reference types; the dependency engine
+uses those facts to select the concrete `CLASS->INTERFACE~METHOD` implementation without regex parsing.
+Editor navigation now resolves calls before requesting ADT's definition and refuses an interface
+`METHODS` declaration as a target of an invocation.
+It also uses the active editor group for every ordinary navigation; only Value Origin's explicit Ctrl+Click opens beside.
+
+The live closure exposed a further ACE transport gap: `ZCL_PRICE_ROAD` appeared only as a CU include under
+the pricing factory. `ts_prog-class` is now emitted for each include, so the client requests the actual
+class pool and obtains its CM implementation rather than treating a foreign declaration include as complete code.
+
+Value Origin links open the standard VS Code editor (or beside it with Ctrl+Click).
+The test manifest contributes ABAP breakpoint support, so VS Code exposes its native
+leftmost-gutter click in that editor; those breakpoints synchronize to the same SAP
+debugger session as Visual Debug.
+
+The standard source editor can now reveal a right-hand Visual Debug panel for its
+current object, while its source stays in the normal editor and highlights the
+actual stopped line. Its F5-F8 bindings are limited to `vertex-sap` ABAP documents
+and call the shared debugger's into/over/out/continue operations; other VS Code
+editors retain their normal shortcut behavior.
+
+## Stage 43 — the execution flow drawn as a hierarchy
+
+Mermaid execution-flow layout uses top-down caller-to-operator edges. Operators in the same invocation are siblings in execution order; enclosing subgraphs and the sequential edge chain were removed.
+
+Retained procedure ids on resolved targets instead of looking up executable sources through editor navigation addresses. The relevance mask now uses reached statement identities without requiring populated per-step calculated facts. Procedure bodies supply method scope when flow event names are empty. The new demo regression exercises nested execution flow and diagram parity; existing tests previously covered BSE nodes only. Mermaid clicks now resolve flow indices to their original source locations.
+
+The persistent unresolved dispatch came from collectSources skipping every name in the index's interfaces map, which also contains CLASS declarations. A foreign CU therefore suppressed loading its CP/CM sources. Replacing the empty CU regression fixture with a real CLASS declaration reproduced the failure. The loader now allows these global object requests; a transport-level calculation-rig regression verifies base-price arithmetic and all five modifier implementations after loading the closure.
+
+**The file that had to come back from a backup.** On 28 September `value-origin-view.js` was
+restored from a backup mid-work, and the copy it was restored from was committed beside it as
+`value-origin-view.recovered-20260928-1403.js`. The manifest went to 0.7.10 in that commit and
+back to 0.7.9 in the next one, so 0.7.9 through 0.7.11 name no build and never will. Neither the
+stray copy nor the version numbers were cleaned up at the time; both were, on 30 September — the
+copy deleted and the manifest put back to 0.7.9. A backup taken outside git is not a version, and
+committing it beside the file leaves the repository with two answers to the same question for as
+long as it sits there.
+
+## Stage 44 — one picture instead of two, and the node that failed the diagram
+
+**A method opens inside the Calls diagram.** Calls and Logic had been two views of the same
+object: one showed which methods call which, the other the branches inside one method, and
+reading a call meant leaving the first for the second. Clicking a method block now draws its
+Logic diagram inside the Calls canvas, joined to the block it came from, with a connector drawn
+over the pane rather than inside either SVG — the two are separate mermaid renders, and a single
+graph would have had to be regenerated on every open and close. The open block is marked in the
+theme's focus colour, and the inner diagram is turned to match the *Top-down* / *Left-right*
+choice so the continuation reads in the same direction as the caller.
+
+**The magnifier stopped guessing.** The lens used to switch itself on wherever the rendered text
+fell under 11px. It measured the text against the current scale, so zooming the diagram turned
+the lens on and off under the reader's hand. It is now an explicit *Lens off* / *Lens on* toggle
+serving UML, Logic, Value Origin and every block opened inside Calls, and nothing second-guesses
+it. Whether text is too small to read is the reader's call, and a control that changes state on
+its own is worse than one that does nothing until asked.
+
+**An empty node failed the whole diagram.** Drawing the operations that ACE finds after `METHOD`
+on the same row brought comment statements into the picture: the scanner returns them like any
+other statement, they passed the one check there was — the text is not empty — and then
+`SCHEME_LABEL`, whose job is to strip the comment off a line, returned nothing at all. What
+reached mermaid was `p2("")`, which is a syntax error, and a syntax error anywhere in the source
+fails the diagram entirely rather than dropping the node that caused it. That is why it looked
+intermittent: it depended on whether a comment fell inside the stretch being drawn. The label is
+now computed before the node is, and a statement with nothing left to show is left out of the
+chain; where a statement can be pended into an *N operations* box, the check runs before it is
+pended, so the count matches what would be drawn if the box were opened. The older
+`ZCL_VX_ACE_FLOW` had the same guard, falling back to `"?"`; the guard did not travel with the
+code when the Logic diagram was written.
+
+The three structural nodes — the branch join, the unit box, the loop frame — were deliberately
+left without the guard. Dropping one of them would break the joining of branch tails or the
+nesting of frames, and they cannot come out empty: a line is only marked as structure when its
+first word is a keyword `CLOSER_OF` recognises, so its text always carries that word.
+
+**Two regressions were committed red.** `formula-diagram.test.js` arrived asserting on exact
+strings of minified page source — `/shown=formulaMode\?formulaVisible\(\):visible\(\)/` — and
+failed on arrival, because the implementation it was written against changed in the same
+landing. A test that reads generated source as text fails for the same reason this repository
+does not read ABAP as text.
+
+## Stage 45 — the ending SAP does not name
+
+**What was missing.** The debugger was told the run was over and never told why. A step
+that kills the program throws, and `end()` treated every throw the same: the message went
+into a note unless it matched "exception was raised", which is what an ordinary end says.
+Two endings, one signal. F5 into a class whose load fails — `SYNTAX_ERROR` in a `CM001`
+include, two lines in — came back as a finished run. Worse, a program that dumped before
+reaching any breakpoint produced no step and no stop at all: the listener simply went on
+listening for something that would never arrive, and the only thing that ever noticed was
+the wait running out.
+
+**Where the answer was.** ADT publishes the short dumps as a feed, and `abap-adt-api`,
+already a dependency, already wraps it: `client.dumps(query)` over
+`/sap/bc/adt/runtime/dumps`. Nothing had to be added on the ABAP side — no hub route, no
+`ZCL_VX_*`. That is worth saying because the reflex in this project has been to extend the
+backend, and here the backend was not the missing piece.
+
+**Ids, not timestamps, and not a query.** The parsed feed entry carries `id`, `author`,
+`categories`, a summary and links — no time of its own. The `$query` syntax of the feed is
+not documented anywhere reachable, and guessing a filter that silently matches nothing
+would have been the worst possible failure for this feature. So the run takes a baseline
+instead: every dump id in ST22 when it starts is remembered, and anything appearing later
+under this user is new. No clock to be wrong about, no query to get wrong, and somebody
+else's dump of the same minute cannot be mistaken for ours.
+
+**One ask now, the rest in the background.** The first implementation asked three times,
+1.5 seconds apart, and awaited all three — which made every ordinary end of every program
+three seconds slower, to look for a dump that was not coming. The test suite said so
+immediately: a terminate test that had run in milliseconds took 3011 ms. It now asks once,
+synchronously, so the answer rides back in the answer to the step that killed the run; if
+that comes up empty the remaining tries are fired off unawaited, because SAP writes the
+dump after the program is gone — "short dump is being formatted", as the WebGUI screen
+says. What they find reaches the assistant through the next `debug_wait`.
+
+**The listening case is a poll, and only while somebody waits.** For the run that dies
+before any breakpoint there is no event to hang the question on, so `debug_wait` asks the
+feed every ten seconds inside the one-second tick it already had. No timer, no background
+work when nobody is waiting: a poll that runs when no one is listening is a poll that
+costs requests for nothing.
+
+**A feed that cannot be read is a problem, not an empty answer.** `markDumps` failing sets
+the baseline to null and pushes a problem saying that a run dying of a dump will not be
+reported. The alternative — treating an unreadable feed as "no dumps" — is the exact
+silent degradation this project has been bitten by before, and here it would hide the one
+thing the feature exists to show.
+
+**The window had to say it too.** The first landing wired the dump into the answers the
+assistant gets and stopped there, which left the reader of Visual Debug looking at "The
+program ended." for a program that had not ended - the window counts endings and had
+nothing else to go on. The ending now travels in `picture()` by reference, so a dump found
+by a background try reaches the window on the next wake without it asking again, and it has
+a Dump section of its own that opens itself when a run dies. The feed's own address is an
+ADT resource rather than a page, so **Open ST22** goes to the transaction through WebGUI -
+the same route `run()` already opens a program by - where that dump is the first entry.
+
+**Where the dump happened, without scraping anything.** The feed entry has no place in it -
+id, author, category and a summary, and that is all - so the first reading was that the
+include and line live in the dump body behind the entry's link, as HTML to be parsed. Asking
+the system settled it: ST22 keeps the dump in `SNAP`, and its `FLIST` is a string of tagged
+records - two letters, three digits of length, then the value. `FC` is the runtime error,
+`AP` the program, `AI` the include, `AL` the line. Structured data, not markup. `SNAP.FLIST`
+is `CHAR 200` with eight continuation columns rather than a LOB, so VERTEX's existing table
+resource can select it, and its `f/s/o/l` filters take `DATUM`, `UNAME` and `SEQNO` - no new
+ABAP route, which was the other thing the first reading got wrong. It does mean this one
+part of the debugger wants the backend, where nothing else in it does; a dump whose place
+cannot be read is still reported, and carries the reason instead of a silent blank.
+
+**The editor that would not follow.** Stepping into a method showed it in VERTEX's own
+source pane and left the standard VS Code editor on the caller. The cause was a deliberate
+refusal: `followStoppedFrame` opened the stopped frame only when its source tab happened to
+be open already, to stop a stop in a callee from opening every class on the runtime stack.
+The fear is real but the cure was too broad - a debugger that will not show you the line you
+just stepped into is not following anything. It now opens the current frame's source when it
+has to, and only the current frame, which is what keeps the rest of the stack out of the
+editor. What makes this worth recording is how it was first explained away: the same session
+had just landed dump detection, the run had died of a `SYNTAX_ERROR` in `ZCL_CALC_FACADE`,
+and the obvious story was that there was nothing to step into. `SNAP` said otherwise -
+`AI` naming include `CM002` and `AL` naming line 3, inside `METHOD RUN`. The dump was not
+from the first line, so the program had entered the method, and the editor simply had not
+gone with it.
+
+**The program let go.** Detach continues the program and stops listening, which leaves the
+dump watch with nothing to hang a question on: no step throws, no stop arrives, and the
+ten-second poll is tied to listening. A run that died after Detach was invisible - in the
+one feature built to make exactly that visible. The fix deliberately does not add a timer:
+after Detach the program is not ours to watch, and a poll nobody is waiting for is requests
+spent on nothing. Detach takes one look after letting go, unawaited so it answers at once,
+and everything later is asked for - a button in the section, `debug_dumps` for the chat.
+`SNAP` names the program in `AP`, so what comes back says which program it belongs to
+instead of being assumed to be ours.
+
+**Four ways to arrive nowhere.** Making the standard editor follow the stop took four
+attempts, and every one of them failed silently, which is why it took four. A method frame
+names its generated CM include, and the first version skipped anything that was not
+PROG/CLAS/FUNC. The second read the frame's source address, which SAP does not always give,
+and gave up before reaching the code that knew better - the class and the method are in the
+frame itself, in `program`, `eventType` and `eventName`, whether or not a uri came with them.
+The third asked for an entry with a live document, and an editor tab that outlived a reload
+is restored by the file provider as data and a repo with **no** document: the working
+go-to-definition path had always looked the entry up by uri key and never needed one, which
+is what the user pointed at. The fourth opened the class in whichever group was active.
+
+Each of those was a bare `return`. A silent skip is defensible for a system frame nobody can
+open, and indefensible for a frame we could name - so the failures that remain now say so.
+
+**Folding came back.** Sections could be shut by their heading and could not any more; git
+has no handler on those headings in this file at any commit, so whatever was lost was lost
+before it was ever committed here. It was rewritten rather than restored: a `folded` class,
+`flex:none` while shut so the other sections take the height, the remembered size kept for
+when it opens, and a click on a control inside a heading left to that control.
+
+**The fakes were part of the contract.** Every fake connection in `debugger.test.js` had
+to grow a `probe`, because a connection without a dump feed is now not a connection the
+debugger can work on. Three tests failed the moment the feature landed, and they were
+right to: they were modelling a SAP that no longer matched. The two new regressions cover
+both endings — a step that dumps, with an older dump of this user and a same-minute dump
+of another user in the feed to be ignored, and an ordinary end asserting that it took less
+than a second. Both were checked by breaking the feature on purpose and watching the right
+one fail.
+
 ---
 
 ## What the practice turned out to be
@@ -2409,3 +2580,7 @@ which means half of a code-review tool needs no ABAP at all.
 **A mark, not a drawing; a player.** The live chart first redrew at every stack change just to move the green frame. Only the marked block changes, so Mermaid now runs only when the record gains a block or an arrow. Otherwise `markNow` swaps a class on the drawn SVG node, found by the Mermaid id `flowchart-nX-`. The record keeps, for each stop, the calls made so far, the block and the source line. ◀ ▶ step through those stops and ⏵ replays them one per animation frame, moving the source line and the green block together without asking SAP, and shows ms per frame as the window's own speed limit. SAP standard turned dashed blue. In the browser pane used for testing, ms per frame was 480-800, because a background pane throttles animation frames; the real figure must come from VS Code. Class frames in Methods broke the depth reading: a frame pulls its methods onto one level, so a constructor and the method it calls sat side by side. The frames are gone. Each routine is a two-line block (class, then method) in its class's colour, and Mermaid ranks the blocks by the calls alone. Mermaid's `classDef color` does not reach SVG text when labels are not HTML, so the blue text of standard blocks comes from page CSS. Dark themes drew the chart in Mermaid's light colours. The theme was read from `vscode-dark` on the body, and inside the Tools window that class is not on this page. The page now reads the brightness of the pane's real background colour. With class colours, the green mark vanished: Mermaid writes each `classDef` as an `#svgid .cN>*` rule with `!important`, which outranked the mark. The mark's rule now carries more specificity. The player gained ⏮ and ⏭ and a slider over the stops: stepping back from stop 108 of 124 one click at a time was the only way to the start.
 
 **Rec and clickable blocks.** The window drew each step in 20-100 ms against SAP's 190 and the stack read's 260, so drawing was never the brake. What a replay lacked was detail: Flow stops only at calls. Rec, beside Visual, runs Continue with the Visual logic (F5, prediction, loops passed with F8, Z only) and records every stop into the flow record. The record holds the stack path, the source line and the calls so far, and nothing is drawn until the run ends. The player then shows the run statement by statement at the window's own speed. A click on a chart block moves the player to the next stop where the run entered that routine, with the stop before it elsewhere, wrapping round. Standard blocks do not react, because their type (class or function module) is not known from the record. The block a run starts in is now kept on the chart, so a run that calls nothing still shows it. Each recorded stop also keeps its stack labels, and the player draws them in Stack, marked "recorded" and not clickable, since no debugger stands there. Variables are not in the record: reading them costs an SAP request at every stop. Replay at full speed covered 100 stops in 2-3 seconds, too fast to follow, so ⏵ now takes a pace: 1, 2, 3 (the default), 5 or 10 stops a second, or max. The ms-per-frame figure counts only the time the window spends showing a stop. For a flow the values that matter are those where a routine starts and where it ends, and a read costs little next to a step. Flow and Rec therefore read Parameters and Locals (one `scopes` request and one per group) at a stop that enters a routine, and at one standing on its ENDMETHOD, ENDFORM or ENDFUNCTION. The values are kept with that stop. The player shows them in Variables, and at the stops between it shows the last values read in the same routine, saying from which stop. A failed read is kept as its message and shown there, not skipped. The ms-per-frame figure now stays after a replay ends. In VS Code, 10/s played at about 2/s while a stop took 14-21 ms to show. The pace came from `setTimeout`, and timers inside the Tools window's nested frame are slowed down while animation frames are not. The pace now waits on animation frames for the stop's due time. A click on a block first also opened the class in a new editor tab. The intent was the source in this window, which the player already shows, so the editor call was removed. Stack became a table like SAP's own: depth number (the deepest on top), event type, event, program, include and line, from the frame fields ADT already gives. The recorded stops keep those fields rather than a label, so the player's stack is the same table. A standard block the run stepped over has no stop to go to, so a click shows its source instead. The record names it but not its kind, so the page asks the host's source reader for a class, then a function module, then a program, and says so if none is found. In Flow with Visual on, the source moved only when the stack changed, so inside one routine it stood still while the run went on. A stop in the same routine now moves the line mark and scrolls to it, with nothing else drawn. Standard blocks carried only a class name, because the page named a stepped-over call by its owners. ACE's `tt_calls` has the method too, so the statement map gained `callees` (`CLASS=>METHOD`, `PROGRAM FORM NAME`, a function module's name), and a call stepped over now puts its method on the chart. A map from before the field existed is announced once, and the blocks then carry the class alone. Hovering a table showed its first rows as values joined by bars, with no column names. The hover now builds a small grid: column names, row numbers, and a line for the rows not shown. A structure shows as field and value rows. Rec recorded only its own Continue run, so a few F5s with Rec on left nothing to replay. Rec is now general. Every stop the page draws goes into the record while Rec is on: steps made here, the assistant's, a breakpoint hit. A stop drawn twice (a refresh, a second event) is recorded once. Flow and Rec runs still record their own stops. One gap remains: two stops with the same line and stack depth in a row count as one. An SE37 test run put four frames of the test tool under the function module, both in Stack and on the chart (SAPLSEUJ above the group). The page finds the object's outermost frame from the frame fields: the function module by its event name, a class by its pool, a program by its name. The frames below it are folded in Stack behind a line that shows them, and left out of the flow path. A FUNCTION frame is now its own block, named by its event, as the ABAP side already names owners. Run moved to the front of the header, before the object's name, as "Run in SAP" with an SAP-style execute icon (a clock with a green tick). The program field follows it. The step buttons took the classic debugger's names and look: Single Step (F5), Execute (F6), Return (F7), Continue (F8), each with a red arrow beside lines of code. Pause now changes only the label, so the icon stays. The Tools object field took the whole header width and knew only exact names. It is now at most 380 px, and a name with `*` or `+` is sent to ADT's quick search for the chosen type. The matches drop down under the field, and a pick fills the name and runs. Both hosts had to let this one read through, strictly shaped: operation, a number, an ADT type, a mask. That means `allowed()` in VS Code and the route check in Eclipse's `ToolsView`. The Eclipse plugin was not rebuilt. With the caller's frames folded, Stack's depth now counts from the object, so an SE37 test starts at 1 instead of 6. Terminate and Stop did not say what they do. Stop in particular let the program go, stopped listening and deleted every breakpoint, all under one word. They were weighed against four cases: kill the program here, let it finish, end the session, start again with other points. They became Exit program (unchanged: `terminateDebuggee`, points kept) and Detach, a new `detach()` in the engine: `stop()` with the breakpoint list restored locally, SAP's copy gone. Clear all sits in the Breakpoints bar. Because Detach leaves points that nothing listens for, `run()` now syncs them and starts listening when it is not. "Let it finish without stops" stayed out: it is not asked for yet. Breakpoints can now be switched off, as in SAP's debugger. The engine keeps `active` on each entry. `sync()` and the debugger-scope `scoped()` send only the active ones, and `activateBreakpoints(id, on)` covers one or all. Setting a point again turns it back on. The assistant's `debug_status` marks an inactive one, and Run in SAP needs an active one. In the page, an inactive point is a grey ring: Ctrl+click toggles it, the right-click box has Deactivate and Activate, and each row in Breakpoints has a checkbox, next to Deactivate all and Clear all. Auto-fit also blew a one-block chart up to 400 %, so fitting is now capped at the chart's own size. The engine file is CRLF, so the edit scripts learned to match either line ending. The right column changed shape. Sections used to fold to their bars, and Diagram and Log shared one pane with a header button to open it. Now a row of switches at the top of the column shows or hides each of Stack, Breakpoints, Variables, Diagram and Log. The visible ones are stacked with a draggable line between each two, and dragging moves height from one to the other, 40 px at least. Folding went, since it fought the sizes. Log became its own section, and "log" stopped being a mode of the chart. The pane layout lives in `layoutPanes()`, and the sizes stay in memory for the window's life. The mask search failed in VS Code with HTTP 406. The extension's `fetch` sends `Accept: application/json` for the VERTEX resources, and ADT's quick search answers in XML only. `fetch` now asks for XML for that one resource. Eclipse already did, through `ChatView.accept()`. A plain name now goes through the quick search as NAME* first. Found as typed, it runs. Not found, but with names that start with it, those are listed. When nothing at all comes back, the name runs as typed, because the type-filtered quick search can miss a standard function module that the function itself opens. Parts came to function modules, but only where they help. A function module rarely has parts, though some carry local FORMs written after ENDFUNCTION in the same include. `ZCL_VX_ACE_SOURCE=>resolve` learned FUNC: TFDIR gives the group's program, and from it the FM's include `L<group>U<nn>`, with a namespace kept in front. The metrics resource then returns only that include's units. The page asks for them as for a program, and shows the list only when a FORM is among them. The ABAP was not syntax-checked here, because SAPDiagnose refused the call over `includeSubpackages` again. The pull's activation is the first check. Rec wrote manual stops into the flow record but not into the step log, which only runs filled, so Log stayed empty after a few F5s. `recordStop` now also logs the stop. A step made here carries its key (F5-F8) and the milliseconds from the click. Any other stop (the assistant's, a breakpoint) is logged as "stop". Z_CALC is a report with no event statement at all: its code runs as the implicit START-OF-SELECTION. ACE found no unit in it, so Metrics and the Logic diagram said "No code units". `unit_boundaries` now gives such a program one EVENT unit, START-OF-SELECTION, from the statement after REPORT to the last. That happens only when the main include has no unit and no event, form, module or method exists anywhere in the program, so pools and function groups never get one. The flow resource reads the same boundaries, so the scheme follows. The ABAP is not checked on a system yet. View source has a Parts column of its own, and for a function module with no parts it stayed: a heading over an empty 280 px strip, with no way to fold it. With no parts, the column and its splitter are now hidden. With parts, the heading carries a ‹ › button that folds it to a bar, as the Tools parts list does. A new class listed Local class definition, Local class implementation and Local macros in Parts, and none of them opened. SAP generates those includes holding one comment, which the empty-part rule did not catch: it only dropped includes with no text at all and sections with nothing but their header. `worth_showing` in the versions resource now runs ABAP's own `SCAN ABAP-SOURCE` over a CDEF or CINC include and drops it when no statement is found. That is SAP's tokenizer, not a text pattern. The same list feeds Diff, so a local include emptied back to its comment leaves Diff too. Picking Private section in Parts showed nothing new. The page looked for `PRIVATE SECTION.` in ADT's `source/main`, which ADT assembles from the section includes and the method includes, and scrolled to it. A read-only window can instead show the part itself, and SAP keeps each part as an include: CU, CO and CI for the sections, CMnnn for each method, CCDEF, CCIMP and CCMAC for the local ones. The versions resource got `now=X`. With a part and its type it returns that include's current text via `READ REPORT`. `part_include` knows the section names, the method include (`get_method_include`) and the local includes by name, and `worth_showing` now uses it too. Tools gives pages `sdePart()` for it. View source shows the text numbered from 1, names the include in its hint line, and keeps ← Back through a chain of parts. Nothing is cut out of an assembled text, so no pattern over ABAP is involved. A class opened from a package in Diff showed its parts differently from the Tools list: a Type | Name head row and methods in capitals. Diff keeps its own list for AVE's layout, but the look should match, so methods are shown in lower case and the head row is hidden. Leaving the head row out first broke the layout everywhere: the column widths came from rules on the head cells, and with no head the Type column spread and the names shifted, classes included. The head row now stays in the table and is hidden with `visibility: collapse`, which keeps the widths exactly as they were (checked in the browser: height 0, columns 12 / 54 / 233 px). The list lost its stripes too, as the Tools list has none. Packages had no View source, only UML, Metrics and Diff. Now they have it. The Tools parts list loads a package's objects from the versions resource, as it loads a class's parts, and shows the list for View source only. View source opens a package with no text and hides its own parts column. A program, class or function module picked in Parts is read through the host's `sdeSource`; any other type says it has no ABAP source. Diff's parts column also drew on the editor-widget shade, which differs from the theme's background. It now uses the editor background. These changes shipped as 0.7.5, and `history.md` got its own section for them. The 0.7.4 Flow entry, bent out of shape by edits made during the day, went back to what 0.7.4 shipped.
+
+**Value Origin folds as a whole.** Every Type kept its own expansion state and no control acted on all of them, so reading a wide graph meant clicking branch by branch. A Collapse all / Expand all segment toggle now sits beside the Type selector. For Code, Data and Formula it sets `open` on the `details` nodes; for FLOW it rebuilds `flowExpanded` from the edge list and re-renders the tree, since the FLOW tree is built in the page rather than in the HTML. The per-node `toggle` listeners that redraw the diagram are suppressed during the bulk change, so one rebuild follows instead of one per branch. Switching Type reapplies the current choice, so the toggle never claims a state the shown tree does not have. Collapsed stays the starting state, which it already was.
+
+**The one script string that still carried raw `<`.** The Value Origin page embeds several JSON blobs in its inline scripts, and every one of them escapes `<` as `<` so nothing in the data can be read as a tag by the HTML parser — every one but the BSE FLOW pane's initial `innerHTML`, which was built from the flow tree and stringified as it was. A script block that the parser ends early takes the whole page's behaviour with it: the heading keeps its placeholder, the Type selector and the toggles are never created, and only the inline `<style>` still shows. That is the shape of a break reported against 0.7.9 with the Type selector gone. It could not be reproduced from a generated page here, so this is the hole closed, not the cause proven; the webview's own console has to name it. The line now escapes like its neighbours.

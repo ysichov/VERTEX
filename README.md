@@ -1,8 +1,10 @@
 # ABAP VERTEX Tools
 
-Value Origin's 0.7.8 test build now distinguishes a referenced class declaration from a loaded implementation, so foreign CU includes no longer suppress loading the complete class.
+Value Origin carries a **Collapse all** / **Expand all** toggle beside the Type selector; it applies to every Type, in both tree and diagram, and every branch starts collapsed.
 
-VS Code test build **0.7.8** adds **Analyze Variable Value Origin** to the ABAP editor.
+Value Origin's 0.7.9 test build now distinguishes a referenced class declaration from a loaded implementation, so foreign CU includes no longer suppress loading the complete class.
+
+VS Code test build **0.7.9** adds **Analyze Variable Value Origin** to the ABAP editor.
 It reads ACE's statement/token/call/parameter index from the VERTEX backend, loads
 referenced customer objects (`Z*`, `Y*`, `/namespace/`) automatically and traces structure components through RETURNING
 and CHANGING. The view shows a collapsible static call stack, expandable calculations
@@ -42,12 +44,28 @@ which is which.
 | Tool | Grew out of | What it does | VS Code | Eclipse | ABAP backend |
 |---|---|---|---|---|---|
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | ✓ | — | not needed |
-| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values; the VERTEX chat has it built in, Claude Code and Codex reach it over MCP as `vertex-debug` | ✓ | — | not needed |
+| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values; the VERTEX chat has it built in, Claude Code and Codex reach it over MCP as `vertex-debug` | ✓ | — | not needed |
 | **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | ✓ | — | runs without it; ACE's statement map makes stepping cheaper and puts a stepped-over call's method on the chart |
-| **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | ✓ | ✓ | not needed |
-| **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | ✓ | ✓ | needed |
-| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method | ✓ | ✓ | needed |
-| **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | ✓ | ✓ | needed |
+| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW*, *Code*, *Data* or *Formula*, each as a tree or a diagram | ✓ | — | needed |
+| **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | ✓ | ✓ ¹ | not needed |
+| **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | ✓ | ✓ ² | needed |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | ✓ | ✓ ² | needed |
+| **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | ✓ | ✓ ² | needed |
+
+¹ In Eclipse the assistant is run by the Codex or Claude Code CLI on your own subscription, and
+ADT is the editor: there is no VERTEX tab for it to write into, and the debugger is not part of it.
+See [eclipse/README.md](eclipse/README.md).
+
+² The three explorers are the same pages in both hosts, but the Eclipse plugin is built at
+**0.7.3** and the VS Code extension at **0.7.9**. What the pages gained since 0.7.3 is in the
+repository and in VS Code, and reaches Eclipse only when the plugin is built again.
+
+**Where the two hosts stand apart.** The editor, the debugger, Visual Debug and Value Origin are
+VS Code only, by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace
+them. The divergence that is not by design is the build — five VS Code releases (0.7.4 Visual
+Debug, 0.7.5 debugger fixes, 0.7.6 ABAP Unit, 0.7.7 the chat running tests and ATC, 0.7.9 Value
+Origin and the diagram work) have landed since the Eclipse plugin was last exported. The shared
+pages carry their part of that, and it is waiting on a build, not on code.
 
 The projects named above are where the ideas were worked out first, and they are not developed
 further; everything new happens here.
@@ -99,6 +117,8 @@ Building either half from this repository instead: [BUILD.md](BUILD.md).
 
 - **VERTEX Tools** — pick an object type and a name; the functions offered depend on the type
   (Data, View source, UML, Metrics, Calls and Logic diagrams, Diff, Versions, Visual Debug).
+  Clicking a method in the Calls diagram opens its Logic diagram inside the same canvas, joined
+  to the block it came from; *Lens* magnifies the node under the pointer when the text is small.
 - **The ABAP editor** — hover, Go to, outline, Save & Activate and the block-by-block
   Review & Activate; Ctrl+Shift+F10 runs ABAP Unit into the Test Explorer, Ctrl+Shift+F2 runs ATC
   into the Problems view, Shift+F12 shows where-used, F1 opens the keyword documentation.
@@ -153,7 +173,7 @@ tools one by one: [Debug with an assistant](vscode/README.md#debug-with-an-assis
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
 | Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review saved for a request — including approving, declining and commenting on a block. No blame |
-| Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit |
+| Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit. A method opened from the Calls diagram draws its branch scheme in the same picture |
 
 Status: **early**. All three answer, and each is a fraction of what it was cut from.
 

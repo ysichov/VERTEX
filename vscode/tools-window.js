@@ -75,6 +75,9 @@ async function debugCommand(dbg, command, a, fetchVertex) {
     case "rows": return dbg.tableRows(a.id, a.from, a.to);
     case "value": return dbg.read(a.name, 1, 5);
     case "run": return { url: await dbg.run(a.program, a.test) };
+    case "opendump": return { url: await dbg.openDump() };
+    case "dumppage": return dbg.dumpPage(String(a.id || ""));
+    case "checkdumps": return dbg.checkDumps();
     case "stop": await dbg.stop(); return {};
     case "detach": await dbg.detach(); return {};
     case "terminate": await dbg.terminate(); return {};

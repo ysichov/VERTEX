@@ -1,12 +1,99 @@
 # Release history
 
-- Value Origin Mermaid: operators are siblings beneath their call node; stack depth is shown without enclosing frames.
+## 2026-09-30 — VS Code 0.7.9: a run that dumps says so
 
-- 2026-09-28: Value Origin execution flow retains resolved method identities and statement identities when entering callees. Mermaid source navigation handles execution-flow nodes. A regression checks nested RUN/base-price steps and parity between text and diagram.
+- **Value Origin folds as a whole.** A **Collapse all** / **Expand all** toggle sits beside the
+  Type selector and covers every Type — FLOW, Code, Data and Formula — in both the tree and the
+  diagram. Collapsed is the starting state, and switching Type applies the current choice to the
+  Type switched to.
 
-- 0.7.8 test build: fixed declaration-only ACE includes suppressing full class loading. The regression covers factory dispatch and five modifier implementations.
+- **A short dump is no longer silence.** A step that ends the run threw the same way
+  whether the program finished or died of a runtime error, and nothing said which — F5
+  into a class whose load fails ended the session with no explanation, and a program that
+  died before it ever reached a breakpoint left the debugger listening for a stop that
+  would never come. The debugger now reads SAP's dump feed. Every dump already in ST22
+  when the run starts is remembered, so only what appears afterwards, and only under this
+  user, is reported.
+  - On a step that kills the run, the answer to that very step carries `dumped` with the
+    runtime error and its text: the question is asked once, immediately, and a program
+    that merely finished does not wait for an answer that is not coming.
+  - While `debug_wait` waits, the feed is read every ten seconds — that is what catches a
+    run that dumped before reaching any breakpoint.
+  - A feed that cannot be read is reported as a problem of its own, never as "no dumps".
+- **A program let go is asked after, not watched.** Detach continues the program and stops
+  listening, so no stop and no step is ever coming and nothing could report how it ended - a
+  run that dumped after Detach was invisible. Detach now takes one look at ST22 a moment
+  after it lets go, without making the reader wait for it, and **Check ST22** in the Dump
+  section asks at any time afterwards. The chat has the same question as `debug_dumps`. No
+  timer runs in the background: after Detach the program is not ours to watch, and the
+  question is the reader's to ask.
+- **Visual Debug has a Dump section.** Beside Stack, Breakpoints and Variables, and shown by
+  itself the moment a run dies of one: the runtime error, what SAP said about it, and
+  **Open ST22**, where that dump is the first entry. A short dump is not a notice that
+  scrolls away. The header line still says the run did not finish and points at the section.
+- **The dump says where, and the place opens.** The Dump section names the include and the
+  line the program died on, and clicking it opens that source there - the same click a stack
+  frame takes. The dump feed does not carry a place, so it is read from ST22's own table
+  `SNAP`, whose `FLIST` gives the runtime error, the program, the include and the line as
+  tagged records rather than as markup to be scraped. This is the one part of the debugger
+  that wants the ABAP backend: without it the dump is still reported, and says in the section
+  why it has no line to open.
+- **The standard editor follows a step into a method.** Stepping into a method whose source
+  was not already open left the VS Code editor where it was, while VERTEX's own source pane
+  moved. The standard editor is the one that survives a window reload, so that is where the
+  debugger navigates now: the class is opened whole, as a click on a method already opens it,
+  and the line is found inside it - the generated CM include a method frame names is not an
+  object any editor tab can hold. Only the frame the program actually stands in is opened, so
+  a stop deep in a callee still does not open every class below it; it stays in the editor
+  group the ABAP sources already live in; and **Alt+Left** comes back from it, because being
+  taken into a callee is a navigation like any other.
+- **A section folds by its heading again.** Clicking *Stack*, *Breakpoints*, *Variables*,
+  *Dump* or *Log* shuts it to its title bar and gives its height to the others; clicking
+  again opens it. A click on a control in that heading - *Clear all*, the variable filter,
+  *Open ST22* - still belongs to the control.
 
-## 2026-09-27 — VS Code 0.7.8 test build (not published)
+## 2026-09-29 — VS Code 0.7.9: the diagrams read as one
+
+The same 0.7.9 build as below, carried further. Eclipse was not rebuilt; the shared
+diagram pages change for both hosts once it is.
+
+- **A method opens inside the Calls diagram.** Clicking a method block in the Calls
+  diagram draws that method's Logic diagram in the same canvas, joined to the block it
+  came from, so a call and what it does are read as one picture instead of two views.
+  The open block is marked in the theme's focus colour, and the layout follows the
+  *Top-down* / *Left-right* choice like the rest of the diagram.
+- **The magnifier is a choice, not a guess.** The diagram toolbar has a *Lens off* /
+  *Lens on* toggle, and it serves UML, Logic and every block opened inside Calls.
+  Shift and the wheel set its strength. The old rule that turned the lens on by
+  measuring the text on screen is gone: it flickered as the diagram was zoomed, and
+  whether the text is too small to read is the reader's call.
+- **A statement with nothing left to show is left out of the Logic diagram.** A
+  comment, or a line that is only the characters a label cannot hold, used to be
+  emitted as an empty box — and one empty box is a mermaid syntax error that fails the
+  whole diagram, not just its own node. Affected the operations drawn after `METHOD`
+  on the same row, the body of an opened loop, and the statements between two branches.
+- **Operations that ACE found after `METHOD` on the same row get their own nodes**,
+  rather than being swallowed by the grammar line they share.
+- **Value Origin takes a type.** *FLOW*, *Code*, *Data* and *Formula*: Formula shows
+  the derivation of a value as expanding input formulas, with the tree and the diagram
+  showing the same expanded branches, and groups modifier implementations as the
+  runtime pipeline choices they are. FLOW can be narrowed from *Full* to *BSE*.
+- **One toggle style everywhere.** Independent on/off controls are `vertex-toggle`,
+  mutually exclusive choices are `vertex-segment-toggle`; both live in
+  `vertex-controls.css` and are copied into the extension at packaging.
+
+## 2026-09-28 — VS Code 0.7.9
+
+- Value Origin diagrams put a method's operations as siblings beneath its call node;
+  stack depth is shown without enclosing frames.
+- Value Origin execution flow retains resolved method identities and statement
+  identities when entering callees. Mermaid source navigation handles execution-flow
+  nodes. A regression checks nested RUN/base-price steps and parity between text and
+  diagram.
+- Fixed declaration-only ACE includes suppressing full class loading. The regression
+  covers factory dispatch and five modifier implementations.
+
+## 2026-09-27 — VS Code 0.7.9 test build (not published)
 
 - Value Origin now consumes the ACE index (`flow?mode=origin`) and automatically
   loads referenced objects in the originating SAP system. The ABAP backend class

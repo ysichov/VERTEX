@@ -57,10 +57,17 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   const nativeBreakpoints = new Map();
   let stopFollow = 0;
   const stopDecoration = vscode.window.createTextEditorDecorationType
+    // The same line, the same way, in both windows: the theme's own colour
+    // for a stopped stack frame and an arrow in the gutter. It used to wear
+    // the colour of a search match, which is what made the standard editor
+    // look nothing like VERTEX's own source pane.
     ? vscode.window.createTextEditorDecorationType({ isWholeLine: true,
-      backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
-      overviewRulerColor: new vscode.ThemeColor('editor.findMatchHighlightForeground'),
-      overviewRulerLane: vscode.OverviewRulerLane && vscode.OverviewRulerLane.Full }) : null;
+      backgroundColor: new vscode.ThemeColor('editor.stackFrameHighlightBackground'),
+      overviewRulerColor: new vscode.ThemeColor('editor.stackFrameHighlightBackground'),
+      overviewRulerLane: vscode.OverviewRulerLane && vscode.OverviewRulerLane.Full,
+      gutterIconPath: vscode.Uri.joinPath && context.extensionUri
+        ? vscode.Uri.joinPath(context.extensionUri, 'images', 'stopped.svg') : undefined,
+      gutterIconSize: 'contain' }) : null;
   if (stopDecoration) context.subscriptions.push(stopDecoration);
   require('./value-origin-view').register(vscode, context, async (document, target, progress, cancelled) => {
     const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
@@ -749,6 +756,13 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const placed = await debuggerApi.setBreakpointAt({ url: target.url, line: target.line,
       condition: point.condition || '', mode: 'stop' });
     nativeBreakpoints.set(point.id, placed.id);
+    // A stopped program holds the listener, so a point set now is set in SAP
+    // and still cannot be reached. Better said than discovered.
+    const picture = typeof debuggerApi.picture === 'function' ? debuggerApi.picture() : null;
+    if (picture && picture.stopped) {
+      vscode.window.showInformationMessage('VERTEX: a program is stopped at ' + picture.stopped.at
+        + '. Breakpoints set now are not reached until it is let go - Continue, Detach or Exit program.');
+    }
   }
   function showStoppedLine(picture) {
     if (!stopDecoration) return;
@@ -767,23 +781,108 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       }
     }
   }
-  async function followStoppedFrame(picture) {
+  /* Every change of the picture asks to follow the stop, and two of them can
+     arrive within the same step. The SAP session takes one operation at a
+     time, so these are queued rather than raced; a call already stale by the
+     time its turn comes does nothing. */
+  let followChain = Promise.resolve();
+  function followStoppedFrame(picture) {
+    const request = ++stopFollow;
+    followChain = followChain.then(() => followNow(picture, request), () => followNow(picture, request));
+    return followChain;
+  }
+  async function followNow(picture, request) {
+    if (request !== stopFollow) return;
     const frame = picture && picture.stopped && (picture.stopped.frames || []).find(item => item.current)
       || picture && picture.stopped && (picture.stopped.frames || [])[0];
-    const object = require('./debugger').objectOf(frame && frame.url);
-    if (!object) return;
-    const request = ++stopFollow;
+    if (!frame) return;
+    // What the frame says about itself, which is more than its address: SAP
+    // does not always give a stack entry a source uri, and a method frame
+    // names its class pool and its own name in every case.
+    const className = /=+CP$/.test(String(frame.program || '')) ? String(frame.program).replace(/=+CP$/, '') : '';
+    const method = String(frame.unitType || '').toUpperCase() === 'METHOD' ? String(frame.unit || '') : '';
+    const url = String(frame.url || '').split('#')[0];
+    const object = url ? require('./debugger').objectOf(url) : null;
+    if (!object && !(className && method)) return;
+    // Reading a source takes the same SAP session the rest of VERTEX uses,
+    // and something else may hold it for a moment. That is a wait, not a
+    // failure, so it is tried once more before it is reported as one.
+    const readAgain = async work => {
+      try { return await work(); }
+      catch (error) {
+        if (!/session is busy/i.test(String(error && error.message))) { throw error; }
+        await new Promise(resolve => setTimeout(resolve, 400));
+        return work();
+      }
+    };
     try {
-      const url = String(frame.url).split('#')[0];
-      let entry = [...opened.values()].find(item => String(item.data.source_url || '').split('#')[0] === url);
-      // Stopping in a callee must not fill the editor with every class on the
-      // runtime stack. The docked debugger already names the current frame;
-      // follow it only when the user has that source tab open.
-      if (!entry) return;
+      // A live document, not merely a remembered entry: an entry restored
+      // from workspace state after a reload carries its data and no document
+      // at all, and showTextDocument reads the uri off what it is given.
+      let entry = url ? [...opened.values()].find(item => item.document && !item.document.isClosed
+        && String(item.data.source_url || '').split('#')[0] === url) : undefined;
+      let line = Math.max(0, Number(frame.line || 1) - 1);
+      if (!entry) {
+        // Stepping into a method whose source is not open yet: open it, the
+        // way a debugger is expected to. Only the frame the program actually
+        // stands in - the rest of the runtime stack stays unopened, which is
+        // what keeps a stop in a callee from filling the editor with every
+        // class below it.
+        // Only the system is needed here, not a document. A tab that outlived
+        // an extension reload is restored by the file provider as data and a
+        // repo with no document at all, and requiring one made every stop
+        // after a reload give up without a word.
+        const active = vscode.window.activeTextEditor;
+        const from = (active && active.document && opened.get(active.document.uri.toString()))
+          || [...opened.values()].find(item => item.repo);
+        if (!from || !from.repo) {
+          vscode.window.showWarningMessage('VERTEX: open a VERTEX ABAP source tab so the debugger knows which system to read '
+            + (className || 'the stopped source') + ' from.');
+          return;
+        }
+        if (className && method) {
+          // A method's frame runs in a generated CM include, and no editor
+          // tab holds one: read_sap_object has no INCL type, and its name
+          // check forbids the '=' every such name is padded with. The class
+          // is opened whole, as everywhere else, and the line is found in it:
+          // line 1 of the include is METHOD <name>, so the frame's line
+          // counts from that method's implementation in the assembled source.
+          const at = await readAgain(() => openClassMethod(from.repo, className, method, Number(frame.line) || 1));
+          if (request !== stopFollow) return;
+          entry = [...opened.values()].find(item => item.document === at.document);
+          line = Math.max(0, at.line - 1);
+        } else if (object && ['PROG', 'CLAS', 'FUNC'].includes(object.objectType)) {
+          entry = await readAgain(() => sourceDocument(from.repo, { object_type: object.objectType, object_name: object.name }));
+        }
+        if (!entry) {
+          // Saying nothing is how this went unnoticed before: a frame we knew
+          // how to name and still did not open is a failure, not a skip.
+          if (className && method) {
+            vscode.window.showWarningMessage('VERTEX: the stopped method ' + className + '->' + method
+              + ' could not be opened in the editor.');
+          }
+          return;
+        }
+        if (request !== stopFollow) return;
+      }
+      if (request !== stopFollow || !entry.document) return;
+      // The group the ABAP sources already live in, not whichever group
+      // happened to be active when SAP stopped: a stop is not a reason to
+      // move the reader to another column.
+      const beside = (vscode.window.visibleTextEditors || [])
+        .find(one => one.document && one.document.uri && one.document.uri.scheme === 'vertex-sap' && one.viewColumn);
+      // Taking the reader into a callee is a navigation like any other, so
+      // Back must return from it. Only when the file changes: a stop on the
+      // next line of the same method is not somewhere the reader came from,
+      // and pushing every step would make Back walk the whole run backwards.
+      const leaving = vscode.window.activeTextEditor;
+      if (leaving && leaving.document && leaving.document !== entry.document
+        && leaving.document.uri && leaving.document.uri.scheme === 'vertex-sap') {
+        navigation.push({ document: leaving.document, at: leaving.selection.active });
+      }
+      const editor = await vscode.window.showTextDocument(entry.document,
+        { preview: false, viewColumn: beside ? beside.viewColumn : vscode.ViewColumn.Active });
       if (request !== stopFollow) return;
-      const editor = await vscode.window.showTextDocument(entry.document, { preview: false, viewColumn: vscode.ViewColumn.Active });
-      if (request !== stopFollow) return;
-      const line = Math.max(0, Number(frame.line || 1) - 1);
       const text = entry.document.getText().split(/\r?\n/)[line] || '';
       if (vscode.Selection) editor.selection = new vscode.Selection(position(line, 0), position(line, 0));
       if (typeof editor.revealRange === 'function') editor.revealRange(range(line, 0, text.length));

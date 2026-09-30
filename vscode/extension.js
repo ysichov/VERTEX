@@ -730,8 +730,11 @@ function debuggerFor(context) {
         return client;
       };
       const listener = make();
+      // The listener spends its life in a long poll, so the dump feed gets a
+      // stateless session of its own rather than queueing behind it.
+      const probe = make();
       return {
-        key: systemKey(system), system, user: String(system.user).toUpperCase(), listener,
+        key: systemKey(system), system, user: String(system.user).toUpperCase(), listener, probe,
         open: async function () {
           const client = make();
           client.stateful = "stateful";

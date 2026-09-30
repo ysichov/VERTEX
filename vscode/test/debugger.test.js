@@ -4,9 +4,20 @@ const { create, sourceUrl, objectOf } = require("../debugger");
 
 const URL_MAIN = "/sap/bc/adt/programs/programs/z_calc/source/main";
 
+/* The dump feed every fake connection answers with. ST22 is read before a run
+   and after one dies, so a connection without it is not a connection the
+   debugger can work on. PUSH adds a dump the way SAP would, after the fact. */
+function fakeDumps(entries = []) {
+  const list = entries.slice();
+  const probe = { async dumps() { return { dumps: list.slice() }; } };
+  probe.push = d => list.push(Object.assign({ author: "SYCHOV", type: "text",
+    categories: [{ term: "SYNTAX_ERROR", label: "ABAP runtime error" }], links: [{ href: "/sap/bc/adt/runtime/dump/1" }] }, d));
+  return probe;
+}
+
 /* A fake SAP: the program stops at the lines in STOPS in turn, then ends.
    Each stop carries the variables the program has there. */
-function fakeSap({ stops = [], conflict = false } = {}) {
+function fakeSap({ stops = [], conflict = false, probe = fakeDumps(), dumpOnEnd = null } = {}) {
   const calls = [], sent = [], scopedSent = [];
   let released = null, position = -1;
   const hit = { DEBUGGEE_ID: "D1", PRG_CURR: "Z_CALC", INCL_CURR: "Z_CALC", LINE_CURR: stops[0] && stops[0].line };
@@ -66,7 +77,11 @@ function fakeSap({ stops = [], conflict = false } = {}) {
     async debuggerStep(kind) {
       calls.push(kind);
       position++;
-      if (position >= stops.length) { throw new Error("An exception was raised"); }
+      if (position >= stops.length) {
+        // A step that dies writes its dump the way SAP does - after the fact.
+        if (dumpOnEnd) { probe.push(dumpOnEnd); }
+        throw new Error("An exception was raised");
+      }
       return { reachedBreakpoints: stops[position].reached ? [{ id: stops[position].reached }] : [] };
     },
     async getObjectSource() { return Array.from({ length: 60 }, (_, i) => "line " + (i + 1)).join("\n"); },
@@ -78,9 +93,9 @@ function fakeSap({ stops = [], conflict = false } = {}) {
     ideId: "IDE", terminalId: "TERM",
     openUrl: async url => opened.push(url),
     connect: async () => ({ system: { name: "QAS", url: "https://sap.example:44300", client: "100" }, user: "SYCHOV",
-      listener, open: async () => session })
+      listener, probe, open: async () => session })
   });
-  return { dbg, calls, sent, opened, scopedSent };
+  return { dbg, calls, sent, opened, scopedSent, probe };
 }
 
 const simple = (name, value) => ({ ID: name, NAME: name, META_TYPE: "simple", VALUE: value });
@@ -201,6 +216,142 @@ test("a table that changed shows its first rows; debug_read reads a range", asyn
   await dbg.stop();
 });
 
+test("a step that kills the run says whether it finished or dumped, and only for this user", async () => {
+  const before = fakeDumps([
+    // Already in ST22 when the run starts: this user's history, and somebody
+    // else's dump of the same minute. Neither belongs to the run.
+    { id: "old", author: "SYCHOV", categories: [{ term: "MESSAGE_TYPE_X", label: "ABAP runtime error" }] },
+    { id: "theirs", author: "OTHER", categories: [{ term: "SYNTAX_ERROR", label: "ABAP runtime error" }] }
+  ]);
+  const { dbg } = fakeSap({
+    stops: [{ line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] }],
+    probe: before,
+    dumpOnEnd: { id: "new",
+      // The feed writes its summary as HTML, with SAP's own runtime-viewer
+      // link inside it: the sentence is what a reader wants, the link is not.
+      text: "<p>Syntax error in program ZCL_CALC_DATA_PROVIDER====CP.</p>"
+        + "<p><a class=\"showInRuntimeViewerLink\" href=\"adt://ALC/sap/bc/adt/runtime/dumps/1\">Show in Runtime Error Viewer</a></p>",
+      categories: [{ term: "SYNTAX_ERROR", label: "ABAP runtime error" }] }
+  });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  const first = await dbg.wait(5);
+  assert.equal(first.stopped.at, "Z_CALC:45");
+  // The dumps that were there before the run are not this run's.
+  assert.equal(first.dumps, undefined);
+
+  // F5 into a class whose load fails: the step throws exactly as it throws
+  // when the program simply ended, and ST22 is what tells them apart.
+  const dead = await dbg.step("into");
+  const run = dead.finished[0];
+  assert.equal(run.program, "Z_CALC");
+  assert.equal(run.dumped.length, 1);
+  assert.equal(run.dumped[0].error, "SYNTAX_ERROR");
+  assert.match(run.dumped[0].text, /ZCL_CALC_DATA_PROVIDER/);
+  // The markup is taken off, and the link's own label is not read as part of
+  // the message; SAP's address for the dump is kept apart from it.
+  assert.doesNotMatch(run.dumped[0].text, /<|Runtime Error Viewer/);
+  assert.equal(run.dumped[0].adt, "adt://ALC/sap/bc/adt/runtime/dumps/1");
+  assert.match(run.note, /did not finish - it dumped/);
+  // ST22's own table is read through the ABAP backend, which this fake SAP
+  // does not serve. The dump is still reported; only the line it points at is
+  // missing, and it says so rather than quietly having no place.
+  assert.equal(run.dumped[0].where, undefined);
+  assert.match(run.dumped[0].whyNoPlace, /could not be read/);
+  await dbg.stop();
+});
+
+test("the last window closing on a stop lets the program go, and says so", async () => {
+  // A stopped program holds the listener: nothing listens while a session is
+  // attached, so breakpoints set afterwards are dead. A window closed on a
+  // stop used to leave exactly that, with nothing on screen to say so.
+  const { dbg, calls } = fakeSap({ stops: [{ line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] }] });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  const unwatch = dbg.watch(function () {});
+  const first = await dbg.wait(5);
+  assert.equal(first.stopped.at, "Z_CALC:45");
+
+  unwatch();
+  // The release is not awaited by whoever closed the window, so give it its
+  // turn before asking what became of the program.
+  for (let n = 0; n < 50 && dbg.picture().stopped; n++) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  const news = await dbg.wait(5);
+  assert.ok(calls.includes("logout"), "the stopped session was not let go");
+  assert.equal(dbg.picture().stopped, null);
+  assert.match(String(news.problems), /was stopped, so it was let go/);
+  // The breakpoints stay: this is a release, not a stop.
+  assert.equal(dbg.status().breakpoints.length, 1);
+  await dbg.stop();
+});
+
+test("an assistant debugging with no window open keeps its stop", async () => {
+  // Watchers are windows. One that never existed must not be counted as one
+  // that went away, or the chat would lose the program it is standing in.
+  const { dbg } = fakeSap({ stops: [{ line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] }] });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  const first = await dbg.wait(5);
+  assert.equal(first.stopped.at, "Z_CALC:45");
+  const again = await dbg.wait(2);
+  assert.equal(again.stopped.at, "Z_CALC:45");
+  await dbg.stop();
+});
+
+test("Detach lets the program go unwatched, and ST22 answers when it is asked", async () => {
+  // Detach continues the program and stops listening: no stop and no step is
+  // ever coming, so nothing of ours can report how it ended. The reader asks.
+  const feed = fakeDumps();
+  const { dbg } = fakeSap({
+    stops: [{ line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] }],
+    probe: feed
+  });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await dbg.wait(5);
+
+  const started = Date.now();
+  await dbg.detach();
+  assert.ok(Date.now() - started < 1000, "Detach waited for a dump instead of answering");
+
+  // The program, let go, dies a moment later.
+  feed.push({ id: "afterDetach", text: "Syntax error in program ZCL_LATE." });
+  const news = await dbg.checkDumps();
+  assert.equal(news.found.length, 1);
+  assert.equal(news.found[0].error, "SYNTAX_ERROR");
+  assert.equal(news.program, "Z_CALC");
+  // Asked again, the same dump is not news twice.
+  assert.equal((await dbg.checkDumps()).found.length, 0);
+  await dbg.stop();
+});
+
+test("a dump feed that never answers does not cost a stop", async () => {
+  // The listener's long poll must go first and nothing may be awaited in
+  // front of it: a breakpoint stops nothing while no listener waits, so a
+  // slow ST22 read taken before it is a window in which the run is missed.
+  const hangs = { dumps() { return new Promise(function () {}); } };
+  const { dbg } = fakeSap({
+    stops: [{ line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] }],
+    probe: hangs
+  });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  const first = await dbg.wait(5);
+  assert.equal(first.stopped.at, "Z_CALC:45");
+  await dbg.stop();
+});
+
+test("a run that ends without a dump says so, and does not wait for one", async () => {
+  const { dbg } = fakeSap({ stops: [{ line: 45, reached: "BP45", vars: [simple("LV_TOTAL", "600.00")] }] });
+  await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
+  await dbg.wait(5);
+  const started = Date.now();
+  const dead = await dbg.step("continue");
+  // A program that merely finished must not pay for the question: one ask of
+  // the feed, no waiting for a dump that is not coming.
+  assert.ok(Date.now() - started < 1000, "an ordinary end waited for a dump");
+  assert.equal(dead.finished[0].dumped, undefined);
+  assert.equal(dead.finished[0].note, "");
+  await dbg.stop();
+});
+
 test("nothing is read or stepped without a stopped program", async () => {
   const { dbg } = fakeSap();
   await assert.rejects(dbg.read("LV_TOTAL"), /not stopped/);
@@ -272,7 +423,7 @@ test("the debugger follows the active system, and refuses to switch while debugg
   const listener = { async debuggerSetBreakpoints(m, t, i, c, bps) { return bps.map(b => ({ id: "X", uri: { uri: b.split("#")[0], range: { start: { line: Number(b.split("=")[1]) } } } })); },
     async debuggerListeners() {}, async debuggerListen() { return new Promise(() => {}); }, async debuggerDeleteListener() {} };
   const dbg = create({ ideId: "I", terminalId: "T", openUrl: async () => {}, current: () => active,
-    connect: async () => { connected.push(active); return { key: active, system: { name: active, url: "https://" + active.toLowerCase() }, user: "U", listener, open: async () => ({}) }; } });
+    connect: async () => { connected.push(active); return { key: active, system: { name: active, url: "https://" + active.toLowerCase() }, user: "U", listener, probe: fakeDumps(), open: async () => ({}) }; } });
   assert.match(dbg.status().system, /not connected/);
   await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
   active = "E19";
@@ -291,14 +442,14 @@ test("a system's webgui address is where WebGUI opens; a bad one is refused", as
     async debuggerListeners() {}, async debuggerListen() { return new Promise(() => {}); }, async debuggerDeleteListener() {} };
   let webgui = "https://10.0.0.5:44300/";
   const dbg = create({ ideId: "I", terminalId: "T", openUrl: async url => opened.push(url),
-    connect: async () => ({ key: "DEV", system: { name: "DEV", url: "http://10.0.0.5:8000", client: "100", webgui }, user: "U", listener, open: async () => ({}) }) });
+    connect: async () => ({ key: "DEV", system: { name: "DEV", url: "http://10.0.0.5:8000", client: "100", webgui }, user: "U", listener, probe: fakeDumps(), open: async () => ({}) }) });
   await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
   await dbg.run("Z_CALC");
   assert.match(opened[0], /^https:\/\/10\.0\.0\.5:44300\/sap\/bc\/gui\/sap\/its\/webgui\?/);
   await dbg.stop();
   webgui = "ftp://nowhere";
   const bad = create({ ideId: "I", terminalId: "T", openUrl: async url => opened.push(url),
-    connect: async () => ({ key: "DEV", system: { name: "DEV", url: "http://10.0.0.5:8000", webgui }, user: "U", listener, open: async () => ({}) }) });
+    connect: async () => ({ key: "DEV", system: { name: "DEV", url: "http://10.0.0.5:8000", webgui }, user: "U", listener, probe: fakeDumps(), open: async () => ({}) }) });
   await bad.setBreakpoint({ name: "Z_CALC", line: 45 });
   await assert.rejects(bad.run("Z_CALC"), /not an http\(s\) URL/);
   await bad.stop();
@@ -429,7 +580,7 @@ test("a class's method starts come from ADT's class structure, read once", async
         { rel: "http://www.sap.com/adt/relations/source/implementationIdentifier", href: "/sap/bc/adt/oo/classes/zcl_x/source/main#start=40,9" }] },
       { "adtcore:name": "mv_a", "adtcore:type": "CLAS/OA", components: [], links: [] }] }; } };
   const dbg = create({ ideId: "I", terminalId: "T", openUrl: async () => {},
-    connect: async () => ({ key: "Q", system: { name: "Q", url: "https://q" }, user: "U", listener, open: async () => ({}) }) });
+    connect: async () => ({ key: "Q", system: { name: "Q", url: "https://q" }, user: "U", listener, probe: fakeDumps(), open: async () => ({}) }) });
   assert.deepEqual(await dbg.classMethods("/sap/bc/adt/oo/classes/zcl_x/source/main#start=41"), { RUN: 40 });
   await dbg.classMethods("/sap/bc/adt/oo/classes/zcl_x/source/main");
   assert.equal(asked, 1);

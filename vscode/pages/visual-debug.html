@@ -47,7 +47,13 @@ main{flex:1;display:flex;min-height:0}
 body.drag{cursor:col-resize;user-select:none}
 #right{width:420px;flex:none;display:flex;flex-direction:column;min-width:220px;overflow:hidden}
 section{display:flex;flex-direction:column;min-height:0;border-bottom:1px solid var(--vscode-panel-border,GrayText)}
-section h3{margin:0;padding:4px 8px;font-size:12px;font-weight:600;background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas));display:flex;gap:6px;align-items:center;user-select:none}
+section h3{margin:0;padding:4px 8px;font-size:12px;font-weight:600;background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas));display:flex;gap:6px;align-items:center;user-select:none;cursor:pointer}
+/* Folded: the header stays, the body goes, and the section stops claiming
+   height - the others take it. The twisty is the only thing that says so. */
+section>h3::before{content:"\25BE";display:inline-block;width:9px;color:var(--vscode-descriptionForeground,GrayText)}
+section.folded>h3::before{content:"\25B8"}
+section.folded{flex:none!important}
+section.folded>*:not(h3){display:none}
 /* A bar folds its section to the bar itself; the room goes to the others. */
 section h3 .grow{flex:1}
 section h3 label{font-weight:400;display:flex;gap:3px;align-items:center}
@@ -69,6 +75,21 @@ table.stack tr.on td:first-child::before{content:"▶ "}
 .row .x{margin-left:auto;padding:0 4px}
 button.x{background:transparent;border:0}
 .row .dim{color:var(--vscode-descriptionForeground,GrayText)}
+/* A place in the source, written as the link it behaves like. */
+.row button.link{padding:0;border:0;background:transparent;color:var(--vscode-textLink-foreground,LinkText);font:inherit;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
+/* SAP's whole dump page, over the window but not over the workbench: the
+   reader keeps the stack and the source behind it and closes it with Esc. */
+#dumppage{position:fixed;inset:0;z-index:150;display:flex;flex-direction:column;
+  background:var(--vscode-editor-background,Canvas);color:var(--vscode-foreground,CanvasText)}
+/* A display rule of our own beats the hidden attribute, and the panel would
+   stand over the window from the first moment it opened. */
+#dumppage[hidden]{display:none}
+#dumpbar{display:flex;gap:6px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--vscode-panel-border,GrayText);
+  background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas))}
+#dumppagebody{flex:1;overflow:auto;padding:10px;user-select:text}
+#dumppagebody table{border-collapse:collapse}
+#dumppagebody td,#dumppagebody th{border:1px solid var(--vscode-panel-border,GrayText);padding:2px 6px;vertical-align:top}
+#dumppagebody h1,#dumppagebody h2,#dumppagebody h3{font-size:13px;margin:10px 0 4px}
 .empty{padding:4px 8px;color:var(--vscode-descriptionForeground,GrayText);font-family:system-ui,sans-serif}
 #filter{width:110px}
 table.vars{border-collapse:collapse;width:100%;table-layout:fixed}
@@ -168,10 +189,10 @@ body.vertex-docked-debug #right{width:100%}
   <div class="split" id="split" title="Drag to resize"></div>
   <div id="right">
     <div id="panes" title="Show or hide a section; drag the line between two sections to resize them">
-      <button data-pane="stacksec" class="on">Stack</button><button data-pane="bpsec" class="on">Breakpoints</button><button data-pane="varsec" class="on">Variables</button><button data-pane="flowpane">Diagram</button><button data-pane="logsec">Log</button>
+      <button data-pane="stacksec" class="on">Stack</button><button data-pane="bpsec">Breakpoints</button><button data-pane="varsec" class="on">Variables</button><button data-pane="flowpane">Diagram</button><button data-pane="dumpsec">Dump</button><button data-pane="logsec">Log</button>
     </div>
     <section id="stacksec"><h3>Stack<span id="depth" class="dim"></span></h3><div class="list" id="stack"></div></section>
-    <section id="bpsec"><h3><span>Breakpoints</span><span class="grow"></span><button id="bpall" title="Turn every breakpoint off, or on again, keeping them">Deactivate all</button><button id="bpclear" title="Remove every breakpoint, here and in SAP">Clear all</button></h3><div class="list" id="bps"></div></section>
+    <section id="bpsec" hidden><h3><span>Breakpoints</span><span class="grow"></span><button id="bpall" title="Turn every breakpoint off, or on again, keeping them">Deactivate all</button><button id="bpclear" title="Remove every breakpoint, here and in SAP">Clear all</button></h3><div class="list" id="bps"></div></section>
     <section id="varsec"><h3><span>Variables</span><span id="partial" class="dim"></span><span class="grow"></span>
       <button id="globals" class="on" title="Read the global variables">Globals</button>
       <button id="locals" class="on" title="Read the local variables">Locals</button>
@@ -180,10 +201,16 @@ body.vertex-docked-debug #right{width:100%}
       <button id="initials" title="Show variables with an initial value">Initials</button>
       <input id="filter" placeholder="Filter" spellcheck="false"></h3>
       <div class="list" id="vars"></div></section>
+    <section id="dumpsec" hidden><h3><span>Dump</span><span id="dumpwhen" class="dim"></span><span class="grow"></span>
+      <button id="dumpcheck" title="Ask ST22 now whether this user has a new short dump since the run started">Check ST22</button>
+      <button id="dumpfull" hidden title="Show the whole dump as SAP wrote it">Whole dump</button>
+      <button id="dumpopen" title="Open ST22 in SAP, where this dump is the first entry">Open ST22</button></h3>
+      <div class="list" id="dumpbox"></div></section>
     <div id="flowpane" hidden><div id="flowbar"><button id="fclasses" class="on">Classes</button><button id="fmethods">Methods</button><button id="ffirst" title="The first recorded stop">&#9198;</button><button id="fprev" title="One stop back in the recorded run">&#9664;</button><input type="range" id="fslide" min="1" max="1" value="1" title="Any recorded stop"><span id="fpos" class="dim"></span><button id="fnext" title="One stop forward; past the last one the chart is live again">&#9654;</button><button id="flast" title="The last stop - where the program is now">&#9197;</button><button id="fplay" title="Replay the recorded run as fast as the chart draws">&#9205;</button><select id="fspeed" title="Replay speed, stops per second"><option value="1">1/s</option><option value="2">2/s</option><option value="3" selected>3/s</option><option value="5">5/s</option><option value="10">10/s</option><option value="0">max</option></select><span class="grow"></span><button id="fzout" title="Smaller (Ctrl + wheel)">&#8722;</button><span id="fzoom">100%</span><button id="fzin" title="Larger (Ctrl + wheel)">+</button><button id="ffit" title="Fit the diagram into the pane">Fit</button><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Hide the diagram">&#215;</button></div><div id="flowsvg"></div></div>
     <section id="logsec" hidden><h3>Log</h3><div id="logbox" class="list"></div></section>
   </div>
 </main>
+<div id="dumppage" hidden><div id="dumpbar"><b>Short dump</b><span id="dumppagename" class="dim"></span><span class="grow"></span><button id="dumppageclose" class="x" title="Close (Esc)">&#215;</button></div><div id="dumppagebody"></div></div>
 <div id="tip"></div>
 <div id="bpedit">
   <div id="bpwhere"></div>
@@ -200,6 +227,50 @@ function sdeReady(){var raw=sdeTake(),cb=waiting.shift();if(!cb)return;if(String
 function ask(send){return new Promise(function(ok,fail){waiting.push({ok:ok,fail:fail});send();});}
 function debug(command,args){if(typeof sdeDebug!=="function")return Promise.reject(new Error("Visual Debug needs the VS Code host."));return ask(function(){sdeDebug(command,args||{});});}
 function notice(text){var n=$("notice");n.textContent=text||"";n.classList.toggle("on",!!text);}
+/* How the run ended. SAP ends a program the same way whether it finished or
+   died of a short dump, so the counter of endings cannot tell them apart -
+   ST22 can, and the debugger has already asked it. */
+function endedNotice(p){
+  var end=p.ending||{},list=end.dumped||[];
+  if(!list.length){notice("The program ended.");return;}
+  notice("The program did not finish - short dump: "+list[0].error
+    +(list.length>1?" (+"+(list.length-1)+" more)":"")+". See the Dump section.");
+  drawDump(end);
+}
+/* The dump in a section of its own, because a short dump is not a notice that
+   scrolls away - it is the answer to what just happened. */
+function drawDump(end){
+  var list=end.dumped||[],box=$("dumpbox");
+  box.textContent="";
+  $("dumpwhen").textContent=end.program?" "+end.program:"";
+  list.forEach(function(one){
+    var row=document.createElement("div");row.className="row";
+    var name=document.createElement("b");name.textContent=one.error||"ABAP runtime error";
+    row.appendChild(name);
+    if(one.text){var t=document.createElement("div");t.className="dim";t.textContent=one.text;row.appendChild(t);}
+    // Where it happened, from ST22's own table - the same click a stack frame
+    // takes: the include, opened on the line that died.
+    if(one.where&&one.where.include){
+      var at=document.createElement("button");
+      at.className="link";
+      at.textContent=one.where.include+(one.where.line?":"+one.where.line:"");
+      at.title="Open the source where the program died";
+      at.onclick=function(){show(one.where.url,one.where.include,one.where.line).catch(failed);};
+      row.appendChild(at);
+    }else if(one.whyNoPlace){
+      var why=document.createElement("div");why.className="dim";why.textContent=one.whyNoPlace;row.appendChild(why);
+    }
+    box.appendChild(row);
+  });
+  // SAP wrote a whole page about it; the section shows what a reader needs
+  // first and keeps the rest one button away.
+  var whole=$("dumpfull"),first=list.filter(function(o){return o.hasPage;})[0];
+  whole.hidden=!first;
+  if(first)whole.onclick=function(){showDumpPage(first.id,first.error||"");};
+  // Shown, not merely available: a dump nobody noticed is a dump that did not
+  // happen. The reader can close the section again.
+  if(!paneOn("dumpsec"))setPane("dumpsec",true);
+}
 function failed(error){notice(error&&error.message||String(error));}
 
 /* ---------- state ---------- */
@@ -207,6 +278,7 @@ var object={url:"",lines:[],name:INITIAL&&INITIAL.name||"",type:INITIAL&&INITIAL
 var shown={url:"",lines:[],name:""};
 var picture={breakpoints:[],stopped:null,listening:false,ended:0};
 var stopKey="",lastEnded=null,previous={},current={},expanded={},scopes=null;
+var dumpShown="";   // the ending whose dump the section already names
 var norm=function(url){return String(url||"").split("#")[0].toLowerCase();};
 
 /* ---------- the source ---------- */
@@ -398,13 +470,15 @@ $("bpall").onclick=function(){var anyOn=picture.breakpoints.some(function(b){ret
 $("bpclear").onclick=function(){notice("");debug("clear",{}).then(refresh).catch(failed);};
 /* The right column's sections: each shown or hidden by its switch, the
    visible ones stacked with a line between two that drags to resize them. */
-var PANES=["stacksec","bpsec","varsec","flowpane","logsec"],paneSize={stacksec:130,bpsec:70,varsec:300,flowpane:320,logsec:200};
+var PANES=["stacksec","bpsec","varsec","dumpsec","flowpane","logsec"],paneSize={stacksec:130,bpsec:70,varsec:300,dumpsec:120,flowpane:320,logsec:200};
 function paneOn(id){return !$(id).hidden;}
 function layoutPanes(){
   document.querySelectorAll("#right>.hsplit").forEach(function(x){x.remove();});
   var shown=PANES.filter(paneOn);
   shown.forEach(function(id,i){
-    $(id).style.flex="1 1 "+paneSize[id]+"px";
+    // A folded section keeps its remembered height for when it opens again,
+    // but takes none of the pane while it is shut.
+    $(id).style.flex=$(id).classList.contains("folded")?"none":"1 1 "+paneSize[id]+"px";
     if(i===0)return;
     var line=document.createElement("div");line.className="hsplit";$(id).parentNode.insertBefore(line,$(id));
     line.onmousedown=function(e){
@@ -419,12 +493,30 @@ function layoutPanes(){
 }
 function setPane(id,on){
   $(id).hidden=!on;
+  // Turning a section on that was left folded would show a bare heading and
+  // look like nothing happened.
+  if(on)$(id).classList.remove("folded");
   document.querySelectorAll('#panes button[data-pane="'+id+'"]').forEach(function(b){b.classList.toggle("on",on);});
   layoutPanes();
   if(on&&id==="logsec")drawLog();
   if(on&&id==="flowpane"&&flow.order.length+Object.keys(flow.nodes).length&&!$("flowsvg").querySelector("svg"))showFlow();
 }
 document.querySelectorAll("#panes button").forEach(function(b){b.onclick=function(){setPane(b.dataset.pane,!paneOn(b.dataset.pane));};});
+/* Fold a section by its heading. The heading also carries controls - Clear
+   all, the variable filter, Open ST22 - and a click on one of those is meant
+   for it, not for the fold. */
+function foldPane(id,folded){
+  var section=$(id);
+  if(!section)return;
+  section.classList.toggle("folded",folded);
+  layoutPanes();
+}
+document.querySelectorAll("#right>section>h3").forEach(function(head){
+  head.onclick=function(e){
+    if(e.target.closest("button,input,select,a"))return;
+    foldPane(head.parentNode.id,!head.parentNode.classList.contains("folded"));
+  };
+});
 layoutPanes();
 /* The stack as SAP's debugger shows it: a table, the deepest level on top,
    numbered by depth. */
@@ -1253,6 +1345,59 @@ $("fclose").onclick=function(){setPane("flowpane",false);};
 function halted(){if(!series)return Promise.resolve();series.stop=true;series.quiet=true;return series.done||Promise.resolve();}
 $("stop").onclick=function(){notice("");flow.closed=true;steplog.closed=true;halted().then(function(){return debug("detach");}).then(refresh).catch(failed);};
 $("terminate").onclick=function(){notice("");flow.closed=true;steplog.closed=true;halted().then(function(){return debug("terminate");}).then(refresh).catch(failed);};
+$("dumpopen").onclick=function(){debug("opendump").catch(failed);};
+/* After Detach the program runs on without us: there is no stop and no step
+   left to report how it ended, so asking ST22 is the reader's to do. */
+$("dumpcheck").onclick=function(){
+  notice("Asking ST22...");
+  debug("checkdumps").then(function(news){
+    var found=news&&news.found||[];
+    if(!found.length){notice("No new short dump for this user since the run started.");return;}
+    // What comes back is drawn by the ordinary picture, which the debugger
+    // has already been told about; this only says it arrived.
+    notice("Short dump: "+found.map(function(one){return one.error||one.text;}).join("; "));
+  }).catch(failed);
+};
+/* SAP's page comes as HTML from the server, and this window runs scripts, so
+   nothing executable is allowed through: elements that can run or load, and
+   every on* and javascript: attribute, are taken out before it is shown. */
+function safeHtml(html){
+  var doc=new DOMParser().parseFromString(String(html||""),"text/html");
+  // Only what can run or fetch is taken out. A form, an input or a button
+  // cannot: removing those took the whole page with them, because SAP wraps
+  // the dump in a form.
+  doc.querySelectorAll("script,iframe,object,embed,link,meta,base").forEach(function(n){n.remove();});
+  doc.querySelectorAll("form").forEach(function(n){n.removeAttribute("action");n.removeAttribute("method");});
+  doc.querySelectorAll("*").forEach(function(n){
+    Array.prototype.slice.call(n.attributes).forEach(function(a){
+      var name=a.name.toLowerCase(),value=String(a.value||"");
+      if(name.indexOf("on")===0||/^\s*javascript:/i.test(value)||name==="srcdoc"||name==="src")n.removeAttribute(a.name);
+      // An adt: address is SAP's own and no browser here can follow it.
+      if(name==="href"&&!/^#/.test(value))n.removeAttribute(a.name);
+    });
+  });
+  var body=doc.body?doc.body.innerHTML:"";
+  // Nothing survived, yet SAP did send something: show it as the text it is
+  // rather than an empty panel that says the dump had nothing in it.
+  if(!body.trim()){
+    var text=(doc.body&&doc.body.textContent||String(html||"")).trim();
+    if(!text)return "";
+    var pre=document.createElement("pre");pre.textContent=text;
+    return pre.outerHTML;
+  }
+  return body;
+}
+function showDumpPage(id,name){
+  debug("dumppage",{id:id||""}).then(function(d){
+    if(!d||!d.page){notice("SAP returned no page for this dump.");return;}
+    $("dumppagename").textContent=name||"";
+    $("dumppagebody").innerHTML=safeHtml(d.page);
+    $("dumppage").hidden=false;
+  }).catch(failed);
+}
+function hideDumpPage(){$("dumppage").hidden=true;$("dumppagebody").textContent="";}
+$("dumppageclose").onclick=hideDumpPage;
+document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!$("dumppage").hidden){e.stopPropagation();hideDumpPage();}},true);
 $("run").onclick=function(){
   var p=$("program").hidden?String(INITIAL.name):$("program").value.trim();
   // An empty field for a class or a function module: its own test screen,
@@ -1378,7 +1523,13 @@ function apply(p){
   // breakpoint. A Flow or Rec run records its own stops.
   if(p.stopped&&$("rec").classList.contains("on")&&!(series&&(series.flow||series.rec)))recordStop(p);
   drawBreakpoints();drawStack();drawButtons();
-  if(lastEnded!==null&&p.ended>lastEnded)notice("The program ended.");
+  // A dump is written after the program is gone, so it can arrive a moment
+  // after the ending did: the mark changes when it does, and the section is
+  // filled then rather than staying on "the program ended".
+  var ending=p.ending||null,mark=ending?p.ended+"|"+ending.dumped.length:"";
+  if(lastEnded!==null&&(p.ended>lastEnded||(ending&&ending.dumped.length&&mark!==dumpShown))){
+    dumpShown=mark;endedNotice(p);
+  }
   lastEnded=p.ended;
   var f=currentFrame(),key=p.stopped?p.stopped.at+"|"+(f?f.n:""):"";
   if(key===stopKey){markSource();return;}

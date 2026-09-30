@@ -1,10 +1,29 @@
 # SAP ABAP VERTEX Tools
 
+Value Origin carries a **Collapse all** / **Expand all** toggle beside the Type selector; it applies to every Type, in both tree and diagram, and every branch starts collapsed.
+
 Value Origin diagrams attach each method's operations to its call node, in execution order. Sibling operations appear side by side, and nested calls add stack levels without enclosing frames.
 
-Value Origin's 0.7.8 test build now loads implementations even when ACE has already supplied their declarations through foreign CU includes.
+Value Origin's 0.7.9 test build now loads implementations even when ACE has already supplied their declarations through foreign CU includes.
 
-## Testing Value Origin (0.7.8)
+Value Origin takes a **Type**: *FLOW*, *Code*, *Data* or *Formula*. Formula shows how a value is
+derived, as input formulas that expand branch by branch; the tree and the diagram show the same
+expanded branches, and modifier implementations are grouped as the runtime pipeline choices they
+are. FLOW can be narrowed from *Full* to *BSE*. *Tree* and *Diagram* stay the two views of
+whichever type is chosen.
+
+In the Code Explorer diagrams, clicking a method in the **Calls diagram** draws its **Logic
+diagram** inside the same canvas, joined to the block it came from, so the call and what it does
+are read as one picture. The open block is marked in the theme's focus colour and follows the
+*Top-down* / *Left-right* choice. The magnifier is now the explicit **Lens off** / **Lens on**
+toggle in the diagram toolbar — over UML, Logic, Value Origin and every block opened inside Calls,
+with Shift and the wheel setting its strength. It is no longer switched on by measuring the text
+on screen: that flickered as the diagram was zoomed. A Logic diagram no longer emits a node for a
+statement whose text is left with nothing to show, such as a comment — one such empty node was a
+syntax error that failed the whole diagram rather than the node that caused it. This one is in the
+ABAP backend: update `ZCL_VX_ACE_CODE_HTML` along with `ZCL_VX_ADT_RES_FLOW`.
+
+## Testing Value Origin (0.7.9)
 
 Update the ABAP backend class `ZCL_VX_ADT_RES_FLOW` from this repository, then install
 the test VSIX. In an active SAP source editor, put the cursor on a variable such as
@@ -47,9 +66,10 @@ explorers read it. The last column says which is which.
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values | not needed |
 | **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | runs without it; ACE's statement map makes stepping cheaper and puts a stepped-over call's method on the chart |
+| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW*, *Code*, *Data* or *Formula*, each as a tree or a diagram | needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
 | **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | needed |
-| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method | needed |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | needed |
 
 The projects named above are where the ideas were worked out first, and they are not developed
@@ -576,6 +596,51 @@ Each breakpoint has a **mode**:
   afterwards.
 
 Setting the same line again replaces its condition and mode.
+
+### Where the editor goes when the program stops
+
+A stop in a method opens that method's class in the standard VS Code editor and puts the
+cursor on the line - the class whole, the way a click on a method opens it, because the
+generated CM include a method frame names is not an object an editor tab can hold. Only the
+frame the program stands in is opened: a stop deep in a callee does not drag every class
+below it into the editor. It opens in the group the ABAP sources are already in rather than
+whichever group happened to be active, and **Alt+Left** returns to where you were.
+
+### When the program dumps instead of stopping
+
+SAP tells a debugger the same thing whether the program finished or died of a short dump:
+the step simply throws. So a run that dumped used to end in silence — F5 into a class whose
+load fails, and the session was over with no reason given — and a program that dumped
+before reaching any breakpoint left the debugger listening for a stop that would never come.
+
+The debugger now reads SAP's dump feed (`/sap/bc/adt/runtime/dumps`). Whatever is already
+in ST22 when the run starts is this user's history; only what appears afterwards, and only
+under this user, belongs to the run. A step that kills the run asks once, immediately, and
+answers with `dumped` — the runtime error, its text and the address of the full dump on SAP
+— so a program that merely finished never waits for an answer that is not coming. While
+`debug_wait` waits, the feed is read every ten seconds, which is what catches the run that
+died before any breakpoint. If the feed cannot be read at all, that is reported as its own
+problem rather than as "no dumps": a missing dump is exactly what this exists to catch.
+
+The section also names the include and the line the program died on, and clicking it opens
+that source there. The feed carries no place, so it comes from ST22's own table `SNAP`
+through VERTEX's table resource - which means this one part needs the ABAP backend. Without
+it the dump is still reported and the section says why it cannot point anywhere.
+
+**Detach** continues the program and stops listening, so nothing of VERTEX's will hear how it
+ended. It takes one look at ST22 a moment after letting go, and **Check ST22** in the Dump
+section asks again whenever you want; the chat asks the same question with `debug_dumps`.
+Nothing polls in the background for a program that is no longer being debugged.
+
+In Visual Debug the dump has a section of its own, beside Stack, Breakpoints and Variables.
+It opens by itself when a run dies, names the runtime error and what SAP said about it, and
+**Open ST22** takes you to SAP where that dump is the first entry. The header line above the
+source says the run did not finish and points at the section.
+
+Every section folds by its heading: click *Stack*, *Breakpoints*, *Variables*, *Dump* or
+*Log* to shut it to its title bar and give its height to the others, and click again to open
+it. A click on a control in the heading - *Clear all*, the variable filter, *Open ST22* -
+still belongs to that control, not to the fold.
 
 ### What a stop shows
 

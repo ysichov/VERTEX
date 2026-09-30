@@ -62,8 +62,12 @@
 </head>
 <body>
 <main>
-  <p>VS Code 0.7.8 Value Origin now loads complete implementations for classes previously encountered only as foreign CU declarations.</p>
-  <p>VS Code test build 0.7.8 adds ACE-backed Value Origin in the ABAP source editor:
+  <p>Value Origin carries a <b>Collapse all</b> / <b>Expand all</b> toggle beside the Type selector; it applies to every Type, in both tree and diagram, and every branch starts collapsed.</p>
+  <p>VS Code 0.7.9 Value Origin now loads complete implementations for classes previously encountered only as foreign CU declarations.
+  It also takes a <b>Type</b> &mdash; <i>FLOW</i>, <i>Code</i>, <i>Data</i> or <i>Formula</i>: Formula derives a value
+  through input formulas that expand branch by branch, tree and diagram showing the same expanded branches, and groups
+  modifier implementations as the runtime pipeline choices they are. FLOW narrows from <i>Full</i> to <i>BSE</i>.</p>
+  <p>VS Code test build 0.7.9 adds ACE-backed Value Origin in the ABAP source editor:
   a collapsible static call stack, structure-component dependencies through RETURNING and
   CHANGING, clickable calculations and a copyable analysis log. Links open the standard
   VS Code editor; its gutter breakpoints synchronize to SAP. Update ZCL_VX_ADT_RES_FLOW in SAP for the
@@ -150,10 +154,15 @@
   <li><b>Calls, Logic and UML diagrams.</b> The flow of a program is now the <i>Calls
       diagram</i> and the branch scheme of one method the <i>Logic diagram</i>. Calls starts
       from the event or form picked in Parts, as a double-click in ACE's tree does, and draws
-      one block per method or per class. The Logic diagram no longer drops what follows the
-      last branch of a method. Blocks and decisions follow the editor's theme, and a magnifier
-      shows up wherever the text is too small to read (Shift and the touchpad set its
-      strength).</li>
+      one block per method or per class. Clicking one of those methods draws its Logic diagram
+      inside the same canvas, joined to the block it came from, so the call and what it does
+      are read as one picture; the open block is marked in the theme's focus colour and follows
+      the <i>Top-down</i> / <i>Left-right</i> choice. The Logic diagram no longer drops what
+      follows the last branch of a method, and no longer emits a node for a statement whose text
+      is left with nothing to show &mdash; one such empty node failed the whole diagram. Blocks and
+      decisions follow the editor's theme, and the magnifier is the explicit <i>Lens off</i> /
+      <i>Lens on</i> toggle in the toolbar (Shift and the touchpad set its strength), rather than
+      a rule that measured the text on screen and flickered as the diagram was zoomed.</li>
   <li><b>Help on every metric.</b> The <i>?</i> in Code Explorer explains what ACE counts,
       its formula, and which values are good.</li>
   <li><b>Claude models by version.</b> The Assistant offers the newest Claude model of each
@@ -179,11 +188,12 @@
 <table class="needs">
   <tr><th>Tool</th><th>What it does</th><th>ABAP backend</th></tr>
   <tr><td><b>Enhanced Code Editor</b> (VS Code)</td><td>Hover with a data element's domain resolved, Go to (F12), Outline, Save &amp; Activate and block-by-block Review &amp; Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1)</td><td>not needed</td></tr>
-  <tr><td><b>AI-driven ADT debugger</b> (VS Code)</td><td>Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values</td><td>not needed</td></tr>
+  <tr><td><b>AI-driven ADT debugger</b> (VS Code)</td><td>Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values</td><td>not needed</td></tr>
   <tr><td><b>Visual Debug</b> (VS Code)</td><td>The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player</td><td>runs without it; ACE's statement map makes stepping cheaper and puts a stepped-over call's method on the chart</td></tr>
+  <tr><td><b>Value Origin</b> (VS Code)</td><td>Where a value came from, backwards across calls: the static call stack, the derivation as <i>FLOW</i>, <i>Code</i>, <i>Data</i> or <i>Formula</i>, each as a tree or a diagram</td><td>needed</td></tr>
   <tr><td><b>AI Assistant</b></td><td>Chat over the SAP system: reads, explains and changes code &mdash; the change is reviewed block by block before activation &mdash; runs the tests and ATC on an object, and drives the debugger</td><td>not needed</td></tr>
   <tr><td><b>Versions / Reviewer</b></td><td>Version history, the diff between two versions, the review of a whole transport with approve, decline and comments</td><td>needed</td></tr>
-  <tr><td><b>Code Explorer</b></td><td>Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method</td><td>needed</td></tr>
+  <tr><td><b>Code Explorer</b></td><td>Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture</td><td>needed</td></tr>
   <tr><td><b>Data Explorer (SelecTor)</b></td><td>Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either</td><td>needed</td></tr>
 </table>
 
@@ -226,7 +236,11 @@
 </p>
 
 <p>
-  The Eclipse plugin here is 0.7.3; the VS Code extension is 0.7.7, whose chat runs the tests and
+  The Eclipse plugin here is 0.7.3; the VS Code extension is 0.7.9. Five VS Code releases have
+  landed since the plugin was last exported, so the two hosts have partly drifted apart: the ABAP
+  editor, the AI-driven debugger, Visual Debug and Value Origin are VS Code only by design, while
+  the three explorer pages are shared and the plugin still carries their 0.7.3 copies. 0.7.7 is the
+  release whose chat runs the tests and
   ATC on an object it is asked about and answers with the result. Its ABAP editor runs the
   test classes of the object in the tab into the Test Explorer (Ctrl+Shift+F10), checks it with
   ATC into the Problems view (Ctrl+Shift+F2), answers where-used through VS Code's references

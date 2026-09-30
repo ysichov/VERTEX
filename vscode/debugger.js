@@ -25,6 +25,9 @@ const ROWS_SHOWN = 5;          // rows of a table shown in a stop; debug_read gi
 const ROWS_READ = 200;         // most rows one debug_read returns
 const WAIT_DEFAULT = 60;       // seconds debug_wait waits unless told otherwise
 const WAIT_MOST = 280;         // a tool call must come back before the client gives up
+const DUMPS_EVERY = 10000;     // how often a waiting caller asks SAP for new dumps
+const DUMPS_AFTER_END = 3;     // tries for the dump of a run that just died; only the first is awaited
+const DUMPS_SETTLE = 1500;     // SAP formats the short dump after the program is gone
 
 const STEPS = { over: "stepOver", into: "stepInto", out: "stepReturn", continue: "stepContinue" };
 
@@ -82,6 +85,17 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
   let frames = [];             // the stack of the stop, for the Visual Debug window
   let temporaries = [];        // the window's run-to points: { id, url, line, adt }
   let ended = 0;               // runs that ended, counted for the window
+  /* ST22 is the only place a run that died of a dump says so: the step throws
+     the same way it throws when the program simply finished. Every dump that
+     was already there when the run started is remembered, and anything of
+     this user's that appears afterwards is new. Ids, not timestamps: the feed
+     carries no time per entry, and the id is SAP's own. */
+  let dumpsKnown = null;       // Set of dump ids present before the run
+  let dumpsFound = [];         // new dumps not yet handed to the assistant
+  let dumpsAsked = 0;          // when the feed was last read
+  let ending = null;           // the last run that ended, for the window
+  let dumpsTold = false;       // an unreadable dump feed is reported once
+  let released = "";           // the program Detach let run on without us
   const watchers = new Set();  // the windows showing this debugger
 
   /* The stopped program's session takes one request at a time: the assistant
@@ -113,7 +127,38 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
   /* Tell every window that the picture moved. A window reads it with
      picture(); what the assistant has not collected stays for debug_wait. */
   function changed() { watchers.forEach(w => { try { w(); } catch (e) { /* a closed window */ } }); }
-  function watch(fn) { watchers.add(fn); return () => watchers.delete(fn); }
+  /* A stopped program holds the listener: LOOP does not listen while a
+     session is attached, so every breakpoint set afterwards is dead until it
+     is let go. A window closed on a stop used to leave exactly that, with
+     nothing left on screen to say so. */
+  async function release(why) {
+    await exclusive(async () => {
+      if (!session) { return; }
+      await session.client.debuggerStep(STEPS.continue).catch(() => {});
+      await session.client.logout().catch(() => {});
+      session = null; stopped = null; frames = [];
+    });
+    // Out loud: letting a program go is not something to do quietly.
+    problems.push(why);
+    wake();
+  }
+
+  /* The windows showing this debugger. When the last of them goes while a
+     program is stopped, that program is let go rather than left holding the
+     listener - nobody is looking at it any more, and the breakpoints set
+     afterwards would never be reached. An assistant debugging with no window
+     open never had a watcher, so this cannot take a session from it. */
+  function watch(fn) {
+    watchers.add(fn);
+    return () => {
+      watchers.delete(fn);
+      if (watchers.size || !session) { return; }
+      const held = session.program || "a program";
+      void release("The last Visual Debug window was closed while " + held
+        + " was stopped, so it was let go: a stopped program holds the listener and no breakpoint would be reached."
+        + " The breakpoints are still set.").catch(() => {});
+    };
+  }
 
   /* ---------- breakpoints ---------- */
 
@@ -225,6 +270,221 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     changed();
   }
 
+  /* ---------- dumps ---------- */
+
+  /* The feed of short dumps, read on the stateless probe session so that it
+     never interleaves with the listener's long poll or a stopped program's
+     stateful session. Failing to read it is reported as a problem of its own,
+     never as "no dumps": a missing dump is exactly what this exists to catch. */
+  async function feed() {
+    const { probe, user } = await system();
+    if (!probe || typeof probe.dumps !== "function") {
+      throw new Error("This SAP connection has no dump feed (abap-adt-api without dumps()).");
+    }
+    const answer = await probe.dumps();
+    return (answer && answer.dumps || []).filter(d => !d.author || String(d.author).toUpperCase() === user);
+  }
+
+  /* What is in ST22 before the run starts. Everything already there is this
+     user's history, not what we are about to watch for. */
+  async function markDumps() {
+    try {
+      const before = await feed();
+      dumpsKnown = new Set(before.map(d => d.id));
+    } catch (error) {
+      dumpsKnown = null;
+      // Said once, not on every listen: a caller waiting for a stop reads
+      // problems as news and would be handed this instead of waiting, over
+      // and over, for as long as the feed stays unreadable.
+      if (!dumpsTold) {
+        dumpsTold = true;
+        problems.push("The dumps of " + (sap ? sap.system.name : "this system")
+          + " could not be read, so a run that dies of one will not be reported: " + (error && error.message || error));
+      }
+    }
+    dumpsAsked = Date.now();
+  }
+
+  /* New dumps of this user since markDumps. What it finds it also keeps, for
+     the next debug_wait to hand over. */
+  async function collectDumps() {
+    dumpsAsked = Date.now();
+    if (!dumpsKnown) { return []; }
+    const now = await feed();
+    const fresh = now.filter(d => !dumpsKnown.has(d.id));
+    fresh.forEach(d => dumpsKnown.add(d.id));
+    const shown = fresh.map(d => ({
+      id: d.id,
+      error: (d.categories || []).map(c => c.term).filter(Boolean).join(" ") || d.type || "",
+      text: summaryOf(d.text).text,
+      // SAP's whole dump page, kept for the reader who wants all of it. It
+      // stays here rather than riding in every picture the window polls.
+      page: String(d.text || ""),
+      // SAP's own address for this dump. Nothing here follows it yet - it
+      // needs an editor that registered the adt: scheme - but it is what
+      // names the dump, so it travels rather than being thrown away.
+      adt: summaryOf(d.text).adt,
+      // The entry's own address on SAP, so the reader can open the full dump.
+      at: (d.links || []).map(l => l.href).filter(Boolean)[0] || ""
+    }));
+    if (shown.length) { await locate(shown); dumpsFound = dumpsFound.concat(shown); }
+    return shown;
+  }
+
+  /* ST22 keeps the dump as rows of SNAP, and its FLIST is a plain string of
+     records: a two-letter tag, three digits of length, then that many
+     characters. FC is the runtime error, AP the program, AI the include and
+     AL the line - which is everything a reader needs to be taken there. The
+     first value of a tag wins: later rows repeat tags for other frames. */
+  /* The feed writes a dump's summary as HTML - a sentence, then SAP's own
+     link into the runtime viewer. Shown as it arrives it reads as markup, so
+     the sentence is taken out of it and the link is kept apart: it is an
+     adt:// address, which only an editor that registered that scheme can
+     follow, and VERTEX has not. */
+  function summaryOf(html) {
+    const raw = String(html || "");
+    const link = /href="(adt:\/\/[^"]+)"/i.exec(raw);
+    const plain = piece => String(piece)
+      // An anchor's own words are the label of SAP's control, not part of
+      // what the dump says: the whole element goes, not only its tags.
+      .replace(/<a\s[^>]*>[\s\S]*?<\/a>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<\/(p|div|li|tr|td|th|h\d)>/gi, " ")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+      .replace(/&#(\d+);/g, (all, code) => String.fromCharCode(Number(code)))
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ").trim();
+    const all = plain(raw);
+    // A short summary is the sentence itself. A long one is the whole dump
+    // page - contents, headings and all - and stripping its tags only turns
+    // it into a run of navigation labels. The sentence in it sits under
+    // "Short Text", so that is taken and nothing else; finding nothing shows
+    // nothing, because the facts worth trusting come from SNAP, not from a
+    // page whose shape SAP never promised.
+    const short = /Short Text\s*(.+?)(?=\s*(?:What happened|Error analysis|How to correct|Trigger Location|Source Code Extract|Header Information|Contents)\b|$)/i.exec(all);
+    const page = /\b(Header Information|Trigger Location|Source Code Extract)\b/i.test(all);
+    const text = short ? short[1].trim().slice(0, 300) : (!page && all.length <= 200 ? all : "");
+    return { text, adt: link ? link[1] : "" };
+  }
+
+  function flistTags(text) {
+    const out = {};
+    let i = 0;
+    while (i + 5 <= text.length) {
+      const tag = text.substring(i, i + 2), size = Number(text.substring(i + 2, i + 5));
+      if (!/^[A-Z0-9]{2}$/.test(tag) || !Number.isInteger(size) || size < 0) { break; }
+      if (out[tag] === undefined) { out[tag] = text.substring(i + 5, i + 5 + size).trim(); }
+      i += 5 + size;
+    }
+    return out;
+  }
+
+  /* Where the newest dump of this user happened, read through VERTEX's own
+     table resource - SNAP's FLIST is CHAR 200 with continuations, not a LOB,
+     so it comes back as ordinary columns. This is the one part of the
+     debugger that wants the ABAP backend; without it a dump is still
+     reported, and says why it has no place to point at. */
+  async function dumpWhere(day) {
+    const { probe, user } = await system();
+    const path = "/sap/bc/adt/vertex/table/SNAP?rows=60"
+      + "&f1=DATUM&s1=I&o1=EQ&l1=" + encodeURIComponent(day)
+      + "&f2=UNAME&s2=I&o2=EQ&l2=" + encodeURIComponent(user)
+      + "&f3=SEQNO&s3=I&o3=EQ&l3=000";
+    const answer = await probe.httpClient.request(path, { method: "GET", headers: { Accept: "application/json" } });
+    const data = JSON.parse(answer.body);
+    if (!Array.isArray(data.rows) || !data.rows.length) { return null; }
+    const field = (row, key) => row[key] ?? row[key.toLowerCase()] ?? row[key.toUpperCase()] ?? "";
+    // Newest first: the dump that has just been written is the one being asked about.
+    const row = data.rows.slice().sort((a, b) => String(field(b, "UZEIT")).localeCompare(String(field(a, "UZEIT"))))[0];
+    let flist = String(field(row, "FLIST"));
+    for (let n = 2; n <= 8; n++) { flist += String(field(row, "FLIST0" + n)); }
+    const tags = flistTags(flist);
+    if (!tags.AI && !tags.AP) { return null; }
+    const include = tags.AI || tags.AP;
+    return { error: tags.FC || "", program: (tags.AP || "").replace(/=+CP$/, ""),
+      include, line: Number(tags.AL) || 0, url: sourceUrl("INCL", include) };
+  }
+
+  /* What ST22 knows about the dumps just found, added to each of them. The
+     dump itself is already reported; this only decides whether it can be
+     clicked, so a backend that is not there costs the place, not the dump. */
+  async function locate(found) {
+    if (!found.length) { return; }
+    const day = new Date();
+    const stamp = String(day.getFullYear())
+      + String(day.getMonth() + 1).padStart(2, "0") + String(day.getDate()).padStart(2, "0");
+    try {
+      const at = await dumpWhere(stamp);
+      if (at) { found.forEach(one => { one.where = at; }); }
+    } catch (error) {
+      found.forEach(one => {
+        one.whyNoPlace = "ST22's own table could not be read, so this dump has no line to open: "
+          + (error && error.message || error);
+      });
+    }
+  }
+
+  /* A run has just died. The feed is asked once, now, because the answer
+     belongs in the answer to the step that killed it - and a program that
+     merely finished must not pay for the question. SAP writes the short dump
+     after the program is gone ("short dump is being formatted"), so if the
+     first ask comes up empty the rest are left to run on their own: what they
+     find reaches the assistant through the next debug_wait, and the window
+     through wake(). Never await those - a normal end would wait seconds for a
+     dump that is not coming. */
+  async function dumpOfDeadRun(run) {
+    try {
+      const found = await collectDumps();
+      if (found.length) { return found; }
+    } catch (error) {
+      problems.push("The dumps could not be read after the run ended: " + (error && error.message || error));
+      return [];
+    }
+    (async function later() {
+      for (let n = 1; n < DUMPS_AFTER_END; n++) {
+        await new Promise(resolve => setTimeout(resolve, DUMPS_SETTLE));
+        if (stopListening) { return; }
+        const found = await collectDumps();
+        if (found.length) { tellDumped(run, found); wake(); return; }
+      }
+    })().catch(error => {
+      problems.push("The dumps could not be read after the run ended: " + (error && error.message || error));
+      wake();
+    });
+    return [];
+  }
+
+  /* A dump found when no run of ours ended - after Detach, or because the
+     reader asked. It is shown the way an ending is: the window and the
+     assistant have one shape to read, whoever let the program go. */
+  function announce(found, program) {
+    ending = { program: program || "",
+      note: "The program did not finish - it dumped: " + found.map(d => d.error || d.text).join("; "),
+      dumped: found };
+    wake();
+  }
+
+  /* ST22, now, because somebody asked. Nothing here is on a timer: after
+     Detach the program runs on without us and there is no stop and no step
+     to hang a question on, so the question is the reader's to ask. */
+  async function checkDumps() {
+    if (!dumpsKnown) {
+      throw new Error("ST22 was not read when the run started, so there is nothing to compare against."
+        + " Set a breakpoint or start a run first.");
+    }
+    const found = await collectDumps();
+    if (found.length) { announce(found, released || (ending && ending.program) || ""); }
+    return { found, since: "the run started", program: released || "" };
+  }
+
+  /* What a run says once ST22 has named its ending. */
+  function tellDumped(run, dumped) {
+    run.dumped = dumped;
+    run.note = "The program did not finish - it dumped: " + dumped.map(d => d.error || d.text).join("; ");
+  }
+
   /* ---------- the listener ---------- */
 
   /* Another debugger listening for the same user takes every hit. It is found
@@ -245,7 +505,12 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       await listener.debuggerDeleteListener("user", terminalId, "", user).catch(() => {});
     }
     listening = true; stopListening = false;
+    // The long poll goes first and nothing is allowed in front of it. A
+    // breakpoint stops nothing while no listener waits, so an HTTP round trip
+    // taken before this one is a window in which a run is missed - which is
+    // what reading ST22 for the baseline did when it was awaited here.
     loop().catch(error => { problems.push("The listener stopped: " + (error && error.message || error)); listening = false; wake(); });
+    void markDumps();
   }
 
   async function loop() {
@@ -323,10 +588,17 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
   async function end(error) {
     const run = { program: session.program, logged: logged.length - loggedRead,
       note: error && error.message && !/exception was raised/i.test(error.message) ? error.message : "" };
-    finished.push(run); ended++;
+    finished.push(run); ended++; ending = run;
     await session.client.logout().catch(() => {});
     session = null; stopped = null; frames = [];
     wake();
+    // The step threw because the program is gone. Whether it finished or died
+    // is not in that error - a step into a class whose load fails throws just
+    // like the last continue of a program that ran to its end. ST22 is where
+    // the difference is written down.
+    const dumped = await dumpOfDeadRun(run);
+    if (dumped.length) { tellDumped(run, dumped); wake(); }
+    return run;
   }
 
   /* The state at a stop: the stack, a few source lines, and the variables
@@ -395,15 +667,23 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
   async function wait(seconds) {
     const limit = Math.min(Math.max(Number(seconds) || WAIT_DEFAULT, 1), WAIT_MOST) * 1000;
     const until = Date.now() + limit;
-    while (!stopped && !finished.length && !problems.length && Date.now() < until) {
+    while (!stopped && !finished.length && !problems.length && !dumpsFound.length && Date.now() < until) {
       await new Promise(resolve => { waiters.push(resolve); setTimeout(resolve, Math.min(1000, until - Date.now())); });
+      // A program that dies before it reaches a breakpoint never stops and
+      // never steps, so nothing else here would ever hear of it. ST22 is
+      // asked while a caller waits, and only while one waits.
+      if (listening && !session && Date.now() - dumpsAsked >= DUMPS_EVERY) {
+        try { await collectDumps(); }
+        catch (error) { problems.push("The dumps could not be read: " + (error && error.message || error)); }
+      }
     }
     const news = { logged: logged.slice(loggedRead) };
     loggedRead = logged.length;
     if (problems.length) { news.problems = problems; problems = []; }
     if (finished.length) { news.finished = finished; finished = []; }
+    if (dumpsFound.length) { news.dumps = dumpsFound; dumpsFound = []; }
     if (stopped) { news.stopped = stopped; }
-    if (!news.stopped && !news.finished && !news.problems) {
+    if (!news.stopped && !news.finished && !news.problems && !news.dumps) {
       news.waiting = listening ? "Still listening - nothing reached a stop breakpoint yet." : "Not listening: set a breakpoint first.";
     }
     return news;
@@ -431,7 +711,13 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       // How long SAP took for the step itself, and for the whole of it here.
       const started = Date.now();
       try { result = await session.client.debuggerStep(type); }
-      catch (error) { await end(error); return { sap: Date.now() - started, total: Date.now() - started, ended: true }; }
+      catch (error) {
+        // The step killed the run. END already asked ST22 why, so the answer
+        // to this very call can say whether it finished or dumped.
+        const run = await end(error);
+        return { sap: Date.now() - started, total: Date.now() - started, ended: true,
+          dumped: run.dumped, note: run.note || undefined };
+      }
       const sap = Date.now() - started;
       if (quick === true && expect && Number(expect.line) > 0 && frames.length
         && !(expect.leave && frames.length < 2)
@@ -482,8 +768,9 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       let result;
       try { result = await session.client.debuggerStep(STEPS.continue); }
       catch (error) {
-        await end(error);
-        return { placed, sap: Date.now() - started, total: Date.now() - started, ended: true };
+        const run = await end(error);
+        return { placed, sap: Date.now() - started, total: Date.now() - started, ended: true,
+          dumped: run.dumped, note: run.note || undefined };
       }
       const sap = Date.now() - started;
       // Gone before the stop is read, so it is never taken for the user's.
@@ -569,15 +856,40 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     // After Detach the breakpoints are kept here but not in SAP, and nothing
     // listens: both come back before the run starts.
     if (!listening) { await sync(); await listen(false); }
-    // A system can name its own WebGUI address: SAP may redirect its HTTP
-    // port to an HTTPS host name this machine does not resolve.
+    // Everything in ST22 up to now is history; from here a dump belongs to
+    // this run until something proves otherwise.
+    await markDumps();
+    const url = webgui(target, transaction);
+    await openUrl(url);
+    return url;
+  }
+
+  /* A WebGUI address for a transaction. A system can name its own: SAP may
+     redirect its HTTP port to an HTTPS host name this machine does not
+     resolve. */
+  function webgui(target, transaction) {
     const address = target.webgui || target.url;
     if (!/^https?:\/\/[^/\s]+/i.test(String(address))) {
       throw new Error("The WebGUI address of " + target.name + " is not an http(s) URL: " + address + ". Check webgui in vertex.systems.");
     }
-    const base = String(address).replace(/\/$/, "");
-    const url = base + "/sap/bc/gui/sap/its/webgui?~transaction=" + encodeURIComponent(transaction)
+    return String(address).replace(/\/$/, "") + "/sap/bc/gui/sap/its/webgui?~transaction=" + encodeURIComponent(transaction)
       + "&sap-client=" + encodeURIComponent(target.client || "") + "&sap-language=EN";
+  }
+
+  /* SAP's own dump page, as it came from the feed, for the id asked for. */
+  function dumpPage(id) {
+    const all = finished.reduce((list, run) => list.concat(run.dumped || []), [])
+      .concat(dumpsFound, ending ? (ending.dumped || []) : []);
+    const one = all.find(d => d && d.id === id) || all[all.length - 1];
+    return { id: one ? one.id : "", page: one ? one.page || "" : "" };
+  }
+
+  /* The dump itself, in SAP. The feed's own address is an ADT resource, not a
+     page a browser can show, so the reader is taken to ST22 - where the dump
+     of a moment ago is the first entry. */
+  async function openDump() {
+    const { system: target } = await system();
+    const url = webgui(target, "ST22");
     await openUrl(url);
     return url;
   }
@@ -606,9 +918,25 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
      breakpoints for the next run: SAP forgets them, this list does not. */
   async function detach() {
     const kept = breakpoints.map(b => ({ ...b, adt: null }));
+    // What is being let go. Detach continues the program and stops listening,
+    // so nothing of ours will ever hear how it ended.
+    const letGo = session ? session.program : "";
     await stop();
     breakpoints.push(...kept);
     changed();
+    if (!letGo || !dumpsKnown) { return; }
+    released = letGo;
+    // A program let go usually dies at once if it is going to. One look,
+    // unawaited so Detach answers immediately; anything later is the
+    // reader's to ask for.
+    (async function () {
+      await new Promise(resolve => setTimeout(resolve, DUMPS_SETTLE));
+      const found = await collectDumps();
+      if (found.length) { announce(found, letGo); }
+    })().catch(error => {
+      problems.push("The dumps could not be read after Detach: " + (error && error.message || error));
+      wake();
+    });
   }
 
   /* ---------- what the Visual Debug window reads ---------- */
@@ -617,6 +945,14 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
   function picture() {
     return {
       system: sap ? sap.system.name : "", listening, ended,
+      // What the last run ended of. The window counts endings and cannot tell
+      // a dump from an ordinary finish; ST22 can, and the debugger has asked
+      // it. The run is passed by reference, so a dump found by a later try
+      // reaches the window on the next wake, without it asking again.
+      ending: ending ? { program: ending.program, note: ending.note || "",
+        dumped: (ending.dumped || []).map(d => ({ id: d.id, error: d.error, text: d.text,
+        where: d.where || null, whyNoPlace: d.whyNoPlace || "",
+        hasPage: !!d.page })) } : null,
       breakpoints: breakpoints.map(b => ({ id: b.id, objectType: b.objectType, name: b.name, url: b.url, line: b.line,
         condition: b.condition || "", mode: b.mode, active: b.active !== false })),
       stopped: stopped ? { at: stopped.at, breakpoint: stopped.breakpoint, problem: stopped.problem || "", frames,
@@ -725,13 +1061,14 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       breakpoints: breakpoints.map(b => ({ id: b.id, at: b.name + ":" + b.line, mode: b.mode, condition: b.condition || undefined,
         inactive: b.active === false || undefined })),
       logged: logged.length,
+      dumps: dumpsKnown ? dumpsFound.length : "not watched - the feed could not be read",
       answers: answers.calls + " answers, " + answers.chars + " characters (about " + Math.round(answers.chars / 4) + " tokens)"
     };
   }
 
   function counted(text) { answers.calls++; answers.chars += text.length; return text; }
 
-  return { setBreakpoint, clearBreakpoints, activateBreakpoints, wait, step, read, run, stop, detach, status, counted,
+  return { setBreakpoint, clearBreakpoints, activateBreakpoints, wait, step, read, run, openDump, dumpPage, checkDumps, stop, detach, status, counted,
     log: () => logged.slice(),
     setBreakpointAt, advance, runTo, settle, terminate, watch, picture, scopes, children, variables, tableRows, frame, source,
     classMethods };

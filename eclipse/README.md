@@ -1,8 +1,16 @@
 # Built-in Eclipse Assistant
 
-The VS Code 0.7.8 Value Origin loader distinguishes foreign class declarations from complete implementations. This client fix requires no additional Eclipse build.
+The VS Code 0.7.9 Value Origin loader distinguishes foreign class declarations from complete implementations. This client fix requires no additional Eclipse build.
 
-The VS Code 0.7.8 test build includes ACE-backed Value Origin analysis in its ABAP
+The shared diagram pages changed too, and they are the same pages this plugin shows. A method
+clicked in the Calls diagram now draws its Logic diagram inside that canvas, joined to the block
+it came from. The magnifier is an explicit *Lens off* / *Lens on* toggle in the diagram toolbar
+instead of a rule that measured the text on screen, and Shift with the wheel sets its strength.
+A Logic diagram no longer emits a node for a statement whose text is left with nothing to show —
+one such empty node was a mermaid syntax error that failed the whole diagram. Eclipse was not
+rebuilt for these; they arrive with the next build of this plugin.
+
+The VS Code 0.7.9 test build includes ACE-backed Value Origin analysis in its ABAP
 editor. It requires the updated `ZCL_VX_ADT_RES_FLOW` backend (`mode=origin`).
 That backend also supplies ACE's concrete class-to-interface relation for interface dispatch.
 It labels the owner of every ACE include so VS Code can load a foreign class's complete pool.
@@ -49,7 +57,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. Keep the feature and bundle at `0.6.1.qualifier`.
+then regenerate. The feature and bundle are at `0.7.3.qualifier`; the VS Code extension is at
+0.7.9, and the shared explorer pages in this plugin are the 0.7.3 copies until it is exported
+again.
 
 For a local installable archive without replacing the published `docs/` site:
 
