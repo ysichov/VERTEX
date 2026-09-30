@@ -785,8 +785,14 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
     DATA(lv_prev_depth) = 0.
     DATA(lv_prev_line)  = 0.
     IF lv_root = 0.
-      rv_mm = rv_mm && |  start(["{ scheme_label( i_title ) }"])\n|.
-      lv_prev_node = |start|.
+      DATA(lv_start_lbl) = scheme_label( i_title ).
+      " No title, no start node. A label that came out empty is not drawn at
+      " all: `id("")` is a mermaid syntax error, and a single one of them
+      " fails the whole diagram, not just its own node.
+      IF lv_start_lbl IS NOT INITIAL.
+        rv_mm = rv_mm && |  start(["{ lv_start_lbl }"])\n|.
+        lv_prev_node = |start|.
+      ENDIF.
     ENDIF.
 
     " Open subgraphs, innermost first, with the line their block ends on
@@ -942,8 +948,13 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
           WHERE line > ls_line-line AND line <= ls_line-all
             AND kind = 'P' AND word IS NOT INITIAL.
           CHECK c_decls NS | { ls_lop-word } |.
+          " Nothing left to write in the box - a comment, or a line that was
+          " only characters a label cannot hold - and the statement is left
+          " out of the chain rather than drawn empty.
+          DATA(lv_lop_lbl) = scheme_label( ls_lop-text ).
+          CHECK lv_lop_lbl IS NOT INITIAL.
           DATA(lv_lopn) = |p{ ls_lop-line }|.
-          rv_mm = rv_mm && |  { lv_lopn }("{ scheme_label( ls_lop-text ) }")\n|.
+          rv_mm = rv_mm && |  { lv_lopn }("{ lv_lop_lbl }")\n|.
           IF lv_lchain IS NOT INITIAL.
             lv_edges = lv_edges && |  { lv_lchain } --> { lv_lopn }\n|.
           ELSE.
@@ -1108,8 +1119,13 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
           DATA(lv_inline_text) = scan_stmt_text( io_scan = io_scan
                                                    i_stmt_index = lv_inline_stmt_index ).
           CHECK lv_inline_text IS NOT INITIAL.
+          " The scanner hands back comment statements too, and a comment is
+          " exactly what SCHEME_LABEL strips - such a statement is left out
+          " instead of being drawn as an empty box.
+          DATA(lv_inline_lbl) = scheme_label( lv_inline_text ).
+          CHECK lv_inline_lbl IS NOT INITIAL.
           DATA(lv_inline_node) = |p{ lv_inline_stmt_index }|.
-          rv_mm = rv_mm && |  { lv_inline_node }("{ scheme_label( lv_inline_text ) }")\n|.
+          rv_mm = rv_mm && |  { lv_inline_node }("{ lv_inline_lbl }")\n|.
           READ TABLE it_kw INTO DATA(ls_inline_kw)
             WITH KEY from = ls_inline_stmt-from to = ls_inline_stmt-to.
           IF sy-subrc = 0 AND ls_inline_kw-tt_calls IS NOT INITIAL.
@@ -1269,6 +1285,11 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
       " editor navigates by on double-click. No guessing from the text.
       DATA(lv_txt) = stmt_text( it_lines = it_lines i_line = ls_op-line
                                 i_no_comments = abap_true ).
+      " A statement with nothing left to show is dropped here, before it can
+      " be pended or drawn: an empty box breaks the diagram, and the
+      " "N operations" count has to match what would be drawn if opened.
+      DATA(lv_op_lbl) = scheme_label( lv_txt ).
+      CHECK lv_op_lbl IS NOT INITIAL.
       DATA(lv_is_call) = ls_op-call.
       " Database access and the like stay visible too
       DATA(lv_is_side) = xsdbool( c_side CS | { ls_op-word } | ).
@@ -1292,7 +1313,7 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
       CLEAR lt_pend.
 
       DATA(lv_opn) = |p{ ls_op-line }|.
-      cv_mm = cv_mm && |  { lv_opn }("{ scheme_label( lv_txt ) }")\n|.
+      cv_mm = cv_mm && |  { lv_opn }("{ lv_op_lbl }")\n|.
       IF lv_is_call = abap_true.
         cv_styles = cv_styles && |class { lv_opn } callnode\n|.
       ELSEIF lv_is_side = abap_true.
@@ -1335,9 +1356,12 @@ CLASS zcl_vx_ace_code_html IMPLEMENTATION.
       READ TABLE it_pend INTO DATA(lv_one) INDEX 1.
       READ TABLE it_lines INTO DATA(ls_one) WITH KEY line = lv_one.
       CHECK sy-subrc = 0.
+      DATA(lv_one_lbl) = scheme_label( stmt_text( it_lines = it_lines i_line = lv_one
+                                                   i_no_comments = abap_true ) ).
+      " Nothing to draw: the chain stays where it was, on the previous node.
+      CHECK lv_one_lbl IS NOT INITIAL.
       DATA(lv_id1) = |p{ lv_one }|.
-      cv_mm = cv_mm && |  { lv_id1 }("{ scheme_label( stmt_text( it_lines = it_lines i_line = lv_one
-                                                                 i_no_comments = abap_true ) ) }")\n|.
+      cv_mm = cv_mm && |  { lv_id1 }("{ lv_one_lbl }")\n|.
       cv_edges = cv_edges && |  { i_prev }{ arrow( i_label ) }{ lv_id1 }\n|.
       IF cv_first IS INITIAL. cv_first = lv_id1. ENDIF.
       r_node = lv_id1.
