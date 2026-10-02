@@ -17,7 +17,7 @@ test('formula follows a component through a structure transfer and keeps SQL onl
   ].map(([from, to]) => ({ from, to, label: 'operand' }));
   const page = html({ nodes, edges, root: 'result', selectedVariable: 'RESULT-AMOUNT' }, 'test');
   const formula = page.split('Formula derivation — click a branch to expand its input formulas</p>')[1]
-    .split('<div id="bse-diagram-pane"')[0];
+    .split('</template>')[0];
   const plain = formula.replace(/<[^>]*>/g, ' ');
   assert(plain.indexOf('context-amount') < plain.indexOf('SELECT'));
   assert.equal((plain.match(/SELECT\s+weight/g) || []).length, 1);

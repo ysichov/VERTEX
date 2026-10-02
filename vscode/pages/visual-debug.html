@@ -16,9 +16,14 @@ button:disabled{opacity:.45;cursor:default}
 #terminate,#stop{color:var(--vscode-errorForeground,#c72e0f);--accent:var(--vscode-errorForeground,#c72e0f)}
 #terminate:hover:not(:disabled),#stop:hover:not(:disabled){color:var(--vscode-errorForeground,#c72e0f);border-bottom-color:var(--accent)}
 header{flex:none;padding:6px 8px;border-bottom:1px solid var(--vscode-panel-border,GrayText);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.grp{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+.grp+.grp{padding-left:8px;border-left:1px solid var(--vscode-panel-border,GrayText)}
 #title{font-weight:600;margin-right:6px}
 #program{width:150px;font-family:var(--vscode-editor-font-family,monospace)}
 #state{color:var(--vscode-descriptionForeground,GrayText);margin-left:6px}
+#runline{flex:none;display:flex;gap:10px;align-items:baseline;padding:2px 8px;color:var(--vscode-descriptionForeground,GrayText);border-bottom:1px solid var(--vscode-panel-border,GrayText);white-space:nowrap;overflow:hidden}
+#runline:empty,#runline.empty{display:none}
+#runline #why{overflow:hidden;text-overflow:ellipsis}
 #notice{flex:none;padding:4px 8px;display:none;color:var(--vscode-errorForeground,red);border-bottom:1px solid var(--vscode-panel-border,GrayText);white-space:pre-wrap}
 #notice.on{display:block}
 main{flex:1;display:flex;min-height:0}
@@ -47,13 +52,10 @@ main{flex:1;display:flex;min-height:0}
 body.drag{cursor:col-resize;user-select:none}
 #right{width:420px;flex:none;display:flex;flex-direction:column;min-width:220px;overflow:hidden}
 section{display:flex;flex-direction:column;min-height:0;border-bottom:1px solid var(--vscode-panel-border,GrayText)}
-section h3{margin:0;padding:4px 8px;font-size:12px;font-weight:600;background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas));display:flex;gap:6px;align-items:center;user-select:none;cursor:pointer}
+section h3{margin:0;padding:4px 8px;font-size:12px;font-weight:600;background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas));display:flex;gap:6px;align-items:center;user-select:none}
 /* Folded: the header stays, the body goes, and the section stops claiming
    height - the others take it. The twisty is the only thing that says so. */
 section>h3::before{content:"\25BE";display:inline-block;width:9px;color:var(--vscode-descriptionForeground,GrayText)}
-section.folded>h3::before{content:"\25B8"}
-section.folded{flex:none!important}
-section.folded>*:not(h3){display:none}
 /* A bar folds its section to the bar itself; the room goes to the others. */
 section h3 .grow{flex:1}
 section h3 label{font-weight:400;display:flex;gap:3px;align-items:center}
@@ -139,12 +141,20 @@ body.vdrag{cursor:row-resize;user-select:none}
 #fslide{width:120px;accent-color:var(--vscode-focusBorder,#2e7d32)}
 #flowsvg g.node{cursor:pointer}
 #flowpane.full{position:fixed;inset:0;height:auto;z-index:7}
+#fdepthbox{display:inline-flex;align-items:center;gap:8px;margin-left:4px}
+#fdepthbox[hidden]{display:none}
+.fdepth{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+#fdepth{width:90px;vertical-align:middle}
+.fzoombox{display:inline-flex;align-items:center;gap:4px}
+#fzslide{width:90px;vertical-align:middle}
+#recbar{display:flex;align-items:center;gap:4px;padding:2px 6px;border-bottom:1px solid var(--vscode-panel-border,GrayText)}
+#recbar[hidden]{display:none}
 #flowsvg{flex:1;overflow:auto;padding:8px;background:var(--vscode-editor-background,Canvas)}
 .logbar{display:flex;gap:6px;align-items:center;margin-bottom:6px}
 .logbar input{width:260px;font-family:var(--vscode-editor-font-family,monospace)}
 #logcount{color:var(--vscode-descriptionForeground,GrayText)}
 table.grid.log td:nth-child(3),table.grid.log td:nth-child(4){max-width:320px;overflow:hidden;text-overflow:ellipsis}
-#why{flex-basis:100%;font:11px var(--vscode-editor-font-family,monospace);color:var(--vscode-descriptionForeground,GrayText);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#why{font:11px var(--vscode-editor-font-family,monospace);color:var(--vscode-descriptionForeground,GrayText);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #why:empty{display:none}
 #stats{font-family:var(--vscode-editor-font-family,monospace);color:var(--vscode-descriptionForeground,GrayText)}
 #partial{font-weight:400;color:var(--vscode-descriptionForeground,GrayText);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -162,23 +172,16 @@ body.vertex-docked-debug #right{width:100%}
 ::-webkit-scrollbar-thumb:hover{background:var(--vscode-scrollbarSlider-hoverBackground,rgba(128,128,128,.6))}
 </style></head><body>
 <header>
-  <button id="run" title="Start the program in SAP (WebGUI) - the breakpoints catch it there"><svg class="clock" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#fff" stroke="#3a3a3a" stroke-width="1.2"/><path d="M8 3.8V8l2.6 1.6" fill="none" stroke="#3a3a3a" stroke-width="1.3" stroke-linecap="round"/><path d="M9.2 12.2l1.8 1.8 3.6-4" fill="none" stroke="#2e9e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Run in SAP</button>
-  <input id="program" placeholder="Program, or empty for a test" title="A class or a function module is not run by itself: name the program that calls it, started in WebGUI" spellcheck="false">
-  <span id="title">Visual Debug</span>
-  <button id="into" title="Single Step (F5)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v8h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 8l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Single Step</span></button>
-  <button id="over" title="Execute (F6)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v11h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 11l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Execute</span></button>
-  <button id="out" title="Return (F7)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M3 14V4h4" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 2l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Return</span></button>
-  <button id="cont" title="Continue to the next breakpoint (F8)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M4 1.5v12" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11.5l2 2 2-2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Continue</span></button>
-  <button id="zonly" class="on" title="In a Visual run, a step that lands outside Z/Y code returns at once (F7): SAP's own code is passed in one go">Z only</button>
-  <button id="flow" title="Continue (F8) from call to call, recording which routine calls which - the program's real flow, drawn as a diagram">Flow</button>
-  <button id="visual"title="Continue (F8) as a run of F5 steps, drawn as it goes, without reading variables - and how long a step takes">Visual</button>
-  <button id="rec" title="Record every stop while on - F5-F8 here, the assistant, a breakpoint; Continue then steps as Visual does and draws nothing until the run ends. The player replays the record">Rec</button>
-  <span id="stats" title="Steps of the Visual run: time over steps; SAP is the step request alone"></span>
-  <button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Exit program</button>
-  <button id="stop" title="Let the program go and stop listening; the breakpoints stay here for the next run">Detach</button>
+  <!-- Three groups, because they answer three questions: what to do with the
+       program, how to step, and how a run behaves. -->
+  <span class="grp"><button id="run" title="Start the program in SAP (WebGUI) - the breakpoints catch it there"><svg class="clock" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#fff" stroke="#3a3a3a" stroke-width="1.2"/><path d="M8 3.8V8l2.6 1.6" fill="none" stroke="#3a3a3a" stroke-width="1.3" stroke-linecap="round"/><path d="M9.2 12.2l1.8 1.8 3.6-4" fill="none" stroke="#2e9e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Run in SAP</button><input id="program" placeholder="Program, or empty for a test" title="A class or a function module is not run by itself: name the program that calls it, started in WebGUI" spellcheck="false"><span id="title">Visual Debug</span><button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Exit program</button><button id="stop" title="Let the program go and stop listening; the breakpoints stay here for the next run">Detach</button></span>
+  <span class="grp"><button id="into" title="Single Step (F5)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v8h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 8l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Single Step</span></button><button id="over" title="Execute (F6)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v11h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 11l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Execute</span></button><button id="out" title="Return (F7)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M3 14V4h4" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 2l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Return</span></button><button id="cont" title="Continue to the next breakpoint (F8)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M4 1.5v12" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11.5l2 2 2-2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Continue</span></button></span>
+  <span class="grp"><button id="zonly" class="on" title="In a Visual run, a step that lands outside Z/Y code returns at once (F7): SAP's own code is passed in one go">Z only</button><button id="flow" title="Continue (F8) from call to call, recording which routine calls which - the program's real flow, drawn as a diagram">Flow</button><button id="visual"title="Continue (F8) as a run of F5 steps, drawn as it goes, without reading variables - and how long a step takes">Visual</button><button id="rec" title="Record every stop while on - F5-F8 here, the assistant, a breakpoint; Continue then steps as Visual does and draws nothing until the run ends. The player replays the record">Rec</button><button id="predict" title="Use the statement map to go faster: the next line is taken from it where the text alone decides it, and a loop is passed in one go. Off, SAP is asked where the program is after every step and loops are stepped through - slower, and every stop was read rather than worked out">Predict</button></span>
   <span id="state">Click beside a line number to set a breakpoint; right-click for a condition.</span>
-  <div id="why"></div>
 </header>
+<!-- What the run is doing and what it just did: a line of its own under the
+     toolbar, not among the buttons. The Log keeps the whole of it. -->
+<div id="runline"><span id="stats" title="Steps of the Visual run: time over steps; SAP is the step request alone"></span><div id="why"></div></div>
 <div id="notice"></div>
 <main>
   <div id="left">
@@ -188,6 +191,10 @@ body.vertex-docked-debug #right{width:100%}
   </div>
   <div class="split" id="split" title="Drag to resize"></div>
   <div id="right">
+    <!-- The record belongs to the whole window, not to the diagram: the
+         player moves the stack, the variables and the source as well, and it
+         is there whether a diagram is open or not. -->
+    <div id="recbar" hidden><button id="ffirst" title="The first recorded stop">&#9198;</button><button id="fprev" title="One stop back in the recorded run">&#9664;</button><input type="range" id="fslide" min="1" max="1" value="1" title="Any recorded stop"><span id="fpos" class="dim"></span><button id="fnext" title="One stop forward; past the last one the chart is live again">&#9654;</button><button id="flast" title="The last stop - where the program is now">&#9197;</button><button id="fplay" title="Replay the recorded run as fast as the chart draws">&#9205;</button><select id="fspeed" title="Replay speed, stops per second"><option value="1">1/s</option><option value="2">2/s</option><option value="3" selected>3/s</option><option value="5">5/s</option><option value="10">10/s</option><option value="0">max</option></select></div>
     <div id="panes" title="Show or hide a section; drag the line between two sections to resize them">
       <button data-pane="stacksec" class="on">Stack</button><button data-pane="bpsec">Breakpoints</button><button data-pane="varsec" class="on">Variables</button><button data-pane="flowpane">Diagram</button><button data-pane="dumpsec">Dump</button><button data-pane="logsec">Log</button>
     </div>
@@ -206,7 +213,7 @@ body.vertex-docked-debug #right{width:100%}
       <button id="dumpfull" hidden title="Show the whole dump as SAP wrote it">Whole dump</button>
       <button id="dumpopen" title="Open ST22 in SAP, where this dump is the first entry">Open ST22</button></h3>
       <div class="list" id="dumpbox"></div></section>
-    <div id="flowpane" hidden><div id="flowbar"><button id="fclasses" class="on">Classes</button><button id="fmethods">Methods</button><button id="ffirst" title="The first recorded stop">&#9198;</button><button id="fprev" title="One stop back in the recorded run">&#9664;</button><input type="range" id="fslide" min="1" max="1" value="1" title="Any recorded stop"><span id="fpos" class="dim"></span><button id="fnext" title="One stop forward; past the last one the chart is live again">&#9654;</button><button id="flast" title="The last stop - where the program is now">&#9197;</button><button id="fplay" title="Replay the recorded run as fast as the chart draws">&#9205;</button><select id="fspeed" title="Replay speed, stops per second"><option value="1">1/s</option><option value="2">2/s</option><option value="3" selected>3/s</option><option value="5">5/s</option><option value="10">10/s</option><option value="0">max</option></select><span class="grow"></span><button id="fzout" title="Smaller (Ctrl + wheel)">&#8722;</button><span id="fzoom">100%</span><button id="fzin" title="Larger (Ctrl + wheel)">+</button><button id="ffit" title="Fit the diagram into the pane">Fit</button><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Hide the diagram">&#215;</button></div><div id="flowsvg"></div></div>
+    <div id="flowpane" hidden><div id="flowbar"><button id="fclasses" class="on">Classes</button><button id="fmethods">Methods</button><button id="fsteps" title="The recorded run as statements: one node per statement, however many times it ran">Statements</button><span id="fdepthbox" hidden><span class="vertex-segment-toggle" id="fexpand" role="group" aria-label="Branches"><button class="active" data-open="collapse">Collapse all</button><button data-open="expand">Expand all</button></span><label class="fdepth" title="How deep the statements are shown - the program is 0, a class 1, a routine 2">Depth <input type="range" id="fdepth" min="1" max="1" value="1" step="1" aria-label="Depth"><output id="fdepthvalue" class="dim">all</output></label></span><span class="grow"></span><span class="fzoombox"><span class="dim" title="Zoom">&#128269;</span><input type="range" id="fzslide" min="10" max="300" value="100" step="5" title="Zoom (Ctrl + wheel over the diagram)"><span id="fzoom">100%</span></span><button id="ffit" title="Fit the diagram into the pane">Fit</button><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Hide the diagram">&#215;</button></div><div id="flowsvg"></div></div>
     <section id="logsec" hidden><h3>Log</h3><div id="logbox" class="list"></div></section>
   </div>
 </main>
@@ -260,6 +267,11 @@ function drawDump(end){
     }else if(one.whyNoPlace){
       var why=document.createElement("div");why.className="dim";why.textContent=one.whyNoPlace;row.appendChild(why);
     }
+    // The row is the dump: a click on it opens that one, which is the only
+    // way to the others when a run left more than one behind - Whole dump
+    // opens the first. The source link keeps its own click.
+    if(one.hasPage){row.title="Show the whole dump as SAP wrote it";
+      row.onclick=function(e){if(e.target&&e.target.tagName==="BUTTON")return;showDumpPage(one.id,one.error||"");};}
     box.appendChild(row);
   });
   // SAP wrote a whole page about it; the section shows what a reader needs
@@ -270,6 +282,22 @@ function drawDump(end){
   // Shown, not merely available: a dump nobody noticed is a dump that did not
   // happen. The reader can close the section again.
   if(!paneOn("dumpsec"))setPane("dumpsec",true);
+}
+/* A step that ended the run says itself what it ended of: the answer to it
+   carries the dump the debugger has already read from ST22. A Visual, Rec or
+   Flow run takes no events while it steps, so the ending is reported here,
+   as apply() reports it for F5. */
+function stepEnded(r){
+  if(!r||!r.ended)return;
+  // A step answers with the dump as the debugger keeps it, where the whole
+  // SAP page is a field; the picture sends the same dump without that page,
+  // and that is the form the section is drawn from. One shape, one drawing.
+  var list=(r.dumped||[]).map(function(d){
+    return {id:d.id,error:d.error,text:d.text,where:d.where||null,
+      whyNoPlace:d.whyNoPlace||"",hasPage:!!d.page};});
+  if(!list.length){notice(r.note||"The program ended.");return;}
+  dumpShown="";
+  endedNotice({ending:{program:"",dumped:list}});
 }
 function failed(error){notice(error&&error.message||String(error));}
 
@@ -476,9 +504,7 @@ function layoutPanes(){
   document.querySelectorAll("#right>.hsplit").forEach(function(x){x.remove();});
   var shown=PANES.filter(paneOn);
   shown.forEach(function(id,i){
-    // A folded section keeps its remembered height for when it opens again,
-    // but takes none of the pane while it is shut.
-    $(id).style.flex=$(id).classList.contains("folded")?"none":"1 1 "+paneSize[id]+"px";
+    $(id).style.flex="1 1 "+paneSize[id]+"px";
     if(i===0)return;
     var line=document.createElement("div");line.className="hsplit";$(id).parentNode.insertBefore(line,$(id));
     line.onmousedown=function(e){
@@ -493,30 +519,15 @@ function layoutPanes(){
 }
 function setPane(id,on){
   $(id).hidden=!on;
-  // Turning a section on that was left folded would show a bare heading and
-  // look like nothing happened.
-  if(on)$(id).classList.remove("folded");
   document.querySelectorAll('#panes button[data-pane="'+id+'"]').forEach(function(b){b.classList.toggle("on",on);});
   layoutPanes();
   if(on&&id==="logsec")drawLog();
   if(on&&id==="flowpane"&&flow.order.length+Object.keys(flow.nodes).length&&!$("flowsvg").querySelector("svg"))showFlow();
 }
 document.querySelectorAll("#panes button").forEach(function(b){b.onclick=function(){setPane(b.dataset.pane,!paneOn(b.dataset.pane));};});
-/* Fold a section by its heading. The heading also carries controls - Clear
-   all, the variable filter, Open ST22 - and a click on one of those is meant
-   for it, not for the fold. */
-function foldPane(id,folded){
-  var section=$(id);
-  if(!section)return;
-  section.classList.toggle("folded",folded);
-  layoutPanes();
-}
-document.querySelectorAll("#right>section>h3").forEach(function(head){
-  head.onclick=function(e){
-    if(e.target.closest("button,input,select,a"))return;
-    foldPane(head.parentNode.id,!head.parentNode.classList.contains("folded"));
-  };
-});
+/* A section is shown or hidden by its button above, and that is the only way:
+   folding it by its heading was a second control for the same thing, and two
+   controls for one state can only disagree. */
 layoutPanes();
 /* The stack as SAP's debugger shows it: a table, the deepest level on top,
    numbered by depth. */
@@ -586,6 +597,7 @@ Object.keys(STEP).forEach(function(id){$(id).onclick=function(){
 $("visual").onclick=function(){$("visual").classList.toggle("on");};
 $("rec").onclick=function(){$("rec").classList.toggle("on");};
 $("zonly").onclick=function(){$("zonly").classList.toggle("on");};
+$("predict").onclick=function(){$("predict").classList.toggle("on");};
 /* In SAP's own code with our code below it on the stack - however it got
    there: Z only goes back out (F7) until it stands in our code again. */
 function strayed(frames){
@@ -735,6 +747,17 @@ function ownersOutside(st){
 }
 var EVENTS=/^(FORM|METHOD|FUNCTION|MODULE|START-OF-SELECTION|END-OF-SELECTION|INITIALIZATION|LOAD-OF-PROGRAM|TOP-OF-PAGE|END-OF-PAGE|AT|GET)$/i;
 function breakpointOn(url,line){return picture.breakpoints.some(function(b){return norm(b.url)===norm(url)&&b.line===line;});}
+/* A run of F5 steps is this window's F8, so a breakpoint on the way is this
+   window's to see: SAP names one when it stops the program at it, and says
+   nothing when a step simply lands on that line. The list is here either
+   way, and a point means the statement is not run - so the run ends there. */
+function stopsHere(p){
+  var s=p&&p.stopped;if(!s)return false;
+  if(s.breakpoint)return true;
+  var f=s.frames&&s.frames[0];if(!f)return false;
+  return picture.breakpoints.some(function(b){
+    return b.active!==false&&b.mode!=="log"&&norm(b.url)===norm(f.url)&&b.line===f.line;});
+}
 /* The source address of a program's include, as the stack gives it. */
 function urlOf(program,include){var p=String(program).toLowerCase(),i=String(include).toLowerCase();
   return "/sap/bc/adt/programs/"+(i===p?"programs/":"includes/")+encodeURIComponent(i)+"/source/main";}
@@ -748,11 +771,17 @@ function unitIn(map,kw,name){
       return null;}}}
   return null;
 }
-/* The next line without asking SAP, where the text alone decides it:
-   plain to plain; into a plain PERFORM, its FORM's first statement; out of
-   ENDFORM, the statement after the PERFORM that called it. */
+/* The next line without asking SAP, where the text alone decides it and the
+   line itself proves it: plain to plain, and into a plain PERFORM or a named
+   METHOD call, its first statement. Never within one line, and never out of a
+   unit - see below. */
 function predicted(f,map){
   var p=placeOf(f,map);if(!p)return null;
+  // A prediction is checked by the line changing, and nothing else. Where the
+  // next statement sits on the line the program already stands on - a chained
+  // WRITE, two statements written side by side - there is nothing to check it
+  // against, so SAP is asked instead.
+  if(p.next&&p.next.line===p.here.line)return null;
   if(p.here.kind==="plain"&&p.next&&p.next.kind==="plain"){
     return breakpointOn(f.url,p.next.line)?null:{line:p.next.line,st:p.next};}
   // Calls that all go outside Z/Y code, with Z only on: F6 over the
@@ -767,13 +796,10 @@ function predicted(f,map){
     var url=urlOf(f.program,t.include);if(breakpointOn(url,t.first.line))return null;
     var unit=form?"FORM "+String(p.here.target).toUpperCase():"METHOD "+String(p.here.target).toUpperCase().split("=>").pop();
     return {line:t.first.line,st:t.first,from:p.here,enter:{label:t.include+":"+t.first.line+" "+unit,url:url,include:t.include,program:f.program}};}
-  // The end of one: back to the statement after the call it came from.
-  if(p.here.kw==="ENDFORM"||p.here.kw==="ENDMETHOD"){
-    var all=picture.stopped.frames,caller=all[all.indexOf(f)+1];if(!caller)return null;
-    var cp=placeOf(caller,maps[caller.program]);
-    var called=cp&&cp.here.target&&(p.here.kw==="ENDFORM"?cp.here.kw==="PERFORM":cp.here.kw==="+CALL_METHOD"||cp.here.kw==="CALL");
-    if(!called||!cp.next||CLOSERS.test(cp.next.kw)||EVENTS.test(cp.next.kw))return null;
-    return breakpointOn(caller.url,cp.next.line)?null:{line:cp.next.line,st:cp.next,leave:true};}
+  // The end of a unit is where the frame changes, and a frame the window
+  // invented is the one thing it cannot check. It happens once per call, not
+  // once per statement, so SAP is asked there and the run always knows where
+  // it really stands when control leaves a routine.
   return null;
 }
 
@@ -790,11 +816,12 @@ function drawStats(s){
   // the way to the window and back, and drawing.
   var win=s.steps?Math.max(0,Math.round((s.total-s.sap-s.stackMs-s.other)/s.steps)):0;
   $("stats").textContent=s.steps+" steps ("+s.predicted+" predicted) · depth "+(picture.stopped?picture.stopped.frames.length:0)+" · "+((Date.now()-s.t0)/1000).toFixed(1)+" s · "
-    +avg+" ms/step · SAP step "+sap+" · stack "+stack+" · window "+win+(s.loops?" · "+s.loops+" loops passed":"")+(s.standard?" · "+s.standard+" standard calls passed":"")+(s.over?" · "+s.over+" stepped over":"")+(s.missed?" · "+s.missed+" mispredicted":"");
+    +avg+" ms/step · SAP step "+sap+" · stack "+stack+" · window "+win+(s.loops?" · "+s.loops+" loops passed":"")+(s.standard?" · "+s.standard+" standard calls passed":"")+(s.over?" · "+s.over+" stepped over":"")+(s.missed?" · "+s.missed+" mispredicted":"")
+    +(s.inline?" · "+s.inline+" lines with more than one statement":"")+(s.unitend?" · "+s.unitend+" unit ends":"");
 }
 function runVisual(){
   if(!picture.stopped)return;
-  notice("");series={steps:0,sap:0,total:0,stackMs:0,other:0,over:0,predicted:0,missed:0,loops:0,standard:0,t0:Date.now(),stop:false};
+  notice("");series={steps:0,sap:0,total:0,stackMs:0,other:0,over:0,predicted:0,missed:0,loops:0,standard:0,inline:0,unitend:0,t0:Date.now(),stop:false};
   $("cont").querySelector(".lbl").textContent="Pause";$("cont").title="Pause the Visual run (F8)";drawButtons();
   var s=series;s.home={};spots=[];fresh();logStart();
   picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
@@ -816,14 +843,23 @@ function runVisual(){
       return backToOurs(picture.stopped.frames).then(function(o){
         if(lastMove){lastMove.ms=Date.now()-t0;lastMove.sap=o.sap||0;}
         s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t0;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
-        if(o.ended)return;
-        return debug("picture").then(function(q){logStep(q);seen(q);if(!q.stopped||q.stopped.breakpoint)return;
+        if(o.ended)return stepEnded(o);
+        return debug("picture").then(function(q){logStep(q);seen(q);if(!q.stopped||stopsHere(q))return;
           if(!q.stopped.frames.some(function(x){return s.home[x.program];})){s.left=q.stopped.at;return;}
           return next();});
       });
     }
     return mapFor(f&&f.program).then(function(map){return methodsFor(f).then(function(){return map;});}).then(function(map){
-      var expect=predicted(f,map),from=placeOf(f,map),exit=loopExit(f,map),t=Date.now();
+      // Predict: what the statement map can tell is used instead of asking -
+      // the next line, and a loop passed in one go. Off, SAP is asked where
+      // the program is after every step and the loop is stepped through.
+      // Visual draws or does not draw, Rec keeps the stops or does not keep
+      // them; neither says how the run steps. This alone does.
+      var guessing=$("predict").classList.contains("on");
+      var expect=guessing?predicted(f,map):null,from=placeOf(f,map),exit=guessing?loopExit(f,map):null,t=Date.now();
+      // Why the map was not used, where that is worth seeing: a line holding
+      // more than one statement, and the end of a unit.
+      if(guessing&&!expect&&from){if(from.next&&from.next.line===from.here.line)s.inline++;else if(ENDS.test(from.here.kw))s.unitend++;}
       // SAP gets the line and the frame to add or drop, not the statements.
       // F6 over a call outside Z/Y reads the stack after it: SAP may stop inside
       // the call, and a line taken from the map would hide that.
@@ -851,7 +887,7 @@ function runVisual(){
           else spots[depth]=expect.st;
         }else spots=[];
         drawStats(s);
-        if(r.ended)return;
+        if(r.ended)return stepEnded(r);
         return debug("picture").then(function(p){
           logStep(p);
           // Into SAP's own code from ours, with Z only on: F7 at once - the
@@ -860,12 +896,12 @@ function runVisual(){
             var t2=Date.now();lastMove={action:"outside Z/Y: F7",from:String(p.stopped.frames[0].label)};
             return debug("step",{kind:"out",quick:true}).then(function(o){if(lastMove){lastMove.ms=Date.now()-t2;lastMove.sap=o.sap||0;}
               s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t2;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
-              if(o.ended)return;
-              return debug("picture").then(function(q){logStep(q);seen(q);if(!q.stopped||q.stopped.breakpoint)return;
+              if(o.ended)return stepEnded(o);
+              return debug("picture").then(function(q){logStep(q);seen(q);if(!q.stopped||stopsHere(q))return;
                 if(!q.stopped.frames.some(function(x){return s.home[x.program];})){s.left=q.stopped.at;return;}
                 return next();});});
           }
-          seen(p);if(!p.stopped||p.stopped.breakpoint)return;
+          seen(p);if(!p.stopped||stopsHere(p))return;
           // The stack was asked after a plain statement: it must stand on the
           // next statement, unless that closes a block or the step raised.
           if(!r.predicted&&from&&from.here.kind==="plain"&&from.next){
@@ -1054,7 +1090,7 @@ function runFlow(){
         if(flow.order.length){if(shapeOf()!==flowShape||!$("flowsvg").querySelector("svg"))showFlow();else if(!playing)markNow(liveCur());}}
       // The same routine: only the line moves - nothing else is drawn.
       else if(draw&&!playing){var top=currentFrame();markSource();if(top)scrollTo(top.line);}
-      if(p.stopped.breakpoint)return false;
+      if(stopsHere(p))return false;
       if(!p.stopped.frames.some(function(x){return s.home[x.program];})){s.left=p.stopped.at;return false;}
       return snapDue(p.stopped.frames)?snapshot().then(function(){return true;}):true;
     });
@@ -1065,7 +1101,7 @@ function runFlow(){
     // Still in SAP's own code above ours: back out before anything else.
     if(strayed(picture.stopped.frames)){
       var t0=Date.now();s.standard++;
-      return backToOurs(picture.stopped.frames).then(function(o){took(o,t0);if(o.ended)return;return arrived().then(function(on){if(on)return move();});});
+      return backToOurs(picture.stopped.frames).then(function(o){took(o,t0);if(o.ended)return stepEnded(o);return arrived().then(function(on){if(on)return move();});});
     }
     return mapFor(f.program).then(function(map){return methodsFor(f).then(function(){return map;});}).then(function(map){
       var list=listFor(f,map),p=placeOf(f,map),t=Date.now(),go,why,detail="";
@@ -1094,14 +1130,14 @@ function runFlow(){
       if(!p)detail=!map?"no map for "+f.program:!list?"map not used for "+f.include+" at "+String(f.url).split("#")[0]:"no statement starts at line "+f.line;
       explain(f,map,p,why);lastMove={action:why,from:String(f.label),detail:detail};
       return go.then(function(r){
-        took(r,t);if(r.ended)return;
+        took(r,t);if(r.ended)return stepEnded(r);
         return arrived().then(function(on){
           if(!on)return;
           // Landed outside Z/Y from our code: back out at once.
           var top=picture.stopped.frames[0];
           if(strayed(picture.stopped.frames)){
             var t2=Date.now();s.standard++;lastMove={action:"outside Z/Y: F7",from:String(top.label)};
-            return debug("step",{kind:"out",quick:true}).then(function(o){took(o,t2);if(o.ended)return;return arrived().then(function(on2){if(on2)return move();});});
+            return debug("step",{kind:"out",quick:true}).then(function(o){took(o,t2);if(o.ended)return stepEnded(o);return arrived().then(function(on2){if(on2)return move();});});
           }
           return move();
         });
@@ -1116,6 +1152,97 @@ function runFlow(){
     stopKey="";lastStep=null;if(!s.quiet)return refresh();
   }).catch(failed);
 }
+/* The record as statements: a node is a statement of a procedure, however
+   many times the run stood on it, so a loop is drawn once and its back edge
+   counts the iterations, and a method called twice is one block with two
+   edges into it. The record itself keeps every stop - the player walks them
+   all; this is the drawing, and a drawing of twenty identical branches says
+   nothing the count does not. */
+var stepIndex=null;
+function stepText(f,url){
+  // The statement, not its first line: a call written over four lines is one
+  // node, as it is one statement - the same reading the analysis shows.
+  var whole=statementAt(url,f.line),text=whole?String(whole).replace(/\s+/g," ").trim():"";
+  if(!text){
+    // No source read for it - a run that drew nothing never asked for one.
+    // The map still names the statement, and failing that the place does.
+    var map=maps[f.program],list=map?listFor({url:url,include:f.include,unit:f.unit,line:f.line},map):null;
+    var st=list&&list.filter(function(x){return x.line===f.line;})[0];
+    text=st?st.kw+(st.target?" "+st.target:""):String(f.include||"")+":"+f.line;
+  }
+  return (text.length>70?text.slice(0,67)+"…":text)+" · "+f.line;
+}
+function stepKey(t){var f=t&&t.stack&&t.stack[0];if(!f)return "";
+  return (t.cur?t.cur.name:String(f.program||""))+"|"+String(f.include||"")+":"+f.line;}
+/* The blocks a statement of a routine stands in, by the routine's own text:
+   IF, CASE, LOOP, DO, WHILE, TRY open one; WHEN, ELSE, ELSEIF, CATCH close the
+   branch before them and own what follows; END* close both. The same reading
+   Logic and Value Origin FLOW use, so the three nest alike. */
+var OPENS=/^(IF|CASE|LOOP|DO|WHILE|TRY|SELECT)$/i,SHUTS=/^(ENDIF|ENDCASE|ENDLOOP|ENDDO|ENDWHILE|ENDTRY|ENDSELECT)$/i,
+    BRANCHES=/^(WHEN|ELSE|ELSEIF|CATCH|CLEANUP)$/i;
+function blocksOf(list,r){
+  var parent={},stack=[];
+  var top=function(){return stack.length?stack[stack.length-1].line:null;};
+  for(var i=r.from;i<=r.to;i++){
+    var st=list[i];if(!st||st.kind==="decl")continue;
+    if(SHUTS.test(st.kw)){if(stack.length&&stack[stack.length-1].branch)stack.pop();if(stack.length)stack.pop();parent[st.line]=top();continue;}
+    if(BRANCHES.test(st.kw)){if(stack.length&&stack[stack.length-1].branch)stack.pop();parent[st.line]=top();stack.push({line:st.line,branch:true});continue;}
+    parent[st.line]=top();
+    if(OPENS.test(st.kw))stack.push({line:st.line,branch:false});
+  }
+  return parent;
+}
+/* The record as the tree Value Origin FLOW draws: the program at the root,
+   a class under it, a routine under the class, and the statements the run
+   stood on nested in their own blocks. An edge is containment, labelled with
+   the line; a call is an edge from the statement that called to the routine
+   it entered. A statement is one node however often it ran, so a loop is one
+   branch and the count says how many times. */
+var shapes={};
+function shapeIn(f,url){
+  var key=String(f.program)+"|"+String(f.include)+"|"+String(f.unit||"").toUpperCase();
+  if(shapes[key]!==undefined)return shapes[key];
+  var map=maps[f.program],list=map?listFor({url:url,include:f.include,unit:f.unit,line:f.line},map):null;
+  if(!list)return shapes[key]=null;
+  var at=-1;for(var i=0;i<list.length;i++){if(list[i].line===f.line){at=i;break;}}
+  if(at<0)return shapes[key]=null;
+  var r=routine(list,at);
+  return shapes[key]={list:list,range:r,parent:blocksOf(list,r)};
+}
+function stepFlow(){
+  var tl=flow.timeline||[],nodes={},order=[],edges={},eorder=[],previous=null;
+  var add=function(key,node){if(!nodes[key]){nodes[key]=node;nodes[key].key=key;nodes[key].count=0;order.push(key);}return nodes[key];};
+  var join=function(from,to,label){if(!from||!to||from===to)return;var ek=from+">"+to;
+    if(!edges[ek]){edges[ek]={from:from,to:to,label:String(label||""),count:0};eorder.push(ek);}edges[ek].count++;};
+  var rootName=object.name||(tl[0]&&tl[0].stack&&tl[0].stack[tl[0].stack.length-1].program)||"PROGRAM";
+  add("root",{text:rootName,type:"program",owner:rootName,unit:rootName,url:object.url,line:1,depth:0});
+  tl.forEach(function(t){
+    var f=t.stack&&t.stack[0];if(!f||!t.at)return;
+    var unit=t.cur?t.cur.name:String(f.program||""),owner=t.cur?t.cur.owner:String(f.program||"");
+    var classKey="c|"+owner,unitKey="m|"+unit;
+    add(classKey,{text:owner,type:"class",owner:owner,unit:unit,url:t.at.url,line:f.line,depth:1});
+    join("root",classKey,"");
+    add(unitKey,{text:String(unit).indexOf("=>")>0?String(unit).split("=>").pop():unit,type:"unit",owner:owner,unit:unit,url:t.at.url,line:f.line,depth:2});
+    join(classKey,unitKey,"");
+    var key=stepKey(t);if(!key)return;
+    var node=add(key,{text:stepText(f,t.at.url),type:"statement",owner:owner,unit:unit,url:t.at.url,line:f.line,depth:3});
+    node.count++;
+    // Where the statement sits in its routine: the nearest block around it
+    // that the run also stood on, or the routine itself.
+    var shape=shapeIn(f,t.at.url),parent=unitKey;
+    if(shape){var line=shape.parent[f.line];
+      while(line!=null){var pk=unit+"|"+String(f.include||"")+":"+line;if(nodes[pk]){parent=pk;break;}line=shape.parent[line];}}
+    // How deep it sits: one below whatever contains it. A statement reached
+    // from two places keeps the shallower one, as it is one node.
+    if(nodes[parent])node.depth=Math.min(node.depth,nodes[parent].depth+1);
+    join(parent,key,f.line);
+    // A call: the statement the run was on when the stack grew, to the
+    // routine it entered.
+    if(previous&&t.stack.length>previous.depth&&previous.unit!==unit)join(previous.key,unitKey,previous.line);
+    previous={key:key,unit:unit,depth:t.stack.length,line:f.line};
+  });
+  return stepIndex={nodes:nodes,order:order,edges:edges,eorder:eorder};
+}
 /* The recorded flow as Mermaid: classes and programs with the calls between
    them, or every routine, grouped by its class or program. */
 function flowText(mode){
@@ -1128,6 +1255,29 @@ function flowText(mode){
   // Ids kept for markNow, which moves the green mark on the drawn chart.
   function finish(){var s=Object.keys(std);if(s.length)out.push("  class "+s.join(",")+" std");
     flowIds=ids;flowShape=shapeOf();return out.join("\n");}
+  if(mode==="steps"){
+    var S=stepFlow();if(S.order.length<2)return finish();
+    // Depth: the gate on what is drawn, as in Value Origin. Collapse all and
+    // Expand all are its two ends, so the three controls cannot disagree.
+    var deep=S.order.filter(function(k){return (S.nodes[k].depth||0)<=flowDepth;});
+    var inside={};deep.forEach(function(k){inside[k]=1;});
+    // Left to right, as a derivation reads. A class keeps one colour across
+    // its routines, as the Methods reading already does.
+    out[0]="flowchart LR";
+    var PAL=["#fff59d","#c5e1a5","#ffcc80","#b39ddb","#80deea","#f48fb1","#bcaaa4","#e6ee9c"],tints={},taken=0;
+    deep.forEach(function(k){var nd=S.nodes[k];
+      var text=nd.text+(nd.count>1?"  ×"+nd.count:"");
+      var shape=nd.type==="statement"?["[","]"]:nd.type==="unit"?["([","])"]:["[[","]]"];
+      out.push("  "+id(k,nd.owner)+shape[0]+label(text)+shape[1]);
+      if(nd.type!=="statement"&&customer(nd.owner)){
+        if(!tints[nd.owner]){tints[nd.owner]="t"+taken;out.push("  classDef t"+taken+" fill:"+PAL[taken%PAL.length]+"66,stroke:"+PAL[taken%PAL.length]);taken++;}
+        out.push("  class "+ids[k]+" "+tints[nd.owner]);}
+    });
+    S.eorder.forEach(function(ek){var e=S.edges[ek];if(!inside[e.from]||!inside[e.to]||!ids[e.from]||!ids[e.to])return;
+      var mark=e.label?e.label+(e.count>1?" ×"+e.count:""):(e.count>1?"×"+e.count:"");
+      out.push("  "+ids[e.from]+" -->"+(mark?"|"+label(mark).replace(/"/g,"")+"|":"")+" "+ids[e.to]);});
+    return finish();
+  }
   if(mode==="classes"){
     var pairs={},order=[];
     F.order.forEach(function(k){var e=F.edges[k],a=e.from.owner,b=e.to.owner;if(a===b)return;
@@ -1151,13 +1301,21 @@ function flowText(mode){
 }
 /* What the chart shows: a new block or arrow needs a new drawing, a count or
    the running block does not. */
-var flowIds={},flowShape="";
-function shapeOf(){return flowMode+"|"+flow.order.join(",");}
+var flowIds={},flowShape="",flowDepth=Infinity;
+function shapeOf(){return flowMode+"|"+flow.order.join(",")+(flowMode==="steps"?"|"+((flow.timeline||[]).length)+"|"+flowDepth:"");}
 /* The running block, green; darker when it has been called more than once
    up to that stop. Only classes on the drawn SVG change - Mermaid is not run. */
 function markNow(cur,upto){
   var svg=$("flowsvg").querySelector("svg");if(!svg)return;
   svg.querySelectorAll(".vx-now,.vx-again").forEach(function(g){g.classList.remove("vx-now","vx-again");});
+  // Statements: the mark is the stop itself, not the routine it is in, so it
+  // is taken from the record rather than from the unit passed in.
+  if(flowMode==="steps"){
+    var tl=flow.timeline||[],t=replayAt!=null?tl[replayAt]:tl[tl.length-1],k=t?stepKey(t):"";
+    var sid=k&&flowIds[k];if(!sid)return;
+    var sg=svg.querySelector('g.node[id*="flowchart-'+sid+'-"]');if(!sg)return;
+    sg.classList.add(stepIndex&&stepIndex.nodes[k]&&stepIndex.nodes[k].count>1?"vx-again":"vx-now");return;
+  }
   if(!cur)return;
   var byOwner=flowMode==="classes",at=byOwner?cur.owner:cur.name,id=flowIds[at];if(!id)return;
   var g=svg.querySelector('g.node[id*="flowchart-'+id+'-"]');if(!g)return;
@@ -1174,6 +1332,19 @@ function darkPane(){
   return 0.299*c[0]+0.587*c[1]+0.114*c[2]<128;
 }
 /* Mermaid arrives from the host as text and runs here, as in Metrics. */
+/* The canonical toggles live in one stylesheet for every VERTEX view. A page
+   handed to a webview as a string cannot link one, so it asks the host for it
+   the way it asks for the diagram library. */
+var controlsReady=null;
+function loadControls(){
+  if(controlsReady)return controlsReady;
+  controlsReady=new Promise(function(ok,fail){
+    waiting.push({raw:true,ok:function(css){var st=document.createElement("style");st.textContent=String(css);document.head.appendChild(st);ok();},fail:fail});
+    sdeAsset("controls");
+  });
+  controlsReady.catch(function(){controlsReady=null;});
+  return controlsReady;
+}
 function loadMermaid(){
   if(mermaidReady)return mermaidReady;
   mermaidReady=new Promise(function(ok,fail){
@@ -1221,15 +1392,31 @@ function drawLog(){
 }
 function showLog(){setPane("logsec",true);}
 var flowBusy=false,flowAgain=false,flowDone=null;
+/* A record keeps where every stop was, not what stood there: a run with
+   Visual off never asked for a source. The statements drawing needs the text,
+   so the sources of the record are read once, each one only if it is missing. */
+function stepSources(){
+  var want={},list=[];
+  (flow.timeline||[]).forEach(function(t){var u=t.at&&t.at.url;if(u&&!texts[norm(u)]&&!want[u]){want[u]=1;list.push(u);}});
+  return list.reduce(function(p,url){return p.then(function(){
+    return debug("source",{url:url}).then(function(d){texts[norm(url)]=String(d.source||"").split(/\r?\n/);}).catch(function(){});
+  });},Promise.resolve());
+}
 function showFlow(){
   if(flowBusy){flowAgain=true;return;}flowBusy=true;
   if(!paneOn("flowpane")){$("flowpane").hidden=false;document.querySelectorAll('#panes button[data-pane="flowpane"]').forEach(function(b){b.classList.add("on");});layoutPanes();}
-  $("fclasses").classList.toggle("on",flowMode==="classes");$("fmethods").classList.toggle("on",flowMode==="methods");
+  $("fclasses").classList.toggle("on",flowMode==="classes");$("fmethods").classList.toggle("on",flowMode==="methods");$("fsteps").classList.toggle("on",flowMode==="steps");
+  $("fdepthbox").hidden=flowMode!=="steps";
+  if(flowMode==="steps")loadControls().catch(function(){});
+  // The statements reading is drawn from the sources, so they come first; the
+  // others need nothing and are not held up by it.
+  if(flowMode==="steps"&&(flow.timeline||[]).some(function(t){return t.at&&t.at.url&&!texts[norm(t.at.url)];})){
+    flowBusy=false;return stepSources().then(showFlow).catch(failed);}
   var text=flowText(flowMode),dark=darkPane();
   loadMermaid().then(function(){
     mermaid.initialize({startOnLoad:false,securityLevel:"strict",theme:dark?"dark":"default",flowchart:{htmlLabels:false,useMaxWidth:false},maxEdges:100000});
     return mermaid.render("vxflow"+(++flowSeq),text);
-  }).then(function(r){$("flowsvg").innerHTML=r.svg;natural();markNow(replayAt!=null?flow.timeline[replayAt].cur:liveCur(),replayAt!=null?flow.timeline[replayAt].upto:null);if(flowAuto)fitFlow();else zoomTo(flowZoom);}).catch(failed).then(function(){
+  }).then(function(r){$("flowsvg").innerHTML=r.svg;natural();if(flowMode==="steps"){var mx=deepestStep();$("fdepth").max=String(mx);if(flowDepth===Infinity)$("fdepth").value=String(mx);markDepthEnds();}markNow(replayAt!=null?flow.timeline[replayAt].cur:liveCur(),replayAt!=null?flow.timeline[replayAt].upto:null);if(flowAuto)fitFlow();else zoomTo(flowZoom);}).catch(failed).then(function(){
     flowBusy=false;if(flowAgain){flowAgain=false;showFlow();return;}
     if(flowDone){var d=flowDone;flowDone=null;d();}});
 }
@@ -1243,7 +1430,9 @@ function natural(){
   svg.removeAttribute("style");svg.removeAttribute("height");
 }
 function zoomTo(z){
-  flowZoom=Math.max(0.1,Math.min(4,z));$("fzoom").textContent=Math.round(flowZoom*100)+"%";
+  flowZoom=Math.max(0.1,Math.min(3,z));$("fzoom").textContent=Math.round(flowZoom*100)+"%";
+  // The slider is the zoom, so Fit and the wheel move it too.
+  $("fzslide").value=String(Math.round(flowZoom*100));
   var svg=$("flowsvg").querySelector("svg");if(!svg||!flowSize)return;
   svg.setAttribute("width",Math.round(flowSize.w*flowZoom));svg.setAttribute("height",Math.round(flowSize.h*flowZoom));
 }
@@ -1252,8 +1441,7 @@ function fitFlow(){
   // Fitting shrinks a large chart, never blows a small one up past its own size.
   zoomTo(Math.min(1,(pane.clientWidth-20)/flowSize.w,(pane.clientHeight-20)/flowSize.h));
 }
-$("fzin").onclick=function(){flowAuto=false;zoomTo(flowZoom*1.25);};
-$("fzout").onclick=function(){flowAuto=false;zoomTo(flowZoom/1.25);};
+$("fzslide").oninput=function(){flowAuto=false;zoomTo(Number($("fzslide").value)/100);};
 $("ffit").onclick=function(){flowAuto=true;fitFlow();};
 // The pane changes size when a bar folds or the window moves: fitting follows it.
 new ResizeObserver(function(){if(flowAuto)fitFlow();}).observe($("flowsvg"));
@@ -1262,13 +1450,30 @@ $("flowsvg").addEventListener("wheel",function(e){if(!e.ctrlKey)return;e.prevent
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&$("flowpane").classList.contains("full")){$("flowpane").classList.remove("full");fitFlow();}});
 // With no flow recorded - a Visual run only - there is nothing to draw: the log opens.
 $("fclasses").onclick=function(){flowMode="classes";showFlow();};
+$("fsteps").onclick=function(){flowMode="steps";showFlow();};
+/* Depth, Collapse all and Expand all: one number governs what is drawn, and
+   the two buttons are its ends, so the controls cannot disagree. The maximum
+   is the deepest statement the record actually drew. */
+function deepestStep(){var S=stepIndex;if(!S)return 2;var max=2;
+  S.order.forEach(function(k){var d=S.nodes[k].depth||0;if(d>max)max=d;});return max;}
+function markDepthEnds(){var max=deepestStep();
+  $("fexpand").querySelectorAll("[data-open]").forEach(function(b){
+    b.classList.toggle("active",(b.dataset.open==="expand"&&flowDepth>=max)||(b.dataset.open==="collapse"&&flowDepth<=2));});}
+function setDepth(value){var max=deepestStep();
+  flowDepth=value>=max?Infinity:value;
+  $("fdepth").max=String(max);$("fdepth").value=String(Math.min(value,max));
+  $("fdepthvalue").textContent=flowDepth===Infinity?"all":"≤ "+value;
+  markDepthEnds();showFlow();}
+$("fdepth").oninput=function(){setDepth(Number($("fdepth").value));};
+$("fexpand").querySelectorAll("[data-open]").forEach(function(b){b.onclick=function(){
+  setDepth(b.dataset.open==="expand"?deepestStep():2);};});
 $("fmethods").onclick=function(){flowMode="methods";showFlow();};
 /* The player: the recorded run stop by stop, from what is already recorded -
    nothing is asked of SAP, so Play shows how fast the chart itself draws. */
 var replayAt=null,playing=null;
 function stops(){return flow.timeline?flow.timeline.length:0;}
 var playSpeed=0;
-function drawPos(){if(playing&&playing.frames)playSpeed=Math.round(playing.ms/playing.frames);var n=stops(),sl=$("fslide");sl.max=Math.max(1,n);sl.value=replayAt==null?n:replayAt+1;sl.disabled=!n||!!playing;$("fpos").textContent=n?(replayAt==null?n:replayAt+1)+"/"+n+(playSpeed?" · "+playSpeed+" ms/frame":""):"";
+function drawPos(){var any=stops();$("recbar").hidden=!any;if(playing&&playing.frames)playSpeed=Math.round(playing.ms/playing.frames);var n=stops(),sl=$("fslide");sl.max=Math.max(1,n);sl.value=replayAt==null?n:replayAt+1;sl.disabled=!n||!!playing;$("fpos").textContent=n?(replayAt==null?n:replayAt+1)+"/"+n+(playSpeed?" · "+playSpeed+" ms/frame":""):"";
   $("fplay").innerHTML=playing?"&#9208;":"&#9205;";}
 /* One recorded stop on screen: its source line and its block. Only the
    stop at the end is the program's own; the others are the record. */
@@ -1329,6 +1534,9 @@ $("flowsvg").addEventListener("click",function(e){
   var g=e.target.closest&&e.target.closest("g.node");if(!g)return;
   var id=/flowchart-(n\d+)-/.exec(g.id||"");if(!id)return;
   var key=Object.keys(flowIds).filter(function(k){return flowIds[k]===id[1];})[0];if(!key)return;
+  // Statements: the node is one statement, so a click opens exactly it.
+  if(flowMode==="steps"){var nd=stepIndex&&stepIndex.nodes[key];
+    if(nd)show(nd.url,String(nd.unit).split("=>").pop(),nd.line).catch(failed);return;}
   var byOwner=flowMode==="classes",units=Object.keys(flow.nodes).map(function(k){return flow.nodes[k];})
     .filter(function(u){return byOwner?u.owner===key:u.name===key;});
   if(!units.length)return;
@@ -1352,7 +1560,12 @@ $("dumpcheck").onclick=function(){
   notice("Asking ST22...");
   debug("checkdumps").then(function(news){
     var found=news&&news.found||[];
-    if(!found.length){notice("No new short dump for this user since the run started.");return;}
+    if(!found.length){
+      // Nothing new is not nothing: the one already reported is still below,
+      // and "no short dump" would read as if it were not.
+      var had=picture.ending&&picture.ending.dumped&&picture.ending.dumped.length;
+      notice(had?"Nothing new in ST22 - the dump below is still the only one since the run started."
+        :"No new short dump for this user since the run started.");return;}
     // What comes back is drawn by the ordinary picture, which the debugger
     // has already been told about; this only says it arrived.
     notice("Short dump: "+found.map(function(one){return one.error||one.text;}).join("; "));
@@ -1550,7 +1763,7 @@ function apply(p){
    what it names, so that is read again; a call, a step out of the routine or
    a Continue may change anything, and everything switched on is read. */
 function statementAt(url,line){
-  var lines=norm(url)===norm(shown.url)?shown.lines:norm(url)===norm(object.url)?object.lines:null;
+  var lines=norm(url)===norm(shown.url)?shown.lines:norm(url)===norm(object.url)?object.lines:texts[norm(url)]||null;
   if(!lines)return null;
   var out=[];
   for(var i=line-1;i<lines.length&&i<line+19;i++){

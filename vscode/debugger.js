@@ -85,6 +85,15 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
   let frames = [];             // the stack of the stop, for the Visual Debug window
   let temporaries = [];        // the window's run-to points: { id, url, line, adt }
   let ended = 0;               // runs that ended, counted for the window
+  // Where the reader is debugging from, so a stop is followed there and
+  // nowhere else: the editor, or a VERTEX window that shows the source
+  // itself. Whoever drives the debugger says so; the assistant changes
+  // nothing, because it has no window of its own to navigate.
+  let driver = "editor";
+  // Said once per attach, by the window as well as to the assistant: a
+  // breakpoint the session never took is one the reader can see and trust
+  // for nothing.
+  let unplaced = "";
   /* ST22 is the only place a run that died of a dump says so: the step throws
      the same way it throws when the program simply finished. Every dump that
      was already there when the run started is remembered, and anything of
@@ -206,6 +215,10 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       answer = await client.debuggerSetBreakpoints("user", terminalId, ideId, "vertex", withConditions, user, "debugger");
       placed = answer.filter(a => a.uri);
     }
+    // What SAP placed, and - on the list it is given - what it did not: a
+    // breakpoint missing from the session's own set stops nothing, and the
+    // caller is the only one who can say so.
+    placed.missing = list.filter(b => !placed.some(a => a.uri.uri === b.url && a.uri.range.start.line === b.line));
     return placed;
   }
   /* A change to the user's breakpoints reaches the program stopped now too. */
@@ -536,8 +549,28 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     const { open, user } = await system();
     const client = await open();                     // a stateful session of its own
     session = { client, debuggee: hit, program: hit.PRG_CURR };
+    unplaced = "";
     values = new Map();
     await client.debuggerAttach("user", hit.DEBUGGEE_ID, user, true);
+    // The breakpoints that caught this run are SAP's "external" set, which
+    // is for runs to come. The program now attached has a set of its own,
+    // scope "debugger", and until the user's points are in it a Continue
+    // runs past them. ADT sends them right after attaching; so does this.
+    // A point SAP would not place is named rather than silently lost - the
+    // reader has a breakpoint on screen that nothing will stop at.
+    try {
+      const missed = (await scoped(breakpoints)).missing || [];
+      if (missed.length) {
+        unplaced = "SAP did not place " + missed.length + " breakpoint"
+          + (missed.length > 1 ? "s" : "") + " in this program, so it will not stop at "
+          + (missed.length > 1 ? "them" : "it") + ": " + missed.map(b => b.name + ":" + b.line).join(", ");
+        problems.push(unplaced + ".");
+      }
+    } catch (error) {
+      unplaced = "The breakpoints could not be sent to this program, so it may not stop at them: "
+        + (error && error.message || error);
+      problems.push(unplaced + ".");
+    }
     await arrive(null);
   }
 
@@ -575,7 +608,7 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
       stopped = { breakpoint: bp && !logs ? bp.id : null, at: where(top), stack: state.stack, source: state.source,
         changed: state.changed, tables: state.tables,
         note: quick ? "Reached by the Visual Debug window stepping without reading variables; what changed shows at the next ordinary stop." : undefined,
-        problem: unresolved ? "SAP could not evaluate the condition: " + unresolved.unresolvableCondition : undefined };
+        problem: unresolved ? "SAP could not evaluate the condition: " + unresolved.unresolvableCondition : (unplaced || undefined) };
       wake();
       return;
     }
@@ -1068,7 +1101,10 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
 
   function counted(text) { answers.calls++; answers.chars += text.length; return text; }
 
-  return { setBreakpoint, clearBreakpoints, activateBreakpoints, wait, step, read, run, openDump, dumpPage, checkDumps, stop, detach, status, counted,
+  function drivenBy(name) { if (name === "editor" || name === "window") { driver = name; } }
+  function drivenFrom() { return driver; }
+  return { drivenBy, drivenFrom,
+    setBreakpoint, clearBreakpoints, activateBreakpoints, wait, step, read, run, openDump, dumpPage, checkDumps, stop, detach, status, counted,
     log: () => logged.slice(),
     setBreakpointAt, advance, runTo, settle, terminate, watch, picture, scopes, children, variables, tableRows, frame, source,
     classMethods };

@@ -323,6 +323,10 @@ test("structural navigation walks IF and CASE sibling branches without entering 
     const selection = { isEmpty: false, start: { line, character: from }, end: { line, character: to }, active: { line, character: to } };
     h.documents[0].getText = function (part) { return part ? this.text.split("\n")[line].slice(from, to) : this.text; };
     const editor = { document: h.documents[0], selection };
+    // A double-click is the click that places the cursor inside the word, and
+    // only then the selection of the whole word.
+    const first = { isEmpty: true, start: { line, character: from }, end: { line, character: from }, active: { line, character: from } };
+    h.selectionListeners[0]({ kind: 2, selections: [first], textEditor: { document: h.documents[0], selection: first } });
     h.selectionListeners[0]({ kind: 2, selections: [selection], textEditor: editor });
     await new Promise(resolve => setTimeout(resolve, 20));
     return editor.selection.start.line;
@@ -528,11 +532,31 @@ test("double-click on the method after => opens that method", async () => {
   const line = h.documents[0].text.split("\n")[11], from = line.indexOf("do_it"), to = from + "do_it".length;
   h.documents[0].getText = function (selection) { return selection ? line.slice(selection.start.character, selection.end.character) : this.text; };
   const selection = { isEmpty: false, start: { line: 11, character: from }, end: { line: 11, character: to }, active: { line: 11, character: to } };
+  const first = { isEmpty: true, start: { line: 11, character: from }, end: { line: 11, character: from }, active: { line: 11, character: from } };
+  h.selectionListeners[0]({ kind: 2, selections: [first], textEditor: { document: h.documents[0], selection: first } });
   h.selectionListeners[0]({ kind: 2, selections: [selection], textEditor: { document: h.documents[0], selection } });
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(h.documents.length, 2);
   assert.match(h.documents[1].uri.toString(), /\/CLAS\/ZCL_OTHER\.abap$/);
   assert.equal(h.documents[1].selection.start.line, 5);
+});
+test("a mouse drag that ends up covering one identifier does not navigate", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  const line = h.documents[0].text.split("\n")[11], from = line.indexOf("do_it"), to = from + "do_it".length;
+  h.documents[0].getText = function (selection) { return selection ? line.slice(selection.start.character, selection.end.character) : this.text; };
+  // The drag starts before the word and grows through it; the moment every
+  // character is covered the selection must stay where the user put it.
+  const drag = (start, character, isEmpty) => {
+    const selection = { isEmpty, start: { line: 11, character: start }, end: { line: 11, character }, active: { line: 11, character } };
+    h.selectionListeners[0]({ kind: 2, selections: [selection], textEditor: { document: h.documents[0], selection } });
+  };
+  drag(from - 1, from - 1, true);
+  drag(from - 1, from + 2, false);
+  drag(from - 1, to, false);
+  drag(from, to, false);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.documents.length, 1);
 });
 test("an instance method call opens the class inferred from its local reference", async () => {
   const h = host();

@@ -181,6 +181,9 @@ function open(vscode, context, deps, initial) {
         await panel.webview.postMessage({type:"result",payload:"{}"}); return;
       }
       if(message.call === "debug") {
+        // This window shows the source itself, so a stop is followed here
+        // and no editor is opened over it.
+        if(typeof deps.debugger.drivenBy === "function") deps.debugger.drivenBy("window");
         const payload=JSON.stringify(await debugCommand(deps.debugger,String(args[0]),JSON.parse(args[1]||"{}"),
           resource=>deps.fetch(context,resource)));
         await panel.webview.postMessage({type:"result",payload}); return;

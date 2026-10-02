@@ -1,16 +1,23 @@
 # SAP ABAP VERTEX Tools
 
-Value Origin carries a **Collapse all** / **Expand all** toggle beside the Type selector; it applies to every Type, in both tree and diagram, and every branch starts collapsed.
+Value Origin takes a **Type**: *FLOW* or *Formula*. FLOW is what the program does — its
+statements grouped by class and method, nested by blocks and their branches, with a node on each
+call edge naming what that call passes (`lv_scenario → IV_SCENARIO`); it narrows from *Full* to
+*BSE*, which is what the analysis found and the path that led to it. Formula is how the value was
+computed: `a = b + c` at the top and the definitions of `b` and `c` as its two branches. The
+**Depth** slider decides how far the tree opens — along the call stack in FLOW, along the
+derivation in Formula — and **Collapse all** / **Expand all** are its two ends. *Tree* and
+*Diagram* stay the two views of whichever Type is chosen.
 
 Value Origin diagrams attach each method's operations to its call node, in execution order. Sibling operations appear side by side, and nested calls add stack levels without enclosing frames.
 
-Value Origin's 0.7.9 test build now loads implementations even when ACE has already supplied their declarations through foreign CU includes.
+Value Origin's 0.7.10 test build now loads implementations even when ACE has already supplied their declarations through foreign CU includes.
 
-Value Origin takes a **Type**: *FLOW*, *Code*, *Data* or *Formula*. Formula shows how a value is
-derived, as input formulas that expand branch by branch; the tree and the diagram show the same
-expanded branches, and modifier implementations are grouped as the runtime pipeline choices they
-are. FLOW can be narrowed from *Full* to *BSE*. *Tree* and *Diagram* stay the two views of
-whichever type is chosen.
+Formula has one top, the value that was asked about, and its definitions are its branches. A
+`SELECT` reads there as its target, its table and at most three of its fields, because the rest of
+the projection is not part of the derivation. FLOW carries the statements that run: a declaration
+states what exists before anything runs and is left out, and a program's statements outside any
+form or method are named by the event that holds them, `START-OF-SELECTION` when none does.
 
 In the Code Explorer diagrams, clicking a method in the **Calls diagram** draws its **Logic
 diagram** inside the same canvas, joined to the block it came from, so the call and what it does
@@ -23,7 +30,7 @@ statement whose text is left with nothing to show, such as a comment — one suc
 syntax error that failed the whole diagram rather than the node that caused it. This one is in the
 ABAP backend: update `ZCL_VX_ACE_CODE_HTML` along with `ZCL_VX_ADT_RES_FLOW`.
 
-## Testing Value Origin (0.7.9)
+## Testing Value Origin (0.7.10)
 
 Update the ABAP backend class `ZCL_VX_ADT_RES_FLOW` from this repository, then install
 the test VSIX. In an active SAP source editor, put the cursor on a variable such as
@@ -66,7 +73,7 @@ explorers read it. The last column says which is which.
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values | not needed |
 | **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | runs without it; ACE's statement map makes stepping cheaper and puts a stepped-over call's method on the chart |
-| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW*, *Code*, *Data* or *Formula*, each as a tree or a diagram | needed |
+| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW* or *Formula*, each as a tree or a diagram | needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
 | **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | needed |
 | **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | needed |
@@ -606,6 +613,19 @@ frame the program stands in is opened: a stop deep in a callee does not drag eve
 below it into the editor. It opens in the group the ABAP sources are already in rather than
 whichever group happened to be active, and **Alt+Left** returns to where you were.
 
+This is where the debugging was started from. The F5-F8 keys, the docked Debug panel and the
+assistant all step from the editor, so the editor follows them. A VERTEX window that drives the
+debugger shows the source in its own pane, and a step there opens no editor at all.
+
+It is one tab, not one per class: the stopped source opens in the preview tab and the next stop
+takes its place, so a run through many classes leaves nothing to close. A source you opened
+yourself keeps its own tab.
+
+The breakpoints are sent twice: to SAP's external set, which is what catches a run, and to the
+stopped program's own set as soon as the debugger attaches - without the second, a Continue runs
+past them. A point SAP will not place is named in the header above the source rather than left
+on screen as a point that stops nothing.
+
 ### When the program dumps instead of stopping
 
 SAP tells a debugger the same thing whether the program finished or died of a short dump:
@@ -636,6 +656,36 @@ In Visual Debug the dump has a section of its own, beside Stack, Breakpoints and
 It opens by itself when a run dies, names the runtime error and what SAP said about it, and
 **Open ST22** takes you to SAP where that dump is the first entry. The header line above the
 source says the run did not finish and points at the section.
+
+The player draws the record three ways: *Classes*, *Methods*, and **Statements** - the program,
+its classes, their routines and the statements the run stood on, nested in their own blocks, as
+Value Origin draws a flow. An edge is containment and carries the line; a call is an edge from
+the statement that called to the routine it entered. A statement appears once however often it
+ran, with its count. Clicking a node opens that statement in the source.
+
+**Collapse all** / **Expand all** and **Depth** govern how deep it is drawn: the program is 0,
+a class 1, a routine 2, a statement one below the block that holds it. One number governs all
+three controls, and the maximum is the deepest statement in the record.
+
+The three toggles are separate questions. **Rec** makes Continue a run of F5 steps and keeps
+every stop for the player; **Visual** says whether the run draws as it goes; **Predict** says
+how it steps. Off - the default - SAP is asked where the program is after every step and loops
+are stepped through, so every stop was read rather than worked out. On, the next line comes from
+the statement map where the text alone decides it and a loop is passed in one go. Even
+with it on the map is not used within one line, where nothing could check it, nor across the
+end of a method or form, where the frame changes.
+
+A Visual, Rec or Flow run is F8 made of F5 steps, and it ends at a breakpoint it steps onto -
+including one in the program that called the class being stepped through, where SAP reports a
+step rather than a breakpoint. A deactivated point and a log point do not stop it.
+
+A Visual, Rec or Flow run reports it too. Those runs step on their own and take no
+events while they step, so a dump used to end them with nothing said; the answer to the
+step that killed the run carries it, and the section opens from there as it does for F5.
+
+A click on a dump row shows that dump as SAP wrote it, over the window; **Whole dump** in the
+heading does the same for the first one. **Check ST22** asks again at any time - with a dump
+already reported it says nothing is new, not that there is none.
 
 Every section folds by its heading: click *Stack*, *Breakpoints*, *Variables*, *Dump* or
 *Log* to shut it to its title bar and give its height to the others, and click again to open

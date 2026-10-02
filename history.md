@@ -1,11 +1,225 @@
 # Release history
 
-## 2026-09-30 — VS Code 0.7.9: a run that dumps says so
+## 2026-10-02 — VS Code 0.7.10: Value Origin reads as one derivation
+
+- **The flow is drawn by one script.** The tree, the diagram and the controls over both -
+  Full / BSE, Collapse all / Expand all, Depth - were written into the Value Origin page as it
+  was generated, so a second view that draws a flow would have been a second copy of them.
+  They are one file now, served to the page like the diagram library, and what the page used to
+  write into the script - the title, the BSE caption, the depth maxima - travels in the graph
+  instead. A host with no address to serve files from carries the same file inline, so there is
+  one source either way. The view itself comes with it: the Tree / Diagram toggle, the panes,
+  the diagram toolbar with Top-down / Left-right, the magnifier, zoom and Fit are built by that
+  script, so a window that draws a flow gives it a container and a graph and gets the same view.
+  The analysis still owns what goes inside its panes and hands them over as templates. Nothing
+  about the page changes for the reader; what changes is that the debug window can draw its
+  recording with the same code.
+
+- **The recorded run draws as statements, the way Value Origin draws a flow.** Beside
+  *Classes* and *Methods* the player has **Statements**: the program at the root, a class under
+  it, a routine under the class, and the statements the run stood on nested in their own blocks
+  - an edge is containment and carries the line, a call is an edge from the statement that
+  called to the routine it entered. The two pictures are built the same way, so they read the
+  same. A statement is one node however many times the run reached it: a loop is one branch
+  with its count, a routine called twice is one node with two edges into it. The record itself
+  is untouched - the player walks every stop and the mark follows it - and a click on a node
+  opens that statement in the source.
+
+- **Collapse all / Expand all and Depth in the player.** The Statements drawing is governed
+  the way Value Origin governs its flow: one number decides how deep it is drawn - the program
+  is 0, a class 1, a routine 2, and a statement one below whatever block holds it - and
+  **Collapse all** / **Expand all** are its two ends, so the three controls cannot disagree.
+  The maximum is the deepest statement the record actually holds. The toggle is the shared
+  segment control, taken from the one stylesheet every VERTEX view uses rather than drawn
+  again in this window.
+
+- **The diagram zooms by a slider.** The player had a minus, a percentage and a plus; the
+  diagram elsewhere in VERTEX has a slider, which says where you are and gets you anywhere in
+  one move. The player has that now, and Fit and Ctrl+wheel move the slider with it.
+
+- **The record is navigated above the whole window.** The player - first, back, the stop
+  slider, forward, last, Play and its speed - sat inside the diagram bar, although it moves the
+  stack, the variables and the source as much as the drawing. It is a bar of its own now, above
+  the sections, shown as soon as there is a record and whether or not a diagram is open. The
+  diagram bar keeps what belongs to the drawing: the reading, Collapse all / Expand all, Depth
+  and the zoom.
+
+- **The toolbar reads as three groups.** What to do with the program - Run in SAP, the name,
+  Exit program, Detach - then how to step - Single Step, Execute, Return, Continue - then how a
+  run behaves: Z only, Flow, Visual, Rec, Predict. A thin rule separates them. What the run is
+  doing and what it just did moved out of the buttons into a line of its own under the toolbar,
+  where it does not have to be read to use anything.
+
+- **Predict is off by default.** A run that works the next line out from the statement map is
+  faster and can be wrong; a run that asks SAP is neither. The fast reading is now the one that
+  has to be switched on.
+
+- **Predict, and a run that can be asked to stop guessing.** Continue made of F5 steps takes
+  the next line from the statement map where the text alone decides it and passes a loop in one
+  go, without asking SAP where the program is - that is what makes it fast, and what makes such
+  a stop something the window worked out rather than read. The new **Predict** toggle, off by
+  default, is that choice: switched off, SAP is asked after every step and loops are stepped
+  through. It is the only control over how a run steps - **Rec** says Continue steps and the
+  stops are kept, **Visual** says whether the run draws as it goes.
+
+- **A prediction is only made where the line can prove it.** Two statements on one line - a
+  chained `WRITE`, two statements side by side - gave the run nothing to check itself against,
+  and it walked blind: five of the last six moves of a run that ended without stopping at a
+  breakpoint were predictions within one line. The map is no longer used there. Nor is it used
+  across the end of a method or form, where the frame changes and an invented frame is exactly
+  what cannot be checked - that costs one stack read per call returned, not per statement. The
+  statistics name both: lines with more than one statement, and unit ends.
+
+- **The breakpoints reach the program that is stopped.** SAP keeps two sets: the "external"
+  one that catches a run, and the one belonging to the program being debugged. Only the first
+  was ever filled at the start, so until a breakpoint was changed or a loop passed, a Continue
+  given to SAP ran past the points on screen. They are now sent to the stopped program the
+  moment the debugger attaches, as ADT does. A point SAP refuses to place is named - in the
+  header above the source and to the assistant - instead of leaving a breakpoint on screen that
+  nothing stops at.
+
+- **A Visual, Rec or Flow run stops at a breakpoint it steps onto.** Those runs are F8 made
+  of F5 steps, and whether to stop was decided by what SAP said about the stop: SAP names a
+  breakpoint when it stops the program at one, and says nothing when a step simply lands on
+  that line. So a run stepping through a called class walked straight over a breakpoint waiting
+  in the program that called it, and ended when the program did. The window has the list of
+  breakpoints in front of it - it already refuses to predict a line that carries one - and now
+  ends the run there as well. A deactivated point and a log point do not stop it, as they do
+  not stop SAP.
+
+- **A Visual, Rec or Flow run says when the program dumped.** Those runs step on their
+  own and take no events from the debugger while they step, so a short dump ended them with
+  nothing said - and with Rec on, the error that reached the header was the window's own, not
+  SAP's. The answer to the step that killed the run already carries the dump the debugger read
+  from ST22; the run now reports it there, and the Dump section opens as it does after F5.
+  **Whole dump** opens the dump itself over the window from there, as it does for any other
+  ending - the same section, the same overlay, nothing of its own.
+
+- **A click on a dump opens that dump.** The Dump section lists every dump of the ending, but
+  only **Whole dump** opened one, and always the first: with more than one, the rest could not
+  be read at all. A row now opens its own dump in the same overlay, and the link to the source
+  where the program died keeps its own click. **Check ST22** also says what it found: when the
+  dump below is the one already reported, it says so instead of "no new short dump", which read
+  as if there were none.
+
+- **The stop is followed where the debugging was started.** Every stop opened the stopped
+  source as a VS Code tab, whoever had stepped - so driving the debugger from a VERTEX window,
+  which shows the source in its own pane, pulled an editor open over it at every step. The
+  debugger now knows which surface is driving it: from a VERTEX window the stop is followed
+  there and no editor is opened; from the editor - F5-F8, the docked Debug panel, the
+  assistant - the editor follows a step into a method exactly as before.
+
+- **A run leaves one tab behind, not one per class.** Following the stop opened every
+  stopped source as a tab of its own, so an F8 run through a dozen classes left a dozen tabs
+  to close. The stop is where the program is, not something the reader opened: it goes in the
+  preview tab and the next stop takes its place. A source opened by hand keeps its own tab.
+
+- **A name typed with nothing said about it opens an editor tab.** Asking the assistant for
+  `ZVERTEX_DEBUG_LAB` inside a VERTEX window answered by turning that window into View source,
+  although the rule the model is given says the opposite: source opens in an ordinary editor
+  tab, and the reader opens it in VERTEX when that is what they want. The direct answer - the
+  one given without a model, for a bare object name - now follows the same rule.
 
 - **Value Origin folds as a whole.** A **Collapse all** / **Expand all** toggle sits beside the
   Type selector and covers every Type — FLOW, Code, Data and Formula — in both the tree and the
   diagram. Collapsed is the starting state, and switching Type applies the current choice to the
   Type switched to.
+
+- **The source link is a link again.** In Value Origin the `</>` button was drawn as a
+  full-width framed box under its statement instead of standing at the end of it: the page's
+  general button rule outranked the one meant for it. It is inline again, in every Type.
+
+- **FLOW nests WHEN, ELSE and ELSEIF.** A branch of an open `CASE` or `IF` stood beside the
+  statements it guards rather than above them, so `WHEN 'ZCL_MOD_FUEL'.` and the assignment it
+  selects were siblings under the `CASE`. A branch now closes the previous one and owns what
+  follows it, as Logic already drew it, and `ENDCASE` / `ENDIF` close both levels. Tree and
+  diagram share the edges, so both change together.
+
+- **Selecting a variable with the mouse stays where it was put.** Dragging across a name in a
+  SAP source tab jumped away the moment the last character was covered: VS Code reports no click
+  count, so any mouse selection that exactly matched one identifier was taken for a double-click
+  and opened its definition. A double-click is now recognised by what precedes it — an empty
+  selection standing inside the word — so a drag, which grows through partial selections and
+  begins outside the word, selects and nothing else. Double-click navigation is unchanged.
+
+- **The Depth control opens the tree.** It used to be only an upper bound on top of whatever
+  was expanded, so with **Collapse all** active every value from 1 to *all* looked the same.
+  Depth is now the gate: it decides how far the tree is opened, and Collapse all and Expand all
+  are its two ends — depth 1 and the maximum. One number governs what is shown, in the tree and
+  in the diagram, so the three controls can no longer disagree.
+
+- **The toolbar reads in the order the questions are asked.** Type, then *Tree* / *Diagram*,
+  then what is shown: *Full* / *BSE*, Collapse all / Expand all and Depth. The view toggle stood
+  at the far end, after every control it does not govern.
+
+- **Two Types: FLOW and Formula.** Data drew the same tree as Code, from the same nodes,
+  through the same function. Code drew what FLOW's BSE scope already draws — the findings and
+  the path to them — only laid out along the call stack instead of along the code. Both are
+  gone. What is left answers two different questions: FLOW, what the program does and where the
+  value is touched; Formula, how the value was computed. The Type is a two-position toggle now,
+  and it starts on FLOW.
+
+- **FLOW shows what a call passes.** An edge between two procedures said when a call happened
+  and not what crossed it, and the bindings lived only in Code. The bindings ACE resolved at a
+  call site are now a node on that call's edge — `lv_scenario → IV_SCENARIO` — so the value stays
+  visible where it changes its name. Nothing Code showed is lost with it.
+
+- **BSE scope is what BSE found and the path that led to it.** That was always the rule, and
+  it is the whole rule again. Two extra rules tried on the way — keeping the alternatives beside
+  a kept control statement, and keeping a branch that holds a finding whole — kept statements
+  that are neither a finding nor on the path to one, and are gone. A `WHEN` appears when a
+  finding sits under it, and an alternative that leads nowhere does not appear.
+
+- **FLOW names the event, not GLOBAL.** A program's statements outside any form or method sat
+  under a level called `GLOBAL`, which is the analyser's word, not ABAP's. They belong to the
+  event that opened them, and to `START-OF-SELECTION` when none did, because that is where ABAP
+  runs them. The level now carries that name, and the event statement itself is no longer drawn
+  as a step inside the level it names.
+
+- **FLOW carries what runs.** Full FLOW was built from every local statement, so the program
+  header, `TYPE-POOL`, the `TYPES` block, `PARAMETERS` and the other declarations stood in the
+  flow as if they were steps. A declaration states what exists before anything runs and is now
+  left out — with one deliberate exception: an inline `DATA(x) = …` declares, but it is an
+  assignment and it runs, so it stays.
+
+- **The Depth control means what the Type shows.** FLOW, Code and Data nest by calls, so there
+  it bounds the call stack. Formula nests by data — `a = b + c`, then the definitions of `b` and
+  `c` — and between two of its levels there may be no call at all or three, so there it bounds
+  the derivation: the number of steps from the value that was asked about. The label says which
+  one it is, **Depth: calls** or **Depth: derivation**, and the slider is reset to its maximum,
+  which is no limit, whenever the Type changes.
+
+- **A stack-depth control for every Type.** The breakpoint pair bounds the entry program's own
+  lines, which reaches almost nothing in a slice that runs through called classes. What bounds
+  those is the call stack, and the flow already knows it: the resolved calls say which procedure
+  reaches which, so a procedure's depth is how many calls away from the entry program it stands.
+  Every node of every Type now carries that number, and a **Depth** slider beside Collapse all
+  bounds the tree and the diagram together. It starts at the deepest, which is no limit at all,
+  so nothing disappears unless it is asked to.
+
+- **Every Type is bounded by the breakpoint pair.** Code, Data and FLOW were limited by the two
+  enabled breakpoints that bracket the cursor; Formula knew nothing about them and drew the whole
+  backward slice. It now honours the same bound, and the same way: the pair limits the entry
+  program alone, while a called method keeps its whole frame, because its lines are not in the
+  editor's coordinate system.
+
+- **Formula has one top.** The derivation started at every definition of the selected value at
+  once, so ten overwrites of `cs_context-amount` read as ten unrelated formulas side by side.
+  The selected value itself is now the single top node, open, and its definitions are its
+  branches — in the tree and in the diagram alike.
+
+- **Formula is the derivation again.** Three things pulled it away from `a = b + c` with `b`
+  and `c` as its two branches. The diagram lifted every modifier implementation out of its
+  parent into a *Runtime pipeline* cluster ordered by the configured step, which is a grouping
+  by configuration and not by what feeds what — that cluster is gone, and with it the one box
+  that ignored the VS Code theme. A node was labelled with its whole statement, so a `SELECT`
+  with a long projection was a single leaf half a screen wide; a `SELECT` now reads as its
+  target, at most three fields and its table, while an assignment keeps its own text. And a
+  value already expanded anywhere in the tree was never expanded again, so the second branch
+  reading the same variable ended without its inputs; the guard is now the path walked to that
+  node, so each branch carries its own derivation and cycles are still cut.
+
+## 2026-09-30 — VS Code 0.7.9: a run that dumps says so
 
 - **A short dump is no longer silence.** A step that ends the run threw the same way
   whether the program finished or died of a runtime error, and nothing said which — F5

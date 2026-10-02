@@ -117,17 +117,16 @@ function create(vscode, codeTools, server, secrets) {
       }
       const request = directSearch.objectRequest(prompt);
       if (request) {
-        let navigation = null, choices = [];
+        const navigation = null;
+        let choices = [];
         // No model for a bare object name: search the system and open it.
+        // In an editor tab, as the model is told to do with source as well:
+        // a name typed with nothing said about it is not a request for the
+        // VERTEX window, and the reader opens it there if that is what they
+        // want.
         const text = await directSearch.answer(request.query, {
           search: args => codeTools.execute("search_sap_objects", args),
-          open: args => {
-            if (!request.openEditor && options.state && options.state.workspace) {
-              navigation = objectTools.normalize({type:args.object_type,name:args.object_name,action:"view"});
-              return {opened:true};
-            }
-            return codeTools.execute("open_sap_object", args);
-          },
+          open: args => codeTools.execute("open_sap_object", args),
           choices: found => { choices = found; }
         });
         conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: text });

@@ -796,6 +796,11 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const frame = picture && picture.stopped && (picture.stopped.frames || []).find(item => item.current)
       || picture && picture.stopped && (picture.stopped.frames || [])[0];
     if (!frame) return;
+    // Navigation goes where the debugging was started from. A VERTEX window
+    // that drives the debugger shows the source in its own pane, so a step
+    // there must not pull an editor open over it; from the editor - the F5-F8
+    // keys, the docked panel, the assistant - the editor follows as before.
+    if (typeof debuggerApi.drivenFrom === 'function' && debuggerApi.drivenFrom() !== 'editor') return;
     // What the frame says about itself, which is more than its address: SAP
     // does not always give a stack entry a source uri, and a method frame
     // names its class pool and its own name in every case.
@@ -880,8 +885,13 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         && leaving.document.uri && leaving.document.uri.scheme === 'vertex-sap') {
         navigation.push({ document: leaving.document, at: leaving.selection.active });
       }
+      // One tab for the run, not one per class: a stop is where the program
+      // is now, not something the reader opened, so it goes in the preview
+      // tab and the next stop takes its place. A source the reader opened
+      // themselves keeps its own tab - VS Code leaves an open document where
+      // it is.
       const editor = await vscode.window.showTextDocument(entry.document,
-        { preview: false, viewColumn: beside ? beside.viewColumn : vscode.ViewColumn.Active });
+        { preview: true, viewColumn: beside ? beside.viewColumn : vscode.ViewColumn.Active });
       if (request !== stopFollow) return;
       const text = entry.document.getText().split(/\r?\n/)[line] || '';
       if (vscode.Selection) editor.selection = new vscode.Selection(position(line, 0), position(line, 0));
@@ -1105,13 +1115,26 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   // VS Code exposes double-click as a mouse selection of exactly one word.
   // It does not supply a click count, so this is intentionally kept narrow:
   // only a complete identifier selection may start contextual navigation.
+  // A drag that happens to cover exactly one identifier is not a double-click,
+  // and navigating on it makes the selection jump away the moment the word is
+  // covered.  A double-click follows an empty selection standing inside the
+  // word it selects; a drag grows through partial selections, and starts
+  // outside the word.  Both are required before this may navigate.
+  const lastSelection = new Map();
   if (typeof vscode.window.onDidChangeTextEditorSelection === "function") {
     context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
       const mouse = vscode.TextEditorSelectionChangeKind && vscode.TextEditorSelectionChangeKind.Mouse;
       const selection = event && event.selections && event.selections.length === 1 && event.selections[0];
-      if (!mouse || !event || event.kind !== mouse || !selection || selection.isEmpty
+      if (!event || !event.textEditor || !event.textEditor.document) { return; }
+      const key = event.textEditor.document.uri.toString(), previous = lastSelection.get(key);
+      if (selection) { lastSelection.set(key, { empty: !!selection.isEmpty, line: selection.active.line, character: selection.active.character }); }
+      else { lastSelection.delete(key); }
+      if (!mouse || event.kind !== mouse || !selection || selection.isEmpty
         || (event.textEditor.document.uri.scheme !== "vertex-sap"
-          && !readOnly.has(event.textEditor.document.uri.toString()))) { return; }
+          && !readOnly.has(key))) { return; }
+      if (!previous || !previous.empty || previous.line !== selection.active.line) { return; }
+      const under = wordAt(event.textEditor.document, previous);
+      if (!under || previous.character < under.from || previous.character > under.to) { return; }
       const anchor = structuralAnchor(event.textEditor.document, selection.active)
         || methodAnchor(event.textEditor.document, selection.active)
         || wordAt(event.textEditor.document, selection.active)

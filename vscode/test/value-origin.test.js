@@ -1,6 +1,9 @@
 "use strict";
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+// The flow's own markup - the view toggle and the diagram toolbar - belongs
+// to the shared script, so that is where a test looks for it.
+const flowView = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'org.vertex.abap.ui', 'resources', 'vertex-flow.js'), 'utf8');
 const { analyze, statements } = require('../value-origin');
 const { tokenize } = require('../value-origin-tokens');
 function graph(text, variable, line) { return analyze([{ id: 'demo', text }], { source: 'demo', variable, line }); }
@@ -36,16 +39,16 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(page.includes("host.addEventListener('dblclick'"));
   assert(page.includes('data-view-toggle'));
   assert(page.includes('vertex-segment-toggle'));
-  assert(page.includes('data-mermaid-direction="TD"'));
-  assert(page.includes('data-mermaid-direction="LR"'));
+  assert(flowView.includes('data-mermaid-direction="TD"'));
+  assert(flowView.includes('data-mermaid-direction="LR"'));
   assert(page.includes("flowchart '+direction"));
   assert(page.includes('installUmlLens'));
   assert(page.includes("lensZoom=2.5"));
   assert(page.includes("const isNode=element=>{while(element&&element!==svg)"));
   assert(page.includes("event.shiftKey"));
-  assert(page.includes('id="mermaid-lens"'));
-  assert(page.includes('aria-pressed="false"'));
-  assert(page.includes('id="mermaid-zoom" type="range" min="10" max="100"'));
+  assert(flowView.includes('id="mermaid-lens"'));
+  assert(flowView.includes('aria-pressed="false"'));
+  assert(flowView.includes('id="mermaid-zoom" type="range" min="10" max="100"'));
   assert(page.includes('bse-expandable'));
   assert(page.includes('bse-code-link'));
   assert(page.includes("element.classList.add('bse-navigable')"));
@@ -68,11 +71,17 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(page.includes("host.style.display='inline-block'"));
   assert(!page.includes("subtree:true,attributeFilter:['class','style']"));
   assert(page.includes("if(!shown.size)drawing.nodes.filter"));
-  assert(page.includes('class="flow-data"'));
-  assert(page.includes('<option value="data">Data</option>'));
-  assert(page.includes('data-mode-select'));
-  assert(page.includes('<option value="formula">Formula</option>'));
-  assert(page.includes('id="bse-formula-pane"'));
+  // Data rendered the same statements as Code through the same function, so
+  // the Type offers FLOW, Code and Formula and nothing else.
+  assert(!page.includes('<option value="data">Data</option>'));
+  assert(!page.includes("classList.toggle('data-mode'"));
+  // Two Types, as a segment toggle: FLOW is what the program does, Formula is
+  // how the value was computed.
+  assert(page.includes('data-mode-toggle'));
+  assert(page.includes('<button class="active" data-mode-choice="flow">FLOW</button>'));
+  assert(page.includes('<button data-mode-choice="formula">Formula</button>'));
+  assert(page.includes("selectMode('flow');"));
+  assert(flowView.includes('id="bse-formula-pane"'));
   assert(page.includes('Formula derivation — click a branch to expand its input formulas'));
   assert(!page.includes('formula-depth'));
   assert(page.includes('selectMode'));
@@ -86,7 +95,7 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(page.includes('Origin — Backward Symbolic Execution'));
   assert(page.includes("heading.insertAdjacentElement('afterend'"));
   assert(page.includes('box-shadow:0 3px 8px -3px var(--accent)'));
-  const formulaStart = page.indexOf('Formula derivation — click a branch'), formulaEnd = page.indexOf('bse-diagram-pane', formulaStart);
+  const formulaStart = page.indexOf('Formula derivation — click a branch'), formulaEnd = page.indexOf('</template>', formulaStart);
   const formula = page.slice(formulaStart, formulaEnd).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
   assert.match(formula, /cs_context\s*-\s*amount\s*=/i);
   assert.doesNotMatch(formula, /rs_result\s*=\s*ls_context/i);
@@ -111,7 +120,7 @@ test('formula mode renders substitutions as independently collapsible branches',
   const page = html(graph('b = 2.\nc = 3.\na = b + c.\nWRITE a.', 'a', 4), 'test');
   assert(page.includes('class="formula-node"'));
   assert(page.includes('class="formula-children"'));
-  assert(page.includes('<option value="formula">Formula</option>'));
+  assert(page.includes('data-mode-choice="formula"'));
   assert(page.includes('b = 2.'));
   assert(page.includes('c = 3.'));
 });
@@ -125,7 +134,7 @@ test('raw Value Origin HTML keeps data expressions hidden and inline links compa
 test('formula mode bypasses transparent transfers to the calculation that changes the selected value', () => {
   const { html } = require('../value-origin-view');
   const page = html(graph('amount = 5.\nresult = amount.\nWRITE result.', 'result', 3), 'test');
-  const start = page.indexOf('Formula derivation — click a branch'), end = page.indexOf('<div id="bse-diagram-pane"', start);
+  const start = page.indexOf('Formula derivation — click a branch'), end = page.indexOf('</template>', start);
   const formula = page.slice(start, end).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
   assert.match(formula, /amount\s*=\s*5\s*\./);
   assert.doesNotMatch(formula, /result\s*=\s*amount\s*\./);

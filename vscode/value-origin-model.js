@@ -633,19 +633,37 @@ function analyze(sources, target, options = {}) {
   // own complete coordinate range.
   const boundedFlow = flowBounds ? flow.filter(point => point.source !== target.source ||
     (point.line >= flowBounds.from && point.line <= flowBounds.to)) : flow;
+  const EVENT_STATEMENT = /^(LOAD-OF-PROGRAM|INITIALIZATION|START-OF-SELECTION|END-OF-SELECTION|TOP-OF-PAGE(?:\s+DURING\s+LINE-SELECTION)?|END-OF-PAGE|AT\s+SELECTION-SCREEN(?:\s+OUTPUT|\s+ON\s+[\w-]+(?:\s+[\w-]+)?)?|AT\s+LINE-SELECTION|AT\s+USER-COMMAND|AT\s+PF\d+)\s*\.$/i;
+  const DECLARATIONS = ['REPORT', 'PROGRAM', 'FUNCTION-POOL', 'TYPE-POOL', 'TYPE-POOLS', 'TYPES', 'DATA', 'CLASS-DATA',
+    'CONSTANTS', 'STATICS', 'FIELD-SYMBOLS', 'PARAMETERS', 'SELECT-OPTIONS', 'SELECTION-SCREEN', 'TABLES', 'RANGES',
+    'INCLUDE', 'METHODS', 'CLASS-METHODS', 'INTERFACES', 'ALIASES', 'EVENTS', 'DEFINE', 'END-OF-DEFINITION'];
   // ACE's calculated records are deliberately a sparse BSE slice.  Full FLOW
   // needs the actual ABAP statement stream instead: calls, conditions, loops
   // and writes must remain visible even when they do not calculate a value.
-  const fullFlow = sources.flatMap(source => localStatements(source).flatMap((statement, statementIndex) => {
-    const first = val(statement.tokens, 0);
+  const fullFlow = sources.flatMap(source => {
+    // A program's statements outside any form or method belong to the event
+    // that opened them, and to START-OF-SELECTION when none did - that is
+    // where ABAP runs them. The event names the level; it is not a step in it.
+    let event = '';
+    return localStatements(source).flatMap((statement, statementIndex) => {
+    const first = val(statement.tokens, 0), text = String(statement.text || '').trim();
     if (['CLASS', 'ENDCLASS', 'INTERFACE', 'ENDINTERFACE', 'METHOD', 'ENDMETHOD', 'FORM', 'ENDFORM'].includes(first)) return [];
+    const opened = EVENT_STATEMENT.exec(text);
+    if (opened) { event = opened[1].toUpperCase().replace(/\s+/g, ' '); return []; }
+    // FLOW is what the program does. A declaration does nothing: the program
+    // header, type pools, TYPES, CONSTANTS, selection-screen declarations and
+    // the rest state what exists before anything runs. An inline DATA(x) = ...
+    // is not one of these - it is an assignment that happens to declare.
+    if (DECLARATIONS.some(word => new RegExp('^' + word + '\\b', 'i').test(text))
+      && !/^DATA\s*\(/i.test(text)) return [];
     const procedure = index.procedures.find(item => item.source.id === source.id &&
       statement.offset >= item.start && statement.offset < item.end && item.name !== 'GLOBAL') ||
       index.procedures.find(item => item.source.id === source.id && item.name === 'GLOBAL');
     const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included);
     return [{ id: source.id + ':full:' + statement.offset, source: source.id, line: statement.line, statementIndex,
-      text: statement.text, changed: statement.text, scope: (source.aceOwner || source.objectName || source.name) + '→' + (procedure?.name || 'GLOBAL'), included: isBse }];
-  })).filter(point => !flowBounds || point.source !== target.source || (point.line >= flowBounds.from && point.line <= flowBounds.to));
+      text: statement.text, changed: statement.text, scope: (source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
+  });
+  }).filter(point => !flowBounds || point.source !== target.source || (point.line >= flowBounds.from && point.line <= flowBounds.to));
   const flowLog = nodes.map(node => ({ source: node.source, scope: node.location || node.source, line: node.line, text: node.text,
     included: true, reason: edges.filter(edge => edge.to === node.id).map(edge => edge.label).join(', ') || 'selected value' }));
   const selectedProgram = sources.find(source => source.id === target.source)?.objectName || sources.find(source => source.id === target.source)?.name || target.source;

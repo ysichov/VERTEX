@@ -379,11 +379,15 @@ async function fetch(context, requestPath, body) {
 }
 
 /** One of the libraries that travel with the pages, as text. */
+// The shared controls stylesheet is an asset like the diagram library: a page
+// given to a webview as a string has no address to load one from, so it asks
+// for what it needs by name. Both files live beside the pages.
+const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css" };
 function asset(name) {
-  if (name !== "mermaid") {
+  if (!ASSETS[name]) {
     return "ERROR:This host ships no asset called " + name + ".";
   }
-  const file = path.join(PAGES, "mermaid.min.js");
+  const file = path.join(PAGES, ASSETS[name]);
   try {
     return fs.readFileSync(file, "utf8");
   } catch (e) {
@@ -843,6 +847,9 @@ function activate(context) {
             return;
           }
           if (message.call !== "debug") { throw new Error("Unsupported VERTEX Debug request."); }
+          // The docked panel is opened from an ABAP editor and has no source
+          // pane of its own: the stop is followed in that editor.
+          if (typeof dbg.drivenBy === "function") { dbg.drivenBy("editor"); }
           const args = message.args || [];
           const command = String(args[0] || "");
           const commandArgs = JSON.parse(String(args[1] || "{}"));
@@ -885,6 +892,7 @@ function activate(context) {
       vscode.window.showWarningMessage("VERTEX: no stopped ABAP program. Open Visual Debug and run to a breakpoint first.");
       return;
     }
+    dbg.drivenBy("editor");
     try { await dbg.advance(kind); }
     catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
   };
