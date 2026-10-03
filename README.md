@@ -1,38 +1,5 @@
 # ABAP VERTEX Tools
 
-Value Origin takes a **Type**: *FLOW* or *Formula*. FLOW is what the program does — its
-statements grouped by class and method, nested by blocks and their branches, with a node on each
-call edge naming what that call passes (`lv_scenario → IV_SCENARIO`); it narrows from *Full* to
-*BSE*, which is what the analysis found and the path that led to it. Formula is how the value was
-computed: `a = b + c` at the top and the definitions of `b` and `c` as its two branches. The
-**Depth** slider decides how far the tree opens — along the call stack in FLOW, along the
-derivation in Formula — and **Collapse all** / **Expand all** are its two ends. *Tree* and
-*Diagram* stay the two views of whichever Type is chosen.
-
-Value Origin's 0.7.10 test build now distinguishes a referenced class declaration from a loaded implementation, so foreign CU includes no longer suppress loading the complete class.
-
-VS Code test build **0.7.10** adds **Analyze Variable Value Origin** to the ABAP editor.
-It reads ACE's statement/token/call/parameter index from the VERTEX backend, loads
-referenced customer objects (`Z*`, `Y*`, `/namespace/`) automatically and traces structure components through RETURNING
-and CHANGING. The view shows a collapsible static call stack, expandable calculations
-and a copyable analysis log. A source link opens the standard VS Code ABAP editor in
-the same group; Ctrl+Click opens it beside. The extension enables the native ABAP
-breakpoint gutter there: click its leftmost margin to add or remove a point; it
-synchronizes to SAP.
-Interface dispatch is resolved to its concrete class method from ACE's reference and
-class-to-interface facts, including generated CM method includes.
-ACE include ownership is carried explicitly, so a foreign `CU` causes its complete class pool to load.
-F12 or double-click on an interface invocation never opens its `METHODS` declaration as a false target.
-Ordinary contextual navigation stays in the current editor group, including from a dirty source tab.
-Right-click that source and choose **VERTEX: Open Visual Debug** to reveal a
-right-hand debugger panel for the current object; the source stays in its normal
-editor and its actual stopped line is highlighted. While the source tab is active, F5/F6/F7/F8 mean
-Single Step/Execute/Return/Continue for that same stopped SAP session.
-Update `ZCL_VX_ADT_RES_FLOW` in SAP for `mode=origin`
-before testing; the command requires active source. Branches and polymorphic targets
-are alternatives, and database-dependent loop order is shown as an analysis boundary.
-This is a static dependency slice, not a solved runtime execution trace.
-
 ## Install
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
@@ -64,14 +31,14 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The three explorers are the same pages in both hosts, but the Eclipse plugin is built at
-**0.7.3** and the VS Code extension at **0.7.10**. What the pages gained since 0.7.3 is in the
+**0.7.3** and the VS Code extension at **0.7.11**. What the pages gained since 0.7.3 is in the
 repository and in VS Code, and reaches Eclipse only when the plugin is built again.
 
 **Where the two hosts stand apart.** The editor, the debugger, Visual Debug and Value Origin are
 VS Code only, by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace
 them. The divergence that is not by design is the build — six VS Code releases (0.7.4 Visual
 Debug, 0.7.5 debugger fixes, 0.7.6 ABAP Unit, 0.7.7 the chat running tests and ATC, 0.7.9 Value
-Origin and the diagram work, 0.7.10 Value Origin as one derivation) have landed since the
+Origin and the diagram work, 0.7.11 Value Origin as one derivation) have landed since the
 Eclipse plugin was last exported. The shared pages carry their part of that, and it is waiting on a build, not on code.
 
 The projects named above are where the ideas were worked out first, and they are not developed
@@ -117,6 +84,27 @@ more: they are where the logic was written first, and they are not developed fur
 new happens on this side. The `ZAVE_REVIEW` table the review is kept in ships in `src/` as well.
 
 Building either half from this repository instead: [BUILD.md](BUILD.md).
+
+## Value Origin
+
+**VERTEX: Analyze Variable Value Origin**, on the cursor in a VERTEX ABAP source tab, answers
+where that value came from - backwards across calls, without running the program. ACE indexes
+and the customer sources they reference (`Z*`, `Y*`, `/namespace/`) are read from the same
+system; standard ABAP objects stay analysis boundaries. It needs `ZCL_VX_ADT_RES_FLOW` in SAP
+and active source.
+
+Value Origin takes a **Type**: *FLOW* or *Formula*. FLOW is what the program does — its
+statements grouped by class and method, nested by blocks and their branches, with a node on each
+call edge naming what that call passes (`lv_scenario → IV_SCENARIO`); it narrows from *Full* to
+*BSE*, which is what the analysis found and the path that led to it. Formula is how the value was
+computed: `a = b + c` at the top and the definitions of `b` and `c` as its two branches. The
+**Depth** slider decides how far the tree opens — along the call stack in FLOW, along the
+derivation in Formula — and **Collapse all** / **Expand all** are its two ends. *Tree* and
+*Diagram* stay the two views of whichever Type is chosen.
+
+Branches and polymorphic targets are alternatives, database-dependent loop order is a boundary,
+and a pair of breakpoints in the editor bounds what is analysed. This is a static dependency
+slice, not a solved runtime trace.
 
 ## What each host has
 

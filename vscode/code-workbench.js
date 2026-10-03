@@ -69,7 +69,10 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         ? vscode.Uri.joinPath(context.extensionUri, 'images', 'stopped.svg') : undefined,
       gutterIconSize: 'contain' }) : null;
   if (stopDecoration) context.subscriptions.push(stopDecoration);
-  require('./value-origin-view').register(vscode, context, async (document, target, progress, cancelled) => {
+  /* The analysis, named rather than passed anonymously: the editor command
+     runs it on a cursor, and the debug window asks for the same thing by
+     object and variable, to learn where a value can be changed. */
+  const originSources = async (document, target, progress, cancelled) => {
     const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
     if (document.isDirty) throw new Error('Save and activate the source before ACE analysis. ACE reads active SAP code.');
     const activeSource = await selected.repo.api.sourceAt(selected.data.source_url);
@@ -120,7 +123,43 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       return repo.api.execute('read_value_origin_pipeline', { scenario });
     };
     return { ...result, target: mapped, openSource, loadPipeline };
-  });
+  };
+  require('./value-origin-view').register(vscode, context, originSources);
+
+  /* Where a value can be changed, as the analysis sees it: object, line and
+     the statement there. The debug window turns these into breakpoints, so
+     that a run stops where something can happen to the value instead of
+     stepping through everything. */
+  async function originPoints({ object_name, object_type, line, variable }) {
+    if (!object_name || !variable) { throw new Error('An object and a variable are needed.'); }
+    const from = [...opened.values()].find(item => item.repo);
+    if (!from || !from.repo) { throw new Error('Open a VERTEX ABAP source tab so the analysis knows which system to read.'); }
+    const entry = await sourceDocument(from.repo, { object_type: object_type || 'PROG', object_name });
+    const target = { source: entry.document.uri.toString(), line: Number(line) || 1, column: 0, variable: String(variable).toUpperCase() };
+    const loaded = await originSources(entry.document, target, () => {}, () => false);
+    const graph = require('./value-origin').analyze(loaded.sources, { ...loaded.target });
+    const named = new Map(loaded.sources.map(source => [source.id,
+      { name: source.aceOwner || source.objectName || source.name,
+        type: source.aceOwner ? source.aceOwnerType : source.objectType }]));
+    const seen = new Set(), points = [];
+    for (const row of (graph.flow || [])) {
+      if (!row.included) { continue; }
+      const where = named.get(row.source);
+      if (!where || !where.name) { continue; }
+      const key = where.name + ':' + row.line;
+      if (seen.has(key)) { continue; }
+      seen.add(key);
+      // What to watch there: the name the statement changes, and the names it
+      // is made of. In a called routine these are its own - IV_SCENARIO where
+      // the caller had LV_SCENARIO - which is the whole reason the analysis is
+      // asked rather than the record read.
+      const names = [String(row.changed || '').toUpperCase(),
+        ...(row.dependencies || []).map(one => String(one).toUpperCase())]
+        .filter((one, at, all) => one && all.indexOf(one) === at);
+      points.push({ name: where.name, type: where.type || 'CLAS', line: row.line, text: row.text || '', names });
+    }
+    return { variable: target.variable, points };
+  }
   const navigation = [];
   const externalSignatures = new Map();
   let sequence = 0;
@@ -151,6 +190,12 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   }
   const fileEvents = new vscode.EventEmitter();
   const savedEntries = context.workspaceState.get("sapEditors", {});
+  // Those keys come from a previous window: their text is what SAP had when the
+  // tab was opened, which after a reload may be older than the active version -
+  // and a SAP source tab showing old code is a trap, because its line numbers
+  // are then not the ones breakpoints and the debugger use. Each is read again
+  // the first time it is asked for.
+  const fromLastSession = new Set(Object.keys(savedEntries));
   async function rememberEditor(uri, entry) {
     savedEntries[uri.toString()] = { key: entry.repo.key, data: entry.data };
     await context.workspaceState.update("sapEditors", savedEntries);
@@ -176,6 +221,22 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         });
         savedEntries[key] = { key: repo.key, data };
         await context.workspaceState.update("sapEditors", savedEntries);
+      }
+      if (fromLastSession.delete(key) && data.object_name && data.object_type) {
+        try {
+          data = await repo.api.execute("read_sap_object", {
+            object_name: data.object_name, object_type: data.object_type,
+            include: data.include || "main"
+          });
+          savedEntries[key] = { key: repo.key, data };
+          await context.workspaceState.update("sapEditors", savedEntries);
+        } catch (error) {
+          // Kept rather than lost, and said rather than hidden: the tab is the
+          // copy from before the reload until the system can be read again.
+          vscode.window.showWarningMessage("VERTEX: " + (data.object_name || "this source")
+            + " could not be read from SAP after the reload, so the tab shows the copy from before it: "
+            + (error && error.message || error));
+        }
       }
       opened.set(key, { repo, data });
     }
@@ -900,6 +961,14 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     } catch (error) {
       vscode.window.showWarningMessage('VERTEX: could not open the stopped source: ' + String(error.message || error));
     }
+  }
+  /* A place asked for by name rather than by a stop: the player walking a
+     record. It goes the same way a stop does - the same opening, the same
+     group, the same preview tab - so a replayed stop lands where a live one
+     would. */
+  function revealFrame(frame) {
+    if (!frame || !(frame.url || frame.program)) { return Promise.resolve(); }
+    return followStoppedFrame({ stopped: { frames: [{ ...frame, current: true }] } });
   }
   function attachDebugger(api) {
     debuggerApi = api;
@@ -1760,7 +1829,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     repositories.clear(); texts.clear(); opened.clear(); drafts.clear();
   } });
   // Host/agent interface: create/modify only PREPARE and open a diff. Apply is UI-only.
-  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger,
+  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger, revealFrame, originPoints,
     editorContext() {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !editor.document) { return null; }

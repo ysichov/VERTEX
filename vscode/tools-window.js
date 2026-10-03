@@ -25,6 +25,8 @@ function debugHtml(initial) {
     window.sdeDebug=(command,args)=>host.postMessage({call:"debug",args:[command,JSON.stringify(args||{})]});
     window.sdeSource=(name,type)=>host.postMessage({call:"source",args:[name,type]});
     window.sdeAsset=name=>host.postMessage({call:"asset",args:[name]});
+    window.sdeReveal=frame=>host.postMessage({call:"reveal",args:[JSON.stringify(frame||{})]});
+    window.sdeOrigin=request=>host.postMessage({call:"origin",args:[JSON.stringify(request||{})]});
     window.addEventListener("message",event=>{
       if(event.data.type==="result"){pending=event.data.payload;sdeReady();}
       if(event.data.type==="debug")sdeDebugEvent(event.data.payload);
@@ -64,6 +66,12 @@ async function debugCommand(dbg, command, a, fetchVertex) {
     case "set": {
       const bp = await dbg.setBreakpointAt({ url: a.url, line: a.line, condition: a.condition, mode: a.mode, take_over: a.take_over === true });
       return { id: bp.id };
+    }
+    // A point by the object's name, for places the window did not read as a
+    // source: the analysis names them that way.
+    case "setAt": {
+      const made = await dbg.setBreakpoint({ object_type: a.object_type, name: a.name, line: a.line });
+      return { id: made.id };
     }
     case "clear": await dbg.clearBreakpoints(a.id); return {};
     case "activate": await dbg.activateBreakpoints(a.id, a.active !== false); return {};
@@ -155,6 +163,12 @@ function open(vscode, context, deps, initial) {
         const type=args[1] === "REPS" ? "PROG" : args[1];
         if(!["PROG","CLAS","FUNC"].includes(type)) throw new Error("Unsupported source type.");
         const payload=JSON.stringify(await deps.source({object_name:args[0],object_type:type}));
+        await panel.webview.postMessage({type:"result",payload}); return;
+      }
+      if(message.call === "origin") {
+        // The same analysis the editor command runs, asked for by object and
+        // variable: the window needs the places a value can be changed.
+        const payload=JSON.stringify(await deps.originPoints(JSON.parse(String(args[0]||"{}"))));
         await panel.webview.postMessage({type:"result",payload}); return;
       }
       if(message.call === "openEditor") {

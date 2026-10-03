@@ -1,6 +1,153 @@
 # Release history
 
-## 2026-10-02 — VS Code 0.7.10: Value Origin reads as one derivation
+## 2026-10-03 — VS Code 0.7.11: one flow view, one record, one place for each control
+
+- **BSE in the record is the analysis’s slice, and each place watches its own names.** Marking
+  only the stops where the chosen value changed found almost nothing, and for a good reason: a
+  value crosses into a called routine under another name - `lv_scenario` becomes
+  `IV_SCENARIO`, then a field of a structure - and no reading of recorded values can see that.
+  The analysis can, and that is what it is for. The slice it returns now marks the flow, and at
+  each of its places the run reads the names that place is about: what the statement changes
+  and what it is made of.
+
+- **Breakpoints from the analysis: stop where the value can change.** Choose a value in
+  Variables and press **Points**: the analysis that answers *where did this come from* is asked
+  once, before the run, and every place it names - across the called classes, not only the
+  program - gets a breakpoint. The run then stops where something can happen to that value
+  instead of stepping through everything, and each stop reads it. Nothing is asked of the
+  system while the run goes. Places SAP will not take a point at are named rather than dropped
+  quietly, and a stop where the value did not change is kept and marked - a slice that names
+  many such places is a slice worth looking at.
+
+- **A value is chosen in Variables, and BSE is the record narrowed to it.** Clicking a
+  variable - a component of a structure as readily as a name, since the row already knows
+  which - marks it as the value being followed. **BSE** then shows the routines the record
+  says it changed in and the calls that led there; **Full** shows the whole record. It is
+  rebuilt in the window from what the run already read: no new run, and nothing asked of the
+  system. What the record cannot answer it says instead of drawing: values are kept where a
+  routine starts and ends, so the answer is a routine rather than a statement, and a record
+  made without values, or one that keeps a structure without its fields, has nothing to narrow
+  by and says so.
+
+- **The hidden frames are named, and only mentioned when there are any.** The stack left out
+  what is under the object - whatever started it - and said so in a row of the table reading
+  *caller frames hidden (test frame, screen)*, which was a guess and often simply untrue: a
+  report started from SE38 has no test frame. It is a button in the Stack heading now, naming
+  the frames it leaves out, and it appears only when something was left out.
+
+- **A run is recorded unless you say otherwise.** The record control starts at **Rec steps**:
+  Continue is a run of F5 steps and every stop is kept, which is what the window is for. **No
+  record** hands Continue back to SAP, and **Steps & values** adds the values at each routine.
+
+- **The player moves the editor.** Docked in VS Code the debug panel has no source pane of
+  its own - the editor is the source, by design - so walking the record with the slider drew
+  the stop into a pane nobody can see and the code on the left stood still. A replayed stop
+  now opens where a live one does: the same tab, the same group, the line revealed.
+
+- **One request at a time, and the player moves the source again.** The host answers every
+  request with the same kind of message, so the only thing telling one reply from another is
+  its turn in the queue - which holds while a single request is in the air and breaks the
+  moment two are. A source read and a script asked for as an asset came back the wrong way
+  round: the source read was handed a file of JavaScript to parse as JSON, said so, and the
+  slider stopped moving the source while the diagram lost its view. Requests now go one at a
+  time and the rest wait their turn.
+
+- **A reopened SAP tab reads the system again.** The text of a source tab was remembered with
+  the tab, and after a window reload that remembered copy was shown - which could be older than
+  what is active in SAP, and whose line numbers are then not the ones breakpoints and the
+  debugger use. A tab restored from a previous window now reads its object from SAP the first
+  time it is opened. If the system cannot be read, the copy is kept and a message says so.
+
+- **A breakpoint SAP refuses says what is on that line.** `Cannot create a breakpoint at this
+  position` is SAP’s answer when the line carries no statement - usually because the editor
+  shows something the system has not activated, so the lines no longer agree. The message now
+  quotes line N of the active version, which makes the mismatch plain.
+
+- **The Marketplace page opens with the picture again.** Every release had added a paragraph
+  about its newest change to the top of it, and a *Testing Value Origin (0.7.x)* section with
+  install steps for a test build - release notes, which is what this file is for. They are gone:
+  the page opens with what VERTEX is, the architecture picture, and the table of tools under it.
+  What was durable in them - what FLOW and Formula are, Depth, Tree and Diagram, and what the
+  analysis does not claim - is now a **Value Origin** section among the other tools.
+  The repository page had the same pile on it and is cleaned the same way: it opens with
+  Install and the picture, and what Value Origin is has a section of its own.
+
+- **The Marketplace line says what the extension is for.** It used to read as a list of
+  internal names - *chat and code reviewer with Save & Activate, Versions/Reviewer, Data/Code
+  Explorers + MCP server* - leading with a secondary feature and spending its space on what
+  every ADT client already does. It now names what is here and nowhere else, in that order:
+  value origin without running the program (BSE), debug recording with replay, code review,
+  explorers, UML and metrics, and the object and function context it gives an AI client over
+  MCP.
+
+- **The window says where it is in the reader’s words.** A stop was named by the include SAP
+  reports - `ZCL_MOD_CUSTOMS===============CM001:13` - and now by what a reader calls it,
+  `ZCL_MOD_CUSTOMS=>APPLY:13`; a form or a program is named as itself. The run statistics lost
+  the window’s own share of a step, which was the remainder of a subtraction and told nobody
+  anything. A click on a source link in the flow opens that line in the window. The diagram
+  pane fills the section, so **Fit** has a height to fit into, and full screen covers the
+  window instead of being drawn under it.
+
+- **Three things the flow tree was missing.** An inline declaration is written as the name it
+  declares - `lo_log = NEW zcl_calc_log( )` rather than `DATA(lo_log) = …` - because what the
+  statement does is the assignment and the source keeps the rest. A routine reached a second
+  time is named where it was reached and marked, not opened again: its body stands once, where
+  it first ran. And **Fit**, the zoom, the full screen and dragging the diagram work in the
+  debug window as they do in the analysis - they were the analysis page’s own script, and are
+  now part of the view, like everything else that draws a flow.
+
+- **A line holding several statements is several nodes.** `METHOD create. ro_strategy = NEW
+  zcl_price_road( ). ENDMETHOD.` was one node carrying the whole line, because the record kept
+  only the line. SAP gives a debugger the line and nothing finer, but the window knows more
+  while it steps - the statement map lists what is on the line and the run tracks which one it
+  stands on - and the record now keeps that too. Each statement is its own node with its own
+  text, cut on the periods that end a statement and not on those inside a literal. Where there
+  is no map, or the stop was reached by a breakpoint rather than by stepping, the line is one
+  node as before.
+
+- **Every reading of a record is drawn by the one flow view.** Classes, Methods and
+  Statements all hand their graph to the script Value Origin draws with, so each of them now
+  has a tree beside its diagram, Top-down / Left-right, Collapse all / Expand all, Depth, the
+  magnifier and the zoom. The window has no drawing of its own left: what it owns is the
+  record and the three ways of folding it - by class, by routine, by statement. Where the
+  program stands is marked by the view itself, in its tree and on its diagram, so the player
+  keeps its place through all three.
+
+- **The debug window draws its record with the analysis's own flow.** Choosing *Statements*
+  in the player now hands the recorded graph to the same script Value Origin draws with, and
+  what appears is that view: the tree beside the diagram, Tree / Diagram, Top-down /
+  Left-right, Collapse all / Expand all, Depth, the magnifier and the zoom. The window shows
+  none of its own controls there, because they would be a second control for the same state.
+  The difference between the two pictures is now the data alone: one is what ACE derived, the
+  other what the program did.
+
+- **The recorded flow has one top, and nests by block and by call.** It had hung every class
+  off the root and every routine off its class, so the picture fanned out of one point and every
+  call crossed it. The top is now the routine the run started in - one node, not a program node
+  repeating its name. Under it, a statement stands in the nearest block it ran inside - IF,
+  CASE, LOOP, DO, WHILE, TRY and their branches - and statements of one block are siblings in
+  the order they first ran. A call is the one other way down: the statement that called leads to
+  the routine it entered, which carries the deeper stack. A routine is one node and keeps its
+  class with it, because a class is not a level of the stack and a method without its class
+  names nothing.
+
+- **The record is one control with three positions, and Visual means drawing again.** Reading
+  the values at a stop is its expensive half - the step itself is a line and a stack - and a run
+  is often recorded for its shape alone. So the record is a single choice: **No record**, **Rec
+  steps**, or **Steps & values**, where the third also reads the parameters and locals where
+  each routine starts and ends. **Visual** is gone: a run always shows where the program is -
+  there was never a reason to watch a window that stays still - and that toggle had been
+  arguing with the record over one action. Recording is now the whole of the choice: with it
+  off, Continue is SAP's own; with it on, Continue is a run of F5 steps, drawn as it goes, and
+  the record keeps the steps alone or the steps with their values.
+
+- **One control per section, and the diagram draws again.** A section was both shown or
+  hidden by its button and folded by its heading - two controls for one state, which can only
+  disagree; the heading no longer folds. And the Value Origin diagram had stopped drawing at
+  all: moving the script out of the page left two strings escaped for a template that is no
+  longer there, so Mermaid was handed `flowchart LR
+bseroot[...]` on one line and a zoom
+  pattern that matched nothing.
 
 - **The flow is drawn by one script.** The tree, the diagram and the controls over both -
   Full / BSE, Collapse all / Expand all, Depth - were written into the Value Origin page as it
@@ -14,6 +161,9 @@
   The analysis still owns what goes inside its panes and hands them over as templates. Nothing
   about the page changes for the reader; what changes is that the debug window can draw its
   recording with the same code.
+  Its styling travels with it as well - the panes, the diagram, and the tree down to the
+  indent of a branch and the look of a source link - so a window that draws a flow needs
+  nothing of the analysis page but the data.
 
 - **The recorded run draws as statements, the way Value Origin draws a flow.** Beside
   *Classes* and *Methods* the player has **Statements**: the program at the root, a class under

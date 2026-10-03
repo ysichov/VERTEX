@@ -14,5 +14,7 @@ test('all executable scripts in the generated Value Origin page parse', () => {
     if (match[1].includes('application/json') || !match[2].trim()) continue;
     assert.doesNotThrow(() => new vm.Script(match[2]), 'inline script ' + (++count));
   }
-  assert.equal(count, 3);
+  // The page now carries one more: the guard that says so when the shared flow
+  // view did not load.
+  assert.equal(count, 4);
 });

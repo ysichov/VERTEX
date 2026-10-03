@@ -382,7 +382,7 @@ async function fetch(context, requestPath, body) {
 // The shared controls stylesheet is an asset like the diagram library: a page
 // given to a webview as a string has no address to load one from, so it asks
 // for what it needs by name. Both files live beside the pages.
-const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css" };
+const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css", flow: "vertex-flow.js" };
 function asset(name) {
   if (!ASSETS[name]) {
     return "ERROR:This host ships no asset called " + name + ".";
@@ -809,6 +809,7 @@ function activate(context) {
     { pages: PAGES, fetch, asset, active, pin: pinTo, models: args => assistantModels(context, args),
       source: args => sapCode.execute("read_sap_object", args),
       openEditor: args => sapCode.execute("open_sap_object", args),
+      originPoints: args => sapCode.originPoints(args),
       runUnitTests: args => sapCode.runUnitTests(args),
       runAtc: args => sapCode.runAtc(args),
       setContext: value => { latestToolsContext = value; },
@@ -844,6 +845,19 @@ function activate(context) {
           if (message.call === "asset") {
             const name = String((message.args || [])[0] || "");
             await view.webview.postMessage({ type: "result", payload: asset(name) });
+            return;
+          }
+          if (message.call === "origin") {
+            // Where the chosen value can be changed, from the same analysis the
+            // editor command runs. The window turns these into breakpoints.
+            const answer = await sapCode.originPoints(JSON.parse(String((message.args || [])[0] || "{}")));
+            await view.webview.postMessage({ type: "result", payload: JSON.stringify(answer) });
+            return;
+          }
+          if (message.call === "reveal") {
+            // The player walked to a recorded stop. In this panel the source is
+            // the editor's, so that is what has to move.
+            await sapCode.revealFrame(JSON.parse(String((message.args || [])[0] || "{}")));
             return;
           }
           if (message.call !== "debug") { throw new Error("Unsupported VERTEX Debug request."); }

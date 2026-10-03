@@ -242,8 +242,20 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
     if (!entry.adt) {
       breakpoints.splice(breakpoints.indexOf(entry), 1);
       await sync();
+      // SAP says where it cannot put a point, not why that line is not what
+      // the reader is looking at. The usual reason is that the editor shows
+      // something the system has not activated, so the lines no longer agree -
+      // the active line itself says that better than any guess.
+      let active = "";
+      try {
+        const text = await source(url);
+        const line = String(text || "").split(/\r?\n/)[entry.line - 1];
+        active = line === undefined ? ". The active version has no line " + entry.line + "."
+          : ". Line " + entry.line + " of the active version is: " + (line.trim() || "(blank)")
+            + ". If the editor shows something else there, activate it first.";
+      } catch (error) { active = ""; }
       throw new Error("SAP did not accept the breakpoint at " + entry.name + " line " + entry.line
-        + (errors.length ? ": " + errors.join("; ") : ". Is the line executable and the object active?"));
+        + (errors.length ? ": " + errors.join("; ") : "") + active);
     }
     await rescope();
     changed();
@@ -723,7 +735,9 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
   }
 
   function mustBeStopped() {
-    if (!session || !stopped) { throw new Error("The program is not stopped. Wait for a stop with debug_wait first."); }
+    // Said to a window as much as to the assistant, so it names no tool: what
+    // is true is that nothing is standing still to be asked about.
+    if (!session || !stopped) { throw new Error("The program is not stopped - it has ended, or has not reached a breakpoint yet."); }
   }
 
   /* A step, without collecting the news: the window steps too, and what

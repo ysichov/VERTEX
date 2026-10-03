@@ -1,68 +1,10 @@
 # SAP ABAP VERTEX Tools
 
-Value Origin takes a **Type**: *FLOW* or *Formula*. FLOW is what the program does — its
-statements grouped by class and method, nested by blocks and their branches, with a node on each
-call edge naming what that call passes (`lv_scenario → IV_SCENARIO`); it narrows from *Full* to
-*BSE*, which is what the analysis found and the path that led to it. Formula is how the value was
-computed: `a = b + c` at the top and the definitions of `b` and `c` as its two branches. The
-**Depth** slider decides how far the tree opens — along the call stack in FLOW, along the
-derivation in Formula — and **Collapse all** / **Expand all** are its two ends. *Tree* and
-*Diagram* stay the two views of whichever Type is chosen.
-
-Value Origin diagrams attach each method's operations to its call node, in execution order. Sibling operations appear side by side, and nested calls add stack levels without enclosing frames.
-
-Value Origin's 0.7.10 test build now loads implementations even when ACE has already supplied their declarations through foreign CU includes.
-
-Formula has one top, the value that was asked about, and its definitions are its branches. A
-`SELECT` reads there as its target, its table and at most three of its fields, because the rest of
-the projection is not part of the derivation. FLOW carries the statements that run: a declaration
-states what exists before anything runs and is left out, and a program's statements outside any
-form or method are named by the event that holds them, `START-OF-SELECTION` when none does.
-
-In the Code Explorer diagrams, clicking a method in the **Calls diagram** draws its **Logic
-diagram** inside the same canvas, joined to the block it came from, so the call and what it does
-are read as one picture. The open block is marked in the theme's focus colour and follows the
-*Top-down* / *Left-right* choice. The magnifier is now the explicit **Lens off** / **Lens on**
-toggle in the diagram toolbar — over UML, Logic, Value Origin and every block opened inside Calls,
-with Shift and the wheel setting its strength. It is no longer switched on by measuring the text
-on screen: that flickered as the diagram was zoomed. A Logic diagram no longer emits a node for a
-statement whose text is left with nothing to show, such as a comment — one such empty node was a
-syntax error that failed the whole diagram rather than the node that caused it. This one is in the
-ABAP backend: update `ZCL_VX_ACE_CODE_HTML` along with `ZCL_VX_ADT_RES_FLOW`.
-
-## Testing Value Origin (0.7.10)
-
-Update the ABAP backend class `ZCL_VX_ADT_RES_FLOW` from this repository, then install
-the test VSIX. In an active SAP source editor, put the cursor on a variable such as
-`ls_result-amount` and run **VERTEX: Analyze Variable Value Origin**. The command
-loads ACE indexes and referenced customer sources (`Z*`, `Y*`, `/namespace/`) from
-the same SAP system automatically; standard ABAP objects remain analysis boundaries.
-No other source tabs need to be open. Save and activate edits first.
-
-The collapsible static call stack and expandable dependency tree link to the exact include
-and line. A normal click reuses the standard VS Code ABAP editor; Ctrl+Click opens beside.
-The extension enables the native ABAP breakpoint gutter in that editor: click its
-leftmost margin to add or remove a point; it synchronizes to the same SAP debugger
-session. Structure copies, NEW/factory calls, RETURNING and CHANGING lead into
-callee calculations. SELECT statements expose their table and host-variable inputs.
-ACE reference types and class-to-interface relations resolve an interface call to its
-concrete implementation, even where the calculation is held in a CM include.
-The ACE response records the owner of each include, which loads a complete foreign class rather than only its CU declaration.
-F12/double-click does not treat the interface `METHODS` declaration as an invocation target.
-Normal contextual navigation always remains in the active editor group; Ctrl+Click from Value Origin is the explicit beside action.
-Right-click a VERTEX source tab and choose **VERTEX: Open Visual Debug** to reveal
-the right-hand debugger panel for that object without replacing the source editor;
-the stopped SAP line is highlighted in the editor.
-In a VERTEX ABAP source tab, F5/F6/F7/F8 are
-Single Step/Execute/Return/Continue for the shared stopped SAP session.
-Possible dispatch targets, branch conditions and loop boundaries remain explicit;
-the view does not claim a concrete database-dependent iteration order or runtime
-values. A selectable, copyable analysis log is available below the tree.
-This command is in the source editor; Visual Debug does not yet expose it.
-
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT:
 AI assistant and MCP, an enhanced ABAP editor, an AI-driven debugger and explorers for code,
 versions and data. Several of them grew out of earlier SAP GUI tools.
+
+![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](https://raw.githubusercontent.com/ysichov/VERTEX/main/docs/architecture.jpg)
 
 The ABAP side, this repository's [`src/`](https://github.com/ysichov/VERTEX/tree/main/src), is
 optional: the editor, the debugger and the assistant work over ADT alone, and only the three
@@ -84,7 +26,6 @@ further. Their principles and functions were carried over, and the ABAP logic of
 explorers now lives in `src/` as `ZCL_VX_*`, with the SAP GUI stripped off. Everything new
 happens on this side.
 
-![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](https://raw.githubusercontent.com/ysichov/VERTEX/main/docs/architecture.jpg)
 
 ## The ABAP backend
 
@@ -277,6 +218,26 @@ owning class. UML sends the diagram's object, nodes, method names and relationsh
 a method signature — so it can be analysed directly. Ask the chat explicitly to *open* or *edit*
 an object — for example, *Open ZCL_FOO please* — to open a normal, editable VS Code tab instead.
 Changes made there are still sent to SAP only through **Review & Activate** or **Save & Activate**.
+
+## Value Origin
+
+Put the cursor on a variable in a VERTEX ABAP source tab and run **VERTEX: Analyze Variable
+Value Origin**. It answers where that value came from, backwards across calls, without running
+the program: ACE indexes and the customer sources they reference (`Z*`, `Y*`, `/namespace/`)
+are read from the same system, and standard ABAP objects stay analysis boundaries.
+
+The result has a **Type**. *FLOW* is what the program does - its statements grouped by class and
+method, nested by blocks and their branches, with a node on each call edge naming what that call
+passes (`lv_scenario -> IV_SCENARIO`); it narrows from *Full* to *BSE*, which is what the
+analysis found and the path that led to it. *Formula* is how the value was computed: `a = b + c`
+at the top, and the definitions of `b` and `c` as its branches. *Tree* and *Diagram* are two
+views of whichever Type is chosen; **Depth** decides how far the tree opens - along the call
+stack in FLOW, along the derivation in Formula - and **Collapse all** / **Expand all** are its
+two ends. A pair of breakpoints in the editor bounds what is analysed.
+
+What it does not claim: a concrete database-dependent iteration order, a runtime value, or which
+branch a dispatch takes. Those stay explicit boundaries, and the analysis log below the tree
+says what was read and where it stopped.
 
 ## VERTEX chat
 
@@ -657,18 +618,27 @@ It opens by itself when a run dies, names the runtime error and what SAP said ab
 **Open ST22** takes you to SAP where that dump is the first entry. The header line above the
 source says the run did not finish and points at the section.
 
-The player draws the record three ways: *Classes*, *Methods*, and **Statements** - the program,
-its classes, their routines and the statements the run stood on, nested in their own blocks, as
-Value Origin draws a flow. An edge is containment and carries the line; a call is an edge from
-the statement that called to the routine it entered. A statement appears once however often it
-ran, with its count. Clicking a node opens that statement in the source.
+The player draws the record three ways: *Classes*, *Methods*, and **Statements**, and the last
+of them is the Value Origin flow view itself - the same script, given the recorded graph instead
+of the analysed one, with its tree, Tree / Diagram, Top-down / Left-right, Collapse all / Expand
+all, Depth, magnifier and zoom. What it shows is the program, its classes, their routines and
+the statements the run stood on, nested in their own blocks. An edge is containment and carries
+the line; a call is an edge from the statement that called to the routine it entered. A
+statement appears once however often it ran, with its count. Clicking a node opens that
+statement in the source. The difference from the analysis is the data alone: one is what ACE
+derived, the other what the program did.
 
 **Collapse all** / **Expand all** and **Depth** govern how deep it is drawn: the program is 0,
 a class 1, a routine 2, a statement one below the block that holds it. One number governs all
 three controls, and the maximum is the deepest statement in the record.
 
-The three toggles are separate questions. **Rec** makes Continue a run of F5 steps and keeps
-every stop for the player; **Visual** says whether the run draws as it goes; **Predict** says
+The record is one control with three positions: **No record**, **Rec steps**, or **Steps &
+values**. The third also reads the parameters and locals where each routine starts and ends and
+keeps them with the stop, for the player - that is the expensive half of a stop, and a run is
+often recorded for its shape alone.
+
+Recording is also what makes Continue a run of F5 steps rather than SAP's own: with it off,
+Continue is Continue. A run always draws where the program is as it goes. **Predict** says
 how it steps. Off - the default - SAP is asked where the program is after every step and loops
 are stepped through, so every stop was read rather than worked out. On, the next line comes from
 the statement map where the text alone decides it and a loop is passed in one go. Even
@@ -687,10 +657,10 @@ A click on a dump row shows that dump as SAP wrote it, over the window; **Whole 
 heading does the same for the first one. **Check ST22** asks again at any time - with a dump
 already reported it says nothing is new, not that there is none.
 
-Every section folds by its heading: click *Stack*, *Breakpoints*, *Variables*, *Dump* or
-*Log* to shut it to its title bar and give its height to the others, and click again to open
-it. A click on a control in the heading - *Clear all*, the variable filter, *Open ST22* -
-still belongs to that control, not to the fold.
+A section is shown or hidden by its button in the row above it - *Stack*, *Breakpoints*,
+*Variables*, *Diagram*, *Dump*, *Log* - and its height goes to the others. That is the only
+control over it: the heading used to fold the same section as well, which is two controls for
+one state.
 
 ### What a stop shows
 
