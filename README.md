@@ -31,14 +31,14 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The three explorers are the same pages in both hosts, but the Eclipse plugin is built at
-**0.7.3** and the VS Code extension at **0.7.15**. What the pages gained since 0.7.3 is in the
+**0.7.3** and the VS Code extension at **0.8.0**. What the pages gained since 0.7.3 is in the
 repository and in VS Code, and reaches Eclipse only when the plugin is built again.
 
 **Where the two hosts stand apart.** The editor, the debugger, Visual Debug and Value Origin are
 VS Code only, by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace
 them. The divergence that is not by design is the build — eight VS Code releases (0.7.4 Visual
 Debug, 0.7.5 debugger fixes, 0.7.6 ABAP Unit, 0.7.7 the chat running tests and ATC, 0.7.9 Value
-Origin and the diagram work, 0.7.12 Value Origin as one derivation, 0.7.14 the source as the editor alone - no View source, 0.7.15 the flow and the variables before the run) have landed since the
+Origin and the diagram work, 0.7.12 Value Origin as one derivation, 0.7.14 the source as the editor alone - no View source, 0.8.0 one flow algorithm, Formula and Expression, the variables before the run) have landed since the
 Eclipse plugin was last exported. The shared pages carry their part of that, and it is waiting on a build, not on code.
 
 The projects named above are where the ideas were worked out first, and they are not developed
@@ -100,7 +100,7 @@ call edge naming what that call passes (`lv_scenario → IV_SCENARIO`); it narro
 computed: `a = b + c` at the top and the definitions of `b` and `c` as its two branches. The
 **Depth** slider decides how far the tree opens — along the call stack in FLOW, along the
 derivation in Formula — and one button beside it, offering *Collapse all* and then *Expand all*, says whether the levels shown are open, whatever the depth. *Tree* and
-*Diagram* stay the two views of whichever Type is chosen.
+*Diagram* stay the two views of whichever Type is chosen. **Expression** (0.8.0) is a third Type: the derivation written out as one formula by substitution - a share added to the value before it becomes `value × (1 + share)` - with each table value a link to the statement that reads it, and, where the order of steps is configured data (a pipeline), the order of the loaded scenario.
 
 Branches and polymorphic targets are alternatives, database-dependent loop order is a boundary,
 and a pair of breakpoints in the editor bounds what is analysed. This is a static dependency

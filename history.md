@@ -1,7 +1,39 @@
 # Release history
 
-## 2026-10-04 — VS Code 0.7.15: the flow and the variables before the run, one magnifier
+## 2026-10-05 — VS Code 0.8.0: one flow, one formula, an Expression, the variables before the run, one magnifier
 
+0.7.15 was never released; its changes are part of this release.
+
+- **The assistant sees the open Value origin window as it is on screen.** The window reports its mode and depth, and the
+  question carries what that mode lists: the flow (statements by call depth, marked where the value's slice reaches
+  them) or the formula derivation - within the depth set, labelled as analysis, not a run.
+  A Tools window that is closed no longer stays in the assistant's context.
+- **Calls start over from the object.** The "From: ..." chip over the Calls diagram is gone; a click on the object's name at the top of the parts list draws the whole program again.
+- **No metrics help in the diagrams.** The `?` that explains the metrics shows in the Metrics table only, not over Classes, UML, Calls and Logic diagrams.
+- **Expression: the derivation as one formula.** A third mode beside FLOW and Formula writes the derivation of the value
+  out as one formula, by substitution: each definition stands where its value is read, and a step that adds or takes off
+  a share of the value before it is written as that value times one plus (minus) the share, so the formula grows by a
+  factor per step, not by a copy of everything before. What is read more than once stays a named step; under the formula
+  is where each value comes from. Type conversions (`CONV decfloat34( ... )`) are left out of both Formula and Expression.
+  The debugger's flow path has Formula and Expression too, drawn by the same code, and the assistant is given whichever
+  is on screen. A value that comes from a table is written by its own name (`WEIGHT_KG`) as a link to the statement that
+  reads it; the class shows on the pointer and one click opens it, and only two values of one name carry the class. Under the formula each value shows the SELECT that reads it, cut to the field that
+  concerns it, the table and the conditions (`WHERE field_name = 'VOLUME' AND action = 'DISCOUNT'` - what tells two values of
+  one name apart), not the other fields it fetched with it.
+- **The formula follows the loaded pipeline.** When a scenario's pipeline is loaded in Value origin, the definitions a loop
+  over it makes (every modifier's APPLY) stand in the order the pipeline runs them, each under the one after it, so a
+  value such as the amount reads as the chain it is. A modifier the pipeline lacks is named above the tree as not run.
+  Without a loaded pipeline the definitions stay side by side: their order is data, not code.
+- **A formula is not repeated.** A definition that several inputs of a formula lead to - the same SELECT under each field
+  that reads it - is derived once, where it first appears, and not drawn again; the diagram's graph still has every edge to it.
+- **One Formula too.** The derivation of a value as formulas is built by one file, `value-origin-formula.js`: Value origin
+  draws its Formula view from it and the debugger's flow path gets the same graph from the analysis, so Formula is no
+  longer empty there.
+- **One flow builder.** The FLOW of Value origin and the debugger's Analyze flow path were drawn by two different
+  algorithms, and Value origin's read as a list of scopes rather than as code. The graph is now built by one file,
+  `vertex-flow-graph.js`, from rows of statements and the calls made in them: classes, routines and statements nest
+  as the calls do, in execution order. Only where the rows come from differs - the analysis of the chosen value in
+  Value origin, the analysis from a breakpoint in the debugger.
 - **One magnifier for every diagram.** The lens was written three times (Tools, the flow of Value origin, the
   debugger's diagram) and the debugger's copy went out while the pointer moved: it hid itself whenever the
   diagram was shown above about 80%, a rule the Tools copy had already dropped for flickering. It is now one
@@ -16,6 +48,20 @@
   depth of 3 with the levels open shows three levels open, collapsed the top only, and moving the slider keeps
   the switch. In every view that draws a flow (the debugger's diagram, Value origin). The Eclipse plugin takes
   it when it is next built.
+- **The depth thumb stays where the limit is.** Changing the reading of a flow (classes, routines, statements) changes
+  how deep it can be, and the slider kept the thumb where it had been while the label said *all*. The thumb is now
+  put at the end for *all* and at the limit otherwise.
+- **Opening or closing a node no longer refits the diagram.** Every drawing of a flow ended in a fit to the pane, so a
+  click on a block that opened it threw the reader's zoom and place away. A drawing is fitted when it first
+  comes, when the view or the direction changes, and when the pane changes size; one that only opened or
+  closed a node keeps what the reader had.
+- **The chat is given what Visual Debug shows, in two labelled parts.** A question put to the chat now comes with
+  `recorded` - what the program actually did (the stops of the run in order, the depth of each below the first,
+  the statements of the chosen value's slice marked), only as deep as the Depth control shows, consecutive
+  repeats once - and `analysis` - what static analysis says the flow is between the two breakpoints (in
+  execution order, the slice marked), said in its own text not to be what ran. Neither is added when the window
+  has neither, and each is capped at 150 entries. The debugger's tools for the assistant (MCP) are not
+  changed yet.
 - **The depth counts classes by their calls too.** In the Classes reading of a flow every class stood at depth 1, so
   the depth control stopped at 1 or 2 while the calls were four deep. A class now stands at the depth of the call
   that first reached it, as a routine and a statement do.

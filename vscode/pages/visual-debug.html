@@ -560,11 +560,12 @@ function analyzePath(b){
   if(!others.length)return Promise.reject(new Error("Check a second breakpoint: the path is taken between two points."));
   var what=chosenValue?chosenValue.name:"";
   notice("Analysing the flow"+(what?" and the slice of "+what:"")+" from line "+b.line+" of "+b.name+"…");
-  return askOrigin({object_name:b.name,object_type:type,line:b.line,variable:what,from:b.line}).then(function(answer){
+  return Promise.all([loadFlowGraph(),askOrigin({object_name:b.name,object_type:type,line:b.line,variable:what,from:b.line})]).then(function(both){
+    var answer=both[1];
     var rows=(answer&&answer.flow)||[];
     if(!rows.length){delete bpPaths[b.id];drawBreakpoints();
       throw new Error("The analysis found no flow from line "+b.line+" of "+b.name+(answer&&answer.read?" (read "+answer.read.sources+" sources, "+answer.read.nodes+" nodes).":"."));}
-    staticFlow={rows:rows,sites:(answer&&answer.sites)||[],point:b,name:b.name,from:b.line,stopAt:null};
+    staticFlow={rows:rows,sites:(answer&&answer.sites)||[],formula:answer&&answer.formula,panes:answer&&answer.panes,point:b,name:b.name,from:b.line,stopAt:null};
     var sequence=staticFlowGraph("steps",true).sequence,end=null;
     for(var k=1;k<sequence.length&&!end;k++){var w=sequence[k];
       if(others.some(function(o){return String(o.name).toUpperCase()===String(w.name).toUpperCase()&&o.line===w.line;}))end=w;}
@@ -575,7 +576,7 @@ function analyzePath(b){
     bpPaths[b.id]={count:shown,to:end.name+":"+end.line};
     pointFocus={object_name:b.name,object_type:type,line:b.line};autoVariables();
     notice("The flow from line "+b.line+" of "+b.name+" to "+end.name+":"+end.line+": "+shown+" statements"+(what?", "+rows.filter(function(w){return w.included;}).length+" of the flow in the slice of "+what:"")+" - in the diagram.");
-    setPane("flowpane",true);showFlow();drawBreakpoints();
+    setPane("flowpane",true);showFlow();drawBreakpoints();publishDebugContext();
   });
 }
 function drawBreakpoints(){
@@ -1291,7 +1292,7 @@ function recordStop(p){
   record(p.stopped.frames);
   if(recordingValues()&&snapDue(p.stopped.frames))snapshot().catch(failed);
   if(chosenValue)readChosenValue().catch(failed);
-  
+  publishDebugContext();
   if(paneOn("flowpane")&&replayAt==null){
     showFlow();}
   drawPos();
@@ -1600,12 +1601,26 @@ var controlsReady=null;
    tree, the diagram, Tree / Diagram, Top-down / Left-right, the magnifier and
    the zoom. The window supplies the graph; nothing about the drawing is
    written twice. */
+/* The one builder of the code flow (vertex-flow-graph.js): the path is drawn from it, so it is loaded before any path is. */
+var flowGraphReady=null;
+function loadFlowGraph(){
+  if(window.vertexFlowGraph)return Promise.resolve();
+  if(flowGraphReady)return flowGraphReady;
+  flowGraphReady=ask(function(){sdeAsset("flowGraph");},true).then(function(text){
+    var tag=document.createElement("script");tag.textContent=String(text);document.head.appendChild(tag);
+    if(!window.vertexFlowGraph)throw new Error("vertex-flow-graph.js loaded but defines no builder.");
+  });
+  flowGraphReady.catch(function(){flowGraphReady=null;});
+  return flowGraphReady;
+}
 var flowViewReady=null;
 function loadFlowView(){
   if(flowViewReady)return flowViewReady;
   // The flow view uses the magnifier every diagram has, so it comes first.
   flowViewReady=ask(function(){sdeAsset("lens");},true).then(function(text){
     var tag=document.createElement("script");tag.textContent=String(text);document.head.appendChild(tag);
+    return loadFlowGraph();
+  }).then(function(){
     return ask(function(){sdeAsset("flow");},true);
   }).then(function(text){
     var tag=document.createElement("script");tag.textContent=String(text);document.head.appendChild(tag);
@@ -1752,108 +1767,20 @@ function sliceStops(){
    Drawn while nothing is recorded; a recorded run replaces it. `bse` is where the slice of the chosen value reaches. */
 var staticFlow=null;
 function staticFlowGraph(mode,quiet){
-  var sf=staticFlow,sequence=[],stopped=false,rows=sf.rows,b=sf.point,nodes=[],edges=[],scopes={},order=[],sites={},called={},seq=0;
-  rows.forEach(function(w){if(!scopes[w.scope]){scopes[w.scope]=[];order.push(w.scope);}scopes[w.scope].push(w);});
-  (sf.sites||[]).forEach(function(c){var k=c.name+":"+c.line;sites[k]=(sites[k]||[]).concat(c.callees);});
-  Object.keys(sites).forEach(function(k){sites[k].forEach(function(c){if(scopes[c])called[c]=true;});});
-  var id=function(){return "f"+(seq++);},at=function(scope){var cut=scope.indexOf("→");return {klass:cut>=0?scope.slice(0,cut):scope,method:cut>=0?scope.slice(cut+1):"GLOBAL"};};
-  // A node opens as Value origin opens its own: by the analysis's source and the line it counts in, not by the debugger's.
-  var src=function(w){return w.source?"origin:"+w.source+"|"+(w.location||""):"";};
-  // A class or a routine opens its METHOD (line 1 of its include, as Value origin opens a method), not the line of its first
-  // statement: the two count differently, and the head is what the node stands for. A program's event has no head to open.
-  var head=function(w){return String(w.type).toUpperCase()==="CLAS"?1:w.aceLine;};
-  nodes.push({id:"bseroot",key:"root",text:sf.name,location:sf.name,owner:sf.name,source:b.url,line:b.line,stack:0,type:"program",bse:false});
-  // The flow starts where the breakpoints are: the routines of that object no call reaches. What no call of the flow reaches
-  // and is not one of them is left out and said (below) - drawn under the program it would say it is called from there.
-  var entries=order.filter(function(x){return !called[x]&&at(x).klass===sf.name;});
-  if(!entries.length)entries=order.filter(function(x){return !called[x];}).slice(0,1);
-  if(!entries.length)entries=order.slice(0,1);
-  var seen={},unit={},firstOf={},klassNode={},pairs={},stubs=[];
-  // A path ends at a statement that stands on a checked breakpoint (sf.stopAt): that statement is the last one drawn, and what it calls is not.
-  function atEnd(w){return !!(sf.stopAt&&String(w.name).toUpperCase()===sf.stopAt.name&&w.line===sf.stopAt.line);}
-  // A class stands at the depth of the call that first reached it, as a routine and a statement do: the depth control counts calls.
-  function classNode(klass,w,depth){
-    if(!klassNode[klass]){klassNode[klass]={id:id(),key:"c|"+klass,text:klass,location:klass,owner:klass,source:src(w),line:head(w),aceLocation:w.location,stack:depth||1,type:"class",bse:false};nodes.push(klassNode[klass]);}
-    return klassNode[klass];
-  }
-  // A routine the flow lists no statement of is still entered: the transition is drawn, as a block with nothing under it, so a call
-  // is never lost for want of statements to show under it.
-  function callee(c,parent,label,depth){
-    if(scopes[c]){emit(c,parent,label,depth);return;}
-    var n=at(c);if(stubs.indexOf(c)<0)stubs.push(c);
-    if(mode==="classes"){
-      var k=classNode(n.klass,{type:"CLAS",source:"",location:c.replace("→","->"),aceLine:1},depth),key=(parent.klass||"root")+">"+n.klass;
-      if(parent.klass!==n.klass&&!pairs[key]){pairs[key]=true;edges.push({from:parent.klass?klassNode[parent.klass].id:"bseroot",to:k.id,label:label});}
-      return;
-    }
-    if(!unit[c]){unit[c]={id:id(),key:"m|"+c,text:n.klass+"=>"+n.method,location:c,owner:n.klass,source:"",line:1,stack:depth,type:"method",bse:false};nodes.push(unit[c]);}
-    edges.push({from:parent.id,to:unit[c].id,label:label});
-  }
-  // Execution order and the stack: a routine is drawn where it is called, its statements in order, and a call inside
-  // them draws the routine it reaches under that statement, one level deeper.
-  function emit(scope,parent,label,depth){
-    if(stopped)return;
-    var first=scopes[scope][0],n=at(scope),from=parent;
-    if(mode==="classes"){
-      var k=classNode(n.klass,first,depth);
-      if(!seen[scope]){seen[scope]=true;
-        if(parent.klass){var key=parent.klass+">"+n.klass;if(parent.klass!==n.klass&&!pairs[key]){pairs[key]=true;edges.push({from:klassNode[parent.klass].id,to:k.id,label:label});}}
-        else if(!pairs["root>"+n.klass]){pairs["root>"+n.klass]=true;edges.push({from:"bseroot",to:k.id,label:""});}
-        scopes[scope].forEach(function(w){if(stopped)return;if(atEnd(w)){stopped=true;return;}var callees=sites[w.name+":"+w.line]||[];
-          callees.forEach(function(c){callee(c,{klass:n.klass},String(w.line),depth+1);});});}
-      return;
-    }
-    // Statements read as the statement that calls a routine already names it: the routine's own statements hang under that
-    // call, with no block of the routine between (a block for it is the entry's alone - the program's event the flow starts in).
-    var container=parent;
-    if(mode==="steps"&&parent.type==="operation"){
-      if(seen[scope]){if(firstOf[scope])edges.push({from:parent.id,to:firstOf[scope],label:label});return;}
-      seen[scope]=true;
-    }else{
-      if(!unit[scope]){
-        unit[scope]={id:id(),key:"m|"+scope,text:n.klass===sf.name?n.method:n.klass+"=>"+n.method,location:scope,owner:n.klass,source:src(first),line:head(first),aceLocation:first.location,stack:depth,type:"method",bse:false};
-        nodes.push(unit[scope]);}
-      edges.push({from:parent.id,to:unit[scope].id,label:label});
-      if(seen[scope])return;seen[scope]=true;
-      container=unit[scope];
-    }
-    if(mode==="methods"){
-      scopes[scope].forEach(function(w){if(stopped)return;if(atEnd(w)){stopped=true;return;}(sites[w.name+":"+w.line]||[]).forEach(function(c){callee(c,unit[scope],String(w.line),depth+1);});});
-      return;
-    }
-    // ABAP blocks are hierarchy: a control statement is the parent of its body, ENDIF and ENDLOOP only close the level,
-    // and WHEN / ELSE close the previous branch and own what follows.
-    var blocks=[];
-    scopes[scope].forEach(function(w){
-      var word=(String(w.text).match(/^([A-Za-z-]+)/)||[])[1]||"";word=word.toUpperCase();
-      if(stopped)return;
-      if(/^END(IF|CASE|LOOP|DO|WHILE|SELECT)$/.test(word)){while(blocks.length&&blocks[blocks.length-1].branch)blocks.pop();blocks.pop();return;}
-      if(stopped)return;
-      sequence.push(w);
-      var branch=/^(WHEN|ELSE|ELSEIF)$/.test(word);
-      if(branch)while(blocks.length&&blocks[blocks.length-1].branch)blocks.pop();
-      var node={id:id(),key:"o|"+w.name+":"+w.line,text:w.text.length>100?w.text.slice(0,97)+"…":w.text,location:scope,owner:n.klass,source:src(w),
-        line:w.aceLine,aceLocation:w.location,stack:depth,type:"operation",bse:!!w.included,branch:branch};
-      nodes.push(node);edges.push({from:blocks.length?blocks[blocks.length-1].id:container.id,to:node.id,label:String(w.line)});
-      if(!blocks.length&&!firstOf[scope])firstOf[scope]=node.id;
-      if(branch||/^(IF|CASE|LOOP|DO|WHILE|SELECT)$/.test(word))blocks.push({id:node.id,branch:branch});
-      if(atEnd(w)){stopped=true;return;}
-      (sites[w.name+":"+w.line]||[]).forEach(function(c){callee(c,node,String(w.line),depth+1);});
-    });
-  }
-  entries.forEach(function(x){emit(x,mode==="classes"?{}:{id:"bseroot"},"",1);});
-  var unreached=sf.stopAt?[]:order.filter(function(x){return !seen[x];}),said=[];
-  var named=function(list){return list.slice(0,3).map(function(x){return x.replace("→","=>");}).join(", ")+(list.length>3?", …":"");};
-  if(unreached.length)said.push("Not drawn: "+unreached.length+" routine"+(unreached.length===1?"":"s")+" of the flow that no call the analysis can follow reaches ("+named(unreached)+").");
-  if(stubs.length)said.push("Called, with no statement of theirs in the flow: "+named(stubs)+".");
-  if(said.length&&!quiet)notice(said.join(" "));
-  var byId={};nodes.forEach(function(x){byId[x.id]=x;});
-  rows.forEach(function(w){if(!w.included)return;var n=at(w.scope);
-    if(klassNode[n.klass])klassNode[n.klass].bse=true;if(unit[w.scope])unit[w.scope].bse=true;});
-  for(var again=true;again;){again=false;edges.forEach(function(e){var from=byId[e.from],to=byId[e.to];if(from&&to&&to.bse&&!from.bse){from.bse=true;again=true;}});}
-  var idOf={},deepest=0;nodes.forEach(function(x){idOf[x.key]=x.id;if(x.stack>deepest)deepest=x.stack;});sharedIds=idOf;sharedNodes=nodes;
-  return {nodes:[],edges:[],formula:{nodes:[],edges:[]},bseFlow:{nodes:nodes,edges:edges},originTitle:"",maxStack:deepest,maxLevel:0,bseFlowHtml:"",sequence:sequence};
+  if(!window.vertexFlowGraph)throw new Error("The flow builder (vertex-flow-graph.js) is not loaded.");
+  var g=window.vertexFlowGraph.build(staticFlow,mode);
+  // The formula's nodes open as the flow's do: by the analysis's source and the routine, marked so.
+  var fm=staticFlow.formula;
+  if(!fm)throw new Error("The analysis gave no formula (the host is older than this window).");
+  g.formula={nodes:fm.nodes.map(function(n){return Object.assign({},n,{source:"origin:"+n.source+"|"+(n.location||"")});}),edges:fm.edges};
+  g.maxLevel=fm.maxLevel;
+  if(!staticFlow.panes)throw new Error("The analysis gave no formula panes (the host is older than this window).");
+  g.panes=staticFlow.panes;
+  sharedIds=g.ids;sharedNodes=g.bseFlow.nodes;
+  if(g.said.length&&!quiet)notice(g.said.join(" "));
+  return g;
 }
+
 function sharedFlowGraph(mode){
   var S=mode==="steps"?stepFlow():callGraph(mode==="classes"),nodes=[],edges=[];
   S.order.forEach(function(k){var nd=S.nodes[k];
@@ -2014,6 +1941,8 @@ function showFlow(){
     var blob=$("mermaid-data");
     if(!blob){blob=document.createElement("script");blob.type="application/json";blob.id="mermaid-data";document.body.appendChild(blob);}
     blob.textContent=JSON.stringify(data).split("<").join("\u003c");
+    // The panes that are HTML go in as templates, as Value origin's page gives them; the view fills its panes from these.
+    if(data.panes)$("bse-workspace").innerHTML='<template data-flow-pane="formula">'+data.panes.formula+'</template><template data-flow-pane="expression">'+data.panes.expression+'</template>';
     return loadFlowView().then(openRecordFlow).then(markNow);
   }).catch(failed);
 }
@@ -2325,7 +2254,7 @@ function fetchSlice(){
         notice("The analysis named "+points.length+" places (e.g. "+points.slice(0,3).map(function(p){return p.name+":"+p.line;}).join(", ")
           +"), but the record never stood on one of them (it stood on e.g. "+stood.slice(0,3).join(", ")+"): the lines of the two do not agree.");
       }
-      drawChosen();
+      drawChosen();publishDebugContext();
       if(paneOn("flowpane")&&(flow.timeline||[]).length)showFlow();
       return points;
     });
@@ -2447,6 +2376,44 @@ function syncVarSwitches(){
   var live=!!picture.stopped;
   ["syst","initials"].forEach(function(id){$(id).style.display=live?"":"none";});
 }
+/* What the assistant's chat is given of this window, in two parts that are not to be taken for each other: what the program
+   ACTUALLY DID (the record: the stops, in order, with the depth each stood at below the first one) and what the ANALYSIS says
+   can happen (the flow between the breakpoints, with the statements the chosen value's slice reaches marked). Short: the record
+   only as deep as the depth control shows, consecutive repeats once, at most MAX_CONTEXT entries each. Null where there is
+   neither. The text of each part says what it is, so that the chat does not have to guess. */
+var MAX_CONTEXT=150;
+function debugContext(){
+  var tl=flow.timeline||[],limit=(window.vertexFlow&&window.vertexFlow.depth)?window.vertexFlow.depth():null;
+  var recorded=null,analysis=null;
+  if(tl.length){
+    var base=(tl[0].stack||[]).length,steps=[],last="",cut=false;
+    tl.forEach(function(t){
+      var f=t.stack&&t.stack[0];if(!f)return;
+      var depth=t.stack.length-base;if(limit!==null&&depth>=limit)return;
+      var at=(t.cur?t.cur.name:String(f.label||""))+":"+f.line;if(at===last)return;last=at;
+      if(steps.length>=MAX_CONTEXT){cut=true;return;}
+      var step={depth:Math.max(0,depth),at:at};if(chosenValue&&inSlice(t.cur?t.cur.owner:String(f.program||""),f.line))step.slice=true;
+      steps.push(step);
+    });
+    recorded={note:"What the program actually did: the stops of the run in order, depth = calls below the first stop"+(limit!==null?" (only down to the depth the window shows)":"")+"; slice:true where the chosen value's slice reaches the statement.",stops:tl.length,steps:steps,truncated:cut};
+  }
+  if(staticFlow&&staticFlow.rows){
+    var seq=staticFlowGraph("steps",true).sequence,shown=seq.slice(0,MAX_CONTEXT);
+    analysis={note:"What static analysis says the flow is between two breakpoints - NOT what ran: the statements in execution order, slice:true where the chosen value's slice reaches them.",
+      from:staticFlow.name+":"+staticFlow.from,to:staticFlow.stopAt?staticFlow.stopAt.name+":"+staticFlow.stopAt.line:null,
+      statements:shown.map(function(w){var r={at:w.name+":"+w.line,text:String(w.text).slice(0,90)};if(w.included)r.slice=true;return r;}),truncated:seq.length>shown.length};
+  }
+  if(!recorded&&!analysis)return null;
+  return {view:"Visual Debug",object:typeof object!=="undefined"&&object?{name:object.name,type:object.type}:null,
+    state:picture.stopped?"stopped at "+picture.stopped.at:"no stopped program",
+    chosen_value:chosenValue?{name:chosenValue.name,slice_places:slicePoints?Object.keys(slicePoints).length:null}:null,
+    recorded:recorded,analysis:analysis};
+}
+var contextTimer=null;
+function publishDebugContext(){
+  clearTimeout(contextTimer);
+  contextTimer=setTimeout(function(){if(typeof sdeDebugContext==="function")sdeDebugContext(JSON.stringify(debugContext()));},600);
+}
 function drawVars(){
   syncVarSwitches();
   drawChosen();
@@ -2566,6 +2533,7 @@ function autoPanes(p){
 function apply(p){
   picture=p;
   autoPanes(p);
+  publishDebugContext();
   if(!variablesStarted&&!p.stopped){variablesStarted=true;autoVariables();}
   // Rec is for every stop, whoever made it: F5-F8 here, the assistant, a
   // breakpoint. A Flow or Rec run records its own stops.

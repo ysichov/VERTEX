@@ -1,4 +1,5 @@
 "use strict";
+const flowGraph = require("../../org.vertex.abap.ui/resources/vertex-flow-graph.js");
 const test = require("node:test"), assert = require("node:assert/strict"), vm = require("node:vm"), path = require("node:path");
 const page = require("node:fs").readFileSync(path.resolve(__dirname, "../pages/visual-debug.html"), "utf8");
 const part = (from, to) => page.slice(page.indexOf(from), page.indexOf(to));
@@ -370,14 +371,14 @@ test("after a call, SAP stops at the next statement that is a stop: ENDIF and EN
 });
 
 test("Analyze flow path: from a point in a program or a class to the next checked point the flow meets, wherever it is", async () => {
-  const context = vm.createContext({ chosenValue: null, sdeOrigin: () => {}, notice: text => { context.said = text; }, drawBreakpoints: () => {}, bpPaths: {},
+  const context = vm.createContext({ window: { vertexFlowGraph: flowGraph }, chosenValue: null, sdeOrigin: () => {}, notice: text => { context.said = text; }, drawBreakpoints: () => {}, bpPaths: {},
     setPane: (id, on) => { context.opened = id; }, showFlow: () => { context.shown = true; }, staticFlow: null, paneOn: () => false, drawVars: () => {},
-    autoVariables: () => {}, pointFocus: null, notice2: null,
+    autoVariables: () => {}, pointFocus: null, publishDebugContext: () => {},
     picture: { breakpoints: [{ id: "1", name: "ZREP", objectType: "PROG", line: 10, active: true }, { id: "2", name: "ZREP", objectType: "PROG", line: 16, active: false },
       { id: "3", name: "ZCL_X", objectType: "CLAS", line: 31, active: true }] },
-    askOrigin: request => { context.asked = request; return Promise.resolve(context.answer); } });
+    loadFlowGraph: () => Promise.resolve(), askOrigin: request => { context.asked = request; return Promise.resolve(context.answer); } });
   const arrow = String.fromCharCode(0x2192), row = (name, type, line, text, scope) => ({ name, type, line, aceLine: line, text, scope, source: "s:" + name, location: scope.replace(arrow, "->"), included: false });
-  context.answer = { flow: [row("ZREP", "PROG", 10, "DATA(a) = 1.", "ZREP" + arrow + "START-OF-SELECTION"), row("ZREP", "PROG", 15, "lo->run( ).", "ZREP" + arrow + "START-OF-SELECTION"),
+  context.answer = { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, flow: [row("ZREP", "PROG", 10, "DATA(a) = 1.", "ZREP" + arrow + "START-OF-SELECTION"), row("ZREP", "PROG", 15, "lo->run( ).", "ZREP" + arrow + "START-OF-SELECTION"),
       row("ZREP", "PROG", 16, "WRITE a.", "ZREP" + arrow + "START-OF-SELECTION"),
       row("ZCL_X", "CLAS", 30, "x = 1.", "ZCL_X" + arrow + "RUN"), row("ZCL_X", "CLAS", 31, "y = 2.", "ZCL_X" + arrow + "RUN"), row("ZCL_X", "CLAS", 32, "z = 3.", "ZCL_X" + arrow + "RUN")],
     sites: [{ name: "ZREP", line: 15, callees: ["ZCL_X" + arrow + "RUN"] }] };
@@ -411,7 +412,7 @@ test("the flow of the analysis is drawn as program, classes, routines and statem
     { name: "ZCL_X", type: "CLAS", line: 8, text: "b = 3.", scope: "ZCL_X→RUN", included: false },
     { name: "ZCL_X", type: "CLAS", line: 9, text: "ENDIF.", scope: "ZCL_X→RUN", included: false },
     { name: "ZCL_X", type: "CLAS", line: 11, text: "c = 4.", scope: "ZCL_X→RUN", included: false, unplaced: true }];
-  const context = vm.createContext({ staticFlow: { rows: rows.map(w => ({ ...w, aceLine: w.line, source: "s:" + w.name, location: w.scope.replace("→", "->") })), sites: [{ name: "ZREP", line: 10, callees: ["ZCL_X→RUN"] }], point: { url: "u", line: 10 }, name: "ZREP" }, sharedIds: null, sharedNodes: null,
+  const context = vm.createContext({ window: { vertexFlowGraph: flowGraph }, staticFlow: { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, rows: rows.map(w => ({ ...w, aceLine: w.line, source: "s:" + w.name, location: w.scope.replace("→", "->") })), sites: [{ name: "ZREP", line: 10, callees: ["ZCL_X→RUN"] }], point: { url: "u", line: 10 }, name: "ZREP" }, sharedIds: null, sharedNodes: null,
     pathUrl: (w) => "/" + w.name, notice: text => { context.said = text; } });
   vm.runInContext(part("function staticFlowGraph(mode,quiet){", "function sharedFlowGraph(mode){"), context);
   const graph = mode => JSON.parse(JSON.stringify(vm.runInContext("staticFlowGraph(" + JSON.stringify(mode) + ")", context).bseFlow));
@@ -445,7 +446,7 @@ test("a call draws the routine's statements under the calling statement, in the 
     { name: "ZCL_X", type: "CLAS", line: 32, text: "b = 2.", scope: "ZCL_X→RUN", included: false },
     { name: "ZCL_Y", type: "CLAS", line: 7, text: "c = 3.", scope: "ZCL_Y→M", included: true }];
   const sites = [{ name: "ZREP", line: 15, callees: ["ZCL_X→RUN"] }, { name: "ZCL_X", line: 31, callees: ["ZCL_Y→M"] }];
-  const context = vm.createContext({ staticFlow: { rows: rows.map(w => ({ ...w, aceLine: w.line, source: "s:" + w.name, location: w.scope.replace("→", "->") })), sites, point: { url: "u", line: 10 }, name: "ZREP" }, sharedIds: null, sharedNodes: null,
+  const context = vm.createContext({ window: { vertexFlowGraph: flowGraph }, staticFlow: { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, rows: rows.map(w => ({ ...w, aceLine: w.line, source: "s:" + w.name, location: w.scope.replace("→", "->") })), sites, point: { url: "u", line: 10 }, name: "ZREP" }, sharedIds: null, sharedNodes: null,
     pathUrl: (w) => "/" + w.name, notice: () => {} });
   vm.runInContext(part("function staticFlowGraph(mode,quiet){", "function sharedFlowGraph(mode){"), context);
   const graph = mode => JSON.parse(JSON.stringify(vm.runInContext("staticFlowGraph(" + JSON.stringify(mode) + ")", context).bseFlow));
@@ -499,7 +500,7 @@ test("a routine no call of the flow reaches is not drawn under the program, and 
     { name: "ZREP", type: "PROG", line: 15, text: "DATA(r) = NEW zcl_x( )->run( ).", scope: "ZREP→START-OF-SELECTION", included: false },
     { name: "ZCL_X", type: "CLAS", line: 30, text: "a = 1.", scope: "ZCL_X→RUN", included: false },
     { name: "ZCL_Y", type: "CLAS", line: 5, text: "n = 'Y'.", scope: "ZCL_Y→NAME", included: false }];
-  const context = vm.createContext({ staticFlow: { rows: rows.map(w => ({ ...w, aceLine: w.line, source: "s:" + w.name, location: w.scope.replace("→", "->") })), sites: [{ name: "ZREP", line: 15, callees: ["ZCL_X→RUN"] }], point: { url: "u", line: 10 }, name: "ZREP" },
+  const context = vm.createContext({ window: { vertexFlowGraph: flowGraph }, staticFlow: { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, rows: rows.map(w => ({ ...w, aceLine: w.line, source: "s:" + w.name, location: w.scope.replace("→", "->") })), sites: [{ name: "ZREP", line: 15, callees: ["ZCL_X→RUN"] }], point: { url: "u", line: 10 }, name: "ZREP" },
     sharedIds: null, sharedNodes: null, pathUrl: (w) => "/" + w.name, notice: text => { context.said = text; } });
   vm.runInContext(part("function staticFlowGraph(mode,quiet){", "function sharedFlowGraph(mode){"), context);
   const graph = JSON.parse(JSON.stringify(vm.runInContext("staticFlowGraph('methods')", context).bseFlow));
@@ -526,7 +527,7 @@ test("a call to a routine the flow lists no statement of is still drawn, as a bl
   const rows = [
     { name: "ZREP", type: "PROG", line: 15, text: "lo_log->add( ).", scope: "ZREP" + String.fromCharCode(0x2192) + "START-OF-SELECTION", included: false }];
   const sites = [{ name: "ZREP", line: 15, callees: ["ZCL_LOG" + String.fromCharCode(0x2192) + "ADD"] }];
-  const context = vm.createContext({ staticFlow: { rows: rows.map(w => ({ ...w, aceLine: w.line, source: "s:" + w.name, location: "ZREP->START-OF-SELECTION" })), sites, point: { url: "u", line: 10 }, name: "ZREP" },
+  const context = vm.createContext({ window: { vertexFlowGraph: flowGraph }, staticFlow: { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, rows: rows.map(w => ({ ...w, aceLine: w.line, source: "s:" + w.name, location: "ZREP->START-OF-SELECTION" })), sites, point: { url: "u", line: 10 }, name: "ZREP" },
     sharedIds: null, sharedNodes: null, pathUrl: (w) => "/" + w.name, notice: () => {} });
   vm.runInContext(part("function staticFlowGraph(mode,quiet){", "function sharedFlowGraph(mode){"), context);
   const graph = mode => JSON.parse(JSON.stringify(vm.runInContext("staticFlowGraph(" + JSON.stringify(mode) + ")", context).bseFlow));
@@ -616,7 +617,7 @@ test("a path ends at the statement of its end point: nothing after it is drawn, 
     row("ZREP", "PROG", 16, "WRITE a.", "ZREP" + arrow + "START-OF-SELECTION"), row("ZCL_X", "CLAS", 30, "x = 1.", "ZCL_X" + arrow + "RUN"),
     row("ZCL_X", "CLAS", 31, "lo2->deep( ).", "ZCL_X" + arrow + "RUN"), row("ZCL_X", "CLAS", 32, "z = 3.", "ZCL_X" + arrow + "RUN"), row("ZCL_Y", "CLAS", 5, "q = 1.", "ZCL_Y" + arrow + "DEEP")];
   const sites = [{ name: "ZREP", line: 15, callees: ["ZCL_X" + arrow + "RUN"] }, { name: "ZCL_X", line: 31, callees: ["ZCL_Y" + arrow + "DEEP"] }];
-  const context = vm.createContext({ staticFlow: { rows, sites, point: { url: "u", line: 10 }, name: "ZREP", stopAt: { name: "ZCL_X", line: 31 } },
+  const context = vm.createContext({ window: { vertexFlowGraph: flowGraph }, staticFlow: { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, rows, sites, point: { url: "u", line: 10 }, name: "ZREP", stopAt: { name: "ZCL_X", line: 31 } },
     sharedIds: null, sharedNodes: null, pathUrl: () => "", notice: () => { context.noticed = true; } });
   vm.runInContext(part("function staticFlowGraph(mode,quiet){", "function sharedFlowGraph(mode){"), context);
   const graph = mode => JSON.parse(JSON.stringify(vm.runInContext("staticFlowGraph(" + JSON.stringify(mode) + ")", context).bseFlow));
@@ -640,4 +641,30 @@ test("the variables section is opened for the first answer of a state, not again
   context.readerClosed = { varsec: true };
   await vm.runInContext("askVariables({object_name:'ZREP',object_type:'PROG',line:5})", context);
   assert.deepEqual(opened, [], "a section the reader closed stays closed: a click on a method does not bring it back");
+});
+
+test("the chat is given what the window shows in two labelled parts: what ran, within the depth, and what the analysis says can happen", () => {
+  const arrow = String.fromCharCode(0x2192);
+  const frame = (name, line) => ({ label: name + ":" + line, program: name, line });
+  const stop = (stackNames, cur, line) => ({ cur: { name: cur, owner: cur.split("=>")[0] }, stack: stackNames.map((n, i) => frame(n, i ? 1 : line)) });
+  const timeline = [stop(["ZREP"], "ZREP", 10), stop(["ZREP"], "ZREP", 15), stop(["ZCL_X=>RUN", "ZREP"], "ZCL_X=>RUN", 30), stop(["ZCL_X=>RUN", "ZREP"], "ZCL_X=>RUN", 30),
+    stop(["ZCL_Y=>M", "ZCL_X=>RUN", "ZREP"], "ZCL_Y=>M", 7), stop(["ZCL_X=>RUN", "ZREP"], "ZCL_X=>RUN", 31)];
+  const row = (name, line, text, included) => ({ name, type: "PROG", line, aceLine: line, text, scope: name + arrow + "RUN", source: "s", location: name + "->RUN", included: !!included });
+  const context = vm.createContext({ flow: { timeline }, chosenValue: { name: "LS_X" }, slicePoints: { "ZCL_X:30": {} }, inSlice: (o, l) => o === "ZCL_X" && l === 30,
+    picture: { stopped: { at: "ZCL_X:31" } }, object: { name: "ZREP", type: "PROG" }, window: { vertexFlow: { depth: () => context.depth } }, depth: null,
+    staticFlow: { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, rows: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)], sites: [], point: { url: "u" }, name: "ZREP", from: 10, stopAt: { name: "ZREP", line: 15 } },
+    staticFlowGraph: () => ({ sequence: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)] }), MAX_CONTEXT: 150 });
+  vm.runInContext(part("function debugContext(){", "var contextTimer=null;"), context);
+  const read = () => JSON.parse(JSON.stringify(vm.runInContext("debugContext()", context)));
+  let got = read();
+  assert.deepEqual(got.recorded.steps.map(s => s.depth + ":" + s.at), ["0:ZREP:10", "0:ZREP:15", "1:ZCL_X=>RUN:30", "2:ZCL_Y=>M:7", "1:ZCL_X=>RUN:31"], "consecutive repeats once, with the depth below the first stop");
+  assert.equal(got.recorded.steps[2].slice, true, "a statement of the slice is marked");
+  assert.match(got.recorded.note, /actually did/);
+  assert.match(got.analysis.note, /NOT what ran/, "the analysis says it is not what ran");
+  assert.deepEqual([got.analysis.from, got.analysis.to, got.analysis.statements.length, got.analysis.statements[1].slice], ["ZREP:10", "ZREP:15", 2, true]);
+  context.depth = 2;
+  got = read();
+  assert.deepEqual(got.recorded.steps.map(s => s.at), ["ZREP:10", "ZREP:15", "ZCL_X=>RUN:30", "ZCL_X=>RUN:31"], "only as deep as the depth control shows");
+  context.flow = { timeline: [] }; context.staticFlow = null;
+  assert.equal(vm.runInContext("debugContext()", context), null, "neither a record nor an analysis: nothing to give");
 });

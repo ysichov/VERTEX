@@ -6,6 +6,14 @@ const assert = require('node:assert/strict');
 const flowView = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'org.vertex.abap.ui', 'resources', 'vertex-flow.js'), 'utf8');
 const { analyze, statements } = require('../value-origin');
 const { tokenize } = require('../value-origin-tokens');
+const { pathRows, siteRows } = require('../value-origin-points');
+// The page draws the code flow of rows it is given; the host derives them from the sources, a test from the ids the flow names.
+const view = require('../value-origin-view');
+const html = (g, nonce, ...rest) => {
+  const ids = [...new Set((g.fullFlow || []).map(row => row.source))];
+  const sources = ids.map(id => ({ id, name: id, objectName: String(id).toUpperCase(), objectType: 'PROG' }));
+  return view.html({ ...g, codeFlow: g.codeFlow || { rows: pathRows(g, sources), sites: siteRows(g, sources) } }, nonce, ...rest);
+};
 function graph(text, variable, line) { return analyze([{ id: 'demo', text }], { source: 'demo', variable, line }); }
 test('execution flow enters resolved methods even when flow facts and event names are empty', () => {
   const sources = require('./fixtures/value-origin-demo.json').map(source => {
@@ -20,7 +28,6 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(flow.some(s => s.depth >= 2 && /ZCL_PRICE_ROAD/.test(s.scope || s.caller)));
   assert(flow.some(s => /rs_result = ls_context/i.test(s.text)));
   assert(!flow.some(s => /^ENDIF\./i.test(s.text)));
-  const { html } = require('../value-origin-view');
   const page = html(g, 'test');
   const data = JSON.parse(page.match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]);
   assert.equal(data.nodes.length, flow.length);
@@ -113,11 +120,9 @@ test('execution flow is limited by the enclosing editor breakpoints', () => {
   const bounded = analyze([source], { source: 'demo', line: 3, variable: 'c', flowBounds: { source: 'demo', from: 2, to: 3 } });
   assert.deepEqual(bounded.flowBounds, { source: 'demo', from: 2, to: 3 });
   assert(bounded.boundedFlow.every(point => point.source !== 'demo' || (point.line >= 2 && point.line <= 3)));
-  const { html } = require('../value-origin-view');
   assert.match(html(bounded, 'test'), /BSE FLOW.*breakpoints 2–3/);
 });
 test('formula mode renders substitutions as independently collapsible branches', () => {
-  const { html } = require('../value-origin-view');
   const page = html(graph('b = 2.\nc = 3.\na = b + c.\nWRITE a.', 'a', 4), 'test');
   assert(page.includes('class="formula-node"'));
   assert(page.includes('class="formula-children"'));
@@ -126,14 +131,12 @@ test('formula mode renders substitutions as independently collapsible branches',
   assert(page.includes('c = 3.'));
 });
 test('raw Value Origin HTML keeps data expressions hidden and inline links compact', () => {
-  const { html } = require('../value-origin-view');
   const page = html(graph("DATA(lv_scenario) = COND char12( WHEN p = abap_true THEN 'X' ELSE 'Y' ).\nDATA(ls_result) = NEW zcl_calc_facade( )->run( iv_scenario = lv_scenario ).", 'ls_result', 2), 'test');
   assert.match(page, /\.flow-data\{display:none\}/);
   assert.match(page, /button:not\(\.data-composed\)/);
   assert.match(page, /\.data-composed\{display:inline;width:auto/);
 });
 test('formula mode bypasses transparent transfers to the calculation that changes the selected value', () => {
-  const { html } = require('../value-origin-view');
   const page = html(graph('amount = 5.\nresult = amount.\nWRITE result.', 'result', 3), 'test');
   const start = page.indexOf('Formula derivation — click a branch'), end = page.indexOf('</template>', start);
   const formula = page.slice(start, end).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
@@ -405,7 +408,7 @@ test('assembled and CM ACE representations resolve to one method target', () => 
 });
 
 test('view exposes a collapsible static call stack and navigable dependency tree, with escaped code', () => {
-  const { html, navigationLine } = require('../value-origin-view');
+  const { navigationLine } = require('../value-origin-view');
   // CM include lines are local to each method.  The source opener maps them
   // into the assembled class document, and that mapped position must win.
   assert.equal(navigationLine({ line: 143 }, 1), 143);
@@ -478,4 +481,87 @@ test("a variable declared by a call gets the type the method returns, and a stru
   assert.deepEqual(result.components[2].components.map(c => c.name), ["a"], "a nested structure keeps its own components");
   assert.equal(object.type, "REF TO zcl_f");
   assert.equal(object.components, undefined, "a reference has no components to open");
+});
+
+test('the flow of Value origin is drawn by the builder the debugger uses, from rows of the analysis', () => {
+  const g = graph('b = 2.\nc = 3.\na = b + c.\nWRITE a.', 'a', 4);
+  const sources = [{ id: 'demo', name: 'demo', objectName: 'DEMO', objectType: 'PROG' }];
+  const codeFlow = { rows: pathRows(g, sources), sites: siteRows(g, sources) };
+  const data = JSON.parse(view.html({ ...g, codeFlow }, 'test').match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]);
+  const built = require('../../org.vertex.abap.ui/resources/vertex-flow-graph.js').build({ ...codeFlow, point: { url: '', line: 0 }, name: g.selectedProgram || 'PROGRAM' }, 'steps');
+  assert.deepEqual(data.bseFlow, JSON.parse(JSON.stringify(built.bseFlow)));
+  assert.throws(() => view.html(g, 'test'), /no code flow/);
+});
+
+test('the Formula of Value origin is the derivation the shared formula algorithm gives', () => {
+  const g = graph('b = 2.\nc = 3.\na = b + c.\nWRITE a.', 'a', 4);
+  const { formula } = require('../value-origin-formula');
+  const derived = formula(g);
+  assert(derived.tree, 'the value has a derivation');
+  const data = JSON.parse(html(g, 'test').match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]);
+  assert.deepEqual(data.formula, JSON.parse(JSON.stringify({ nodes: derived.nodes, edges: derived.edges })));
+  assert.equal(data.maxLevel, derived.maxLevel);
+});
+
+test('a definition met again in the formula is not drawn a second time', () => {
+  const g = graph('x = 1.\nb = x * 2.\nc = x * 3.\na = b + c.\nWRITE a.', 'a', 5);
+  const { tree } = require('../value-origin-formula').formula(g);
+  const texts = [];
+  const walk = node => { texts.push(node.text); node.children.forEach(walk); };
+  walk(tree);
+  assert.deepEqual(texts, ['A', 'a = b + c.', 'b = x * 2.', 'x = 1.', 'c = x * 3.']);
+});
+
+test('the definitions a loop over a pipeline makes stand in the pipeline order, each under the one after it', () => {
+  const { sequence } = require('../value-origin-formula');
+  const node = (id, location, children = []) => ({ id, location, text: id, of: 'AMOUNT', children });
+  const base = node('base', 'ZCL_PRICE->CALCULATE_BASE'), a = node('a', 'ZCL_MOD_A->APPLY'), b = node('b', 'ZCL_MOD_B->APPLY'), c = node('c', 'ZCL_MOD_C->APPLY');
+  const tree = { id: 'root', location: '', of: '', children: [a, base, c, b] };
+  const skipped = sequence(tree, [{ step_no: 20, modifier_class: 'ZCL_MOD_A' }, { step_no: 10, modifier_class: 'ZCL_MOD_B' }]);
+  assert.deepEqual(skipped, ['ZCL_MOD_C'], 'a modifier the pipeline lacks is not run, and is named');
+  assert.deepEqual(tree.children.map(child => child.id), ['a'], 'the last step stands under the value');
+  assert.deepEqual(a.children.map(child => child.id), ['b'], 'it reads what the step before left');
+  assert.deepEqual(b.children.map(child => child.id), ['base'], 'and the first reads what was made before the loop');
+});
+
+test('the one expression is written by substitution, without the type conversions, and a value read by the whole step is a step of its own', () => {
+  const { oneFormula } = require('../value-origin-formula');
+  const node = (raw, of, children = [], location = 'ZCL_A->RUN') => ({ id: raw, raw, text: raw, of, location, children });
+  const y = node('y = 3.', 'y');
+  const x = node('x = CONV decfloat34( y ) * 2.', 'A', [y]);
+  const one = oneFormula({ text: 'A', children: [x], of: '', location: '' });
+  assert.equal(one.text, 'A = 3 * 2', 'what is read once is written where it is read');
+  assert.deepEqual(one.steps, []);
+  // a conversion round more than one operand keeps its brackets
+  const sum = node('s = a * CONV decfloat34( b - c ).', 'A');
+  assert.equal(oneFormula({ text: 'A', children: [sum], of: '', location: '' }).text, 'A = a * ( b - c )');
+});
+
+test('the Formula leaves the type conversions out of what it writes', () => {
+  const g = graph('DATA b TYPE i.\nb = 2.\nDATA c TYPE p.\nc = CONV decfloat34( b ) * 3.\nWRITE c.', 'c', 5);
+  const derived = require('../value-origin-formula').formula(g);
+  assert(derived.nodes.some(node => /c = b \* 3/i.test(node.label)), derived.nodes.map(node => node.label).join(' / '));
+  assert(!derived.nodes.some(node => /CONV/i.test(node.label)));
+});
+
+test('a step that adds a share of the value before it is that value times one plus the share, so the formula is one line', () => {
+  const { oneFormula, sequence } = require('../value-origin-formula');
+  const node = (raw, of, location, children = []) => ({ id: raw, raw, text: raw, of, location, source: 's', line: 1, children });
+  const select = node('SELECT x FROM t INTO p.', 'p', 'ZCL_M->APPLY');
+  const delta = node('d = a * p.', 'D', 'ZCL_M->APPLY', [select]);
+  const step = node('a = a + d.', 'A', 'ZCL_M->APPLY', [delta]);
+  const base = node('a = 2.', 'A', 'ZCL_P->BASE');
+  const tree = { id: 'root', text: 'A', of: '', location: '', children: [step, base] };
+  sequence(tree, [{ step_no: 1, modifier_class: 'ZCL_M' }]);
+  const one = oneFormula(tree);
+  assert.equal(one.text, 'A = 2 * (1 + p)');
+  assert.deepEqual(one.steps, []);
+});
+
+test('a SELECT is shown by the field that concerns the value, its table and its conditions', () => {
+  const { selectOf } = require('../value-origin-formula');
+  const raw = "SELECT SINGLE shipment_id, distance_km, weight_kg FROM zlog_shipment\n  WHERE scenario_id = @iv_scenario INTO CORRESPONDING FIELDS OF @rs_context.";
+  assert.equal(selectOf(raw, 'cs_context-distance_km'), 'SELECT distance_km FROM zlog_shipment WHERE scenario_id = @iv_scenario.');
+  assert.equal(selectOf("SELECT SINGLE action_value FROM zlog_rule WHERE action = 'TAX' INTO @DATA(lv_percent).", 'lv_percent'), "SELECT action_value FROM zlog_rule WHERE action = 'TAX'.", 'one field fetched is the value');
+  assert.equal(selectOf('x = 1.', 'x'), null);
 });

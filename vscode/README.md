@@ -229,6 +229,24 @@ views of whichever Type is chosen; **Depth** decides how far the tree opens - al
 stack in FLOW, along the derivation in Formula - and one button beside it, which offers *Collapse all* and then *Expand all*, says whether the levels shown are open, whatever
 the depth. A pair of breakpoints in the editor bounds what is analysed.
 
+**Expression** is a third Type beside FLOW and Formula: the derivation written out as one formula,
+by substitution alone. Each definition stands where its value is read; a step that adds or takes
+off a share of the value before it (`a = a + a * p`) is written as that value times one plus (minus)
+the share, so the formula grows by a factor per step, not by a copy of everything before it. A value
+that every statement of a step reads stays a named step. Type conversions (`CONV decfloat34( ... )`)
+are left out of Formula and Expression alike. Under the formula, each value that comes from a table
+is a link to the statement that reads it, written by its own name (`WEIGHT_KG`; the class shows on
+the pointer, and only two values of one name carry the class), with the `SELECT` cut to the field
+that concerns it, the table and the conditions. When the order of the steps is data, as in a loop
+over a configured pipeline, **Load selected configuration** reads `ZLOG_PIPELINE` for the chosen
+scenario: the steps then stand in the order the pipeline runs them, and a step the pipeline lacks is
+named above the tree as not run. Without it the definitions stay side by side - their order is not
+in the code.
+
+The debugger's *Analyze flow path* draws Flow, Formula and Expression with the same code: only
+where the rows come from differs. The assistant is given what is on screen - the flow, the formula
+or the expression, within the depth set - labelled as analysis, not a run.
+
 What it does not claim: a concrete database-dependent iteration order, a runtime value, or which
 branch a dispatch takes. Those stay explicit boundaries, and the analysis log below the tree
 says what was read and where it stopped.

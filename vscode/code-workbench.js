@@ -252,7 +252,12 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const flow = placeRows(path, name => starts.get(name)), sites = placeRows(sitesFound, name => starts.get(name));
     // What was read, so an empty answer says why.
     const rows = graph.flow || [];
-    return { variable: target.variable, points, flow, sites, bounds: target.flowBounds ? { from: target.flowBounds.from, to: target.flowBounds.to } : null, read: { sources: loaded.sources.length, nodes: graph.nodes.length,
+    // The derivation of the value as formulas, by the algorithm Value origin draws its Formula view with.
+    const formula = require('./value-origin-formula').formula(graph);
+    const paneHtml = require('./value-origin-formula-html');
+    // The two panes that are HTML, drawn as Value origin draws them; a button opens by the marker the debugger's links use.
+    const panes = { formula: paneHtml.formulaPane(graph, formula, node => 'origin:' + node.source + '|' + (node.location || '')), expression: paneHtml.expressionPane(formula, node => 'origin:' + node.source + '|' + (node.location || '')) };
+    return { variable: target.variable, points, flow, sites, formula: { nodes: formula.nodes, edges: formula.edges, maxLevel: formula.maxLevel }, panes, bounds: target.flowBounds ? { from: target.flowBounds.from, to: target.flowBounds.to } : null, read: { sources: loaded.sources.length, nodes: graph.nodes.length,
       flow_rows: rows.length, places: points.length } };
   }
   const navigation = [];

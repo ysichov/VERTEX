@@ -60,7 +60,7 @@ Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
 then regenerate. The feature and bundle are at `0.7.3.qualifier`; the VS Code extension is at
-0.7.15, and the shared explorer pages in this plugin are the 0.7.3 copies until it is exported
+0.8.0, and the shared explorer pages in this plugin are the 0.7.3 copies until it is exported
 again.
 
 For a local installable archive without replacing the published `docs/` site:

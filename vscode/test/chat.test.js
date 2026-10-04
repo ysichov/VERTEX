@@ -163,3 +163,32 @@ test("multiple search results are returned as openable choices", async () => {
   ] }), open: async () => { throw new Error("must not open ambiguously"); }, choices: found => { choices = found; } });
   assert.deepEqual(choices.map(choice => choice.object_name), ["ZTEST_ONE", "ZTEST_TWO"]);
 });
+
+test("the chat is given Visual Debug's record and analysis, each said to be what it is, and nothing when the window has neither", () => {
+  assert.equal(chat.debugFlowSection(null), "");
+  assert.equal(chat.debugFlowSection({ recorded: null, analysis: null }), "", "a window with neither adds nothing to the question");
+  const section = chat.debugFlowSection({ view: "Visual Debug", recorded: { steps: [{ depth: 0, at: "ZREP:10" }] }, analysis: { statements: [{ at: "ZREP:10" }] } });
+  assert.match(section, /Visual Debug/);
+  assert.match(section, /`recorded` is what the program actually did/);
+  assert.match(section, /never present the second as the first/);
+  assert.ok(section.includes('"steps":[{"depth":0,"at":"ZREP:10"}]'), "the context itself follows");
+});
+
+test("the open Value origin window reaches the question as the screen shows it, labelled as analysis", () => {
+  assert.equal(chat.originFlowSection(null), "");
+  assert.equal(chat.originFlowSection({ kind: "flow", flow: [] }), "");
+  const flow = chat.originFlowSection({ value: "LS_X", kind: "flow", screen: { mode: "flow", view: "tree", depth: 2 }, flow: [{ depth: 1, text: "a = b.", in_slice: true }] });
+  assert.match(flow, /flow, tree, depth 2/);
+  assert.match(flow, /not a run/);
+  assert.match(flow, /"in_slice":true/);
+  const formula = chat.originFlowSection({ kind: "formula", screen: { mode: "formula", view: "tree", depth: "all" }, formula: [{ level: 1, text: "x = y * 2" }] });
+  assert.match(formula, /formula, tree, depth all/);
+  assert.match(formula, /x = y \* 2/);
+});
+
+test("the Expression screen reaches the question as the steps and where they come from", () => {
+  const section = chat.originFlowSection({ kind: "expression", screen: { mode: "expression", view: "tree", depth: "all" },
+    expression: { text: "A = A₁", steps: [{ name: "A₁", text: "x * 2" }], where: [{ name: "x", text: "SELECT x" }] } });
+  assert.match(section, /expression, tree/);
+  assert.match(section, /"steps":\[\{"name"/);
+});

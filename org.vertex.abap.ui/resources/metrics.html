@@ -250,6 +250,7 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
 #metricsdialog code { font-family: Consolas, monospace; }
 #metricsdialog .note { color: var(--muted); margin: 8px 0 0; }
 #metricsdialog .row { display: flex; justify-content: flex-end; margin-top: 10px; }
+#metricshelp[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -266,7 +267,6 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
   </select>
   <span class="tools" id="tools" hidden>
     <span class="seg depth" id="blockmode"><button data-all="" title="One block per program or class - ACE: All Blocks off">Classes</button><button data-all="X" class="on" title="Every event, form and method as its own block - ACE: All Blocks">Methods</button></span>
-    <button id="callstart" hidden title="The calls start here - click to draw the whole program again"></button>
     <label class="depth" id="depthbox" title="How far the calls are followed">Depth
       <input id="depth" type="number" min="1" max="99" step="1" value="3"></label>
     <span class="seg" id="dir"><button data-dir="TB" class="on" title="Lay the diagram out down the page">&#8595; Top-down</button><button data-dir="LR" title="Lay the diagram out across the page">&#8594; Left-right</button></span>
@@ -737,6 +737,9 @@ function renderUmlParts() {
   fold.addEventListener("click", function () { foldList(!listFolded); });
   title.appendChild(fold); root.appendChild(title);
   var object = document.createElement("div"); object.className = "uml-parts-object"; object.textContent = loadedObject || objectName(); root.appendChild(object);
+  // In Calls the object is the whole program: a click on it draws the calls from the start again.
+  object.addEventListener("click", function () { if (mode === "calls" && callStart) { chosenKey = ""; setCallStart(null); } });
+  object.title = "In Calls: click to draw the whole program again";
   var table = document.createElement("table"), head = document.createElement("thead"), header = document.createElement("tr");
   ["", "Type", "Name"].forEach(function (text) { var th = document.createElement("th"); th.textContent = text; header.appendChild(th); });
   head.appendChild(header); table.appendChild(head);
@@ -1024,6 +1027,8 @@ function setMode(next) {
   // The totals are the whole object's numbers: they belong to the table, not
   // to a diagram of one method or of the calls.
   document.getElementById("totals").classList.toggle("hidden", next !== "metrics");
+  // The help explains the metrics; a diagram has nothing of it to explain.
+  document.getElementById("metricshelp").hidden = next !== "metrics";
   document.getElementById("diagram").hidden = !flowMode();
   document.getElementById("tools").hidden = !flowMode();
   shownUnit = null;
@@ -1404,15 +1409,8 @@ var allBlocks = true;
 // double-click in ACE's tree does. Null is the whole program.
 var callStart = null;
 
-function showCallStart() {
-  var button = document.getElementById("callstart");
-  button.hidden = !callStart;
-  button.textContent = callStart ? "From: " + callStart.name + " \u2715" : "";
-}
-
 function setCallStart(start) {
   callStart = start;
-  showCallStart();
   lastMermaid = null;
   refit = true;
   requestDiagram();
@@ -1495,7 +1493,8 @@ function draw(preserveViewport) {
     maxEdges: 100000
   });
   diagramSeq = diagramSeq + 1;
-  mermaid.render("vertexflow" + diagramSeq, text).then(function (out) {
+  var drawId = "vertexflow" + diagramSeq;
+  mermaid.render(drawId, text).then(function (out) {
     pane.innerHTML = out.svg;
     if (priorViewport) {
       pane.scrollTop = priorViewport.top;
@@ -1532,8 +1531,18 @@ function draw(preserveViewport) {
     installUmlLens(pane, !isClass);
     status(lastCaption);
   }, function (e) {
+    dropMermaidLeftovers(drawId);
     failed("mermaid could not draw this diagram." + String.fromCharCode(10)
            + (e && e.message ? e.message : String(e)));
+  });
+}
+
+/* A drawing mermaid could not make leaves its error picture ("Syntax error in text") in the page, under the id it was
+   given or that with a "d" in front; nothing else removes it, and each failed redraw would add another. */
+function dropMermaidLeftovers(id) {
+  [id, "d" + id].forEach(function (name) {
+    var left = document.getElementById(name);
+    if (left && left.parentNode) { left.parentNode.removeChild(left); }
   });
 }
 
@@ -1560,12 +1569,14 @@ function renderHybridLogic(pane, opened) {
   var logic = turned(removeEmbeddedLogicTitle(opened.diagram.mermaid, opened.node), direction);
   if (darkPage()) { logic = darkened(logic); }
   diagramSeq = diagramSeq + 1;
-  mermaid.render("vertexhybrid" + diagramSeq, logic).then(function (out) {
+  var hybridId = "vertexhybrid" + diagramSeq;
+  mermaid.render(hybridId, logic).then(function (out) {
     host.innerHTML = out.svg;
     tintDecisions(host.querySelector("svg"));
     applyZoom();
     placeHybridLogic(pane, card, host.querySelector("svg"), opened.node);
   }, function (error) {
+    dropMermaidLeftovers(hybridId);
     host.textContent = "Could not draw Logic: " + (error && error.message ? error.message : String(error));
   });
 }
@@ -2019,7 +2030,6 @@ document.getElementById("depth").addEventListener("change", function () {
 
 document.getElementById("diagram").addEventListener("click", onDiagramClick);
 
-document.getElementById("callstart").addEventListener("click", function () { setCallStart(null); });
 Array.prototype.forEach.call(document.querySelectorAll("#blockmode button"), function (button) {
   button.addEventListener("click", function () {
     var want = button.getAttribute("data-all") === "X";

@@ -1,5 +1,8 @@
 "use strict";
 const { analyze, variableAt, literalAt } = require('./value-origin');
+const { pathRows, siteRows } = require('./value-origin-points');
+const { formula, scopeStacks } = require('./value-origin-formula');
+const { symbolic, formulaPane, expressionPane } = require('./value-origin-formula-html');
 const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 // ACE method includes start at line 1, whereas the editable class document
 // contains every method.  openSource translates the include position to that
@@ -20,6 +23,14 @@ function flowScript() {
     try { return flowScriptText = fs.readFileSync(file, 'utf8'); } catch (error) { /* the next one */ }
   }
   throw new Error('vertex-flow.js was not found in ' + places.join(' or ') + '.');
+}
+// The flow's graph builder is shared with the debugger's flow path; a required module, from the packaged copy or the repository's.
+function flowGraphBuilder() {
+  const path = require('path');
+  for (const file of [path.join(__dirname, 'resources', 'vertex-flow-graph.js'), path.join(__dirname, '..', 'org.vertex.abap.ui', 'resources', 'vertex-flow-graph.js')]) {
+    try { return require(file); } catch (error) { if (error.code !== 'MODULE_NOT_FOUND') { throw error; } }
+  }
+  throw new Error('vertex-flow-graph.js was not found.');
 }
 // The magnifier every diagram has, loaded before the flow that uses it - the same way, by address or inline.
 let lensScriptText = null;
@@ -108,29 +119,8 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   // is how many calls away from the entry program it stands, and every node of
   // every Type is stamped with the depth of the procedure it belongs to, so
   // one control on the page can bound them all.
-  const scopeKey = label => String(label || '').replace(/->/g, '→').toUpperCase();
-  const callsFrom = new Map();
-  for (const call of graph.calls || []) {
-    const from = scopeKey(call.caller);
-    if (!callsFrom.has(from)) callsFrom.set(from, new Set());
-    for (const target of call.targets || []) callsFrom.get(from).add(scopeKey(target.label));
-  }
-  const scopeDepth = new Map();
-  {
-    const entry = String(graph.selectedProgram || '').toUpperCase();
-    const queue = [...callsFrom.keys()].filter(key => key === entry || key.startsWith(entry + '→'));
-    queue.forEach(key => scopeDepth.set(key, 0));
-    while (queue.length) {
-      const from = queue.shift(), depth = scopeDepth.get(from) || 0;
-      for (const to of callsFrom.get(from) || []) {
-        if (scopeDepth.has(to) && scopeDepth.get(to) <= depth + 1) continue;
-        scopeDepth.set(to, depth + 1);
-        queue.push(to);
-      }
-    }
-  }
-  const stackOfScope = label => scopeDepth.get(scopeKey(label)) ?? 0;
-  const maxStack = Math.max(0, ...scopeDepth.values(), ...(graph.executionFlow || []).map(step => step.depth || 0));
+  const { stackOfScope, maxStack: scopeMax } = scopeStacks(graph);
+  const maxStack = Math.max(scopeMax, ...(graph.executionFlow || []).map(step => step.depth || 0));
   const flowItems = (graph.executionFlow || []).map((step, index) => ({ step, index, bse: step.type === 'operation' && bseOperatorKeys.has(step.source + ':' + step.line), children: [] })), flowRoots = [], executionStack = [];
   for (const item of flowItems) {
     executionStack.length = Math.min(executionStack.length, item.step.depth + 1);
@@ -139,135 +129,10 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
     executionStack[item.step.depth] = item;
   }
   const sourceButton = item => `<button class="location code-location" title="Open source; Ctrl+Click opens beside" data-node="" data-source="${escape(item.step.source)}" data-line="${item.step.line}">&lt;/&gt;</button>`;
-  const bseById = new Map((graph.nodes || []).map(node => [node.id, node])), dataDefinitions = new Map();
-  const canonical = value => String(value || '').toUpperCase().replace(/\s+/g, '');
-  for (const edge of graph.edges || []) {
-    const value = bseById.get(edge.to), definition = bseById.get(edge.from);
-    if (value?.kind !== 'value' || !definition || !['calculation', 'parameter', 'call'].includes(definition.kind)) continue;
-    if (!dataDefinitions.has(canonical(value.text))) dataDefinitions.set(canonical(value.text), { definition, valueId: value.id });
-  }
-  const stripData = value => String(value || '').replace(/\bDATA\s*\(\s*([^()]+?)\s*\)/ig, '$1');
-  const dataNames = step => {
-    const text = stripData(step.text || step.caller), assigned = text.match(/\b([A-Za-z_]\w*(?:-[A-Za-z_]\w*)?)\s*=/i);
-    const calculated = new Set((step.calculated || []).map(canonical));
-    if (assigned) calculated.add(canonical(assigned[1]));
-    const composed = new Set((step.composed || []).map(canonical));
-    const right = assigned ? text.slice(text.indexOf('=') + 1) : text;
-    for (const name of right.match(/\b[a-z][a-z0-9_]*(?:-[a-z][a-z0-9_]*)?\b/ig) || []) {
-      if (!['new', 'value', 'conv', 'cond', 'when', 'then', 'else', 'true', 'false', 'abap_true', 'abap_false'].includes(name.toLowerCase())) composed.add(canonical(name));
-    }
-    return { calculated, composed };
-  };
-  const dataText = step => stripData(step.text || step.caller);
-  const syntaxCode = value => {
-    const text = String(value || ''), token = /'(?:''|[^'])*'|\b(?:DATA|NEW|VALUE|CONV|WHEN|THEN|ELSE|IF|ENDIF|SELECT|FROM|INTO|CORRESPONDING|FIELDS|OF|TABLE|ORDER|BY|CHANGING|EXPORTING|IMPORTING|RETURNING)\b|\b\d+(?:\.\d+)?\b/ig;
-    let output = '', offset = 0, match;
-    while ((match = token.exec(text))) {
-      output += escape(text.slice(offset, match.index));
-      const value = match[0], kind = value.startsWith("'") ? 'string' : /^\d/.test(value) ? 'number' : 'keyword';
-      output += `<span class="syntax-${kind}">${escape(value)}</span>`; offset = match.index + value.length;
-    }
-    return output + escape(text.slice(offset));
-  };
-  const symbolicExpression = (step, removeData = false) => {
-    const text = removeData ? dataText(step) : String(step.text || step.caller), names = dataNames(step), token = /\b[a-z][a-z0-9_]*(?:-[a-z][a-z0-9_]*)?\b/ig;
-    let output = '', offset = 0, match;
-    while ((match = token.exec(text))) {
-      output += syntaxCode(text.slice(offset, match.index));
-      const name = match[0], key = canonical(name), definition = dataDefinitions.get(key)?.definition;
-      if (names.calculated.has(key)) output += `<span class="data-calculated">${escape(name)}</span>`;
-      else if (names.composed.has(key)) output += definition ? `<button class="data-composed" title="Open the definition of ${escape(name)}" data-node="${escape(definition.id)}" data-source="${escape(definition.source)}" data-line="${definition.line}">${escape(name)}</button>` : `<span class="data-composed">${escape(name)}</span>`;
-      else output += syntaxCode(name);
-      offset = match.index + name.length;
-    }
-    return output + syntaxCode(text.slice(offset));
-  };
-  const dataFormula = step => symbolicExpression(step, true);
-  const codeFormula = step => symbolicExpression(step, true);
-  const formulaGraph = { nodes: [], edges: [] };
-  // A formula node is read as an expression, not as the statement it came from.
-  // An assignment already reads as one; a SELECT is reduced to what it takes
-  // and where from, because its projection is not part of the derivation.
-  const formulaLabel = value => {
-    const flat = String(value || '').replace(/\s+/g, ' ').trim();
-    if (!/^SELECT\b/i.test(flat)) return flat;
-    const table = /\bFROM\s+([\w~\/]+)/i.exec(flat)?.[1] || '?';
-    const into = /\bINTO\s+(?:CORRESPONDING\s+FIELDS\s+OF\s+)?(?:TABLE\s+)?([\w@\-]+)/i.exec(flat)?.[1] || '';
-    const fields = flat.replace(/^SELECT\s+(?:SINGLE\s+)?/i, '').split(/\bFROM\b/i)[0]
-      .split(',').map(field => field.trim().split(/\s+AS\s+/i).at(-1)).filter(Boolean);
-    const shown = fields.length > 3 ? fields.slice(0, 3).join(', ') + ', … (' + fields.length + ')' : fields.join(', ');
-    return (into ? into + ' = ' : '') + 'SELECT ' + shown + ' FROM ' + table + '.';
-  };
-  const isInvocationResult = node => node?.kind === 'calculation' && /=\s*(?:NEW\s+)?[A-Za-z_]\w*(?:\s*\([^)]*\))?\s*(?:->|=>)/i.test(node.text || '');
-  const isDataTransfer = node => /^\s*(?:DATA\s*\(\s*)?[A-Za-z_]\w*(?:-[A-Za-z_]\w*)?\s*\)?\s*=\s*[A-Za-z_]\w*(?:-[A-Za-z_]\w*)?\s*\.\s*$/i.test(node?.text || '');
-  const isTechnicalValue = node => node?.kind === 'value' && /^(?:LO_|LT_|LS_STEP|RT_|RO_)/i.test(node.text || '');
-  // The breakpoint pair bounds every Type, Formula included. As everywhere
-  // else, it bounds the entry program alone: a called method keeps its whole
-  // frame, because its lines are not in the editor's coordinate system.
-  const withinBounds = node => !graph.flowBounds || !node || node.source !== graph.selectedSource
-    || (node.line >= graph.flowBounds.from && node.line <= graph.flowBounds.to);
-  const formulaInputs = nodeId => (graph.edges || []).filter(edge => edge.to === nodeId).map(edge => bseById.get(edge.from)).filter(node => node?.kind === 'value' && !isTechnicalValue(node) && withinBounds(node));
-  const formulaDefinitions = (valueId, visited = new Set(), component = '') => {
-    if (!valueId || visited.has(valueId)) return [];
-    const value = bseById.get(valueId);
-    component = value?.kind === 'value' && value.text.includes('-')
-      ? canonical(value.text).split('-').slice(1).join('-') : component;
-    const next = new Set(visited).add(valueId);
-    return (graph.edges || []).filter(edge => edge.to === valueId).flatMap(edge => {
-      const node = bseById.get(edge.from);
-      if (!node || !withinBounds(node)) return [];
-      if (node.kind === 'select' && component && /INTO\s+CORRESPONDING\s+FIELDS/i.test(node.text)) {
-        const projection = node.text.split(/\bFROM\b/i)[0].replace(/^SELECT\s+(?:SINGLE\s+)?/i, '');
-        const fields = projection.split(',').map(field => canonical(field.trim().split(/\s+AS\s+/i).at(-1)).split('~').at(-1));
-        if (!fields.includes('*') && !fields.includes(component)) return [];
-      }
-      if (['calculation', 'select'].includes(node.kind) && !isInvocationResult(node)) return isDataTransfer(node) ? formulaInputs(node.id).flatMap(input => formulaDefinitions(input.id, next, component)) : [node];
-      if (node.kind === 'calculation' && isInvocationResult(node)) return formulaDefinitions(node.id, next, component);
-      if (['call', 'parameter'].includes(node.kind)) return formulaInputs(node.id).flatMap(input => formulaDefinitions(input.id, next, component));
-      if (node.kind === 'loop') return formulaInputs(node.id).flatMap(input => formulaDefinitions(input.id, next, component));
-      return [];
-    });
-  };
-  // The guard is the path walked to here, not every value ever seen: a variable
-  // read by two branches has to expand under both, or the second branch ends
-  // without its inputs.
-  let maxLevel = 0;
-  const formulaSteps = (valueId, depth = 0, parentId = null, edgeLabel = '', walked = new Set()) => {
-    if (!valueId || walked.has(valueId) || depth > 40) return '';
-    const path = new Set(walked).add(valueId);
-    const definitions = formulaDefinitions(valueId);
-    if (definitions.length) maxLevel = Math.max(maxLevel, depth + 1);
-    return definitions.map(definition => {
-      const known = formulaGraph.nodes.find(node => node.id === definition.id);
-      if (known) { if ((known.level ?? 0) > depth + 1) known.level = depth + 1; }
-      else {
-        const formulaVariables = new Set([...formulaInputs(definition.id).map(node => canonical(node.text)), ...(graph.edges || []).filter(edge => edge.from === definition.id).map(edge => bseById.get(edge.to)).filter(node => node?.kind === 'value').map(node => canonical(node.text))]);
-        formulaGraph.nodes.push({ ...definition, location: definition.location || definition.source, dataText: definition.text, label: formulaLabel(definition.text), stack: stackOfScope(definition.location), level: depth + 1, variables: [...formulaVariables] });
-      }
-      if (parentId && !formulaGraph.edges.some(edge => edge.from === parentId && edge.to === definition.id)) {
-        formulaGraph.edges.push({ from: parentId, to: definition.id, label: edgeLabel });
-      }
-      const step = { text: formulaLabel(definition.text), calculated: [], composed: [] };
-      const inputs = formulaInputs(definition.id);
-      const children = inputs.map(input => formulaSteps(input.id, depth + 1, definition.id, input.text, path)).join(''), caption = `<span class="formula-expression">${dataFormula(step)}</span><button class="location code-location" title="Open this formula in source; Ctrl+Click opens beside" data-node="${escape(definition.id)}" data-source="${escape(definition.source)}" data-line="${definition.line}">&lt;/&gt;</button>`;
-      return children ? `<details class="formula-node" data-formula-node="${escape(definition.id)}" data-level="${depth + 1}"><summary>${caption}</summary><div class="formula-children">${children}</div></details>` : `<div class="formula-leaf" data-formula-node="${escape(definition.id)}" data-level="${depth + 1}">${caption}</div>`;
-    }).join('');
-  };
-  // A derivation has one top: the value that was asked about. Its definitions
-  // are its branches, however many of them there are - several tops would read
-  // as several unrelated formulas.
-  const formulaRoot = () => {
-    const value = bseById.get(graph.root), id = 'formularoot';
-    const source = value?.source || graph.selectedSource, line = value?.line || graph.selectedLine || 0;
-    const branches = formulaSteps(graph.root, 0, id, graph.selectedVariable || '');
-    if (!branches) return '';
-    formulaGraph.nodes.unshift({ id, location: value?.location || graph.selectedProgram || graph.selectedSource,
-      text: graph.selectedVariable || '?', label: graph.selectedVariable || '?', dataText: graph.selectedVariable || '?',
-      source, line, stack: 0, level: 0, variables: [] });
-    const caption = `<span class="formula-expression">${escape(graph.selectedVariable || '?')}</span><button class="location code-location" title="Open the selected value in source; Ctrl+Click opens beside" data-node="${escape(id)}" data-source="${escape(source)}" data-line="${line}">&lt;/&gt;</button>`;
-    return `<details class="formula-node" data-formula-node="${escape(id)}" data-level="0" open><summary>${caption}</summary><div class="formula-children">${branches}</div></details>`;
-  };
-  const formulaView = formulaRoot() || '<p class="edge">No symbolic formula was resolved for this value.</p>';
+  const { bseById, canonical, stripData, dataNames, dataText, syntaxCode, symbolicExpression, dataFormula, codeFormula } = symbolic(graph);
+  // The derivation is the shared algorithm's (value-origin-formula.js); this draws its tree.
+  const derivation = formula(graph), formulaGraph = { nodes: derivation.nodes, edges: derivation.edges }, maxLevel = derivation.maxLevel;
+  const formulaView = formulaPane(graph, derivation);
   // The slider has to reach the deepest row the tree actually drew, which is
   // further than the shallowest position a node is known at.
   const flowCode = step => {
@@ -359,72 +224,20 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
     if (caller) mermaidEdges.push({ from: caller.id, to: node.id, label: node.line ? String(node.line) : '' });
     callerStack[node.depth] = node;
   });
-  const flowNodes = [{ id: 'bseroot', location: graph.selectedProgram || 'PROGRAM', text: graph.selectedProgram || 'PROGRAM', depth: 0, stack: 0, type: 'program' }], flowEdges = [], flowClasses = new Map(), flowMethods = new Map();
-  for (const [scope, items] of byScope) {
-    const [klass, method = 'GLOBAL'] = scope.split('→'), classId = 'bsec' + flowClasses.size;
-    if (!flowClasses.has(klass)) { flowClasses.set(klass, classId); flowNodes.push({ id: classId, location: klass, text: klass, source: items[0].point.source, line: items[0].point.line, depth: 1, stack: stackOfScope(scope), type: 'class' }); }
-    const methodKey = klass + '→' + method, methodId = 'bsem' + flowMethods.size;
-    if (!flowMethods.has(methodKey)) { flowMethods.set(methodKey, methodId); flowNodes.push({ id: methodId, location: scope, text: method, source: items[0].point.source, line: items[0].point.line, depth: 2, stack: stackOfScope(scope), type: 'method' }); }
-    // ABAP blocks are hierarchy, not unrelated sequential rows.  A control
-    // statement becomes the collapsible parent of its body in both FLOW Tree
-    // and Mermaid; ENDIF/ENDLOOP only close that level and are not fake nodes.
-    const blocks = [];
-    for (const { point, index } of items) {
-      const first = String(point.text || point.changed || '').trim().match(/^([A-Z-]+)/i)?.[1]?.toUpperCase() || '';
-      if (/^END(?:IF|CASE|LOOP|DO|WHILE|SELECT)$/.test(first)) { while (blocks.at(-1)?.branch) blocks.pop(); blocks.pop(); continue; }
-      // WHEN / ELSE / ELSEIF are branches of the open IF or CASE, exactly as in
-      // Logic: the branch closes the previous one and owns the statements that
-      // follow it, instead of standing beside them under the CASE.
-      const branch = ['WHEN', 'ELSE', 'ELSEIF'].includes(first);
-      if (branch) while (blocks.at(-1)?.branch) blocks.pop();
-      const id = 'bseflow' + index, parent = blocks.at(-1)?.id || flowMethods.get(methodKey);
-      flowNodes.push({ id, location: scope, text: point.text || point.changed, source: point.source, line: point.line, bse: !!point.included, branch, depth: 2 + blocks.length, stack: stackOfScope(scope), type: 'operation' });
-      flowEdges.push({ from: parent, to: id, label: String(point.line) });
-      if (branch || ['IF', 'CASE', 'LOOP', 'DO', 'WHILE', 'SELECT'].includes(first)) blocks.push({ id, branch });
-    }
-  }
-  const className = label => String(label || '').split('->')[0].toUpperCase();
-  const rootClass = String(graph.selectedProgram || '').toUpperCase();
-  const uniqueFlowEdge = (from, to, label = '') => { if (from && to && from !== to && !flowEdges.some(edge => edge.from === from && edge.to === to)) flowEdges.push({ from, to, label: String(label || '') }); };
-  const methodIdOf = label => flowMethods.get(String(label || '').replace('->', '→').toUpperCase());
-  // The root program is already the root node.  Its first procedure must be
-  // reachable before any outbound call, otherwise the entry statement (for
-  // example line 15) is visually skipped.
-  const rootMethod = [...flowMethods.entries()].find(([key]) => key.startsWith(rootClass + '→'))?.[1];
-  uniqueFlowEdge('bseroot', rootMethod);
-  // What crosses a call is the one thing an edge between two procedures does
-  // not say. The bindings ACE resolved at the call site become a node on that
-  // edge, so the value is visible where it changes its name.
-  let passedIndex = 0;
-  for (const call of graph.calls || []) {
-    const callerClass = className(call.caller), callerMethod = methodIdOf(call.caller);
-    const callerOperation = flowNodes.find(node => node.type === 'operation' && node.source === call.source && node.line === call.line && String(node.location || '').startsWith(callerClass + '→'))?.id;
-    const passed = (graph.nodes || []).filter(node => node.kind === 'parameter' && node.source === call.source && node.line === call.line).map(node => node.text);
-    let gate = callerOperation;
-    if (passed.length) {
-      const id = 'bsearg' + (passedIndex++);
-      flowNodes.push({ id, location: call.caller, text: [...new Set(passed)].join(', '), source: call.source, line: call.line,
-        depth: 3, stack: stackOfScope(call.caller), branch: false, type: 'parameter' });
-      uniqueFlowEdge(callerOperation || rootMethod || 'bseroot', id, call.line);
-      gate = id;
-    }
-    for (const target of call.targets || []) {
-      const targetClass = className(target.label), child = flowClasses.get(targetClass), targetMethod = methodIdOf(target.label);
-      if (!child) continue;
-      if (callerClass === rootClass) { uniqueFlowEdge(gate || rootMethod || 'bseroot', child, call.line); uniqueFlowEdge(child, targetMethod, call.line); }
-      else if (callerMethod) {
-        if (targetClass === callerClass) uniqueFlowEdge(gate || callerMethod, targetMethod, call.line);
-        else { uniqueFlowEdge(gate || callerMethod, child, call.line); uniqueFlowEdge(child, targetMethod, call.line); }
-      }
-    }
-  }
+  // The flow is drawn by the one builder the debugger's flow path uses; only where its rows come from differs - here the
+  // analysis of the chosen value, there the analysis from a breakpoint.
+  if (!graph.codeFlow) throw new Error('Value origin: the analysis carries no code flow (graph.codeFlow) to draw.');
+  const codeFlow = flowGraphBuilder().build({ rows: graph.codeFlow.rows, sites: graph.codeFlow.sites,
+    point: { url: '', line: 0 }, name: graph.selectedProgram || 'PROGRAM' }, 'steps');
   const originTitle = (graph.selectedVariable || '?') + ' Origin — Backward Symbolic Execution';
   // Everything the drawing needs, in one place: the shared flow script is a
   // file, not a template, so what the page used to interpolate into it - the
   // title, the BSE caption and tree, the two depth maxima - travels here.
-  const mermaidGraph = { nodes: mermaidNodes, edges: mermaidEdges, formula: formulaGraph, bseFlow: { nodes: flowNodes, edges: flowEdges },
-    originTitle, maxStack, maxLevel,
+  const mermaidGraph = { nodes: mermaidNodes, edges: mermaidEdges, formula: formulaGraph, bseFlow: codeFlow.bseFlow,
+    originTitle, maxStack: Math.max(maxStack, codeFlow.maxStack), maxLevel,
     bseFlowHtml: `<p class="edge">BSE FLOW${graph.flowBounds ? ` — breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''}</p>${bseFlowTree || '<p>No BSE flow points in the selected range.</p>'}` };
+  graph.drawn = mermaidGraph;
+  graph.derived = derivation;
   return `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}' ${cspSource}"><style>
   body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background)}
   button:not(.data-composed){width:100%;text-align:left;background:var(--vscode-editorWidget-background);color:var(--vscode-foreground);border:1px solid var(--vscode-focusBorder);padding:8px;cursor:pointer;white-space:normal;overflow:auto;max-height:85px}.flow-data{display:none}.data-composed{display:inline;width:auto;max-width:none;margin:0;padding:0;border:0;background:transparent;color:var(--vscode-textLink-foreground);font:inherit;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
@@ -432,14 +245,45 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   .children{border-left:1px solid var(--vscode-panel-border);margin-left:8px;padding-left:16px}.node,.leaf{margin:8px 0;padding:6px;background:var(--vscode-editorWidget-background)}summary{cursor:pointer;overflow-wrap:anywhere}code{white-space:pre-wrap;font-family:var(--vscode-editor-font-family);background:transparent!important}.syntax-keyword{color:var(--vscode-symbolIcon-keywordForeground)}.syntax-string{color:var(--vscode-debugTokenExpression-stringForeground)}.syntax-number{color:var(--vscode-debugTokenExpression-numberForeground)}.flow-call{color:var(--vscode-textLink-foreground);text-decoration:underline;text-decoration-style:dotted;cursor:help}.unknown,.boundary,.warning{border-left:3px solid var(--vscode-editorWarning-foreground);padding-left:10px}.call-frame{margin:6px 0;padding:6px 8px;border-left:2px solid var(--vscode-textLink-foreground);background:var(--vscode-editorWidget-background)}.call-stack{margin:6px 0 0 10px;padding-left:12px;border-left:1px solid var(--vscode-panel-border);list-style:none}.analysis-log{max-height:560px;overflow:auto;user-select:text;padding:12px;background:var(--vscode-textCodeBlock-background);border:1px solid var(--vscode-panel-border)}.help{position:absolute;right:8px;top:8px;z-index:50}.help summary{list-style:none;border:1px solid var(--vscode-focusBorder);padding:2px 8px;font-weight:bold}.help>div{display:none}.help[open]{position:fixed;inset:0;z-index:200;background:var(--vscode-editor-background);padding:20px;overflow:auto}.help[open] summary{float:right}.help[open]>div{display:block;clear:both;max-width:900px;margin:48px auto;padding:20px;background:var(--vscode-editorWidget-background);border:1px solid var(--vscode-panel-border)}.debug-toggle{display:none}.debug-button{float:right;margin:8px;border:1px solid var(--vscode-focusBorder);padding:2px 8px}.debug-only{display:none}.debug-toggle:checked~.debug-only{display:block}.scenario{margin:8px 0;border:1px solid var(--vscode-panel-border)}.scenario label{margin:0 8px}
   </style>${styleSource ? `<link rel="stylesheet" href="${styleSource}">` : ''}</head><body><details class="help"><summary aria-label="Value origin help">?</summary><div><strong>Value origin</strong> traces static source dependencies backwards across calls. It proves source relationships, not runtime values: loop order, database contents and unknown dispatches remain boundaries. Expand a branch to inspect its inputs; click <code>&lt;/&gt;</code> to open source, Ctrl+Click to open beside. <strong>All branches</strong> shows every static alternative. Choosing a selection-screen radio button simulates that exclusive choice and hides other radio branches. Mermaid shows the same expanded branches: click a diagram node to expand or collapse it, double-click it to open source. Use the mouse wheel to zoom and drag empty space to pan. ${(graph.skipped || []).length ? `<p>Analysis boundaries kept outside the graph: ${escape(graph.skipped.join(', '))}</p>` : ''}</div></details><input id="debug-toggle" class="debug-toggle" type="checkbox"><label class="debug-button" for="debug-toggle" title="Show technical analysis sections">🐞</label><h2>Value origin — ACE backward analysis</h2>
   ${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
-  ${scenarioControls ? `<details class="scenario-panel"><summary>Simulate selection screen</summary>${scenarioControls}</details>` : ''}<div id="bse-workspace" class="bse-workspace"><template data-flow-pane="tree"><p class="edge">Execution flow${graph.flowBounds ? ` between breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''} — changes and parameter transfers to ${escape(graph.selectedVariable || '?')}</p>${aceExecution || '<p>ACE execution flow was not produced.</p>'}</template><template data-flow-pane="formula"><p class="edge">Formula derivation — click a branch to expand its input formulas</p>${formulaView}</template></div>
+  ${scenarioControls ? `<details class="scenario-panel"><summary>Simulate selection screen</summary>${scenarioControls}</details>` : ''}<div id="bse-workspace" class="bse-workspace"><template data-flow-pane="tree"><p class="edge">Execution flow${graph.flowBounds ? ` between breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''} — changes and parameter transfers to ${escape(graph.selectedVariable || '?')}</p>${aceExecution || '<p>ACE execution flow was not produced.</p>'}</template><template data-flow-pane="formula">${formulaView}</template><template data-flow-pane="expression">${expressionPane(derivation)}</template></div>
   <script id="mermaid-data" type="application/json">${JSON.stringify(mermaidGraph).replaceAll('<', '\\u003c')}</script>${lensSource ? `<script nonce="${nonce}" src="${lensSource}"></script>` : `<script nonce="${nonce}">${lensScript()}</script>`}${flowSource ? `<script nonce="${nonce}" src="${flowSource}"></script>` : `<script nonce="${nonce}">${flowScript()}</script>`}<script nonce="${nonce}">if(!window.vertexFlow){const box=document.getElementById('bse-workspace');if(box)box.innerHTML='<p class="warning">The flow view did not load${flowSource ? ` from ${flowSource}` : ''}: the page has its data but nothing to draw it with.</p>';}</script>
   <script nonce="${nonce}">(()=>{const state=${JSON.stringify(graph.restore || {}).replaceAll('<', '\\u003c')};if(!state.choice)return;const panel=document.querySelector('.scenario-panel');if(panel)panel.open=true;const selected=document.querySelector('.scenario input[value="'+state.choice+'"]');if(selected){selected.checked=true;selected.dispatchEvent(new Event('change',{bubbles:true}));}if(state.mode){document.querySelector('.bse-view-toggle [data-mode="'+state.mode+'"]').click();}if(state.view){document.querySelector('.bse-view-toggle [data-view="'+state.view+'"]').click();}})();</script>
   <details class="debug-only"><summary>BSE dependency tree (technical)</summary>${dependencyTree}</details><details class="debug-only"><summary>ACE source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact objects whose ACE index was loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No ACE sources were loaded.')}</pre></details>
   <details class="debug-only"><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>
   <details class="debug-only"><summary>ACE Flow traversal log (${(graph.flowLog || []).length})</summary><p class="edge">Only points reached while resolving the selected value are listed, with the edge that included each one.</p><button id="copy-flow" class="location">Copy log</button><div class="analysis-log">${fullLog || escape(analysisLog)}</div></details>
-  ${mermaidSource ? `<script nonce="${nonce}" src="${mermaidSource}"></script>` : ''}<script nonce="${nonce}">const api=acquireVsCodeApi(),flowLog=${JSON.stringify(flowLogText).replaceAll('<', '\\u003c')};window.bseMermaidOpen=id=>api.postMessage({node:id});document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,source:b.dataset.source,line:Number(b.dataset.line)||0,openBeside:e.ctrlKey||e.metaKey});});document.getElementById('copy-flow').addEventListener('click',async()=>{await navigator.clipboard.writeText(flowLog);document.getElementById('copy-flow').textContent='Copied';});const setScenario=active=>{document.querySelectorAll('[data-scenario]').forEach(node=>{node.hidden=!!active&&node.dataset.scenario!==active;if(node.hidden&&node.tagName==='DETAILS')node.open=false;});document.dispatchEvent(new Event('bse:scenario'));};document.querySelectorAll('.scenario input').forEach(input=>input.addEventListener('change',e=>setScenario(e.target.value)));if(typeof mermaid==='undefined'){const host=document.getElementById('mermaid-graph');if(host)host.textContent='Mermaid library is unavailable.';}else{mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false}});document.dispatchEvent(new Event('bse:mermaid-ready'));}</script></body></html>`;
+  ${mermaidSource ? `<script nonce="${nonce}" src="${mermaidSource}"></script>` : ''}<script nonce="${nonce}">const api=acquireVsCodeApi(),flowLog=${JSON.stringify(flowLogText).replaceAll('<', '\\u003c')};window.bseMermaidOpen=id=>api.postMessage({node:id});const reportScreen=()=>setTimeout(()=>{const mode=document.querySelector('[data-mode-choice].active'),view=document.querySelector('[data-view-choice].active'),depth=window.vertexFlow&&window.vertexFlow.depth();api.postMessage({kind:'screen',mode:mode?mode.dataset.modeChoice:null,view:view?view.dataset.viewChoice:null,depth:depth===undefined?null:depth});});['click','input','bse:mermaid-rendered','bse:scenario'].forEach(type=>document.addEventListener(type,reportScreen));window.addEventListener('load',reportScreen);document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,source:b.dataset.source,line:Number(b.dataset.line)||0,openBeside:e.ctrlKey||e.metaKey});});document.getElementById('copy-flow').addEventListener('click',async()=>{await navigator.clipboard.writeText(flowLog);document.getElementById('copy-flow').textContent='Copied';});const setScenario=active=>{document.querySelectorAll('[data-scenario]').forEach(node=>{node.hidden=!!active&&node.dataset.scenario!==active;if(node.hidden&&node.tagName==='DETAILS')node.open=false;});document.dispatchEvent(new Event('bse:scenario'));};document.querySelectorAll('.scenario input').forEach(input=>input.addEventListener('change',e=>setScenario(e.target.value)));if(typeof mermaid==='undefined'){const host=document.getElementById('mermaid-graph');if(host)host.textContent='Mermaid library is unavailable.';}else{mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false}});document.dispatchEvent(new Event('bse:mermaid-ready'));}</script></body></html>`;
 }
+/* What the assistant is told of the open Value origin window: the value, and the flow as the window draws it - the
+   statements in execution order, each at the depth of the calls it stands in, marked where the value's slice reaches it.
+   It is the analysis (what can happen), never a record of a run. Null while no window is open. */
+const MAX_ORIGIN_STEPS = 150;
+let openOrigin = null;
+// What the reader has on screen decides what the assistant is told: the mode (the flow, the formula derivation or the
+// derivation of the value), within the depth the window is set to. `screen` says which, so the answer can name it.
+function originContext() {
+  if (!openOrigin) { return null; }
+  const { graph, screen } = openOrigin;
+  if (!graph.drawn) { throw new Error('Value origin: the window has not been drawn, so there is no screen to describe.'); }
+  if (!screen) { return null; }
+  const depth = Number.isInteger(screen.depth) ? screen.depth : Infinity;
+  if (screen.mode !== 'flow' && screen.mode !== 'formula' && screen.mode !== 'expression') { return null; }
+  const shownScreen = { mode: screen.mode, view: screen.view, depth: Number.isInteger(screen.depth) ? screen.depth : 'all' };
+  if (screen.mode === 'expression') {
+    return graph.derived.expression ? { value: graph.selectedVariable || null, program: graph.selectedProgram || null, screen: shownScreen, kind: 'expression', expression: graph.derived.expression } : null;
+  }
+  const kind = screen.mode;
+  let items;
+  if (kind === 'flow') {
+    items = graph.drawn.bseFlow.nodes.filter(node => node.type === 'operation' && node.stack <= depth)
+      .map(node => ({ depth: node.stack, in: node.location, text: node.text, in_slice: !!node.bse }));
+  } else {
+    items = graph.drawn.formula.nodes.filter(node => node.level <= depth).map(node => ({ level: node.level, text: node.dataText || node.text }));
+  }
+  return { value: graph.selectedVariable || null, program: graph.selectedProgram || null,
+    screen: { mode: screen.mode, view: screen.view, depth: Number.isInteger(screen.depth) ? screen.depth : 'all' },
+    kind, items: items.length, shown: Math.min(items.length, MAX_ORIGIN_STEPS), [kind]: items.slice(0, MAX_ORIGIN_STEPS) };
+}
+
 function register(vscode, context, getSources) {
   // Reopening the same origin must not repeat a complete remote ACE closure.
   // Keep it deliberately short-lived: an edit, another cursor target or a
@@ -477,8 +321,13 @@ function register(vscode, context, getSources) {
         graph.nodes.forEach(n => { n.sourceName = sources.find(s => s.id === n.source)?.name || n.source; });
         recentAnalysis = { key: cacheKey, expiresAt: Date.now() + 30000, loaded, graph };
       }
+      graph.codeFlow = { rows: pathRows(graph, loaded.sources), sites: siteRows(graph, loaded.sources) };
       const sources = loaded.sources, originViewColumn = editor.viewColumn || vscode.ViewColumn.One;
       const panel = vscode.window.createWebviewPanel('vertex.valueOrigin', 'Value origin', vscode.ViewColumn.Beside, { enableScripts: true });
+      const mine = { graph, screen: null };
+      openOrigin = mine;
+      panel.onDidChangeViewState(() => { if (panel.active) { openOrigin = mine; } });
+      panel.onDidDispose(() => { if (openOrigin === mine) { openOrigin = null; } });
       const mermaid = panel.webview.asWebviewUri && context.extensionUri ? panel.webview.asWebviewUri(
         vscode.Uri.joinPath(context.extensionUri, 'resources', 'mermaid.min.js')).toString() : '';
       const styles = panel.webview.asWebviewUri && context.extensionUri ? panel.webview.asWebviewUri(
@@ -491,6 +340,7 @@ function register(vscode, context, getSources) {
         vscode.Uri.joinPath(context.extensionUri, 'resources', 'vertex-lens.js')).toString() : '';
       panel.webview.html = html(graph, require('crypto').randomBytes(18).toString('hex'), mermaid, panel.webview.cspSource || '', styles, flowScript, lensUri);
       panel.webview.onDidReceiveMessage(async message => {
+        if (message?.kind === 'screen') { mine.screen = { mode: message.mode, view: message.view, depth: message.depth }; return; }
         const scenarioNode = /^scenario:([A-Z0-9_]+)$/i.exec(message?.node || '');
         if (scenarioNode) {
           try {
@@ -524,9 +374,11 @@ function register(vscode, context, getSources) {
         }
         const flowIndex = /^flow(\d+)$/.exec(message?.node || ''), bseFlowIndex = /^bseflow(\d+)$/.exec(message?.node || '');
         const n = flowIndex ? graph.executionFlow[Number(flowIndex[1])] : bseFlowIndex ? graph.boundedFlow[Number(bseFlowIndex[1])] : graph.nodes.find(n => message && n.id === message.node);
-        const source = sources.find(s => s.id === (message.source || n?.source)); if (!source) return;
+        // A node of the code flow names its source as the debugger's flow does: "origin:<source>|<OWNER->ROUTINE>".
+        const marked = /^origin:([^|]*)\|(.*)$/.exec(message?.source || '');
+        const source = sources.find(s => s.id === (marked ? marked[1] : (message.source || n?.source))); if (!source) return;
         const requestedLine = message.line || n?.line || 1;
-        const opened = await loaded.openSource(source, { ...(n || {}), line: requestedLine });
+        const opened = await loaded.openSource(source, { ...(n || {}), ...(marked && marked[2] ? { location: marked[2] } : {}), line: requestedLine });
         const document = opened.document, line = navigationLine(opened, requestedLine);
         const at = new vscode.Position(Math.min(document.lineCount - 1, line - 1), 0);
         await vscode.window.showTextDocument(document, { viewColumn: message.openBeside ? vscode.ViewColumn.Beside : originViewColumn,
@@ -535,4 +387,4 @@ function register(vscode, context, getSources) {
     } catch (e) { vscode.window.showErrorMessage('VERTEX: ' + e.message); }
   }));
 }
-module.exports = { register, html, navigationLine };
+module.exports = { register, html, navigationLine, originContext };

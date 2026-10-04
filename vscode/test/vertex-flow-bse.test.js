@@ -39,3 +39,14 @@ test("the Tree / Diagram switch is two icons, each named by its title", () => {
     assert.ok(!/>(Tree|Diagram)$/.test(button), choice + " has no words on it");
   }
 });
+
+test("opening or closing a node keeps the zoom and the place; the other redrawings are still fitted", () => {
+  const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
+  const toggle = script.slice(script.indexOf("window.bseMermaidToggle="), script.indexOf("const mermaidNode="));
+  assert.equal((toggle.match(/keepView=true/g) || []).length, 3, "set where a node is opened or closed - flow, formula, tree");
+  assert.ok(/flowExpanded\.add\(id\);keepView=true;rebuild\(\)/.test(toggle), "in the flow, right before the redrawing that follows");
+  assert.ok(!/setTimeout\(\(\)=>\{[^}]*keepView=true;if\(document\.body/.test(toggle), "never before it is known that a redrawing follows: the next one would lose its fit");
+  const rendered = script.slice(script.indexOf("document.addEventListener('bse:mermaid-rendered',()=>{if(keepView)"), script.indexOf("document.addEventListener('keydown',e=>{if(e.key==='Escape'"));
+  assert.ok(rendered.includes("keepView=false;requestAnimationFrame(applyZoom)") && rendered.includes("else requestAnimationFrame(fit)"), "kept for that drawing only, fitted otherwise");
+  assert.ok(script.includes("document.getElementById('mermaid-fit').click()"), "a view or direction change still fits");
+});

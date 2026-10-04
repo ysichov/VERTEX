@@ -28,15 +28,17 @@ function pathAt(ts, i) {
   return { name, end };
 }
 function onlyPath(ts) { if (ts[0]?.value === '@') ts = ts.slice(1); const p = pathAt(ts, 0); return p && p.end === ts.length ? p.name : null; }
-function refs(ts) {
-  const result = new Set();
+// The variables an expression reads, each with the tokens it stands in: [{ name, from, to }], `to` past the last token.
+function variablePaths(ts) {
+  const result = [];
   for (let i = 0; i < ts.length; i++) {
     const p = pathAt(ts, i); if (!p) continue;
-    if (variable(ts[i]) && !['TYPE', 'LIKE', 'AS', 'NEW', 'CONV', 'CAST'].includes(val(ts, i - 1)) && !['(', '=>', '~'].includes(ts[p.end]?.value)) result.add(p.name);
+    if (variable(ts[i]) && !['TYPE', 'LIKE', 'AS', 'NEW', 'CONV', 'CAST'].includes(val(ts, i - 1)) && !['(', '=>', '~'].includes(ts[p.end]?.value)) result.push({ name: p.name, from: i, to: p.end });
     i = p.end - 1;
   }
-  return [...result];
+  return result;
 }
+function refs(ts) { return [...new Set(variablePaths(ts).map(path => path.name))]; }
 function contains(base, target) { return target === base || target.startsWith(base + '-'); }
 function assignment(ts) {
   let depth = 0, equal = -1;
@@ -877,4 +879,4 @@ async function collectSources(initial, load, options = {}) {
   }
   return { sources, warnings, skipped };
 }
-module.exports = { analyze, buildIndex, collectSources, variableAt, literalAt, customerObject, typeComponents };
+module.exports = { analyze, buildIndex, collectSources, variableAt, literalAt, customerObject, typeComponents, assignment, variablePaths };

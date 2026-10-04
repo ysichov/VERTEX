@@ -382,7 +382,7 @@ async function fetch(context, requestPath, body) {
 // The shared controls stylesheet is an asset like the diagram library: a page
 // given to a webview as a string has no address to load one from, so it asks
 // for what it needs by name. Both files live beside the pages.
-const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css", flow: "vertex-flow.js", lens: "vertex-lens.js" };
+const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css", flow: "vertex-flow.js", lens: "vertex-lens.js", flowGraph: "vertex-flow-graph.js" };
 function asset(name) {
   if (!ASSETS[name]) {
     return "ERROR:This host ships no asset called " + name + ".";
@@ -782,6 +782,8 @@ function activate(context) {
   const debugTools = mcp.debugSet(dbg);
   const chatTools = withDebugger(sapCode, debugTools);
   let latestToolsContext = null;
+  // What the Visual Debug panel shows - the record, and the flow of the analysis - for the chat to be given with a question.
+  let latestDebugContext = null;
   const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
   const chatSet = {
       tools: chatTools.schemas.map(tool => ({
@@ -810,7 +812,7 @@ function activate(context) {
       originPoints: args => sapCode.originPoints(args),
       setContext: value => { latestToolsContext = value; },
       debugger: dbg,
-      chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets) }, initial);
+      chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets, () => latestDebugContext, () => require("./value-origin-view").originContext()) }, initial);
   // The normal source tab remains the sole code editor.  The debugger is a
   // docked panel, not another editor tab showing a second copy of that source.
   let dockedDebugView = null, dockedDebugSource = null;
@@ -866,6 +868,10 @@ function activate(context) {
             try { reply = { id: request.id, answer: request.open ? await sapCode.originOpen(request.open) : request.variables ? await sapCode.originVariables(request.variables) : await sapCode.originPoints(request) }; }
             catch (error) { reply = { id: request.id, error: error.message }; }
             await view.webview.postMessage({ type: "origin", payload: JSON.stringify(reply) });
+            return;
+          }
+          if (message.call === "debugContext") {
+            try { latestDebugContext = JSON.parse(String((message.args || [])[0] || "null")); } catch (error) { latestDebugContext = null; }
             return;
           }
           if (message.call === "reveal") {
@@ -939,7 +945,7 @@ function activate(context) {
     vscode.commands.registerCommand("vertex.debugContinue", () => stepFromSource("continue"))
   );
   require("./sidebar").register(vscode, context, active,
-    require("./chat").create(vscode, chatTools, tools, context.secrets), systems,
+    require("./chat").create(vscode, chatTools, tools, context.secrets, () => latestDebugContext, () => require("./value-origin-view").originContext()), systems,
     () => withShownDiff(context, latestToolsContext));
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation

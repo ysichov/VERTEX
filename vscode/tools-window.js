@@ -25,6 +25,7 @@ function debugHtml(initial) {
     window.sdeAsset=name=>host.postMessage({call:"asset",args:[name]});
     window.sdeReveal=frame=>host.postMessage({call:"reveal",args:[JSON.stringify(frame||{})]});
     window.sdeOrigin=request=>host.postMessage({call:"origin",args:[JSON.stringify(request||{})]});
+    window.sdeDebugContext=payload=>host.postMessage({call:"debugContext",args:[String(payload||"null")]});
     window.addEventListener("message",event=>{
       if(event.data.type==="result"){pending=event.data.payload;sdeReady();}
       if(event.data.type==="debug")sdeDebugEvent(event.data.payload);
@@ -137,7 +138,9 @@ function open(vscode, context, deps, initial) {
   const changes = vscode.workspace.onDidChangeConfiguration(event => {
     if (chatWho && event.affectsConfiguration("vertex.ai")) { void postModels(); }
   });
-  panel.onDidDispose(() => { changes.dispose(); });
+  // What the assistant is told about the open Tools window ends with the window: a closed class is not in the context.
+  let reported = false;
+  panel.onDidDispose(() => { changes.dispose(); if (reported) { deps.setContext(null); } });
   panel.webview.onDidReceiveMessage(message => pin(async () => {
     const args = message.args || [];
     try {
@@ -165,6 +168,7 @@ function open(vscode, context, deps, initial) {
         let state=args[0];
         if(typeof state==="string"){try{state=JSON.parse(state);}catch(e){state=null;}}
         if(!state||typeof state!=="object")state={};
+        reported=true;
         deps.setContext({system,workspace:state.workspace||initial||null,vertex_view:state.vertex_view||null,
           selected_fragment:state.selected_fragment||null});
         return;
