@@ -273,3 +273,36 @@ test("where-used counts a place inside a class method from where SAP says the me
     ["/sap/bc/adt/oo/classes/zcl_a/source/main", 104, 4, 104],
     ["/sap/bc/adt/programs/programs/zp/source/main", 12, 2, 12]]);
 });
+
+test("a source over the line limit is refused before it is sent to SAP, and only one analysis runs at a time", async () => {
+  const sent = [];
+  let release;
+  const client = { async codeCompletionElement(...args) { sent.push(args); await new Promise(resolve => { release = resolve; }); return { name: "X" }; } };
+  const repo = createRepository({ client, systemId: "S" });
+  await assert.rejects(() => repo.elementInfo("/sap/bc/adt/programs/programs/zbig/source/main", "a\n".repeat(20001), 1, 0), / of 20002 lines/);
+  assert.equal(sent.length, 0);
+  const first = repo.elementInfo("/sap/bc/adt/programs/programs/zok/source/main", "a\nb", 1, 0);
+  await assert.rejects(() => repo.elementInfo("/sap/bc/adt/programs/programs/zok/source/main", "a\nb", 2, 0), /still analysing/);
+  release();
+  assert.deepEqual(await first, { name: "X" });
+  assert.equal(sent.length, 1);
+});
+
+test("a click on a name waits for the analysis already running, a hover does not", async () => {
+  const order = [];
+  let release;
+  const client = {
+    async codeCompletionElement() { order.push("hover start"); await new Promise(resolve => { release = resolve; }); order.push("hover end"); return { name: "X" }; },
+    async findDefinition() { order.push("definition"); return { url: "/u", line: 1, column: 0 }; }
+  };
+  const repo = createRepository({ client, systemId: "S" }), url = "/sap/bc/adt/programs/programs/zok/source/main";
+  const hover = repo.elementInfo(url, "a\nb", 1, 0);
+  await assert.rejects(() => repo.elementInfo(url, "a\nb", 2, 0), /still analysing/, "a second hover is refused");
+  const click = repo.definition(url, "a\nb", 1, 0, 1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(order, ["hover start"], "the click is not made while the hover runs, and is not refused");
+  release();
+  await hover;
+  assert.deepEqual(await click, { url: "/u", line: 1, column: 0 });
+  assert.deepEqual(order, ["hover start", "hover end", "definition"], "it is made once the hover is done");
+});

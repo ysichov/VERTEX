@@ -1,6 +1,200 @@
 # Release history
 
-## 2026-10-03 — VS Code 0.7.11: one flow view, one record, one place for each control
+## 2026-10-04 — VS Code 0.7.15: the flow and the variables before the run, one magnifier
+
+- **One magnifier for every diagram.** The lens was written three times (Tools, the flow of Value origin, the
+  debugger's diagram) and the debugger's copy went out while the pointer moved: it hid itself whenever the
+  diagram was shown above about 80%, a rule the Tools copy had already dropped for flickering. It is now one
+  file, `vertex-lens.js`, that all of them load - the best of the copies: over any point of a flowchart, over a
+  node of a class diagram, no size rule, Shift and the wheel for its strength - and the switch is the same
+  magnifier icon everywhere, in Tools too (it was the words *Lens off* / *Lens on*). (Tools in the Eclipse
+  plugin takes it when that is next built.)
+- **Collapse all / Expand all are one switch beside the depth, not its ends.** They were the two ends of the depth
+  slider, so pressing one moved the depth and the switch could not stay where it was put. They are now one
+  button after the slider that offers the other each time - *collapse* (while everything shown is open), then
+  *expand* - and says whether the levels that are shown are open; the depth says how many levels there are. A
+  depth of 3 with the levels open shows three levels open, collapsed the top only, and moving the slider keeps
+  the switch. In every view that draws a flow (the debugger's diagram, Value origin). The Eclipse plugin takes
+  it when it is next built.
+- **The depth counts classes by their calls too.** In the Classes reading of a flow every class stood at depth 1, so
+  the depth control stopped at 1 or 2 while the calls were four deep. A class now stands at the depth of the call
+  that first reached it, as a routine and a statement do.
+- **Tree / Diagram are icons.** The switch between the tree and the diagram of a flow is a list icon and a
+  diagram icon, each named by its tooltip, like the other controls of the flow view.
+- **No value, no BSE, no Formula.** With no value chosen the diagram reads Full and FLOW, and the Full/BSE and
+  FLOW/Formula toggles are not offered (Formula is how the value was computed); they appear with a value, and
+  clearing the value puts the diagram back on Full and FLOW.
+- **Variables before the run, for the place the reader is in.** They are read when the panel opens, and again as
+  the reader moves: the place is the cursor's line in the VERTEX source in front (the host tells the panel), else
+  a breakpoint's, else the program under debug. In a method or a FORM the Params and Locals are shown and the
+  Globals are not - they are read when the Globals switch is turned on; outside every routine (a program's
+  events, a class's own text) the globals are what there is. Names and types, no values: those come with the
+  stop. A right-click follows a value, so the slice can be asked for before anything runs. A variable declared
+  by a call has the type the method returns, and a variable of a structure type opens to its components (the
+  TYPES BEGIN OF block that declares it, read from the tokens): `ls_result` opens to `shipment_id`, `amount` ...,
+  and a component is followed by its path, so `LS_RESULT-AMOUNT` can be chosen before anything runs. A structure
+  declared in an interface or class the analysis did not load is read from it; one that cannot be read is marked
+  `?` on the variable and named in the notice. A type declared in the dictionary, not in the sources, has no
+  components to show. An object above 20,000 lines is not read on its own: Analyze flow path does it.
+  The analysis now finds a call inside the arguments of another (`io_log->add( iv_step = me->name( ) )` is two),
+  a method named like a statement after an arrow (`lo_log->add( )` is no ADD), a receiver typed by the routine's
+  own signature (`io_log TYPE REF TO zcl_calc_log`), and the parameters of a FORM.
+- **SYST, Initials, Stack and Log only when there is a run.** They are about a stopped program's values and
+  stack and about what a run did; before the run Variables shows names and types, and these switches are not
+  there. Stack, SYST and Initials go while the program is not stopped; Log stays once a run has left rows in it.
+- **A section the reader closed stays closed.** Following the cursor or a click on a method brought the Variables
+  section back each time an answer came. A section is opened for the first answer of a state (the program
+  stopped, or not) and left alone after the reader has closed it, until the state changes.
+- **A click on a method no longer fails while a hover is being analysed.** Hover, Ctrl+Click and F1 post the whole
+  source to SAP, and one such request runs at a time (a 147,000-line program hovered word by word froze the
+  machine). A click made while the hover on the same word was still running was answered "SAP is still analysing
+  the previous request". A click now waits for the one running and is then made; a second hover is still
+  refused, it is the cheap repeated kind.
+- **The analysis waits its turn.** The variables are read as the cursor moves, and the session of SAP takes one
+  request at a time: a second was refused as busy ("SAP session is busy. Use separate sessions for parallel
+  operations."), shown to the reader though nothing was wrong. The analysis's requests (the points, the variables,
+  a link's source) now go one after another through a gate; of the variables only the newest request waits; a
+  session busy with something else is waited for for a few seconds before it is reported.
+- **The panes follow the program.** Before it stops there is no stack and there are no variables, so
+  those sections stay closed and the breakpoints show as soon as there are any; when the program stops the
+  stack and the variables open. A pane the reader closed stays closed until the next change.
+- **Analyze flow path on a breakpoint.** The Breakpoints panel groups the points by object, and each one has
+  *Analyze flow path*: the same analysis as Value origin, from that point to the next checked point the flow
+  meets - in the same object or below it on the stack, in a routine the flow calls (a point at
+  `ZCL_CALC_FACADE:34` ends a path that starts at the program's line 10). The start may be in a program, an
+  include or a class: in a class the method is found from the analysis's declarations and ADT's start for it.
+  The flow - ACE's statement stream in execution order - is drawn in the diagram the run's record is drawn in
+  (Classes, Methods, Statements; Full or BSE): the program, its classes and routines, the statements under them
+  with each IF, CASE and LOOP the parent of its body, a called routine's statements under the statement that
+  calls it. The end statement is the last one drawn; what it calls is not. With a value chosen the statements
+  its slice reaches are marked. A value is not needed: the slice only marks. The drawing keeps the order of
+  execution and the stack. A call whose receiver the analysis cannot type is not nested (a call inside the
+  arguments of another is), and a routine no call of the flow reaches is not drawn (the notice names it). A call
+  to a routine the flow lists no statement of is still drawn, as a block with nothing under it, and the notice
+  names it. A node opens as Value origin opens its own (the sources of the analysis, so a class's statement lands
+  where Ctrl+Click would), not by the debugger's lines; a class or a routine opens its METHOD, not its first
+  statement. A class that was only instantiated with `NEW` and has no constructor has no statement in the flow,
+  so it has no node. A recorded run replaces the drawing.
+- **Predict is on by default.** On the test program, following the value with Predict: 146 steps in 97.7 s
+  before these changes, 111 steps in 67.4 s after (19 of them predicted, 18 stepped over).
+- **Predict passes what the slice does not touch.** With a value followed and its analysis loaded, a
+  straight-line run of statements outside the slice - a log call included - is passed in one go: a
+  temporary point on the first statement that is in the slice (or branches, or ends the routine) and F8.
+  A single call whose classes hold no place of the slice is stepped over with F6. A call that does hold
+  one is always looked into, and a breakpoint on the way cancels the shortcut. The stats line counts the
+  runs as "runs past statements outside the slice".
+- **Predict passes an IF or CASE block with no place of the slice in it.** The block is run past with F8
+  to what follows its end, as a loop is; a breakpoint inside it, or a place of the slice, keeps it stepped
+  through. While a value is followed and its analysis is loaded, a call that is not itself a place of the slice
+  is stepped over (F6) and the record keeps the line it stood on; a call that is a place of the slice is
+  entered, so the calculations inside it stay in the record and in BSE. The stack is not read after an F6
+  (the depth is the one it was); a breakpoint SAP reports on the way still makes it read.
+## 2026-10-03 — VS Code 0.7.14: the source is the editor
+
+- **View source is gone; the source is the editor.** Opening a 147,000-line program (zabapgit) in
+  the Tools window's View source froze the machine for minutes: the page drew a DOM row for every
+  line - roughly 670,000 nodes - and the browser's layout and paint took about five. The standard
+  editor is fast because it draws only the lines on screen, and VERTEX is not in the business of
+  competing with it. The function was removed from the model of both hosts rather than patched:
+  an object opens in its VERTEX tab, and its structure is VS Code's Outline (Ctrl+Shift+O, the
+  breadcrumbs). An object in Tools now starts on UML (class) or Metrics (program). The Parts
+  list stays for the Logic and Calls diagrams, which follow one part; Metrics and UML draw the whole
+  object and no longer show it. The Eclipse plugin was changed the same
+  way (the page, its bundle entry and `sdeSource`) and was not built.
+- **Visual Debug is no longer a Tools function.** The docked panel beside the editor replaced it
+  and works; the copy in the Tools window had its own source pane and was already broken by the
+  change above. The docked panel no longer builds its hidden source pane either.
+- **SAP is asked about a name only for a source that fits.** Hover, Ctrl+Click and F1 post the
+  whole source to ADT for every name, and SAP analyses all of it each time. Above 20,000 lines
+  the request is refused with a message instead of sent, one such request runs at a time, and one
+  that outlives 20 s is given up (SAP may still finish it; ADT cannot abort a request).
+- **A value is followed from a menu, not by a click.** In Visual Debug's Variables a click on a
+  variable's name used to switch the analysis to it, which happened by accident on every
+  structure. It is now a right-click: **Follow … in the analysis** / **Stop following …**, with
+  **Copy name** and **Copy value** beside it.
+- **Predict no longer loses a loop it knows nothing about.** A loop was passed in one go (F8 to the statement after
+  it) although its body held the calls that lead to the value - no modifier was recorded. A debugger does not skip a
+  loop: it is stepped through, unless a value is followed, its analysis is there, and it has no place between the
+  loop and its end - then what the run would record in the loop cannot lead to the value, and it is passed. The
+  analysis starts when the value is followed, before Continue; a run that is faster than it simply steps through the
+  loop, and the picture is whole once the analysis arrives - the run never waits for it.- **A chain is one step: the next statement is on another line.** `WRITE: / a, b, c.` is several statements of the
+  statement map on one line, and the prediction took the second half of the line as the next statement - "expected
+  line 42 after line 42; SAP says 43". F5 runs the whole line, so the next is the first statement of another line.
+- **The `</>` of a node in Visual Debug's diagram opens its source.** The diagram's link calls `bseMermaidOpen`, which
+  only the Value origin panel defined, so in the debugger a click did nothing. The window now defines it: the node's
+  place is opened in the editor beside the panel, like the link in the tree.
+- **The analysis of a chosen value runs beside the debugger.** It was asked through the queue every step and every
+  variable read goes through, so a run waited seconds for it. It has a channel of its own, answered by the number of
+  the request, and Run in SAP is light green.
+- **BSE stays green.** The flow views took the green away in the BSE scope (everything left is in the slice, so
+  nothing needed marking), which hid the one thing that tells a reader the scope has changed. Everything the BSE scope
+  shows - the statements, the routines, the branches that lead to them - is green, and what it hides was the blue.
+- **The path to a result is part of the slice.** A call into `modifier_for`, its `CASE` and the `WHEN` the run went
+  through to a statement of the slice stayed blue, so in BSE they would have been drawn only as anything that leads
+  somewhere, and the picture broke between the green call and the green statement. What leads to a statement of the
+  slice - the call, the routine, the `CASE`, the `WHEN`, the `IF`, the `LOOP` - is now coloured as part of it, before
+  anything the slice does not reach is hidden; logging, which leads nowhere, stays out.
+- **The analysis starts from where the value is last used, not from where the run stands.** The slice asks what led
+  to a value up to a statement; asked from line 10 or from the call on line 15 - where the run was - the value had no
+  history yet, and the answer was two nodes ("read 96 sources, 2 nodes in the slice"). It only came out right when
+  the run happened to stand on the last line. The host now starts from the last place of the source that names the
+  value (a name in a literal or a comment is no use), as the cursor would stand on it in the editor; the run's own line
+  is a fallback for a name the source does not contain.
+- **A slice that agrees with nothing is no longer silent.** The chosen value's chip now says how many places the
+  analysis found and how many stops of the record stood on them (`LS_RESULT-AMOUNT · 29 places · 14 of 175 stops on
+  them`), and when the two never meet the red line names samples of both sides. A slice that came back empty was also
+  kept for as long as the value was chosen - only a failed request was forgotten - so one bad answer outlived every
+  later run. The analysis of a value is read once, as the value is chosen, and kept for the runs after it: a run asks
+  again only when the answer it holds is empty (a first one may have come at a bad moment), never for one the user
+  already waited for.
+- **The analysis starts from the object's own frame.** Following a value while the run stood inside a called method
+  passed that method's line to the analysis of the program ("read 96 sources, 2 nodes in the slice"). It now uses the
+  program's own frame on the stack - the statement after the call it is on, when the run is inside one - and says
+  so when the program is not on the stack at all.
+- **A class pulled again no longer leaves the debugger on its old method lines.** The method starts of a class were
+  read once and kept for as long as the extension ran, so after a class was changed in SAP (its methods moved) the
+  slice's lines were converted with the old starts and matched nothing: no statement was green. A record and an
+  analysis now read the class structure afresh.
+- **The slice and the record now count a class's lines the same way.** ACE counts the lines of a method inside its
+  own include (`METHOD` is line 1), the debugger in the class's main source. So the slice's `rs_result = ls_context.`
+  (line 14 for ACE, 28 for the debugger) was marked on line 14 of the debugger - `ENDMETHOD` of `modifier_for` - while
+  the statements that really change `cs_context-amount` were not marked at all. The points are moved to the debugger's
+  lines from ADT's class structure (and the same lines place Points' breakpoints). Full marks the slice green and BSE
+  shows only it; the statements are named as the analysis names them, which the statement map cannot do for two
+  statements on one line.
+- **The record's diagram draws the branch the run went through.** The debugger stops on statements, never on a
+  `WHEN` or an `ELSE`, so the branch a statement ran in was missing and the statement hung straight under the `CASE`.
+  The blocks a statement stands in are now made from the statement map - `CASE`, the `WHEN` it went through, the
+  statement - and a branch no statement ran in is not drawn.
+- **A line of several statements shows the one that does something.** Legacy code often writes `METHOD create.
+  ro_strategy = NEW zcl_price_road( ). ENDMETHOD.` on one line, and the debugger names only the line. When the record
+  cannot say which statement the run is on, the diagram showed the whole line as one node; it now shows the first
+  statement that is not a `METHOD`/`FORM` header or an `END…` closing, and the statement the run did name is shown as before.
+- **Following a value asks for its slice at once.** The slice was fetched only when BSE or Points was first pressed, so
+  Full - which marks the slice - showed nothing green after Follow. It is fetched when the value is chosen.
+- **A statement that only closes a block is not a step of Visual Debug's diagram.** `ENDMETHOD`, `ENDSELECT`, `ENDIF`
+  and the like were drawn as steps - the debugger does stop on them - though no diagram of a value or of calls
+  ever drew one. They are left out, by the keyword the statement map names for the line.
+- **The source links of Visual Debug's diagram move the editor.** The `</>` button of a node showed the line in the
+  panel's own source pane, which the docked panel does not have, so it did nothing. Docked, it now moves the editor to
+  the statement, as a replayed stop does.
+- **A literal or a comment has no history, and the analysis says so.** **Analyze Variable Value Origin** on a word
+  inside `'Returned result:'` used to analyse `RETURNED` as if it were a variable and draw an empty "unresolved"
+  result. With the cursor in a text literal or a comment it now refuses with that sentence.
+- **Visual Debug's Points and BSE use the slice the Value origin view draws.** Following
+  `LS_RESULT-AMOUNT` answered "no place that changes it" while the editor's analysis drew the whole chain through
+  `RUN`, `calculate_base` and the modifiers: the debugger took its places from a separate list of ACE flow rows that
+  the slice had to "reach", the editor from the slice's own statements. Both now read the statements of the slice.
+  The analysis was also started one statement too early: Visual Debug passed column 0 of the stopped line, which
+  for an indented `WRITE` lies before the statement and anchors on the one above it, so the slice had two nodes
+  ("read 96 sources, 2 nodes in the slice"). It now starts at the variable's place in the line, as the cursor does.
+  An empty answer still says what was read (sources, nodes, flow rows).
+- **Visual Debug shows the average speed of a run:** `36 steps (0 predicted) · depth 4 · 25.6 s ·
+  1.4 steps/s on average`.
+- **Copy in the step log works in the docked panel.** The button had a handler only in the Tools window,
+  which no longer has Visual Debug; the panel answered it with "no command copy".
+
+## 2026-10-03 — VS Code 0.7.12: one flow view, one record, one place for each control
 
 - **BSE in the record is the analysis’s slice, and each place watches its own names.** Marking
   only the stops where the chosen value changed found almost nothing, and for a good reason: a

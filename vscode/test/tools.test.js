@@ -1,36 +1,6 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict"),vm=require("node:vm"),path=require("node:path");
 const model=require("../object-tools"),workspace=require("../tools-window");
-test("source reads the selected object, preserves selection for chat and reports SAP errors",()=>{
-  const html=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/source.html"),"utf8");
-  const handlers={},elements={title:{},code:{contains:n=>n==="code",addEventListener:(name,fn)=>handlers[name]=fn},partssplit:{addEventListener(){}}};
-  let raw,selection;const calls=[];
-  const c=vm.createContext({document:{getElementById:id=>elements[id],addEventListener:(name,fn)=>handlers[name]=fn},window:{getSelection:()=>selection},sdeSource:(...args)=>calls.push(args),sdeTake:()=>raw});
-  vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1].replace("/*INIT*/null/*INIT*/",JSON.stringify({type:"PROG",name:"Z_TEST"})),c);
-  assert.deepEqual(calls,[["Z_TEST","PROG"]]);
-  raw=JSON.stringify({source:"REPORT z_test."});c.sdeReady();assert.equal(elements.code.textContent,"REPORT z_test.");
-  selection={rangeCount:1,anchorNode:"code",focusNode:"code",toString:()=>"REPORT"};handlers.selectionchange();
-  selection=null;handlers.selectionchange();assert.equal(c.sdeSelection().text,"REPORT");
-  handlers.mousedown();assert.equal(c.sdeSelection(),null);
-  c.allLines=["METHOD add_cr_diag.","  APPEND iv_text TO mt_cr_diag.","ENDMETHOD."];
-  c.selectedPart={name:"add_cr_diag"};c.shownRange={start:1,end:3};
-  assert.match(c.sdeSelection().text,/APPEND iv_text/);
-  assert.equal(c.sdeSelection().view.part,"add_cr_diag");
-  let published;
-  c.sdeContextUpdate=state=>{published=state;};
-  c.publishContext();
-  assert.equal(published.selected_fragment.text,c.sdeSelection().text);
-  raw="ERROR:SAP unavailable";c.sdeReady();assert.equal(elements.code.textContent,"SAP unavailable");
-});
-test("package source opens report parts through the program reader",()=>{
-  const html=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/source.html"),"utf8");
-  const element=()=>({addEventListener(){},hidden:false}),elements={title:element(),code:{...element(),contains:()=>false},partssplit:element(),back:element(),openeditor:element(),rununit:element(),runatc:element(),partsfold:element(),hint:element()};
-  const parts={hidden:false,classList:{toggle:()=>false}};const calls=[];
-  const c=vm.createContext({document:{body:{classList:{add(){},remove(){}}},getElementById:id=>elements[id],querySelector:()=>parts,querySelectorAll:()=>[],addEventListener(){},createElement:null},window:{getSelection:()=>null},sdeSource:(...args)=>calls.push(args)});
-  vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1].replace("/*INIT*/null/*INIT*/",JSON.stringify({type:"DEVC",name:"Z_RIG"})),c);
-  c.sdeSelectPart({type:"REPS",name:"ZVERTEX_DEBUG_LAB"});
-  assert.deepEqual(calls,[["ZVERTEX_DEBUG_LAB","PROG"]]);
-});
 test("embedded theme follows all VS Code themes and changes without reloading",()=>{
   const source=require("node:fs").readFileSync(path.resolve(__dirname,"../../org.vertex.abap.ui/resources/tools.html"),"utf8");
   const code=source.slice(source.indexOf("function syncTheme("),source.indexOf("new MutationObserver"));
@@ -46,8 +16,9 @@ test("embedded theme follows all VS Code themes and changes without reloading",(
 });
 test("objects expose valid functions and appropriate defaults",()=>{
   assert.equal(model.normalize({type:"TR",name:"devk900001"}).action,"review");
-  assert.equal(model.normalize({type:"CLAS/OC",name:"zcl_test"}).action,"view");
-  assert.equal(model.normalize({type:"DEVC",name:"z_rig"}).action,"view");
+  assert.equal(model.normalize({type:"CLAS/OC",name:"zcl_test"}).action,"uml");
+  assert.equal(model.normalize({type:"DEVC",name:"z_rig"}).action,"uml");
+  assert.throws(()=>model.normalize({type:"PROG",name:"z_rig",action:"view"}),"View source is not a function: the source is the editor");
   assert.equal(model.normalize({type:"DEVC",name:"$TMP",action:"uml"}).type,"DEVC");
   assert.throws(()=>model.normalize({type:"TABL",action:"uml"}));
   assert.throws(()=>model.normalize({type:"CLAS",name:'x"><script>'}));
@@ -72,21 +43,14 @@ test("workspace transport permits only VERTEX resources and existing review writ
   }
   assert.equal(workspace.allowed("/sap/bc/adt/vertex/class/ZCL_APP","{}"),false);
 });
-test("Visual Debug is VS Code's: its model offers it, the shared one does not",()=>{
-  assert.deepEqual(model.objects.find(o=>o[0]==="PROG")[2],["view","vdebug","metrics","scheme","flow","diff"]);
-  assert.equal(model.normalize({type:"FUNC",name:"Z_FM",action:"vdebug"}).action,"vdebug");
-  assert.match(model.instructions,/Visual Debug \(action vdebug/);
-  assert.ok(model.navigationSchema.anyOf[1].properties.action.enum.includes("vdebug"));
-  // Eclipse loads the file itself, without the call VS Code makes.
-  const shared=path.resolve(__dirname,"../../org.vertex.abap.ui/resources/object-tools.js");
-  const c=vm.createContext({window:{}});
-  vm.runInContext(require("node:fs").readFileSync(shared,"utf8"),c);
-  assert.throws(()=>c.window.VertexObjects.normalize({type:"PROG",name:"Z",action:"vdebug"}));
-  assert.doesNotMatch(c.window.VertexObjects.instructions,/vdebug/);
-  // The VS Code Tools page carries the page and the call.
+test("Visual Debug is the docked panel beside the editor, not a view of the Tools window",()=>{
+  assert.deepEqual(model.objects.find(o=>o[0]==="PROG")[2],["metrics","scheme","flow","diff"]);
+  assert.throws(()=>model.normalize({type:"FUNC",name:"Z_FM",action:"vdebug"}));
+  assert.doesNotMatch(model.instructions,/vdebug/);
+  assert.ok(!model.navigationSchema.anyOf[1].properties.action.enum.includes("vdebug"));
   const page=workspace.html(path.resolve(__dirname,"../../org.vertex.abap.ui/resources"),null);
-  assert.match(page,/VertexObjects\.enable\.apply\(null,\["vdebug"/);
-  assert.match(page,/Visual Debug/);
+  assert.doesNotMatch(page,/enable\.apply\(null,\["vdebug"/);
+  assert.doesNotMatch(page,/Click beside a line number to set a breakpoint/,"the Tools page carries no Visual Debug page");
   const docked=workspace.debugHtml({name:"Z_TEST",type:"PROG"});
   assert.match(docked,/Z_TEST/);
   assert.match(docked,/window\.sdeDebug=/);

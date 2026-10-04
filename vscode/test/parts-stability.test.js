@@ -29,12 +29,3 @@ test('Diff and Versions selection updates existing rows without rebuilding Parts
   assert.equal(ctx.autoDiff,false);
   assert.equal(requests,2);
 });
-test('Source selection keeps the existing Parts nodes and only toggles their selection', () => {
-  const rows = [1,10].map(start=>({dataset:{start:String(start)},classList:{toggle(key,value){this.selected=value;}}}));
-  const ctx = vm.createContext({document:{querySelectorAll:()=>rows}});
-  const html=fs.readFileSync(path.join(root,'source.html'),'utf8');
-  vm.runInContext(html.match(/function markPart\(part\)\{[^\n]+/)[0],ctx);
-  ctx.markPart({start:1}); ctx.markPart({start:10});
-  assert.equal(rows[0].classList.selected,false);
-  assert.equal(rows[1].classList.selected,true);
-});

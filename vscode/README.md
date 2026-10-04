@@ -91,12 +91,12 @@ development systems often have; it is off by default on purpose.
   The panel holds the VERTEX chat, the active SAP-system selector, provider and
   model controls, and the **VERTEX Tools** button.
 - **VERTEX Tools** — opens the unified tools window. Choose an object type,
-  enter its name (a package opens in View source with its objects in Parts; a name with `*` or `+`, such as `Z_VX*`, lists the objects of that type that
+  enter its name (a name with `*` or `+`, such as `Z_VX*`, lists the objects of that type that
   match; pick one with the mouse or the arrow keys and Enter; a plain name that is not found
-  lists the names starting with it), then choose the available function (for example Data, View,
+  lists the names starting with it), then choose the available function (for example Data,
   UML diagram, Metrics, Calls diagram, Logic diagram, Diff or Versions). Only the functions that
   apply to the chosen type are offered: a transport has Versions and its review, a class or a
-  program source, metrics, diagrams and diff, a package its package-level views. **Calls diagram** shows which program, class or
+  program metrics, diagrams and diff, a package its package-level views. **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
   per class or per method, and picking an event or a form in Parts starts the calls there, as a
   double-click in ACE's tree does (**From: … ✕** goes back to the whole program). **Logic diagram** is the flowchart of one method (ACE's Flow Scheme). A magnifier follows the
@@ -137,16 +137,15 @@ development systems often have; it is off by default on purpose.
   or program tab, as in Eclipse. SAP runs the object's test classes (risk level harmless, every
   duration) and VS Code's Test Explorer shows object, test class and test method with pass or
   fail, the time, the alert text, and a link to the line where the failure was raised. A tab with
-  unsaved changes is refused: the tests run the active source. The same run is the **Run Unit
-  Tests** button beside Open in the Editor in a VERTEX Tools View source.
+  unsaved changes is refused: the tests run the active source. The same run is **Run ABAP Unit Tests** in the command palette.
 - **Where-used** — Shift+F12 (peek) or Shift+Alt+F12 (list) in a SAP tab: the places that use
   the name under the cursor, from SAP's where-used over the saved source. A place in a source
   VERTEX cannot open as a tab is named in a warning.
 - **VERTEX: ABAP Documentation** — F1 or the context menu in a SAP tab: SAP's keyword
   documentation for the statement under the cursor, beside the source. In these tabs F1 replaces
   the command palette key; Ctrl+Shift+P still opens it.
-- **VERTEX: Run ATC Check** — Ctrl+Shift+F2, the checklist in the editor title, or **Run ATC
-  Check** in View source. Checks the object with the system's default ATC variant; the findings
+- **VERTEX: Run ATC Check** — Ctrl+Shift+F2, the checklist in the editor title, or **Run ATC Check**
+  in the command palette. Checks the object with the system's default ATC variant; the findings
   appear in the Problems view and underlined in the tab, priority 1 as errors, 2 as warnings,
   3 as information. A new run replaces the last one's findings for that object.
 - **VERTEX: Go to (by context)** — F12 or double-click in a VERTEX SAP source tab; follows a
@@ -202,19 +201,14 @@ functions: transports focus on Versions and review; classes and programs can off
 metrics, flow/scheme and diff; packages offer their package-level views. This keeps unavailable
 or meaningless actions out of the toolbar.
 
-**View source** is the default VERTEX view where source is available. It is a read-only,
-contextual page inside the Tools window, useful for inspection and for sending selected fragments
-to the internal chat. For a class, its Parts list reuses the Diff table: `CPUB`, `CPRO`, `CPRI`
-and `METH` rows have the same SE80-style visibility markers. One click shows a method body;
-double-click on the method switches declaration and body; double-click on a section positions its
-declaration. A click on the object's name above the Parts list shows the whole source again;
-**← Back** returns to the part. **← Back** restores the prior location. A program is never cut down to one part:
-its Parts list only positions the complete source on an event, form or local-class implementation. **Open in the Editor** opens the object in the editable VERTEX source editor.
+**There is no View source function.** The source is the editor: choosing an object to read opens its
+VERTEX tab (ask the chat to open it, as below), and the structure of that tab - a class's
+sections and methods, a program's forms, events and local classes - is VS Code's **Outline**, Ctrl+Shift+O and
+the breadcrumbs, with a click to go to the line. In Tools an object starts on its first function: UML for a
+class, Metrics for a program. The Parts list at the left of Tools stays for the functions that follow one
+part: the Logic and Calls diagrams. Metrics and UML draw the whole object and have none.
 
-The chat context follows the active function. A source view sends a selected fragment, or the
-currently open method when nothing is selected, together with the method's signature. For a redefinition VERTEX follows `INHERITING FROM`
-before asking the assistant, so the context uses the original declaration and identifies its
-owning class. UML sends the diagram's object, nodes, method names and relationships instead — not
+The chat context follows the active function. UML sends the diagram's object, nodes, method names and relationships instead — not
 a method signature — so it can be analysed directly. Ask the chat explicitly to *open* or *edit*
 an object — for example, *Open ZCL_FOO please* — to open a normal, editable VS Code tab instead.
 Changes made there are still sent to SAP only through **Review & Activate** or **Save & Activate**.
@@ -232,8 +226,8 @@ passes (`lv_scenario -> IV_SCENARIO`); it narrows from *Full* to *BSE*, which is
 analysis found and the path that led to it. *Formula* is how the value was computed: `a = b + c`
 at the top, and the definitions of `b` and `c` as its branches. *Tree* and *Diagram* are two
 views of whichever Type is chosen; **Depth** decides how far the tree opens - along the call
-stack in FLOW, along the derivation in Formula - and **Collapse all** / **Expand all** are its
-two ends. A pair of breakpoints in the editor bounds what is analysed.
+stack in FLOW, along the derivation in Formula - and one button beside it, which offers *Collapse all* and then *Expand all*, says whether the levels shown are open, whatever
+the depth. A pair of breakpoints in the editor bounds what is analysed.
 
 What it does not claim: a concrete database-dependent iteration order, a runtime value, or which
 branch a dispatch takes. Those stay explicit boundaries, and the analysis log below the tree
@@ -628,9 +622,11 @@ statement appears once however often it ran, with its count. Clicking a node ope
 statement in the source. The difference from the analysis is the data alone: one is what ACE
 derived, the other what the program did.
 
-**Collapse all** / **Expand all** and **Depth** govern how deep it is drawn: the program is 0,
-a class 1, a routine 2, a statement one below the block that holds it. One number governs all
-three controls, and the maximum is the deepest statement in the record.
+The **Depth** slider governs how deep it is drawn: the program is 0,
+a class 1, a routine 2, a statement one below the block that holds it. The maximum is the deepest
+statement in the record. *Collapse all* / *Expand all* are one button beside the slider, not its ends: it offers the other each time and says
+whether the levels that are shown are open (the start: all of them; collapsed: the top only), and moving the slider
+keeps the switch.
 
 The record is one control with three positions: **No record**, **Rec steps**, or **Steps &
 values**. The third also reads the parameters and locals where each routine starts and ends and
@@ -639,11 +635,49 @@ often recorded for its shape alone.
 
 Recording is also what makes Continue a run of F5 steps rather than SAP's own: with it off,
 Continue is Continue. A run always draws where the program is as it goes. **Predict** says
-how it steps. Off - the default - SAP is asked where the program is after every step and loops
-are stepped through, so every stop was read rather than worked out. On, the next line comes from
-the statement map where the text alone decides it and a loop is passed in one go. Even
-with it on the map is not used within one line, where nothing could check it, nor across the
-end of a method or form, where the frame changes.
+how it steps. On - the default - the next line comes from the statement map where the text alone
+decides it. Off, SAP is asked where the program is after every step and loops are stepped
+through, so every stop was read rather than worked out. Even with it on the map is not used
+within one line, where nothing could check it, nor across the end of a method or form, where
+the frame changes.
+
+With a value followed and its analysis loaded, Predict also skips what the value cannot come
+from, and the run does not spend time on those steps: a loop or an IF/CASE block with no
+place of the slice in it, and a run of statements outside the slice, are passed in one go (F8 to
+a temporary point on what follows); a call that is not itself a place of the slice is stepped over with F6 (a call that is one is
+entered, so the calculations inside it stay in the record and in BSE), the record keeps the line
+it stood on, and the stack is not read after it. F8 to a point costs about two steps, so a run of statements is passed that way
+from three of them and a block from four. A breakpoint of yours on the way keeps a block
+stepped through. The statistics count the loops, blocks and runs passed.
+
+**One magnifier.** Every diagram - Tools (UML, Calls, Logic), the flow of Value origin and the
+debugger's diagram - has the same magnifier, a magnifier icon in the toolbar. It follows the pointer
+over any point of a flowchart and over a node of a class diagram, whatever the zoom; Shift with the
+wheel sets how strong it is.
+
+**The panes follow the program.** Before the program stops there is no stack and there are no
+variables: those sections stay closed and the breakpoints are shown as soon as there are any. When
+the program stops, the stack and the variables open. A pane you closed stays closed until the next
+change (a stop, or the end of a run).
+
+**Variables before the run.** Before the program stops, Variables lists what the analysis declares, for the
+place you are in: the cursor's line in the VERTEX source in front, else a breakpoint's, else the program. In a
+method or a FORM that is its parameters and locals (the globals are read when you turn *Globals* on); outside
+every routine - a program's events, a class's own text - the globals. Names and types, no values, which come
+when the program stops. A right-click follows a value, so its slice can be asked for before the program runs.
+A variable declared by a call has the type that method returns, and a variable of a structure type opens to its
+components, each of which can be followed by its path (`LS_RESULT-AMOUNT`). A structure that cannot be read is
+marked `?` with the reason. An object above 20,000 lines is not read on its own: use Analyze flow path.
+
+**Analyze flow path.** The Breakpoints panel groups the points by object. A point carries *Analyze flow
+path*: it runs the analysis Value origin runs, from this point to the next checked point the flow meets - in
+the same object, or below it on the stack in a routine the flow calls - and draws the flow in the diagram: the
+program, its classes and routines, the statements of ACE's stream under them with each IF, CASE and LOOP the
+parent of its body, a called routine's statements under the statement that calls it, in the order of execution.
+The start may be in a program, an include or a class; the end statement is the last one drawn. Classes,
+Methods and Statements, Full or BSE, as the record is drawn. With a value chosen in Variables the statements its
+slice reaches are marked; without one the flow is drawn alone. A recorded run replaces it. It needs a second
+checked point the flow meets, and says so when there is none.
 
 A Visual, Rec or Flow run is F8 made of F5 steps, and it ends at a breakpoint it steps onto -
 including one in the program that called the class being stepped through, where SAP reports a
@@ -675,22 +709,23 @@ it - `LS_ORDER`, `GS_INVOICE-ITEMS`, `ME->MV_RATE`.
 
 ### Visual Debug: the debugger on screen (pilot)
 
-**Visual Debug** in the Tools window (programs, classes and function modules) shows the same
+**Visual Debug** is the right-hand panel beside the source tab (programs, classes and function modules); it shows the same
 debugger the assistant drives - one session, not a second one:
 
-- **The source with its breakpoints.** A click beside a line number sets or removes a
-  breakpoint; a right-click sets a condition and the mode (*stop* or *log*). The lines are those
-  of the active version, which is what the program runs. Breakpoints the assistant set appear
+- **The source stays in the editor.** The panel opens beside the source tab and draws no copy
+  of it; the lines are those of the active version, which is what the program runs. Breakpoints the assistant set appear
   here, and those set here are the assistant's too.
-- **Where the program stands.** At a stop the current line is marked and the source follows it,
-  also into another include; **Object source** goes back. **Single Step** (F5), **Execute** (F6),
+- **Where the program stands.** At a stop the editor marks the current line and follows it,
+  also into another include. **Single Step** (F5), **Execute** (F6),
   **Return** (F7) and **Continue** (F8) step, named and drawn as in the classic debugger; a click on a stack level shows that level and its
   variables.
 - **Every variable at once**, grouped as SAP groups them; parameters and locals are headed by
   the form, method or event they belong to. Structures and objects unfold in place (object
   attributes marked public, protected or private); **Initials** shows the variables with an
   initial value and **SYST** the system fields `SY`, both hidden by default; **Filter** narrows
-  by name. A value that changed since the previous stop is marked. A type SAP names only
+  by name. A value that changed since the previous stop is marked. **Right-click** a variable and
+  choose **Follow … in the analysis** to make it the value that BSE and **Points** are about; a plain click
+  only selects or unfolds, so a value is never followed by accident. A type SAP names only
   `\TYPE=%_T...` is shown as the source declares it - `p LENGTH 8 DECIMALS 2` - or, with no
   declaration, as SAP's technical type.
 - **What is read, and when.** **Globals**, **Locals** and **Params** switch a group's reading

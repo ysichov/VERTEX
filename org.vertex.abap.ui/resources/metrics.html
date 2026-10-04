@@ -217,17 +217,6 @@
      source window, so only the stretches that fold carry a hand. */
   .diagram a[href^="sapevent:aceexp"] { cursor: pointer; }
   .diagram a { text-decoration: none; }
-  /* A dense package UML is readable at Fit only with a closer look. The lens
-     is an inert copy of the SVG: hovering a node magnifies its neighbourhood
-     without moving the diagram or changing the reader's chosen zoom. */
-  .uml-lens { position: fixed; width: 180px; height: 180px; border-radius: 50%;
-              overflow: hidden; pointer-events: none; z-index: 10; display: none;
-              border: 2px solid var(--field-border); background: var(--bg);
-              box-shadow: 0 4px 14px #0006; }
-  .uml-lens svg { position: absolute; max-width: none; }
-  .uml-lens-zoom { position: absolute; right: 22px; bottom: 14px; z-index: 1; padding: 0 5px; border-radius: 8px;
-                   font-size: 11px; color: var(--fg); background: var(--bg); opacity: .85; }
-
 /* Thin scrollbars in the theme's own colours instead of the engine's wide default. */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-button { display: none; }
@@ -284,7 +273,7 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
     <button id="out" title="Smaller">&#8722;</button>
     <button id="in" title="Larger">+</button>
     <button id="fit" title="Scale the whole diagram into the pane">Fit</button>
-    <button id="lens" aria-pressed="false" title="Enable magnifier for small text">Lens off</button>
+    <button id="lens" aria-pressed="false"></button>
   </span>
   <button id="metricshelp" title="What each metric means and how it is counted">?</button>
   <span class="shown" id="object"></span>
@@ -323,6 +312,8 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
 </div>
 
 <script>
+/*VERTEX_LENS*/
+
 "use strict";
 
 /* Column definitions. "num" decides the alignment and the sort comparison, so
@@ -1674,83 +1665,10 @@ function removeEmbeddedLogicTitle(source, caller) {
   }).join("\n");
 }
 
-/* How strong the lens is, kept while the window is open. */
-var lensZoom = 2.5;
-var lensEnabled = false;
-
-/* A magnifier over the node under the pointer - UML, Logic and Calls alike:
-   every mermaid block is a g.node. One per page: the previous drawing's
-   lens goes with it. */
+/* The magnifier is the one every VERTEX diagram has (vertex-lens.js, put in place of the marker in the script below): UML,
+   Logic and Calls alike, over any point of a flowchart and over a node of a class diagram. */
 function installUmlLens(pane, anywhere) {
-  Array.prototype.forEach.call(document.querySelectorAll(".uml-lens"), function (old) {
-    old.parentNode.removeChild(old);
-  });
-  var sources = Array.prototype.filter.call(pane.querySelectorAll("svg"), function (svg) {
-    return !svg.classList.contains("hybrid-connector");
-  });
-  if (!sources.length || !lensEnabled) { return; }
-  var lens = document.createElement("div");
-  lens.className = "uml-lens";
-  lens.setAttribute("aria-hidden", "true");
-  var copy = null;
-  var copiedSource = null;
-  var badge = document.createElement("span");
-  badge.className = "uml-lens-zoom";
-  lens.appendChild(badge);
-  document.body.appendChild(lens);
-  var radius = 90;
-  badge.textContent = lensZoom.toFixed(1) + "×";
-
-  function isNode(element, svg) {
-    while (element && element !== svg) {
-      if (element.matches && element.matches("g.node")) { return true; }
-      element = element.parentNode;
-    }
-    return false;
-  }
-  function hide() { lens.style.display = "none"; }
-  function move(event) {
-    var svg = event.currentTarget;
-    if (!anywhere && !isNode(event.target, svg)) { hide(); return; }
-    var source = svg.getBoundingClientRect();
-    if (!source.width || !source.height) { hide(); return; }
-    // Lens on is an explicit reader choice. Do not second-guess it using a
-    // heuristic text-size threshold: that made the lens flicker on diagrams
-    // whose Mermaid DOM reports different line metrics between SVGs.
-    if (copiedSource !== svg) {
-      if (copy) { copy.remove(); }
-      copy = svg.cloneNode(true);
-      lens.insertBefore(copy, badge);
-      copiedSource = svg;
-    }
-    var left = Math.min(window.innerWidth - radius * 2 - 8, event.clientX + 16);
-    var top = Math.min(window.innerHeight - radius * 2 - 8, event.clientY + 16);
-    lens.style.left = Math.max(8, left) + "px";
-    lens.style.top = Math.max(8, top) + "px";
-    var factor = lensZoom;
-    copy.style.width = Math.round(source.width * factor) + "px";
-    copy.style.height = Math.round(source.height * factor) + "px";
-    copy.style.left = Math.round(radius - (event.clientX - source.left) * factor) + "px";
-    copy.style.top = Math.round(radius - (event.clientY - source.top) * factor) + "px";
-    lens.style.display = "block";
-  }
-  sources.forEach(function (svg) {
-    svg.addEventListener("pointermove", move);
-  // Shift and two fingers on the touchpad (or the wheel) set how strong the
-  // lens is, smoothly: the change follows how far the fingers moved. With
-  // Shift held the browser turns a vertical scroll into a horizontal one, so
-  // either direction counts. Ctrl and a pinch stay the whole picture's zoom.
-    svg.addEventListener("wheel", function (event) {
-      if (!event.shiftKey || lens.style.display !== "block") { return; }
-      event.preventDefault();
-      event.stopPropagation();
-      var delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-      lensZoom = Math.max(1.5, Math.min(6, lensZoom * Math.exp(-delta * 0.01)));
-      badge.textContent = lensZoom.toFixed(1) + "×";
-      move(event);
-    }, { passive: false });
-    svg.addEventListener("pointerleave", hide);
-  });
+  window.vertexLens.install(pane, anywhere);
 }
 
 /* The size mermaid drew, taken from the viewBox rather than from the element:
@@ -2130,19 +2048,8 @@ document.getElementById("in").addEventListener("click", function () {
   setZoom(zoom * 1.25);
 });
 document.getElementById("fit").addEventListener("click", fitDiagram);
-document.getElementById("lens").addEventListener("click", function () {
-  lensEnabled = !lensEnabled;
-  var button = document.getElementById("lens");
-  button.textContent = lensEnabled ? "Lens on" : "Lens off";
-  button.classList.toggle("on", lensEnabled);
-  button.setAttribute("aria-pressed", lensEnabled ? "true" : "false");
-  if (!lensEnabled) {
-    Array.prototype.forEach.call(document.querySelectorAll(".uml-lens"), function (lens) { lens.remove(); });
-  } else if (lastMermaid) {
-    // Attach to the current SVGs only; a toggle must never relayout Calls.
-    installUmlLens(document.getElementById("diagram"), !/^classDiagram\b/.test(lastMermaid));
-  }
-});
+window.vertexLens.button(document.getElementById("lens"));
+// A switch turned on while a diagram is there puts the lens on it; the module does that with the last diagram it was given.
 
 /* Kept in a variable on purpose: an observer nothing holds on to may be
    collected, and the callbacks then stop with no sign that they have. */

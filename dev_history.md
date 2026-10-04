@@ -2554,6 +2554,76 @@ one fail.
 
 ---
 
+## Stage 46 — the source is the editor
+
+**The freeze was not where it was looked for.** A 147,000-line program hung the laptop in
+VERTEX and opened in seconds in the standard editor, and the first suspicion was the ADT read
+and ACE. Neither: the page's `outline` takes 80 ms on that file, `variableTypes` 96 ms,
+`methodTypes` 23 ms, the editor's statement scanner 340 ms. The first investigation went to the wrong
+window, too - the VERTEX source *tab* instead of the Tools window's View source - because the
+report said "the standard window" and the code has two sources. A headless Edge run of the
+real page on the real file settled it: 4 s of script, then about five minutes of layout and
+paint for ~670,000 nodes, growing faster than linearly (5k lines 0.24 s, 10k 0.63 s, 20k 1.9 s).
+The editor is fast by drawing only what is visible; the page could not be made fast
+without becoming a second editor, and it should not be one.
+
+**Two sources to one, then to none.** The first answer was a dock mode: the page keeps Parts and
+sends no text, the host computes parts and lines, and a part click reveals a line in the open
+tab. It worked, and then the question that mattered came from the user: what is left of
+View source once the editor shows the code and Outline shows the structure? Buttons that are commands anyway.
+The mode was built, shipped in a vsix, tested on the file, and removed within hours - the page,
+its bridge, the host's parts module, the part-text lookup for the assistant. Writing the
+parts module also produced the one reusable finding: a program's list of `CLASS=>METHOD`
+from ACE has no counterpart in the page's own outline, which knows forms and events only.
+
+**What stays.** Parts in Tools, for the Logic and Calls diagrams, which follow one part - Metrics and UML draw the whole object and
+do not show the list. Outline for reading.
+The model of both hosts lost `view`; defaults fall to UML (class, package) and Metrics (program).
+
+**Visual Debug left Tools for the same reason**, and was found broken by the change before it:
+it read `source_url` from the answer the dock mode had just reduced to parts. A copy of a
+function that has a better home is a copy that breaks first. The docked panel kept its page and
+stopped building the hidden pane.
+
+**The guard that remains.** Hover, Ctrl+Click and F1 post the whole source to ADT for every name.
+Above 20,000 lines that is refused with a sentence; one request at a time; 20 s and given up.
+ADT cannot abort a request, so SAP may finish what the extension has stopped waiting for.
+
+**One thing the move had never covered.** The step log's Copy button was handled only in the Tools window's bridge, so the
+docked panel never copied anything; it showed only once the Tools copy was gone and the panel was the one in use.
+
+**Points found nothing for `LS_RESULT-AMOUNT`, and the editor found everything.** Both use the same analysis, and the
+first suspect was the analysis. It was not: the editor draws the nodes of the slice, Points kept only ACE flow rows the
+slice had "reached" - a second, narrower list. Points now come from the same nodes (`value-origin-points.js`), checked
+on the demo fixture against the chain the editor draws; not yet seen on the live record. The live record then said "read 96 sources, 2 nodes in the slice": the analysis had been started at column 0 of the
+stopped line, before an indented statement, so it anchored on the statement above and had nothing to follow; the editor passes the
+cursor's column. A first look at the editor's
+own empty panel had been a mis-click, the cursor in the word `Returned` of a text literal. Two further directions were
+discussed and neither is started: ACE's own backward propagation over `flow_steps` and call bindings (as in
+`propagate_vars_backward`, the static flow that will also serve the optimisation of the debugger's steps), and a slice over
+the recorded steps that links a value across calls through ACE's parameter bindings (needs a record made with Steps &
+values). Deferred by the user until the static flow is wanted for the debugger.
+
+**Twenty attempts at one colour.** Points and BSE of the record stayed empty for a long evening, and each fix was real:
+column 0 of an indented line anchored on the statement above; ACE and the debugger counted a class's lines differently
+(per method include, per class source); the method starts were cached across a class being pulled again; a slice that came
+back empty was kept for the whole session; a line of another object was passed to the analysis. Each was found by a
+screenshot, not by thought, and the last one was the cause under all of them: the analysis was started from where the
+run *stood* - before the value existed - instead of from where the value is *used*. A replay of the pasted record against the
+new code (38 places of the slice, the record on 36 of them, the other two branches not taken) showed the client side
+was right all along; the chip's counts exist so that the next mismatch is read off the screen.
+
+**Not spending time on steps that cannot matter.** A Predict log of 155 steps showed one predicted: the map can name the next line only after a plain statement, and everything else - calls, IF, CASE, SELECT, ENDMETHOD - asked the stack. The first attempts were worth less than they looked. An F8 to a temporary point is four requests (the points are set, the run goes, they are taken away, the stack is read), about 790 ms against a step's 380, so passing an IF block whose branch is not taken cost twice what stepping it did, and a global `BRANCHES` of mine was silently replaced by another declared further down the page, which let the skip start from an IF; the thresholds (three statements, four in a block) and a test against doubled names came from that log. What paid was F6 over calls, which the user had proposed from the start: a call is not entered while a value is followed, the record keeps its line, and the stack is not read after it. The first version judged a call by its class and method and so left every call with an owner `?` alone; the second by whether the call is itself a place of the slice; the third did not enter any. 146 steps in 97.7 s became 111 in 67.4 s. The log of that run, read against the source, still showed the calls that matter most entered: a call followed by ENDIF or ENDMETHOD was refused the F6 prediction because the map's next statement was a closer, so the five `apply( )` calls (about 60 steps) and every `name( )` and `log->add( )` before an ENDMETHOD went in. The same log showed what SAP stops at: ENDIF and ENDCASE are not stops (from the end of `APPLY` the debugger goes to ENDLOOP, never to the ENDIF), ENDLOOP, ENDSELECT and ENDMETHOD are; the prediction now reads the next stop that way. That made the next result wrong: with every call stepped over, the diagram lost the calculations of `cs_context-amount` inside the five `apply( )` bodies - the BSE the whole exercise was for. An offline run of the analysis on the test code settled it: the calls that lead to the value (lines 28-31, 33, 34, 36 and 38 of `RUN`) are places of the slice, `lo_log = NEW` (27) and `log->add` (32) are not. So the junk is determined by the analysis itself, from the slice, and only a call outside it is stepped over; a call in it is entered. A first sketch of 'fictitious steps' written from the analysis for the skipped callees was dropped for the same reason.
+The next idea was to put the analysis into the debugger itself: two breakpoints bound a path, built before the run starts. A first check said a path needs a value, because the nested calls of `executionFlow` are found by walking back from one; the user's answer was that the analysis already makes the flow - and it does: `fullFlow`, ACE's statement stream, comes back with 137 rows for an empty variable, and the slice only marks the rows it reaches. So the first step is the same analysis Value origin runs, started from a breakpoint of the panel (*Analyze flow path*), its `fullFlow` listed under the point as a tree by routine, the slice marking where a value is chosen. The first live click failed with 'Cannot place ZCL_CALC_FACADE=>START-OF-SELECTION': the debugger's line move, which Value origin never needs, made one row the model files under START-OF-SELECTION - a class's text between its methods - stop the whole list. The move now serves only the click: such rows are dropped (they run nothing), and a row ADT cannot place stays listed, dimmed, without a click. The first list under the point worked (90 statements from line 10 to 16, between ZVERTEX_DEBUG_LAB and the classes) and was the wrong place for it: the user expected the flow in the diagram, the one place a flow is read. The diagram takes a graph in the form `bseFlow:{nodes,edges}` rooted at `bseroot`; the flow is now built in that form - program, classes, routines, statements with blocks as parents, the slice as `bse` - and shown while nothing is recorded, the point keeping a one-line summary. That first drawing hung every class and routine flat under the program, and the user saw at once what was missing: the order of the calls and the stack - everything seemed to come from RUN. The flow of statements has no calls in it, and the model found calls only while walking back from a value, so it now makes a pass of its own over every statement (`callSites`: the call the model's own token reading finds, the routines its resolver reaches), and the drawing is a walk in execution order: a routine where it is called, its statements, a call under its statement one level deeper.
+
+**One magnifier, one depth control, the variables before the run.** Several smaller things followed from reading the same diagram. The analysis found `lo_log->add( )` neither as a call nor as a typed receiver: `ADD` is on the model's list of ABAP statements, which it applied after an arrow too, and `io_log` is a parameter whose type stands in the signature; the ACE backend never had the first fault (its built-in list is applied only to a call with no arrow). The flow's nodes open as Value origin opens its own, by the analysis's sources, since the debugger counts a class's lines in the method's include and the editor in the main source. Collapse all / Expand all became the two ends of the Depth control, in the shared view. The variables are shown before the program runs, from the analysis's declarations, for the routine the reader is in; the panes follow the program, and with no value chosen there is no BSE and no Full/BSE toggle. The magnifier was written three times, and the debugger's copy hid itself whenever the diagram was larger than about 80% (`14*scale>=11`), a rule the Tools copy had dropped because it flickered; the remark that the Tools one does not go out on hover was the whole specification, and the lens is now `vertex-lens.js`, one module with the Tools behaviour (pointermove on the SVG, the copy made when the pointer first comes, over any point of a flowchart, Shift and the wheel for strength) and the switch as an icon. Tools gets it through a marker the host replaces (`/*VERTEX_LENS*/`, inside the page's own script so a test that runs the page's script finds it), the flow views by being loaded after it, and a page that draws a flow without it fails loudly. The packaging check found the first version of that: a marker in a script block of its own was taken by the test for the page's script.
+
+**Not built.** The Eclipse plugin lost the page, its bundle entry and `sdeSource`; no Eclipse
+release was built for it. The shell this was worked in turns backslashes in commands into
+control characters, which twice damaged a file and once a test; each was caught by the next run.
+
+---
+
 ## What the practice turned out to be
 
 **One risk per step.** Every stage above was shaped so that a failure named its own cause. The steps

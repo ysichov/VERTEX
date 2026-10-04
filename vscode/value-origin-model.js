@@ -66,22 +66,128 @@ function callOf(ts) {
     if (['->', '=>'].includes(ts[p.end]?.value)) { receiver = p.name; arrow = ts[p.end].value; at = p.end + 1; if (arrow === '=>') owner = receiver; }
   }
   const method = pathAt(ts, at);
-  if (!method || words.has(method.name)) return null;
+  // After an arrow a name is a method, whatever statement it would be on its own: lo->add( ) is no ADD statement.
+  if (!method || (!arrow && words.has(method.name))) return null;
   const open = method.end;
   if (ts[open]?.value === '(' && close(ts, open) === ts.length - 1) return { receiver, owner, arrow, method: method.name, args: ts.slice(open + 1, -1) };
   return null;
+}
+// The type a TYPE or LIKE at `at` names: REF TO x, a table of x, or the one word.
+function typeAfter(ts, at) {
+  const t = ts[at + 1]; if (!t) return '';
+  const v = String(t.value).toUpperCase();
+  if (v === 'REF' && val(ts, at + 2) === 'TO') return 'REF TO ' + (ts[at + 3]?.value || '');
+  if (['STANDARD', 'SORTED', 'HASHED'].includes(v) && val(ts, at + 2) === 'TABLE') {
+    const of = ts.findIndex((x, i) => i > at && val(ts, i) === 'OF'); return v + ' TABLE OF ' + (of >= 0 ? ts[of + 1]?.value || '' : '');
+  }
+  if (v === 'TABLE' && val(ts, at + 2) === 'OF') return 'TABLE OF ' + (ts[at + 3]?.value || '');
+  // A type written zif=>ty or struc-comp is one name.
+  let name = String(t.value), k = at + 2;
+  while (['=>', '-', '~'].includes(String(ts[k]?.value)) && ts[k + 1]) { name += ts[k].value + ts[k + 1].value; k += 2; }
+  return name;
+}
+// Every call in a token list, the ones inside the arguments of another included: lo->m( x = me->n( ) ) is two. A call is
+// a path, an optional ->/=> and a method name, then a balanced ( ... ); NEW x( )->m( ) is one call.
+function callsIn(ts) {
+  const found = [];
+  for (let i = 0; i < ts.length; i++) {
+    if (!word(ts[i])) continue;
+    let end = -1;
+    if (val(ts, i) === 'NEW' && word(ts[i + 1]) && ts[i + 2]?.value === '(') {
+      const first = close(ts, i + 2);
+      if (first >= 0 && ts[first + 1]?.value === '->') {
+        const method = pathAt(ts, first + 2);
+        if (method && ts[method.end]?.value === '(') end = close(ts, method.end);
+      }
+    } else {
+      const path = pathAt(ts, i); if (!path) continue;
+      let open = path.end;
+      if (['->', '=>'].includes(ts[path.end]?.value)) { const method = pathAt(ts, path.end + 1); if (!method) continue; open = method.end; }
+      if (ts[open]?.value === '(') end = close(ts, open);
+    }
+    if (end < 0) continue;
+    const call = callOf(ts.slice(i, end + 1));
+    if (!call) continue;
+    found.push(call, ...callsIn(call.args));
+    i = end;
+  }
+  return found;
+}
+// The parameters a FORM takes: USING, CHANGING and TABLES, each name with the type written after it.
+function formParameters(ts) {
+  const out = []; let mode = '';
+  for (let i = 2; i < ts.length; i++) {
+    const v = val(ts, i);
+    if (['USING', 'CHANGING', 'TABLES'].includes(v)) { mode = v; continue; }
+    if (!mode || !word(ts[i])) continue;
+    if (['TYPE', 'LIKE', 'STRUCTURE'].includes(val(ts, i + 1))) { out.push({ name: v, mode, type: typeAfter(ts, i + 1) }); i += 1; }
+    else if (['USING', 'CHANGING', 'TABLES'].includes(val(ts, i - 1))) out.push({ name: v, mode, type: '' });
+  }
+  return out;
 }
 function parameters(ts) {
   const result = []; let mode = '';
   for (let i = 0; i < ts.length; i++) {
     if (modes.has(val(ts, i))) { mode = val(ts, i); continue; }
     if (!mode) continue;
-    let name;
-    if (['VALUE', 'REFERENCE'].includes(val(ts, i)) && ts[i + 1]?.value === '(') { name = val(ts, i + 2); i = close(ts, i + 1); }
-    else if (word(ts[i]) && ['TYPE', 'LIKE'].includes(val(ts, i + 1))) name = val(ts, i);
-    if (name) result.push({ name, mode });
+    let name, type = '';
+    if (['VALUE', 'REFERENCE'].includes(val(ts, i)) && ts[i + 1]?.value === '(') {
+      name = val(ts, i + 2); i = close(ts, i + 1); if (['TYPE', 'LIKE'].includes(val(ts, i + 1))) type = typeAfter(ts, i + 1);
+    }
+    else if (word(ts[i]) && ['TYPE', 'LIKE'].includes(val(ts, i + 1))) { name = val(ts, i); type = typeAfter(ts, i + 1); }
+    if (name) result.push({ name, mode, type });
   }
   return result;
+}
+// The components of a structure type, read from the TYPES BEGIN OF name ... END OF name that declares it - the tokens the model
+// already has. `zif=>ty` names its interface, a bare name any source; a type that is only another type's alias is followed.
+// Each component is { name, type, components? }; null where the type is not declared in the sources given.
+function typeComponents(sources, typeText, depth = 0) {
+  const text = String(typeText || ''), arrow = text.indexOf('=>');
+  const owner = arrow >= 0 ? U(text.slice(0, arrow)) : '', name = U(arrow >= 0 ? text.slice(arrow + 2) : text);
+  if (!name || depth > 8) return null;
+  const joined = ts => ts.map(t => String(t.value)).reduce((all, one, at) => all + (at && !['-', '=>', '~'].includes(one) && !['-', '=>', '~'].includes(all.slice(-1)) && !all.endsWith('=>') ? ' ' : '') + one, '');
+  for (const source of sources) {
+    if (owner && U(source.objectName) !== owner && U(source.aceOwner) !== owner) continue;
+    for (const statement of parse(source).statements) {
+      const ts = statement.tokens || []; if (val(ts, 0) !== 'TYPES') continue;
+      const items = [[]];
+      for (let i = ts[1]?.value === ':' ? 2 : 1; i < ts.length; i++) { if (ts[i].value === ',') items.push([]); else items[items.length - 1].push(ts[i]); }
+      const open = [], found = {};
+      for (const item of items) {
+        if (val(item, 0) === 'BEGIN' && val(item, 1) === 'OF') { open.push({ name: U(item[2]?.value), components: [] }); continue; }
+        if (val(item, 0) === 'END' && val(item, 1) === 'OF') {
+          const done = open.pop(); if (!done) continue;
+          if (open.length) open[open.length - 1].components.push({ name: done.name.toLowerCase(), type: 'structure', components: done.components });
+          else found[done.name] = done.components;
+          continue;
+        }
+        const type = item.findIndex((t, at) => at > 0 && ['TYPE', 'LIKE'].includes(val(item, at)));
+        if (open.length && item[0] && type > 0) open[open.length - 1].components.push({ name: String(item[0].value), type: joined(item.slice(type + 1)) });
+        else if (!open.length && type > 0 && U(item[0]?.value) === name) return typeComponents(sources, joined(item.slice(type + 1)), depth + 1);
+      }
+      if (found[name]) return found[name];
+    }
+  }
+  return null;
+}
+// The variables a routine's own statements declare: DATA, CONSTANTS, STATICS, FIELD-SYMBOLS and PARAMETERS, and the inline
+// DATA( x ) and FINAL( x ) wherever one stands. Read from the tokens the model already has.
+function declaredIn(body) {
+  const result = [];
+  for (const s of body) {
+    const ts = s.tokens || [], first = val(ts, 0);
+    if (['DATA', 'CONSTANTS', 'STATICS', 'FIELD-SYMBOLS', 'PARAMETERS'].includes(first) && ts[1]?.value !== '(') {
+      const at = ts[1]?.value === ':' ? 2 : 1, type = ts.findIndex((x, i) => i > at && ['TYPE', 'LIKE'].includes(val(ts, i)));
+      if (ts[at]) result.push({ name: String(ts[at].value), type: type >= 0 ? typeAfter(ts, type) : '', line: s.line });
+    }
+    for (let i = 0; i < ts.length; i++) {
+      if (['DATA', 'FINAL'].includes(val(ts, i)) && ts[i + 1]?.value === '(' && ts[i + 2] && ts[i + 3]?.value === ')') {
+        result.push({ name: String(ts[i + 2].value), type: '', line: s.line });
+      }
+    }
+  }
+  return result.filter((one, at, all) => all.findIndex(x => x.name.toUpperCase() === one.name.toUpperCase()) === at);
 }
 function parse(source) {
   if (source.aceStatements) return { tokens: source.aceStatements.flatMap(s => s.tokens), statements: source.aceStatements };
@@ -189,6 +295,7 @@ function buildIndex(sources) {
           current = { id: source.id + ':' + owner + ':' + p?.name, name: U(p?.name), owner: U(owner), source, body: [], start: s.offset, end: source.text.length + 1, line: s.line };
           procedures.push(current);
         }
+        if (first === 'FORM') current.declaration = ts;
         conditions = []; continue;
       }
       if (['ENDMETHOD', 'ENDFORM', 'ENDFUNCTION'].includes(first)) { current.end = s.offset; current = global; conditions = []; continue; }
@@ -298,6 +405,8 @@ function resolver(index) {
       // It retains an interface receiver's type in a method CM include.
       for (const type of index.referenceTypes.get(p.source.id + ':' + name) || []) result.add(type);
       const b = bound[name]; if (b) for (const t of types(b.actual, b.p, b.s.offset, b.inherited, depth + 1)) result.add(t);
+      // A parameter the routine's signature types REF TO x is of that type, where no call has bound it.
+      for (const x of index.signature(p) || []) if (U(x.name) === U(name) && String(x.type || '').toUpperCase().startsWith('REF TO ')) result.add(U(String(x.type).slice(7)));
       for (const s of p.body) {
         if (s.offset >= before) break;
         if (s.assignment?.name === name) {
@@ -667,7 +776,43 @@ function analyze(sources, target, options = {}) {
   const flowLog = nodes.map(node => ({ source: node.source, scope: node.location || node.source, line: node.line, text: node.text,
     included: true, reason: edges.filter(edge => edge.to === node.id).map(edge => edge.label).join(', ') || 'selected value' }));
   const selectedProgram = sources.find(source => source.id === target.source)?.objectName || sources.find(source => source.id === target.source)?.name || target.source;
-  return { root, nodes, edges, calls: orderedCalls, flow, boundedFlow, fullFlow, executionFlow, flowBounds, flowLog, scenarios: radioGroups(sources), selectedVariable: U(target.variable), selectedSource: target.source, selectedProgram,
+  // Every call that a statement makes, with the routines it can reach - not only those the slice walked through. A flow
+  // between two breakpoints needs them to nest a call where it happens; the slice only marks what it reaches.
+  const callSites = [];
+  for (const p of index.procedures) {
+    for (const s of p.body) {
+      for (const call of callsIn(s.tokens || [])) {
+        const matches = resolve(call, p, s.offset, {});
+        if (matches.length) callSites.push({ source: p.source.id, line: s.line,
+          caller: p.owner && p.name !== 'GLOBAL' ? p.owner + '->' + p.name : p.source.objectName || p.source.name || p.source.id,
+          callees: matches.map(c => ({ owner: c.owner, name: c.name })) });
+      }
+    }
+  }
+  // What each routine declares and takes, for a panel that shows the variables before anything has run.
+  const declarations = index.procedures.map(p => ({ source: p.source.id, owner: p.owner || p.source.objectName || '', name: p.name,
+    first: p.line, last: (p.body.length ? p.body[p.body.length - 1].line : p.line) + 1,
+    params: (p.declaration ? formParameters(p.declaration) : (index.signature(p) || [])).map(x => {
+      const type = x.type || '', components = type && !/^(REF TO|STANDARD|SORTED|HASHED|TABLE)/i.test(type) ? typeComponents(sources, type) : null;
+      return components ? { name: x.name, mode: x.mode, type, components } : { name: x.name, mode: x.mode, type };
+    }),
+    locals: declaredIn(p.body).map(local => {
+      let type = local.type;
+      if (!type) {
+        // DATA( x ) = expr: the type is what the expression gives - the RETURNING parameter of the method it calls.
+        const statement = p.body.find(item => item.line === local.line && item.assignment && U(item.assignment.name) === U(local.name));
+        const expression = statement?.assignment?.expression || [], call = callOf(expression);
+        if (call) {
+          for (const callee of resolve(call, p, statement.offset, {})) {
+            const returning = (index.signature(callee) || []).find(x => x.mode === 'RETURNING');
+            if (returning?.type) { type = returning.type; break; }
+          }
+        } else if (val(expression, 0) === 'NEW' && word(expression[1]) && expression[2]?.value === '(') type = 'REF TO ' + expression[1].value;
+      }
+      const components = type && !/^(REF TO|STANDARD|SORTED|HASHED|TABLE)/i.test(type) ? typeComponents(sources, type) : null;
+      return components ? { ...local, type, components } : { ...local, type };
+    }) }));
+  return { root, nodes, edges, callSites, declarations, calls: orderedCalls, flow, boundedFlow, fullFlow, executionFlow, flowBounds, flowLog, scenarios: radioGroups(sources), selectedVariable: U(target.variable), selectedSource: target.source, selectedProgram,
     selectedLine: target.line, truncated, mode: 'static', notice: 'Backward source dependencies across calls. Possible dispatch targets and branches are alternatives; loop order, database contents and runtime values are not inferred.' };
 }
 function variableAt(source, offset) {
@@ -677,6 +822,36 @@ function variableAt(source, offset) {
   while (start > 0 && part(source[start - 1])) start--;
   while (end < source.length && part(source[end])) end++;
   return start < end ? U(source.slice(start, end)) : null;
+}
+// Whether the cursor stands in a text literal ('..', `..`, |..| outside {..}) or
+// a comment (* first on the line, or " to its end): neither has a value history.
+// Editor hit testing only, on the one line under the cursor.
+function literalAt(source, offset) {
+  const start = source.lastIndexOf('\n', offset - 1) + 1;
+  const stop = source.indexOf('\n', offset), end = stop < 0 ? source.length : stop;
+  const line = source.slice(start, end), at = offset - start;
+  if (line.startsWith('*')) return 'comment';
+  const states = [];
+  let quote = null; const code = [];
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote === null) {
+      if (c === '"') { for (let j = i; j < line.length; j++) states[j] = 'comment'; break; }
+      states[i] = 'code';
+      if (c === "'" || c === '`' || c === '|') { quote = c; states[i] = 'literal'; }
+      else if (c === '}' && code.length) { quote = code.pop(); states[i] = 'literal'; }
+      continue;
+    }
+    states[i] = 'literal';
+    if (quote === '|' && c === '\\') { i++; states[i] = 'literal'; continue; }
+    if (quote === '|' && c === '{') { code.push('|'); quote = null; states[i] = 'code'; continue; }
+    if (c === quote) {
+      if (quote !== '|' && line[i + 1] === quote) { i++; states[i] = 'literal'; continue; }
+      quote = null;
+    }
+  }
+  const here = [states[at], states[at - 1]].filter(Boolean);
+  return here.length && here.every(state => state === here[0] && state !== 'code') ? here[0] : null;
 }
 function customerObject(name) {
   const text = U(name);
@@ -702,4 +877,4 @@ async function collectSources(initial, load, options = {}) {
   }
   return { sources, warnings, skipped };
 }
-module.exports = { analyze, buildIndex, collectSources, variableAt, customerObject };
+module.exports = { analyze, buildIndex, collectSources, variableAt, literalAt, customerObject, typeComponents };

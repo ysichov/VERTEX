@@ -1079,9 +1079,11 @@ function create({ connect, current, openUrl, ideId, terminalId }) {
      class structure says: METHOD name -> line. What a stack frame of the
      class counts its lines in, SAP's own answer rather than a reading of the text. */
   const methodLines = new Map();
-  async function classMethods(url) {
+  // Kept between calls, but the source behind it can change while the extension lives (a class pulled again
+  // moves its methods): a caller that starts a record or an analysis asks for it fresh.
+  async function classMethods(url, options = {}) {
     const object = String(url).split("#")[0].replace(/\/source\/main$/, "");
-    if (methodLines.has(object)) { return methodLines.get(object); }
+    if (!options.fresh && methodLines.has(object)) { return methodLines.get(object); }
     const { listener } = await system();
     const root = await listener.classComponents(object);
     const found = {};

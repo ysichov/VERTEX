@@ -584,4 +584,9 @@ test("a class's method starts come from ADT's class structure, read once", async
   assert.deepEqual(await dbg.classMethods("/sap/bc/adt/oo/classes/zcl_x/source/main#start=41"), { RUN: 40 });
   await dbg.classMethods("/sap/bc/adt/oo/classes/zcl_x/source/main");
   assert.equal(asked, 1);
+  // A record or an analysis asks again: the class may have been pulled with its methods moved.
+  await dbg.classMethods("/sap/bc/adt/oo/classes/zcl_x/source/main", { fresh: true });
+  assert.equal(asked, 2);
+  await dbg.classMethods("/sap/bc/adt/oo/classes/zcl_x/source/main");
+  assert.equal(asked, 2, "and what it found is kept again");
 });

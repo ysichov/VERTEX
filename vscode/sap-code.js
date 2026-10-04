@@ -3,9 +3,10 @@
 // JSON-facing repository operations. No VS Code, model, MCP or credentials here.
 const { createHash, randomUUID } = require("crypto");
 const TYPES = Object.freeze({ PROG: "PROG/P", CLAS: "CLAS/OC", FUNC: "FUGR/FF", INTF: "INTF/OI" });
-const INCLUDES = ["main", "definitions", "implementations", "macros", "testclasses"];
+const MAX_ANALYSED_LINES = 20000;
+const ANALYSIS_BUDGET_MS = 20000;
+const INCLUDES =["main", "definitions", "implementations", "macros", "testclasses"];
 const revision = source => createHash("sha256").update(source.replace(/\r\n/g, "\n")).digest("hex");
-const MAX_SOURCE = 2 * 1024 * 1024;
 
 function name(value, label = "object_name") {
   if (typeof value !== "string" || !/^[A-Z0-9_/$]+$/i.test(value) || value.length > 40) {
@@ -18,8 +19,8 @@ function type(value) {
   return value;
 }
 function sourceText(value) {
-  if (typeof value !== "string" || !value.trim() || Buffer.byteLength(value) > MAX_SOURCE) {
-    throw new Error("Source must be non-empty and at most 2 MiB.");
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("Source must be non-empty.");
   }
   return value;
 }
@@ -99,7 +100,6 @@ function createRepository({ client, systemId, emit = () => {} }) {
     const source_url = sourcePath(structure, object.object_url, include);
     const active = await client.getObjectSource(source_url, { version: "active" });
     const source = await client.getObjectSource(source_url, { version: "workingArea" });
-    if (Buffer.byteLength(source) > MAX_SOURCE) { throw new Error("SAP source exceeds the 2 MiB limit."); }
     return { ...object, system: systemId, include, source_url, source,
       revision: revision(source), active_revision: revision(active),
       includes: (structure.includes || []).map(i => i["class:includeType"]) };
@@ -295,10 +295,40 @@ function createRepository({ client, systemId, emit = () => {} }) {
   // ADT's own element info and navigation, what F3 and the hover use in
   // Eclipse. The source sent is the editor's text, saved or not. Lines count
   // from 1, columns from 0.
+  // Each of these posts the whole source and SAP analyses all of it again, so
+  // the cost grows with the file: a 147,000-line program hovered word by word
+  // froze the machine. A source over the limit is refused before it is sent,
+  // one analysis runs at a time, and one that outlives its budget is given up
+  // on. The HTTP request cannot be aborted: SAP may still finish it.
+  // A hover that finds one running is refused - it is the cheap, repeated kind, and another will come. A click on a name
+  // (Ctrl+Click, Go to) is what the reader asked for: it waits for the one running, usually the hover on the same word, and
+  // is then made, instead of being answered with an error.
+  let analysing = false, running = Promise.resolve();
+  async function analyse(label, source, call, { wait = false } = {}) {
+    let lines = 1;
+    for (let at = source.indexOf("\n"); at >= 0; at = source.indexOf("\n", at + 1)) { lines++; }
+    if (lines > MAX_ANALYSED_LINES) {
+      throw new Error(label + " is not sent to SAP for a source of " + lines + " lines (limit "
+        + MAX_ANALYSED_LINES + "): SAP would analyse the whole file for every request.");
+    }
+    while (analysing) {
+      if (!wait) { throw new Error("SAP is still analysing the previous request. Try again in a moment."); }
+      await running;
+    }
+    analysing = true;
+    let timer;
+    const attempt = Promise.race([call(), new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label + " gave up after " + ANALYSIS_BUDGET_MS / 1000
+        + " s. SAP may still be working on it.")), ANALYSIS_BUDGET_MS);
+    })]);
+    running = attempt.catch(() => {});
+    try { return await attempt; }
+    finally { clearTimeout(timer); analysing = false; }
+  }
   const elementInfo = (sourceUrl, source, line, column) =>
-    client.codeCompletionElement(sourceUrl, source, line, column);
+    analyse("Element info", source, () => client.codeCompletionElement(sourceUrl, source, line, column));
   const definition = (sourceUrl, source, line, start, end) =>
-    client.findDefinition(sourceUrl, source, line, start, end, false);
+    analyse("Definition", source, () => client.findDefinition(sourceUrl, source, line, start, end, false), { wait: true });
   // The active source behind a URL that navigation pointed at - a type pool,
   // an interface, another class - whatever kind of object it is.
   const sourceAt = url => client.getObjectSource(adtPath(String(url).split("#")[0]), { version: "active" });
@@ -371,7 +401,7 @@ function createRepository({ client, systemId, emit = () => {} }) {
   // The ABAP keyword documentation for the statement at line/column, as
   // F1 gives it in Eclipse: SAP's own HTML page.
   const documentation = (sourceUrl, source, line, column) =>
-    client.abapDocumentation(adtPath(sourceUrl), source, line, column);
+    analyse("ABAP documentation", source, () => client.abapDocumentation(adtPath(sourceUrl), source, line, column));
   return { execute, apply, draft, unitTests, atcCheck, whereUsed, documentation, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }

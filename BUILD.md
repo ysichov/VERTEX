@@ -17,7 +17,6 @@ org.vertex.abap.ui/         the Eclipse plugin
 ├── build.properties        what the bundle carries - resources/ and assistant/ must be listed
 ├── resources/              the pages, shared with VS Code (copied in by vscode/copy-pages.js)
 │   ├── tools.html          VERTEX Tools: object type, name, function, Parts, the result frame
-│   ├── source.html         View source: read-only source with its parts, Back, Open in the Editor
 │   ├── table.html          SelecTor: the grid, the join builder and the pivot
 │   ├── metrics.html        Calls, Logic and Metrics: ACE's diagrams and numbers
 │   ├── versions.html       parts, their versions, the diff, and the saved review
@@ -61,7 +60,7 @@ vscode/                     the VS Code extension
 │                           Test Explorer, Problems, references, F1 documentation
 ├── code-review.js          the block-by-block Code Change reviewer
 ├── tools-window.js         the VERTEX Tools window and what its pages may ask of the host
-├── object-tools.js         the object tools as VS Code offers them (with Visual Debug)
+├── object-tools.js         the object tools as VS Code offers them (the same model as Eclipse)
 ├── debugger.js             the ABAP debugger: breakpoints, listener, stack, variables, steps
 ├── pages/visual-debug.html Visual Debug: source, stack, variables, flow chart, player
 ├── sidebar.js, chat.js     the VERTEX panel's chat and its context

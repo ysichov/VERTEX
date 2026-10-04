@@ -130,35 +130,130 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
      the statement there. The debug window turns these into breakpoints, so
      that a run stops where something can happen to the value instead of
      stepping through everything. */
-  async function originPoints({ object_name, object_type, line, variable }) {
-    if (!object_name || !variable) { throw new Error('An object and a variable are needed.'); }
+  /* The variables an object declares, for the place the reader is in, before the program runs: from the analysis's
+     declarations - names and types, no values. The place is a routine named, or a line of the source (the cursor's, else
+     a breakpoint's): in a routine its parameters and locals, and its globals only when asked for; outside every routine,
+     the program's or the class's own. Reading the sources is the analysis's work, so it is kept while the document is
+     not changed, and a very large object is not read on its own. */
+  const MAX_VARIABLE_LINES = 20000;
+  let variablesCache = null;
+  async function readVariables({ object_name, object_type, line, routine, globals }) {
+    if (!object_name) { throw new Error('An object is needed to read its variables.'); }
+    const from = [...opened.values()].find(item => item.repo);
+    if (!from || !from.repo) { throw new Error('Open a VERTEX ABAP source tab so the analysis knows which system to read.'); }
+    const type = object_type || 'PROG', entry = await sourceDocument(from.repo, { object_type: type, object_name });
+    if (entry.document.lineCount > MAX_VARIABLE_LINES) {
+      throw new Error(String(object_name).toUpperCase() + ' has ' + entry.document.lineCount + ' lines: its variables are not read on their own above ' +
+        MAX_VARIABLE_LINES + '; use Analyze flow path.');
+    }
+    const key = entry.document.uri.toString() + '|' + entry.document.version;
+    if (!variablesCache || variablesCache.key !== key) {
+      const loaded = await originSources(entry.document, { source: entry.document.uri.toString(), line: 1, variable: '', column: 0 }, () => {}, () => false);
+      variablesCache = { key, loaded, graph: require('./value-origin').analyze(loaded.sources, { ...loaded.target }) };
+    }
+    const { loaded, graph } = variablesCache, up = text => String(text || '').toUpperCase();
+    const declared = graph.declarations || [], inTarget = declared.filter(item => item.source === loaded.target.source);
+    let focus = null;
+    if (routine) {
+      focus = declared.find(item => item.name !== 'GLOBAL' && up(item.owner) + '->' + up(item.name) === up(routine)) || null;
+    } else if (Number.isInteger(line)) {
+      const starts = up(type) === 'CLAS' && debuggerApi && typeof debuggerApi.classMethods === 'function'
+        ? await debuggerApi.classMethods('/sap/bc/adt/oo/classes/' + encodeURIComponent(String(object_name).toLowerCase()) + '/source/main') : null;
+      focus = require('./value-origin-points').routineAt(declared, { objectType: type, objectName: object_name, targetSource: loaded.target.source, line, starts });
+    }
+    const global = inTarget.find(item => item.name === 'GLOBAL');
+    const answer = { object_name: up(object_name), object_type: up(type), line: Number.isInteger(line) ? line : null,
+      scope: focus ? up(focus.owner) + '->' + up(focus.name) : '', name: focus ? up(focus.name) : '',
+      params: focus ? focus.params.map(item => ({ ...item })) : [], locals: focus ? focus.locals.map(item => ({ ...item })) : [],
+      globals: !focus || globals ? (global ? global.locals.map(item => ({ ...item })) : []) : null };
+    // A structure declared in an interface the analysis did not load is read from that interface (or class) itself, for what is shown.
+    const readOwner = async name => {
+      try { return (await sourceDocument(from.repo, { object_type: 'INTF', object_name: name })).document.getText(); }
+      catch (first) {
+        try { return (await sourceDocument(from.repo, { object_type: 'CLAS', object_name: name })).document.getText(); }
+        catch (second) { throw first; }
+      }
+    };
+    answer.warnings = await require('./value-origin-points').completeStructures(
+      { globals: answer.globals || [], routines: [{ params: answer.params, locals: answer.locals }] }, require('./value-origin').typeComponents, readOwner);
+    return answer;
+  }
+  /* The object and kind of an open VERTEX tab, for whoever follows the reader's cursor. */
+  function documentObject(document) {
+    const entry = document && opened.get(document.uri.toString());
+    return entry ? { object_name: entry.data.object_name, object_type: entry.data.object_type } : null;
+  }
+  /* The analysis reads SAP through the same session as everything else here, and that session takes one request at a time: a
+     second one is refused as busy. The analysis requests - the points, the variables, a link's source - therefore go one after
+     another, and an automatic request for the variables does not pile up behind the reader's moving cursor: only the newest
+     waits. A session that is busy with something else is waited for, not reported, for a few seconds. */
+  const gate = require('./request-gate').createGate();
+  const originPoints = request => gate.gated(() => readOrigin(request));
+  const originOpen = request => gate.gated(() => openOrigin(request));
+  const originVariables = gate.newest(readVariables);
+  // The sources of the last analysis: what a node of its flow opens, as Value origin opens its nodes.
+  let lastOrigin = null;
+  async function openOrigin({ source: sourceId, location, line }) {
+    if (!lastOrigin) { throw new Error('Run the analysis first: its sources are what a link opens.'); }
+    const source = lastOrigin.sources.find(item => item.id === sourceId);
+    if (!source) { throw new Error('The analysis has no source ' + sourceId + ' any more: run it again.'); }
+    const opened = await lastOrigin.openSource(source, { location, line });
+    const at = new vscode.Position(Math.max(0, Math.min(opened.document.lineCount - 1, (opened.line || line) - 1)), 0);
+    await vscode.window.showTextDocument(opened.document, { viewColumn: vscode.ViewColumn.One, selection: new vscode.Range(at, at), preview: true });
+    return {};
+  }
+  async function readOrigin({ object_name, object_type, line, variable, from: boundFrom, to: boundTo }) {
+    const up = text => String(text || '').toUpperCase();
+    const bounded = Number.isInteger(boundFrom);
+    // A path from a breakpoint needs no value; the points of a slice do.
+    if (!object_name || (!variable && !bounded)) { throw new Error('An object and a variable are needed.'); }
     const from = [...opened.values()].find(item => item.repo);
     if (!from || !from.repo) { throw new Error('Open a VERTEX ABAP source tab so the analysis knows which system to read.'); }
     const entry = await sourceDocument(from.repo, { object_type: object_type || 'PROG', object_name });
-    const target = { source: entry.document.uri.toString(), line: Number(line) || 1, column: 0, variable: String(variable).toUpperCase() };
+    // The analysis starts from the last use of the value in the source, wherever the run stands.
+    const source = entry.document.getText(), at = (variable ? require('./value-origin-points').lastUse(source, variable) : 0) || Number(line) || 1;
+    const lineText = source.split(/\r?\n/)[at - 1] || '';
+    const target = { source: entry.document.uri.toString(), line: at, variable: String(variable || '').toUpperCase(),
+      column: variable ? require('./value-origin-points').columnOf(lineText, variable) : 0 };
+    // From a breakpoint the analysis gives the path too, as the Value origin command does: to the end of the object, where the
+    // end point - which may be in a routine this one calls - is found by the order the flow has.
+    const toLine = Number.isInteger(boundTo) ? boundTo : entry.document.lineCount;
+    if (bounded && boundFrom > toLine) { throw new Error('The path is taken from one breakpoint to a later one: ' + boundFrom + ' is not before ' + toLine + '.'); }
+    if (bounded && up(object_type) !== 'CLAS') { target.flowBounds = { source: target.source, from: boundFrom, to: toLine }; }
     const loaded = await originSources(entry.document, target, () => {}, () => false);
-    const graph = require('./value-origin').analyze(loaded.sources, { ...loaded.target });
-    const named = new Map(loaded.sources.map(source => [source.id,
-      { name: source.aceOwner || source.objectName || source.name,
-        type: source.aceOwner ? source.aceOwnerType : source.objectType }]));
-    const seen = new Set(), points = [];
-    for (const row of (graph.flow || [])) {
-      if (!row.included) { continue; }
-      const where = named.get(row.source);
-      if (!where || !where.name) { continue; }
-      const key = where.name + ':' + row.line;
-      if (seen.has(key)) { continue; }
-      seen.add(key);
-      // What to watch there: the name the statement changes, and the names it
-      // is made of. In a called routine these are its own - IV_SCENARIO where
-      // the caller had LV_SCENARIO - which is the whole reason the analysis is
-      // asked rather than the record read.
-      const names = [String(row.changed || '').toUpperCase(),
-        ...(row.dependencies || []).map(one => String(one).toUpperCase())]
-        .filter((one, at, all) => one && all.indexOf(one) === at);
-      points.push({ name: where.name, type: where.type || 'CLAS', line: row.line, text: row.text || '', names });
+    const { analyze } = require('./value-origin');
+    let graph = analyze(loaded.sources, { ...loaded.target, flowBounds: target.flowBounds });
+    if (bounded && up(object_type) === 'CLAS') {
+      // In a class the point is a line of the class source, and the flow is counted in the include of the method that holds
+      // it: the method is found from the analysis's own declarations and ADT's start for it, and the bounds are its lines.
+      const starts = debuggerApi && typeof debuggerApi.classMethods === 'function'
+        ? await debuggerApi.classMethods('/sap/bc/adt/oo/classes/' + encodeURIComponent(String(object_name).toLowerCase()) + '/source/main', { fresh: true }) : null;
+      const routine = require('./value-origin-points').routineAt(graph.declarations || [],
+        { objectType: 'CLAS', objectName: object_name, targetSource: loaded.target.source, line: boundFrom, starts });
+      if (!routine) { throw new Error('Line ' + boundFrom + ' of ' + up(object_name) + ' is in no method: a path starts at a statement of one.'); }
+      const first = routine.first + (boundFrom - starts[up(routine.name)]);
+      graph = analyze(loaded.sources, { ...loaded.target, source: routine.source,
+        flowBounds: { source: routine.source, from: first, to: Math.max(first, routine.last) } });
     }
-    return { variable: target.variable, points };
+    lastOrigin = loaded;
+    const { pointsOf, pathRows, siteRows, placeRows, classLines } = require('./value-origin-points');
+    const found = pointsOf(graph, loaded.sources);
+    // The debugger counts a class's lines in its main source; ACE, inside each method's include.
+    const starts = new Map();
+    const path = bounded ? pathRows(graph, loaded.sources) : [], sitesFound = bounded ? siteRows(graph, loaded.sources) : [];
+    for (const point of found.concat(path, sitesFound)) {
+      if (point.object_type !== 'CLAS' || !point.method || starts.has(point.name)) continue;
+      if (!debuggerApi || typeof debuggerApi.classMethods !== 'function') {
+        throw new Error('The debugger is not attached: the lines of class ' + point.name + ' cannot be placed.');
+      }
+      starts.set(point.name, await debuggerApi.classMethods('/sap/bc/adt/oo/classes/' + encodeURIComponent(point.name.toLowerCase()) + '/source/main', { fresh: true }));
+    }
+    const points = classLines(found, name => starts.get(name));
+    const flow = placeRows(path, name => starts.get(name)), sites = placeRows(sitesFound, name => starts.get(name));
+    // What was read, so an empty answer says why.
+    const rows = graph.flow || [];
+    return { variable: target.variable, points, flow, sites, bounds: target.flowBounds ? { from: target.flowBounds.from, to: target.flowBounds.to } : null, read: { sources: loaded.sources.length, nodes: graph.nodes.length,
+      flow_rows: rows.length, places: points.length } };
   }
   const navigation = [];
   const externalSignatures = new Map();
@@ -1829,7 +1924,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     repositories.clear(); texts.clear(); opened.clear(); drafts.clear();
   } });
   // Host/agent interface: create/modify only PREPARE and open a diff. Apply is UI-only.
-  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger, revealFrame, originPoints,
+  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger, revealFrame, originPoints, originOpen, originVariables, documentObject,
     editorContext() {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !editor.document) { return null; }

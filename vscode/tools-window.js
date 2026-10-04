@@ -1,16 +1,14 @@
 "use strict";
 const fs = require("fs"), path = require("path");
-const { VISUAL_DEBUG } = require("./object-tools");
 function html(pages, initial) {
   const read = name => fs.readFileSync(path.join(pages, name), "utf8");
   const bundle = {};
-  for (const name of ["chat", "metrics", "versions", "table", "source"]) bundle[name] = read(name + ".html");
-  // Visual Debug is this extension's own page, not one of the shared ones.
-  bundle.debug = fs.readFileSync(path.join(__dirname, "pages", "visual-debug.html"), "utf8");
+  // The magnifier every diagram has is one file; a page that draws diagrams marks where it goes.
+  const lens = read("vertex-lens.js");
+  for (const name of ["chat", "metrics", "versions", "table"]) bundle[name] = read(name + ".html").replace("/*VERTEX_LENS*/", () => lens);
   return read("tools.html")
     .replace("/*INIT*/null/*INIT*/", () => JSON.stringify(initial || null).replace(/</g, "\\u003c"))
-    .replace("/*OBJECT_MODEL*/", () => read("object-tools.js")
-      + "\nVertexObjects.enable.apply(null," + JSON.stringify(VISUAL_DEBUG).replace(/</g, "\\u003c") + ");")
+    .replace("/*OBJECT_MODEL*/", () => read("object-tools.js"))
     .replace("/*TOOL_ROUTES*/", () => read("tool-routes.js"))
     .replace("/*BUNDLE*/{}", () => JSON.stringify(bundle).replace(/</g, "\\u003c"));
 }
@@ -30,6 +28,8 @@ function debugHtml(initial) {
     window.addEventListener("message",event=>{
       if(event.data.type==="result"){pending=event.data.payload;sdeReady();}
       if(event.data.type==="debug")sdeDebugEvent(event.data.payload);
+      if(event.data.type==="origin")sdeOriginReady(event.data.payload);
+      if(event.data.type==="cursor"&&typeof sdeCursor==="function")sdeCursor(event.data.payload);
     });
     document.addEventListener("DOMContentLoaded",()=>document.querySelectorAll(
       "#visual,#rec,#zonly,#fclasses,#fmethods,#initials,#globals,#locals,#params,[data-pane]"
@@ -62,7 +62,7 @@ async function debugCommand(dbg, command, a, fetchVertex) {
     }
     case "picture": return dbg.picture();
     case "source": return { url: a.url, source: await dbg.source(a.url) };
-    case "methods": return { url: a.url, methods: await dbg.classMethods(a.url) };
+    case "methods": return { url: a.url, methods: await dbg.classMethods(a.url, { fresh: true }) };
     case "set": {
       const bp = await dbg.setBreakpointAt({ url: a.url, line: a.line, condition: a.condition, mode: a.mode, take_over: a.take_over === true });
       return { id: bp.id };
@@ -109,13 +109,12 @@ function open(vscode, context, deps, initial) {
     // Eclipse hosts the same HTML but deliberately does not define this flag.
     window.sdeAnthropicApi=()=>true;
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
-    for(const call of ["workspace","asset","models","ask","browse","requestSearch","source","openEditor","runUnitTests","runAtc","vertexContext","aiProvider","aiModel","aiConfig","debug"]){
+    for(const call of ["workspace","asset","models","ask","browse","requestSearch","vertexContext","aiProvider","aiModel","aiConfig"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>host.postMessage({call,args});
     }
     window.addEventListener("message",e=>{
       if(e.data.type==="result"){pending=e.data.payload;sdeReady();}
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
-      if(e.data.type==="debug")sdeDebugEvent(e.data.payload);
       if(e.data.type==="requestSearch"){
         const child=document.getElementById("result").contentWindow;
         if(child&&typeof child.sdeDeliver==="function")child.sdeDeliver(e.data.payload);
@@ -138,12 +137,7 @@ function open(vscode, context, deps, initial) {
   const changes = vscode.workspace.onDidChangeConfiguration(event => {
     if (chatWho && event.affectsConfiguration("vertex.ai")) { void postModels(); }
   });
-  // The debugger is the one the assistant drives: whatever moves it - the
-  // assistant, this window, another window - is drawn here too.
-  const unwatch = deps.debugger.watch(() => {
-    void panel.webview.postMessage({ type: "debug", payload: JSON.stringify(deps.debugger.picture()) });
-  });
-  panel.onDidDispose(() => { changes.dispose(); unwatch(); });
+  panel.onDidDispose(() => { changes.dispose(); });
   panel.webview.onDidReceiveMessage(message => pin(async () => {
     const args = message.args || [];
     try {
@@ -159,47 +153,10 @@ function open(vscode, context, deps, initial) {
         const payload=await deps.fetch(context,resource);
         await panel.webview.postMessage({type:"requestSearch",payload}); return;
       }
-      if(message.call === "source") {
-        const type=args[1] === "REPS" ? "PROG" : args[1];
-        if(!["PROG","CLAS","FUNC"].includes(type)) throw new Error("Unsupported source type.");
-        const payload=JSON.stringify(await deps.source({object_name:args[0],object_type:type}));
-        await panel.webview.postMessage({type:"result",payload}); return;
-      }
       if(message.call === "origin") {
         // The same analysis the editor command runs, asked for by object and
         // variable: the window needs the places a value can be changed.
         const payload=JSON.stringify(await deps.originPoints(JSON.parse(String(args[0]||"{}"))));
-        await panel.webview.postMessage({type:"result",payload}); return;
-      }
-      if(message.call === "openEditor") {
-        if(!["PROG","CLAS","FUNC"].includes(args[1])) throw new Error("Unsupported source type.");
-        try { await deps.openEditor({object_name:String(args[0]),object_type:args[1]}); }
-        catch(error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
-        return;
-      }
-      if(message.call === "runAtc") {
-        if(!["PROG","CLAS","FUNC","INTF"].includes(args[1])) throw new Error("Unsupported source type.");
-        try { await deps.runAtc({object_name:String(args[0]),object_type:args[1]}); }
-        catch(error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
-        return;
-      }
-      if(message.call === "runUnitTests") {
-        if(!["PROG","CLAS"].includes(args[1])) throw new Error("ABAP Unit runs for a class or a program.");
-        try { await deps.runUnitTests({object_name:String(args[0]),object_type:args[1]}); }
-        catch(error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
-        return;
-      }
-      if(message.call === "debug" && args[0] === "copy") {
-        // The step log to the clipboard, through VS Code rather than the page.
-        await vscode.env.clipboard.writeText(String(JSON.parse(args[1]||"{}").text||""));
-        await panel.webview.postMessage({type:"result",payload:"{}"}); return;
-      }
-      if(message.call === "debug") {
-        // This window shows the source itself, so a stop is followed here
-        // and no editor is opened over it.
-        if(typeof deps.debugger.drivenBy === "function") deps.debugger.drivenBy("window");
-        const payload=JSON.stringify(await debugCommand(deps.debugger,String(args[0]),JSON.parse(args[1]||"{}"),
-          resource=>deps.fetch(context,resource)));
         await panel.webview.postMessage({type:"result",payload}); return;
       }
       if(message.call === "vertexContext") {

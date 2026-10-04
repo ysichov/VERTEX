@@ -67,9 +67,9 @@
   naming what that call passes. It narrows from <i>Full</i> to <i>BSE</i>, which is what the analysis found and the
   path that led to it. Formula is how the value was computed, one top and its definitions as branches.
   The <b>Depth</b> slider decides how far the tree opens &mdash; along the call stack in FLOW, along the derivation
-  in Formula &mdash; and <b>Collapse all</b> / <b>Expand all</b> are its two ends.</p>
-  <p>VS Code 0.7.11 Value Origin now loads complete implementations for classes previously encountered only as foreign CU declarations.</p>
-  <p>VS Code test build 0.7.11 adds ACE-backed Value Origin in the ABAP source editor:
+  in Formula &mdash; and one button beside it, offering <i>Collapse all</i> and then <i>Expand all</i>, says whether the levels shown are open, whatever the depth.</p>
+  <p>VS Code 0.7.12 Value Origin now loads complete implementations for classes previously encountered only as foreign CU declarations.</p>
+  <p>VS Code test build 0.7.12 adds ACE-backed Value Origin in the ABAP source editor:
   a collapsible static call stack, structure-component dependencies through RETURNING and
   CHANGING, clickable calculations and a copyable analysis log. Links open the standard
   VS Code editor; its gutter breakpoints synchronize to SAP. Update ZCL_VX_ADT_RES_FLOW in SAP for the
@@ -128,8 +128,8 @@
   <li><b>A method by name.</b> Ask the Assistant for <i>the flowchart of ZCL_FOO-&gt;BAR</i> and the
       window opens on that method, picked in Parts. The Tools window reads the parts of an object
       whatever function it opens on.</li>
-  <li><b>Nothing picked for you.</b> Without a named part, View source shows the whole object,
-      the Logic diagram asks for a method and Diff waits for a part.</li>
+  <li><b>Nothing picked for you.</b> Without a named part, the Logic diagram asks for a
+      method and Diff waits for a part.</li>
   <li><b>Short answers to "open".</b> A request to open or show a function is answered in one
       sentence naming what opens.</li>
   <li><b>The folded Parts list</b> shrinks back to its strip, whatever width the splitter set.</li>
@@ -144,9 +144,10 @@
 
 <ul class="news">
   <li><b>One Parts list for the object.</b> The VERTEX Tools window keeps the parts of a class
-      or a program - sections, methods, events, forms - at its left. View source, the Logic
-      diagram, the Calls diagram, Metrics and UML all show the part picked there, and switching
-      the function neither redraws the list nor loses the choice. Nothing is picked for you:
+      or a program - sections, methods, events, forms - at its left. The Logic
+      diagram shows the method picked there and the Calls diagram starts its walk from the event or
+      form picked there; Metrics and UML draw the whole object and show no list. Switching
+      between the two neither redraws the list nor loses the choice. Nothing is picked for you:
       without a named part, an object opens whole.</li>
   <li><b>Versions laid out as AVE's.</b> The parts, the versions of the chosen part under them,
       and the diff beside. Pin any version as the base and compare the others with it
@@ -238,7 +239,7 @@
 </p>
 
 <p>
-  The Eclipse plugin here is 0.7.3; the VS Code extension is 0.7.11. Six VS Code releases have
+  The Eclipse plugin here is 0.7.3; the VS Code extension is 0.7.15. Eight VS Code releases have
   landed since the plugin was last exported, so the two hosts have partly drifted apart: the ABAP
   editor, the AI-driven debugger, Visual Debug and Value Origin are VS Code only by design, while
   the three explorer pages are shared and the plugin still carries their 0.7.3 copies. 0.7.7 is the

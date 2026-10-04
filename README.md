@@ -31,14 +31,14 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The three explorers are the same pages in both hosts, but the Eclipse plugin is built at
-**0.7.3** and the VS Code extension at **0.7.11**. What the pages gained since 0.7.3 is in the
+**0.7.3** and the VS Code extension at **0.7.15**. What the pages gained since 0.7.3 is in the
 repository and in VS Code, and reaches Eclipse only when the plugin is built again.
 
 **Where the two hosts stand apart.** The editor, the debugger, Visual Debug and Value Origin are
 VS Code only, by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace
-them. The divergence that is not by design is the build — six VS Code releases (0.7.4 Visual
+them. The divergence that is not by design is the build — eight VS Code releases (0.7.4 Visual
 Debug, 0.7.5 debugger fixes, 0.7.6 ABAP Unit, 0.7.7 the chat running tests and ATC, 0.7.9 Value
-Origin and the diagram work, 0.7.11 Value Origin as one derivation) have landed since the
+Origin and the diagram work, 0.7.12 Value Origin as one derivation, 0.7.14 the source as the editor alone - no View source, 0.7.15 the flow and the variables before the run) have landed since the
 Eclipse plugin was last exported. The shared pages carry their part of that, and it is waiting on a build, not on code.
 
 The projects named above are where the ideas were worked out first, and they are not developed
@@ -99,7 +99,7 @@ call edge naming what that call passes (`lv_scenario → IV_SCENARIO`); it narro
 *BSE*, which is what the analysis found and the path that led to it. Formula is how the value was
 computed: `a = b + c` at the top and the definitions of `b` and `c` as its two branches. The
 **Depth** slider decides how far the tree opens — along the call stack in FLOW, along the
-derivation in Formula — and **Collapse all** / **Expand all** are its two ends. *Tree* and
+derivation in Formula — and one button beside it, offering *Collapse all* and then *Expand all*, says whether the levels shown are open, whatever the depth. *Tree* and
 *Diagram* stay the two views of whichever Type is chosen.
 
 Branches and polymorphic targets are alternatives, database-dependent loop order is a boundary,
@@ -111,9 +111,10 @@ slice, not a solved runtime trace.
 ### VS Code 
 
 - **VERTEX Tools** — pick an object type and a name; the functions offered depend on the type
-  (Data, View source, UML, Metrics, Calls and Logic diagrams, Diff, Versions, Visual Debug).
+  (Data, UML, Metrics, Calls and Logic diagrams, Diff, Versions). There is no View source: the source is the
+  editor tab, and its parts are VS Code's Outline. Visual Debug is the panel beside the editor.
   Clicking a method in the Calls diagram opens its Logic diagram inside the same canvas, joined
-  to the block it came from; *Lens* magnifies the node under the pointer when the text is small.
+  to the block it came from; the magnifier icon magnifies the diagram under the pointer, the same lens in every diagram.
 - **The ABAP editor** — hover, Go to, outline, Save & Activate and the block-by-block
   Review & Activate; Ctrl+Shift+F10 runs ABAP Unit into the Test Explorer, Ctrl+Shift+F2 runs ATC
   into the Problems view, Shift+F12 shows where-used, F1 opens the keyword documentation.

@@ -43,8 +43,9 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(flowView.includes('data-mermaid-direction="LR"'));
   assert(page.includes("flowchart '+direction"));
   assert(page.includes('installUmlLens'));
-  assert(page.includes("lensZoom=2.5"));
-  assert(page.includes("const isNode=element=>{while(element&&element!==svg)"));
+  assert(page.includes("window.vertexLens.install"), "the flow uses the one lens");
+  assert(page.includes("state.zoom = Math.max(1.5, Math.min(6"), "and the lens is in the page, loaded before the flow");
+  assert(page.indexOf("vertexLens = {") < page.indexOf("window.vertexLens.install"), "before the flow draws");
   assert(page.includes("event.shiftKey"));
   assert(flowView.includes('id="mermaid-lens"'));
   assert(flowView.includes('aria-pressed="false"'));
@@ -432,4 +433,49 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   assert(page.includes('data-node="n0"'));
   assert(page.includes('&lt;script&gt;'));
   assert(!page.includes("x = '<script>'"));
+});
+
+test("what each routine declares and takes is listed, with the type, and inline DATA( x ) among the locals", () => {
+  const { analyze } = require("../value-origin");
+  const text = ["REPORT zr.", "PARAMETERS p_a TYPE c.", "DATA gv TYPE i.", "FORM f USING pv TYPE i.", "  DATA(lv) = 1.",
+    "  DATA lt TYPE STANDARD TABLE OF zty.", "  DATA ls TYPE zif=>ty_ctx.", "ENDFORM."].join(String.fromCharCode(10));
+  const graph = analyze([{ id: "a", name: "ZR", text, objectName: "ZR", objectType: "PROG" }], { source: "a", line: 1, variable: "" });
+  const global = graph.declarations.find(d => d.name === "GLOBAL"), form = graph.declarations.find(d => d.name === "F");
+  assert.deepEqual(global.locals.map(l => l.name + ":" + l.type), ["p_a:c", "gv:i"]);
+  assert.deepEqual(form.params.map(p => p.name + ":" + p.mode + ":" + p.type), ["PV:USING:i"]);
+  assert.deepEqual(form.locals.map(l => l.name + ":" + l.type), ["lv:", "lt:STANDARD TABLE OF zty", "ls:zif=>ty_ctx"]);
+});
+
+test("a method named like a statement is a call after an arrow, and a parameter typed REF TO types its receiver", () => {
+  const { analyze } = require("../value-origin");
+  const text = ["CLASS zcl_log DEFINITION.", "  PUBLIC SECTION.", "    METHODS add IMPORTING iv TYPE i.", "ENDCLASS.", "CLASS zcl_log IMPLEMENTATION.",
+    "  METHOD add.", "    DATA(x) = iv.", "  ENDMETHOD.", "ENDCLASS.", "CLASS zcl_user DEFINITION.", "  PUBLIC SECTION.",
+    "    METHODS run IMPORTING io_log TYPE REF TO zcl_log.", "ENDCLASS.", "CLASS zcl_user IMPLEMENTATION.", "  METHOD run.",
+    "    io_log->add( iv = 1 ).", "  ENDMETHOD.", "ENDCLASS."].join(String.fromCharCode(10));
+  const sources = [{ id: "a", name: "ZCL_X", text, objectName: "ZCL_X", objectType: "CLAS" }];
+  const graph = analyze(sources, { source: "a", line: 1, variable: "" });
+  const site = graph.callSites.find(s => s.line === 16);
+  assert.ok(site, "io_log->add( ) is a call");
+  assert.deepEqual(site.callees.map(c => c.owner + ">" + c.name), ["ZCL_LOG>ADD"]);
+});
+
+test("a variable declared by a call gets the type the method returns, and a structure type its components", () => {
+  const { analyze } = require("../value-origin");
+  const nl = String.fromCharCode(10);
+  const types = ["INTERFACE zif_t PUBLIC.", "  TYPES: BEGIN OF ty_ctx,", "           id TYPE char10,", "           amount TYPE decfloat34,", "           BEGIN OF inner,",
+    "             a TYPE i,", "           END OF inner,", "         END OF ty_ctx,", "         ty_alias TYPE ty_ctx.", "ENDINTERFACE."].join(nl);
+  const facade = ["CLASS zcl_f DEFINITION.", "  PUBLIC SECTION.", "    METHODS run RETURNING VALUE(rs) TYPE zif_t=>ty_ctx.", "ENDCLASS.",
+    "CLASS zcl_f IMPLEMENTATION.", "  METHOD run.", "  ENDMETHOD.", "ENDCLASS."].join(nl);
+  const report = ["REPORT zr.", "DATA(ls_result) = NEW zcl_f( )->run( ).", "DATA(lo) = NEW zcl_f( )."].join(nl);
+  const sources = [{ id: "t", name: "ZIF_T", text: types, objectName: "ZIF_T", objectType: "INTF" },
+    { id: "f", name: "ZCL_F", text: facade, objectName: "ZCL_F", objectType: "CLAS" },
+    { id: "r", name: "ZR", text: report, objectName: "ZR", objectType: "PROG" }];
+  const graph = analyze(sources, { source: "r", line: 1, variable: "" });
+  const locals = graph.declarations.find(d => d.source === "r" && d.name === "GLOBAL").locals;
+  const result = locals.find(l => l.name === "ls_result"), object = locals.find(l => l.name === "lo");
+  assert.equal(result.type, "zif_t=>ty_ctx", "the type is what run returns");
+  assert.deepEqual(result.components.map(c => c.name + ":" + c.type), ["id:char10", "amount:decfloat34", "inner:structure"]);
+  assert.deepEqual(result.components[2].components.map(c => c.name), ["a"], "a nested structure keeps its own components");
+  assert.equal(object.type, "REF TO zcl_f");
+  assert.equal(object.components, undefined, "a reference has no components to open");
 });

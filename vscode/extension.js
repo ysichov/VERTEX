@@ -382,7 +382,7 @@ async function fetch(context, requestPath, body) {
 // The shared controls stylesheet is an asset like the diagram library: a page
 // given to a webview as a string has no address to load one from, so it asks
 // for what it needs by name. Both files live beside the pages.
-const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css", flow: "vertex-flow.js" };
+const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css", flow: "vertex-flow.js", lens: "vertex-lens.js" };
 function asset(name) {
   if (!ASSETS[name]) {
     return "ERROR:This host ships no asset called " + name + ".";
@@ -807,11 +807,7 @@ function activate(context) {
     pages: Object.assign(windowTools(), { "/chat": chatSet, "/debug": debugTools }) });
   const showTools = initial => require("./tools-window").open(vscode, context,
     { pages: PAGES, fetch, asset, active, pin: pinTo, models: args => assistantModels(context, args),
-      source: args => sapCode.execute("read_sap_object", args),
-      openEditor: args => sapCode.execute("open_sap_object", args),
       originPoints: args => sapCode.originPoints(args),
-      runUnitTests: args => sapCode.runUnitTests(args),
-      runAtc: args => sapCode.runAtc(args),
       setContext: value => { latestToolsContext = value; },
       debugger: dbg,
       chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets) }, initial);
@@ -831,6 +827,18 @@ function activate(context) {
       view.webview.options = { enableScripts: true };
       view.webview.html = require("./tools-window").debugHtml(dockedDebugInitial());
       const unwatch = dbg.watch(postDockedPicture);
+      // The reader's place in a VERTEX source, for the variables it shows before the program runs: the object and the line the
+      // cursor is on, whichever VERTEX tab is in front. A change is sent once the cursor has rested a moment.
+      let cursorTimer;
+      const sendCursor = () => {
+        const editor = vscode.window.activeTextEditor, object = editor && sapCode.documentObject(editor.document);
+        if (!object) { return; }
+        view.webview.postMessage({ type: "cursor", payload: JSON.stringify({ ...object, line: editor.selection.active.line + 1 }) });
+      };
+      const watchCursor = () => { clearTimeout(cursorTimer); cursorTimer = setTimeout(sendCursor, 150); };
+      const cursorWatchers = [vscode.window.onDidChangeTextEditorSelection(watchCursor), vscode.window.onDidChangeActiveTextEditor(watchCursor)];
+      setTimeout(sendCursor, 400);
+      view.onDidDispose(() => { clearTimeout(cursorTimer); cursorWatchers.forEach(watcher => watcher.dispose()); });
       const receive = view.webview.onDidReceiveMessage(async message => {
         try {
           if (message.call === "source") {
@@ -849,15 +857,27 @@ function activate(context) {
           }
           if (message.call === "origin") {
             // Where the chosen value can be changed, from the same analysis the
-            // editor command runs. The window turns these into breakpoints.
-            const answer = await sapCode.originPoints(JSON.parse(String((message.args || [])[0] || "{}")));
-            await view.webview.postMessage({ type: "result", payload: JSON.stringify(answer) });
+            // editor command runs. The window turns these into breakpoints. It takes
+            // seconds and answers on a channel of its own, by the number of the request,
+            // so that it runs beside the debugger instead of holding its queue - an
+            // error included: it is the analysis's, not the next debugger answer's.
+            const request = JSON.parse(String((message.args || [])[0] || "{}"));
+            let reply;
+            try { reply = { id: request.id, answer: request.open ? await sapCode.originOpen(request.open) : request.variables ? await sapCode.originVariables(request.variables) : await sapCode.originPoints(request) }; }
+            catch (error) { reply = { id: request.id, error: error.message }; }
+            await view.webview.postMessage({ type: "origin", payload: JSON.stringify(reply) });
             return;
           }
           if (message.call === "reveal") {
             // The player walked to a recorded stop. In this panel the source is
             // the editor's, so that is what has to move.
             await sapCode.revealFrame(JSON.parse(String((message.args || [])[0] || "{}")));
+            return;
+          }
+          if (message.call === "debug" && (message.args || [])[0] === "copy") {
+            // The step log to the clipboard, through VS Code rather than the page.
+            await vscode.env.clipboard.writeText(String(JSON.parse((message.args || [])[1] || "{}").text || ""));
+            await view.webview.postMessage({ type: "result", payload: "{}" });
             return;
           }
           if (message.call !== "debug") { throw new Error("Unsupported VERTEX Debug request."); }

@@ -16,21 +16,13 @@ test("sidebar line-count question sends the published method in one bounded Anth
   workspace.open(vscode, { subscriptions: [] }, { pages: path.resolve(__dirname, "../../org.vertex.abap.ui/resources"),
     chat: () => null, active: () => ({ system: { name: "QAS" } }), setContext: value => { state = value; },
     debugger: { watch: () => () => {}, picture: () => ({}) } }, null);
-  const elements = { title: {}, code: { addEventListener() {} }, partssplit: { addEventListener() {} } };
-  const page = vm.createContext({ document: { getElementById: id => elements[id], addEventListener() {} },
-    window: {}, sdeSource() {}, sdeTake: () => raw,
-    sdeContextUpdate: value => receive({ call: "vertexContext", args: [{ ...value,
-      workspace: { type: "CLAS", name: "ZCL_AVЕ_POPUP", action: "view" } }] }) });
-  const html = fs.readFileSync(path.resolve(__dirname, "../../org.vertex.abap.ui/resources/source.html"), "utf8");
-  vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1]
-    .replace("/*INIT*/null/*INIT*/", JSON.stringify({ type: "CLAS", name: "ZCL_TEST" })), page);
   const method = ["METHOD add_cr_diag.", "CHECK mv_code_review = abap_true.", "CHECK iv_text IS NOT INITIAL.",
     "IF lines( mt_cr_diag ) < 300.", "APPEND iv_text TO mt_cr_diag.", "ENDIF.", "ENDMETHOD."];
-  page.allLines = method.concat(["UNRELATED_FULL_CLASS".repeat(20000)]);
-  page.selectedPart = { name: "add_cr_diag" }; page.shownRange = { start: 1, end: 7 };
-  page.publishContext();
+  await receive({ call: "vertexContext", args: [{ vertex_view: { type: "CLAS", name: "ZCL_TEST", view: "metrics", part: "add_cr_diag" },
+    selected_fragment: { kind: "visible_part", text: method.join("\n"), start_line: 1, end_line: 7 },
+    workspace: { type: "CLAS", name: "ZCL_AVE_POPUP", action: "metrics" } }] });
   assert.equal(state.selected_fragment.text, method.join("\n"));
-  assert.equal(state.workspace.action, "view");
+  assert.equal(state.workspace.action, "metrics");
   const bodies = [];
   t.mock.method(https, "request", (_options, callback) => {
     const req = new EventEmitter(); req.setTimeout = () => {}; req.end = payload => {

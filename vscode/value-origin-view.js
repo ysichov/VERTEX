@@ -1,5 +1,5 @@
 "use strict";
-const { analyze, variableAt } = require('./value-origin');
+const { analyze, variableAt, literalAt } = require('./value-origin');
 const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 // ACE method includes start at line 1, whereas the editable class document
 // contains every method.  openSource translates the include position to that
@@ -21,7 +21,19 @@ function flowScript() {
   }
   throw new Error('vertex-flow.js was not found in ' + places.join(' or ') + '.');
 }
-function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = '', flowSource = '') {
+// The magnifier every diagram has, loaded before the flow that uses it - the same way, by address or inline.
+let lensScriptText = null;
+function lensScript() {
+  if (lensScriptText !== null) { return lensScriptText; }
+  const fs = require('fs'), path = require('path');
+  const places = [path.join(__dirname, 'resources', 'vertex-lens.js'),
+    path.join(__dirname, '..', 'org.vertex.abap.ui', 'resources', 'vertex-lens.js')];
+  for (const file of places) {
+    try { return lensScriptText = fs.readFileSync(file, 'utf8'); } catch (error) { /* the next one */ }
+  }
+  throw new Error('vertex-lens.js was not found in ' + places.join(' or ') + '.');
+}
+function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = '', flowSource = '', lensSource = '') {
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
   const scenarioChoices = (graph.scenarios || []).flatMap(group => group.choices.map(choice => choice.name));
   const scenarioOf = n => scenarioChoices.find(name => n.kind === 'value' && String(n.text).toUpperCase() === name ||
@@ -421,7 +433,7 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   </style>${styleSource ? `<link rel="stylesheet" href="${styleSource}">` : ''}</head><body><details class="help"><summary aria-label="Value origin help">?</summary><div><strong>Value origin</strong> traces static source dependencies backwards across calls. It proves source relationships, not runtime values: loop order, database contents and unknown dispatches remain boundaries. Expand a branch to inspect its inputs; click <code>&lt;/&gt;</code> to open source, Ctrl+Click to open beside. <strong>All branches</strong> shows every static alternative. Choosing a selection-screen radio button simulates that exclusive choice and hides other radio branches. Mermaid shows the same expanded branches: click a diagram node to expand or collapse it, double-click it to open source. Use the mouse wheel to zoom and drag empty space to pan. ${(graph.skipped || []).length ? `<p>Analysis boundaries kept outside the graph: ${escape(graph.skipped.join(', '))}</p>` : ''}</div></details><input id="debug-toggle" class="debug-toggle" type="checkbox"><label class="debug-button" for="debug-toggle" title="Show technical analysis sections">🐞</label><h2>Value origin — ACE backward analysis</h2>
   ${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
   ${scenarioControls ? `<details class="scenario-panel"><summary>Simulate selection screen</summary>${scenarioControls}</details>` : ''}<div id="bse-workspace" class="bse-workspace"><template data-flow-pane="tree"><p class="edge">Execution flow${graph.flowBounds ? ` between breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''} — changes and parameter transfers to ${escape(graph.selectedVariable || '?')}</p>${aceExecution || '<p>ACE execution flow was not produced.</p>'}</template><template data-flow-pane="formula"><p class="edge">Formula derivation — click a branch to expand its input formulas</p>${formulaView}</template></div>
-  <script id="mermaid-data" type="application/json">${JSON.stringify(mermaidGraph).replaceAll('<', '\\u003c')}</script>${flowSource ? `<script nonce="${nonce}" src="${flowSource}"></script>` : `<script nonce="${nonce}">${flowScript()}</script>`}<script nonce="${nonce}">if(!window.vertexFlow){const box=document.getElementById('bse-workspace');if(box)box.innerHTML='<p class="warning">The flow view did not load${flowSource ? ` from ${flowSource}` : ''}: the page has its data but nothing to draw it with.</p>';}</script>
+  <script id="mermaid-data" type="application/json">${JSON.stringify(mermaidGraph).replaceAll('<', '\\u003c')}</script>${lensSource ? `<script nonce="${nonce}" src="${lensSource}"></script>` : `<script nonce="${nonce}">${lensScript()}</script>`}${flowSource ? `<script nonce="${nonce}" src="${flowSource}"></script>` : `<script nonce="${nonce}">${flowScript()}</script>`}<script nonce="${nonce}">if(!window.vertexFlow){const box=document.getElementById('bse-workspace');if(box)box.innerHTML='<p class="warning">The flow view did not load${flowSource ? ` from ${flowSource}` : ''}: the page has its data but nothing to draw it with.</p>';}</script>
   <script nonce="${nonce}">(()=>{const state=${JSON.stringify(graph.restore || {}).replaceAll('<', '\\u003c')};if(!state.choice)return;const panel=document.querySelector('.scenario-panel');if(panel)panel.open=true;const selected=document.querySelector('.scenario input[value="'+state.choice+'"]');if(selected){selected.checked=true;selected.dispatchEvent(new Event('change',{bubbles:true}));}if(state.mode){document.querySelector('.bse-view-toggle [data-mode="'+state.mode+'"]').click();}if(state.view){document.querySelector('.bse-view-toggle [data-view="'+state.view+'"]').click();}})();</script>
   <details class="debug-only"><summary>BSE dependency tree (technical)</summary>${dependencyTree}</details><details class="debug-only"><summary>ACE source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact objects whose ACE index was loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No ACE sources were loaded.')}</pre></details>
   <details class="debug-only"><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>
@@ -438,7 +450,12 @@ function register(vscode, context, getSources) {
     try {
       const editor = vscode.window.activeTextEditor;
       if (!editor) throw new Error('Select a variable in an ABAP source editor.');
-      const variable = variableAt(editor.document.getText(), editor.document.offsetAt(editor.selection.active));
+      const offset = editor.document.offsetAt(editor.selection.active), text = editor.document.getText();
+      // A literal or a comment has no history: said, not analysed as if its word were a variable.
+      const inside = literalAt(text, offset);
+      if (inside) throw new Error(inside === 'comment' ? 'The cursor is in a comment: a comment has no value history. Place it on a variable.'
+        : 'The cursor is in a text literal: a literal has no value history. Place it on a variable.');
+      const variable = variableAt(text, offset);
       if (!variable) throw new Error('Place the cursor on a variable.');
       const target = { source: editor.document.uri.toString(), line: editor.selection.active.line + 1, column: editor.selection.active.character, variable };
       const points = (vscode.debug.breakpoints || []).filter(point => point.enabled !== false && point.location?.uri?.toString() === target.source)
@@ -470,7 +487,9 @@ function register(vscode, context, getSources) {
       // every VERTEX view that draws one; this page supplies the graph only.
       const flowScript = panel.webview.asWebviewUri && context.extensionUri ? panel.webview.asWebviewUri(
         vscode.Uri.joinPath(context.extensionUri, 'resources', 'vertex-flow.js')).toString() : '';
-      panel.webview.html = html(graph, require('crypto').randomBytes(18).toString('hex'), mermaid, panel.webview.cspSource || '', styles, flowScript);
+      const lensUri = panel.webview.asWebviewUri && context.extensionUri ? panel.webview.asWebviewUri(
+        vscode.Uri.joinPath(context.extensionUri, 'resources', 'vertex-lens.js')).toString() : '';
+      panel.webview.html = html(graph, require('crypto').randomBytes(18).toString('hex'), mermaid, panel.webview.cspSource || '', styles, flowScript, lensUri);
       panel.webview.onDidReceiveMessage(async message => {
         const scenarioNode = /^scenario:([A-Z0-9_]+)$/i.exec(message?.node || '');
         if (scenarioNode) {
