@@ -40,15 +40,7 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
   inputSchema: { type: "object", additionalProperties: false, properties: {} }
 }]).map(withSystem);
 
-const sourceLineIn = (from, line, to) => {
-  const expected = String(from || '').split(/\r?\n/)[line - 1]?.trim();
-  if (!expected) return line;
-  const lines = String(to || '').split(/\r?\n/);
-  if (lines[line - 1]?.trim() === expected) return line;
-  const matches = [];
-  for (let index = 0; index < lines.length; index++) if (lines[index].trim() === expected) matches.push(index + 1);
-  return matches.length === 1 ? matches[0] : line;
-};
+const { sourceLineIn, methodLine } = require('./value-origin-open');
 
 function register(vscode, context, { active, password, pin, pinned, systems }) {
   const events = require("./agent-events").createEmitter();
@@ -445,17 +437,6 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     });
     const target = targets.get(anchor.line);
     return target && { document, target: location(document.uri, target.index, target.column, target.word.length) };
-  }
-  function methodLine(source, name, implementation) {
-    const lines = source.split(/\r?\n/), exact = new RegExp("^\\s*METHOD\\s+" + name + "\\b", "i");
-    if (implementation) { return lines.findIndex(line => exact.test(line)); }
-    for (let start = 0; start < lines.length; start++) {
-      if (!/^\s*(?:CLASS-)?METHODS\b/i.test(lines[start])) { continue; }
-      let statement = lines[start];
-      for (let end = start + 1; end < lines.length && !/\./.test(statement); end++) { statement += "\n" + lines[end]; }
-      if (new RegExp("\\b" + name + "\\b", "i").test(statement)) { return start; }
-    }
-    return -1;
   }
   function methodSignature(source, name) {
     const wanted = new RegExp("^\\s*" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");

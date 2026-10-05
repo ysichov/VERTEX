@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- Value origin in Eclipse. This page runs the VS Code analysis (value-origin.js, generated from vscode/ by
+     eclipse/prepare.js) on the ACE index the plugin reads, and draws the VS Code page in the frame below. The plugin
+     ships the copy prepare.js puts in org.vertex.abap.ui/assistant/; edit this one. -->
+<style id="theme">
+/* The VS Code theme names the page is written in, given values for Eclipse: light, and dark when the system is. */
+:root {
+  --vscode-font-family: "Segoe UI", system-ui, sans-serif;
+  --vscode-editor-font-family: Consolas, "Courier New", monospace;
+  --vscode-editor-background: #ffffff;
+  --vscode-editor-foreground: #1f1f1f;
+  --vscode-foreground: #3b3b3b;
+  --vscode-descriptionForeground: #717171;
+  --vscode-editorWidget-background: #f8f8f8;
+  --vscode-textCodeBlock-background: #f3f3f3;
+  --vscode-focusBorder: #005fb8;
+  --vscode-panel-border: #e5e5e5;
+  --vscode-input-background: #ffffff;
+  --vscode-input-border: #cecece;
+  --vscode-input-foreground: #3b3b3b;
+  --vscode-textLink-foreground: #005fb8;
+  --vscode-editorWarning-foreground: #bf8803;
+  --vscode-testing-iconPassed: #388a34;
+  --vscode-terminal-ansiGreen: #008000;
+  --vscode-symbolIcon-keywordForeground: #0000ff;
+  --vscode-symbolIcon-variableForeground: #001080;
+  --vscode-debugTokenExpression-stringForeground: #a31515;
+  --vscode-debugTokenExpression-numberForeground: #098658;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --vscode-editor-background: #1f1f1f;
+    --vscode-editor-foreground: #cccccc;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-editorWidget-background: #252526;
+    --vscode-textCodeBlock-background: #2b2b2b;
+    --vscode-focusBorder: #0078d4;
+    --vscode-panel-border: #3c3c3c;
+    --vscode-input-background: #313131;
+    --vscode-input-border: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-textLink-foreground: #4daafc;
+    --vscode-editorWarning-foreground: #cca700;
+    --vscode-testing-iconPassed: #73c991;
+    --vscode-terminal-ansiGreen: #0dbc79;
+    --vscode-symbolIcon-keywordForeground: #569cd6;
+    --vscode-symbolIcon-variableForeground: #9cdcfe;
+    --vscode-debugTokenExpression-stringForeground: #ce9178;
+    --vscode-debugTokenExpression-numberForeground: #b5cea8;
+    color-scheme: dark;
+  }
+}
+</style>
+<style>
+html, body { margin: 0; height: 100%; }
+body { display: flex; flex-direction: column; background: var(--vscode-editor-background); color: var(--vscode-foreground);
+  font: 13px var(--vscode-font-family); }
+#status { padding: 8px 12px; color: var(--vscode-descriptionForeground); }
+#status.error { color: var(--vscode-foreground); border-left: 3px solid var(--vscode-editorWarning-foreground); white-space: pre-wrap; }
+#view { flex: 1; width: 100%; border: 0; background: var(--vscode-editor-background); }
+</style>
+</head>
+<body>
+<div id="status">Value origin</div>
+<iframe id="view" title="Value origin" hidden></iframe>
+<script>/*FLOW_GRAPH*/</script>
+<script>/*ORIGIN_ENGINE*/</script>
+<script>
+"use strict";
+// What the editor was showing when the command ran: object, source, cursor and its breakpoints (ValueOriginHandler).
+var TARGET = /*INIT*/null/*INIT*/;
+var origin = window.vertexOrigin, statusBox = document.getElementById("status"), frame = document.getElementById("view");
+var graph = null, sources = [];
+
+function say(text, error) {
+  statusBox.hidden = !text;
+  statusBox.textContent = text || "";
+  statusBox.className = error ? "error" : "";
+}
+
+// One request to Eclipse at a time: it answers through sdeReady, and sdeTake hands over the one answer it holds.
+var waiting = [], active = null;
+function call(name) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function (resolve, reject) {
+    waiting.push({ name: name, args: args, resolve: resolve, reject: reject });
+    pump();
+  });
+}
+function pump() {
+  if (active || !waiting.length) { return; }
+  active = waiting.shift();
+  window[active.name].apply(window, active.args);
+}
+window.sdeReady = function () {
+  var raw = sdeTake(), item = active;
+  active = null;
+  if (item) {
+    var text = raw === null || raw === undefined ? null : String(raw);
+    if (text === null) { item.reject(new Error("Eclipse gave no answer to " + item.name + ".")); }
+    else if (text.indexOf("ERROR:NOBACKEND:") === 0) {
+      // Only a missing VERTEX resource means the backend is missing; a standard ADT resource that is not there is not.
+      var vertex = String(item.args[0] || "").indexOf("/sap/bc/adt/vertex/") === 0;
+      item.reject(new Error("SAP has no such resource (" + text.slice(16) + ")."
+        + (vertex ? " Value origin needs the VERTEX ABAP backend (ZCL_VX_ADT_RES_FLOW) on this system." : "")));
+    }
+    else if (text.indexOf("ERROR:") === 0) { item.reject(new Error(text.slice(6))); }
+    else { item.resolve(text); }
+  }
+  pump();
+};
+
+// The editor's text against the active source in SAP, as VS Code compares them: line ends aside, exactly.
+var crlf = function (text) { return String(text).replace(/\r\n/g, "\n"); };
+var flat = function (text) { return String(text).split("\r").join("").trimEnd(); };
+
+// The two enabled breakpoints around the cursor bound the analysis, as in VS Code. They are editor lines, and the
+// analysis counts the lines of the ACE include the value is in, so each is placed there first; one that cannot be
+// placed there is said on the page, and the analysis runs unbounded.
+function boundsOf(t, initial, mapped, warnings) {
+  var points = (t.breakpoints || []).slice().sort(function (a, b) { return a - b; });
+  var from = points.filter(function (line) { return line <= t.line; }).pop();
+  var to = points.find(function (line) { return line >= t.line; });
+  if (!(Number.isInteger(from) && Number.isInteger(to) && from < to)) { return null; }
+  var said = "The breakpoints at lines " + from + " and " + to + " do not bound this analysis: ";
+  try {
+    var start = origin.locateTarget(initial, t.text, t.name, from, "", 0), end = origin.locateTarget(initial, t.text, t.name, to, "", 0);
+    if (start.source !== mapped.source || end.source !== mapped.source) {
+      warnings.push(said + "they are not both in the include of the selected value.");
+      return null;
+    }
+    if (!(start.line < end.line)) {
+      warnings.push(said + "in the include of the selected value they stand at lines " + start.line + " and " + end.line + ".");
+      return null;
+    }
+    return { source: mapped.source, from: start.line, to: end.line };
+  } catch (error) {
+    warnings.push(said + error.message);
+    return null;
+  }
+}
+
+async function run() {
+  if (!origin) { throw new Error("The Value origin analysis did not load into this window."); }
+  if (!window.vertexFlowGraph) { throw new Error("vertex-flow-graph.js did not load into this window."); }
+  var t = TARGET;
+  if (!t) { throw new Error("This window lost the editor it was opened from. Close it and run the command again."); }
+  // A literal or a comment has no history: said, not analysed as if its word were a variable.
+  var inside = origin.literalAt(t.text, t.offset);
+  if (inside) {
+    throw new Error(inside === "comment" ? "The cursor is in a comment: a comment has no value history. Place it on a variable."
+      : "The cursor is in a text literal: a literal has no value history. Place it on a variable.");
+  }
+  var variable = origin.variableAt(t.text, t.offset);
+  if (!variable) { throw new Error("Place the cursor on a variable."); }
+  sdeTitle(variable);
+  say("Value origin - reading the active source of " + t.name);
+  var activeSource = await call("sdeOriginRead", t.sourcePath + "?version=active");
+  if (crlf(activeSource) !== crlf(t.text)) {
+    throw new Error("This editor differs from active SAP source. Activate your changes or reopen the active source before ACE analysis.");
+  }
+  var prefix = "eclipse:" + t.project + "/" + t.type + "/" + t.name;
+  var load = async function (name, type) {
+    say("Value origin - ACE call index: " + name);
+    var raw = await call("sdeOriginRead", "/sap/bc/adt/vertex/flow/" + encodeURIComponent(name) + "?mode=origin&type=" + type);
+    var data;
+    try { data = JSON.parse(raw); } catch (error) { throw new Error("The ACE origin index of " + name + " is not JSON: " + error.message); }
+    return origin.sourcesFromAce(data, { object_name: name, object_type: type }, prefix + "/ace");
+  };
+  var initial = await load(t.name, t.type);
+  var mapped = origin.locateTarget(initial, t.text, t.name, t.line, variable, t.column);
+  var result = await origin.collectSources(initial, load, { maxSources: 240, progress: function (name) { say("Value origin - ACE call index: " + name); } });
+  sources = result.sources;
+  // The source the cursor is in opens in the editor it came from, as VS Code opens its own document.
+  sources.forEach(function (source) { if (source.id === mapped.source && flat(source.text) === flat(t.text)) { source.editor = true; } });
+  var warnings = (result.warnings || []).slice();
+  var flowBounds = boundsOf(t, initial, mapped, warnings);
+  graph = origin.analyze(sources, Object.assign({}, mapped, { flowBounds: flowBounds }));
+  graph.warnings = warnings;
+  graph.skipped = result.skipped;
+  graph.sourceClosure = sources.map(function (source) {
+    return { name: source.name, objectName: source.aceOwner || source.objectName, objectType: source.aceOwner ? source.aceOwnerType : source.objectType };
+  });
+  graph.nodes.forEach(function (node) {
+    var found = sources.find(function (source) { return source.id === node.source; });
+    node.sourceName = found ? found.name : node.source;
+  });
+  graph.codeFlow = { rows: origin.pathRows(graph, sources), sites: origin.siteRows(graph, sources) };
+  say("Value origin - drawing");
+  var controls = await call("sdeOriginAsset", "controls"), style = await call("sdeOriginAsset", "style");
+  var scripts = { lens: await call("sdeOriginAsset", "lens"), flow: await call("sdeOriginAsset", "flow"), mermaid: await call("sdeOriginAsset", "mermaid") };
+  var bytes = new Uint8Array(18), nonce = "";
+  crypto.getRandomValues(bytes);
+  bytes.forEach(function (b) { nonce += (b < 16 ? "0" : "") + b.toString(16); });
+  // value-origin.css imports the shared controls by address; there is no address here, so they come first as text.
+  var page = origin.html(graph, nonce, "", "", "", "", "", {
+    flowGraph: window.vertexFlowGraph, scripts: scripts, style: controls + "\n" + style.replace(/@import[^;]*;/, ""),
+    head: "<style>" + document.getElementById("theme").textContent + "</style>",
+    bridge: "window.acquireVsCodeApi=function(){return{postMessage:function(message){parent.vertexOriginMessage(message);}};};"
+  });
+  say("");
+  frame.hidden = false;
+  var view = frame.contentDocument;
+  view.open();
+  view.write(page);
+  view.close();
+}
+
+// A click in the page: the place it names opens in ADT, as VS Code opens it in its editor.
+window.vertexOriginMessage = function (message) {
+  follow(message).catch(function (error) { say("VERTEX: " + error.message, true); });
+};
+async function follow(message) {
+  // The screen is what VS Code tells its chat about the window; the Eclipse chat is not given it.
+  if (!message || message.kind === "screen" || !graph) { return; }
+  if (/^scenario:/i.test(message.node || "")) { throw new Error("Loading a scenario's pipeline (ZLOG_PIPELINE) is in VS Code only."); }
+  var flowIndex = /^flow(\d+)$/.exec(message.node || ""), bseFlowIndex = /^bseflow(\d+)$/.exec(message.node || "");
+  var n = flowIndex ? graph.executionFlow[Number(flowIndex[1])] : bseFlowIndex ? graph.boundedFlow[Number(bseFlowIndex[1])]
+    : graph.nodes.find(function (node) { return node.id === message.node; });
+  // A node of the code flow names its source as the debugger's flow does: "origin:<source>|<OWNER->ROUTINE>".
+  var marked = /^origin:([^|]*)\|(.*)$/.exec(message.source || "");
+  var wanted = marked ? marked[1] : (message.source || (n && n.source));
+  var source = sources.find(function (item) { return item.id === wanted; });
+  if (!source) { return; }
+  var node = Object.assign({}, n || {}, marked && marked[2] ? { location: marked[2] } : {}, { line: message.line || (n && n.line) || 1 });
+  say("");
+  if (source.editor) {
+    sdeOriginReveal("origin", String(node.line));
+    return;
+  }
+  // Class-method links go where Ctrl+Click goes: the method in the class, its ACE include line counted from METHOD.
+  if (String(node.location || "").indexOf("->") >= 0) {
+    var parts = String(node.location).split("->"), owner = parts[0] || source.objectName, method = parts[1];
+    var classText = await call("sdeOriginOpen", owner, "CLAS");
+    var implementation = origin.methodLine(classText, method, true);
+    if (implementation < 0) { throw new Error("method implementation is unavailable: " + owner + "->" + method); }
+    var count = classText.split(/\r?\n/).length;
+    sdeOriginReveal("opened", String(Math.min(count - 1, implementation + Math.max(0, node.line - 1)) + 1));
+    return;
+  }
+  var opened = await call("sdeOriginOpen", source.objectName, source.objectType);
+  sdeOriginReveal("opened", String(origin.sourceLineIn(source.text, node.line, opened)));
+}
+
+run().catch(function (error) { say("VERTEX: " + error.message, true); });
+</script>
+</body>
+</html>

@@ -15,6 +15,13 @@
 
 
       <view
+            id="org.vertex.abap.ui.view.valueOrigin"
+            name="Value origin"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.ValueOriginView"
+            allowMultiple="true"
+            restorable="false"/>
+      <view
             id="org.vertex.abap.ui.view.review"
             name="VERTEX Review"
             category="org.vertex.abap.ui.category"
@@ -35,6 +42,10 @@
 
 
       <command
+            id="org.vertex.abap.ui.command.valueOrigin"
+            name="VERTEX: Analyze Variable Value Origin"
+            description="Where the value under the cursor came from, backwards across calls, without running the program"/>
+      <command
             id="org.vertex.abap.ui.command.activate"
             name="VERTEX: Activate"
             description="Activate the object in the editor, with a block review of its inactive changes first"/>
@@ -45,6 +56,9 @@
 
 
 
+      <handler
+            commandId="org.vertex.abap.ui.command.valueOrigin"
+            class="org.vertex.abap.ui.ValueOriginHandler"/>
       <handler
             commandId="org.vertex.abap.ui.command.activate"
             class="org.vertex.abap.ui.ActivateHandler"/>
@@ -85,6 +99,33 @@
                      <adapt type="com.sap.adt.tools.core.IAdtObjectReference"/>
                   </with>
                </and>
+            </visibleWhen>
+         </command>
+      </menuContribution>
+   </extension>
+   <extension point="org.eclipse.core.expressions.propertyTesters">
+      <propertyTester
+            id="org.vertex.abap.ui.editorTester"
+            type="org.eclipse.ui.IEditorPart"
+            namespace="org.vertex.abap.ui"
+            properties="valueOriginSource"
+            class="org.vertex.abap.ui.EditorTester"/>
+   </extension>
+   <!-- The context menu of a source editor, where ADT puts its own editor commands (#EditorContext). Whether the
+        editor is one the command works on is tested on the editor itself, as ADT tests its own commands there: its
+        input does not adapt to an object reference a plain plugin.xml test could name. -->
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution
+            allPopups="false"
+            locationURI="popup:#EditorContext?after=additions">
+         <command
+               commandId="org.vertex.abap.ui.command.valueOrigin"
+               label="VERTEX: Analyze Variable Value Origin"
+               style="push">
+            <visibleWhen checkEnabled="false">
+               <with variable="activePart">
+                  <test property="org.vertex.abap.ui.valueOriginSource" forcePluginActivation="true"/>
+               </with>
             </visibleWhen>
          </command>
       </menuContribution>

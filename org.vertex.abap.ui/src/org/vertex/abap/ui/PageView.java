@@ -270,6 +270,44 @@ public abstract class PageView extends ViewPart {
 		return resource;
 	}
 
+	private static final java.util.regex.Pattern REF = java.util.regex.Pattern.compile("<adtcore:objectReference\b[^>]*>");
+	private static final java.util.regex.Pattern ATTR = java.util.regex.Pattern.compile("adtcore:(uri|name|type)=\"([^\"]*)\"");
+
+	/**
+	 * The ADT URI and type of an object named the way VERTEX names it (PROG, CLAS, INTF, FUNC), for opening it in
+	 * ADT's editor. A function module's URI goes through its group, which the caller does not know: it is searched.
+	 * Reading the search needs a view that adds an application/xml content handler.
+	 *
+	 * @return the URI path and the ADT type
+	 */
+	protected String[] adtObject(String name, String type) {
+		switch (type) {
+		case "PROG": return new String[] { "/sap/bc/adt/programs/programs/" + encode(name), "PROG/P" };
+		case "CLAS": return new String[] { "/sap/bc/adt/oo/classes/" + encode(name), "CLAS/OC" };
+		case "INTF": return new String[] { "/sap/bc/adt/oo/interfaces/" + encode(name), "INTF/OI" };
+		case "FUNC":
+			String found = read("/sap/bc/adt/repository/informationsystem/search?operation=quickSearch&maxResults=20&objectType=FUGR/FF&query="
+					+ encode(name));
+			java.util.regex.Matcher m = REF.matcher(found);
+			while (m.find()) {
+				String refUri = null, refName = null;
+				java.util.regex.Matcher a = ATTR.matcher(m.group());
+				while (a.find()) {
+					if (a.group(1).equals("uri")) refUri = a.group(2);
+					if (a.group(1).equals("name")) refName = a.group(2);
+				}
+				if (name.equals(refName) && refUri != null) return new String[] { refUri, "FUGR/FF" };
+			}
+			throw new IllegalStateException("Function module " + name + " was not found.");
+		default:
+			throw new IllegalStateException("No ADT editor is known for object type " + type + ".");
+		}
+	}
+
+	private static String encode(String value) {
+		return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+	}
+
 	/** The VERTEX resources answer JSON; a view reading standard ADT resources adds more. */
 	protected void addContentHandlers(IRestResource resource) {
 		resource.addContentHandler(new JsonContentHandler());

@@ -13,3 +13,9 @@ for (const file of ["bridge.js", "chat.js"]) {
 }
 console.log("Prepared Eclipse assistant runtime.");
 fs.copyFileSync(path.join(root, "org.vertex.abap.ui", "resources", "object-tools.js"), path.join(target, "object-tools.js"));
+// Value origin runs in the plugin's browser: the VS Code analysis and page as one script, its stylesheet, and the
+// Eclipse page that hosts them.
+fs.writeFileSync(path.join(target, "value-origin.js"), require("./value-origin-bundle").bundle(root));
+fs.copyFileSync(path.join(root, "vscode", "value-origin.css"), path.join(target, "value-origin.css"));
+fs.copyFileSync(path.join(__dirname, "value-origin.html"), path.join(target, "value-origin.html"));
+console.log("Prepared Eclipse Value origin.");

@@ -1,0 +1,30 @@
+@import url("resources/vertex-controls.css");
+
+/* Value Origin UI controls.
+ *
+ * Keep visual rules for this webview here.  The renderer supplies structure
+ * and behaviour only; do not add new control styles to value-origin-view.js.
+ */
+.bse-mode-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.bse-mode-select select {
+  margin-left: 2px;
+  padding: 3px 26px 3px 8px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 6px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font: inherit;
+  outline: none;
+}
+
+.bse-mode-select select:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}

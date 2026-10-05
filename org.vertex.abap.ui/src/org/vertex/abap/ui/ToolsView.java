@@ -1,8 +1,6 @@
 package org.vertex.abap.ui;
 
 import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.browser.BrowserFunction;
 
@@ -99,37 +97,16 @@ public class ToolsView extends ChatView {
             }
         };
     }
-    private static final Pattern REF = Pattern.compile("<adtcore:objectReference\\b[^>]*>");
-    private static final Pattern ATTR = Pattern.compile("adtcore:(uri|name|type)=\"([^\"]*)\"");
     /** The same ADT editor a double-click in the Project Explorer opens. */
     private String openEditor(String name, String type) {
         if (!name.matches("[A-Z0-9_/]{1,40}")) return "ERROR:Invalid object name.";
-        String adtType, uri;
-        if (type.equals("PROG")) { adtType = "PROG/P"; uri = "/sap/bc/adt/programs/programs/" + encode(name); }
-        else if (type.equals("CLAS")) { adtType = "CLAS/OC"; uri = "/sap/bc/adt/oo/classes/" + encode(name); }
-        else if (type.equals("FUNC")) {
-            // A function module's URI goes through its group, which the page does not know.
-            adtType = "FUGR/FF"; uri = null;
-            String found = read("/sap/bc/adt/repository/informationsystem/search?operation=quickSearch&maxResults=20&objectType=FUGR/FF&query="
-                + encode(name));
-            Matcher m = REF.matcher(found);
-            while (uri == null && m.find()) {
-                String refUri = null, refName = null;
-                Matcher a = ATTR.matcher(m.group());
-                while (a.find()) {
-                    if (a.group(1).equals("uri")) refUri = a.group(2);
-                    if (a.group(1).equals("name")) refName = a.group(2);
-                }
-                if (name.equals(refName)) uri = refUri;
-            }
-            if (uri == null) return "ERROR:Function module " + name + " was not found.";
-        }
-        else return "ERROR:Only programs, classes and function modules open from here.";
-        return open("{\"uri\":" + AssistantBridge.quote(uri) + ",\"name\":" + AssistantBridge.quote(name)
-            + ",\"type\":" + AssistantBridge.quote(adtType) + "}", browser.getDisplay());
-    }
-    private static String encode(String value) {
-        return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+        if (!type.equals("PROG") && !type.equals("CLAS") && !type.equals("FUNC"))
+            return "ERROR:Only programs, classes and function modules open from here.";
+        String[] object;
+        try { object = adtObject(name, type); }
+        catch (IllegalStateException e) { return "ERROR:" + describe(e); }
+        return open("{\"uri\":" + AssistantBridge.quote(object[0]) + ",\"name\":" + AssistantBridge.quote(name)
+            + ",\"type\":" + AssistantBridge.quote(object[1]) + "}", browser.getDisplay());
     }
     String assistantContext() { return vertexContext; }
     @Override void prompt(String text) {
