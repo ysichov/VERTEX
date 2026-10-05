@@ -913,7 +913,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   async function addNativeBreakpoint(point) {
     const target = await breakpointTarget(point); if (!target || !debuggerApi) return;
     const old = nativeBreakpoints.get(point.id);
-    if (old) { await debuggerApi.clearBreakpoints(old); nativeBreakpoints.delete(point.id); }
+    if (old) { nativeBreakpoints.delete(point.id); await debuggerApi.clearBreakpoints(old); }
     const placed = await debuggerApi.setBreakpointAt({ url: target.url, line: target.line,
       condition: point.condition || '', mode: 'stop' });
     nativeBreakpoints.set(point.id, placed.id);
@@ -1075,6 +1075,14 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     if (typeof api.watch === 'function' && typeof api.picture === 'function') {
       context.subscriptions.push(api.watch(() => {
         const picture = api.picture();
+        // A point removed in the debugger's window is removed from the editor too: it is the editor's own point restored on every
+        // attach, so one left there comes back with the next reload.
+        for (const [pointId, id] of [...nativeBreakpoints]) {
+          if ((picture.breakpoints || []).some(point => point.id === id)) continue;
+          nativeBreakpoints.delete(pointId);
+          const native = (vscode.debug && vscode.debug.breakpoints || []).find(point => point.id === pointId);
+          if (native && typeof vscode.debug.removeBreakpoints === 'function') vscode.debug.removeBreakpoints([native]);
+        }
         showStoppedLine(picture);
         if (picture.stopped) void followStoppedFrame(picture);
         else stopFollow++;
@@ -1097,7 +1105,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       breakpointQueue = breakpointQueue.then(async () => {
         for (const point of change.removed || []) {
           const id = nativeBreakpoints.get(point.id);
-          if (id) { await debuggerApi.clearBreakpoints(id); nativeBreakpoints.delete(point.id); }
+          if (id) { nativeBreakpoints.delete(point.id); await debuggerApi.clearBreakpoints(id); }
         }
         for (const point of [...(change.added || []), ...(change.changed || [])]) await addNativeBreakpoint(point);
       }).catch(error => {

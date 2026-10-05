@@ -3,6 +3,7 @@ const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 function host() {
   const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], selectionListeners = [], symbols = [], breakpointListeners = [];
+  const nativePoints = [], removedNative = [];
   const unitRuns = [], testRuns = [], testItems = new Map();
   let unitResult = [];
   const atcRuns = [], problems = new Map(), infos = [], usedAsks = [], docAsks = [], references = [], warnings = [];
@@ -62,7 +63,8 @@ function host() {
       registerCommand: (name, fn) => { commands.set(name, fn); return { dispose() {} }; },
       async executeCommand(...args) { diffs.push(args); }
     },
-    debug: { onDidChangeBreakpoints: fn => { breakpointListeners.push(fn); return { dispose() {} }; } },
+    debug: { breakpoints: nativePoints, removeBreakpoints: list => { removedNative.push(...list); },
+      onDidChangeBreakpoints: fn => { breakpointListeners.push(fn); return { dispose() {} }; } },
     workspace: {
       async applyEdit(edit) {
         edit.replaced.forEach(r => { documents.find(d => d.uri.toString() === r.uri.toString()).text = r.text; });
@@ -118,7 +120,7 @@ function host() {
   });
   return { tools, commands, usedAsks, docAsks, references, warnings, setUsedResult: value => { usedResult = value; }, setActive: editor => { vscode.window.activeTextEditor = editor; }, atcRuns, problems, infos, setAtcResult: value => { atcResult = value; }, unitRuns, testRuns, setUnitResult: value => { unitResult = value; }, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners, symbols,
     switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; },
-    fireBreakpoints: change => breakpointListeners.forEach(fn => fn(change)) };
+    fireBreakpoints: change => breakpointListeners.forEach(fn => fn(change)), nativePoints, removedNative };
 }
 test("an AI change goes into the object's tab unsaved; nothing reaches SAP until the user saves", async () => {
   const h = host();
@@ -759,4 +761,23 @@ test("ABAP Documentation shows SAP's page for the cursor, without its scripts", 
   assert.match(page, /<h1>DATA<\/h1>/);
   assert.doesNotMatch(page, /alert/);
   assert.match(page, /var\(--vscode-editor-background\)/);
+});
+
+test("a point removed in the debugger's window is removed from the editor too, or it returns with the next reload", async () => {
+  const h = host(), watchers = [];
+  let list = [];
+  h.tools.attachDebugger({
+    watch: fn => { watchers.push(fn); return { dispose() {} }; },
+    picture: () => ({ breakpoints: list, stopped: null }),
+    async setBreakpointAt() { list = [{ id: 'sap-bp-1' }]; return { id: 'sap-bp-1' }; },
+    async clearBreakpoints() {}
+  });
+  await h.tools.execute('open_sap_object', { object_name: 'ZTEST', object_type: 'PROG' });
+  const point = { id: 'vs-bp-1', location: { uri: h.documents[0].uri, range: { start: { line: 0 } } } };
+  h.nativePoints.push(point);
+  h.fireBreakpoints({ added: [point] });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  list = [];
+  watchers.forEach(fn => fn());
+  assert.deepEqual(h.removedNative, [point]);
 });

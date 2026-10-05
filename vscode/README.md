@@ -99,7 +99,7 @@ development systems often have; it is off by default on purpose.
   program metrics, diagrams and diff, a package its package-level views. **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
   per class or per method, and picking an event or a form in Parts starts the calls there, as a
-  double-click in ACE's tree does (**From: … ✕** goes back to the whole program). **Logic diagram** is the flowchart of one method (ACE's Flow Scheme). A magnifier follows the
+  double-click in ACE's tree does (a click on the object's name at the top of the parts list goes back to the whole program). **Logic diagram** is the flowchart of one method (ACE's Flow Scheme). A magnifier follows the
   pointer over every diagram; Shift and two fingers on the touchpad (or the wheel) change its strength; Ctrl and a pinch zoom
   the whole picture. The available functions depend
   on the selected object type; there are no separate SelecTor, Metrics or

@@ -9,6 +9,7 @@
   them) or the formula derivation - within the depth set, labelled as analysis, not a run.
   A Tools window that is closed no longer stays in the assistant's context.
 - **Calls start over from the object.** The "From: ..." chip over the Calls diagram is gone; a click on the object's name at the top of the parts list draws the whole program again.
+- **A breakpoint removed in Visual Debug stays removed.** The editor's own breakpoint is the one VERTEX restores on every reload, so removing the point only from the debugger's list brought it back; removing it there now removes it from the editor too.
 - **No metrics help in the diagrams.** The `?` that explains the metrics shows in the Metrics table only, not over Classes, UML, Calls and Logic diagrams.
 - **Expression: the derivation as one formula.** A third mode beside FLOW and Formula writes the derivation of the value
   out as one formula, by substitution: each definition stands where its value is read, and a step that adds or takes off
