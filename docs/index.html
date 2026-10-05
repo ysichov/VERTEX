@@ -239,18 +239,12 @@
 </p>
 
 <p>
-  The Eclipse plugin here is 0.7.3; the VS Code extension is 0.8.0. Eight VS Code releases have
-  landed since the plugin was last exported, so the two hosts have partly drifted apart: the ABAP
-  editor, the AI-driven debugger, Visual Debug and Value Origin are VS Code only by design, while
-  the three explorer pages are shared and the plugin still carries their 0.7.3 copies. 0.7.7 is the
-  release whose chat runs the tests and
-  ATC on an object it is asked about and answers with the result. Its ABAP editor runs the
-  test classes of the object in the tab into the Test Explorer (Ctrl+Shift+F10), checks it with
-  ATC into the Problems view (Ctrl+Shift+F2), answers where-used through VS Code's references
-  (Shift+F12), and shows SAP's keyword documentation beside the source (F1), beside the hover,
-  Go to and Outline it already had. It also carries LLM Providers - a
-  model table per provider and an Anthropic API key as a third one - and Tools windows that keep
-  their own SAP system. The extension also hands transport
+  The Eclipse plugin here is 0.7.8; the VS Code extension is 0.8.0. Eclipse 0.7.8 adds BSE
+  analysis to <strong>VERTEX:Analyse</strong>. The ABAP editor, the AI-driven debugger, Visual Debug
+  and Value Origin remain VS Code only by design, while the explorer pages are shared between
+  the two hosts. The VS Code extension also runs ABAP tests and ATC checks from chat, integrates
+  test results with Test Explorer and Problems, provides where-used and SAP keyword documentation,
+  and includes LLM Providers and Tools windows. The extension also hands transport
   reviews to the AI assistants in the editor &mdash; Copilot, Claude Code, Codex
   &mdash; over MCP.
 </p>
