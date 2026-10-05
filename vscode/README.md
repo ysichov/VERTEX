@@ -215,6 +215,11 @@ Changes made there are still sent to SAP only through **Review & Activate** or *
 
 ## Value Origin
 
+Both Value Origin windows expose **Analysis log** directly above the flow. **Copy log** copies the engine, source loading and parsing times, source closure, definitions, dependency edges, traversal, warnings, and Formula/Expression diagnostics. The log is accessible without enabling the technical sections.
+
+**Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Analyze Variable Value Origin**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. The first implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
+
+
 Put the cursor on a variable in a VERTEX ABAP source tab and run **VERTEX: Analyze Variable
 Value Origin**. It answers where that value came from, backwards across calls, without running
 the program: ACE indexes and the customer sources they reference (`Z*`, `Y*`, `/namespace/`)
@@ -949,6 +954,9 @@ code review writes to `ZAVE_REVIEW`, through this repository's own `ZCL_VX_REVIE
 A review is built by the Versions window; this reads it and adds verdicts to it.
 
 ## Acknowledgements
+
+The experimental client BSE parser uses [abaplint](https://github.com/abaplint/abaplint) by Lars Hvam and contributors (MIT). `@abaplint/core` is bundled in the VSIX; no separate installation or lint extension is required. Its licence is included in `licenses/abaplint-MIT.txt`.
+
 
 The VS Code extension talks to SAP ADT through
 [abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello Urbani (MIT): reading

@@ -1,5 +1,12 @@
 # Release history
 
+## 2026-10-05 — VS Code 0.8.1: client BSE comparison
+
+- Added **VERTEX: BSE — only ADT + linter** beside the ACE Value Origin command. Standard ADT supplies source and bundled abaplint parses it locally in a worker. Separate windows identify their engine. The client variant is experimental and can analyse unsaved buffers; use saved, activated source when comparing engines.
+- Added abaplint to Acknowledgements and included its MIT licence.
+- Made **Analysis log** visible in both BSE windows, with a complete copyable report and separate timings for source loading, local parsing and backward slicing.
+
+
 ## 2026-10-05 — VS Code 0.8.0: one flow, one formula, an Expression, the variables before the run, one magnifier
 
 0.7.15 was never released; its changes are part of this release.

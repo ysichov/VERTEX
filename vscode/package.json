@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.8.0",
+  "version": "0.8.1",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -100,6 +100,10 @@
       {
         "command": "vertex.valueOrigin",
         "title": "VERTEX: Analyze Variable Value Origin"
+      },
+      {
+        "command": "vertex.valueOriginLinter",
+        "title": "VERTEX: BSE — only ADT + linter"
       },
       {
         "command": "vertex.openVisualDebug",
@@ -320,6 +324,11 @@
           "group": "navigation@9"
         },
         {
+          "command": "vertex.valueOriginLinter",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap",
+          "group": "navigation@9.1"
+        },
+        {
           "command": "vertex.abapDocumentation",
           "when": "editorLangId == abap && (resourceScheme == vertex-sap || resourceScheme == vertex-source)",
           "group": "navigation@3"
@@ -421,6 +430,7 @@
     "vscode:prepublish": "node ./copy-pages.js"
   },
   "dependencies": {
+    "@abaplint/core": "2.120.68",
     "abap-adt-api": "8.4.3"
   }
 }

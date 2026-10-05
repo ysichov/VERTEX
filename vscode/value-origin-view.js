@@ -205,12 +205,12 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   const result = flow.filter(row => row.included && !childIds.has(row.id)).map(row => flowTree(row)).join('');
   const selected = `<details class="flow-node" open><summary><span class="flow-target"><strong>Selected value</strong> <code>${escape(graph.selectedVariable || '?')}</code> <span class="edge">— the backward slice starts here${graph.selectedLine ? ` (line ${graph.selectedLine})` : ''}.</span></span></summary><div class="flow-children">${result || '<p>No ACE Flow point was reached.</p>'}</div></details>`;
   const fullLog = (graph.flowLog || []).map(row => `<div class="flow-row included"><button class="location" title="Open traversed point" data-node="" data-source="${escape(row.source)}" data-line="${row.line}">${escape(row.scope)}:${row.line}</button> <code>${escape(row.text)}</code> <span class="edge">— ${escape(row.reason)}</span></div>`).join('');
-  const flowLogText = (graph.flowLog || []).map(row => `${row.scope}:${row.line} ${row.text} — ${row.reason}`).join('\n');
+  const traversalLogText = (graph.flowLog || []).map(row => `${row.scope}:${row.line} ${row.text} — ${row.reason}`).join('\n');
   const logLine = n => `[${n.id}] ${n.kind} · ${n.location || n.sourceName || n.source}:${n.line}${n.callee ? ` · calls ${n.callee}${n.possible ? ' (possible target)' : ''}` : ''}\n  ${n.text}`;
   const analysisLog = [
-    'VALUE ORIGIN — STATIC ACE ANALYSIS',
+    'VALUE ORIGIN — STATIC ' + (graph.analysisEngine || 'ACE') + ' ANALYSIS',
     graph.notice,
-    '', 'ACE SOURCE CLOSURE:',
+    '', 'SOURCE CLOSURE:',
     ...(graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`),
     '', 'NODES (selected variable backwards):',
     ...graph.nodes.map(logLine),
@@ -244,19 +244,30 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
     bseFlowHtml: `<p class="edge">BSE FLOW${graph.flowBounds ? ` — breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''}</p>${bseFlowTree || '<p>No BSE flow points in the selected range.</p>'}` };
   graph.drawn = mermaidGraph;
   graph.derived = derivation;
+  const diagnosticLog = ['Engine: ' + (graph.analysisEngine || 'ACE'),
+    'Selected: ' + (graph.selectedProgram || '?') + ':' + (graph.selectedLine || '?') + ' ' + (graph.selectedVariable || '?'),
+    ...(graph.diagnostics || []),
+    'Graph: ' + graph.nodes.length + ' nodes, ' + graph.edges.length + ' edges',
+    'FLOW: ' + (graph.fullFlow || []).length + ' statements; slice: ' + (graph.boundedFlow || []).length,
+    'Formula: ' + derivation.nodes.length + ' nodes',
+    'Expression: ' + (derivation.expression || '(none)'),
+    ...(graph.warnings || []).map(w => 'Warning: ' + w),
+    ...(graph.skipped || []).map(s => 'Skipped: ' + s)].join('\n');
+  const flowLogText = [diagnosticLog, analysisLog, 'FLOW TRAVERSAL:', traversalLogText || '(none)'].join('\n\n');
   return `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}' ${cspSource}"><style>
   body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background)}
   button:not(.data-composed){width:100%;text-align:left;background:var(--vscode-editorWidget-background);color:var(--vscode-foreground);border:1px solid var(--vscode-focusBorder);padding:8px;cursor:pointer;white-space:normal;overflow:auto;max-height:85px}.flow-data{display:none}.data-composed{display:inline;width:auto;max-width:none;margin:0;padding:0;border:0;background:transparent;color:var(--vscode-textLink-foreground);font:inherit;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
   pre{white-space:pre-wrap}strong{font-family:var(--vscode-editor-font-family)}
   .children{border-left:1px solid var(--vscode-panel-border);margin-left:8px;padding-left:16px}.node,.leaf{margin:8px 0;padding:6px;background:var(--vscode-editorWidget-background)}summary{cursor:pointer;overflow-wrap:anywhere}code{white-space:pre-wrap;font-family:var(--vscode-editor-font-family);background:transparent!important}.syntax-keyword{color:var(--vscode-symbolIcon-keywordForeground)}.syntax-string{color:var(--vscode-debugTokenExpression-stringForeground)}.syntax-number{color:var(--vscode-debugTokenExpression-numberForeground)}.flow-call{color:var(--vscode-textLink-foreground);text-decoration:underline;text-decoration-style:dotted;cursor:help}.unknown,.boundary,.warning{border-left:3px solid var(--vscode-editorWarning-foreground);padding-left:10px}.call-frame{margin:6px 0;padding:6px 8px;border-left:2px solid var(--vscode-textLink-foreground);background:var(--vscode-editorWidget-background)}.call-stack{margin:6px 0 0 10px;padding-left:12px;border-left:1px solid var(--vscode-panel-border);list-style:none}.analysis-log{max-height:560px;overflow:auto;user-select:text;padding:12px;background:var(--vscode-textCodeBlock-background);border:1px solid var(--vscode-panel-border)}.help{position:absolute;right:8px;top:8px;z-index:50}.help summary{list-style:none;border:1px solid var(--vscode-focusBorder);padding:2px 8px;font-weight:bold}.help>div{display:none}.help[open]{position:fixed;inset:0;z-index:200;background:var(--vscode-editor-background);padding:20px;overflow:auto}.help[open] summary{float:right}.help[open]>div{display:block;clear:both;max-width:900px;margin:48px auto;padding:20px;background:var(--vscode-editorWidget-background);border:1px solid var(--vscode-panel-border)}.debug-toggle{display:none}.debug-button{float:right;margin:8px;border:1px solid var(--vscode-focusBorder);padding:2px 8px}.debug-only{display:none}.debug-toggle:checked~.debug-only{display:block}.scenario{margin:8px 0;border:1px solid var(--vscode-panel-border)}.scenario label{margin:0 8px}
-  </style>${host && host.style ? `<style>${host.style}</style>` : styleSource ? `<link rel="stylesheet" href="${styleSource}">` : ''}${(host && host.head) || ''}</head><body><details class="help"><summary aria-label="Value origin help">?</summary><div><strong>Value origin</strong> traces static source dependencies backwards across calls. It proves source relationships, not runtime values: loop order, database contents and unknown dispatches remain boundaries. Expand a branch to inspect its inputs; click <code>&lt;/&gt;</code> to open source, Ctrl+Click to open beside. <strong>All branches</strong> shows every static alternative. Choosing a selection-screen radio button simulates that exclusive choice and hides other radio branches. Mermaid shows the same expanded branches: click a diagram node to expand or collapse it, double-click it to open source. Use the mouse wheel to zoom and drag empty space to pan. ${(graph.skipped || []).length ? `<p>Analysis boundaries kept outside the graph: ${escape(graph.skipped.join(', '))}</p>` : ''}</div></details><input id="debug-toggle" class="debug-toggle" type="checkbox"><label class="debug-button" for="debug-toggle" title="Show technical analysis sections">🐞</label><h2>Value origin — ACE backward analysis</h2>
+  </style>${host && host.style ? `<style>${host.style}</style>` : styleSource ? `<link rel="stylesheet" href="${styleSource}">` : ''}${(host && host.head) || ''}</head><body><details class="help"><summary aria-label="Value origin help">?</summary><div><strong>Value origin</strong> traces static source dependencies backwards across calls. It proves source relationships, not runtime values: loop order, database contents and unknown dispatches remain boundaries. Expand a branch to inspect its inputs; click <code>&lt;/&gt;</code> to open source, Ctrl+Click to open beside. <strong>All branches</strong> shows every static alternative. Choosing a selection-screen radio button simulates that exclusive choice and hides other radio branches. Mermaid shows the same expanded branches: click a diagram node to expand or collapse it, double-click it to open source. Use the mouse wheel to zoom and drag empty space to pan. ${(graph.skipped || []).length ? `<p>Analysis boundaries kept outside the graph: ${escape(graph.skipped.join(', '))}</p>` : ''}</div></details><input id="debug-toggle" class="debug-toggle" type="checkbox"><label class="debug-button" for="debug-toggle" title="Show technical analysis sections">🐞</label><h2>Value origin — ${escape(graph.analysisEngine || 'ACE')} backward analysis</h2>
   ${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
-  ${scenarioControls ? `<details class="scenario-panel"><summary>Simulate selection screen</summary>${scenarioControls}</details>` : ''}<div id="bse-workspace" class="bse-workspace"><template data-flow-pane="tree"><p class="edge">Execution flow${graph.flowBounds ? ` between breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''} — changes and parameter transfers to ${escape(graph.selectedVariable || '?')}</p>${aceExecution || '<p>ACE execution flow was not produced.</p>'}</template><template data-flow-pane="formula">${formulaView}</template><template data-flow-pane="expression">${expressionPane(derivation)}</template></div>
+  <details class="origin-log"><summary>Analysis log — ${escape(graph.analysisEngine || 'ACE')}</summary><button id="copy-flow" class="location">Copy log</button><pre class="analysis-log">${escape(diagnosticLog)}</pre><div class="analysis-log">${fullLog || escape(analysisLog)}</div></details>
+  ${scenarioControls ? `<details class="scenario-panel"><summary>Simulate selection screen</summary>${scenarioControls}</details>` : ''}<div id="bse-workspace" class="bse-workspace"><template data-flow-pane="tree"><p class="edge">Execution flow${graph.flowBounds ? ` between breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''} — changes and parameter transfers to ${escape(graph.selectedVariable || '?')}</p>${aceExecution || '<p>Execution flow was not produced.</p>'}</template><template data-flow-pane="formula">${formulaView}</template><template data-flow-pane="expression">${expressionPane(derivation)}</template></div>
   <script id="mermaid-data" type="application/json">${JSON.stringify(mermaidGraph).replaceAll('<', '\\u003c')}</script>${scripts.lens ? inlineScript(nonce, scripts.lens) : lensSource ? `<script nonce="${nonce}" src="${lensSource}"></script>` : `<script nonce="${nonce}">${lensScript()}</script>`}${scripts.flow ? inlineScript(nonce, scripts.flow) : flowSource ? `<script nonce="${nonce}" src="${flowSource}"></script>` : `<script nonce="${nonce}">${flowScript()}</script>`}<script nonce="${nonce}">if(!window.vertexFlow){const box=document.getElementById('bse-workspace');if(box)box.innerHTML='<p class="warning">The flow view did not load${flowSource ? ` from ${flowSource}` : ''}: the page has its data but nothing to draw it with.</p>';}</script>
   <script nonce="${nonce}">(()=>{const state=${JSON.stringify(graph.restore || {}).replaceAll('<', '\\u003c')};if(!state.choice)return;const panel=document.querySelector('.scenario-panel');if(panel)panel.open=true;const selected=document.querySelector('.scenario input[value="'+state.choice+'"]');if(selected){selected.checked=true;selected.dispatchEvent(new Event('change',{bubbles:true}));}if(state.mode){document.querySelector('.bse-view-toggle [data-mode="'+state.mode+'"]').click();}if(state.view){document.querySelector('.bse-view-toggle [data-view="'+state.view+'"]').click();}})();</script>
-  <details class="debug-only"><summary>BSE dependency tree (technical)</summary>${dependencyTree}</details><details class="debug-only"><summary>ACE source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact objects whose ACE index was loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No ACE sources were loaded.')}</pre></details>
+  <details class="debug-only"><summary>BSE dependency tree (technical)</summary>${dependencyTree}</details><details class="debug-only"><summary>${escape(graph.analysisEngine || 'ACE')} source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact source objects loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No sources were loaded.')}</pre></details>
   <details class="debug-only"><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>
-  <details class="debug-only"><summary>ACE Flow traversal log (${(graph.flowLog || []).length})</summary><p class="edge">Only points reached while resolving the selected value are listed, with the edge that included each one.</p><button id="copy-flow" class="location">Copy log</button><div class="analysis-log">${fullLog || escape(analysisLog)}</div></details>
+
   ${scripts.mermaid ? inlineScript(nonce, scripts.mermaid) : mermaidSource ? `<script nonce="${nonce}" src="${mermaidSource}"></script>` : ''}${host && host.bridge ? inlineScript(nonce, host.bridge) : ''}<script nonce="${nonce}">const api=acquireVsCodeApi(),flowLog=${JSON.stringify(flowLogText).replaceAll('<', '\\u003c')};window.bseMermaidOpen=id=>api.postMessage({node:id});const reportScreen=()=>setTimeout(()=>{const mode=document.querySelector('[data-mode-choice].active'),view=document.querySelector('[data-view-choice].active'),depth=window.vertexFlow&&window.vertexFlow.depth();api.postMessage({kind:'screen',mode:mode?mode.dataset.modeChoice:null,view:view?view.dataset.viewChoice:null,depth:depth===undefined?null:depth});});['click','input','bse:mermaid-rendered','bse:scenario'].forEach(type=>document.addEventListener(type,reportScreen));window.addEventListener('load',reportScreen);document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,source:b.dataset.source,line:Number(b.dataset.line)||0,openBeside:e.ctrlKey||e.metaKey});});document.getElementById('copy-flow').addEventListener('click',async()=>{await navigator.clipboard.writeText(flowLog);document.getElementById('copy-flow').textContent='Copied';});const setScenario=active=>{document.querySelectorAll('[data-scenario]').forEach(node=>{node.hidden=!!active&&node.dataset.scenario!==active;if(node.hidden&&node.tagName==='DETAILS')node.open=false;});document.dispatchEvent(new Event('bse:scenario'));};document.querySelectorAll('.scenario input').forEach(input=>input.addEventListener('change',e=>setScenario(e.target.value)));if(typeof mermaid==='undefined'){const host=document.getElementById('mermaid-graph');if(host)host.textContent='Mermaid library is unavailable.';}else{mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false}});document.dispatchEvent(new Event('bse:mermaid-ready'));}</script></body></html>`;
 }
 /* What the assistant is told of the open Value origin window: the value, and the flow as the window draws it - the
@@ -290,13 +301,13 @@ function originContext() {
     kind, items: items.length, shown: Math.min(items.length, MAX_ORIGIN_STEPS), [kind]: items.slice(0, MAX_ORIGIN_STEPS) };
 }
 
-function register(vscode, context, getSources) {
+function register(vscode, context, getSources, options = {}) {
   // Reopening the same origin must not repeat a complete remote ACE closure.
   // Keep it deliberately short-lived: an edit, another cursor target or a
   // breakpoint change gets a new graph, while an accidental close/reopen is
   // immediate.
   let recentAnalysis;
-  context.subscriptions.push(vscode.commands.registerCommand('vertex.valueOrigin', async () => {
+  context.subscriptions.push(vscode.commands.registerCommand(options.command || 'vertex.valueOrigin', async () => {
     try {
       const editor = vscode.window.activeTextEditor;
       if (!editor) throw new Error('Select a variable in an ABAP source editor.');
@@ -317,19 +328,24 @@ function register(vscode, context, getSources) {
       if (recentAnalysis?.key === cacheKey && recentAnalysis.expiresAt > Date.now()) {
         ({ loaded, graph } = recentAnalysis);
       } else {
-        loaded = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Value origin — ACE call index', cancellable: true },
+        const loadStarted = Date.now();
+        loaded = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: options.progressTitle || 'Value origin — ACE call index', cancellable: true },
           (progress, token) => getSources(editor.document, target, name => progress.report({ message: name }), () => token.isCancellationRequested));
         const sources = loaded.sources;
-        graph = analyze(sources, { ...loaded.target, flowBounds: target.flowBounds });
+        const sliceStarted = Date.now();
+        graph = analyze(sources, { ...loaded.target, flowBounds: target.flowBounds && { ...target.flowBounds, source: loaded.target.source } });
+        graph.diagnostics = [...(loaded.diagnostics || []), 'Source closure total: ' + (sliceStarted - loadStarted) + ' ms',
+          'Backward slice: ' + (Date.now() - sliceStarted) + ' ms'];
+        graph.analysisEngine = options.engine || 'ACE';
         graph.warnings = loaded.warnings;
         graph.skipped = loaded.skipped;
         graph.sourceClosure = sources.map(source => ({ name: source.name, objectName: source.aceOwner || source.objectName, objectType: source.aceOwner ? source.aceOwnerType : source.objectType }));
         graph.nodes.forEach(n => { n.sourceName = sources.find(s => s.id === n.source)?.name || n.source; });
-        recentAnalysis = { key: cacheKey, expiresAt: Date.now() + 30000, loaded, graph };
+        recentAnalysis = { key: cacheKey, expiresAt: Date.now() + (options.cacheMs ?? 30000), loaded, graph };
       }
       graph.codeFlow = { rows: pathRows(graph, loaded.sources), sites: siteRows(graph, loaded.sources) };
       const sources = loaded.sources, originViewColumn = editor.viewColumn || vscode.ViewColumn.One;
-      const panel = vscode.window.createWebviewPanel('vertex.valueOrigin', 'Value origin', vscode.ViewColumn.Beside, { enableScripts: true });
+      const panel = vscode.window.createWebviewPanel(options.command || 'vertex.valueOrigin', options.panelTitle || 'Value origin', vscode.ViewColumn.Beside, { enableScripts: true });
       const mine = { graph, screen: null };
       openOrigin = mine;
       panel.onDidChangeViewState(() => { if (panel.active) { openOrigin = mine; } });

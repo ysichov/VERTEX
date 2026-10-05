@@ -416,7 +416,9 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   const g = graph("x = '<script>'.\nWRITE x.", 'x', 2);
   const page = html(g, 'test');
   assert(page.includes('Static call stack contributing'));
-  assert(page.includes('ACE Flow traversal log'));
+  assert(page.includes('<details class="origin-log"><summary>Analysis log — ACE'));
+  assert(page.includes('Copy log'));
+  assert(page.includes('Formula: '));
   assert(page.includes('Copy log'));
   assert(page.includes('ACE source closure'));
   assert(page.includes('Execution flow — changes and parameter transfers to'));

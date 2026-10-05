@@ -104,6 +104,26 @@ function createRepository({ client, systemId, emit = () => {} }) {
       revision: revision(source), active_revision: revision(active),
       includes: (structure.includes || []).map(i => i["class:includeType"]) };
   }
+  // One analysis owns its metadata and source cache. Unlike the editing read,
+  // it needs one source version and never reads every class include up front.
+  function analysisReader() {
+    const objects = new Map(), sources = new Map();
+    return async args => {
+      const objectName = name(args.object_name), objectType = type(args.object_type);
+      const key = objectType + ':' + objectName;
+      if (!objects.has(key)) {
+        const object = await resolve({ object_name: objectName, object_type: objectType });
+        const structure = await client.objectStructure(object.object_url, 'active');
+        objects.set(key, { object, structure });
+      }
+      const { object, structure } = objects.get(key), include = args.include || 'main';
+      if (objectType !== 'CLAS' && include !== 'main') throw new Error('Includes apply only to classes.');
+      const source_url = sourcePath(structure, object.object_url, include);
+      if (!sources.has(source_url)) sources.set(source_url, await client.getObjectSource(source_url, { version: 'active' }));
+      return { ...object, include, source_url, source: sources.get(source_url),
+        includes: (structure.includes || []).map(i => i['class:includeType']) };
+    };
+  }
   function remember(data) {
     if (drafts.size >= 100) { throw new Error("Too many pending changes. Discard or apply a draft first."); }
     const change_id = randomUUID();
@@ -402,7 +422,7 @@ function createRepository({ client, systemId, emit = () => {} }) {
   // F1 gives it in Eclipse: SAP's own HTML page.
   const documentation = (sourceUrl, source, line, column) =>
     analyse("ABAP documentation", source, () => client.abapDocumentation(adtPath(sourceUrl), source, line, column));
-  return { execute, apply, draft, unitTests, atcCheck, whereUsed, documentation, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
+  return { execute, apply, draft, analysisReader, unitTests, atcCheck, whereUsed, documentation, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath };

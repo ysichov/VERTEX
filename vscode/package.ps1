@@ -20,6 +20,9 @@ try {
     $archive = [IO.Compression.ZipFile]::OpenRead($candidate)
     try {
         $required = @('extension/package.json', 'extension/node_modules/abap-adt-api/package.json',
+            'extension/node_modules/abap-adt-api/LICENSE', 'extension/node_modules/@abaplint/core/package.json',
+            'extension/node_modules/@abaplint/core/build/src/index.js', 'extension/licenses/abaplint-MIT.txt',
+            'extension/value-origin-linter.js',
             'extension/resources/metrics.html', 'extension/resources/versions.html', 'extension/pages/visual-debug.html')
         foreach ($name in $required) { if (!$archive.GetEntry($name)) { throw "VSIX verification failed: missing $name" } }
         # Opening a ZIP only validates its central directory. Read each entry

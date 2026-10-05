@@ -87,6 +87,11 @@ Building either half from this repository instead: [BUILD.md](BUILD.md).
 
 ## Value Origin
 
+Both Value Origin windows expose **Analysis log** directly above the flow. **Copy log** copies the engine, source loading and parsing times, source closure, definitions, dependency edges, traversal, warnings, and Formula/Expression diagnostics. The log is accessible without enabling the technical sections.
+
+**Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Analyze Variable Value Origin**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. The first implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
+
+
 **VERTEX: Analyze Variable Value Origin**, on the cursor in a VERTEX ABAP source tab, answers
 where that value came from - backwards across calls, without running the program. ACE indexes
 and the customer sources they reference (`Z*`, `Y*`, `/namespace/`) are read from the same
@@ -209,6 +214,9 @@ signatures off the bundles when web search has nothing: [ADT_TECH.md](ADT_TECH.m
 What each folder and file of the repository is for: [BUILD.md](BUILD.md#repository-layout).
 
 ## Acknowledgements
+
+The experimental client BSE parser uses [abaplint](https://github.com/abaplint/abaplint) by Lars Hvam and contributors (MIT). `@abaplint/core` is bundled in the VSIX; no separate installation or lint extension is required. Its licence is included in `licenses/abaplint-MIT.txt`.
+
 
 The VS Code extension talks to SAP ADT through
 [abap-adt-api](https://github.com/marcellourbani/abap-adt-api) by Marcello Urbani (MIT): reading

@@ -42,6 +42,18 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
 
 const { sourceLineIn, methodLine } = require('./value-origin-open');
 
+async function originStep(log, label, work) {
+  const started = Date.now();
+  try {
+    const result = await work();
+    log.push(label + ': ' + (Date.now() - started) + ' ms');
+    return result;
+  } catch (error) {
+    log.push(label + ': ' + (Date.now() - started) + ' ms — ' + error.message);
+    throw error;
+  }
+}
+
 function register(vscode, context, { active, password, pin, pinned, systems }) {
   const events = require("./agent-events").createEmitter();
   const repositories = new Map(), texts = new Map(), opened = new Map(), drafts = new Map();
@@ -65,9 +77,10 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
      runs it on a cursor, and the debug window asks for the same thing by
      object and variable, to learn where a value can be changed. */
   const originSources = async (document, target, progress, cancelled) => {
+    const diagnostics = [];
     const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
     if (document.isDirty) throw new Error('Save and activate the source before ACE analysis. ACE reads active SAP code.');
-    const activeSource = await selected.repo.api.sourceAt(selected.data.source_url);
+    const activeSource = await originStep(diagnostics, 'ADT active source', () => selected.repo.api.sourceAt(selected.data.source_url));
     if (revision(document.getText()) !== revision(activeSource)) throw new Error('This editor differs from active SAP source. Activate your changes or reopen the active source before ACE analysis.');
     const { sourcesFromAce, locateTarget } = require('./value-origin-ace');
     const { collectSources } = require('./value-origin');
@@ -77,8 +90,11 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       const dirty = [...opened.values()].find(e => e.repo === repo && e.data.object_name === name && e.document?.isDirty);
       if (dirty) throw new Error(name + ' has unsaved edits; ACE reads its active version.');
       progress(name);
-      const data = await repo.api.execute('read_origin_index', { object_name: name, object_type: type });
-      return sourcesFromAce(data, { object_name: name, object_type: type }, document.uri.toString() + '/ace');
+      const data = await originStep(diagnostics, 'ACE index ' + type + ' ' + name,
+        () => repo.api.execute('read_origin_index', { object_name: name, object_type: type }));
+      const sources = sourcesFromAce(data, { object_name: name, object_type: type }, document.uri.toString() + '/ace');
+      diagnostics.push(name + ': ' + sources.length + ' includes, ' + sources.reduce((n, s) => n + s.aceStatements.length, 0) + ' statements');
+      return sources;
     };
     const initial = await load(selected.data.object_name, selected.data.object_type);
     const mapped = locateTarget(initial, document.getText(), selected.data.object_name, target.line, target.variable, target.column);
@@ -114,9 +130,70 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       if (!scenario) return null;
       return repo.api.execute('read_value_origin_pipeline', { scenario });
     };
-    return { ...result, target: mapped, openSource, loadPipeline };
+    return { ...result, diagnostics, target: mapped, openSource, loadPipeline };
   };
   require('./value-origin-view').register(vscode, context, originSources);
+
+  const linterSources = async (document, target, progress, cancelled) => {
+    const diagnostics = [];
+    const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
+    const repo = selected.repo, parser = require('./value-origin-linter').createParser(cancelled);
+    const warnings = ['Experimental ADT + abaplint analysis: aliases, dynamic dispatch and unsupported statements may leave the slice incomplete.'];
+    const snapshots = new Map();
+    const load = async (name, type) => {
+      if (cancelled()) throw new Error('Value origin cancelled.');
+      progress(name);
+      let data;
+      try { data = await originStep(diagnostics, 'ADT ' + type + ' ' + name,
+        () => repo.api.execute('read_sap_object', { object_name: name, object_type: type })); }
+      catch (error) {
+        if (type !== 'CLAS') throw error;
+        data = await originStep(diagnostics, 'ADT INTF ' + name,
+          () => repo.api.execute('read_sap_object', { object_name: name, object_type: 'INTF' }));
+      }
+      const parts = [data];
+      for (const include of data.object_type === 'CLAS' ? data.includes || [] : []) {
+        if (include !== 'main') parts.push(await originStep(diagnostics, 'ADT ' + name + '.' + include,
+          () => repo.api.execute('read_sap_object', { object_name: name, object_type: data.object_type, include })));
+      }
+      const sources = [];
+      for (const part of parts) {
+        const open = [...opened.values()].find(e => e.repo === repo && e.data.object_url === part.object_url
+          && e.data.include === part.include && e.document && !e.document.isClosed);
+        const source = { id: document.uri.toString() + '/linter/' + encodeURIComponent(name) + '/' + part.include,
+          name: name + (part.include === 'main' ? '' : '.' + part.include), objectName: name,
+          objectType: data.object_type, text: name === selected.data.object_name && part.include === selected.data.include
+            ? document.getText() : open?.document.getText() ?? part.source };
+        const parsed = await originStep(diagnostics, 'abaplint ' + source.name, () => parser.parse(source));
+        diagnostics.push(source.name + ': ' + source.text.split('\n').length + ' lines, ' + parsed.source.aceStatements.length + ' statements');
+        warnings.push(...parsed.warnings);
+        snapshots.set(source.id, { data: part, document: open?.document });
+        sources.push(parsed.source);
+      }
+      return sources;
+    };
+    try {
+      const initial = await load(selected.data.object_name, selected.data.object_type);
+      const own = initial.find(source => snapshots.get(source.id).data.include === selected.data.include);
+      if (!own) throw new Error('The selected ADT source was not loaded.');
+      // The selected document is the exact snapshot being analysed, including
+      // unsaved edits, so its cursor needs no ACE include-position mapping.
+      const result = await require('./value-origin').collectSources(initial, load, { maxSources: 240, cancelled, progress });
+      const position = document.offsetAt(new vscode.Position(target.line - 1, target.column || 0));
+      const offset = own.aceStatements.filter(statement => statement.offset <= position).at(-1)?.offset ?? position;
+      return { ...result, diagnostics, warnings: [...warnings, ...result.warnings], target: { ...target, source: own.id, offset },
+        openSource: async (source, node) => {
+          const snapshot = snapshots.get(source.id);
+          const destination = snapshot.document && !snapshot.document.isClosed ? snapshot.document
+            : (await sourceDocument(repo, { object_name: snapshot.data.object_name,
+              object_type: snapshot.data.object_type, include: snapshot.data.include })).document;
+          return { document: destination, line: sourceLineIn(source.text, node.line, destination.getText()) };
+        } };
+    } finally { await parser.close(); }
+  };
+  require('./value-origin-view').register(vscode, context, linterSources, {
+    command: 'vertex.valueOriginLinter', engine: 'ADT + abaplint', cacheMs: 0,
+    progressTitle: 'BSE — ADT + abaplint', panelTitle: 'BSE — ADT + abaplint' });
 
   /* Where a value can be changed, as the analysis sees it: object, line and
      the statement there. The debug window turns these into breakpoints, so
