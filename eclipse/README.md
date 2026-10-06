@@ -73,3 +73,7 @@ This compiles Java 21 classes, uses the existing PDE repository as the
 metadata template, and creates a new timestamped site and ZIP under `target/`.
 It refreshes bundled resources, sources, versions and SHA-256 download checksums.
 Install via **Help > Install New Software > Add > Archive** and restart Eclipse.
+
+### Shared diagram help
+
+The shared Tools pages include help for source links, Logic only, procedure exits, range and loop-frame highlighting, direction, zoom and the magnifier. The VS Code 0.8.1 release preparation also updates Visual Debug and embedded Tools navigation. No new Eclipse package or release version was produced.

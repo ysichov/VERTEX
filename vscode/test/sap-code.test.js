@@ -39,6 +39,21 @@ async function change(f) {
   return f.repo.execute("modify_sap_object", { object_type: "PROG", object_name: "ZTEST",
     base_revision: read.revision, source: "replacement" });
 }
+test('analysis source reader fetches one version and caches metadata and requested includes', async () => {
+  const f = fixture('CLAS');
+  let structures = 0;
+  const original = f.client.objectStructure;
+  f.client.objectStructure = async (...args) => { structures++; return original(...args); };
+  const read = f.repo.analysisReader();
+  await read({ object_name: 'ZTEST', object_type: 'CLAS' });
+  await read({ object_name: 'ZTEST', object_type: 'CLAS' });
+  assert.equal(structures, 1);
+  assert.equal(f.calls.filter(c => c[0] === 'search').length, 1);
+  assert.deepEqual(f.calls.filter(c => c[0] === 'read').map(c => c[1]), ['active']);
+  await read({ object_name: 'ZTEST', object_type: 'CLAS', include: 'testclasses' });
+  assert.equal(structures, 1);
+  assert.equal(f.calls.filter(c => c[0] === 'read').length, 2);
+});
 test('origin index is a read-only ACE request and refuses older backend schemas', async () => {
   const f = fixture(); const seen = [];
   f.client.httpClient = { async request(url, options) { seen.push([url, options]); return { body: JSON.stringify({ schema_version: 1, includes: [] }) }; } };

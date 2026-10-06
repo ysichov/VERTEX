@@ -204,8 +204,6 @@
 
 <h2>VS Code</h2>
 
-<p>VS Code 0.8.1: <strong>VERTEX: BSE — only ADT + linter</strong> opens a separate client-analysis window for comparison with ACE Value Origin. It reads source through standard ADT and parses it locally with bundled <a href="https://github.com/abaplint/abaplint">abaplint</a> (MIT). This experimental command is available in the VS Code 0.8.1 build. Both analysis windows expose an <strong>Analysis log</strong> with <strong>Copy log</strong>, including loading and parsing times.</p>
-
 <p>
   The same three pages run under a VS Code extension, from the same files:
   <a href="https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap">VERTEX ABAP on the Marketplace</a>.
@@ -246,6 +244,7 @@
   <a href="https://github.com/ysichov/VERTEX/blob/main/INSTALL.md">Install and uninstall</a>
 </footer>
 
+<section id="release-081"><h2>VS Code 0.8.1: diagrams and Visual Debug</h2><p>Analysis uses standard ADT and bundled abaplint. Calls follows reached routines, with default depth 2. Unresolved targets remain analysis boundaries; expand warnings or copy the diagnostic log.</p><p>Visual Debug offers <strong>Classes / Methods</strong> and a separate <strong>Logic</strong> toggle. Logic embeds the same Tools diagram, selects the active editor's routine and follows source selection across ABAP objects. Turning it off returns to the call graph.</p><p><strong>Logic only</strong> keeps branches, loops, calls and exits; turn it off for all operations. RETURN leads to the procedure end. Conditions keep all AND / OR terms in one diamond and link external calls. Linked labels and breakpoint locations navigate to source; Alt+Left returns.</p><p>Range selections highlight matching nodes; LOOP / ENDLOOP selects the loop frame. The focused view drives scrolling. Zoom is 10–100%; the lens reaches an effective 70% and is disabled above that scale. Theme changes preserve zoom and position.</p><p>Detach disconnects a stopped program or cancels listening and is disabled without a connection. Analysis progress updates every three seconds. The bug button copies the log; built-in help explains the controls.</p><p>This release preparation is for VS Code 0.8.1. Live SAP and visual verification remain separate from package checks; no Eclipse release is claimed.</p></section>
 </main>
 
 <script>
@@ -257,5 +256,13 @@
   document.head.appendChild(link);
 </script>
 
+<section><h2>VS Code 0.8.1 — ACE port verification</h2><p>Calls retain ACE labels, rounded nodes and type colours. FLOW includes analysed parameter transfers; empty routines remain available. See the <a href="ace-port-audit.md">ACE port audit</a> for recorded checks and remaining SAP comparison requirements.</p></section>
+<p>ACE metric scales: CC 10/20/50 and MI 85/65 (zero ungraded). Other metrics have no original ACE colour thresholds.</p>
+<p>Fixed grouped Logic/Statements Mermaid direction syntax (TB inside subgraphs). Long flow analysis reports current stage, object, parsed statement/source counts and elapsed seconds.</p>
 </body>
 </html>
+<!-- VS Code 0.8.1: ADT Parts, actual backend availability for Diff, visible Log button with complete analysis response. -->
+<!-- VS Code 0.8.1: ACE logic diagram algorithm port and method visibility icons. 16 focused checks pass; live ACE parity remains unverified. -->
+<!-- VS Code 0.8.1: Program Parts preserve FORM/FUNCTION/MODULE kinds and actual report event names. -->
+<!-- ACE parity audit 2026-10-06: 0.8.1 metrics use grammar keywords and complete routine boundaries; see ace-port-audit.md for outstanding differences. -->
+<!-- 0.8.1 Calls: ACE names, rounded nodes and six type colours restored; direct entries; traversal-enforced depth. -->

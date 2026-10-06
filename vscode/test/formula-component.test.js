@@ -15,7 +15,7 @@ test('formula follows a component through a structure transfer and keeps SQL onl
     ['transfer', 'result'], ['context', 'transfer'], ['load', 'context'],
     ['calc', 'context'], ['weight', 'calc'], ['load', 'weight']
   ].map(([from, to]) => ({ from, to, label: 'operand' }));
-  const page = html({ nodes, edges, root: 'result', selectedVariable: 'RESULT-AMOUNT' }, 'test');
+  const page = html({ nodes, edges, root: 'result', selectedVariable: 'RESULT-AMOUNT', codeFlow: { rows: [], sites: [] } }, 'test');
   const formula = page.split('Formula derivation — click a branch to expand its input formulas</p>')[1]
     .split('</template>')[0];
   const plain = formula.replace(/<[^>]*>/g, ' ');

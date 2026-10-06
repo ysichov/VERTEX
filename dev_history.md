@@ -2775,3 +2775,270 @@ VS Code 0.8.1 was packaged with both abap-adt-api and @abaplint/core and their l
 ### BSE log outside the technical sections
 
 The traversal log was hidden behind the technical-section toggle. It is now a visible Analysis log section above FLOW in both engines. The copied report includes source closure, all dependency nodes and edges, traversal, warnings, Formula and Expression diagnostics, ADT/index requests and local parser durations. The first local parse includes worker and grammar startup. This exposes evidence for comparing the reported missing Formula/Expression and slower linter path; no parity or performance fix is claimed yet.
+
+
+## 2026-10-05 — Load what the client slice needs
+
+The paired logs showed 42.968 s of ADT reads and 1.813 s of parsing versus 5.418 s of ACE closure loading. The client had fetched three empty extra includes per class through the editing API, which also read both source versions and repeated object resolution. A dedicated per-analysis reader now caches metadata and reads one active source version. The demand collector rebuilds the slice as it discovers references in reached statements and needed signatures; local definitions/implementations are fetched for unresolved local calls and macros for unsupported statements in reached routines. Normal global classes no longer fetch extras. Tests cover unused-method dependencies, interface dispatch with Formula/Expression, and deferred ADT includes. This does not claim SAP speed parity until another live log measures it.
+
+VS Code 0.8.2 was packaged successfully with both external libraries and licences. The package gate verified archive entries and passed the packaged Scheme navigation check. The final focused test run passed all 39 tests.
+
+
+VS Code: Copy log now includes the complete FLOW hierarchy and points, Formula derivation tree and graph, and Expression text, substitution steps and source bindings as JSON for both ACE and ADT + abaplint. The export uses the current analysis and loaded configuration, independently of the visual depth slider.
+
+VS Code 0.8.1 comparison build: the FLOW script is embedded in the page; the full JSON export remains in Copy log without duplicating the dump in the visible page. This change addresses the reported empty analysis pane; live VS Code rendering still needs confirmation.
+
+
+## 2026-10-05 — Move Tools analysis to ADT source
+
+VS Code routes Metrics, class/package UML, Scheme, Calls and the debugger statement map to standard ADT source reads and bundled abaplint. The existing Value Origin command and debugger dependency/variable analysis now use the client engine. Package enumeration uses ADT node contents. Tools obtains its analysis capability information locally. Versions, selector, tables, transport review/prepare and dumps retain their VERTEX backend routes.
+
+This is an experimental migration: local Halstead token classification may differ from ACE; Scheme shows structured syntax rather than the ACE execution diagram; Calls marks unresolved receivers and bounds source expansion to eight levels/100 objects. Unknown dynamic targets, macros and unsupported statements are not claimed resolved. Source-coordinate handling uses assembled class rows. Live SAP operation with the backend physically removed remains to be confirmed.
+
+The 0.8.1 VSIX was rebuilt with both libraries, the frontend-analysis module and licences. JavaScript syntax checks passed; the packaging gate passed its packaged Scheme navigation check. No live SAP/backend-removal test has been performed.
+
+Debugger migration follow-up (0.8.1): generated class-pool statement requests resolve to the class's standard ADT main source. Statement maps mark ADT source coordinates so the debugger does not apply ACE method-include offsets. Class BSE ranges use the requested assembled-source rows and respect the upper breakpoint. Unknown statements, macros, SQL and control transfers require a SAP stack read instead of a predicted plain step. Explicit CALL/PERFORM/SUBMIT statements are treated as calls.
+
+VS Code 0.8.1 debugger path fix: analysis between breakpoints without a selected variable now discovers source dependencies through calls in the entry range and reached routine bodies. The previous value-demand loader stopped at the entry program because the backward slice had no variable. The call traversal is conservative for unresolved receivers and retains the source limit; live SAP results remain to be confirmed.
+
+VS Code 0.8.1 debugger path closure now follows all resolved call sites in a statement, including NEW class( )->run( ) chains and nested calls. Previously its singular call field could stop source discovery at the constructor and leave deeper routine bodies unloaded.
+
+VS Code 0.8.1 variable declarations now load referenced receiver sources and resolved method parameter types without requiring a selected value. This restores inference of inline result structures from RETURNING signatures, such as LS_RESULT from RUN, and their component expansion before execution.
+
+VS Code 0.8.1: declared-variable reading before execution uses editor source and preserves a local declaration fallback if type loading fails. Dependency warnings are propagated to the pane; a failed read displays its error instead of leaving an empty variable area. Execution-path analysis still requires active source. The local demo returns seven declarations and infers LS_RESULT's RETURNING type; the reported live failure has not yet been reproduced.
+
+VS Code 0.8.1: choosing a variable after drawing a breakpoint path now refreshes its FLOW rows, call sites, Formula and Expression from the resulting slice while retaining path bounds. The old path had no included rows and could therefore display an empty BSE despite reported slice points.
+
+Visual Debug 0.8.1 now exposes Analysis log / Copy analysis log above Variables. It copies the latest breakpoint path and value slice separately, with request and UI bounds, source closure, timings/warnings, dependency nodes/edges, FLOW, Formula tree and Expression. This provides evidence for incomplete BSE after reload; the cause is not yet established.
+
+Metrics presentation: fractional numbers are displayed to two decimal places in unit rows, totals and the summary bar; integer counts remain integers. Raw analysis values and numeric sorting retain full precision.
+
+VS Code 0.8.1: local diagram Parts use ADT + abaplint; Diff checks actual backend availability. Visual Debug exposes a Log button and retains the complete analysis response for copying.
+
+
+VS Code 0.8.1: Logic diagram now ports ACE analyze/build_scheme, operation folding, branch joins, loop/TRY frames and source links. Local Parts restore short method names, section groups and visibility icons. Nine diagram cases and seven Tools/theme checks pass; the full suite reports 328/346 passing, with 18 failures requiring separate investigation. Live ACE equivalence is not yet verified.
+
+
+Verification follow-up: 52 focused diagram, Tools and Visual Debug checks pass. One test fixture lacked the DOM helper required by the new Log button and was corrected. The remaining 17 full-suite failures concern contracts already present in HEAD (Formula codeFlow and Versions casing/DOM mocks); they remain unresolved.
+
+
+VS Code 0.8.1: fixed Program Parts routine kinds. FORM, FUNCTION and MODULE retain their types; report events retain their names, with implicit START-OF-SELECTION instead of synthetic GLOBAL. Class methods remain METHOD. GET PARAMETER is not classified as an event.
+
+
+VS Code 0.8.1: local Tools analysis updates progress every two seconds during ADT reads and worker parsing, with the current object/stage, source count and elapsed time. Parser warnings are collapsed into a bounded details panel instead of filling the diagram area. Progress messages follow the active request and do not consume its final answer. Fourteen focused checks passed.
+
+
+VS Code 0.8.1: Calls analysis defaults to depth 3, matching the UI and ACE. Explicit depths follow the UI range 1–99 instead of silently capping at 8. An orientation regression check confirms setDirection redraws existing Mermaid without requesting analysis. Depth edits still apply on change (including field blur); clicking orientation after editing Depth can therefore coincide with the depth request.
+
+
+VS Code 0.8.1: frontend Tools reuse parsed ADT sources across analysis requests and depth changes. Only newly reached objects are read/parsed; all-cache-hit requests start no parser worker. Concurrent requests share the same in-flight read. Cache isolation follows repository URL/client/user/system; limits are 100 objects, 32 MiB source text and five minutes since loading. Save/activate attempts through VERTEX invalidate the repository cache, including partial failures. External SAP changes can remain cached until expiry or extension reload. Request indexes receive cloned data, preserving cache immutability. Seventeen focused checks passed, including depth 1→2, repeated depth, invalidation and repository isolation.
+
+
+VS Code 0.8.1: default Calls depth is now 2 at the user's request. Depth input applies after a 250 ms debounce; newer Calls requests cancel the active traversal and replace queued older Calls requests. Cancellation interrupts parser work, stops waiting for the current ADT read and discards late results (the already sent HTTP read may still finish). Successfully loaded cache entries remain reusable. Displayed calls are limited by call-edge depth rather than source-loading depth. Classes/Methods honor aggregate/per-routine labels, structural root-to-entry links restore program connectivity, and unreachable foreign routines are omitted. Responses carry their depth so stale deeper diagrams cannot replace a shallower view.
+
+
+VS Code 0.8.1 depth correction: Calls now walks reached routines breadth-first instead of recursively loading every declared source dependency. The boundary callee is a leaf (depth limit); its source is not loaded and its body is not walked. Program roots are actual report events, or the explicitly selected unit, rather than all FORMs as independent starts. Tests confirm Depth 1 reads only the report, Depth 2 adds only its first called class, a deeper class remains unread, and unused FORMs cannot pull in foreign objects. This avoids deeper work rather than merely filtering its diagram afterward.
+
+
+VS Code 0.8.1 depth semantics correction: program root is 0; entry into an event or selected routine is 1; every subsequent call adds one. The traversal now starts at level 1 and stops before inspecting calls of a terminal block. Displayed entry edges have the same cost; Classes view accounts for the entry hidden by aggregation. Added explicit PERFORM, CALL FUNCTION and classic CALL METHOD handling in Calls. A static external function is read through standard ADT FUNC only when its body falls within the traversal depth. Tests cover event→FORM→FORM, FORM→function, and methods across objects; terminal targets are not read or walked.
+
+
+### 2026-10-06 — ACE source comparison
+Compared zcl_vx_ace_keywords and zcl_vx_ace_metrics against frontend metrics. Replaced statement-class-name classification with matcher grammar traversal; include routine header/closer. 15 focused tests passed. Calls renderer and SAP scanner equivalence remain documented gaps.
+
+### 2026-10-06 — Calls rendering audit
+Compared zcl_vx_ace_flow build_steps_flow labels/styles. Ported event/method/form/constr/enh/func palette and rounded nodes, removed HTML entity escaping and fabricated root, avoided depth recomputation on aggregated nodes. Added source-contract regression assertions.
+
+### 2026-10-06 — Full regression audit
+Fixed real FLOW parameter-transfer loss through value-origin-points and shared vertex-flow-graph. Corrected frontend empty-unit filtering and UML scope/order/requested-class filtering from ACE source. Repaired fixture codeFlow/DOM/DI contracts without suppressing production errors. Full suite 365/365; palette check 1/1. Live scanner/dispatch parity remains explicitly unverified.
+
+### 2026-10-06 — Constructor-first Calls
+Frontend traversal roots CLAS at CONSTRUCTOR unless start/unit is explicit. Metrics UI forwards METH Parts choices and initializes the constructor start; missing constructor prompts selection. Two regression scenarios cover frontend and UI contracts.
+
+### 2026-10-06 — Context menu routing
+Added tools-context command registrations with explicit object/URI precedence and source declaration fallback. Registered submenu in editor/explorer/webview menus; Tools bridge publishes current object through data-vscode-context, including nested pages. Eleven focused checks passed.
+
+### 2026-10-06 — Calls context regression
+The new menu passed action calls although VertexObjects expects flow, aborting initial Tools script before fields populated. Map command to flow and normalize using the shared model in the host; add program Calls and unsupported UML regression coverage.
+
+### 2026-10-06 — Shared call enumeration
+Export callsIn from value-origin-model and use it for all statement expressions in frontend Calls, retaining classic FORM/function/method fallbacks without duplicate calls. Regression covers NEW zcl_calc_facade()->run(), nested scenario() and assigned deeper(), with boundary-source loading checks.
+
+### 2026-10-06 — Single call engine
+Added call-graph.js with classic/functional enumeration, shared model resolver, async walker, entry ranges, depth and cancellation. Frontend uses load adapters and rebuilds index only on new objects; demand flowPath uses shared walker instead of independent name matching. Model callSites delegates to shared graph resolution. Removed frontend receiver heuristic. Shared parity tests and full suite passed 374/374; package gate requires the common engine.
+
+### 2026-10-06 — Constructor expression regression
+Shared callsIn now skips typed constructor-expression wrappers while recursing into their arguments, including qualified types. NEW emits a real CONSTRUCTOR target and prevents its class token being misread as a local method.
+
+
+VS Code 0.8.1: Calls omits depth-limit labels and implicit constructor stubs. Calls and Visual Debug FLOW use the same routine palette; BSE green takes precedence over routine colours. Depth still limits source loading and traversal.
+
+
+VS Code 0.8.1: Run in SAP uses a theme-aware pale blue fill, with a stronger fill and the shared focus-colour glow on hover.
+
+
+VS Code 0.8.1: VERTEX Tools opened from an object context hides the object type and name fields, keeps the function picker, and names the tab after the object.
+
+
+VS Code 0.8.1: Object-bound VERTEX Tools opens beside the source editor, keeping code and tools visible together.
+
+
+VS Code 0.8.1: Clicking a Calls routine in object-bound Tools opens its source in the left editor instead of expanding embedded method logic.
+
+
+VS Code 0.8.1: Progress and internal style changes no longer trigger diagram theme redraws; stale Mermaid renders cannot replace the newest diagram.
+
+
+VS Code 0.8.1: Context Logic/Calls selects the method under the source cursor; object-bound Tools starts with Parts collapsed.
+
+
+VS Code 0.8.1: Metrics method names open source on the left; headers sort locally in both directions. Numeric routine metrics use green/yellow/red thresholds shown in cell tooltips (MI is graded in reverse). Totals remain ungraded.
+
+
+ACE metrics parity correction: colour grades use the original zcl_ace_metrics_window scales only: CC ≤10 LOW, ≤20 MEDIUM, ≤50 HIGH, >50 CRITICAL; MI ≥85 HIGH, ≥65 MEDIUM, below65 LOW, zero ungraded. Other numeric metrics have no original ACE thresholds and remain ungraded.
+
+
+VS Code 0.8.1: Logic nodes open their source line in the left editor; scrolling Logic follows the visible statement without taking keyboard focus from the diagram.
+
+
+VS Code 0.8.1: Logic draws the false path around IF without ELSE, and ELSEIF conditions as separate decisions connected by the false path.
+
+
+VS Code 0.8.1: Selecting code in the bound source highlights and reveals matching Logic nodes without moving editor focus; reverse-follow scrolling is suppressed to prevent navigation loops.
+
+
+VS Code 0.8.1: Logic only is enabled by default and keeps control structure and external calls. Turning it off restores ordinary operations without another SAP read.
+
+
+VS Code 0.8.1: Tools diagrams replace zoom minus/plus with a continuous 1–400% slider; code-selected nodes use a contrasting theme-aware fill as well as an outline.
+
+
+VS Code 0.8.1: Tools zoom is 10–100% with a compact theme-styled track and thumb. Object/line status appears above diagram controls.
+
+
+VS Code 0.8.1: Scrolling the bound source editor scrolls Logic to the corresponding visible code area without changing selection highlighting or focus. Programmatic source navigation is suppressed to prevent scroll feedback.
+
+
+VS Code 0.8.1: Embedded Tools pages load the canonical vertex-controls.css so Logic only uses the same toggle appearance as Visual Debug.
+
+
+VS Code 0.8.1: Value Origin has one visible command, Analyze Variable Value Origin, using ADT + abaplint. Tools omits the permanent engine label and shows only actual warnings.
+
+
+VS Code 0.8.1: The shared diagram lens compensates for displayed SVG scale, reaching natural text size at small zoom (10% gives about 10× by default); Shift-wheel remains adjustable.
+
+
+VS Code 0.8.1: Lens stays hidden at diagram scales of 70% and above; below 70% it magnifies up to an effective 70% scale (10% → 7× maximum).
+
+
+VS Code 0.8.1: Logic switches automatically when the source cursor enters another method; movements within the method only update highlighting and position.
+
+
+VS Code 0.8.1: Fixed repeated Logic method recalculation caused by comparing the wrong current-method field; source navigation from diagrams no longer echoes cursor events back into analysis.
+
+
+VS Code 0.8.1: Editor navigation commands (including Alt+Left/Right) update Logic even during the diagram-navigation guard; only unclassified programmatic cursor echoes are suppressed.
+
+
+VS Code 0.8.1: Logic draws a procedure end node; RETURN points directly to it and does not continue to the next operation. RETURN remains visible in Logic only.
+
+
+VS Code 0.8.1: RETURN terminates branch reachability before subsequent structural nodes are emitted. A join is omitted when all incoming branches have returned, preventing detached continuation nodes.
+
+
+VS Code 0.8.1: Follow code is enabled by default and synchronizes only code → Logic. Turning it off synchronizes only Logic → code; opposing scroll directions are never active together. Explicit node clicks still navigate to source.
+
+
+Synchronization uses the focused view as its driver automatically; the Follow code toggle was removed. Programmatic navigation never changes the driver.
+
+
+VS Code 0.8.1: Selected diagram labels carry the theme selection text colour inline, retaining contrast when cloned into the lens.
+
+
+VS Code 0.8.1: Logic only retains internal method calls too, including unqualified show_versions_diff(...); procedure calls are control transfers regardless of receiver syntax.
+
+
+VS Code 0.8.1: Folded operation groups retain expansion on click; an explicit expand/collapse marker restores folding without conflicting with source navigation.
+
+
+Logic diagrams show every operation individually without folding. Logic only remains the filter for control flow and procedure calls.
+
+
+Logic diagrams retain inline declarations containing constructor or procedure calls, including DATA(result) = NEW class( )->method( ).
+
+
+Selecting a loop header or its source range highlights the entire loop frame with a theme-aware pale blue tint.
+
+
+Logic conditions remain a single diamond with all AND/OR terms and parentheses. External calls, including nested argument calls, are marked with ↗; arguments are abbreviated, and the diamond tooltip lists external targets.
+
+
+External method names inside condition diamonds are links opening their class method in the source editor. Unresolved receiver calls navigate to the call site. Empty branches retained by Logic only still join ENDIF.
+
+
+Removed the permanent Experimental ADT + abaplint banner from analysis and Visual Debug.
+
+
+Flow diagrams and flow trees open source through linked node labels instead of separate </> icons; diagram frames retain expansion actions.
+
+
+Visual Debug Classes, Methods and Statements retain shared call depth and expansion state. Statements at the selected call-depth boundary remain visible when their routine is expanded.
+
+
+Full FLOW retains ENDMETHOD, ENDFORM and ENDFUNCTION as routine exits, with their original routine scope, so closing-line breakpoints can end an analysed path.
+
+
+Logic diagrams and FLOW share the procedure-ending classification in abap-control.js instead of separate ENDMETHOD lists.
+
+
+Logic and Full FLOW use the same statement classification for declarations, calls, procedure boundaries, branches, loops and control transfers in abap-control.js.
+
+
+Visual Debug adds Logic before Statements. Logic filters routine bodies using shared ABAP rules; Logic and Statements group operators inside routine frames without adding call-depth levels.
+
+
+Routine frames follow the global diagram direction: Left-right or Top-down, including their contained operators.
+
+
+Fixed grouped Logic/Statements Mermaid direction syntax (TB inside subgraphs). Long flow analysis reports current stage, object, parsed statement/source counts and elapsed seconds.
+
+
+Analysis progress is displayed every three seconds, coalescing intermediate updates to avoid flicker.
+
+
+Routine/event names such as START-OF-SELECTION are clickable frame headings in grouped Logic and Statements. Frames have a theme-aware pale blue fill, with green BSE emphasis.
+
+
+Breakpoint object:line labels are links that navigate to their source line in the left editor; row clicks use the same navigation.
+
+
+Grouped routine diagrams draw visible arrows between successive body statements instead of invisible layout-only links.
+
+
+Grouped FLOW diagrams use execution edges for sequential operators, IF/CASE branches and joins, loop back edges, and routine exits. Statement containment is retained for tree/depth controls. Frame backgrounds are lighter.
+
+
+Routine frames and entry nodes use distinct Mermaid identifiers. Execution edges connect to entry nodes rather than clusters, avoiding compound-layout failures on cyclic flows.
+
+
+Visual Debug status messages use the theme green colour, matching the VERTEX assistant appearance.
+
+Visual Debug and Value Origin keep the analysis log control at the top right, without a separate toolbar row. Source links use VS Code navigation so Back can return to the previous location. Grouped Logic and Statements diagrams use the bundled ELK layout for cross-method edges.
+
+Grouped Mermaid diagrams attach source navigation, frame toggles and tooltips after rendering, without click directives unsupported by the bundled ELK database.
+
+Grouped Logic and Statements diagrams apply the selected direction inside each method frame as well as to the overall graph. The bundled Mermaid ELK adapter explicitly passes group direction to ELK; independent branches may still sit beside one another.
+
+Changing diagram depth keeps the toolbar in place. Mermaid renders in an offscreen container, and the bundled ELK measurement container no longer participates in the page flex layout.
+
+Detach is enabled only while the debugger is stopped or listening for a run. Its tooltip distinguishes continuing a stopped program from cancelling the wait; otherwise the button is disabled.
+
+Changing the colour theme preserves diagram zoom and scroll position. Shared FLOW diagrams update SVG colours without rebuilding the layout; Logic and Calls redraw with the existing viewport.
+
+Visual Debug keeps Classes/Methods and embeds the standard Tools Logic diagram when its separate Logic toggle is on. Turning Logic off restores the existing Calls view; source navigation and code following use the same Tools handlers.
+
+Embedded Logic starts from the active source editor rather than the analysed path root. It selects the routine containing the cursor and follows selection changes across ABAP objects using the standard Tools component.
+
+## 2026-10-06 — 0.8.1 release documentation and help
+
+Consolidated the incremental README and website notes into the final user workflow. Visual Debug uses Classes/Methods plus a separate Logic toggle backed by the existing Tools component and message handlers. Tools follows the active editor, picks a routine by source coordinates, and switches object when selection changes. Updated diagram, debugger and Value Origin help; documented focus-driven scrolling, source history, return/end boundaries, zoom/lens rules and connection-aware Detach. Earlier four-mode and Follow code descriptions are historical and superseded. No Eclipse build was produced and no live visual/SAP verification is claimed by this documentation update.

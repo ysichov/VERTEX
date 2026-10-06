@@ -15,7 +15,7 @@ button:disabled{opacity:.45;cursor:default}
 /* The two that end something - the program or the whole session - stand out. */
 #terminate,#stop{color:var(--vscode-errorForeground,#c72e0f);--accent:var(--vscode-errorForeground,#c72e0f)}
 #terminate:hover:not(:disabled),#stop:hover:not(:disabled){color:var(--vscode-errorForeground,#c72e0f);border-bottom-color:var(--accent)}
-header{flex:none;padding:6px 8px;border-bottom:1px solid var(--vscode-panel-border,GrayText);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#analysis-copy{position:absolute;right:44px;top:6px;width:28px;height:28px;padding:2px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground,var(--vscode-editorWidget-background));color:var(--vscode-button-secondaryForeground,var(--vscode-editor-foreground))}header{position:relative;flex:none;padding:6px 80px 6px 8px;border-bottom:1px solid var(--vscode-panel-border,GrayText);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .grp{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
 .grp+.grp{padding-left:8px;border-left:1px solid var(--vscode-panel-border,GrayText)}
 #title{font-weight:600;margin-right:6px}
@@ -24,8 +24,9 @@ header{flex:none;padding:6px 8px;border-bottom:1px solid var(--vscode-panel-bord
 #runline{flex:none;display:flex;gap:10px;align-items:baseline;padding:2px 8px;color:var(--vscode-descriptionForeground,GrayText);border-bottom:1px solid var(--vscode-panel-border,GrayText);white-space:nowrap;overflow:hidden}
 #runline:empty,#runline.empty{display:none}
 #runline #why{overflow:hidden;text-overflow:ellipsis}
-#notice{flex:none;padding:4px 8px;display:none;color:var(--vscode-errorForeground,red);border-bottom:1px solid var(--vscode-panel-border,GrayText);white-space:pre-wrap}
+#notice{flex:none;padding:4px 8px;display:none;color:var(--vscode-charts-green,#23794a);border-bottom:1px solid var(--vscode-panel-border,GrayText);white-space:pre-wrap}
 #notice.on{display:block}
+.vscode-dark #notice,.vscode-high-contrast #notice{color:var(--vscode-charts-green,#6fcf97)}
 main{flex:1;display:flex;min-height:0}
 #left{flex:1;display:flex;flex-direction:column;min-width:200px}
 #codehead{flex:none;padding:3px 8px;border-bottom:1px solid var(--vscode-panel-border,GrayText);display:flex;gap:8px;align-items:center;color:var(--vscode-descriptionForeground,GrayText)}
@@ -61,8 +62,8 @@ section h3 label{font-weight:400;display:flex;gap:3px;align-items:center}
 .list{overflow:auto;font-family:var(--vscode-editor-font-family,monospace)}
 #stack,#bps,#vars,#logbox{flex:1;min-height:0}
 #run,#into,#over,#out,#cont{display:inline-flex;align-items:center;gap:5px}
-#run{background:color-mix(in srgb,var(--vscode-testing-iconPassed,var(--vscode-terminal-ansiGreen,#388a34)) 22%,var(--vscode-editor-background,Canvas))}
-#run:hover:not(:disabled){background:color-mix(in srgb,var(--vscode-testing-iconPassed,var(--vscode-terminal-ansiGreen,#388a34)) 34%,var(--vscode-editor-background,Canvas))}
+#run{background:color-mix(in srgb,var(--vscode-terminal-ansiBrightBlue,#75bfff) 22%,var(--vscode-editor-background,Canvas));transition:background .12s,color .12s,box-shadow .12s}
+#run:hover:not(:disabled){background:color-mix(in srgb,var(--vscode-terminal-ansiBrightBlue,#75bfff) 34%,var(--vscode-editor-background,Canvas));box-shadow:0 3px 8px -3px var(--accent)}
 svg.dbg{width:16px;height:16px;flex:none}
 #run svg.clock{width:15px;height:15px;flex:none}
 table.stack{width:100%}
@@ -193,11 +194,12 @@ body.vertex-docked-debug #right{width:100%}
 ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
 ::-webkit-scrollbar-thumb{border-radius:4px;background:var(--vscode-scrollbarSlider-background,rgba(128,128,128,.4))}
 ::-webkit-scrollbar-thumb:hover{background:var(--vscode-scrollbarSlider-hoverBackground,rgba(128,128,128,.6))}
+.debug-help{position:absolute;right:8px;top:6px;z-index:60}.debug-help>summary{cursor:pointer;list-style:none;padding:3px 9px;border:1px solid var(--vscode-panel-border);border-radius:5px;background:var(--vscode-button-secondaryBackground,var(--vscode-editorWidget-background))}.debug-help>div{position:absolute;right:0;width:min(440px,85vw);max-height:65vh;overflow:auto;padding:14px;border:1px solid var(--vscode-panel-border);background:var(--vscode-editorWidget-background,var(--vscode-editor-background));color:var(--vscode-editor-foreground);box-shadow:0 4px 18px var(--vscode-widget-shadow)}
 </style></head><body>
-<header>
+<header><details class="debug-help"><summary aria-label="Visual Debug help" title="Visual Debug help">?</summary><div><strong>Visual Debug</strong><p>Classes / Methods changes the call graph. Depth counts entered routines; expansion, zoom and position are retained.</p><p>Logic embeds the standard Tools Logic diagram for the active source editor. Turn it off to return to the call graph. Logic only keeps branches, loops, calls and exits; turn that filter off to see all operations.</p><p>Click linked labels or breakpoint locations to open source. Alt+Left returns. Source selections highlight diagram nodes; the focused view drives scrolling.</p><p>Detach continues a stopped program and disconnects, or cancels listening. It is disabled without a connection. Exit program ends a stopped program.</p><p>Analysis progress updates every three seconds. The bug button copies the full diagnostic log. Parsed statement counts are analysis work, not executed steps.</p><p>The zoom slider is 10–100%. The lens works below 70%, magnifying up to that effective scale. Changing the theme preserves zoom and position.</p></div></details><button id="analysis-copy" aria-label="Copy analysis log" title="Copy the latest path and value analysis, including FLOW, Formula and Expression">🐞</button>
   <!-- Three groups, because they answer three questions: what to do with the
        program, how to step, and how a run behaves. -->
-  <span class="grp"><button id="run" title="Start the program in SAP (WebGUI) - the breakpoints catch it there"><svg class="clock" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#fff" stroke="#3a3a3a" stroke-width="1.2"/><path d="M8 3.8V8l2.6 1.6" fill="none" stroke="#3a3a3a" stroke-width="1.3" stroke-linecap="round"/><path d="M9.2 12.2l1.8 1.8 3.6-4" fill="none" stroke="#2e9e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Run in SAP</button><input id="program" placeholder="Program, or empty for a test" title="A class or a function module is not run by itself: name the program that calls it, started in WebGUI" spellcheck="false"><span id="title">Visual Debug</span><button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Exit program</button><button id="stop" title="Let the program go and stop listening; the breakpoints stay here for the next run">Detach</button></span>
+  <span class="grp"><button id="run" title="Start the program in SAP (WebGUI) - the breakpoints catch it there"><svg class="clock" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#fff" stroke="#3a3a3a" stroke-width="1.2"/><path d="M8 3.8V8l2.6 1.6" fill="none" stroke="#3a3a3a" stroke-width="1.3" stroke-linecap="round"/><path d="M9.2 12.2l1.8 1.8 3.6-4" fill="none" stroke="#2e9e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Run in SAP</button><input id="program" placeholder="Program, or empty for a test" title="A class or a function module is not run by itself: name the program that calls it, started in WebGUI" spellcheck="false"><span id="title">Visual Debug</span><button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Exit program</button><button id="stop" title="Let the program go and stop listening; the breakpoints stay here for the next run" disabled>Detach</button></span>
   <span class="grp"><button id="into" title="Single Step (F5)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v8h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 8l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Single Step</span></button><button id="over" title="Execute (F6)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v11h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 11l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Execute</span></button><button id="out" title="Return (F7)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M3 14V4h4" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 2l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Return</span></button><button id="cont" title="Continue to the next breakpoint (F8)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M4 1.5v12" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11.5l2 2 2-2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Continue</span></button></span>
   <span class="grp"><button id="zonly" class="on" title="In a run of F5 steps, a step that lands outside Z/Y code returns at once (F7): SAP's own code is passed in one go">Z only</button><button id="flow" title="Continue (F8) from call to call, recording which routine calls which - the program's real flow, drawn as a diagram">Flow</button><span class="vertex-segment-toggle" id="recmode" role="group" aria-label="Record" title="Continue (F8) as a run of F5 steps, keeping every stop for the player. Values are the expensive half of a stop - the parameters and locals where a routine starts and ends - so they are recorded only when asked for"><button data-rec="off">No record</button><button class="active" data-rec="steps">Rec steps</button><button data-rec="values">Steps &amp; values</button></span><button id="predict" class="on" title="Use the statement map to go faster: the next line is taken from it where the text alone decides it, and, with a value followed, a loop, an IF/CASE block, a run of statements or a call its slice does not touch is passed in one go. On by default. Off, SAP is asked where the program is after every step - slower, and every stop was read rather than worked out. Loops are always stepped through otherwise">Predict</button></span>
   <span id="state">Click beside a line number to set a breakpoint; right-click for a condition.</span>
@@ -237,7 +239,7 @@ body.vertex-docked-debug #right{width:100%}
       <button id="dumpfull" hidden title="Show the whole dump as SAP wrote it">Whole dump</button>
       <button id="dumpopen" title="Open ST22 in SAP, where this dump is the first entry">Open ST22</button></h3>
       <div class="list" id="dumpbox"></div></section>
-    <div id="flowpane" hidden><div id="flowbar"><button id="fclasses" class="active">Classes</button><button id="fmethods">Methods</button><button id="fsteps" title="The recorded run as statements: one node per statement, however many times it ran">Statements</button><span id="fdepthbox" hidden><span class="vertex-segment-toggle" id="fexpand" role="group" aria-label="Branches"><button class="active" data-open="collapse">Collapse all</button><button data-open="expand">Expand all</button></span><label class="fdepth" title="How deep the statements are shown - the program is 0, a class 1, a routine 2">Depth <input type="range" id="fdepth" min="1" max="1" value="1" step="1" aria-label="Depth"><output id="fdepthvalue" class="dim">all</output></label></span><span class="grow"></span><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Hide the diagram">&#215;</button></div><div id="bse-workspace" class="bse-workspace"></div></div>
+    <div id="flowpane" hidden><div id="flowbar"><button id="fclasses" class="active">Classes</button><button id="fmethods">Methods</button><button id="flogic" title="Branches, loops, calls and control transfers">Logic</button><button id="fsteps" hidden title="The recorded run as statements: one node per statement, however many times it ran">Statements</button><span id="fdepthbox" hidden><span class="vertex-segment-toggle" id="fexpand" role="group" aria-label="Branches"><button class="active" data-open="collapse">Collapse all</button><button data-open="expand">Expand all</button></span><label class="fdepth" title="How deep the statements are shown - the program is 0, a class 1, a routine 2">Depth <input type="range" id="fdepth" min="1" max="1" value="1" step="1" aria-label="Depth"><output id="fdepthvalue" class="dim">all</output></label></span><span class="grow"></span><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Hide the diagram">&#215;</button></div><div id="bse-workspace" class="bse-workspace"></div></div>
     <section id="logsec" hidden><h3><span>Log</span><span id="logtime" class="dim"></span></h3><div id="logbox" class="list"></div></section>
   </div>
 </main>
@@ -277,16 +279,21 @@ function sdeReady(){
 }
 /* The analysis reads dozens of sources and takes seconds. Asked through the queue above, every step and every variable
    would wait for it; it has a channel of its own, answered by number, and runs beside the debugger. */
-var originWaiting={},originSeq=0;
-function askOrigin(request){
-  return new Promise(function(ok,fail){var id=++originSeq;originWaiting[id]={ok:ok,fail:fail};
-    try{sdeOrigin(Object.assign({id:id},request));}catch(e){delete originWaiting[id];fail(e);}});
+var originWaiting={},originSeq=0,analysisLogs={};
+$("analysis-copy").onclick=function(){var text=JSON.stringify({selectedValue:chosenValue,pathBounds:staticFlow?{from:staticFlow.from,stopAt:staticFlow.stopAt}:null},null,2)+"\n\n"+Object.keys(analysisLogs).map(function(k){return k.toUpperCase()+" ANALYSIS\n"+analysisLogs[k];}).join("\n\n");debug("copy",{text:text}).then(function(){notice("Analysis log copied.");}).catch(failed);};
+function sdeOriginProgress(value){var waiting=originWaiting[value.id];if(waiting&&waiting.progress){waiting.last=value;}}
+function askOrigin(request,onProgress){
+  return new Promise(function(ok,fail){var id=++originSeq;originWaiting[id]={ok:ok,fail:fail,progress:onProgress,started:Date.now(),last:{id:id,stage:'Starting analysis',steps:0,sources:0}};if(onProgress)originWaiting[id].timer=setInterval(function(){var waiting=originWaiting[id];if(waiting){waiting.progress(Object.assign({},waiting.last,{seconds:Math.floor((Date.now()-waiting.started)/1000)}));}},3000);
+    try{sdeOrigin(Object.assign({id:id},request));}catch(e){if(originWaiting[id].timer)clearInterval(originWaiting[id].timer);delete originWaiting[id];fail(e);}});
 }
 function sdeOriginReady(raw){
   var answer;try{answer=JSON.parse(raw);}catch(e){return;}
   var waiting=originWaiting[answer.id];if(!waiting)return;
-  delete originWaiting[answer.id];
-  if(answer.error)waiting.fail(new Error(answer.error));else waiting.ok(answer.answer);
+  if(waiting.timer)clearInterval(waiting.timer);delete originWaiting[answer.id];
+  if(answer.error)waiting.fail(new Error(answer.error));else {
+    if(answer.answer&&Array.isArray(answer.answer.flow))analysisLogs[answer.answer.variable?'slice':'path']=answer.answer.analysisLog||JSON.stringify(answer.answer,null,2);
+    waiting.ok(answer.answer);
+  }
 }
 function ask(send,raw){return new Promise(function(ok,fail){queued.push({ok:ok,fail:fail,raw:raw===true,send:send});sdeNext();});}
 function debug(command,args){if(typeof sdeDebug!=="function")return Promise.reject(new Error("Visual Debug needs the VS Code host."));return ask(function(){sdeDebug(command,args||{});});}
@@ -560,7 +567,7 @@ function analyzePath(b){
   if(!others.length)return Promise.reject(new Error("Check a second breakpoint: the path is taken between two points."));
   var what=chosenValue?chosenValue.name:"";
   notice("Analysing the flow"+(what?" and the slice of "+what:"")+" from line "+b.line+" of "+b.name+"…");
-  return Promise.all([loadFlowGraph(),askOrigin({object_name:b.name,object_type:type,line:b.line,variable:what,from:b.line})]).then(function(both){
+  return Promise.all([loadFlowGraph(),askOrigin({object_name:b.name,object_type:type,line:b.line,variable:what,from:b.line},function(progress){notice(progress.stage+(progress.object?' · '+progress.object:'')+' · '+(progress.sources||0)+' sources · '+(progress.steps||0)+' statements parsed · '+progress.seconds+' s');})]).then(function(both){
     var answer=both[1];
     var rows=(answer&&answer.flow)||[];
     if(!rows.length){delete bpPaths[b.id];drawBreakpoints();
@@ -594,7 +601,8 @@ function drawBreakpoints(){
       var on=document.createElement("input");on.type="checkbox";on.checked=b.active!==false;on.title=on.checked?"Deactivate":"Activate";
       on.onclick=function(e){e.stopPropagation();debug("activate",{id:b.id,active:on.checked}).then(refresh).catch(failed);};r.appendChild(on);
       if(b.active===false)r.classList.add("off");
-      var t=document.createElement("span");t.textContent=b.name+":"+b.line;r.appendChild(t);
+      var navigate=function(){if(document.body.classList.contains('vertex-docked-debug')&&typeof sdeReveal==='function'){sdeReveal({url:b.url,line:b.line,program:b.name});return;}show(b.url,b.name,b.line).catch(failed);};
+      var t=document.createElement("button");t.className='link';t.textContent=b.name+":"+b.line;t.title='Open source at line '+b.line;t.onclick=function(e){e.preventDefault();e.stopPropagation();navigate();};r.appendChild(t);
       var d=document.createElement("span");d.className="dim";d.textContent=b.mode+(b.condition?" · "+b.condition:"");r.appendChild(d);
       var path=bpPaths[b.id];
       var a=document.createElement("button");a.className="link";a.textContent="Analyze flow path";
@@ -602,7 +610,7 @@ function drawBreakpoints(){
       a.onclick=function(e){e.stopPropagation();analyzePath(b).catch(function(err){notice(err&&err.message||String(err));});};r.appendChild(a);
       var x=document.createElement("button");x.className="x";x.textContent="×";x.title="Remove";
       x.onclick=function(e){e.stopPropagation();delete bpPaths[b.id];debug("clear",{id:b.id}).then(refresh).catch(failed);};r.appendChild(x);
-      r.onclick=function(){show(b.url,b.name,b.line).catch(failed);};
+      r.onclick=navigate;
       box.appendChild(r);
       if(path){var c=document.createElement("div");c.className="row child dim";c.style.paddingLeft="34px";
         c.textContent="flow to "+path.to+": "+path.count+" statements - in the diagram";c.title="Show the diagram";
@@ -721,6 +729,8 @@ function drawStack(recorded){
 function drawButtons(){
   var stopped=!!picture.stopped;
   ["into","over","out"].forEach(function(id){$(id).disabled=!stopped||!!series;});$("cont").disabled=!stopped&&!series;$("terminate").disabled=!stopped;
+  $("stop").disabled=!stopped&&!picture.listening;
+  $("stop").title=stopped?"Let the program continue and disconnect; breakpoints are kept":picture.listening?"Stop waiting for a run; breakpoints are kept":"No debugger connection to detach";
   var s=picture.stopped;
   $("state").textContent=(picture.system?picture.system+" · ":"")+(s?"stopped at "+(placeName(currentFrame())||s.at)+(s.problem?" · "+s.problem:""):picture.listening?"listening for a run":"not listening");
 }
@@ -823,7 +833,10 @@ function methodsFor(f){
     .catch(function(){methodsAt[norm(f.url)]={};});
 }
 function listFor(f,map){
-  var inc=String(f&&f.include||"").toUpperCase(),list=map&&map[inc];if(!list)return null;
+  var inc=String(f&&f.include||"").toUpperCase(),list=map&&map[inc];
+  if(!list&&map&&classUrl(f.url))list=map.$ADT_MAIN;
+  if(!list)return null;
+  if(list[0]&&list[0].coordinate==='adt-source')return list;
   var key=norm(f.url)+"|"+inc+"|"+String(f.unit||"").toUpperCase();if(lists[key]!==undefined)return lists[key];
   var offset=null;
   if(includeAt(f.url)===inc)offset=0;
@@ -1206,7 +1219,7 @@ document.addEventListener("keydown",function(e){var k={F5:"into",F6:"over",F7:"o
    call is left at once (F7). With Visual on the window draws where the
    program is at each change of the stack, not at each step; off, only at the
    end. */
-var flow={edges:{},nodes:{},order:[]},flowPath=[],flowMode="classes",flowSeq=0,mermaidReady=null;
+var flow={edges:{},nodes:{},order:[]},flowPath=[],flowMode="classes",flowGrouping="classes",flowDiagram="calls",focusedRoutine="",flowSeq=0,mermaidReady=null;
 var ENDS=/^(ENDMETHOD|ENDFORM|ENDFUNCTION|ENDMODULE)$/,UNITS=/^(METHOD|FORM|FUNCTION|MODULE)$/;
 $("flow").onclick=function(){$("flow").classList.toggle("on");};
 /* The routine a frame is in, and whose it is: a class, or the program. */
@@ -1580,7 +1593,7 @@ function markNow(){
   if(!window.vertexFlow||!window.vertexFlow.mark)return;
   var tl=flow.timeline||[],t=replayAt!=null?tl[replayAt]:tl[tl.length-1];
   if(!t){window.vertexFlow.mark("");return;}
-  var key=flowMode==="steps"?stepKey(t):flowMode==="classes"?(t.cur&&t.cur.owner):(t.cur&&t.cur.name);
+  var key=(flowMode==="steps"||flowMode==="logic")?stepKey(t):flowMode==="classes"?(t.cur&&t.cur.owner):(t.cur&&t.cur.name);
   window.vertexFlow.mark(key&&sharedIds[key]||"");
 }
 function liveCur(){var top=picture.stopped&&picture.stopped.frames.filter(function(f){return !f.system;})[0];return top?unitOf(top):null;}
@@ -1606,7 +1619,7 @@ var flowGraphReady=null;
 function loadFlowGraph(){
   if(window.vertexFlowGraph)return Promise.resolve();
   if(flowGraphReady)return flowGraphReady;
-  flowGraphReady=ask(function(){sdeAsset("flowGraph");},true).then(function(text){
+  flowGraphReady=ask(function(){sdeAsset("abapControl");},true).then(function(text){var tag=document.createElement("script");tag.textContent=String(text);document.head.appendChild(tag);return ask(function(){sdeAsset("flowGraph");},true);}).then(function(text){
     var tag=document.createElement("script");tag.textContent=String(text);document.head.appendChild(tag);
     if(!window.vertexFlowGraph)throw new Error("vertex-flow-graph.js loaded but defines no builder.");
   });
@@ -1656,19 +1669,20 @@ function joinToolbars(){
   if(!row||row.querySelector("#fclasses"))return;
   var mine=document.createElement("span");mine.className="vertex-segment-toggle";mine.setAttribute("role","group");
   mine.setAttribute("aria-label","Reading");
-  ["fclasses","fmethods","fsteps"].forEach(function(id){mine.appendChild($(id));});
+  ["fclasses","fmethods"].forEach(function(id){mine.appendChild($(id));});
   row.insertBefore(mine,row.firstChild);
+  var logic=$("flogic");logic.className="vertex-toggle";logic.textContent="Logic";logic.setAttribute("aria-pressed",String(flowDiagram==="logic"));logic.title="Show logic of the selected method";
+  mine.after(logic);$("fsteps").hidden=true;
   var end=document.createElement("span");end.className="grow";row.appendChild(end);
   row.appendChild($("ffull"));row.appendChild($("fclose"));
   $("flowbar").hidden=true;
 }
 function openRecordFlow(){
   joinToolbars();
+  $("flogic").classList.toggle("on",flowDiagram==="logic");$("flogic").classList.remove("active");$("flogic").setAttribute("aria-pressed",String(flowDiagram==="logic"));
   watchScope();
   drawChosen();
-  // A record is read open: if the switch stands at collapsed, it is turned back.
-  var sw=document.querySelector('#bse-workspace [data-expand-switch]');
-  if(sw&&sw.classList.contains("active"))sw.click();
+  // Reading switches retain the shared depth and expansion state.
 }
 /* The record as the shared view reads a flow, in whichever of the three
    readings is chosen: classes, routines, or the statements themselves. The
@@ -1782,9 +1796,9 @@ function staticFlowGraph(mode,quiet){
 }
 
 function sharedFlowGraph(mode){
-  var S=mode==="steps"?stepFlow():callGraph(mode==="classes"),nodes=[],edges=[];
+  var detailed=mode==="steps"||mode==="logic",S=detailed?stepFlow():callGraph(mode==="classes"),nodes=[],edges=[];
   S.order.forEach(function(k){var nd=S.nodes[k];
-    nodes.push({id:"f"+nodes.length,key:k,text:nd.text+(nd.count>1&&mode==="steps"?"  ×"+nd.count:""),
+    nodes.push({id:"f"+nodes.length,key:k,text:nd.text+(nd.count>1&&detailed?"  ×"+nd.count:""),
       location:nd.unit||nd.text,owner:nd.owner||"",source:nd.url,line:nd.line,stack:nd.depth||0,
       type:nd.type==="statement"?"operation":(nd.type||"unit"),bse:false,key:k});});
   // BSE: the nodes the chosen value was changed in, and the routines that led
@@ -1795,14 +1809,14 @@ function sharedFlowGraph(mode){
   var marks=Object.assign({},trail.at||{},sliceStops());
   Object.keys(marks).forEach(function(i){
     var t=(flow.timeline||[])[Number(i)];if(!t)return;
-    if(mode==="steps")keep[stepKey(t)]=true;
+    if(detailed)keep[stepKey(t)]=true;
     var f=t.stack&&t.stack[0];
     (t.stack||[]).forEach(function(x,n){
       var owner=n===0&&t.cur?t.cur.owner:String(x.program||"");
       var unit=n===0&&t.cur?t.cur.name:String(x.unit||x.program||"");
       keep[mode==="classes"?owner:mode==="methods"?unit:"m|"+unit]=true;
     });
-    if(f&&mode!=="steps")keep[mode==="classes"?(t.cur?t.cur.owner:f.program):(t.cur?t.cur.name:f.program)]=true;
+    if(f&&!detailed)keep[mode==="classes"?(t.cur?t.cur.owner:f.program):(t.cur?t.cur.name:f.program)]=true;
   });
   // A node is in the scope when the analysis named its place, or when the
   // record shows the value changed there. Only the node that holds the
@@ -1812,10 +1826,10 @@ function sharedFlowGraph(mode){
     var place=(n.location||n.text)+"";
     var point=sliceAt(n.owner||place.split("=>")[0],n.line);
     var mine=!!keep[n.key]||!!point;
-    n.bse=mine&&(mode!=="steps"||n.type==="operation");
+    n.bse=mine&&(!detailed||n.type==="operation");
     // The statement as the analysis names it: the statement map cannot place a line that holds two
     // of them, and its fallback is the include and the line, which says nothing about the value.
-    if(point&&point.text&&mode==="steps"&&n.type==="operation"){
+    if(point&&point.text&&detailed&&n.type==="operation"){
       var count=(String(n.text).match(/\s+×\d+$/)||[""])[0];
       n.text=(point.text.length>70?point.text.slice(0,67)+"…":point.text)+" · "+n.line+count;
     }
@@ -1835,9 +1849,14 @@ function sharedFlowGraph(mode){
     nodes.forEach(function(n){if(n.id===was)n.id="bseroot";});
     edges.forEach(function(e){if(e.from===was)e.from="bseroot";if(e.to===was)e.to="bseroot";});
     idOf[S.entry]="bseroot";}
+  if(detailed)nodes.forEach(function(node){node.group=node.location;});
+  if(mode==='logic'){
+    var remove=nodes.filter(function(node){return node.type==='operation'&&!window.vertexAbapControl.classifyStatement({text:node.text}).logic;});
+    remove.forEach(function(node){var incoming=edges.filter(function(edge){return edge.to===node.id;}),outgoing=edges.filter(function(edge){return edge.from===node.id;});edges=edges.filter(function(edge){return edge.from!==node.id&&edge.to!==node.id;});incoming.forEach(function(left){outgoing.forEach(function(right){if(left.from!==right.to)edges.push({from:left.from,to:right.to,label:right.label});});});});nodes=nodes.filter(function(node){return !remove.includes(node);});
+  }
   sharedIds=idOf;sharedNodes=nodes;
   var deepest=0;nodes.forEach(function(n){if(n.stack>deepest)deepest=n.stack;});
-  return {nodes:[],edges:[],formula:{nodes:[],edges:[]},bseFlow:{nodes:nodes,edges:edges},
+  return {nodes:[],edges:[],formula:{nodes:[],edges:[]},bseFlow:{nodes:nodes,edges:edges,grouped:detailed},
     originTitle:"",maxStack:deepest,maxLevel:0,bseFlowHtml:""};
 }
 function loadControls(){
@@ -1923,7 +1942,7 @@ function showFlow(){
   }
   if(!paneOn("flowpane")){$("flowpane").hidden=false;document.querySelectorAll('#panes button[data-pane="flowpane"]').forEach(function(b){b.classList.add("on");});layoutPanes();}
   // In the shared row they are the shared exclusive toggle: one is active.
-  $("fclasses").classList.toggle("active",flowMode==="classes");$("fmethods").classList.toggle("active",flowMode==="methods");$("fsteps").classList.toggle("active",flowMode==="steps");
+  $("fclasses").classList.toggle("active",flowGrouping==="classes");$("fmethods").classList.toggle("active",flowGrouping==="methods");$("fsteps").classList.toggle("active",flowMode==="steps");$("flogic").classList.toggle("active",flowMode==="logic");
   // Every reading is drawn by the shared flow view: it brings the tree, the
   // diagram and the controls over both. The window supplies the graph.
   $("fdepthbox").hidden=true;
@@ -1951,8 +1970,21 @@ function showFlow(){
 $("ffull").onclick=function(){$("flowpane").classList.toggle("full");};
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&$("flowpane").classList.contains("full")){$("flowpane").classList.remove("full");fitFlow();}});
 // With no flow recorded - a run of plain steps - there is nothing to draw: the log opens.
-$("fclasses").onclick=function(){flowMode="classes";showFlow();};
-$("fsteps").onclick=function(){flowMode="steps";showFlow();};
+$("fclasses").onclick=function(){flowGrouping="classes";flowMode=flowDiagram==="logic"?"logic":flowGrouping;showFlow();};
+
+window.sdeLogicHtml=function(html){
+  var frame=$("logic-tools-frame");if(!frame){frame=document.createElement("iframe");frame.id="logic-tools-frame";frame.title="Logic diagram — Tools";frame.style.cssText="width:100%;flex:1;min-height:0;border:0;background:var(--vscode-editor-background)";$("flowpane").appendChild(frame);}
+  var computed=getComputedStyle(document.body),variables=[];for(var i=0;i<computed.length;i++){var key=computed[i];if(key.indexOf("--vscode-")===0)variables.push(key+":"+computed.getPropertyValue(key));}
+  frame.srcdoc=html.replace("</head>","<style>:root{"+variables.join(";")+"}</style></head>").replace("<body>",'<body class="'+document.body.className+'">');frame.hidden=false;var workspace=$("bse-workspace");workspace.dataset.logicStyle=workspace.style.cssText;workspace.style.cssText="height:auto;min-height:0;flex:none";Array.from(workspace.children).forEach(function(child){if(!child.classList.contains("bse-view-toggle")){child.dataset.logicHidden=String(child.hidden);child.hidden=true;}});
+};
+$("flogic").onclick=function(){
+  if(flowDiagram==="logic"){flowDiagram="calls";var frame=$("logic-tools-frame");if(frame)frame.hidden=true;var workspace=$("bse-workspace");workspace.style.cssText=workspace.dataset.logicStyle||"";workspace.querySelectorAll("[data-logic-hidden]").forEach(function(child){child.hidden=child.dataset.logicHidden==="true";delete child.dataset.logicHidden;});$("flogic").classList.remove("on");$("flogic").setAttribute("aria-pressed","false");return;}
+  flowDiagram="logic";$("flogic").classList.add("on");$("flogic").setAttribute("aria-pressed","true");
+  var row=staticFlow&&staticFlow.rows.find(function(w){return w.scope===focusedRoutine||w.location===focusedRoutine;});
+  var current=currentFrame(),location=row&&(row.location||row.scope)||current&&unitName(current)||"";
+  var method=String(location).split(/→|=>|->/).pop();
+  debug("logicTools",{name:row&&(row.object_name||row.name)||shown.name||object.name,type:row&&(row.object_type||row.type)||object.type,part:method&&method!=="GLOBAL"?method:null,cursorLine:row&&(row.aceLine||row.line)||current&&current.line||1}).catch(failed);
+};
 /* The shared view marks a source link with the node's place; in this window a
    click on one shows that line here, as every other link in it does. It is
    taken in the capturing phase, before anything the view does with it. */
@@ -1969,6 +2001,7 @@ function openSourceAt(source,line,location){
   if(String(source).indexOf("origin:")===0){
     var rest=String(source).slice(7),cut=rest.indexOf("|");
     var routineAt=cut>=0?rest.slice(cut+1):(location||"");
+    var selectedRow=staticFlow&&staticFlow.rows.find(function(w){return w.location===routineAt;});if(selectedRow)focusedRoutine=selectedRow.scope;
     var row=staticFlow&&routineAt?staticFlow.rows.filter(function(w){return w.location===routineAt;})[0]:null;
     if(row&&!picture.stopped)askVariables({object_name:row.object_name||row.name,object_type:row.object_type||row.type,routine:routineAt}).catch(function(e){notice(e&&e.message||String(e));});
     askOrigin({open:{source:cut>=0?rest.slice(0,cut):rest,location:cut>=0?rest.slice(cut+1):(location||""),line:line}}).catch(function(e){notice(e&&e.message||String(e));});return;}
@@ -1979,6 +2012,7 @@ function openSourceAt(source,line,location){
 var sharedNodes=[];
 window.bseMermaidOpen=function(id){
   var node=sharedNodes.filter(function(n){return n.id===id;})[0];
+  if(node)focusedRoutine=node.location||node.group||focusedRoutine;
   if(node&&node.source)openSourceAt(node.source,Number(node.line)||0,node.aceLocation);
 };
 /* Depth, Collapse all and Expand all: one number governs what is drawn, and
@@ -1997,7 +2031,7 @@ function setDepth(value){var max=deepestStep();
 $("fdepth").oninput=function(){setDepth(Number($("fdepth").value));};
 $("fexpand").querySelectorAll("[data-open]").forEach(function(b){b.onclick=function(){
   setDepth(b.dataset.open==="expand"?deepestStep():2);};});
-$("fmethods").onclick=function(){flowMode="methods";showFlow();};
+$("fmethods").onclick=function(){flowGrouping="methods";flowMode=flowDiagram==="logic"?"logic":flowGrouping;showFlow();};
 /* The player: the recorded run stop by stop, from what is already recorded -
    nothing is asked of SAP, so Play shows how fast the chart itself draws. */
 var replayAt=null,playing=null;
@@ -2246,6 +2280,17 @@ function fetchSlice(){
     .then(function(answer){
       var points=(answer&&answer.points)||[];
       slicePoints={};points.forEach(function(p){slicePoints[String(p.name).toUpperCase()+":"+p.line]=p;});
+      // A path drawn before selecting a value has no included rows. Replace
+      // its analysis when the slice arrives, retaining its breakpoint bounds.
+      if(staticFlow&&String(staticFlow.name).toUpperCase()===String(object.name).toUpperCase()){
+        if(answer.flow&&answer.flow.length)staticFlow.rows=answer.flow.filter(function(w){
+          return String(w.name).toUpperCase()!==String(staticFlow.name).toUpperCase()||w.line>=staticFlow.from;
+        });
+        else staticFlow.rows.forEach(function(w){w.included=!!slicePoints[String(w.name).toUpperCase()+":"+w.line];});
+        if(answer.sites)staticFlow.sites=answer.sites;
+        if(answer.formula)staticFlow.formula=answer.formula;
+        if(answer.panes)staticFlow.panes=answer.panes;
+      }
       var read=answer&&answer.read;
       notice(points.length?"":"The analysis found no place that changes "+chosenValue.name+(read?" (read "+read.sources+" sources, "+read.nodes+" nodes in the slice, "+read.flow_rows+" flow rows from ACE).":"."));
       if(points.length&&(flow.timeline||[]).length&&!Object.keys(sliceStops()).length){
@@ -2255,7 +2300,7 @@ function fetchSlice(){
           +"), but the record never stood on one of them (it stood on e.g. "+stood.slice(0,3).join(", ")+"): the lines of the two do not agree.");
       }
       drawChosen();publishDebugContext();
-      if(paneOn("flowpane")&&(flow.timeline||[]).length)showFlow();
+      if(paneOn("flowpane")&&(staticFlow||(flow.timeline||[]).length))showFlow();
       return points;
     });
   sliceAsked.catch(function(){sliceAsked=null;sliceFor="";});
@@ -2334,7 +2379,10 @@ function autoVariables(){
   if(picture.stopped||series)return Promise.resolve();
   var f=cursorFocus||pointFocus||(typeof object!=="undefined"&&object&&object.name?{object_name:object.name,object_type:object.type}:null);
   if(!f)return Promise.resolve();
-  return askVariables({object_name:f.object_name,object_type:f.object_type,line:f.line}).catch(function(e){notice(e&&e.message||String(e));});
+  return askVariables({object_name:f.object_name,object_type:f.object_type,line:f.line}).catch(function(e){
+    var message=e&&e.message||String(e);notice(message);
+    if(!staticVars){var box=$('vars');if(box){box.textContent='Cannot read declared variables: '+message;}}
+  });
 }
 window.sdeCursor=function(raw){var f;try{f=JSON.parse(raw);}catch(e){return;}cursorFocus=f;autoVariables();};
 function drawStaticVars(box){

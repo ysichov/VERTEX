@@ -86,6 +86,9 @@ let current = VertexObjects.normalize(initial || {});
 let sequence = 0, activeRequest = null, queue = [], assistantTarget = null, navigation = [];
 const typeBox = document.getElementById("object-type"), nameBox = document.getElementById("object-name");
 const actionBox = document.getElementById("function"), results = document.getElementById("results");
+// Context commands bind this window to the selected object. The fields keep
+// their values for routing, while only the function picker stays visible.
+if(initial&&initial.boundObject){typeBox.hidden=true;nameBox.hidden=true;}
 let result = null;
 const resultFrames = new Map();
 const findButton = document.getElementById("find-requests"), requestDialog = document.getElementById("request-dialog");
@@ -127,7 +130,7 @@ backButton.onclick=()=>{const previous=navigation.pop();if(previous)navigate(pre
 // AVE's layout. It is still told which part is chosen, and tells back.
 const PART_TYPES=["CLAS","INTF","PROG","INCL","FUNC","DEVC"];
 const PART_ACTIONS=["scheme","flow"];
-let partsFor="",partsList=[],selectedPart=null,partsFolded=false;
+let partsFor="",partsList=[],selectedPart=null,partsFolded=!!(initial&&initial.boundObject);
 
 /* The one name every page knows a part by: the method, form or event as it
    is written, in capitals, without its class. Sections go by their type. */
@@ -161,9 +164,23 @@ function programParts(data){
     return {part:{key:partKey(u.unit_name),type,name:String(u.unit_name||""),include:u.include}};
   });
 }
+function localParts(state){
+  return typeof window.sdeFrontendAnalysis==="function"&&window.sdeFrontendAnalysis()&&!["diff","review"].includes(state.action);
+}
+function localClassParts(data){
+  const rows=[],units=data.units||[];
+  ["public","protected","private",""].forEach(section=>{
+    const members=units.filter(u=>(["public","protected","private"].includes(u.visibility)?u.visibility:"")===section);
+    if(!members.length)return;
+    if(section)rows.push({group:true,section,type:{public:"CPUB",protected:"CPRO",private:"CPRI"}[section],label:{public:"Public section",protected:"Protected section",private:"Private section"}[section]});
+    members.forEach(u=>rows.push({section,part:{key:partKey(u.unit_name),type:"METH",name:String(u.unit_name||"").replace(/^.*=>/,"").toLowerCase(),include:u.include}}));
+  });
+  return rows;
+}
+function partsIdentity(state){return state.type+":"+state.name+":"+(localParts(state)?"adt":"backend");}
 function renderTools(){
   const box=document.getElementById("tparts");
-  box.textContent="";
+  box.textContent="";box.classList.toggle("folded",partsFolded);
   const head=document.createElement("div");head.className="head";
   const title=document.createElement("span");title.textContent="Parts";head.appendChild(title);
   const fold=document.createElement("button");fold.innerHTML=partsFolded?"&#8250;":"&#8249;";
@@ -196,7 +213,7 @@ function renderTools(){
 function choosePart(name){
   const key=partKey(name);
   const row=partsList.find(r=>r.part&&r.part.key===key);
-  if(row&&partsFor===current.type+":"+current.name){selectedPart=row.part;markPart(key);}
+  if(row&&partsFor===partsIdentity(current)){selectedPart=row.part;markPart(key);}
   else pendingPart=key;
 }
 function markPart(key){
@@ -224,7 +241,7 @@ function showsParts(state){
 }
 /* Read once per object: another function of the same object keeps the list. */
 function loadParts(state,then){
-  const identity=state.type+":"+state.name;
+  const identity=partsIdentity(state);
   const box=document.getElementById("tparts");
   // Read for every function of an object that has parts - Diff too, which
   // hides the list but still reports and follows the choice.
@@ -236,14 +253,14 @@ function loadParts(state,then){
   // A class and a package both come from the version resource: a class's
   // sections and methods, a package's objects.
   const klass=["CLAS","INTF","DEVC"].includes(String(state.type).toUpperCase());
-  const path=klass?VertexRoutes.SERVICES.versions.load([state.name,state.type,"","","",""])
+  const path=klass&&!localParts(state)?VertexRoutes.SERVICES.versions.load([state.name,state.type,"","","",""])
                   :VertexRoutes.SERVICES.metrics.load([state.name,state.type]);
   enqueue({path,body:null},raw=>{
     if(partsFor!==identity)return;
     try{
       if(typeof raw!=="string"||raw.indexOf("ERROR:")===0)throw new Error(String(raw).substring(6));
       const data=JSON.parse(raw);
-      partsList=klass?classParts(data):programParts(data);
+      partsList=klass?(localParts(state)?localClassParts(data):classParts(data)):programParts(data);
     }catch(e){partsList=[];notice("The parts could not be read: "+e.message);}
     if(String(state.type).toUpperCase()==="FUNC")box.classList.toggle("shown",showsParts(state)&&partsList.some(r=>r.part&&r.part.type==="FORM"));
     if(pendingPart){const row=partsList.find(r=>r.part&&r.part.key===pendingPart);if(row)selectedPart=row.part;pendingPart="";}
@@ -255,6 +272,7 @@ function run(){
   try{current=VertexObjects.normalize({type:typeBox.value,name:nameBox.value,action:actionBox.value});}
   catch(e){notice(e.message);return;}
   if(!current.name){notice("Enter an object name.");return;}
+  if(typeof sdeVertexContext==="function")sdeVertexContext(JSON.stringify({workspace:current}));
   notice(""); fields();
   const service=["data","join","pivot"].includes(current.action)?"table":
     ["diff","review"].includes(current.action)?"versions":"metrics";
@@ -264,7 +282,7 @@ function run(){
   // versions/metrics request completed before its iframe was even created.
   // Mount source (or the diagram) immediately and let the independent list
   // arrive beside it.  A named part is applied when either side becomes ready.
-  if(partsFor!==state.type+":"+state.name)selectedPart=null;
+  if(partsFor!==partsIdentity(state))selectedPart=null;
   const applyPart=()=>{
     if(current!==state||!selectedPart||!result||typeof result.contentWindow.sdeSelectPart!=="function")return;
     result.dataset.part=selectedPart.key;result.contentWindow.sdeSelectPart(selectedPart);
@@ -307,7 +325,7 @@ function mount(service,state,afterLoad){
   const withParts=showsParts(state)&&service!=="table";
   const carry=PART_TYPES.includes(String(state.type||"").toUpperCase())&&service!=="table"&&!!selectedPart;
   frame.dataset.part=selectedPart?selectedPart.key:"";
-  const init=service==="table"?state.name:Object.assign({},state,carry?{part:selectedPart}:{},withParts?{partsOutside:true}:{});
+  const init=service==="table"?state.name:Object.assign({},state,latestEditorCursor?{cursorLine:latestEditorCursor.line}:initial&&initial.cursorLine?{cursorLine:initial.cursorLine}:{},carry?{part:selectedPart}:{},withParts?{partsOutside:true}:{});
   source=source.replace(["/*INIT*/","null","/*INIT*/"].join(""),()=>JSON.stringify(init).replace(/</g,"\\u003c"));
   const bootstrap="<script>parent.connect(window,"+JSON.stringify(service)+","+generation+");<"+"/script>";
   // The window's list stands in for each page's own, so a page drawn beside
@@ -330,6 +348,15 @@ function mountChat(){
 }
 // iframe documents do not inherit the host's CSS variables or theme updates.
 // Copy the complete VS Code theme onto their body, where existing palettes live.
+function sdeCodeFocus(){if(result&&result.contentWindow&&typeof result.contentWindow.sdeCodeFocus==='function')result.contentWindow.sdeCodeFocus();}
+let latestEditorCursor=null;
+function sdeCodeCursor(value){
+ latestEditorCursor=value;
+ if(initial&&initial.boundObject&&current.action==="scheme"&&value.name&&String(value.name).toUpperCase()!==String(current.name).toUpperCase()&&!value.scrollOnly){
+  current=VertexObjects.normalize({name:value.name,type:value.type||"CLAS",action:"scheme"});pendingPart="";selectedPart=null;fields();run();return;
+ }
+ if(result&&result.contentWindow&&typeof result.contentWindow.sdeCodeCursor==='function')result.contentWindow.sdeCodeCursor(value);
+}
 function syncTheme(child){
   const target=child.document.body;
   if(!target)return;
@@ -345,7 +372,8 @@ function syncTheme(child){
   Object.entries(mapping).forEach(([name,token])=>target.style.setProperty("--"+name,css.getPropertyValue("--vscode-"+token).trim()||css.getPropertyValue("--vscode-editor-background").trim()));
   Object.entries({"ins-bg":light?"#e8f6ea":"#17301c","ins-mark":light?"#2c7a39":"#6cc07a","del-bg":light?"#fdecec":"#3a1f1f","del-mark":light?"#a5292a":"#f48771"}).forEach(([name,value])=>target.style.setProperty("--"+name,value));
 }
-new MutationObserver(()=>{
+new MutationObserver(records=>{
+  if(!records.some(record=>record.target===document.body||record.target===document.documentElement))return;
   document.querySelectorAll("iframe").forEach(frame=>{if(frame.contentDocument)syncTheme(frame.contentWindow);});
 }).observe(document.documentElement,{attributes:true,subtree:true,attributeFilter:["class","style"]});
 function connect(child,service,generation){
@@ -366,6 +394,7 @@ function connect(child,service,generation){
   child.sdeAnthropicApi=()=>typeof sdeAnthropicApi==="function"&&sdeAnthropicApi();
   child.sdeSelectObject=value=>navigate(value);
   child.sdeBrowse=url=>sdeBrowse(url);
+  if(initial&&initial.boundObject&&typeof sdeOpenToolSource==="function")child.sdeOpenToolSource=value=>sdeOpenToolSource(JSON.stringify(value));
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
   child.sdeProject=()=>enqueue({path:"project"},reply,live);
   child.sdeAbout=()=>enqueue({path:"/sap/bc/adt/vertex/about"},reply,live);
@@ -384,7 +413,9 @@ function connect(child,service,generation){
     if(typeof build!=="function")return;
     child["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>{
       const at=VertexRoutes.WRITES[call];
-      enqueue({path:build(args),body:at===undefined?null:(args[at]||null)},reply,live);
+      enqueue({path:build(args),body:at===undefined?null:(args[at]||null)},reply,live,text=>{
+        if(live()&&typeof child.sdeAnalysisProgress==="function")child.sdeAnalysisProgress(text);
+      });
     };
   });
   child.sdeModels=(...args)=>{assistantTarget={child,live};sdeModels(...args);};
@@ -422,7 +453,18 @@ function connect(child,service,generation){
     }
   };
 }
-function enqueue(request,reply,live){queue.push({request,reply,live});pump();}
+function enqueue(request,reply,live,progress){
+  const calls=r=>r&&/\/vertex\/flow\//.test(r.path||'')&&/[?&]mode=calls(?:&|$)/.test(r.path);
+  if(calls(request)&&typeof sdeCancelWorkspace==="function"){
+    queue=queue.filter(item=>!calls(item.request));
+    if(activeRequest&&calls(activeRequest.request)&&!activeRequest.superseded){activeRequest.superseded=true;sdeCancelWorkspace();}
+  }
+  queue.push({request,reply,live,progress});pump();
+}
+function sdeWorkspaceProgress(path,text){
+  const item=activeRequest;
+  if(item&&!item.superseded&&item.request.path===path&&item.live()&&item.progress)item.progress(text);
+}
 function pump(){
   if(activeRequest)return;
   while(queue.length){const item=queue.shift();if(item.live()){activeRequest=item;break;}}
@@ -432,7 +474,7 @@ function pump(){
 }
 function sdeReady(){
   const raw=sdeTake(),item=activeRequest;activeRequest=null;
-  if(item&&item.live())item.reply(raw);
+  if(item&&!item.superseded&&item.live())item.reply(raw);
   pump();
 }
 function sdeAssistant(raw){
@@ -496,3 +538,4 @@ fields();mountChat();
 if(current.part)pendingPart=partKey(current.part);
 if(current.name)run();
 </script></body></html>
+

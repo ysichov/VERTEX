@@ -19,7 +19,7 @@ function parseSource(source) {
       const value = t.getStr(), offset = starts[t.getRow() - 1] + t.getCol() - 1;
       const literal = /^(StringToken|StringTemplate)/.test(t.constructor.name);
       return { value, kind: literal ? 'literal' : /^\d+(\.\d+)?$/.test(value) ? 'number'
-        : /^(?:[A-Za-z_\/][\w\/]*|<\w+>)$/.test(value) ? 'word' : 'symbol',
+        : /^(?:[A-Za-z_][\w\/]*|\/[A-Za-z_][\w\/]*|<\w+>)$/.test(value) ? 'word' : 'symbol',
         line: t.getRow(), offset, endOffset: offset + value.length };
     });
   const statements = [];

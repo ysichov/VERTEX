@@ -50,3 +50,13 @@ test("opening or closing a node keeps the zoom and the place; the other redrawin
   assert.ok(rendered.includes("keepView=false;requestAnimationFrame(applyZoom)") && rendered.includes("else requestAnimationFrame(fit)"), "kept for that drawing only, fitted otherwise");
   assert.ok(script.includes("document.getElementById('mermaid-fit').click()"), "a view or direction change still fits");
 });
+
+test("FLOW shares the Calls palette and BSE overrides routine colour",()=>{
+ const graph=require('../../org.vertex.abap.ui/resources/vertex-flow-graph');
+ assert.deepEqual(graph.palette.constr,['#E1BEE7','#6A1B9A']);
+ assert.equal(graph.routineColor('START-OF-SELECTION',{type:'PROG'}),'event');
+ assert.equal(graph.routineColor('RUN',{type:'PROG'}),'form');
+ assert.equal(graph.routineColor('CONSTRUCTOR',{type:'CLAS'}),'constr');
+ assert.match(source,/graph\.bseFlow&&graph\.bseFlow\.palette/);
+ assert.ok(source.indexOf("style.textContent+='g.node.bse-operator")>source.indexOf("Object.keys(palette).forEach"));
+});

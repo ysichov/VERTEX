@@ -5,7 +5,8 @@ function html(pages, initial) {
   const bundle = {};
   // The magnifier every diagram has is one file; a page that draws diagrams marks where it goes.
   const lens = read("vertex-lens.js");
-  for (const name of ["chat", "metrics", "versions", "table"]) bundle[name] = read(name + ".html").replace("/*VERTEX_LENS*/", () => lens);
+  for (const name of ["chat", "metrics", "versions", "table"]) bundle[name] = read(name + ".html").replace("/*VERTEX_LENS*/", () => lens)
+    .replace("</head>", () => "<style>" + read("vertex-controls.css") + "</style></head>");
   return read("tools.html")
     .replace("/*INIT*/null/*INIT*/", () => JSON.stringify(initial || null).replace(/</g, "\\u003c"))
     .replace("/*OBJECT_MODEL*/", () => read("object-tools.js"))
@@ -27,9 +28,14 @@ function debugHtml(initial) {
     window.sdeOrigin=request=>host.postMessage({call:"origin",args:[JSON.stringify(request||{})]});
     window.sdeDebugContext=payload=>host.postMessage({call:"debugContext",args:[String(payload||"null")]});
     window.addEventListener("message",event=>{
+      const logic=document.getElementById("logic-tools-frame");
+      if(event.data.vertexLogicRequest&&logic&&event.source===logic.contentWindow){host.postMessage({call:"inlineLogic",payload:event.data.vertexLogicRequest});return;}
+      if(event.data.type==="inlineLogicHtml"){if(typeof sdeLogicHtml==="function")sdeLogicHtml(event.data.payload);return;}
+      if(event.data.type==="inlineLogicReply"){if(logic)logic.contentWindow.postMessage(event.data.payload,"*");return;}
       if(event.data.type==="result"){pending=event.data.payload;sdeReady();}
       if(event.data.type==="debug")sdeDebugEvent(event.data.payload);
       if(event.data.type==="origin")sdeOriginReady(event.data.payload);
+      if(event.data.type==="originProgress")sdeOriginProgress(event.data.payload);
       if(event.data.type==="cursor"&&typeof sdeCursor==="function")sdeCursor(event.data.payload);
     });
     document.addEventListener("DOMContentLoaded",()=>document.querySelectorAll(
@@ -101,20 +107,35 @@ function open(vscode, context, deps, initial) {
   const opened = deps.active();
   const system = opened.error ? "" : opened.system.name;
   const pin = work => deps.pin ? deps.pin(system, work) : work();
-  const panel = vscode.window.createWebviewPanel("vertex.tools", system ? "VERTEX " + system : "VERTEX Tools", vscode.ViewColumn.Active,
+  const panel = deps.panel || vscode.window.createWebviewPanel("vertex.tools", initial?.boundObject ? initial.name + " · VERTEX Tools" : system ? "VERTEX " + system : "VERTEX Tools", initial?.boundObject ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   const ask = deps.chat();
   const bridge = `<script>
-    const host = acquireVsCodeApi(); let pending;
+    const host = ${deps.panel ? '({postMessage:message=>parent.postMessage({vertexLogicRequest:message},"*")})' : 'acquireVsCodeApi()'}; let pending;
     // The embedded chat may offer the direct Anthropic provider in VS Code.
     // Eclipse hosts the same HTML but deliberately does not define this flag.
     window.sdeAnthropicApi=()=>true;
+    window.sdeFrontendAnalysis=()=>true;
+    window.sdeCancelWorkspace=()=>host.postMessage({call:"cancelWorkspace",args:[]});
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
-    for(const call of ["workspace","asset","models","ask","browse","requestSearch","vertexContext","aiProvider","aiModel","aiConfig"]){
-      window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>host.postMessage({call,args});
+    for(const call of ["workspace","asset","models","ask","browse","openToolSource","requestSearch","vertexContext","aiProvider","aiModel","aiConfig"]){
+      window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>{
+        if(call==="vertexContext")try{
+          const state=JSON.parse(args[0]||"{}"),object=state.workspace;
+          if(object&&object.name&&object.type){
+            const value=JSON.stringify({webviewSection:"vertex-object",object_name:object.name,object_type:object.type});
+            document.body.setAttribute("data-vscode-context",value);
+            document.querySelectorAll("iframe").forEach(frame=>{try{frame.contentDocument.body.setAttribute("data-vscode-context",value);}catch(error){}});
+          }
+        }catch(error){}
+        host.postMessage({call,args});
+      };
     }
     window.addEventListener("message",e=>{
       if(e.data.type==="result"){pending=e.data.payload;sdeReady();}
+      if(e.data.type==="codeFocus"&&typeof sdeCodeFocus==="function")sdeCodeFocus();
+      if(e.data.type==="codeCursor"&&typeof sdeCodeCursor==="function")sdeCodeCursor(e.data.payload);
+      if(e.data.type==="progress"&&typeof sdeWorkspaceProgress==="function")sdeWorkspaceProgress(e.data.path,e.data.payload);
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
       if(e.data.type==="requestSearch"){
         const child=document.getElementById("result").contentWindow;
@@ -139,11 +160,41 @@ function open(vscode, context, deps, initial) {
     if (chatWho && event.affectsConfiguration("vertex.ai")) { void postModels(); }
   });
   // What the assistant is told about the open Tools window ends with the window: a closed class is not in the context.
-  let reported = false;
-  panel.onDidDispose(() => { changes.dispose(); if (reported) { deps.setContext(null); } });
+  let cursorTimer,scrollTimer,sourceNavigationUntil=0;
+  const cursorChanges=initial?.boundObject&&vscode.window.onDidChangeTextEditorSelection?vscode.window.onDidChangeTextEditorSelection(event=>{
+    clearTimeout(cursorTimer);
+    if(Date.now()<sourceNavigationUntil)return;
+    cursorTimer=setTimeout(()=>{
+      if(Date.now()<sourceNavigationUntil)return;
+      const object=deps.documentObject(event.textEditor.document),selection=event.selections[0];
+      if(object&&selection)void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line:selection.start.line+1,endLine:selection.end.line+1,userFocus:event.kind!=null}});
+    },80);
+  }):null;
+  const scrollChanges=initial?.boundObject&&vscode.window.onDidChangeTextEditorVisibleRanges?vscode.window.onDidChangeTextEditorVisibleRanges(event=>{
+    clearTimeout(scrollTimer);
+    if(Date.now()<sourceNavigationUntil)return;
+    scrollTimer=setTimeout(()=>{
+      if(Date.now()<sourceNavigationUntil)return;
+      const object=deps.documentObject(event.textEditor.document),ranges=event.visibleRanges;
+      if(!object||!ranges.length)return;
+      const range=ranges[0],line=range.start.line+Math.floor((range.end.line-range.start.line)/3)+1;
+      void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line,endLine:line,scrollOnly:true,userFocus:event.textEditor===vscode.window.activeTextEditor}});
+    },100);
+  }):null;
+  const focusChanges=initial?.boundObject&&vscode.window.onDidChangeActiveTextEditor?vscode.window.onDidChangeActiveTextEditor(editor=>{
+   if(editor&&Date.now()>=sourceNavigationUntil)void panel.webview.postMessage({type:'codeFocus'});
+  }):null;
+  let reported = false, analysisJob;
+  panel.onDidDispose(() => { if(analysisJob)analysisJob.cancelled=true;clearTimeout(cursorTimer);clearTimeout(scrollTimer);if(scrollChanges)scrollChanges.dispose();if(focusChanges)focusChanges.dispose();if(cursorChanges)cursorChanges.dispose();changes.dispose(); if (reported) { deps.setContext(null); } });
   panel.webview.onDidReceiveMessage(message => pin(async () => {
     const args = message.args || [];
     try {
+      if(message.call==="debug"&&args[0]==="logicTools"){
+        const selected=JSON.parse(String(args[1]||"{}"));
+        await vscode.commands.executeCommand("vertex.tools",{...selected,action:"scheme",boundObject:true});
+        await panel.webview.postMessage({type:"result",payload:"{}"});return;
+      }
+      if(message.call === "openToolSource") { sourceNavigationUntil=Date.now()+700; await deps.openToolSource(JSON.parse(String(args[0]||"{}"))); return; }
       if(message.call === "browse") {
         if(/^https?:\/\//i.test(String(args[0]))) await vscode.env.openExternal(vscode.Uri.parse(args[0]));
         return;
@@ -168,6 +219,7 @@ function open(vscode, context, deps, initial) {
         let state=args[0];
         if(typeof state==="string"){try{state=JSON.parse(state);}catch(e){state=null;}}
         if(!state||typeof state!=="object")state={};
+        if(initial?.boundObject&&state.workspace?.name)panel.title=state.workspace.name+" · VERTEX Tools";
         reported=true;
         deps.setContext({system,workspace:state.workspace||initial||null,vertex_view:state.vertex_view||null,
           selected_fragment:state.selected_fragment||null});
@@ -185,11 +237,16 @@ function open(vscode, context, deps, initial) {
           direct:result.direct,choices:result.choices||[]})}); return;
       }
       let payload;
+      if(message.call === "cancelWorkspace") {if(analysisJob)analysisJob.cancelled=true;return;}
       if(message.call === "asset") payload=deps.asset(args[0]);
       else if(message.call === "workspace" && args[0] === "project") {
         const selected=deps.active();payload=selected.error?"ERROR:"+selected.error:selected.system.name;
       } else if(message.call === "workspace" && allowed(args[0],args[1])) {
-        payload=await deps.fetch(context,args[0],args[1]==null?undefined:String(args[1]));
+        const job={cancelled:false};analysisJob=job;
+        payload=await deps.fetch(context,args[0],args[1]==null?undefined:String(args[1]),text=>{
+          if(!job.cancelled)void panel.webview.postMessage({type:"progress",path:args[0],payload:text});
+        },()=>job.cancelled);
+        if(analysisJob===job)analysisJob=null;
       } else throw new Error("Unsupported VERTEX request.");
       await panel.webview.postMessage({type:"result",payload});
     } catch(error) {

@@ -53,7 +53,7 @@ function pathRows(graph, sources) {
     if (type === "CLAS" && method === "START-OF-SELECTION") { continue; }
     rows.push({ name, type,
       line: row.line, aceLine: row.line, source: row.source, location: scope.replace("→", "->"),
-      text: String(row.text || "").trim(), scope, included: !!row.included,
+      control: row.control, text: String(row.text || "").trim(), scope, included: !!row.included,
       method,
       object_name: source.objectName || "", object_type: source.objectType || "" });
   }
@@ -70,7 +70,8 @@ function siteRows(graph, sources) {
     if (!name) { continue; }
     rows.push({ name, type: (source.aceOwner ? source.aceOwnerType : source.objectType) || "CLAS", line: site.line,
       method: methodOf(site.caller), object_name: source.objectName || "", object_type: source.objectType || "",
-      callees: site.callees.map(callee => upper(callee.owner) + "→" + upper(callee.name)) });
+      callees: site.callees.map(callee => upper(callee.owner) + "→" + upper(callee.name)),
+      parameters: [...new Map((graph.nodes || []).filter(n => n.kind === 'parameter' && n.source === site.source && n.line === site.line).map(n => [n.text,{ text: n.text, source: n.source, line: n.line }])).values()] });
   }
   return rows;
 }

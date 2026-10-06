@@ -254,7 +254,7 @@ test("what leads to a statement of the slice is part of the slice; what leads no
 
 test("the analysis answers on a channel of its own, by number, in whatever order", async () => {
   const sent = [];
-  const context = vm.createContext({ Object, Promise, sdeOrigin: request => sent.push(request) });
+  const context = vm.createContext({ Object, Promise, $: () => ({}), sdeOrigin: request => sent.push(request) });
   vm.runInContext(part("var originWaiting={}", "function ask(send,raw){"), context);
   const first = vm.runInContext("askOrigin({variable:'A'})", context);
   const second = vm.runInContext("askOrigin({variable:'B'})", context);

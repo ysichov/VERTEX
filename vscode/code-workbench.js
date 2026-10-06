@@ -132,40 +132,41 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     };
     return { ...result, diagnostics, target: mapped, openSource, loadPipeline };
   };
-  require('./value-origin-view').register(vscode, context, originSources);
 
-  const linterSources = async (document, target, progress, cancelled) => {
-    const diagnostics = [];
+  const linterSources = async (document, target, progress, cancelled, activeOnly = false, onParsed = () => {}) => {
+    const diagnostics = ['Loading policy: main source first; dependencies and class extras on demand. Full FLOW covers the loaded source closure.'];
     const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
     const repo = selected.repo, parser = require('./value-origin-linter').createParser(cancelled);
-    const warnings = ['Experimental ADT + abaplint analysis: aliases, dynamic dispatch and unsupported statements may leave the slice incomplete.'];
+    const readSource = repo.api.analysisReader();
+    const warnings = [];
     const snapshots = new Map();
-    const load = async (name, type) => {
+    const load = async (name, type, include = 'main') => {
       if (cancelled()) throw new Error('Value origin cancelled.');
       progress(name);
       let data;
-      try { data = await originStep(diagnostics, 'ADT ' + type + ' ' + name,
-        () => repo.api.execute('read_sap_object', { object_name: name, object_type: type })); }
+      try { data = await originStep(diagnostics, 'ADT ' + type + ' ' + name + (include === 'main' ? '' : '.' + include),
+        () => readSource({ object_name: name, object_type: type, include })); }
       catch (error) {
-        if (type !== 'CLAS') throw error;
+        if (type !== 'CLAS' || !/was not found/.test(error.message)) throw error;
         data = await originStep(diagnostics, 'ADT INTF ' + name,
-          () => repo.api.execute('read_sap_object', { object_name: name, object_type: 'INTF' }));
+          () => readSource({ object_name: name, object_type: 'INTF', include }));
       }
       const parts = [data];
-      for (const include of data.object_type === 'CLAS' ? data.includes || [] : []) {
-        if (include !== 'main') parts.push(await originStep(diagnostics, 'ADT ' + name + '.' + include,
-          () => repo.api.execute('read_sap_object', { object_name: name, object_type: data.object_type, include })));
-      }
       const sources = [];
       for (const part of parts) {
         const open = [...opened.values()].find(e => e.repo === repo && e.data.object_url === part.object_url
           && e.data.include === part.include && e.document && !e.document.isClosed);
+        const buffer = name === selected.data.object_name && part.include === selected.data.include ? document : open?.document;
+        if (activeOnly && buffer && (buffer.isDirty || revision(buffer.getText()) !== revision(part.source))) {
+          throw new Error(name + ': save and activate the source, then reopen its active version before debugger analysis.');
+        }
         const source = { id: document.uri.toString() + '/linter/' + encodeURIComponent(name) + '/' + part.include,
           name: name + (part.include === 'main' ? '' : '.' + part.include), objectName: name,
-          objectType: data.object_type, text: name === selected.data.object_name && part.include === selected.data.include
-            ? document.getText() : open?.document.getText() ?? part.source };
+          objectType: data.object_type, include: part.include, text: name === selected.data.object_name && part.include === selected.data.include
+            ? (activeOnly ? part.source : document.getText()) : activeOnly ? part.source : open?.document.getText() ?? part.source };
         const parsed = await originStep(diagnostics, 'abaplint ' + source.name, () => parser.parse(source));
         diagnostics.push(source.name + ': ' + source.text.split('\n').length + ' lines, ' + parsed.source.aceStatements.length + ' statements');
+        onParsed(parsed.source);
         warnings.push(...parsed.warnings);
         snapshots.set(source.id, { data: part, document: open?.document });
         sources.push(parsed.source);
@@ -174,13 +175,16 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     };
     try {
       const initial = await load(selected.data.object_name, selected.data.object_type);
+      if (selected.data.include && selected.data.include !== 'main') initial.push(...await load(selected.data.object_name, selected.data.object_type, selected.data.include));
       const own = initial.find(source => snapshots.get(source.id).data.include === selected.data.include);
       if (!own) throw new Error('The selected ADT source was not loaded.');
       // The selected document is the exact snapshot being analysed, including
       // unsaved edits, so its cursor needs no ACE include-position mapping.
-      const result = await require('./value-origin').collectSources(initial, load, { maxSources: 240, cancelled, progress });
       const position = document.offsetAt(new vscode.Position(target.line - 1, target.column || 0));
       const offset = own.aceStatements.filter(statement => statement.offset <= position).at(-1)?.offset ?? position;
+      const mapped = { ...target, source: own.id, offset };
+      const result = await require('./value-origin-demand').collectDemandSources(initial, mapped, load,
+        (name, include) => load(name, 'CLAS', include), { maxSources: 240, cancelled, progress });
       return { ...result, diagnostics, warnings: [...warnings, ...result.warnings], target: { ...target, source: own.id, offset },
         openSource: async (source, node) => {
           const snapshot = snapshots.get(source.id);
@@ -194,6 +198,9 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   require('./value-origin-view').register(vscode, context, linterSources, {
     command: 'vertex.valueOriginLinter', engine: 'ADT + abaplint', cacheMs: 0,
     progressTitle: 'BSE — ADT + abaplint', panelTitle: 'BSE — ADT + abaplint' });
+  require('./value-origin-view').register(vscode, context, linterSources, {
+    command: 'vertex.valueOrigin', engine: 'ADT + abaplint', cacheMs: 0,
+    progressTitle: 'Value origin — ADT + abaplint', panelTitle: 'Value origin' });
 
   /* Where a value can be changed, as the analysis sees it: object, line and
      the statement there. The debug window turns these into breakpoints, so
@@ -217,7 +224,19 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     }
     const key = entry.document.uri.toString() + '|' + entry.document.version;
     if (!variablesCache || variablesCache.key !== key) {
-      const loaded = await originSources(entry.document, { source: entry.document.uri.toString(), line: 1, variable: '', column: 0 }, () => {}, () => false);
+      let loaded;
+      const target = { source: entry.document.uri.toString(), line: 1, variable: '', column: 0, declarationTypes: true };
+      try {
+        loaded = await linterSources(entry.document, target, () => {}, () => false);
+      } catch (error) {
+        // A failed type dependency must not remove the object's declarations.
+        const parser = require('./value-origin-linter').createParser();
+        try {
+          const own = (await parser.parse({ id: target.source, name: object_name, objectName: object_name,
+            objectType: type, text: entry.document.getText() })).source;
+          loaded = { sources: [own], target, warnings: ['Type enrichment failed: ' + error.message] };
+        } finally { await parser.close(); }
+      }
       variablesCache = { key, loaded, graph: require('./value-origin').analyze(loaded.sources, { ...loaded.target }) };
     }
     const { loaded, graph } = variablesCache, up = text => String(text || '').toUpperCase();
@@ -243,13 +262,13 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         catch (second) { throw first; }
       }
     };
-    answer.warnings = await require('./value-origin-points').completeStructures(
-      { globals: answer.globals || [], routines: [{ params: answer.params, locals: answer.locals }] }, require('./value-origin').typeComponents, readOwner);
+    answer.warnings = [...(loaded.warnings || []), ...await require('./value-origin-points').completeStructures(
+      { globals: answer.globals || [], routines: [{ params: answer.params, locals: answer.locals }] }, require('./value-origin').typeComponents, readOwner)];
     return answer;
   }
   /* The object and kind of an open VERTEX tab, for whoever follows the reader's cursor. */
   function documentObject(document) {
-    const entry = document && opened.get(document.uri.toString());
+    const entry = document && (opened.get(document.uri.toString()) || readOnly.get(document.uri.toString()));
     return entry ? { object_name: entry.data.object_name, object_type: entry.data.object_type } : null;
   }
   /* The analysis reads SAP through the same session as everything else here, and that session takes one request at a time: a
@@ -257,21 +276,34 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
      another, and an automatic request for the variables does not pile up behind the reader's moving cursor: only the newest
      waits. A session that is busy with something else is waited for, not reported, for a few seconds. */
   const gate = require('./request-gate').createGate();
-  const originPoints = request => gate.gated(() => readOrigin(request));
+  const originPoints = (request,progress=()=>{}) => {progress({stage:'Waiting for SAP session'});return gate.gated(() => readOrigin(request,progress));};
   const originOpen = request => gate.gated(() => openOrigin(request));
   const originVariables = gate.newest(readVariables);
   // The sources of the last analysis: what a node of its flow opens, as Value origin opens its nodes.
   let lastOrigin = null;
+  async function openToolSource(args) {
+    const repo = await repository();
+    const entry = [...opened.values()].find(item=>item.repo===repo&&item.document&&!item.document.isClosed&&String(item.data.object_name).toUpperCase()===String(args.name).toUpperCase())
+      || await sourceDocument(repo, { object_name: args.name, object_type: args.type || 'CLAS' });
+    const lines = entry.document.getText().split(/\r?\n/);
+    const routine = String(args.method || '').toUpperCase();
+    const row = routine ? lines.findIndex(text => {
+      const match = /^\s*(?:METHOD|FORM|FUNCTION)\s+([^\s.]+)/i.exec(text);
+      return match && match[1].toUpperCase() === routine;
+    }) : -1;
+    const at = new vscode.Position(Math.max(0,Math.min(entry.document.lineCount-1,Number.isInteger(args.line)?args.line-1:row)),0);
+    await vscode.commands.executeCommand('vscode.open',entry.document.uri,{viewColumn:vscode.ViewColumn.One,selection:new vscode.Range(at,at),preview:true,preserveFocus:args.preserveFocus===true});
+  }
   async function openOrigin({ source: sourceId, location, line }) {
     if (!lastOrigin) { throw new Error('Run the analysis first: its sources are what a link opens.'); }
     const source = lastOrigin.sources.find(item => item.id === sourceId);
     if (!source) { throw new Error('The analysis has no source ' + sourceId + ' any more: run it again.'); }
     const opened = await lastOrigin.openSource(source, { location, line });
     const at = new vscode.Position(Math.max(0, Math.min(opened.document.lineCount - 1, (opened.line || line) - 1)), 0);
-    await vscode.window.showTextDocument(opened.document, { viewColumn: vscode.ViewColumn.One, selection: new vscode.Range(at, at), preview: true });
+    await vscode.commands.executeCommand('vscode.open', opened.document.uri, { viewColumn: vscode.ViewColumn.One, selection: new vscode.Range(at, at), preview: true });
     return {};
   }
-  async function readOrigin({ object_name, object_type, line, variable, from: boundFrom, to: boundTo }) {
+  async function readOrigin({ object_name, object_type, line, variable, from: boundFrom, to: boundTo }, progress = () => {}) {
     const up = text => String(text || '').toUpperCase();
     const bounded = Number.isInteger(boundFrom);
     // A path from a breakpoint needs no value; the points of a slice do.
@@ -284,38 +316,44 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const lineText = source.split(/\r?\n/)[at - 1] || '';
     const target = { source: entry.document.uri.toString(), line: at, variable: String(variable || '').toUpperCase(),
       column: variable ? require('./value-origin-points').columnOf(lineText, variable) : 0 };
+    target.flowPath = bounded && !variable;
+    if (target.flowPath) target.flowRange = { from: boundFrom, to: Number.isInteger(boundTo) ? boundTo : entry.document.lineCount };
     // From a breakpoint the analysis gives the path too, as the Value origin command does: to the end of the object, where the
     // end point - which may be in a routine this one calls - is found by the order the flow has.
     const toLine = Number.isInteger(boundTo) ? boundTo : entry.document.lineCount;
     if (bounded && boundFrom > toLine) { throw new Error('The path is taken from one breakpoint to a later one: ' + boundFrom + ' is not before ' + toLine + '.'); }
     if (bounded && up(object_type) !== 'CLAS') { target.flowBounds = { source: target.source, from: boundFrom, to: toLine }; }
-    const loaded = await originSources(entry.document, target, () => {}, () => false);
+    let steps=0;const readSources=new Set();
+    const report=(stage,object)=>progress({stage,object,sources:readSources.size,steps});
+    report('Reading source',object_name);
+    const loaded = await linterSources(entry.document, target, name=>report('Reading source',name), () => false, true, parsed=>{readSources.add(parsed.id);steps+=parsed.aceStatements.length;report('Sources parsed',parsed.name);});
+    report('Building FLOW',object_name);
     const { analyze } = require('./value-origin');
-    let graph = analyze(loaded.sources, { ...loaded.target, flowBounds: target.flowBounds });
+    let graph = analyze(loaded.sources, { ...loaded.target, flowBounds: target.flowBounds && { ...target.flowBounds, source: loaded.target.source } });
     if (bounded && up(object_type) === 'CLAS') {
       // In a class the point is a line of the class source, and the flow is counted in the include of the method that holds
       // it: the method is found from the analysis's own declarations and ADT's start for it, and the bounds are its lines.
-      const starts = debuggerApi && typeof debuggerApi.classMethods === 'function'
-        ? await debuggerApi.classMethods('/sap/bc/adt/oo/classes/' + encodeURIComponent(String(object_name).toLowerCase()) + '/source/main', { fresh: true }) : null;
-      const routine = require('./value-origin-points').routineAt(graph.declarations || [],
-        { objectType: 'CLAS', objectName: object_name, targetSource: loaded.target.source, line: boundFrom, starts });
+      const routine = (graph.declarations || []).find(item => item.name !== 'GLOBAL' &&
+        item.source === loaded.target.source && boundFrom >= item.first && boundFrom <= item.last);
       if (!routine) { throw new Error('Line ' + boundFrom + ' of ' + up(object_name) + ' is in no method: a path starts at a statement of one.'); }
-      const first = routine.first + (boundFrom - starts[up(routine.name)]);
+      const first = boundFrom;
       graph = analyze(loaded.sources, { ...loaded.target, source: routine.source,
-        flowBounds: { source: routine.source, from: first, to: Math.max(first, routine.last) } });
+        flowBounds: { source: routine.source, from: first, to: Math.max(first, Math.min(toLine, routine.last)) } });
     }
+    report('Building diagrams',object_name);
+    graph.analysisEngine = 'ADT + abaplint';
     lastOrigin = loaded;
     const { pointsOf, pathRows, siteRows, placeRows, classLines } = require('./value-origin-points');
     const found = pointsOf(graph, loaded.sources);
     // The debugger counts a class's lines in its main source; ACE, inside each method's include.
     const starts = new Map();
-    const path = bounded ? pathRows(graph, loaded.sources) : [], sitesFound = bounded ? siteRows(graph, loaded.sources) : [];
+    const path = pathRows(graph, loaded.sources), sitesFound = siteRows(graph, loaded.sources);
     for (const point of found.concat(path, sitesFound)) {
       if (point.object_type !== 'CLAS' || !point.method || starts.has(point.name)) continue;
-      if (!debuggerApi || typeof debuggerApi.classMethods !== 'function') {
-        throw new Error('The debugger is not attached: the lines of class ' + point.name + ' cannot be placed.');
-      }
-      starts.set(point.name, await debuggerApi.classMethods('/sap/bc/adt/oo/classes/' + encodeURIComponent(point.name.toLowerCase()) + '/source/main', { fresh: true }));
+      // Local parsing already uses assembled source rows. The legacy placing
+      // helper must therefore apply no method-include offset.
+      const names = (graph.declarations || []).filter(p => up(p.owner) === up(point.name)).map(p => up(p.name));
+      starts.set(point.name, Object.fromEntries(names.concat(point.method).map(name => [name, 1])));
     }
     const points = classLines(found, name => starts.get(name));
     const flow = placeRows(path, name => starts.get(name)), sites = placeRows(sitesFound, name => starts.get(name));
@@ -326,7 +364,13 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const paneHtml = require('./value-origin-formula-html');
     // The two panes that are HTML, drawn as Value origin draws them; a button opens by the marker the debugger's links use.
     const panes = { formula: paneHtml.formulaPane(graph, formula, node => 'origin:' + node.source + '|' + (node.location || '')), expression: paneHtml.expressionPane(formula, node => 'origin:' + node.source + '|' + (node.location || '')) };
-    return { variable: target.variable, points, flow, sites, formula: { nodes: formula.nodes, edges: formula.edges, maxLevel: formula.maxLevel }, panes, bounds: target.flowBounds ? { from: target.flowBounds.from, to: target.flowBounds.to } : null, read: { sources: loaded.sources.length, nodes: graph.nodes.length,
+    const analysisLog = JSON.stringify({ engine: 'ADT + abaplint', request: { object_name, object_type, line, variable, from: boundFrom, to: boundTo },
+      target: loaded.target, diagnostics: loaded.diagnostics || [], warnings: loaded.warnings || [],
+      sourceClosure: loaded.sources.map(s => ({ id: s.id, name: s.name, objectName: s.objectName, objectType: s.objectType, include: s.include })),
+      nodes: graph.nodes, edges: graph.edges, points,
+      FLOW: { rows: flow, sites, bounds: graph.flowBounds, calls: graph.calls, executionFlow: graph.executionFlow },
+      Formula: formula, Expression: formula.expression }, null, 2);
+    return { analysisLog, variable: target.variable, points, flow, sites, formula: { nodes: formula.nodes, edges: formula.edges, maxLevel: formula.maxLevel }, panes, bounds: target.flowBounds ? { from: target.flowBounds.from, to: target.flowBounds.to } : null, read: { sources: loaded.sources.length, nodes: graph.nodes.length,
       flow_rows: rows.length, places: points.length } };
   }
   const navigation = [];
@@ -354,6 +398,11 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       repositories.set(key, { key, label: `${system.name} / ${system.user} / ${system.client || "default"}`,
         api: createRepository({ client, systemId: key,
           emit: event => events.emit({ ...event, system: system.name }) }) });
+      const api = repositories.get(key).api, apply = api.apply;
+      api.apply = async (...args) => {
+        try { return await apply(...args); }
+        finally { require('./frontend-analysis').invalidate(api); }
+      };
     }
     return repositories.get(key);
   }
@@ -1995,7 +2044,8 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     repositories.clear(); texts.clear(); opened.clear(); drafts.clear();
   } });
   // Host/agent interface: create/modify only PREPARE and open a diff. Apply is UI-only.
-  return { schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger, revealFrame, originPoints, originOpen, originVariables, documentObject,
+  return { frontendRequest: async (resource, progress, cancelled) => require('./frontend-analysis').request((await repository()).api, resource, progress, cancelled),
+    schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger, revealFrame, openToolSource, originPoints, originOpen, originVariables, documentObject,
     editorContext() {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !editor.document) { return null; }

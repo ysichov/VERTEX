@@ -70,6 +70,9 @@
       if (!anywhere && !isNode(event.target, svg)) { hide(); return; }
       var source = svg.getBoundingClientRect();
       if (!source.width || !source.height) { hide(); return; }
+      var box = svg.viewBox && svg.viewBox.baseVal;
+      var scale = box && box.width > 0 ? source.width / box.width : 1;
+      if (scale >= 0.7) { hide(); return; }
       // The copy is made when the pointer first comes, not when the diagram is drawn: a drawing nobody looks at costs nothing.
       if (copiedSource !== svg) {
         if (copy) { copy.parentNode.removeChild(copy); }
@@ -81,7 +84,10 @@
       var top = Math.min(window.innerHeight - radius * 2 - 8, event.clientY + 16);
       lens.style.left = Math.max(8, left) + "px";
       lens.style.top = Math.max(8, top) + "px";
-      var factor = state.zoom;
+      // Bring small diagrams to at most 70% of their natural scale.
+      // Shift-wheel may lower magnification, but never exceeds that ceiling.
+      var factor = Math.max(1, (0.7 / scale) * Math.min(1, state.zoom / 2.5));
+      badge.textContent = factor.toFixed(1) + "×";
       copy.style.width = Math.round(source.width * factor) + "px";
       copy.style.height = Math.round(source.height * factor) + "px";
       copy.style.left = Math.round(radius - (event.clientX - source.left) * factor) + "px";

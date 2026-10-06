@@ -16,7 +16,7 @@ function page(host) {
       tagName: tag, value: "", className: "", textContent: "", disabled: false,
       selectedIndex: 0, scrollTop: 0, scrollHeight: 0, style: {},
       children: [], options: [], handlers: {},
-      classList: { add() {}, remove() {} },
+      classList: { add() {}, remove() {}, toggle() {} },
       get text() { return this.textContent; },
       set innerHTML(value) { this.children = []; this.options = []; },
       appendChild(child) {
@@ -118,10 +118,10 @@ test("a diff plan goes parts, then the part, then the version - each after the l
   context.applyPlan(plan());
   assert.deepEqual(calls, [["load", "ZCL_AVE_POPUP", "CLAS", "", "", "", ""]]);
   answer(CLASS_PARTS);
-  assert.deepEqual(calls[1], ["load", "ZCL_AVE_POPUP", "CLAS", METHOD, "METH", "", ""]);
+  assert.deepEqual(calls[1], ["load", "ZCL_AVE_POPUP", "CLAS", METHOD, "METH", "", "", "DI"]);
   answer(VERSIONS);
   // The change version 12 made: compared with the version below it.
-  assert.deepEqual(calls[2], ["load", "ZCL_AVE_POPUP", "CLAS", METHOD, "METH", "00011", "00012"]);
+  assert.deepEqual(calls[2], ["load", "ZCL_AVE_POPUP", "CLAS", METHOD, "METH", "00011", "00012", "DI"]);
   assert.equal(context.pending, null);
 });
 

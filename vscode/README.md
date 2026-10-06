@@ -217,7 +217,7 @@ Changes made there are still sent to SAP only through **Review & Activate** or *
 
 Both Value Origin windows expose **Analysis log** directly above the flow. **Copy log** copies the engine, source loading and parsing times, source closure, definitions, dependency edges, traversal, warnings, and Formula/Expression diagnostics. The log is accessible without enabling the technical sections.
 
-**Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Analyze Variable Value Origin**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. The first implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
+**Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Analyze Variable Value Origin**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
 
 
 Put the cursor on a variable in a VERTEX ABAP source tab and run **VERTEX: Analyze Variable
@@ -635,15 +635,7 @@ It opens by itself when a run dies, names the runtime error and what SAP said ab
 **Open ST22** takes you to SAP where that dump is the first entry. The header line above the
 source says the run did not finish and points at the section.
 
-The player draws the record three ways: *Classes*, *Methods*, and **Statements**, and the last
-of them is the Value Origin flow view itself - the same script, given the recorded graph instead
-of the analysed one, with its tree, Tree / Diagram, Top-down / Left-right, Collapse all / Expand
-all, Depth, magnifier and zoom. What it shows is the program, its classes, their routines and
-the statements the run stood on, nested in their own blocks. An edge is containment and carries
-the line; a call is an edge from the statement that called to the routine it entered. A
-statement appears once however often it ran, with its count. Clicking a node opens that
-statement in the source. The difference from the analysis is the data alone: one is what ACE
-derived, the other what the program did.
+The player shows the record as **Classes** or **Methods**. A separate **Logic** toggle opens the same Logic diagram as Tools, embedded in Visual Debug and linked to the active source editor. Turning it off restores the call graph, including its zoom and scroll position.
 
 The **Depth** slider governs how deep it is drawn: the program is 0,
 a class 1, a routine 2, a statement one below the block that holds it. The maximum is the deepest
@@ -967,3 +959,32 @@ own folder. The Eclipse plugin does not use it: it works through the platform an
 ## Licence
 
 MIT. See [the project](https://github.com/ysichov/VERTEX).
+
+## VS Code 0.8.1 — code diagrams and Visual Debug
+
+### Analysis and source navigation
+
+Metrics, UML, Calls, Logic and Value Origin read source through standard ADT and use bundled abaplint. Calls follows reached routines and enforces the selected depth during traversal; the default depth is 2. The entry routine is level 1 and each call adds one. A target at the boundary remains a leaf. Dynamic targets and unsupported constructs can remain unresolved; expand analysis warnings and copy the log for diagnostics.
+
+Right-click an ABAP editor or object and choose a VERTEX Tools action. Tools opens beside the source and selects the method under the cursor. Click a linked label to open its source; Alt+Left returns through VS Code navigation history. Breakpoint object:line labels also open source.
+
+### Visual Debug
+
+- **Classes / Methods** selects how the call graph is shown. Depth and expansion are retained when switching.
+- The separate **Logic** toggle embeds the standard **Tools Logic diagram** in the same panel. It starts from the active editor and follows the selected method, including changes to another ABAP object. Switch Logic off to return to the existing call graph.
+- **Detach** continues a stopped program and disconnects, or cancels listening for a run. It is disabled when there is no debugger connection. Breakpoints are kept. **Exit program** is available when the program is stopped.
+- The analysis status reports stage, source and parsed statement counts, and elapsed time every three seconds. Parsed counts describe analysis work, not executed steps. The bug button at the top right copies the diagnostic log.
+
+### Tools Logic diagram
+
+**Logic only** is on by default. It keeps branches, loops, procedure calls and control transfers; switch it off to show ordinary operations as well. Operations are shown individually. Nested IF / ELSEIF / ELSE branches retain their joins. RETURN points to the procedure end, and closing-line breakpoints remain part of FLOW.
+
+A condition stays in one diamond, including its AND / OR terms. External calls are marked with ↗ and linked method names; nested call arguments are abbreviated. If the target cannot be resolved, navigation opens the call site.
+
+Cursor and range selections highlight matching nodes. Selecting LOOP or ENDLOOP highlights the loop frame. The focused view drives scrolling; programmatic navigation is suppressed to avoid feedback.
+
+Choose **Top-down** or **Left-right**, use the **10–100% zoom slider**, or press **Fit**. The lens is disabled at 70% and above; below that it magnifies up to an effective 70% scale. Changing the colour theme preserves zoom and scroll position. Controls and highlights use theme colours.
+
+### Release scope
+
+The package remains **0.8.1**. This is a VS Code release preparation; no Eclipse release is claimed. Packaging checks are recorded separately from live SAP and visual verification. Outstanding analysis differences are listed in [ACE port audit](../docs/ace-port-audit.md).

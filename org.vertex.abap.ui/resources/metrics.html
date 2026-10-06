@@ -251,10 +251,23 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
 #metricsdialog .note { color: var(--muted); margin: 8px 0 0; }
 #metricsdialog .row { display: flex; justify-content: flex-end; margin-top: 10px; }
 #metricshelp[hidden]{display:none}
+td.metric-good{background:color-mix(in srgb,var(--vscode-testing-iconPassed,var(--vscode-terminal-ansiGreen,#388a34)) 18%,var(--bg))}
+td.metric-warning{background:color-mix(in srgb,var(--vscode-editorWarning-foreground,#bf8803) 20%,var(--bg))}
+td.metric-high{color:var(--vscode-terminal-ansiRed,#e55320);font-weight:bold;background:color-mix(in srgb,var(--vscode-terminal-ansiRed,#e55320) 12%,var(--bg))}
+td.metric-bad{background:color-mix(in srgb,var(--vscode-errorForeground,#c72e0f) 20%,var(--bg))}
+button.metric-source{border:0;background:transparent;color:var(--vscode-textLink-foreground,var(--fg));padding:0;text-decoration:underline;cursor:pointer;font:inherit}
+g.node.code-selected rect,g.node.code-selected polygon,g.node.code-selected path{fill:color-mix(in srgb,var(--vscode-focusBorder,#0a66c2) 55%,var(--bg))!important;stroke:var(--vscode-focusBorder,#0a66c2)!important;stroke-width:3px!important;filter:drop-shadow(0 0 3px var(--vscode-focusBorder,#0a66c2))}
+.diagram-zoom{display:inline-flex;align-items:center;gap:5px;flex:none}.diagram-zoom input{appearance:none;-webkit-appearance:none;width:76px;height:4px;padding:0;border:1px solid var(--vscode-input-border,var(--line));border-radius:3px;background:var(--vscode-input-background,var(--bg));cursor:pointer}
+.diagram-zoom input::-webkit-slider-runnable-track{height:4px;background:var(--vscode-input-background,var(--bg));border-radius:3px}
+.diagram-zoom input::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:50%;background:var(--vscode-focusBorder,#0a66c2);border:1px solid var(--vscode-editor-background,var(--bg))}
+.diagram-zoom output{min-width:3em;font-size:12px;color:var(--muted)}
+.diagram-info{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:3px 8px;font-size:12px;color:var(--muted)}.diagram-info .status{margin-left:auto}.diagram-info:empty{display:none}#logic-only{white-space:nowrap}.bar .tools{flex-wrap:nowrap}
+#diagram g.node.code-selected text,#diagram g.node.code-selected tspan{fill:var(--vscode-list-activeSelectionForeground,var(--vscode-editor-foreground,#fff))!important}
 </style>
 </head>
 <body>
 
+<div class="diagram-info"><span class="shown" id="object"></span><span class="status" id="status"></span></div>
 <div class="bar">
   <select id="type" title="Object type"></select>
   <input id="name" spellcheck="false" autocomplete="off" placeholder="object name">
@@ -268,16 +281,15 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
   <span class="tools" id="tools" hidden>
     <span class="seg depth" id="blockmode"><button data-all="" title="One block per program or class - ACE: All Blocks off">Classes</button><button data-all="X" class="on" title="Every event, form and method as its own block - ACE: All Blocks">Methods</button></span>
     <label class="depth" id="depthbox" title="How far the calls are followed">Depth
-      <input id="depth" type="number" min="1" max="99" step="1" value="3"></label>
+      <input id="depth" type="number" min="1" max="99" step="1" value="2"></label>
     <span class="seg" id="dir"><button data-dir="TB" class="on" title="Lay the diagram out down the page">&#8595; Top-down</button><button data-dir="LR" title="Lay the diagram out across the page">&#8594; Left-right</button></span>
-    <button id="out" title="Smaller">&#8722;</button>
-    <button id="in" title="Larger">+</button>
+    <button id="logic-only" class="vertex-toggle on" aria-pressed="true" title="Show branches, loops and procedure calls; hide ordinary operations">Logic only</button>
+    <label class="diagram-zoom" title="Diagram scale"><input id="zoom" type="range" min="10" max="100" step="1" value="100" aria-label="Diagram scale"><output id="zoom-value">100%</output></label>
     <button id="fit" title="Scale the whole diagram into the pane">Fit</button>
     <button id="lens" aria-pressed="false"></button>
   </span>
   <button id="metricshelp" title="What each metric means and how it is counted">?</button>
-  <span class="shown" id="object"></span>
-  <span class="status" id="status"></span>
+
 </div>
 
 <div class="missing" id="missing" hidden></div>
@@ -461,6 +473,7 @@ function load() {
   expanded = [];
   lastMermaid = null;
   if (mode === "scheme") { hint("Pick a method on the left."); }
+  callStart = null;
   status("reading " + name + " ...");
   waiting = "metrics";
   // Returns at once. The host answers later by calling sdeReady.
@@ -501,6 +514,7 @@ function fillTypes(chosen) {
    running three megabytes of library, or laying out a diagram, while the
    pump waits is how Edge ends up giving up on the operation. So the answer
    is picked up here and handled on the next task. */
+function sdeAnalysisProgress(text){status(text);}
 function sdeReady() {
   var kind = waiting;
   waiting = null;
@@ -550,6 +564,24 @@ function answered(kind, raw) {
   var data;
   try {
     data = JSON.parse(raw);
+    if (data.engine) {
+      var engineNote = document.getElementById('analysis-engine-note');
+      if (!engineNote) {
+        engineNote = document.createElement('p'); engineNote.id = 'analysis-engine-note';
+        engineNote.style.cssText='color:var(--vscode-descriptionForeground,inherit);margin:2px 0;font-size:12px';
+        document.body.insertBefore(engineNote, document.body.firstChild);
+      }
+      engineNote.textContent = "";
+      engineNote.hidden=!(data.warnings&&data.warnings.length);
+      var warnings = data.warnings || [];
+      if(warnings.length){
+        var details=document.createElement('details');
+        var summary=document.createElement('summary');summary.textContent=warnings.length+' analysis warnings — details';
+        var log=document.createElement('pre');log.textContent=warnings.join('\n');
+        log.style.cssText='max-height:180px;overflow:auto;white-space:pre-wrap;margin:4px 0;font:inherit';
+        details.appendChild(summary);details.appendChild(log);engineNote.appendChild(details);
+      }
+    }
   } catch (e) {
     message("Response is not JSON:" + String.fromCharCode(10) + raw.substring(0, 2000));
     return;
@@ -684,7 +716,7 @@ function renderTotals(totals) {
     var span = document.createElement("span");
     span.appendChild(document.createTextNode(pair[0] + " "));
     var b = document.createElement("b");
-    b.textContent = pair[1];
+    b.textContent = rounded(pair[1]);
     span.appendChild(b);
     box.appendChild(span);
   });
@@ -783,19 +815,38 @@ function labelForUnitType(type) {
 /* A sum of decimals carries float noise - 205.54999999999998 - that no row
    shows; two places are what the rows are given in. */
 function rounded(value) {
-  return typeof value === "number" && !Number.isInteger(value) ? Math.round(value * 100) / 100 : value;
+  return typeof value === "number" && Number.isFinite(value) && !Number.isInteger(value) ? value.toFixed(2) : value;
 }
 
-function makeTable(columns, rows, total, isClass) {
+// Per-routine thresholds; totals are deliberately not graded as routines.
+var METRIC_LIMITS={cyclomatic:[10,20,50],mi:[85,65]};
+function metricGrade(key,value){
+ var limit=METRIC_LIMITS[key];if(!limit||value===''||!Number.isFinite(Number(value)))return '';
+ var n=Number(value);return key==='mi'?(n===0?'':n>=85?'good':n>=65?'warning':'bad'):(n<=10?'good':n<=20?'warning':n<=50?'high':'bad');
+}
+function makeTable(columns, rows, total, isClass, ordering) {
   var table = document.createElement("table"), thead = document.createElement("thead"), tr = document.createElement("tr");
-  columns.forEach(function (column) { var th = document.createElement("th"); th.textContent = column.text; tr.appendChild(th); });
+  columns.forEach(function (column) {
+    var th=document.createElement("th");th.textContent=column.text;th.tabIndex=0;
+    if(ordering&&ordering.key===column.key){th.className="sorted";th.textContent+=ordering.down?" ▼":" ▲";th.setAttribute("aria-sort",ordering.down?"descending":"ascending");}
+    const sort=function(){var down=ordering&&ordering.key===column.key?!ordering.down:column.num;var sortedRows=rows.slice().sort(function(a,b){var x=column.num?Number(a[column.key]||0):String(a[column.key]||'');var y=column.num?Number(b[column.key]||0):String(b[column.key]||'');return (x<y?-1:x>y?1:0)*(down?-1:1);});table.replaceWith(makeTable(columns,sortedRows,total,isClass,{key:column.key,down:down}));};
+    th.addEventListener("click",sort);th.addEventListener("keydown",function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();sort();}});tr.appendChild(th);
+  });
   thead.appendChild(tr); table.appendChild(thead);
   var body = document.createElement("tbody");
   rows.forEach(function (row) {
     var line = document.createElement("tr");
     line.setAttribute("data-key", partKeyOf(row.unit_name));
     if (chosenKey && partKeyOf(row.unit_name) === chosenKey) { line.className = "sel"; }
-    columns.forEach(function (column) { var cell = document.createElement("td"); cell.textContent = cellValue(row, column.key, isClass); if (column.num) { cell.className = "num"; } line.appendChild(cell); });
+    columns.forEach(function (column) {
+      var cell=document.createElement("td");cell.textContent=cellValue(row,column.key,isClass);
+      if(column.num){cell.className="num metric-"+metricGrade(column.key,row[column.key]);var limits=METRIC_LIMITS[column.key];if(limits)cell.title=column.key==='mi'?"Green ≥ "+limits[0]+"; yellow ≥ "+limits[1]+"; red below":"ACE risk: LOW ≤ 10; MEDIUM ≤ 20; HIGH ≤ 50; CRITICAL > 50";}
+      if(column.key==='unit_name'&&typeof sdeOpenToolSource==='function'){
+        var button=document.createElement("button");button.className="metric-source";button.textContent=cell.textContent;button.title="Open source in the left editor";
+        button.addEventListener("click",function(){var name=String(row.unit_name||''),split=name.split('=>');sdeOpenToolSource({name:split.length>1?split[0]:loadedObject,type:isClass?'CLAS':loadedType,method:split.pop()});});cell.textContent='';cell.appendChild(button);
+      }
+      line.appendChild(cell);
+    });
     body.appendChild(line);
   });
   if (total) {
@@ -820,7 +871,7 @@ function cellValue(row, key, isClass) {
   if (isClass && key === "unit_name") {
     return String(value).replace(/^.*=>/, "");
   }
-  return value;
+  return rounded(value);
 }
 
 function renderMetricSections() {
@@ -963,7 +1014,7 @@ var diagramSeq = 0;
 /* How far the flow follows calls. ACE's own window starts at 19, which draws
    a picture too big to read the first time; three is enough to see the shape
    and the reader winds it out from there. */
-var depth = 3;
+var depth = 2;
 
 var direction = "TB";
 // A method is drawn to fit the pane when it is opened: one fixed percentage
@@ -980,6 +1031,8 @@ var natural = null;      // the size mermaid drew, before any scaling
 var fitted = true;
 var fittedFor = null;    // the pane size the current fit was worked out for
 var fitQueued = false;
+var followCode=true,logicOnly=true,lastLogicMermaid=null,latestCodeCursor=null;
+var schemeNodeLines={},schemeNodeRanges={},schemeClusterRanges={},schemeConditionCalls={};
 var lastMermaid = null;  // the text ACE sent, kept so it can be redrawn
 var lastCaption = "";
 var pendingClass = null;
@@ -1019,6 +1072,7 @@ function shown(unit) {
 
 function setMode(next) {
   mode = next;
+  document.getElementById("logic-only").hidden=next!=="scheme";
   document.getElementById("mode").value = next;
   document.body.classList.toggle("flow", flowMode());
   document.body.classList.toggle("calls", next === "calls");
@@ -1028,7 +1082,7 @@ function setMode(next) {
   // to a diagram of one method or of the calls.
   document.getElementById("totals").classList.toggle("hidden", next !== "metrics");
   // The help explains the metrics; a diagram has nothing of it to explain.
-  document.getElementById("metricshelp").hidden = next !== "metrics";
+  document.getElementById("metricshelp").hidden=false;document.getElementById("metricshelp").title=next==="metrics"?"Metrics help":"Diagram help";
   document.getElementById("diagram").hidden = !flowMode();
   document.getElementById("tools").hidden = !flowMode();
   shownUnit = null;
@@ -1096,9 +1150,10 @@ function sdeSelectPart(chosen) {
   if (!chosen) { return; }
   chosenKey = chosen.key;
   if (mode === "calls") {
-    // Only an event or a form can start the walk, as in ACE.
-    if (chosen.type === "EVENT" || chosen.type === "FORM") {
-      setCallStart({ name: chosen.name, type: chosen.type });
+    if (chosen.type === "EVENT" || chosen.type === "FORM" || chosen.type === "METH" || chosen.type === "METHOD") {
+      var method = chosen.type === "METH" || chosen.type === "METHOD";
+      var name = method ? String(chosen.name).toUpperCase().replace(/^.*(?:=>|->)/, "") : chosen.name;
+      setCallStart({ name: method ? loadedObject + "=>" + name : name, type: method ? "METHOD" : chosen.type });
     }
   } else if (mode === "scheme") {
     var unit = units.filter(function (u) { return partKeyOf(u.unit_name) === chosen.key; })[0];
@@ -1118,7 +1173,9 @@ function markMetricRow() {
    named: the first one is not the reader's choice. */
 function firstUnit() {
   var key = chosenKey || (INITIAL && INITIAL.part && INITIAL.part.key) || "";
-  return key ? units.filter(function (u) { return partKeyOf(u.unit_name) === key; })[0] || null : null;
+  var selected=key?units.filter(function(u){return partKeyOf(u.unit_name)===key;})[0]:null;
+  var line=latestCodeCursor&&latestCodeCursor.line||INITIAL&&INITIAL.cursorLine;
+  return selected||(line?units.find(function(unit){return line>=unit.line_from&&line<=unit.line_to;}):null)||null;
 }
 
 function openUnit(unit) {
@@ -1152,6 +1209,11 @@ function note(text, kind) {
    stretch is opened included. ACE decides what a stretch collapses to, and
    deciding that here as well is how the two pictures would drift apart. */
 function requestDiagram() {
+  if (mode === "calls" && String(loadedType).toUpperCase() === "CLAS" && !callStart) {
+    var constructor = units.find(function (unit) { return String(unit.unit_name).toUpperCase() === String(loadedObject).toUpperCase() + "=>CONSTRUCTOR"; });
+    if (!constructor) { status(""); hint("No constructor implementation. Pick a method on the left."); return; }
+    callStart = { name: constructor.unit_name, type: "METHOD" };
+  }
   status("reading " + (shownUnit ? shownUnit.name : loadedObject) + " ...");
   if (!mermaidLoaded) {
     waiting = "asset";
@@ -1177,11 +1239,13 @@ function requestDiagram() {
    this one diagram. */
 
 function setZoom(value) {
-  zoom = Math.max(0.15, Math.min(4, value));
+  zoom = Math.max(0.10, Math.min(1, value));
   applyZoom();
 }
 
 function applyZoom() {
+  document.getElementById("zoom").value=String(Math.round(zoom*100));
+  document.getElementById("zoom-value").textContent=Math.round(zoom*100)+"%";
   Array.prototype.forEach.call(document.querySelectorAll("#diagram svg"), function (svg) {
     var size = naturalSize(svg);
     if (!size || !size.w || !size.h) { return; }
@@ -1422,7 +1486,7 @@ function setDirection(value) {
   Array.prototype.forEach.call(document.querySelectorAll("#dir button"), function (button) {
     button.className = button.getAttribute("data-dir") === direction ? "on" : "";
   });
-  if (lastMermaid) { draw(); }
+  if (lastMermaid) { refit = false; draw(true); }
 }
 
 /* The library arrives as text, so it is run here rather than fetched. */
@@ -1443,6 +1507,7 @@ function startMermaid(source) {
 }
 
 function renderDiagram(data) {
+  if(data.mode==="calls"&&data.depth!==undefined&&Number(data.depth)!==depth)return;
   // A class pool has no entry point of its own, so a flow of no steps is a
   // real answer. Saying so beats an empty frame the reader has to interpret.
   if (data.mode === "calls" && !data.steps) {
@@ -1456,6 +1521,8 @@ function renderDiagram(data) {
     return;
   }
   lastMermaid = data.mermaid;
+  lastLogicMermaid=data.logicMermaid||null;
+  schemeNodeLines=data.nodeLines||{};schemeNodeRanges=data.nodeRanges||{};schemeClusterRanges=data.clusterRanges||{};schemeConditionCalls=data.conditionCalls||{};
   lastCaption = data.mode === "calls"
     ? data.steps + (data.steps === 1 ? " step" : " steps")
     : data.unit_type + ", lines " + data.line_from + " to " + data.line_to;
@@ -1465,8 +1532,9 @@ function renderDiagram(data) {
 /* Everything that puts a picture on the screen goes through here: a unit just
    asked for, a stretch just opened, a chart just turned. */
 function draw(preserveViewport) {
-  var isClass = /^classDiagram\b/.test(lastMermaid);
-  var text = isClass ? lastMermaid.replace(/^direction .+$/m, "direction " + direction) : turned(lastMermaid, direction);
+  var diagramText=mode==="scheme"&&logicOnly&&lastLogicMermaid?lastLogicMermaid:lastMermaid;
+  var isClass = /^classDiagram\b/.test(diagramText);
+  var text = isClass ? diagramText.replace(/^direction .+$/m, "direction " + direction) : turned(diagramText, direction);
   if (!isClass && text !== null && darkPage()) { text = darkened(text); }
   if (text === null) {
     failed("This diagram does not say which way it runs, so it cannot be turned."
@@ -1493,8 +1561,10 @@ function draw(preserveViewport) {
     maxEdges: 100000
   });
   diagramSeq = diagramSeq + 1;
+  var generation = diagramSeq;
   var drawId = "vertexflow" + diagramSeq;
   mermaid.render(drawId, text).then(function (out) {
+    if(generation!==diagramSeq)return;
     pane.innerHTML = out.svg;
     if (priorViewport) {
       pane.scrollTop = priorViewport.top;
@@ -1528,8 +1598,23 @@ function draw(preserveViewport) {
       });
     }
     // One lens implementation serves UML, Logic and every opened Calls card.
+    if(mode==='scheme'&&typeof sdeOpenToolSource==='function')pane.querySelectorAll('g.node').forEach(function(node){var key=Object.keys(schemeNodeLines).find(function(id){return node.id.indexOf('flowchart-'+id+'-')===0;});if(key){node.dataset.sourceLine=schemeNodeLines[key];node.dataset.sourceEnd=schemeNodeRanges[key]?schemeNodeRanges[key][1]:schemeNodeLines[key];node.style.cursor='pointer';}});
+    if(mode==='scheme')pane.querySelectorAll('g.node').forEach(function(node){
+      var key=Object.keys(schemeConditionCalls).find(function(id){return node.id.indexOf('flowchart-'+id+'-')===0;}),calls=key&&schemeConditionCalls[key];
+      if(!calls||!calls.length)return;
+      var title=document.createElementNS('http://www.w3.org/2000/svg','title');title.textContent='External calls: '+calls.map(function(call){return call.name;}).join(', ');node.appendChild(title);
+      node.querySelectorAll('tspan').forEach(function(text){
+        if(text.querySelector('tspan'))return;
+        var content=text.textContent,matches=[];
+        calls.forEach(function(call){var name=call.name.replace(/->|=>/g,'.'),at=content.indexOf(name);while(at>=0){matches.push({at:at,end:at+name.length,call:call});at=content.indexOf(name,at+name.length);}});
+        if(!matches.length)return;matches.sort(function(a,b){return a.at-b.at||b.end-a.end;});text.textContent='';var offset=0;
+        matches.forEach(function(match){if(match.at<offset)return;text.appendChild(document.createTextNode(content.slice(offset,match.at)));var link=document.createElementNS('http://www.w3.org/2000/svg','a');link.textContent=content.slice(match.at,match.end);link.dataset.callOwner=match.call.owner||'';link.dataset.callMethod=match.call.method;link.dataset.callLine=match.call.line;link.setAttribute('href','#');link.setAttribute('tabindex','0');link.setAttribute('aria-label','Open '+match.call.name);link.style.cssText='fill:var(--vscode-textLink-foreground,#0a66c2)!important;text-decoration:underline;cursor:pointer;font-weight:600';text.appendChild(link);offset=match.end;});text.appendChild(document.createTextNode(content.slice(offset)));
+      });
+    });
+    if(mode==='scheme')pane.querySelectorAll('g.cluster').forEach(function(cluster){var range=schemeClusterRanges[cluster.id];if(range){cluster.dataset.sourceLine=range[0];cluster.dataset.sourceEnd=range[1];}});
     installUmlLens(pane, !isClass);
     status(lastCaption);
+    if(mode==="scheme"){if(latestCodeCursor)sdeCodeCursor(latestCodeCursor);else if(INITIAL&&INITIAL.cursorLine)sdeCodeCursor({name:loadedObject,line:INITIAL.cursorLine,endLine:INITIAL.cursorLine});}
   }, function (e) {
     dropMermaidLeftovers(drawId);
     failed("mermaid could not draw this diagram." + String.fromCharCode(10)
@@ -1691,18 +1776,22 @@ function naturalSize(svg) {
   return { w: parseFloat(parts[2]), h: parseFloat(parts[3]) };
 }
 
-/* Which node opens a folded stretch is ACE's decision, and it travels in
-   the diagram: it puts a link on exactly those nodes, and the number in the
-   link is the line the stretch is anchored at. The other link it writes,
-   acego_, selects code in ACE's source window - there is none here, so it
-   does nothing, but it must still not navigate this page anywhere. */
 function onDiagramClick(e) {
+  var callLink=e.target.closest&&e.target.closest('a[data-call-method]');
+  if(callLink&&typeof sdeOpenToolSource==='function'){e.preventDefault();e.stopPropagation();if(callLink.dataset.callOwner)sdeOpenToolSource({name:callLink.dataset.callOwner,type:'CLAS',method:callLink.dataset.callMethod});else sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(callLink.dataset.callLine)});return;}
+  if(mode==='scheme'&&typeof sdeOpenToolSource==='function'){
+    var sourceNode=e.target.closest&&e.target.closest('g.node[data-source-line]');
+    if(sourceNode){e.preventDefault();e.stopPropagation();sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(sourceNode.dataset.sourceLine)});return;}
+  }
   if (mode === "calls") {
     var element = e.target;
     while (element && element !== e.currentTarget) {
       if (element.matches && element.matches("g.node")) {
         var match = String(element.textContent || "").match(/([A-Z][A-Z0-9_/$]*)\s*(?:->|=>)\s*([A-Z][A-Z0-9_~]*)/i);
-        if (match) { requestHybridLogic({ class: match[1].toUpperCase(), name: match[2].toUpperCase(), key: String(element.textContent || "").replace(/\s+/g, "") }); }
+        if (typeof sdeOpenToolSource === "function") {
+          if(match)sdeOpenToolSource({name:match[1].toUpperCase(),type:"CLAS",method:match[2].toUpperCase()});
+          else {var eventMatch=String(element.textContent||"").match(/^([A-Z][A-Z0-9_/$]*):/i);if(eventMatch)sdeOpenToolSource({name:eventMatch[1],type:loadedType});}
+        } else if (match) { requestHybridLogic({ class: match[1].toUpperCase(), name: match[2].toUpperCase(), key: String(element.textContent || "").replace(/\s+/g, "") }); }
         return;
       }
       element = element.parentNode;
@@ -1719,13 +1808,7 @@ function onDiagramClick(e) {
   }
   if (href.indexOf("sapevent:") !== 0) { return; }
   e.preventDefault();
-  var at = href.indexOf("aceexp_");
-  if (at < 0) { return; }
-  var line = parseInt(href.substring(at + 7), 10);
-  if (!line) { return; }
-  var already = expanded.indexOf(line);
-  if (already < 0) { expanded.push(line); } else { expanded.splice(already, 1); }
-  requestDiagram();
+
 }
 
 function requestHybridLogic(node) {
@@ -1975,7 +2058,7 @@ function setupPage(detail) {
 /* ---------- wiring ---------- */
 
 document.getElementById("metricshelp").addEventListener("click", function () {
-  document.getElementById("metricsdialog").showModal();
+  document.getElementById(mode==="metrics"?"metricsdialog":"diagramhelpdialog").showModal();
 });
 document.getElementById("metricsclose").addEventListener("click", function () {
   document.getElementById("metricsdialog").close();
@@ -2016,7 +2099,7 @@ document.getElementById("mode").addEventListener("change", function () {
   setMode(document.getElementById("mode").value);
 });
 
-document.getElementById("depth").addEventListener("change", function () {
+function applyDepth() {
   var asked = parseInt(document.getElementById("depth").value, 10);
   if (!asked || asked < 1) { asked = 1; }
   if (asked > 99) { asked = 99; }
@@ -2026,9 +2109,58 @@ document.getElementById("depth").addEventListener("change", function () {
   // A different depth is a different picture, so it is fitted again.
   refit = true;
   if (mode === "calls" && loadedObject) { requestDiagram(); }
-});
+}
+var depthTimer;
+document.getElementById("depth").addEventListener("input",function(){clearTimeout(depthTimer);depthTimer=setTimeout(applyDepth,250);});
+document.getElementById("depth").addEventListener("change",function(){clearTimeout(depthTimer);applyDepth();});
 
 document.getElementById("diagram").addEventListener("click", onDiagramClick);
+document.getElementById('logic-only').addEventListener('click',function(){logicOnly=!logicOnly;this.classList.toggle('on',logicOnly);this.setAttribute('aria-pressed',String(logicOnly));if(lastMermaid){refit=true;draw();}});
+var sourceScrollTimer,lastScrollLine,codeFollowingUntil=0;
+document.getElementById('diagram').addEventListener('pointerdown',function(){followCode=false;});
+document.getElementById('diagram').addEventListener('wheel',function(){followCode=false;},{passive:true});
+function sdeCodeFocus(){followCode=true;}
+
+function sdeCodeCursor(value){
+ if(value.userFocus)followCode=true;
+ if(!followCode)return;
+ if(mode!=='scheme'||String(value.name).toUpperCase()!==String(loadedObject).toUpperCase())return;
+ latestCodeCursor=value;
+ if(!value.scrollOnly){
+  var targetUnit=units.find(function(unit){return value.line>=unit.line_from&&value.line<=unit.line_to;});
+  if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){openUnit(targetUnit);return;}
+ }
+
+ var pane=document.getElementById('diagram'),clusters=Array.from(pane.querySelectorAll('g.cluster[data-source-line]')),selectedClusters=clusters.filter(function(cluster){return [Number(cluster.dataset.sourceLine),Number(cluster.dataset.sourceEnd)].some(function(line){return line>=value.line&&line<=value.endLine;});});
+ if(!value.scrollOnly)clusters.forEach(function(cluster){var active=selectedClusters.includes(cluster),shape=cluster.querySelector('rect');if(!shape)return;if(active){if(!shape.hasAttribute('data-prior-style'))shape.setAttribute('data-prior-style',shape.getAttribute('style')||'');shape.style.setProperty('fill',toward(ground(),themeColour('--vscode-focusBorder','#0a66c2'),darkPage()?0.28:0.18),'important');shape.style.setProperty('stroke','var(--vscode-focusBorder,#0a66c2)','important');}else if(shape.hasAttribute('data-prior-style')){shape.setAttribute('style',shape.getAttribute('data-prior-style'));shape.removeAttribute('data-prior-style');}});
+ var nodes=Array.from(pane.querySelectorAll('g.node[data-source-line]'));
+ if(!nodes.length)return;
+ var lines=nodes.map(node=>Number(node.dataset.sourceLine));
+ if(value.line<Math.min.apply(null,lines)||value.line>Math.max.apply(null,lines))return;
+ var selected=nodes.filter(node=>Number(node.dataset.sourceEnd||node.dataset.sourceLine)>=value.line&&Number(node.dataset.sourceLine)<=value.endLine);
+ if(!selected.length&&!selectedClusters.length){var prior=nodes.filter(node=>Number(node.dataset.sourceLine)<=value.line).sort((a,b)=>Number(b.dataset.sourceLine)-Number(a.dataset.sourceLine));if(prior[0])selected=[prior[0]];}
+ if(!value.scrollOnly)nodes.forEach(function(node){
+  var active=selected.includes(node);node.classList.toggle('code-selected',active);
+  node.querySelectorAll('text,tspan,a').forEach(function(text){
+   if(active){if(!text.hasAttribute('data-prior-text-style'))text.setAttribute('data-prior-text-style',text.getAttribute('style')||'');text.style.setProperty('fill','var(--vscode-list-activeSelectionForeground,#ffffff)','important');text.style.setProperty('color','var(--vscode-list-activeSelectionForeground,#ffffff)','important');}
+   else if(text.hasAttribute('data-prior-text-style')){text.setAttribute('style',text.getAttribute('data-prior-text-style'));text.removeAttribute('data-prior-text-style');}
+  });
+  node.querySelectorAll('rect,polygon,path').forEach(function(shape){
+   if(active){if(!shape.hasAttribute('data-prior-style'))shape.setAttribute('data-prior-style',shape.getAttribute('style')||'');shape.style.setProperty('fill','var(--vscode-list-activeSelectionBackground,var(--vscode-focusBorder,#0a66c2))','important');shape.style.setProperty('stroke','var(--vscode-focusBorder,#0a66c2)','important');}
+   else if(shape.hasAttribute('data-prior-style')){shape.setAttribute('style',shape.getAttribute('data-prior-style'));shape.removeAttribute('data-prior-style');}
+  });
+ });
+ var focusTarget=selectedClusters[0]||selected[0];if(focusTarget){codeFollowingUntil=Date.now()+500;clearTimeout(sourceScrollTimer);focusTarget.scrollIntoView({block:selectedClusters.length?'start':'center',inline:'nearest'});}
+}
+
+document.getElementById("diagram").addEventListener("scroll",function(){
+ clearTimeout(sourceScrollTimer);sourceScrollTimer=setTimeout(function(){
+  if(followCode||Date.now()<codeFollowingUntil||mode!=='scheme'||typeof sdeOpenToolSource!=='function')return;
+  var pane=document.getElementById('diagram'),area=pane.getBoundingClientRect(),best=null,distance=Infinity;
+  pane.querySelectorAll('g.node[data-source-line]').forEach(function(node){var box=node.getBoundingClientRect();if(box.bottom<area.top||box.top>area.bottom)return;var d=Math.abs(box.top-(area.top+area.height/3));if(d<distance){distance=d;best=node;}});
+  if(best&&lastScrollLine!==best.dataset.sourceLine){lastScrollLine=best.dataset.sourceLine;sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(lastScrollLine),preserveFocus:true});}
+ },180);
+});
 
 Array.prototype.forEach.call(document.querySelectorAll("#blockmode button"), function (button) {
   button.addEventListener("click", function () {
@@ -2049,14 +2181,7 @@ Array.prototype.forEach.call(document.querySelectorAll("#dir button"), function 
     if (button.getAttribute("data-dir") !== direction) { setDirection(button.getAttribute("data-dir")); }
   });
 });
-document.getElementById("out").addEventListener("click", function () {
-  fitted = false;
-  setZoom(zoom / 1.25);
-});
-document.getElementById("in").addEventListener("click", function () {
-  fitted = false;
-  setZoom(zoom * 1.25);
-});
+document.getElementById("zoom").addEventListener("input",function(){fitted=false;setZoom(Number(this.value)/100);});
 document.getElementById("fit").addEventListener("click", fitDiagram);
 window.vertexLens.button(document.getElementById("lens"));
 // A switch turned on while a diagram is there puts the lens on it; the module does that with the last diagram it was given.
@@ -2079,7 +2204,7 @@ function themeChanged() {
     if (pane.hidden) { return; }
     pane.style.background = ground();
     pane.style.color = ink();
-    if (lastMermaid) { draw(); }
+    if (lastMermaid) { refit = false; draw(true); }
   }, 80);
 }
 
@@ -2133,5 +2258,5 @@ if (INITIAL) {
 // system has is asked first; an object the window was opened on is read after.
 window.addEventListener("load", function () { askAbout(startWindow); });
 </script>
-</body>
+<dialog id="diagramhelpdialog" style="max-width:560px;background:var(--vscode-editorWidget-background,var(--vscode-editor-background));color:var(--vscode-editor-foreground);border:1px solid var(--vscode-panel-border)"><strong>Code diagrams</strong><p>Logic diagram shows one source routine. Select a method in Parts or move the source cursor into it. In bound Tools, the source editor selects the routine automatically.</p><p>Logic only keeps branches, loops, calls and control transfers. Disable it for all operations; operations are not folded. RETURN leads to the procedure end.</p><p>Conditions keep AND / OR terms in one diamond. External calls carry ↗ and linked method names. Unresolved calls open their source location.</p><p>Click a linked label to open source; Alt+Left returns. Select source lines to highlight matching nodes, or LOOP / ENDLOOP to highlight the frame. The focused view drives scrolling.</p><p>Calls uses Classes / Methods and call depth. Each entered routine adds a level; a boundary target remains a leaf. Choose Top-down or Left-right for direction.</p><p>Zoom is 10–100%; Fit fits the diagram. The lens is available below 70% and magnifies up to that effective scale. Theme changes preserve zoom and scroll position.</p><form method="dialog"><button>Close</button></form></dialog></body>
 </html>

@@ -422,7 +422,14 @@ function createRepository({ client, systemId, emit = () => {} }) {
   // F1 gives it in Eclipse: SAP's own HTML page.
   const documentation = (sourceUrl, source, line, column) =>
     analyse("ABAP documentation", source, () => client.abapDocumentation(adtPath(sourceUrl), source, line, column));
-  return { execute, apply, draft, analysisReader, unitTests, atcCheck, whereUsed, documentation, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
+  async function packageObjects(packageName) {
+    const data = await client.nodeContents('DEVC/K', name(packageName));
+    const objects = data.nodes.filter(n => /^(CLAS|INTF)\//.test(n.OBJECT_TYPE))
+      .map(n => ({ object_name: n.OBJECT_NAME, object_type: n.OBJECT_TYPE.split('/')[0] }));
+    if (objects.length > 100) throw new Error('Package contains more than 100 classes/interfaces; select a smaller package.');
+    return objects;
+  }
+  return { execute, apply, draft, analysisReader, packageObjects, unitTests, atcCheck, whereUsed, documentation, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath };

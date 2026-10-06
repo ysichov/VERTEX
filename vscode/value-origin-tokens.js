@@ -53,4 +53,4 @@ function printable(tokens) {
 function statement(tokens) { return { tokens, line: tokens[0] ? tokens[0].line : 1, end: tokens.length ? tokens[tokens.length - 1].line : 1, text: printable(tokens) }; }
 function statements(source) { const result = [], tokens = tokenize(source); let current = []; for (const token of tokens) { current.push(token); if (token.kind === 'symbol' && token.value === '.') { result.push(statement(current)); current = []; } } if (current.length) result.push(statement(current)); return result; }
 
-module.exports = { tokenize, statements };
+module.exports = { tokenize, statements, printable };

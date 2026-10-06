@@ -1,6 +1,7 @@
 "use strict";
 
 const { tokenize } = require('./value-origin-tokens');
+const {isProcedureEnd,classifyStatement}=require('./abap-control');
 const U = value => String(value || '').toUpperCase();
 const words = new Set(('ABAP_TRUE ABAP_FALSE SPACE INITIAL AND OR NOT IS BOUND EQ NE GT GE LT LE ' +
   'IF ELSE ELSEIF ENDIF CASE WHEN OTHERS ENDCASE LOOP AT INTO ASSIGNING ENDLOOP DO ENDDO WHILE ENDWHILE TRY CATCH ENDTRY ' +
@@ -90,13 +91,25 @@ function typeAfter(ts, at) {
 }
 // Every call in a token list, the ones inside the arguments of another included: lo->m( x = me->n( ) ) is two. A call is
 // a path, an optional ->/=> and a method name, then a balanced ( ... ); NEW x( )->m( ) is one call.
-function callsIn(ts) {
+function callsIn(ts, withTokens = false) {
   const found = [];
   for (let i = 0; i < ts.length; i++) {
     if (!word(ts[i])) continue;
+    // Constructor-expression types are not functional method names.
+    if (['COND','SWITCH','CONV','CAST','VALUE','CORRESPONDING','REDUCE','FILTER','EXACT','REF'].includes(val(ts,i))) {
+      const type=pathAt(ts,i+1);let open=type?type.end:i+2;
+      if(ts[open]?.value==='=>'){const component=pathAt(ts,open+1);if(component)open=component.end;}
+      const last=ts[open]?.value==='('?close(ts,open):-1;
+      if(last>=0){found.push(...callsIn(ts.slice(open+1,last), withTokens));i=last;}
+      continue;
+    }
     let end = -1;
     if (val(ts, i) === 'NEW' && word(ts[i + 1]) && ts[i + 2]?.value === '(') {
       const first = close(ts, i + 2);
+      if(first>=0){
+        found.push({owner:val(ts,i+1),receiver:'',arrow:'->',method:'CONSTRUCTOR',args:ts.slice(i+3,first),...(withTokens?{tokens:ts.slice(i,first+1)}:{})},...callsIn(ts.slice(i+3,first), withTokens));
+        if(ts[first+1]?.value!=='->'){i=first;continue;}
+      }
       if (first >= 0 && ts[first + 1]?.value === '->') {
         const method = pathAt(ts, first + 2);
         if (method && ts[method.end]?.value === '(') end = close(ts, method.end);
@@ -110,7 +123,7 @@ function callsIn(ts) {
     if (end < 0) continue;
     const call = callOf(ts.slice(i, end + 1));
     if (!call) continue;
-    found.push(call, ...callsIn(call.args));
+    found.push(withTokens ? {...call,tokens:ts.slice(i,end+1)} : call, ...callsIn(call.args, withTokens));
     i = end;
   }
   return found;
@@ -300,7 +313,7 @@ function buildIndex(sources) {
         if (first === 'FORM') current.declaration = ts;
         conditions = []; continue;
       }
-      if (['ENDMETHOD', 'ENDFORM', 'ENDFUNCTION'].includes(first)) { current.end = s.offset; current = global; conditions = []; continue; }
+      if (isProcedureEnd(first)) { current.end = s.offset; current = global; conditions = []; continue; }
       if (['ENDIF', 'ENDCASE', 'ENDLOOP', 'ENDDO', 'ENDWHILE', 'ENDTRY'].includes(first)) conditions.pop();
       if (['ELSE', 'ELSEIF', 'WHEN', 'CATCH'].includes(first) && conditions.length) {
         const group = conditions[conditions.length - 1]; conditions[conditions.length - 1] = { ...group, branch: s };
@@ -445,6 +458,7 @@ function resolver(index) {
     }
     return result;
   }
+  resolve.owners = (call,p,before) => call.owner ? [call.owner] : (!call.receiver || call.receiver === 'ME') ? [p.owner] : [...variableTypes(p,call.receiver,before,{},0)];
   return resolve;
 }
 
@@ -744,10 +758,6 @@ function analyze(sources, target, options = {}) {
   // own complete coordinate range.
   const boundedFlow = flowBounds ? flow.filter(point => point.source !== target.source ||
     (point.line >= flowBounds.from && point.line <= flowBounds.to)) : flow;
-  const EVENT_STATEMENT = /^(LOAD-OF-PROGRAM|INITIALIZATION|START-OF-SELECTION|END-OF-SELECTION|TOP-OF-PAGE(?:\s+DURING\s+LINE-SELECTION)?|END-OF-PAGE|AT\s+SELECTION-SCREEN(?:\s+OUTPUT|\s+ON\s+[\w-]+(?:\s+[\w-]+)?)?|AT\s+LINE-SELECTION|AT\s+USER-COMMAND|AT\s+PF\d+)\s*\.$/i;
-  const DECLARATIONS = ['REPORT', 'PROGRAM', 'FUNCTION-POOL', 'TYPE-POOL', 'TYPE-POOLS', 'TYPES', 'DATA', 'CLASS-DATA',
-    'CONSTANTS', 'STATICS', 'FIELD-SYMBOLS', 'PARAMETERS', 'SELECT-OPTIONS', 'SELECTION-SCREEN', 'TABLES', 'RANGES',
-    'INCLUDE', 'METHODS', 'CLASS-METHODS', 'INTERFACES', 'ALIASES', 'EVENTS', 'DEFINE', 'END-OF-DEFINITION'];
   // ACE's calculated records are deliberately a sparse BSE slice.  Full FLOW
   // needs the actual ABAP statement stream instead: calls, conditions, loops
   // and writes must remain visible even when they do not calculate a value.
@@ -757,22 +767,16 @@ function analyze(sources, target, options = {}) {
     // where ABAP runs them. The event names the level; it is not a step in it.
     let event = '';
     return localStatements(source).flatMap((statement, statementIndex) => {
-    const first = val(statement.tokens, 0), text = String(statement.text || '').trim();
-    if (['CLASS', 'ENDCLASS', 'INTERFACE', 'ENDINTERFACE', 'METHOD', 'ENDMETHOD', 'FORM', 'ENDFORM'].includes(first)) return [];
-    const opened = EVENT_STATEMENT.exec(text);
-    if (opened) { event = opened[1].toUpperCase().replace(/\s+/g, ' '); return []; }
-    // FLOW is what the program does. A declaration does nothing: the program
-    // header, type pools, TYPES, CONSTANTS, selection-screen declarations and
-    // the rest state what exists before anything runs. An inline DATA(x) = ...
-    // is not one of these - it is an assignment that happens to declare.
-    if (DECLARATIONS.some(word => new RegExp('^' + word + '\\b', 'i').test(text))
-      && !/^DATA\s*\(/i.test(text)) return [];
+    const classification=classifyStatement(statement,callsIn),first=classification.word;
+    if(classification.container||classification.procedureStart||classification.declaration)return [];
+    if(classification.event){event=classification.event;return [];}
     const procedure = index.procedures.find(item => item.source.id === source.id &&
-      statement.offset >= item.start && statement.offset < item.end && item.name !== 'GLOBAL') ||
+      statement.offset >= item.start && (statement.offset < item.end ||
+        (isProcedureEnd(first) && statement.offset === item.end)) && item.name !== 'GLOBAL') ||
       index.procedures.find(item => item.source.id === source.id && item.name === 'GLOBAL');
     const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included);
     return [{ id: source.id + ':full:' + statement.offset, source: source.id, line: statement.line, statementIndex,
-      text: statement.text, changed: statement.text, scope: (source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
+      control: classification, text: statement.text, changed: statement.text, scope: (source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
   });
   }).filter(point => !flowBounds || point.source !== target.source || (point.line >= flowBounds.from && point.line <= flowBounds.to));
   const flowLog = nodes.map(node => ({ source: node.source, scope: node.location || node.source, line: node.line, text: node.text,
@@ -781,13 +785,14 @@ function analyze(sources, target, options = {}) {
   // Every call that a statement makes, with the routines it can reach - not only those the slice walked through. A flow
   // between two breakpoints needs them to nest a call where it happens; the slice only marks what it reaches.
   const callSites = [];
+  const executionCalls = require('./call-graph').create(index);
   for (const p of index.procedures) {
     for (const s of p.body) {
-      for (const call of callsIn(s.tokens || [])) {
-        const matches = resolve(call, p, s.offset, {});
+      for (const record of executionCalls.calls(p,s)) {
+        const matches = record.targets;
         if (matches.length) callSites.push({ source: p.source.id, line: s.line,
           caller: p.owner && p.name !== 'GLOBAL' ? p.owner + '->' + p.name : p.source.objectName || p.source.name || p.source.id,
-          callees: matches.map(c => ({ owner: c.owner, name: c.name })) });
+          callees: matches.map(c => ({ owner: c.owner || c.source.objectName || c.source.name || c.source.id, name: c.name })) });
       }
     }
   }
@@ -879,4 +884,4 @@ async function collectSources(initial, load, options = {}) {
   }
   return { sources, warnings, skipped };
 }
-module.exports = { analyze, buildIndex, collectSources, variableAt, literalAt, customerObject, typeComponents, assignment, variablePaths };
+module.exports = { analyze, buildIndex, collectSources, variableAt, literalAt, customerObject, typeComponents, assignment, variablePaths, callsIn, resolver };

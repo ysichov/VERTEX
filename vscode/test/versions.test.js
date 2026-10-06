@@ -7,7 +7,7 @@ const path = require("node:path");
 
 function page() {
   function element() {
-    return { value: "", checked: false, style: {}, children: [], options: [], handlers: {},
+    return { value: "", checked: false, style: {}, children: [], options: [], handlers: {}, classList: { toggle() {} },
       set innerHTML(value) { this.children = []; },
       appendChild(child) { this.children.push(child); this.options.push(child); },
       addEventListener(name, handler) { this.handlers[name] = handler; } };
@@ -92,9 +92,9 @@ test("parts are a table of type and name, headed by their object", () => {
   assert.equal(elements.partlist.children[0].textContent, "ZCL_X");
   const rows = partRows(elements);
   assert.deepEqual(rows.map(r => r.children.map(td => td.textContent)),
-    [["CPUB", "Public section"], ["METH", "SHOW"]]);
+    [["CPUB", "Public section"], ["METH", "show"]]);
   rows[1].handlers.click();
-  assert.deepEqual(calls[0], ["ZCL_X", "CLAS", "ZCL_X".padEnd(30) + "SHOW", "METH", "", ""]);
+  assert.deepEqual(calls[0], ["ZCL_X", "CLAS", "ZCL_X".padEnd(30) + "SHOW", "METH", "", "", "DI"]);
 });
 
 test("transport VRSD rows retain scope and exact padded part keys", () => {
@@ -104,7 +104,7 @@ test("transport VRSD rows retain scope and exact padded part keys", () => {
     context.parts = [{ name, unit: "display label", part_type: type }];
     context.renderParts();
     partRows(elements)[0].handlers.click();
-    assert.deepEqual(calls[0], ["DEVK900578", "TR", name, type, "", ""]);
+    assert.deepEqual(calls[0], ["DEVK900578", "TR", name, type, "", "", "DI"]);
     assert.equal(context.came_from, null);
   }
 });
@@ -213,8 +213,8 @@ test("a class is shown by section: the section, its methods marked, then the res
   const rows = partRows(elements);
   const text = td => td.textContent || td.children.map(c => c.textContent || "").join("");
   assert.deepEqual(rows.map(r => r.children.map(text)), [
-    ["", "CPUB", "Public section"], ["", "METH", "SHOW"], ["", "METH", "ZIF_Y~RUN"],
-    ["", "CPRI", "Private section"], ["", "METH", "BUILD"],
+    ["", "CPUB", "Public section"], ["", "METH", "show"], ["", "METH", "zif_y~run"],
+    ["", "CPRI", "Private section"], ["", "METH", "build"],
     ["", "Other"], ["", "CINC", "Local class implementation"]]);
   assert.equal(rows[0].className, "group pick");
   // The visibility comes first, in its own column; a part of no section has none.
@@ -222,5 +222,5 @@ test("a class is shown by section: the section, its methods marked, then the res
   assert.equal(rows[4].children[0].children[0].className, "vis private");
   assert.equal(rows[6].children[0].children.length, 0);
   rows[3].handlers.click();
-  assert.deepEqual(calls[0], ["ZCL_X", "CLAS", "ZCL_X", "CPRI", "", ""]);
+  assert.deepEqual(calls[0], ["ZCL_X", "CLAS", "ZCL_X", "CPRI", "", "", "DI"]);
 });

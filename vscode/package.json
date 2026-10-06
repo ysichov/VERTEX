@@ -102,10 +102,6 @@
         "title": "VERTEX: Analyze Variable Value Origin"
       },
       {
-        "command": "vertex.valueOriginLinter",
-        "title": "VERTEX: BSE — only ADT + linter"
-      },
-      {
         "command": "vertex.openVisualDebug",
         "title": "VERTEX: Open Visual Debug"
       },
@@ -184,6 +180,31 @@
         "command": "vertex.navigateBack",
         "title": "VERTEX: Back",
         "category": "VERTEX"
+      },
+      {
+        "command": "vertex.tools.uml",
+        "title": "UML diagram",
+        "category": "VERTEX Tools"
+      },
+      {
+        "command": "vertex.tools.metrics",
+        "title": "Metrics",
+        "category": "VERTEX Tools"
+      },
+      {
+        "command": "vertex.tools.scheme",
+        "title": "Logic diagram",
+        "category": "VERTEX Tools"
+      },
+      {
+        "command": "vertex.tools.calls",
+        "title": "Calls diagram",
+        "category": "VERTEX Tools"
+      },
+      {
+        "command": "vertex.tools.diff",
+        "title": "Diff",
+        "category": "VERTEX Tools"
       }
     ],
     "configuration": {
@@ -324,11 +345,6 @@
           "group": "navigation@9"
         },
         {
-          "command": "vertex.valueOriginLinter",
-          "when": "resourceScheme == vertex-sap && editorLangId == abap",
-          "group": "navigation@9.1"
-        },
-        {
           "command": "vertex.abapDocumentation",
           "when": "editorLangId == abap && (resourceScheme == vertex-sap || resourceScheme == vertex-source)",
           "group": "navigation@3"
@@ -352,6 +368,11 @@
           "command": "vertex.navigateBack",
           "when": "resourceScheme == vertex-sap",
           "group": "navigation@2"
+        },
+        {
+          "submenu": "vertex.tools.context",
+          "group": "navigation@12",
+          "when": "editorLangId == abap"
         }
       ],
       "editor/title": [
@@ -374,6 +395,42 @@
           "command": "vertex.runAtc",
           "when": "resourceScheme == vertex-sap",
           "group": "navigation@4"
+        }
+      ],
+      "vertex.tools.context": [
+        {
+          "command": "vertex.tools.uml",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vertex.tools.metrics",
+          "group": "navigation@2"
+        },
+        {
+          "command": "vertex.tools.scheme",
+          "group": "navigation@3"
+        },
+        {
+          "command": "vertex.tools.calls",
+          "group": "navigation@4"
+        },
+        {
+          "command": "vertex.tools.diff",
+          "group": "navigation@5"
+        }
+      ],
+      "explorer/context": [
+        {
+          "submenu": "vertex.tools.context",
+          "group": "navigation@12",
+          "when": "resourceExtname == .abap || resourceScheme == vertex-sap || resourceScheme == vertex-source"
+        }
+      ],
+      "webview/context": [
+        {
+          "submenu": "vertex.tools.context",
+          "group": "navigation@12",
+          "when": "webviewSection == vertex-object"
         }
       ]
     },
@@ -422,6 +479,12 @@
         "command": "vertex.runAtc",
         "key": "ctrl+shift+f2",
         "when": "resourceScheme == vertex-sap"
+      }
+    ],
+    "submenus": [
+      {
+        "label": "VERTEX Tools",
+        "id": "vertex.tools.context"
       }
     ]
   },

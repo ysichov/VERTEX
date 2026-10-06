@@ -306,7 +306,25 @@ function describeConnection(error) {
  * Reads one resource and answers in the shape the page expects. Given a BODY it
  * writes instead, which needs a CSRF token first.
  */
-async function fetch(context, requestPath, body) {
+let frontendAnalysisRequest;
+async function fetch(context, requestPath, body, progress, cancelled) {
+  if (body == null && frontendAnalysisRequest && /^\/sap\/bc\/adt\/vertex\/(metrics|class|package|flow)\//.test(requestPath)) {
+    try { return JSON.stringify(await frontendAnalysisRequest(requestPath, progress, cancelled)); }
+    catch (error) { return 'ERROR:' + error.message; }
+  }
+  if (body == null && requestPath === ABOUT) {
+    const selected = active();
+    if (selected.error) return 'ERROR:' + selected.error;
+    const raw = await fetch(context, ABOUT + '?backend=1');
+    let remote = {};
+    try { if (!raw.startsWith('ERROR:')) remote = JSON.parse(raw); } catch (_) {}
+    const local = ['metrics','class','package','flow'];
+    const services = ['metrics','class','package','flow','table','join','versions','review','prepare','requests'].map(name =>
+      local.includes(name) ? { name, active: 'X', backend: 'ADT + abaplint' } :
+        (remote.services || []).find(s => s.name === name) || { name, active: '', backend: 'VERTEX', handler: name });
+    return JSON.stringify({ ...remote, user: remote.user || selected.system.user,
+      backends: remote.backends || [{ name: 'VERTEX', installed: false }], services });
+  }
   const chosen = active();
   if (chosen.error) {
     return "ERROR:" + chosen.error;
@@ -382,12 +400,12 @@ async function fetch(context, requestPath, body) {
 // The shared controls stylesheet is an asset like the diagram library: a page
 // given to a webview as a string has no address to load one from, so it asks
 // for what it needs by name. Both files live beside the pages.
-const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css", flow: "vertex-flow.js", lens: "vertex-lens.js", flowGraph: "vertex-flow-graph.js" };
+const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css", flow: "vertex-flow.js", lens: "vertex-lens.js", flowGraph: "vertex-flow-graph.js", abapControl: "vertex-abap-control.js" };
 function asset(name) {
   if (!ASSETS[name]) {
     return "ERROR:This host ships no asset called " + name + ".";
   }
-  const file = path.join(PAGES, ASSETS[name]);
+  const file = name === "abapControl" ? path.join(__dirname, "abap-control.js") : path.join(PAGES, ASSETS[name]);
   try {
     return fs.readFileSync(file, "utf8");
   } catch (e) {
@@ -774,6 +792,7 @@ function withDebugger(sapCode, debugTools) {
 function activate(context) {
   const sapCode = require("./code-workbench").register(vscode, context, { active, password, pin: pinTo,
     pinned: () => pinnedSystem.getStore() || "", systems });
+  frontendAnalysisRequest = sapCode.frontendRequest;
   // The panel's chat debugs too: its assistant gets the debugger tools beside
   // the source tools, on the same /chat address, with nothing to register.
   // Visual Debug in the Tools window draws this same debugger.
@@ -807,9 +826,11 @@ function activate(context) {
   tools = mcp.create({ fetch: fetch, context: context, port: port,
     pin: pinTo, pinned: () => pinnedSystem.getStore() || "",
     pages: Object.assign(windowTools(), { "/chat": chatSet, "/debug": debugTools }) });
-  const showTools = initial => require("./tools-window").open(vscode, context,
-    { pages: PAGES, fetch, asset, active, pin: pinTo, models: args => assistantModels(context, args),
+  const showTools = (initial, embeddedPanel) => require("./tools-window").open(vscode, context,
+    { panel: embeddedPanel, pages: PAGES, fetch, asset, active, pin: pinTo, models: args => assistantModels(context, args),
       originPoints: args => sapCode.originPoints(args),
+      openToolSource: args => sapCode.openToolSource(args),
+      documentObject: document => sapCode.documentObject(document),
       setContext: value => { latestToolsContext = value; },
       debugger: dbg,
       chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets, () => latestDebugContext, () => require("./value-origin-view").originContext()) }, initial);
@@ -828,6 +849,7 @@ function activate(context) {
       dockedDebugView = view;
       view.webview.options = { enableScripts: true };
       view.webview.html = require("./tools-window").debugHtml(dockedDebugInitial());
+      let logicReceive=null,logicDisposers=[];
       const unwatch = dbg.watch(postDockedPicture);
       // The reader's place in a VERTEX source, for the variables it shows before the program runs: the object and the line the
       // cursor is on, whichever VERTEX tab is in front. A change is sent once the cursor has rested a moment.
@@ -843,6 +865,7 @@ function activate(context) {
       view.onDidDispose(() => { clearTimeout(cursorTimer); cursorWatchers.forEach(watcher => watcher.dispose()); });
       const receive = view.webview.onDidReceiveMessage(async message => {
         try {
+          if(message.call==="inlineLogic"){if(logicReceive)await logicReceive(message.payload);return;}
           if (message.call === "source") {
             const args = message.args || [];
             const type = String(args[1] || "").toUpperCase();
@@ -865,7 +888,7 @@ function activate(context) {
             // error included: it is the analysis's, not the next debugger answer's.
             const request = JSON.parse(String((message.args || [])[0] || "{}"));
             let reply;
-            try { reply = { id: request.id, answer: request.open ? await sapCode.originOpen(request.open) : request.variables ? await sapCode.originVariables(request.variables) : await sapCode.originPoints(request) }; }
+            try { reply = { id: request.id, answer: request.open ? await sapCode.originOpen(request.open) : request.variables ? await sapCode.originVariables(request.variables) : await sapCode.originPoints(request,progress=>view.webview.postMessage({type:"originProgress",payload:{id:request.id,...progress}})) }; }
             catch (error) { reply = { id: request.id, error: error.message }; }
             await view.webview.postMessage({ type: "origin", payload: JSON.stringify(reply) });
             return;
@@ -893,6 +916,18 @@ function activate(context) {
           const args = message.args || [];
           const command = String(args[0] || "");
           const commandArgs = JSON.parse(String(args[1] || "{}"));
+          if(command==="logicTools"){
+            logicDisposers.splice(0).forEach(dispose=>dispose());logicReceive=null;
+            const embedded={title:"Logic",webview:{
+              set html(value){void view.webview.postMessage({type:"inlineLogicHtml",payload:value});},
+              postMessage:payload=>view.webview.postMessage({type:"inlineLogicReply",payload}),
+              onDidReceiveMessage:handler=>{logicReceive=handler;return {dispose(){logicReceive=null;}};}
+            },onDidDispose:handler=>{logicDisposers.push(handler);return {dispose(){}};}};
+            const editor=vscode.window.activeTextEditor,editorObject=editor&&sapCode.documentObject(editor.document);
+            const selected=editorObject?{name:editorObject.object_name,type:editorObject.object_type,cursorLine:editor.selection.active.line+1}:commandArgs;
+            await showTools({...selected,action:"scheme",boundObject:true},embedded);
+            await view.webview.postMessage({type:"result",payload:"{}"});return;
+          }
           const answer = await pinTo(dockedDebugSource && dockedDebugSource.system_name, () =>
             require("./tools-window").debugCommand(dbg, command, commandArgs,
               resource => fetch(context, resource)));
@@ -903,6 +938,7 @@ function activate(context) {
       });
       view.onDidDispose(() => {
         if (dockedDebugView === view) { dockedDebugView = null; }
+        logicDisposers.splice(0).forEach(dispose=>dispose());
         unwatch(); receive.dispose();
       });
       postDockedPicture();
@@ -937,6 +973,7 @@ function activate(context) {
     catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
   };
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", showTools));
+  require('./tools-context').register(vscode, context, sapCode, showTools);
   context.subscriptions.push(
     vscode.commands.registerCommand("vertex.openVisualDebug", openVisualDebug),
     vscode.commands.registerCommand("vertex.debugInto", () => stepFromSource("into")),
