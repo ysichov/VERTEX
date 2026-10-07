@@ -283,7 +283,7 @@ g.node.code-selected rect,g.node.code-selected polygon,g.node.code-selected path
     <label class="depth" id="depthbox" title="How far the calls are followed">Depth
       <input id="depth" type="number" min="1" max="99" step="1" value="2"></label>
     <span class="seg" id="dir"><button data-dir="TB" class="on" title="Lay the diagram out down the page">&#8595; Top-down</button><button data-dir="LR" title="Lay the diagram out across the page">&#8594; Left-right</button></span>
-    <button id="logic-only" class="vertex-toggle on" aria-pressed="true" title="Show branches, loops and procedure calls; hide ordinary operations">Logic only</button>
+    <button id="logic-only" hidden class="vertex-toggle on" aria-pressed="true" title="Show branches, loops and procedure calls; hide ordinary operations">Logic only</button>
     <label class="diagram-zoom" title="Diagram scale"><input id="zoom" type="range" min="10" max="100" step="1" value="100" aria-label="Diagram scale"><output id="zoom-value">100%</output></label>
     <button id="fit" title="Scale the whole diagram into the pane">Fit</button>
     <button id="lens" aria-pressed="false"></button>
@@ -483,6 +483,10 @@ function load() {
 function loadClassDiagram() {
   if (!loadedObject) { return; }
   status("reading class definition ...");
+  // Said where the picture will be: a package can take a while, and an empty pane says nothing.
+  hint(String(loadedType).toUpperCase().indexOf("DEVC") === 0
+    ? "Reading the classes and interfaces of package " + loadedObject + " ..."
+    : "Reading the class definition of " + loadedObject + " ...");
   waiting = "class";
   sdeClass(loadedObject, loadedType);
 }
@@ -647,6 +651,7 @@ function drawClass(raw) {
   if (raw.indexOf("ERROR:") === 0) { status(""); failed(raw.substring(6)); return; }
   if (!mermaidLoaded) {
     pendingClass = raw;
+    hint("Loading the diagram library ...");
     waiting = "asset";
     sdeAsset("mermaid");
     return;
@@ -685,7 +690,9 @@ function drawClass(raw) {
       var arrow={inheritance:"--|>",implementation:"..|>",dependency:"..>"}[e.kind];
       if(arrow)lines.push(node(e.source)+" "+arrow+" "+node(e.target));
     });
-    lastMermaid=lines.join("\n"); lastCaption=nodes.length+" classes / interfaces"; refit=true; draw();
+    lastMermaid=lines.join("\n"); lastCaption=nodes.length+" classes / interfaces"; refit=true; hint("Drawing " + lastCaption + " ...");
+    // Mermaid works without yielding: the note is painted first, then the drawing starts.
+    requestAnimationFrame(function () { setTimeout(draw, 0); });
   } catch (e) { failed("Invalid class definition: " + e.message); }
 }
 
@@ -1867,6 +1874,7 @@ function askAbout(then) {
   afterAbout = then;
   waiting = "about";
   status("checking what this system has ...");
+  hint("Checking what this SAP system offers ...");
   sdeAbout();
 }
 

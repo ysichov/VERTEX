@@ -72,11 +72,22 @@ function register(vscode, context, active, ask, systems, toolContext) {
           await view.webview.postMessage({ cleared: true });
           return;
         }
+        if (message.action === "copyAnswer") {
+          // The host's clipboard: a webview's own clipboard access depends on permissions VS Code may not give it.
+          try { await vscode.env.clipboard.writeText(String(message.text || "")); await view.webview.postMessage({ copied: true }); }
+          catch (error) { await view.webview.postMessage({ copied: false, error: error.message }); }
+          return;
+        }
+        if (message.action === "openObject") {
+          try { await ask.openObject({ object_type: String(message.object_type), object_name: String(message.object_name) }); }
+          catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
+          return;
+        }
         if (message.action === "chat") {
           await view.webview.postMessage({ chat: "You: " + message.text });
           try {
             const reply = await ask(message.text, {state: (await toolContext()) || {}});
-            await view.webview.postMessage({ chat: "VERTEX: " + reply.answer, usage: usageLine(reply) });
+            await view.webview.postMessage({ chat: "VERTEX:\n" + reply.answer, usage: usageLine(reply), choices: reply.choices || [] });
             // The answer names a VERTEX function to run - a table's data, a
             // class's diff - and the panel has no view of its own for it, so
             // a Tools window opens on it, on the panel's system.
@@ -134,6 +145,7 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages { flex: 1 1 auto; min-height: 80px; overflow-y: auto; white-space: pre-wrap; }
 /* The question box and VERTEX Tools stay at the bottom; the answers scroll. */
 .dock { flex: none; }
+#messages .copy-answer { margin: -0.6em 0 1em; padding: 2px 8px; font-size: 11px; }
 #messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; }
 #messages p.you { color: var(--vscode-charts-blue); }
 #messages .vertex { color: var(--vscode-charts-green); white-space: normal; line-height: 1.5; margin: 1em 0; }
@@ -205,7 +217,12 @@ document.getElementById('prompt').addEventListener('keydown', event => {
     document.getElementById('chat').requestSubmit();
   }
 });
+let lastCopy = null;
 window.addEventListener('message', event => {
+  if (event.data && typeof event.data.copied === 'boolean' && lastCopy) {
+    lastCopy.textContent = event.data.copied ? 'Copied' : 'Copy failed: ' + event.data.error;
+    const button = lastCopy; setTimeout(() => { button.textContent = 'Copy'; }, 2000);
+  }
   if (event.data && typeof event.data.prompt === 'string') {
     document.getElementById('prompt').value = event.data.prompt;
     document.getElementById('prompt').focus();
@@ -252,6 +269,15 @@ window.addEventListener('message', event => {
     const item = document.createElement(mine ? 'p' : 'div');
     item.className = mine ? 'you' : 'vertex';
     if (mine) { item.textContent = event.data.chat; } else { markdown(event.data.chat, item); }
+    // Each found object is a link: a click opens it, as a single match is opened.
+    if (!mine) { links(item, event.data.choices || []); }
+    let copy = null;
+    if (!mine) {
+      copy = document.createElement('button');
+      copy.className = 'secondary copy-answer'; copy.textContent = 'Copy'; copy.title = 'Copy this answer to the clipboard';
+      const text = event.data.chat.replace(/^VERTEX:\\s*/, '');
+      copy.addEventListener('click', () => { lastCopy = copy; api.postMessage({ action: 'copyAnswer', text }); });
+    }
     document.getElementById('messages').appendChild(item);
     if (event.data.usage) {
       const line = document.createElement('p');
@@ -259,10 +285,23 @@ window.addEventListener('message', event => {
       line.textContent = event.data.usage;
       document.getElementById('messages').appendChild(line);
     }
+    if (copy) document.getElementById('messages').appendChild(copy);
     const box = document.getElementById('messages');
     box.scrollTop = box.scrollHeight;
   }
 });
+function links(item, choices) {
+  item.querySelectorAll('li').forEach(li => {
+    const name = li.querySelector('strong'), type = li.firstChild && li.firstChild.nodeType === 3 ? li.firstChild.textContent.trim() : '';
+    const object = name && choices.find(choice => choice.object_name === name.textContent && choice.object_type === type);
+    if (!object) return;
+    const link = document.createElement('a');
+    link.href = '#'; link.className = 'link'; link.title = 'Open ' + object.object_type + ' ' + object.object_name;
+    link.appendChild(name.cloneNode(true));
+    link.addEventListener('click', event => { event.preventDefault(); api.postMessage({ action: 'openObject', object_type: object.object_type, object_name: object.object_name }); });
+    name.replaceWith(link);
+  });
+}
 // Markdown built as DOM nodes with textContent only, so an answer cannot inject markup.
 function inline(text, parent) {
   text.split(/(\\x60[^\\x60]+\\x60|\\*\\*[^*]+\\*\\*|\\*[^*\\s][^*]*\\*)/).forEach(token => {

@@ -56,10 +56,6 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
     " In the order the routes have always been attached in.
     rt_service = VALUE #(
       ( name = `table`    template = `/vertex/table/{name}`    handler = 'ZCL_VX_ADT_RES_TABLE' )
-      ( name = `metrics`  template = `/vertex/metrics/{name}`  handler = 'ZCL_VX_ADT_RES_METRICS' )
-      ( name = `class`    template = `/vertex/class/{name}`    handler = 'ZCL_VX_ADT_RES_CLASS' )
-      ( name = `package`  template = `/vertex/package/{name}`  handler = 'ZCL_VX_ADT_RES_PACKAGE' )
-      ( name = `flow`     template = `/vertex/flow/{name}`     handler = 'ZCL_VX_ADT_RES_FLOW' )
       ( name = `versions` template = `/vertex/versions/{name}` handler = 'ZCL_VX_ADT_RES_VERSIONS' )
       ( name = `join`     template = `/vertex/join/{name}`     handler = 'ZCL_VX_ADT_RES_JOIN' )
       ( name = `review`   template = `/vertex/review/{name}`   handler = 'ZCL_VX_ADT_RES_REVIEW' )
@@ -88,7 +84,7 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
 
     " Nothing outside this repository is read any more. The Simple Data Explorer,
     " ACE and AVE cores were all carried in as ZCL_VX_*, so a window missing the
-    " table, the join, the flow, the metrics, the versions or the review is
+    " table, the join, the versions or the review is
     " missing a VERTEX class rather than an outside tool - which IS_ACTIVE on the
     " handler already says, without a backend to blame. The list stays in the
     " answer, empty, because a window older than this reads it.

@@ -214,6 +214,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
     } finally { running = false; }
   };
   ask.newConversation = () => { conversation = []; };
+  // A name in a list of found objects, clicked: opened as a single match is.
+  ask.openObject = object => codeTools.execute("open_sap_object", { object_type: object.object_type, object_name: object.object_name });
   ask.state = () => {
     const config = vscode.workspace.getConfiguration("vertex.ai");
     const provider = config.get("provider", "codex-subscription");

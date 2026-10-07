@@ -3,6 +3,12 @@
 ## 2026-10-07 — VS Code 0.8.4: FLOW tree in BSE
 
 - The FLOW tree in Value origin: switching between Full and BSE keeps the branches open as Expand all / Collapse all and Depth set them (BSE used to show everything collapsed). The tree's root keeps Expand all and Depth even when nothing is left under it, so the depth slider no longer disappears. Depth for calls starts at 1.
+- Chat: when a bare object name finds several objects, each name in the list is a link that opens the object, as a single match is opened.
+- Tools: the Logic only switch no longer shows in UML or Metrics while the window is still loading; it belongs to the Logic diagram only.
+- Tools UML: while a diagram loads, the diagram area says what is happening - checking the system, reading the class or the package's classes, loading the diagram library, drawing.
+- Chat: every answer has a Copy button under it; it copies the answer's Markdown through VS Code's clipboard and says Copied or why it failed.
+- Chat: "VERTEX:" stands on its own line, so an answer that starts with a heading or a list shows it as one.
+- ABAP: the ACE core (`ZCL_VX_ACE_*`, `ZIF_VX_ACE_*`, `Z_VX_ACE_SCHEME_TEST`) and the hub routes that served it - `metrics`, `class`, `package`, `flow` (`ZCL_VX_ADT_RES_METRICS`, `_CLASS`, `_PACKAGE`, `_FLOW`) - are removed from the repository. VS Code and Eclipse compute UML, metrics, Calls, Logic, FLOW and the statement map themselves from ADT source with abaplint. The other routes stay: table, join, versions, review, prepare, requests, about. Installs older than the move to client-side analysis still ask for the removed routes.
 
 ## 2026-10-07 — VS Code 0.8.3: Predict past chains and loop tails, refused breakpoints
 

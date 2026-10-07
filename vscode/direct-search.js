@@ -64,7 +64,7 @@ async function answer(text, { search, open, system, choices = () => {} }) {
     + (o.description ? " — " + o.description : "") + (o.package ? " (" + o.package + ")" : ""));
   return (exact.length > 1 ? "Several objects are named **" + query + "**" : "Found for **" + query + "**") + where + ":\n\n"
     + list.join("\n") + (found.truncated ? "\n\nMore matches exist; narrow the pattern." : "")
-    + "\n\nAsk to open one of them by name and type.";
+    + "\n\nClick a name to open it.";
 }
 
 module.exports = { isObjectName, objectRequest, answer };
