@@ -803,6 +803,15 @@ function activate(context) {
   const sapCode = require("./code-workbench").register(vscode, context, { active, password, pin: pinTo,
     pinned: () => pinnedSystem.getStore() || "", systems });
   frontendAnalysisRequest = sapCode.frontendRequest;
+  // A first start with no system: offered once per start, never imported without the reader's click.
+  const listed = vscode.workspace.getConfiguration("vertex").get("systems");
+  if (Array.isArray(listed) && !listed.some(function (s) { return s && s.name; })) {
+    vscode.window.showInformationMessage("VERTEX: no SAP system is configured. Import them from SAP Logon and Eclipse?",
+      "Import SAP Systems", "Settings").then(function (answer) {
+        if (answer === "Import SAP Systems") { vscode.commands.executeCommand("vertex.importSystems"); }
+        if (answer === "Settings") { vscode.commands.executeCommand("workbench.action.openSettings", "vertex.systems"); }
+      });
+  }
   // The panel's chat debugs too: its assistant gets the debugger tools beside
   // the source tools, on the same /chat address, with nothing to register.
   // Visual Debug in the Tools window draws this same debugger.

@@ -124,7 +124,7 @@ Eclipse browser bundler: generated module imports now use a distinct loader name
 
 ### Shared with VS Code 0.8.5
 
-Logic diagram: RETURN, LEAVE PROGRAM and an EXIT outside a loop end their branch and are drawn in the theme's error colour, instead of a line across the whole diagram to ENDMETHOD.
+The Logic diagram is the shared page: RETURN, LEAVE PROGRAM and an EXIT outside a loop end their branch and are drawn in the theme's error colour, instead of a line across the whole diagram to ENDMETHOD. In build 0.8.1.20261007163543. SAP system setup is VS Code only: Eclipse takes its systems from the ABAP project.
 
 ### Shared with VS Code 0.8.4 (Value origin page)
 

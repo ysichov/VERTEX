@@ -69,10 +69,10 @@ Preferences: Open User Settings (JSON)**, and the entries below go into it.
 Workspace settings (`.vscode/settings.json`) work too and override the user's.
 
 The quickest way is **VERTEX: Import SAP Systems** (also a link under `vertex.systems` in Settings). It takes each
-system's host and instance from SAP Logon, the client and user from an Eclipse ADT workspace you point it at, and
+system's host and instance from SAP Logon (for a logon group, its message server's host), the client and user from an Eclipse ADT workspace - the recent workspaces of the Eclipse installations it finds are offered, another folder can be chosen - and
 looks for ADT on the usual ports - 443NN and 80NN for the instance, then 44300, 8000, 50001, 50000, 443, 80, 8443,
 8080 - offering only addresses that answer. **VERTEX: Test SAP Systems** then logs on to each configured system and
-says what is wrong, if anything; the password it asks for is kept in the OS credential store, never in settings.
+says what is wrong, if anything; the password it asks for is kept in the OS credential store, never in settings. The import also checks where the debugger can open WebGUI (`/sap/bc/gui/sap/its/webgui`): on the system's `url` it needs nothing; served on another address that answered - say `url` on HTTP 8000, WebGUI on HTTPS 44300 - or behind a redirect to a host this computer resolves, it writes that as `webgui`; found nowhere, it says so, and `webgui` is set by hand.
 By hand, the entries look like this; the HTTP(S) port is in SMICM > Goto > Services.
 
 ```json
@@ -967,13 +967,13 @@ own folder. The Eclipse plugin does not use it: it works through the platform an
 
 MIT. See [the project](https://github.com/ysichov/VERTEX).
 
-## VS Code 0.8.5: exits in the Logic diagram
+## VS Code 0.8.5: SAP system setup, exits in Logic, long sources
 
-- Logic diagram: RETURN, LEAVE PROGRAM and an EXIT outside a loop end their branch and are drawn in the theme's error colour, instead of a line across the whole diagram to ENDMETHOD.
-- SAP's analysis of a source - hover, Go to Definition, F1 - is refused only above 50,000 lines (was 20,000). F1 works above that too: SAP is sent only the statement at the cursor (a whole chain, across its lines), cut out with abaplint.
-- F1 and Go to Type Definition wait for a hover's SAP analysis that is still running, as Go to Definition does, instead of failing with "SAP is still analysing the previous request".
-- Chat: a question asked while a Tools window shows an object of a review now carries that object's changes - the changed lines with three around them and each review block marked with its number, author and verdict - as it already did for a version diff.
-- Setting up systems: VERTEX: Import SAP Systems fills vertex.systems from SAP Logon (host, instance) and an Eclipse ADT workspace (client, user), and finds the ADT address by trying the usual ports; VERTEX: Test SAP Systems logs on to each system and says what is wrong. Both are links under vertex.systems in Settings.
+- **SAP system setup.** **VERTEX: Import SAP Systems** fills `vertex.systems` from what the machine already has: each system's host and instance from SAP Logon (a logon group through its message server's host), the client and user from an Eclipse ADT workspace - the recent workspaces of the Eclipse installations found on the machine are offered - and the ADT address found by trying the usual ports (443NN and 80NN for the instance, then 44300, 8000, 50001, 50000, 443, 80, 8443, 8080). Only addresses that answer are offered, and nothing is written before the reader picks. **VERTEX: Test SAP Systems** logs on to each system and says what is wrong; the password goes to the OS credential store, never to settings. The import also checks where the debugger can open WebGUI (`/sap/bc/gui/sap/its/webgui`): on the system's `url` it needs nothing; served on another address that answered - say `url` on HTTP 8000, WebGUI on HTTPS 44300 - or behind a redirect to a host this computer resolves, it writes that as `webgui`; found nowhere, it says so, and `webgui` is set by hand. Both are links under `vertex.systems` in Settings, and a start with no system configured offers the import.
+- **Logic diagram.** RETURN, LEAVE PROGRAM and an EXIT outside a loop end their branch and are drawn in the theme's error colour, instead of a line across the whole diagram to ENDMETHOD.
+- **Long sources.** SAP's analysis of a source - hover, Go to Definition, F1 - is refused only above 50,000 lines (was 20,000). Above that F1 still works: SAP is sent only the statement at the cursor (a whole chain, across its lines), cut out with abaplint.
+- **F1 and Go to Type Definition** wait for a hover's SAP analysis that is still running, as Go to Definition does, instead of failing with "SAP is still analysing the previous request".
+- **Chat and reviews.** A question asked while a Tools window shows an object of a review carries that object's changes - the changed lines with three around them, each review block marked with its number, author and verdict - as it already did for a version diff.
 
 ## VS Code 0.8.4: FLOW tree in BSE
 

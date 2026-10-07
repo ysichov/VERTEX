@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.8.5",
+  "version": "0.8.6",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -439,6 +439,76 @@
           "submenu": "vertex.tools.context",
           "group": "navigation@12",
           "when": "webviewSection == vertex-object"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "vertex.tools.uml",
+          "when": "false"
+        },
+        {
+          "command": "vertex.tools.metrics",
+          "when": "false"
+        },
+        {
+          "command": "vertex.tools.scheme",
+          "when": "false"
+        },
+        {
+          "command": "vertex.tools.calls",
+          "when": "false"
+        },
+        {
+          "command": "vertex.tools.diff",
+          "when": "false"
+        },
+        {
+          "command": "vertex.navigateBack",
+          "when": "false"
+        },
+        {
+          "command": "vertex.debugInto",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap"
+        },
+        {
+          "command": "vertex.debugOver",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap"
+        },
+        {
+          "command": "vertex.debugOut",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap"
+        },
+        {
+          "command": "vertex.debugContinue",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap"
+        },
+        {
+          "command": "vertex.saveAndActivate",
+          "when": "resourceScheme == vertex-sap"
+        },
+        {
+          "command": "vertex.reviewCodeChanges",
+          "when": "resourceScheme == vertex-sap"
+        },
+        {
+          "command": "vertex.runUnitTests",
+          "when": "resourceScheme == vertex-sap"
+        },
+        {
+          "command": "vertex.runAtc",
+          "when": "resourceScheme == vertex-sap"
+        },
+        {
+          "command": "vertex.goToClassMethod",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap"
+        },
+        {
+          "command": "vertex.abapDocumentation",
+          "when": "editorLangId == abap && (resourceScheme == vertex-sap || resourceScheme == vertex-source)"
+        },
+        {
+          "command": "vertex.valueOrigin",
+          "when": "editorLangId == abap"
         }
       ]
     },
