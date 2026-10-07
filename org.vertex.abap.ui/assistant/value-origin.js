@@ -1811,6 +1811,18 @@ function flowGraphBuilder() {
   }
   throw new Error('vertex-flow-graph.js was not found.');
 }
+// The flow builder and the ABAP control rules it needs, for the page to build a reading when it is asked for: from the
+// packaged copy or the repository's. A host (Eclipse) hands the page its own instead.
+const resourceTexts = new Map();
+function resourceScript(name) {
+  if (resourceTexts.has(name)) { return resourceTexts.get(name); }
+  const fs = require('fs'), path = require('path');
+  const places = [path.join(__dirname, 'resources', name), path.join(__dirname, '..', 'org.vertex.abap.ui', 'resources', name)];
+  for (const file of places) {
+    try { const text = fs.readFileSync(file, 'utf8'); resourceTexts.set(name, text); return text; } catch (error) { /* the next one */ }
+  }
+  throw new Error(name + ' was not found in ' + places.join(' or ') + '.');
+}
 // The magnifier every diagram has, loaded before the flow that uses it - the same way, by address or inline.
 let lensScriptText = null;
 function lensScript() {
@@ -2013,20 +2025,19 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   // analysis of the chosen value, there the analysis from a breakpoint.
   if (!graph.codeFlow) throw new Error('Value origin: the analysis carries no code flow (graph.codeFlow) to draw.');
   // One source, four readings of it, as Visual Debug reads its record: classes, routines, the logic, every statement.
+  // Only the reading shown first is built here; the page builds another from the same input when it is asked for.
   const builder = (host && host.flowGraph) || flowGraphBuilder(), flowInput = { rows: graph.codeFlow.rows, sites: graph.codeFlow.sites,
     point: { url: '', line: 0 }, name: graph.selectedProgram || 'PROGRAM' };
-  const flowReadings = [['classes', 'Classes'], ['methods', 'Methods'], ['logic', 'Logic'], ['steps', 'Statements']].map(([mode, label]) => {
-    const read = builder.build(flowInput, mode);
-    return { mode, label, bseFlow: read.bseFlow, maxStack: read.maxStack };
-  });
-  const codeFlow = flowReadings.find(reading => reading.mode === 'methods');
+  const codeFlow = builder.build(flowInput, 'methods');
+  const flowReadings = [['classes', 'Classes'], ['methods', 'Methods'], ['logic', 'Logic'], ['steps', 'Statements']]
+    .map(([mode, label]) => mode === 'methods' ? { mode, label, bseFlow: codeFlow.bseFlow, maxStack: codeFlow.maxStack } : { mode, label });
   const originTitle = (graph.selectedVariable || '?') + ' Origin — Backward Symbolic Execution';
   // Everything the drawing needs, in one place: the shared flow script is a
   // file, not a template, so what the page used to interpolate into it - the
   // title, the BSE caption and tree, the two depth maxima - travels here.
   const mermaidGraph = { nodes: mermaidNodes, edges: mermaidEdges, formula: formulaGraph, bseFlow: codeFlow.bseFlow,
     originTitle, maxStack: Math.max(maxStack, codeFlow.maxStack), maxLevel,
-    flowReadings: { active: 'methods', baseStack: maxStack, items: flowReadings },
+    flowReadings: { active: 'methods', baseStack: maxStack, items: flowReadings, input: flowInput },
     bseFlowHtml: `<p class="edge">BSE FLOW${graph.flowBounds ? ` — breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''}</p>${bseFlowTree || '<p>No BSE flow points in the selected range.</p>'}` };
   graph.drawn = mermaidGraph;
   graph.derived = derivation;
@@ -2057,7 +2068,7 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   ${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
   <details class="origin-log debug-only"><summary>Analysis log — ${escape(graph.analysisEngine || 'ACE')}</summary><button id="copy-flow" class="location">Copy log</button><pre class="analysis-log">${escape(diagnosticLog)}</pre><div class="analysis-log">${fullLog || escape(analysisLog)}</div><p class="edge">Copy log includes FLOW, Formula and Expression structures.</p></details>
   ${scenarioControls ? `<details class="scenario-panel"><summary>Simulate selection screen</summary>${scenarioControls}</details>` : ''}<div id="bse-workspace" class="bse-workspace"><template data-flow-pane="tree"><p class="edge">Execution flow${graph.flowBounds ? ` between breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''} — changes and parameter transfers to ${escape(graph.selectedVariable || '?')}</p>${aceExecution || '<p>Execution flow was not produced.</p>'}</template><template data-flow-pane="formula">${formulaView}</template><template data-flow-pane="expression">${expressionPane(derivation)}</template></div>
-  <script id="mermaid-data" type="application/json">${JSON.stringify(mermaidGraph).replaceAll('<', '\\u003c')}</script>${scripts.lens ? inlineScript(nonce, scripts.lens) : lensSource ? `<script nonce="${nonce}" src="${lensSource}"></script>` : `<script nonce="${nonce}">${lensScript()}</script>`}${scripts.flow ? inlineScript(nonce, scripts.flow) : inlineScript(nonce, flowScript())}<script nonce="${nonce}">if(!window.vertexFlow){const box=document.getElementById('bse-workspace');if(box)box.innerHTML='<p class="warning">The flow view did not load${flowSource ? ` from ${flowSource}` : ''}: the page has its data but nothing to draw it with.</p>';}</script>
+  <script id="mermaid-data" type="application/json">${JSON.stringify(mermaidGraph).replaceAll('<', '\\u003c')}</script>${scripts.lens ? inlineScript(nonce, scripts.lens) : lensSource ? `<script nonce="${nonce}" src="${lensSource}"></script>` : `<script nonce="${nonce}">${lensScript()}</script>`}${host ? '' : inlineScript(nonce, resourceScript('vertex-abap-control.js')) + inlineScript(nonce, resourceScript('vertex-flow-graph.js'))}${scripts.flow ? inlineScript(nonce, scripts.flow) : inlineScript(nonce, flowScript())}<script nonce="${nonce}">if(!window.vertexFlow){const box=document.getElementById('bse-workspace');if(box)box.innerHTML='<p class="warning">The flow view did not load${flowSource ? ` from ${flowSource}` : ''}: the page has its data but nothing to draw it with.</p>';}</script>
   <script nonce="${nonce}">(()=>{const state=${JSON.stringify(graph.restore || {}).replaceAll('<', '\\u003c')};if(!state.choice)return;const panel=document.querySelector('.scenario-panel');if(panel)panel.open=true;const selected=document.querySelector('.scenario input[value="'+state.choice+'"]');if(selected){selected.checked=true;selected.dispatchEvent(new Event('change',{bubbles:true}));}if(state.mode){document.querySelector('.bse-view-toggle [data-mode="'+state.mode+'"]').click();}if(state.view){document.querySelector('.bse-view-toggle [data-view="'+state.view+'"]').click();}})();</script>
   <details class="debug-only"><summary>BSE dependency tree (technical)</summary>${dependencyTree}</details><details class="debug-only"><summary>${escape(graph.analysisEngine || 'ACE')} source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact source objects loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No sources were loaded.')}</pre></details>
   <details class="debug-only"><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>
@@ -2197,6 +2208,8 @@ function register(vscode, context, getSources, options = {}) {
         const opened = await loaded.openSource(source, { ...(n || {}), ...(marked && marked[2] ? { location: marked[2] } : {}), line: requestedLine });
         const document = opened.document, line = navigationLine(opened, requestedLine);
         const at = new vscode.Position(Math.min(document.lineCount - 1, line - 1), 0);
+        // The place left in that column goes into VERTEX's navigation history, so Back returns to it.
+        if (options.remember && !message.openBeside) { const leaving = (vscode.window.visibleTextEditors || []).find(editor => editor.viewColumn === originViewColumn); if (leaving) { options.remember(leaving); } }
         await vscode.commands.executeCommand('vscode.open', document.uri, { viewColumn: message.openBeside ? vscode.ViewColumn.Beside : originViewColumn,
           selection: new vscode.Range(at, at), preview: !message.openBeside });
       });

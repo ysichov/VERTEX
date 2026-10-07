@@ -2,7 +2,7 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 function host() {
-  const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], selectionListeners = [], symbols = [], breakpointListeners = [];
+  const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], typeDefinitions = [], selectionListeners = [], symbols = [], breakpointListeners = [];
   const nativePoints = [], removedNative = [];
   const unitRuns = [], testRuns = [], testItems = new Map();
   let unitResult = [];
@@ -75,7 +75,7 @@ function host() {
       async openTextDocument(value) {
         const content = value.scheme === 'vertex-sap' ? (await fileProvider.readFile(value)).toString() : value.content || '';
         const doc = { uri: value.content === undefined ? value : vscode.Uri.parse("untitled:" + documents.length),
-          text: content, saved: content, getText() { return this.text; }, version: 1, isClosed: false,
+          text: content, saved: content, getText() { return this.text; }, positionAt(offset) { const before = this.text.slice(0, offset).split("\n"); return { line: before.length - 1, character: before[before.length - 1].length }; }, version: 1, isClosed: false,
           get isDirty() { return this.text !== this.saved; },
           async save() { const text = this.text; await fileProvider.writeFile(this.uri, Buffer.from(text)); this.saved = text; return true; } };
         documents.push(doc); return doc;
@@ -84,6 +84,7 @@ function host() {
     languages: { setTextDocumentLanguage: async doc => doc,
       registerDefinitionProvider: (selector, provider) => { definitions.push({ selector, provider }); return { dispose() {} }; },
       registerHoverProvider: (selector, provider) => { hovers.push({ selector, provider }); return { dispose() {} }; },
+      registerTypeDefinitionProvider: (selector, provider) => { typeDefinitions.push({ selector, provider }); return { dispose() {} }; },
       createDiagnosticCollection: () => ({ set: (uri, items) => problems.set(uri.toString(), items), delete: uri => problems.delete(uri.toString()), dispose() {} }),
       registerReferenceProvider: (selector, provider) => { references.push(provider); return { dispose() {} }; },
       registerDocumentSymbolProvider: (selector, provider) => { symbols.push({ selector, provider }); return { dispose() {} }; } },
@@ -118,7 +119,7 @@ function host() {
     active: () => ({ system: { name: selectedSystem, url: "https://sap.invalid", user: "USER", client: "100" } }),
     password: async () => "test-secret"
   });
-  return { tools, commands, usedAsks, docAsks, references, warnings, setUsedResult: value => { usedResult = value; }, setActive: editor => { vscode.window.activeTextEditor = editor; }, atcRuns, problems, infos, setAtcResult: value => { atcResult = value; }, unitRuns, testRuns, setUnitResult: value => { unitResult = value; }, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, selectionListeners, symbols,
+  return { tools, commands, usedAsks, docAsks, references, warnings, setUsedResult: value => { usedResult = value; }, setActive: editor => { vscode.window.activeTextEditor = editor; }, atcRuns, problems, infos, setAtcResult: value => { atcResult = value; }, unitRuns, testRuns, setUnitResult: value => { unitResult = value; }, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, typeDefinitions, selectionListeners, symbols,
     switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; },
     fireBreakpoints: change => breakpointListeners.forEach(fn => fn(change)), nativePoints, removedNative };
 }
@@ -780,4 +781,45 @@ test("a point removed in the debugger's window is removed from the editor too, o
   list = [];
   watchers.forEach(fn => fn());
   assert.deepEqual(h.removedNative, [point]);
+});
+test("a name declared inline is described by SAP's element info: its statement, its type and its components", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  const lines = h.documents[0].getText().split("\n");
+  lines[9] = "    DATA(ls_result) = run( ).";
+  const text = lines.join("\n");
+  h.documents[0].getText = () => text;
+  h.documents[0].lineAt = line => ({ text: lines[typeof line === "number" ? line : line.line] });
+  h.api.elementInfo = async () => ({ name: "LS_RESULT", type: "", doc: "", components: [] });
+  // On the declaration itself SAP answers navigation with its info message.
+  h.api.definition = async () => { throw new Error("Definition location found; where-used list may be possible"); };
+  h.api.elementDetails = async () => ({ name: "LS_RESULT", type: "PROG/PLV", properties: [{ key: "visibility", value: "local" }, { key: "abapType", value: "TYPE ZIF_CALC_TYPES=>TY_CONTEXT" }],
+    parts: [{ name: "AMOUNT", type: "", properties: [{ key: "type", value: "DECFLOAT34" }], parts: [] }] });
+  const hover = await h.hovers[0].provider.provideHover(h.documents[0], { line: 9, character: 10 });
+  assert.equal(hover.contents[0].value, ["DATA(ls_result) = run( )", "", "\" TYPE ZIF_CALC_TYPES=>TY_CONTEXT", "\"   AMOUNT  type DECFLOAT34"].join("\n"));
+  h.api.elementDetails = async () => ({ name: "LS_RESULT", type: "", properties: [], parts: [] });
+  lines[9] = "    DATA(ls_other) = run( ).";
+  const text2 = lines.join("\n");
+  h.documents[0].getText = () => text2;
+  const bare = await h.hovers[0].provider.provideHover(h.documents[0], { line: 9, character: 10 });
+  assert.match(bare.contents[0].value, /SAP's element info gives no type for this inline declaration/);
+});
+test("Go to Type Definition opens the TYPES statement of the type SAP's element info names", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  const read = h.api.execute;
+  h.api.execute = async (tool, args) => tool === "read_sap_object" && args.object_type === "INTF"
+    ? { object_name: args.object_name, object_type: "INTF", object_url: "/sap/bc/adt/oo/interfaces/zif_calc_types", source_url: "/sap/bc/adt/oo/interfaces/zif_calc_types/source/main", include: "main", revision: "r",
+      source: "INTERFACE zif_calc_types PUBLIC.\n  TYPES: BEGIN OF ty_inner,\n           ty_context TYPE i,\n         END OF ty_inner,\n         BEGIN OF ty_context,\n           amount TYPE decfloat34,\n         END OF ty_context.\nENDINTERFACE." }
+    : read(tool, args);
+  h.api.elementInfo = async () => null;
+  h.api.elementDetails = async () => ({ name: "LV_COUNT", type: "PROG/PD", properties: [{ key: "abapType", value: "TYPE ZIF_CALC_TYPES=>TY_CONTEXT" }], parts: [] });
+  const target = await h.typeDefinitions[0].provider.provideTypeDefinition(h.documents[0], { line: 9, character: 7 });
+  assert.ok(target, String(h.warnings.at(-1)));
+  // Line 5 (index 4) is "         BEGIN OF ty_context," - not the component of the same name inside ty_inner.
+  assert.equal(target.range.start.line, 4);
+  assert.match(String(target.uri), /ZIF_CALC_TYPES/);
+  h.api.elementDetails = async () => ({ name: "LV_COUNT", type: "PROG/PD", properties: [{ key: "abapType", value: "TYPE I" }], parts: [] });
+  assert.equal(await h.typeDefinitions[0].provider.provideTypeDefinition(h.documents[0], { line: 9, character: 7 }), undefined);
+  assert.match(h.warnings.at(-1), /dictionary or built-in type/);
 });

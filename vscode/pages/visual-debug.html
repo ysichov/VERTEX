@@ -1666,20 +1666,15 @@ function watchScope(){
 }
 function joinToolbars(){
   var row=document.querySelector("#bse-workspace .bse-view-toggle");
-  if(!row||row.querySelector("#fclasses"))return;
-  var mine=document.createElement("span");mine.className="vertex-segment-toggle";mine.setAttribute("role","group");
-  mine.setAttribute("aria-label","Reading");
-  ["fclasses","fmethods"].forEach(function(id){mine.appendChild($(id));});
-  row.insertBefore(mine,row.firstChild);
-  var logic=$("flogic");logic.className="vertex-toggle";logic.textContent="Logic";logic.setAttribute("aria-pressed",String(flowDiagram==="logic"));logic.title="Show logic of the selected method";
-  mine.after(logic);$("fsteps").hidden=true;
+  if(!row||row.querySelector("#ffull"))return;
+  // The readings (Classes, Methods, Logic, Statements) are the shared view's own switch, as in Value origin; the
+  // window's earlier Classes / Methods buttons and its separate Logic button stay out of the row.
   var end=document.createElement("span");end.className="grow";row.appendChild(end);
   row.appendChild($("ffull"));row.appendChild($("fclose"));
   $("flowbar").hidden=true;
 }
 function openRecordFlow(){
   joinToolbars();
-  $("flogic").classList.toggle("on",flowDiagram==="logic");$("flogic").classList.remove("active");$("flogic").setAttribute("aria-pressed",String(flowDiagram==="logic"));
   watchScope();
   drawChosen();
   // Reading switches retain the shared depth and expansion state.
@@ -1951,7 +1946,11 @@ function showFlow(){
   flowBusy=false;
   return loadMermaid().then(function(){
     mermaid.initialize({startOnLoad:false,securityLevel:"strict",theme:darkPane()?"dark":"default",flowchart:{htmlLabels:false,useMaxWidth:false},maxEdges:100000});
-    var data=(flow.timeline||[]).length?sharedFlowGraph(flowMode):staticFlowGraph(flowMode);
+    // The shown reading of the one record (or of the analysis) is built now; the shared view asks for another one
+    // through vertexFlowReading when it is switched to, and keeps it until the record is drawn anew.
+    var labels={classes:"Classes",methods:"Methods",logic:"Logic",steps:"Statements"};
+    var data=buildReading(flowMode);
+    data.flowReadings={active:flowMode,baseStack:0,items:["classes","methods","logic","steps"].map(function(m){return m===flowMode?{mode:m,label:labels[m],bseFlow:data.bseFlow,maxStack:data.maxStack}:{mode:m,label:labels[m]};})};
     // Built once, redrawn with a new graph afterwards: the view attaches its
     // listeners when it is built, and a record that has grown - or another
     // reading of it - is new data, not a new view.
@@ -1970,6 +1969,13 @@ function showFlow(){
 $("ffull").onclick=function(){$("flowpane").classList.toggle("full");};
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&$("flowpane").classList.contains("full")){$("flowpane").classList.remove("full");fitFlow();}});
 // With no flow recorded - a run of plain steps - there is nothing to draw: the log opens.
+/* The shared view switched its reading: the window follows it, so the current step is marked in the reading shown. */
+/* One reading built at a time: the record when there is one, else the analysis. builtMode is the reading the ids
+   that mark the current step belong to. */
+var builtMode="";
+function buildReading(mode,quiet){var g=(flow.timeline||[]).length?sharedFlowGraph(mode):staticFlowGraph(mode,quiet);builtMode=mode;return g;}
+window.vertexFlowReading=function(mode){var g=buildReading(mode,true);return {bseFlow:g.bseFlow,maxStack:g.maxStack};};
+document.addEventListener("bse:reading",function(e){flowMode=e.detail;if(flowMode==="classes"||flowMode==="methods")flowGrouping=flowMode;if(builtMode!==flowMode){try{buildReading(flowMode,true);}catch(error){failed(error);return;}}markNow();});
 $("fclasses").onclick=function(){flowGrouping="classes";flowMode=flowDiagram==="logic"?"logic":flowGrouping;showFlow();};
 
 window.sdeLogicHtml=function(html){

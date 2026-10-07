@@ -17,6 +17,7 @@ test('all executable scripts in the generated Value Origin page parse', () => {
     assert.doesNotThrow(() => new vm.Script(match[2]), 'inline script ' + (++count));
   }
   // Besides the page's own: the shared magnifier and flow view (carried inline when there is no address to load them
-  // from) and the guard that says so when the flow view did not load.
-  assert.equal(count, 5);
+  // from), the guard that says so when the flow view did not load, and the flow builder with its ABAP control rules,
+  // which build a reading when it is asked for.
+  assert.equal(count, 7);
 });

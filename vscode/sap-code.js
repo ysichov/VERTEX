@@ -347,6 +347,19 @@ function createRepository({ client, systemId, emit = () => {} }) {
   }
   const elementInfo = (sourceUrl, source, line, column) =>
     analyse("Element info", source, () => client.codeCompletionElement(sourceUrl, source, line, column));
+  // The same element info, read whole: abap-adt-api keeps only the nested elements, and drops the element's own
+  // properties - where SAP says the type of a name declared inline. Every property is kept as SAP wrote it.
+  const elementDetails = (sourceUrl, source, line, column) =>
+    analyse("Element info", source, async () => {
+      const response = await client.httpClient.request("/sap/bc/adt/abapsource/codecompletion/elementinfo", { method: "POST",
+        qs: { uri: sourceUrl + "#start=" + line + "," + column }, headers: { "Content-Type": "text/plain", Accept: "application/*" }, body: source });
+      const xml = require("abap-adt-api/build/utilities"), root = xml.xmlNode(xml.fullParse(response.body), "abapsource:elementInfo");
+      if (!root) { return null; }
+      const read = node => ({ name: xml.xmlNodeAttr(node)["adtcore:name"], type: xml.xmlNodeAttr(node)["adtcore:type"],
+        properties: xml.xmlArray(node, "abapsource:properties", "abapsource:entry").map(entry => ({ key: entry["@_abapsource:key"], value: entry["#text"] })),
+        parts: xml.xmlArray(node, "abapsource:elementInfo").map(read) });
+      return read(root);
+    });
   const definition = (sourceUrl, source, line, start, end) =>
     analyse("Definition", source, () => client.findDefinition(sourceUrl, source, line, start, end, false), { wait: true });
   // The active source behind a URL that navigation pointed at - a type pool,
@@ -429,7 +442,7 @@ function createRepository({ client, systemId, emit = () => {} }) {
     if (objects.length > 100) throw new Error('Package contains more than 100 classes/interfaces; select a smaller package.');
     return objects;
   }
-  return { execute, apply, draft, analysisReader, packageObjects, unitTests, atcCheck, whereUsed, documentation, elementInfo, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
+  return { execute, apply, draft, analysisReader, packageObjects, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath };

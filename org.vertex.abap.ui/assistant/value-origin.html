@@ -161,13 +161,13 @@ async function run() {
   }
   var parserWarnings=[];
   var load = async function (name, type) {
-    var data=await window.vertexEclipseRequest('/sap/bc/adt/vertex/flow/'+encodeURIComponent(name)+'?mode=origin&type='+type, function(text){say('Value origin — '+text);});
+    var data=await window.vertexEclipseRequest('/sap/bc/adt/vertex/flow/'+encodeURIComponent(name)+'?mode=origin&type='+type, function(text){say('Value origin ï¿½ '+text);});
     parserWarnings.push(...(data.warnings||[]));
     return data.sources;
   };
   var initial = await load(t.name, t.type);
   var mapped = origin.locateTarget(initial, t.text, t.name, t.line, variable, t.column);
-  var result = await origin.collectSources(initial, load, { maxSources: 240, progress: function (name) { say("Value origin — reading ADT source: " + name); } });
+  var result = await origin.collectSources(initial, load, { maxSources: 240, progress: function (name) { say("Value origin ï¿½ reading ADT source: " + name); } });
   sources = result.sources;
   // The source the cursor is in opens in the editor it came from, as VS Code opens its own document.
   sources.forEach(function (source) { if (source.id === mapped.source && flat(source.text) === flat(t.text)) { source.editor = true; } });
@@ -196,6 +196,8 @@ async function run() {
     flowGraph: window.vertexFlowGraph, scripts: scripts, style: controls + "\n" + style.replace(/@import[^;]*;/, ""),
     head: "<style>" + document.getElementById("theme").textContent + "</style>",
     bridge: "window.acquireVsCodeApi=function(){return{postMessage:function(message){parent.vertexOriginMessage(message);}};};"
+      // The flow builder this window already loaded builds the other readings when the page asks for one.
+      + "window.vertexAbapControl=parent.vertexAbapControl;window.vertexFlowGraph=parent.vertexFlowGraph;"
   });
   say("");
   frame.hidden = false;

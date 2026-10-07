@@ -195,10 +195,10 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         } };
     } finally { await parser.close(); }
   };
-  require('./value-origin-view').register(vscode, context, linterSources, {
+  require('./value-origin-view').register(vscode, context, linterSources, { remember: editor => navigation.push({ document: editor.document, at: editor.selection.active }),
     command: 'vertex.valueOriginLinter', engine: 'ADT + abaplint', cacheMs: 0,
     progressTitle: 'BSE — ADT + abaplint', panelTitle: 'BSE — ADT + abaplint' });
-  require('./value-origin-view').register(vscode, context, linterSources, {
+  require('./value-origin-view').register(vscode, context, linterSources, { remember: editor => navigation.push({ document: editor.document, at: editor.selection.active }),
     command: 'vertex.valueOrigin', engine: 'ADT + abaplint', cacheMs: 0,
     progressTitle: 'Value origin — ADT + abaplint', panelTitle: 'Value origin' });
 
@@ -287,6 +287,8 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   async function revealSource(document, at, preserveFocus) {
     const visible = vscode.window.visibleTextEditors || [];
     const shown = visible.find(editor => editor.document === document);
+    // Where the reader was goes into VERTEX's navigation history first, so Back returns there.
+    { const leaving = shown || visible.find(editor => editor.document && editor.document.uri && editor.document.uri.scheme === "vertex-sap" && editor.viewColumn); if (leaving) { navigation.push({ document: leaving.document, at: leaving.selection.active }); } }
     if (shown) {
       const editor = await vscode.window.showTextDocument(document, { viewColumn: shown.viewColumn, preserveFocus: preserveFocus === true, preview: true });
       editor.selection = new vscode.Selection(at, at);
@@ -715,6 +717,22 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     }
   }
   /* The element info as a hover: what it is and its type, then SAP's text. */
+  /* An inline declaration: its statement, then the type SAP's element info gives it (abapType) and, for a structure,
+     each component as SAP wrote it. Nothing SAP did not say is filled in. */
+  function inlineDescription(statement, details) {
+    const lines = [statement];
+    const type = details && (details.properties.find(entry => entry.key === "abapType") || {}).value;
+    if (!type && !(details && details.parts.length)) {
+      lines.push("", "\" SAP's element info gives no type for this inline declaration.");
+      return lines.join("\n");
+    }
+    if (type) { lines.push("", "\" " + type); }
+    details.parts.forEach(part => {
+      const said = part.properties.filter(entry => entry.value).map(entry => entry.key + " " + entry.value).join(", ");
+      lines.push("\"   " + [part.name, said].filter(Boolean).join("  "));
+    });
+    return lines.join("\n");
+  }
   function describeElement(info, dataType) {
     if (!info || typeof info === "string") { return info ? String(info) : ""; }
     const lines = [String(info.name || "") + (info.type ? "  (" + info.type + ")" : "")];
@@ -785,6 +803,8 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       for (let at2 = upper.indexOf(wanted, from); at2 >= 0; at2 = upper.indexOf(wanted, at2 + 1)) {
         const before = at2 > 0 ? upper.charAt(at2 - 1) : " ", after = upper.charAt(at2 + wanted.length);
         if (isPart(before) || isPart(after)) { continue; }
+        // DATA( / FINAL( right before the name: declared inline, where the line says nothing of the type.
+        { const head = upper.slice(0, at2).trimEnd(), opener = ["DATA(", "FINAL("].find(word => head.endsWith(word)); if (opener) { return { line: index, column: at2, text: lines[index].slice(head.length - opener.length).trim().replace(/[.,]$/, ""), inline: true }; } }
         let piece = lines[index].slice(at2).trim();
         while (piece.endsWith(".") || piece.endsWith(",")) { piece = piece.slice(0, -1).trim(); }
         return { line: index, column: at2, text: piece };
@@ -1553,6 +1573,49 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         }
       }));
   }
+  // Go to Type Definition: the type SAP's element info names for the value (abapType), opened where it is declared.
+  // The owner of a type written OWNER=>TYPE is read through ADT; the TYPES statement in it is found by abaplint's
+  // statements, not by searching the text. A dictionary type, or a value SAP names no type for, is said, not guessed.
+  async function typeDefinition(document, at) {
+    const source = sourceOf(document), word = wordAt(document, at);
+    if (!source || !word || typeof source.entry.repo.api.elementDetails !== "function") { return undefined; }
+    const details = await source.entry.repo.api.elementDetails(source.url, document.getText(), at.line + 1, word.from);
+    const said = details && (details.properties.find(entry => entry.key === "abapType") || {}).value;
+    if (!said) { throw new Error("SAP's element info names no type for " + word.name + "."); }
+    const typeName = String(said).trim().replace(/^TYPE\s+(?:REF\s+TO\s+)?/i, "");
+    const cut = typeName.indexOf("=>");
+    if (cut < 0) { throw new Error(word.name + " is TYPE " + typeName + ": a dictionary or built-in type, which VERTEX does not open from here."); }
+    const owner = typeName.slice(0, cut), member = typeName.slice(cut + 2).toUpperCase();
+    let opened;
+    try { opened = await sourceDocument(source.entry.repo, { object_name: owner, object_type: "INTF" }); }
+    catch (error) { if (!/was not found/i.test(String(error && error.message))) { throw error; } opened = await sourceDocument(source.entry.repo, { object_name: owner, object_type: "CLAS" }); }
+    const text = opened.document.getText(), parsed = require("./value-origin-linter").parseSource({ id: owner, name: owner, objectName: owner, objectType: opened.data.object_type, text });
+    let depth = 0, offset = -1;
+    for (const statement of parsed.source.aceStatements) {
+      const words = statement.tokens.map(token => String(token.value).toUpperCase());
+      if (words[0] !== "TYPES") { continue; }
+      if (words[1] === "BEGIN" && words[2] === "OF") { if (depth === 0 && words[3] === member) { offset = statement.tokens[3].offset; break; } depth++; continue; }
+      if (words[1] === "END" && words[2] === "OF") { depth = Math.max(0, depth - 1); continue; }
+      if (depth === 0 && words[1] === member) { offset = statement.tokens[1].offset; break; }
+    }
+    if (offset < 0) { throw new Error(owner + " declares no type " + member + " in its source."); }
+    const start = opened.document.positionAt(offset);
+    return location(opened.document.uri, start.line, start.character, member.length);
+  }
+  if (vscode.languages && typeof vscode.languages.registerTypeDefinitionProvider === "function") {
+    context.subscriptions.push(vscode.languages.registerTypeDefinitionProvider(
+      [{ scheme: "vertex-sap", language: "abap" }, { scheme: "vertex-source", language: "abap" }], {
+        async provideTypeDefinition(document, at) {
+          try { return await typeDefinition(document, at); }
+          catch (error) {
+            if (error && error.err === 400) { return undefined; }
+            // VS Code drops a provider's error in silence: said in a message instead.
+            vscode.window.showWarningMessage("VERTEX: " + (error && error.message || error));
+            return undefined;
+          }
+        }
+      }));
+  }
   // Only identifiers that resolve as methods may trigger signature lookups.
   if (vscode.languages && typeof vscode.languages.registerHoverProvider === "function") {
     context.subscriptions.push(vscode.languages.registerHoverProvider(
@@ -1566,6 +1629,22 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
           }
           // Variables, parameters, attributes, types: what the ABAP compiler
           // says about the name, through ADT - no guessing from the text.
+          // A name declared inline (DATA(x) = ...) has its type only in SAP's element info: shown from there, whole.
+          try {
+            // A failure to find the declaration is reported by the general path below, which asks the same.
+            const declaredHere = await adtDeclared(document, at).catch(() => undefined), source = sourceOf(document), word = wordAt(document, at);
+            if (declaredHere && declaredHere.inline && source && typeof source.entry.repo.api.elementDetails === "function") {
+              const details = await source.entry.repo.api.elementDetails(source.url, document.getText(), at.line + 1, word.from);
+              const value = inlineDescription(declaredHere.text, details);
+              const target = range(at.line, word.from, word.to);
+              return vscode.Hover ? new vscode.Hover([{ language: "abap", value }], target) : { contents: [{ language: "abap", value }], range: target };
+            }
+          } catch (error) {
+            if (!(error && error.err === 400)) {
+              const value = "VERTEX: SAP could not describe this name - " + (error && error.message || error);
+              return vscode.Hover ? new vscode.Hover([{ language: "text", value }]) : { contents: [{ language: "text", value }] };
+            }
+          }
           let element, declared, dataType;
           try {
             element = await adtAsk("info", document, at);

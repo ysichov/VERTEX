@@ -1061,6 +1061,14 @@ FLOW collapse controls use the canonical independent toggle style with compact, 
 
 2026-10-07 — VS Code 0.8.3: a click on a label in the Value origin FLOW diagram opens that code in the editor beside it again. The click named only the diagram's own node, which the window could not find among the analysis nodes, so nothing opened; it now carries the node's source and line, as the tree's links do.
 
+2026-10-07 — VS Code 0.8.3: the hover of a name declared inline (`DATA(x) = …`, `FINAL(x) = …`) shows the whole declaring statement and the type SAP's element info gives it (for example `TYPE ZIF_CALC_TYPES=>TY_CONTEXT`), and for a structure each component SAP lists.
+
+2026-10-07 — VS Code 0.8.3: Visual Debug's flow has the same controls as Value origin's: one Classes / Methods / Logic / Statements switch over the same readings of the record (or of the analysis before a run), Show from here and Expand / Collapse this branch in the node menu, Auto direction, and BSE without Logic. The separate Logic button, which opened the Tools logic diagram of one method, is gone from the toolbar.
+
+2026-10-07 — VS Code 0.8.3: the readings of a flow are built when they are first asked for, in Value origin and Visual Debug alike: the window builds the reading it shows, and another one is built from the same source when the switch is turned to it, then kept. Back (Alt+Left) returns from code opened from a diagram — Value origin's or a Tools diagram — to where the cursor was. When SAP gives no type, the hover says so. Before, it showed a cut-off piece of the assignment (`x) = …`) and no type.
+
+2026-10-07 — VS Code 0.8.3: Go to Type Definition (context menu) on a variable opens the declaration of its type: SAP's element info names the type (`abapType`), the class or interface that owns `OWNER=>TYPE` is opened through ADT, and the cursor lands on its `TYPES` (or `TYPES BEGIN OF`) statement. A dictionary or built-in type, or a value SAP names no type for, is said in a message. F12 (Go to Definition) on the name in its own inline declaration (`DATA(x)`, `FINAL(x)`) does the same, since the definition is where the cursor already is; on any other use F12 still goes to the declaration.
+
 2026-10-07 — VS Code 0.8.3: edge labels in the FLOW diagram stand on a backing in the editor background, so the line no longer runs through them. This works in every reading; an early build broke Classes and Methods with an insertBefore error. Dragging the diagram no longer selects text in the toolbar and frame captions.
 
 2026-10-07 — VS Code 0.8.3: in the BSE scope a block that is kept is drawn whole — its ENDIF, ENDCASE, ENDLOOP, ENDDO, ENDWHILE, ENDSELECT or ENDTRY comes with it, in the tree and the diagram. BSE has no Logic reading: the slice is statements, so Logic is hidden while BSE is on, a Logic view turns to Statements, and Logic returns with Full.

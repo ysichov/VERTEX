@@ -493,7 +493,9 @@ test('the flow of Value origin is drawn by the builder the debugger uses, from r
   // One source, every reading of it: each is what the shared builder gives for that mode, and Methods is drawn first.
   const builder = require('../../org.vertex.abap.ui/resources/vertex-flow-graph.js'), input = { ...codeFlow, point: { url: '', line: 0 }, name: g.selectedProgram || 'PROGRAM' };
   assert.deepEqual(data.flowReadings.items.map(reading => reading.mode), ['classes', 'methods', 'logic', 'steps']);
-  for (const reading of data.flowReadings.items) assert.deepEqual(reading.bseFlow, JSON.parse(JSON.stringify(builder.build(input, reading.mode).bseFlow)));
+  // Only the reading shown first is built; the others come from the input the page carries, through the same builder.
+  assert.deepEqual(data.flowReadings.items.filter(reading => reading.bseFlow).map(reading => reading.mode), ['methods']);
+  assert.deepEqual(data.flowReadings.input, JSON.parse(JSON.stringify(input)));
   assert.equal(data.flowReadings.active, 'methods');
   assert.deepEqual(data.bseFlow, JSON.parse(JSON.stringify(builder.build(input, 'methods').bseFlow)));
   assert.throws(() => view.html(g, 'test'), /no code flow/);

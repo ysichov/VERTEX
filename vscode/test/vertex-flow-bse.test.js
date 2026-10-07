@@ -108,3 +108,24 @@ test("a click on a FLOW diagram label sends the node's source and line, which th
   const page = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../value-origin-view.js"), "utf8");
   assert.ok(page.includes("api.postMessage(node&&node.source?{node:id,source:node.source,line:Number(node.line)||0}:{node:id})"));
 });
+
+test("Visual Debug gives the shared view the same four readings as Value origin, and no separate Logic button", () => {
+  const page = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../pages/visual-debug.html"), "utf8");
+  assert.ok(page.includes('data.flowReadings={active:flowMode,baseStack:0,items:["classes","methods","logic","steps"]'), "four readings of one record");
+  const join = page.slice(page.indexOf("function joinToolbars(){"), page.indexOf("function openRecordFlow(){"));
+  assert.ok(!join.includes('$("flogic")') && !join.includes('"fclasses"'), "the window's own reading buttons stay out of the row");
+  assert.ok(page.includes('document.addEventListener("bse:reading"'), "the window follows the view's reading");
+  assert.ok(page.includes("window.vertexFlowReading=function(mode){var g=buildReading(mode,true);"), "the other readings are built when the view asks for one");
+  const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
+  assert.ok(script.includes("document.dispatchEvent(new CustomEvent('bse:reading',{detail:reading.mode}))"));
+  assert.ok(script.includes("built=window.vertexFlowReading?window.vertexFlowReading(reading.mode):"), "the view asks the host first, else builds from the page's input");
+});
+
+test("a jump from a diagram to the code is remembered, so Back returns to where the reader was", () => {
+  const view = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../value-origin-view.js"), "utf8");
+  assert.ok(view.includes("if (options.remember && !message.openBeside)"), "Value origin");
+  const workbench = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../code-workbench.js"), "utf8");
+  assert.ok(workbench.includes("remember: editor => navigation.push({ document: editor.document, at: editor.selection.active }),"), "Value origin is given the history");
+  const reveal = workbench.slice(workbench.indexOf("async function revealSource("), workbench.indexOf("async function openToolSource("));
+  assert.ok(reveal.includes("navigation.push({ document: leaving.document, at: leaving.selection.active })"), "Tools diagrams");
+});
