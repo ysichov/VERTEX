@@ -36,7 +36,7 @@ function locateTarget(sources, documentText, objectName, line, variable, column 
     const shift = (dest.length - dest.trimStart().length) - (origin.length - origin.trimStart().length);
     const position = own.slice(0, row - 1).reduce((n, l) => n + l.length + 1, 0) + Math.max(0, column + shift);
     const statement = s.aceStatements.filter(stmt => stmt.offset <= position).at(-1);
-    return { source: s.id, line: row, variable, offset: statement?.offset ?? position };
+    return { source: s.id, line: row, variable, offset: statement?.offset ?? position, cursorOffset: position };
   };
   const exact = sources.find(s => s.name === objectName.toUpperCase() && normalized(s.text) === normalized(documentText));
   if (exact) return location(exact, line);

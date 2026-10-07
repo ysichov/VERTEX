@@ -3162,3 +3162,28 @@ Predict with BSE stepped through a chained `WRITE:` (lines 54-66 of Z_CALC, insi
 Then, at the user's suggestion, the rest of a loop pass. Even with the chain recognised, every pass still ran its tail to ENDLOOP and stopped there and on the LOOP line. `loopRest` in visual-debug.html: from a statement inside a loop (the innermost LOOP / DO / WHILE above it in the routine), when no place of the slice and no breakpoint stands between it and the loop's end, Predict runs F8 to temporary points on the loop's head and on every statement the routine can reach after the loop - the same exit lines `loopExit` uses. A call that is itself a place of the slice is not run past, and the tail must spare at least MIN_RUN statements. It goes before the block and straight-run passes, which would only reach ENDLOOP. The summary counts `loop pass tails passed`. A test covers the Z_CALC shape (points 43, 70, 72 from line 51; none from before line 50, over a breakpoint, or for a short tail). Not run against a live debugger.
 
 The user tested as "0.8.4" while the installed extension was still the 0.8.3 build from before these fixes. A version number named by the user means: bump and build after the changes. So VS Code goes to 0.8.4 - package.json and the lock - and the three fixes of this session (refused breakpoint, chain lines, loop tails) moved from the 0.8.3 notes into a 0.8.4 section. Eclipse not built.
+
+Visual Debug Copy log now includes DEBUG HISTORY SLICE (recorded stops, selected-variable snapshots, watch reads, changes since prior reads, missing/error states) and DEBUG CONTEXT (the current assistant context). Export does not infer or carry forward values; a changed value does not identify an intervening culprit statement by itself.
+
+Visual Debug assistant context now includes actual recorded value history (up to the context limit), with missing/error states. Watch reads always include the chosen variable alongside relevant operands; previously only the route reached chat despite recorded values being available.
+
+Visual Debug replay slider now displays watch values read at the selected recorded stop, including missing/read-error states, rather than ignoring watch history and searching only routine scope snapshots.
+
+The first run of 0.8.4 recorded only one pass of the loop: the point for the next pass stood on the LOOP line, and SAP runs LOOP AT once, on entry, so a point there is not hit on later passes - the F8 ran on to after the loop. The point for the next pass now stands on the first statement of the body, which every pass runs; the points after the loop stay. The test expects 45 instead of 43. Not run against a live debugger yet.
+
+
+## 2026-10-07 — 0.8.3 release documentation
+The user confirmed the history replay works and requested deployment as 0.8.3. Restored the VS Code package and lock version to 0.8.3, corrected current release headings, and documented watch capture, replay, BSE/Predict, Initials, log export and the 150-stop assistant history limit in the repository, Marketplace README, release notes and website. Earlier 0.8.4 preparation entries are historical. Eclipse was not rebuilt in this landing.
+
+### Value Origin: selected assignment and Copy log
+
+Selecting a variable on the left side of an assignment includes that assignment in its backward slice. Selecting an operand keeps the incoming-value analysis. This retains the selected calculation and its condition and dependencies in BSE. Copy log uses the VS Code host clipboard and displays success or failure instead of relying on webview clipboard permissions.
+### Eclipse build 0.8.1.20261007124532
+
+The Value origin changes above (the selected assignment in the slice and the model/view fixes) had reached only VS Code: the generated `org.vertex.abap.ui/assistant/value-origin.js` and `resources/vertex-frontend.js` were older than their sources. `eclipse/package.ps1` (which runs `prepare.js`) regenerated both and built the update-site candidate `target/eclipse-0.8.1.20261007124532`. The regenerated bundles match a fresh bundle of the current sources. Visual Debug has no Eclipse counterpart. `eclipse/value-origin.test.js` fails one check (the page has 4 scripts, the test expects 3); it already failed at HEAD and is not touched here. The build was not copied into `docs/` (not published) and not run in Eclipse.
+
+### FLOW tree: BSE collapsed, Depth disappeared
+
+Reported in Eclipse, seen in VS Code too: in Statements, Full showed the tree open, BSE showed it closed, and moving Depth took the slider away. The Full / BSE switch redrew the tree with `renderFlowTree()` and nothing else, so every branch came back closed; a reading change goes through `syncDepth(); applyBranchChoice();` and the scope switch does that now. The slider vanished because at depth 0 the root has no kept children, was drawn as a `div` without a `summary`, and `attachTreeSwitch` had nowhere to put Expand all and Depth - and could not bring them back. The root is always a branch now. At the user's word, Depth for calls starts at 1 (formula steps keep 0). Reproduced and verified in a browser on a page built from the Z_CALC shape (VS Code page; Eclipse uses the same `vertex-flow.js`). Eclipse rebuilt as 0.8.1.20261007124532; VS Code not packaged. `visual-debug-ui.test.js` "the chat is given what the window shows" fails on the uncommitted `visual-debug.html` (`debugHistorySlice` undefined), not on this change.
+
+VS Code goes to 0.8.4 at the user's word (package.json and the lock), and the FLOW tree fix moved from the 0.8.3 notes into a 0.8.4 section everywhere. `vscode/package.ps1` built and verified `vertex-abap-0.8.4.vsix`; the released 0.8.3 vsix is untouched.

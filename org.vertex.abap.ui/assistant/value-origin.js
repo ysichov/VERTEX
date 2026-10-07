@@ -807,7 +807,17 @@ function analyze(sources, target, options = {}) {
   }
   const source = sources.find(s => s.id === target.source); if (!source) throw new Error('Selected source is not present.');
   const parsed = parse(source), token = parsed.tokens.find(t => t.line >= target.line);
-  const before = target.offset === undefined ? (token?.offset ?? source.text.length) : target.offset;
+  let before = target.offset === undefined ? (token?.offset ?? source.text.length) : target.offset;
+  // Selecting an assignment's destination asks for the result of that
+  // assignment. A selection in its operands still asks for the incoming value.
+  const selected = parsed.statements.find(s => s.offset === before);
+  const selectedAssignment = selected && assignment(selected.tokens);
+  if (selectedAssignment && contains(selectedAssignment.name, U(target.variable))) {
+    const start = ['DATA', 'FINAL'].includes(val(selected.tokens, 0)) ? 2 : val(selected.tokens, 0) === 'COMPUTE' ? 1 : 0;
+    const destination = pathAt(selected.tokens, start);
+    const cursor = target.cursorOffset ?? (target.column === undefined ? before : source.text.split('\n').slice(0, target.line - 1).reduce((n, line) => n + line.length + 1, 0) + target.column);
+    if (destination && cursor >= selected.tokens[start].offset && cursor <= selected.tokens[destination.end - 1].endOffset) before = selected.offset + 1;
+  }
   const p = index.procedures.filter(p => p.source.id === source.id && p.start <= before && p.end >= before).sort((a, b) => b.start - a.start)[0];
   if (!p) throw new Error('No procedure at selected location.');
   const root = trace(p, U(target.variable), before);
@@ -1108,7 +1118,7 @@ function locateTarget(sources, documentText, objectName, line, variable, column 
     const shift = (dest.length - dest.trimStart().length) - (origin.length - origin.trimStart().length);
     const position = own.slice(0, row - 1).reduce((n, l) => n + l.length + 1, 0) + Math.max(0, column + shift);
     const statement = s.aceStatements.filter(stmt => stmt.offset <= position).at(-1);
-    return { source: s.id, line: row, variable, offset: statement?.offset ?? position };
+    return { source: s.id, line: row, variable, offset: statement?.offset ?? position, cursorOffset: position };
   };
   const exact = sources.find(s => s.name === objectName.toUpperCase() && normalized(s.text) === normalized(documentText));
   if (exact) return location(exact, line);
@@ -2073,7 +2083,7 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   <details class="debug-only"><summary>BSE dependency tree (technical)</summary>${dependencyTree}</details><details class="debug-only"><summary>${escape(graph.analysisEngine || 'ACE')} source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact source objects loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No sources were loaded.')}</pre></details>
   <details class="debug-only"><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>
 
-  ${scripts.mermaid ? inlineScript(nonce, scripts.mermaid) : mermaidSource ? `<script nonce="${nonce}" src="${mermaidSource}"></script>` : ''}${host && host.bridge ? inlineScript(nonce, host.bridge) : ''}<script nonce="${nonce}">const api=acquireVsCodeApi(),flowLog=${JSON.stringify(flowLogText).replaceAll('<', '\\u003c')};window.bseMermaidOpen=(id,node)=>api.postMessage(node&&node.source?{node:id,source:node.source,line:Number(node.line)||0}:{node:id});const reportScreen=()=>setTimeout(()=>{const mode=document.querySelector('[data-mode-choice].active'),view=document.querySelector('[data-view-choice].active'),depth=window.vertexFlow&&window.vertexFlow.depth();api.postMessage({kind:'screen',mode:mode?mode.dataset.modeChoice:null,view:view?view.dataset.viewChoice:null,depth:depth===undefined?null:depth});});['click','input','bse:mermaid-rendered','bse:scenario'].forEach(type=>document.addEventListener(type,reportScreen));window.addEventListener('load',reportScreen);document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,source:b.dataset.source,line:Number(b.dataset.line)||0,openBeside:e.ctrlKey||e.metaKey});});document.getElementById('copy-flow').addEventListener('click',async()=>{await navigator.clipboard.writeText(flowLog);document.getElementById('copy-flow').textContent='Copied';});const setScenario=active=>{document.querySelectorAll('[data-scenario]').forEach(node=>{node.hidden=!!active&&node.dataset.scenario!==active;if(node.hidden&&node.tagName==='DETAILS')node.open=false;});document.dispatchEvent(new Event('bse:scenario'));};document.querySelectorAll('.scenario input').forEach(input=>input.addEventListener('change',e=>setScenario(e.target.value)));if(typeof mermaid==='undefined'){const host=document.getElementById('mermaid-graph');if(host)host.textContent='Mermaid library is unavailable.';}else{mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false}});document.dispatchEvent(new Event('bse:mermaid-ready'));}</script></body></html>`;
+  ${scripts.mermaid ? inlineScript(nonce, scripts.mermaid) : mermaidSource ? `<script nonce="${nonce}" src="${mermaidSource}"></script>` : ''}${host && host.bridge ? inlineScript(nonce, host.bridge) : ''}<script nonce="${nonce}">const api=acquireVsCodeApi(),flowLog=${JSON.stringify(flowLogText).replaceAll('<', '\\u003c')};window.bseMermaidOpen=(id,node)=>api.postMessage(node&&node.source?{node:id,source:node.source,line:Number(node.line)||0}:{node:id});const reportScreen=()=>setTimeout(()=>{const mode=document.querySelector('[data-mode-choice].active'),view=document.querySelector('[data-view-choice].active'),depth=window.vertexFlow&&window.vertexFlow.depth();api.postMessage({kind:'screen',mode:mode?mode.dataset.modeChoice:null,view:view?view.dataset.viewChoice:null,depth:depth===undefined?null:depth});});['click','input','bse:mermaid-rendered','bse:scenario'].forEach(type=>document.addEventListener(type,reportScreen));window.addEventListener('load',reportScreen);document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,source:b.dataset.source,line:Number(b.dataset.line)||0,openBeside:e.ctrlKey||e.metaKey});});document.getElementById('copy-flow').addEventListener('click',async()=>{const button=document.getElementById('copy-flow');try{if(${!host}){button.textContent='Copying…';api.postMessage({kind:'copyLog',text:flowLog});}else{await navigator.clipboard.writeText(flowLog);button.textContent='Copied';}}catch(error){button.textContent='Copy failed';button.title=error.message;}});window.addEventListener('message',event=>{const message=event.data;if(message&&message.kind==='copyLogResult'){const button=document.getElementById('copy-flow');button.textContent=message.ok?'Copied':'Copy failed';button.title=message.error||'';}});const setScenario=active=>{document.querySelectorAll('[data-scenario]').forEach(node=>{node.hidden=!!active&&node.dataset.scenario!==active;if(node.hidden&&node.tagName==='DETAILS')node.open=false;});document.dispatchEvent(new Event('bse:scenario'));};document.querySelectorAll('.scenario input').forEach(input=>input.addEventListener('change',e=>setScenario(e.target.value)));if(typeof mermaid==='undefined'){const host=document.getElementById('mermaid-graph');if(host)host.textContent='Mermaid library is unavailable.';}else{mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false}});document.dispatchEvent(new Event('bse:mermaid-ready'));}</script></body></html>`;
 }
 /* What the assistant is told of the open Value origin window: the value, and the flow as the window draws it - the
    statements in execution order, each at the depth of the calls it stands in, marked where the value's slice reaches it.
@@ -2167,6 +2177,15 @@ function register(vscode, context, getSources, options = {}) {
         vscode.Uri.joinPath(context.extensionUri, 'resources', 'vertex-lens.js')).toString() : '';
       panel.webview.html = html(graph, require('crypto').randomBytes(18).toString('hex'), mermaid, panel.webview.cspSource || '', styles, flowScript, lensUri);
       panel.webview.onDidReceiveMessage(async message => {
+        if (message?.kind === 'copyLog') {
+          try {
+            await vscode.env.clipboard.writeText(String(message.text || ''));
+            await panel.webview.postMessage({ kind: 'copyLogResult', ok: true });
+          } catch (error) {
+            await panel.webview.postMessage({ kind: 'copyLogResult', ok: false, error: error.message });
+          }
+          return;
+        }
         if (message?.kind === 'screen') { mine.screen = { mode: message.mode, view: message.view, depth: message.depth }; return; }
         const scenarioNode = /^scenario:([A-Z0-9_]+)$/i.exec(message?.node || '');
         if (scenarioNode) {

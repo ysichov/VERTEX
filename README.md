@@ -228,11 +228,15 @@ own folder. The Eclipse plugin does not use it: it works through the platform an
 
 What is still missing, and what has to come out before it ships: [Next.md](Next.md).
 
-## VS Code 0.8.4: Predict past chains and loop tails, refused breakpoints
+## VS Code 0.8.4: FLOW tree in BSE
+
+- The FLOW tree in Value origin: switching between Full and BSE keeps the branches open as Expand all / Collapse all and Depth set them (BSE used to show everything collapsed). The tree's root keeps Expand all and Depth even when nothing is left under it, so the depth slider no longer disappears. Depth for calls starts at 1.
+
+## VS Code 0.8.3: Predict past chains and loop tails, refused breakpoints
 
 - A breakpoint SAP does not accept (a declaration line, for example) is taken off the editor's gutter again; SAP's refusal is still shown. Before, the red dot stayed though the run would never stop there.
 - Predict with BSE passes a chained statement (`WRITE: / a, b, c.` over several lines) outside the slice in one F8 again. Every element of the chain was placed on the keyword's line, while SAP stops on each element's own line, so the page did not recognise the stop and stepped through the chain line by line, on every pass of a loop.
-- Predict with BSE skips the rest of a loop pass once the slice has nothing more in it: from the last place of the slice in the pass, one F8 to temporary points on the loop's head (the next pass) and after the loop (the last pass), instead of stepping to ENDLOOP every time. Not over a breakpoint, and a call that is in the slice is still entered. The run's summary counts the passes skipped this way.
+- Predict with BSE skips the rest of a loop pass once the slice has nothing more in it: from the last place of the slice in the pass, one F8 to temporary points on the first statement of the loop body (the next pass) and after the loop (the last pass), instead of stepping to ENDLOOP every time. Not over a breakpoint, and a call that is in the slice is still entered. The run's summary counts the passes skipped this way.
 
 ## VS Code 0.8.3: flow readings, diagram controls and types
 
@@ -246,7 +250,7 @@ What is still missing, and what has to come out before it ships: [Next.md](Next.
 - Navigation: a click on a FLOW diagram label opens the code again. A click in a Tools diagram scrolls the editor that already shows that source instead of opening a second copy. Back (Alt+Left) returns from code opened from a diagram.
 - Types: the hover of a name declared inline (`DATA(x) = …`) shows the declaring statement and the type SAP gives it. **Go to Type Definition** opens the `TYPES` declaration of a variable's type in its class or interface.
 - Visual Debug: the separate Logic button (the Tools logic diagram of one method) is gone; Logic is a reading of the flow.
-- Tools Logic follows the editor while it scrolls: when the source scrolled to is another method, its logic diagram replaces the shown one (before, only a cursor move did that). The Eclipse plugin's Tools window does the same from the ADT editor's scrolling; it takes effect with the next plugin build (not built yet).
+- Tools Logic follows the editor while it scrolls: when the source scrolled to is another method, its logic diagram replaces the shown one (before, only a cursor move did that). The Eclipse plugin's Tools window does the same from the ADT editor's scrolling; it is in the Eclipse plugin build 0.8.1.20261007124532.
 
 ## VS Code 0.8.1 — code diagrams and Visual Debug
 
@@ -310,3 +314,26 @@ Eclipse module loader: failed initialization no longer leaves partial exports in
 Eclipse browser runtime: added the Buffer.from hex/UTF-8 operations used by abaplint built-in constants, allowing dependent class parsing to continue. Origin reports its ADT + abaplint engine correctly. VS Code runtime unchanged; live SAP verification pending.
 
 Eclipse browser bundler: generated module imports now use a distinct loader name, avoiding collision with frontend-analysis’s SAP source load function. This fixes Calls palette and Logic module loading; shared VS Code analysis sources are unchanged.
+
+Visual Debug Copy log now includes DEBUG HISTORY SLICE (recorded stops, selected-variable snapshots, watch reads, changes since prior reads, missing/error states) and DEBUG CONTEXT (the current assistant context). Export does not infer or carry forward values; a changed value does not identify an intervening culprit statement by itself.
+
+Visual Debug assistant context now includes actual recorded value history (up to the context limit), with missing/error states. Watch reads always include the chosen variable alongside relevant operands; previously only the route reached chat despite recorded values being available.
+
+Visual Debug replay slider now displays watch values read at the selected recorded stop, including missing/read-error states, rather than ignoring watch history and searching only routine scope snapshots.
+
+## VS Code 0.8.3 — recorded values and AI debug context
+
+Visual Debug brings the ABAP source, execution diagram and recorded variable values into one workspace.
+
+1. Choose **Steps & values** and select a variable for BSE analysis. Relevant stop reads include the selected variable and related operands; routine snapshots provide additional scope values.
+2. Use the history slider or replay buttons to revisit recorded stops. **Stack** shows the recorded location; **Variables** shows watch values read at that stop, or the available routine snapshot when there is no watch read.
+3. Ask the assistant to analyse the run. Its context includes the execution route and actual variable history, with missing reads and errors identified. The value history is limited to 150 stops in assistant context.
+4. Use **Copy log** to export the analysis, **DEBUG HISTORY SLICE** and **DEBUG CONTEXT** for a reproducible discussion.
+
+BSE identifies code relevant to the selected value. Predict can skip irrelevant statements and loop tails. A recording contains values at captured stops, not every intermediate execution state; inferred steps are not measured variable values. Differences between two reads alone do not prove which intervening statement caused an error.
+
+**Initials** is off by default. Enable it to display variables with initial values.
+### Value Origin: selected assignment and Copy log
+
+Selecting a variable on the left side of an assignment includes that assignment in its backward slice. Selecting an operand keeps the incoming-value analysis. This retains the selected calculation and its condition and dependencies in BSE. Copy log uses the VS Code host clipboard and displays success or failure instead of relying on webview clipboard permissions.
+

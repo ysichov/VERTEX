@@ -122,8 +122,13 @@ Eclipse browser runtime: added the Buffer.from hex/UTF-8 operations used by abap
 
 Eclipse browser bundler: generated module imports now use a distinct loader name, avoiding collision with frontend-analysis’s SAP source load function. This fixes Calls palette and Logic module loading; shared VS Code analysis sources are unchanged.
 
+### Shared with VS Code 0.8.4 (Value origin page)
+
+FLOW tree: switching between Full and BSE keeps the branches open as Expand all / Collapse all and Depth set them (BSE used to show everything collapsed). The tree's root keeps Expand all and Depth even when nothing is left under it, so the depth slider no longer disappears. Depth for calls starts at 1. In build 0.8.1.20261007124532.
+
 ### Shared with VS Code 0.8.3 (Value origin page)
 
-The Eclipse plugin's Value origin runs the VS Code page and flow builder, so the next plugin build carries the FLOW changes of VS Code 0.8.3: the Classes / Methods / Logic / Statements switch, the node menu (Show from here, Expand / Collapse this branch), Auto direction, labels written as in the code, and theme-following frames. The plugin was not rebuilt for this.
+The Eclipse plugin's Value origin runs the VS Code page and flow builder, so plugin build 0.8.1.20261007124532 carries the FLOW changes of VS Code 0.8.3 and the Value origin fixes below: the Classes / Methods / Logic / Statements switch, the node menu (Show from here, Expand / Collapse this branch), Auto direction, labels written as in the code, and theme-following frames.
 
-Tools Logic now follows the ADT editor while it scrolls, as in VS Code 0.8.3: the line a third down the visible range is sent to the page, and when it lies in another method that method's logic diagram replaces the shown one. Also in the next plugin build.
+Tools Logic now follows the ADT editor while it scrolls, as in VS Code 0.8.3: the line a third down the visible range is sent to the page, and when it lies in another method that method's logic diagram replaces the shown one. Also in build 0.8.1.20261007124532.
+

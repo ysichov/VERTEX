@@ -965,7 +965,17 @@ function analyze(sources, target, options = {}) {
   }
   const source = sources.find(s => s.id === target.source); if (!source) throw new Error('Selected source is not present.');
   const parsed = parse(source), token = parsed.tokens.find(t => t.line >= target.line);
-  const before = target.offset === undefined ? (token?.offset ?? source.text.length) : target.offset;
+  let before = target.offset === undefined ? (token?.offset ?? source.text.length) : target.offset;
+  // Selecting an assignment's destination asks for the result of that
+  // assignment. A selection in its operands still asks for the incoming value.
+  const selected = parsed.statements.find(s => s.offset === before);
+  const selectedAssignment = selected && assignment(selected.tokens);
+  if (selectedAssignment && contains(selectedAssignment.name, U(target.variable))) {
+    const start = ['DATA', 'FINAL'].includes(val(selected.tokens, 0)) ? 2 : val(selected.tokens, 0) === 'COMPUTE' ? 1 : 0;
+    const destination = pathAt(selected.tokens, start);
+    const cursor = target.cursorOffset ?? (target.column === undefined ? before : source.text.split('\n').slice(0, target.line - 1).reduce((n, line) => n + line.length + 1, 0) + target.column);
+    if (destination && cursor >= selected.tokens[start].offset && cursor <= selected.tokens[destination.end - 1].endOffset) before = selected.offset + 1;
+  }
   const p = index.procedures.filter(p => p.source.id === source.id && p.start <= before && p.end >= before).sort((a, b) => b.start - a.start)[0];
   if (!p) throw new Error('No procedure at selected location.');
   const root = trace(p, U(target.variable), before);

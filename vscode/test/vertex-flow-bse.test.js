@@ -8,7 +8,7 @@ test("in the BSE scope what is left stays green: the scope does not take the col
 });
 
 test("every node the BSE scope shows is marked as part of the slice, the tree and the diagram alike", () => {
-  assert.match(source, /if\(node\.bse\|\|flowBseOnly\)\(edges\.length\?caption:branch\)\.classList\.add\('bse-operation'\)/, "the tree");
+  assert.match(source, /if\(node\.bse\|\|flowBseOnly\)\(folds\?caption:branch\)\.classList\.add\('bse-operation'\)/, "the tree");
   assert.match(source, /if\(node\.bse\|\|flowBseOnly\)element\.classList\.add\('bse-operator'\)/, "the diagram");
 });
 

@@ -280,7 +280,20 @@ function sdeReady(){
 /* The analysis reads dozens of sources and takes seconds. Asked through the queue above, every step and every variable
    would wait for it; it has a channel of its own, answered by number, and runs beside the debugger. */
 var originWaiting={},originSeq=0,analysisLogs={};
-$("analysis-copy").onclick=function(){var text=JSON.stringify({selectedValue:chosenValue,pathBounds:staticFlow?{from:staticFlow.from,stopAt:staticFlow.stopAt}:null},null,2)+"\n\n"+Object.keys(analysisLogs).map(function(k){return k.toUpperCase()+" ANALYSIS\n"+analysisLogs[k];}).join("\n\n");debug("copy",{text:text}).then(function(){notice("Analysis log copied.");}).catch(failed);};
+/* Export real recorded reads, never replay carry-forward values or inferred values. */
+function debugHistorySlice(){
+  var selected=chosenValue&&String(chosenValue.name||"").toUpperCase(),previous={};
+  var stops=(flow.timeline||[]).map(function(t,index){
+    var frame=t.stack&&t.stack[0],owner=t.cur&&t.cur.owner||frame&&frame.program||"",line=t.at&&t.at.line||frame&&frame.line||0;
+    var scope=t.cur&&t.cur.name||frame&&frame.label||"",read=t.watch&&t.watch.read||[];
+    var snapshots=[];
+    if(Array.isArray(t.vars))t.vars.forEach(function(group){(group.children||[]).forEach(function(value){var name=String(value.name||"").toUpperCase();if(!selected||name===selected||selected.indexOf(name+"-")===0)snapshots.push({group:group.name,name:value.name,type:value.type,value:value.value});});});
+    var values=read.map(function(value){var key=owner+"|"+scope+"|"+String(value.name).toUpperCase(),entry={name:value.name,type:value.type,value:value.value};if(Object.prototype.hasOwnProperty.call(previous,key)){entry.previousValue=previous[key];entry.changed=value.value!==previous[key];}previous[key]=value.value;return entry;});
+    return {stop:index+1,program:owner,scope:scope,line:line,depth:(t.stack||[]).length,slice:!!(selected&&inSlice(owner,line)),watch:t.watch?{status:t.watch.error?"error":t.watch.missing?"missing":"read",values:values,requestedNames:t.watch.names||null,error:t.watch.error||null}:{status:"not_recorded",values:[]},snapshots:snapshots,snapshotError:t.vars&&t.vars.error||null};
+  });
+  return {selectedValue:selected||null,recordMode:recMode(),note:"Recorded stops and actual reads only. Values describe the state at a stop; a change since the previous read does not by itself prove which intervening statement caused it. No values are carried forward or predicted in this export.",totalStops:stops.length,stopsWithWatch:stops.filter(function(stop){return stop.watch.status==="read";}).length,stops:stops};
+}
+$("analysis-copy").onclick=function(){var text=JSON.stringify({selectedValue:chosenValue,pathBounds:staticFlow?{from:staticFlow.from,stopAt:staticFlow.stopAt}:null},null,2)+"\n\n"+Object.keys(analysisLogs).map(function(k){return k.toUpperCase()+" ANALYSIS\n"+analysisLogs[k];}).join("\n\n");text+="\n\nDEBUG HISTORY SLICE\n"+JSON.stringify(debugHistorySlice(),null,2)+"\n\nDEBUG CONTEXT\n"+JSON.stringify(debugContext(),null,2);debug("copy",{text:text}).then(function(){notice("Analysis, debug history and context copied.");}).catch(failed);};
 function sdeOriginProgress(value){var waiting=originWaiting[value.id];if(waiting&&waiting.progress){waiting.last=value;}}
 function askOrigin(request,onProgress){
   return new Promise(function(ok,fail){var id=++originSeq;originWaiting[id]={ok:ok,fail:fail,progress:onProgress,started:Date.now(),last:{id:id,stage:'Starting analysis',steps:0,sources:0}};if(onProgress)originWaiting[id].timer=setInterval(function(){var waiting=originWaiting[id];if(waiting){waiting.progress(Object.assign({},waiting.last,{seconds:Math.floor((Date.now()-waiting.started)/1000)}));}},3000);
@@ -1301,6 +1314,15 @@ function snapshot(){
    last ones read in the same routine before it. */
 function drawRecordedVars(i){
   var tl=flow.timeline,t=tl[i],box=$("vars"),k=i,from=null;
+  if(t&&t.watch){
+    box.textContent="";
+    if(t.watch.error||t.watch.missing){var message=document.createElement("div");message.className="empty";message.textContent=t.watch.error?"Recorded value read failed: "+t.watch.error:"Requested values were unavailable at this recorded stop.";box.appendChild(message);return;}
+    var recorded=document.createElement("table");recorded.className="vars";
+    var heading=document.createElement("tr"),title=document.createElement("td");heading.className="grp";title.colSpan=3;title.textContent="Watched values · read at stop "+(i+1);heading.appendChild(title);recorded.appendChild(heading);
+    (t.watch.read||[]).forEach(function(value){var row=document.createElement("tr");[value.name,value.type,value.value].forEach(function(text,index){var cell=document.createElement("td");cell.className=index===0?"n":index===1?"t":"";cell.textContent=text==null?"":String(text);cell.title=cell.textContent;row.appendChild(cell);});recorded.appendChild(row);});
+    box.appendChild(recorded);return;
+  }
+
   while(k>=0&&!from){var x=tl[k];if(x.vars&&x.cur&&t.cur&&x.cur.name===t.cur.name&&x.stack.length===t.stack.length)from=x;else if(x.stack.length<t.stack.length)break;k--;}
   box.textContent="";
   if(!from){box.innerHTML='<div class="empty">No values recorded here - a flow reads them where a routine starts and ends.</div>';return;}
@@ -1758,6 +1780,8 @@ function readChosenValue(){
   var place=f?sliceAt(unit,f.line):null;
   var names=place&&place.names&&place.names.length?place.names.slice(0,4)
     :(chosenValue?[chosenValue.name]:[]);
+  // Always read the selected value as well as the operands at this stop.
+  if(chosenValue&&chosenValue.name)names=[chosenValue.name].concat(names).filter(function(name,index,list){return list.indexOf(name)===index;});
   if(!names.length)return Promise.resolve();
   return debug("vars",{names:names}).then(function(d){
     var read=(d.variables||[]).map(function(v){return {name:v.name,value:v.value,type:v.type};});
@@ -2487,6 +2511,8 @@ function debugContext(){
       steps.push(step);
     });
     recorded={note:"What the program actually did: the stops of the run in order, depth = calls below the first stop"+(limit!==null?" (only down to the depth the window shows)":"")+"; slice:true where the chosen value's slice reaches the statement.",stops:tl.length,steps:steps,truncated:cut};
+    var history=debugHistorySlice();
+    recorded.value_history={note:history.note,total_stops:history.totalStops,stops_with_reads:history.stopsWithWatch,stops:history.stops.slice(0,MAX_CONTEXT),truncated:history.stops.length>MAX_CONTEXT};
   }
   if(staticFlow&&staticFlow.rows){
     var seq=staticFlowGraph("steps",true).sequence,shown=seq.slice(0,MAX_CONTEXT);
