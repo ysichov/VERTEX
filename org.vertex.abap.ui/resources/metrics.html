@@ -1531,6 +1531,16 @@ function renderDiagram(data) {
 
 /* Everything that puts a picture on the screen goes through here: a unit just
    asked for, a stretch just opened, a chart just turned. */
+/* Labels read as the code is written: Mermaid escapes < > & and quotes in a label and, with text labels, shows the escape
+   (IF a &lt;&gt; b). The characters are put back after drawing - the same as the FLOW view does. */
+function plainLabels(svg) {
+  if (!svg) return;
+  svg.querySelectorAll("text tspan, text").forEach(function (text) {
+    if (text.children.length) return;
+    var was = text.textContent, now = was.replace(/\uE000/g, "<").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+    if (now !== was) text.textContent = now;
+  });
+}
 function draw(preserveViewport) {
   var diagramText=mode==="scheme"&&logicOnly&&lastLogicMermaid?lastLogicMermaid:lastMermaid;
   var isClass = /^classDiagram\b/.test(diagramText);
@@ -1566,6 +1576,7 @@ function draw(preserveViewport) {
   mermaid.render(drawId, text).then(function (out) {
     if(generation!==diagramSeq)return;
     pane.innerHTML = out.svg;
+    plainLabels(pane.querySelector("svg"));
     if (priorViewport) {
       pane.scrollTop = priorViewport.top;
       pane.scrollLeft = priorViewport.left;
@@ -1657,6 +1668,7 @@ function renderHybridLogic(pane, opened) {
   var hybridId = "vertexhybrid" + diagramSeq;
   mermaid.render(hybridId, logic).then(function (out) {
     host.innerHTML = out.svg;
+    plainLabels(host.querySelector("svg"));
     tintDecisions(host.querySelector("svg"));
     applyZoom();
     placeHybridLogic(pane, card, host.querySelector("svg"), opened.node);
@@ -2126,10 +2138,10 @@ function sdeCodeCursor(value){
  if(!followCode)return;
  if(mode!=='scheme'||String(value.name).toUpperCase()!==String(loadedObject).toUpperCase())return;
  latestCodeCursor=value;
- if(!value.scrollOnly){
-  var targetUnit=units.find(function(unit){return value.line>=unit.line_from&&value.line<=unit.line_to;});
-  if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){openUnit(targetUnit);return;}
- }
+ // The cursor and scrolling alike: a line in another method (for scrolling, the line a third down the visible source)
+ // opens that method's diagram.
+ var targetUnit=units.find(function(unit){return value.line>=unit.line_from&&value.line<=unit.line_to;});
+ if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){openUnit(targetUnit);return;}
 
  var pane=document.getElementById('diagram'),clusters=Array.from(pane.querySelectorAll('g.cluster[data-source-line]')),selectedClusters=clusters.filter(function(cluster){return [Number(cluster.dataset.sourceLine),Number(cluster.dataset.sourceEnd)].some(function(line){return line>=value.line&&line<=value.endLine;});});
  if(!value.scrollOnly)clusters.forEach(function(cluster){var active=selectedClusters.includes(cluster),shape=cluster.querySelector('rect');if(!shape)return;if(active){if(!shape.hasAttribute('data-prior-style'))shape.setAttribute('data-prior-style',shape.getAttribute('style')||'');shape.style.setProperty('fill',toward(ground(),themeColour('--vscode-focusBorder','#0a66c2'),darkPage()?0.28:0.18),'important');shape.style.setProperty('stroke','var(--vscode-focusBorder,#0a66c2)','important');}else if(shape.hasAttribute('data-prior-style')){shape.setAttribute('style',shape.getAttribute('data-prior-style'));shape.removeAttribute('data-prior-style');}});

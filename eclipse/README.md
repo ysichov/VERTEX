@@ -122,52 +122,6 @@ Eclipse browser runtime: added the Buffer.from hex/UTF-8 operations used by abap
 
 Eclipse browser bundler: generated module imports now use a distinct loader name, avoiding collision with frontend-analysis’s SAP source load function. This fixes Calls palette and Logic module loading; shared VS Code analysis sources are unchanged.
 
-Shared FLOW theme fix: theme overrides now outrank Mermaid SVG-scoped styles, so routine frames and labels follow the active editor theme. Theme changes retain zoom and scroll. VS Code package version 0.8.2. Live light/dark rendering pending.
+### Shared with VS Code 0.8.3 (Value origin page)
 
-FLOW diagram correction: parameter transfers remain in the analysis tree but no longer form disconnected diagram nodes; call edges bypass them and connect the call statement to its callee. ELK cluster fills use active editor theme CSS variables, overriding inline Mermaid fills; theme updates preserve zoom and scroll. Live light/dark rendering pending.
-
-FLOW source-only correction: both tree and diagram contain source statements and nested routines, without synthetic parameter-transfer rows or repeated-routine arrow markers. Formula and Expression retain data relationships.
-
-FLOW collapse controls use the canonical independent toggle style with compact, centered icon geometry; removed the single-button segmented wrapper.
-
-2026-10-07 — VS Code 0.8.3: FLOW initializes Mermaid with the active editor theme’s background, container, border, label and edge colours. Removes the initial dark-theme container background; theme changes preserve zoom. Live theme verification pending.
-
-2026-10-07 — FLOW rendering fix: shared script now defines its ABAP identifier normalizer before variable label highlighting, fixing the reported “canonical is not defined” runtime error. VS Code package remains 0.8.3. Live rendering pending.
-
-2026-10-07 — VS Code 0.8.3: Value origin FLOW has the reading levels of Visual Debug: Classes, Methods, Logic and Statements (the default, the previous view). All four are folds of one source — the analysis's code-flow rows — by the one flow builder the debugger uses (`vertex-flow-graph.js`); the switch changes the tree and the diagram together and keeps the depth control in step. Logic keeps branches, loops, calls and control transfers. Eclipse uses the same page and builder; its bundle is prepared, the plugin was not built.
-
-2026-10-07 — VS Code 0.8.3: FLOW routine frames follow the theme in the ELK layout too. ELK draws a routine as a subgraph, not a cluster, so the theme rules never reached it and Mermaid's own fill stayed (light grey on a dark theme). Both kinds of frame now take a light tint of the theme's focus colour over the editor background — light blue on a light theme, a dark blue on a dark one — with a focus-colour border and editor-foreground captions. Shared by Value origin and Visual Debug.
-
-2026-10-07 — VS Code 0.8.3: Value origin opens FLOW at Methods; the Analysis log is a technical section now, shown with the bug control like the other ones. The Depth control stands beside Fit when the diagram is shown, and stays in the toolbar for a tree, which has no diagram row. The magnifier shows the diagram's colours again: the theme rules were scoped to the diagram's container, which the magnifier's copy is not in; they are scoped to the drawing's own id now, which the copy shares.
-
-2026-10-07 — VS Code 0.8.3: Expand all and Collapse all are two buttons side by side, as SAP GUI draws them — chevrons down and chevrons up — instead of one switch that turned over; the one in force is active. They stand at the root of the FLOW and Formula trees and in the diagram's toolbar, in Value origin and Visual Debug.
-
-2026-10-07 — VS Code 0.8.3: in a tree the Depth control stands at the root beside Expand all / Collapse all (by Fit in the diagram), and a click on it does not fold the root. The FLOW buttons say what they do on hover: each reading (Classes, Methods, Logic, Statements), Full / BSE, FLOW / Formula, Tree / Diagram, Fit, Expand all and Collapse all.
-
-2026-10-07 — VS Code 0.8.3: Show from here. A right click on a node of the FLOW diagram offers Show from here, which draws only that node and what it leads to, in the same reading and depth. A path bar above the diagram (Whole flow › … › the node) goes back to any level, and Esc goes back one step. The tree is unchanged. Shared by Value origin and Visual Debug.
-
-2026-10-07 — VS Code 0.8.3: in the FLOW diagram a WHEN is drawn once, as the label on the line from its CASE to the branch's first statement; the separate WHEN box that repeated it is gone. The tree keeps WHEN as the parent of its branch.
-
-2026-10-07 — VS Code 0.8.3: a click on a node in a VERTEX Tools diagram (Logic, Calls, Parts) scrolls the editor that already shows that source, in whatever column it is, instead of opening a second copy in the first column. A source not on screen opens in the column the ABAP sources already live in.
-
-2026-10-07 — VS Code 0.8.3: the FLOW diagram takes its Mermaid colours from the editor theme only. When the theme lacks one of the variables it needs, the diagram area says which one, instead of substituting the CSS system colours `Canvas`, `CanvasText` and `GrayText` — Mermaid rejected those and the error also stopped the depth control. The drawn diagram's own repainting no longer falls back to `#ffffff` / `#111111` either: a missing editor background or foreground variable is reported in the diagram area, also when it is noticed on a theme change.
-
-2026-10-07 — VS Code 0.8.3: Tree / Diagram is the first switch of the FLOW toolbar. Show from here survives a change of reading: the chosen node is found again in the new one — itself, else the routine it stands in, else its class — so Classes / Methods / Logic / Statements redraw that branch, not the whole flow. The last hex colour fallback (`#4f8cff` for variable highlighting) is gone; a missing link colour is reported like the others.
-
-2026-10-07 — VS Code 0.8.3: diagram direction Auto, the default. Auto draws the diagram both top-down and left-right and shows the one that fits the window at the larger scale (fit = min(window width / drawing width, window height / drawing height)); its tooltip says which one it chose. Top-down and Left-right still fix the direction by hand; Auto returns to the choice.
-
-2026-10-07 — VS Code 0.8.3: Auto / Top-down / Left-right form one segmented switch, so they no longer wrap in a narrow window. Expand all / Collapse all is one button again; its icon shows what a click does (chevrons up to collapse, down to expand). The node menu of the FLOW diagram also has Expand this branch and Collapse this branch, which open or close only that node and what is under it. The menu opens on a routine frame too, in every reading.
-
-2026-10-07 — VS Code 0.8.3: a click on a label in the Value origin FLOW diagram opens that code in the editor beside it again. The click named only the diagram's own node, which the window could not find among the analysis nodes, so nothing opened; it now carries the node's source and line, as the tree's links do.
-
-2026-10-07 — VS Code 0.8.3: the hover of a name declared inline (`DATA(x) = …`, `FINAL(x) = …`) shows the whole declaring statement and the type SAP's element info gives it (for example `TYPE ZIF_CALC_TYPES=>TY_CONTEXT`), and for a structure each component SAP lists.
-
-2026-10-07 — VS Code 0.8.3: Visual Debug's flow has the same controls as Value origin's: one Classes / Methods / Logic / Statements switch over the same readings of the record (or of the analysis before a run), Show from here and Expand / Collapse this branch in the node menu, Auto direction, and BSE without Logic. The separate Logic button, which opened the Tools logic diagram of one method, is gone from the toolbar.
-
-2026-10-07 — VS Code 0.8.3: the readings of a flow are built when they are first asked for, in Value origin and Visual Debug alike: the window builds the reading it shows, and another one is built from the same source when the switch is turned to it, then kept. Back (Alt+Left) returns from code opened from a diagram — Value origin's or a Tools diagram — to where the cursor was. When SAP gives no type, the hover says so. Before, it showed a cut-off piece of the assignment (`x) = …`) and no type.
-
-2026-10-07 — VS Code 0.8.3: Go to Type Definition (context menu) on a variable opens the declaration of its type: SAP's element info names the type (`abapType`), the class or interface that owns `OWNER=>TYPE` is opened through ADT, and the cursor lands on its `TYPES` (or `TYPES BEGIN OF`) statement. A dictionary or built-in type, or a value SAP names no type for, is said in a message. F12 (Go to Definition) on the name in its own inline declaration (`DATA(x)`, `FINAL(x)`) does the same, since the definition is where the cursor already is; on any other use F12 still goes to the declaration.
-
-2026-10-07 — VS Code 0.8.3: edge labels in the FLOW diagram stand on a backing in the editor background, so the line no longer runs through them. This works in every reading; an early build broke Classes and Methods with an insertBefore error. Dragging the diagram no longer selects text in the toolbar and frame captions.
-
-2026-10-07 — VS Code 0.8.3: in the BSE scope a block that is kept is drawn whole — its ENDIF, ENDCASE, ENDLOOP, ENDDO, ENDWHILE, ENDSELECT or ENDTRY comes with it, in the tree and the diagram. BSE has no Logic reading: the slice is statements, so Logic is hidden while BSE is on, a Logic view turns to Statements, and Logic returns with Full.
+The Eclipse plugin's Value origin runs the VS Code page and flow builder, so the next plugin build carries the FLOW changes of VS Code 0.8.3: the Classes / Methods / Logic / Statements switch, the node menu (Show from here, Expand / Collapse this branch), Auto direction, labels written as in the code, and theme-following frames. The plugin was not rebuilt for this.

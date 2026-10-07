@@ -8,7 +8,7 @@ function draw(body,expand=''){
 }
 test('scheme preserves ACE method shape, CHECK sequencing and call styling',()=>{
  const mm=draw(['CHECK x IS BOUND.','result = x->get_schema( ).']);
- assert.match(mm,/n1\[\["ZCL_TEST.RUN"\]\]/);assert.match(mm,/n1 --> p2\np2 --> p3/);assert.match(mm,/class p3 callnode/);assert.doesNotMatch(mm,/&gt;|Structured syntax/);
+ assert.match(mm,/n1\[\["ZCL_TEST=>RUN"\]\]/);assert.match(mm,/n1 --> p2\np2 --> p3/);assert.match(mm,/class p3 callnode/);assert.doesNotMatch(mm,/&gt;|Structured syntax/);
 });
 test('IF and ELSEIF branches fan out and join before following work',()=>{
  const mm=draw(['IF x = 1.','a = 1.','ELSEIF x = 2.','a = 2.','ELSE.','a = 3.','ENDIF.','WRITE a.']);
@@ -49,4 +49,10 @@ test('nested IF false paths join their own ENDIF',()=>{
  assert.match(mm,/n2 -->\|"false"\| j7/);
  assert.match(mm,/j5 --> p6/);assert.match(mm,/j7 --> p8/);
  assert.doesNotMatch(mm,/n3 -->\|"false"\| j7/);
+});
+test('labels keep the code as written: operators, => and field symbols; only " and | are replaced, < travels as U+E000',()=>{
+ const mm=draw(['IF a <> zcl_x=>c AND b <= 3.','ASSIGN ls-f TO <fs>.','ENDIF.']);
+ assert.match(mm,/IF a > zcl_x => c/);assert.match(mm,/ASSIGN ls-f TO fs>\./);assert.doesNotMatch(mm,/ NE |&lt;/);
+ const page=require('node:fs').readFileSync(require('node:path').resolve(__dirname,'../../org.vertex.abap.ui/resources/metrics.html'),'utf8');
+ assert.ok(page.includes('now = was.replace(/\\uE000/g, "<").replace(/&lt;/g, "<")'),'the Tools page puts the characters back after drawing');
 });

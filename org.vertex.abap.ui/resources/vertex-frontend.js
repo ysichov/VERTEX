@@ -98550,7 +98550,9 @@ const {conditionLabel}=__vertexRequire(1527);
 const {procedureEnds,isProcedureEnd,blockEnds:closers,classifyStatement}=__vertexRequire(3);
 const {callsIn}=__vertexRequire(1);
 function label(value,limit=80) {
-  let s=String(value||'').replace(/\s+/g,' ').trim().replace(/<>/g,' NE ').replace(/<=/g,' LE ').replace(/>=/g,' GE ').replace(/->|=>/g,'.').replace(/</g,'(').replace(/>/g,')').replace(/"/g,"'").replace(/[\[{]/g,'(').replace(/[\]}]/g,')').replace(/\|/g,'/').replace(/;/g,' ');
+  let s=String(value||'').replace(/\s+/g,' ').trim().replace(/"/g,"'").replace(/\|/g,'/').replace(/</g,'');
+  // The code is written as it is: only what ends a quoted Mermaid label (") or an edge label (|) is replaced. A < goes
+  // in as U+E000, or Mermaid takes <fs> for a tag and drops it; the page puts it back, with the > & Mermaid escapes.
   return s.length>limit?s.slice(0,limit-3)+'...':s;
 }
 function analyze(p) {

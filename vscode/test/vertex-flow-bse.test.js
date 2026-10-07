@@ -129,3 +129,9 @@ test("a jump from a diagram to the code is remembered, so Back returns to where 
   const reveal = workbench.slice(workbench.indexOf("async function revealSource("), workbench.indexOf("async function openToolSource("));
   assert.ok(reveal.includes("navigation.push({ document: leaving.document, at: leaving.selection.active })"), "Tools diagrams");
 });
+
+test("a label shows < > & as written in the code, not Mermaid's escape of them", () => {
+  const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
+  assert.ok(script.includes(".replace(/&lt;/g,'<').replace(/&gt;/g,'>')") && script.includes(".replace(/&amp;/g,'&')"));
+  assert.ok(script.indexOf(".replace(/&lt;/g,'<')") < script.indexOf("svg.querySelectorAll('.edgeLabel').forEach(label=>"), "before the label backings are measured");
+});
