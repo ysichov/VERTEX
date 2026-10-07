@@ -1869,17 +1869,21 @@ var have = null;         // what /vertex/about said, by service; null while unsa
 var backends = {};       // the tools it named, installed or not
 var afterAbout = null;
 
+var ABOUT_NOTE = "Checking what this SAP system offers ...";
 function askAbout(then) {
   if (typeof sdeAbout !== "function") { then(); return; }
   afterAbout = then;
   waiting = "about";
   status("checking what this system has ...");
-  hint("Checking what this SAP system offers ...");
+  // The diagram pane is still hidden here - no mode is chosen yet - so the list area says it.
+  message(ABOUT_NOTE);
   sdeAbout();
 }
 
 function tookAbout(raw) {
   status("");
+  var root = document.getElementById("root");
+  if (root.textContent === ABOUT_NOTE) { root.textContent = ""; root.className = ""; }
   var data = null;
   if (typeof raw === "string" && raw.indexOf("ERROR:") !== 0) {
     try { data = JSON.parse(raw); } catch (e) { data = null; }

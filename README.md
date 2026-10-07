@@ -237,6 +237,10 @@ What is still missing, and what has to come out before it ships: [Next.md](Next.
 - Chat: every answer has a Copy button under it; it copies the answer's Markdown through VS Code's clipboard and says Copied or why it failed.
 - Chat: "VERTEX:" stands on its own line, so an answer that starts with a heading or a list shows it as one.
 - ABAP: the ACE core (`ZCL_VX_ACE_*`, `ZIF_VX_ACE_*`, `Z_VX_ACE_SCHEME_TEST`) and the hub routes that served it - `metrics`, `class`, `package`, `flow` (`ZCL_VX_ADT_RES_METRICS`, `_CLASS`, `_PACKAGE`, `_FLOW`) - are removed from the repository. VS Code and Eclipse compute UML, metrics, Calls, Logic, FLOW and the statement map themselves from ADT source with abaplint. The other routes stay: table, join, versions, review, prepare, requests, about. Installs older than the move to client-side analysis still ask for the removed routes.
+- Review: the Inline | 2 pane switch of the version diff is in a request's review too; in 2 pane each block's bar with Approve, Decline and Comment spans both columns above its change. The choice is shared with the version diff.
+- Tools: while the window asks the SAP system what it offers, the page says so in its main area (it used to say it only in the small status line).
+- 2 pane (version diff and review): the new version is always on the left and the old one on the right, and the heading names the new one first.
+- Eclipse chat, as in VS Code: names in a list of found objects are links that open the object, and every answer has a Copy button that copies its Markdown through Eclipse's clipboard.
 
 ## VS Code 0.8.3: Predict past chains and loop tails, refused breakpoints
 
@@ -256,7 +260,7 @@ What is still missing, and what has to come out before it ships: [Next.md](Next.
 - Navigation: a click on a FLOW diagram label opens the code again. A click in a Tools diagram scrolls the editor that already shows that source instead of opening a second copy. Back (Alt+Left) returns from code opened from a diagram.
 - Types: the hover of a name declared inline (`DATA(x) = …`) shows the declaring statement and the type SAP gives it. **Go to Type Definition** opens the `TYPES` declaration of a variable's type in its class or interface.
 - Visual Debug: the separate Logic button (the Tools logic diagram of one method) is gone; Logic is a reading of the flow.
-- Tools Logic follows the editor while it scrolls: when the source scrolled to is another method, its logic diagram replaces the shown one (before, only a cursor move did that). The Eclipse plugin's Tools window does the same from the ADT editor's scrolling; it is in the Eclipse plugin build 0.8.1.20261007124532.
+- Tools Logic follows the editor while it scrolls: when the source scrolled to is another method, its logic diagram replaces the shown one (before, only a cursor move did that). The Eclipse plugin's Tools window does the same from the ADT editor's scrolling; it is in the Eclipse plugin build 0.8.1.20261007140700.
 
 ## VS Code 0.8.1 — code diagrams and Visual Debug
 

@@ -267,11 +267,11 @@
   table.diff tr.del td.mk { color: var(--del-mark); }
   table.diff tr.gap td { color: var(--faint); }
 
-  /* Side by side: the old version on the left, the new one on the right, a
+  /* Side by side: the new version on the left, the old one on the right, a
      deleted line facing the line that replaced it. */
   table.diff.side { width: 100%; table-layout: fixed; }
   table.diff.side td.code { white-space: pre-wrap; overflow-wrap: anywhere; }
-  table.diff.side td.code.old { border-right: 1px solid var(--line); }
+  table.diff.side td.code:nth-child(2) { border-right: 1px solid var(--line); }
   table.diff.side td.del { background: var(--del-bg); }
   table.diff.side td.ins { background: var(--ins-bg); }
   table.diff.side td.none { background: var(--surface); }
@@ -1280,8 +1280,14 @@ function diffTable(ops, blocks) {
    follows the one-column view: a row is shown when any of its lines is.
    SWAP puts the new version on the left and the old one on the right: that is
    how a version compared with a base reads, the base standing on the right. */
-function sideTable(ops, swap) {
+function sideTable(ops, swap, blocks) {
   var show = compact ? showMask(ops) : null;
+  // A review's blocks stand above the row their first operation is in, across both columns.
+  var opens = {};
+  (blocks || []).forEach(function (b) {
+    if (b.op_from > 0) { opens[b.op_from - 1] = b; }
+  });
+  var wide = function (row) { row.firstChild.colSpan = 4; return row; };
   var rows = [];
   var oldLine = 0, newLine = 0, i = 0;
   while (i < ops.length) {
@@ -1314,6 +1320,12 @@ function sideTable(ops, swap) {
   var tbody = document.createElement("tbody");
   var folded = false;
   rows.forEach(function (row) {
+    row.idx.forEach(function (index) {
+      if (!opens[index]) { return; }
+      tbody.appendChild(wide(blockRow(opens[index])));
+      saidRows(opens[index]).forEach(function (said) { tbody.appendChild(wide(said)); });
+      folded = false;
+    });
     var visible = !show || row.idx.some(function (index) { return show[index]; });
     if (!visible) {
       if (!folded) {
@@ -1375,13 +1387,10 @@ function segmented(choices, selected, onPick) {
   return box;
 }
 
+var SIDE_CHOICES = [["Inline", "The change in one column"],
+                    ["2 pane", "The new version on the left, the old one on the right"]];
 var COMPACT_CHOICES = [["Compact", "Only the changes and three lines around them"],
                        ["Full", "The whole source"]];
-
-/* A diff against the base rather than against the previous version. */
-function baseOnRight(data) {
-  return !diffPrev && !!data.from;
-}
 
 function renderDiff(data) {
   var ops = data.ops || [];
@@ -1397,7 +1406,8 @@ function renderDiff(data) {
   var fromText = (data.from ? asVersion(data.from) : "nothing")
                + (data.from && data.from === base ? " (base)" : "")
                + (data.from === ACTIVE && !diffPrev ? " (active)" : "");
-  what.textContent = sideBySide && baseOnRight(data)
+  // In 2 pane the new version stands on the left, so the heading names it first.
+  what.textContent = sideBySide
                    ? asVersion(data.to) + " ↔ " + fromText
                    : fromText + " → " + asVersion(data.to);
   bar.appendChild(what);
@@ -1420,9 +1430,7 @@ function renderDiff(data) {
     renderDiff(data);
   }));
 
-  bar.appendChild(segmented([["Inline", "The change in one column"],
-                             ["2 pane", "The old version on the left, the new one on the right"]],
-                            sideBySide ? 1 : 0, function (index) {
+  bar.appendChild(segmented(SIDE_CHOICES, sideBySide ? 1 : 0, function (index) {
     sideBySide = index === 1;
     placePanels();
     renderDiff(data);
@@ -1456,7 +1464,7 @@ function renderDiff(data) {
   }
 
   autoDiff = false;
-  root.appendChild(sideBySide ? sideTable(ops, baseOnRight(data)) : diffTable(ops));
+  root.appendChild(sideBySide ? sideTable(ops, true) : diffTable(ops));
   status(data.added + " added, " + data.deleted + " deleted");
 }
 
@@ -1654,9 +1662,9 @@ function renderReviewPart(data) {
   bar.appendChild(back);
 
   var what = document.createElement("span");
-  what.textContent = label + "   "
-                   + (data.versno_old ? asVersion(data.versno_old) : "nothing")
-                   + " → " + asVersion(data.versno_new);
+  var older = data.versno_old ? asVersion(data.versno_old) : "nothing";
+  what.textContent = label + "   " + (sideBySide ? asVersion(data.versno_new) + " ↔ " + older
+                                                 : older + " → " + asVersion(data.versno_new));
   bar.appendChild(what);
 
   var counts = document.createElement("span");
@@ -1674,6 +1682,13 @@ function renderReviewPart(data) {
 
   bar.appendChild(segmented(COMPACT_CHOICES, compact ? 0 : 1, function (index) {
     compact = index === 0;
+    renderReviewPart(data);
+  }));
+
+  // The same choice as the plain diff's, kept between the two.
+  bar.appendChild(segmented(SIDE_CHOICES, sideBySide ? 1 : 0, function (index) {
+    sideBySide = index === 1;
+    placePanels();
     renderReviewPart(data);
   }));
 
@@ -1725,7 +1740,7 @@ function renderReviewPart(data) {
     root.appendChild(orphans);
   }
 
-  root.appendChild(diffTable(ops, blocks));
+  root.appendChild(sideBySide ? sideTable(ops, true, blocks) : diffTable(ops, blocks));
 
   var approved = blocks.filter(function (b) { return b.action === "A"; }).length;
   var declined = blocks.filter(function (b) { return b.action === "D"; }).length;

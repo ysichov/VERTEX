@@ -124,13 +124,21 @@ Eclipse browser bundler: generated module imports now use a distinct loader name
 
 ### Shared with VS Code 0.8.4 (Value origin page)
 
-FLOW tree: switching between Full and BSE keeps the branches open as Expand all / Collapse all and Depth set them (BSE used to show everything collapsed). The tree's root keeps Expand all and Depth even when nothing is left under it, so the depth slider no longer disappears. Depth for calls starts at 1. In build 0.8.1.20261007124532.
+FLOW tree: switching between Full and BSE keeps the branches open as Expand all / Collapse all and Depth set them (BSE used to show everything collapsed). The tree's root keeps Expand all and Depth even when nothing is left under it, so the depth slider no longer disappears. Depth for calls starts at 1. In build 0.8.1.20261007140700.
+
+Eclipse chat, as in VS Code: names in a list of found objects are links that open the object, and every answer has a Copy button that copies its Markdown through Eclipse's clipboard.
+
+2 pane (version diff and review): the new version is always on the left and the old one on the right, and the heading names the new one first.
+
+Review: the Inline | 2 pane switch of the version diff is in a request's review too; in 2 pane each block's bar with Approve, Decline and Comment spans both columns above its change. The choice is shared with the version diff.
+
+Tools: while the window asks the SAP system what it offers, the page says so in its main area (it used to say it only in the small status line).
 
 ABAP: the ACE core (`ZCL_VX_ACE_*`, `ZIF_VX_ACE_*`, `Z_VX_ACE_SCHEME_TEST`) and the hub routes that served it - `metrics`, `class`, `package`, `flow` (`ZCL_VX_ADT_RES_METRICS`, `_CLASS`, `_PACKAGE`, `_FLOW`) - are removed from the repository. VS Code and Eclipse compute UML, metrics, Calls, Logic, FLOW and the statement map themselves from ADT source with abaplint. The other routes stay: table, join, versions, review, prepare, requests, about. Installs older than the move to client-side analysis still ask for the removed routes.
 
 ### Shared with VS Code 0.8.3 (Value origin page)
 
-The Eclipse plugin's Value origin runs the VS Code page and flow builder, so plugin build 0.8.1.20261007124532 carries the FLOW changes of VS Code 0.8.3 and the Value origin fixes below: the Classes / Methods / Logic / Statements switch, the node menu (Show from here, Expand / Collapse this branch), Auto direction, labels written as in the code, and theme-following frames.
+The Eclipse plugin's Value origin runs the VS Code page and flow builder, so plugin build 0.8.1.20261007140700 carries the FLOW changes of VS Code 0.8.3 and the Value origin fixes below: the Classes / Methods / Logic / Statements switch, the node menu (Show from here, Expand / Collapse this branch), Auto direction, labels written as in the code, and theme-following frames.
 
-Tools Logic now follows the ADT editor while it scrolls, as in VS Code 0.8.3: the line a third down the visible range is sent to the page, and when it lies in another method that method's logic diagram replaces the shown one. Also in build 0.8.1.20261007124532.
+Tools Logic now follows the ADT editor while it scrolls, as in VS Code 0.8.3: the line a third down the visible range is sent to the page, and when it lies in another method that method's logic diagram replaces the shown one. Also in build 0.8.1.20261007140700.
 

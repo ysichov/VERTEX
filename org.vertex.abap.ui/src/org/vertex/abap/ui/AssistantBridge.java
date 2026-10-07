@@ -29,6 +29,10 @@ final class AssistantBridge implements AutoCloseable {
         new BrowserFunction(view.browser, "sdeAsk") {
             @Override public Object function(Object[] args) { submit("ask", args); return null; }
         };
+        // A found object clicked in the chat: assistant, unused model, then the object as JSON.
+        new BrowserFunction(view.browser, "sdeOpenObject") {
+            @Override public Object function(Object[] args) { submit("open", args); return null; }
+        };
         view.browser.addDisposeListener(e -> close());
     }
 

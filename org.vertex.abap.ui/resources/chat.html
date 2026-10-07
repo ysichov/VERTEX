@@ -29,6 +29,9 @@ button:disabled, select:disabled { opacity: .6; cursor: default; }
 .vertex code { font-family: Consolas, monospace; background: rgba(127,127,127,.15); padding: 0 3px; border-radius: 3px; }
 .vertex pre { white-space: pre; overflow-x: auto; background: rgba(127,127,127,.15); padding: 6px 8px; border-radius: 3px; }
 .vertex pre code { background: none; padding: 0; }
+.object-link { color: var(--button); text-decoration: none; }
+.object-link:hover { text-decoration: underline; }
+.copy-answer { margin: -6px 0 12px; padding: 1px 8px; font-size: 11px; }
 .message .who { display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; }
 .you .who, .you { color: var(--you); }
 .vertex .who, .vertex { color: var(--vertex); }
@@ -81,7 +84,7 @@ function sessionStamp() {
 }
 var session = sessionStamp();
 
-function say(kind, who, text) {
+function say(kind, who, text, choices) {
   var item = document.createElement("div");
   item.className = "message " + kind;
   var label = document.createElement("span");
@@ -89,6 +92,7 @@ function say(kind, who, text) {
   label.textContent = who;
   item.appendChild(label);
   if (kind === "vertex") { markdown(text, item); } else { item.appendChild(document.createTextNode(text)); }
+  if (kind === "vertex") { links(item, choices || []); }
   var box = document.getElementById("messages");
   box.appendChild(item);
   box.scrollTop = box.scrollHeight;
@@ -223,6 +227,10 @@ function sdeAskSelection(question, fragment, view) {
 function sdeAssistant(raw) {
   var data;
   try { data = JSON.parse(raw); } catch (e) { data = { call: "ask", error: "The host answered with something that is not JSON." }; }
+  if (data.call === "open") {
+    if (data.error) { say("error", "VERTEX", data.error); }
+    return;
+  }
   if (data.call === "models") {
     if (data.assistant !== document.getElementById("who").value) { return; }
     var box = document.getElementById("model");
@@ -259,7 +267,8 @@ function sdeAssistant(raw) {
   }
   var answer = data.plan && data.plan.answer ? data.plan.answer : "Done.";
   conversation.push({ role: "assistant", content: answer });
-  say("vertex", who, answer);
+  say("vertex", who, answer, data.choices);
+  copyButton(answer);
   if (data.direct) {
     var direct = document.createElement("div");
     direct.className = "message hint";
@@ -277,6 +286,37 @@ function sdeAssistant(raw) {
       + " in (" + k(u.cache_read_input_tokens) + " from cache) · " + k(u.output_tokens) + " out";
     document.getElementById("messages").appendChild(line);
   }
+}
+
+// Each found object is a link: a click opens it, as a single match is opened.
+function links(item, choices) {
+  Array.prototype.forEach.call(item.querySelectorAll("li"), function (li) {
+    var name = li.querySelector("strong"), first = li.firstChild;
+    var type = first && first.nodeType === 3 ? first.textContent.trim() : "";
+    var object = name && choices.filter(function (c) { return c.object_name === name.textContent && c.object_type === type; })[0];
+    if (!object) { return; }
+    var link = document.createElement("a");
+    link.href = "#"; link.className = "object-link"; link.title = "Open " + object.object_type + " " + object.object_name;
+    link.appendChild(name.cloneNode(true));
+    link.addEventListener("click", function (event) {
+      event.preventDefault();
+      sdeOpenObject(document.getElementById("who").value, "", JSON.stringify({ object_type: object.object_type, object_name: object.object_name }));
+    });
+    name.parentNode.replaceChild(link, name);
+  });
+}
+
+// Under every answer: its Markdown to the clipboard, through Eclipse.
+function copyButton(answer) {
+  var button = document.createElement("button");
+  button.type = "button"; button.className = "copy-answer"; button.textContent = "Copy";
+  button.title = "Copy this answer to the clipboard";
+  button.addEventListener("click", function () {
+    var failure = sdeCopyText(answer);
+    button.textContent = failure ? "Copy failed: " + failure : "Copied";
+    setTimeout(function () { button.textContent = "Copy"; }, 2000);
+  });
+  document.getElementById("messages").appendChild(button);
 }
 
 // Markdown built as DOM nodes with textContent only, so an answer cannot inject markup.

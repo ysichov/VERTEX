@@ -58,6 +58,23 @@ public class ChatView extends PageView {
 	@Override
 	public void createPartControl(org.eclipse.swt.widgets.Composite parent) {
 		super.createPartControl(parent);
+		// An answer's Copy button: Eclipse's clipboard, since the page's own may not be allowed. Empty means copied.
+		new BrowserFunction(this.browser, "sdeCopyText") {
+			@Override
+			public Object function(Object[] args) {
+				if (args.length < 1 || !(args[0] instanceof String)) return "Nothing to copy.";
+				org.eclipse.swt.dnd.Clipboard clipboard = new org.eclipse.swt.dnd.Clipboard(browser.getDisplay());
+				try {
+					clipboard.setContents(new Object[] { args[0] },
+							new org.eclipse.swt.dnd.Transfer[] { org.eclipse.swt.dnd.TextTransfer.getInstance() });
+					return "";
+				} catch (RuntimeException e) {
+					return String.valueOf(e.getMessage());
+				} finally {
+					clipboard.dispose();
+				}
+			}
+		};
 		// The workbench owns Ctrl+C; without a handler of this view's own nothing is copied.
 		getViewSite().getActionBars().setGlobalActionHandler(org.eclipse.ui.actions.ActionFactory.COPY.getId(),
 				new org.eclipse.jface.action.Action() {

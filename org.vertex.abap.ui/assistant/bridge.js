@@ -40,18 +40,27 @@ const BRAINS = { selector: "./selector", versions: "./versions", chat: "./chat" 
 async function run(request, fetch, api = assistant, open = async () => { throw new Error("This host cannot open objects."); }) {
   if (!Object.hasOwn(BRAINS, request.service)) { throw new Error("Unknown assistant service: " + request.service); }
   const brain = require(BRAINS[request.service]);
+  // The SAP tools without a model: the direct search and a clicked object.
+  const direct = { fetch, open, context: {} };
+  const tool = async (name, args) => {
+    const result = await brain.callTool(direct, name, args);
+    const text = result.content.map(c => c.text).join("");
+    if (result.isError) { throw new Error(text); }
+    return JSON.parse(text);
+  };
+  if (request.call === "open" && request.service === "chat") {
+    // A name in a list of found objects, clicked: opened as a single match is.
+    const object = JSON.parse(request.text);
+    await tool("open_sap_object", { object_type: String(object.object_type), object_name: String(object.object_name) });
+    return { call: "open" };
+  }
   if (request.call === "ask" && request.service === "chat" && directSearch.isObjectName(request.text)) {
     // No model for a bare object name: search the system and open it.
-    const deps = { fetch, open, context: {} };
-    const tool = async (name, args) => {
-      const result = await brain.callTool(deps, name, args);
-      const text = result.content.map(c => c.text).join("");
-      if (result.isError) { throw new Error(text); }
-      return JSON.parse(text);
-    };
+    let choices = [];
     const answer = await directSearch.answer(request.text, { system: request.project,
-      search: args => tool("search_sap_objects", args), open: args => tool("open_sap_object", args) });
-    return { call: "ask", model: "", usage: null, direct: true, plan: { answer } };
+      search: args => tool("search_sap_objects", args), open: args => tool("open_sap_object", args),
+      choices: found => { choices = found; } });
+    return { call: "ask", model: "", usage: null, direct: true, plan: { answer }, choices };
   }
   const options ={ assistant: request.assistant, executable: executable(request.assistant, request.executable) };
   if (request.call === "models") {
