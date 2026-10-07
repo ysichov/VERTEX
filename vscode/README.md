@@ -1044,3 +1044,23 @@ FLOW collapse controls use the canonical independent toggle style with compact, 
 2026-10-07 — VS Code 0.8.3: Expand all and Collapse all are two buttons side by side, as SAP GUI draws them — chevrons down and chevrons up — instead of one switch that turned over; the one in force is active. They stand at the root of the FLOW and Formula trees and in the diagram's toolbar, in Value origin and Visual Debug.
 
 2026-10-07 — VS Code 0.8.3: in a tree the Depth control stands at the root beside Expand all / Collapse all (by Fit in the diagram), and a click on it does not fold the root. The FLOW buttons say what they do on hover: each reading (Classes, Methods, Logic, Statements), Full / BSE, FLOW / Formula, Tree / Diagram, Fit, Expand all and Collapse all.
+
+2026-10-07 — VS Code 0.8.3: Show from here. A right click on a node of the FLOW diagram offers Show from here, which draws only that node and what it leads to, in the same reading and depth. A path bar above the diagram (Whole flow › … › the node) goes back to any level, and Esc goes back one step. The tree is unchanged. Shared by Value origin and Visual Debug.
+
+2026-10-07 — VS Code 0.8.3: in the FLOW diagram a WHEN is drawn once, as the label on the line from its CASE to the branch's first statement; the separate WHEN box that repeated it is gone. The tree keeps WHEN as the parent of its branch.
+
+2026-10-07 — VS Code 0.8.3: a click on a node in a VERTEX Tools diagram (Logic, Calls, Parts) scrolls the editor that already shows that source, in whatever column it is, instead of opening a second copy in the first column. A source not on screen opens in the column the ABAP sources already live in.
+
+2026-10-07 — VS Code 0.8.3: the FLOW diagram takes its Mermaid colours from the editor theme only. When the theme lacks one of the variables it needs, the diagram area says which one, instead of substituting the CSS system colours `Canvas`, `CanvasText` and `GrayText` — Mermaid rejected those and the error also stopped the depth control. The drawn diagram's own repainting no longer falls back to `#ffffff` / `#111111` either: a missing editor background or foreground variable is reported in the diagram area, also when it is noticed on a theme change.
+
+2026-10-07 — VS Code 0.8.3: Tree / Diagram is the first switch of the FLOW toolbar. Show from here survives a change of reading: the chosen node is found again in the new one — itself, else the routine it stands in, else its class — so Classes / Methods / Logic / Statements redraw that branch, not the whole flow. The last hex colour fallback (`#4f8cff` for variable highlighting) is gone; a missing link colour is reported like the others.
+
+2026-10-07 — VS Code 0.8.3: diagram direction Auto, the default. Auto draws the diagram both top-down and left-right and shows the one that fits the window at the larger scale (fit = min(window width / drawing width, window height / drawing height)); its tooltip says which one it chose. Top-down and Left-right still fix the direction by hand; Auto returns to the choice.
+
+2026-10-07 — VS Code 0.8.3: Auto / Top-down / Left-right form one segmented switch, so they no longer wrap in a narrow window. Expand all / Collapse all is one button again; its icon shows what a click does (chevrons up to collapse, down to expand). The node menu of the FLOW diagram also has Expand this branch and Collapse this branch, which open or close only that node and what is under it. The menu opens on a routine frame too, in every reading.
+
+2026-10-07 — VS Code 0.8.3: a click on a label in the Value origin FLOW diagram opens that code in the editor beside it again. The click named only the diagram's own node, which the window could not find among the analysis nodes, so nothing opened; it now carries the node's source and line, as the tree's links do.
+
+2026-10-07 — VS Code 0.8.3: edge labels in the FLOW diagram stand on a backing in the editor background, so the line no longer runs through them. This works in every reading; an early build broke Classes and Methods with an insertBefore error. Dragging the diagram no longer selects text in the toolbar and frame captions.
+
+2026-10-07 — VS Code 0.8.3: in the BSE scope a block that is kept is drawn whole — its ENDIF, ENDCASE, ENDLOOP, ENDDO, ENDWHILE, ENDSELECT or ENDTRY comes with it, in the tree and the diagram. BSE has no Logic reading: the slice is statements, so Logic is hidden while BSE is on, a Logic view turns to Statements, and Logic returns with Full.

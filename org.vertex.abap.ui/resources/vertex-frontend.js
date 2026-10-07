@@ -98498,7 +98498,7 @@ function build(sf,mode){
     scopes[scope].forEach(function(w){
       var word=(String(w.text).match(/^([A-Za-z-]+)/)||[])[1]||"";word=word.toUpperCase();
       if(stopped)return;
-      var closing=/^END(IF|CASE|LOOP|DO|WHILE|SELECT|TRY)$/.test(word);if(closing){while(blocks.length&&blocks[blocks.length-1].branch)blocks.pop();blocks.pop();}
+      var closing=/^END(IF|CASE|LOOP|DO|WHILE|SELECT|TRY)$/.test(word),opened=null;if(closing){while(blocks.length&&blocks[blocks.length-1].branch)blocks.pop();opened=blocks.pop()||null;}
       var diagramRow=Object.assign({},w,{nodeId:null});diagramRows.push(diagramRow);
       if(stopped)return;
       sequence.push(w);
@@ -98510,7 +98510,7 @@ function build(sf,mode){
       var branch=/^(WHEN|ELSE|ELSEIF)$/.test(word);
       if(branch)while(blocks.length&&blocks[blocks.length-1].branch)blocks.pop();
       var node={id:id(),key:"o|"+w.name+":"+w.line,text:w.text.length>100?w.text.slice(0,97)+"…":w.text,location:scope,owner:n.klass,source:src(w),
-        group:scope,line:w.aceLine,aceLocation:w.location,stack:depth,type:"operation",bse:!!w.included,branch:branch};
+        group:scope,line:w.aceLine,aceLocation:w.location,stack:depth,type:"operation",bse:!!w.included,branch:branch,closes:opened?opened.id:undefined};
       diagramRow.nodeId=node.id;nodes.push(node);edges.push({from:blocks.length?blocks[blocks.length-1].id:container.id,to:node.id,label:String(w.line)});
       if(!blocks.length&&!firstOf[scope])firstOf[scope]=node.id;
       if(branch||/^(IF|CASE|LOOP|DO|WHILE|SELECT)$/.test(word))blocks.push({id:node.id,branch:branch});
@@ -98532,6 +98532,8 @@ function build(sf,mode){
   for(var again=true;again;){again=false;edges.forEach(function(e){var from=byId[e.from],to=byId[e.to];if(from&&to&&to.bse&&!from.bse){from.bse=true;again=true;}});}
   var idOf={},deepest=0;nodes.forEach(function(x){idOf[x.key]=x.id;if(x.stack>deepest)deepest=x.stack;});
   var diagramEdges=edges.filter(function(edge){var target=byId[edge.to];return target&&['method','class','program'].indexOf(target.type)>=0;});routineFlows.forEach(function(flow){if(flow.entry)diagramEdges.push({from:flow.header,to:flow.entry,label:''});diagramEdges=diagramEdges.concat(flow.edges);});
+  // A WHEN is said on the line from its CASE, not drawn again as a box: the line takes the box's way on, the box is left out of the diagram (the tree keeps it).
+  nodes.forEach(function(n){if(!n.branch||!/^WHEN[\s.]/i.test(n.text))return;var into=diagramEdges.filter(function(e){return e.to===n.id;});if(!into.length)return;n.diagramHidden=true;var out=diagramEdges.filter(function(e){return e.from===n.id;});diagramEdges=diagramEdges.filter(function(e){return e.to!==n.id&&e.from!==n.id;});into.forEach(function(e){out.forEach(function(o){diagramEdges.push({from:e.from,to:o.to,label:e.label||o.label});});});});
   return {nodes:[],edges:[],formula:{nodes:[],edges:[]},bseFlow:{nodes:nodes,edges:edges,palette:palette,diagramEdges:diagramEdges,grouped:mode==="steps"||mode==="logic"},originTitle:"",maxStack:deepest,maxLevel:0,bseFlowHtml:"",sequence:sequence,ids:idOf,said:said};
 }
 var api={build:build,palette:palette,routineColor:routineColor};

@@ -12,31 +12,23 @@ test("every node the BSE scope shows is marked as part of the slice, the tree an
   assert.match(source, /if\(node\.bse\|\|flowBseOnly\)element\.classList\.add\('bse-operator'\)/, "the diagram");
 });
 
-test("Expand all and Collapse all are two buttons, as in SAP GUI, at the root of the tree and in the diagram's toolbar", () => {
+test("Collapse all and Expand all are one switch whose icon shows what a click does, at the root of the tree and in the diagram's toolbar", () => {
   const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
-  assert.ok(!script.includes("data-expand-switch"), "no single switch that turns over");
-  const bar = script.slice(script.indexOf("const expandToggle=document.createElement"), script.indexOf("modeToggle.append(expandToggle);"));
-  assert.ok(!bar.includes("makeExpandSwitch"), "the top bar keeps the depth and no buttons");
+  assert.ok(!script.includes("data-expand-choice"), "not two buttons");
   const make = script.slice(script.indexOf("const makeExpandSwitch="), script.indexOf("const attachTreeSwitch="));
-  assert.ok(make.includes("vertex-segment-toggle") && make.includes("[['expand','Expand all',ICON_EXPAND],['collapse','Collapse all',ICON_COLLAPSE]]"), "one exclusive pair: Expand all, then Collapse all");
-  assert.ok(make.includes("branchMode=mode;applyBranchChoice();"), "a click chooses its own mode");
+  assert.ok(make.includes("data-expand-switch") && make.includes("branchMode=branchMode==='expand'?'collapse':'expand'"), "a click turns it over");
   const mark = script.slice(script.indexOf("const markMode="), script.indexOf("const setDepth="));
-  assert.ok(mark.includes("document.querySelectorAll('[data-expand-choice]')") && mark.includes("classList.toggle('active',chosen)"), "every pair shows the mode in force");
-  const apply = script.slice(script.indexOf("const applyBranchChoice="), script.indexOf("/* In the BSE scope everything that is left"));
-  assert.ok(!apply.includes("setDepth("), "it leaves the depth alone");
-  assert.ok(apply.includes("attachTreeSwitch(flowPane)") && apply.includes("root.append(' ',makeExpandSwitch())"), "a switch at the root of the tree");
-  assert.ok(apply.includes("document.getElementById('mermaid-fit').before(makeExpandSwitch())"), "and one in the diagram's own toolbar, before Fit");
-  assert.ok(script.includes("if(treeSwitchReady)attachTreeSwitch(flowPane)"), "the tree is rebuilt with it");
-  const open = script.slice(script.indexOf("const openToDepth="), script.indexOf("const applyDepth="));
-  assert.ok(open.includes("branchMode==='expand'"), "what is opened depends on the mode, within the depth");
+  assert.ok(mark.includes("collapsed?ICON_EXPAND:ICON_COLLAPSE"), "the icon is the action a click takes");
+  assert.ok(mark.includes("document.querySelectorAll('[data-expand-switch]')"), "every switch shows the one state");
+  assert.ok(script.includes("root.append(' ',makeExpandSwitch())") && script.includes("document.getElementById('mermaid-fit').before(makeExpandSwitch())"), "at the root of the tree and before Fit");
+  assert.ok(script.includes("'Expand this branch'") && script.includes("'Collapse this branch'"), "a branch alone is opened or closed from the node's menu");
 });
-
 test("the Tree / Diagram switch is two icons, each named by its title", () => {
   const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
   for (const choice of ["tree", "diagram"]) {
     const at = script.indexOf('data-view-choice="' + choice + '"');
     const button = script.slice(at, script.indexOf("</button>", at));
-    assert.ok(button.includes('title="' + (choice === "tree" ? "Tree" : "Diagram") + '"') && button.includes("<svg"), choice + " is an icon with a name");
+    assert.ok(button.includes('title="' + (choice === "tree" ? "Tree:" : "Diagram:")) && button.includes("<svg"), choice + " is an icon with a name");
     assert.ok(!/>(Tree|Diagram)$/.test(button), choice + " has no words on it");
   }
 });
@@ -60,4 +52,59 @@ test("FLOW shares the Calls palette and BSE overrides routine colour",()=>{
  assert.equal(graph.routineColor('CONSTRUCTOR',{type:'CLAS'}),'constr');
  assert.match(source,/graph\.bseFlow&&graph\.bseFlow\.palette/);
  assert.ok(source.indexOf("style.textContent+='g.node.bse-operator")>source.indexOf("Object.keys(palette).forEach"));
+});
+
+test("Show from here draws the FLOW diagram from one node, and the path bar and Esc go back", () => {
+  const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
+  assert.ok(script.includes("flowVisible(focusPath.length?focusPath[focusPath.length-1]:'bseroot')"), "the diagram is walked from the chosen node");
+  assert.ok(script.includes("host.addEventListener('contextmenu'") && script.includes("'Show from here'"), "a right click on a node offers it");
+  assert.ok(script.includes("bar.append(step('Whole flow',0,"), "the path bar starts at the whole flow");
+  assert.ok(script.includes("event.key!=='Escape'") && script.includes("focusPath.pop()"), "Esc goes back one step");
+  assert.ok(script.includes("graph.flowReadings.active=reading.mode;focusPath=carryFocus(graph.bseFlow,reading.bseFlow);"), "another reading keeps the branch shown");
+  assert.ok(script.includes("[node.key,'m|'+(node.group||node.location),'c|'+node.owner]"), "found again by key, else as its routine, else as its class");
+});
+
+test("a WHEN is the label on the line from its CASE, not a second box in the diagram", () => {
+  const builder = require("../../org.vertex.abap.ui/resources/vertex-flow-graph.js");
+  const rows = [["CASE p_a.", 1], ["WHEN 'X'.", 2], ["lv_x = 1.", 3], ["WHEN OTHERS.", 4], ["lv_x = 2.", 5], ["ENDCASE.", 6]]
+    .map(([text, line]) => ({ scope: "ZDEMO→START-OF-SELECTION", name: "ZDEMO", line, aceLine: line, text, type: "PROG" }));
+  const flow = builder.build({ rows, sites: [], point: { url: "", line: 0 }, name: "ZDEMO" }, "steps").bseFlow;
+  const text = Object.fromEntries(flow.nodes.map(node => [node.id, node.text]));
+  const drawn = flow.diagramEdges.map(edge => text[edge.from] + " -> " + text[edge.to] + " [" + edge.label + "]");
+  assert.ok(drawn.includes("CASE p_a. -> lv_x = 1. [WHEN 'X'.]") && drawn.includes("CASE p_a. -> lv_x = 2. [WHEN OTHERS.]"), drawn.join("; "));
+  assert.ok(!drawn.some(edge => /WHEN[^\]]*->|-> WHEN/.test(edge)), "no edge reaches a WHEN box");
+  assert.ok(flow.nodes.filter(node => /^WHEN/.test(node.text)).every(node => node.diagramHidden), "the tree keeps them; the diagram leaves them out");
+});
+
+test("in the BSE scope a kept block is drawn whole: its END statement comes with it", () => {
+  const builder = require("../../org.vertex.abap.ui/resources/vertex-flow-graph.js");
+  const rows = [["IF a = 1.", 1], ["b = 2.", 2], ["ENDIF.", 3]].map(([text, line]) => ({ scope: "ZDEMO→START-OF-SELECTION", name: "ZDEMO", line, aceLine: line, text, type: "PROG" }));
+  const flow = builder.build({ rows, sites: [], point: { url: "", line: 0 }, name: "ZDEMO" }, "steps").bseFlow;
+  const open = flow.nodes.find(node => node.text === "IF a = 1."), close = flow.nodes.find(node => node.text === "ENDIF.");
+  assert.equal(close.closes, open.id, "ENDIF knows the IF it closes");
+  const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
+  assert.ok(script.includes("if(node.closes&&keep.has(node.closes)&&withinDepth(node))keep.add(node.id);"), "the BSE scope keeps it with its block");
+});
+
+test("the BSE scope has no Logic reading: Logic is hidden there and a Logic view turns to Statements", () => {
+  const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
+  assert.ok(script.includes("logic.hidden=flowBseOnly;"), "hidden in BSE, back with Full");
+  assert.ok(script.includes("if(flowBseOnly&&graph.flowReadings.active==='logic')flowReading.querySelector('[data-flow-reading=\"steps\"]').click();"), "Logic turns to Statements");
+});
+
+test("a label backing goes beside its text, which dagre nests deeper than ELK does", () => {
+  const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
+  assert.ok(script.includes("text.parentNode.insertBefore(back,text);") && !script.includes("label.insertBefore(back,text);"));
+});
+
+test("an ELK routine frame opens the node menu like its node: it is found by its caption", () => {
+  const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
+  assert.ok(script.includes("svg.querySelectorAll('g.subgraph').forEach(frame=>{") && script.includes("if(routine)frame.dataset.bseNode=routine.id;"));
+});
+
+test("a click on a FLOW diagram label sends the node's source and line, which the window opens beside", () => {
+  const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
+  assert.ok(script.includes("window.bseMermaidOpen(node.id,node);"));
+  const page = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../value-origin-view.js"), "utf8");
+  assert.ok(page.includes("api.postMessage(node&&node.source?{node:id,source:node.source,line:Number(node.line)||0}:{node:id})"));
 });

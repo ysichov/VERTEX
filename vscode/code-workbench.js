@@ -281,6 +281,22 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   const originVariables = gate.newest(readVariables);
   // The sources of the last analysis: what a node of its flow opens, as Value origin opens its nodes.
   let lastOrigin = null;
+  // A link from a diagram goes to the source where the reader already has it: an editor showing that document is
+  // scrolled, not joined by a second copy in another column. Only a document not on screen is opened, in the column the
+  // ABAP sources already live in.
+  async function revealSource(document, at, preserveFocus) {
+    const visible = vscode.window.visibleTextEditors || [];
+    const shown = visible.find(editor => editor.document === document);
+    if (shown) {
+      const editor = await vscode.window.showTextDocument(document, { viewColumn: shown.viewColumn, preserveFocus: preserveFocus === true, preview: true });
+      editor.selection = new vscode.Selection(at, at);
+      editor.revealRange(new vscode.Range(at, at), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+      return;
+    }
+    const home = visible.find(editor => editor.document && editor.document.uri && editor.document.uri.scheme === 'vertex-sap' && editor.viewColumn);
+    await vscode.commands.executeCommand('vscode.open', document.uri, { viewColumn: home ? home.viewColumn : vscode.ViewColumn.One,
+      selection: new vscode.Range(at, at), preview: true, preserveFocus: preserveFocus === true });
+  }
   async function openToolSource(args) {
     const repo = await repository();
     const entry = [...opened.values()].find(item=>item.repo===repo&&item.document&&!item.document.isClosed&&String(item.data.object_name).toUpperCase()===String(args.name).toUpperCase())
@@ -292,7 +308,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       return match && match[1].toUpperCase() === routine;
     }) : -1;
     const at = new vscode.Position(Math.max(0,Math.min(entry.document.lineCount-1,Number.isInteger(args.line)?args.line-1:row)),0);
-    await vscode.commands.executeCommand('vscode.open',entry.document.uri,{viewColumn:vscode.ViewColumn.One,selection:new vscode.Range(at,at),preview:true,preserveFocus:args.preserveFocus===true});
+    await revealSource(entry.document, at, args.preserveFocus);
   }
   async function openOrigin({ source: sourceId, location, line }) {
     if (!lastOrigin) { throw new Error('Run the analysis first: its sources are what a link opens.'); }
@@ -300,7 +316,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     if (!source) { throw new Error('The analysis has no source ' + sourceId + ' any more: run it again.'); }
     const opened = await lastOrigin.openSource(source, { location, line });
     const at = new vscode.Position(Math.max(0, Math.min(opened.document.lineCount - 1, (opened.line || line) - 1)), 0);
-    await vscode.commands.executeCommand('vscode.open', opened.document.uri, { viewColumn: vscode.ViewColumn.One, selection: new vscode.Range(at, at), preview: true });
+    await revealSource(opened.document, at, false);
     return {};
   }
   async function readOrigin({ object_name, object_type, line, variable, from: boundFrom, to: boundTo }, progress = () => {}) {

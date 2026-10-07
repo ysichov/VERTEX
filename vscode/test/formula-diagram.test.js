@@ -29,7 +29,7 @@ test('Formula diagram uses only nodes visible in the expanded Formula tree', () 
   const output = page();
   assert.match(output, /data-formula-node="n1"/);
   assert.match(output, /const formulaVisible=\(\)=>new Set/);
-  assert.match(output, /shown=formulaMode\?formulaVisible\(\):\(flowMode\?flowVisible\(\):visible\(\)\)/);
+  assert.match(output, /shown=formulaMode\?formulaVisible\(\):\(flowMode\?flowVisible\(focusPath[^)]*\):visible\(\)\)/);
   assert.match(output, /details\.execution-node, details\.formula-node/);
   assert.match(output, /formulaMode\?\[\.\.\.document\.querySelectorAll\('details\.formula-node'\)\]/);
   assert.match(output, /\[data-formula-node="'\+id\+'"\]/);
@@ -167,11 +167,11 @@ test('FLOW shows what a call passes, so nothing is lost with Code gone', () => {
   assert(flow.edges.some(edge => edge.to === passed[0].id));
 });
 
-test('the toolbar reads Type, then view, then what is shown', () => {
+test('the toolbar reads view, then Type, then what is shown', () => {
   const output = page();
-  // The view toggle is moved next to the Type toggle, and the controls that
-  // say what is shown are appended after it.
-  const moved = output.indexOf("modeToggle.append(document.querySelector('[data-view-toggle]'))");
+  // The view toggle (Tree / Diagram) comes first, before the Type toggle, and
+  // the controls that say what is shown are appended after them.
+  const moved = output.indexOf("modeToggle.prepend(document.querySelector('[data-view-toggle]'))");
   const scope = output.indexOf('modeToggle.append(flowFilter)');
   const expand = output.indexOf('modeToggle.append(expandToggle)');
   const depth = output.indexOf("const depthToggle=expandToggle.querySelector('[data-depth-part]')");
