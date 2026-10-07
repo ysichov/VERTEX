@@ -12,17 +12,18 @@ test("every node the BSE scope shows is marked as part of the slice, the tree an
   assert.match(source, /if\(node\.bse\|\|flowBseOnly\)element\.classList\.add\('bse-operator'\)/, "the diagram");
 });
 
-test("Collapse all and Expand all are one switch that offers the other each time, at the root of the tree and in the diagram's toolbar", () => {
+test("Expand all and Collapse all are two buttons, as in SAP GUI, at the root of the tree and in the diagram's toolbar", () => {
   const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
-  assert.ok(!script.includes("data-expand-choice"), "not two buttons any more");
+  assert.ok(!script.includes("data-expand-switch"), "no single switch that turns over");
   const bar = script.slice(script.indexOf("const expandToggle=document.createElement"), script.indexOf("modeToggle.append(expandToggle);"));
-  assert.ok(!bar.includes("data-expand-switch"), "the top bar keeps the depth and no switch");
+  assert.ok(!bar.includes("makeExpandSwitch"), "the top bar keeps the depth and no buttons");
+  const make = script.slice(script.indexOf("const makeExpandSwitch="), script.indexOf("const attachTreeSwitch="));
+  assert.ok(make.includes("vertex-segment-toggle") && make.includes("[['expand','Expand all',ICON_EXPAND],['collapse','Collapse all',ICON_COLLAPSE]]"), "one exclusive pair: Expand all, then Collapse all");
+  assert.ok(make.includes("branchMode=mode;applyBranchChoice();"), "a click chooses its own mode");
   const mark = script.slice(script.indexOf("const markMode="), script.indexOf("const setDepth="));
-  assert.ok(mark.includes("collapsed?ICON_EXPAND:ICON_COLLAPSE") && mark.includes("collapsed?'Expand all':'Collapse all'"), "it offers expand when collapsed, collapse when expanded");
-  assert.ok(mark.includes("document.querySelectorAll('[data-expand-switch]')"), "every switch shows the one state");
+  assert.ok(mark.includes("document.querySelectorAll('[data-expand-choice]')") && mark.includes("classList.toggle('active',chosen)"), "every pair shows the mode in force");
   const apply = script.slice(script.indexOf("const applyBranchChoice="), script.indexOf("/* In the BSE scope everything that is left"));
   assert.ok(!apply.includes("setDepth("), "it leaves the depth alone");
-  assert.ok(apply.includes("branchMode=branchMode==='expand'?'collapse':'expand'"), "a click turns it over");
   assert.ok(apply.includes("attachTreeSwitch(flowPane)") && apply.includes("root.append(' ',makeExpandSwitch())"), "a switch at the root of the tree");
   assert.ok(apply.includes("document.getElementById('mermaid-fit').before(makeExpandSwitch())"), "and one in the diagram's own toolbar, before Fit");
   assert.ok(script.includes("if(treeSwitchReady)attachTreeSwitch(flowPane)"), "the tree is rebuilt with it");

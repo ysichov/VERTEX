@@ -3042,3 +3042,65 @@ Embedded Logic starts from the active source editor rather than the analysed pat
 ## 2026-10-06 — 0.8.1 release documentation and help
 
 Consolidated the incremental README and website notes into the final user workflow. Visual Debug uses Classes/Methods plus a separate Logic toggle backed by the existing Tools component and message handlers. Tools follows the active editor, picks a routine by source coordinates, and switches object when selection changes. Updated diagram, debugger and Value Origin help; documented focus-driven scrolling, source history, return/end boundaries, zoom/lens rules and connection-aware Detach. Earlier four-mode and Follow code descriptions are historical and superseded. No Eclipse build was produced and no live visual/SAP verification is claimed by this documentation update.
+
+### Eclipse 0.8.1 export preparation
+
+Prepared 0.8.1.qualifier bundle/feature metadata, the shared FLOW dependencies and an Eclipse Visual Flow Analysis command with Calls / Logic and ADT editor selection/source navigation. Eclipse retains its existing ACE backend contract; the VS Code frontend-analysis adapter and runtime Debug are not claimed ported. See [Eclipse export guide](eclipse/README.md).
+
+Eclipse 0.8.1 preparation build: Java 21 compilation and update-site/archive packaging completed successfully. Artifact: `target/eclipse-0.8.1.20261006202315/vertex-eclipse-0.8.1.20261006202315.zip`. The published `docs/` update-site metadata and plugin artifacts were not replaced. Live Eclipse/ADT navigation and theme checks remain pending.
+
+### Eclipse Debug Monitor prototype
+
+**VERTEX: Debug Monitor** observes an existing SAP ADT debug session using exported SAP `IAbapThread` / `IAbapStackFrame` and Eclipse debug events. It does not establish a second connection or change breakpoints. Open it from an ABAP editor context menu after starting the normal ADT debugger. It reads stopped frames and up to 100 top-frame variables in background jobs; Refresh retries the read. If multiple threads are present, choose one explicitly. Large displayed values are truncated at 2,000 characters, and variable children are not fetched recursively.
+
+When an ABAP class frame supplies its class URI and absolute source line, the monitor passes that coordinate to the Tools Logic view. Include-local coordinates are not guessed. Editor selection remains available for source following. Step, Continue, terminate, recording, table expansion and frame-selection control remain in the normal ADT debugger for this prototype.
+
+The installed SAP ADT 3.60 interfaces were inspected locally, and Java 21 compilation and archive packaging passed. No live debug session or light/dark runtime check has been performed. Install the test archive before using this as a release feature.
+
+
+### Eclipse Tools: standard ADT analysis
+
+Tools UML, metrics, Calls, Logic and Parts now use the shared VS Code frontend-analysis and abaplint parser in a browser worker. Source and package reads use the selected Eclipse project’s standard ADT session. These analysis views no longer require `/sap/bc/adt/vertex/class`, `/metrics`, `/flow` or `/versions` handlers. Versions/Diff, Review and other backend services retain their existing routes. The separate Value Origin view is not migrated by this change. Eclipse/SAP runtime and light/dark rendering remain unverified.
+
+
+Eclipse follow-up: corrected Debug Monitor / Visual Flow Analysis registration under `org.eclipse.ui.views`. Value Origin now reads standard ADT source and uses the shared abaplint worker; it no longer requests the custom origin endpoint or requires ZCL_VX_ADT_RES_FLOW. Java compilation and archive creation passed; live Eclipse/SAP behavior is pending.
+
+Eclipse Origin fix: ADT metadata reads now send `Accept: */*`; source reads send `Accept: text/plain`, including class includes. This fixes the server’s “Accept header missing” rejection. Live SAP verification is pending.
+
+Eclipse Tools fix: standard ADT object metadata uses `Accept: */*`, matching the VS Code ADT client; `application/xml` was rejected by servers requiring ADT vendor media types. Source reads remain `text/plain`. This Java transport change does not affect VS Code.
+
+Eclipse ADT bridge: added String content handlers for standard SAP vendor XML metadata, including programs v3, classes and interfaces. Shared by Tools, Visual Flow Analysis, Debug Monitor and Origin; negotiated vendor XML versions are registered on response. This change is confined to Java transport. Live SAP verification is pending.
+
+Eclipse browser bundle fix: UMD dependencies now receive the local module loader as `require`, fixing “require is not defined” during abaplint initialization. The VS Code runtime is unchanged.
+
+Eclipse module loader: failed initialization no longer leaves partial exports in the cache. This prevents a failed abaplint load from turning subsequent requests into misleading “MemoryFile is not a constructor” errors. Restart the PDE runtime or installed Eclipse after updating generated resources.
+
+Eclipse browser runtime: added the Buffer.from hex/UTF-8 operations used by abaplint built-in constants, allowing dependent class parsing to continue. Origin reports its ADT + abaplint engine correctly. VS Code runtime unchanged; live SAP verification pending.
+
+Eclipse browser bundler: generated module imports now use a distinct loader name, avoiding collision with frontend-analysis’s SAP source load function. This fixes Calls palette and Logic module loading; shared VS Code analysis sources are unchanged.
+
+Shared FLOW theme fix: theme overrides now outrank Mermaid SVG-scoped styles, so routine frames and labels follow the active editor theme. Theme changes retain zoom and scroll. VS Code package version 0.8.2. Live light/dark rendering pending.
+
+FLOW diagram correction: parameter transfers remain in the analysis tree but no longer form disconnected diagram nodes; call edges bypass them and connect the call statement to its callee. ELK cluster fills use active editor theme CSS variables, overriding inline Mermaid fills; theme updates preserve zoom and scroll. Live light/dark rendering pending.
+
+FLOW source-only correction: both tree and diagram contain source statements and nested routines, without synthetic parameter-transfer rows or repeated-routine arrow markers. Formula and Expression retain data relationships.
+
+FLOW collapse controls use the canonical independent toggle style with compact, centered icon geometry; removed the single-button segmented wrapper.
+
+2026-10-07 — VS Code 0.8.3: FLOW initializes Mermaid with the active editor theme’s background, container, border, label and edge colours. Removes the initial dark-theme container background; theme changes preserve zoom. Live theme verification pending.
+
+2026-10-07 — FLOW rendering fix: shared script now defines its ABAP identifier normalizer before variable label highlighting, fixing the reported “canonical is not defined” runtime error. VS Code package remains 0.8.3. Live rendering pending.
+
+### 2026-10-07 — Value origin FLOW reading levels
+
+Report: Value origin showed only its heading, the analysis log and the selection-screen panel; FLOW was empty. It could not be reproduced from the repository: the page built by `html()` on an abaplint graph of a program with a radio group rendered fully in a browser, and the installed 0.8.3 matched the repository file for file. The window drew again after the reinstall that carried the `canonical` normalizer fix above. Found on the way: the Mermaid theme initialisation falls back to the CSS system colours `Canvas`, `CanvasText` and `GrayText` when a theme variable is empty, and Mermaid rejects them (`Unsupported color format`); left as is, to be decided.
+
+Then: FLOW in Value origin gained the levels of Visual Debug. The request was one data source, so the page receives no new data: `html()` folds the same `graph.codeFlow` rows four times with the shared builder (`classes`, `methods`, `logic`, `steps`) and hands them over as `flowReadings`; `vertex-flow.js` shows a `vertex-segment-toggle` (Classes | Methods | Logic | Statements) in FLOW only and swaps `bseFlow` and the depth maximum. Statements stays the default. Visual Debug's own Logic, which opens the Tools logic diagram of one method, was not copied. The 13 failing tests of the suite fail the same way without this change. Verified in a browser on light and dark variables: tree and diagram for all four readings, no console errors.
+
+Routine frames on a dark theme stayed light grey in the FLOW diagram. The theme code painted `g.cluster rect`, but the grouped FLOW is laid out by ELK, which draws a routine as `g.subgraph > rect.subgraph`: nothing matched, so Mermaid's fill stayed. The inline override now covers both kinds of frame and their captions; at the user's request the frame is a 12% tint of `--vscode-focusBorder` over the editor background, which reads light blue on light themes. Checked in a browser with light and dark VS Code variables.
+
+Follow-ups from the user on the same window: Methods is the default reading; the Analysis log moved behind the bug control (`debug-only`); Depth moved beside Fit. Depth also governs the tree, which has no Fit row, so it moves with the view: by Fit for the diagram, back in the toolbar for a tree. The magnifier drew without colours because the theme rules had been rewritten as `#mermaid-graph svg[id] …` to outrank Mermaid's id-scoped styles, and the magnifier's copy of the SVG is not inside `#mermaid-graph`. They are scoped as `svg#<drawing id> …` now: the same weight against Mermaid, and the copy carries the id. Two tests that read the statements from the default reading take the Statements reading explicitly; one checks every reading against the builder.
+
+Expand all / Collapse all went back to two buttons, at the user's request and in SAP GUI's shape: chevrons down for Expand all, chevrons up for Collapse all. An earlier stage had merged them into one switch that offered the other state each time; a pair with one in force is an exclusive choice, so it is a `vertex-segment-toggle` with `.active` (AGENTS.md), with the icon-button geometry. The test that pinned the single switch now pins the pair.
+
+Depth in a tree moved to the root, beside the expand buttons. The root is a `<summary>`, so a click on the slider would fold it: the control swallows clicks while it stands there. The FLOW tree is rebuilt on every depth or reading change, which detaches what was in its root; the expand buttons are re-attached there and Depth follows them. Tooltips now describe each FLOW control. Seen on the way again: with a theme variable missing, the `Canvas`/`GrayText` fallbacks make Mermaid throw inside `rebuild()`, which also aborts a depth change — still waiting for the user's decision.

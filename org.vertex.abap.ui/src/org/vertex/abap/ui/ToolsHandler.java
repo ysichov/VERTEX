@@ -7,6 +7,7 @@ import org.eclipse.ui.handlers.HandlerUtil;
 
 public class ToolsHandler extends AbstractHandler {
     private static int counter;
+    protected String viewId(){return ToolsView.ID;}
     @Override public Object execute(ExecutionEvent event) throws ExecutionException {
         SelectionContext selection = SelectionContext.of(HandlerUtil.getCurrentSelection(event));
         String name = null, type = null, project = null;
@@ -22,7 +23,7 @@ public class ToolsHandler extends AbstractHandler {
         try {
             IWorkbenchPage page = HandlerUtil.getActiveWorkbenchWindowChecked(event).getActivePage();
             String id = name == null ? null : MetricsView.encode(name, type, project, ++counter);
-            page.showView(ToolsView.ID, id, IWorkbenchPage.VIEW_ACTIVATE);
+            page.showView(viewId(), id, IWorkbenchPage.VIEW_ACTIVATE);
         } catch (Exception e) { throw new ExecutionException("Cannot open VERTEX Tools", e); }
         return null;
     }

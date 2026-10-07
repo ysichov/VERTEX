@@ -416,7 +416,7 @@ test('view exposes a collapsible static call stack and navigable dependency tree
   const g = graph("x = '<script>'.\nWRITE x.", 'x', 2);
   const page = html(g, 'test');
   assert(page.includes('Static call stack contributing'));
-  assert(page.includes('<details class="origin-log"><summary>Analysis log — ACE'));
+  assert(page.includes('<details class="origin-log debug-only"><summary>Analysis log — ACE'));
   assert(page.includes('Copy log'));
   assert(page.includes('Formula: '));
   assert(page.includes('Copy log'));
@@ -490,8 +490,12 @@ test('the flow of Value origin is drawn by the builder the debugger uses, from r
   const sources = [{ id: 'demo', name: 'demo', objectName: 'DEMO', objectType: 'PROG' }];
   const codeFlow = { rows: pathRows(g, sources), sites: siteRows(g, sources) };
   const data = JSON.parse(view.html({ ...g, codeFlow }, 'test').match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]);
-  const built = require('../../org.vertex.abap.ui/resources/vertex-flow-graph.js').build({ ...codeFlow, point: { url: '', line: 0 }, name: g.selectedProgram || 'PROGRAM' }, 'steps');
-  assert.deepEqual(data.bseFlow, JSON.parse(JSON.stringify(built.bseFlow)));
+  // One source, every reading of it: each is what the shared builder gives for that mode, and Methods is drawn first.
+  const builder = require('../../org.vertex.abap.ui/resources/vertex-flow-graph.js'), input = { ...codeFlow, point: { url: '', line: 0 }, name: g.selectedProgram || 'PROGRAM' };
+  assert.deepEqual(data.flowReadings.items.map(reading => reading.mode), ['classes', 'methods', 'logic', 'steps']);
+  for (const reading of data.flowReadings.items) assert.deepEqual(reading.bseFlow, JSON.parse(JSON.stringify(builder.build(input, reading.mode).bseFlow)));
+  assert.equal(data.flowReadings.active, 'methods');
+  assert.deepEqual(data.bseFlow, JSON.parse(JSON.stringify(builder.build(input, 'methods').bseFlow)));
   assert.throws(() => view.html(g, 'test'), /no code flow/);
 });
 

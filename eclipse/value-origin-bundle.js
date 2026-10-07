@@ -5,7 +5,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const MODULES = ["value-origin-tokens", "value-origin-model", "value-origin", "value-origin-ace", "value-origin-formula",
+const MODULES = ["abap-control", "call-graph", "value-origin-tokens", "value-origin-model", "value-origin", "value-origin-ace", "value-origin-formula",
   "value-origin-formula-html", "value-origin-points", "value-origin-view", "value-origin-open"];
 
 function bundle(root = path.join(__dirname, "..")) {
@@ -21,7 +21,7 @@ function bundle(root = path.join(__dirname, "..")) {
     + "var cache = {};\n"
     + "function load(name) {\n"
     + "  if (!Object.prototype.hasOwnProperty.call(modules, name)) { throw new Error('Value origin in Eclipse has no module ' + name + '.'); }\n"
-    + "  if (!cache[name]) { var module = { exports: {} }; cache[name] = module; modules[name](module, module.exports, load); }\n"
+    + "  if (!cache[name]) { var module = { exports: {} }; cache[name] = module; try { modules[name](module, module.exports, load); } catch (error) { delete cache[name]; throw error; } }\n"
     + "  return cache[name].exports;\n"
     + "}\n"
     + "var origin = load('./value-origin'), ace = load('./value-origin-ace'), points = load('./value-origin-points'),\n"

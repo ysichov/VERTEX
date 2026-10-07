@@ -100,8 +100,8 @@ function build(sf,mode){
       if(!blocks.length&&!firstOf[scope])firstOf[scope]=node.id;
       if(branch||/^(IF|CASE|LOOP|DO|WHILE|SELECT)$/.test(word))blocks.push({id:node.id,branch:branch});
       if(atEnd(w)){stopped=true;return;}
-      var callParent=node,params=passing[w.name+":"+w.line]||[];
-      params.forEach(function(p){var param={id:id(),key:"p|"+w.name+":"+w.line+":"+p.text,text:p.text,location:scope,group:scope,owner:n.klass,source:src(w),line:w.aceLine,stack:depth,type:"parameter",bse:true};nodes.push(param);edges.push({from:callParent.id,to:param.id,label:""});callParent=param;});
+      // FLOW contains source statements and nested routines; parameter bindings belong to data analysis.
+      var callParent=node;
       (sites[w.name+":"+w.line]||[]).forEach(function(c){callee(c,callParent,String(w.line),depth+1);});
     });
     var execution=control.executionEdges(diagramRows);routineFlows.push({header:container.id,entry:execution.entry,edges:execution.edges});

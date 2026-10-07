@@ -245,6 +245,28 @@
 </footer>
 
 <section id="release-081"><h2>VS Code 0.8.1: diagrams and Visual Debug</h2><p>Analysis uses standard ADT and bundled abaplint. Calls follows reached routines, with default depth 2. Unresolved targets remain analysis boundaries; expand warnings or copy the diagnostic log.</p><p>Visual Debug offers <strong>Classes / Methods</strong> and a separate <strong>Logic</strong> toggle. Logic embeds the same Tools diagram, selects the active editor's routine and follows source selection across ABAP objects. Turning it off returns to the call graph.</p><p><strong>Logic only</strong> keeps branches, loops, calls and exits; turn it off for all operations. RETURN leads to the procedure end. Conditions keep all AND / OR terms in one diamond and link external calls. Linked labels and breakpoint locations navigate to source; Alt+Left returns.</p><p>Range selections highlight matching nodes; LOOP / ENDLOOP selects the loop frame. The focused view drives scrolling. Zoom is 10–100%; the lens reaches an effective 70% and is disabled above that scale. Theme changes preserve zoom and position.</p><p>Detach disconnects a stopped program or cancels listening and is disabled without a connection. Analysis progress updates every three seconds. The bug button copies the log; built-in help explains the controls.</p><p>This release preparation is for VS Code 0.8.1. Live SAP and visual verification remain separate from package checks; no Eclipse release is claimed.</p></section>
+<section><h2>Eclipse 0.8.1 export preparation</h2><p>Visual Flow Analysis offers static Calls and the standard Tools Logic diagram with ADT editor selection and source links. Bundle and feature metadata are prepared at 0.8.1.qualifier. Eclipse retains the existing ACE backend; runtime Debug and the VS Code frontend-analysis host adapter are separate work. Export to a new directory and verify in a test Eclipse before publishing.</p></section>
+<section><h2>Eclipse Debug Monitor prototype</h2><p>Observes the existing ADT debug session through exported SAP and Eclipse interfaces: stop/run state, stack and up to 100 variables of the top frame. Multiple sessions require an explicit choice. Class URI and absolute line can position Tools Logic; include-local coordinates are not guessed. Runtime control stays in the standard ADT debugger. Compilation and packaging passed; live-session validation is pending.</p></section>
+<section><h2>Eclipse Tools — standard ADT analysis</h2><p>UML, metrics, Calls, Logic and Parts use the shared abaplint frontend in a browser worker and standard ADT source reads. Value Origin uses the same local ADT analysis; Versions/Diff retain their existing backend routes. Eclipse/SAP runtime verification is pending.</p></section>
+<p>Eclipse follow-up: Debug Monitor and Visual Flow Analysis view registration corrected. Value Origin now uses standard ADT and local abaplint; ZCL_VX_ADT_RES_FLOW is not required. Live Eclipse/SAP verification is pending.</p>
+<p>Eclipse Origin: explicit Accept headers added for standard ADT metadata and source reads, fixing the missing-header rejection. Live SAP verification is pending.</p>
+<p>Eclipse Tools: ADT metadata Accept corrected to */* for server media-type negotiation. Java transport only; VS Code unchanged.</p>
+<p>Eclipse ADT bridge now reads SAP vendor XML metadata as text in Tools and Origin, including program metadata v3. Live SAP verification is pending.</p>
+<p>Eclipse browser bundle: local module loader supplied to UMD dependencies, fixing require initialization.</p>
+<p>Eclipse browser loaders discard incomplete modules after initialization failure; restart the runtime after updating resources.</p>
+<p>Eclipse Origin: browser Buffer compatibility added for abaplint built-in constants; analysis engine label corrected to ADT + abaplint.</p>
+<p>Eclipse bundle: module loader naming collision with source loading corrected for Calls and Logic.</p>
+<p>FLOW: theme override specificity corrected for frame backgrounds and labels; zoom preserved. VS Code 0.8.2, live theme verification pending.</p>
+<p>FLOW: call edges now connect directly to callees; parameter transfers remain in the tree. ELK container fills follow editor theme variables. Live theme verification pending.</p>
+<p>FLOW tree and diagram show code and nested routines without synthetic parameter-transfer rows. Formula and Expression retain data relationships.</p>
+<p>FLOW collapse controls now use compact independent toggles with centered icons.</p>
+<p>VS Code 0.8.3: Mermaid FLOW initializes with active editor theme colours, including routine container backgrounds. Live theme verification pending.</p>
+<p>VS Code 0.8.3 FLOW: missing identifier normalizer restored, fixing canonical is not defined during label highlighting.</p>
+<p>VS Code 0.8.3 Value origin FLOW: Classes, Methods, Logic and Statements readings of one source, drawn by the shared flow builder.</p>
+<p>VS Code 0.8.3 FLOW: ELK routine frames follow the theme — a light tint of the focus colour (light blue on light themes).</p>
+<p>VS Code 0.8.3 Value origin: FLOW opens at Methods, the Analysis log is behind the bug control, Depth stands beside Fit, and the magnifier keeps the diagram colours.</p>
+<p>VS Code 0.8.3 FLOW: Expand all and Collapse all are two SAP GUI-style buttons (chevrons down, chevrons up).</p>
+<p>VS Code 0.8.3 FLOW: Depth sits beside the expand buttons at the tree root; every FLOW button explains itself on hover.</p>
 </main>
 
 <script>

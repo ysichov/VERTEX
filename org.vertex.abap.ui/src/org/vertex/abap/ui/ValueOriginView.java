@@ -20,7 +20,7 @@ import com.sap.adt.tools.core.ui.navigation.AdtNavigationServiceFactory;
 /**
  * Value origin: where the value under the cursor came from, backwards across calls, without running the program.
  * The analysis and its page are the VS Code ones (assistant/value-origin.js); this view reads what they ask of SAP -
- * the active source and the ACE origin index - and opens in ADT's editor the places the page links to.
+ * active ADT source parsed locally with abaplint - and opens in ADT's editor the places the page links to.
  */
 public class ValueOriginView extends PageView {
 
@@ -103,8 +103,9 @@ public class ValueOriginView extends PageView {
 		if (!path.equals(PAGE)) {
 			return value;
 		}
-		return value.replace("/*FLOW_GRAPH*/", inline(super.readResource("resources/vertex-flow-graph.js")))
-				.replace("/*ORIGIN_ENGINE*/", inline(super.readResource("assistant/value-origin.js")));
+		return value.replace("/*FLOW_GRAPH*/", inline(super.readResource("resources/vertex-abap-control.js")) + "\n" + inline(super.readResource("resources/vertex-flow-graph.js")))
+				.replace("/*ORIGIN_ENGINE*/", inline(super.readResource("assistant/value-origin.js")))
+                .replace("/*ECLIPSE_FRONTEND*/", inline(super.readResource("resources/eclipse-frontend.js").replace("/*FRONTEND_BUNDLE*/", AssistantBridge.quote(super.readResource("resources/vertex-frontend.js")).replace("<", "\\u003c"))));
 	}
 
 	private static String inline(String script) {
@@ -135,19 +136,20 @@ public class ValueOriginView extends PageView {
 
 	@Override
 	protected String accept(String path) {
-		return path.contains("/source/main") ? "text/plain" : null;
+		// Match the standard ADT client: metadata requires an explicit Accept.
+        return path.contains("/source/") ? "text/plain" : "*/*";
 	}
 
 	@Override
 	protected void addContentHandlers(IRestResource resource) {
 		super.addContentHandlers(resource);
-		resource.addContentHandler(new TextContentHandler("text/plain"));
-		resource.addContentHandler(new TextContentHandler("application/xml"));
+		addAdtTextHandlers(resource);
 	}
 
 	@Override
 	protected void addFunctions() {
-		// The two reads the analysis makes: the active source of the editor's object, and an ACE origin index.
+        addAnalysisFunctions();
+		// Check the active source against the selected editor before local analysis.
 		new BrowserFunction(this.browser, "sdeOriginRead") {
 			@Override
 			public Object function(Object[] arguments) {
@@ -157,8 +159,7 @@ public class ValueOriginView extends PageView {
 					if (t == null) {
 						throw new IllegalStateException("This window lost the editor it was opened from. Close it and run the command again.");
 					}
-					boolean index = path.matches("/sap/bc/adt/vertex/flow/[A-Za-z0-9_%$]{1,120}\\?mode=origin&type=(PROG|CLAS|INTF|FUNC)");
-					if (!index && !path.equals(t.sourcePath + "?version=active")) {
+					if (!path.equals(t.sourcePath + "?version=active")) {
 						throw new IllegalArgumentException("Unsupported Value origin resource: " + path);
 					}
 					return read(path);

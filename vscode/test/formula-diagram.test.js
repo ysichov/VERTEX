@@ -63,7 +63,7 @@ test('switching visualizers preserves Formula and displays its tree again', () =
   const source = flowView.slice(flowView.indexOf('const selectView='), flowView.indexOf("document.querySelectorAll('[data-view-choice]').forEach(button=>button.addEventListener"));
   const context = {
     document: { body: { classList: { contains: name => name === 'formula-mode' } }, querySelectorAll: () => [] },
-    treePane: {}, flowPane: {}, formulaPane: {}, diagramPane: {}, rebuild: () => {}, requestAnimationFrame: () => {}
+    treePane: {}, flowPane: {}, formulaPane: {}, diagramPane: {}, rebuild: () => {}, placeDepth: () => {}, requestAnimationFrame: () => {}
   };
   vm.runInNewContext(source + ";selectView('diagram');", context);
   assert.equal(context.diagramPane.hidden, false);
@@ -138,7 +138,7 @@ test('BSE scope is what BSE found and the path that led to it', () => {
   const { analyze } = require('./origin-view-fixture');
   const output = html(analyze(require('./fixtures/value-origin-demo.json'),
     { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' }), 'test');
-  const flow = JSON.parse(output.match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]).bseFlow;
+  const flow = JSON.parse(output.match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]).flowReadings.items.find(reading => reading.mode === 'steps').bseFlow;
   const when = flow.nodes.filter(node => /^WHEN\b/i.test(node.text || ''));
   assert(when.length > 1, 'the demo has a CASE with several WHEN branches');
   assert(when.every(node => node.branch === true), 'a branch is a node on the path like any other');

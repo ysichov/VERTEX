@@ -227,6 +227,7 @@ async function request(api, resource, progress, cancelled = () => false) {
     }
     stage('Building '+service+' analysis');
     // Empty routines are real ACE units too (metrics and call leaves).
+    if (service === 'flow' && url.searchParams.get('mode') === 'origin') return { sources, warnings };
     const index = buildIndex(sources), units = analysisUnits(index);
     const base = { object: name, program: name, type, engine: 'ADT + abaplint', warnings };
     if (service === 'class' || service === 'package') {

@@ -238,6 +238,43 @@ public abstract class PageView extends ViewPart {
 		return get(target[0], path);
 	}
 
+    /** Read-only ADT repository enumeration uses POST in the ADT protocol. */
+    String assistantPost(String path, org.eclipse.swt.widgets.Display display) {
+        final IRestResource[] target=new IRestResource[1];
+        display.syncExec(()->target[0]=resource(path));
+        return target[0].post(new NullProgressMonitor(), String.class, "");
+    }
+
+    protected void addAnalysisFunctions() {
+        new BrowserFunction(browser, "sdeAnalysisRead") {
+            @Override public Object function(Object[] args) {
+                String path=String.valueOf(args[0]); int id=((Number)args[1]).intValue();
+                org.eclipse.core.runtime.jobs.Job job=new org.eclipse.core.runtime.jobs.Job("VERTEX ADT source") {
+                    @Override protected org.eclipse.core.runtime.IStatus run(org.eclipse.core.runtime.IProgressMonitor monitor) {
+                        String result; boolean error=false;
+                        try {
+                            if(path.startsWith("package:")) {
+                                String name=path.substring(8);if(!name.matches("[A-Z0-9_/$]{1,40}"))throw new IllegalArgumentException("Invalid package.");
+                                result=assistantPost("/sap/bc/adt/repository/nodestructure?parent_type=DEVC%2FK&withShortDescriptions=true&parent_name="+java.net.URLEncoder.encode(name,java.nio.charset.StandardCharsets.UTF_8), browser.getDisplay());
+                            } else if(path.startsWith("object:")) {
+                                String[] parts=path.split(":",3);
+                                if(parts.length!=3||!parts[2].matches("[A-Z0-9_/$]{1,40}"))throw new IllegalArgumentException("Invalid object.");
+                                String uri=parts[1].equals("INCL")?"/sap/bc/adt/programs/includes/"+parts[2].toLowerCase():adtObject(parts[2],parts[1])[0];
+                                result="{\"uri\":"+AssistantBridge.quote(uri)+",\"xml\":"+AssistantBridge.quote(assistantRead(uri, browser.getDisplay()))+"}";
+                            } else {
+                                if(!path.startsWith("/sap/bc/adt/")||path.contains("..")||path.contains("#")||path.contains("\\")||path.toLowerCase().matches(".*%(2e|5c).*"))throw new IllegalArgumentException("Invalid ADT source URI.");
+                                result=assistantRead(path, browser.getDisplay());
+                            }
+                        }catch(Exception e){result=describe(e);error=true;}
+                        final String answer=result; final boolean failed=error;
+                        browser.getDisplay().asyncExec(()->{if(!browser.isDisposed())browser.execute("window.vertexAdtReply("+id+","+AssistantBridge.quote(answer)+","+failed+");");});
+                        return org.eclipse.core.runtime.Status.OK_STATUS;
+                    }
+                }; job.schedule();return null;
+            }
+        };
+    }
+
 	/**
 	 * Writes to one ADT resource over the same session as {@link #read}. The ADT
 	 * communication layer carries the CSRF token for the destination, so nothing
@@ -307,6 +344,24 @@ public abstract class PageView extends ViewPart {
 	private static String encode(String value) {
 		return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
 	}
+
+    /** Standard ADT metadata has versioned vendor XML media types. */
+    protected void addAdtTextHandlers(IRestResource resource) {
+        resource.addContentHandler(new TextContentHandler("text/plain"));
+        resource.addContentHandler(new TextContentHandler("application/xml"));
+        for (String family : new String[] {"programs.programs", "programs.includes", "oo.classes", "oo.interfaces", "functions.functionmodules", "functions.functiongroups"}) {
+            resource.addContentHandler(new TextContentHandler("application/vnd.sap.adt."+family+"+xml"));
+            for(int version=1;version<=9;version++)resource.addContentHandler(new TextContentHandler("application/vnd.sap.adt."+family+".v"+version+"+xml"));
+        }
+        // Register the negotiated XML version before the response is converted.
+        resource.addResponseFilter((request,response)->{
+            if(response.getBody()==null)return;
+            String type=response.getBody().getContentType();
+            if(type==null)return;
+            String media=type.split(";",2)[0].trim().toLowerCase(java.util.Locale.ROOT);
+            if(media.startsWith("application/vnd.sap.")&&media.endsWith("+xml"))resource.addContentHandler(new TextContentHandler(media));
+        });
+    }
 
 	/** The VERTEX resources answer JSON; a view reading standard ADT resources adds more. */
 	protected void addContentHandlers(IRestResource resource) {

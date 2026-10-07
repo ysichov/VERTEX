@@ -6,6 +6,8 @@
             name="VERTEX Assistant" class="org.vertex.abap.ui.AssistantPreferences"/>
    </extension>
    <extension point="org.eclipse.ui.views">
+      <view id="org.vertex.abap.ui.view.debugMonitor" name="VERTEX Debug Monitor" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.DebugMonitorView" allowMultiple="true" restorable="false"/>
+      <view id="org.vertex.abap.ui.view.visualFlowAnalysis" name="Visual Flow Analysis" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.VisualFlowAnalysisView" allowMultiple="true" restorable="false"/>
       <view id="org.vertex.abap.ui.view.tools" name="VERTEX Tools" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.ToolsView" allowMultiple="true" restorable="false"/>
       <category
             id="org.vertex.abap.ui.category"
@@ -37,7 +39,9 @@
 
 
    <extension point="org.eclipse.ui.commands">
+      <command id="org.vertex.abap.ui.command.debugMonitor" name="VERTEX: Debug Monitor" description="Observe the existing ADT debug session"/>
       <command id="org.vertex.abap.ui.command.tools" name="VERTEX Tools"/>
+      <command id="org.vertex.abap.ui.command.visualFlowAnalysis" name="VERTEX: Visual Flow Analysis" description="Static calls and method logic without running the program"/>
 
 
 
@@ -52,7 +56,9 @@
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
+      <handler commandId="org.vertex.abap.ui.command.debugMonitor" class="org.vertex.abap.ui.DebugMonitorHandler"/>
       <handler commandId="org.vertex.abap.ui.command.tools" class="org.vertex.abap.ui.ToolsHandler"/>
+      <handler commandId="org.vertex.abap.ui.command.visualFlowAnalysis" class="org.vertex.abap.ui.VisualFlowAnalysisHandler"/>
 
 
 
@@ -118,6 +124,10 @@
       <menuContribution
             allPopups="false"
             locationURI="popup:#EditorContext?after=additions">
+         <command commandId="org.vertex.abap.ui.command.debugMonitor" label="VERTEX: Debug Monitor" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.valueOriginSource" forcePluginActivation="true"/></with></visibleWhen></command>
+         <command commandId="org.vertex.abap.ui.command.visualFlowAnalysis" label="VERTEX: Visual Flow Analysis" style="push">
+            <visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.valueOriginSource" forcePluginActivation="true"/></with></visibleWhen>
+         </command>
          <command
                commandId="org.vertex.abap.ui.command.valueOrigin"
                label="VERTEX: Analyze Variable Value Origin"

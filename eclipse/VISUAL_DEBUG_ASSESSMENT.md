@@ -132,3 +132,13 @@ A spike before any decision, in a running Eclipse with ADT:
 
 The spike's results decide between B and C. A stays off the table unless the credential
 rule changes.
+
+## 2026-10-06 scope update
+
+Eclipse 0.8.1 adds static Visual Flow Analysis using standard Tools Calls and Logic views; it does not start or control a debug session. The Eclipse platform supplies public debug-model interfaces (IStackFrame, IStep, ISuspendResume, IVariable) and event listeners. A runtime adapter still needs to establish which interfaces the installed SAP ADT debugger exposes and distinguish supported SAP APIs from internal implementation classes. Runtime Debug remains separate work.
+
+Reference: https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/guide/debug_model.htm
+
+## 2026-10-06 — first runtime adapter
+
+Inspected SAP ADT 3.60 installed interfaces with javap: IAbapThread extends Eclipse IThread; IAbapStackFrame extends IStackFrame and IAbapStackEntry supplies URI, program/include and absolute line coordinates. Added DebugMonitorView using these exported types and debug events, with background reads, bounded variables and disposal cleanup. Compiled against the installed ADT bundle pool and packaged the prototype. This is a read-only monitor, not the VS Code Visual Debug implementation; live-session behavior remains unverified.

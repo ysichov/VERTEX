@@ -1,6 +1,14 @@
 package org.vertex.abap.ui;
 
 import java.io.IOException;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+import org.eclipse.core.runtime.Adapters;
+import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.ITextSelection;
+import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.ISelectionListener;
+import org.eclipse.ui.texteditor.ITextEditor;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.browser.BrowserFunction;
 
@@ -9,12 +17,15 @@ public class ToolsView extends ChatView {
     public static final String ID = "org.vertex.abap.ui.view.tools";
     /** Latest small view-specific context, supplied by the nested result frame. */
     private volatile String vertexContext = "{}";
+    private ISelectionListener editorSelection;
+    private long sourceNavigationUntil;
+    private String latestCursor="";
     @Override protected String page() { return "resources/tools.html"; }
     @Override protected String projectName() { return part(2); }
     @Override protected String title(String object) { return "VERTEX Tools"; }
     @Override protected String initialLiteral() {
         return part(0) == null ? "null" : "{\"name\":" + AssistantBridge.quote(part(0))
-            + ",\"type\":" + AssistantBridge.quote(part(1) == null ? "CLAS" : part(1)) + "}";
+            + ",\"type\":" + AssistantBridge.quote(part(1) == null ? "CLAS" : part(1)) + ",\"boundObject\":true,\"cursorLine\":" + editorLine() + "}";
     }
     @Override protected String readResource(String path) throws IOException {
         String value = super.readResource(path);
@@ -24,19 +35,26 @@ public class ToolsView extends ChatView {
             if (bundle.length() > 1) bundle.append(",");
             bundle.append(AssistantBridge.quote(service)).append(":")
                 .append(AssistantBridge.quote(super.readResource("resources/" + service + ".html")
-                    .replace("/*VERTEX_LENS*/", super.readResource("resources/vertex-lens.js")))
+                    .replace("/*VERTEX_LENS*/", super.readResource("resources/vertex-lens.js"))
+                    .replace("</head>", "<style>" + super.readResource("resources/vertex-controls.css") + "</style></head>"))
                     .replace("<", "\\u003c").replace("/", "\\u002f"));
         }
         bundle.append("}");
         return value.replace("/*OBJECT_MODEL*/", super.readResource("resources/object-tools.js"))
             .replace("/*TOOL_ROUTES*/", super.readResource("resources/tool-routes.js"))
-            .replace("/*BUNDLE*/{}", bundle.toString());
+            .replace("/*BUNDLE*/{}", bundle.toString())
+            .replace("/*ECLIPSE_FRONTEND*/", super.readResource("resources/eclipse-frontend.js").replace("/*FRONTEND_BUNDLE*/", AssistantBridge.quote(super.readResource("resources/vertex-frontend.js")).replace("<", "\\u003c")));
     }
     @Override protected String accept(String path) {
-        return path.startsWith("/sap/bc/adt/vertex/") ? null : super.accept(path);
+        return path.startsWith("/sap/bc/adt/vertex/") ? null : path.contains("/source/") ? "text/plain" : "*/*";
+    }
+    @Override protected void addContentHandlers(com.sap.adt.communication.resources.IRestResource resource) {
+        super.addContentHandlers(resource);
+        addAdtTextHandlers(resource);
     }
     @Override protected void addFunctions() {
         super.addFunctions();
+        addAnalysisFunctions();
         new BrowserFunction(browser, "sdeVertexContext") {
             @Override public Object function(Object[] args) {
                 String value = args.length > 0 && args[0] != null ? String.valueOf(args[0]).trim() : "{}";
@@ -78,6 +96,31 @@ public class ToolsView extends ChatView {
                 return null;
             }
         };
+        new BrowserFunction(browser, "sdeOpenToolSource") {
+            @Override public Object function(Object[] args) {
+                String request=args.length>0?String.valueOf(args[0]):"{}";
+                String name=jsonText(request,"name").toUpperCase(),type=jsonText(request,"type").toUpperCase(),method=jsonText(request,"method");
+                Matcher line=Pattern.compile("\"line\"\\s*:\\s*(\\d+)").matcher(request);
+                int requested=line.find()?Integer.parseInt(line.group(1)):0;
+                browser.getDisplay().asyncExec(()->{
+                    if(browser.isDisposed())return;
+                    sourceNavigationUntil=System.currentTimeMillis()+700;
+                    String answer=openEditor(name,type.isEmpty()?"CLAS":type);
+                    if(answer.startsWith("ERROR:")){MessageDialog.openError(browser.getShell(),"VERTEX",answer.substring(6));return;}
+                    IEditorPart editor=getSite().getPage().getActiveEditor();ITextEditor text=Adapters.adapt(editor,ITextEditor.class);
+                    if(text==null||text.getDocumentProvider()==null)return;
+                    IDocument document=text.getDocumentProvider().getDocument(editor.getEditorInput());if(document==null)return;
+                    int target=requested;
+                    if(target<1&&!method.isEmpty()){
+                        String[] rows=document.get().split("\\r?\\n");
+                        Pattern declaration=Pattern.compile("^\\s*(METHOD|FORM|FUNCTION|MODULE)\\s+"+Pattern.quote(method)+"(?:\\s|\\.)",Pattern.CASE_INSENSITIVE);
+                        for(int i=0;i<rows.length;i++)if(declaration.matcher(rows[i]).find()){target=i+1;break;}
+                    }
+                    try{text.selectAndReveal(document.getLineOffset(Math.max(0,Math.min(document.getNumberOfLines()-1,target-1))),0);}
+                    catch(org.eclipse.jface.text.BadLocationException e){MessageDialog.openError(browser.getShell(),"VERTEX",e.getMessage());}
+                });return null;
+            }
+        };
         new BrowserFunction(browser, "sdeOpenEditor") {
             @Override public Object function(Object[] args) {
                 final String name = args.length > 0 ? String.valueOf(args[0]).toUpperCase() : "";
@@ -107,6 +150,29 @@ public class ToolsView extends ChatView {
         catch (IllegalStateException e) { return "ERROR:" + describe(e); }
         return open("{\"uri\":" + AssistantBridge.quote(object[0]) + ",\"name\":" + AssistantBridge.quote(name)
             + ",\"type\":" + AssistantBridge.quote(object[1]) + "}", browser.getDisplay());
+    }
+    private static String jsonText(String request,String key){
+        Matcher match=Pattern.compile("\""+Pattern.quote(key)+"\"\\s*:\\s*\"([^\"]*)\"").matcher(request);
+        return match.find()?match.group(1):"";
+    }
+    private int editorLine(){
+        IEditorPart editor=getSite().getPage().getActiveEditor();ITextEditor text=editor==null?null:Adapters.adapt(editor,ITextEditor.class);
+        Object selected=text==null||text.getSelectionProvider()==null?null:text.getSelectionProvider().getSelection();
+        return selected instanceof ITextSelection?((ITextSelection)selected).getStartLine()+1:1;
+    }
+    @Override public void createPartControl(org.eclipse.swt.widgets.Composite parent){
+        super.createPartControl(parent);
+        editorSelection=(part,selection)->{
+            if(!(part instanceof IEditorPart)||!(selection instanceof ITextSelection)||browser.isDisposed()||System.currentTimeMillis()<sourceNavigationUntil)return;
+            AdtEditor object=AdtEditor.of((IEditorPart)part);if(object==null)return;
+            if(object.project!=null&&!object.project.getName().equals(projectName()))return;
+            ITextSelection range=(ITextSelection)selection;String type=object.type==null?"":object.type.split("/")[0];
+            String payload="{\"name\":"+AssistantBridge.quote(object.name)+",\"type\":"+AssistantBridge.quote(type)+",\"line\":"+(range.getStartLine()+1)+",\"endLine\":"+(range.getEndLine()+1)+",\"userFocus\":true}";
+            if(payload.equals(latestCursor))return;latestCursor=payload;
+            browser.getDisplay().timerExec(80,()->{if(!browser.isDisposed()&&payload.equals(latestCursor))browser.execute("if(typeof sdeCodeCursor==='function')sdeCodeCursor("+payload+");");});
+        };
+        getSite().getPage().addPostSelectionListener(editorSelection);
+        browser.addDisposeListener(event->{if(editorSelection!=null)getSite().getPage().removePostSelectionListener(editorSelection);});
     }
     String assistantContext() { return vertexContext; }
     @Override void prompt(String text) {

@@ -19,3 +19,10 @@ fs.writeFileSync(path.join(target, "value-origin.js"), require("./value-origin-b
 fs.copyFileSync(path.join(root, "vscode", "value-origin.css"), path.join(target, "value-origin.css"));
 fs.copyFileSync(path.join(__dirname, "value-origin.html"), path.join(target, "value-origin.html"));
 console.log("Prepared Eclipse Value origin.");
+
+fs.copyFileSync(path.join(root,"vscode","abap-control.js"),path.join(root,"org.vertex.abap.ui","resources","vertex-abap-control.js"));
+console.log("Prepared shared ABAP control rules.");
+
+fs.writeFileSync(path.join(root,'org.vertex.abap.ui/resources/vertex-frontend.js'),require('./frontend-bundle').bundle(root));
+
+fs.copyFileSync(path.join(root,"vscode/licenses/abaplint-MIT.txt"),path.join(root,"org.vertex.abap.ui/resources/abaplint-MIT.txt"));

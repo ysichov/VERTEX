@@ -66,3 +66,7 @@
   box-shadow: 0 3px 8px -3px var(--accent);
   font-weight: normal;
 }
+
+/* Geometry only; appearance stays in the canonical toggle rules. */
+.vertex-icon-button { display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; width:28px; height:26px; padding:2px 5px; vertical-align:middle; }
+.vertex-icon-button svg { display:block; flex:none; }

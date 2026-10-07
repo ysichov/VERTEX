@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- Value origin in Eclipse. This page runs the VS Code analysis (value-origin.js, generated from vscode/ by
-     eclipse/prepare.js) on the ACE index the plugin reads, and draws the VS Code page in the frame below. The plugin
+     eclipse/prepare.js) on locally parsed ADT source, and draws the VS Code page in the frame below. The plugin
      ships the copy prepare.js puts in org.vertex.abap.ui/assistant/; edit this one. -->
 <style id="theme">
 /* The VS Code theme names the page is written in, given values for Eclipse: light, and dark when the system is. */
@@ -70,6 +70,7 @@ body { display: flex; flex-direction: column; background: var(--vscode-editor-ba
 <iframe id="view" title="Value origin" hidden></iframe>
 <script>/*FLOW_GRAPH*/</script>
 <script>/*ORIGIN_ENGINE*/</script>
+<script>/*ECLIPSE_FRONTEND*/</script>
 <script>
 "use strict";
 // What the editor was showing when the command ran: object, source, cursor and its breakpoints (ValueOriginHandler).
@@ -103,12 +104,6 @@ window.sdeReady = function () {
   if (item) {
     var text = raw === null || raw === undefined ? null : String(raw);
     if (text === null) { item.reject(new Error("Eclipse gave no answer to " + item.name + ".")); }
-    else if (text.indexOf("ERROR:NOBACKEND:") === 0) {
-      // Only a missing VERTEX resource means the backend is missing; a standard ADT resource that is not there is not.
-      var vertex = String(item.args[0] || "").indexOf("/sap/bc/adt/vertex/") === 0;
-      item.reject(new Error("SAP has no such resource (" + text.slice(16) + ")."
-        + (vertex ? " Value origin needs the VERTEX ABAP backend (ZCL_VX_ADT_RES_FLOW) on this system." : "")));
-    }
     else if (text.indexOf("ERROR:") === 0) { item.reject(new Error(text.slice(6))); }
     else { item.resolve(text); }
   }
@@ -162,25 +157,24 @@ async function run() {
   say("Value origin - reading the active source of " + t.name);
   var activeSource = await call("sdeOriginRead", t.sourcePath + "?version=active");
   if (crlf(activeSource) !== crlf(t.text)) {
-    throw new Error("This editor differs from active SAP source. Activate your changes or reopen the active source before ACE analysis.");
+    throw new Error("This editor differs from active SAP source. Activate your changes or reopen the active source before analysis.");
   }
-  var prefix = "eclipse:" + t.project + "/" + t.type + "/" + t.name;
+  var parserWarnings=[];
   var load = async function (name, type) {
-    say("Value origin - ACE call index: " + name);
-    var raw = await call("sdeOriginRead", "/sap/bc/adt/vertex/flow/" + encodeURIComponent(name) + "?mode=origin&type=" + type);
-    var data;
-    try { data = JSON.parse(raw); } catch (error) { throw new Error("The ACE origin index of " + name + " is not JSON: " + error.message); }
-    return origin.sourcesFromAce(data, { object_name: name, object_type: type }, prefix + "/ace");
+    var data=await window.vertexEclipseRequest('/sap/bc/adt/vertex/flow/'+encodeURIComponent(name)+'?mode=origin&type='+type, function(text){say('Value origin — '+text);});
+    parserWarnings.push(...(data.warnings||[]));
+    return data.sources;
   };
   var initial = await load(t.name, t.type);
   var mapped = origin.locateTarget(initial, t.text, t.name, t.line, variable, t.column);
-  var result = await origin.collectSources(initial, load, { maxSources: 240, progress: function (name) { say("Value origin - ACE call index: " + name); } });
+  var result = await origin.collectSources(initial, load, { maxSources: 240, progress: function (name) { say("Value origin — reading ADT source: " + name); } });
   sources = result.sources;
   // The source the cursor is in opens in the editor it came from, as VS Code opens its own document.
   sources.forEach(function (source) { if (source.id === mapped.source && flat(source.text) === flat(t.text)) { source.editor = true; } });
-  var warnings = (result.warnings || []).slice();
+  var warnings = parserWarnings.concat(result.warnings || []);
   var flowBounds = boundsOf(t, initial, mapped, warnings);
   graph = origin.analyze(sources, Object.assign({}, mapped, { flowBounds: flowBounds }));
+  graph.analysisEngine = 'ADT + abaplint';
   graph.warnings = warnings;
   graph.skipped = result.skipped;
   graph.sourceClosure = sources.map(function (source) {
@@ -234,7 +228,7 @@ async function follow(message) {
     return;
   }
   // Class-method links go where Ctrl+Click goes: the method in the class, its ACE include line counted from METHOD.
-  if (String(node.location || "").indexOf("->") >= 0) {
+  if (source.aceOwner && String(node.location || "").indexOf("->") >= 0) {
     var parts = String(node.location).split("->"), owner = parts[0] || source.objectName, method = parts[1];
     var classText = await call("sdeOriginOpen", owner, "CLAS");
     var implementation = origin.methodLine(classText, method, true);
