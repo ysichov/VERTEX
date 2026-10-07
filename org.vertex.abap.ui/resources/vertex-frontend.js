@@ -98599,6 +98599,10 @@ function scheme(p,expandedText='',logicOnly=false) {
   const root=rows.find(r=>r.kind==='O'&&Object.hasOwn(procedureEnds,r.word))?.line||0;
   const endRow=rows.find(r=>isProcedureEnd(r.word)),endId=endRow?'n'+endRow.line:'endproc';
   const external=r=>r.flow.logic;
+  /* Where the routine is left: RETURN, LEAVE PROGRAM, and an EXIT that no loop encloses. The branch ends there, marked
+     as an exit; a line from it across the whole diagram to ENDMETHOD said the same thing and only crossed the rest. */
+  const exits=r=>r.word==='RETURN'||(r.word==='LEAVE'&&String(r.tokens[1]?.value).toUpperCase()==='PROGRAM')
+    ||(r.word==='EXIT'&&!rows.some(b=>b.kind==='O'&&['LOOP','DO','WHILE','SELECT'].includes(b.word)&&b.line<r.line&&b.all>=r.line));
   const arrow=l=>l?' -->|"'+l+'"| ':' --> ';
   const connect=(a,b,l='')=>{if(a&&typeof a==='object'){connect(a.id,b,a.label);return;}if(a&&b)edges.push(a+arrow(l)+b);};
   const click=(id,action)=>clicks.push('click '+id+' "sapevent:'+action+'" _self');
@@ -98612,7 +98616,7 @@ function scheme(p,expandedText='',logicOnly=false) {
     }
     for(const r of rows.filter(r=>r.line>from&&r.line<to&&r.kind==='P'&&!r.flow.declaration)){
       if(!label(r.text))continue;
-      if(r.word==='RETURN'){append('p'+r.line,r.text);connect(chain,endId,'return');click('p'+r.line,'acego_'+r.source_line+'_'+r.source_line);return '';}
+      if(exits(r)){append('p'+r.line,r.text,'round','exitnode');click('p'+r.line,'acego_'+r.source_line+'_'+r.source_line);return '';}
       if(logicOnly&&!external(r))continue;
       append('p'+r.line,r.text,'round',r.call?'callnode':r.flow.sideEffect?'dbnode':'');
     }
@@ -98630,15 +98634,16 @@ function scheme(p,expandedText='',logicOnly=false) {
     if(loop&&r.word==='LOOP')clusterRanges['g'+r.line]=[r.source_line,rows[r.all]?.source_line||r.source_line];
     if(loop){prev=ops(prevLine,r.line,prev,pendingLabel);pendingLabel='';prevLine=r.line;}
     if(loop&&!prev)continue;
-    if(loop&&inner){mm.push('subgraph g'+r.line+'["'+text+'"]','direction LR');if(r.word==='TRY')styles.push('class g'+r.line+' tryblk');subs.unshift(r.all);continue;}
+    if(loop&&inner){mm.push('subgraph g'+r.line+'["'+text+'"]','direction LR');if(r.word==='TRY'){styles.push('class g'+r.line+' tryblk');/* A CATCH is not the next step of the TRY body: it is entered from the TRY, and the body and every handler meet at ENDTRY. */conds.unshift({close:r.all+1,depth:r.depth,word:'TRY',header:prev,seen:false,tails:[]});}subs.unshift(r.all);continue;}
     if(loop){
       mm.push('subgraph g'+r.line+'["'+text+'"]','direction LR');let chain='',first='';
-      for(const x of rows.filter(x=>x.line>r.line&&x.line<=r.all&&x.kind==='P'&&!x.flow.declaration)){if(!label(x.text)||logicOnly&&!external(x)&&x.word!=='RETURN')continue;const xid='p'+x.line;mm.push(xid+'("'+label(x.text)+'")');connect(chain,xid);if(!first)first=xid;chain=xid;if(x.word==='RETURN'){connect(xid,endId,'return');chain='';break;}}
+      for(const x of rows.filter(x=>x.line>r.line&&x.line<=r.all&&x.kind==='P'&&!x.flow.declaration)){if(!label(x.text)||logicOnly&&!external(x)&&!exits(x))continue;const xid='p'+x.line;mm.push(xid+'("'+label(x.text)+'")');connect(chain,xid);if(!first)first=xid;chain=xid;if(exits(x)){styles.push('class '+xid+' exitnode');chain='';break;}}
       mm.push('end');connect(prev,first,pendingLabel);pendingLabel='';if(first){prev=chain;prevLine=r.all;}continue;
     }
     const branch=conds[0];
     if(r.kind==='B'&&branch&&branch.depth===r.depth){const tail=ops(prevLine,r.line,prev,pendingLabel);
-      if(branch.word==='CASE'&&!branch.seen){if(tail!==branch.header)branch.header=tail;}else if(tail&&(branch.word==='IF'||tail!==branch.header))branch.tails.push({id:tail,label:tail===prev?pendingLabel:''});
+      if(branch.word==='CASE'&&!branch.seen){if(tail!==branch.header)branch.header=tail;}else if(tail&&(branch.word==='IF'||branch.word==='TRY'||tail!==branch.header))branch.tails.push({id:tail,label:tail===prev?pendingLabel:''});
+      if(branch.word==='TRY'){mm.push(id+'("'+text+'")');connect(branch.header,id);click(id,'acego_'+r.source_line+'_'+r.source_line);branch.seen=true;pendingLabel='';prev=id;prevLine=r.line;continue;}
       if(branch.word==='IF'){
         if(r.word==='ELSEIF'){
           mm.push(id+'{"'+text+'"}');connect(branch.header,id,'false');click(id,'acego_'+r.source_line+'_'+r.source_line);

@@ -1425,10 +1425,15 @@ function tintDecisions(svg) {
   // A rule inside the picture, not a style on each shape: mermaid's own
   // class rules carry !important, and a rule survives the picture being
   // cloned for the zoom. ACE's own classes are left alone.
-  var own = ["callnode", "dbnode", "tryblk", "event", "method", "form", "constr", "enh", "func"]
+  var own = ["callnode", "dbnode", "tryblk", "event", "method", "form", "constr", "enh", "func", "exitnode"]
     .map(function (c) { return ":not(." + c + ")"; }).join("");
   var style = document.createElementNS("http://www.w3.org/2000/svg", "style");
   style.textContent = "g.node" + own + " > polygon { fill: " + fill + " !important; stroke: " + accent + " !important; }";
+  // A step that leaves the routine ends its branch; it takes the theme's error colour so the end reads as an exit.
+  var exit = themeColour("--vscode-errorForeground", accent);
+  style.textContent += "g.node.exitnode > rect, g.node.exitnode > path { fill: " + toward(ground(), exit, darkPage() ? 0.25 : 0.12)
+    + " !important; stroke: " + exit + " !important; stroke-width: 2px !important; } g.node.exitnode text, g.node.exitnode tspan { fill: "
+    + exit + " !important; }";
   svg.insertBefore(style, svg.firstChild);
 }
 

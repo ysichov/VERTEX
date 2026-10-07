@@ -160,7 +160,7 @@ function pinTo(name, work) {
 function active() {
   const all = systems();
   if (all.length === 0) {
-    return { error: "No system configured. Put one in vertex.systems: a name, a url and a user." };
+    return { error: "No system configured. VERTEX: Import SAP Systems fills vertex.systems from SAP Logon and Eclipse, or put one in by hand: a name, a url and a user." };
   }
   const pinned = pinnedSystem.getStore();
   const wanted = pinned || (vscode.workspace.getConfiguration("vertex").get("active") || "").trim();
@@ -692,11 +692,12 @@ let tools = null;
    around each, capped like any fragment. */
 async function withShownDiff(context, state) {
   const view = state && state.vertex_view;
-  if (!view || view.view !== "diff" || !view.part || !view.version || (state.selected_fragment && state.selected_fragment.text)) {
-    return state;
-  }
-  const route = SERVICES.versions.load([view.name, view.type, view.part, view.part_type,
-                                        view.compared_with || "", view.version, "I"]);
+  if (!view || (state.selected_fragment && state.selected_fragment.text)) { return state; }
+  // A review's object is read the same way: the saved review of that object in the request, its blocks marked.
+  const reviewing = view.view === "review_object" && !!view.review_object;
+  if (!reviewing && (view.view !== "diff" || !view.part || !view.version)) { return state; }
+  const route = reviewing ? SERVICES.versions.review([view.name, "", view.review_object, view.review_type])
+    : SERVICES.versions.load([view.name, view.type, view.part, view.part_type, view.compared_with || "", view.version, "I"]);
   const raw = await pinTo(state.system, () => fetch(context, route));
   if (typeof raw !== "string" || raw.indexOf("ERROR:") === 0) {
     throw new Error("VERTEX could not read the diff shown in the Tools window: " + String(raw).substring(6));
@@ -708,12 +709,21 @@ async function withShownDiff(context, state) {
     if (o.op === "=") { return; }
     for (let k = Math.max(0, i - 3); k <= Math.min(ops.length - 1, i + 3); k++) { near[k] = true; }
   });
-  const lines = [];
+  const lines = [], opens = {};
+  (data.blocks || []).forEach(b => { if (b.op_from > 0) { opens[b.op_from - 1] = b; } });
+  const verdict = b => b.action === "A" ? "approved" : b.action === "D" ? "declined" : "open";
   ops.forEach((o, i) => {
+    if (opens[i]) { const b = opens[i]; lines.push("#" + b.hunk_no + " " + b.change_kind + ", " + b.change_count + " lines, line " + b.start_line
+      + ", " + (b.author_name || b.author) + ", " + verdict(b)); }
     if (near[i]) { lines.push((o.op === "=" ? " " : o.op) + " " + o.text); }
     else if (lines[lines.length - 1] !== "...") { lines.push("..."); }
   });
   if (!lines.length) { return state; }
+  if (reviewing) {
+    return { ...state, selected_fragment: { view, text: "Review of " + view.review_object.trim() + " (" + (view.review_type || "")
+      + ") in request " + view.name + ", versions " + (data.versno_old || "nothing") + " to " + data.versno_new
+      + " ('-' removed, '+' added, #n a review block):\n" + lines.join("\n") } };
+  }
   return { ...state, selected_fragment: { view,
     text: "Diff of " + view.part.trim() + " from " + (view.compared_with || "nothing") + " to " + view.version
           + " ('-' removed, '+' added):\n" + lines.join("\n") } };
@@ -1002,6 +1012,33 @@ function activate(context) {
     }),
     vscode.commands.registerCommand("vertex.versions", function () {
       showTools({ type: "TR" });
+    }),
+    vscode.commands.registerCommand("vertex.importSystems", async function () {
+      try { await require("./system-setup").importSystems(vscode, context); }
+      catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }),
+    // Each configured system asked with its own user and password, the way every read is made: the answer says
+    // which part of the setting is wrong.
+    vscode.commands.registerCommand("vertex.testSystems", async function () {
+      const all = systems();
+      if (!all.length) { vscode.window.showWarningMessage("VERTEX: vertex.systems is empty. VERTEX: Import SAP Systems fills it from SAP Logon."); return; }
+      const results = [];
+      for (const system of all) {
+        const gaps = missing(system);
+        if (gaps.length) { results.push(system.name + ": no " + gaps.join(" and ") + " in the setting."); continue; }
+        const pw = await password(context, system);
+        if (!pw) { results.push(system.name + ": not tested - no password given."); continue; }
+        try {
+          const res = await request(system, pw, withClient(system, "/sap/bc/adt/discovery"));
+          // A refused password is not kept: the next test or read asks for it again.
+          if (res.status === 401) { await context.secrets.delete(secretKey(system)); }
+          results.push(system.name + ": " + (res.status === 200 ? "OK - ADT answers for " + system.user + (system.client ? " in client " + system.client : "")
+            : res.status === 401 ? "HTTP 401 - user or password refused; the stored password is dropped, the next test asks again"
+            : describeFailure(res.status, res.body)));
+        } catch (error) { results.push(system.name + ": " + describeConnection(error)); }
+      }
+      const failed = results.filter(r => !/: OK - /.test(r)).length;
+      vscode.window[failed ? "showWarningMessage" : "showInformationMessage"]("VERTEX: " + results.join("  |  "), { modal: failed > 0 });
     }),
     vscode.commands.registerCommand("vertex.switchSystem", async function (requested) {
       const all = systems();

@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.8.4",
+  "version": "0.8.5",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -134,6 +134,14 @@
         "title": "VERTEX: Switch System"
       },
       {
+        "command": "vertex.importSystems",
+        "title": "VERTEX: Import SAP Systems"
+      },
+      {
+        "command": "vertex.testSystems",
+        "title": "VERTEX: Test SAP Systems"
+      },
+      {
         "command": "vertex.forgetPassword",
         "title": "VERTEX: Forget Password"
       },
@@ -220,7 +228,7 @@
         "vertex.systems": {
           "type": "array",
           "default": [],
-          "markdownDescription": "The ABAP systems this extension can read. One of them is active at a time - see `vertex.active`, or the **VERTEX: Switch System** command.",
+          "markdownDescription": "The ABAP systems this extension can read. One of them is active at a time - see `vertex.active`, or the **VERTEX: Switch System** command.\n\n[Import from SAP Logon and Eclipse](command:vertex.importSystems) · [Test the connections](command:vertex.testSystems)\n\nImport reads each system's host and instance from SAP Logon, the client and user from an Eclipse ADT workspace, and looks for the ADT address on the usual ports. The HTTP(S) port is also in SMICM > Goto > Services.",
           "items": {
             "type": "object",
             "required": [

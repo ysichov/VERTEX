@@ -294,7 +294,7 @@ test("a source over the line limit is refused before it is sent to SAP, and only
   let release;
   const client = { async codeCompletionElement(...args) { sent.push(args); await new Promise(resolve => { release = resolve; }); return { name: "X" }; } };
   const repo = createRepository({ client, systemId: "S" });
-  await assert.rejects(() => repo.elementInfo("/sap/bc/adt/programs/programs/zbig/source/main", "a\n".repeat(20001), 1, 0), / of 20002 lines/);
+  await assert.rejects(() => repo.elementInfo("/sap/bc/adt/programs/programs/zbig/source/main", "a\n".repeat(50001), 1, 0), / of 50002 lines/);
   assert.equal(sent.length, 0);
   const first = repo.elementInfo("/sap/bc/adt/programs/programs/zok/source/main", "a\nb", 1, 0);
   await assert.rejects(() => repo.elementInfo("/sap/bc/adt/programs/programs/zok/source/main", "a\nb", 2, 0), /still analysing/);

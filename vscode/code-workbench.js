@@ -1587,7 +1587,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   async function typeDefinition(document, at) {
     const source = sourceOf(document), word = wordAt(document, at);
     if (!source || !word || typeof source.entry.repo.api.elementDetails !== "function") { return undefined; }
-    const details = await source.entry.repo.api.elementDetails(source.url, document.getText(), at.line + 1, word.from);
+    const details = await source.entry.repo.api.elementDetails(source.url, document.getText(), at.line + 1, word.from, { wait: true });
     const said = details && (details.properties.find(entry => entry.key === "abapType") || {}).value;
     if (!said) { throw new Error("SAP's element info names no type for " + word.name + "."); }
     const typeName = String(said).trim().replace(/^TYPE\s+(?:REF\s+TO\s+)?/i, "");

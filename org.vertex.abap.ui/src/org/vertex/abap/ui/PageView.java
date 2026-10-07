@@ -307,7 +307,7 @@ public abstract class PageView extends ViewPart {
 		return resource;
 	}
 
-	private static final java.util.regex.Pattern REF = java.util.regex.Pattern.compile("<adtcore:objectReference\b[^>]*>");
+	private static final java.util.regex.Pattern REF = java.util.regex.Pattern.compile("<adtcore:objectReference\\b[^>]*>");
 	private static final java.util.regex.Pattern ATTR = java.util.regex.Pattern.compile("adtcore:(uri|name|type)=\"([^\"]*)\"");
 
 	/**
@@ -323,22 +323,34 @@ public abstract class PageView extends ViewPart {
 		case "CLAS": return new String[] { "/sap/bc/adt/oo/classes/" + encode(name), "CLAS/OC" };
 		case "INTF": return new String[] { "/sap/bc/adt/oo/interfaces/" + encode(name), "INTF/OI" };
 		case "FUNC":
-			String found = read("/sap/bc/adt/repository/informationsystem/search?operation=quickSearch&maxResults=20&objectType=FUGR/FF&query="
-					+ encode(name));
-			java.util.regex.Matcher m = REF.matcher(found);
-			while (m.find()) {
-				String refUri = null, refName = null;
-				java.util.regex.Matcher a = ATTR.matcher(m.group());
-				while (a.find()) {
-					if (a.group(1).equals("uri")) refUri = a.group(2);
-					if (a.group(1).equals("name")) refName = a.group(2);
-				}
-				if (name.equals(refName) && refUri != null) return new String[] { refUri, "FUGR/FF" };
-			}
+			// The type-filtered quick search can leave out a standard function module, which an unfiltered search of
+			// the exact name returns as a FUGR reference - as VS Code does. Exact name either way, not a fuzzy match.
+			String[] hit = functionModule(name, "&objectType=FUGR/FF", "FUGR/FF");
+			if (hit == null) hit = functionModule(name, "", "FUGR/");
+			if (hit != null) return hit;
 			throw new IllegalStateException("Function module " + name + " was not found.");
 		default:
 			throw new IllegalStateException("No ADT editor is known for object type " + type + ".");
 		}
+	}
+
+	/** The ADT URI and type of the one search result named NAME whose type starts with TYPE, or null. */
+	private String[] functionModule(String name, String filter, String type) {
+		String found = read("/sap/bc/adt/repository/informationsystem/search?operation=quickSearch&maxResults=20" + filter
+				+ "&query=" + encode(name));
+		java.util.regex.Matcher m = REF.matcher(found);
+		while (m.find()) {
+			String refUri = null, refName = null, refType = null;
+			java.util.regex.Matcher a = ATTR.matcher(m.group());
+			while (a.find()) {
+				if (a.group(1).equals("uri")) refUri = a.group(2);
+				if (a.group(1).equals("name")) refName = a.group(2);
+				if (a.group(1).equals("type")) refType = a.group(2);
+			}
+			if (name.equalsIgnoreCase(refName) && refUri != null && refType != null && refType.startsWith(type))
+				return new String[] { refUri, refType };
+		}
+		return null;
 	}
 
 	private static String encode(String value) {

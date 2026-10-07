@@ -68,6 +68,13 @@ active. They live in VS Code's own settings file: **Ctrl+Shift+P →
 Preferences: Open User Settings (JSON)**, and the entries below go into it.
 Workspace settings (`.vscode/settings.json`) work too and override the user's.
 
+The quickest way is **VERTEX: Import SAP Systems** (also a link under `vertex.systems` in Settings). It takes each
+system's host and instance from SAP Logon, the client and user from an Eclipse ADT workspace you point it at, and
+looks for ADT on the usual ports - 443NN and 80NN for the instance, then 44300, 8000, 50001, 50000, 443, 80, 8443,
+8080 - offering only addresses that answer. **VERTEX: Test SAP Systems** then logs on to each configured system and
+says what is wrong, if anything; the password it asks for is kept in the OS credential store, never in settings.
+By hand, the entries look like this; the HTTP(S) port is in SMICM > Goto > Services.
+
 ```json
 "vertex.systems": [
   {
@@ -960,6 +967,14 @@ own folder. The Eclipse plugin does not use it: it works through the platform an
 
 MIT. See [the project](https://github.com/ysichov/VERTEX).
 
+## VS Code 0.8.5: exits in the Logic diagram
+
+- Logic diagram: RETURN, LEAVE PROGRAM and an EXIT outside a loop end their branch and are drawn in the theme's error colour, instead of a line across the whole diagram to ENDMETHOD.
+- SAP's analysis of a source - hover, Go to Definition, F1 - is refused only above 50,000 lines (was 20,000). F1 works above that too: SAP is sent only the statement at the cursor (a whole chain, across its lines), cut out with abaplint.
+- F1 and Go to Type Definition wait for a hover's SAP analysis that is still running, as Go to Definition does, instead of failing with "SAP is still analysing the previous request".
+- Chat: a question asked while a Tools window shows an object of a review now carries that object's changes - the changed lines with three around them and each review block marked with its number, author and verdict - as it already did for a version diff.
+- Setting up systems: VERTEX: Import SAP Systems fills vertex.systems from SAP Logon (host, instance) and an Eclipse ADT workspace (client, user), and finds the ADT address by trying the usual ports; VERTEX: Test SAP Systems logs on to each system and says what is wrong. Both are links under vertex.systems in Settings.
+
 ## VS Code 0.8.4: FLOW tree in BSE
 
 - The FLOW tree in Value origin: switching between Full and BSE keeps the branches open as Expand all / Collapse all and Depth set them (BSE used to show everything collapsed). The tree's root keeps Expand all and Depth even when nothing is left under it, so the depth slider no longer disappears. Depth for calls starts at 1.
@@ -972,6 +987,7 @@ MIT. See [the project](https://github.com/ysichov/VERTEX).
 - Review: the Inline | 2 pane switch of the version diff is in a request's review too; in 2 pane each block's bar with Approve, Decline and Comment spans both columns above its change. The choice is shared with the version diff.
 - Tools: while the window asks the SAP system what it offers, the page says so in its main area (it used to say it only in the small status line).
 - 2 pane (version diff and review): the new version is always on the left and the old one on the right, and the heading names the new one first.
+- Logic diagram: a TRY is drawn as a branch - the TRY body and each CATCH start from the TRY and meet at ENDTRY. A RETURN inside a CATCH no longer ends the whole diagram; the method goes on after ENDTRY.
 
 ## VS Code 0.8.3: Predict past chains and loop tails, refused breakpoints
 

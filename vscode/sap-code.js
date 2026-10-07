@@ -3,8 +3,9 @@
 // JSON-facing repository operations. No VS Code, model, MCP or credentials here.
 const { createHash, randomUUID } = require("crypto");
 const TYPES = Object.freeze({ PROG: "PROG/P", CLAS: "CLAS/OC", FUNC: "FUGR/FF", INTF: "INTF/OI" });
-const MAX_ANALYSED_LINES = 20000;
+const MAX_ANALYSED_LINES = 50000;
 const ANALYSIS_BUDGET_MS = 20000;
+const DOCU_RADIUS = 400;
 const INCLUDES =["main", "definitions", "implementations", "macros", "testclasses"];
 const revision = source => createHash("sha256").update(source.replace(/\r\n/g, "\n")).digest("hex");
 
@@ -349,7 +350,8 @@ function createRepository({ client, systemId, emit = () => {} }) {
     analyse("Element info", source, () => client.codeCompletionElement(sourceUrl, source, line, column));
   // The same element info, read whole: abap-adt-api keeps only the nested elements, and drops the element's own
   // properties - where SAP says the type of a name declared inline. Every property is kept as SAP wrote it.
-  const elementDetails = (sourceUrl, source, line, column) =>
+  // A hover asks without waiting; Go to Type Definition, asked for, passes { wait: true }.
+  const elementDetails = (sourceUrl, source, line, column, how = {}) =>
     analyse("Element info", source, async () => {
       const response = await client.httpClient.request("/sap/bc/adt/abapsource/codecompletion/elementinfo", { method: "POST",
         qs: { uri: sourceUrl + "#start=" + line + "," + column }, headers: { "Content-Type": "text/plain", Accept: "application/*" }, body: source });
@@ -359,7 +361,7 @@ function createRepository({ client, systemId, emit = () => {} }) {
         properties: xml.xmlArray(node, "abapsource:properties", "abapsource:entry").map(entry => ({ key: entry["@_abapsource:key"], value: entry["#text"] })),
         parts: xml.xmlArray(node, "abapsource:elementInfo").map(read) });
       return read(root);
-    });
+    }, how);
   const definition = (sourceUrl, source, line, start, end) =>
     analyse("Definition", source, () => client.findDefinition(sourceUrl, source, line, start, end, false), { wait: true });
   // The active source behind a URL that navigation pointed at - a type pool,
@@ -433,8 +435,26 @@ function createRepository({ client, systemId, emit = () => {} }) {
   }
   // The ABAP keyword documentation for the statement at line/column, as
   // F1 gives it in Eclipse: SAP's own HTML page.
-  const documentation = (sourceUrl, source, line, column) =>
-    analyse("ABAP documentation", source, () => client.abapDocumentation(adtPath(sourceUrl), source, line, column));
+  // A source over the analysis limit is not refused here: the documentation is about the statement at the cursor, so
+  // SAP is sent that statement alone - all of a chain - cut out by abaplint's statements of the lines around it.
+  const documentation = (sourceUrl, source, line, column) => {
+    const lines = source.split("\n");
+    if (lines.length <= MAX_ANALYSED_LINES) {
+      // F1 is asked for: it waits for a hover's analysis instead of being refused.
+      return analyse("ABAP documentation", source, () => client.abapDocumentation(adtPath(sourceUrl), source, line, column), { wait: true });
+    }
+    const from = Math.max(0, line - 1 - DOCU_RADIUS), at = line - from;
+    const { parseSource } = require("./value-origin-linter");
+    const statements = parseSource({ id: "docu", name: "DOCU", objectName: "DOCU", objectType: "PROG",
+      text: lines.slice(from, line + DOCU_RADIUS).join("\n") }).source.aceStatements;
+    const last = statement => statement.tokens.at(-1)?.line || statement.line;
+    const hit = statements.find(statement => statement.line <= at && last(statement) >= at);
+    if (!hit) { throw new Error("No ABAP statement at line " + line + " to look up."); }
+    const chain = statements.filter(statement => statement.offset === hit.offset);
+    const first = Math.min(...chain.map(statement => statement.line)), end = Math.max(...chain.map(last));
+    const piece = lines.slice(from + first - 1, from + end).join("\n");
+    return analyse("ABAP documentation", piece, () => client.abapDocumentation(adtPath(sourceUrl), piece, at - first + 1, column), { wait: true });
+  };
   async function packageObjects(packageName) {
     const data = await client.nodeContents('DEVC/K', name(packageName));
     const objects = data.nodes.filter(n => /^(CLAS|INTF)\//.test(n.OBJECT_TYPE))

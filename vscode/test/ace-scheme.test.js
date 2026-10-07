@@ -56,3 +56,14 @@ test('labels keep the code as written: operators, => and field symbols; only " a
  const page=require('node:fs').readFileSync(require('node:path').resolve(__dirname,'../../org.vertex.abap.ui/resources/metrics.html'),'utf8');
  assert.ok(page.includes('now = was.replace(/\\uE000/g, "<").replace(/&lt;/g, "<")'),'the Tools page puts the characters back after drawing');
 });
+test('a CATCH that returns leaves the TRY body going on after ENDTRY',()=>{
+ const mm=draw(['TRY.','a = 1.','CATCH cx_root.','RETURN.','ENDTRY.','WRITE a.']);
+ assert.match(mm,/n1 --> n4/,'the handler is entered from before the TRY, not after its body');
+ assert.doesNotMatch(mm,/p3 --> n4/);
+ assert.match(mm,/class p5 exitnode/,'RETURN ends its branch as an exit');assert.doesNotMatch(mm,/p5 -->/,'with no line on to ENDMETHOD');
+ assert.match(mm,/p3 --> j6/);assert.match(mm,/j6 --> p7/,'the method goes on after ENDTRY');
+});
+test('LEAVE PROGRAM and an EXIT outside a loop end their branch; an EXIT in a loop does not',()=>{
+ const mm=draw(['IF a = 1.','LEAVE PROGRAM.','ENDIF.','DO 2 TIMES.','EXIT.','ENDDO.','EXIT.']);
+ assert.match(mm,/class p3 exitnode/);assert.match(mm,/class p8 exitnode/);assert.doesNotMatch(mm,/class p6 exitnode/);
+});
