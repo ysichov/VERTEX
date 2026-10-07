@@ -668,3 +668,32 @@ test("the chat is given what the window shows in two labelled parts: what ran, w
   context.flow = { timeline: [] }; context.staticFlow = null;
   assert.equal(vm.runInContext("debugContext()", context), null, "neither a record nor an analysis: nothing to give");
 });
+
+test("Predict runs the rest of a loop pass in one go once the slice has nothing more in it: points on the body's first statement and after the loop", () => {
+  // 43 LOOP, 45 COMPUTE, 49 IF, 50 COMPUTE (the slice), 51 ENDIF, 54..58 WRITE chain, 67 ENDLOOP, 70 IF, 72 ENDMETHOD.
+  const list = [{ line: 40, kw: "METHOD" }, { line: 43, kw: "LOOP" }, { line: 45, kw: "COMPUTE" }, { line: 49, kw: "IF" },
+    { line: 50, kw: "COMPUTE" }, { line: 51, kw: "ENDIF" }, { line: 54, kw: "WRITE" }, { line: 55, kw: "WRITE" },
+    { line: 56, kw: "WRITE" }, { line: 57, kw: "WRITE" }, { line: 58, kw: "WRITE" }, { line: 67, kw: "ENDLOOP" },
+    { line: 70, kw: "IF" }, { line: 72, kw: "ENDMETHOD" }];
+  const frame = { program: "ZCL_X===CP", url: "u", line: 51 };
+  const context = vm.createContext({ chosenValue: { name: "LV_DISCOUNT" }, slicePoints: { "ZCL_X:50": {} },
+    unitOf: () => ({ owner: "ZCL_X" }), picture: { breakpoints: [] }, norm: x => x, frame,
+    listFor: () => list, placeOf: f => { const here = list.find(s => s.line === f.line); return here ? { here } : null; } });
+  vm.runInContext(part("function routine(list,at){", "/* Each run reads the statement maps again"), context);
+  vm.runInContext("var ENDS=/^(ENDMETHOD|ENDFORM|ENDFUNCTION|ENDMODULE)$/,UNITS=/^(METHOD|FORM|FUNCTION|MODULE)$/;"
+    + "var EVENTS=/^(FORM|METHOD|FUNCTION|MODULE|START-OF-SELECTION|END-OF-SELECTION|INITIALIZATION|LOAD-OF-PROGRAM|TOP-OF-PAGE|END-OF-PAGE|AT|GET)$/i;"
+    + "function breakpointOn(url,line){return picture.breakpoints.some(function(b){return b.url===url&&b.line===line;});}"
+    + "function inSlice(o,l){return !!slicePoints[o+':'+l];}", context);
+  vm.runInContext(part("var MIN_RUN=3", "function straight("), context);
+  vm.runInContext(part("var LOOP_OPEN=", "/* Where SAP stops next after the statement"), context);
+  const rest = () => vm.runInContext("loopRest(frame, {})", context);
+  assert.deepEqual(JSON.parse(JSON.stringify(rest())), { lines: [45, 70, 72], line: 45, rest: true, count: 6 });
+  frame.line = 45;
+  assert.equal(rest(), null, "line 50 of the slice is still ahead in this pass");
+  frame.line = 51;
+  context.picture.breakpoints = [{ url: "u", line: 56 }];
+  assert.equal(rest(), null, "never over a breakpoint");
+  context.picture.breakpoints = [];
+  frame.line = 57;
+  assert.equal(rest(), null, "58 and ENDLOOP spare too little");
+});

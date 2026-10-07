@@ -125,3 +125,5 @@ Eclipse browser bundler: generated module imports now use a distinct loader name
 ### Shared with VS Code 0.8.3 (Value origin page)
 
 The Eclipse plugin's Value origin runs the VS Code page and flow builder, so the next plugin build carries the FLOW changes of VS Code 0.8.3: the Classes / Methods / Logic / Statements switch, the node menu (Show from here, Expand / Collapse this branch), Auto direction, labels written as in the code, and theme-following frames. The plugin was not rebuilt for this.
+
+Tools Logic now follows the ADT editor while it scrolls, as in VS Code 0.8.3: the line a third down the visible range is sent to the page, and when it lies in another method that method's logic diagram replaces the shown one. Also in the next plugin build.

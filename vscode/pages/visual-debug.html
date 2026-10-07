@@ -963,6 +963,43 @@ function skipAhead(f,map){
   if(i>=list.length||skipped<MIN_RUN||breakpointOn(f.url,list[i].line))return null;
   return {lines:[list[i].line],line:list[i].line,skip:true,count:skipped};
 }
+/* The rest of a loop pass, once the slice has nothing more in it: from a statement inside a loop, with no place of
+   the slice after it up to the loop's end, F8 to the first statement of the body (the next pass) or to wherever the
+   routine goes after the loop (the last pass) - points on both. Saves the pass's tail and its ENDLOOP stop on every pass. Not
+   from a call that is a place of the slice: that one is entered. Never over a breakpoint; null where it spares fewer
+   than MIN_RUN statements. */
+var LOOP_OPEN=/^(LOOP|DO|WHILE)$/i,LOOP_CLOSE=/^(ENDLOOP|ENDDO|ENDWHILE)$/i;
+function loopRest(f,map){
+  if(!chosenValue||!slicePoints)return null;
+  var p=placeOf(f,map),list=listFor(f,map);if(!p||!list)return null;
+  var here=p.here,at=list.indexOf(here),owner=String((unitOf(f)||{}).owner||f.program||"").toUpperCase();
+  if(LOOP_OPEN.test(here.kw)||LOOP_CLOSE.test(here.kw)||EVENTS.test(here.kw)||ENDS.test(here.kw))return null;
+  if((here.calls||here.kind==="call")&&inSlice(owner,here.line))return null;
+  var r=routine(list,at),head=-1,depth=0,i;
+  for(i=at-1;i>=r.from;i--){
+    if(LOOP_CLOSE.test(list[i].kw))depth++;
+    else if(LOOP_OPEN.test(list[i].kw)){if(depth===0){head=i;break;}depth--;}
+  }
+  if(head<0)return null;
+  var end=-1,n=0;depth=0;
+  for(i=at+1;i<=r.to;i++){
+    var st=list[i];
+    if(st.line!==here.line){
+      if(inSlice(owner,st.line)||breakpointOn(f.url,st.line))return null;
+      if(st.kind!=="decl")n++;
+    }
+    if(LOOP_OPEN.test(st.kw))depth++;
+    else if(LOOP_CLOSE.test(st.kw)){if(depth===0){end=i;break;}depth--;}
+  }
+  if(end<0||n<MIN_RUN)return null;
+  // SAP does not stop at a point on the LOOP statement on the next pass - it runs it once, on entry - so the point
+  // for the next pass goes on the first statement of the body, which every pass runs.
+  var first=null;for(i=head+1;i<end;i++){if(list[i].kind!=="decl"&&list[i].line!==list[head].line){first=list[i];break;}}
+  if(!first)return null;
+  var lines=[first.line];
+  for(i=end+1;i<=r.to;i++){if(list[i].kind!=="decl"&&lines.indexOf(list[i].line)<0)lines.push(list[i].line);}
+  return {lines:lines,line:lines[0],rest:true,count:n};
+}
 /* Where SAP stops next after the statement at `at`: the closers of a branch are no stop - ENDIF, ENDCASE and ENDTRY
    are passed, and the other branches of the block (ELSE, WHEN, CATCH) are jumped over to its end - while ENDLOOP,
    ENDSELECT and the end of a routine are. The first statement that is none of those. */
@@ -1080,7 +1117,7 @@ function drawStats(s){
   var sec=(Date.now()-s.t0)/1000;
   $("stats").textContent=s.steps+" steps ("+s.predicted+" predicted) · depth "+(picture.stopped?picture.stopped.frames.length:0)+" · "+sec.toFixed(1)+" s"
     +(sec>0&&s.steps?" · "+(s.steps/sec).toFixed(1)+" steps/s on average":"")
-    +(s.loops?" · "+s.loops+" loops passed":"")+(s.blocks?" · "+s.blocks+" blocks passed":"")+(s.skipped?" · "+s.skipped+" runs past statements outside the slice":"")+(s.standard?" · "+s.standard+" standard calls passed":"")+(s.over?" · "+s.over+" stepped over":"")+(s.missed?" · "+s.missed+" mispredicted":"")
+    +(s.loops?" · "+s.loops+" loops passed":"")+(s.blocks?" · "+s.blocks+" blocks passed":"")+(s.skipped?" · "+s.skipped+" runs past statements outside the slice":"")+(s.rests?" · "+s.rests+" loop pass tails passed":"")+(s.standard?" · "+s.standard+" standard calls passed":"")+(s.over?" · "+s.over+" stepped over":"")+(s.missed?" · "+s.missed+" mispredicted":"")
     +(s.inline?" · "+s.inline+" lines with more than one statement":"")+(s.unitend?" · "+s.unitend+" unit ends":"");
 }
 function runVisual(){
@@ -1129,7 +1166,7 @@ function runVisual(){
       // Visual draws or does not draw, Rec keeps the stops or does not keep
       // them; neither says how the run steps. This alone does.
       var guessing=$("predict").classList.contains("on");
-      var expect=guessing?predicted(f,map):null,from=placeOf(f,map),exit=guessing?(loopUnlessSliced(f,loopExit(f,map))||loopUnlessSliced(f,loopExit(f,map,BLOCKS),true,map)||skipAhead(f,map)):null,t=Date.now();
+      var expect=guessing?predicted(f,map):null,from=placeOf(f,map),exit=guessing?(loopUnlessSliced(f,loopExit(f,map))||loopRest(f,map)||loopUnlessSliced(f,loopExit(f,map,BLOCKS),true,map)||skipAhead(f,map)):null,t=Date.now();
       // Why the map was not used, where that is worth seeing: a line holding
       // more than one statement, and the end of a unit.
       if(guessing&&!expect&&from){if(from.next&&from.next.line===from.here.line)s.inline++;else if(ENDS.test(from.here.kw))s.unitend++;}
@@ -1137,7 +1174,7 @@ function runVisual(){
       // F6 over a call leaves the stack as it was: the next line is the map's, and only a
       // breakpoint SAP reports on the way makes the debugger ask for the stack after all.
       var told=expect?{line:expect.line,enter:expect.enter,leave:expect.leave}:null,kind=expect&&expect.over?"over":"into";
-      var doing=exit?(exit.block?"F8 past the "+from.here.kw+" block, points on "+exit.lines.join(", "):exit.skip?"F8 past "+exit.count+" statements outside the slice, point on "+exit.line:"F8 past the loop, points on "+exit.lines.join(", ")):expect&&expect.over?(expect.sliced?"F6 over a call outside the slice, predicted "+expect.line:"F6 over a call outside Z/Y, predicted "+expect.line):expect?"F5, predicted "+expect.line:"F5, stack asked";
+      var doing=exit?(exit.rest?"F8 past the rest of the pass ("+exit.count+" statements outside the slice), points on "+exit.lines.join(", "):exit.block?"F8 past the "+from.here.kw+" block, points on "+exit.lines.join(", "):exit.skip?"F8 past "+exit.count+" statements outside the slice, point on "+exit.line:"F8 past the loop, points on "+exit.lines.join(", ")):expect&&expect.over?(expect.sliced?"F6 over a call outside the slice, predicted "+expect.line:"F6 over a call outside Z/Y, predicted "+expect.line):expect?"F5, predicted "+expect.line:"F5, stack asked";
       explain(f,map,from,doing);
       lastMove={action:doing,from:String(f.label),detail:from?"line "+from.here.line+" "+from.here.kw+" "+from.here.kind+(from.here.calls?" with a call":"")+" ("+(from.here.owners||"no owner")+")"
         :!map?"no map for "+f.program:"not placed: "+f.include+" line "+f.line};
@@ -1149,7 +1186,7 @@ function runVisual(){
       return go.then(function(r){
         if(lastMove){lastMove.ms=Date.now()-t;lastMove.sap=r.sap||0;}
         s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;
-        if(r.loop){if(exit.skip)s.skipped=(s.skipped||0)+1;else if(exit.block)s.blocks=(s.blocks||0)+1;else s.loops++;s.other+=Math.max(0,(r.total||0)-(r.sap||0));from=null;}
+        if(r.loop){if(exit.rest)s.rests=(s.rests||0)+1;else if(exit.skip)s.skipped=(s.skipped||0)+1;else if(exit.block)s.blocks=(s.blocks||0)+1;else s.loops++;s.other+=Math.max(0,(r.total||0)-(r.sap||0));from=null;}
         else if(r.predicted)s.predicted++;
         else s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
         if(expect&&expect.over)s.over++;

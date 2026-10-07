@@ -1057,8 +1057,16 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     const target = await breakpointTarget(point); if (!target || !debuggerApi) return;
     const old = nativeBreakpoints.get(point.id);
     if (old) { nativeBreakpoints.delete(point.id); await debuggerApi.clearBreakpoints(old); }
-    const placed = await debuggerApi.setBreakpointAt({ url: target.url, line: target.line,
-      condition: point.condition || '', mode: 'stop' });
+    let placed;
+    try {
+      placed = await debuggerApi.setBreakpointAt({ url: target.url, line: target.line,
+        condition: point.condition || '', mode: 'stop' });
+    } catch (error) {
+      // A point SAP refused is not a point: the gutter must not show one the
+      // run will never stop at. The refusal itself is still reported.
+      if (typeof vscode.debug.removeBreakpoints === 'function') vscode.debug.removeBreakpoints([point]);
+      throw error;
+    }
     nativeBreakpoints.set(point.id, placed.id);
     // A stopped program holds the listener, so a point set now is set in SAP
     // and still cannot be reached. Better said than discovered.

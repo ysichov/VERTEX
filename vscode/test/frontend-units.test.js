@@ -45,3 +45,8 @@ test('function and dialog module remain distinct kinds',()=>{
 test('class methods remain qualified METHOD units',()=>{
  assert.deepEqual(units('CLASS ztest DEFINITION. PUBLIC SECTION. METHODS run. ENDCLASS. CLASS ztest IMPLEMENTATION. METHOD run. WRITE 1. ENDMETHOD. ENDCLASS.','CLAS').map(r=>[r.unit_type,r.unit_name]),[['METHOD','ZTEST=>RUN']]);
 });
+test('each element of a chain is placed on the line where SAP stops for it, not on the keyword line',async()=>{
+ const api={analysisReader:()=>async()=>({object_name:'ZTEST',object_type:'PROG',source_url:'test',source:'REPORT ztest.\nSTART-OF-SELECTION.\n  WRITE: / sy-vline,\n    3 sy-uname,\n    14 sy-vline.\n  WRITE sy-datum.',includes:[]})};
+ const result=await require('../frontend-analysis').request(api,'/sap/bc/adt/vertex/flow/ZTEST?mode=statements&type=PROG');
+ assert.deepEqual(result.includes[0].statements.filter(s=>s.kw==='WRITE').map(s=>s.line),[3,4,5,6]);
+});

@@ -41,7 +41,11 @@ function parseSource(source) {
       .flatMap(type => node.findAllExpressions(type)).map(n => {
         const t = n.getFirstToken(); return starts[t.getRow() - 1] + t.getCol() - 1;
       }));
-    statements.push({ tokens: expanded, offset: expanded[0].offset, line: expanded[0].line,
+    // A chain element (WRITE: / a, b.) begins with the chain's keyword, so its first token is on the keyword's
+    // line; the debugger stops on the line where the element's own part starts, after the colon.
+    const colon = node.getColon(), colonAt = colon && starts[colon.getRow() - 1] + colon.getCol() - 1;
+    const own = colon ? expanded.find(t => t.offset > colonAt) : null;
+    statements.push({ tokens: expanded, offset: expanded[0].offset, line: expanded[0].line, stepLine: own ? own.line : expanded[0].line,
       text: node.concatTokens(), aceIndex: statements.length + 1, localTargets: targets,
       localParameterOffsets: [...parameterOffsets], parserKind: statementKind });
   }

@@ -287,7 +287,7 @@ async function request(api, resource, progress, cancelled = () => false) {
       const calls = !!st.tokens.find(t => ['->','=>'].includes(t.value)) || /^(CALL|PERFORM|SUBMIT)$/.test(kw) || st.parserKind === 'CreateObject';
       const unsafe = ['Unknown','MacroCall','MacroContent','NativeSQL'].includes(st.parserKind);
       const target = /^(FORM|PERFORM)$/.test(kw) && !/[()]/.test(st.tokens[1]?.value || '') ? upper(st.tokens[1]?.value) : '';
-      return { line: st.line, to: st.tokens.at(-1)?.line || st.line, kw, calls, coordinate: 'adt-source', source_url: s.id,
+      return { line: st.stepLine || st.line, to: st.tokens.at(-1)?.line || st.line, kw, calls, coordinate: 'adt-source', source_url: s.id,
         kind: calls ? 'call' : unsafe || /^(IF|ELSE|ELSEIF|ENDIF|CASE|WHEN|ENDCASE|LOOP|ENDLOOP|DO|ENDDO|WHILE|ENDWHILE|CHECK|RETURN|TRY|CATCH|ENDTRY|SELECT|ENDSELECT|EXIT|CONTINUE|RAISE|LEAVE|STOP|AT|ENDAT|ON)$/.test(kw) ? 'flow' : !assignment(st.tokens) && /^(DATA|TYPES|CLASS|METHOD|METHODS|INTERFACE|PARAMETERS|PUBLIC|PRIVATE|PROTECTED|CONSTANTS|STATICS|FIELD-SYMBOLS)$/.test(kw) ? 'decl' : 'plain', target, owners: '', callees: '' };
     }) })) };
     const wanted = upper(url.searchParams.get('unit') || url.searchParams.get('start'));
@@ -1440,7 +1440,11 @@ function parseSource(source) {
       .flatMap(type => node.findAllExpressions(type)).map(n => {
         const t = n.getFirstToken(); return starts[t.getRow() - 1] + t.getCol() - 1;
       }));
-    statements.push({ tokens: expanded, offset: expanded[0].offset, line: expanded[0].line,
+    // A chain element (WRITE: / a, b.) begins with the chain's keyword, so its first token is on the keyword's
+    // line; the debugger stops on the line where the element's own part starts, after the colon.
+    const colon = node.getColon(), colonAt = colon && starts[colon.getRow() - 1] + colon.getCol() - 1;
+    const own = colon ? expanded.find(t => t.offset > colonAt) : null;
+    statements.push({ tokens: expanded, offset: expanded[0].offset, line: expanded[0].line, stepLine: own ? own.line : expanded[0].line,
       text: node.concatTokens(), aceIndex: statements.length + 1, localTargets: targets,
       localParameterOffsets: [...parameterOffsets], parserKind: statementKind });
   }

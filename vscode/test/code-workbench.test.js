@@ -782,6 +782,20 @@ test("a point removed in the debugger's window is removed from the editor too, o
   watchers.forEach(fn => fn());
   assert.deepEqual(h.removedNative, [point]);
 });
+test("a point SAP refuses is taken off the editor's gutter, and the refusal is still reported", async () => {
+  const h = host();
+  h.tools.attachDebugger({
+    async setBreakpointAt() { throw new Error('SAP did not accept the breakpoint at ZTEST line 1'); },
+    async clearBreakpoints() {}
+  });
+  await h.tools.execute('open_sap_object', { object_name: 'ZTEST', object_type: 'PROG' });
+  const point = { id: 'vs-bp-2', location: { uri: h.documents[0].uri, range: { start: { line: 0 } } } };
+  h.nativePoints.push(point);
+  h.fireBreakpoints({ added: [point] });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(h.removedNative, [point]);
+  assert.ok(h.errors.some(text => /did not accept/.test(text)));
+});
 test("a name declared inline is described by SAP's element info: its statement, its type and its components", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });

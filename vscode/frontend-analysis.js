@@ -260,7 +260,7 @@ async function request(api, resource, progress, cancelled = () => false) {
       const calls = !!st.tokens.find(t => ['->','=>'].includes(t.value)) || /^(CALL|PERFORM|SUBMIT)$/.test(kw) || st.parserKind === 'CreateObject';
       const unsafe = ['Unknown','MacroCall','MacroContent','NativeSQL'].includes(st.parserKind);
       const target = /^(FORM|PERFORM)$/.test(kw) && !/[()]/.test(st.tokens[1]?.value || '') ? upper(st.tokens[1]?.value) : '';
-      return { line: st.line, to: st.tokens.at(-1)?.line || st.line, kw, calls, coordinate: 'adt-source', source_url: s.id,
+      return { line: st.stepLine || st.line, to: st.tokens.at(-1)?.line || st.line, kw, calls, coordinate: 'adt-source', source_url: s.id,
         kind: calls ? 'call' : unsafe || /^(IF|ELSE|ELSEIF|ENDIF|CASE|WHEN|ENDCASE|LOOP|ENDLOOP|DO|ENDDO|WHILE|ENDWHILE|CHECK|RETURN|TRY|CATCH|ENDTRY|SELECT|ENDSELECT|EXIT|CONTINUE|RAISE|LEAVE|STOP|AT|ENDAT|ON)$/.test(kw) ? 'flow' : !assignment(st.tokens) && /^(DATA|TYPES|CLASS|METHOD|METHODS|INTERFACE|PARAMETERS|PUBLIC|PRIVATE|PROTECTED|CONSTANTS|STATICS|FIELD-SYMBOLS)$/.test(kw) ? 'decl' : 'plain', target, owners: '', callees: '' };
     }) })) };
     const wanted = upper(url.searchParams.get('unit') || url.searchParams.get('start'));

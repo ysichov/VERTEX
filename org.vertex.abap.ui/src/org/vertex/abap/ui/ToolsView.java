@@ -6,6 +6,11 @@ import java.util.regex.Matcher;
 import org.eclipse.core.runtime.Adapters;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.ITextSelection;
+import org.eclipse.jface.text.ITextOperationTarget;
+import org.eclipse.jface.text.ITextViewer;
+import org.eclipse.jface.text.IViewportListener;
+import org.eclipse.ui.IPartListener2;
+import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.ISelectionListener;
 import org.eclipse.ui.texteditor.ITextEditor;
@@ -20,6 +25,10 @@ public class ToolsView extends ChatView {
     private ISelectionListener editorSelection;
     private long sourceNavigationUntil;
     private String latestCursor="";
+    private ITextViewer scrolledViewer;
+    private IEditorPart scrolledEditor;
+    private IViewportListener viewportListener;
+    private IPartListener2 editorActivation;
     @Override protected String page() { return "resources/tools.html"; }
     @Override protected String projectName() { return part(2); }
     @Override protected String title(String object) { return "VERTEX Tools"; }
@@ -172,7 +181,38 @@ public class ToolsView extends ChatView {
             browser.getDisplay().timerExec(80,()->{if(!browser.isDisposed()&&payload.equals(latestCursor))browser.execute("if(typeof sdeCodeCursor==='function')sdeCodeCursor("+payload+");");});
         };
         getSite().getPage().addPostSelectionListener(editorSelection);
-        browser.addDisposeListener(event->{if(editorSelection!=null)getSite().getPage().removePostSelectionListener(editorSelection);});
+        // Scrolling the editor moves Tools Logic too: the line a third down the visible range, as in VS Code.
+        viewportListener=offset->{
+            if(scrolledViewer==null||scrolledEditor==null||browser.isDisposed()||System.currentTimeMillis()<sourceNavigationUntil)return;
+            AdtEditor object=AdtEditor.of(scrolledEditor);if(object==null)return;
+            if(object.project!=null&&!object.project.getName().equals(projectName()))return;
+            int top=scrolledViewer.getTopIndex(),bottom=scrolledViewer.getBottomIndex(),line=top+(bottom-top)/3+1;
+            String type=object.type==null?"":object.type.split("/")[0];
+            String payload="{\"name\":"+AssistantBridge.quote(object.name)+",\"type\":"+AssistantBridge.quote(type)+",\"line\":"+line+",\"endLine\":"+line+",\"scrollOnly\":true,\"userFocus\":"+(getSite().getPage().getActiveEditor()==scrolledEditor)+"}";
+            if(payload.equals(latestCursor))return;latestCursor=payload;
+            browser.getDisplay().timerExec(100,()->{if(!browser.isDisposed()&&payload.equals(latestCursor))browser.execute("if(typeof sdeCodeCursor==='function')sdeCodeCursor("+payload+");");});
+        };
+        editorActivation=new IPartListener2(){
+            @Override public void partActivated(IWorkbenchPartReference ref){
+                Object part=ref.getPart(false);if(part instanceof IEditorPart)watchScroll((IEditorPart)part);
+            }
+            @Override public void partClosed(IWorkbenchPartReference ref){if(ref.getPart(false)==scrolledEditor)watchScroll(null);}
+        };
+        getSite().getPage().addPartListener(editorActivation);
+        watchScroll(getSite().getPage().getActiveEditor());
+        browser.addDisposeListener(event->{
+            if(editorSelection!=null)getSite().getPage().removePostSelectionListener(editorSelection);
+            getSite().getPage().removePartListener(editorActivation);watchScroll(null);
+        });
+    }
+    private void watchScroll(IEditorPart editor){
+        if(scrolledViewer!=null)scrolledViewer.removeViewportListener(viewportListener);
+        scrolledViewer=null;scrolledEditor=null;
+        if(editor==null||AdtEditor.of(editor)==null)return;
+        Object target=editor.getAdapter(ITextOperationTarget.class);
+        if(!(target instanceof ITextViewer))return;
+        scrolledViewer=(ITextViewer)target;scrolledEditor=editor;
+        scrolledViewer.addViewportListener(viewportListener);
     }
     String assistantContext() { return vertexContext; }
     @Override void prompt(String text) {

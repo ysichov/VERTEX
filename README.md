@@ -228,6 +228,12 @@ own folder. The Eclipse plugin does not use it: it works through the platform an
 
 What is still missing, and what has to come out before it ships: [Next.md](Next.md).
 
+## VS Code 0.8.4: Predict past chains and loop tails, refused breakpoints
+
+- A breakpoint SAP does not accept (a declaration line, for example) is taken off the editor's gutter again; SAP's refusal is still shown. Before, the red dot stayed though the run would never stop there.
+- Predict with BSE passes a chained statement (`WRITE: / a, b, c.` over several lines) outside the slice in one F8 again. Every element of the chain was placed on the keyword's line, while SAP stops on each element's own line, so the page did not recognise the stop and stepped through the chain line by line, on every pass of a loop.
+- Predict with BSE skips the rest of a loop pass once the slice has nothing more in it: from the last place of the slice in the pass, one F8 to temporary points on the loop's head (the next pass) and after the loop (the last pass), instead of stepping to ENDLOOP every time. Not over a breakpoint, and a call that is in the slice is still entered. The run's summary counts the passes skipped this way.
+
 ## VS Code 0.8.3: flow readings, diagram controls and types
 
 - Value origin draws again. The shared flow script used its identifier normaliser before defining it, and the page stopped after the heading.
@@ -240,7 +246,7 @@ What is still missing, and what has to come out before it ships: [Next.md](Next.
 - Navigation: a click on a FLOW diagram label opens the code again. A click in a Tools diagram scrolls the editor that already shows that source instead of opening a second copy. Back (Alt+Left) returns from code opened from a diagram.
 - Types: the hover of a name declared inline (`DATA(x) = …`) shows the declaring statement and the type SAP gives it. **Go to Type Definition** opens the `TYPES` declaration of a variable's type in its class or interface.
 - Visual Debug: the separate Logic button (the Tools logic diagram of one method) is gone; Logic is a reading of the flow.
-- Tools Logic follows the editor while it scrolls: when the source scrolled to is another method, its logic diagram replaces the shown one (before, only a cursor move did that).
+- Tools Logic follows the editor while it scrolls: when the source scrolled to is another method, its logic diagram replaces the shown one (before, only a cursor move did that). The Eclipse plugin's Tools window does the same from the ADT editor's scrolling; it takes effect with the next plugin build (not built yet).
 
 ## VS Code 0.8.1 — code diagrams and Visual Debug
 
