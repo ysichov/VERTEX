@@ -68,7 +68,7 @@ active. They live in VS Code's own settings file: **Ctrl+Shift+P →
 Preferences: Open User Settings (JSON)**, and the entries below go into it.
 Workspace settings (`.vscode/settings.json`) work too and override the user's.
 
-The quickest way is **VERTEX: Import SAP Systems** (also a link under `vertex.systems` in Settings). It takes each
+A first install opens **Get started with VERTEX** (VS Code's Get Started page; later Help > Get Started): import the systems, test them, choose the assistant, add the VERTEX MCP server - each step with its button. The quickest way is **VERTEX: Import SAP Systems** (also a link under `vertex.systems` in Settings). It takes each
 system's host and instance from SAP Logon (for a logon group, its message server's host), the client and user from an Eclipse ADT workspace - the recent workspaces of the Eclipse installations it finds are offered, another folder can be chosen - and
 looks for ADT on the usual ports - 443NN and 80NN for the instance, then 44300, 8000, 50001, 50000, 443, 80, 8443,
 8080 - offering only addresses that answer. **VERTEX: Test SAP Systems** then logs on to each configured system and
@@ -135,8 +135,9 @@ development systems often have; it is off by default on purpose.
   (on). The ABAP side applies them, so they need this release's `src/` pulled.
 - **VERTEX: Switch System**
 - **VERTEX: Forget Password**
-- **VERTEX: Copy the MCP address for Claude Code or Codex** — the review server, or with a
-  **- debugger** entry the debugger server ([Debug with an assistant](#debug-with-an-assistant))
+- **Add the VERTEX MCP server to Claude Code or Codex** — the link under `vertex.mcp.port` in
+  Settings: copies the MCP address of the review server, or with a **- debugger** entry the debugger server
+  ([Debug with an assistant](#debug-with-an-assistant))
 - **VERTEX: Review & Activate** — editor title or context menu; opens the block-by-block
   Code Change panel described below.
 - **VERTEX: Save & Activate** — editor title; saves the whole tab without the block review.
@@ -420,7 +421,7 @@ VS Code window with VERTEX has to stay open while an assistant uses it.
 
 - **Copilot** (VS Code 1.101 or newer): nothing to do. In Copilot Chat's Agent
   mode, the tools picker lists the server as **VERTEX SAP**.
-- **Claude Code**: run **VERTEX: Copy the MCP address for Claude Code or Codex**,
+- **Claude Code**: in Settings, search `vertex.mcp.port` and click **Add the VERTEX MCP server to Claude Code or Codex**,
   choose **Claude Code**, and run the copied command in a terminal. If `vertex`
   is registered already, run `claude mcp remove vertex --scope user` first.
   `claude mcp list` shows it; start a new conversation.
@@ -495,7 +496,7 @@ stopped program are still on the old system is refused until `debug_stop` has re
 A VS Code window with VERTEX has to stay open while it works.
 The standalone MCP server in `mcp/server.js` does not have it.
 
-**Claude Code or Codex**: run **VERTEX: Copy the MCP address for Claude Code or Codex** and
+**Claude Code or Codex**: click **Add the VERTEX MCP server to Claude Code or Codex** under `vertex.mcp.port` in Settings and
 choose **Claude Code - debugger** or **Codex - debugger**.
 
 - Claude Code: paste the copied command into a terminal and run it. `claude mcp list` then

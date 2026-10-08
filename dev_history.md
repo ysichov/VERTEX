@@ -3282,3 +3282,17 @@ The Command Palette listed all 25 VERTEX commands. `contributes.menus.commandPal
 At the user's word the palette change ships as VS Code 0.8.6 (package.json and the lock), with a section of its own. The docs were searched for commands now hidden from the palette: none is described as reached through it - Back is Alt+Left, and Run ABAP Unit Tests / Run ATC Check, which the docs do name in the palette, are still there in a SAP tab.
 
 The user: the palette cleanup is not a feature to announce - it undoes an earlier choice, made without asking, to put every command in the palette. The 0.8.6 section left README.md and vscode/README.md; history.md and docs/index.html keep the version's note.
+
+Switch System left the palette too, at the user's word: the VERTEX panel's system list is how it is used, and that list calls the same command.
+
+Open Visual Debug needs a SAP ABAP tab (it debugs the program there, and says so otherwise), so the palette offers it only in one, as its context menu does. Six commands remain everywhere.
+
+"Copy the MCP address for Claude Code or Codex" could be found only through the docs. The VERTEX panel's top line now has a **Connect Claude Code / Codex** link (right-aligned under LLM Providers when the panel is narrow) that runs the same command, and the command left the palette. vscode/README.md tells people to click the link instead of running the command.
+
+The panel link was the wrong place: connecting an assistant is done once, and then the link only takes room. At the user's word it moved to Settings - a command link at the head of the `vertex.mcp.port` description (now `markdownDescription`), like the import and test links under `vertex.systems` - and the panel is back as it was. The docs point there.
+
+"Connect Claude Code or Codex" did not say what it does. The link and the command are now "Add the VERTEX MCP server to Claude Code or Codex": they copy the registration of VERTEX's MCP server for that assistant.
+
+### Get started
+
+Setup was spread over Settings: import and test under `vertex.systems`, the MCP link under `vertex.mcp.port`, and VS Code sorts settings alphabetically. At the user's word there is one place now: a walkthrough (`contributes.walkthroughs`, `vscode/walkthrough/*.md`) that VS Code opens after the install and keeps under Help > Get Started. Four steps, each a button and ticked when its command runs: Import SAP Systems, Test SAP Systems, the VERTEX panel (provider and model; LLM Providers has no command of its own, so no new one was made), and the optional Add the VERTEX MCP server. The MCP command, renamed so its name says what it does, is back in the palette - typing "MCP" finds it - since it is needed again on another computer. The setting links stay. Packaged and present in the vsix; not opened in VS Code yet.

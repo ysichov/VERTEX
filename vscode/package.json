@@ -147,7 +147,7 @@
       },
       {
         "command": "vertex.mcpAddress",
-        "title": "Copy the MCP address for Claude Code or Codex",
+        "title": "VERTEX: Add the VERTEX MCP server to Claude Code or Codex",
         "category": "VERTEX"
       },
       {
@@ -223,7 +223,7 @@
           "default": 37777,
           "minimum": 0,
           "maximum": 65535,
-          "markdownDescription": "Local MCP port for Codex, Claude Code and Copilot. Reload the window after changing it. Use a different port for each simultaneous VERTEX window; 0 selects a temporary port. The bearer token is kept in VS Code SecretStorage."
+          "markdownDescription": "[Add the VERTEX MCP server to Claude Code or Codex](command:vertex.mcpAddress) - copies what to paste: a command for Claude Code, a config section for Codex. Copilot finds the server by itself.\n\nLocal MCP port for Codex, Claude Code and Copilot. Reload the window after changing it. Use a different port for each simultaneous VERTEX window; 0 selects a temporary port. The bearer token is kept in VS Code SecretStorage."
         },
         "vertex.systems": {
           "type": "array",
@@ -443,6 +443,14 @@
       ],
       "commandPalette": [
         {
+          "command": "vertex.openVisualDebug",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap"
+        },
+        {
+          "command": "vertex.switchSystem",
+          "when": "false"
+        },
+        {
           "command": "vertex.tools.uml",
           "when": "false"
         },
@@ -563,6 +571,59 @@
       {
         "label": "VERTEX Tools",
         "id": "vertex.tools.context"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "vertex.start",
+        "title": "Get started with VERTEX",
+        "description": "Connect your SAP systems and choose the assistant.",
+        "steps": [
+          {
+            "id": "systems",
+            "title": "Import your SAP systems",
+            "description": "From SAP Logon and Eclipse ADT - no address to look up.\n[Import SAP Systems](command:vertex.importSystems)",
+            "media": {
+              "markdown": "walkthrough/systems.md"
+            },
+            "completionEvents": [
+              "onCommand:vertex.importSystems"
+            ]
+          },
+          {
+            "id": "test",
+            "title": "Test the connection",
+            "description": "Log on to each system and see what is wrong, if anything.\n[Test SAP Systems](command:vertex.testSystems)",
+            "media": {
+              "markdown": "walkthrough/test.md"
+            },
+            "completionEvents": [
+              "onCommand:vertex.testSystems"
+            ]
+          },
+          {
+            "id": "ai",
+            "title": "Choose the assistant",
+            "description": "Claude Code, Codex or the Anthropic API, in the VERTEX panel.\n[Open the VERTEX Panel](command:vertex.showPanel)",
+            "media": {
+              "markdown": "walkthrough/ai.md"
+            },
+            "completionEvents": [
+              "onCommand:vertex.showPanel"
+            ]
+          },
+          {
+            "id": "mcp",
+            "title": "VERTEX MCP in Claude Code or Codex (optional)",
+            "description": "Use VERTEX's SAP tools from Claude Code or Codex themselves.\n[Add the VERTEX MCP server](command:vertex.mcpAddress)",
+            "media": {
+              "markdown": "walkthrough/mcp.md"
+            },
+            "completionEvents": [
+              "onCommand:vertex.mcpAddress"
+            ]
+          }
+        ]
       }
     ]
   },

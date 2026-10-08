@@ -1,8 +1,9 @@
 # Release history
 
-## 2026-10-07 — VS Code 0.8.6: a shorter Command Palette
+## 2026-10-07 — VS Code 0.8.6: Get started, a shorter Command Palette
 
-- **Command Palette.** VERTEX shows eight commands everywhere (Open Panel, VERTEX Tools, Switch / Import / Test SAP Systems, Forget Password, Open Visual Debug, the MCP address); the editor commands - activation, tests, ATC, F1, Go to, value origin, debugger steps - appear only in an ABAP editor, and the VERTEX Tools submenu functions and Back only in their menus. Keys, menus and links work as before.
+- **Get started.** A first install opens a VERTEX page in VS Code's Get Started (later: Help > Get Started > VERTEX) with the four steps - import the SAP systems, test them, choose the assistant, and optionally add the VERTEX MCP server to Claude Code or Codex - each with its button, ticked off as it is done.
+- **Command Palette.** VERTEX shows six commands everywhere (Open Panel, VERTEX Tools, Import / Test SAP Systems, Forget Password, Add the VERTEX MCP server to Claude Code or Codex); the editor commands - activation, tests, ATC, F1, Go to, value origin, Visual Debug, debugger steps - appear only in an ABAP editor, and the VERTEX Tools submenu functions, Back and Switch System (the panel's system list) only where they are used. Keys, menus and links work as before.
 
 ## 2026-10-07 — VS Code 0.8.5: SAP system setup, exits in Logic, long sources
 
