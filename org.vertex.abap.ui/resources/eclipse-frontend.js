@@ -22,8 +22,10 @@ if(typeof sdeAnalysisRead==='function'){
  // ADT's data preview: its XML read into rows of raw strings by column name, as abap-adt-api reads it in VS Code.
  // A refusal names a clause, not the statement, so the statement goes with it.
  async function preview(sql,rows){
-  let text;try{text=await read('query:'+rows+':'+sql);}catch(error){throw new Error(error.message+'
-SQL: '+sql);}
+  // At most 200 characters a line, broken at blanks outside literals: the data preview refuses a longer line.
+  const words=String(sql).match(/(?:'(?:[^']|'')*'|`(?:[^`]|``)*`|[^\s'`])+/g)||[],lines=[];
+  words.forEach(w=>{const at=lines.length-1;if(at>=0&&lines[at].length+1+w.length<=200)lines[at]+=' '+w;else lines.push(w);});
+  let text;try{text=await read('query:'+rows+':'+lines.join('\r\n'));}catch(error){throw new Error(error.message+'\nSQL: '+sql);}
   const doc=xml(text),columns=Array.from(doc.getElementsByTagName('*')).filter(e=>e.localName==='columns');
   const fields=columns.map(c=>{const meta=Array.from(c.children).find(e=>e.localName==='metadata');const set=Array.from(c.children).find(e=>e.localName==='dataSet');
    return {name:attr(meta,'name'),values:set?Array.from(set.children).filter(e=>e.localName==='data').map(e=>e.textContent):[]};});

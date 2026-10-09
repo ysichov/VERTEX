@@ -237,3 +237,12 @@ test("a pivot's selection is the same field list, without Shown - its columns ar
   assert.equal(rows[1].children[1].textContent, "Status");
   assert.equal(rows[1].children[0].children.length, 0);
 });
+
+test("the pivot offers the fields the join selected, not every field of its tables", () => {
+  const { context } = page();
+  const fields = [{ sel: true, alias: "T0", fieldname: "CARRID", key: true }, { sel: false, alias: "T1", fieldname: "CUSTOMID", key: false }];
+  context.applyPlan({ table: "SFLIGHT", filters: [], join: ["SBOOK"], fields: [], pivot: { rows: ["t0~carrid"], cols: [], vals: [] } });
+  const html = require("node:fs").readFileSync(require("node:path").join(__dirname, "../../org.vertex.abap.ui/resources/table.html"), "utf8");
+  assert.match(html, /crossPanel\(\(data\.fields \|\| \[\]\)\.filter\(function \(f\) \{ return f\.sel === "X" \|\| f\.sel === true; \}\)\)/);
+  assert.equal(fields.filter(f => f.sel).length, 1);
+});

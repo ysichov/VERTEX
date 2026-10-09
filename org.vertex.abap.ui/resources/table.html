@@ -1084,7 +1084,8 @@ function renderJoin(data) {
       root.appendChild(section("SELECT", orderStrip(data.tables)));
     }
   } else {
-    root.appendChild(crossPanel(data.fields || []));
+    // The pivot is made of what the join selected, as ZCL_VX_TOOLS's pivot_src_fields was.
+    root.appendChild(crossPanel((data.fields || []).filter(function (f) { return f.sel === "X" || f.sel === true; })));
   }
 
   var sql = document.createElement("pre");

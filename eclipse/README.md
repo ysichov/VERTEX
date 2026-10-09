@@ -4,7 +4,7 @@ The plugin depends on none of the projects VERTEX grew out of - Simple Data Expl
 nothing from them has to be installed, and none of their code is called. Code Explorer and Value
 Origin analyse ADT source in the plugin, and SelecTor in VERTEX Tools reads through ADT's standard
 data preview once the plugin is built from the current repository; only Versions / Reviewer reads
-VERTEX's own ABAP, `src/`. Notes below that name a backend route describe the build they were
+VERTEX's own ABAP, `src/`, which is AVE's version and review logic carried over as `ZCL_VX_VERSION*`, `ZCL_VX_DIFF*` and `ZCL_VX_REVIEW_*`, with the `ZAVE_REVIEW` table the reviews are kept in. It has not been moved to the front end; the AVE repository itself is not needed. Notes below that name a backend route describe the build they were
 written for.
 
 The VS Code 0.7.12 Value Origin loader distinguishes foreign class declarations from complete implementations. Its Type is now FLOW or Formula, with a Depth slider that opens the tree along the call stack or along the derivation. Both are client changes and require no additional Eclipse build.

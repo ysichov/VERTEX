@@ -56,6 +56,18 @@ function row(item) {
     object_url: adtPath(item["adtcore:uri"])
   };
 }
+// ADT's data preview refuses a statement with a line of more than 255 characters, and cuts a long single line into
+// source lines itself, through a literal if it has to. So the statement goes in lines of at most 200, broken at
+// blanks outside literals.
+function dataPreviewLines(sql, width = 200) {
+  const words = String(sql).match(/(?:'(?:[^']|'')*'|`(?:[^`]|``)*`|[^\s'`])+/g) || [];
+  const lines = [];
+  for (const word of words) {
+    const last = lines.length - 1;
+    if (last >= 0 && lines[last].length + 1 + word.length <= width) { lines[last] += " " + word; } else { lines.push(word); }
+  }
+  return lines.join("\r\n");
+}
 function createRepository({ client, systemId, emit = () => {} }) {
   const drafts = new Map();
   let applying = false;
@@ -458,10 +470,10 @@ function createRepository({ client, systemId, emit = () => {} }) {
   // ADT's data preview on a SELECT in strict Open SQL, as Eclipse's SQL console runs it: read only, at most rows lines.
   // Values come as SAP wrote them, strings, for the caller to read by the column's type.
   // SAP's refusal names a clause, not the statement, so the statement goes with it.
-  const query = (sql, rows) => client.runQuery(sql, rows, false).catch(error => {
+  const query = (sql, rows) => client.runQuery(dataPreviewLines(sql), rows, false).catch(error => {
     throw new Error(String(error.message || error) + "\nSQL: " + sql);
   });
   return { execute, apply, query, language: () => client.language, draft, analysisReader, packageObjects, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
-module.exports = { createRepository, TYPES, revision, adtPath, sourcePath };
+module.exports = { createRepository, TYPES, revision, adtPath, sourcePath, dataPreviewLines };

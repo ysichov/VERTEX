@@ -33,7 +33,7 @@ See [eclipse/README.md](eclipse/README.md).
 **0.7.3** and the VS Code extension at **0.8.0**. What the pages gained since 0.7.3 is in the
 repository and in VS Code, and reaches Eclipse only when the plugin is built again.
 
-**Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; only Versions / Reviewer needs VERTEX's own ABAP, `src/`.
+**Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; only Versions / Reviewer needs VERTEX's own ABAP, `src/`, which is AVE's version and review logic carried over as `ZCL_VX_VERSION*`, `ZCL_VX_DIFF*` and `ZCL_VX_REVIEW_*`, with the `ZAVE_REVIEW` table the reviews are kept in. It has not been moved to the front end; the AVE repository itself is not needed.
 
 **Where the two hosts stand apart.** The editor, the debugger, Visual Debug and Value Origin are
 VS Code only, by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace

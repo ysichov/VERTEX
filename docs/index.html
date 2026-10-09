@@ -188,7 +188,7 @@
   be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read
   ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads
   them through ADT's standard data preview; only Versions / Reviewer needs VERTEX's own
-  <code>src/</code>. A system that still carries the old tools is unaffected.
+  <code>src/</code>, which is AVE's version and review logic carried over as <code>ZCL_VX_VERSION*</code>, <code>ZCL_VX_DIFF*</code> and <code>ZCL_VX_REVIEW_*</code>, with the <code>ZAVE_REVIEW</code> table the reviews are kept in. It has not been moved to the front end; the AVE repository itself is not needed. A system that still carries the old tools is unaffected.
 </p>
 
 <p>

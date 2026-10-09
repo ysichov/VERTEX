@@ -310,3 +310,12 @@ test("a click on a name waits for the analysis already running, a hover does not
   assert.deepEqual(await click, { url: "/u", line: 1, column: 0 });
   assert.deepEqual(order, ["hover start", "hover end", "definition"], "it is made once the hover is done");
 });
+
+test("a data preview statement goes in lines of at most 200 characters, broken outside literals", () => {
+  const { dataPreviewLines } = require("../sap-code");
+  const sql = "SELECT " + Array.from({ length: 20 }, (_, i) => "t0~field_" + i + " AS t0_field_" + i).join(", ")
+    + " FROM sflight AS t0 WHERE t0~carrid = 'A B  C' AND t0~text LIKE 'it''s %'";
+  const lines = dataPreviewLines(sql).split("\r\n");
+  assert.ok(lines.length > 1 && lines.every(line => line.length <= 200), lines.map(line => line.length).join(", "));
+  assert.ok(lines.some(line => line.includes("'A B  C'")) && lines.some(line => line.includes("'it''s %'")));
+});

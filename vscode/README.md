@@ -26,7 +26,7 @@ further. VERTEX does not depend on them: nothing from Simple Data Explorer, ACE,
 Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer,
 Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor
 builds its statements and reads them through ADT's standard data preview; only Versions / Reviewer
-needs VERTEX's own ABAP, `src/`. Everything new happens on this side.
+needs VERTEX's own ABAP, `src/`, which is AVE's version and review logic carried over as `ZCL_VX_VERSION*`, `ZCL_VX_DIFF*` and `ZCL_VX_REVIEW_*`, with the `ZAVE_REVIEW` table the reviews are kept in. It has not been moved to the front end; the AVE repository itself is not needed. Everything new happens on this side.
 
 
 ## The ABAP backend
