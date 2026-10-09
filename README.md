@@ -97,6 +97,8 @@ Building either half from this repository instead: [BUILD.md](BUILD.md).
 
 ## Value Origin
 
+Without a variable under the cursor, Forward Usage Analysis offers FLOW with Full scope; Formula, Expression and BSE are disabled until a variable is selected.
+
 Both Value Origin windows expose **Analysis log** directly above the flow. **Copy log** copies the engine, source loading and parsing times, source closure, definitions, dependency edges, traversal, warnings, and Formula/Expression diagnostics. The log is accessible without enabling the technical sections.
 
 **Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Forward Usage Analysis**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
@@ -183,6 +185,8 @@ for that reason the standalone server in [mcp/](mcp/README.md) does not have it.
 tools one by one: [Debug with an assistant](vscode/README.md#debug-with-an-assistant).
 
 ## The explorers today
+
+SelecTor offers **Technical names / Text** for Selection field labels and table headers, retaining the choice between loads.
 
 | Word | Comes from | What it does | In VERTEX | Status |
 |---|---|---|---|---|

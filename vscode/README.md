@@ -111,6 +111,8 @@ each; empty means `.vertex/reviews` in the first workspace folder.
 
 ## Commands
 
+SelecTor's **Technical names / Text** toggle changes field labels in Selection and table headers. The choice is remembered; fields without a description keep their technical name.
+
 Breakpoints set through Visual Debug or MCP appear as native VS Code points in the VERTEX source editor gutter. Click a point to remove it from SAP and Visual Debug too. Conditions, disabled state and logpoint mode are synchronized; opening a source tab refreshes its points.
 
 - **VERTEX: Open Panel** — also available from the VERTEX icon in the Activity Bar.
@@ -257,6 +259,8 @@ an object — for example, *Open ZCL_FOO please* — to open a normal, editable 
 Changes made there are still sent to SAP only through **Review & Activate** or **Save & Activate**.
 
 ## Value Origin
+
+Without a variable under the cursor, Forward Usage Analysis offers FLOW with Full scope; Formula, Expression and BSE are disabled until a variable is selected.
 
 Both Value Origin windows expose **Analysis log** directly above the flow. **Copy log** copies the engine, source loading and parsing times, source closure, definitions, dependency edges, traversal, warnings, and Formula/Expression diagnostics. The log is accessible without enabling the technical sections.
 

@@ -391,6 +391,10 @@
       <button id="join">Join</button>
       <button id="open">Open in new window</button>
       <button id="assist" title="Say what to show, and let an assistant set it up">Assistant</button>
+      <span class="vertex-segment-toggle" id="field-labels" role="group" aria-label="Field labels">
+        <button data-field-label="technical" title="Show technical field names">Technical names</button>
+        <button data-field-label="text" title="Show field descriptions">Text</button>
+      </span>
       <span class="status" id="status"></span>
     </div>
     <div class="missing" id="missing" hidden></div>
@@ -433,6 +437,23 @@ var currentTable = null;
 
 /* The answer on screen. Sorting draws it again without asking for it twice. */
 var shown = null;
+var fieldLabelMode = recall('fieldLabels') || 'text';
+function fieldLabel(name, text) { return fieldLabelMode === 'technical' ? name : (text || name); }
+function updateFieldLabelToggle() {
+  document.querySelectorAll('[data-field-label]').forEach(function (button) {
+    button.classList.toggle('active', button.dataset.fieldLabel === fieldLabelMode);
+  });
+}
+document.querySelectorAll('[data-field-label]').forEach(function (button) {
+  button.addEventListener('click', function () {
+    fieldLabelMode = button.dataset.fieldLabel;
+    remember('fieldLabels', fieldLabelMode);
+    updateFieldLabelToggle();
+    if (shown) { if (shown.candidates) { renderJoin(shown); } else { render(shown); } }
+    else { renderCriteria(); }
+  });
+});
+updateFieldLabelToggle();
 
 function status(text) {
   document.getElementById("status").textContent = text || "";
@@ -574,8 +595,8 @@ function fieldList(box, fields, view) {
       tr.appendChild(see);
       var name = document.createElement("td");
       name.className = f.key ? "fname key" : "fname";
-      name.textContent = index === 0 ? (f.text || f.name) : "";
-      name.title = f.name;
+      name.textContent = index === 0 ? fieldLabel(f.name, f.text) : "";
+      name.title = f.name + (f.text ? ' — ' + f.text : '');
       tr.appendChild(name);
       // A spare line joins the criteria the moment it says something.
       var adopt = function () { if (c.spare) { delete c.spare; criteria.push(c); } };
@@ -664,7 +685,7 @@ function renderCriteria() {
     head.className = "crit-head";
     var name = document.createElement("span");
     name.className = "crit-name";
-    name.textContent = c.text || c.field;
+    name.textContent = fieldLabel(c.field, c.text);
     name.title = c.field;
     var del = document.createElement("button");
     del.textContent = "×";
@@ -839,7 +860,7 @@ function render(data) {
     else if (f.key) { th.className = "key"; }
 
     var name = document.createElement("span");
-    name.textContent = (f.text || f.name)
+    name.textContent = fieldLabel(f.name, f.text)
       + (sorted.field === f.name ? (sorted.down ? " ▼" : " ▲") : "");
     name.addEventListener("click", function () {
       // The same column again turns the order round; another column starts
@@ -1417,7 +1438,8 @@ function resultTable(rows, headers) {
   var head = document.createElement("tr");
   columns.forEach(function (c) {
     var th = document.createElement("th");
-    th.textContent = headers && headers[c] ? headers[c] : c;
+    var field = shown && shown.fields && shown.fields.find(function (f) { return fieldKey(f).toLowerCase() === c.toLowerCase(); });
+    th.textContent = fieldLabel(c, headers && headers[c] || field && (field.ddtext || field.text));
     th.title = c;
     head.appendChild(th);
   });

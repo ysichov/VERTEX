@@ -2,6 +2,10 @@
 
 ## 2026-10-09 — VS Code 0.8.8: SelecTor, Run Select and Versions without the backend
 
+- SelecTor adds a remembered Technical names / Text toggle for Selection field labels and result headers.
+
+- Forward Usage Analysis without a selected variable disables Formula, Expression and BSE, retaining FLOW and Full.
+
 - **Native editor breakpoints.** Points set through Visual Debug or MCP become native VS Code breakpoints in matching VERTEX sources. Clicking a gutter point removes it from SAP and Visual Debug too. Conditions, disabled state and logpoint mode are synchronized without resending mirrored points to SAP.
   Restored editor tabs are included after an extension reload; their live documents are attached to the filesystem provider metadata before synchronization.
 

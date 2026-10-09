@@ -1,5 +1,9 @@
 # Development history
 
+SelecTor field labels now share a remembered Technical names / Text preference. It changes Selection labels and table/join/pivot result headings without changing query field keys or selection values, using the canonical segment toggle.
+
+Forward Usage Analysis now passes an explicit selected-value flag into the shared flow UI. With no variable selected, native disabled buttons prevent entering Formula, Expression or BSE; FLOW and Full remain available.
+
 ## 2026-10-09 — VS Code 0.8.8 breakpoint gutter markers
 
 Follow-up: restored tabs used fileEntry metadata without a live document reference, so native mirroring still skipped them after reload. Synchronization now attaches workspace and visible editor documents before matching points. A regression test restores a class tab in a fresh extension host and verifies the marker and removal from SAP.

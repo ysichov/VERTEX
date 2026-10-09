@@ -1,5 +1,7 @@
 # Built-in Eclipse Assistant
 
+The shared SelecTor source now offers **Technical names / Text** for Selection labels and table headers. The choice is remembered; Eclipse receives this change when its plugin is rebuilt.
+
 The plugin depends on none of the projects VERTEX grew out of - Simple Data Explorer, ACE, AVE:
 nothing from them has to be installed, and none of their code is called. Code Explorer and Value
 Origin analyse ADT source in the plugin, and SelecTor in VERTEX Tools reads through ADT's standard
