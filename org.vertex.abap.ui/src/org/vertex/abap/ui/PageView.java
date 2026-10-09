@@ -314,6 +314,15 @@ public abstract class PageView extends ViewPart {
                                 final IRestResource[] resource = new IRestResource[1];
                                 browser.getDisplay().syncExec(() -> resource[0] = resource(target));
                                 result = resource[0].post(new NullProgressMonitor(), String.class, body);
+                            } else if (kind.equals("adtpost")) {
+                                // SAP's where-used is asked by POST, but it reads only: the references and their snippets.
+                                if (!target.matches("/sap/bc/adt/repository/informationsystem/(usageReferences(\\?uri=[^#]*)?|usageSnippets)")) throw new IllegalArgumentException("Invalid where-used path.");
+                                final IRestResource[] resource = new IRestResource[1];
+                                browser.getDisplay().syncExec(() -> resource[0] = resource(target));
+                                com.sap.adt.communication.message.IHeaders headers = com.sap.adt.communication.message.HeadersFactory.newHeaders();
+                                headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Content-Type", "application/*"));
+                                headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Accept", "application/*"));
+                                result = resource[0].post(new NullProgressMonitor(), headers, String.class, body);
                             } else {
                                 throw new IllegalArgumentException("Unknown write " + kind + ".");
                             }

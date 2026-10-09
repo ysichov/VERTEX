@@ -6,7 +6,9 @@ Source only; the plugin has not been built at this number yet.
 
 - **Versions and the review read ADT.** VERTEX Tools in Eclipse runs the same front-end modules as VS Code: the version history from ADT's revision feed, the review of a request built from it in the window, finding requests through the data preview. The status line says what a review being built is reading.
 - **The diff is Eclipse's own Text Compare.** Two versions are compared by `RangeDifferencer` of `org.eclipse.compare.core`, the comparison ADT's Compare With shows; the plugin now requires that bundle.
-- **Saving a review.** Save, Approve, Decline, comments and taking a verdict back are made in the window as AVE makes them and stored in `ZAVE_REVIEW` through `ZCL_VX_ADT_RES_STORE` or in files - **Window → Preferences → VERTEX Code Review**. A system without VERTEX's ABAP keeps reviews in files.
+- **Saving a review.** Save, Approve, Decline, comments and taking a verdict back are made in the window as AVE makes them and stored in `ZAVE_REVIEW` through `ZCL_VX_ADT_RES_STORE` or in files - **Window → Preferences → VERTEX Code Review**. A system without VERTEX's ABAP keeps reviews in files.
+- **Includes and function modules in VERTEX Tools.** Tools opened on an include read it as a program and reported it missing, and opened on a function module showed its whole function group: ADT names them PROG/I and FUGR/FF, and the type was cut at the slash. They are an include and a function module now, as in VS Code.
+- **Forward and Backward Usage Analysis.** *Analyze Variable Value Origin* is **VERTEX: Forward Usage Analysis**, as in VS Code: with no variable under the cursor - or on a routine's or a called method's name, or a keyword - it draws the flow from that line on, and the editor's breakpoints stop the flow and ask (Stop / Continue to next / Ignore) instead of bounding it as a pair. New **VERTEX: Backward Usage Analysis**: where the values of the routine at the cursor go in its callers, through SAP's where-used, by the same analysis VS Code runs.
 
 ## 2026-10-09 — VS Code 0.8.8: SelecTor, Run Select and Versions without the backend
 
@@ -27,6 +29,7 @@ Source only; the plugin has not been built at this number yet.
 - **The Marketplace page describes the extension only.** The per-release sections are gone from it; release notes are here.
 - **The ABAP side is only the review store now.** `src/` holds `ZCL_VX_ADT_RES_STORE`, the `ZAVE_REVIEW` table, `ZCL_VX_ADT_RES_ABOUT` and the route registration; the version, diff, review and request classes and `Z_VX_DEBUGGER_TEST` are gone from it - pulling with abapGit does not delete them from a system, they are removed there by hand. Building a review on the ABAP side (Prepare) and the review against another system are no longer in VERTEX; AVE keeps both.
 - **The standalone MCP server reads the review over ADT.** `mcp/server.js` reads a saved review through ADT's data preview, or builds it from ADT, with the extension's own code; it no longer asks VERTEX's ABAP. It needs the extension's packages in the checkout (`npm ci` in `vscode/`).
+- **Forward Usage Analysis on a report event.** On START-OF-SELECTION, AT SELECTION-SCREEN and the other events of a report it took the event's name for a value and drew a slice that went into no call; an event is the routine itself now, and the flow from it is drawn with its calls - in VS Code and in Eclipse.
 
 ## 2026-10-08 — VS Code 0.8.7: function modules in Tools
 

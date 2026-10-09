@@ -22,7 +22,10 @@
     INCL: "diff", DEVC: "uml", TR: "review", FUGR: "diff", FUNC: "metrics",
     DDLS: "diff", DOMA: "diff", DTEL: "diff" };
   function normalize(value) {
-    const type = String(value.type || "CLAS").toUpperCase().split("/")[0];
+    // Eclipse passes ADT's own types, VS Code its own names. Cut at the slash, ADT's include (PROG/I) would be
+    // looked up as a program and its function module (FUGR/FF) as the whole function group.
+    const raw = String(value.type || "CLAS").toUpperCase();
+    const type = ({ "PROG/I": "INCL", "FUGR/FF": "FUNC" })[raw] || raw.split("/")[0];
     const item = objects.find(o => o[0] === type);
     if (!item) throw new Error("Unsupported object type: " + type);
     const name = String(value.name || "").trim().toUpperCase();

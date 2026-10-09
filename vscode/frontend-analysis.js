@@ -132,6 +132,7 @@ async function request(api, resource, progress, cancelled = () => false) {
     if (/^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(url.pathname)) {
       return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource);
     }
+    if (/^\/sap\/bc\/adt\/vertex\/backward\//.test(url.pathname)) return backward(api, resource, progress);
     // Versions, the review of a request and the finding of requests, for the same host: read over ADT here too.
     if (/^\/sap\/bc\/adt\/vertex\/(versions|review)\//.test(url.pathname) || url.pathname === '/sap/bc/adt/vertex/requests') {
       return await require('./versions-front').request(api, resource)
@@ -317,6 +318,65 @@ async function request(api, resource, progress, cancelled = () => false) {
       logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }
+// The object an ADT source address belongs to, and the address of its source: what where-used names is a place in a
+// source, sometimes inside a class's include or a function module of a group.
+function sourceAddress(uri) {
+  const path = String(uri || '').split('#')[0].split('?')[0];
+  let found = /^(\/sap\/bc\/adt\/oo\/classes\/([^/]+))(?:\/includes\/(\w+)|\/source\/main)?$/.exec(path);
+  if (found) {
+    const include = found[3] || 'main';
+    if (!['main', 'definitions', 'implementations', 'macros', 'testclasses'].includes(include)) return undefined;
+    return { object_type: 'CLAS', object_name: decodeURIComponent(found[2]).toUpperCase(),
+      source_url: include === 'main' ? found[1] + '/source/main' : found[1] + '/includes/' + include };
+  }
+  if ((found = /^(\/sap\/bc\/adt\/oo\/interfaces\/([^/]+))(?:\/source\/main)?$/.exec(path))) return { object_type: 'INTF', object_name: decodeURIComponent(found[2]).toUpperCase(), source_url: found[1] + '/source/main' };
+  if ((found = /^(\/sap\/bc\/adt\/programs\/(?:programs|includes)\/([^/]+))(?:\/source\/main)?$/.exec(path))) return { object_type: 'PROG', object_name: decodeURIComponent(found[2]).toUpperCase(), source_url: found[1] + '/source/main' };
+  if ((found = /^(\/sap\/bc\/adt\/functions\/groups\/[^/]+\/fmodules\/([^/]+))(?:\/source\/main)?$/.exec(path))) return { object_type: 'FUNC', object_name: decodeURIComponent(found[2]).toUpperCase(), source_url: found[1] + '/source/main' };
+  return undefined;
+}
+
+// Backward Usage Analysis for a host that runs it here (Eclipse): where the values of the routine at the cursor go in
+// its callers, up through theirs - the walk VS Code's command runs (backward-usage.js), over the same parsed sources.
+// SAP's where-used comes from the host (api.whereUsed), the stop at a breakpoint is the host's question
+// (api.askBreakpoint). Sources are addressed by their ADT source URL, so a line is the line ADT shows.
+async function backward(api, resource, progress = () => {}) {
+  const params = new URL(resource, 'https://sap.invalid').searchParams;
+  const start = { url: String(params.get('source') || ''), name: upper(params.get('name')), type: upper(params.get('type')) };
+  if (!/^\/sap\/bc\/adt\//.test(start.url)) throw new Error('Backward Usage Analysis needs the ADT source of the object.');
+  const breakpoints = String(params.get('breakpoints') || '').split(',').filter(Boolean).map(Number);
+  const { parseSource } = require('./value-origin-linter');
+  const { customerObject } = require('./value-origin');
+  const sources = new Map();
+  const sourceOf = (url, name, type) => {
+    if (!sources.has(url)) {
+      sources.set(url, Promise.resolve(api.sourceAt(url)).then(text => {
+        progress('reading ' + name);
+        return parseSource({ id: url, name, text: String(text), objectName: name, objectType: type, include: 'main' }).source;
+      }));
+    }
+    return sources.get(url);
+  };
+  const whereUsed = async (source, line, column) => {
+    progress('where-used in ' + source.objectName + ', line ' + line);
+    const places = [], skipped = [];
+    for (const place of await api.whereUsed(source.id, line, column)) {
+      const address = sourceAddress(place.uri);
+      if (!address) { skipped.push(String(place.object || place.uri)); continue; }
+      if (!customerObject(address.object_name)) { if (!skipped.includes(address.object_name)) skipped.push(address.object_name); continue; }
+      places.push({ source: await sourceOf(address.source_url, address.object_name, address.object_type), line: place.line });
+    }
+    return { places, skipped };
+  };
+  const first = await sourceOf(start.url, start.name, start.type);
+  const result = await require('./backward-usage').analyze({ source: first, line: Number(params.get('line')) || 1, variable: upper(params.get('variable')) }, {
+    callers: routine => whereUsed(routine.source, routine.line, routine.column),
+    uses: attribute => whereUsed(attribute.source, attribute.line, attribute.column),
+    breakpointAt: (id, line) => id === start.url && breakpoints.includes(line),
+    ask: points => api.askBreakpoint(points)
+  });
+  return { backward: result, page: require('./backward-usage').page(result) };
+}
+
 // A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
 // bundle); null for any other write.
 async function write(api, resource, body) {
@@ -324,4 +384,4 @@ async function write(api, resource, body) {
   return require('./review-front').write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined);
 }
 
-module.exports = { request, write, declarations, metric, analysisUnits, invalidate };
+module.exports = { request, write, backward, sourceAddress, declarations, metric, analysisUnits, invalidate };

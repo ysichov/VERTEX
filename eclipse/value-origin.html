@@ -114,46 +114,66 @@ window.sdeReady = function () {
 var crlf = function (text) { return String(text).replace(/\r\n/g, "\n"); };
 var flat = function (text) { return String(text).split("\r").join("").trimEnd(); };
 
-// The two enabled breakpoints around the cursor bound the analysis, as in VS Code. They are editor lines, and the
-// analysis counts the lines of the ACE include the value is in, so each is placed there first; one that cannot be
-// placed there is said on the page, and the analysis runs unbounded.
-function boundsOf(t, initial, mapped, warnings) {
-  var points = (t.breakpoints || []).slice().sort(function (a, b) { return a - b; });
-  var from = points.filter(function (line) { return line <= t.line; }).pop();
-  var to = points.find(function (line) { return line >= t.line; });
-  if (!(Number.isInteger(from) && Number.isInteger(to) && from < to)) { return null; }
-  var said = "The breakpoints at lines " + from + " and " + to + " do not bound this analysis: ";
-  try {
-    var start = origin.locateTarget(initial, t.text, t.name, from, "", 0), end = origin.locateTarget(initial, t.text, t.name, to, "", 0);
-    if (start.source !== mapped.source || end.source !== mapped.source) {
-      warnings.push(said + "they are not both in the include of the selected value.");
-      return null;
+// The editor's breakpoints stop the flow where a run would stop, and the reader decides whether it goes on - as in
+// VS Code. They are editor lines; the flow counts the lines of the ACE include the value is in, so each is placed
+// there first, and one that cannot be placed is said on the page.
+function breakpointLines(t, initial, mapped, warnings) {
+  var lines = [];
+  (t.breakpoints || []).forEach(function (line) {
+    try {
+      var at = origin.locateTarget(initial, t.text, t.name, line, "", 0);
+      if (at.source === mapped.source) { lines.push(at.line); }
+    } catch (error) {
+      warnings.push("The breakpoint at line " + line + " cannot be placed in the analysed source: " + error.message);
     }
-    if (!(start.line < end.line)) {
-      warnings.push(said + "in the include of the selected value they stand at lines " + start.line + " and " + end.line + ".");
-      return null;
-    }
-    return { source: mapped.source, from: start.line, to: end.line };
-  } catch (error) {
-    warnings.push(said + error.message);
-    return null;
-  }
+  });
+  return lines;
 }
+
+async function ask(points) {
+  var answer = await call("sdeOriginAsk", "VERTEX: breakpoint reached:\n" + points.map(function (point) {
+    return point.location + ", line " + point.line;
+  }).join("\n"));
+  return answer === "next" || answer === "ignore" ? answer : "stop";
+}
+
+// Backward Usage Analysis: where the values of the routine at the cursor go in its callers, up through theirs - SAP's
+// where-used, followed by the analysis VS Code runs (backward-usage.js) in this window's worker.
+async function runBackward(t) {
+  var inside = origin.literalAt(t.text, t.offset);
+  var variable = inside ? "" : (origin.variableAt(t.text, t.offset) || "");
+  sdeTitle(variable || t.name);
+  say("Backward usage - reading the active source of " + t.name);
+  var activeSource = await call("sdeOriginRead", t.sourcePath + "?version=active");
+  if (crlf(activeSource) !== crlf(t.text)) {
+    throw new Error("This editor differs from active SAP source. Activate your changes or reopen the active source before analysis.");
+  }
+  window.vertexAskBreakpoint = ask;
+  var answer = await window.vertexEclipseRequest("/sap/bc/adt/vertex/backward/" + encodeURIComponent(t.name)
+    + "?source=" + encodeURIComponent(t.sourcePath) + "&name=" + encodeURIComponent(t.name) + "&type=" + encodeURIComponent(t.type)
+    + "&line=" + t.line + "&variable=" + encodeURIComponent(variable) + "&breakpoints=" + (t.breakpoints || []).join(","),
+    function (text) { say("Backward usage - " + text); });
+  graph = answer.page;
+  backwardSources = true;
+  await draw(graph);
+}
+var backwardSources = false;
 
 async function run() {
   if (!origin) { throw new Error("The Value origin analysis did not load into this window."); }
   if (!window.vertexFlowGraph) { throw new Error("vertex-flow-graph.js did not load into this window."); }
   var t = TARGET;
   if (!t) { throw new Error("This window lost the editor it was opened from. Close it and run the command again."); }
+  if (t.direction === "backward") { return runBackward(t); }
   // A literal or a comment has no history: said, not analysed as if its word were a variable.
   var inside = origin.literalAt(t.text, t.offset);
   if (inside) {
     throw new Error(inside === "comment" ? "The cursor is in a comment: a comment has no value history. Place it on a variable."
       : "The cursor is in a text literal: a literal has no value history. Place it on a variable.");
   }
-  var variable = origin.variableAt(t.text, t.offset);
-  if (!variable) { throw new Error("Place the cursor on a variable."); }
-  sdeTitle(variable);
+  // No variable under the cursor: the flow forward from this line, with no slice of a value.
+  var variable = origin.variableAt(t.text, t.offset) || "";
+  sdeTitle(variable || t.name);
   say("Value origin - reading the active source of " + t.name);
   var activeSource = await call("sdeOriginRead", t.sourcePath + "?version=active");
   if (crlf(activeSource) !== crlf(t.text)) {
@@ -167,6 +187,31 @@ async function run() {
   };
   var initial = await load(t.name, t.type);
   var mapped = origin.locateTarget(initial, t.text, t.name, t.line, variable, t.column);
+  // The title says where the cursor was, what name stood there and how it was read, so a result is never a riddle.
+  var place = "Forward flow — line " + t.line + ", col " + (t.column + 1);
+  var originTitle = !variable ? place + ": no name under the cursor" : place + ": " + variable + " — slice of this value";
+  // The name in METHOD, FORM or FUNCTION is the routine, a method called there is a step of the flow, and a word the
+  // parsed statement does not read as a variable is no value: each gives the routine's flow, with no slice.
+  var own = initial.find(function (source) { return source.id === mapped.source; });
+  var at = own && (own.aceStatements || []).filter(function (statement) { return statement.offset <= mapped.offset; }).pop();
+  if (variable && at) {
+    var named = variable.toUpperCase(), first = String((at.tokens[0] || {}).value || "").toUpperCase();
+    var called = origin.callsIn(at.tokens).some(function (c) {
+      return c.method && named === String((c.receiver || c.owner) + c.arrow + c.method).toUpperCase();
+    });
+    // An event of a report (START-OF-SELECTION, AT SELECTION-SCREEN ...) is a routine too, as in VS Code.
+    var routineLine = ["METHOD", "FORM", "FUNCTION"].indexOf(first) >= 0 || Boolean(origin.classifyStatement(at).event);
+    var keyword = !called && !routineLine && !origin.variablePaths(at.tokens).some(function (path) { return String(path.name).toUpperCase() === named; });
+    if (called || routineLine || keyword) {
+      originTitle = place + ": " + variable + (called ? " is a method call, not a value" : routineLine ? " is the routine itself" : " is not a value");
+      variable = "";
+    }
+  }
+  if (!variable) {
+    mapped.variable = "";
+    mapped.flowPath = true;
+    mapped.flowRange = { from: mapped.line, to: own ? own.text.split("\n").length : mapped.line };
+  }
   // Only what the value's slice reaches is read, as in VS Code: the objects its statements name, then again until
   // nothing new is needed. Reading every customer object the source mentions took half the system for a local variable.
   // A class arrives with all its parts, so a part asked for again adds nothing.
@@ -175,8 +220,8 @@ async function run() {
   // The source the cursor is in opens in the editor it came from, as VS Code opens its own document.
   sources.forEach(function (source) { if (source.id === mapped.source && flat(source.text) === flat(t.text)) { source.editor = true; } });
   var warnings = parserWarnings.concat(result.warnings || []);
-  var flowBounds = boundsOf(t, initial, mapped, warnings);
-  graph = origin.analyze(sources, Object.assign({}, mapped, { flowBounds: flowBounds }));
+  graph = origin.analyze(sources, mapped);
+  graph.originTitle = originTitle;
   graph.analysisEngine = 'ADT + abaplint';
   graph.warnings = warnings;
   graph.skipped = result.skipped;
@@ -188,6 +233,17 @@ async function run() {
     node.sourceName = found ? found.name : node.source;
   });
   graph.codeFlow = { rows: origin.pathRows(graph, sources), sites: origin.siteRows(graph, sources) };
+  var stops = breakpointLines(t, initial, mapped, warnings);
+  graph.flowScope = await origin.stopAtBreakpoints(origin.flowScope(graph), function (row) {
+    return row.source === mapped.source && stops.indexOf(row.line) >= 0 ? { location: row.location, line: row.line } : null;
+  }, ask);
+  graph.stopNotice = graph.flowScope.stoppedAt ? "Stopped at breakpoint: " + graph.flowScope.stoppedAt.map(function (point) {
+    return point.location + ", line " + point.line; }).join("; ") + ". The flow after it is not shown." : "";
+  await draw(graph);
+}
+
+// Draws an analysis in the page VS Code draws it in, Forward's or Backward's.
+async function draw(graph) {
   say("Value origin - drawing");
   var controls = await call("sdeOriginAsset", "controls"), style = await call("sdeOriginAsset", "style");
   var scripts = { lens: await call("sdeOriginAsset", "lens"), flow: await call("sdeOriginAsset", "flow"), mermaid: await call("sdeOriginAsset", "mermaid") };
@@ -218,6 +274,17 @@ async function follow(message) {
   // The screen is what VS Code tells its chat about the window; the Eclipse chat is not given it.
   if (!message || message.kind === "screen" || !graph) { return; }
   if (/^scenario:/i.test(message.node || "")) { throw new Error("Loading a scenario's pipeline (ZLOG_PIPELINE) is in VS Code only."); }
+  // Backward names its places by their ADT source address: the object is opened in ADT and the line shown.
+  if (backwardSources) {
+    var at = /^origin:([^|]*)\|/.exec(message.source || ""), address = at ? at[1] : message.source;
+    var found = /^\/sap\/bc\/adt\/(?:oo\/(classes|interfaces)|programs\/(?:programs|includes)|functions\/groups\/[^\/]+\/fmodules)\/([^\/]+)/.exec(address || "");
+    if (!found) { throw new Error("This node names no source to open (" + String(message.node || "?") + ")."); }
+    var kind = found[1] === "classes" ? "CLAS" : found[1] === "interfaces" ? "INTF" : /fmodules/.test(address) ? "FUNC" : "PROG";
+    if (TARGET && address.split("?")[0] === TARGET.sourcePath) { sdeOriginReveal("origin", String(message.line || 1)); return; }
+    await call("sdeOriginOpen", decodeURIComponent(found[2]), kind);
+    sdeOriginReveal("opened", String(message.line || 1));
+    return;
+  }
   var flowIndex = /^flow(\d+)$/.exec(message.node || ""), bseFlowIndex = /^bseflow(\d+)$/.exec(message.node || "");
   var n = flowIndex ? graph.executionFlow[Number(flowIndex[1])] : bseFlowIndex ? graph.boundedFlow[Number(bseFlowIndex[1])]
     : graph.nodes.find(function (node) { return node.id === message.node; });

@@ -39,9 +39,11 @@ public class ValueOriginView extends PageView {
 		final int line;
 		final int column;
 		final List<Integer> breakpoints;
+		/** forward: how the value is computed, down from the line; backward: where values go in the callers. */
+		final String direction;
 
 		Target(IEditorPart editor, AdtEditor object, String type, String sourcePath, String text, int offset, int line, int column,
-				List<Integer> breakpoints) {
+				List<Integer> breakpoints, String direction) {
 			this.editor = editor;
 			this.object = object;
 			this.type = type;
@@ -51,6 +53,7 @@ public class ValueOriginView extends PageView {
 			this.line = line;
 			this.column = column;
 			this.breakpoints = breakpoints;
+			this.direction = direction;
 		}
 	}
 
@@ -85,8 +88,9 @@ public class ValueOriginView extends PageView {
 		if (t == null) {
 			return "Value origin";
 		}
-		return variable.equals(getViewSite().getSecondaryId()) ? "Value origin: " + t.object.ownerName()
-				: "Value origin: " + variable + " (" + t.object.ownerName() + ")";
+		String kind = "backward".equals(t.direction) ? "Backward usage" : "Forward usage";
+		return variable.equals(getViewSite().getSecondaryId()) ? kind + ": " + t.object.ownerName()
+				: kind + ": " + variable + " (" + t.object.ownerName() + ")";
 	}
 
 	private Target target() {
@@ -129,7 +133,7 @@ public class ValueOriginView extends PageView {
 				+ ",\"sourcePath\":" + AssistantBridge.quote(t.sourcePath)
 				+ ",\"text\":" + AssistantBridge.quote(t.text)
 				+ ",\"offset\":" + t.offset + ",\"line\":" + t.line + ",\"column\":" + t.column
-				+ ",\"breakpoints\":" + points + "}";
+				+ ",\"breakpoints\":" + points + ",\"direction\":" + AssistantBridge.quote(t.direction) + "}";
 		// The source is ABAP, and ABAP may hold "</script>" in a literal.
 		return json.replace("<", "\\u003c");
 	}
@@ -182,6 +186,22 @@ public class ValueOriginView extends PageView {
 					} catch (IOException e) {
 						throw new IllegalStateException(describe(e), e);
 					}
+				});
+				return null;
+			}
+		};
+
+		// A breakpoint the flow reached: the reader decides whether the analysis goes on, as in VS Code. Escape is Stop -
+		// what was found so far is shown.
+		new BrowserFunction(this.browser, "sdeOriginAsk") {
+			@Override
+			public Object function(Object[] arguments) {
+				String text = arguments.length > 0 && arguments[0] != null ? String.valueOf(arguments[0]) : "";
+				queue(() -> {
+					MessageDialog dialog = new MessageDialog(browser.getShell(), "VERTEX", null, text, MessageDialog.WARNING,
+							new String[] { "Stop analysis", "Continue to next", "Ignore breakpoints" }, 0);
+					int answer = dialog.open();
+					return answer == 1 ? "next" : answer == 2 ? "ignore" : "stop";
 				});
 				return null;
 			}

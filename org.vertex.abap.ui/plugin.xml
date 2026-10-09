@@ -49,8 +49,12 @@
 
       <command
             id="org.vertex.abap.ui.command.valueOrigin"
-            name="VERTEX: Analyze Variable Value Origin"
-            description="Where the value under the cursor came from, backwards across calls, without running the program"/>
+            name="VERTEX: Forward Usage Analysis"
+            description="How the value under the cursor is computed, down from this line across calls, without running the program; with no value under the cursor, the flow from this line on"/>
+      <command
+            id="org.vertex.abap.ui.command.backwardUsage"
+            name="VERTEX: Backward Usage Analysis"
+            description="Where the values of the routine at the cursor go in its callers, up through theirs, by SAP's where-used"/>
       <command
             id="org.vertex.abap.ui.command.activate"
             name="VERTEX: Activate"
@@ -67,6 +71,9 @@
       <handler
             commandId="org.vertex.abap.ui.command.valueOrigin"
             class="org.vertex.abap.ui.ValueOriginHandler"/>
+      <handler
+            commandId="org.vertex.abap.ui.command.backwardUsage"
+            class="org.vertex.abap.ui.BackwardUsageHandler"/>
       <handler
             commandId="org.vertex.abap.ui.command.activate"
             class="org.vertex.abap.ui.ActivateHandler"/>
@@ -128,7 +135,17 @@
          </command>
          <command
                commandId="org.vertex.abap.ui.command.valueOrigin"
-               label="VERTEX: Analyze Variable Value Origin"
+               label="VERTEX: Forward Usage Analysis"
+               style="push">
+            <visibleWhen checkEnabled="false">
+               <with variable="activePart">
+                  <test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/>
+               </with>
+            </visibleWhen>
+         </command>
+         <command
+               commandId="org.vertex.abap.ui.command.backwardUsage"
+               label="VERTEX: Backward Usage Analysis"
                style="push">
             <visibleWhen checkEnabled="false">
                <with variable="activePart">

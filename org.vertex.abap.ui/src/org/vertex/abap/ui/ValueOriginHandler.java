@@ -80,7 +80,7 @@ public class ValueOriginHandler extends AbstractHandler {
 
 		String id = String.valueOf(++counter);
 		ValueOriginView.TARGETS.put(id, new ValueOriginView.Target(editor, object, type, path, document.get(), offset, line + 1, column,
-				breakpoints(text, document)));
+				breakpoints(text, document), direction()));
 		try {
 			IWorkbenchPage page = HandlerUtil.getActiveWorkbenchWindowChecked(event).getActivePage();
 			page.showView(ValueOriginView.ID, id, IWorkbenchPage.VIEW_ACTIVATE);
@@ -89,6 +89,11 @@ public class ValueOriginHandler extends AbstractHandler {
 			throw new ExecutionException("Cannot open the VERTEX Value origin window", e);
 		}
 		return null;
+	}
+
+	/** Forward Usage Analysis; BackwardUsageHandler is the other direction. */
+	protected String direction() {
+		return "forward";
 	}
 
 	/** The object type the ACE origin index is asked for, as VS Code names it; null for one it does not analyse. */

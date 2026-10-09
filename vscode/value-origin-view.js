@@ -468,7 +468,10 @@ function register(vscode, context, getSources, options = {}) {
         // So is the name of a method called there (lo_x->get( ), zcl_y=>create( )): a call is a step of the flow, not a value.
         const called = at && callsIn(at.tokens).some(call => call.method && String(target.variable).toUpperCase()
           === String((call.receiver || call.owner) + call.arrow + call.method).toUpperCase());
-        const routineLine = at && ['METHOD', 'FORM', 'FUNCTION'].includes(String(at.tokens[0]?.value).toUpperCase());
+        // An event of a report (START-OF-SELECTION, AT SELECTION-SCREEN ...) is a routine too: the shared reader takes
+        // START-OF-SELECTION for a name, and a slice of it followed no call.
+        const routineLine = at && (['METHOD', 'FORM', 'FUNCTION'].includes(String(at.tokens[0]?.value).toUpperCase())
+          || Boolean(require('./abap-control').classifyStatement(at).event));
         // The title says where the cursor was, what name stood there and how it was read, so a result is never a riddle.
         const place = 'Forward flow — line ' + target.line + ', col ' + (target.column + 1);
         const named = target.variable;

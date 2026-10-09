@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const MODULES = ["abap-control", "call-graph", "value-origin-tokens", "value-origin-model", "value-origin", "value-origin-ace", "value-origin-formula",
-  "value-origin-formula-html", "value-origin-points", "value-origin-view", "value-origin-open", "value-origin-demand", "value-origin-pipeline"];
+  "value-origin-formula-html", "value-origin-points", "value-origin-view", "value-origin-open", "value-origin-demand", "value-origin-pipeline", "backward-usage"];
 
 function bundle(root = path.join(__dirname, "..")) {
   const parts = MODULES.map(name => {
@@ -30,7 +30,10 @@ function bundle(root = path.join(__dirname, "..")) {
     + "var origin = load('./value-origin'), ace = load('./value-origin-ace'), points = load('./value-origin-points'),\n"
     + "  view = load('./value-origin-view'), open = load('./value-origin-open'), pipeline = load('./value-origin-pipeline');\n"
     + "root.vertexOrigin = { analyze: origin.analyze, collect: pipeline.collect,\n"
-    + "  variableAt: origin.variableAt,\n"
+    + "  variableAt: origin.variableAt, callsIn: origin.callsIn, variablePaths: origin.variablePaths,\n"
+    // Forward's stops at breakpoints and Backward's walk to the callers, as VS Code runs them.
+    + "  flowScope: view.flowScope, stopAtBreakpoints: view.stopAtBreakpoints, backward: load('./backward-usage'),\n"
+    + "  classifyStatement: load('./abap-control').classifyStatement,\n"
     + "  literalAt: origin.literalAt, locateTarget: ace.locateTarget, pathRows: points.pathRows,\n"
     + "  siteRows: points.siteRows, html: view.html, sourceLineIn: open.sourceLineIn, methodLine: open.methodLine };\n"
     + "})(typeof window !== 'undefined' ? window : this);\n";

@@ -11,6 +11,24 @@ from it in the window. VERTEX's own ABAP, `src/`, is needed only to save a revie
 repository itself is not needed. Notes below that name a backend route describe the build they were
 written for.
 
+## Forward and Backward Usage Analysis
+
+In an ADT source editor's context menu, as in VS Code:
+
+- **VERTEX: Forward Usage Analysis** - how the value under the cursor is computed, down from that
+  line across calls, as FLOW, Formula or Expression. With no variable under the cursor - or on a
+  method's name, a called method or a keyword - it draws the flow from that line on. A breakpoint
+  of the editor that the flow reaches stops it and asks: stop the analysis there, continue to the
+  next breakpoint, or ignore breakpoints; Escape is Stop, and what was found so far is shown.
+- **VERTEX: Backward Usage Analysis** - where the values of the routine at the cursor go in its
+  callers, up through theirs: the variable under the cursor, or with none the routine's
+  parameters and the attributes it uses, followed through SAP's where-used. Customer code is walked
+  with no depth limit; standard SAP code is where the walk stops. The editor's breakpoints stop it
+  the same way.
+
+Both read the active source over ADT and analyse it in the window; nothing of VERTEX's ABAP is
+needed.
+
 ## Versions and code review
 
 **Versions** in VERTEX Tools lists an object's parts and their versions from ADT's revision feed and
@@ -151,7 +169,7 @@ In the Calls diagram, a click on a method of a class local to a program opens th
 
 ### Eclipse editor menu
 
-Eclipse: the VERTEX items - VERTEX Tools, VERTEX: Activate, Analyze Variable Value Origin, Visual Flow Analysis, Debug Monitor - are in the context menu of the ADT class and program editors again (with ADT 3.60 in Eclipse 2025-03 none of them showed there). In a class's Global Class tab the analyses are offered too: ADT 3.60 labels that tab otherwise than CLAS/OC, so the object's kind is also read from its ADT address. In build 0.8.1.20261008145448.
+Eclipse: the VERTEX items - VERTEX Tools, VERTEX: Activate, Forward Usage Analysis (then called Analyze Variable Value Origin), Visual Flow Analysis, Debug Monitor - are in the context menu of the ADT class and program editors again (with ADT 3.60 in Eclipse 2025-03 none of them showed there). In a class's Global Class tab the analyses are offered too: ADT 3.60 labels that tab otherwise than CLAS/OC, so the object's kind is also read from its ADT address. In build 0.8.1.20261008145448.
 
 Value origin, Visual Flow Analysis and Debug Monitor are offered in every ADT editor, and Value origin runs in a class's method code: ADT 3.60 opens a class's Global Class tab as its main include (CLAS/I), which is now taken for the class itself. The local types, local implementations and test classes of a class are analysed too; a command that cannot run on an object says so and names its type and address.
 
