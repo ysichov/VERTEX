@@ -78,7 +78,7 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are prepared at `0.8.8.qualifier`, the same number as the VS Code extension. The checked-in update site still contains `0.8.0.202610051511` and must be regenerated for this source version to reach users.
+then regenerate. The feature and bundle sources are at `0.8.8.qualifier`, the same number as the VS Code extension; the checked-in update site carries build `0.8.8.202610092043`.
 
 For a local installable archive without replacing the published `docs/` site:
 
