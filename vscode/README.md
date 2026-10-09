@@ -7,8 +7,9 @@ versions and data. Several of them grew out of earlier SAP GUI tools.
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](https://raw.githubusercontent.com/ysichov/VERTEX/main/docs/architecture.jpg)
 
 The ABAP side, this repository's [`src/`](https://github.com/ysichov/VERTEX/tree/main/src), is
-optional: everything works over ADT alone except the review of a transport, which reads it. The
-last column says which is which.
+optional: everything works over ADT alone. With it, a transport's review can also be saved to SAP,
+in the `ZAVE_REVIEW` table AVE uses; without it, reviews are saved to files. The last column says
+what needs it.
 
 | Tool | Grew out of | What it does | ABAP backend |
 |---|---|---|---|
@@ -17,7 +18,7 @@ last column says which is which.
 | **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | not needed |
 | **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW* or *Formula*, each as a tree or a diagram | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
-| **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | for the review |
+| **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | to save reviews in SAP |
 | **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | not needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | not needed |
 
@@ -26,18 +27,20 @@ further. VERTEX does not depend on them: nothing from Simple Data Explorer, ACE,
 Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer,
 Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor
 builds its statements and reads them through ADT's standard data preview; the version history and its diff
-come from ADT's revision feed, as in Eclipse's Revision History. Only the review of a transport - building it and saving approvals and comments - needs VERTEX's own ABAP, `src/`: AVE's review logic carried over as `ZCL_VX_REVIEW_*`, with the `ZAVE_REVIEW` table the reviews are kept in, shared with AVE in SAP GUI. It has not been moved to the front end yet; the AVE repository itself is not needed. Everything new happens on this side.
+come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is
+built from them in the window. Saving a review to SAP needs one resource of VERTEX's own ABAP,
+`src/`, because ADT's data preview can read a table but not write it; the AVE repository itself is
+not needed.
 
 
 ## The ABAP backend
 
-Only the review of a transport reads the ADT resources in the
-[repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src): pull them with
-[abapGit](https://abapgit.org) and activate them. A window that needs them and does not find them
-shows a page saying so; nothing else is affected. Code Explorer and Value Origin analyse ADT
-source in the editor, SelecTor - a table, a join, a pivot - is read through ADT's data preview,
-and Versions reads ADT's revision feed and finds requests through the data preview; none of them
-needs a backend, nor anything from the projects they grew out of.
+The [repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src) is needed for one thing:
+saving a transport's review to SAP. It carries the `ZAVE_REVIEW` table, which AVE uses too, and
+`ZCL_VX_ADT_RES_STORE`, which writes a review into it; pull it with [abapGit](https://abapgit.org)
+and activate it. On a system without it, reviews are saved to files (see *Code review of a
+transport*), and the review page says so. Everything else - Code Explorer, Value Origin, SelecTor,
+the version history, its diff and building a review - reads SAP over ADT and needs no backend.
 
 ## VS Code prerequisite
 
@@ -50,10 +53,10 @@ source in a normal VS Code text editor when SAP ADT is not installed.
 ## First run
 
 1. **Install the extension** from the Marketplace and reload the window.
-2. **For the review of a transport, install the ABAP backend**: pull the
+2. **To save reviews in SAP, install the ABAP backend**: pull the
    [VERTEX repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src) with
    [abapGit](https://abapgit.org) on the SAP system and activate it. Nothing else waits for this
-   step; a transport request in Versions says the review is missing until it is done.
+   step; without it, reviews are saved to files.
 3. **Name your system**: **Ctrl+Shift+P → Preferences: Open User Settings (JSON)**, and add
    `vertex.systems` and `vertex.active` as in *Settings* below. The `url` is the ICM port, not the
    one SAP GUI connects to.
@@ -95,6 +98,17 @@ asked once per system and kept in the operating system's credential store.
 `allowInsecureCertificate` accepts a certificate that cannot be verified, which
 development systems often have; it is off by default on purpose.
 
+Code reviews are saved where `vertex.review.storage` says: `table` (default) - SAP's
+`ZAVE_REVIEW`, shared with AVE; `file` - one JSON file per request; `both` - the table is read
+first and every save writes both. A system without VERTEX's ABAP keeps reviews in files whatever
+the setting says. `vertex.review.folder` is where the files go, one `<system>/<request>.json`
+each; empty means `.vertex/reviews` in the first workspace folder.
+
+```json
+"vertex.review.storage": "file",
+"vertex.review.folder": "C:/reviews"
+```
+
 ## Commands
 
 - **VERTEX: Open Panel** — also available from the VERTEX icon in the Activity Bar.
@@ -132,10 +146,26 @@ development systems often have; it is off by default on purpose.
   2 pane the parts and versions move to a band above the diff so the code gets the full
   width. The versions list folds on its own with the arrow at the right of its bar. The parts column can be folded away and resized.
 
+  The diff compares whole lines and finds the shortest edit script (Myers' algorithm), as
+  Eclipse's Text Compare does, with nothing on top: no pairing of a line with its commented-out
+  copy, no reordering of declarations. VERTEX has its own implementation, written from the
+  published algorithm, because Eclipse's comparer is under the EPL and VERTEX is MIT.
+
   AVE's three switches sit beside it: **TOCs** shows the versions written by
   transports of copies (off by default), **Dups** hides a version whose source is the
   same as the one before it (on), **Case/ind** compares without case and indentation
-  (on). The ABAP side applies them, so they need this release's `src/` pulled.
+  (on).
+
+  **Code review of a transport.** A transport request in Versions shows its review: every part
+  it changed, the diff of that part and the diff cut into blocks. The pair of versions is chosen
+  by AVE's rule: the request's newest version, or the active one when ADT records it under the
+  request and no other request's version sits above it, against the first older version that is
+  not the request's. A review that is not saved yet is built from ADT while you wait - the status
+  line says which part is being read - and **Save** keeps it. A saved review takes **Approve**,
+  **Decline** and comments on each block, the way AVE records them, so AVE and every VERTEX window
+  read the same review. Where reviews are kept is `vertex.review.storage`: the `ZAVE_REVIEW` table
+  (needs the ABAP backend), files, or both. Two people saving the same review at once do not
+  overwrite each other: the second save is refused and asks to read the review again.
 - **VERTEX: Switch System**
 - **VERTEX: Forget Password**
 - **Add the VERTEX MCP server to Claude Code or Codex** — the link under `vertex.mcp.port` in
@@ -957,9 +987,9 @@ server and no shell. See [Providers](#providers).
 
 ## What it writes
 
-Everything reads, with one exception: approving, declining and commenting in a
-code review writes to `ZAVE_REVIEW`, through this repository's own `ZCL_VX_REVIEW_*`.
-A review is built by the Versions window; this reads it and adds verdicts to it.
+Everything reads, with one exception: saving a code review - and approving, declining and
+commenting in it - writes the review to `ZAVE_REVIEW` through this repository's
+`ZCL_VX_ADT_RES_STORE`, or to a file, as `vertex.review.storage` says.
 
 ## Acknowledgements
 
@@ -971,6 +1001,10 @@ The VS Code extension talks to SAP ADT through
 and writing source, activation, the debugger, ABAP Unit, ATC, where-used, keyword documentation. It travels inside the VSIX with its
 licence, as do the other npm packages it depends on (MIT, Apache-2.0, BSD-3-Clause), each in its
 own folder. The Eclipse plugin does not use it: it works through the platform and ADT only.
+
+## Release notes
+
+What changed in each version: [history.md](https://github.com/ysichov/VERTEX/blob/main/history.md).
 
 ## Licence
 

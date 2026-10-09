@@ -11,8 +11,10 @@ the developer's existing ADT connection and renders as HTML.
 
 ![VERTEX architecture: the Web UI is built on three pillars—abap-adt-api, abaplint, and the Myers diff; SAP BAdI integration is used only to connect transport reviews with AVE in SAP GUI](docs/architecture.jpg)
 
-The ABAP side is this repository's `src/`. It is optional: everything works over ADT alone except
-the review of a transport, which reads it — the last column below says which is which.
+The ABAP side is this repository's `src/`. It is optional: in VS Code everything works over ADT
+alone, and `src/` is needed only to save a transport's review to SAP; without it, reviews are saved
+to files. The Eclipse plugin still reads Versions and the review from `src/`. The last column below
+says what needs it.
 
 | Tool | Grew out of | What it does | VS Code | Eclipse | ABAP backend |
 |---|---|---|---|---|---|
@@ -21,7 +23,7 @@ the review of a transport, which reads it — the last column below says which i
 | **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | ✓ | — | not needed |
 | **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW* or *Formula*, each as a tree or a diagram | ✓ | — | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | ✓ | ✓ ¹ | not needed |
-| **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | ✓ | ✓ ² | for the review (Eclipse: also the history) |
+| **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | ✓ | ✓ ² | VS Code: to save reviews in SAP; Eclipse: Versions and the review |
 | **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | ✓ | ✓ ² | not needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | ✓ | ✓ ² | not needed |
 
@@ -33,7 +35,7 @@ See [eclipse/README.md](eclipse/README.md).
 **0.7.3** and the VS Code extension at **0.8.0**. What the pages gained since 0.7.3 is in the
 repository and in VS Code, and reaches Eclipse only when the plugin is built again.
 
-**Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; in VS Code the version history and its diff come from ADT's revision feed, as in Eclipse's Revision History. Only the review of a transport - building it and saving approvals and comments - needs VERTEX's own ABAP, `src/`: AVE's review logic carried over as `ZCL_VX_REVIEW_*`, with the `ZAVE_REVIEW` table the reviews are kept in, shared with AVE in SAP GUI. It has not been moved to the front end yet; the AVE repository itself is not needed. The Eclipse plugin still reads the version history from `src/` too.
+**Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; in VS Code the version history and its diff come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is built from them in the window, with AVE's rules for choosing the versions and cutting blocks. Saving it to SAP goes through one resource of VERTEX's own ABAP, `ZCL_VX_ADT_RES_STORE`, into the `ZAVE_REVIEW` table AVE uses too - ADT's data preview can read a table but not write it; reviews can also be kept in files. The AVE repository itself is not needed. The Eclipse plugin still reads the version history and the review from `src/`.
 
 **Where the two hosts stand apart.** The editor, the debugger, Visual Debug and Value Origin are
 VS Code only, by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace
@@ -86,10 +88,11 @@ For the three explorers, pull this repository's `src/` with [abapGit](https://ab
 activate it; nothing else has to be installed. A window that needs it and does not find it says
 so, and the rest of VERTEX goes on working. The table, the join and the pivot were
 carried out of Simple Data Explorer, the flow and the metrics out of ACE, and the version history,
-the diff, the transport lookup and the review out of [AVE](https://github.com/ysichov/AVE) — all
-into `src/` as `ZCL_VX_*`, with the SAP GUI stripped off. None of the three is a prerequisite any
-more: they are where the logic was written first, and they are not developed further — everything
-new happens on this side. The `ZAVE_REVIEW` table the review is kept in ships in `src/` as well.
+the diff, the transport lookup and the review out of [AVE](https://github.com/ysichov/AVE) — first
+into `src/` as `ZCL_VX_*`, with the SAP GUI stripped off, and since then, in VS Code, into the
+window itself, read over ADT. None of the three is a prerequisite any more: they are where the
+logic was written first, and they are not developed further — everything new happens on this side.
+The `ZAVE_REVIEW` table reviews are saved in ships in `src/` as well.
 
 Building either half from this repository instead: [BUILD.md](BUILD.md).
 
@@ -185,16 +188,22 @@ tools one by one: [Debug with an assistant](vscode/README.md#debug-with-an-assis
 | Word | Comes from | What it does | In VERTEX | Status |
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
-| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review saved for a request — including approving, declining and commenting on a block. No blame |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review of a request — built, saved, approved, declined and commented on block by block. No blame |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit. A method opened from the Calls diagram draws its branch scheme in the same picture |
 
 Status: **early**. All three answer, and each is a fraction of what it was cut from.
 
-Building a review is here too, not only reading one. A Versions window opened on a request that
-has none offers to build it, and walks the objects one at a time — reading the versions of each,
-diffing them, cutting what changed into blocks — writing each object before it moves to the next.
-One object per call, so nothing has to survive being slow and stopping costs the object in hand.
-AVE's SAP GUI writes into the same `ZAVE_REVIEW`, so a review built either way is read by both.
+Building a review is here too, not only reading one. In VS Code a request with no saved review is
+built from ADT when it is opened - every part it changed, the pair of versions chosen by AVE's rule,
+diffed and cut into blocks by AVE's walk - with the status line saying which part is being read;
+**Save** keeps it, in `ZAVE_REVIEW` or in files as `vertex.review.storage` says, and approving,
+declining and commenting then change it the way AVE does. AVE's SAP GUI writes the same
+`ZAVE_REVIEW`, so a review saved either way is read by both. The Eclipse plugin builds a review
+through `src/` one object at a time.
+
+The diff is VERTEX's own line differ: Myers' shortest edit script over whole lines, as Eclipse's
+Text Compare computes it, with nothing on top. It is written from the published algorithm because
+Eclipse's comparer is under the EPL and VERTEX is MIT.
 
 ## How it fits together
 
@@ -247,6 +256,8 @@ What is still missing, and what has to come out before it ships: [Next.md](Next.
 - **SelecTor's join without the backend.** The join is built and read through ADT's data preview too: the tables the dictionary offers (foreign keys out and in, text tables, from DD08L and DD05S), the proposed ON, the SELECT list and the selection, with the same window. A table the dictionary does not offer can now be joined as well, on the key fields it shares with the base or on an ON of your own - a self-join included. The pivot still needs the ABAP backend.
 - **SelecTor's pivot without the backend.** The pivot is read through ADT's data preview as well: one statement grouped by its rows and columns with the measures' aggregates, the column values spread into columns in the window. Run Select opens a SELECT with GROUP BY and aggregates in the pivot, its grouped fields as rows and COUNT, SUM, MIN, MAX and AVG as measures; HAVING, DISTINCT, UNION and expressions run in the plain window. Its columns are named by the fields and its values by their domains' texts, as the ABAP pivot named them; a smallest or largest date stays a date; its selection is the same field list.
 - **Versions without the backend.** The version history of a program or an include is read from ADT's revision feed, as Eclipse's Revision History reads it - number, author, time, transport - and the diff of two versions is computed in the window - VERTEX's own line differ, Myers' shortest edit script over whole lines as Eclipse's Text Compare computes it, written from the published algorithm because Eclipse's comparer is under the EPL and VERTEX under MIT; nothing is done on top of it, so a commented-out line no longer pairs with its original as in AVE; the switches for transports of copies, duplicates and case/indentation work as before. The task under a request is not shown: the feed does not carry it. A class is its sections, its methods and its local includes, as before: ADT keeps the versions of the whole class, and a section's or a method's history is the versions of the class where its text changed, cut out with abaplint - the first look at a long-lived class reads every version of it once. An interface, a function module and a CDS view read their own feeds; a function group is its main program, its function modules and its other includes, from TFDIR and TRDIR. Tables, structures, domains and data elements read their own feeds; a package is what TADIR keeps under it and a transport request what E071 holds for it and its tasks, each part opened from the feed of the object it belongs to. Finding a user's requests reads E070 through the data preview. A saved review is read through the data preview as well - the summary, the reviewers, the history and a part's blocks with their verdicts and threads, out of the ZAVE_REVIEW table AVE and VERTEX share; with none saved - or on a system without the table - the review of a request is built from ADT on the spot: each part it changed, paired by AVE's own rule - the request's newest version, or the active one when ADT records it under the request and no other request's version sits above, against the first older version that is not the request's - diffed and cut into blocks, to look at and not saved. Building a review into the table and approving, declining or commenting still go through the ABAP backend. Includes also get their parts list in VERTEX Tools.
+- **A review built from ADT can be saved.** The review of a request with none saved is built in the window, and the status line now says what it is reading (the request, then each part in turn). **Save** keeps it; a saved review takes Approve, Decline, comments and taking a verdict back, made the way AVE makes them (its ZCL_VX_REVIEW_STATE carried over), so AVE and VERTEX read the same review. Two saves of the same review at once do not overwrite each other: the second is refused.
+- **Where reviews are kept: `vertex.review.storage`.** `table` (default) writes SAP's `ZAVE_REVIEW` through a new resource of VERTEX's ABAP, `ZCL_VX_ADT_RES_STORE` - the one thing it is needed for in VS Code; `file` writes one JSON file per request under `vertex.review.folder` (default `.vertex/reviews` in the workspace, `<system>/<request>.json`); `both` writes both. On a system without VERTEX's ABAP reviews go to files, and the page says so. Approving, declining and commenting no longer go through `ZCL_VX_ADT_RES_REVIEW` in VS Code.
 
 ## VS Code 0.8.7: function modules in Tools
 
