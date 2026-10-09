@@ -2,7 +2,7 @@
 
 // JSON-facing repository operations. No VS Code, model, MCP or credentials here.
 const { createHash, randomUUID } = require("crypto");
-const TYPES = Object.freeze({ PROG: "PROG/P", CLAS: "CLAS/OC", FUNC: "FUGR/FF", INTF: "INTF/OI" });
+const TYPES = Object.freeze({ PROG: "PROG/P", INCL: "PROG/I", CLAS: "CLAS/OC", FUNC: "FUGR/FF", INTF: "INTF/OI" });
 const MAX_ANALYSED_LINES = 50000;
 const ANALYSIS_BUDGET_MS = 20000;
 const DOCU_RADIUS = 400;
@@ -16,7 +16,7 @@ function name(value, label = "object_name") {
   return value.toUpperCase();
 }
 function type(value) {
-  if (!Object.hasOwn(TYPES, value)) { throw new Error("Supported object_type values: PROG, CLAS, FUNC, INTF."); }
+  if (!Object.hasOwn(TYPES, value)) { throw new Error("Supported object_type values: PROG, INCL, CLAS, FUNC, INTF."); }
   return value;
 }
 function sourceText(value) {
@@ -157,7 +157,7 @@ function createRepository({ client, systemId, emit = () => {} }) {
   async function create(args) {
     const kind = type(args.object_type), objectName = name(args.object_name);
     // Interfaces are read and changed, not created.
-    if (kind === "INTF") { throw new Error("Creating an interface is not supported."); }
+    if (kind === "INTF" || kind === "INCL") { throw new Error("Creating " + (kind === "INTF" ? "an interface" : "an include") + " is not supported."); }
     sourceText(args.source);
     if (!/^(Z|Y|\/[A-Z0-9_]+\/)/.test(objectName)) { throw new Error("Create an object in a customer namespace."); }
     const matches = await client.searchObject(objectName, TYPES[kind], 200);
@@ -473,7 +473,36 @@ function createRepository({ client, systemId, emit = () => {} }) {
   const query = (sql, rows) => client.runQuery(dataPreviewLines(sql), rows, false).catch(error => {
     throw new Error(String(error.message || error) + "\nSQL: " + sql);
   });
-  return { execute, apply, query, language: () => client.language, draft, analysisReader, packageObjects, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, dataElement, discard: id => drafts.delete(id),
+  // ADT's revision feed of an object or include - what Eclipse's Revision History shows: each revision's number
+  // (from its content address), author, time, transport and the transport's description, and the source address.
+  const revisions = async (objectUrl, include) => {
+    const { getRevisionLink } = require("abap-adt-api/build/api/revisions");
+    const xml = require("abap-adt-api/build/utilities");
+    const link = getRevisionLink(await client.objectStructure(adtPath(objectUrl)), include);
+    if (!link) { throw new Error("SAP keeps no version feed for " + objectUrl + "."); }
+    const response = await client.httpClient.request(link, { method: "GET", headers: { Accept: "application/atom+xml;type=feed" } });
+    return xml.xmlArray(xml.fullParse(response.body), "atom:feed", "atom:entry").map(entry => {
+      const uri = xml.xmlNode(entry, "atom:content", "@_src") || "";
+      const links = [].concat(xml.xmlNode(entry, "atom:link") || []);
+      const transport = links.find(l => l["@_type"] === "application/vnd.sap.adt.transportrequests.v1+xml");
+      return { id: (/\/(\d{5})\/content$/.exec(uri) || [])[1] || "", uri, time: xml.xmlNode(entry, "atom:updated") || "",
+        author: xml.xmlNode(entry, "atom:author", "atom:name") || "", title: xml.xmlNode(entry, "atom:title") || "",
+        transport: transport ? transport["@_adtcore:name"] || "" : "" };
+    });
+  };
+  const revisionSource = uri => client.getObjectSource(adtPath(String(uri).split("?")[0]));
+  // The active source of an object, or of one of a class's includes (definitions, implementations, macros, testclasses).
+  const currentSource = (objectUrl, include) => client.getObjectSource(adtPath(objectUrl)
+    + (include && include !== "main" ? "/includes/" + include : "/source/main"), { version: "active" });
+  // Whether VERTEX's ABAP on this system can store a review (ZCL_VX_ADT_RES_STORE): its about answer lists the
+  // service as active. Asked once a session; a system without VERTEX's ABAP answers 404, which is a plain no.
+  let storing;
+  const canStore = () => storing || (storing = client.httpClient.request("/sap/bc/adt/vertex/about", { method: "GET", headers: { Accept: "application/json" } })
+    .then(response => (JSON.parse(response.body).services || []).some(s => s.name === "store" && s.active === "X"), () => false));
+  // Writes a review payload into ZAVE_REVIEW through ZCL_VX_ADT_RES_STORE; EXPECT is the stamp it was built on.
+  const storeReview = (trkorr, remote, expect, body) => client.httpClient.request("/sap/bc/adt/vertex/store/" + encodeURIComponent(trkorr),
+    { method: "POST", qs: { remote: remote || "", expect: expect || "" }, headers: { "Content-Type": "application/json", Accept: "application/json" }, body });
+  return { execute, apply, query, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath, dataPreviewLines };

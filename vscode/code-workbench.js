@@ -2190,7 +2190,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     if (include) { await showSource(current.repo, { ...current.data, include }); }
   });
   command("vertex.createCode", async () => {
-    const object_type = await vscode.window.showQuickPick(Object.keys(TYPES).filter(kind => kind !== "INTF"), { title: "Create SAP object draft" });
+    const object_type = await vscode.window.showQuickPick(Object.keys(TYPES).filter(kind => kind !== "INTF" && kind !== "INCL"), { title: "Create SAP object draft" });
     if (!object_type) { return; }
     const object_name = await vscode.window.showInputBox({ title: "New SAP object name" });
     if (!object_name) { return; }
@@ -2246,11 +2246,39 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     for (const repo of repositories.values()) { void repo.api.dispose().catch(() => {}); }
     repositories.clear(); texts.clear(); opened.clear(); drafts.clear();
   } });
+  // Where reviews are kept: vertex.review.storage, and the folder of the files. A system without VERTEX's ABAP keeps
+  // them in files whatever the setting says - the table can be read there, not written - and the answer says so.
+  async function reviewIo(api) {
+    const fs = require('fs'), path = require('path');
+    const config = vscode.workspace.getConfiguration('vertex.review');
+    const wanted = config.get('storage') || 'table';
+    const canStore = await api.canStore();
+    const mode = canStore ? wanted : 'file';
+    const system = active().system || {};
+    const systemName = String(system.name || system.url || 'system').replace(/[^\w.-]+/g, '_');
+    const folder = () => {
+      const setting = String(config.get('folder') || '').trim() || path.join('.vertex', 'reviews');
+      if (path.isAbsolute(setting)) { return path.join(setting, systemName); }
+      const root = (vscode.workspace.workspaceFolders || [])[0];
+      if (!root) { throw new Error('Reviews are saved to files, and vertex.review.folder is relative, but no folder is open in VS Code. Open one, or set an absolute vertex.review.folder.'); }
+      return path.join(root.uri.fsPath, setting, systemName);
+    };
+    const file = (trkorr, remote) => path.join(folder(), trkorr + (remote ? '__' + remote : '') + '.json');
+    return { mode, wanted, canStore,
+      where: (trkorr, remote) => file(trkorr, remote),
+      read: async (trkorr, remote) => { try { return await fs.promises.readFile(file(trkorr, remote), 'utf8'); } catch (error) { if (error.code === 'ENOENT') { return null; } throw error; } },
+      write: async (trkorr, remote, text) => { const at = file(trkorr, remote); await fs.promises.mkdir(path.dirname(at), { recursive: true }); await fs.promises.writeFile(at, text, 'utf8'); return at; } };
+  }
   // Host/agent interface: create/modify only PREPARE and open a diff. Apply is UI-only.
   return { frontendRequest: async (resource, progress, cancelled) => require('./frontend-analysis').request((await repository()).api, resource, progress, cancelled),
     // SelecTor's table and join (the pivot not yet) answered over ADT's data preview; null for what is not theirs.
-    tableRequest: async resource => { const api = (await repository()).api;
-      return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource); },
+    tableRequest: async (resource, progress) => { const api = (await repository()).api;
+      return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource)
+        ?? await require('./versions-front').request(api, resource)
+        ?? await require('./review-front').request(api, resource, progress, /\/vertex\/review\//.test(resource) ? await reviewIo(api) : undefined); },
+    // A reviewer's action or the save of a review built from ADT, answered on this side; null for any other write.
+    tableWrite: async (resource, body) => { const api = (await repository()).api;
+      return require('./review-front').write(api, resource, body, await reviewIo(api)); },
     schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger, revealFrame, openToolSource, originPoints, originOpen, originVariables, documentObject,
     editorContext() {
       const editor = vscode.window.activeTextEditor;

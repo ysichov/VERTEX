@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.8.7",
+  "version": "0.8.8",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -329,6 +329,26 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Let Claude Code load your personal CLAUDE.md and auto-memory for VERTEX requests. Off by default: they travel with every SAP request and can show up in answers."
+        },
+        "vertex.review.storage": {
+          "type": "string",
+          "enum": [
+            "table",
+            "file",
+            "both"
+          ],
+          "default": "table",
+          "enumDescriptions": [
+            "SAP's ZAVE_REVIEW table, shared with AVE and every VERTEX window on that system.",
+            "A JSON file per request in the review folder.",
+            "Both: the table is read first, and every save writes both."
+          ],
+          "markdownDescription": "Where a code review is saved. The table needs VERTEX's ABAP on the system (`ZCL_VX_ADT_RES_STORE`); on a system without it reviews are saved to files only, and the review says so."
+        },
+        "vertex.review.folder": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Folder for reviews saved to files, one `<system>/<request>.json` each. Empty means `.vertex/reviews` in the first workspace folder; a relative path is taken from there too."
         }
       }
     },

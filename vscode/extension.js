@@ -108,6 +108,9 @@ const SHIM = [
   "    }",
   // The assistant answers on a channel of its own: a reply that takes a
   // minute must not land in the middle of whatever the grid is doing.
+  "    if (e.data && e.data.type === 'progress' && typeof vertexProgress === 'function') {",
+  "      vertexProgress(e.data.payload);",
+  "    }",
   "    if (e.data && e.data.type === 'assistant' && typeof sdeAssistant === 'function') {",
   "      sdeAssistant(e.data.payload);",
   "    }",
@@ -306,7 +309,7 @@ function describeConnection(error) {
  * Reads one resource and answers in the shape the page expects. Given a BODY it
  * writes instead, which needs a CSRF token first.
  */
-let frontendAnalysisRequest, frontendTableRequest;
+let frontendAnalysisRequest, frontendTableRequest, frontendTableWrite;
 async function fetch(context, requestPath, body, progress, cancelled) {
   if (body == null && frontendAnalysisRequest && /^\/sap\/bc\/adt\/vertex\/(metrics|class|package|flow)\//.test(requestPath)) {
     try { return JSON.stringify(await frontendAnalysisRequest(requestPath, progress, cancelled)); }
@@ -314,11 +317,17 @@ async function fetch(context, requestPath, body, progress, cancelled) {
   }
   // SelecTor's table and join are read through ADT's data preview, not the VERTEX resource on SAP; a pivot still
   // goes to the resource.
-  if (body == null && frontendTableRequest && /^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(requestPath)) {
+  if (body == null && frontendTableRequest && /^\/sap\/bc\/adt\/vertex\/((table|join|versions|review)\/|requests(\?|$))/.test(requestPath)) {
     let answer;
-    try { answer = await frontendTableRequest(requestPath); }
+    try { answer = await frontendTableRequest(requestPath, progress); }
     catch (error) { return 'ERROR:' + error.message; }
     if (answer) { return JSON.stringify(answer); }
+  }
+  // A reviewer's action and the save of a review built from ADT are made on this side and stored in the table
+  // (through VERTEX's store resource) or in a file, as vertex.review.storage says.
+  if (body != null && frontendTableWrite && /^\/sap\/bc\/adt\/vertex\/review\//.test(requestPath)) {
+    try { return JSON.stringify(await frontendTableWrite(requestPath, body)); }
+    catch (error) { return 'ERROR:' + error.message; }
   }
   if (body == null && requestPath === ABOUT) {
     const selected = active();
@@ -326,9 +335,9 @@ async function fetch(context, requestPath, body, progress, cancelled) {
     const raw = await fetch(context, ABOUT + '?backend=1');
     let remote = {};
     try { if (!raw.startsWith('ERROR:')) remote = JSON.parse(raw); } catch (_) {}
-    const local = ['metrics','class','package','flow','table','join'];
+    const local = ['metrics','class','package','flow','table','join','versions','requests','review'];
     const services = ['metrics','class','package','flow','table','join','versions','review','prepare','requests'].map(name =>
-      local.includes(name) ? { name, active: 'X', backend: name === 'table' || name === 'join' ? 'ADT data preview' : 'ADT + abaplint' } :
+      local.includes(name) ? { name, active: 'X', backend: ['table','join','versions','requests','review'].includes(name) ? 'ADT data preview' : 'ADT + abaplint' } :
         (remote.services || []).find(s => s.name === name) || { name, active: '', backend: 'VERTEX', handler: name });
     return JSON.stringify({ ...remote, user: remote.user || selected.system.user,
       backends: remote.backends || [{ name: 'VERTEX', installed: false }], services });
@@ -511,9 +520,11 @@ function open(context, service, initial, beside) {
       // which. Everything else reads.
       const bodyAt = WRITES[message.call];
       const body = bodyAt === undefined ? undefined : String(args[bodyAt] || "");
+      // What a long read is doing goes to the page's status line as it happens.
+      const progress = text => { panel.webview.postMessage({ type: "progress", payload: String(text) }).then(undefined, () => {}); };
       panel.webview.postMessage({
         type: "result",
-        payload: await fetch(context, build(args), body)
+        payload: await fetch(context, build(args), body, progress)
       });
     },
     undefined,
@@ -812,6 +823,7 @@ function activate(context) {
     pinned: () => pinnedSystem.getStore() || "", systems });
   frontendAnalysisRequest = sapCode.frontendRequest;
   frontendTableRequest = sapCode.tableRequest;
+  frontendTableWrite = sapCode.tableWrite;
   // A first start with no system: offered once per start, never imported without the reader's click.
   const listed = vscode.workspace.getConfiguration("vertex").get("systems");
   if (Array.isArray(listed) && !listed.some(function (s) { return s && s.name; })) {

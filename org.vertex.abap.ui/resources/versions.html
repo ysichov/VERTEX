@@ -233,6 +233,8 @@
 
   tbody tr.pick { cursor: pointer; }
 
+  /* Where a review is kept, under its heading. */
+  p.muted { color: var(--muted); margin: 2px 0 8px; }
   .diffbar { padding: 5px 10px; background: var(--surface-2);
              border-bottom: 1px solid var(--line); display: flex;
              align-items: center; gap: 12px; position: sticky; top: 0; z-index: 2; }
@@ -479,6 +481,9 @@ function placePanels() {
   // The split between parts and versions turns from height to width.
   document.getElementById("partsbox").style.flex = "";
 }
+
+// What a long read is doing, as the host reports it - building a review from ADT reads every part's versions.
+function vertexProgress(text) { status(text); }
 
 function status(text) {
   document.getElementById("status").textContent = text || "";
@@ -1504,8 +1509,9 @@ function blockRow(b) {
   td.appendChild(verdict);
 
   // A host with no way to write shows the verdict and no buttons, rather than
-  // buttons that do nothing.
-  if (typeof sdeAct === "function") {
+  // buttons that do nothing - and so does a review built live, which is saved
+  // nowhere.
+  if (typeof sdeAct === "function" && !review_live) {
     var acts = document.createElement("span");
     acts.className = "acts";
     if (b.action !== "A") { acts.appendChild(actButton(b, "A", "Approve")); }
@@ -1634,6 +1640,7 @@ function renderReviewPart(data) {
   var ops = data.ops || [];
   var blocks = data.blocks || [];
   review_saved_at = data.saved_at || "";
+  review_live = data.live === true;
   var label = review_part ? (review_part.display_name || review_part.obj_name)
                           : data.part;
 
@@ -1751,15 +1758,58 @@ function renderReviewPart(data) {
 
 /* ---------- the saved review ---------- */
 
+/* A review built from ADT when none is saved: the request's change, part by
+   part. It has no verdicts to give until it is saved; a host that keeps reviews
+   on this side (VS Code) says where in STORAGE and offers Save. */
+var review_live = false;
+
+/* Where this host keeps reviews, as one line under the heading: the table, a
+   file, or both - and, on a system without VERTEX's ABAP, that files are all
+   there is, whatever the setting asked for. */
+function storageLine(storage) {
+  if (!storage) { return null; }
+  var where = storage.mode === "table" ? "the ZAVE_REVIEW table"
+            : storage.mode === "file" ? "files" : "the ZAVE_REVIEW table and files";
+  var text = "Saved to " + where + ".";
+  if (!storage.can_store && storage.wanted !== "file") {
+    text = "VERTEX's ABAP is not on this system, so reviews are saved to files only.";
+  }
+  if (storage.from === "file" && storage.file) { text += " This one: " + storage.file; }
+  var p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = text;
+  return p;
+}
+
 function renderReview(data) {
   review = data;
   review_part = null;
   review_saved_at = data.saved_at || "";
+  review_live = data.live === true;
   var root = document.getElementById("root");
   root.className = "review";
   root.innerHTML = "";
 
-  if (data.table !== true) {
+  if (review_live) {
+    root.appendChild(heading("Built from ADT now - not saved"));
+    var where = storageLine(data.storage);
+    if (where) {
+      root.appendChild(where);
+      var save = document.createElement("button");
+      save.textContent = "Save";
+      save.onclick = function () {
+        save.disabled = true;
+        status("saving ...");
+        sdeAct(objectName(), "", "", "", JSON.stringify({ action: "S", saved_at: "" }));
+      };
+      root.appendChild(save);
+    }
+    root.appendChild(section("Objects", objectTable(data.objects || [])));
+    var changed = (data.objects || []).reduce(function (n, o) { return n + o.hunks; }, 0);
+    status(changed === 1 ? "1 changed block" : changed + " changed blocks");
+    return;
+  }
+  if (data.table !== true && data.saved !== true) {
     // Not an error: nothing is broken, there is simply nowhere for a review to
     // have been saved yet.
     note("This system has no ZAVE_REVIEW table, so no review can have been saved."
@@ -1776,6 +1826,8 @@ function renderReview(data) {
   }
 
   root.appendChild(heading("Saved " + asStamp(data.saved_at) + " by " + data.saved_by));
+  var kept = storageLine(data.storage);
+  if (kept) { root.appendChild(kept); }
   root.appendChild(section("Objects", objectTable(data.objects || [])));
   root.appendChild(section("Reviewers", reviewerTable(data.reviewers || [])));
   if (data.history && data.history.length > 0) {
@@ -2076,8 +2128,12 @@ function whyMissing(service) {
   return said.handler + " is not active";
 }
 
+/* What is missing is said where it would be used: the saved review and the
+   request finder belong to a transport request, so a program, a class or a
+   package hears nothing about them. */
 function sayMissing() {
-  var lost = USES.filter(function (u) { return !u.main && !usable(u.service); });
+  var request = objectType() === "TR";
+  var lost = USES.filter(function (u) { return !u.main && request && !usable(u.service); });
   var line = document.getElementById("missing");
   line.textContent = lost.length === 0 ? "" : "Not on this system: " + lost.map(function (u) {
     return u.what + " - " + whyMissing(u.service);
