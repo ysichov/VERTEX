@@ -73,6 +73,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         ? vscode.Uri.joinPath(context.extensionUri, 'images', 'stopped.svg') : undefined,
       gutterIconSize: 'contain' }) : null;
   if (stopDecoration) context.subscriptions.push(stopDecoration);
+  const mirroredEvents = new Set();
   const linterSources = async (document, target, progress, cancelled, activeOnly = false, onParsed = () => {}) => {
     const diagnostics = ['Loading policy: main source first; dependencies and class extras on demand. Full FLOW covers the loaded source closure.'];
     const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
@@ -999,6 +1000,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   async function showSource(repo, args) {
     const entry = await sourceDocument(repo, args);
     await vscode.window.showTextDocument(entry.document, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+    if (debuggerApi) queueBreakpointSync();
     return { opened: true, object_name: entry.data.object_name, object_type: entry.data.object_type,
       include: entry.data.include, system: repo.label, note: "Editable local buffer opened. No changes saved to SAP." };
   }
@@ -1028,7 +1030,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     let placed;
     try {
       placed = await debuggerApi.setBreakpointAt({ url: target.url, line: target.line,
-        condition: point.condition || '', mode: 'stop' });
+        condition: point.condition || '', mode: point.logMessage ? 'log' : 'stop' });
     } catch (error) {
       // A point SAP refused is not a point: the gutter must not show one the
       // run will never stop at. The refusal itself is still reported.
@@ -1036,6 +1038,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       throw error;
     }
     nativeBreakpoints.set(point.id, placed.id);
+    if (point.enabled === false && debuggerApi.activateBreakpoints) await debuggerApi.activateBreakpoints(placed.id, false);
     // A stopped program holds the listener, so a point set now is set in SAP
     // and still cannot be reached. Better said than discovered.
     const picture = typeof debuggerApi.picture === 'function' ? debuggerApi.picture() : null;
@@ -1043,6 +1046,68 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       vscode.window.showInformationMessage('VERTEX: a program is stopped at ' + picture.stopped.at
         + '. Breakpoints set now are not reached until it is let go - Continue, Detach or Exit program.');
     }
+  }
+  function mirrorNative(action, points) {
+    if (!points.length) return;
+    for (const point of points) mirroredEvents.add(action + ':' + point.id);
+    vscode.debug[action === 'added' ? 'addBreakpoints' : 'removeBreakpoints'](points);
+  }
+  async function syncDebuggerBreakpoints() {
+    if (!debuggerApi || !vscode.SourceBreakpoint || !vscode.debug.addBreakpoints) return;
+    // Restored tabs are read through the filesystem provider after reload;
+    // fileEntry retains metadata but sourceDocument has not attached the live document.
+    const documents = new Set([...(vscode.workspace.textDocuments || []),
+      ...(vscode.window.visibleTextEditors || []).map(editor => editor.document)]);
+    for (const document of documents) {
+      if (!document || document.isClosed || document.uri.scheme !== 'vertex-sap') continue;
+      const entry = opened.get(document.uri.toString()) || await fileEntry(document.uri);
+      entry.document = document;
+    }
+    const picture = debuggerApi.picture();
+    const points = picture.breakpoints || [];
+    const natives = vscode.debug.breakpoints || [];
+    const visibleUris = new Set((vscode.window.visibleTextEditors || []).map(e => e.document.uri.toString()));
+    const entryFor = point => [...opened.values()].filter(e => e.document && !e.document.isClosed
+      && (!picture.system || JSON.parse(e.repo.key)[3] === picture.system)
+      && String(e.data.source_url || '').split('#')[0].toLowerCase() === String(point.url || '').split('#')[0].toLowerCase())
+      .sort((a, b) => Number(visibleUris.has(b.document.uri.toString())) - Number(visibleUris.has(a.document.uri.toString())))[0];
+    for (const [nativeId, sapId] of [...nativeBreakpoints]) {
+      const native = natives.find(p => p.id === nativeId);
+      const point = points.find(p => p.id === sapId);
+      const destination = point && entryFor(point);
+      const moved = native && destination && native.location.uri.toString() !== destination.document.uri.toString();
+      if (!point) {
+        nativeBreakpoints.delete(nativeId);
+        if (native) mirrorNative('removed', [native]);
+      } else if (native && (moved || (native.enabled !== false) !== (point.active !== false)
+        || (native.condition || '') !== (point.condition || '')
+        || (native.logMessage || '') !== (point.mode === 'log' ? 'VERTEX logpoint' : ''))) {
+        const destinationLocation = moved ? new vscode.Location(destination.document.uri, position(Number(point.line) - 1, 0)) : native.location;
+        const replacement = new vscode.SourceBreakpoint(destinationLocation, point.active !== false,
+          point.condition || undefined, undefined, point.mode === 'log' ? 'VERTEX logpoint' : undefined);
+        nativeBreakpoints.delete(nativeId);
+        nativeBreakpoints.set(replacement.id, sapId);
+        mirrorNative('removed', [native]);
+        mirrorNative('added', [replacement]);
+      }
+    }
+    for (const point of points) {
+      if ([...nativeBreakpoints.values()].includes(point.id)) continue;
+      const entry = entryFor(point);
+      if (!entry) continue;
+      const line = Number(point.line) - 1;
+      if (!Number.isInteger(line) || line < 0 || line >= entry.document.getText().split(/\r?\n/).length) continue;
+      const native = new vscode.SourceBreakpoint(new vscode.Location(entry.document.uri, position(line, 0)),
+        point.active !== false, point.condition || undefined, undefined,
+        point.mode === 'log' ? 'VERTEX logpoint' : undefined);
+      nativeBreakpoints.set(native.id, point.id);
+      mirrorNative('added', [native]);
+    }
+  }
+  function queueBreakpointSync() {
+    breakpointQueue = breakpointQueue.then(syncDebuggerBreakpoints).catch(error => {
+      vscode.window.showErrorMessage('VERTEX breakpoint sync: ' + String(error.message || error));
+    });
   }
   function showStoppedLine(picture) {
     if (!stopDecoration) return;
@@ -1194,19 +1259,15 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     if (typeof api.watch === 'function' && typeof api.picture === 'function') {
       context.subscriptions.push(api.watch(() => {
         const picture = api.picture();
-        // A point removed in the debugger's window is removed from the editor too: it is the editor's own point restored on every
-        // attach, so one left there comes back with the next reload.
-        for (const [pointId, id] of [...nativeBreakpoints]) {
-          if ((picture.breakpoints || []).some(point => point.id === id)) continue;
-          nativeBreakpoints.delete(pointId);
-          const native = (vscode.debug && vscode.debug.breakpoints || []).find(point => point.id === pointId);
-          if (native && typeof vscode.debug.removeBreakpoints === 'function') vscode.debug.removeBreakpoints([native]);
-        }
+        queueBreakpointSync();
         showStoppedLine(picture);
         if (picture.stopped) void followStoppedFrame(picture);
         else stopFollow++;
       }));
       showStoppedLine(api.picture());
+      if (typeof vscode.window.onDidChangeVisibleTextEditors === 'function') {
+        context.subscriptions.push(vscode.window.onDidChangeVisibleTextEditors(queueBreakpointSync));
+      }
     }
     const restoreNativeBreakpoints = () => {
       const points = vscode.debug && Array.isArray(vscode.debug.breakpoints) ? vscode.debug.breakpoints : [];
@@ -1218,15 +1279,24 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       });
     };
     restoreNativeBreakpoints();
+    queueBreakpointSync();
     if (!vscode.debug || typeof vscode.debug.onDidChangeBreakpoints !== 'function' || breakpointListenerAttached) return;
     breakpointListenerAttached = true;
     context.subscriptions.push(vscode.debug.onDidChangeBreakpoints(change => {
+      const userChange = {};
+      for (const kind of ['added', 'removed', 'changed']) {
+        userChange[kind] = (change[kind] || []).filter(point => {
+          const key = kind + ':' + point.id;
+          if (!mirroredEvents.has(key)) return true;
+          mirroredEvents.delete(key); return false;
+        });
+      }
       breakpointQueue = breakpointQueue.then(async () => {
-        for (const point of change.removed || []) {
+        for (const point of userChange.removed || []) {
           const id = nativeBreakpoints.get(point.id);
           if (id) { nativeBreakpoints.delete(point.id); await debuggerApi.clearBreakpoints(id); }
         }
-        for (const point of [...(change.added || []), ...(change.changed || [])]) await addNativeBreakpoint(point);
+        for (const point of [...(userChange.added || []), ...(userChange.changed || [])]) await addNativeBreakpoint(point);
       }).catch(error => {
         vscode.window.showErrorMessage('VERTEX breakpoint: ' + String(error.message || error));
       });

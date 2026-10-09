@@ -9,7 +9,7 @@ VERTEX is a set of plugins for VS Code and Eclipse ADT: an AI assistant with MCP
 editor, an AI-driven ADT debugger, and explorers for code, versions and data. Each window reads over
 the developer's existing ADT connection and renders as HTML.
 
-![VERTEX architecture: the Web UI is built on three pillars—abap-adt-api, abaplint, and the Myers diff; SAP BAdI integration is used only to connect transport reviews with AVE in SAP GUI](docs/architecture.jpg)
+![VERTEX architecture: VS Code and Eclipse ADT connect to shared VERTEX Web UI tools, with an MCP server for AI assistants and an optional SAP backend](docs/architecture.jpg)
 
 The ABAP side is this repository's `src/`. It is optional: in VS Code everything works over ADT
 alone, and `src/` is needed only to save a transport's review to SAP; without it, reviews are saved
@@ -31,18 +31,17 @@ says what needs it.
 ADT is the editor: there is no VERTEX tab for it to write into, and the debugger is not part of it.
 See [eclipse/README.md](eclipse/README.md).
 
-² The three explorers are the same pages in both hosts, but the Eclipse plugin is built at
-**0.7.3** and the VS Code extension at **0.8.0**. What the pages gained since 0.7.3 is in the
-repository and in VS Code, and reaches Eclipse only when the plugin is built again.
+² The explorer pages are shared between both hosts. The checked-in Eclipse update site currently
+contains build **0.8.0.202610051511**, while the plugin source and feature metadata are **0.8.1.qualifier**;
+the update site must be rebuilt and published to deliver the newer source. The VS Code extension is
+**0.8.8**.
 
 **Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; in VS Code the version history and its diff come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is built from them in the window, with AVE's rules for choosing the versions and cutting blocks. Saving it to SAP goes through one resource of VERTEX's own ABAP, `ZCL_VX_ADT_RES_STORE`, into the `ZAVE_REVIEW` table AVE uses too - ADT's data preview can read a table but not write it; reviews can also be kept in files. The AVE repository itself is not needed. The Eclipse plugin still reads the version history and the review from `src/`.
 
-**Where the two hosts stand apart.** The editor, the debugger, Visual Debug and Value Origin are
-VS Code only, by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace
-them. The divergence that is not by design is the build — eight VS Code releases (0.7.4 Visual
-Debug, 0.7.5 debugger fixes, 0.7.6 ABAP Unit, 0.7.7 the chat running tests and ATC, 0.7.9 Value
-Origin and the diagram work, 0.7.12 Value Origin as one derivation, 0.7.14 the source as the editor alone - no View source, 0.8.0 one flow algorithm, Formula and Expression, the variables before the run) have landed since the
-Eclipse plugin was last exported. The shared pages carry their part of that, and it is waiting on a build, not on code.
+**Where the two hosts stand apart.** The editor, debugger, Visual Debug and Value Origin are VS Code
+only by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace them. Eclipse
+also has its own built-in assistant and standalone MCP setup. Shared Tools pages are updated in the
+repository, but the published update site can lag behind the source until it is rebuilt.
 
 The projects named above are where the ideas were worked out first, and they are not developed
 further; everything new happens here.
@@ -250,6 +249,8 @@ own folder. The Eclipse plugin does not use it: it works through the platform an
 What is still missing, and what has to come out before it ships: [Next.md](Next.md).
 
 ## VS Code 0.8.8: SelecTor, Run Select and Versions without the backend
+
+Breakpoints set through Visual Debug or MCP appear as native VS Code points in VERTEX editor tabs. Clicking a gutter point removes it from SAP and Visual Debug too; conditions, disabled state and logpoint mode stay synchronized.
 
 - **Run Select.** New command **VERTEX: Run Select** (editor context menu of a VERTEX ABAP tab): the SELECT at the cursor runs through ADT's data preview, read only, as Eclipse's SQL console runs a query, and the rows open beside the code. What only the running program would supply is left out: INTO and FOR ALL ENTRIES go, UP TO n ROWS is the row limit (otherwise 100; SELECT SINGLE reads one), and a WHERE condition that reads a program value - a variable, a parameter, a select-option - is dropped, an OR holding one dropped whole. What was dropped is listed above the rows. A program value under NOT or outside WHERE, or a dynamic table, list or condition, refuses the SELECT and says why. The statement is parsed with abaplint, saved or not. A SELECT on one table whose WHERE select-options can say opens in SelecTor instead, its conditions filled in as selection lines and each program value as an empty line to fill in; any other SELECT runs in the plain window, which says why it did not open in SelecTor. A SELECT with INNER or LEFT OUTER joins opens in SelecTor's Join, its tables in order, their ON conditions and the SELECT list carried over, when SelecTor's join takes them - it joins only the tables the dictionary offers; the selection starts folded. In a table the selection panel is a list of fields, as SAP GUI's selection screen is, each with a Shown checkbox. From Run Select only the SELECT's fields are read at first; Show hidden reads every field of the table and leaves the ones the SELECT did not ask for unticked, still there to select on.
 - **SelecTor without the backend for a table.** SelecTor reads a table - its fields with their texts, and the rows under the select-options - through ADT's data preview, as Run Select does, instead of the VERTEX resource on SAP. The answer and the window are the same; a selection SAP refuses is now an error rather than an empty table. Joins and the pivot still need the ABAP backend.

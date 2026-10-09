@@ -205,8 +205,10 @@ same edit as the version bump below.
 ## Versions
 
 The Eclipse bundle and the VS Code extension carry the same number by hand; nothing enforces it.
-Both now use 0.6.3. The built-in Assistant is available in both hosts; Eclipse
-uses a Node bridge and the window's ADT session.
-`0.6.3.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.6.3.<build timestamp>` on export,
+The VS Code extension and Eclipse plugin versions are maintained independently. As of 2026-10-09,
+VS Code is 0.8.8 and the Eclipse source bundle/feature are 0.8.1.qualifier; the checked-in
+`docs/` update site is still the 0.8.0.202610051511 build. The built-in Assistant is available in
+both hosts; Eclipse uses a Node bridge and the window's ADT session.
+`0.8.1.qualifier` in `MANIFEST.MF` and in `feature.xml` becomes `0.8.1.<build timestamp>` on export,
 so every export is a distinct version and *Check for Updates* can see it.
 

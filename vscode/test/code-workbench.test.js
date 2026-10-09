@@ -1,9 +1,10 @@
 "use strict";
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
-function host() {
+function host(savedState = {}) {
   const commands = new Map(), documents = [], writes = [], diffs = [], prompts = [], errors = [], panels = [], definitions = [], hovers = [], typeDefinitions = [], selectionListeners = [], symbols = [], breakpointListeners = [];
   const nativePoints = [], removedNative = [];
+  let pointSequence = 0;
   const unitRuns = [], testRuns = [], testItems = new Map();
   let unitResult = [];
   const atcRuns = [], problems = new Map(), infos = [], usedAsks = [], docAsks = [], references = [], warnings = [];
@@ -39,6 +40,9 @@ function host() {
     WorkspaceEdit: class { constructor() { this.replaced = []; } replace(uri, range, text) { this.replaced.push({ uri, text }); } },
     ConfigurationTarget: { Global: 1 },
     Location: class { constructor(uri, at) { this.uri = uri; this.range = at.start ? at : new vscode.Range(at, at); } },
+    SourceBreakpoint: class { constructor(location, enabled = true, condition, hitCondition, logMessage) {
+      Object.assign(this, { id: 'mirror-' + ++pointSequence, location, enabled, condition, hitCondition, logMessage });
+    } },
     TestMessage: class { constructor(message) { this.message = message; } },
     TestRunRequest: class { constructor(include) { this.include = include; } },
     TestRunProfileKind: { Run: 1 },
@@ -63,9 +67,14 @@ function host() {
       registerCommand: (name, fn) => { commands.set(name, fn); return { dispose() {} }; },
       async executeCommand(...args) { diffs.push(args); }
     },
-    debug: { breakpoints: nativePoints, removeBreakpoints: list => { removedNative.push(...list); },
+    debug: { breakpoints: nativePoints,
+      addBreakpoints: list => { nativePoints.push(...list); breakpointListeners.forEach(fn => fn({ added: list })); },
+      removeBreakpoints: list => { removedNative.push(...list);
+        for (const point of list) { const at = nativePoints.indexOf(point); if (at >= 0) nativePoints.splice(at, 1); }
+        breakpointListeners.forEach(fn => fn({ removed: list })); },
       onDidChangeBreakpoints: fn => { breakpointListeners.push(fn); return { dispose() {} }; } },
     workspace: {
+      textDocuments: documents,
       async applyEdit(edit) {
         edit.replaced.forEach(r => { documents.find(d => d.uri.toString() === r.uri.toString()).text = r.text; });
         return true;
@@ -104,7 +113,8 @@ function host() {
       }
     }
   };
-  const context = { subscriptions: [], workspaceState: { get: (key, fallback) => fallback, async update() {} } };
+  const context = { subscriptions: [], workspaceState: { get: (key, fallback) => savedState[key] || fallback,
+    async update(key, value) { savedState[key] = value; } } };
   const sandbox = { Buffer, module: { exports: {} }, __dirname: path.join(__dirname, ".."), require: id => {
     if (id === "./sap-code") { return { createRepository: () => api, revision: require('../sap-code').revision, TYPES: { PROG: "PROG/P" } }; }
     if (id === "abap-adt-api") {
@@ -121,7 +131,8 @@ function host() {
   });
   return { tools, commands, usedAsks, docAsks, references, warnings, setUsedResult: value => { usedResult = value; }, setActive: editor => { vscode.window.activeTextEditor = editor; }, atcRuns, problems, infos, setAtcResult: value => { atcResult = value; }, unitRuns, testRuns, setUnitResult: value => { unitResult = value; }, documents, writes, diffs, prompts, errors, api, panels, definitions, hovers, typeDefinitions, selectionListeners, symbols,
     switchSystem: value => { selectedSystem = value; }, mutate: () => { mutateDuringConfirmation = true; },
-    fireBreakpoints: change => breakpointListeners.forEach(fn => fn(change)), nativePoints, removedNative };
+    fireBreakpoints: change => breakpointListeners.forEach(fn => fn(change)), nativePoints, removedNative, savedState,
+    restoreDocument: uri => vscode.workspace.openTextDocument(uri) };
 }
 test("an AI change goes into the object's tab unsaved; nothing reaches SAP until the user saves", async () => {
   const h = host();
@@ -780,7 +791,71 @@ test("a point removed in the debugger's window is removed from the editor too, o
   await new Promise(resolve => setTimeout(resolve, 0));
   list = [];
   watchers.forEach(fn => fn());
+  await new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual(h.removedNative, [point]);
+});
+test('SAP points appear in a restored tab after extension reload and can be removed', async () => {
+  const original = host();
+  await original.tools.execute('open_sap_object', { object_name: 'ZTEST', object_type: 'CLAS' });
+  const h = host(original.savedState);
+  await h.restoreDocument(original.documents[0].uri);
+  const clears = [], watchers = [];
+  let list = [{ id: 'restored-sap', url: '/sap/bc/adt/oo/classes/ztest/source/main', line: 10, active: true, mode: 'stop' }];
+  h.tools.attachDebugger({ picture: () => ({ system: 'DEV', breakpoints: list }),
+    watch: fn => { watchers.push(fn); return { dispose() {} }; },
+    async setBreakpointAt() { throw Error('mirrored point must not be resent'); },
+    async clearBreakpoints(id) { clears.push(id); list = []; watchers.forEach(fn => fn()); } });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(h.nativePoints.length, 1);
+  assert.equal(h.nativePoints[0].location.range.start.line, 9);
+  h.nativePoints.splice(0).forEach(point => h.fireBreakpoints({ removed: [point] }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(clears, ['restored-sap']);
+  assert.deepEqual(h.errors, []);
+});
+test('a restored point on an obsolete system URI moves to the current source tab', async () => {
+  const h = host();
+  await h.tools.execute('open_sap_object', { object_name: 'ZTEST', object_type: 'CLAS' });
+  const obsolete = { id: 'old-native', enabled: true, location: { uri: h.documents[0].uri, range: { start: { line: 9 } } } };
+  h.nativePoints.push(obsolete);
+  h.switchSystem('OTHER');
+  await h.tools.execute('open_sap_object', { object_name: 'ZTEST', object_type: 'CLAS' });
+  const current = h.documents.at(-1);
+  const list = [{ id: 'same-sap', url: '/sap/bc/adt/oo/classes/ztest/source/main', line: 10, active: true, mode: 'stop' }];
+  h.tools.attachDebugger({ picture: () => ({ system: 'OTHER', breakpoints: list }),
+    watch: () => ({ dispose() {} }), async setBreakpointAt() { return { id: 'same-sap' }; },
+    async clearBreakpoints() { throw Error('moving a marker must not delete SAP point'); } });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(h.nativePoints.length, 1);
+  assert.equal(h.nativePoints[0].location.uri.toString(), current.uri.toString());
+  assert.deepEqual(h.errors, []);
+});
+test('SAP points become clickable native points without resending them; gutter removal clears SAP', async () => {
+  const h = host(), watchers = [], clears = [], sets = [];
+  let list = [{ id: 'sap-external', url: '/sap/bc/adt/programs/programs/ztest/source/main', line: 1,
+    active: true, condition: 'lv_count = 1', mode: 'stop' }];
+  h.tools.attachDebugger({ picture: () => ({ system: 'DEV', breakpoints: list }),
+    watch: fn => { watchers.push(fn); return { dispose() {} }; },
+    async setBreakpointAt(args) { sets.push(args); throw Error('must not resend mirrored point'); },
+    async clearBreakpoints(id) { clears.push(id); list = []; watchers.forEach(fn => fn()); }
+  });
+  await h.tools.execute('open_sap_object', { object_name: 'ZTEST', object_type: 'PROG' });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(h.nativePoints.length, 1);
+  assert.equal(h.nativePoints[0].condition, 'lv_count = 1');
+  assert.equal(sets.length, 0);
+  list = [{ ...list[0], active: false, mode: 'log' }];
+  watchers.forEach(fn => fn());
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(h.nativePoints.length, 1);
+  assert.equal(h.nativePoints[0].enabled, false);
+  assert.equal(h.nativePoints[0].logMessage, 'VERTEX logpoint');
+  assert.equal(clears.length, 0);
+  h.nativePoints.splice(0).forEach(point => h.fireBreakpoints({ removed: [point] }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(clears, ['sap-external']);
+  assert.equal(h.nativePoints.length, 0);
+  assert.deepEqual(h.errors, []);
 });
 test("a point SAP refuses is taken off the editor's gutter, and the refusal is still reported", async () => {
   const h = host();

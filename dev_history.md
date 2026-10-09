@@ -1,5 +1,11 @@
 # Development history
 
+## 2026-10-09 — VS Code 0.8.8 breakpoint gutter markers
+
+Follow-up: restored tabs used fileEntry metadata without a live document reference, so native mirroring still skipped them after reload. Synchronization now attaches workspace and visible editor documents before matching points. A regression test restores a class tab in a fresh extension host and verifies the marker and removal from SAP.
+
+Visual Debug and MCP points were present in SAP but missing from editor gutters because only native VS Code points supplied editor markers. The first fix used decorations, which could not be removed by clicking. The workbench now mirrors SAP points into native SourceBreakpoints and maps their IDs back to SAP. Mirrored add/remove events are suppressed to prevent feedback; user removal clears SAP. State, conditions and logpoint mode are refreshed from the debugger, with system filtering. The regression test covers mirroring, disabled/log state and user removal without duplicate SAP writes. Packaging verifies abap-adt-api and abaplint.
+
 How SelecTor got out of SAP GUI and into two editors, in the order it actually happened —
 including the wrong turns, because those were the expensive part.
 

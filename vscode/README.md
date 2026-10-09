@@ -4,7 +4,7 @@
 AI assistant and MCP, an enhanced ABAP editor, an AI-driven debugger and explorers for code,
 versions and data. Several of them grew out of earlier SAP GUI tools.
 
-![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](https://raw.githubusercontent.com/ysichov/VERTEX/main/docs/architecture.jpg)
+![VERTEX architecture: VS Code and Eclipse ADT connect to shared VERTEX Web UI tools, with an MCP server for AI assistants and an optional SAP backend](https://raw.githubusercontent.com/ysichov/VERTEX/main/docs/architecture.jpg)
 
 The ABAP side, this repository's [`src/`](https://github.com/ysichov/VERTEX/tree/main/src), is
 optional: everything works over ADT alone. With it, a transport's review can also be saved to SAP,
@@ -16,7 +16,7 @@ what needs it.
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values | not needed |
 | **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | not needed |
-| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW* or *Formula*, each as a tree or a diagram | not needed |
+| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW*, *Formula* or *Expression*, each as a tree or a diagram | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
 | **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | to save reviews in SAP |
 | **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | not needed |
@@ -110,6 +110,8 @@ each; empty means `.vertex/reviews` in the first workspace folder.
 ```
 
 ## Commands
+
+Breakpoints set through Visual Debug or MCP appear as native VS Code points in the VERTEX source editor gutter. Click a point to remove it from SAP and Visual Debug too. Conditions, disabled state and logpoint mode are synchronized; opening a source tab refreshes its points.
 
 - **VERTEX: Open Panel** — also available from the VERTEX icon in the Activity Bar.
   The panel holds the VERTEX chat, the active SAP-system selector, provider and

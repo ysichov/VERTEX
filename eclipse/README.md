@@ -7,24 +7,12 @@ data preview once the plugin is built from the current repository; only Versions
 VERTEX's own ABAP, `src/`, which is AVE's version and review logic carried over as `ZCL_VX_VERSION*`, `ZCL_VX_DIFF*` and `ZCL_VX_REVIEW_*`, with the `ZAVE_REVIEW` table the reviews are kept in. It has not been moved to the front end; the AVE repository itself is not needed. Notes below that name a backend route describe the build they were
 written for.
 
-The VS Code 0.7.12 Value Origin loader distinguishes foreign class declarations from complete implementations. Its Type is now FLOW or Formula, with a Depth slider that opens the tree along the call stack or along the derivation. Both are client changes and require no additional Eclipse build.
+The VS Code 0.8.0 Value Origin adds Expression alongside FLOW and Formula. The shared analysis UI continues to evolve in VS Code; this guide's version-specific notes below describe Eclipse source or packaged builds where stated.
 
-The shared diagram pages changed too, and they are the same pages this plugin shows. A method
-clicked in the Calls diagram now draws its Logic diagram inside that canvas, joined to the block
-it came from. The magnifier is an explicit *Lens off* / *Lens on* toggle in the diagram toolbar
-instead of a rule that measured the text on screen, and Shift with the wheel sets its strength.
-A Logic diagram no longer emits a node for a statement whose text is left with nothing to show —
-one such empty node was a mermaid syntax error that failed the whole diagram. Eclipse was not
-rebuilt for these; they arrive with the next build of this plugin.
+The shared diagram pages changed too. Their source is shared, but the published Eclipse archive
+currently contains the older 0.8.0 build; rebuild and publish the plugin to deliver the current
+pages to Eclipse users.
 
-The VS Code 0.7.12 test build includes ACE-backed Value Origin analysis in its ABAP
-editor. It requires the updated `ZCL_VX_ADT_RES_FLOW` backend (`mode=origin`).
-That backend also supplies ACE's concrete class-to-interface relation for interface dispatch.
-It labels the owner of every ACE include so VS Code can load a foreign class's complete pool.
-The VS Code navigation layer does not open an interface `METHODS` declaration for an invocation.
-It also keeps ordinary contextual navigation in the same VS Code editor group.
-This analysis UI, including standard VS Code editor navigation and gutter-breakpoint
-synchronization, is not available in Eclipse; no Eclipse release was built for it.
 The VS Code-only right-hand Visual Debug panel, its stopped-line highlight and
 its F5-F8 source-editor shortcuts are also not available in Eclipse.
 The VERTEX Tools window no longer has a View source function in Eclipse either: the source is the
@@ -66,7 +54,7 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle are prepared at `0.8.1.qualifier`; the VS Code extension remains 0.8.1.
+then regenerate. The feature and bundle sources are prepared at `0.8.1.qualifier`; the VS Code extension is 0.8.8. The checked-in update site still contains `0.8.0.202610051511` and must be regenerated for this source version to reach users.
 
 For a local installable archive without replacing the published `docs/` site:
 
