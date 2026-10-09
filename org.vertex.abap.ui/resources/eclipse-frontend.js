@@ -5,7 +5,7 @@ if(typeof sdeAnalysisRead==='function'){
  window.vertexAdtReply=(id,value,error)=>{const item=pending.get(id);if(!item)return;pending.delete(id);error?item.reject(new Error(value)):item.resolve(value);};
  const xml=text=>{const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.querySelector('parsererror'))throw new Error('ADT returned invalid object metadata.');return doc;};
  const attr=(el,name)=>{const a=Array.from(el.attributes||[]).find(a=>a.localName===name);return a&&a.value;};
- const help=document.createElement('details');help.innerHTML='<summary>ADT analysis help</summary><p>UML, metrics, Parts, Calls and Logic are calculated locally with abaplint from active ADT source. Select a routine in Parts or move the editor cursor. Eclipse follows editor selection; viewport scroll synchronization is not available. Value Origin also uses local ADT analysis. Versions and Review use their existing backend services.</p>';const notice=document.getElementById('notice');if(notice)notice.after(help);
+ const help=document.createElement('details');help.innerHTML='<summary>ADT analysis help</summary><p>UML, metrics, Parts, Calls and Logic are calculated locally with abaplint from active ADT source. Select a routine in Parts or move the editor cursor. Eclipse follows editor selection; viewport scroll synchronization is not available. Value Origin also uses local ADT analysis. Versions, the review of a request and finding requests read ADT the same way; saving a review and acting on it still go through the ABAP of VERTEX.</p>';const notice=document.getElementById('notice');if(notice)notice.after(help);
  const objects=new Map();
  async function source(args){
   const key=args.object_type+':'+args.object_name;
@@ -32,15 +32,49 @@ if(typeof sdeAnalysisRead==='function'){
   const length=Math.max(0,...fields.map(f=>f.values.length));
   return {columns:fields.map(f=>({name:f.name})),values:Array.from({length},(_,i)=>Object.fromEntries(fields.map(f=>[f.name,f.values[i]])))};
  }
+ // ADT's revision feed of an object or one of a class's includes, as abap-adt-api reads it in VS Code: the versions
+ // link of the object (or of the include) in its metadata, then the feed's entries - number, time, author, title,
+ // transport and the address of the source. Parsed here: the worker has no DOMParser.
+ const VERSIONS='http://www.sap.com/adt/relations/versions',TRANSPORT='application/vnd.sap.adt.transportrequests.v1+xml';
+ const child=(el,name)=>Array.from(el.children||[]).filter(e=>e.localName===name);
+ async function revisions(args){
+  const meta=xml(await read(args.url)),root=meta.documentElement;
+  const includes=Array.from(root.getElementsByTagName('*')).filter(e=>e.localName==='include'&&attr(e,'includeType'));
+  const owner=includes.length?includes.find(e=>attr(e,'includeType')===(args.include||'main')):root;
+  const link=owner&&child(owner,'link').find(l=>attr(l,'rel')===VERSIONS);
+  if(!link)throw new Error('SAP keeps no version feed for '+args.url+'.');
+  const feedUrl=new URL(attr(link,'href'),'https://sap.invalid'+args.url+'/');
+  if(feedUrl.origin!=='https://sap.invalid'||!feedUrl.pathname.startsWith('/sap/bc/adt/'))throw new Error('Invalid ADT version feed URI.');
+  const feed=xml(await read(feedUrl.pathname+feedUrl.search));
+  return Array.from(feed.getElementsByTagName('*')).filter(e=>e.localName==='entry').map(entry=>{
+   const text=name=>{const n=child(entry,name)[0];return n?n.textContent:'';};
+   const content=child(entry,'content')[0],uri=content?attr(content,'src')||'':'';
+   const author=child(entry,'author')[0],authorName=author?(child(author,'name')[0]||{}).textContent||'':'';
+   const transport=child(entry,'link').find(l=>attr(l,'type')===TRANSPORT);
+   return {id:(/\/(\d{5})\/content$/.exec(uri)||[])[1]||'',uri,time:text('updated'),author:authorName,title:text('title'),transport:transport?attr(transport,'name')||'':''};
+  });
+ }
+ // Two versions compared by Eclipse's own Text Compare (Java's LineDiff): one character per line of the result, the
+ // texts put back here. A count that does not add up is a broken answer, not a diff.
+ const compare=args=>new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject});
+  sdeAnalysisDiff(args.old.join('\n'),args.old.length,args.fresh.join('\n'),args.fresh.length,args.ignore?'X':'',id);}).then(shape=>{
+  const ops=[];let o=0,n=0;
+  for(const c of String(shape)){if(c==='=')ops.push({op:'=',text:args.fresh[n++]}),o++;else if(c==='-')ops.push({op:'-',text:args.old[o++]});else if(c==='+')ops.push({op:'+',text:args.fresh[n++]});else throw new Error('Eclipse returned an unreadable diff.');}
+  if(o!==args.old.length||n!==args.fresh.length)throw new Error('Eclipse returned a diff that does not cover both versions.');
+  return ops;});
+ // Writing a review: to its file, or to SAP through VERTEX's store resource. Whether that resource is there comes
+ // from the about answer; a system without VERTEX's ABAP answers 404, which is a plain no.
+ const save=(kind,target,body)=>new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject});sdeAnalysisWrite(kind,target,body,id);});
+ async function canStore(){try{return (JSON.parse(await read('/sap/bc/adt/vertex/about')).services||[]).some(s=>s.name==='store'&&s.active==='X');}catch(error){return false;}}
  const bundle=/*FRONTEND_BUNDLE*/;
- const worker=new Worker(URL.createObjectURL(new Blob(['var window=self;\n',bundle,`\nconst pending=new Map();let serial=0;const host=(op,args)=>new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject});postMessage({host:id,op,args});});const api={analysisReader:()=>args=>host('source',args),sourceAt:path=>host('read',path),packageObjects:name=>host('package',name),query:(sql,rows)=>host('query',{sql,rows}),language:()=>host('language')};onmessage=async({data})=>{if(data.reply){const p=pending.get(data.reply);pending.delete(data.reply);if(p)data.error?p.reject(new Error(data.error)):p.resolve(data.value);return;}try{const value=await vertexFrontend.request(api,data.path,text=>postMessage({progress:data.id,text}));postMessage({id:data.id,value});}catch(e){postMessage({id:data.id,error:e.message});}};`],{type:'text/javascript'})));
+ const worker=new Worker(URL.createObjectURL(new Blob(['var window=self;\n',bundle,`\nconst pending=new Map();let serial=0;const host=(op,args)=>new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject});postMessage({host:id,op,args});});const api={analysisReader:()=>args=>host('source',args),sourceAt:path=>host('read',path),packageObjects:name=>host('package',name),query:(sql,rows)=>host('query',{sql,rows}),language:()=>host('language'),revisions:(url,include)=>host('revisions',{url,include}),revisionSource:uri=>host('read',String(uri).split('?')[0]),currentSource:(url,include)=>host('read',url+(include&&include!=='main'?'/includes/'+include:'/source/main')+'?version=active'),user:()=>host('user'),diffLines:(old,fresh,ignore)=>host('diff',{old,fresh,ignore}),storeReview:(t,r,e,body)=>host('store',{path:'/sap/bc/adt/vertex/store/'+encodeURIComponent(t)+'?remote='+encodeURIComponent(r||'')+'&expect='+encodeURIComponent(e||''),body}),reviewIo:async()=>{const s=await host('reviewio'),can=await host('canstore'),name=(t,r)=>t+(r?'__'+r:'');return {mode:can?s.wanted:'file',wanted:s.wanted,canStore:can,where:(t,r)=>s.dir+'/'+name(t,r).split('/').join('_')+'.json',read:async(t,r)=>(await host('fileread',name(t,r)))||null,write:(t,r,text)=>host('filewrite',{name:name(t,r),text})};}};onmessage=async({data})=>{if(data.reply){const p=pending.get(data.reply);pending.delete(data.reply);if(p)data.error?p.reject(new Error(data.error)):p.resolve(data.value);return;}try{const value=data.body!=null?await vertexFrontend.write(api,data.path,data.body):await vertexFrontend.request(api,data.path,text=>postMessage({progress:data.id,text}));postMessage({id:data.id,value});}catch(e){postMessage({id:data.id,error:e.message});}};`],{type:'text/javascript'})));
  const requests=new Map();let requestId=0;
  worker.onmessage=async({data})=>{
-  if(data.host){try{let value;if(data.op==='source')value=await source(data.args);else if(data.op==='read')value=await read(data.args);else if(data.op==='query')value=await preview(data.args.sql,data.args.rows);else if(data.op==='language')value=await read('language:');else{const doc=xml(await read('package:'+data.args));value=Array.from(doc.getElementsByTagName('item')).map(el=>({object_name:el.getElementsByTagName('OBJECT_NAME')[0]?.textContent,object_type:el.getElementsByTagName('OBJECT_TYPE')[0]?.textContent.split('/')[0]})).filter(o=>['CLAS','INTF'].includes(o.object_type));if(value.length>100)throw new Error('Package contains more than 100 classes/interfaces; select a smaller package.');}worker.postMessage({reply:data.host,value});}catch(e){worker.postMessage({reply:data.host,error:e.message});}return;}
+  if(data.host){try{let value;if(data.op==='source')value=await source(data.args);else if(data.op==='read')value=await read(data.args);else if(data.op==='query')value=await preview(data.args.sql,data.args.rows);else if(data.op==='language')value=await read('language:');else if(data.op==='user')value=await read('user:');else if(data.op==='revisions')value=await revisions(data.args);else if(data.op==='diff')value=await compare(data.args);else if(data.op==='reviewio')value=JSON.parse(await read('reviewio:'));else if(data.op==='canstore')value=await canStore();else if(data.op==='fileread')value=await read('reviewfile:'+data.args);else if(data.op==='filewrite')value=await save('file',data.args.name,data.args.text);else if(data.op==='store')value=await save('store',data.args.path,data.args.body);else{const doc=xml(await read('package:'+data.args));value=Array.from(doc.getElementsByTagName('item')).map(el=>({object_name:el.getElementsByTagName('OBJECT_NAME')[0]?.textContent,object_type:el.getElementsByTagName('OBJECT_TYPE')[0]?.textContent.split('/')[0]})).filter(o=>['CLAS','INTF'].includes(o.object_type));if(value.length>100)throw new Error('Package contains more than 100 classes/interfaces; select a smaller package.');}worker.postMessage({reply:data.host,value});}catch(e){worker.postMessage({reply:data.host,error:e.message});}return;}
   const item=requests.get(data.id||data.progress);if(!item)return;if(data.progress){item.progress(data.text);return;}requests.delete(data.id);data.error?item.reject(new Error(data.error)):item.resolve(data.value);
  };
  worker.onerror=event=>{for(const item of requests.values())item.reject(new Error(event.message||'ABAP analysis worker stopped.'));requests.clear();};
  window.sdeFrontendAnalysis=()=>true;
- window.vertexEclipseRequest=(path,progress)=>new Promise((resolve,reject)=>{const id=++requestId;requests.set(id,{resolve,reject,progress});worker.postMessage({id,path});});
+ window.vertexEclipseRequest=(path,progress,body)=>new Promise((resolve,reject)=>{const id=++requestId;requests.set(id,{resolve,reject,progress});worker.postMessage({id,path,body:body==null?null:String(body)});});
  addEventListener('unload',()=>worker.terminate());
 }

@@ -55,7 +55,10 @@ public class ToolsView extends ChatView {
             .replace("/*ECLIPSE_FRONTEND*/", super.readResource("resources/eclipse-frontend.js").replace("/*FRONTEND_BUNDLE*/", AssistantBridge.quote(super.readResource("resources/vertex-frontend.js")).replace("<", "\\u003c")));
     }
     @Override protected String accept(String path) {
-        return path.startsWith("/sap/bc/adt/vertex/") ? null : path.contains("/source/") ? "text/plain" : "*/*";
+        if (path.startsWith("/sap/bc/adt/vertex/")) return null;
+        // A version feed answers only to its own media type; a version's content is source text.
+        if (path.split("\\?", 2)[0].endsWith("/versions")) return "application/atom+xml;type=feed";
+        return path.contains("/source/") ? "text/plain" : "*/*";
     }
     @Override protected void addContentHandlers(com.sap.adt.communication.resources.IRestResource resource) {
         super.addContentHandlers(resource);
@@ -81,8 +84,8 @@ public class ToolsView extends ChatView {
                 String body = args.length > 1 && args[1] != null ? String.valueOf(args[1]) : null;
                 queue(() -> {
                     if (path.equals("project")) return abapProject().getName();
-                    String route = body == null ? "(about|requests|(table|join|metrics|flow|class|package|versions|review|prepare)/[^?]+)"
-                        : "(review|prepare)/[^?]+";
+                    String route = body == null ? "(about|requests|(table|join|metrics|flow|class|package|versions|review)/[^?]+)"
+                        : "review/[^?]+";
                     // The object field's mask search: ADT's quick search, read only.
                     boolean search = body == null && path.matches("/sap/bc/adt/repository/informationsystem/search\\?operation=quickSearch&maxResults=\\d{1,3}&objectType=[A-Z]{4}%2F[A-Z]{1,2}&query=[A-Z0-9_%*+$]{1,80}");
                     if (!search && !path.matches("/sap/bc/adt/vertex/" + route + "(\\?.*)?")

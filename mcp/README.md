@@ -33,10 +33,10 @@ Claude's connector settings. The server remains read-only and exposes only the
 two transport-review tools.
 
 Claude Code, Codex, or another MCP client launches `server.js` as a child process
-and communicates over stdio. The process reads SAP directly over HTTP(S), using
-the same `sap_transport_changes` and `sap_transport_diff` implementations as the
-VS Code extension. VS Code can be closed. No Node packages need installing;
-use Node.js 22 or newer and keep this repository checkout available.
+and communicates over stdio. The process reads SAP over ADT, using the same
+`sap_transport_changes` and `sap_transport_diff` implementations and the same reading of the review
+as the VS Code extension. VS Code can be closed. Use Node.js 22 or newer and keep this repository
+checkout available, with the extension's packages installed once: `npm ci` in `vscode/`.
 
 With VS Code open, the extension serves the same tools itself, and Copilot finds
 them without any setup: see
@@ -185,9 +185,9 @@ wrote to stderr.
 
 “Review transport DEVK900123 using the VERTEX SAP tools.”
 
-The VERTEX ADT resources (this repository's `src/`) must already be installed. A review must first
-have been built — the Versions window does that. These tools read saved reviews; they do not build one,
-approve blocks, or write SAP data. Missing reviews and backend failures are
+Nothing of VERTEX's ABAP is needed. A saved review is read from `ZAVE_REVIEW` through ADT's data
+preview; with none saved, the review is built from ADT's version history, as the Versions window
+builds it. These tools do not save a review, approve blocks, or write SAP data. Failures are
 reported as errors, not as a clean transport.
 
 ## Verification

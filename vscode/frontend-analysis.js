@@ -132,6 +132,11 @@ async function request(api, resource, progress, cancelled = () => false) {
     if (/^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(url.pathname)) {
       return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource);
     }
+    // Versions, the review of a request and the finding of requests, for the same host: read over ADT here too.
+    if (/^\/sap\/bc\/adt\/vertex\/(versions|review)\//.test(url.pathname) || url.pathname === '/sap/bc/adt/vertex/requests') {
+      return await require('./versions-front').request(api, resource)
+        ?? await require('./review-front').request(api, resource, progress, api.reviewIo ? await api.reviewIo() : undefined);
+    }
     return null;
   }
   const [, service, encoded] = match;
@@ -312,4 +317,11 @@ async function request(api, resource, progress, cancelled = () => false) {
       logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }
-module.exports = { request, declarations, metric, analysisUnits, invalidate };
+// A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
+// bundle); null for any other write.
+async function write(api, resource, body) {
+  if (!/^\/sap\/bc\/adt\/vertex\/review\//.test(new URL(resource, 'https://sap.invalid').pathname)) { return null; }
+  return require('./review-front').write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined);
+}
+
+module.exports = { request, write, declarations, metric, analysisUnits, invalidate };

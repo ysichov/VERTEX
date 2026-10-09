@@ -4,6 +4,8 @@
    <extension point="org.eclipse.ui.preferencePages">
       <page id="org.vertex.abap.ui.assistant.preferences"
             name="VERTEX Assistant" class="org.vertex.abap.ui.AssistantPreferences"/>
+      <page id="org.vertex.abap.ui.review.preferences"
+            name="VERTEX Code Review" class="org.vertex.abap.ui.ReviewPreferences"/>
    </extension>
    <extension point="org.eclipse.ui.views">
       <view id="org.vertex.abap.ui.view.debugMonitor" name="VERTEX Debug Monitor" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.DebugMonitorView" allowMultiple="true" restorable="false"/>

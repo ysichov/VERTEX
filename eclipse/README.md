@@ -5,9 +5,31 @@ The shared SelecTor source now offers **Technical names / Text** for Selection l
 The plugin depends on none of the projects VERTEX grew out of - Simple Data Explorer, ACE, AVE:
 nothing from them has to be installed, and none of their code is called. Code Explorer and Value
 Origin analyse ADT source in the plugin, and SelecTor in VERTEX Tools reads through ADT's standard
-data preview once the plugin is built from the current repository; only Versions / Reviewer reads
-VERTEX's own ABAP, `src/`, which is AVE's version and review logic carried over as `ZCL_VX_VERSION*`, `ZCL_VX_DIFF*` and `ZCL_VX_REVIEW_*`, with the `ZAVE_REVIEW` table the reviews are kept in. It has not been moved to the front end; the AVE repository itself is not needed. Notes below that name a backend route describe the build they were
+data preview once the plugin is built from the current repository. Versions and the review of a
+transport read ADT too, as in VS Code: the version history from ADT's revision feed, the review built
+from it in the window. VERTEX's own ABAP, `src/`, is needed only to save a review to SAP. The AVE
+repository itself is not needed. Notes below that name a backend route describe the build they were
 written for.
+
+## Versions and code review
+
+**Versions** in VERTEX Tools lists an object's parts and their versions from ADT's revision feed and
+shows the change a version made. The diff is Eclipse's own Text Compare (`RangeDifferencer` of
+`org.eclipse.compare.core`, the comparison ADT's *Compare With* shows): whole lines, a shortest edit
+script, nothing on top. The VS Code extension computes the same kind of diff with VERTEX's own
+implementation, because Eclipse's comparer is under the EPL and cannot be carried into VERTEX's MIT
+code.
+
+**The review of a transport** is built from ADT when none is saved - every part the request changed,
+the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - and the status
+line says which part is being read. **Save** keeps it; a saved review takes Approve, Decline,
+comments and taking a verdict back, made the way AVE makes them, so AVE and every VERTEX window read
+the same review. Where reviews are kept is set in **Window → Preferences → VERTEX Code Review**: the
+`ZAVE_REVIEW` table (needs VERTEX's ABAP on the system, `ZCL_VX_ADT_RES_STORE`), files - one
+`<project>/<request>.json` each, in the folder chosen there or in `.vertex/reviews` of the workspace -
+or both. A system without VERTEX's ABAP keeps reviews in files whatever is chosen, and the review page
+says so. Two people saving the same review at once do not overwrite each other: the second save is
+refused.
 
 The VS Code 0.8.0 Value Origin adds Expression alongside FLOW and Formula. The shared analysis UI continues to evolve in VS Code; this guide's version-specific notes below describe Eclipse source or packaged builds where stated.
 
@@ -56,7 +78,7 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are prepared at `0.8.1.qualifier`; the VS Code extension is 0.8.8. The checked-in update site still contains `0.8.0.202610051511` and must be regenerated for this source version to reach users.
+then regenerate. The feature and bundle sources are prepared at `0.8.8.qualifier`, the same number as the VS Code extension. The checked-in update site still contains `0.8.0.202610051511` and must be regenerated for this source version to reach users.
 
 For a local installable archive without replacing the published `docs/` site:
 

@@ -2,7 +2,7 @@
 <feature
       id="org.vertex.abap.feature"
       label="ABAP VERTEX Tools"
-      version="0.8.1.qualifier"
+      version="0.8.8.qualifier"
       provider-name="Yurii Sychov">
 
    <description url="https://github.com/ysichov/VERTEX">
@@ -58,6 +58,7 @@
       <import plugin="com.sap.adt.project"/>
       <import plugin="com.sap.adt.tools.core.base"/>
       <import plugin="com.sap.adt.destinations.ui"/>
+      <import plugin="org.eclipse.compare.core"/>
    </requires>
 
    <!-- unpack="false" keeps it a jar. The pages are read with

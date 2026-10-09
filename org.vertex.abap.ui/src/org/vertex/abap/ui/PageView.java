@@ -135,7 +135,7 @@ public abstract class PageView extends ViewPart {
 		};
 
 		addFunctions();
-		if (this instanceof VersionsView || this instanceof ChatView) {
+		if (this instanceof ChatView) {
 			new AssistantBridge(this);
 		}
 
@@ -269,7 +269,86 @@ public abstract class PageView extends ViewPart {
         return language[0];
     }
 
+    /** The user of the project's ADT session - who a review's verdicts are written as. */
+    String logonUser(org.eclipse.swt.widgets.Display display) {
+        final String[] user = new String[1];
+        display.syncExec(() -> {
+            IAdtCoreProject adtProject = abapProject().getAdapter(IAdtCoreProject.class);
+            if (adtProject == null) throw new IllegalStateException("The project does not adapt to IAdtCoreProject.");
+            user[0] = adtProject.getDestinationData().getUser();
+        });
+        return user[0];
+    }
+
+    /** This system's folder of review files: the setting's folder and the project's name under it. */
+    java.nio.file.Path reviewDir(org.eclipse.swt.widgets.Display display) {
+        final String[] name = new String[1];
+        display.syncExec(() -> name[0] = abapProject().getName());
+        return ReviewPreferences.folder().resolve(name[0].replaceAll("[^\\w.-]+", "_"));
+    }
+
+    /** One review's file: REQUEST or REQUEST__REMOTE, and nothing that could leave the folder. */
+    java.nio.file.Path reviewFile(String name, org.eclipse.swt.widgets.Display display) {
+        if (!name.matches("[A-Z0-9_/$]{1,20}(__[A-Z0-9]{1,8})?")) throw new IllegalArgumentException("Invalid review name.");
+        return reviewDir(display).resolve(name.replace('/', '_') + ".json");
+    }
+
     protected void addAnalysisFunctions() {
+        // Writes of a review: KIND "file" writes the review file NAME; "store" posts the review to VERTEX's store
+        // resource at TARGET. The answer comes back under ID, as a read's does.
+        new BrowserFunction(browser, "sdeAnalysisWrite") {
+            @Override public Object function(Object[] args) {
+                final String kind = String.valueOf(args[0]), target = String.valueOf(args[1]), body = String.valueOf(args[2]);
+                final int id = ((Number) args[3]).intValue();
+                org.eclipse.core.runtime.jobs.Job job = new org.eclipse.core.runtime.jobs.Job("VERTEX review save") {
+                    @Override protected org.eclipse.core.runtime.IStatus run(org.eclipse.core.runtime.IProgressMonitor monitor) {
+                        String result; boolean error = false;
+                        try {
+                            if (kind.equals("file")) {
+                                java.nio.file.Path file = reviewFile(target, browser.getDisplay());
+                                java.nio.file.Files.createDirectories(file.getParent());
+                                java.nio.file.Files.writeString(file, body, StandardCharsets.UTF_8);
+                                result = file.toString();
+                            } else if (kind.equals("store")) {
+                                if (!target.startsWith("/sap/bc/adt/vertex/store/") || target.contains("..") || target.contains("#")) throw new IllegalArgumentException("Invalid store path.");
+                                final IRestResource[] resource = new IRestResource[1];
+                                browser.getDisplay().syncExec(() -> resource[0] = resource(target));
+                                result = resource[0].post(new NullProgressMonitor(), String.class, body);
+                            } else {
+                                throw new IllegalArgumentException("Unknown write " + kind + ".");
+                            }
+                        } catch (Exception e) { result = describe(e); error = true; }
+                        final String answer = result; final boolean failed = error;
+                        browser.getDisplay().asyncExec(() -> { if (!browser.isDisposed()) browser.execute("window.vertexAdtReply(" + id + "," + AssistantBridge.quote(answer) + "," + failed + ");"); });
+                        return org.eclipse.core.runtime.Status.OK_STATUS;
+                    }
+                };
+                job.schedule();
+                return null;
+            }
+        };
+        // The diff of two versions by Eclipse's own Text Compare (LineDiff): old text and its line count, new text
+        // and its line count, "X" to ignore case and indentation, and the id the answer is returned under.
+        new BrowserFunction(browser, "sdeAnalysisDiff") {
+            @Override public Object function(Object[] args) {
+                final String[] oldLines = LineDiff.lines(String.valueOf(args[0]), ((Number) args[1]).intValue());
+                final String[] newLines = LineDiff.lines(String.valueOf(args[2]), ((Number) args[3]).intValue());
+                final boolean ignore = "X".equals(String.valueOf(args[4]));
+                final int id = ((Number) args[5]).intValue();
+                org.eclipse.core.runtime.jobs.Job job = new org.eclipse.core.runtime.jobs.Job("VERTEX version diff") {
+                    @Override protected org.eclipse.core.runtime.IStatus run(org.eclipse.core.runtime.IProgressMonitor monitor) {
+                        String result; boolean error = false;
+                        try { result = LineDiff.ops(oldLines, newLines, ignore); }
+                        catch (Exception e) { result = describe(e); error = true; }
+                        final String answer = result; final boolean failed = error;
+                        browser.getDisplay().asyncExec(() -> { if (!browser.isDisposed()) browser.execute("window.vertexAdtReply(" + id + "," + AssistantBridge.quote(answer) + "," + failed + ");"); });
+                        return org.eclipse.core.runtime.Status.OK_STATUS;
+                    }
+                };
+                job.schedule();
+                return null;
+            }
+        };
         new BrowserFunction(browser, "sdeAnalysisRead") {
             @Override public Object function(Object[] args) {
                 String path=String.valueOf(args[0]); int id=((Number)args[1]).intValue();
@@ -284,6 +363,14 @@ public abstract class PageView extends ViewPart {
                                 result=dataPreview(Integer.parseInt(parts[1]),parts[2],browser.getDisplay());
                             } else if(path.equals("language:")) {
                                 result=logonLanguage(browser.getDisplay());
+                            } else if(path.equals("user:")) {
+                                result=logonUser(browser.getDisplay());
+                            } else if(path.equals("reviewio:")) {
+                                // Where reviews are kept: the setting and this system's folder of review files.
+                                result="{\"wanted\":"+AssistantBridge.quote(ReviewPreferences.storage())+",\"dir\":"+AssistantBridge.quote(reviewDir(browser.getDisplay()).toString())+"}";
+                            } else if(path.startsWith("reviewfile:")) {
+                                java.nio.file.Path file=reviewFile(path.substring(11), browser.getDisplay());
+                                result=java.nio.file.Files.exists(file)?java.nio.file.Files.readString(file, StandardCharsets.UTF_8):"";
                             } else if(path.startsWith("package:")) {
                                 String name=path.substring(8);if(!name.matches("[A-Z0-9_/$]{1,40}"))throw new IllegalArgumentException("Invalid package.");
                                 result=assistantPost("/sap/bc/adt/repository/nodestructure?parent_type=DEVC%2FK&withShortDescriptions=true&parent_name="+java.net.URLEncoder.encode(name,java.nio.charset.StandardCharsets.UTF_8), browser.getDisplay());
@@ -392,6 +479,8 @@ public abstract class PageView extends ViewPart {
     protected void addAdtTextHandlers(IRestResource resource) {
         resource.addContentHandler(new TextContentHandler("text/plain"));
         resource.addContentHandler(new TextContentHandler("application/xml"));
+        // ADT's revision feed, read by Versions and the review.
+        resource.addContentHandler(new TextContentHandler("application/atom+xml"));
         for (String family : new String[] {"programs.programs", "programs.includes", "oo.classes", "oo.interfaces", "functions.functionmodules", "functions.functiongroups"}) {
             resource.addContentHandler(new TextContentHandler("application/vnd.sap.adt."+family+"+xml"));
             for(int version=1;version<=9;version++)resource.addContentHandler(new TextContentHandler("application/vnd.sap.adt."+family+".v"+version+"+xml"));

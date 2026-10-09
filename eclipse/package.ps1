@@ -6,7 +6,9 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $root 'org.vertex.abap.ui'
-$baseVersion = '0.8.1'
+# The version is the bundle's own, from its manifest - a number written here went stale at the first bump.
+$baseVersion = ([regex]::Match([IO.File]::ReadAllText((Join-Path $project 'META-INF/MANIFEST.MF')), 'Bundle-Version:\s*([0-9]+\.[0-9]+\.[0-9]+)\.qualifier')).Groups[1].Value
+if (!$baseVersion) { throw 'META-INF/MANIFEST.MF names no Bundle-Version x.y.z.qualifier.' }
 $version = $baseVersion + '.' + (Get-Date -Format 'yyyyMMddHHmmss')
 $out = Join-Path $root ('target/eclipse-' + $version)
 $classes = Join-Path $out 'classes'

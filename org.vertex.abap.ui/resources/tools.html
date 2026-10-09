@@ -419,7 +419,9 @@ function connect(child,service,generation){
   if(initial&&initial.boundObject&&typeof sdeOpenToolSource==="function")child.sdeOpenToolSource=value=>sdeOpenToolSource(JSON.stringify(value));
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
   child.sdeProject=()=>enqueue({path:"project"},reply,live);
-  child.sdeAbout=()=>enqueue({path:"/sap/bc/adt/vertex/about"},reply,live);
+  // In Eclipse the services read over ADT in this window are always there, whatever VERTEX's ABAP on the system
+  // lists - or does not, on a system without it - as the VS Code host answers for itself.
+  child.sdeAbout=()=>enqueue({path:"/sap/bc/adt/vertex/about"},window.vertexEclipseRequest?raw=>reply(localAbout(raw)):reply,live);
   child.sdeAsset=name=>enqueue({asset:name},reply,live);
   child.sdeContextUpdate=state=>{
     if(!live())return;
@@ -437,6 +439,8 @@ function connect(child,service,generation){
       const at=VertexRoutes.WRITES[call];
       enqueue({path:build(args),body:at===undefined?null:(args[at]||null)},reply,live,text=>{
         if(live()&&typeof child.sdeAnalysisProgress==="function")child.sdeAnalysisProgress(text);
+        // Versions shows what building a review is reading in its own status line.
+        else if(live()&&typeof child.vertexProgress==="function")child.vertexProgress(text);
       });
     };
   });
@@ -483,6 +487,12 @@ function enqueue(request,reply,live,progress){
   }
   queue.push({request,reply,live,progress});pump();
 }
+function localAbout(raw){
+  let remote={};try{if(typeof raw==="string"&&raw.indexOf("ERROR:")!==0)remote=JSON.parse(raw);}catch(e){remote={};}
+  const local=["metrics","class","package","flow","table","join","versions","review","requests"];
+  const services=local.map(name=>({name,active:"X",backend:"ADT"})).concat((remote.services||[]).filter(s=>!local.includes(s.name)));
+  return JSON.stringify(Object.assign({},remote,{services,backends:remote.backends||[]}));
+}
 function sdeWorkspaceProgress(path,text){
   const item=activeRequest;
   if(item&&!item.superseded&&item.request.path===path&&item.live()&&item.progress)item.progress(text);
@@ -493,7 +503,7 @@ function pump(){
   while(queue.length){const item=queue.shift();if(item.live()){activeRequest=item;break;}}
   if(!activeRequest)return;
   const r=activeRequest.request;
-  if(r.asset)sdeAsset(r.asset);else if(window.vertexEclipseRequest&&!r.body&&/\/vertex\/(metrics|class|package|flow|table|join)\//.test(r.path)){const item=activeRequest;window.vertexEclipseRequest(r.path,text=>sdeWorkspaceProgress(r.path,text)).then(data=>finishLocal(JSON.stringify(data)),error=>finishLocal("ERROR:"+error.message));function finishLocal(raw){if(activeRequest===item){activeRequest=null;if(!item.superseded&&item.live())item.reply(raw);pump();}}}else sdeWorkspace(r.path,r.body);
+  if(r.asset)sdeAsset(r.asset);else if(window.vertexEclipseRequest&&((!r.body&&/\/vertex\/((metrics|class|package|flow|table|join|versions|review)\/|requests(\?|$))/.test(r.path))||(r.body&&/\/vertex\/review\//.test(r.path)))){const item=activeRequest;window.vertexEclipseRequest(r.path,text=>sdeWorkspaceProgress(r.path,text),r.body).then(data=>finishLocal(JSON.stringify(data)),error=>finishLocal("ERROR:"+error.message));function finishLocal(raw){if(activeRequest===item){activeRequest=null;if(!item.superseded&&item.live())item.reply(raw);pump();}}}else sdeWorkspace(r.path,r.body);
 }
 function sdeReady(){
   const raw=sdeTake(),item=activeRequest;activeRequest=null;

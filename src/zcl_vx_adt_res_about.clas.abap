@@ -53,16 +53,10 @@ ENDCLASS.
 CLASS zcl_vx_adt_res_about IMPLEMENTATION.
 
   METHOD services.
-    " In the order the routes have always been attached in.
+    " What is left of VERTEX's ABAP: the windows read everything over ADT, and
+    " write only a review into ZAVE_REVIEW - which ADT's data preview cannot.
     rt_service = VALUE #(
-      ( name = `versions` template = `/vertex/versions/{name}` handler = 'ZCL_VX_ADT_RES_VERSIONS' )
-      ( name = `review`   template = `/vertex/review/{name}`   handler = 'ZCL_VX_ADT_RES_REVIEW' )
-      ( name = `prepare`  template = `/vertex/prepare/{name}`  handler = 'ZCL_VX_ADT_RES_PREPARE' )
-      " Stores a review the front end built or changed; only ZAVE_REVIEW is written.
       ( name = `store`    template = `/vertex/store/{name}`    handler = 'ZCL_VX_ADT_RES_STORE' )
-      " The routes with no name in them: what they are asked comes as query
-      " parameters, and all of those are optional.
-      ( name = `requests` template = `/vertex/requests`        handler = 'ZCL_VX_ADT_RES_REQUESTS' )
       ( name = `about`    template = `/vertex/about`           handler = 'ZCL_VX_ADT_RES_ABOUT' ) ).
   ENDMETHOD.
 
@@ -82,12 +76,8 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
                       active  = is_active( ls_service-handler ) ) TO lt_state.
     ENDLOOP.
 
-    " Nothing outside this repository is read any more. The Simple Data Explorer,
-    " ACE and AVE cores were all carried in as ZCL_VX_*, so a window missing the
-    " table, the join, the versions or the review is
-    " missing a VERTEX class rather than an outside tool - which IS_ACTIVE on the
-    " handler already says, without a backend to blame. The list stays in the
-    " answer, empty, because a window older than this reads it.
+    " No outside tool is read. The list of backends stays in the answer, empty,
+    " because a window older than this reads it.
 
     " Who is logged on, too: the finder's user field starts from it, and it is
     " the server that knows who that is, not the page.

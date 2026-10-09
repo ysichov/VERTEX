@@ -1,5 +1,13 @@
 # Release history
 
+## 2026-10-09 — Eclipse plugin source 0.8.8.qualifier: Versions and the review without the backend
+
+Source only; the plugin has not been built at this number yet.
+
+- **Versions and the review read ADT.** VERTEX Tools in Eclipse runs the same front-end modules as VS Code: the version history from ADT's revision feed, the review of a request built from it in the window, finding requests through the data preview. The status line says what a review being built is reading.
+- **The diff is Eclipse's own Text Compare.** Two versions are compared by `RangeDifferencer` of `org.eclipse.compare.core`, the comparison ADT's Compare With shows; the plugin now requires that bundle.
+- **Saving a review.** Save, Approve, Decline, comments and taking a verdict back are made in the window as AVE makes them and stored in `ZAVE_REVIEW` through `ZCL_VX_ADT_RES_STORE` or in files - **Window → Preferences → VERTEX Code Review**. A system without VERTEX's ABAP keeps reviews in files.
+
 ## 2026-10-09 — VS Code 0.8.8: SelecTor, Run Select and Versions without the backend
 
 - SelecTor adds a remembered Technical names / Text toggle for Selection field labels and result headers.
@@ -17,6 +25,8 @@
 - **A review built from ADT can be saved.** The review of a request with none saved is built in the window, and the status line now says what it is reading (the request, then each part in turn). **Save** keeps it; a saved review takes Approve, Decline, comments and taking a verdict back, made the way AVE makes them (its ZCL_VX_REVIEW_STATE carried over), so AVE and VERTEX read the same review. Two saves of the same review at once do not overwrite each other: the second is refused.
 - **Where reviews are kept: `vertex.review.storage`.** `table` (default) writes SAP's `ZAVE_REVIEW` through a new resource of VERTEX's ABAP, `ZCL_VX_ADT_RES_STORE` - the one thing it is needed for in VS Code; `file` writes one JSON file per request under `vertex.review.folder` (default `.vertex/reviews` in the workspace, `<system>/<request>.json`); `both` writes both. On a system without VERTEX's ABAP reviews go to files, and the page says so. Approving, declining and commenting no longer go through `ZCL_VX_ADT_RES_REVIEW` in VS Code.
 - **The Marketplace page describes the extension only.** The per-release sections are gone from it; release notes are here.
+- **The ABAP side is only the review store now.** `src/` holds `ZCL_VX_ADT_RES_STORE`, the `ZAVE_REVIEW` table, `ZCL_VX_ADT_RES_ABOUT` and the route registration; the version, diff, review and request classes and `Z_VX_DEBUGGER_TEST` are gone from it - pulling with abapGit does not delete them from a system, they are removed there by hand. Building a review on the ABAP side (Prepare) and the review against another system are no longer in VERTEX; AVE keeps both.
+- **The standalone MCP server reads the review over ADT.** `mcp/server.js` reads a saved review through ADT's data preview, or builds it from ADT, with the extension's own code; it no longer asks VERTEX's ABAP. It needs the extension's packages in the checkout (`npm ci` in `vscode/`).
 
 ## 2026-10-08 — VS Code 0.8.7: function modules in Tools
 

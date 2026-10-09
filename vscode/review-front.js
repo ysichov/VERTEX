@@ -187,7 +187,8 @@ async function write(api, resource, body, io) {
 
   const table = await hasTable(api);
   const stored = await loadStored(api, trkorr, remote, io, table);
-  const user = String(api.user()).toUpperCase();
+  // A host may know the user at once (VS Code) or ask its project for it (Eclipse).
+  const user = String(await api.user()).toUpperCase();
   const nameRow = (await api.query("SELECT a~name_text FROM usr21 AS u INNER JOIN adrp AS a ON a~persnumber = u~persnumber"
     + " WHERE u~bname = " + sqlText(user), 1)).values[0];
   const who = { user, name: nameRow ? up(nameRow.NAME_TEXT) : user };

@@ -52,7 +52,7 @@ const ABOUT = "/sap/bc/adt/vertex/about";
 
 /* Calls that change something on the server, and which of their arguments is
    the body. Everything not named here reads. */
-const WRITES = { act: 4, prepare: 2 };
+const WRITES = { act: 4 };
 
 function upper(value) {
   return encodeURIComponent(String(value || "").toUpperCase());
@@ -89,7 +89,6 @@ const SHIM = [
   "  window.sdeOpen = send('open');",
   "  window.sdeReview = send('review');",
   "  window.sdeAct = send('act');",
-  "  window.sdePrepare = send('prepare');",
   "  window.sdeRequests = send('requests');",
   "  window.sdeAbout = send('about');",
   "  window.sdeTitle = send('title');",
@@ -336,7 +335,7 @@ async function fetch(context, requestPath, body, progress, cancelled) {
     let remote = {};
     try { if (!raw.startsWith('ERROR:')) remote = JSON.parse(raw); } catch (_) {}
     const local = ['metrics','class','package','flow','table','join','versions','requests','review'];
-    const services = ['metrics','class','package','flow','table','join','versions','review','prepare','requests'].map(name =>
+    const services = ['metrics','class','package','flow','table','join','versions','review','requests'].map(name =>
       local.includes(name) ? { name, active: 'X', backend: ['table','join','versions','requests','review'].includes(name) ? 'ADT data preview' : 'ADT + abaplint' } :
         (remote.services || []).find(s => s.name === name) || { name, active: '', backend: 'VERTEX', handler: name });
     return JSON.stringify({ ...remote, user: remote.user || selected.system.user,

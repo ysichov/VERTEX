@@ -51,8 +51,8 @@ function debugHtml(initial) {
 function allowed(resource, body) {
   if (typeof resource !== "string" || /[\\#]/.test(resource) || /\.\.|%2e|%5c/i.test(resource)) return false;
   return body != null
-    ? /^\/sap\/bc\/adt\/vertex\/(review|prepare)\/[^?]+(?:\?.*)?$/.test(resource)
-    : /^\/sap\/bc\/adt\/vertex\/(about|requests|(?:table|join|metrics|flow|class|package|versions|review|prepare)\/[^?]+)(?:\?.*)?$/.test(resource)
+    ? /^\/sap\/bc\/adt\/vertex\/review\/[^?]+(?:\?.*)?$/.test(resource)
+    : /^\/sap\/bc\/adt\/vertex\/(about|requests|(?:table|join|metrics|flow|class|package|versions|review)\/[^?]+)(?:\?.*)?$/.test(resource)
       // The object field's mask search: ADT's quick search, read only.
       || /^\/sap\/bc\/adt\/repository\/informationsystem\/search\?operation=quickSearch&maxResults=\d{1,3}&objectType=[A-Z]{4}%2F[A-Z]{1,2}&query=[A-Z0-9_%*+$]{1,80}$/.test(resource);
 }

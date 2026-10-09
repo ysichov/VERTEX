@@ -159,6 +159,11 @@ async function request(api, resource, progress, cancelled = () => false) {
     if (/^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(url.pathname)) {
       return await __vertexRequire(1525).request(api, resource) ?? await __vertexRequire(1526).request(api, resource);
     }
+    // Versions, the review of a request and the finding of requests, for the same host: read over ADT here too.
+    if (/^\/sap\/bc\/adt\/vertex\/(versions|review)\//.test(url.pathname) || url.pathname === '/sap/bc/adt/vertex/requests') {
+      return await __vertexRequire(1527).request(api, resource)
+        ?? await __vertexRequire(1529).request(api, resource, progress, api.reviewIo ? await api.reviewIo() : undefined);
+    }
     return null;
   }
   const [, service, encoded] = match;
@@ -329,17 +334,24 @@ async function request(api, resource, progress, cancelled = () => false) {
       // Depth was enforced before reading targets. Recomputing it on the
       // aggregated Classes graph loses routine levels and can drop real calls.
       for(const e of links)edges.push(e.text);
-      const palette=__vertexRequire(1527).palette;
+      const palette=__vertexRequire(1534).palette;
       const colors=Object.entries(palette).map(([kind,[fill,stroke]])=>'classDef '+kind+' fill:'+fill+',stroke:'+stroke);
       return { ...base, mode, depth:callDepth, steps: ids.size, places, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
     }
     if (chosen.length !== 1) throw new Error('Pick one method to draw its logic diagram.');
     return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType,
-      ...__vertexRequire(1528).scheme(chosen[0], url.searchParams.get('expand') || ''),
-      logicMermaid:__vertexRequire(1528).scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
+      ...__vertexRequire(1535).scheme(chosen[0], url.searchParams.get('expand') || ''),
+      logicMermaid:__vertexRequire(1535).scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }
-module.exports = { request, declarations, metric, analysisUnits, invalidate };
+// A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
+// bundle); null for any other write.
+async function write(api, resource, body) {
+  if (!/^\/sap\/bc\/adt\/vertex\/review\//.test(new URL(resource, 'https://sap.invalid').pathname)) { return null; }
+  return __vertexRequire(1529).write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined);
+}
+
+module.exports = { request, write, declarations, metric, analysisUnits, invalidate };
 
 },
 function(module,exports,__vertexRequire){
@@ -98944,6 +98956,1426 @@ module.exports = { request };
 },
 function(module,exports,__vertexRequire){
 var require=__vertexRequire;
+"use strict";
+
+// Versions on the front end: the answer of /sap/bc/adt/vertex/versions/<name> (ZCL_VX_ADT_RES_VERSIONS), built from
+// ADT's revision feed - what Eclipse's Revision History shows - and the sources of its revisions, with the diff
+// computed here, as Eclipse's compare computes it. Programs, includes and classes; any other type is not this
+// module's yet and gets null. A class's sections and methods, which ADT does not version apart, are cut out of the
+// versions of the whole class with abaplint; its local includes have feeds of their own.
+//
+// Same request: part / ptype for one part, from / to for a diff, now=X for the current source, toc / dups / ic as
+// AVE's switches. Same JSON: the parts list, the versions of a part, or the diff as ops with its counts.
+// The active version keeps AVE's number 99998, so that it sorts first and the page reads it as active.
+//
+// What the feed does not carry: the task under a request (AVE read it from VRSD) - left empty.
+
+const ACTIVE = "99998";
+const NAME = /^[A-Z0-9_/$]{1,40}$/;
+const { inLists } = __vertexRequire(1525);
+
+const objectUrl = (type, name) => (type === "INCL" ? "/sap/bc/adt/programs/includes/" : "/sap/bc/adt/programs/programs/")
+  + encodeURIComponent(name.toLowerCase());
+
+// The feed's time in the reader's own zone, as the dictionary's date and time look: YYYYMMDD and HHMMSS.
+function stamp(iso) {
+  const at = new Date(iso);
+  if (isNaN(at)) { return { date: "", time: "" }; }
+  const two = n => String(n).padStart(2, "0");
+  return { date: at.getFullYear() + two(at.getMonth() + 1) + two(at.getDate()),
+           time: two(at.getHours()) + two(at.getMinutes()) + two(at.getSeconds()) };
+}
+
+// A line as AVE compares it with "ignore case and indentation": trimmed and upper case.
+const normal = (line, ignore) => ignore ? line.trim().toUpperCase() : line;
+
+// The line diff: a shortest edit script over whole lines, with nothing on top - '=' kept, '-' from the old version,
+// '+' from the new one, '-' before '+' in a run. With ignore set, lines compare trimmed and upper case, so a line
+// differing only in its case or indentation is kept, as AVE's IC switch has it; a kept line carries the new text.
+// A host with a comparer of its own passes it as api.diffLines - Eclipse hands the lines to its own Text Compare
+// (RangeDifferencer); otherwise VERTEX's line-diff.js (Myers) computes it.
+async function diff(oldLines, newLines, ignore, api) {
+  if (api && api.diffLines) { return api.diffLines(oldLines, newLines, Boolean(ignore)); }
+  return __vertexRequire(1528).diffLines(oldLines, newLines, ignore ? line => normal(line, true) : undefined);
+}
+
+const lines = text => String(text == null ? "" : text).replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
+
+// A class's main source cut into AVE's parts: the three sections of its definition and each implemented method, by
+// line, as abaplint parses the statements. Rows are counted from 0.
+function classLayout(text) {
+  const lint = __vertexRequire(6);
+  const file = new lint.Registry().addFile(new lint.MemoryFile("vertex.clas.abap", text)).parse().getFirstObject()?.getABAPFiles()[0];
+  if (!file) { throw new Error("abaplint did not parse the class."); }
+  const statements = file.getStatements().filter(s => !["Comment", "Empty"].includes(s.get().constructor.name));
+  const layout = { sections: {}, methods: [] };
+  const declared = {};
+  let section = "", inDefinition = false, method = null;
+  const row = s => s.getFirstToken().getRow() - 1, last = s => s.getLastToken().getRow() - 1;
+  const methodName = s => (s.findFirstExpression(lint.Expressions.MethodName) || s.getChildren()[1]).concatTokens().toUpperCase();
+  for (const s of statements) {
+    const kind = s.get().constructor.name;
+    if (kind === "ClassDefinition") { inDefinition = true; continue; }
+    if (inDefinition && ["Public", "Protected", "Private"].includes(kind)) {
+      if (section) { layout.sections[section].to = row(s) - 1; }
+      section = kind.toLowerCase();
+      layout.sections[section] = { from: row(s), to: row(s), declarations: 0 };
+      continue;
+    }
+    if (inDefinition && kind === "EndClass") {
+      if (section) { layout.sections[section].to = row(s) - 1; }
+      inDefinition = false; section = "";
+      continue;
+    }
+    if (inDefinition && section) {
+      layout.sections[section].declarations++;
+      if (kind === "MethodDef") { declared[methodName(s)] = section; }
+      continue;
+    }
+    if (kind === "MethodImplementation") { method = { name: methodName(s), from: row(s) }; continue; }
+    if (kind === "EndMethod" && method) { method.to = last(s); layout.methods.push(method); method = null; }
+  }
+  layout.methods.forEach(m => { m.section = declared[m.name] || ""; });
+  return layout;
+}
+
+const LOCAL = { CCDEF: "definitions", CCIMP: "implementations", CCMAC: "macros", CCAU: "testclasses" };
+const SECTIONS = { CPUB: "public", CPRO: "protected", CPRI: "private" };
+const padded = (name, filler) => name + filler.repeat(Math.max(0, 30 - name.length));
+const classUrl = name => "/sap/bc/adt/oo/classes/" + encodeURIComponent(name.toLowerCase());
+
+// Sources of revisions, read once per session: a part's history reads every version of its class.
+const read = new WeakMap();
+function sourceAt(api, uri) {
+  if (!read.has(api)) { read.set(api, new Map()); }
+  const cache = read.get(api);
+  if (!cache.has(uri)) { cache.set(uri, Promise.resolve(api.revisionSource(uri)).catch(error => { cache.delete(uri); throw error; })); }
+  return cache.get(uri);
+}
+
+const enc = name => encodeURIComponent(name.toLowerCase());
+const DDIC = { TABL: "TABD", DOMA: "DOMD", DTEL: "DTED" };
+const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
+
+// A part of a request or a package, by its own type: a REPS is a program, an include or a function group's main
+// program (TRDIR SUBC); a FUNC lives in its group; a class part in its class; a dictionary part in its object.
+async function partInScope(api, part, ptype) {
+  if (ptype === "REPS") {
+    const row = (await api.query("SELECT subc FROM trdir WHERE name = " + sqlText(part), 1)).values[0];
+    if (!row) { throw new Error("Program " + part + " does not exist."); }
+    if (row.SUBC === "F") {
+      const ns = /^(\/[^/]+\/)SAPL(.+)$/.exec(part);
+      return partOf(api, "FUGR", ns ? ns[1] + ns[2] : part.replace(/^SAPL/, ""), part, "REPS");
+    }
+    return partOf(api, row.SUBC === "I" ? "INCL" : "PROG", part, part, "REPS");
+  }
+  if (ptype === "FUNC") { return partOf(api, "FUNC", part, part, "FUNC"); }
+  if (["METH", "CPUB", "CPRO", "CPRI", "CINC"].includes(ptype)) {
+    const owner = (ptype === "CINC" ? part.slice(0, 30).replace(/=+$/, "") : part.slice(0, 30).trim()) || part;
+    return partOf(api, "CLAS", owner, part, ptype);
+  }
+  if (ptype === "DDLS") { return partOf(api, "DDLS", part, part, "DDLS"); }
+  const ddic = Object.keys(DDIC).find(key => DDIC[key] === ptype);
+  return ddic ? partOf(api, ddic, part, part, ptype) : null;
+}
+
+// What a request (with its tasks, E071) or a package (TADIR) holds, as AVE lists it: a class, an interface or a
+// function group as one object to open; anything else as the part it versions as.
+async function scopeParts(api, type, name) {
+  let keys;
+  if (type === "TR") {
+    const head = (await api.query("SELECT trkorr FROM e070 WHERE trkorr = " + sqlText(name), 1)).values;
+    if (!head.length) { throw new Error("Transport request " + name + " does not exist."); }
+    const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(name), 1000)).values.map(r => r.TRKORR);
+    keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [name, ...tasks], 10000);
+  } else {
+    keys = (await api.query("SELECT pgmid, object, obj_name FROM tadir WHERE devclass = " + sqlText(name), 10000)).values;
+    if (!keys.length) { throw new Error("Package " + name + " holds nothing or does not exist."); }
+  }
+  const seen = new Set(), parts = [];
+  const add = (unit, partName, partType, owner) => {
+    const key = partType + "|" + partName;
+    if (seen.has(key)) { return; }
+    seen.add(key);
+    parts.push({ class: owner || "", unit, name: partName, part_type: partType, section: "" });
+  };
+  keys.sort((x, y) => (x.PGMID + x.OBJECT + x.OBJ_NAME).localeCompare(y.PGMID + y.OBJECT + y.OBJ_NAME)).forEach(k => {
+    const object = String(k.OBJECT), objName = String(k.OBJ_NAME);
+    if (k.PGMID === "R3TR" && ["CLAS", "INTF", "FUGR"].includes(object)) { add(objName, objName, object); return; }
+    if (object === "PROG" || object === "REPS") { add(objName, objName, "REPS"); return; }
+    if (object === "METH") {
+      const owner = objName.slice(0, 30).trim(), method = objName.slice(30).trim();
+      add(method, padded(owner, " ") + method, "METH", owner);
+      return;
+    }
+    if (DDIC[object]) { add(objName, objName, DDIC[object]); return; }
+    add(objName, objName, object);
+  });
+  return parts;
+}
+// A function group's main program and include prefix: SAPLZFG and LZFG, /NS/SAPLFG and /NS/LFG in a namespace.
+function groupNames(group) {
+  const ns = /^(\/[^/]+\/)(.+)$/.exec(group);
+  return ns ? { main: ns[1] + "SAPL" + ns[2], prefix: ns[1] + "L" + ns[2] } : { main: "SAPL" + group, prefix: "L" + group };
+}
+// The group a function module belongs to, from TFDIR through the data preview.
+async function groupOf(api, module) {
+  const row = (await api.query("SELECT pname FROM tfdir WHERE funcname = '" + module.replace(/'/g, "''") + "'", 1)).values[0];
+  if (!row) { throw new Error("Function module " + module + " does not exist."); }
+  const pname = String(row.PNAME), ns = /^(\/[^/]+\/)SAPL(.+)$/.exec(pname);
+  return ns ? ns[1] + ns[2] : pname.replace(/^SAPL/, "");
+}
+
+// Where a part's history is kept and how its text is cut from a version of that feed.
+async function partOf(api, type, name, part, ptype) {
+  if (type === "PROG" || type === "INCL") {
+    if (part !== name || ptype !== "REPS") { return null; }
+    return { url: objectUrl(type, name), include: "", cut: null };
+  }
+  if (type === "INTF") {
+    return ptype === "REPS" && part.startsWith(name) ? { url: "/sap/bc/adt/oo/interfaces/" + enc(name), include: "", cut: null } : null;
+  }
+  if (type === "DDLS") {
+    return ptype === "DDLS" && part === name ? { url: "/sap/bc/adt/ddic/ddl/sources/" + enc(name), include: "", cut: null } : null;
+  }
+  // Dictionary objects, as VRSD names their parts: TABD, DOMD, DTED. A TABL is a table or a structure (DD02L).
+  if (DDIC[type]) {
+    if (ptype !== DDIC[type] || part !== name) { return null; }
+    if (type === "TABL") {
+      const row = (await api.query("SELECT tabclass FROM dd02l WHERE tabname = '" + name.replace(/'/g, "''") + "' AND as4local = 'A'", 1)).values[0];
+      if (!row) { throw new Error("Table " + name + " does not exist."); }
+      return { url: (row.TABCLASS === "INTTAB" ? "/sap/bc/adt/ddic/structures/" : "/sap/bc/adt/ddic/tables/") + enc(name), include: "", cut: null };
+    }
+    return { url: (type === "DOMA" ? "/sap/bc/adt/ddic/domains/" : "/sap/bc/adt/ddic/dataelements/") + enc(name), include: "", cut: null };
+  }
+  // A part inside a transport request or a package: its own type says where it lives.
+  if (type === "TR" || type === "DEVC") { return partInScope(api, part, ptype); }
+  if (type === "FUNC" || type === "FUGR") {
+    const group = type === "FUGR" ? name : await groupOf(api, name);
+    const base = "/sap/bc/adt/functions/groups/" + enc(group);
+    if (ptype === "FUNC") {
+      if (type === "FUNC" && part !== name) { return null; }
+      if (type === "FUGR" && await groupOf(api, part) !== group) { return null; }
+      return { url: base + "/fmodules/" + enc(part), include: "", cut: null };
+    }
+    if (ptype === "REPS" && type === "FUGR") {
+      const names = groupNames(group);
+      if (part === names.main) { return { url: base, include: "", cut: null }; }
+      if (part.startsWith(names.prefix)) { return { url: base + "/includes/" + enc(part), include: "", cut: null }; }
+    }
+    return null;
+  }
+  const url = classUrl(name);
+  if (ptype === "CINC") {
+    const suffix = part.startsWith(padded(name, "=")) ? part.slice(30) : "";
+    return LOCAL[suffix] ? { url, include: LOCAL[suffix], cut: null } : null;
+  }
+  if (SECTIONS[ptype] && part === name) {
+    const section = SECTIONS[ptype];
+    return { url, include: "main", cut: text => {
+      const at = classLayout(text).sections[section];
+      return at ? lines(text).slice(at.from, at.to + 1) : null;
+    } };
+  }
+  if (ptype === "METH" && part.startsWith(padded(name, " "))) {
+    const method = part.slice(30).trim();
+    return { url, include: "main", cut: text => {
+      const at = classLayout(text).methods.find(m => m.name === method);
+      return at ? lines(text).slice(at.from, at.to + 1) : null;
+    } };
+  }
+  return null;
+}
+
+// A class has only the local includes it was given. ADT answers 404 for the others - or, for a test class include
+// that was never created, "does not have any inactive version" (seen on E19).
+const missing = error => /404|not found|does not exist|does not have any (in)?active version/i.test(String(error && error.message || error))
+  || Boolean(error && error.response && error.response.status === 404);
+const meaningful = text => lines(text).some(line => {
+  const t = line.trim();
+  return t !== "" && !t.startsWith("*") && !t.startsWith("\"");
+});
+
+async function classParts(api, name) {
+  const url = classUrl(name);
+  const layout = classLayout(await api.currentSource(url));
+  const parts = [];
+  Object.entries(SECTIONS).forEach(([ptype, section]) => {
+    // A section holding nothing but its own header is not worth a click, as AVE has it.
+    if (layout.sections[section] && layout.sections[section].declarations) {
+      parts.push({ class: name, unit: "", name, part_type: ptype, section });
+    }
+  });
+  layout.methods.forEach(m => parts.push({ class: name, unit: m.name, name: padded(name, " ") + m.name, part_type: "METH",
+    section: m.name.includes("~") ? "" : m.section }));
+  for (const [suffix, include] of Object.entries(LOCAL)) {
+    let text;
+    // A class has only the local includes it was given; ADT answers 404 for the others.
+    try { text = await api.currentSource(url, include); } catch (error) { if (missing(error)) { continue; } throw error; }
+    if (meaningful(text)) { parts.push({ class: name, unit: "", name: padded(name, "=") + suffix, part_type: "CINC", section: "" }); }
+  }
+  return parts;
+}
+
+// An object's parts, as AVE's object classes list them.
+async function partsOf(api, type, name) {
+  const one = (part, ptype) => [{ class: "", unit: name, name: part, part_type: ptype, section: "" }];
+  if (type === "CLAS") { return classParts(api, name); }
+  // An interface's one part is its section include, ZIF_X=====...IU.
+  if (type === "INTF") { return one(padded(name, "=") + "IU", "REPS"); }
+  if (type === "FUNC") { return one(name, "FUNC"); }
+  if (type === "DDLS") { return one(name, "DDLS"); }
+  if (DDIC[type]) { return one(name, DDIC[type]); }
+  if (type === "FUGR") {
+    // The main program, a FUNC per function module, the group's other includes - from TFDIR and TRDIR.
+    const names = groupNames(name);
+    const modules = (await api.query("SELECT funcname, include FROM tfdir WHERE pname = '" + names.main.replace(/'/g, "''") + "'", 1000)).values;
+    const byInclude = new Map(modules.map(m => [names.prefix + "U" + m.INCLUDE, m.FUNCNAME]));
+    // AVE's own filter: TRDIR rows under the prefix with SQLX set.
+    const includes = (await api.query("SELECT name FROM trdir WHERE name LIKE '" + names.prefix.replace(/'/g, "''").replace(/[_%#]/g, "#$&")
+      + "%' ESCAPE '#' AND sqlx = 'X'", 1000)).values.map(r => String(r.NAME)).sort();
+    const parts = [{ class: "", unit: names.main, name: names.main, part_type: "REPS", section: "" }];
+    includes.forEach(include => {
+      const module = byInclude.get(include);
+      parts.push(module ? { class: "", unit: module, name: module, part_type: "FUNC", section: "" }
+        : { class: "", unit: include, name: include, part_type: "REPS", section: "" });
+    });
+    return parts;
+  }
+  return one(name, "REPS");
+}
+
+// The transport requests of one user, as ZCL_VX_ADT_RES_REQUESTS lists them: those they own and those where they
+// only hold a task, open ones (modifiable, protected) or the released too; workbench, customizing, copies and
+// relocations; newest first.
+const KINDS = { K: "workbench", W: "customizing", T: "transport of copies", C: "relocation", O: "relocation", E: "relocation" };
+const STATES = { D: "modifiable", L: "modifiable, protected", O: "release started", R: "released", N: "released, import protected" };
+async function requestsOf(api, params) {
+  const user = String(params.get("user") || api.user() || "").trim().toUpperCase();
+  if (user.length > 12) { throw new Error(user + " is not a user name: an SAP user name has at most 12 characters."); }
+  if (/[ *+%]/.test(user)) { throw new Error("Name one user, not a pattern: " + user + "."); }
+  const released = params.get("released") || "";
+  if (released && released !== "true" && released !== "false") { throw new Error("released is true or false, not " + released + "."); }
+  const states = ["D", "L"].concat(released === "true" ? ["O", "R", "N"] : []).map(sqlText).join(", ");
+  const kinds = Object.keys(KINDS).map(sqlText).join(", ");
+  const own = (await api.query("SELECT trkorr FROM e070 WHERE as4user = " + sqlText(user) + " AND strkorr = ' '"
+    + " AND trfunction IN ( " + kinds + " ) AND trstatus IN ( " + states + " )", 10000)).values;
+  const viaTask = (await api.query("SELECT r~trkorr FROM e070 AS t INNER JOIN e070 AS r ON r~trkorr = t~strkorr"
+    + " WHERE t~as4user = " + sqlText(user) + " AND r~trfunction IN ( " + kinds + " ) AND r~trstatus IN ( " + states + " )", 10000)).values;
+  const numbers = [...new Set(own.concat(viaTask).map(r => r.TRKORR))];
+  let heads = [], texts = new Map();
+  if (numbers.length) {
+    heads = await inLists(api, "SELECT trkorr, trfunction, trstatus, as4user, as4date, as4time FROM e070 WHERE trkorr", numbers, 10000);
+    // The description in the session's language when there is one, any other otherwise.
+    const spras = await __vertexRequire(1525).language(api);
+    for (const row of await inLists(api, "SELECT trkorr, langu, as4text FROM e07t WHERE trkorr", numbers, 10000)) {
+      if (!texts.has(row.TRKORR) || row.LANGU === spras) { texts.set(row.TRKORR, row.AS4TEXT); }
+    }
+  }
+  const owners = [...new Set(heads.map(h => h.AS4USER).filter(Boolean))];
+  const names = new Map(owners.length ? (await inLists(api, "SELECT u~bname, a~name_text FROM usr21 AS u INNER JOIN adrp AS a"
+    + " ON a~persnumber = u~persnumber WHERE u~bname", owners, 1000)).map(row => [row.BNAME, row.NAME_TEXT]) : []);
+  const requests = heads.map(h => ({ request: h.TRKORR, text: texts.get(h.TRKORR) || "", owner: h.AS4USER,
+    owner_name: names.get(h.AS4USER) || "", type: KINDS[h.TRFUNCTION] || h.TRFUNCTION, status: STATES[h.TRSTATUS] || h.TRSTATUS,
+    date: String(h.AS4DATE), time: String(h.AS4TIME) }));
+  requests.sort((x, y) => (y.date + y.time + y.request).localeCompare(x.date + x.time + x.request));
+  return { user, released: released === "true", requests };
+}
+
+async function request(api, resource) {
+  const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
+  if (url.pathname === "/sap/bc/adt/vertex/requests") { return requestsOf(api, params); }
+  const match = /^\/sap\/bc\/adt\/vertex\/versions\/([^/]+)$/.exec(url.pathname);
+  if (!match) { return null; }
+  const type = String(params.get("type") || "PROG").toUpperCase().split("/")[0];
+  if (!["PROG", "INCL", "CLAS", "INTF", "FUNC", "FUGR", "DDLS", "TABL", "DOMA", "DTEL", "TR", "DEVC"].includes(type)) { return null; }
+  const name = decodeURIComponent(match[1]).toUpperCase();
+  if (!NAME.test(name)) { throw new Error(name + " is not an object name."); }
+  const part = String(params.get("part") || "").toUpperCase(), ptype = String(params.get("ptype") || "").toUpperCase();
+  const ignore = String(params.get("ic") || "").toUpperCase() === "X";
+  const head = { object: name.toLowerCase(), type: type.toLowerCase() };
+
+  // A program or an include is one part, itself; a class is its sections, its methods and its local includes.
+  if (!part) {
+    // A transport request and a package are scopes: the objects in them, each opened rather than read here.
+    if (type === "TR" || type === "DEVC") { return Object.assign(head, { scope: true, parts: await scopeParts(api, type, name) }); }
+    return Object.assign(head, { scope: false, parts: await partsOf(api, type, name) });
+  }
+  const where = await partOf(api, type, name, part, ptype);
+  if (!where) { throw new Error(part + " of type " + ptype + " is not a part of " + name + ". Ask for the parts list first."); }
+  const textOf = async uri => {
+    const text = await sourceAt(api, uri);
+    return where.cut ? where.cut(text) : lines(text);
+  };
+  if (String(params.get("now") || "").toUpperCase() === "X") {
+    const now = await api.currentSource(where.url, where.include);
+    const cut = where.cut ? where.cut(now) : lines(now);
+    return { part, part_type: ptype, include: where.include || name, source: (cut || []).join("\n") };
+  }
+
+  const feed = await api.revisions(where.url, where.include || undefined);
+  const numberOf = entry => entry.id === "00000" ? ACTIVE : entry.id;
+  const from = params.get("from") || "", to = params.get("to") || "";
+  const partHead = { part: part.toLowerCase(), part_type: ptype.toLowerCase() };
+
+  if (to) {
+    const sourceOf = async number => {
+      const entry = feed.find(e => numberOf(e) === String(number).padStart(5, "0"));
+      if (!entry) { throw new Error("Version " + number + " of " + part + " is not in its history."); }
+      return (await textOf(entry.uri)) || [];
+    };
+    const ops = await diff(from ? await sourceOf(from) : [], await sourceOf(to), ignore, api);
+    return Object.assign(head, partHead, { from, to,
+      added: ops.filter(o => o.op === "+").length, deleted: ops.filter(o => o.op === "-").length,
+      kept: ops.filter(o => o.op === "=").length, ops });
+  }
+
+  let rows = feed.map(entry => Object.assign({ version: numberOf(entry), author: entry.author, request: entry.transport,
+    task: "", uri: entry.uri }, stamp(entry.time)));
+  // TOC=X keeps the versions a transport of copies wrote; without it they go, as in AVE.
+  if (String(params.get("toc") || "").toUpperCase() !== "X") {
+    const requests = [...new Set(rows.map(r => r.request).filter(Boolean))];
+    if (requests.length) {
+      const copies = new Set((await inLists(api, "SELECT trkorr FROM e070 WHERE trfunction = 'T' AND trkorr", requests, 1000))
+        .map(row => row.TRKORR));
+      rows = rows.filter(r => !copies.has(r.request));
+    }
+  }
+  rows.sort((x, y) => Number(y.version) - Number(x.version));
+  // A part cut out of the class has a version where its text changed - VRSD keeps one only then - and none before
+  // it existed. DUPS=X does the same for a whole source, keeping the earliest of a run of identical ones.
+  const dups = String(params.get("dups") || "").toUpperCase() === "X";
+  if (where.cut || dups) {
+    const texts = await Promise.all(rows.map(r => textOf(r.uri).then(text => text && text.map(l => normal(l, ignore)).join("\n"))));
+    rows = rows.filter((r, i) => texts[i] !== null && (i === rows.length - 1 || texts[i] !== texts[i + 1]));
+  }
+  // Names to the users, as the page shows them beside the user ID.
+  const users = [...new Set(rows.map(r => r.author).filter(Boolean))];
+  const names = new Map(users.length ? (await inLists(api, "SELECT u~bname, a~name_text FROM usr21 AS u INNER JOIN adrp AS a"
+    + " ON a~persnumber = u~persnumber WHERE u~bname", users, 1000)).map(row => [row.BNAME, row.NAME_TEXT]) : []);
+  return Object.assign(head, partHead, {
+    versions: rows.map(({ uri, ...r }) => Object.assign(r, { author_name: names.get(r.author) || "" })) });
+}
+
+module.exports = { request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// The line diff of two sources: Myers' O(ND) algorithm ("An O(ND) Difference Algorithm and Its Variations", 1986)
+// in its linear-space form, which finds the middle snake of the shortest edit script and splits there. Written from
+// the paper, not from Eclipse's comparer, which is under the EPL while VERTEX is MIT. It is what Eclipse's Text Compare computes too - a shortest edit script over whole lines - and nothing
+// is done on top of it: no pairing, no moving, no knowledge of ABAP. Time is (N+M)·D for D changed lines, so a
+// source of thousands of lines with a few changes takes a few milliseconds, and a full rewrite stays linear in space.
+//
+// Lines compare by `key(line)` - the line itself unless a caller asks otherwise - and are interned to numbers first,
+// so the inner loop compares integers. The result is '=' kept, '-' from the old side, '+' from the new one, and in
+// every run of changes the old lines come before the new ones: a run is one difference, as Eclipse shows it - the
+// old lines against the new.
+function diffLines(oldLines, newLines, key) {
+  const ids = new Map();
+  const intern = line => {
+    const k = key ? key(line) : line;
+    let id = ids.get(k);
+    if (id === undefined) { id = ids.size; ids.set(k, id); }
+    return id;
+  };
+  const a = Int32Array.from(oldLines, intern);
+  const b = Int32Array.from(newLines, intern);
+  const ops = [];
+
+  const keep = (x, y, n) => { for (let i = 0; i < n; i++) { ops.push({ op: "=", text: newLines[y + i] }); } };
+  const drop = (x, n) => { for (let i = 0; i < n; i++) { ops.push({ op: "-", text: oldLines[x + i] }); } };
+  const add = (y, n) => { for (let i = 0; i < n; i++) { ops.push({ op: "+", text: newLines[y + i] }); } };
+
+  // a[aLo, aHi) against b[bLo, bHi), its ops appended in order.
+  function compare(aLo, aHi, bLo, bHi) {
+    let head = 0;
+    while (aLo + head < aHi && bLo + head < bHi && a[aLo + head] === b[bLo + head]) { head++; }
+    keep(aLo, bLo, head);
+    aLo += head; bLo += head;
+    let tail = 0;
+    while (aHi - tail > aLo && bHi - tail > bLo && a[aHi - tail - 1] === b[bHi - tail - 1]) { tail++; }
+    aHi -= tail; bHi -= tail;
+
+    if (aLo === aHi) { add(bLo, bHi - bLo); }
+    else if (bLo === bHi) { drop(aLo, aHi - aLo); }
+    else {
+      const split = middle(aLo, aHi, bLo, bHi);
+      if (split) {
+        compare(aLo, split[0], bLo, split[1]);
+        compare(split[0], aHi, split[1], bHi);
+      } else {
+        drop(aLo, aHi - aLo);
+        add(bLo, bHi - bLo);
+      }
+    }
+    keep(aHi, bHi, tail);
+  }
+
+  // The point where a forward and a backward search over the edit graph meet: a split that lies on a shortest
+  // edit script. Null when the two ranges share no line at all.
+  function middle(aLo, aHi, bLo, bHi) {
+    const n = aHi - aLo, m = bHi - bLo;
+    const maxD = Math.ceil((n + m) / 2);
+    const offset = maxD + 1;
+    const size = 2 * maxD + 3;
+    const vf = new Int32Array(size).fill(-1);
+    const vb = new Int32Array(size).fill(-1);
+    vf[offset + 1] = 0;
+    vb[offset + 1] = 0;
+    const delta = n - m;
+    const odd = (delta & 1) !== 0;
+    for (let d = 0; d <= maxD; d++) {
+      // Forward: x along a, y along b, from the top left.
+      for (let k = -d; k <= d; k += 2) {
+        let x = k === -d || (k !== d && vf[offset + k - 1] < vf[offset + k + 1]) ? vf[offset + k + 1] : vf[offset + k - 1] + 1;
+        let y = x - k;
+        if (x > n || y > m || y < 0) { continue; }
+        while (x < n && y < m && a[aLo + x] === b[bLo + y]) { x++; y++; }
+        vf[offset + k] = x;
+        if (odd) {
+          const kb = delta - k;
+          if (kb >= -(d - 1) && kb <= d - 1 && vb[offset + kb] !== -1 && x + vb[offset + kb] >= n) {
+            return [aLo + x, bLo + y];
+          }
+        }
+      }
+      // Backward: the same walk from the bottom right, x and y counted back from the ends.
+      for (let k = -d; k <= d; k += 2) {
+        let x = k === -d || (k !== d && vb[offset + k - 1] < vb[offset + k + 1]) ? vb[offset + k + 1] : vb[offset + k - 1] + 1;
+        let y = x - k;
+        if (x > n || y > m || y < 0) { continue; }
+        while (x < n && y < m && a[aHi - x - 1] === b[bHi - y - 1]) { x++; y++; }
+        vb[offset + k] = x;
+        if (!odd) {
+          const kf = delta - k;
+          if (kf >= -d && kf <= d && vf[offset + kf] !== -1 && vf[offset + kf] + x >= n) {
+            return [aLo + n - x, bLo + m - y];
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  compare(0, a.length, 0, b.length);
+
+  // Old lines first within each run of changes.
+  const result = [];
+  let run = [];
+  const flush = () => { run.forEach(x => { if (x.op === "-") { result.push(x); } }); run.forEach(x => { if (x.op === "+") { result.push(x); } }); run = []; };
+  ops.forEach(op => { if (op.op === "=") { flush(); result.push(op); } else { run.push(op); } });
+  flush();
+  return result;
+}
+
+module.exports = { diffLines };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// The saved code review on the front end: what GET /sap/bc/adt/vertex/review/<request> (ZCL_VX_ADT_RES_REVIEW)
+// answers, read from the ZAVE_REVIEW table through ADT's data preview. The table is the one AVE and VERTEX's ABAP
+// share; its PAYLOAD is the review as /ui2/cl_json wrote it. Reviews can also be kept in files (vertex.review.storage),
+// one payload per file. Writing - approving, declining, commenting, saving a review built from ADT - is WRITE below:
+// the change is made here, as AVE makes it (review-state.js), and the whole payload is stored, in the table through
+// VERTEX's ZCL_VX_ADT_RES_STORE (the data preview only reads) or in the file.
+//
+// The summary keeps AVE's order and grouping (ZCL_VX_REVIEW_REPORT); a part's blocks are located in the stored diff
+// by AVE's own walk (ZCL_VX_REVIEW_HUNKS=>HUNK_RANGES with ZCL_VX_REVIEW_PREPARE=>UPDATE_STMT_OPEN), because the
+// block keys are numbered by that walk and a different one would put verdicts on the wrong blocks.
+
+const NAME = /^[A-Z0-9_/$]{1,20}$/;
+const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
+
+// /ui2/cl_json writes a TIMESTAMPL as a number of 21 digits, more than a double holds; the page writes the stamp back
+// to say which state it built on, so stamps are kept as the text they were written as.
+function parsePayload(text) {
+  const safe = String(text).replace(/("(?:[^"\\]|\\.)*")|(-?\d+\.\d+|-?\d{16,})/g, (all, string, number) => string || '"' + number + '"');
+  return JSON.parse(safe);
+}
+
+const up = value => String(value == null ? "" : value);
+const list = value => Array.isArray(value) ? value : [];
+
+// ZCL_VX_REVIEW_REPORT: class parts under their class, other objects in sections by kind, objects with no changed
+// line left out.
+const TYPE_ORDER = { CLSD: 1, CPUB: 2, CPRO: 3, CPRI: 4, CINC: 5, CDEF: 6, METH: 7 };
+const CLASS_PARTS = ["CLSD", "CPUB", "CPRO", "CPRI", "CINC", "CDEF"];
+const catOrder = type => ({ TABD: 2, DOMD: 3, DTED: 3, DDLS: 4 })[type] || 1;
+const catLabel = type => ({ TABD: "Tables / Structures", DOMD: "Domains / Data Elements", DTED: "Domains / Data Elements", DDLS: "CDS Views" })[type] || "Programs";
+function reportObjects(stats) {
+  const keyed = list(stats).map((s, idx) => {
+    let className = up(s.CLASS_NAME).trim();
+    if (!className && CLASS_PARTS.includes(up(s.OBJTYPE))) {
+      const name = up(s.OBJ_NAME), eq = name.indexOf("=");
+      className = eq >= 0 ? name.slice(0, eq) : name;
+    }
+    return { s: Object.assign({}, s, { CLASS_NAME: className }), className, cat: className ? 0 : catOrder(up(s.OBJTYPE)),
+      type: TYPE_ORDER[up(s.OBJTYPE)] || 0, name: up(s.OBJ_NAME), idx };
+  });
+  keyed.sort((a, b) => a.className.localeCompare(b.className) || a.cat - b.cat || a.type - b.type || a.name.localeCompare(b.name) || a.idx - b.idx);
+  return keyed.map(k => k.s).filter(s => Number(s.INS_COUNT) || Number(s.DEL_COUNT) || Number(s.MOD_COUNT));
+}
+
+const { hunkRanges, stmtOpen } = __vertexRequire(1530);
+
+// Whether the system has the table, and REMOTE in it - AVE's has_review_table / has_remote_field.
+async function hasTable(api) {
+  const rows = (await api.query("SELECT fieldname FROM dd03l WHERE tabname = 'ZAVE_REVIEW' AND as4local = 'A'", 100)).values;
+  return rows.some(r => r.FIELDNAME === "REMOTE") && rows.some(r => r.FIELDNAME === "PAYLOAD");
+}
+
+function partBody(payload, request, part, ptype, table) {
+  const saved = Boolean(payload);
+  let blocks = [], ops = [], old = "", fresh = "", added = 0, deleted = 0, ddic = false;
+  if (saved) {
+    list(payload.HUNKS).filter(h => up(h.OBJTYPE) === ptype && up(h.OBJ_NAME) === part).forEach(h => {
+      old = up(h.VERSNO_OLD); fresh = up(h.VERSNO_NEW);
+      blocks.push({ hunk_key: up(h.HUNK_KEY), hunk_no: Number(h.HUNK_NO), start_line: Number(h.START_LINE),
+        change_count: Number(h.CHANGE_COUNT), change_kind: up(h.CHANGE_KIND), author: up(h.AUTHOR), author_name: up(h.AUTHOR_NAME),
+        op_from: 0, op_to: 0, action: "", reviewer: "", reviewer_name: "", changed_at: "", note: "", messages: [] });
+    });
+    blocks.sort((a, b) => a.hunk_no - b.hunk_no);
+    blocks.forEach(b => {
+      list(payload.HUNK_ACTIONS).filter(a => up(a.HUNK_KEY) === b.hunk_key).forEach(a => {
+        b.action = up(a.ACTION); b.reviewer = up(a.REVIEWER); b.reviewer_name = up(a.REVIEWER_NAME); b.changed_at = up(a.CHANGED_AT);
+      });
+      list(payload.USER_STATES).forEach(u => list(u.NOTES).filter(n => up(n.HUNK_KEY) === b.hunk_key).forEach(n => { b.note = up(n.NOTE); }));
+      list(payload.THREADS).filter(t => up(t.HUNK_KEY) === b.hunk_key).forEach(t => list(t.MESSAGES).forEach(m => b.messages.push({
+        author: up(m.AUTHOR), author_name: up(m.AUTHOR_NAME), created_at: up(m.CREATED_AT), is_decline: m.IS_DECLINE === true || m.IS_DECLINE === "X",
+        text: up(m.TEXT) })));
+    });
+    // The stored diff of the pair the blocks were cut from; a comparison against another system is another row.
+    let pick = null;
+    for (const d of list(payload.DIFF_DATA)) {
+      const key = d.KEY || {};
+      if (up(key.OBJTYPE) !== ptype || up(key.OBJNAME) !== part || d.RETROFIT === true || d.RETROFIT === "X") { continue; }
+      if (!pick) { pick = d; }
+      if (up(key.VERSNO_O) === old && up(key.VERSNO_N) === fresh) { pick = d; break; }
+    }
+    if (pick) {
+      if (!blocks.length) { old = up(pick.KEY.VERSNO_O); fresh = up(pick.KEY.VERSNO_N); }
+      const diff = list(pick.DIFF).map(l => ({ op: up(l.OP), text: up(l.TEXT) }));
+      ops = diff;
+      added = diff.filter(l => l.op === "+").length;
+      deleted = diff.filter(l => l.op === "-").length;
+      // A dictionary object has no line diff, only AVE's own html, which VERTEX does not render.
+      ddic = !diff.length && Boolean(pick.HTML);
+      const ranges = hunkRanges(diff);
+      blocks.forEach(b => {
+        const range = ranges.find(r => r.start_line === b.start_line);
+        if (range) { b.op_from = range.op_from; b.op_to = range.op_to; }
+      });
+    }
+  }
+  return { request: request.toLowerCase(), part: part.toLowerCase(), part_type: ptype.toLowerCase(), table, saved, ddic,
+    saved_at: saved ? up(payload.LAST_SAVED_AT) : "", versno_old: !old || /^0+$/.test(old) ? "" : old, versno_new: fresh || "",
+    added, deleted, blocks, ops };
+}
+
+// The stored review's text and where it came from. IO is the host's storage (code-workbench reviewIo); without it only
+// the table is read. Files first when files are what is written, the table first otherwise.
+async function loadStored(api, trkorr, remote, io, table) {
+  const fromTable = async () => {
+    if (!table) { return null; }
+    const row = (await api.query("SELECT payload FROM zave_review WHERE trkorr = " + sqlText(trkorr)
+      + " AND remote = " + sqlText(remote || " "), 1)).values[0];
+    return row && row.PAYLOAD ? { text: row.PAYLOAD, from: "table" } : null;
+  };
+  const fromFile = async () => {
+    if (!io) { return null; }
+    const text = await io.read(trkorr, remote);
+    return text ? { text, from: "file", file: io.where(trkorr, remote) } : null;
+  };
+  return io && io.mode === "file" ? (await fromFile()) || (await fromTable()) : (await fromTable()) || (await fromFile());
+}
+
+const storage = (io, stored) => io ? { mode: io.mode, wanted: io.wanted, can_store: io.canStore, from: stored ? stored.from : "",
+  file: stored && stored.file ? stored.file : "" } : null;
+
+async function request(api, resource, progress, io) {
+  const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
+  const match = /^\/sap\/bc\/adt\/vertex\/review\/([^/]+)$/.exec(url.pathname);
+  if (!match) { return null; }
+  const trkorr = decodeURIComponent(match[1]).toUpperCase();
+  if (!NAME.test(trkorr)) { throw new Error(trkorr + " is not a transport request."); }
+  const remote = String(params.get("remote") || "").toUpperCase();
+  const part = String(params.get("part") || "").toUpperCase(), ptype = String(params.get("ptype") || "").toUpperCase();
+  if (part && !ptype) { throw new Error("Reading the blocks of " + part + " needs its type in ptype."); }
+
+  const table = await hasTable(api);
+  const stored = await loadStored(api, trkorr, remote, io, table);
+  // A payload that does not parse is no review, as /ui2/cl_json's failure is in ZCL_VX_REVIEW_STORE.
+  let payload = null;
+  if (stored) { try { payload = parsePayload(stored.text); } catch (error) { payload = null; } }
+  // Nothing saved: the review is built from ADT, to look at - live, and not written anywhere.
+  const live = !payload && !remote;
+  if (live) { payload = await __vertexRequire(1531).build(api, trkorr, progress); }
+  if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored) }); }
+
+  const objects = [], reviewers = [], history = [];
+  if (payload) {
+    reportObjects(payload.OBJ_STATS).forEach(s => {
+      let approved = 0, declined = 0;
+      list(payload.HUNKS).filter(h => up(h.OBJTYPE) === up(s.OBJTYPE) && up(h.OBJ_NAME) === up(s.OBJ_NAME)).forEach(h => {
+        list(payload.HUNK_ACTIONS).filter(a => up(a.HUNK_KEY) === up(h.HUNK_KEY)).forEach(a => {
+          if (up(a.ACTION) === "A") { approved++; } else if (up(a.ACTION) === "D") { declined++; }
+        });
+      });
+      objects.push({ objtype: up(s.OBJTYPE), obj_name: up(s.OBJ_NAME), class_name: up(s.CLASS_NAME),
+        group: up(s.CLASS_NAME) ? "" : catLabel(up(s.OBJTYPE)), display_name: up(s.DISPLAY_NAME), author: up(s.AUTHOR),
+        author_name: up(s.AUTHOR_NAME), is_created: s.IS_CREATED === true || s.IS_CREATED === "X", hunks: Number(s.HUNK_COUNT),
+        inserted: Number(s.INS_COUNT), deleted: Number(s.DEL_COUNT), modified: Number(s.MOD_COUNT), approved, declined,
+        open: Number(s.HUNK_COUNT) - approved - declined });
+    });
+    list(payload.USER_STATES).forEach(u => reviewers.push({ reviewer: up(u.REVIEWER), reviewer_name: up(u.REVIEWER_NAME),
+      saved_at: up(u.SAVED_AT), approved: list(u.APPROVED).length, declined: list(u.DECLINED).length, notes: list(u.NOTES).length }));
+    list(payload.HISTORY).forEach(h => history.push({ saved_at: up(h.SAVED_AT), saved_by: up(h.SAVED_BY), saved_by_name: up(h.SAVED_BY_NAME),
+      approved: Number(h.APPROVED_COUNT), declined: Number(h.DECLINED_COUNT), notes: Number(h.NOTE_COUNT) }));
+  }
+  return { request: trkorr.toLowerCase(), remote: remote.toLowerCase(), table, saved: Boolean(payload), live,
+    saved_at: payload ? up(payload.LAST_SAVED_AT) : "", saved_by: payload ? up(payload.LAST_SAVED_BY) : "", objects, reviewers, history,
+    storage: storage(io, stored) };
+}
+
+// A write to a review: a reviewer's action on one block - A approve, D decline, C comment, U take a verdict back - or
+// S, saving the review built from ADT when none is stored. The body is the page's command: hunk_key, action, note and
+// saved_at, the stamp the page read. The answer is what a read would answer now: the part, or the summary.
+async function write(api, resource, body, io) {
+  const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
+  const match = /^\/sap\/bc\/adt\/vertex\/review\/([^/]+)$/.exec(url.pathname);
+  if (!match) { return null; }
+  const trkorr = decodeURIComponent(match[1]).toUpperCase();
+  if (!NAME.test(trkorr)) { throw new Error(trkorr + " is not a transport request."); }
+  const remote = String(params.get("remote") || "").toUpperCase();
+  const state = __vertexRequire(1533);
+  let cmd;
+  try { cmd = JSON.parse(String(body || "{}")); } catch (error) { throw new Error("The command for " + trkorr + " is not JSON."); }
+  const action = up(cmd.action).toUpperCase(), key = up(cmd.hunk_key), note = up(cmd.note);
+  if (!["A", "D", "C", "U", "S"].includes(action)) {
+    throw new Error('"' + action + '" is not a reviewer action. A approves, D declines, C comments, U takes a verdict back, S saves.');
+  }
+  if (action !== "S" && !key) { throw new Error("A reviewer action has to name the block it is about."); }
+  if ((action === "D" || action === "C") && !note) { throw new Error("A decline and a comment are the words that go with them."); }
+
+  const table = await hasTable(api);
+  const stored = await loadStored(api, trkorr, remote, io, table);
+  // A host may know the user at once (VS Code) or ask its project for it (Eclipse).
+  const user = String(await api.user()).toUpperCase();
+  const nameRow = (await api.query("SELECT a~name_text FROM usr21 AS u INNER JOIN adrp AS a ON a~persnumber = u~persnumber"
+    + " WHERE u~bname = " + sqlText(user), 1)).values[0];
+  const who = { user, name: nameRow ? up(nameRow.NAME_TEXT) : user };
+
+  let existing, current;
+  if (action === "S") {
+    if (stored) { throw new Error("A review of " + trkorr + " is already saved (" + stored.from + "). Read it again."); }
+    if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
+    existing = {};
+    current = state.applySaved(await __vertexRequire(1531).build(api, trkorr), who.user);
+  } else {
+    if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
+    existing = state.parseForWrite(stored.text);
+    // A review is written by more than one person, and a save writes the whole payload: a state that moved since the
+    // page read it is refused, loudly - there is no merge here.
+    if (cmd.saved_at && state.plain(cmd.saved_at) !== state.plain(existing.LAST_SAVED_AT)) {
+      throw new Error(up(existing.LAST_SAVED_BY) + " saved this review while the page was open. Read it again, then write.");
+    }
+    current = state.applySaved(existing, who.user);
+    const hunk = current.hunks.find(h => up(h.HUNK_KEY) === key);
+    if (!hunk) { throw new Error(key + " is not a block of this review."); }
+    state.applyAction(current, key, action, hunk, note, who);
+  }
+  const next = state.buildSave(existing, trkorr, current, who);
+  const text = state.stringify(next);
+  const expect = stored ? state.plain(existing.LAST_SAVED_AT) : "";
+
+  // The table when it is to be written - and when it cannot be, the write fails rather than landing elsewhere.
+  if (!io || io.mode !== "file") {
+    if (!table) { throw new Error("This system has no ZAVE_REVIEW table with REMOTE and PAYLOAD; the review cannot be saved there."); }
+    await api.storeReview(trkorr, remote, expect, text);
+  }
+  if (io && io.mode !== "table") { await io.write(trkorr, remote, text); }
+
+  const part = up(params.get("part")), ptype = up(params.get("ptype"));
+  const again = "/sap/bc/adt/vertex/review/" + encodeURIComponent(trkorr) + "?remote=" + encodeURIComponent(remote)
+    + (part ? "&part=" + encodeURIComponent(part) + "&ptype=" + encodeURIComponent(ptype) : "");
+  return request(api, again, undefined, io);
+}
+
+module.exports = { request, write, hunkRanges, reportObjects, parsePayload, stmtOpen };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// AVE's cutting of a diff into review blocks, shared by the saved review and the review built from ADT.
+
+const up = value => String(value == null ? "" : value);
+
+// ZCL_VX_REVIEW_PREPARE=>UPDATE_STMT_OPEN: a line of code leaves its statement open unless it ends in a full stop;
+// blank lines and comments do not change it, and a trailing comment does not count.
+function stmtOpen(line, open) {
+  let text = up(line), trim = text.trim();
+  if (!trim || trim[0] === "*" || trim[0] === "\"") { return open; }
+  const quote = text.indexOf("\"");
+  if (quote >= 0) { text = text.slice(0, quote); }
+  trim = text.trim();
+  if (!trim) { return open; }
+  return trim[trim.length - 1] !== ".";
+}
+const BRIDGE_MAX = 100;
+
+// ZCL_VX_REVIEW_HUNKS=>HUNK_RANGES: where each block begins and ends in the diff (1-based, as the ABAP index), and
+// the line of the new version it opens on.
+function hunkRanges(diff) {
+  const result = [];
+  let pos = 1, line = 0, open = false;
+  const total = diff.length, at = i => diff[i - 1];
+  while (pos <= total) {
+    const start = at(pos);
+    if (start.op !== "-" && start.op !== "+") {
+      if (start.op === "=") { line++; open = stmtOpen(start.text, open); }
+      pos++;
+      continue;
+    }
+    const hunk = [];
+    let bridge = 0, scan = pos;
+    const startLine = line + 1;
+    while (scan <= total) {
+      const row = at(scan);
+      if (row.op === "-" || row.op === "+") {
+        hunk.push(row);
+        if (row.op === "+") { open = stmtOpen(row.text, open); }
+        scan++;
+      } else if (row.op === "=" && open && bridge < BRIDGE_MAX) {
+        bridge++;
+        hunk.push(row);
+        open = stmtOpen(row.text, open);
+        scan++;
+      } else if (row.op === "=" && up(row.text).trim() === "") {
+        let peek = scan + 1, extra = 0, more = false;
+        while (peek <= total) {
+          const p = at(peek);
+          if (p.op === "-" || p.op === "+") { more = true; break; }
+          if (p.op === "=" && up(p.text).trim() === "" && extra < 1) { extra++; peek++; continue; }
+          break;
+        }
+        if (!more) { break; }
+        hunk.push(row);
+        scan++;
+      } else {
+        break;
+      }
+    }
+    result.push({ op_from: pos, op_to: scan - 1, start_line: startLine });
+    hunk.forEach(r => { if (r.op === "=" || r.op === "+") { line++; } });
+    pos = scan;
+  }
+  return result;
+}
+
+module.exports = { hunkRanges, stmtOpen };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// A review built from ADT, when none is saved: what a transport request changed, part by part, in the shape of the
+// payload AVE stores (OBJ_STATS, HUNKS, DIFF_DATA), so the same reading code shows it. Nothing here writes: a review
+// built this way is for looking at the change; approving it is the saved review's business.
+//
+// For each part the request touched, the pair of versions is chosen by AVE's rule (see pairOf). A class part (a section, a method) is cut out of the versions of
+// its class. The diff is the line diff of the Versions window; blocks are cut by AVE's own walk.
+
+const versions = __vertexRequire(1527);
+const aveDiff = __vertexRequire(1532);
+
+// ZCL_VX_REVIEW_STATS=>FROM_DIFF: in each run of changes a deleted line pairs with the first unpaired inserted one it
+// has common characters with - a modified line; the rest are inserted or deleted; a run of blank lines counts for nothing.
+const blank = list => list.every(line => String(line).replace(/\s/g, "") === "");
+function countChanges(ops) {
+  let ins = 0, del = 0, mod = 0, dels = [], adds = [];
+  const flush = () => {
+    if (!dels.length && !adds.length) { return; }
+    if (!blank(dels.concat(adds))) {
+      const used = adds.map(() => false);
+      dels.forEach(d => {
+        const at = adds.findIndex((a, i) => !used[i] && aveDiff.hasCommonChars(d, a));
+        if (at >= 0) { used[at] = true; mod++; } else { del++; }
+      });
+      ins += used.filter(u => !u).length;
+    }
+    dels = []; adds = [];
+  };
+  ops.forEach(o => { if (o.op === "-") { dels.push(o.text); } else if (o.op === "+") { adds.push(o.text); } else { flush(); } });
+  flush();
+  return { ins, del, mod };
+}
+// ZCL_VX_REVIEW_STATS=>CLASSIFY_HUNK: a block is changed when any of its deleted lines pairs with an inserted one,
+// otherwise added or deleted by whichever side is larger.
+function classify(adds, dels) {
+  if (!dels.length) { return "added"; }
+  if (!adds.length) { return "deleted"; }
+  if (dels.some(d => adds.some(a => aveDiff.hasCommonChars(d, a)))) { return "changed"; }
+  return adds.length >= dels.length ? "added" : "deleted";
+}
+const { inLists } = __vertexRequire(1525);
+const { hunkRanges } = __vertexRequire(1530);
+
+const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
+const CLASS_PART_TYPES = ["METH", "CPUB", "CPRO", "CPRI", "CINC"];
+
+// The parts a request names, each with the object it is read through (type, name) - a class's parts from the class.
+async function partsOfRequest(api, keys) {
+  const parts = [], seen = new Set();
+  const add = async (type, name, filter) => {
+    for (const p of await versions.partsOf(api, type, name)) {
+      if (filter && !filter(p)) { continue; }
+      const key = p.part_type + "|" + p.name;
+      if (seen.has(key)) { continue; }
+      seen.add(key);
+      parts.push({ type, object: name, part: p.name, ptype: p.part_type, unit: p.unit, className: type === "CLAS" ? name : "" });
+    }
+  };
+  for (const k of keys) {
+    const object = String(k.OBJECT), name = String(k.OBJ_NAME).trim();
+    if (k.PGMID === "R3TR" && ["CLAS", "INTF", "FUGR", "PROG", "DDLS", "TABL", "DOMA", "DTEL"].includes(object)) { await add(object, name); continue; }
+    if (object === "REPS") { await add("PROG", name); continue; }
+    if (object === "FUNC") { await add("FUNC", name); continue; }
+    if (object === "METH") {
+      const owner = String(k.OBJ_NAME).slice(0, 30).trim(), method = String(k.OBJ_NAME).slice(30).trim();
+      await add("CLAS", owner, p => p.part_type === "METH" && p.unit === method);
+      continue;
+    }
+    if (CLASS_PART_TYPES.includes(object)) {
+      const owner = String(k.OBJ_NAME).slice(0, 30).replace(/=+$/, "").trim();
+      await add("CLAS", owner, p => p.part_type === object);
+    }
+  }
+  return parts;
+}
+
+// The pair of versions the request's change is, read from the part's feed, by AVE's rule (ZCL_VX_VERSION_LIST=>LOAD
+// with a request scope). NEW: the newest numbered version of the request; if a version of another request sits above
+// it, that one stays NEW - the active state then holds the other request's work too; otherwise the active state when
+// it belongs to the request; with no version of the request at all, the active state. OLD: the first version below NEW
+// that is not the request's; none, and the oldest version unless that is NEW or the request's own (then the request
+// created the part). Whose the active state is comes from ADT's feed, not from VRSD: VRSD keeps naming the request
+// that last released it while later, unreleased work of another request already sits in it.
+// Not carried: AVE skips the request's own transports of copies when looking for OLD, by resolving each to its parent.
+function pairOf(feed, numbers) {
+  const ordered = feed.filter(e => e.id !== "00000").sort((a, b) => Number(b.id) - Number(a.id));
+  const active = feed.find(e => e.id === "00000") || null;
+  const at = ordered.findIndex(e => numbers.has(e.transport));
+  const own = at >= 0 ? ordered[at] : null;
+  const foreignAbove = at > 0;
+  let fresh;
+  if (own && foreignAbove) { fresh = own; }
+  else if (active && numbers.has(active.transport)) { fresh = active; }
+  else { fresh = own || active; }
+  if (!fresh) { return null; }
+  const below = fresh === active ? ordered : ordered.slice(ordered.indexOf(fresh) + 1);
+  let old = below.find(e => e.transport && !numbers.has(e.transport)) || null;
+  if (!old && fresh.id !== "00001" && ordered.length) {
+    const oldest = ordered[ordered.length - 1];
+    old = oldest === fresh || numbers.has(oldest.transport) ? null : oldest;
+  }
+  return { fresh, old };
+}
+
+const cache = new WeakMap();
+
+// The review of a request, built; kept for a few minutes per session, since the page asks for the summary and then
+// for each part.
+// PROGRESS, when given, is told what the build is doing, a line at a time.
+async function build(api, request, progress) {
+  if (!cache.has(api)) { cache.set(api, new Map()); }
+  const kept = cache.get(api).get(request);
+  if (kept && Date.now() - kept.at < 5 * 60 * 1000) { return kept.payload; }
+  const promise = buildNow(api, request, progress || (() => {}));
+  cache.get(api).set(request, { at: Date.now(), payload: promise });
+  promise.catch(() => cache.get(api).delete(request));
+  return promise;
+}
+
+async function buildNow(api, request, progress) {
+  progress("reading what " + request + " holds ...");
+  const head = (await api.query("SELECT trkorr FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
+  if (!head) { throw new Error("Transport request " + request + " does not exist."); }
+  const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(request), 1000)).values.map(r => r.TRKORR);
+  const numbers = new Set([request, ...tasks]);
+  const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
+  const payload = { TRKORR: request, OBJ_STATS: [], HUNKS: [], DIFF_DATA: [], HUNK_ACTIONS: [], USER_STATES: [], THREADS: [], HISTORY: [] };
+
+  const parts = await partsOfRequest(api, keys);
+  for (const [at, p] of parts.entries()) {
+    progress((at + 1) + " of " + parts.length + ": " + (p.ptype === "METH" ? p.object + " " + p.unit : p.part) + " - reading its versions ...");
+    const where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
+    if (!where) { continue; }
+    const feed = await api.revisions(where.url, where.include || undefined);
+    const pair = pairOf(feed, numbers);
+    if (!pair) { continue; }
+    const textOf = async entry => {
+      if (!entry) { return []; }
+      const text = await versions.sourceAt(api, entry.uri);
+      return (where.cut ? where.cut(text) : versions.lines(text)) || [];
+    };
+    const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
+    const ops = await versions.diff(oldLines, newLines, false, api);
+    if (!ops.some(o => o.op !== "=")) { continue; }
+
+    const ranges = hunkRanges(ops);
+    const versnoNew = pair.fresh.id === "00000" ? "99998" : pair.fresh.id, versnoOld = pair.old ? pair.old.id : "00000";
+    const display = p.ptype === "METH" ? p.unit : p.part;
+    const { ins, del, mod } = countChanges(ops);
+    let hIns = 0, hMod = 0, hDel = 0;
+    ranges.forEach((r, i) => {
+      const block = ops.slice(r.op_from - 1, r.op_to);
+      const adds = block.filter(o => o.op === "+").map(o => o.text), dels = block.filter(o => o.op === "-").map(o => o.text);
+      const plus = adds.length, minus = dels.length;
+      const kind = classify(adds, dels);
+      if (kind === "changed") { hMod++; } else if (kind === "added") { hIns++; } else { hDel++; }
+      payload.HUNKS.push({ HUNK_KEY: p.ptype + "~" + p.part + "~" + (i + 1), OBJTYPE: p.ptype, OBJ_NAME: p.part, CLASS_NAME: p.className,
+        DISPLAY_NAME: display, HUNK_NO: i + 1, START_LINE: r.start_line, CHANGE_COUNT: plus + minus, CHANGE_KIND: kind,
+        AUTHOR: pair.fresh.author, AUTHOR_NAME: "", VERSNO_NEW: versnoNew, VERSNO_OLD: versnoOld });
+    });
+    payload.DIFF_DATA.push({ KEY: { OBJTYPE: p.ptype, OBJNAME: p.part, VERSNO_O: versnoOld, VERSNO_N: versnoNew }, RETROFIT: false,
+      DIFF: ops.map(o => ({ OP: o.op, TEXT: o.text })) });
+    payload.OBJ_STATS.push({ OBJTYPE: p.ptype, CLASS_NAME: p.className, OBJ_NAME: p.part, VERSNO_NEW: versnoNew, VERSNO_OLD: versnoOld,
+      AUTHOR: pair.fresh.author, AUTHOR_NAME: "", INS_COUNT: ins, DEL_COUNT: del, MOD_COUNT: mod, HUNK_COUNT: ranges.length,
+      HUNK_INS: hIns, HUNK_MOD: hMod, HUNK_DEL: hDel, DISPLAY_NAME: display, IS_CREATED: !pair.old });
+  }
+
+  // Names to the authors, as the saved review carries them.
+  progress("reading the authors' names ...");
+  const authors = [...new Set(payload.OBJ_STATS.map(s => s.AUTHOR).filter(Boolean))];
+  if (authors.length) {
+    const names = new Map((await inLists(api, "SELECT u~bname, a~name_text FROM usr21 AS u INNER JOIN adrp AS a"
+      + " ON a~persnumber = u~persnumber WHERE u~bname", authors, 1000)).map(r => [r.BNAME, r.NAME_TEXT]));
+    payload.OBJ_STATS.forEach(s => { s.AUTHOR_NAME = names.get(s.AUTHOR) || ""; });
+    payload.HUNKS.forEach(h => { h.AUTHOR_NAME = names.get(h.AUTHOR) || ""; });
+  }
+  return payload;
+}
+
+module.exports = { build, pairOf, countChanges };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// AVE's line diff and line pairing, taken unchanged from AVE/html_simulator/diff.js (lines 12-231), the JS port
+// of AVE's ABAP that AVE keeps "as faithful to the ABAP as possible". A review built here counts and cuts its
+// changes with these, so it reads like the one AVE builds.
+  // ─── 1. Line-level LCS diff (matches METHOD compute_diff) ────────────────
+
+  // Strip leading whitespace and ABAP comment asterisks, so a line and its
+  // commented-out twin ("***" + original) normalize to the same text.
+  function normForMatch(s) {
+    return s.replace(/^[\s*]+/, '');
+  }
+  // ABAP full-line comment: first non-space char is '*'.
+  function isCommentLine(s) {
+    return /^\s*\*/.test(s);
+  }
+  // Match type between two lines:
+  //   1 = exact (→ '='),  2 = comment-twin (→ modification '-'/'+'),  0 = none.
+  // The comment-twin case lets a deleted line pair with its commented-out copy
+  // even when they sit far apart (old code commented out + moved below an
+  // inserted block). Requires one side to be a comment and identical content
+  // after stripping leading whitespace/'*', so it never matches unrelated code.
+  function matchType(a, b, exactEq) {
+    if (exactEq(a, b)) return 1;
+    if (!isCommentLine(a) && !isCommentLine(b)) return 0;
+    const na = normForMatch(a);
+    if (na.length >= 3 && na === normForMatch(b)) return 2;
+    return 0;
+  }
+
+  function computeDiff(itOld, itNew, ignoreCase) {
+    const exactEq = ignoreCase
+      ? (a, b) => a.toUpperCase() === b.toUpperCase()
+      : (a, b) => a === b;
+    const nOld = itOld.length;
+    const nNew = itNew.length;
+    const cols = nNew + 1;
+    const rows = nOld + 1;
+    // flat DP table
+    const dp = new Int32Array(rows * cols);
+
+    for (let i = 1; i <= nOld; i++) {
+      for (let j = 1; j <= nNew; j++) {
+        if (matchType(itOld[i - 1], itNew[j - 1], exactEq)) {
+          dp[i * cols + j] = dp[(i - 1) * cols + (j - 1)] + 1;
+        } else {
+          const vUp = dp[(i - 1) * cols + j];
+          const vLeft = dp[i * cols + (j - 1)];
+          dp[i * cols + j] = vUp >= vLeft ? vUp : vLeft;
+        }
+      }
+    }
+
+    // Backtrack — prefer '-' over '+' when equal so '-' precedes '+'
+    const result = [];
+    let i = nOld, j = nNew;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0) {
+        const mt = matchType(itOld[i - 1], itNew[j - 1], exactEq);
+        if (mt === 1) {
+          result.push({ op: '=', text: itNew[j - 1] });
+          i--; j--;
+        } else if (mt === 2) {
+          // Commented-out twin → show as a modification so the char-diff
+          // highlights the added '*'. Push '+' then '-' (reversed later → '-','+').
+          result.push({ op: '+', text: itNew[j - 1] });
+          result.push({ op: '-', text: itOld[i - 1] });
+          i--; j--;
+        } else {
+          const cup = dp[(i - 1) * cols + j];
+          const cleft = dp[i * cols + (j - 1)];
+          if (cup >= cleft) {
+            result.push({ op: '-', text: itOld[i - 1] });
+            i--;
+          } else {
+            result.push({ op: '+', text: itNew[j - 1] });
+            j--;
+          }
+        }
+      } else if (i > 0) {
+        result.push({ op: '-', text: itOld[i - 1] });
+        i--;
+      } else {
+        result.push({ op: '+', text: itNew[j - 1] });
+        j--;
+      }
+    }
+    return result.reverse();
+  }
+
+  // ─── 2. Pairing heuristic (matches METHOD has_common_chars) ──────────────
+
+  // Count edit runs in the middle parts of two strings (mirrors METHOD count_edit_runs).
+  // Tokenizes by whitespace, greedy forward LCS on tokens, counts unmatched regions.
+  function countEditRuns(a, b) {
+    const ta = a.split(/\s+/).filter(t => t.length > 0);
+    const tb = b.split(/\s+/).filter(t => t.length > 0);
+    if (!ta.length && !tb.length) return 0;
+    if (!ta.length || !tb.length) return 1;
+
+    // Greedy forward scan for matching token pairs
+    const pairs = [];
+    let jStart = 0;
+    for (let ia = 0; ia < ta.length; ia++) {
+      for (let jb = jStart; jb < tb.length; jb++) {
+        if (ta[ia] === tb[jb]) {
+          pairs.push([ia, jb]);
+          jStart = jb + 1;
+          break;
+        }
+      }
+    }
+    if (!pairs.length) return 1;
+
+    let runs = 0;
+    const [fi, fj] = pairs[0];
+    if (fi > 0 || fj > 0) runs++;                          // unmatched before first island
+    for (let k = 0; k < pairs.length - 1; k++) {
+      const [ai, aj] = pairs[k], [bi, bj] = pairs[k + 1];
+      if (bi > ai + 1 || bj > aj + 1) runs++;              // gap between islands
+    }
+    const [li, lj] = pairs[pairs.length - 1];
+    if (li < ta.length - 1 || lj < tb.length - 1) runs++; // unmatched after last island
+    return runs;
+  }
+
+  function countCharEditRuns(a, b) {
+    const nA = a.length;
+    const nB = b.length;
+    if (!nA && !nB) return 0;
+    if (!nA || !nB) return 1;
+
+    const cols = nB + 1;
+    const rows = nA + 1;
+    const dp = new Int32Array(rows * cols);
+    for (let i = 1; i <= nA; i++) {
+      for (let j = 1; j <= nB; j++) {
+        if (a[i - 1] === b[j - 1]) {
+          dp[i * cols + j] = dp[(i - 1) * cols + (j - 1)] + 1;
+        } else {
+          const up = dp[(i - 1) * cols + j];
+          const left = dp[i * cols + (j - 1)];
+          dp[i * cols + j] = up >= left ? up : left;
+        }
+      }
+    }
+
+    const ops = [];
+    let i = nA, j = nB;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+        ops.push('=');
+        i--; j--;
+      } else if (j > 0) {
+        if (i === 0 || dp[i * cols + (j - 1)] > dp[(i - 1) * cols + j]) {
+          ops.push('+');
+          j--;
+        } else {
+          ops.push('-');
+          i--;
+        }
+      } else {
+        ops.push('-');
+        i--;
+      }
+    }
+
+    let runs = 0;
+    let inEdit = false;
+    for (let k = ops.length - 1; k >= 0; k--) {
+      if (ops[k] === '=') inEdit = false;
+      else if (!inEdit) {
+        runs++;
+        inEdit = true;
+      }
+    }
+    return runs;
+  }
+
+  // Trivial structural delimiter lines (ENDIF., ELSE., ENDLOOP., …) must not
+  // anchor pairing: they occur everywhere and would cross-link unrelated code.
+  const TRIVIAL_ANCHORS = new Set([
+    'ENDIF', 'ELSE', 'ENDLOOP', 'ENDTRY', 'ENDDO', 'ENDCASE', 'ENDWHILE',
+    'ENDMETHOD', 'ENDFORM', 'ENDFUNCTION', 'ENDMODULE', 'ENDCLASS',
+    'ENDSELECT', 'ENDAT', 'ENDPROVIDE', 'ENDINTERFACE', 'TRY', 'ENDENHANCEMENT',
+  ]);
+  function isTrivialAnchor(line) {
+    return TRIVIAL_ANCHORS.has(line.toUpperCase().replace(/[.\s]+$/, ''));
+  }
+
+  function hasCommonChars(a, b) {
+    const lA = a.replace(/^\s+|\s+$/g, '');
+    const lB = b.replace(/^\s+|\s+$/g, '');
+    if (!lA.length || !lB.length) return true;
+
+    // Two structural delimiters must never pair — neither identical
+    // (ENDIF./ENDIF.) nor different ones sharing only 'END' (ENDLOOP. vs ENDIF.).
+    if (isTrivialAnchor(lA) && isTrivialAnchor(lB)) return false;
+    if (lA === lB) return true;
+
+    const shorter = lA.length < lB.length ? lA : lB;
+    const longer = lA.length < lB.length ? lB : lA;
+    if (longer.slice(1) === shorter) return true;
+    if (longer.slice(1).replace(/^\s+/, '') === shorter) return true;
+    // One line's content is contained in the other (e.g. commented-out line:
+    // old="  email TYPE x," new="  "email TYPE x, "some comment")
+    if (shorter.length >= 3 && longer.includes(shorter)) return true;
+
+    let cp = 0;
+    while (cp < lA.length && cp < lB.length && lA[cp] === lB[cp]) cp++;
+    if (cp < 3) return false;
+
+    // Strip common suffix to isolate the changed middle
+    let cs = 0;
+    const laRest = lA.length - cp, lbRest = lB.length - cp;
+    while (cs < laRest && cs < lbRest && lA[lA.length - 1 - cs] === lB[lB.length - 1 - cs]) cs++;
+
+    const midA = lA.slice(cp, lA.length - cs);
+    const midB = lB.slice(cp, lB.length - cs);
+    // More than 2 edit runs in the middle → lines differ in too many places to pair
+    if (countEditRuns(midA, midB) > 2) return false;
+    if (countCharEditRuns(midA, midB) > 2) return false;
+    return true;
+  }
+
+
+module.exports = { computeDiff, hasCommonChars, isTrivialAnchor };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// What a reviewer does to a saved review, done the way AVE does it, so that AVE and every VERTEX window read the same
+// review afterwards: ZCL_VX_REVIEW_STATE=>APPLY_SAVED_PAYLOAD, APPLY_REVIEWER_ACTION and BUILD_SAVE_PAYLOAD, carried
+// over line for line. The payload is the one ZAVE_REVIEW holds - the keys as /ui2/cl_json wrote them, in upper case.
+//
+// /ui2/cl_json writes a TIMESTAMPL as a number of 21 digits, more than a double holds. A payload read for writing keeps
+// every such number as its text with a mark in front, and the mark is taken off when the payload is written again, so
+// a stamp goes back exactly as it came and AVE reads a number where it wrote one.
+
+// Printable, because JSON allows no control character inside a string; nothing in a review starts with it.
+const MARK = "#vx-number#";
+
+function parseForWrite(text) {
+  const safe = String(text).replace(/("(?:[^"\\]|\\.)*")|(-?\d+\.\d+|-?\d{16,})/g,
+    (all, string, number) => string || '"' + MARK + number + '"');
+  return JSON.parse(safe);
+}
+
+function stringify(payload) {
+  return JSON.stringify(payload).replace(/"#vx-number#(-?[\d.]+)"/g, "$1");
+}
+
+// A stamp as text, with or without the mark.
+const plain = value => String(value == null ? "" : value).replace(MARK, "");
+
+// GET TIME STAMP FIELD into a TIMESTAMPL: UTC, YYYYMMDDhhmmss and seven decimals, marked as a number.
+function stamp(now) {
+  const d = now || new Date(), pad = (n, w = 2) => String(n).padStart(w, "0");
+  return MARK + d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) + pad(d.getUTCHours())
+    + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()) + "." + pad(d.getUTCMilliseconds(), 3) + "0000";
+}
+
+const list = value => Array.isArray(value) ? value : [];
+const up = value => String(value == null ? "" : value);
+const later = (a, b) => Number(plain(a)) > Number(plain(b));
+
+// APPLY_SAVED_PAYLOAD, with IV_IGNORE_GENERATED off: a write from VERTEX adds one verdict and takes nothing away.
+function applySaved(payload, user) {
+  const state = {
+    objStats: list(payload.OBJ_STATS), hunks: list(payload.HUNKS).slice(), diffData: list(payload.DIFF_DATA),
+    timings: list(payload.TIMINGS), actions: list(payload.HUNK_ACTIONS).slice(), threads: [],
+    approved: new Set(), declined: new Set(), notes: new Map()
+  };
+  const hunk = key => state.hunks.find(h => up(h.HUNK_KEY) === key);
+  list(payload.THREADS).forEach(saved => {
+    const thread = { HUNK_KEY: saved.HUNK_KEY, OBJTYPE: saved.OBJTYPE, OBJ_NAME: saved.OBJ_NAME, CLASS_NAME: saved.CLASS_NAME,
+      DISPLAY_NAME: saved.DISPLAY_NAME, HUNK_NO: saved.HUNK_NO, START_LINE: saved.START_LINE, CHANGE_COUNT: saved.CHANGE_COUNT,
+      CHANGE_KIND: saved.CHANGE_KIND, VERSNO_NEW: saved.VERSNO_NEW, VERSNO_OLD: saved.VERSNO_OLD,
+      VERSNO_NEW_TEXT: saved.VERSNO_NEW_TEXT, VERSNO_OLD_TEXT: saved.VERSNO_OLD_TEXT, HTML: saved.HTML,
+      MESSAGES: list(saved.MESSAGES).slice() };
+    const current = hunk(up(saved.HUNK_KEY));
+    if (current) {
+      ["OBJTYPE", "OBJ_NAME", "CLASS_NAME", "DISPLAY_NAME", "HUNK_NO", "START_LINE", "CHANGE_COUNT", "CHANGE_KIND",
+        "VERSNO_NEW", "VERSNO_OLD", "VERSNO_NEW_TEXT", "VERSNO_OLD_TEXT", "HTML"].forEach(f => { thread[f] = current[f]; });
+    } else if (!up(saved.HUNK_KEY).startsWith("AI_SUMMARY~")) {
+      state.hunks.push({ HUNK_KEY: saved.HUNK_KEY, OBJTYPE: saved.OBJTYPE, OBJ_NAME: saved.OBJ_NAME, CLASS_NAME: saved.CLASS_NAME,
+        DISPLAY_NAME: saved.DISPLAY_NAME, HUNK_NO: saved.HUNK_NO, START_LINE: saved.START_LINE, CHANGE_COUNT: saved.CHANGE_COUNT,
+        CHANGE_KIND: saved.CHANGE_KIND, AUTHOR: saved.AUTHOR, AUTHOR_NAME: saved.AUTHOR_NAME, VERSNO_NEW: saved.VERSNO_NEW,
+        VERSNO_OLD: saved.VERSNO_OLD, VERSNO_NEW_TEXT: saved.VERSNO_NEW_TEXT, VERSNO_OLD_TEXT: saved.VERSNO_OLD_TEXT, HTML: saved.HTML });
+    }
+    state.threads.push(thread);
+  });
+  const hasAction = (key, reviewer, action) => state.actions.some(a => up(a.HUNK_KEY) === key && up(a.REVIEWER) === reviewer && up(a.ACTION) === action);
+  const known = key => !state.hunks.length || Boolean(hunk(key));
+  list(payload.USER_STATES).forEach(u => {
+    [["APPROVED", "A"], ["DECLINED", "D"]].forEach(([field, action]) => list(u[field]).forEach(k => {
+      const key = up(k.HUNK_KEY);
+      if (known(key) && !hasAction(key, up(u.REVIEWER), action)) {
+        state.actions.push({ HUNK_KEY: key, REVIEWER: u.REVIEWER, REVIEWER_NAME: u.REVIEWER_NAME, ACTION: action, CHANGED_AT: u.SAVED_AT });
+      }
+    }));
+  });
+  const mine = list(payload.USER_STATES).find(u => up(u.REVIEWER) === user);
+  if (mine) {
+    [["APPROVED", "A", state.approved], ["DECLINED", "D", state.declined]].forEach(([field, action, set]) => list(mine[field]).forEach(k => {
+      const key = up(k.HUNK_KEY);
+      set.add(key);
+      if (!hasAction(key, up(mine.REVIEWER), action)) {
+        state.actions.push({ HUNK_KEY: key, REVIEWER: mine.REVIEWER, REVIEWER_NAME: mine.REVIEWER_NAME, ACTION: action, CHANGED_AT: mine.SAVED_AT });
+      }
+    }));
+    list(mine.NOTES).forEach(n => { if (!state.notes.has(up(n.HUNK_KEY))) { state.notes.set(up(n.HUNK_KEY), up(n.NOTE)); } });
+  }
+  // SANITIZE_REVIEW_STATE
+  if (state.hunks.length) {
+    [...state.approved].forEach(k => { if (!hunk(k)) { state.approved.delete(k); } });
+    [...state.declined].forEach(k => { if (!hunk(k) || state.approved.has(k)) { state.declined.delete(k); } });
+    state.actions = state.actions.filter(a => hunk(up(a.HUNK_KEY)));
+  }
+  return state;
+}
+
+// APPLY_REVIEWER_ACTION: 'A' approve, 'D' decline, 'C' comment, 'U' take a verdict back.
+function applyAction(state, key, action, hunk, note, who, now) {
+  const setAction = code => {
+    state.actions = state.actions.filter(a => !(up(a.HUNK_KEY) === key && up(a.REVIEWER) === who.user));
+    state.actions.push({ HUNK_KEY: key, REVIEWER: who.user, REVIEWER_NAME: who.name, ACTION: code, CHANGED_AT: stamp(now) });
+  };
+  if (action === "U") {
+    state.approved.delete(key); state.declined.delete(key); state.notes.delete(key);
+    state.actions = state.actions.filter(a => !(up(a.HUNK_KEY) === key && up(a.REVIEWER) === who.user));
+    return;
+  }
+  if (action === "A") {
+    state.approved.add(key); state.declined.delete(key); setAction("A");
+    return;
+  }
+  const decline = action === "D";
+  state.notes.set(key, note);
+  if (decline) { state.declined.add(key); state.approved.delete(key); setAction("D"); }
+  let thread = state.threads.find(t => up(t.HUNK_KEY) === key);
+  if (!thread) {
+    if (!hunk) { return; }
+    thread = { HUNK_KEY: key, OBJTYPE: hunk.OBJTYPE, OBJ_NAME: hunk.OBJ_NAME, CLASS_NAME: hunk.CLASS_NAME, DISPLAY_NAME: hunk.DISPLAY_NAME,
+      HUNK_NO: hunk.HUNK_NO, START_LINE: hunk.START_LINE, CHANGE_COUNT: hunk.CHANGE_COUNT, CHANGE_KIND: hunk.CHANGE_KIND,
+      VERSNO_NEW: hunk.VERSNO_NEW, VERSNO_OLD: hunk.VERSNO_OLD, VERSNO_NEW_TEXT: hunk.VERSNO_NEW_TEXT, VERSNO_OLD_TEXT: hunk.VERSNO_OLD_TEXT,
+      HTML: hunk.HTML, MESSAGES: [] };
+    state.threads.push(thread);
+  }
+  // Saying the same thing twice in a row is a double click, not a second comment.
+  const last = thread.MESSAGES[thread.MESSAGES.length - 1];
+  if (last && up(last.AUTHOR) === who.user && Boolean(last.IS_DECLINE === true || last.IS_DECLINE === "X") === decline && up(last.TEXT) === note) { return; }
+  thread.MESSAGES.push({ AUTHOR: who.user, AUTHOR_NAME: who.name, CREATED_AT: stamp(now), IS_DECLINE: decline, TEXT: note });
+}
+
+// BUILD_SAVE_PAYLOAD
+function buildSave(existing, trkorr, state, who, now) {
+  const savedAt = stamp(now);
+  const result = Object.assign({}, existing);
+  result.SCHEMA_VERSION = 2;
+  result.TRKORR = trkorr;
+  result.LAST_SAVED_AT = savedAt;
+  result.LAST_SAVED_BY = who.user;
+  result.OBJ_STATS = state.objStats;
+  result.HUNKS = state.hunks.map(h => Object.assign({}, h, { HTML: "" }));
+  result.DIFF_DATA = state.diffData;
+  result.HUNK_ACTIONS = state.actions;
+  result.TIMINGS = list(existing.TIMINGS);
+  const mine = { REVIEWER: who.user, REVIEWER_NAME: who.name, SAVED_AT: savedAt,
+    APPROVED: [...state.approved].map(k => ({ HUNK_KEY: k })), DECLINED: [...state.declined].map(k => ({ HUNK_KEY: k })),
+    NOTES: [...state.notes].map(([k, n]) => ({ HUNK_KEY: k, NOTE: n })) };
+  result.USER_STATES = list(existing.USER_STATES).filter(u => up(u.REVIEWER) !== who.user).concat([mine]);
+  const threads = list(existing.THREADS).map(t => Object.assign({}, t, { MESSAGES: list(t.MESSAGES).slice() }));
+  state.threads.forEach(cur => {
+    const h = state.hunks.find(x => up(x.HUNK_KEY) === up(cur.HUNK_KEY));
+    const save = { HUNK_KEY: cur.HUNK_KEY, OBJTYPE: cur.OBJTYPE, OBJ_NAME: cur.OBJ_NAME, CLASS_NAME: cur.CLASS_NAME, DISPLAY_NAME: cur.DISPLAY_NAME,
+      HUNK_NO: cur.HUNK_NO, START_LINE: cur.START_LINE, CHANGE_COUNT: cur.CHANGE_COUNT, CHANGE_KIND: cur.CHANGE_KIND,
+      VERSNO_NEW: h ? h.VERSNO_NEW : cur.VERSNO_NEW, VERSNO_OLD: h ? h.VERSNO_OLD : cur.VERSNO_OLD,
+      VERSNO_NEW_TEXT: h ? h.VERSNO_NEW_TEXT : cur.VERSNO_NEW_TEXT, VERSNO_OLD_TEXT: h ? h.VERSNO_OLD_TEXT : cur.VERSNO_OLD_TEXT,
+      AUTHOR: h ? h.AUTHOR : "", AUTHOR_NAME: h ? h.AUTHOR_NAME : "", MESSAGES: cur.MESSAGES };
+    const saved = threads.find(t => up(t.HUNK_KEY) === up(cur.HUNK_KEY));
+    if (!saved) { threads.push(save); return; }
+    ["OBJTYPE", "OBJ_NAME", "CLASS_NAME", "DISPLAY_NAME", "HUNK_NO", "START_LINE", "CHANGE_COUNT", "CHANGE_KIND", "AUTHOR", "AUTHOR_NAME"]
+      .forEach(f => { saved[f] = save[f]; });
+    saved.HTML = "";
+    cur.MESSAGES.forEach(m => {
+      if (!saved.MESSAGES.some(s => up(s.AUTHOR) === up(m.AUTHOR) && plain(s.CREATED_AT) === plain(m.CREATED_AT) && up(s.TEXT) === up(m.TEXT))) {
+        saved.MESSAGES.push(m);
+      }
+    });
+  });
+  threads.forEach(t => { t.HTML = ""; });
+  result.THREADS = threads;
+  result.HISTORY = list(existing.HISTORY).concat([{ SAVED_AT: savedAt, SAVED_BY: who.user, SAVED_BY_NAME: who.name,
+    APPROVED_COUNT: state.approved.size, DECLINED_COUNT: state.declined.size, NOTE_COUNT: state.notes.size }]);
+  return result;
+}
+
+module.exports = { MARK, parseForWrite, stringify, plain, stamp, applySaved, applyAction, buildSave, later };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
 /* The flow of a path through code, as a graph for vertex-flow.js: one builder for every view that draws it. What differs
    between views is only where the rows come from - the analysis of a value, or the analysis from a breakpoint in the
    debugger - never how they are drawn. `sf` = {rows, sites, point, name, stopAt}. */
@@ -99077,7 +100509,7 @@ var require=__vertexRequire;
 "use strict";
 // Port of zcl_vx_ace_code_html=>analyze/build_scheme/ops_node/flush_pending.
 // The parser supplies statements and calls; diagram rules remain those of ACE.
-const {conditionLabel}=__vertexRequire(1529);
+const {conditionLabel}=__vertexRequire(1536);
 const {procedureEnds,isProcedureEnd,blockEnds:closers,classifyStatement}=__vertexRequire(3);
 const {callsIn}=__vertexRequire(1);
 function label(value,limit=80) {

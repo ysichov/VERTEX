@@ -31,11 +31,13 @@ function stamp(iso) {
 // A line as AVE compares it with "ignore case and indentation": trimmed and upper case.
 const normal = (line, ignore) => ignore ? line.trim().toUpperCase() : line;
 
-// The line diff is Myers' shortest edit script (line-diff.js), as Eclipse's Text Compare computes it, with nothing
-// on top: '=' kept, '-' from the old version, '+' from the new one, '-' before '+' in a run. With ignore set, lines
-// compare trimmed and upper case, so a line differing only in its case or indentation is kept, as AVE's IC switch
-// has it; a kept line carries the new text.
-function diff(oldLines, newLines, ignore) {
+// The line diff: a shortest edit script over whole lines, with nothing on top - '=' kept, '-' from the old version,
+// '+' from the new one, '-' before '+' in a run. With ignore set, lines compare trimmed and upper case, so a line
+// differing only in its case or indentation is kept, as AVE's IC switch has it; a kept line carries the new text.
+// A host with a comparer of its own passes it as api.diffLines - Eclipse hands the lines to its own Text Compare
+// (RangeDifferencer); otherwise VERTEX's line-diff.js (Myers) computes it.
+async function diff(oldLines, newLines, ignore, api) {
+  if (api && api.diffLines) { return api.diffLines(oldLines, newLines, Boolean(ignore)); }
   return require("./line-diff").diffLines(oldLines, newLines, ignore ? line => normal(line, true) : undefined);
 }
 
@@ -364,7 +366,7 @@ async function request(api, resource) {
       if (!entry) { throw new Error("Version " + number + " of " + part + " is not in its history."); }
       return (await textOf(entry.uri)) || [];
     };
-    const ops = diff(from ? await sourceOf(from) : [], await sourceOf(to), ignore);
+    const ops = await diff(from ? await sourceOf(from) : [], await sourceOf(to), ignore, api);
     return Object.assign(head, partHead, { from, to,
       added: ops.filter(o => o.op === "+").length, deleted: ops.filter(o => o.op === "-").length,
       kept: ops.filter(o => o.op === "=").length, ops });

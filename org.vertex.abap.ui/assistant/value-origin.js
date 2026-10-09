@@ -2082,6 +2082,7 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   // file, not a template, so what the page used to interpolate into it - the
   // title, the BSE caption and tree, the two depth maxima - travels here.
   const mermaidGraph = { nodes: mermaidNodes, edges: mermaidEdges, formula: formulaGraph, bseFlow: codeFlow.bseFlow,
+    hasSelectedValue: !!graph.selectedVariable,
     originTitle, maxStack: Math.max(maxStack, codeFlow.maxStack), maxLevel,
     flowReadings: { active: 'methods', baseStack: maxStack, items: flowReadings, input: flowInput },
     bseFlowHtml: `<p class="edge">BSE FLOW${graph.flowBounds ? ` — breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''}</p>${bseFlowTree || '<p>No BSE flow points in the selected range.</p>'}` };

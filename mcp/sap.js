@@ -1,8 +1,5 @@
 "use strict";
 
-const http = require("node:http");
-const https = require("node:https");
-
 function configuration(env = process.env) {
   for (const name of ["VERTEX_SAP_URL", "VERTEX_SAP_USER", "VERTEX_SAP_PASSWORD"]) {
     if (!env[name]) { throw new Error("Missing environment variable " + name); }
@@ -28,50 +25,29 @@ function configuration(env = process.env) {
     allowInsecureCertificate: env.VERTEX_SAP_ALLOW_INSECURE_CERTIFICATE === "true" };
 }
 
-function createReader(config) {
-  return async function read(_context, resource) {
-    // Only the shared review tools may choose a path; credentials never follow redirects.
-    if (!resource.startsWith("/sap/bc/adt/vertex/review/")) {
-      throw new Error("The standalone reader only supports the SAP review resource.");
+// The review of a request, read over ADT as the VS Code extension reads it: the saved review out of ZAVE_REVIEW
+// through ADT's data preview, or - with none saved - the review built from ADT's version feeds (review-front.js).
+// Nothing of VERTEX's ABAP is asked for. The tools still name the review by its /vertex/review/ path, which is
+// answered here rather than sent to SAP.
+// REPOSITORY is for tests: a stand-in for the ADT client's api.
+function createReader(config, repository0) {
+  let api = repository0 || null;
+  const repository = () => {
+    if (!api) {
+      // abap-adt-api is the VS Code extension's dependency; this server runs from the same checkout.
+      const { ADTClient } = require(require.resolve("abap-adt-api", { paths: [require("node:path").join(__dirname, "..", "vscode")] }));
+      const client = new ADTClient(config.url, config.user, config.password, config.client || "", "EN", { timeout: config.timeout });
+      client.httpClient.httpclient = require("../vscode/sap-http").create({ url: config.url,
+        allowInsecureCertificate: config.allowInsecureCertificate });
+      api = require("../vscode/sap-code").createRepository({ client, systemId: config.url });
     }
-    const url = new URL(resource, config.url);
-    if (config.client) { url.searchParams.set("sap-client", config.client); }
-    return new Promise((resolve, reject) => {
-      const req = (url.protocol === "https:" ? https : http).request(url, {
-        method: "GET",
-        rejectUnauthorized: !config.allowInsecureCertificate,
-        headers: { Accept: "application/json",
-          Authorization: "Basic " + Buffer.from(config.user + ":" + config.password).toString("base64") }
-      }, res => {
-        const chunks = [];
-        let size = 0;
-        res.on("data", chunk => {
-          size += chunk.length;
-          if (size > 16 * 1024 * 1024) { req.destroy(new Error("SAP response exceeds 16 MiB.")); return; }
-          chunks.push(chunk);
-        });
-        res.on("error", reject);
-        res.on("end", () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(Buffer.concat(chunks).toString("utf8"));
-          } else {
-            const hint = res.statusCode === 401 ? "Check SAP user and password."
-              : res.statusCode === 403 ? "Check SAP authorizations."
-              : res.statusCode === 404 ? "Check the SDE ADT review resource installation."
-              : res.statusCode >= 300 && res.statusCode < 400 ? "Redirects are not followed; configure the SAP endpoint directly."
-              : "The SAP review resource failed.";
-            reject(new Error("SAP HTTP " + res.statusCode + ": " + hint));
-          }
-        });
-      });
-      // Wall-clock deadline includes connection establishment and response body.
-      const timer = setTimeout(() => req.destroy(new Error("SAP request timed out.")), config.timeout);
-      req.on("close", () => clearTimeout(timer));
-      req.on("error", error => reject(new Error(
-        error.message === "SAP request timed out." || error.message === "SAP response exceeds 16 MiB."
-          ? error.message : "SAP connection failed (" + (error.code || "network error") + ").")));
-      req.end();
-    });
+    return api;
+  };
+  return async function read(_context, resource) {
+    if (!resource.startsWith("/sap/bc/adt/vertex/review/")) {
+      throw new Error("The standalone reader only supports the review of a request.");
+    }
+    return JSON.stringify(await require("../vscode/review-front").request(repository(), resource));
   };
 }
 

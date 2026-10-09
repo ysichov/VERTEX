@@ -141,7 +141,7 @@ async function buildNow(api, request, progress) {
       return (where.cut ? where.cut(text) : versions.lines(text)) || [];
     };
     const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
-    const ops = versions.diff(oldLines, newLines, false);
+    const ops = await versions.diff(oldLines, newLines, false, api);
     if (!ops.some(o => o.op !== "=")) { continue; }
 
     const ranges = hunkRanges(ops);

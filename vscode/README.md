@@ -499,9 +499,8 @@ over code and never writes source or data.
 ### Before you start
 
 - **VERTEX for VS Code 0.7.3 or newer**, with the SAP system in `vertex.systems`.
-- **Nothing on the ABAP side.** The debugger uses only SAP's standard ADT services; the VERTEX
-  classes (`src/`, pulled with abapGit) are not needed for it. They are needed only for the
-  example program `Z_VX_DEBUGGER_TEST` and for the other VERTEX windows.
+- **Nothing on the ABAP side.** The debugger uses only SAP's standard ADT services; VERTEX's
+  ABAP (`src/`) is not needed for it.
 - **In SAP**, for your user: the authorisation to debug (the standard object `S_DEVELOP` with
   object type `DEBUG`), and the WebGUI service active in SICF
   (`/sap/bc/gui/sap/its/webgui`) - the debugger starts reports there.
@@ -521,7 +520,7 @@ over code and never writes source or data.
    assistant it may take over.
 4. For Claude Code or Codex only: register `vertex-debug` once, as described below, and start a
    new conversation.
-5. Ask: *Z_VX_DEBUGGER_TEST prints the wrong invoice total. Find out why with the debugger.*
+5. Ask about a report of yours: *Z_MY_REPORT prints the wrong invoice total. Find out why with the debugger.*
 6. When the browser opens WebGUI, log on if asked. The assistant waits for the program.
 7. Read the verdict. Ask it to fix the code if you agree: the change lands in the program's
    tab, unsaved; save it with **Save & Activate** or **Review & Activate**.
@@ -928,13 +927,6 @@ answer).
 A chat request that may use SAP tools waits up to ten minutes for its answer, so that a
 debugging run has time for a WebGUI logon and the program's way to its breakpoints.
 
-### A program to try it on
-
-The ABAP side ships `Z_VX_DEBUGGER_TEST`: an invoice of four order lines that should total
-940.00 and prints less. It is one screen long, raises no error, and no single line of it looks
-wrong - the cause shows at runtime, in what a statement did not do. Pull `src/` with abapGit, then
-ask: *Z_VX_DEBUGGER_TEST prints the wrong invoice total. Find out why with the debugger.*
-
 ### A session, as it goes
 
 1. You: *Z_CALC computes the wrong discount. Find out why with the debugger.*
@@ -958,8 +950,8 @@ the extension checks it against the dictionary, and the window fills in the sele
 join and the pivot and runs the query as if it had been clicked. A plan naming something the
 table does not have is shown as an error and changes nothing.
 
-Versions has the same **Assistant**: *the last change of COMPUTE_DIFF in ZCL_VX_DIFF*, *the
-review of DEVK900123, the COMPUTE_DIFF part*, *describe the method GET*. It reads what the window
+Versions has the same **Assistant**: *the last change of CALCULATE in ZCL_MY_CLASS*, *the
+review of DEVK900123, the CALCULATE part*, *describe the method GET*. It reads what the window
 can show — parts, versions, the change a version made, whole sources, and a saved review with its
 blocks and verdicts — so it describes and reviews code, and it moves the window to what it talks
 about the way the clicks would. That source goes to the model you chose, as it does with the MCP
@@ -980,12 +972,12 @@ SelecTor:
 
 Versions:
 
-- *the last change of COMPUTE_DIFF in ZCL_VX_DIFF*
+- *the last change of CALCULATE in ZCL_MY_CLASS*
 - *versions of program Z_ANY_PROG*
 - *what does transport DEVK900123 change?*
-- *the review of DEVK900123, the COMPUTE_DIFF part*
+- *the review of DEVK900123, the CALCULATE part*
 - *describe the method GET*, with its review open
-- *review the change of ZCL_VX_ADT_RES_VERSIONS=>GET: risks and open questions*
+- *review the change of ZCL_MY_CLASS=>CALCULATE: risks and open questions*
 
 A subscription provider needs the Claude Code or Codex extension installed in this VS Code:
 VERTEX starts the copy that comes with it, with your login, in an empty folder, with no other MCP

@@ -22,6 +22,8 @@
   main { max-width: 40rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
   header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.75rem; }
   header img { width: 72px; height: 72px; border-radius: 14px; flex: 0 0 auto; }
+  /* The architecture picture fits the text column instead of its own width. */
+  img.architecture { display: block; width: 100%; height: auto; border-radius: 8px; }
   h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
   h2 { font-size: 1rem; margin: 2rem 0 .5rem; }
   p { margin: 0 0 .9rem; }
@@ -81,10 +83,10 @@
 <div class="url">https://ysichov.github.io/VERTEX/</div>
 
 <p>
-  <img src="architecture.jpg" alt="VERTEX architecture: VS Code and Eclipse ADT, AI assistants and LLM providers, a VERTEX MCP server, seven Web UI tools, client-side libraries, and SAP ADT">
+  <img class="architecture" src="architecture.jpg" alt="VERTEX architecture: VS Code and Eclipse ADT, AI assistants and LLM providers, a VERTEX MCP server, seven Web UI tools, client-side libraries, and SAP ADT">
 </p>
 
-<p class="build">Latest published Eclipse build <b>0.8.0.202610051511</b>. Source metadata is <b>0.8.1.qualifier</b>; publish a rebuilt update site to deliver it.</p>
+<p class="build">Latest published Eclipse build <b>0.8.0.202610051511</b>. Source metadata is <b>0.8.8.qualifier</b>; publish a rebuilt update site to deliver it.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -107,7 +109,7 @@
 <h2>What it does</h2>
 
 <ul class="news">
-  <li><b>SelecTor field labels.</b> Current source offers a remembered <i>Technical names / Text</i> toggle for Selection and result headers. Available in the rebuilt VS Code 0.8.8 package; Eclipse requires a plugin rebuild.</li>
+  <li><b>SelecTor field labels.</b> A <i>Technical names / Text</i> toggle for the selection and the result headers, remembered between sessions.</li>
   <li><b>Value Origin.</b> Inspect FLOW, Formula and Expression analysis; the experimental BSE client
       uses ADT source and bundled abaplint.</li>
   <li><b>One Parts list for the object.</b> The VERTEX Tools window keeps the parts of a class
@@ -119,10 +121,10 @@
   <li><b>Versions laid out as AVE's.</b> The parts, the versions of the chosen part under them,
       and the diff beside. Pin any version as the base and compare the others with it
       (<i>Prev | Any</i>); show the change in one column or two (<i>Inline | 2 pane</i>).
-      AVE's switches are back: <i>TOCs</i>, <i>Dups</i> and <i>Case/ind</i>. The diff is
-      VERTEX's own line differ - Myers' shortest edit script over whole lines, as Eclipse's Text
-      Compare computes it, with nothing on top - written from the published algorithm because
-      Eclipse's comparer is under the EPL and VERTEX is MIT.</li>
+      AVE's switches are back: <i>TOCs</i>, <i>Dups</i> and <i>Case/ind</i>. The diff is a
+      shortest edit script over whole lines with nothing on top: Eclipse's own Text Compare in
+      Eclipse, and in VS Code VERTEX's own line differ (Myers), written from the published algorithm
+      because Eclipse's comparer is under the EPL and VERTEX is MIT.</li>
   <li><b>Calls, Logic and UML diagrams.</b> The flow of a program is now the <i>Calls
       diagram</i> and the branch scheme of one method the <i>Logic diagram</i>. Calls starts
       from the event or form picked in Parts, as a double-click in ACE's tree does, and draws
@@ -154,8 +156,8 @@
 <p>
   Not all of VERTEX waits for it. The editor, the debugger and the assistant work
   over ADT alone, and so do Code Explorer, Value Origin and SelecTor. In VS Code Versions and the
-  review of a transport do too; the hub is needed only to save a review to SAP, and without it
-  reviews are saved to files. The Eclipse plugin still reads Versions and the review from the hub.
+  review of a transport do too, in VS Code and in Eclipse; the hub is needed only to save a review
+  to SAP, and without it reviews are saved to files.
 </p>
 
 <table class="needs">
@@ -165,7 +167,7 @@
   <tr><td><b>Visual Debug</b> (VS Code)</td><td>The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player</td><td>not needed</td></tr>
   <tr><td><b>Value Origin</b> (VS Code: Forward Usage Analysis)</td><td>Where a value came from, backwards across calls: the static call stack, the derivation as <i>FLOW</i> or <i>Formula</i>, each as a tree or a diagram</td><td>not needed</td></tr>
   <tr><td><b>AI Assistant</b></td><td>Chat over the SAP system: reads, explains and changes code &mdash; the change is reviewed block by block before activation &mdash; runs the tests and ATC on an object, and drives the debugger</td><td>not needed</td></tr>
-  <tr><td><b>Versions / Reviewer</b></td><td>Version history, the diff between two versions, the review of a whole transport with approve, decline and comments</td><td>VS Code: to save reviews in SAP; Eclipse: Versions and the review</td></tr>
+  <tr><td><b>Versions / Reviewer</b></td><td>Version history, the diff between two versions, the review of a whole transport with approve, decline and comments</td><td>to save reviews in SAP</td></tr>
   <tr><td><b>Code Explorer</b></td><td>Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture</td><td>not needed</td></tr>
   <tr><td><b>Data Explorer (SelecTor)</b></td><td>Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either</td><td>not needed</td></tr>
 </table>
@@ -175,8 +177,7 @@
   into the system with abapGit and activate:
   <a href="https://github.com/ysichov/VERTEX">VERTEX</a> itself, its <code>src/</code>
   folder — the hub, the resource that saves a review (<code>ZCL_VX_ADT_RES_STORE</code>), the
-  <code>ZAVE_REVIEW</code> table reviews are saved in, and, for the Eclipse plugin, the resources
-  of the version history and the review.
+  <code>ZAVE_REVIEW</code> table reviews are saved in.
 </p>
 
 <p>
@@ -197,7 +198,8 @@
   by AVE's rule, diffed and cut into blocks - and the status line says which part is being read.
   <i>Save</i> keeps it, in <code>ZAVE_REVIEW</code> or in files as <code>vertex.review.storage</code>
   says; approving, declining and commenting then change it the way AVE does, so AVE and VERTEX read
-  the same review. The Eclipse plugin builds a review through the hub, one object at a time.
+  the same review. Eclipse does the same; where it keeps reviews is set in Window &rarr; Preferences
+  &rarr; VERTEX Code Review.
 </p>
 
 <p>

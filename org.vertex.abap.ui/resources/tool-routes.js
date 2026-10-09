@@ -146,17 +146,6 @@ const SERVICES = {
     act: function (args) {
       return SERVICES.versions.review(args);
     },
-    // request, remote, body - building a review. With no body it asks what the
-    // request holds; with one it prepares the object the body names and writes
-    // it. One object per call, so a request of any size is a walk the page
-    // drives rather than one call that has to survive being slow.
-    prepare: function (args) {
-      let p = "/sap/bc/adt/vertex/prepare/" + upper(args[0]);
-      if (args[1]) {
-        p += "?remote=" + encodeURIComponent(args[1]);
-      }
-      return p;
-    },
     // user, released - the transport requests of one user, found by whose they
     // are rather than by number. An empty user is whoever is logged on: the
     // server knows who that is, and the page does not. "true" adds the released
@@ -175,6 +164,6 @@ const SERVICES = {
     }
   }
 };
-const routesApi = { SERVICES, WRITES: { act: 4, prepare: 2 } };
+const routesApi = { SERVICES, WRITES: { act: 4 } };
 if (typeof module !== "undefined") module.exports = routesApi; else root.VertexRoutes = routesApi;
 })(typeof window === "undefined" ? globalThis : window);
