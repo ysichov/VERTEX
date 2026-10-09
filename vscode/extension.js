@@ -306,11 +306,19 @@ function describeConnection(error) {
  * Reads one resource and answers in the shape the page expects. Given a BODY it
  * writes instead, which needs a CSRF token first.
  */
-let frontendAnalysisRequest;
+let frontendAnalysisRequest, frontendTableRequest;
 async function fetch(context, requestPath, body, progress, cancelled) {
   if (body == null && frontendAnalysisRequest && /^\/sap\/bc\/adt\/vertex\/(metrics|class|package|flow)\//.test(requestPath)) {
     try { return JSON.stringify(await frontendAnalysisRequest(requestPath, progress, cancelled)); }
     catch (error) { return 'ERROR:' + error.message; }
+  }
+  // SelecTor's table and join are read through ADT's data preview, not the VERTEX resource on SAP; a pivot still
+  // goes to the resource.
+  if (body == null && frontendTableRequest && /^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(requestPath)) {
+    let answer;
+    try { answer = await frontendTableRequest(requestPath); }
+    catch (error) { return 'ERROR:' + error.message; }
+    if (answer) { return JSON.stringify(answer); }
   }
   if (body == null && requestPath === ABOUT) {
     const selected = active();
@@ -318,9 +326,9 @@ async function fetch(context, requestPath, body, progress, cancelled) {
     const raw = await fetch(context, ABOUT + '?backend=1');
     let remote = {};
     try { if (!raw.startsWith('ERROR:')) remote = JSON.parse(raw); } catch (_) {}
-    const local = ['metrics','class','package','flow'];
+    const local = ['metrics','class','package','flow','table','join'];
     const services = ['metrics','class','package','flow','table','join','versions','review','prepare','requests'].map(name =>
-      local.includes(name) ? { name, active: 'X', backend: 'ADT + abaplint' } :
+      local.includes(name) ? { name, active: 'X', backend: name === 'table' || name === 'join' ? 'ADT data preview' : 'ADT + abaplint' } :
         (remote.services || []).find(s => s.name === name) || { name, active: '', backend: 'VERTEX', handler: name });
     return JSON.stringify({ ...remote, user: remote.user || selected.system.user,
       backends: remote.backends || [{ name: 'VERTEX', installed: false }], services });
@@ -405,7 +413,7 @@ function asset(name) {
   if (!ASSETS[name]) {
     return "ERROR:This host ships no asset called " + name + ".";
   }
-  const file = name === "abapControl" ? path.join(__dirname, "abap-control.js") : path.join(PAGES, ASSETS[name]);
+  const file = name === "abapControl" ? require("./abap-control").file : path.join(PAGES, ASSETS[name]);
   try {
     return fs.readFileSync(file, "utf8");
   } catch (e) {
@@ -803,6 +811,7 @@ function activate(context) {
   const sapCode = require("./code-workbench").register(vscode, context, { active, password, pin: pinTo,
     pinned: () => pinnedSystem.getStore() || "", systems });
   frontendAnalysisRequest = sapCode.frontendRequest;
+  frontendTableRequest = sapCode.tableRequest;
   // A first start with no system: offered once per start, never imported without the reader's click.
   const listed = vscode.workspace.getConfiguration("vertex").get("systems");
   if (Array.isArray(listed) && !listed.some(function (s) { return s && s.name; })) {

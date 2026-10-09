@@ -52,5 +52,3 @@ libraries.forEach(function (name) {
   console.log("copied " + name);
 });
 
-// Browser copy of the same statement rules used by the backend.
-fs.copyFileSync(path.join(__dirname, 'abap-control.js'), path.join(to, 'vertex-abap-control.js'));

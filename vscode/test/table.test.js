@@ -31,7 +31,8 @@ function page(host) {
     document: {
       getElementById(id) { return elements[id] || (elements[id] = element("div")); },
       createElement: element,
-      createTextNode: text => ({ textContent: text })
+      createTextNode: text => ({ textContent: text }),
+      addEventListener() {}
     },
     sdeLoad: (...args) => calls.push(["load", ...args]),
     sdeJoin: (...args) => calls.push(["join", ...args])
@@ -157,4 +158,82 @@ test("without the table resource SelecTor opens on what is missing, and reads no
   assert.equal(elements.root.className, "setup");
   assert.equal(elements.root.children[2].children[0].textContent,
     "reading a table - missing: ZCL_SDE_ADT_RES_TABLE is not active");
+});
+
+test("a window opened on a plan - Run Select's SELECT - starts from it; an empty line restricts nothing", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/table.html"), "utf8");
+  const plan = { table: "ZLOG_PIPELINE", filters: [
+    { field: "scenario_id", sign: "I", option: "EQ", low: "", high: "" },
+    { field: "step_no", sign: "I", option: "BT", low: "010", high: "030" }] };
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace("/*INIT*/null/*INIT*/", JSON.stringify(plan));
+  const { context, calls } = page();
+  context.window = { addEventListener() {} };
+  vm.runInContext(script.split("/* ---------- wiring ---------- */")[1], context);
+  context.startWindow();
+  assert.deepEqual(calls, [["load", "ZLOG_PIPELINE", 100, "f1=step_no&s1=I&o1=BT&l1=010&h1=030"]]);
+  assert.deepEqual(Array.from(context.criteria, c => c.field), ["scenario_id", "step_no"]);
+});
+
+test("a plan's join types and ON go to the join resource; a table taken by hand drops the ON", () => {
+  const { context, calls } = page();
+  context.applyPlan({ table: "E070", filters: [], join: ["E070"], fields: ["t1~trkorr"], jtypes: { T1: "INNER" },
+    on: { T1: "t1~trkorr = t0~strkorr" }, pivot: none });
+  assert.equal(calls[0][0], "join");
+  assert.equal(calls[0][6], "pick=X&sf1=t1~trkorr&jT1=INNER&onT1=t1~trkorr%20%3D%20t0~strkorr");
+  context.toggleTaken("E07T");
+  assert.ok(!calls[1][6].includes("onT1"));
+});
+
+test("Run Select's table is read with its SELECT list; Show hidden reads every field and leaves the others unticked", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/table.html"), "utf8");
+  const plan = { table: "E070", filters: [{ field: "as4user", sign: "I", option: "EQ", low: "", high: "" }], columns: ["trkorr"] };
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace("/*INIT*/null/*INIT*/", JSON.stringify(plan));
+  const { context, calls, elements } = page();
+  context.window = { addEventListener() {} };
+  vm.runInContext(script.split("/* ---------- wiring ---------- */")[1], context);
+  context.startWindow();
+  assert.deepEqual(calls[0], ["load", "E070", 100, "pick=X&sf1=trkorr"]);
+  context.render({ table: "e070", count: 0, rows: [], fields: [{ name: "trkorr", key: true, datatype: "CHAR", text: "Request" }] });
+  const list = elements.criteria.children[0];
+  assert.equal(list.children.length, 3, "a heading, the field read, and the condition's field");
+  const more = elements.criteria.children[1];
+  assert.equal(more.textContent, "Show hidden");
+  more.handlers.click();
+  assert.deepEqual(calls[1], ["load", "E070", 100, ""]);
+  context.render({ table: "e070", count: 0, rows: [], fields: [
+    { name: "trkorr", key: true, datatype: "CHAR", text: "Request" }, { name: "as4user", key: false, datatype: "CHAR", text: "Owner" }] });
+  assert.deepEqual(JSON.parse(JSON.stringify(context.hidden)), { as4user: true });
+  // The owner's From cell: typing makes the line a criterion.
+  const from = elements.criteria.children[0].children[2].children[3].children[0];
+  from.handlers.input({ target: { value: "dev" } });
+  assert.deepEqual(Array.from(context.criteria, c => [c.field, c.low]), [["as4user", "DEV"]]);
+  context.load("E071");
+  assert.deepEqual(calls[2], ["load", "E071", 100, ""]);
+});
+
+test("a join's selection lists the fields of its tables under its column names; Shown is the SELECT list and runs it again", () => {
+  const { context, calls, elements } = page();
+  context.applyPlan({ table: "E070", filters: [{ field: "t1_trstatus", sign: "I", option: "EQ", low: "", high: "" }], join: ["E070"],
+    fields: ["t1~trkorr"], jtypes: { T1: "INNER" }, on: { T1: "t1~trkorr = t0~strkorr" }, pivot: none });
+  context.renderJoin({ table: "e070", sql: "x", rows: [], candidates: [],
+    tables: [{ alias: "T0", tabname: "E070", jtype: "LEFT OUTER", cond: "" }, { alias: "T1", tabname: "E070", jtype: "INNER", cond: "t1~trkorr = t0~strkorr" }], fields: [
+    { sel: false, alias: "T0", fieldname: "TRKORR", key: true, ddtext: "Request" },
+    { sel: true, alias: "T1", fieldname: "TRKORR", key: true, ddtext: "Request" },
+    { sel: false, alias: "T1", fieldname: "TRSTATUS", key: false, ddtext: "Status" }] });
+  const rows = elements.criteria.children[0].children;
+  assert.deepEqual(rows.slice(1).map(r => r.children[1].textContent), ["Request", "T1 \u00b7 Request", "T1 \u00b7 Status"]);
+  assert.deepEqual(rows.slice(1).map(r => r.children[0].children[0].checked), [false, true, false]);
+  rows[3].children[0].children[0].handlers.change({ target: { checked: true } });
+  assert.match(calls.at(-1)[6], /pick=X&sf1=t1~trkorr&sf2=t1~trstatus/);
+});
+
+test("a pivot's selection is the same field list, without Shown - its columns are its slots", () => {
+  const { context, elements } = page();
+  context.applyPlan({ table: "E070", filters: [], join: [], fields: [], pivot: { rows: ["t0~trstatus"], cols: [], vals: [{ key: "*", agg: "COUNT" }] } });
+  context.renderJoin({ table: "e070", sql: "x", pivot: true, rows: [], candidates: [],
+    tables: [{ alias: "T0", tabname: "E070", jtype: "LEFT OUTER", cond: "" }],
+    fields: [{ sel: true, alias: "T0", fieldname: "TRSTATUS", key: false, ddtext: "Status", aggs: ["COUNT"], agg: "COUNT" }] });
+  const rows = elements.criteria.children[0].children;
+  assert.equal(rows[1].children[1].textContent, "Status");
+  assert.equal(rows[1].children[0].children.length, 0);
 });

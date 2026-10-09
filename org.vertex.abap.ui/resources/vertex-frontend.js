@@ -154,7 +154,13 @@ async function request(api, resource, progress, cancelled = () => false) {
   }
   const url = new URL(resource, 'https://sap.invalid');
   const match = /^\/sap\/bc\/adt\/vertex\/(metrics|class|package|flow)\/(.+)$/.exec(url.pathname);
-  if (!match) return null;
+  if (!match) {
+    // SelecTor's table, join and pivot, for a host that sends every analysis here (Eclipse's bundle).
+    if (/^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(url.pathname)) {
+      return await __vertexRequire(1525).request(api, resource) ?? await __vertexRequire(1526).request(api, resource);
+    }
+    return null;
+  }
   const [, service, encoded] = match;
   let name = upper(decodeURIComponent(encoded));
   let type = upper(url.searchParams.get('type') || (service === 'class' ? 'CLAS' : 'PROG')).split('/')[0];
@@ -218,7 +224,9 @@ async function request(api, resource, progress, cancelled = () => false) {
       loaded.sources.push(result.source);loaded.warnings.push(...result.warnings);
     }
     await part(data);
-    if (data.object_type === 'CLAS') for (const include of data.includes.filter(i => ['definitions','implementations','macros'].includes(i)))
+    // Value origin may start in a test class, so its read takes the class's test classes too; diagrams and metrics do not.
+    const classParts = ['definitions','implementations','macros', ...(url.searchParams.get('mode') === 'origin' ? ['testclasses'] : [])];
+    if (data.object_type === 'CLAS') for (const include of data.includes.filter(i => classParts.includes(i)))
       {stage('Reading '+object_name+' / '+include);await part(await read({ object_name, object_type: 'CLAS', include }));}
     return loaded;
   }
@@ -299,32 +307,36 @@ async function request(api, resource, progress, cancelled = () => false) {
       const style=p=>p.unitType==='METHOD'?(all&&['CONSTRUCTOR','CLASS_CONSTRUCTOR'].includes(p.name)?'constr':'method'):!all?'event':p.unitType==='FUNCTION'?'func':['FORM','MODULE'].includes(p.unitType)?'form':p.unitType==='ENHANCEMENT'?'enh':'event';
       const routineLabel=p=>!all?p.owner||p.source.objectName:p.owner?p.owner+'->'+p.name:p.unitType==='FUNCTION'?'FUNCTION:'+p.name:['FORM','MODULE'].includes(p.unitType)?p.unitType+' '+p.name:p.source.objectName+':'+p.name;
       const id = (label,kind='event') => { if (!ids.has(label)) { const value = 'c' + ids.size; ids.set(label, value); nodes.push(value + '("' + quoted(label) + '"):::'+kind); } return ids.get(label); };
+      // Where each drawn routine is: a class local to a program is in the program's source, not a global class of that
+      // name, so a click opens the object the routine was read from, at its line.
+      const places={},place=p=>{const key=routineLabel(p).replace(/\s+/g,'');if(!places[key])places[key]={name:p.source.objectName,type:p.source.objectType,line:p.line||0};};
       const link=(from,to,arrow,cost=1)=>{if(from!==to){links.push({from,to,cost,text:from+arrow+to});}};
       for (const c of walkedCalls) {
         check();const p=units.find(q=>q.id===c.caller);if(!p)continue;
-        const label=routineLabel(p),owner=c.owner;
+        const label=routineLabel(p),owner=c.owner;place(p);
         const matches=c.targets.map(target=>units.find(q=>q.id===target)).filter(Boolean);
         // NEW also works without an explicit constructor. Keep source discovery
         // in the walker, but draw only executable constructor implementations.
         if(c.method==='CONSTRUCTOR'&&!matches.length)continue;
+        matches.forEach(place);
         const targets = matches.length ? matches.map(q=>({label:routineLabel(q),style:style(q)})) : [{label:c.kind==='FUNCTION'?(all?'FUNCTION:'+c.method:c.method):c.kind==='FORM'?(all?'FORM '+c.method:owner||p.source.objectName):all?(owner || '?[' + c.receiver + ']') + '->' + c.method:owner || '?['+c.receiver+']',style:c.kind==='FUNCTION'?(all?'func':'event'):c.kind==='FORM'?(all?'form':'event'):['CONSTRUCTOR','CLASS_CONSTRUCTOR'].includes(c.method)&&all?'constr':'method'}];
         for (const target of targets) link(id(label,style(p)),id(target.label,target.style),matches.length||c.boundary&&owner?' --> ':' -. unresolved .-> ');
       }
       // ACE starts with execution entries at level 1; it does not invent
       // a program node or an EVENT edge above those entries.
       const starts=entries(units);
-      for(const p of starts)id(routineLabel(p),style(p));
+      for(const p of starts){id(routineLabel(p),style(p));place(p);}
       // Depth was enforced before reading targets. Recomputing it on the
       // aggregated Classes graph loses routine levels and can drop real calls.
       for(const e of links)edges.push(e.text);
-      const palette=__vertexRequire(1525).palette;
+      const palette=__vertexRequire(1527).palette;
       const colors=Object.entries(palette).map(([kind,[fill,stroke]])=>'classDef '+kind+' fill:'+fill+',stroke:'+stroke);
-      return { ...base, mode, depth:callDepth, steps: ids.size, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
+      return { ...base, mode, depth:callDepth, steps: ids.size, places, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
     }
     if (chosen.length !== 1) throw new Error('Pick one method to draw its logic diagram.');
     return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType,
-      ...__vertexRequire(1526).scheme(chosen[0], url.searchParams.get('expand') || ''),
-      logicMermaid:__vertexRequire(1526).scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
+      ...__vertexRequire(1528).scheme(chosen[0], url.searchParams.get('expand') || ''),
+      logicMermaid:__vertexRequire(1528).scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }
 module.exports = { request, declarations, metric, analysisUnits, invalidate };
@@ -1109,9 +1121,13 @@ function analyze(sources, target, options = {}) {
     // A program's statements outside any form or method belong to the event
     // that opened them, and to START-OF-SELECTION when none did - that is
     // where ABAP runs them. The event names the level; it is not a step in it.
-    let event = '';
+    // A class's DEFINITION ... ENDCLASS declares and runs nothing: its sections and METHODS are not steps of the flow.
+    let event = '', definition = false;
     return localStatements(source).flatMap((statement, statementIndex) => {
     const classification=classifyStatement(statement,callsIn),first=classification.word;
+    const words=statement.tokens.map(token=>U(token.value));
+    if((first==='CLASS'||first==='INTERFACE')&&(words.includes('DEFINITION')||first==='INTERFACE')&&!words.includes('DEFERRED')&&!words.includes('LOAD')){definition=true;return [];}
+    if(definition){if(first==='ENDCLASS'||first==='ENDINTERFACE')definition=false;return [];}
     if(classification.container||classification.procedureStart||classification.declaration)return [];
     if(classification.event){event=classification.event;return [];}
     const procedure = index.procedures.find(item => item.source.id === source.id &&
@@ -1120,9 +1136,12 @@ function analyze(sources, target, options = {}) {
       index.procedures.find(item => item.source.id === source.id && item.name === 'GLOBAL');
     const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included);
     return [{ id: source.id + ':full:' + statement.offset, source: source.id, line: statement.line, statementIndex,
-      control: classification, text: statement.text, changed: statement.text, scope: (source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
+      control: classification, text: statement.text, changed: statement.text, scope: ((procedure && procedure.name !== 'GLOBAL' && procedure.owner) || source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
   });
-  }).filter(point => !flowBounds || point.source !== target.source || (point.line >= flowBounds.from && point.line <= flowBounds.to));
+  // Outside the breakpoints a statement is marked, not dropped: a routine the bounded stretch calls may lie in the same
+  // source beyond them, and the flow still goes into it. Which rows are drawn is the view's choice.
+  }).map(point => flowBounds && point.source === target.source && (point.line < flowBounds.from || point.line > flowBounds.to)
+    ? { ...point, outside: true } : point);
   const flowLog = nodes.map(node => ({ source: node.source, scope: node.location || node.source, line: node.line, text: node.text,
     included: true, reason: edges.filter(edge => edge.to === node.id).map(edge => edge.label).join(', ') || 'selected value' }));
   const selectedProgram = sources.find(source => source.id === target.source)?.objectName || sources.find(source => source.id === target.source)?.name || target.source;
@@ -1228,7 +1247,7 @@ async function collectSources(initial, load, options = {}) {
   }
   return { sources, warnings, skipped };
 }
-module.exports = { analyze, buildIndex, collectSources, variableAt, literalAt, customerObject, typeComponents, assignment, variablePaths, callsIn, resolver };
+module.exports = { analyze, buildIndex, collectSources, variableAt, literalAt, customerObject, typeComponents, assignment, variablePaths, callsIn, resolver, declaredIn, formParameters };
 
 },
 function(module,exports,__vertexRequire){
@@ -1293,6 +1312,8 @@ module.exports = { tokenize, statements, printable };
 },
 function(module,exports,__vertexRequire){
 var require=__vertexRequire;
+// Wrapped so that, inlined in a page as a classic script, it leaves no global names (a page declares its own api).
+(function () {
 "use strict";
 // Shared statement rules for the logic diagram and execution FLOW.
 const procedureEnds=Object.freeze({METHOD:'ENDMETHOD',FORM:'ENDFORM',FUNCTION:'ENDFUNCTION',MODULE:'ENDMODULE'});
@@ -1356,6 +1377,7 @@ function executionEdges(rows){
 }
 const api={procedureEnds,isProcedureEnd,blockEnds,classifyStatement,executionEdges};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else window.vertexAbapControl=api;
+})();
 
 },
 function(module,exports,__vertexRequire){
@@ -98427,6 +98449,501 @@ exports.DDLTable = DDLTable;
 },
 function(module,exports,__vertexRequire){
 var require=__vertexRequire;
+"use strict";
+
+// SelecTor's table service on the front end: the answer of /sap/bc/adt/vertex/table/<TAB> (ZCL_VX_ADT_RES_TABLE),
+// built here and read through ADT's freestyle data preview instead of a VERTEX resource on SAP. Same request, same
+// JSON: { table, count, fields: [{ name, position, key, datatype, length, decimals, text }], rows }.
+// Unlike the ABAP resource, a SELECT that SAP refuses is an error here, not an empty table.
+
+const MAX_FILTERS = 20;
+const OPTIONS = ["EQ", "NE", "GT", "GE", "LT", "LE", "CP", "NP", "BT", "NB"];
+const NUMBERS = ["INT1", "INT2", "INT4", "INT8", "DEC", "CURR", "QUAN", "FLTP", "D16D", "D34D", "D16N", "D34N"];
+const NAME = /^[A-Z0-9_/]{1,30}$/;
+
+const quote = value => "'" + String(value).replace(/'/g, "''") + "'";
+const pattern = value => String(value).replace(/\*/g, "%").replace(/\+/g, "_");
+
+function term(filter) {
+  const field = filter.field, low = quote(filter.low);
+  switch (filter.option) {
+    case "EQ": return field + " = " + low;
+    case "NE": return field + " <> " + low;
+    case "GT": return field + " > " + low;
+    case "GE": return field + " >= " + low;
+    case "LT": return field + " < " + low;
+    case "LE": return field + " <= " + low;
+    case "CP": return field + " LIKE " + quote(pattern(filter.low));
+    case "NP": return field + " NOT LIKE " + quote(pattern(filter.low));
+    case "BT": return field + " BETWEEN " + low + " AND " + quote(filter.high);
+    default: return field + " NOT BETWEEN " + low + " AND " + quote(filter.high);
+  }
+}
+
+// Select-option semantics, as the ABAP resource has them: lines of one field are ORed, excluding lines become
+// AND NOT, different fields are ANDed.
+function whereClause(filters) {
+  const groups = [];
+  for (const field of [...new Set(filters.map(filter => filter.field))].sort()) {
+    const mine = filters.filter(filter => filter.field === field);
+    const include = mine.filter(filter => filter.sign === "I").map(term), exclude = mine.filter(filter => filter.sign === "E").map(term);
+    const parts = [];
+    if (include.length) { parts.push("( " + include.join(" OR ") + " )"); }
+    if (exclude.length) { parts.push("NOT ( " + exclude.join(" OR ") + " )"); }
+    groups.push(parts.join(" AND "));
+  }
+  return groups.join(" AND ");
+}
+
+function readFilters(params, fields, table) {
+  const filters = [];
+  for (let i = 1; i <= MAX_FILTERS; i++) {
+    const field = String(params.get("f" + i) || "").toUpperCase();
+    if (!field) { break; }
+    const sign = String(params.get("s" + i) || "I").toUpperCase(), option = String(params.get("o" + i) || "EQ").toUpperCase();
+    const low = params.get("l" + i) || "", high = params.get("h" + i) || "";
+    const ddic = fields.find(f => f.FIELDNAME === field);
+    if (!ddic) { throw new Error("Table " + table + " has no field " + field + "."); }
+    if (ddic.DATATYPE === "STRG" || ddic.DATATYPE === "RSTR") { throw new Error("Field " + field + " is a LOB and cannot be selected on."); }
+    if (sign !== "I" && sign !== "E") { throw new Error("Sign " + sign + " for " + field + " must be I or E."); }
+    if (!OPTIONS.includes(option)) { throw new Error("Option " + option + " for " + field + " is not one of " + OPTIONS.join(" ") + "."); }
+    if ((option === "BT" || option === "NB") && !high) { throw new Error("Option " + option + " for " + field + " needs an upper bound in h" + i + "."); }
+    filters.push({ field, sign, option, low, high });
+  }
+  return filters;
+}
+
+// The value as /ui2/cl_json wrote it for the ABAP resource: numbers as numbers, dates and times formatted.
+function value(raw, datatype) {
+  const text = raw == null ? "" : String(raw);
+  if (NUMBERS.includes(datatype)) { return text.trim() === "" ? 0 : Number(text); }
+  if (datatype === "DATS") { return /^0*$/.test(text) ? "" : text.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3"); }
+  if (datatype === "TIMS") { return text.replace(/^(\d{2})(\d{2})(\d{2})$/, "$1:$2:$3"); }
+  return text;
+}
+
+// ADT's data preview cuts a statement of 255 characters or more into lines of source, and has cut through a literal
+// doing it. A list of names therefore goes in as many statements as keep each one shorter: head IN ( 'A', 'B' ).
+const LINE = 240;
+async function inLists(api, head, names, rows) {
+  const values = [];
+  let chunk = [];
+  const flush = async () => {
+    if (chunk.length) { values.push(...(await api.query(head + " IN ( " + chunk.join(", ") + " )", rows)).values); }
+    chunk = [];
+  };
+  for (const name of names.map(quote)) {
+    if (chunk.length && (head + " IN ( " + chunk.concat(name).join(", ") + " )").length >= LINE) { await flush(); }
+    chunk.push(name);
+  }
+  await flush();
+  return values;
+}
+
+const languages = new WeakMap();
+// DD04T and DD03T are keyed by the one-letter SAP language; the ADT session names its language in ISO.
+async function language(api) {
+  if (!languages.has(api)) {
+    // The host may name it in ISO (EN) or as SAP's one letter (E), and may answer later (Eclipse asks its project).
+    languages.set(api, Promise.resolve(api.language()).then(async named => {
+      const code = String(named || "").trim().toUpperCase();
+      if (code.length === 1) { return code; }
+      const row = (await api.query("SELECT spras FROM t002 WHERE laiso = " + quote(code), 1)).values[0];
+      if (!row) { throw new Error("T002 has no SAP language for the session language " + named + "."); }
+      return row.SPRAS;
+    }).catch(error => { languages.delete(api); throw error; }));
+  }
+  return languages.get(api);
+}
+
+// A table's fields as DD03L lists them, in their order, each with its text in the session's language.
+async function fieldsOf(api, table) {
+  const spras = quote(await language(api));
+  // Plain single-table reads only: ADT's data preview rewrites the statement before it runs it, and a join of
+  // DD03L with its text tables came back as a syntax error. .INCLUDE and .APPEND rows name structures, not fields -
+  // their fields are listed in their own right - and are dropped here rather than with a literal holding a full stop,
+  // which the data preview also takes apart.
+  const catalog = (await api.query("SELECT * FROM dd03l WHERE tabname = " + quote(table) + " AND as4local = 'A'", 10000))
+    .values.filter(f => !f.FIELDNAME.startsWith(".")).sort((a, b) => Number(a.POSITION) - Number(b.POSITION));
+  const elements = new Map(), own = new Map();
+  const rollnames = [...new Set(catalog.map(f => f.ROLLNAME).filter(Boolean))];
+  for (const row of await inLists(api, "SELECT rollname, ddtext FROM dd04t WHERE ddlanguage = " + spras
+    + " AND as4local = 'A' AND rollname", rollnames, 10000)) { elements.set(row.ROLLNAME, row.DDTEXT); }
+  for (const row of (await api.query("SELECT fieldname, ddtext FROM dd03t WHERE tabname = " + quote(table)
+    + " AND ddlanguage = " + spras + " AND as4local = 'A'", 10000)).values) { own.set(row.FIELDNAME, row.DDTEXT); }
+  for (const f of catalog) { f.TEXT = elements.get(f.ROLLNAME) || own.get(f.FIELDNAME) || ""; }
+  return catalog;
+}
+
+async function request(api, resource) {
+  const url = new URL(resource, "https://sap.invalid");
+  const match = /^\/sap\/bc\/adt\/vertex\/table\/([^/]+)$/.exec(url.pathname);
+  if (!match) { return null; }
+  const table = decodeURIComponent(match[1]).toUpperCase();
+  if (!NAME.test(table)) { throw new Error(table + " is not a table name."); }
+  const rows = Number(url.searchParams.get("rows") || 100);
+  if (!Number.isInteger(rows) || rows < 0) { throw new Error("rows must be a whole number."); }
+
+  // The ABAP resource reads transparent and cluster tables only, not views.
+  const kind = await api.query("SELECT tabclass FROM dd02l WHERE tabname = " + quote(table) + " AND as4local = 'A'", 1);
+  if (!kind.values.length || !["TRANSP", "CLUSTER"].includes(kind.values[0].TABCLASS)) { throw new Error("table " + table + " was not found."); }
+
+  const catalog = await fieldsOf(api, table);
+
+  const where = whereClause(readFilters(url.searchParams, catalog, table));
+  // pick=X with sf1..: only these columns are read and answered, in their order - Run Select's SELECT list, until
+  // the reader asks for the hidden fields. The rows still come in key order.
+  let shown = catalog;
+  if (url.searchParams.get("pick") === "X") {
+    const wanted = [];
+    for (let i = 1; i <= 200 && url.searchParams.get("sf" + i); i++) { wanted.push(String(url.searchParams.get("sf" + i)).toUpperCase()); }
+    shown = wanted.map(name => {
+      const field = catalog.find(f => f.FIELDNAME === name);
+      if (!field) { throw new Error("Table " + table + " has no field " + name + "."); }
+      return field;
+    });
+  }
+  const keys = catalog.filter(f => f.KEYFLAG === "X").map(f => f.FIELDNAME.toLowerCase());
+  const list = shown === catalog ? "*" : shown.map(f => f.FIELDNAME.toLowerCase()).join(", ");
+  // ORDER BY PRIMARY KEY wants every column; a shorter list is ordered by the key fields named.
+  const order = shown === catalog || !keys.length ? " ORDER BY PRIMARY KEY" : " ORDER BY " + keys.join(", ");
+  const data = await api.query("SELECT " + list + " FROM " + table + (where ? " WHERE " + where : "") + order, rows);
+
+  // The client field holds the session's client in every row: noise in the grid, useless as a criterion.
+  const fields = shown.filter(f => f.DATATYPE !== "CLNT").map(f => ({
+    name: f.FIELDNAME.toLowerCase(), position: Number(f.POSITION), key: f.KEYFLAG === "X", datatype: f.DATATYPE,
+    length: Number(f.LENG), decimals: Number(f.DECIMALS), text: f.TEXT }));
+  const types = new Map(catalog.map(f => [f.FIELDNAME, f.DATATYPE]));
+  const lines = data.values.map(row => Object.fromEntries(Object.keys(row).map(column =>
+    [column.toLowerCase(), value(row[column], types.get(column))])));
+  return { table: table.toLowerCase(), count: lines.length, fields, rows: lines };
+}
+
+module.exports = { request, whereClause, value, quote, inLists, fieldsOf, language, NUMBERS, OPTIONS, NAME };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// SelecTor's join on the front end: the answer of /sap/bc/adt/vertex/join/<TAB> (ZCL_VX_ADT_RES_JOIN over
+// ZCL_VX_TOOLS), built here and read through ADT's freestyle data preview. Same request - t1..tN, jT1 / onT1, pick and
+// sf1.., f/s/o/l/h, rows - and the same JSON: table, sql, pivot, rows, candidates, tables, fields. The pivot is not
+// here yet: a request with r/c/v parameters is not this module's.
+//
+// What the builder proposes is read from the dictionary as ZCL_VX_TOOLS reads it: the foreign keys out of a table
+// (DD08L, field pairs from DD05S), the ones into it, its text table - around the base table only.
+// Unlike the ABAP builder, a table the dictionary does not offer can still be taken, as ZCL_VX_TOOLS's own "add
+// table" does: it joins on the key fields it shares with the base, or on the ON the caller gives.
+
+const { quote, inLists, fieldsOf, language, value, whereClause, NUMBERS, OPTIONS, NAME } = __vertexRequire(1525);
+
+const MAX_TABLES = 10, MAX_FILTERS = 20, MAX_FIELDS = 200, MAX_OFFERED = 60;
+const CHARLIKE = ["CHAR", "NUMC", "DATS", "TIMS", "CLNT", "CUKY", "UNIT", "LANG"];
+
+function pivotOf(datatype) {
+  if (NUMBERS.includes(datatype)) { return { aggs: ["SUM", "COUNT", "MIN", "MAX", "AVG"], agg: "SUM" }; }
+  return { aggs: CHARLIKE.includes(datatype) ? ["COUNT", "MIN", "MAX"] : ["COUNT"], agg: "COUNT" };
+}
+
+// The tables the dictionary offers around one table, each with the field pairs its ON is made of
+// (cand: the offered table's field, base: the field of the table it was found from).
+// The key fields of tables, in key order, read in one go.
+async function keysOf(api, tables) {
+  const keys = new Map(tables.map(name => [name, []]));
+  const rows = await inLists(api, "SELECT * FROM dd03l WHERE keyflag = 'X' AND as4local = 'A' AND tabname", tables, 10000);
+  for (const row of rows.filter(row => !row.FIELDNAME.startsWith(".")).sort((a, b) => Number(a.POSITION) - Number(b.POSITION))) {
+    keys.get(row.TABNAME).push(row.FIELDNAME);
+  }
+  return keys;
+}
+
+// DD05S names, for each foreign key field, the field of the foreign table at each position of the check table's key
+// (PRIMPOS); the check table's field is its key field at that position - what DD_FORKEY_GET resolves.
+function pairsOf(fields, owner, field, checkKeys, flip) {
+  return fields.filter(pair => pair.TABNAME === owner && pair.FIELDNAME === field && pair.FORTABLE === owner)
+    .map(pair => ({ forkey: pair.FORKEY, checkfield: checkKeys[Number(pair.PRIMPOS) - 1] }))
+    .filter(pair => pair.checkfield && pair.checkfield !== "MANDT" && pair.forkey)
+    .map(pair => flip ? { cand: pair.forkey, base: pair.checkfield } : { cand: pair.checkfield, base: pair.forkey });
+}
+
+// What the dictionary offers around a table, from DD08L alone. The field pairs of a key are read only for a table
+// that is joined, and only when no ON was given: reading them for every offered table took a timeout on E070.
+async function neighbours(api, table) {
+  const out = (await api.query("SELECT * FROM dd08l WHERE tabname = " + quote(table) + " AND as4local = 'A'", 1000)).values
+    .filter(fk => fk.CHECKTABLE && fk.CHECKTABLE !== table && fk.CHECKTABLE !== "*");
+  const into = (await api.query("SELECT * FROM dd08l WHERE checktable = " + quote(table) + " AND as4local = 'A'", 100)).values
+    .filter(fk => fk.TABNAME !== table);
+  return [
+    ...out.map(fk => ({ tabname: fk.CHECKTABLE, direction: "O", key: { owner: table, field: fk.FIELDNAME, check: fk.CHECKTABLE, flip: false } })),
+    ...into.map(fk => ({ tabname: fk.TABNAME, direction: fk.FRKART === "TEXT" ? "T" : "I", key: { owner: fk.TABNAME, field: fk.FIELDNAME, check: table, flip: true } }))
+  ];
+}
+
+async function pairsFor(api, key) {
+  if (!key) { return []; }
+  const fields = (await api.query("SELECT * FROM dd05s WHERE tabname = " + quote(key.owner) + " AND fieldname = " + quote(key.field) + " AND as4local = 'A'", 100)).values;
+  const keys = await keysOf(api, [key.check]);
+  return pairsOf(fields, key.owner, key.field, keys.get(key.check), key.flip);
+}
+
+async function request(api, resource) {
+  const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
+  const match = /^\/sap\/bc\/adt\/vertex\/join\/([^/]+)$/.exec(url.pathname);
+  if (!match) { return null; }
+  const base = decodeURIComponent(match[1]).toUpperCase();
+  if (!NAME.test(base)) { throw new Error(base + " is not a table name."); }
+  const rows = Number(params.get("rows") || 0);
+  if (!Number.isInteger(rows) || rows < 0) { throw new Error("rows must be a whole number."); }
+
+  const kind = await api.query("SELECT tabclass FROM dd02l WHERE tabname = " + quote(base) + " AND as4local = 'A'", 1);
+  if (!kind.values.length || !["TRANSP", "CLUSTER", "POOL", "VIEW"].includes(kind.values[0].TABCLASS)) { throw new Error("table " + base + " was not found."); }
+
+  // The tables taken, in the order taken: that order hands out the aliases, T1, T2...
+  const taken = [];
+  for (let i = 1; i <= MAX_TABLES && params.get("t" + i); i++) {
+    const name = String(params.get("t" + i)).toUpperCase();
+    if (!NAME.test(name)) { throw new Error(name + " is not a table name."); }
+    taken.push(name);
+  }
+
+  // The canvas: what the dictionary offers around the base, and around each table as it is taken.
+  const offered = [], seen = new Set([base]);
+  const offer = (list, parent) => {
+    for (const item of list) {
+      if (seen.has(item.tabname) || offered.length >= MAX_OFFERED) { continue; }
+      seen.add(item.tabname);
+      offered.push(Object.assign(item, { parent }));
+    }
+  };
+  // cand=0: the caller does not show the tables around the base - Run Select's window, opened on the answer - so
+  // the dictionary is not asked for them.
+  if (params.get("cand") !== "0") { offer(await neighbours(api, base), base); }
+  const joined = [];
+  for (const [index, name] of taken.entries()) {
+    let candidate = offered.find(item => item.tabname === name && !item.alias);
+    if (!candidate) {
+      // Not offered: taken by hand, as the builder's "add table" takes it.
+      candidate = { tabname: name, direction: "M", parent: base, key: null };
+      if (name !== base && !seen.has(name)) { seen.add(name); offered.push(candidate); }
+    }
+    const alias = "T" + (index + 1);
+    if (!candidate.alias) { candidate.alias = alias; }
+    joined.push({ tabname: name, alias, parent: candidate.parent, key: candidate.key, direction: candidate.direction });
+  }
+
+  // Only real database tables are offered, with their descriptions.
+  const names = [...new Set([base, ...offered.map(item => item.tabname)])];
+  const real = new Set(), texts = new Map();
+  const spras = quote(await language(api));
+  for (const row of await inLists(api, "SELECT tabname, tabclass FROM dd02l WHERE as4local = 'A' AND tabname", names, 1000)) {
+    if (["TRANSP", "POOL", "CLUSTER"].includes(row.TABCLASS)) { real.add(row.TABNAME); }
+  }
+  for (const row of await inLists(api, "SELECT tabname, ddtext FROM dd02t WHERE ddlanguage = " + spras + " AND as4local = 'A' AND tabname", names, 1000)) {
+    texts.set(row.TABNAME, row.DDTEXT);
+  }
+  const candidates = offered.filter(item => real.has(item.tabname) || item.direction === "M").map(item => ({
+    tabname: item.tabname, ddtext: texts.get(item.tabname) || "", direction: item.direction, alias: item.alias || "",
+    selected: joined.some(j => j.tabname === item.tabname) }));
+
+  // Fields of every table in the join; a joined table's ON from its pairs with the table it was found from.
+  const catalogs = new Map();
+  const catalog = async name => {
+    if (!catalogs.has(name)) { catalogs.set(name, await fieldsOf(api, name)); }
+    return catalogs.get(name);
+  };
+  const tables = [{ alias: "T0", tabname: base, ddtext: texts.get(base) || "", jtype: "LEFT OUTER", cond: "" }];
+  for (const j of joined) {
+    const parent = joined.find(other => other.tabname === j.parent && other !== j);
+    const parentAlias = j.parent === base || !parent ? "t0" : parent.alias.toLowerCase();
+    const askedOn = params.get("on" + j.alias);
+    let pairs = askedOn ? [] : await pairsFor(api, j.key);
+    if (!askedOn && !pairs.length) {
+      // No foreign key: the key fields the two tables share by name.
+      const anchor = await catalog(parentAlias === "t0" ? base : j.parent), mine = await catalog(j.tabname);
+      pairs = mine.filter(f => f.KEYFLAG === "X" && f.DATATYPE !== "CLNT" && anchor.some(a => a.FIELDNAME === f.FIELDNAME))
+        .map(f => ({ cand: f.FIELDNAME, base: f.FIELDNAME }));
+    }
+    let cond = pairs.map(pair => j.alias.toLowerCase() + "~" + pair.cand.toLowerCase() + " = " + parentAlias + "~" + pair.base.toLowerCase()).join(" AND ");
+    let jtype = "LEFT OUTER";
+    const askedType = String(params.get("j" + j.alias) || "").toUpperCase();
+    if (askedType) {
+      if (askedType !== "INNER" && askedType !== "LEFT OUTER") { throw new Error("Join type " + askedType + " for " + j.alias + " must be INNER or LEFT OUTER."); }
+      jtype = askedType;
+    }
+    if (askedOn) { cond = askedOn.trim(); }
+    tables.push({ alias: j.alias, tabname: j.tabname, ddtext: texts.get(j.tabname) || "", jtype, cond });
+  }
+
+  const multi = tables.length > 1;
+  const fields = [];
+  for (const t of tables) {
+    for (const f of await catalog(t.tabname)) {
+      const duplicate = fields.some(other => other.sel && other.fieldname === f.FIELDNAME);
+      fields.push(Object.assign({ sel: t.alias === "T0" || (f.KEYFLAG === "X" && !duplicate), pos: 0, alias: t.alias,
+        tabname: t.tabname, fieldname: f.FIELDNAME, key: f.KEYFLAG === "X", ddtext: f.TEXT, datatype: f.DATATYPE, domname: f.DOMNAME || "" }, pivotOf(f.DATATYPE)));
+    }
+  }
+  const keyOf = f => (f.alias + "~" + f.fieldname).toLowerCase();
+  if (params.get("pick") === "X") {
+    const wanted = [];
+    for (let i = 1; i <= MAX_FIELDS && params.get("sf" + i); i++) { wanted.push(String(params.get("sf" + i)).toLowerCase()); }
+    fields.forEach(f => { f.sel = wanted.includes(keyOf(f)); f.pos = f.sel ? wanted.indexOf(keyOf(f)) + 1 : 0; });
+  } else {
+    let pos = 0;
+    fields.forEach(f => { f.pos = f.sel ? ++pos : 0; });
+  }
+
+  // Selection lines on the join's column names: MATNR for the base table, T1_MATNR for a joined one.
+  const filters = [];
+  for (let i = 1; i <= MAX_FILTERS && params.get("f" + i); i++) {
+    const label = String(params.get("f" + i)).toUpperCase();
+    const split = /^(T\d+)_(.+)$/.exec(label), alias = split ? split[1] : "T0", fieldname = split ? split[2] : label;
+    if (!fields.some(f => f.alias === alias && f.fieldname === fieldname)) {
+      throw new Error(label + " is not a field of this join. Filter on the names the statement gives its columns - MATNR for the base table, T1_MATNR for a joined one.");
+    }
+    const sign = String(params.get("s" + i) || "I").toUpperCase(), option = String(params.get("o" + i) || "EQ").toUpperCase();
+    const low = params.get("l" + i) || "", high = params.get("h" + i) || "";
+    if (sign !== "I" && sign !== "E") { throw new Error("Sign " + sign + " for " + label + " must be I or E."); }
+    if (!OPTIONS.includes(option)) { throw new Error("Option " + option + " for " + label + " is not one of " + OPTIONS.join(" ") + "."); }
+    if ((option === "BT" || option === "NB") && !high) { throw new Error("Option " + option + " for " + label + " needs an upper bound in h" + i + "."); }
+    filters.push({ field: multi ? alias.toLowerCase() + "~" + fieldname.toLowerCase() : fieldname.toLowerCase(), sign, option, low, high });
+  }
+
+  const selected = fields.filter(f => f.sel).sort((a, b) => a.pos - b.pos);
+  const list = selected.map(f => multi ? keyOf(f) + " AS " + f.alias.toLowerCase() + "_" + f.fieldname.toLowerCase() : f.fieldname.toLowerCase()).join(", ");
+  const from = tables.map((t, i) => i === 0 ? t.tabname.toLowerCase() + (multi ? " AS t0" : "")
+    : t.jtype + " JOIN " + t.tabname.toLowerCase() + " AS " + t.alias.toLowerCase() + " ON " + t.cond).join(" ");
+  const where = whereClause(filters);
+  const cross = readPivot(params);
+  if (cross) { return Object.assign(await pivot(api, cross, fields, multi, from, where, rows), { table: base.toLowerCase(), candidates, tables, fields }); }
+  const sql = selected.length ? "SELECT " + list + " FROM " + from + (where ? " WHERE " + where : "") : "";
+
+  let lines = null;
+  if (rows > 0 && sql) {
+    const types = new Map(fields.map(f => [multi ? (f.alias + "_" + f.fieldname) : f.fieldname, f.datatype]));
+    lines = (await api.query(sql, rows)).values.map(row => Object.fromEntries(Object.keys(row).map(column =>
+      [column.toLowerCase(), value(row[column], types.get(column))])));
+  }
+  return { table: base.toLowerCase(), sql, pivot: false, rows: lines, candidates, tables, fields };
+}
+
+// The pivot cross, as ZCL_VX_ADT_RES_JOIN reads it: r1.. row dimensions, c1.. columns, v1.. measures with a1.. their
+// aggregates, each key alias~field; "*" as a measure is COUNT( * ).
+function readPivot(params) {
+  const cross = { rows: [], cols: [], vals: [] };
+  for (let i = 1; i <= MAX_FILTERS; i++) {
+    if (params.get("r" + i)) { cross.rows.push(String(params.get("r" + i)).toLowerCase()); }
+    if (params.get("c" + i)) { cross.cols.push(String(params.get("c" + i)).toLowerCase()); }
+    if (params.get("v" + i)) { cross.vals.push({ key: String(params.get("v" + i)).toLowerCase(), agg: String(params.get("a" + i) || "").toUpperCase() }); }
+  }
+  return cross.rows.length || cross.cols.length || cross.vals.length ? cross : null;
+}
+
+// The pivot as ZCL_VX_PIVOT and ZCL_VX_TOOLS=>EXECUTE_PIVOT make it: one statement grouped by the dimensions, its
+// columns named ALIAS_FIELD and AGG_ALIAS_FIELD (CNT_ROWS when no measure is given), each line one cell; then the
+// column dimensions' values are spread into columns, MEASURE_VALUE, here rather than in the database. Values come
+// as SAP wrote them; the domain texts the ABAP pivot puts on them are not read yet.
+const MAX_SPREAD = 50;
+async function pivot(api, cross, fields, multi, from, where, rows) {
+  const fieldOf = key => {
+    const [alias, name] = key.split("~");
+    const field = fields.find(f => f.alias.toLowerCase() === alias && f.fieldname.toLowerCase() === name);
+    if (!field) { throw new Error(key + " is not a field of this join."); }
+    return field;
+  };
+  const qualify = key => multi ? key : key.split("~")[1];
+  const taken = new Set();
+  const unique = name => {
+    let candidate = name.slice(0, 30), n = 0;
+    while (taken.has(candidate)) { candidate = name.slice(0, 28) + "_" + (++n); }
+    taken.add(candidate);
+    return candidate;
+  };
+  const comp = (key, prefix) => (prefix ? prefix + "_" : "") + key.replace("~", "_").toUpperCase();
+  const columns = [];
+  cross.rows.forEach(key => columns.push({ key, role: "R", field: fieldOf(key), comp: unique(comp(key)) }));
+  cross.cols.forEach(key => columns.push({ key, role: "C", field: fieldOf(key), comp: unique(comp(key)) }));
+  cross.vals.forEach(v => {
+    if (v.key === "*") { columns.push({ key: "*", role: "M", agg: "COUNT", comp: unique("COUNT_ALL") }); return; }
+    const field = fieldOf(v.key), allowed = pivotOf(field.datatype);
+    const agg = allowed.aggs.includes(v.agg) ? v.agg : allowed.agg;
+    columns.push({ key: v.key, role: "M", field, agg, comp: unique(comp(v.key, agg)) });
+  });
+  if (!cross.vals.length) { columns.push({ key: "*", role: "M", agg: "COUNT", comp: unique("CNT_ROWS") }); }
+
+  const dims = columns.filter(c => c.role !== "M"), measures = columns.filter(c => c.role === "M");
+  const list = columns.map(c => (c.role === "M" ? c.agg + "( " + (c.key === "*" ? "*" : qualify(c.key)) + " )" : qualify(c.key)) + " AS " + c.comp.toLowerCase());
+  const sql = "SELECT " + list.join(", ") + " FROM " + from + (where ? " WHERE " + where : "")
+    + (dims.length ? " GROUP BY " + dims.map(c => qualify(c.key)).join(", ") : "");
+  if (!(rows > 0)) { return { sql, pivot: true, rows: null }; }
+
+  const raw = (await api.query(sql, rows)).values;
+  const rowDims = dims.filter(c => c.role === "R"), colDims = dims.filter(c => c.role === "C");
+  const plain = (row, c) => String(row[c.comp] == null ? "" : row[c.comp]).trim();
+  const text = (row, list) => list.map(c => plain(row, c) || "(empty)").join("/");
+  raw.sort((a, b) => text(a, rowDims).localeCompare(text(b, rowDims)) || text(a, colDims).localeCompare(text(b, colDims)));
+
+  // A value's text, as FIELD_LABEL gives it: the domain's fixed-value text, the field's own text for an X the domain
+  // does not explain, the value itself otherwise. One DD07T read per domain.
+  const spras = quote(await language(api)), domains = new Map();
+  for (const name of [...new Set(dims.map(c => c.field.domname).filter(Boolean))]) {
+    domains.set(name, new Map((await api.query("SELECT domvalue_l, ddtext FROM dd07t WHERE domname = " + quote(name)
+      + " AND ddlanguage = " + spras + " AND as4local = 'A'", 1000)).values.map(row => [String(row.DOMVALUE_L).trim(), row.DDTEXT])));
+  }
+  const label = (c, raw) => {
+    const known = c.field.domname && domains.get(c.field.domname) && domains.get(c.field.domname).get(raw);
+    return known || (raw === "X" ? c.field.ddtext || c.field.fieldname : raw || "(empty)");
+  };
+  // A row dimension shows its texts when at least one of its values has one, as EXECUTE_PIVOT decides.
+  const labelled = new Set(rowDims.filter(c => raw.some(row => label(c, plain(row, c)) !== (plain(row, c) || "(empty)"))));
+  const header = c => c.key === "*" ? "Count" : (c.role === "M" ? c.agg + " " : "") + (c.field.ddtext || c.field.fieldname);
+  // A count, sum or average is a number; the smallest or largest date is still a date.
+  const cell = (c, v) => {
+    if (c.role !== "M") { return labelled.has(c) ? label(c, String(v == null ? "" : v).trim()) : value(v, c.field.datatype); }
+    if ((c.agg === "MIN" || c.agg === "MAX") && c.field && !NUMBERS.includes(c.field.datatype)) { return value(v, c.field.datatype); }
+    return v == null || String(v).trim() === "" ? 0 : Number(v);
+  };
+  const headers = {};
+  rowDims.forEach(c => { headers[c.comp.toLowerCase()] = header(c); });
+
+  if (!colDims.length) {
+    measures.forEach(c => { headers[c.comp.toLowerCase()] = header(c); });
+    return { sql, pivot: true, headers, rows: raw.map(row => Object.fromEntries(columns.map(c => [c.comp.toLowerCase(), cell(c, row[c.comp])]))) };
+  }
+  const buckets = [...new Set(raw.map(row => text(row, colDims)))].sort().slice(0, MAX_SPREAD);
+  const bucketLabel = new Map(raw.map(row => [text(row, colDims), colDims.map(c => label(c, plain(row, c))).join("/")]));
+  const sanitize = bucket => (bucket.toUpperCase().replace(/[^A-Z0-9]/g, "_").replace(/^_+$/, "") || "BLANK").slice(0, 12);
+  const spread = [];
+  rowDims.forEach(c => taken.add(c.comp));
+  for (const bucket of buckets) {
+    for (const m of measures) {
+      const tail = sanitize(bucket);
+      const name = unique(m.comp.slice(0, 29 - tail.length) + "_" + tail);
+      spread.push({ bucket, measure: m, comp: name });
+      headers[name.toLowerCase()] = measures.length === 1 ? bucketLabel.get(bucket) : bucketLabel.get(bucket) + " " + header(m);
+    }
+  }
+  const wide = [];
+  let previous = null;
+  for (const row of raw) {
+    const key = text(row, rowDims);
+    if (!previous || previous.key !== key) {
+      previous = { key, line: Object.fromEntries(rowDims.map(c => [c.comp.toLowerCase(), cell(c, row[c.comp])])) };
+      spread.forEach(s => { previous.line[s.comp.toLowerCase()] = null; });
+      wide.push(previous.line);
+    }
+    const bucket = text(row, colDims);
+    spread.filter(s => s.bucket === bucket).forEach(s => { previous.line[s.comp.toLowerCase()] = cell(s.measure, row[s.measure.comp]); });
+  }
+  return { sql, pivot: true, headers, rows: wide };
+}
+
+module.exports = { request };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
 /* The flow of a path through code, as a graph for vertex-flow.js: one builder for every view that draws it. What differs
    between views is only where the rows come from - the analysis of a value, or the analysis from a breakpoint in the
    debugger - never how they are drawn. `sf` = {rows, sites, point, name, stopAt}. */
@@ -98560,7 +99077,7 @@ var require=__vertexRequire;
 "use strict";
 // Port of zcl_vx_ace_code_html=>analyze/build_scheme/ops_node/flush_pending.
 // The parser supplies statements and calls; diagram rules remain those of ACE.
-const {conditionLabel}=__vertexRequire(1527);
+const {conditionLabel}=__vertexRequire(1529);
 const {procedureEnds,isProcedureEnd,blockEnds:closers,classifyStatement}=__vertexRequire(3);
 const {callsIn}=__vertexRequire(1);
 function label(value,limit=80) {

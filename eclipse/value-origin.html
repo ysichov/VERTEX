@@ -161,13 +161,16 @@ async function run() {
   }
   var parserWarnings=[];
   var load = async function (name, type) {
-    var data=await window.vertexEclipseRequest('/sap/bc/adt/vertex/flow/'+encodeURIComponent(name)+'?mode=origin&type='+type, function(text){say('Value origin � '+text);});
+    var data=await window.vertexEclipseRequest('/sap/bc/adt/vertex/flow/'+encodeURIComponent(name)+'?mode=origin&type='+type, function(text){say('Value origin - '+text);});
     parserWarnings.push(...(data.warnings||[]));
     return data.sources;
   };
   var initial = await load(t.name, t.type);
   var mapped = origin.locateTarget(initial, t.text, t.name, t.line, variable, t.column);
-  var result = await origin.collectSources(initial, load, { maxSources: 240, progress: function (name) { say("Value origin � reading ADT source: " + name); } });
+  // Only what the value's slice reaches is read, as in VS Code: the objects its statements name, then again until
+  // nothing new is needed. Reading every customer object the source mentions took half the system for a local variable.
+  // A class arrives with all its parts, so a part asked for again adds nothing.
+  var result = await origin.collect(initial, mapped, { load: load, loadPart: async function () { return []; } });
   sources = result.sources;
   // The source the cursor is in opens in the editor it came from, as VS Code opens its own document.
   sources.forEach(function (source) { if (source.id === mapped.source && flat(source.text) === flat(t.text)) { source.editor = true; } });

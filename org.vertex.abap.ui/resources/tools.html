@@ -345,7 +345,9 @@ function mount(service,state,afterLoad){
   const withParts=showsParts(state)&&service!=="table";
   const carry=PART_TYPES.includes(String(state.type||"").toUpperCase())&&service!=="table"&&!!selectedPart;
   frame.dataset.part=selectedPart?selectedPart.key:"";
-  const init=service==="table"?state.name:Object.assign({},state,latestEditorCursor?{cursorLine:latestEditorCursor.line}:initial&&initial.cursorLine?{cursorLine:initial.cursorLine}:{},carry?{part:selectedPart}:{},withParts?{partsOutside:true}:{});
+  // Run Select opens SelecTor on a SELECT's table with its WHERE as selection lines - once, on that table.
+  const plan=service==="table"&&initial&&initial.selectorPlan&&String(initial.selectorPlan.table).toUpperCase()===String(state.name).toUpperCase()?initial.selectorPlan:null;
+  const init=service==="table"?(plan||state.name):Object.assign({},state,latestEditorCursor?{cursorLine:latestEditorCursor.line}:initial&&initial.cursorLine?{cursorLine:initial.cursorLine}:{},carry?{part:selectedPart}:{},withParts?{partsOutside:true}:{});
   source=source.replace(["/*INIT*/","null","/*INIT*/"].join(""),()=>JSON.stringify(init).replace(/</g,"\\u003c"));
   const bootstrap="<script>parent.connect(window,"+JSON.stringify(service)+","+generation+");<"+"/script>";
   // The window's list stands in for each page's own, so a page drawn beside
@@ -491,7 +493,7 @@ function pump(){
   while(queue.length){const item=queue.shift();if(item.live()){activeRequest=item;break;}}
   if(!activeRequest)return;
   const r=activeRequest.request;
-  if(r.asset)sdeAsset(r.asset);else if(window.vertexEclipseRequest&&!r.body&&/\/vertex\/(metrics|class|package|flow)\//.test(r.path)){const item=activeRequest;window.vertexEclipseRequest(r.path,text=>sdeWorkspaceProgress(r.path,text)).then(data=>finishLocal(JSON.stringify(data)),error=>finishLocal("ERROR:"+error.message));function finishLocal(raw){if(activeRequest===item){activeRequest=null;if(!item.superseded&&item.live())item.reply(raw);pump();}}}else sdeWorkspace(r.path,r.body);
+  if(r.asset)sdeAsset(r.asset);else if(window.vertexEclipseRequest&&!r.body&&/\/vertex\/(metrics|class|package|flow|table|join)\//.test(r.path)){const item=activeRequest;window.vertexEclipseRequest(r.path,text=>sdeWorkspaceProgress(r.path,text)).then(data=>finishLocal(JSON.stringify(data)),error=>finishLocal("ERROR:"+error.message));function finishLocal(raw){if(activeRequest===item){activeRequest=null;if(!item.superseded&&item.live())item.reply(raw);pump();}}}else sdeWorkspace(r.path,r.body);
 }
 function sdeReady(){
   const raw=sdeTake(),item=activeRequest;activeRequest=null;

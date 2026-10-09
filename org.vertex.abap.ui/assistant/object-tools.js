@@ -10,7 +10,7 @@
     ["DEVC", "Package", ["uml", "metrics", "diff"]],
     ["TR", "Transport request", ["review", "diff"]],
     ["FUGR", "Function group", ["diff"]],
-    ["FUNC", "Function module", ["diff"]],
+    ["FUNC", "Function module", ["metrics", "scheme", "flow", "diff"]],
     ["DDLS", "CDS", ["diff"]], ["DOMA", "Domain", ["diff"]], ["DTEL", "Data element", ["diff"]]
   ];
   const labels = { data: "Data", join: "Join", pivot: "Pivot", diff: "Diff", review: "Review",
@@ -19,7 +19,7 @@
   // picker, while a class/package opened from a version-oriented command must
   // still start on Diff unless the caller selected a view explicitly.
   const defaults = { TABL: "data", CLAS: "uml", INTF: "diff", PROG: "metrics",
-    INCL: "diff", DEVC: "uml", TR: "review", FUGR: "diff", FUNC: "diff",
+    INCL: "diff", DEVC: "uml", TR: "review", FUGR: "diff", FUNC: "metrics",
     DDLS: "diff", DOMA: "diff", DTEL: "diff" };
   function normalize(value) {
     const type = String(value.type || "CLAS").toUpperCase().split("/")[0];

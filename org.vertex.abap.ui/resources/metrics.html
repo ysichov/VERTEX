@@ -1046,6 +1046,8 @@ var pendingClass = null;
 /* Calls is cheap. The nested scheme is only requested for a block the reader
    has opened, and is kept until the Calls graph changes. */
 var hybridLogics = [];
+// The Calls answer's places: label without spaces -> the object, type and line the routine was read from.
+var callPlaces = {};
 var hybridPending = null;
 
 function flowMode() { return mode !== "metrics"; }
@@ -1519,6 +1521,7 @@ function startMermaid(source) {
 }
 
 function renderDiagram(data) {
+  if (data.mode === "calls") { callPlaces = data.places || {}; }
   if(data.mode==="calls"&&data.depth!==undefined&&Number(data.depth)!==depth)return;
   // A class pool has no entry point of its own, so a flow of no steps is a
   // real answer. Saying so beats an empty frame the reader has to interpret.
@@ -1812,8 +1815,12 @@ function onDiagramClick(e) {
     while (element && element !== e.currentTarget) {
       if (element.matches && element.matches("g.node")) {
         var match = String(element.textContent || "").match(/([A-Z][A-Z0-9_/$]*)\s*(?:->|=>)\s*([A-Z][A-Z0-9_~]*)/i);
+        var placed = callPlaces[String(element.textContent || "").replace(/\s+/g, "")];
         if (typeof sdeOpenToolSource === "function") {
-          if(match)sdeOpenToolSource({name:match[1].toUpperCase(),type:"CLAS",method:match[2].toUpperCase()});
+          // A routine read from a program, include or function module - a local class's method among them - opens there, at
+          // its line; a global class's method is still found by name in the class.
+          if(placed&&placed.name&&placed.type!=="CLAS")sdeOpenToolSource({name:placed.name,type:placed.type,line:placed.line});
+          else if(match)sdeOpenToolSource({name:match[1].toUpperCase(),type:"CLAS",method:match[2].toUpperCase()});
           else {var eventMatch=String(element.textContent||"").match(/^([A-Z][A-Z0-9_/$]*):/i);if(eventMatch)sdeOpenToolSource({name:eventMatch[1],type:loadedType});}
         } else if (match) { requestHybridLogic({ class: match[1].toUpperCase(), name: match[2].toUpperCase(), key: String(element.textContent || "").replace(/\s+/g, "") }); }
         return;

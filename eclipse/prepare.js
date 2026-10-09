@@ -20,8 +20,8 @@ fs.copyFileSync(path.join(root, "vscode", "value-origin.css"), path.join(target,
 fs.copyFileSync(path.join(__dirname, "value-origin.html"), path.join(target, "value-origin.html"));
 console.log("Prepared Eclipse Value origin.");
 
-fs.copyFileSync(path.join(root,"vscode","abap-control.js"),path.join(root,"org.vertex.abap.ui","resources","vertex-abap-control.js"));
-console.log("Prepared shared ABAP control rules.");
+// The statement rules are org.vertex.abap.ui/resources/vertex-abap-control.js itself; vscode/abap-control.js only
+// finds that file. Copying it over the rules - as this script did - left a finder where the rules belong.
 
 fs.writeFileSync(path.join(root,'org.vertex.abap.ui/resources/vertex-frontend.js'),require('./frontend-bundle').bundle(root));
 

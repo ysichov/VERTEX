@@ -46,12 +46,12 @@ public class ValueOriginHandler extends AbstractHandler {
 			SelectionContext.report(shell, "Select a variable in an ABAP source editor of an ABAP project.");
 			return null;
 		}
-		String type = originType(object.type);
+		String type = originType(object.kind());
 		// An editor's object URI is the object's or, for an open source, already the source's own.
-		String path = object.uri.endsWith("/source/main") ? object.uri : ActivateHandler.sourcePath(object);
+		String path = object.classOfMain() == null && object.uri.endsWith("/source/main") ? object.uri : ActivateHandler.sourcePath(object);
 		if (type == null || path == null) {
 			SelectionContext.report(shell, "Value origin runs on the source of a program, a class, an interface or a function module, not "
-					+ object.type + ". A class is analysed from its Global Class tab.");
+					+ object.type + " (" + object.uri + "). A class is analysed from its Global Class tab.");
 			return null;
 		}
 		ITextEditor text = Adapters.adapt(editor, ITextEditor.class);
@@ -99,6 +99,9 @@ public class ValueOriginHandler extends AbstractHandler {
 		switch (adtType) {
 		case "PROG/P": return "PROG";
 		case "CLAS/OC": return "CLAS";
+		// A class's local types, local implementations or test classes: the class is loaded with its parts, and the
+		// editor's text is found among them.
+		case "CLAS/I": return "CLAS";
 		case "INTF/OI": return "INTF";
 		case "FUGR/FF": return "FUNC";
 		default: return null;

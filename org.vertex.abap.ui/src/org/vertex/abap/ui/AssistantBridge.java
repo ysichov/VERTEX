@@ -39,7 +39,7 @@ final class AssistantBridge implements AutoCloseable {
     private void submit(String call, Object[] args) {
         String assistant = text(args, 0);
         if (!assistant.equals("codex") && !assistant.equals("claude")) return;
-        String service = view instanceof SelectorView ? "selector" : view instanceof ChatView ? "chat" : "versions";
+        String service = view instanceof ChatView ? "chat" : "versions";
         String state = text(args, 3).isBlank() ? "{}" : text(args, 3);
         if (view instanceof ChatView && call.equals("ask")) {
             // Read here, on the UI thread, at the moment the question is sent.

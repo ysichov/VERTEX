@@ -266,16 +266,6 @@ function createRepository({ client, systemId, emit = () => {} }) {
     if (failure) { throw failure; }
     return outcome;
   }
-  async function originIndex(args) {
-    const objectName = name(args.object_name), objectType = type(args.object_type);
-    const response = await client.httpClient.request('/sap/bc/adt/vertex/flow/' + encodeURIComponent(objectName)
-      + '?mode=origin&type=' + objectType, { method: 'GET', headers: { Accept: 'application/json' } });
-    const result = JSON.parse(response.body);
-    if (result.schema_version !== 1 || !Array.isArray(result.includes)) {
-      throw new Error('Update the VERTEX ABAP backend (ZCL_VX_ADT_RES_FLOW): the ACE origin index is unavailable.');
-    }
-    return result;
-  }
   // Value Origin needs the actual configured modifier sequence, not every
   // implementation that static dispatch happened to find.  Keep this a
   // deliberately narrow, read-only operation: it cannot become a general
@@ -297,7 +287,7 @@ function createRepository({ client, systemId, emit = () => {} }) {
       .sort((left, right) => left.step_no - right.step_no);
     return { table: 'ZLOG_PIPELINE', scenario, steps };
   }
-  const handlers = { read_origin_index: originIndex, read_value_origin_pipeline: valueOriginPipeline, search_sap_objects: search, read_sap_object: read,
+  const handlers = { read_value_origin_pipeline: valueOriginPipeline, search_sap_objects: search, read_sap_object: read,
     create_sap_object: create, modify_sap_object: modify };
   async function execute(tool, args) {
     if (applying || executing) { throw new Error("SAP session is busy. Use separate sessions for parallel operations."); }
@@ -364,6 +354,9 @@ function createRepository({ client, systemId, emit = () => {} }) {
     }, how);
   const definition = (sourceUrl, source, line, start, end) =>
     analyse("Definition", source, () => client.findDefinition(sourceUrl, source, line, start, end, false), { wait: true });
+  // ADT's own "navigate to implementation": for an interface method, the METHOD of a class that implements it.
+  const implementation = (sourceUrl, source, line, start, end) =>
+    analyse("Implementation", source, () => client.findDefinition(sourceUrl, source, line, start, end, true), { wait: true });
   // The active source behind a URL that navigation pointed at - a type pool,
   // an interface, another class - whatever kind of object it is.
   const sourceAt = url => client.getObjectSource(adtPath(String(url).split("#")[0]), { version: "active" });
@@ -462,7 +455,13 @@ function createRepository({ client, systemId, emit = () => {} }) {
     if (objects.length > 100) throw new Error('Package contains more than 100 classes/interfaces; select a smaller package.');
     return objects;
   }
-  return { execute, apply, draft, analysisReader, packageObjects, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, sourceAt, dataElement, discard: id => drafts.delete(id),
+  // ADT's data preview on a SELECT in strict Open SQL, as Eclipse's SQL console runs it: read only, at most rows lines.
+  // Values come as SAP wrote them, strings, for the caller to read by the column's type.
+  // SAP's refusal names a clause, not the statement, so the statement goes with it.
+  const query = (sql, rows) => client.runQuery(sql, rows, false).catch(error => {
+    throw new Error(String(error.message || error) + "\nSQL: " + sql);
+  });
+  return { execute, apply, query, language: () => client.language, draft, analysisReader, packageObjects, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath };

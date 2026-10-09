@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.8.6",
+  "version": "0.8.7",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -99,7 +99,15 @@
     "commands": [
       {
         "command": "vertex.valueOrigin",
-        "title": "VERTEX: Analyze Variable Value Origin"
+        "title": "VERTEX: Forward Usage Analysis"
+      },
+      {
+        "command": "vertex.backwardUsage",
+        "title": "VERTEX: Backward Usage Analysis"
+      },
+      {
+        "command": "vertex.runSelect",
+        "title": "VERTEX: Run Select"
       },
       {
         "command": "vertex.openVisualDebug",
@@ -353,6 +361,16 @@
           "group": "navigation@9"
         },
         {
+          "command": "vertex.backwardUsage",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap",
+          "group": "navigation@9"
+        },
+        {
+          "command": "vertex.runSelect",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap",
+          "group": "navigation@9"
+        },
+        {
           "command": "vertex.abapDocumentation",
           "when": "editorLangId == abap && (resourceScheme == vertex-sap || resourceScheme == vertex-source)",
           "group": "navigation@3"
@@ -517,6 +535,14 @@
         {
           "command": "vertex.valueOrigin",
           "when": "editorLangId == abap"
+        },
+        {
+          "command": "vertex.backwardUsage",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap"
+        },
+        {
+          "command": "vertex.runSelect",
+          "when": "resourceScheme == vertex-sap && editorLangId == abap"
         }
       ]
     },

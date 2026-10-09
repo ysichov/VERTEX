@@ -1,5 +1,12 @@
 # Built-in Eclipse Assistant
 
+The plugin depends on none of the projects VERTEX grew out of - Simple Data Explorer, ACE, AVE:
+nothing from them has to be installed, and none of their code is called. Code Explorer and Value
+Origin analyse ADT source in the plugin, and SelecTor in VERTEX Tools reads through ADT's standard
+data preview once the plugin is built from the current repository; only Versions / Reviewer reads
+VERTEX's own ABAP, `src/`. Notes below that name a backend route describe the build they were
+written for.
+
 The VS Code 0.7.12 Value Origin loader distinguishes foreign class declarations from complete implementations. Its Type is now FLOW or Formula, with a Depth slider that opens the tree along the call stack or along the derivation. Both are client changes and require no additional Eclipse build.
 
 The shared diagram pages changed too, and they are the same pages this plugin shows. A method
@@ -122,13 +129,29 @@ Eclipse browser runtime: added the Buffer.from hex/UTF-8 operations used by abap
 
 Eclipse browser bundler: generated module imports now use a distinct loader name, avoiding collision with frontend-analysis’s SAP source load function. This fixes Calls palette and Logic module loading; shared VS Code analysis sources are unchanged.
 
+### Shared with VS Code 0.8.7
+
+The VERTEX Tools window offers Metrics, Logic diagram and Calls diagram for a function module too, and opens it on Metrics; before, only Diff.
+
+Value origin's FLOW, with a variable chosen, goes into a call only where the value is computed, and for a method's local variable shows that method alone; between breakpoints it shows the routine they stand in and everything it calls.
+
+In the Calls diagram, a click on a method of a class local to a program opens that program at the method; before, Eclipse looked for a global class of that name ("ZCL_AVE_POPUP (Class) does not exist").
+
+### Eclipse editor menu
+
+Eclipse: the VERTEX items - VERTEX Tools, VERTEX: Activate, Analyze Variable Value Origin, Visual Flow Analysis, Debug Monitor - are in the context menu of the ADT class and program editors again (with ADT 3.60 in Eclipse 2025-03 none of them showed there). In a class's Global Class tab the analyses are offered too: ADT 3.60 labels that tab otherwise than CLAS/OC, so the object's kind is also read from its ADT address. In build 0.8.1.20261008145448.
+
+Value origin, Visual Flow Analysis and Debug Monitor are offered in every ADT editor, and Value origin runs in a class's method code: ADT 3.60 opens a class's Global Class tab as its main include (CLAS/I), which is now taken for the class itself. The local types, local implementations and test classes of a class are analysed too; a command that cannot run on an object says so and names its type and address.
+
+Value origin reads only what the chosen value's slice reaches, as in VS Code - not every customer object the source names, which for a local variable meant half the system and a window that seemed to hang.
+
 ### Shared with VS Code 0.8.5
 
-The Logic diagram is the shared page: RETURN, LEAVE PROGRAM and an EXIT outside a loop end their branch and are drawn in the theme's error colour, instead of a line across the whole diagram to ENDMETHOD. In build 0.8.1.20261007163543. SAP system setup is VS Code only: Eclipse takes its systems from the ABAP project.
+The Logic diagram is the shared page: RETURN, LEAVE PROGRAM and an EXIT outside a loop end their branch and are drawn in the theme's error colour, instead of a line across the whole diagram to ENDMETHOD. In build 0.8.1.20261008145448. SAP system setup is VS Code only: Eclipse takes its systems from the ABAP project.
 
 ### Shared with VS Code 0.8.4 (Value origin page)
 
-FLOW tree: switching between Full and BSE keeps the branches open as Expand all / Collapse all and Depth set them (BSE used to show everything collapsed). The tree's root keeps Expand all and Depth even when nothing is left under it, so the depth slider no longer disappears. Depth for calls starts at 1. In build 0.8.1.20261007163543.
+FLOW tree: switching between Full and BSE keeps the branches open as Expand all / Collapse all and Depth set them (BSE used to show everything collapsed). The tree's root keeps Expand all and Depth even when nothing is left under it, so the depth slider no longer disappears. Depth for calls starts at 1. In build 0.8.1.20261008145448.
 
 Logic diagram: a TRY is drawn as a branch - the TRY body and each CATCH start from the TRY and meet at ENDTRY. A RETURN inside a CATCH no longer ends the whole diagram; the method goes on after ENDTRY.
 
@@ -146,7 +169,7 @@ ABAP: the ACE core (`ZCL_VX_ACE_*`, `ZIF_VX_ACE_*`, `Z_VX_ACE_SCHEME_TEST`) and 
 
 ### Shared with VS Code 0.8.3 (Value origin page)
 
-The Eclipse plugin's Value origin runs the VS Code page and flow builder, so plugin build 0.8.1.20261007163543 carries the FLOW changes of VS Code 0.8.3 and the Value origin fixes below: the Classes / Methods / Logic / Statements switch, the node menu (Show from here, Expand / Collapse this branch), Auto direction, labels written as in the code, and theme-following frames.
+The Eclipse plugin's Value origin runs the VS Code page and flow builder, so plugin build 0.8.1.20261008145448 carries the FLOW changes of VS Code 0.8.3 and the Value origin fixes below: the Classes / Methods / Logic / Statements switch, the node menu (Show from here, Expand / Collapse this branch), Auto direction, labels written as in the code, and theme-following frames.
 
-Tools Logic now follows the ADT editor while it scrolls, as in VS Code 0.8.3: the line a third down the visible range is sent to the page, and when it lies in another method that method's logic diagram replaces the shown one. Also in build 0.8.1.20261007163543.
+Tools Logic now follows the ADT editor while it scrolls, as in VS Code 0.8.3: the line a third down the visible range is sent to the page, and when it lies in another method that method's logic diagram replaces the shown one. Also in build 0.8.1.20261008145448.
 

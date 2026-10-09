@@ -55,9 +55,7 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
   METHOD services.
     " In the order the routes have always been attached in.
     rt_service = VALUE #(
-      ( name = `table`    template = `/vertex/table/{name}`    handler = 'ZCL_VX_ADT_RES_TABLE' )
       ( name = `versions` template = `/vertex/versions/{name}` handler = 'ZCL_VX_ADT_RES_VERSIONS' )
-      ( name = `join`     template = `/vertex/join/{name}`     handler = 'ZCL_VX_ADT_RES_JOIN' )
       ( name = `review`   template = `/vertex/review/{name}`   handler = 'ZCL_VX_ADT_RES_REVIEW' )
       ( name = `prepare`  template = `/vertex/prepare/{name}`  handler = 'ZCL_VX_ADT_RES_PREPARE' )
       " The routes with no name in them: what they are asked comes as query

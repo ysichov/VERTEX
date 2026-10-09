@@ -1,3 +1,5 @@
+// Wrapped so that, inlined in a page as a classic script, it leaves no global names (a page declares its own api).
+(function () {
 "use strict";
 // Shared statement rules for the logic diagram and execution FLOW.
 const procedureEnds=Object.freeze({METHOD:'ENDMETHOD',FORM:'ENDFORM',FUNCTION:'ENDFUNCTION',MODULE:'ENDMODULE'});
@@ -61,3 +63,4 @@ function executionEdges(rows){
 }
 const api={procedureEnds,isProcedureEnd,blockEnds,classifyStatement,executionEdges};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else window.vertexAbapControl=api;
+})();

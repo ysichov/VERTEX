@@ -127,7 +127,13 @@ async function request(api, resource, progress, cancelled = () => false) {
   }
   const url = new URL(resource, 'https://sap.invalid');
   const match = /^\/sap\/bc\/adt\/vertex\/(metrics|class|package|flow)\/(.+)$/.exec(url.pathname);
-  if (!match) return null;
+  if (!match) {
+    // SelecTor's table, join and pivot, for a host that sends every analysis here (Eclipse's bundle).
+    if (/^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(url.pathname)) {
+      return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource);
+    }
+    return null;
+  }
   const [, service, encoded] = match;
   let name = upper(decodeURIComponent(encoded));
   let type = upper(url.searchParams.get('type') || (service === 'class' ? 'CLAS' : 'PROG')).split('/')[0];
@@ -191,7 +197,9 @@ async function request(api, resource, progress, cancelled = () => false) {
       loaded.sources.push(result.source);loaded.warnings.push(...result.warnings);
     }
     await part(data);
-    if (data.object_type === 'CLAS') for (const include of data.includes.filter(i => ['definitions','implementations','macros'].includes(i)))
+    // Value origin may start in a test class, so its read takes the class's test classes too; diagrams and metrics do not.
+    const classParts = ['definitions','implementations','macros', ...(url.searchParams.get('mode') === 'origin' ? ['testclasses'] : [])];
+    if (data.object_type === 'CLAS') for (const include of data.includes.filter(i => classParts.includes(i)))
       {stage('Reading '+object_name+' / '+include);await part(await read({ object_name, object_type: 'CLAS', include }));}
     return loaded;
   }
@@ -272,27 +280,31 @@ async function request(api, resource, progress, cancelled = () => false) {
       const style=p=>p.unitType==='METHOD'?(all&&['CONSTRUCTOR','CLASS_CONSTRUCTOR'].includes(p.name)?'constr':'method'):!all?'event':p.unitType==='FUNCTION'?'func':['FORM','MODULE'].includes(p.unitType)?'form':p.unitType==='ENHANCEMENT'?'enh':'event';
       const routineLabel=p=>!all?p.owner||p.source.objectName:p.owner?p.owner+'->'+p.name:p.unitType==='FUNCTION'?'FUNCTION:'+p.name:['FORM','MODULE'].includes(p.unitType)?p.unitType+' '+p.name:p.source.objectName+':'+p.name;
       const id = (label,kind='event') => { if (!ids.has(label)) { const value = 'c' + ids.size; ids.set(label, value); nodes.push(value + '("' + quoted(label) + '"):::'+kind); } return ids.get(label); };
+      // Where each drawn routine is: a class local to a program is in the program's source, not a global class of that
+      // name, so a click opens the object the routine was read from, at its line.
+      const places={},place=p=>{const key=routineLabel(p).replace(/\s+/g,'');if(!places[key])places[key]={name:p.source.objectName,type:p.source.objectType,line:p.line||0};};
       const link=(from,to,arrow,cost=1)=>{if(from!==to){links.push({from,to,cost,text:from+arrow+to});}};
       for (const c of walkedCalls) {
         check();const p=units.find(q=>q.id===c.caller);if(!p)continue;
-        const label=routineLabel(p),owner=c.owner;
+        const label=routineLabel(p),owner=c.owner;place(p);
         const matches=c.targets.map(target=>units.find(q=>q.id===target)).filter(Boolean);
         // NEW also works without an explicit constructor. Keep source discovery
         // in the walker, but draw only executable constructor implementations.
         if(c.method==='CONSTRUCTOR'&&!matches.length)continue;
+        matches.forEach(place);
         const targets = matches.length ? matches.map(q=>({label:routineLabel(q),style:style(q)})) : [{label:c.kind==='FUNCTION'?(all?'FUNCTION:'+c.method:c.method):c.kind==='FORM'?(all?'FORM '+c.method:owner||p.source.objectName):all?(owner || '?[' + c.receiver + ']') + '->' + c.method:owner || '?['+c.receiver+']',style:c.kind==='FUNCTION'?(all?'func':'event'):c.kind==='FORM'?(all?'form':'event'):['CONSTRUCTOR','CLASS_CONSTRUCTOR'].includes(c.method)&&all?'constr':'method'}];
         for (const target of targets) link(id(label,style(p)),id(target.label,target.style),matches.length||c.boundary&&owner?' --> ':' -. unresolved .-> ');
       }
       // ACE starts with execution entries at level 1; it does not invent
       // a program node or an EVENT edge above those entries.
       const starts=entries(units);
-      for(const p of starts)id(routineLabel(p),style(p));
+      for(const p of starts){id(routineLabel(p),style(p));place(p);}
       // Depth was enforced before reading targets. Recomputing it on the
       // aggregated Classes graph loses routine levels and can drop real calls.
       for(const e of links)edges.push(e.text);
       const palette=require('./resources/vertex-flow-graph').palette;
       const colors=Object.entries(palette).map(([kind,[fill,stroke]])=>'classDef '+kind+' fill:'+fill+',stroke:'+stroke);
-      return { ...base, mode, depth:callDepth, steps: ids.size, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
+      return { ...base, mode, depth:callDepth, steps: ids.size, places, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
     }
     if (chosen.length !== 1) throw new Error('Pick one method to draw its logic diagram.');
     return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType,

@@ -54,17 +54,6 @@ test('analysis source reader fetches one version and caches metadata and request
   assert.equal(structures, 1);
   assert.equal(f.calls.filter(c => c[0] === 'read').length, 2);
 });
-test('origin index is a read-only ACE request and refuses older backend schemas', async () => {
-  const f = fixture(); const seen = [];
-  f.client.httpClient = { async request(url, options) { seen.push([url, options]); return { body: JSON.stringify({ schema_version: 1, includes: [] }) }; } };
-  const result = await f.repo.execute('read_origin_index', { object_name: 'ztest', object_type: 'PROG' });
-  assert.equal(result.schema_version, 1);
-  assert.equal(seen[0][0], '/sap/bc/adt/vertex/flow/ZTEST?mode=origin&type=PROG');
-  assert.equal(seen[0][1].method, 'GET');
-  assert.deepEqual(f.calls, []);
-  f.client.httpClient.request = async () => ({ body: JSON.stringify({ mermaid: 'old endpoint' }) });
-  await assert.rejects(f.repo.execute('read_origin_index', { object_name: 'ztest', object_type: 'PROG' }), /Update the VERTEX ABAP backend/);
-});
 test('value origin reads only the configured pipeline for one scenario', async () => {
   const f = fixture(), seen = [];
   f.client.httpClient = { async request(url, options) {

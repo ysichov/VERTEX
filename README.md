@@ -11,20 +11,19 @@ the developer's existing ADT connection and renders as HTML.
 
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](docs/architecture.jpg)
 
-The ABAP side is this repository's `src/`. It is optional: the editor, the debugger and the
-assistant work over ADT alone, and only the three explorers read it — the last column below says
-which is which.
+The ABAP side is this repository's `src/`. It is optional: everything works over ADT alone except
+Versions / Reviewer, which reads it — the last column below says which is which.
 
 | Tool | Grew out of | What it does | VS Code | Eclipse | ABAP backend |
 |---|---|---|---|---|---|
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | ✓ | — | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values; the VERTEX chat has it built in, Claude Code and Codex reach it over MCP as `vertex-debug` | ✓ | — | not needed |
-| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | ✓ | — | runs without it; ACE's statement map makes stepping cheaper and puts a stepped-over call's method on the chart |
-| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW* or *Formula*, each as a tree or a diagram | ✓ | — | needed |
+| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | ✓ | — | not needed |
+| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW* or *Formula*, each as a tree or a diagram | ✓ | — | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | ✓ | ✓ ¹ | not needed |
 | **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | ✓ | ✓ ² | needed |
-| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | ✓ | ✓ ² | needed |
-| **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | ✓ | ✓ ² | needed |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | ✓ | ✓ ² | not needed |
+| **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | ✓ | ✓ ² | not needed |
 
 ¹ In Eclipse the assistant is run by the Codex or Claude Code CLI on your own subscription, and
 ADT is the editor: there is no VERTEX tab for it to write into, and the debugger is not part of it.
@@ -33,6 +32,8 @@ See [eclipse/README.md](eclipse/README.md).
 ² The three explorers are the same pages in both hosts, but the Eclipse plugin is built at
 **0.7.3** and the VS Code extension at **0.8.0**. What the pages gained since 0.7.3 is in the
 repository and in VS Code, and reaches Eclipse only when the plugin is built again.
+
+**Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; only Versions / Reviewer needs VERTEX's own ABAP, `src/`.
 
 **Where the two hosts stand apart.** The editor, the debugger, Visual Debug and Value Origin are
 VS Code only, by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace
@@ -96,14 +97,14 @@ Building either half from this repository instead: [BUILD.md](BUILD.md).
 
 Both Value Origin windows expose **Analysis log** directly above the flow. **Copy log** copies the engine, source loading and parsing times, source closure, definitions, dependency edges, traversal, warnings, and Formula/Expression diagnostics. The log is accessible without enabling the technical sections.
 
-**Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Analyze Variable Value Origin**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
+**Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Forward Usage Analysis**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
 
 
-**VERTEX: Analyze Variable Value Origin**, on the cursor in a VERTEX ABAP source tab, answers
+**VERTEX: Forward Usage Analysis** (formerly *Analyze Variable Value Origin*), on the cursor in a VERTEX ABAP source tab, answers
 where that value came from - backwards across calls, without running the program. ACE indexes
 and the customer sources they reference (`Z*`, `Y*`, `/namespace/`) are read from the same
 system; standard ABAP objects stay analysis boundaries. It needs `ZCL_VX_ADT_RES_FLOW` in SAP
-and active source.
+and active source. With no variable under the cursor it draws the flow forward from that line - the routine from there on and every customer routine it calls - without a slice of a value.
 
 Value Origin takes a **Type**: *FLOW* or *Formula*. FLOW is what the program does — its
 statements grouped by class and method, nested by blocks and their branches, with a node on each
@@ -114,8 +115,12 @@ computed: `a = b + c` at the top and the definitions of `b` and `c` as its two b
 derivation in Formula — and one button beside it, offering *Collapse all* and then *Expand all*, says whether the levels shown are open, whatever the depth. *Tree* and
 *Diagram* stay the two views of whichever Type is chosen. **Expression** (0.8.0) is a third Type: the derivation written out as one formula by substitution - a share added to the value before it becomes `value × (1 + share)` - with each table value a link to the statement that reads it, and, where the order of steps is configured data (a pipeline), the order of the loaded scenario.
 
-Branches and polymorphic targets are alternatives, database-dependent loop order is a boundary,
-and a pair of breakpoints in the editor bounds what is analysed. This is a static dependency
+Branches and polymorphic targets are alternatives, database-dependent loop order is a boundary.
+Breakpoints in the editor stop the flow where a run would stop: VERTEX names the breakpoint reached and asks whether to stop the analysis there, continue to the next breakpoint or ignore the breakpoints. **VERTEX: Backward Usage Analysis** goes the other way: from the routine at the cursor up into the code that calls it - a where-used that follows the value. SAP's where-used finds the calls in the saved sources; in each caller the value is followed on from the call - what it is assigned to, tested in, passed to, written with - and, where it leaves the caller through a parameter of the caller's own, up again. A value passed in is followed to where each caller took it from. With a variable under the cursor that variable is followed (a local through the parameters and attributes it reaches); with none, every parameter of the routine and every attribute it uses; with neither, the calls themselves, as SAP's where-used gives them. Standard SAP code is not followed and is named. Breakpoints stop the walk as in Forward Usage Analysis, a level of callers at a time. The tab must be saved: where-used searches the saved source.
+
+**Run Select.** **VERTEX: Run Select** (editor context menu of a VERTEX ABAP tab): the SELECT at the cursor runs through ADT's data preview, read only, as Eclipse's SQL console runs a query, and the rows open beside the code. What only the running program would supply is left out: INTO and FOR ALL ENTRIES go, UP TO n ROWS is the row limit (otherwise 100; SELECT SINGLE reads one), and a WHERE condition that reads a program value - a variable, a parameter, a select-option - is dropped, an OR holding one dropped whole. What was dropped is listed above the rows. A program value under NOT or outside WHERE, or a dynamic table, list or condition, refuses the SELECT and says why. The statement is parsed with abaplint, saved or not. A SELECT on one table whose WHERE select-options can say opens in SelecTor instead, its conditions filled in as selection lines and each program value as an empty line to fill in; any other SELECT runs in the plain window, which says why it did not open in SelecTor. A SELECT with INNER or LEFT OUTER joins opens in SelecTor's Join, its tables in order, their ON conditions and the SELECT list carried over, when SelecTor's join takes them - it joins only the tables the dictionary offers; the selection starts folded. In a table the selection panel is a list of fields, as SAP GUI's selection screen is, each with a Shown checkbox. From Run Select only the SELECT's fields are read at first; Show hidden reads every field of the table and leaves the ones the SELECT did not ask for unticked, still there to select on.
+
+This is a static dependency
 slice, not a solved runtime trace.
 
 ## What each host has
@@ -235,6 +240,20 @@ own folder. The Eclipse plugin does not use it: it works through the platform an
 
 What is still missing, and what has to come out before it ships: [Next.md](Next.md).
 
+## VS Code 0.8.7: function modules in Tools
+
+- **Function modules in VERTEX Tools.** A function module offers Metrics, Logic diagram and Calls diagram, as a program does, and opens on Metrics; before, only Diff.
+- **Calls diagram navigation.** A click on a method of a class local to a program (or an include or function module) opens that program at the method, instead of looking for a global class of that name and failing.
+- **Value origin FLOW.** With a variable chosen, the flow goes into a call only where the value is computed; for a variable local to its method the flow is that method alone, without its callers or the rest of the class. The run no longer reads unrelated classes.
+- **Forward Usage Analysis.** Analyze Variable Value Origin is now **VERTEX: Forward Usage Analysis** (same keys and menus). With no variable under the cursor it draws the flow forward from that line, without a slice of a value. Breakpoints no longer bound the flow as a pair: the flow stops at each breakpoint it reaches, and VERTEX asks whether to stop the analysis there, continue to the next breakpoint or ignore the breakpoints.
+- **Backward Usage Analysis.** New command **VERTEX: Backward Usage Analysis** (editor context menu of a VERTEX ABAP tab): from the routine at the cursor up into its callers through SAP's where-used, following the value - a variable, else every parameter and used attribute, else the plain calls - on in each caller and up through the caller's own parameters. Standard SAP code is not followed. Breakpoints stop it a level of callers at a time, with the same three answers.
+- **Run Select.** New command **VERTEX: Run Select** (editor context menu of a VERTEX ABAP tab): the SELECT at the cursor runs through ADT's data preview, read only, as Eclipse's SQL console runs a query, and the rows open beside the code. What only the running program would supply is left out: INTO and FOR ALL ENTRIES go, UP TO n ROWS is the row limit (otherwise 100; SELECT SINGLE reads one), and a WHERE condition that reads a program value - a variable, a parameter, a select-option - is dropped, an OR holding one dropped whole. What was dropped is listed above the rows. A program value under NOT or outside WHERE, or a dynamic table, list or condition, refuses the SELECT and says why. The statement is parsed with abaplint, saved or not. A SELECT on one table whose WHERE select-options can say opens in SelecTor instead, its conditions filled in as selection lines and each program value as an empty line to fill in; any other SELECT runs in the plain window, which says why it did not open in SelecTor. A SELECT with INNER or LEFT OUTER joins opens in SelecTor's Join, its tables in order, their ON conditions and the SELECT list carried over, when SelecTor's join takes them - it joins only the tables the dictionary offers; the selection starts folded. In a table the selection panel is a list of fields, as SAP GUI's selection screen is, each with a Shown checkbox. From Run Select only the SELECT's fields are read at first; Show hidden reads every field of the table and leaves the ones the SELECT did not ask for unticked, still there to select on.
+- **SelecTor without the backend for a table.** SelecTor reads a table - its fields with their texts, and the rows under the select-options - through ADT's data preview, as Run Select does, instead of the VERTEX resource on SAP. The answer and the window are the same; a selection SAP refuses is now an error rather than an empty table. Joins and the pivot still need the ABAP backend.
+- **SelecTor's join without the backend.** The join is built and read through ADT's data preview too: the tables the dictionary offers (foreign keys out and in, text tables, from DD08L and DD05S), the proposed ON, the SELECT list and the selection, with the same window. A table the dictionary does not offer can now be joined as well, on the key fields it shares with the base or on an ON of your own - a self-join included. The pivot still needs the ABAP backend.
+- **SelecTor's pivot without the backend.** The pivot is read through ADT's data preview as well: one statement grouped by its rows and columns with the measures' aggregates, the column values spread into columns in the window. Run Select opens a SELECT with GROUP BY and aggregates in the pivot, its grouped fields as rows and COUNT, SUM, MIN, MAX and AVG as measures; HAVING, DISTINCT, UNION and expressions run in the plain window. Its columns are named by the fields and its values by their domains' texts, as the ABAP pivot named them; a smallest or largest date stays a date; its selection is the same field list.
+- **Expression with conditions, working clicks.** Alternatives in Expression say when each holds: `{(iv_base * mv_rate) otherwise | ((iv_base * mv_rate) - 50) when lv_gross > 1000}` (ELSE reads as `NOT (…)`, a WHEN as `x = value`). A click on a node or on `</>` in a Value origin window opens the source again - a shared script had broken the page's own script, and with it every click. A script that fails in the window is now reported, and a node with no source to open says so.
+- **Interface methods.** A double-click on a call through an interface reference (`lo_strategy->calculate_base(`), or on a method name in an interface's METHODS, goes to its implementation as SAP's navigate-to-implementation names it, instead of stopping at the interface.
+
 ## VS Code 0.8.5: SAP system setup, exits in Logic, long sources
 
 - **SAP system setup.** **VERTEX: Import SAP Systems** fills `vertex.systems` from what the machine already has: each system's host and instance from SAP Logon (a logon group through its message server's host), the client and user from an Eclipse ADT workspace - the recent workspaces of the Eclipse installations found on the machine are offered - and the ADT address found by trying the usual ports (443NN and 80NN for the instance, then 44300, 8000, 50001, 50000, 443, 80, 8443, 8080). Only addresses that answer are offered, and nothing is written before the reader picks. **VERTEX: Test SAP Systems** logs on to each system and says what is wrong; the password goes to the OS credential store, never to settings. The import also checks where the debugger can open WebGUI (`/sap/bc/gui/sap/its/webgui`): on the system's `url` it needs nothing; served on another address that answered - say `url` on HTTP 8000, WebGUI on HTTPS 44300 - or behind a redirect to a host this computer resolves, it writes that as `webgui`; found nowhere, it says so, and `webgui` is set by hand. Both are links under `vertex.systems` in Settings, and a start with no system configured offers the import.
@@ -277,7 +296,7 @@ What is still missing, and what has to come out before it ships: [Next.md](Next.
 - Navigation: a click on a FLOW diagram label opens the code again. A click in a Tools diagram scrolls the editor that already shows that source instead of opening a second copy. Back (Alt+Left) returns from code opened from a diagram.
 - Types: the hover of a name declared inline (`DATA(x) = …`) shows the declaring statement and the type SAP gives it. **Go to Type Definition** opens the `TYPES` declaration of a variable's type in its class or interface.
 - Visual Debug: the separate Logic button (the Tools logic diagram of one method) is gone; Logic is a reading of the flow.
-- Tools Logic follows the editor while it scrolls: when the source scrolled to is another method, its logic diagram replaces the shown one (before, only a cursor move did that). The Eclipse plugin's Tools window does the same from the ADT editor's scrolling; it is in the Eclipse plugin build 0.8.1.20261007163543.
+- Tools Logic follows the editor while it scrolls: when the source scrolled to is another method, its logic diagram replaces the shown one (before, only a cursor move did that). The Eclipse plugin's Tools window does the same from the ADT editor's scrolling; it is in the Eclipse plugin build 0.8.1.20261008145448.
 
 ## VS Code 0.8.1 — code diagrams and Visual Debug
 
@@ -303,10 +322,6 @@ A condition stays in one diamond, including its AND / OR terms. External calls a
 Cursor and range selections highlight matching nodes. Selecting LOOP or ENDLOOP highlights the loop frame. The focused view drives scrolling; programmatic navigation is suppressed to avoid feedback.
 
 Choose **Top-down** or **Left-right**, use the **10–100% zoom slider**, or press **Fit**. The lens is disabled at 70% and above; below that it magnifies up to an effective 70% scale. Changing the colour theme preserves zoom and scroll position. Controls and highlights use theme colours.
-
-### Release scope
-
-The package remains **0.8.1**. This is a VS Code release preparation; no Eclipse release is claimed. Packaging checks are recorded separately from live SAP and visual verification. Outstanding analysis differences are listed in [ACE port audit](docs/ace-port-audit.md).
 
 ### Eclipse 0.8.1 export preparation
 

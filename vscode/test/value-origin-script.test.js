@@ -18,6 +18,6 @@ test('all executable scripts in the generated Value Origin page parse', () => {
   }
   // Besides the page's own: the shared magnifier and flow view (carried inline when there is no address to load them
   // from), the guard that says so when the flow view did not load, and the flow builder with its ABAP control rules,
-  // which build a reading when it is asked for.
-  assert.equal(count, 7);
+  // which build a reading when it is asked for - and, first of all, the link to the host that reports a failing script.
+  assert.equal(count, 8);
 });

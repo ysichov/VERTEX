@@ -40,11 +40,10 @@ gets one opens on a setup page naming what to install, with links, rather than a
 because nothing is broken there.
 
 The flow, the branch schemes and the metrics read a GUI-free core carried here from
-[ACE](https://github.com/ysichov/ACE) as `ZCL_VX_ACE_*`; the table reader, the join and the pivot
-read one carried the same way out of
-[Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) as `ZCL_VX_TOOLS`,
-`ZCL_VX_PIVOT`, `ZCL_VX_SQL`, `ZCL_VX_DDIC`, `ZCL_VX_APPL`, `ZCL_VX_COMMON` and
-`ZIF_VX_PIVOT_TYPES`; the version history, the diff, the transport lookup and the review read one
+[ACE](https://github.com/ysichov/ACE) as `ZCL_VX_ACE_*`. SelecTor - the table reader, the join and
+the pivot - needs nothing here: the page builds its statements and reads them through ADT's
+standard data preview (`/sap/bc/adt/datapreview/freestyle`); the core once carried for it out of
+[Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) is gone. The version history, the diff, the transport lookup and the review read one
 carried out of [AVE](https://github.com/ysichov/AVE) as `ZCL_VX_VERSION*`, `ZCL_VX_DIFF*`,
 `ZCL_VX_OBJECT_*` and `ZCL_VX_REVIEW_*`, over the `ZAVE_REVIEW` table that ships in `src/` too. All
 three repositories are where that logic was written first, not prerequisites: nothing but `src/`

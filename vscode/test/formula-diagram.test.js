@@ -137,7 +137,8 @@ test('BSE scope is what BSE found and the path that led to it', () => {
   const { html } = require('../value-origin-view');
   const { analyze } = require('./origin-view-fixture');
   const output = html(analyze(require('./fixtures/value-origin-demo.json'),
-    { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' }), 'test');
+    // Bounded by breakpoints over the whole program, so the flow follows every call - the rule tested here is the tree's.
+    { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount', flowBounds: { source: 'zvertex_debug_lab.prog.abap', from: 1, to: 100000 } }), 'test');
   const drawn = JSON.parse(output.match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]);
   const flow = require('../../org.vertex.abap.ui/resources/vertex-flow-graph.js').build(drawn.flowReadings.input, 'steps').bseFlow;
   const when = flow.nodes.filter(node => /^WHEN\b/i.test(node.text || ''));

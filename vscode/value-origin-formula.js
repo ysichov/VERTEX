@@ -109,6 +109,10 @@ function formula(graph) {
       return [];
     });
   };
+  // The conditions a definition stands under, as the analysis links them: IF, ELSEIF, ELSE, WHEN - each node's text is the
+  // block's statement and, for a branch, ' / ' and the branch's.
+  const conditionsOf = id => (graph.edges || []).filter(edge => edge.to === id && edge.label === 'execution condition')
+    .map(edge => bseById.get(edge.from)).filter(node => node && node.kind === 'condition').map(node => node.text);
   let maxLevel = 0;
   const expanded = new Set();
   // Each definition of a value, with the derivation of what it reads under it. The guard is the path walked to here, not
@@ -121,7 +125,7 @@ function formula(graph) {
     return definitions.map(definition => {
       if (whole) {
         const inputs = formulaInputs(definition.id);
-        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line,
+        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id),
           children: inputs.flatMap(input => formulaSteps(input.id, depth + 1, definition.id, input.text, path, true)) };
       }
       const known = formulaGraph.nodes.find(node => node.id === definition.id);
@@ -218,6 +222,22 @@ function sequence(tree, steps) {
 /* The derivation as one expression, by substitution alone: each definition `x = expression` stands in place of x wherever
    its parent reads it, in brackets; no algebra is done. What is not an assignment (a SELECT, a call) stays a named value
    and is listed under the formula as `where`. Several definitions of one value are given as {a | b}. */
+/* A condition as a formula reads it, from the analysis's text of it: 'IF a > 1.' is a > 1, 'IF a > 1. / ELSE.' is
+   NOT (a > 1), 'IF a. / ELSEIF b.' is b, 'CASE x. / WHEN 1.' is x = 1. The words come from the tokens, not the text. */
+function conditionText(raw) {
+  const { tokenize } = require('./value-origin-tokens');
+  const [statement, branch] = String(raw || '').split(' / ');
+  const rest = text => {
+    const tokens = tokenize(text).filter(token => token.value !== '.');
+    return tokens.length > 1 ? text.slice(tokens[1].offset, tokens[tokens.length - 1].endOffset) : '';
+  };
+  const first = text => String((tokenize(text || '')[0] || {}).value || '').toUpperCase();
+  if (!branch) { return rest(statement); }
+  if (first(branch) === 'ELSE') { return 'NOT (' + rest(statement) + ')'; }
+  if (first(branch) === 'WHEN' && first(statement) === 'CASE') { return rest(statement) + ' = ' + rest(branch); }
+  return rest(branch);
+}
+
 function oneFormula(tree) {
   const { tokenize } = require('./value-origin-tokens');
   const { assignment, variablePaths } = require('./value-origin-model');
@@ -254,7 +274,14 @@ function oneFormula(tree) {
   };
   const define = (definitions, name, context, asStep = false) => {
     if (!definitions.length) { return name; }
-    const parts = [...new Set(definitions.map(definition => (asStep ? step(definition, context) : body(definition, context))))];
+    // Alternatives say when each holds: the one under a condition `when` it, the one it overrides `otherwise`.
+    const guarded = definitions.length > 1 && definitions.some(definition => (definition.conditions || []).length);
+    const parts = [...new Set(definitions.map(definition => {
+      const value = asStep ? step(definition, context) : body(definition, context);
+      if (!guarded) { return value; }
+      const when = (definition.conditions || []).map(conditionText).filter(Boolean);
+      return value + (when.length ? ' when ' + when.join(' AND ') : ' otherwise');
+    }))];
     return parts.length === 1 ? parts[0] : '{' + parts.join(' | ') + '}';
   };
   function body(node, context) {

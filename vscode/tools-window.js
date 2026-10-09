@@ -107,7 +107,8 @@ function open(vscode, context, deps, initial) {
   const opened = deps.active();
   const system = opened.error ? "" : opened.system.name;
   const pin = work => deps.pin ? deps.pin(system, work) : work();
-  const panel = deps.panel || vscode.window.createWebviewPanel("vertex.tools", initial?.boundObject ? initial.name + " · VERTEX Tools" : system ? "VERTEX " + system : "VERTEX Tools", initial?.boundObject ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
+  const panel = deps.panel || vscode.window.createWebviewPanel("vertex.tools", initial?.boundObject ? initial.name + " · VERTEX Tools" : system ? "VERTEX " + system : "VERTEX Tools", // Run Select opens SelecTor beside the code it came from.
+    initial?.boundObject || initial?.selectorPlan ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   const ask = deps.chat();
   const bridge = `<script>

@@ -135,7 +135,7 @@ public abstract class PageView extends ViewPart {
 		};
 
 		addFunctions();
-		if (this instanceof SelectorView || this instanceof VersionsView || this instanceof ChatView) {
+		if (this instanceof VersionsView || this instanceof ChatView) {
 			new AssistantBridge(this);
 		}
 
@@ -245,6 +245,30 @@ public abstract class PageView extends ViewPart {
         return target[0].post(new NullProgressMonitor(), String.class, "");
     }
 
+    /**
+     * ADT's data preview on one SELECT, as Eclipse's SQL console runs it: read only, at most rows lines. SelecTor's
+     * table, join and pivot are built in the page and read this way. The answer is the data preview's XML.
+     */
+    String dataPreview(int rows, String sql, org.eclipse.swt.widgets.Display display) {
+        final IRestResource[] target = new IRestResource[1];
+        display.syncExec(() -> target[0] = resource("/sap/bc/adt/datapreview/freestyle?rowNumber=" + rows));
+        com.sap.adt.communication.message.IHeaders headers = com.sap.adt.communication.message.HeadersFactory.newHeaders();
+        headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Content-Type", "text/plain"));
+        headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Accept", "application/*"));
+        return target[0].post(new NullProgressMonitor(), headers, String.class, sql);
+    }
+
+    /** The logon language of the project's ADT session, as its destination names it. */
+    String logonLanguage(org.eclipse.swt.widgets.Display display) {
+        final String[] language = new String[1];
+        display.syncExec(() -> {
+            IAdtCoreProject adtProject = abapProject().getAdapter(IAdtCoreProject.class);
+            if (adtProject == null) throw new IllegalStateException("The project does not adapt to IAdtCoreProject.");
+            language[0] = adtProject.getDestinationData().getLanguage();
+        });
+        return language[0];
+    }
+
     protected void addAnalysisFunctions() {
         new BrowserFunction(browser, "sdeAnalysisRead") {
             @Override public Object function(Object[] args) {
@@ -253,7 +277,14 @@ public abstract class PageView extends ViewPart {
                     @Override protected org.eclipse.core.runtime.IStatus run(org.eclipse.core.runtime.IProgressMonitor monitor) {
                         String result; boolean error=false;
                         try {
-                            if(path.startsWith("package:")) {
+                            if(path.startsWith("query:")) {
+                                // query:<rows>:<statement> - the statement may hold colons of its own.
+                                String[] parts=path.split(":",3);
+                                if(parts.length!=3||!parts[1].matches("[0-9]{1,5}")||!parts[2].trim().toUpperCase().startsWith("SELECT "))throw new IllegalArgumentException("Invalid data preview request.");
+                                result=dataPreview(Integer.parseInt(parts[1]),parts[2],browser.getDisplay());
+                            } else if(path.equals("language:")) {
+                                result=logonLanguage(browser.getDisplay());
+                            } else if(path.startsWith("package:")) {
                                 String name=path.substring(8);if(!name.matches("[A-Z0-9_/$]{1,40}"))throw new IllegalArgumentException("Invalid package.");
                                 result=assistantPost("/sap/bc/adt/repository/nodestructure?parent_type=DEVC%2FK&withShortDescriptions=true&parent_name="+java.net.URLEncoder.encode(name,java.nio.charset.StandardCharsets.UTF_8), browser.getDisplay());
                             } else if(path.startsWith("object:")) {

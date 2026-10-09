@@ -87,8 +87,9 @@ public class ActivateHandler extends AbstractHandler {
 		if (object.type == null) {
 			return null;
 		}
-		String uri = object.uri;
-		String type = object.type;
+		String uri = object.classOfMain() != null ? object.classOfMain()
+				: object.uri.endsWith("/source/main") ? object.uri.substring(0, object.uri.length() - "/source/main".length()) : object.uri;
+		String type = object.kind();
 		if (type.equals("CLAS/I") && uri.matches("/sap/bc/adt/oo/classes/[^/]+/includes/[^/]+")) {
 			return uri;
 		}

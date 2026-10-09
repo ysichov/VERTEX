@@ -73,66 +73,6 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         ? vscode.Uri.joinPath(context.extensionUri, 'images', 'stopped.svg') : undefined,
       gutterIconSize: 'contain' }) : null;
   if (stopDecoration) context.subscriptions.push(stopDecoration);
-  /* The analysis, named rather than passed anonymously: the editor command
-     runs it on a cursor, and the debug window asks for the same thing by
-     object and variable, to learn where a value can be changed. */
-  const originSources = async (document, target, progress, cancelled) => {
-    const diagnostics = [];
-    const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
-    if (document.isDirty) throw new Error('Save and activate the source before ACE analysis. ACE reads active SAP code.');
-    const activeSource = await originStep(diagnostics, 'ADT active source', () => selected.repo.api.sourceAt(selected.data.source_url));
-    if (revision(document.getText()) !== revision(activeSource)) throw new Error('This editor differs from active SAP source. Activate your changes or reopen the active source before ACE analysis.');
-    const { sourcesFromAce, locateTarget } = require('./value-origin-ace');
-    const { collectSources } = require('./value-origin');
-    const repo = selected.repo;
-    const load = async (name, type) => {
-      if (cancelled()) throw new Error('Value origin cancelled.');
-      const dirty = [...opened.values()].find(e => e.repo === repo && e.data.object_name === name && e.document?.isDirty);
-      if (dirty) throw new Error(name + ' has unsaved edits; ACE reads its active version.');
-      progress(name);
-      const data = await originStep(diagnostics, 'ACE index ' + type + ' ' + name,
-        () => repo.api.execute('read_origin_index', { object_name: name, object_type: type }));
-      const sources = sourcesFromAce(data, { object_name: name, object_type: type }, document.uri.toString() + '/ace');
-      diagnostics.push(name + ': ' + sources.length + ' includes, ' + sources.reduce((n, s) => n + s.aceStatements.length, 0) + ' statements');
-      return sources;
-    };
-    const initial = await load(selected.data.object_name, selected.data.object_type);
-    const mapped = locateTarget(initial, document.getText(), selected.data.object_name, target.line, target.variable, target.column);
-    const result = await collectSources(initial, load, { maxSources: 240, cancelled, progress });
-    for (const source of result.sources) {
-      if (source.id === mapped.source && source.text.split('\r').join('').trimEnd() === document.getText().split('\r').join('').trimEnd()) source.document = document;
-    }
-    const openSource = async (source, node) => {
-      // ACE snapshots are analysis input only. Navigation must use a normal
-      // vertex-sap document so editor features such as debugger breakpoints
-      // remain available instead of opening a read-only vertex-source tab.
-      if (source.document) return { document: source.document, line: node.line };
-      // Class-method links must use the same destination as Ctrl+Click in
-      // ABAP code.  Mapping an ACE snapshot line into a separate include can
-      // point at line 1 even though the method itself is available.
-      if (String(node.location || '').includes('->')) {
-        const [owner, method] = String(node.location).split('->');
-        return openClassMethod(source.repo || repo, owner || source.objectName, method, node.line);
-      }
-      let destination;
-      destination = (await sourceDocument(repo, {
-        object_type: source.objectType, object_name: source.objectName
-      })).document;
-      return { document: destination, line: sourceLineIn(source.text, node.line, destination.getText()) };
-    };
-    // ZCL_CALC_CONFIG_REPO=>GET_PIPELINE deliberately uses the CLEAN
-    // configuration for every non-pipeline scenario.  The selector controls
-    // lv_scenario, while this is lv_config_scenario from that method.
-    const scenarioCode = choice => ({ P_CLEAN: 'CLEAN', P_PREC: 'CLEAN', P_STATE: 'CLEAN',
-      P_PIPE: 'PIPELINE', P_MULTI: 'MULTI' })[String(choice || '').toUpperCase()] || '';
-    const loadPipeline = async choice => {
-      const scenario = scenarioCode(choice);
-      if (!scenario) return null;
-      return repo.api.execute('read_value_origin_pipeline', { scenario });
-    };
-    return { ...result, diagnostics, target: mapped, openSource, loadPipeline };
-  };
-
   const linterSources = async (document, target, progress, cancelled, activeOnly = false, onParsed = () => {}) => {
     const diagnostics = ['Loading policy: main source first; dependencies and class extras on demand. Full FLOW covers the loaded source closure.'];
     const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
@@ -183,9 +123,17 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       const position = document.offsetAt(new vscode.Position(target.line - 1, target.column || 0));
       const offset = own.aceStatements.filter(statement => statement.offset <= position).at(-1)?.offset ?? position;
       const mapped = { ...target, source: own.id, offset };
-      const result = await require('./value-origin-demand').collectDemandSources(initial, mapped, load,
-        (name, include) => load(name, 'CLAS', include), { maxSources: 240, cancelled, progress });
-      return { ...result, diagnostics, warnings: [...warnings, ...result.warnings], target: { ...target, source: own.id, offset },
+      const result = await require('./value-origin-pipeline').collect(initial, mapped,
+        { load, loadPart: (name, include) => load(name, 'CLAS', include), cancelled, progress });
+      // The analysed source an editor document shows, for a breakpoint set in it: the selected one, or an open VERTEX tab.
+      const sourceFor = uri => {
+        if (uri === document.uri.toString()) return own.id;
+        const entry = opened.get(uri);
+        if (!entry || !entry.data) return null;
+        const found = [...snapshots].find(([, snapshot]) => snapshot.data.object_url === entry.data.object_url && snapshot.data.include === entry.data.include);
+        return found ? found[0] : null;
+      };
+      return { ...result, diagnostics, warnings: [...warnings, ...result.warnings], target: { ...target, source: own.id, offset }, sourceFor,
         openSource: async (source, node) => {
           const snapshot = snapshots.get(source.id);
           const destination = snapshot.document && !snapshot.document.isClosed ? snapshot.document
@@ -200,7 +148,7 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     progressTitle: 'BSE — ADT + abaplint', panelTitle: 'BSE — ADT + abaplint' });
   require('./value-origin-view').register(vscode, context, linterSources, { remember: editor => navigation.push({ document: editor.document, at: editor.selection.active }),
     command: 'vertex.valueOrigin', engine: 'ADT + abaplint', cacheMs: 0,
-    progressTitle: 'Value origin — ADT + abaplint', panelTitle: 'Value origin' });
+    progressTitle: 'Forward usage — ADT + abaplint', panelTitle: 'Forward usage' });
 
   /* Where a value can be changed, as the analysis sees it: object, line and
      the statement there. The debug window turns these into breakpoints, so
@@ -858,16 +806,36 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   }
   /* Where SAP says the name is defined, in another object. A class or a
      program or an interface opens as its VERTEX tab; any other kind opens read-only. */
+  /* An interface's METHODS name, double-clicked: where SAP says it is implemented, opened as that class's tab. */
+  async function interfaceImplementation(document, at) {
+    const source = sourceOf(document), anchor = methodAnchor(document, at);
+    if (!source || !anchor || anchor.implementation || source.entry.data.object_type !== "INTF") { return undefined; }
+    return adtImplementation(document, at);
+  }
+  /* ADT's "navigate to implementation" at a position: for a call through an interface reference, the METHOD of the
+     class that implements it, as Eclipse's Ctrl+F3 finds it. */
+  async function adtImplementation(document, at) {
+    const source = sourceOf(document), word = wordAt(document, at);
+    if (!source || !word || typeof source.entry.repo.api.implementation !== "function") { return undefined; }
+    const found = await source.entry.repo.api.implementation(source.url, document.getText(), at.line + 1, word.from, word.to);
+    if (!found || !found.url || !found.line) { return undefined; }
+    const url = String(found.url).split("#")[0];
+    if (url === source.url) { return undefined; }
+    return openForeign(document, at, { url, repo: source.entry.repo, line: found.line - 1, column: found.column || 0 });
+  }
   async function adtForeignDefinition(document, at) {
     const foreign = await adtForeign(document, at);
     if (!foreign) { return undefined; }
+    return openForeign(document, at, foreign);
+  }
+  async function openForeign(document, at, foreign) {
     const klass = /^\/sap\/bc\/adt\/oo\/classes\/([^/]+)\/(?:source\/main|includes\/(definitions|implementations|macros|testclasses))$/i.exec(foreign.url);
     const program = /^\/sap\/bc\/adt\/programs\/programs\/([^/]+)\/source\/main$/i.exec(foreign.url);
     const face = /^\/sap\/bc\/adt\/oo\/interfaces\/([^/]+)\/source\/main$/i.exec(foreign.url);
     const target = klass || program || face
       ? (await sourceDocument(foreign.repo, { object_type: klass ? "CLAS" : program ? "PROG" : "INTF",
         object_name: decodeURIComponent((klass || program || face)[1]).toUpperCase(), ...(klass && klass[2] ? { include: klass[2] } : {}) })).document
-      : await readOnlyView(foreign);
+      : await readOnlyView(foreign.source !== undefined ? foreign : { ...foreign, source: await foreign.repo.api.sourceAt(foreign.url) });
     return { document: target, target: location(target.uri, foreign.line, foreign.column, wordAt(document, at).name.length) };
   }
   function procedureAt(source, line) {
@@ -1310,6 +1278,13 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
       call.object_name = objectName;
       call.kind = "method";
     }
+    // A class this source declares itself (LCL_*, a program's or a class's local class) is no global object: SAP's own
+    // definition, asked next, finds it in this source.
+    if (call.object_type === "CLAS") {
+      const { buildIndex } = require("./value-origin");
+      const index = buildIndex([{ id: document.uri.toString(), text: document.getText(), objectName: current.data.object_name, objectType: current.data.object_type }]);
+      if (index.interfaces.has(call.object_name) && call.object_name !== String(current.data.object_name).toUpperCase()) { return undefined; }
+    }
     const target = await sourceDocument(current.repo, { object_type: call.object_type, object_name: call.object_name });
     let line = 0, column = 0, length = call.object_name.length;
     // A class without its own constructor opens at its start.
@@ -1415,13 +1390,16 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
     // F12 walks the branches; the double-click (QUIET) jumps to the end.
     const structure = structuralTarget(editor.document, at, !quiet);
     if (structure) { await moveTo(editor, structure); return; }
-    const method = await methodCounterpart(editor.document, at);
+    const method = await methodCounterpart(editor.document, at) || await interfaceImplementation(editor.document, at);
     // Resolve an ABAP call before asking ADT for a declaration.  ADT's
     // definition of LO_STRATEGY->CALCULATE_BASE is the interface METHODS
     // line, whereas the useful destination of a call is its implementation.
     const external = method ? undefined : await externalCallTarget(editor.document, at);
     if (external?.interfaceDispatch) {
-      if (!quiet) vscode.window.showInformationMessage("VERTEX: this is an interface dispatch. Use Value Origin to open the ACE-resolved implementation.");
+      // A call through an interface reference: SAP is asked where it is implemented.
+      const implemented = await adtImplementation(editor.document, at);
+      if (implemented) { await moveTo(editor, implemented); return; }
+      if (!quiet) vscode.window.showInformationMessage("VERTEX: SAP names no implementation of this interface method. Value Origin resolves it from the factory.");
       return;
     }
     const variable = method || external ? undefined : await adtDefinition(editor.document, at);
@@ -2048,6 +2026,128 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
         }
       }));
   }
+  // Run Select: the SELECT at the cursor through ADT's data preview. The editor's text is parsed, saved or not; what the
+  // program would supply is left out as select-query.js decides, and every condition left out is shown above the rows.
+  command("vertex.runSelect", async () => {
+    const editor = vscode.window.activeTextEditor, document = editor && editor.document, own = document && tabSource(document);
+    if (!own) { throw new Error("Open a SAP source tab first: Run Select reads the data of the system that tab belongs to."); }
+    const prepared = require("./select-query").prepare(document.getText(), document.offsetAt(editor.selection.start));
+    // What SelecTor can say opens in SelecTor, its conditions as selection lines; SelecTor reads tables, not views.
+    // SelecTor's join takes any table with the ON it is given; what fails, fails there, where it can be seen.
+    // A grouped SELECT opens in its pivot.
+    if (prepared.selector && prepared.selector.join && (prepared.selector.join.length || prepared.selector.pivot)) {
+      return vscode.commands.executeCommand("vertex.tools", { type: "TABL", name: prepared.selector.table,
+        action: prepared.selector.pivot ? "pivot" : "join", selectorPlan: prepared.selector });
+    }
+    if (prepared.selector) {
+      const api = own.entry.repo.api, table = prepared.selector.table;
+      const kind = await api.query("SELECT tabclass FROM dd02l WHERE tabname = '" + table + "' AND as4local = 'A'", 1);
+      const tabclass = kind.values.length ? kind.values[0].TABCLASS : "";
+      if (["TRANSP", "CLUSTER"].includes(tabclass)) {
+        return vscode.commands.executeCommand("vertex.tools", { type: "TABL", name: table, selectorPlan: prepared.selector });
+      }
+      prepared.notSelector = table + " is " + (tabclass ? "a " + tabclass.toLowerCase() : "not a dictionary table") + ", and SelecTor reads tables.";
+      prepared.selector = null;
+    }
+    if (!prepared.sql) { throw new Error("The SELECT cannot run as written, and SelecTor cannot take it: " + prepared.notSelector); }
+    const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Run Select — data preview" },
+      () => own.entry.repo.api.query(prepared.sql, prepared.rows));
+    const panel = vscode.window.createWebviewPanel("vertex.runSelect", "Select · line " + prepared.line, vscode.ViewColumn.Beside, {});
+    panel.webview.html = selectHtml(prepared, result);
+  });
+  function selectHtml(prepared, result) {
+    const esc = value => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const head = result.columns.map(column => "<th title=\"" + esc(column.description) + "\">" + esc(column.name) + "</th>").join("");
+    const body = result.values.map(row => "<tr>" + result.columns.map(column => "<td>" + esc(row[column.name]) + "</td>").join("") + "</tr>").join("");
+    const dropped = prepared.dropped.length ? "<div class=\"dropped\">Left out, not known without running the program: "
+      + prepared.dropped.map(text => "<code>" + esc(text) + "</code>").join(", ") + "</div>" : "";
+    const why = prepared.notSelector ? "<div class=\"count\">Not opened in SelecTor: " + esc(prepared.notSelector) + "</div>" : "";
+    return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
+      + "body{background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);padding:8px}"
+      + "pre{background:var(--vscode-textCodeBlock-background);padding:6px;white-space:pre-wrap;margin:0 0 6px}"
+      + ".dropped{color:var(--vscode-editorWarning-foreground);margin:0 0 6px}.count{color:var(--vscode-descriptionForeground);margin:0 0 6px}"
+      + "table{border-collapse:collapse}th,td{border:1px solid var(--vscode-panel-border);padding:2px 6px;text-align:left;white-space:nowrap}"
+      + "th{background:var(--vscode-editorWidget-background);position:sticky;top:0}"
+      + "</style></head><body>" + why + "<pre>" + esc(prepared.sql) + "</pre>" + dropped
+      + "<div class=\"count\">" + result.values.length + " rows" + (result.values.length >= prepared.rows ? " (limit " + prepared.rows + ")" : "") + "</div>"
+      + "<table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></body></html>";
+  }
+  // Backward Usage Analysis: where the values of the routine at the cursor go in its callers, up through theirs. SAP's
+  // where-used finds the calls in the saved sources; each customer object found is read as a tab, standard code is not.
+  command("vertex.backwardUsage", async () => {
+    const editor = vscode.window.activeTextEditor, document = editor && editor.document, own = document && tabSource(document);
+    if (!own) { throw new Error("Open a SAP source tab first: Backward Usage Analysis starts in a VERTEX ABAP source."); }
+    if (document.isDirty) { throw new Error("The tab has changes that are not in SAP. Save & Activate first: where-used searches the saved source."); }
+    const { variableAt, literalAt, customerObject } = require("./value-origin");
+    const text = document.getText(), offset = document.offsetAt(editor.selection.active);
+    const variable = literalAt(text, offset) ? "" : (variableAt(text, offset) || "");
+    // Every source is parsed by abaplint, as Forward Usage Analysis parses it: statements and tokens come from the parser.
+    const parser = require("./value-origin-linter").createParser(), sources = new Map();
+    const sourceOf = async (doc, data) => {
+      const id = doc.uri.toString();
+      if (!sources.has(id)) {
+        sources.set(id, parser.parse({ id, name: data.object_name, text: doc.getText(), objectName: data.object_name,
+          objectType: data.object_type, include: data.include || "main" }).then(parsed => parsed.source));
+      }
+      return sources.get(id);
+    };
+    try {
+    const start = await sourceOf(document, own.entry.data), repo = own.entry.repo;
+    // SAP's where-used at a name in a source, as places in sources VERTEX reads; what it cannot read or will not follow is named.
+    const whereUsed = async (source, line, column) => {
+      const tab = tabSource(await vscode.workspace.openTextDocument(vscode.Uri.parse(source.id)));
+      if (!tab) { throw new Error(source.objectName + " is not a SAP source tab: where-used cannot be asked there."); }
+      const places = [], skipped = [];
+      for (const place of await repo.api.whereUsed(tab.url, line, column)) {
+        const address = sourceAddress(place.uri);
+        if (!address) { skipped.push(String(place.object || place.uri)); continue; }
+        if (!customerObject(address.object_name)) { if (!skipped.includes(address.object_name)) { skipped.push(address.object_name); } continue; }
+        const entry = await sourceDocument(repo, address);
+        places.push({ source: await sourceOf(entry.document, entry.data), line: place.line });
+      }
+      return { places, skipped };
+    };
+    const breakpoints = (vscode.debug.breakpoints || []).filter(point => point.enabled !== false && point.location && point.location.uri)
+      .map(point => ({ source: point.location.uri.toString(), line: point.location.range.start.line + 1 }));
+    const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Backward usage — where-used" },
+      () => require("./backward-usage").analyze({ source: start, line: editor.selection.active.line + 1, variable }, {
+        callers: routine => whereUsed(routine.source, routine.line, routine.column),
+        uses: attribute => whereUsed(attribute.source, attribute.line, attribute.column),
+        breakpointAt: (id, line) => breakpoints.some(point => point.source === id && point.line === line),
+        ask: async points => {
+          const stop = "Stop analysis", next = "Continue to next", ignore = "Ignore breakpoints";
+          const answer = await vscode.window.showWarningMessage("VERTEX: breakpoint reached:\n" + points.map(point => point.location + ", line " + point.line).join("\n"),
+            { modal: true }, stop, next, ignore);
+          // Escape ends the analysis here as Stop does: what was found so far is shown.
+          return !answer || answer === stop ? "stop" : answer === next ? "next" : "ignore";
+        } }));
+    const panel = vscode.window.createWebviewPanel("vertex.backwardUsage", "Backward usage", vscode.ViewColumn.Beside, { enableScripts: true });
+    // The page Forward draws on, with its scripts and stylesheet: one window for both directions.
+    const resource = (...parts) => panel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, ...parts)).toString();
+    panel.webview.html = require("./value-origin-view").html(require("./backward-usage").page(result), require("crypto").randomBytes(18).toString("hex"),
+      resource("resources", "mermaid.min.js"), panel.webview.cspSource || "", resource("value-origin.css"),
+      resource("resources", "vertex-flow.js"), resource("resources", "vertex-lens.js"));
+    panel.webview.onDidReceiveMessage(async message => {
+      // A node of the flow names its source as "origin:<source>|<OWNER->ROUTINE>"; a source here is a tab's address.
+      if (!message) { return; }
+      if (message.kind === "pageError") { vscode.window.showErrorMessage("VERTEX: the Backward usage page failed: " + message.message); return; }
+      if (message.kind === "copyLog") {
+        try { await vscode.env.clipboard.writeText(String(message.text || "")); await panel.webview.postMessage({ kind: "copyLogResult", ok: true }); }
+        catch (error) { await panel.webview.postMessage({ kind: "copyLogResult", ok: false, error: error.message }); }
+        return;
+      }
+      if (message.kind === "screen") { return; }
+      const marked = /^origin:([^|]*)\|/.exec(message.source || "");
+      const address = marked ? marked[1] : message.source;
+      if (!address) { vscode.window.showErrorMessage("VERTEX: this node names no source to open (" + String(message.node || "?") + ")."); return; }
+      const target = await vscode.workspace.openTextDocument(vscode.Uri.parse(address));
+      const at = new vscode.Position(Math.max(0, Math.min(target.lineCount - 1, (message.line || 1) - 1)), 0);
+      if (!message.openBeside) { navigation.push({ document: editor.document, at: editor.selection.active }); }
+      await vscode.window.showTextDocument(target, { viewColumn: message.openBeside ? vscode.ViewColumn.Beside : editor.viewColumn,
+        selection: new vscode.Range(at, at), preview: !message.openBeside });
+    });
+    } finally { await parser.close(); }
+  });
   // ABAP keyword documentation in a panel beside the source. SAP's page is
   // shown without its scripts, in the theme's colours.
   let docPanel;
@@ -2148,6 +2248,9 @@ function register(vscode, context, { active, password, pin, pinned, systems }) {
   } });
   // Host/agent interface: create/modify only PREPARE and open a diff. Apply is UI-only.
   return { frontendRequest: async (resource, progress, cancelled) => require('./frontend-analysis').request((await repository()).api, resource, progress, cancelled),
+    // SelecTor's table and join (the pivot not yet) answered over ADT's data preview; null for what is not theirs.
+    tableRequest: async resource => { const api = (await repository()).api;
+      return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource); },
     schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger, revealFrame, openToolSource, originPoints, originOpen, originVariables, documentObject,
     editorContext() {
       const editor = vscode.window.activeTextEditor;

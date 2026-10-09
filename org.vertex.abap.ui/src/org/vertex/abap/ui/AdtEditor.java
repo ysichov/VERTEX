@@ -67,6 +67,40 @@ final class AdtEditor {
 		return new AdtEditor(name, type, uri, core, file, projectOf(input, file));
 	}
 
+	/**
+	 * The object's ADT type, read from its URI when the type it was given is not one VERTEX knows. ADT 3.60 labels
+	 * the Global Class tab of a class editor otherwise than CLAS/OC; its URI still says what the object is.
+	 */
+	String kind() {
+		// ADT 3.60 opens a class's Global Class tab as the class's main include, CLAS/I: that is the class itself.
+		if (classOfMain() != null) {
+			return "CLAS/OC";
+		}
+		if (type != null && java.util.Set.of("PROG/P", "PROG/I", "CLAS/OC", "CLAS/I", "INTF/OI", "FUGR/FF", "FUGR/I").contains(type)) {
+			return type;
+		}
+		String path = uri.endsWith("/source/main") ? uri.substring(0, uri.length() - "/source/main".length()) : uri;
+		if (path.matches("/sap/bc/adt/oo/classes/[^/]+")) return "CLAS/OC";
+		if (path.matches("/sap/bc/adt/oo/classes/[^/]+/includes/[^/]+")) return "CLAS/I";
+		if (path.matches("/sap/bc/adt/oo/interfaces/[^/]+")) return "INTF/OI";
+		if (path.matches("/sap/bc/adt/programs/programs/[^/]+")) return "PROG/P";
+		if (path.matches("/sap/bc/adt/programs/includes/[^/]+")) return "PROG/I";
+		if (path.matches("/sap/bc/adt/functions/groups/[^/]+/fmodules/[^/]+")) return "FUGR/FF";
+		return type;
+	}
+
+	/** The object the analysis loads: the class itself for any of its parts, which ADT may name after the part. */
+	String ownerName() {
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("/sap/bc/adt/oo/classes/([^/]+)(/.*)?").matcher(uri);
+		return m.matches() ? java.net.URLDecoder.decode(m.group(1), java.nio.charset.StandardCharsets.UTF_8).toUpperCase() : name;
+	}
+
+	/** The class's own URI when this editor shows its main include (/oo/classes/NAME/includes/main), else null. */
+	String classOfMain() {
+		String path = uri.endsWith("/source/main") ? uri.substring(0, uri.length() - "/source/main".length()) : uri;
+		return path.matches("/sap/bc/adt/oo/classes/[^/]+/includes/main") ? path.substring(0, path.length() - "/includes/main".length()) : null;
+	}
+
 	private static IProject projectOf(IEditorInput input, IFile file) {
 		if (file != null) {
 			return file.getProject();

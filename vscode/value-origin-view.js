@@ -1,5 +1,5 @@
 "use strict";
-const { analyze, variableAt, literalAt } = require('./value-origin');
+const { analyze, variableAt, literalAt, callsIn, variablePaths } = require('./value-origin');
 const { pathRows, siteRows } = require('./value-origin-points');
 const { formula, scopeStacks } = require('./value-origin-formula');
 const { symbolic, formulaPane, expressionPane } = require('./value-origin-formula-html');
@@ -245,14 +245,13 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   // The flow is drawn by the one builder the debugger's flow path uses; only where its rows come from differs - here the
   // analysis of the chosen value, there the analysis from a breakpoint.
   if (!graph.codeFlow) throw new Error('Value origin: the analysis carries no code flow (graph.codeFlow) to draw.');
-  // One source, four readings of it, as Visual Debug reads its record: classes, routines, the logic, every statement.
-  // Only the reading shown first is built here; the page builds another from the same input when it is asked for.
-  const builder = (host && host.flowGraph) || flowGraphBuilder(), flowInput = { rows: graph.codeFlow.rows, sites: graph.codeFlow.sites,
+  const { rows: homeRows, sites: localSites } = graph.flowScope || flowScope(graph);
+  const builder = (host && host.flowGraph) || flowGraphBuilder(), flowInput = { rows: homeRows, sites: localSites,
     point: { url: '', line: 0 }, name: graph.selectedProgram || 'PROGRAM' };
   const codeFlow = builder.build(flowInput, 'methods');
   const flowReadings = [['classes', 'Classes'], ['methods', 'Methods'], ['logic', 'Logic'], ['steps', 'Statements']]
     .map(([mode, label]) => mode === 'methods' ? { mode, label, bseFlow: codeFlow.bseFlow, maxStack: codeFlow.maxStack } : { mode, label });
-  const originTitle = (graph.selectedVariable || '?') + ' Origin — Backward Symbolic Execution';
+  const originTitle = graph.originTitle ? graph.originTitle : graph.selectedVariable ? graph.selectedVariable + ' Origin — Backward Symbolic Execution' : 'Forward flow from line ' + (graph.selectedLine || '?');
   // Everything the drawing needs, in one place: the shared flow script is a
   // file, not a template, so what the page used to interpolate into it - the
   // title, the BSE caption and tree, the two depth maxima - travels here.
@@ -280,13 +279,13 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
     'EXPRESSION (JSON):\n' + JSON.stringify(derivation.expression || null, null, 2)
   ].join('\n\n');
   const flowLogText = [diagnosticLog, analysisLog, 'FLOW TRAVERSAL:', traversalLogText || '(none)', treeLogs].join('\n\n');
-  return `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}' ${cspSource}"><style>
+  return `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}' ${cspSource}"><script nonce="${nonce}">if(typeof acquireVsCodeApi==='function'){window.vertexHost=acquireVsCodeApi();window.addEventListener('error',e=>window.vertexHost.postMessage({kind:'pageError',message:String(e.message||e)+(e.filename?' ('+e.filename+':'+e.lineno+')':'')}));}</script><style>
   body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background)}
-  button:not(.data-composed){width:100%;text-align:left;background:var(--vscode-editorWidget-background);color:var(--vscode-foreground);border:1px solid var(--vscode-focusBorder);padding:8px;cursor:pointer;white-space:normal;overflow:auto;max-height:85px}.flow-data{display:none}.data-composed{display:inline;width:auto;max-width:none;margin:0;padding:0;border:0;background:transparent;color:var(--vscode-textLink-foreground);font:inherit;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
+  button:not(.data-composed):where(:not(.vertex-toggle,.vertex-icon-button,.vertex-segment-toggle button)){width:100%;text-align:left;background:var(--vscode-editorWidget-background);color:var(--vscode-foreground);border:1px solid var(--vscode-focusBorder);padding:8px;cursor:pointer;white-space:normal;overflow:auto;max-height:85px}.flow-data{display:none}.data-composed{display:inline;width:auto;max-width:none;margin:0;padding:0;border:0;background:transparent;color:var(--vscode-textLink-foreground);font:inherit;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
   pre{white-space:pre-wrap}strong{font-family:var(--vscode-editor-font-family)}
   .children{border-left:1px solid var(--vscode-panel-border);margin-left:8px;padding-left:16px}.node,.leaf{margin:8px 0;padding:6px;background:var(--vscode-editorWidget-background)}summary{cursor:pointer;overflow-wrap:anywhere}code{white-space:pre-wrap;font-family:var(--vscode-editor-font-family);background:transparent!important}.syntax-keyword{color:var(--vscode-symbolIcon-keywordForeground)}.syntax-string{color:var(--vscode-debugTokenExpression-stringForeground)}.syntax-number{color:var(--vscode-debugTokenExpression-numberForeground)}.flow-call{color:var(--vscode-textLink-foreground);text-decoration:underline;text-decoration-style:dotted;cursor:help}.unknown,.boundary,.warning{border-left:3px solid var(--vscode-editorWarning-foreground);padding-left:10px}.call-frame{margin:6px 0;padding:6px 8px;border-left:2px solid var(--vscode-textLink-foreground);background:var(--vscode-editorWidget-background)}.call-stack{margin:6px 0 0 10px;padding-left:12px;border-left:1px solid var(--vscode-panel-border);list-style:none}.analysis-log{max-height:560px;overflow:auto;user-select:text;padding:12px;background:var(--vscode-textCodeBlock-background);border:1px solid var(--vscode-panel-border)}.help{position:absolute;right:8px;top:8px;z-index:50}.help summary{list-style:none;border:1px solid var(--vscode-focusBorder);padding:2px 8px;font-weight:bold}.help>div{display:none}.help[open]{position:fixed;inset:0;z-index:200;background:var(--vscode-editor-background);padding:20px;overflow:auto}.help[open] summary{float:right}.help[open]>div{display:block;clear:both;max-width:900px;margin:48px auto;padding:20px;background:var(--vscode-editorWidget-background);border:1px solid var(--vscode-panel-border)}.debug-toggle{display:none}.debug-button{position:absolute;right:46px;top:8px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:28px;height:28px;margin:0;border:1px solid var(--vscode-button-border,var(--vscode-panel-border));border-radius:5px;background:var(--vscode-button-secondaryBackground,var(--vscode-editorWidget-background));color:var(--vscode-button-secondaryForeground,var(--vscode-editor-foreground));cursor:pointer}.debug-button:hover{background:var(--vscode-button-secondaryHoverBackground,var(--vscode-list-hoverBackground))}h2{padding-right:82px}.debug-only{display:none}.debug-toggle:checked~.debug-only{display:block}.scenario{margin:8px 0;border:1px solid var(--vscode-panel-border)}.scenario label{margin:0 8px}
   </style>${host && host.style ? `<style>${host.style}</style>` : styleSource ? `<link rel="stylesheet" href="${styleSource}">` : ''}${(host && host.head) || ''}</head><body><details class="help"><summary aria-label="Value origin help">?</summary><div><strong>Value origin</strong> traces static source dependencies backwards across calls. It proves source relationships, not runtime values: loop order, database contents and unknown dispatches remain boundaries. Expand a branch to inspect its inputs; click a linked label or source location to open code; Ctrl+Click on source buttons opens beside. Alt+Left returns through editor navigation history. <strong>All branches</strong> shows every static alternative. Choosing a selection-screen radio button simulates that exclusive choice and hides other radio branches. Mermaid shows the same expanded branches: click the linked label to open source and the frame to expand or collapse it. Use the zoom slider or mouse wheel and drag empty space to pan. Theme changes preserve the view. The magnifier is available below 70% scale and reaches an effective 70%. The bug control shows technical analysis sections; Copy log exports the full analysis. ${(graph.skipped || []).length ? `<p>Analysis boundaries kept outside the graph: ${escape(graph.skipped.join(', '))}</p>` : ''}</div></details><input id="debug-toggle" class="debug-toggle" type="checkbox"><label class="debug-button" for="debug-toggle" title="Show technical analysis sections">🐞</label><h2>Value origin — ${escape(graph.analysisEngine || 'ACE')} backward analysis</h2>
-  ${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
+  ${graph.stopNotice ? `<p class="warning">⛔ ${escape(graph.stopNotice)}</p>` : ''}${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
   <details class="origin-log debug-only"><summary>Analysis log — ${escape(graph.analysisEngine || 'ACE')}</summary><button id="copy-flow" class="location">Copy log</button><pre class="analysis-log">${escape(diagnosticLog)}</pre><div class="analysis-log">${fullLog || escape(analysisLog)}</div><p class="edge">Copy log includes FLOW, Formula and Expression structures.</p></details>
   ${scenarioControls ? `<details class="scenario-panel"><summary>Simulate selection screen</summary>${scenarioControls}</details>` : ''}<div id="bse-workspace" class="bse-workspace"><template data-flow-pane="tree"><p class="edge">Execution flow${graph.flowBounds ? ` between breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''} — changes and parameter transfers to ${escape(graph.selectedVariable || '?')}</p>${aceExecution || '<p>Execution flow was not produced.</p>'}</template><template data-flow-pane="formula">${formulaView}</template><template data-flow-pane="expression">${expressionPane(derivation)}</template></div>
   <script id="mermaid-data" type="application/json">${JSON.stringify(mermaidGraph).replaceAll('<', '\\u003c')}</script>${scripts.lens ? inlineScript(nonce, scripts.lens) : lensSource ? `<script nonce="${nonce}" src="${lensSource}"></script>` : `<script nonce="${nonce}">${lensScript()}</script>`}${host ? '' : inlineScript(nonce, resourceScript('vertex-abap-control.js')) + inlineScript(nonce, resourceScript('vertex-flow-graph.js'))}${scripts.flow ? inlineScript(nonce, scripts.flow) : inlineScript(nonce, flowScript())}<script nonce="${nonce}">if(!window.vertexFlow){const box=document.getElementById('bse-workspace');if(box)box.innerHTML='<p class="warning">The flow view did not load${flowSource ? ` from ${flowSource}` : ''}: the page has its data but nothing to draw it with.</p>';}</script>
@@ -294,8 +293,115 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   <details class="debug-only"><summary>BSE dependency tree (technical)</summary>${dependencyTree}</details><details class="debug-only"><summary>${escape(graph.analysisEngine || 'ACE')} source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact source objects loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No sources were loaded.')}</pre></details>
   <details class="debug-only"><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>
 
-  ${scripts.mermaid ? inlineScript(nonce, scripts.mermaid) : mermaidSource ? `<script nonce="${nonce}" src="${mermaidSource}"></script>` : ''}${host && host.bridge ? inlineScript(nonce, host.bridge) : ''}<script nonce="${nonce}">const api=acquireVsCodeApi(),flowLog=${JSON.stringify(flowLogText).replaceAll('<', '\\u003c')};window.bseMermaidOpen=(id,node)=>api.postMessage(node&&node.source?{node:id,source:node.source,line:Number(node.line)||0}:{node:id});const reportScreen=()=>setTimeout(()=>{const mode=document.querySelector('[data-mode-choice].active'),view=document.querySelector('[data-view-choice].active'),depth=window.vertexFlow&&window.vertexFlow.depth();api.postMessage({kind:'screen',mode:mode?mode.dataset.modeChoice:null,view:view?view.dataset.viewChoice:null,depth:depth===undefined?null:depth});});['click','input','bse:mermaid-rendered','bse:scenario'].forEach(type=>document.addEventListener(type,reportScreen));window.addEventListener('load',reportScreen);document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,source:b.dataset.source,line:Number(b.dataset.line)||0,openBeside:e.ctrlKey||e.metaKey});});document.getElementById('copy-flow').addEventListener('click',async()=>{const button=document.getElementById('copy-flow');try{if(${!host}){button.textContent='Copying…';api.postMessage({kind:'copyLog',text:flowLog});}else{await navigator.clipboard.writeText(flowLog);button.textContent='Copied';}}catch(error){button.textContent='Copy failed';button.title=error.message;}});window.addEventListener('message',event=>{const message=event.data;if(message&&message.kind==='copyLogResult'){const button=document.getElementById('copy-flow');button.textContent=message.ok?'Copied':'Copy failed';button.title=message.error||'';}});const setScenario=active=>{document.querySelectorAll('[data-scenario]').forEach(node=>{node.hidden=!!active&&node.dataset.scenario!==active;if(node.hidden&&node.tagName==='DETAILS')node.open=false;});document.dispatchEvent(new Event('bse:scenario'));};document.querySelectorAll('.scenario input').forEach(input=>input.addEventListener('change',e=>setScenario(e.target.value)));if(typeof mermaid==='undefined'){const host=document.getElementById('mermaid-graph');if(host)host.textContent='Mermaid library is unavailable.';}else{mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false}});document.dispatchEvent(new Event('bse:mermaid-ready'));}</script></body></html>`;
+  ${scripts.mermaid ? inlineScript(nonce, scripts.mermaid) : mermaidSource ? `<script nonce="${nonce}" src="${mermaidSource}"></script>` : ''}${host && host.bridge ? inlineScript(nonce, host.bridge) : ''}<script nonce="${nonce}">const api=window.vertexHost||acquireVsCodeApi(),flowLog=${JSON.stringify(flowLogText).replaceAll('<', '\\u003c')};window.bseMermaidOpen=(id,node)=>api.postMessage(node&&node.source?{node:id,source:node.source,line:Number(node.line)||0}:{node:id});const reportScreen=()=>setTimeout(()=>{const mode=document.querySelector('[data-mode-choice].active'),view=document.querySelector('[data-view-choice].active'),depth=window.vertexFlow&&window.vertexFlow.depth();api.postMessage({kind:'screen',mode:mode?mode.dataset.modeChoice:null,view:view?view.dataset.viewChoice:null,depth:depth===undefined?null:depth});});['click','input','bse:mermaid-rendered','bse:scenario'].forEach(type=>document.addEventListener(type,reportScreen));window.addEventListener('load',reportScreen);document.addEventListener('click',e=>{const b=e.target.closest('button[data-node]');if(b)api.postMessage({node:b.dataset.node,source:b.dataset.source,line:Number(b.dataset.line)||0,openBeside:e.ctrlKey||e.metaKey});});document.getElementById('copy-flow').addEventListener('click',async()=>{const button=document.getElementById('copy-flow');try{if(${!host}){button.textContent='Copying…';api.postMessage({kind:'copyLog',text:flowLog});}else{await navigator.clipboard.writeText(flowLog);button.textContent='Copied';}}catch(error){button.textContent='Copy failed';button.title=error.message;}});window.addEventListener('message',event=>{const message=event.data;if(message&&message.kind==='copyLogResult'){const button=document.getElementById('copy-flow');button.textContent=message.ok?'Copied':'Copy failed';button.title=message.error||'';}});const setScenario=active=>{document.querySelectorAll('[data-scenario]').forEach(node=>{node.hidden=!!active&&node.dataset.scenario!==active;if(node.hidden&&node.tagName==='DETAILS')node.open=false;});document.dispatchEvent(new Event('bse:scenario'));};document.querySelectorAll('.scenario input').forEach(input=>input.addEventListener('change',e=>setScenario(e.target.value)));if(typeof mermaid==='undefined'){const host=document.getElementById('mermaid-graph');if(host)host.textContent='Mermaid library is unavailable.';}else{mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:'dark',flowchart:{htmlLabels:false,useMaxWidth:false}});document.dispatchEvent(new Event('bse:mermaid-ready'));}</script></body></html>`;
 }
+/* The statements the flow draws and the calls between them: { rows, sites }. */
+function flowScope(graph) {
+  // One source, four readings of it, as Visual Debug reads its record: classes, routines, the logic, every statement.
+  // Only the reading shown first is built here; the page builds another from the same input when it is asked for.
+  // With a value chosen and no breakpoints bounding the flow, it goes into a call only where the value is computed:
+  // a callee with a statement of the slice, or one that calls such a callee. Every statement of the object is still
+  // shown; another call is a step, not a way into its routine. Between breakpoints the whole run is the point, so
+  // there every call is followed.
+  const relevant = graph.selectedVariable && !graph.flowBounds
+    ? new Set(graph.codeFlow.rows.filter(row => row.included).map(row => String(row.scope).toUpperCase())) : null;
+  // The routine a call stands in, as the rows name it - a site's own method is empty for an event block.
+  const scopeAt = new Map(graph.codeFlow.rows.map(row => [row.name + ':' + row.line, String(row.scope).toUpperCase()]));
+  if (relevant) {
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const site of graph.codeFlow.sites) {
+        const caller = scopeAt.get(site.name + ':' + site.line);
+        if (caller && !relevant.has(caller) && site.callees.some(callee => relevant.has(String(callee).toUpperCase()))) { relevant.add(caller); grew = true; }
+      }
+    }
+  }
+  const flowSites = relevant ? graph.codeFlow.sites.filter(site => site.callees.some(callee => relevant.has(String(callee).toUpperCase())))
+    : graph.codeFlow.sites;
+  // A variable local to its routine has no history outside it: the routines that call this one, and the rest of the
+  // class, are not drawn. The flow starts at the routine and goes down only into the calls that compute the value.
+  // Forward starts in the routine around the selected line, whatever the value is - local, parameter or attribute: the
+  // class around it is not the flow. With no value chosen it is the run from that line on, and every customer routine
+  // it calls, whole. The routine's rows tell how the flow names it.
+  const around = (graph.declarations || []).find(d => d.source === graph.selectedSource && d.name !== 'GLOBAL'
+    && d.first <= graph.selectedLine && d.last >= graph.selectedLine);
+  const home = around && graph.codeFlow.rows.find(row => row.source === around.source && row.line >= around.first && row.line <= around.last);
+  let homeRows = graph.codeFlow.rows, localSites = flowSites;
+  if (graph.flowBounds) {
+    // Between breakpoints: the routine they stand in, only its statements between them, and every routine those
+    // statements call, all the way down and whole - the same class's methods beyond the breakpoints included. Routines
+    // no call from there reaches are not part of the run and are not drawn.
+    const within = row => row.source === graph.selectedSource && !row.outside;
+    const starts = new Set(homeRows.filter(within).map(row => String(row.scope).toUpperCase()));
+    const inRange = new Set(homeRows.filter(row => !row.outside).map(row => row.name + ':' + row.line));
+    const keep = new Set(starts);
+    const callsFrom = site => { const caller = scopeAt.get(site.name + ':' + site.line);
+      return keep.has(caller) && (!starts.has(caller) || inRange.has(site.name + ':' + site.line)); };
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const site of graph.codeFlow.sites) if (callsFrom(site))
+        for (const callee of site.callees.map(callee => String(callee).toUpperCase())) if (!keep.has(callee)) { keep.add(callee); grew = true; }
+    }
+    homeRows = homeRows.filter(row => { const scope = String(row.scope).toUpperCase();
+      return keep.has(scope) && !(starts.has(scope) && row.outside); });
+    localSites = graph.codeFlow.sites.filter(callsFrom);
+  } else if (home) {
+    const keep = new Set([String(home.scope).toUpperCase()]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const site of flowSites) {
+        if (!keep.has(scopeAt.get(site.name + ':' + site.line))) continue;
+        for (const callee of site.callees.map(callee => String(callee).toUpperCase()))
+          if ((!relevant || relevant.has(callee)) && !keep.has(callee)) { keep.add(callee); grew = true; }
+      }
+    }
+    const homeScope = String(home.scope).toUpperCase(), before = (scope, line) => !relevant && scope === homeScope && line < graph.selectedLine;
+    homeRows = homeRows.filter(row => keep.has(String(row.scope).toUpperCase()) && !before(String(row.scope).toUpperCase(), row.line));
+    localSites = flowSites.filter(site => keep.has(scopeAt.get(site.name + ':' + site.line)) && !before(scopeAt.get(site.name + ':' + site.line), site.line));
+  }
+  return { rows: homeRows, sites: localSites, start: home ? String(home.scope).toUpperCase() : null };
+}
+
+/* The flow walked in the order it runs - a routine's statements by line, a call's routine where the call is made - and
+   stopped where a breakpoint stands, as a run in the debugger would be. `breakpointAt(row)` names the breakpoint on a
+   statement or answers null; `ask(points)` answers 'stop', 'next' or 'ignore'. On 'stop' the flow ends with the
+   statement of the breakpoint and `stoppedAt` names it; a breakpoint is asked about once. */
+async function stopAtBreakpoints(scope, breakpointAt, ask) {
+  const U = value => String(value || '').toUpperCase(), byScope = new Map(), sitesAt = new Map();
+  for (const row of scope.rows) { if (!byScope.has(U(row.scope))) byScope.set(U(row.scope), []); byScope.get(U(row.scope)).push(row); }
+  for (const list of byScope.values()) list.sort((left, right) => left.line - right.line);
+  for (const site of scope.sites) { const key = site.name + ':' + site.line; if (!sitesAt.has(key)) sitesAt.set(key, []); sitesAt.get(key).push(site); }
+  // Where the run begins: the routine of the selected line, or else every routine no call of the flow reaches.
+  const called = new Set(scope.sites.flatMap(site => site.callees.map(U)));
+  const roots = scope.start ? [scope.start] : [...byScope.keys()].filter(key => !called.has(key));
+  const kept = new Set(), asked = new Set();
+  let asking = true, stoppedAt = null;
+  const walk = async (key, active) => {
+    for (const row of byScope.get(key) || []) {
+      kept.add(row.name + ':' + row.line);
+      const point = asking && !asked.has(row.name + ':' + row.line) && breakpointAt(row);
+      if (point) {
+        asked.add(row.name + ':' + row.line);
+        const answer = await ask([point]);
+        if (answer === 'stop') { stoppedAt = [point]; return true; }
+        if (answer === 'ignore') asking = false;
+        else if (answer !== 'next') throw new Error('Unknown answer at a breakpoint: ' + answer);
+      }
+      for (const site of sitesAt.get(row.name + ':' + row.line) || [])
+        for (const callee of site.callees.map(U))
+          if (!active.has(callee) && await walk(callee, new Set([...active, callee]))) return true;
+    }
+    return false;
+  };
+  for (const root of roots) if (await walk(root, new Set([root]))) break;
+  if (!stoppedAt) return scope;
+  const rows = scope.rows.filter(row => kept.has(row.name + ':' + row.line)), reached = new Set(rows.map(row => U(row.scope)));
+  // A call at the breakpoint itself is not made: the run stops before its routine.
+  const sites = scope.sites.filter(site => kept.has(site.name + ':' + site.line))
+    .map(site => ({ ...site, callees: site.callees.filter(callee => reached.has(U(callee))) })).filter(site => site.callees.length);
+  return { rows, sites, start: scope.start, stoppedAt };
+}
+
 /* What the assistant is told of the open Value origin window: the value, and the flow as the window draws it - the
    statements in execution order, each at the depth of the calls it stands in, marked where the value's slice reaches it.
    It is the analysis (what can happen), never a record of a run. Null while no window is open. */
@@ -342,14 +448,11 @@ function register(vscode, context, getSources, options = {}) {
       const inside = literalAt(text, offset);
       if (inside) throw new Error(inside === 'comment' ? 'The cursor is in a comment: a comment has no value history. Place it on a variable.'
         : 'The cursor is in a text literal: a literal has no value history. Place it on a variable.');
-      const variable = variableAt(text, offset);
-      if (!variable) throw new Error('Place the cursor on a variable.');
+      // No variable under the cursor: the flow forward from this line, with no slice of a value.
+      const variable = variableAt(text, offset) || '';
       const target = { source: editor.document.uri.toString(), line: editor.selection.active.line + 1, column: editor.selection.active.character, variable };
-      const points = (vscode.debug.breakpoints || []).filter(point => point.enabled !== false && point.location?.uri?.toString() === target.source)
-        .map(point => point.location.range.start.line + 1).sort((left, right) => left - right);
-      const from = points.filter(line => line <= target.line).at(-1), to = points.find(line => line >= target.line);
-      if (Number.isInteger(from) && Number.isInteger(to) && from < to) target.flowBounds = { source: target.source, from, to };
-      const cacheKey = JSON.stringify([target.source, editor.document.version, target.line, target.column, target.variable, target.flowBounds || null]);
+      if (!variable) { target.flowPath = true; target.flowRange = { from: target.line, to: editor.document.lineCount }; }
+      const cacheKey = JSON.stringify([target.source, editor.document.version, target.line, target.column, target.variable]);
       let loaded, graph;
       if (recentAnalysis?.key === cacheKey && recentAnalysis.expiresAt > Date.now()) {
         ({ loaded, graph } = recentAnalysis);
@@ -357,12 +460,33 @@ function register(vscode, context, getSources, options = {}) {
         const loadStarted = Date.now();
         loaded = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: options.progressTitle || 'Value origin — ACE call index', cancellable: true },
           (progress, token) => getSources(editor.document, target, name => progress.report({ message: name }), () => token.isCancellationRequested));
+        // The name in METHOD, FORM or FUNCTION is the routine, not a value: the routine's flow, with no slice. The parsed
+        // statement at the cursor says so; the sources are read again for the flow, as a run with no variable reads them.
+        const own = loaded.sources.find(source => source.id === loaded.target.source);
+        const at = own && (own.aceStatements || []).filter(statement => statement.offset <= loaded.target.offset).at(-1);
+        // So is the name of a method called there (lo_x->get( ), zcl_y=>create( )): a call is a step of the flow, not a value.
+        const called = at && callsIn(at.tokens).some(call => call.method && String(target.variable).toUpperCase()
+          === String((call.receiver || call.owner) + call.arrow + call.method).toUpperCase());
+        const routineLine = at && ['METHOD', 'FORM', 'FUNCTION'].includes(String(at.tokens[0]?.value).toUpperCase());
+        // The title says where the cursor was, what name stood there and how it was read, so a result is never a riddle.
+        const place = 'Forward flow — line ' + target.line + ', col ' + (target.column + 1);
+        const named = target.variable;
+        let originTitle = !named ? place + ': no name under the cursor' : place + ': ' + named + ' — slice of this value';
+        // A word the parsed statement does not read as a variable - a keyword such as DATA or IF - is no value either.
+        const keyword = named && at && !called && !routineLine && !variablePaths(at.tokens).some(path => String(path.name).toUpperCase() === String(named).toUpperCase());
+        if (named && at && (called || routineLine || keyword)) {
+          originTitle = place + ': ' + named + (called ? ' is a method call, not a value' : routineLine ? ' is the routine itself' : ' is not a value');
+          target.variable = ''; target.flowPath = true; target.flowRange = { from: target.line, to: editor.document.lineCount };
+          loaded = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: options.progressTitle || 'Value origin — ACE call index', cancellable: true },
+            (progress, token) => getSources(editor.document, target, name => progress.report({ message: name }), () => token.isCancellationRequested));
+        }
         const sources = loaded.sources;
         const sliceStarted = Date.now();
-        graph = analyze(sources, { ...loaded.target, flowBounds: target.flowBounds && { ...target.flowBounds, source: loaded.target.source } });
+        graph = analyze(sources, loaded.target);
         graph.diagnostics = [...(loaded.diagnostics || []), 'Source closure total: ' + (sliceStarted - loadStarted) + ' ms',
           'Backward slice: ' + (Date.now() - sliceStarted) + ' ms'];
         graph.analysisEngine = options.engine || 'ACE';
+        graph.originTitle = originTitle;
         graph.warnings = loaded.warnings;
         graph.skipped = loaded.skipped;
         graph.sourceClosure = sources.map(source => ({ name: source.name, objectName: source.aceOwner || source.objectName, objectType: source.aceOwner ? source.aceOwnerType : source.objectType }));
@@ -370,6 +494,21 @@ function register(vscode, context, getSources, options = {}) {
         recentAnalysis = { key: cacheKey, expiresAt: Date.now() + (options.cacheMs ?? 30000), loaded, graph };
       }
       graph.codeFlow = { rows: pathRows(graph, loaded.sources), sites: siteRows(graph, loaded.sources) };
+      // The editor's breakpoints stop the flow where the run would stop, and the reader decides whether it goes on.
+      const breakpoints = (vscode.debug.breakpoints || []).filter(point => point.enabled !== false && point.location?.uri)
+        .map(point => ({ source: loaded.sourceFor ? loaded.sourceFor(point.location.uri.toString()) : null, line: point.location.range.start.line + 1 }))
+        .filter(point => point.source);
+      graph.flowScope = await stopAtBreakpoints(flowScope(graph),
+        row => breakpoints.some(point => point.source === row.source && point.line === row.line) ? { location: row.location, line: row.line } : null,
+        async points => {
+          const stop = 'Stop analysis', next = 'Continue to next', ignore = 'Ignore breakpoints';
+          const answer = await vscode.window.showWarningMessage('VERTEX: breakpoint reached:\n' + points.map(point => point.location + ', line ' + point.line).join('\n'),
+            { modal: true }, stop, next, ignore);
+          // Escape ends the analysis here as Stop does: what was found so far is shown.
+          return !answer || answer === stop ? 'stop' : answer === next ? 'next' : 'ignore';
+        });
+      graph.stopNotice = graph.flowScope.stoppedAt ? 'Stopped at breakpoint: ' + graph.flowScope.stoppedAt.map(point => point.location + ', line ' + point.line).join('; ')
+        + '. The flow after it is not shown.' : '';
       const sources = loaded.sources, originViewColumn = editor.viewColumn || vscode.ViewColumn.One;
       const panel = vscode.window.createWebviewPanel(options.command || 'vertex.valueOrigin', options.panelTitle || 'Value origin', vscode.ViewColumn.Beside, { enableScripts: true });
       const mine = { graph, screen: null };
@@ -397,6 +536,7 @@ function register(vscode, context, getSources, options = {}) {
           }
           return;
         }
+        if (message?.kind === 'pageError') { vscode.window.showErrorMessage('VERTEX: the Value origin page failed: ' + message.message); return; }
         if (message?.kind === 'screen') { mine.screen = { mode: message.mode, view: message.view, depth: message.depth }; return; }
         const scenarioNode = /^scenario:([A-Z0-9_]+)$/i.exec(message?.node || '');
         if (scenarioNode) {
@@ -433,7 +573,8 @@ function register(vscode, context, getSources, options = {}) {
         const n = flowIndex ? graph.executionFlow[Number(flowIndex[1])] : bseFlowIndex ? graph.boundedFlow[Number(bseFlowIndex[1])] : graph.nodes.find(n => message && n.id === message.node);
         // A node of the code flow names its source as the debugger's flow does: "origin:<source>|<OWNER->ROUTINE>".
         const marked = /^origin:([^|]*)\|(.*)$/.exec(message?.source || '');
-        const source = sources.find(s => s.id === (marked ? marked[1] : (message.source || n?.source))); if (!source) return;
+        const source = sources.find(s => s.id === (marked ? marked[1] : (message.source || n?.source)));
+        if (!source) { vscode.window.showErrorMessage('VERTEX: the analysis has no source for this node (' + String((marked ? marked[1] : message.source) || message.node || '?') + ').'); return; }
         const requestedLine = message.line || n?.line || 1;
         const opened = await loaded.openSource(source, { ...(n || {}), ...(marked && marked[2] ? { location: marked[2] } : {}), line: requestedLine });
         const document = opened.document, line = navigationLine(opened, requestedLine);
@@ -446,4 +587,4 @@ function register(vscode, context, getSources, options = {}) {
     } catch (e) { vscode.window.showErrorMessage('VERTEX: ' + e.message); }
   }));
 }
-module.exports = { register, html, navigationLine, originContext };
+module.exports = { register, html, navigationLine, originContext, flowScope, stopAtBreakpoints };

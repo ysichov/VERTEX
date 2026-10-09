@@ -85,8 +85,8 @@ public class ValueOriginView extends PageView {
 		if (t == null) {
 			return "Value origin";
 		}
-		return variable.equals(getViewSite().getSecondaryId()) ? "Value origin: " + t.object.name
-				: "Value origin: " + variable + " (" + t.object.name + ")";
+		return variable.equals(getViewSite().getSecondaryId()) ? "Value origin: " + t.object.ownerName()
+				: "Value origin: " + variable + " (" + t.object.ownerName() + ")";
 	}
 
 	private Target target() {
@@ -124,7 +124,7 @@ public class ValueOriginView extends PageView {
 		}
 		points.append("]");
 		String json = "{\"project\":" + AssistantBridge.quote(t.object.project.getName())
-				+ ",\"name\":" + AssistantBridge.quote(t.object.name.toUpperCase())
+				+ ",\"name\":" + AssistantBridge.quote(t.object.ownerName())
 				+ ",\"type\":" + AssistantBridge.quote(t.type)
 				+ ",\"sourcePath\":" + AssistantBridge.quote(t.sourcePath)
 				+ ",\"text\":" + AssistantBridge.quote(t.text)

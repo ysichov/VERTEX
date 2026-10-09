@@ -775,9 +775,13 @@ function analyze(sources, target, options = {}) {
     // A program's statements outside any form or method belong to the event
     // that opened them, and to START-OF-SELECTION when none did - that is
     // where ABAP runs them. The event names the level; it is not a step in it.
-    let event = '';
+    // A class's DEFINITION ... ENDCLASS declares and runs nothing: its sections and METHODS are not steps of the flow.
+    let event = '', definition = false;
     return localStatements(source).flatMap((statement, statementIndex) => {
     const classification=classifyStatement(statement,callsIn),first=classification.word;
+    const words=statement.tokens.map(token=>U(token.value));
+    if((first==='CLASS'||first==='INTERFACE')&&(words.includes('DEFINITION')||first==='INTERFACE')&&!words.includes('DEFERRED')&&!words.includes('LOAD')){definition=true;return [];}
+    if(definition){if(first==='ENDCLASS'||first==='ENDINTERFACE')definition=false;return [];}
     if(classification.container||classification.procedureStart||classification.declaration)return [];
     if(classification.event){event=classification.event;return [];}
     const procedure = index.procedures.find(item => item.source.id === source.id &&
@@ -786,9 +790,12 @@ function analyze(sources, target, options = {}) {
       index.procedures.find(item => item.source.id === source.id && item.name === 'GLOBAL');
     const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included);
     return [{ id: source.id + ':full:' + statement.offset, source: source.id, line: statement.line, statementIndex,
-      control: classification, text: statement.text, changed: statement.text, scope: (source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
+      control: classification, text: statement.text, changed: statement.text, scope: ((procedure && procedure.name !== 'GLOBAL' && procedure.owner) || source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
   });
-  }).filter(point => !flowBounds || point.source !== target.source || (point.line >= flowBounds.from && point.line <= flowBounds.to));
+  // Outside the breakpoints a statement is marked, not dropped: a routine the bounded stretch calls may lie in the same
+  // source beyond them, and the flow still goes into it. Which rows are drawn is the view's choice.
+  }).map(point => flowBounds && point.source === target.source && (point.line < flowBounds.from || point.line > flowBounds.to)
+    ? { ...point, outside: true } : point);
   const flowLog = nodes.map(node => ({ source: node.source, scope: node.location || node.source, line: node.line, text: node.text,
     included: true, reason: edges.filter(edge => edge.to === node.id).map(edge => edge.label).join(', ') || 'selected value' }));
   const selectedProgram = sources.find(source => source.id === target.source)?.objectName || sources.find(source => source.id === target.source)?.name || target.source;
@@ -894,4 +901,4 @@ async function collectSources(initial, load, options = {}) {
   }
   return { sources, warnings, skipped };
 }
-module.exports = { analyze, buildIndex, collectSources, variableAt, literalAt, customerObject, typeComponents, assignment, variablePaths, callsIn, resolver };
+module.exports = { analyze, buildIndex, collectSources, variableAt, literalAt, customerObject, typeComponents, assignment, variablePaths, callsIn, resolver, declaredIn, formParameters };

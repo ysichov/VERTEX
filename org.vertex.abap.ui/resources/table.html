@@ -102,6 +102,26 @@
                 font-weight: 600; }
   .panel-head button { margin-left: auto; }
   .criteria { padding: 4px; }
+  .app:has(.criteria.fields) .panel { flex-basis: 420px; }
+  .fieldlist { border-collapse: collapse; width: 100%; }
+  .fieldlist th { text-align: left; font-weight: 600; color: var(--muted); padding: 2px 3px; }
+  .fieldlist td { padding: 1px 3px; border-top: 1px solid var(--line); }
+  .fieldlist td.fname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+  .fieldlist td.fname.key { font-weight: 600; }
+  .fieldlist select { font: inherit; padding: 1px 3px; width: auto; }
+  .optsign { font: inherit; font-weight: 700; min-width: 30px; padding: 0 4px; border: 1px solid var(--field-border);
+             border-radius: 3px; background: var(--field-bg); cursor: pointer; text-align: center; }
+  .optsign.include { color: var(--vscode-testing-iconPassed, #2c7a39); }
+  .optsign.exclude { color: var(--danger); }
+  .optmenu { position: fixed; z-index: 20; display: flex; flex-direction: column; gap: 1px; padding: 4px;
+             background: var(--surface); color: var(--fg); border: 1px solid var(--border);
+             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); }
+  .optmenu .vertex-segment-toggle { margin-bottom: 4px; align-self: flex-start; }
+  .optitem { display: flex; align-items: center; gap: 8px; font: inherit; text-align: left; padding: 2px 6px;
+             border: none; background: transparent; color: var(--fg); cursor: pointer; }
+  .optitem:hover, .optitem.current { background: var(--hover); }
+  .optitem .optsign { border: none; background: none; padding: 0; }
+  .fieldlist input:not([type]) { font: inherit; padding: 1px 3px; min-width: 0; width: 100%; box-sizing: border-box; text-transform: uppercase; }
   .hint { padding: 10px; color: var(--muted); }
 
   .crit { border: 1px solid var(--line); background: var(--bg); margin-bottom: 4px;
@@ -456,9 +476,184 @@ function select(values, chosen, onChange) {
   return el;
 }
 
+/* The option of a selection line as SAP GUI shows it: one sign, the one the
+   ABAP code writes (>= for GE), green when the line selects and red when it
+   excludes. A click opens the list of options, with Select / Exclude. */
+var OPTION_SIGNS = {
+  CP: ["[*]", "Pattern"], EQ: ["=", "Single value"], GE: ["≥", "Greater than or equal to"],
+  GT: [">", "Greater than"], LE: ["≤", "Less than or equal to"], LT: ["<", "Less than"],
+  NP: ["]*[", "Exclude pattern"], NE: ["≠", "Not equal to"], BT: ["[ ]", "Range"], NB: ["] [", "Outside range"]
+};
+
+function optionButton(c, onPick) {
+  var button = document.createElement("button");
+  button.className = "optsign " + (c.sign === "E" ? "exclude" : "include");
+  button.textContent = OPTION_SIGNS[c.option][0];
+  button.title = (c.sign === "E" ? "Exclude: " : "Select: ") + OPTION_SIGNS[c.option][1];
+  button.addEventListener("click", function (e) {
+    e.stopPropagation();
+    closeOptionMenu();
+    var menu = document.createElement("div");
+    menu.className = "optmenu";
+    menu.id = "optmenu";
+    var sign = c.sign;
+    // Select or Exclude: one of two, the shared segment toggle.
+    var signs = document.createElement("span");
+    signs.className = "vertex-segment-toggle";
+    [["I", "Select", "The line selects these values"], ["E", "Exclude", "The line excludes these values"]].forEach(function (choice) {
+      var b = document.createElement("button");
+      b.textContent = choice[1];
+      b.title = choice[2];
+      if (choice[0] === sign) { b.className = "active"; }
+      b.addEventListener("click", function () {
+        if (choice[0] !== sign) { closeOptionMenu(); onPick(choice[0], c.option); }
+      });
+      signs.appendChild(b);
+    });
+    menu.appendChild(signs);
+    Object.keys(OPTION_SIGNS).forEach(function (option) {
+      var item = document.createElement("button");
+      item.className = "optitem" + (option === c.option ? " current" : "");
+      var mark = document.createElement("span");
+      mark.className = "optsign " + (sign === "E" ? "exclude" : "include");
+      mark.textContent = OPTION_SIGNS[option][0];
+      item.appendChild(mark);
+      item.appendChild(document.createTextNode(OPTION_SIGNS[option][1]));
+      item.addEventListener("click", function () { closeOptionMenu(); onPick(sign, option); });
+      menu.appendChild(item);
+    });
+    var at = button.getBoundingClientRect();
+    menu.style.left = at.left + "px";
+    menu.style.top = at.bottom + 2 + "px";
+    document.body.appendChild(menu);
+  });
+  return button;
+}
+
+function closeOptionMenu() {
+  var open = document.getElementById("optmenu");
+  if (open && open.parentNode) { open.parentNode.removeChild(open); }
+}
+
+/* A table's selection is every field, as SAP GUI's selection screen lists
+   them: whether it is shown, and its lines - one empty line for a field with
+   none, which becomes a criterion once something is typed into it. */
+function fieldList(box, fields, view) {
+  document.getElementById("hint").style.display = "none";
+  box.className = "criteria fields";
+  var table = document.createElement("table");
+  table.className = "fieldlist";
+  var head = document.createElement("tr");
+  ["", "Field", "Option", "From", "To"].forEach(function (text, i) {
+    var th = document.createElement("th");
+    th.textContent = text;
+    if (i === 0) { th.title = "Shown in the table"; }
+    head.appendChild(th);
+  });
+  table.appendChild(head);
+  // A condition on a field the SELECT list does not show still has its line.
+  var listed = fields.slice();
+  criteria.forEach(function (c) {
+    if (!listed.some(function (f) { return f.name === c.field; })) { listed.push({ name: c.field, text: c.text }); }
+  });
+  listed.forEach(function (f) {
+    var lines = criteria.filter(function (c) { return c.field === f.name; });
+    if (!lines.length) { lines = [{ field: f.name, text: f.text, sign: "I", option: "EQ", low: "", high: "", spare: true }]; }
+    lines.forEach(function (c, index) {
+      var tr = document.createElement("tr");
+      var see = document.createElement("td");
+      if (index === 0 && view.what) {
+        var box2 = document.createElement("input");
+        box2.type = "checkbox";
+        box2.checked = fields.indexOf(f) !== -1 && view.shown(f);
+        box2.disabled = fields.indexOf(f) === -1;
+        box2.title = view.what;
+        box2.addEventListener("change", function (e) { view.show(f, e.target.checked); });
+        see.appendChild(box2);
+      }
+      tr.appendChild(see);
+      var name = document.createElement("td");
+      name.className = f.key ? "fname key" : "fname";
+      name.textContent = index === 0 ? (f.text || f.name) : "";
+      name.title = f.name;
+      tr.appendChild(name);
+      // A spare line joins the criteria the moment it says something.
+      var adopt = function () { if (c.spare) { delete c.spare; criteria.push(c); } };
+      var cell = function (el) { var td = document.createElement("td"); td.appendChild(el); tr.appendChild(td); };
+      cell(optionButton(c, function (sign, option) {
+        adopt(); c.sign = sign; c.option = option; renderCriteria();
+      }));
+      var low = document.createElement("input");
+      low.value = c.low;
+      low.addEventListener("input", function (e) { adopt(); c.low = e.target.value.toUpperCase(); });
+      low.addEventListener("keydown", function (e) { if (e.key === "Enter") { view.run(); } });
+      cell(low);
+      var high = document.createElement("input");
+      high.value = c.high;
+      high.disabled = RANGED.indexOf(c.option) === -1;
+      high.addEventListener("input", function (e) { adopt(); c.high = e.target.value.toUpperCase(); });
+      high.addEventListener("keydown", function (e) { if (e.key === "Enter") { view.run(); } });
+      cell(high);
+      table.appendChild(tr);
+    });
+  });
+  box.appendChild(table);
+  if (columns) {
+    var more = document.createElement("button");
+    more.textContent = "Show hidden";
+    more.title = "Read every field of the table; the ones the SELECT did not ask for come unticked";
+    more.addEventListener("click", function () {
+      wanted = columns;
+      columns = null;
+      apply();
+    });
+    box.appendChild(more);
+  }
+}
+
 function renderCriteria() {
   var box = document.getElementById("criteria");
   box.innerHTML = "";
+  box.className = "criteria";
+  // A table's answer on screen: its field list, Shown hiding a column.
+  if (shown && !shown.candidates && shown.fields) {
+    fieldList(box, shown.fields, {
+      what: "Shown in the table",
+      shown: function (f) { return !hidden[f.name]; },
+      show: function (f, on) { if (on) { delete hidden[f.name]; } else { hidden[f.name] = true; } render(shown); },
+      run: apply
+    });
+    return;
+  }
+  // A join's: every field of its tables under the names its columns have -
+  // MATNR, T1_MATNR - Shown being the SELECT list, so a change runs it again.
+  if (shown && shown.candidates && shown.fields) {
+    var keys = function () {
+      return picked ? picked.slice() : shown.fields.filter(function (f) { return f.sel === "X" || f.sel === true; }).map(fieldKey);
+    };
+    fieldList(box, shown.fields.map(function (f) {
+      var joined = f.alias !== "T0";
+      return { name: (joined ? f.alias + "_" : "").toLowerCase() + f.fieldname.toLowerCase(),
+               text: (joined ? f.alias + " · " : "") + (f.ddtext || f.fieldname.toLowerCase()),
+               key: f.key === true || f.key === "X", jkey: fieldKey(f) };
+    }), mode === "P" ? {
+      // The pivot's columns are its slots, not a SELECT list: no Shown here.
+      what: null,
+      shown: function () { return false; },
+      show: function () {},
+      run: function () { loadJoin(ROWS); }
+    } : {
+      what: "In the SELECT list",
+      shown: function (f) { return keys().indexOf(f.jkey) !== -1; },
+      show: function (f, on) {
+        var list = keys().filter(function (k) { return k !== f.jkey; });
+        if (on) { list.push(f.jkey); }
+        setPicked(list);
+      },
+      run: function () { loadJoin(ROWS); }
+    });
+    return;
+  }
   document.getElementById("hint").style.display = criteria.length ? "none" : "block";
 
   criteria.forEach(function (c) {
@@ -545,12 +740,21 @@ function load(name) {
   if (!name) { return; }
   // Field names belong to one table, so a different table starts over.
   if (currentTable !== null && name !== currentTable) {
+    hidden = {};
+    columns = null;
+    wanted = null;
     criteria = [];
     renderCriteria();
   }
   status("loading " + name + " ...");
   // Returns at once. The host answers later by calling sdeReady.
-  sdeLoad(name, ROWS, query());
+  var asked = query();
+  if (columns) {
+    asked += (asked ? "&" : "") + "pick=X" + columns.map(function (c, i) {
+      return "&sf" + (i + 1) + "=" + encodeURIComponent(c);
+    }).join("");
+  }
+  sdeLoad(name, ROWS, asked);
 }
 
 // Invoked by the host when the answer is waiting.
@@ -607,6 +811,12 @@ function sortRows(rows, fields) {
 function render(data) {
   currentTable = data.table.toUpperCase();
   shown = data;
+  if (wanted) {
+    hidden = {};
+    data.fields.forEach(function (f) { if (wanted.indexOf(f.name) === -1) { hidden[f.name] = true; } });
+    wanted = null;
+  }
+  renderCriteria();
 
   var root = document.getElementById("root");
   root.className = "";
@@ -618,8 +828,9 @@ function render(data) {
     if (c.low !== "" || c.high !== "") { active[c.field] = true; }
   });
 
+  var columns = data.fields.filter(function (f) { return !hidden[f.name]; });
   var headRow = document.createElement("tr");
-  data.fields.forEach(function (f) {
+  columns.forEach(function (f) {
     var th = document.createElement("th");
     th.title = f.name + " " + f.datatype + " " + f.length
              + (f.decimals ? "," + f.decimals : "") + (f.key ? " key" : "")
@@ -659,7 +870,7 @@ function render(data) {
   var tbody = document.createElement("tbody");
   sortRows(data.rows, data.fields).forEach(function (row) {
     var tr = document.createElement("tr");
-    data.fields.forEach(function (f) {
+    columns.forEach(function (f) {
       var td = document.createElement("td");
       var v = row[f.name];
       if (v === null || v === undefined || v === "") {
@@ -679,7 +890,7 @@ function render(data) {
   table.appendChild(tbody);
   root.appendChild(table);
 
-  status(data.table + " " + data.count + " rows, " + data.fields.length + " columns"
+  status(data.table + " " + data.count + " rows, " + columns.length + " of " + data.fields.length + " columns"
        + (sorted.field ? " · these " + data.rows.length + " by " + sorted.field : ""));
 }
 
@@ -703,6 +914,20 @@ var cross = { rows: [], cols: [], vals: [] };
    lets the page rebuild the request from what is on screen. */
 var picked = null;
 var jtypes = {};
+/* An ON condition by alias that overrules the builder's proposal - Run Select
+   brings the SELECT's own; the resource takes it as onT1=... */
+var jons = {};
+/* Run Select's window opens on the answer; the tables around the base are
+   asked for only when the builder is opened (Settings). */
+var noCandidates = false;
+/* The fields of a table that are not shown, by name; the selection list
+   still has them. Run Select's table is read with its SELECT list alone
+   (columns); "Show hidden" reads every field and leaves the others unticked
+   (wanted, settled once the fields are known). A different table starts with
+   every field shown. */
+var hidden = {};
+var columns = null;
+var wanted = null;
 
 function buildQuery() {
   var parts = [];
@@ -716,6 +941,10 @@ function buildQuery() {
   }
   Object.keys(jtypes).forEach(function (alias) {
     parts.push("j" + alias + "=" + encodeURIComponent(jtypes[alias]));
+  });
+  if (noCandidates) { parts.push("cand=0"); }
+  Object.keys(jons).forEach(function (alias) {
+    parts.push("on" + alias + "=" + encodeURIComponent(jons[alias]));
   });
   return parts.join("&");
 }
@@ -783,6 +1012,7 @@ function loadJoin(rows) {
 function toggleTaken(tabname) {
   var at = taken.indexOf(tabname);
   if (at === -1) { taken.push(tabname); } else { taken.splice(at, 1); }
+  forgetJoinPlan();
   // A table joining or leaving changes which fields exist at all, so the
   // SELECT list goes back to what the builder proposes for the new shape.
   picked = null;
@@ -796,6 +1026,7 @@ function joinView(root, on) {
 
 function renderJoin(data) {
   shown = data;
+  renderCriteria();
   tintAliases(data.fields);
   var root = document.getElementById("root");
   root.className = "join";
@@ -825,7 +1056,7 @@ function renderJoin(data) {
   if (!full) { root.appendChild(setup); }
 
   if (data.rows) {
-    rowsPane.appendChild(section(data.rows.length + " rows", resultTable(data.rows)));
+    rowsPane.appendChild(section(data.rows.length + " rows", resultTable(data.rows, data.headers)));
     status(data.rows.length + " rows");
   } else {
     status(data.tables ? data.tables.length + " tables in the join" : "");
@@ -903,6 +1134,7 @@ function modeCards() {
                         ["Full view", "The answer on its own, with the builder put away"]],
                        full ? 1 : 0, function (index) {
     full = index === 1;
+    if (!full && noCandidates) { noCandidates = false; loadJoin(ROWS); return; }
     // Nothing is asked for again: the answer on screen is the one being shown
     // either way.
     renderJoin(shown);
@@ -1176,13 +1408,16 @@ function fieldChips(fields) {
 /* A join result has no field catalogue of its own: the columns are what the
    statement asked for, under the alias-prefixed names it gave them. So the
    keys of the first row are the header. */
-function resultTable(rows) {
+/* A pivot names its columns (headers, by column); the technical name stays
+   in the tooltip. */
+function resultTable(rows, headers) {
   var columns = rows.length ? Object.keys(rows[0]) : [];
 
   var head = document.createElement("tr");
   columns.forEach(function (c) {
     var th = document.createElement("th");
-    th.textContent = c;
+    th.textContent = headers && headers[c] ? headers[c] : c;
+    th.title = c;
     head.appendChild(th);
   });
   var thead = document.createElement("thead");
@@ -1595,7 +1830,18 @@ function applyAbout() {
    resource this window is for, there is nothing to start. */
 function startWindow() {
   if (!usable("table")) { setupPage(""); return; }
-  if (INITIAL) {
+  if (PLAN) {
+    noCandidates = !!(PLAN.join && (PLAN.join.length || PLAN.pivot));
+    columns = PLAN.columns && PLAN.columns.length ? PLAN.columns.slice() : null;
+    applyPlan({ table: PLAN.table, filters: PLAN.filters || [], join: PLAN.join || [],
+                fields: PLAN.fields || [], jtypes: PLAN.jtypes, on: PLAN.on,
+                pivot: PLAN.pivot || { rows: [], cols: [], vals: [] } });
+    // The selection starts folded: the answer is what Run Select was asked for.
+    document.getElementById("app").classList.add("collapsed");
+    // And a join opens on its answer alone, the builder one press away - and
+    // asked for only then.
+    full = true;
+  } else if (INITIAL) {
     if (window.VERTEX_ACTION === "join" || window.VERTEX_ACTION === "pivot") {
       currentTable = INITIAL;
       mode = window.VERTEX_ACTION === "pivot" ? "P" : "J";
@@ -2035,7 +2281,8 @@ function applyPlan(plan) {
 
   taken = plan.join.slice();
   picked = plan.fields.length ? plan.fields.slice() : null;
-  jtypes = {};
+  jtypes = Object.assign({}, plan.jtypes || {});
+  jons = Object.assign({}, plan.on || {});
   cross = {
     rows: plan.pivot.rows.slice(),
     cols: plan.pivot.cols.slice(),
@@ -2049,7 +2296,16 @@ function applyPlan(plan) {
   if (pivot || taken.length || picked) { loadJoin(ROWS); } else { load(plan.table); }
 }
 
+/* A table chosen anew starts from the builder's proposal, not from the ON a
+   SELECT once brought. */
+function forgetJoinPlan() {
+  jons = {};
+}
+
 /* ---------- wiring ---------- */
+
+// An open option list closes on any click outside its button.
+document.addEventListener("click", closeOptionMenu);
 
 document.getElementById("load").addEventListener("click", function () { load(tableName()); });
 
@@ -2102,6 +2358,10 @@ document.getElementById("model").addEventListener("change", function (e) {
 });
 
 var INITIAL = /*INIT*/null/*INIT*/;
+/* A window may open on a whole state rather than a table name - Run Select
+   hands over the SELECT's table and its WHERE as selection lines. */
+var PLAN = INITIAL && typeof INITIAL === "object" ? INITIAL : null;
+if (PLAN) { INITIAL = PLAN.table; }
 if (INITIAL) {
   document.getElementById("name").value = INITIAL;
 } else {

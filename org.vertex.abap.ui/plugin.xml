@@ -85,7 +85,7 @@
          <command commandId="org.vertex.abap.ui.command.tools" label="VERTEX Tools" style="push">
             <visibleWhen checkEnabled="false"><or>
                <with variable="selection"><count value="1"/><iterate><adapt type="com.sap.adt.tools.core.IAdtObjectReference"/></iterate></with>
-               <with variable="activeEditorInput"><adapt type="com.sap.adt.tools.core.IAdtObjectReference"/></with>
+               <with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with>
             </or></visibleWhen>
          </command>
       </menuContribution>
@@ -97,14 +97,9 @@
                label="VERTEX: Activate"
                style="push">
             <visibleWhen checkEnabled="false">
-               <and>
-                  <with variable="activePart">
-                     <instanceof value="org.eclipse.ui.IEditorPart"/>
-                  </with>
-                  <with variable="activeEditorInput">
-                     <adapt type="com.sap.adt.tools.core.IAdtObjectReference"/>
-                  </with>
-               </and>
+               <with variable="activePart">
+                  <test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/>
+               </with>
             </visibleWhen>
          </command>
       </menuContribution>
@@ -114,19 +109,20 @@
             id="org.vertex.abap.ui.editorTester"
             type="org.eclipse.ui.IEditorPart"
             namespace="org.vertex.abap.ui"
-            properties="valueOriginSource"
+            properties="adtObject,valueOriginSource"
             class="org.vertex.abap.ui.EditorTester"/>
    </extension>
-   <!-- The context menu of a source editor, where ADT puts its own editor commands (#EditorContext). Whether the
-        editor is one the command works on is tested on the editor itself, as ADT tests its own commands there: its
-        input does not adapt to an object reference a plain plugin.xml test could name. -->
+   <!-- The context menu of an ADT editor. Not #EditorContext: an ADT editor's menu is not always registered under that
+        id (ADT 3.60 in Eclipse 2025-03 showed none of these there), so the items go to every popup and show only when
+        the active part is an editor this tester accepts - any ADT object: a command that does not apply to the object
+        says so and names its type, rather than the item silently missing (as it did in ADT 3.60's class editor). The editor itself is tested, as ADT tests its own commands:
+        its input does not adapt to the object reference a plain plugin.xml test could name. -->
    <extension point="org.eclipse.ui.menus">
       <menuContribution
-            allPopups="false"
-            locationURI="popup:#EditorContext?after=additions">
-         <command commandId="org.vertex.abap.ui.command.debugMonitor" label="VERTEX: Debug Monitor" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.valueOriginSource" forcePluginActivation="true"/></with></visibleWhen></command>
+            locationURI="popup:org.eclipse.ui.popup.any?after=additions">
+         <command commandId="org.vertex.abap.ui.command.debugMonitor" label="VERTEX: Debug Monitor" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
          <command commandId="org.vertex.abap.ui.command.visualFlowAnalysis" label="VERTEX: Visual Flow Analysis" style="push">
-            <visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.valueOriginSource" forcePluginActivation="true"/></with></visibleWhen>
+            <visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen>
          </command>
          <command
                commandId="org.vertex.abap.ui.command.valueOrigin"
@@ -134,7 +130,7 @@
                style="push">
             <visibleWhen checkEnabled="false">
                <with variable="activePart">
-                  <test property="org.vertex.abap.ui.valueOriginSource" forcePluginActivation="true"/>
+                  <test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/>
                </with>
             </visibleWhen>
          </command>

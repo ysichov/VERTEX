@@ -10,6 +10,8 @@ import org.eclipse.ui.IEditorPart;
  */
 public class EditorTester extends PropertyTester {
 
+	private static final java.util.Set<String> REPORTED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
 	@Override
 	public boolean test(Object receiver, String property, Object[] args, Object expectedValue) {
 		if (!(receiver instanceof IEditorPart)) {
@@ -20,7 +22,17 @@ public class EditorTester extends PropertyTester {
 			return false;
 		}
 		switch (property) {
-		case "valueOriginSource": return ValueOriginHandler.originType(object.type) != null;
+		// Any ADT object - VERTEX Tools and Activate.
+		case "adtObject": return true;
+		case "valueOriginSource": {
+			boolean offered = ValueOriginHandler.originType(object.kind()) != null;
+			// Said once per object in the Error Log: what an editor the analyses are not offered for reports itself as.
+			if (!offered && REPORTED.add(object.uri)) {
+				org.eclipse.core.runtime.Platform.getLog(EditorTester.class).info("VERTEX: no analyses for this editor - type "
+						+ object.type + ", kind " + object.kind() + ", ADT URI " + object.uri + ", editor " + receiver.getClass().getName());
+			}
+			return offered;
+		}
 		default: return false;
 		}
 	}

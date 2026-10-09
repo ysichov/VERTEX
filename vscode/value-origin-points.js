@@ -53,7 +53,7 @@ function pathRows(graph, sources) {
     if (type === "CLAS" && method === "START-OF-SELECTION") { continue; }
     rows.push({ name, type,
       line: row.line, aceLine: row.line, source: row.source, location: scope.replace("→", "->"),
-      control: row.control, text: String(row.text || "").trim(), scope, included: !!row.included,
+      control: row.control, text: String(row.text || "").trim(), scope, included: !!row.included, outside: !!row.outside,
       method,
       object_name: source.objectName || "", object_type: source.objectType || "" });
   }
