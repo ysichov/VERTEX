@@ -62,8 +62,8 @@
   window.vertexNativeEvent = raw => {
     const picture = JSON.parse(raw); sessions(picture); sdeDebugEvent(raw);
     lastPicture = picture;
-    const f = picture.stopped && picture.stopped.frames.find(f => f.current);
-    if (f && !(typeof series !== 'undefined' && series)) sdeReveal(f);
+    // ADT owns editor navigation for a live debug stop. Reopening the class
+    // here creates another editor tab on every step.
     const point = picture.stopped && picture.breakpoints.find(b => b.id === picture.stopped.breakpoint && b.mode === 'log');
     if (point && !series && loggedStop !== picture.stopped.at) {
       loggedStop = picture.stopped.at;

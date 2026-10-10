@@ -2256,13 +2256,45 @@ function initial(v){
 /* Which switch a group of SAP's answers to; a group it does not name is always read. */
 function groupKind(name){var n=String(name);return /^glob/i.test(n)?"globals":/^param/i.test(n)?"params":/^loc/i.test(n)?"locals":"";}
 function groupOn(g){var k=groupKind(g.name);return !k||$(k).classList.contains("on");}
+var parameterSignatures={};
+function parametersForFrame(f){
+  if(!f||!classUrl(f.url)||!f.unit)return Promise.resolve([]);
+  var key=norm(f.url),unit=String(f.unit).toUpperCase();
+  if(parameterSignatures[key])return Promise.resolve(parameterSignatures[key][unit]||[]);
+  return debug("source",{url:f.url}).then(function(result){
+    var source=String(result.source||""),signatures={};
+    var declarations=source.match(/\b(?:CLASS-)?METHODS\s+[\s\S]*?\./gi)||[];
+    declarations.forEach(function(declaration){
+      var head=/\b(?:CLASS-)?METHODS\s+([\w~]+)/i.exec(declaration);if(!head)return;
+      var names=[],part=declaration.slice(head[0].length);
+      var sections=/\b(IMPORTING|EXPORTING|CHANGING|RETURNING)\b([\s\S]*?)(?=\b(?:IMPORTING|EXPORTING|CHANGING|RETURNING|RAISING|EXCEPTIONS)\b|\.$)/gi,section;
+      while((section=sections.exec(part))){
+        var entry=/(?:\bVALUE\s*\(\s*([\w~]+)\s*\)|\b([\w~]+))\s+(?:TYPE|LIKE)\b/gi,item;
+        while((item=entry.exec(section[2])))names.push((item[1]||item[2]).toUpperCase());
+      }
+      signatures[head[1].toUpperCase()]=names;
+    });
+    parameterSignatures[key]=signatures;
+    return signatures[unit]||[];
+  }).catch(function(){return [];});
+}
+function splitLocalParameters(groups,names){
+  if(!names.length||groups.some(function(g){return groupKind(g.name)==="params";}))return;
+  var local=groups.find(function(g){return groupKind(g.name)==="locals";});if(!local||!local.children)return;
+  var wanted=new Set(names),parameters=[],others=[];
+  local.children.forEach(function(v){(wanted.has(String(v.name).toUpperCase())?parameters:others).push(v);});
+  if(!parameters.length)return;
+  local.children=others;
+  groups.splice(groups.indexOf(local),0,{id:"vertex:parameters",name:"Params",children:parameters});
+}
 function loadScopes(){
   $("partial").textContent="";
   var withSy=$("syst").classList.contains("on");
   return debug("scopes",{sy:withSy}).then(function(d){
     scopes=d;current={};
-    var groups=d.groups.filter(groupOn);
+    var groups=d.groups.filter(function(g){return groupOn(g)||groupKind(g.name)==="locals"&&$("params").classList.contains("on");});
     return groups.reduce(function(p,g){return p.then(function(){return debug("children",{id:g.id}).then(function(c){g.children=c.children;});});},Promise.resolve())
+      .then(function(){return parametersForFrame(currentFrame()).then(function(names){splitLocalParameters(d.groups,names);});})
       .then(function(){
         // What was open before stays open, read again at the new stop -
         // only under a group that is read.
@@ -2588,6 +2620,7 @@ function switched(id,read){$(id).onclick=function(){var on=$(id).classList.toggl
     return;
   }
   if(!on||!scopes||!picture.stopped||series){drawVars();return;}
+  if(id==="params"&&!scopes.groups.some(function(g){return groupKind(g.name)==="params";})){loadScopes().catch(failed);return;}
   read().then(drawVars).catch(failed);};}
 switched("syst",function(){return scopes.sy?Promise.resolve():debug("vars",{names:["SY"]}).then(function(d){scopes.sy=d.variables[0]||null;});});
 ["globals","locals","params"].forEach(function(kind){switched(kind,function(){

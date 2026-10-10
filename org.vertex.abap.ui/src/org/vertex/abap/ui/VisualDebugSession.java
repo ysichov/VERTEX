@@ -107,9 +107,13 @@ final class VisualDebugSession {
             JsonArray frames = new JsonArray();
             for (int i = 0; i < stack.length; i++) {
                 IAbapStackFrame f = stack[i];
-                int line = f.getAbsoluteLineNumber() > 0 ? f.getAbsoluteLineNumber() : f.getLineNumber();
+                int absoluteLine = f.getAbsoluteLineNumber();
+                int frameLine = f.getLineNumber();
+                int line = absoluteLine > 0 ? absoluteLine : frameLine;
                 frames.add(object("n", i, "label", f.getProgramName() + ":" + line + " " + f.getEventType() + " " + f.getEventName(),
-                    "url", sourcePath(f.getUri()), "line", line, "current", active == null ? i == 0 : f.equals(active),
+                    "url", sourcePath(f.getUri()), "line", line, "adtUri", String.valueOf(f.getUri()),
+                    "adtAbsoluteLine", absoluteLine, "adtFrameLine", frameLine,
+                    "current", active == null ? i == 0 : f.equals(active),
                     "program", f.getProgramName(), "include", f.getIncludeName(), "system", f.isSystemProgram(),
                     "unit", f.getEventName(), "unitType", String.valueOf(f.getEventType())));
             }

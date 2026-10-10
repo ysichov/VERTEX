@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-10-10 — Eclipse live debug editor navigation
+
+The Eclipse Visual Debug host called `sdeReveal` after every native stop, causing repeated class editor openings while ADT was already navigating the active frame. The live-stop callback now updates the Visual Debug page without reopening the editor. Explicit links retain ADT navigation. The host regression test asserts that a stop records its picture and makes no editor-open call.
+
 SelecTor field labels now share a remembered Technical names / Text preference. It changes Selection labels and table/join/pivot result headings without changing query field keys or selection values, using the canonical segment toggle.
 
 Forward Usage Analysis now passes an explicit selected-value flag into the shared flow UI. With no variable selected, native disabled buttons prevent entering Formula, Expression or BSE; FLOW and Full remain available.

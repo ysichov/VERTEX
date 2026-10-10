@@ -11,7 +11,7 @@ test('Eclipse packages the exact Visual Debug page, including history and player
 
 function bridge(){
   const requests=[],answers=[],events=[],reveals=[];
-  const context={document:{addEventListener(){},getElementById(){return {hidden:true,replaceChildren(){},add(){}};}},
+  const context={addEventListener(){},document:{addEventListener(){},getElementById(){return {hidden:true,replaceChildren(){},add(){}};}},
     Option:function(){},Promise,Map,Set,JSON,Array,String,Number,Error,console,
     sdeNativeDebug:(command,args,id)=>requests.push({command,args:JSON.parse(args),id}),
     sdeReady:()=>answers.push(context.sdeTake()),sdeDebugEvent:raw=>events.push(JSON.parse(raw)),
@@ -33,12 +33,12 @@ test('bridge reports native command failures through the shared page queue',asyn
   b.context.vertexNativeReply(b.requests[0].id,'Session ended',true);
   await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(b.answers,['ERROR:Session ended']);
 });
-test('a native stop reaches shared recording and source navigation with its actual coordinates',()=>{
+test('a native stop reaches shared recording without reopening the ADT editor',()=>{
   const b=bridge();const p={system:'ALC',ended:0,breakpoints:[],stopped:{at:'stop 1',frames:[{current:true,url:'/sap/bc/adt/oo/classes/zcl_calc/source/main',line:27}]}};
   b.context.vertexNativeEvent(JSON.stringify(p));
-  assert.deepEqual(b.events,[p]);assert.deepEqual(b.reveals,[{name:'ZCL_CALC',type:'CLAS',line:27}]);
+  assert.deepEqual(b.events,[p]);assert.deepEqual(b.reveals,[]);
 });
-test('analysis source links use the same editor navigation as recorded stops',async()=>{
+test('explicit analysis source links still open an ADT editor',async()=>{
   const b=bridge();await b.context.sdeOrigin({id:7,open:{source:'source',line:2}});
   assert.equal(b.reveals[0].name,'ZDEMO');assert.equal(b.answers[0].id,7);
 });

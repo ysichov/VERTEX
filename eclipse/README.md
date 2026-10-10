@@ -143,6 +143,8 @@ shortcuts open it.
 - Breakpoints set or cleared in the page are ADT breakpoints, and ADT's own appear in the page.
 - The flow chart, recording and player run on the page as in VS Code; the stopped line opens in
   the ADT editor and the Logic diagram follows it.
+- Eclipse handles source-editor navigation on each live stop; Visual Debug does not open another
+  class tab on every step. Explicit source links still open their requested object.
 - With several ADT debug threads, a thread selector appears in the page header.
 
 Differences from VS Code: no step prediction (Eclipse reads the stack at every suspend, so a step

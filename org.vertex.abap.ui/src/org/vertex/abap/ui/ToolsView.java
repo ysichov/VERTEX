@@ -118,18 +118,34 @@ public class ToolsView extends ChatView {
                     if(browser.isDisposed())return;
                     sourceNavigationUntil=System.currentTimeMillis()+700;
                     String answer=openEditor(name,type.isEmpty()?"CLAS":type);
-                    if(answer.startsWith("ERROR:")){MessageDialog.openError(browser.getShell(),"VERTEX",answer.substring(6));return;}
+                    if(answer.startsWith("ERROR:")){
+                        navigationDiagnostic("open " + type + " " + name + " requested=" + requested + " failed: " + answer.substring(6));
+                        MessageDialog.openError(browser.getShell(),"VERTEX",answer.substring(6));return;
+                    }
                     IEditorPart editor=getSite().getPage().getActiveEditor();ITextEditor text=Adapters.adapt(editor,ITextEditor.class);
-                    if(text==null||text.getDocumentProvider()==null)return;
-                    IDocument document=text.getDocumentProvider().getDocument(editor.getEditorInput());if(document==null)return;
+                    if(text==null||text.getDocumentProvider()==null){
+                        navigationDiagnostic("open " + type + " " + name + " requested=" + requested + " has no active text editor");return;
+                    }
+                    IDocument document=text.getDocumentProvider().getDocument(editor.getEditorInput());if(document==null){
+                        navigationDiagnostic("open " + type + " " + name + " requested=" + requested + " has no document");return;
+                    }
                     int target=requested;
                     if(target<1&&!method.isEmpty()){
                         String[] rows=document.get().split("\\r?\\n");
                         Pattern declaration=Pattern.compile("^\\s*(METHOD|FORM|FUNCTION|MODULE)\\s+"+Pattern.quote(method)+"(?:\\s|\\.)",Pattern.CASE_INSENSITIVE);
                         for(int i=0;i<rows.length;i++)if(declaration.matcher(rows[i]).find()){target=i+1;break;}
                     }
-                    try{text.selectAndReveal(document.getLineOffset(Math.max(0,Math.min(document.getNumberOfLines()-1,target-1))),0);}
-                    catch(org.eclipse.jface.text.BadLocationException e){MessageDialog.openError(browser.getShell(),"VERTEX",e.getMessage());}
+                    try{
+                        int editorTarget=Math.max(1,Math.min(document.getNumberOfLines(),target));
+                        text.selectAndReveal(document.getLineOffset(editorTarget-1),0);
+                        navigationDiagnostic("open " + type + " " + name + " requested=" + requested +
+                            " editor=" + editor.getTitle() + " lines=" + document.getNumberOfLines() +
+                            " selected=" + editorTarget + " actual=" + editorLine());
+                    }
+                    catch(org.eclipse.jface.text.BadLocationException e){
+                        navigationDiagnostic("open " + type + " " + name + " requested=" + requested + " failed: " + e.getMessage());
+                        MessageDialog.openError(browser.getShell(),"VERTEX",e.getMessage());
+                    }
                 });return null;
             }
         };
@@ -166,6 +182,9 @@ public class ToolsView extends ChatView {
     private static String jsonText(String request,String key){
         Matcher match=Pattern.compile("\""+Pattern.quote(key)+"\"\\s*:\\s*\"([^\"]*)\"").matcher(request);
         return match.find()?match.group(1):"";
+    }
+    private void navigationDiagnostic(String message){
+        browser.execute("if(typeof sdeNavigationResult==='function')sdeNavigationResult("+AssistantBridge.quote(message)+");");
     }
     private int editorLine(){
         IEditorPart editor=getSite().getPage().getActiveEditor();ITextEditor text=editor==null?null:Adapters.adapt(editor,ITextEditor.class);
