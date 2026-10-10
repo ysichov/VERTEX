@@ -8,7 +8,7 @@
             name="VERTEX Code Review" class="org.vertex.abap.ui.ReviewPreferences"/>
    </extension>
    <extension point="org.eclipse.ui.views">
-      <view id="org.vertex.abap.ui.view.debugMonitor" name="VERTEX Debug Monitor" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.DebugMonitorView" allowMultiple="true" restorable="false"/>
+      <view id="org.vertex.abap.ui.view.debugMonitor" name="Visual Debug" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.DebugMonitorView" allowMultiple="true" restorable="false"/>
       <view id="org.vertex.abap.ui.view.visualFlowAnalysis" name="Visual Flow Analysis" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.VisualFlowAnalysisView" allowMultiple="true" restorable="false"/>
       <view id="org.vertex.abap.ui.view.tools" name="VERTEX Tools" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.ToolsView" allowMultiple="true" restorable="false"/>
       <category
@@ -41,7 +41,7 @@
 
 
    <extension point="org.eclipse.ui.commands">
-      <command id="org.vertex.abap.ui.command.debugMonitor" name="VERTEX: Debug Monitor" description="Observe the existing ADT debug session"/>
+      <command id="org.vertex.abap.ui.command.debugMonitor" name="VERTEX: Open Visual Debug" description="Open Visual Debug for the ADT debug session"/>
       <command id="org.vertex.abap.ui.command.tools" name="VERTEX Tools"/>
       <command id="org.vertex.abap.ui.command.visualFlowAnalysis" name="VERTEX: Visual Flow Analysis" description="Static calls and method logic without running the program"/>
 
@@ -129,7 +129,7 @@
    <extension point="org.eclipse.ui.menus">
       <menuContribution
             locationURI="popup:org.eclipse.ui.popup.any?after=additions">
-         <command commandId="org.vertex.abap.ui.command.debugMonitor" label="VERTEX: Debug Monitor" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
+         <command commandId="org.vertex.abap.ui.command.debugMonitor" label="VERTEX: Open Visual Debug" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
          <command commandId="org.vertex.abap.ui.command.visualFlowAnalysis" label="VERTEX: Visual Flow Analysis" style="push">
             <visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen>
          </command>

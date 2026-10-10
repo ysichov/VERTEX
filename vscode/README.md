@@ -894,7 +894,7 @@ other way round. The assistant still finds each stop through `debug_wait`, whoev
 the assistant, the window never changes a variable or the code.
 
 This is a pilot: Smart Debugger's history (stepping back), coverage and diagrams are not part of
-it. Visual Debug exists in VS Code only; Eclipse has its own debugger.
+it. The Eclipse plugin shows the same page over ADT's own debug session; it is in testing there.
 
 ### The tools
 

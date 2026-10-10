@@ -1,9 +1,12 @@
 # Visual Debug in Eclipse: an assessment
 
-Status as of 2026-09-25: **not built, not prototyped.** This note records what the VS Code
-Visual Debug depends on, what the Eclipse plugin offers today, and the ways to bring the
-feature over. The Eclipse side has not been checked in a running Eclipse, and every
-statement about the ADT debugger's Java API below is an assumption until someone looks.
+Status as of 2026-10-10: **option B is built** - Visual Debug runs in Eclipse over the ADT
+debug model (`VisualDebugSession.java`, see the end of this note and `eclipse/README.md`). It
+compiles and packages; it has not been checked against a live ADT session.
+
+The original assessment of 2026-09-25 follows unchanged. It records what the VS Code Visual
+Debug depends on, what the Eclipse plugin offered then, and the ways considered to bring the
+feature over; its statements about the ADT debugger's Java API were assumptions at the time.
 
 ## What Visual Debug needs from its host
 
@@ -142,3 +145,12 @@ Reference: https://help.eclipse.org/latest/topic/org.eclipse.platform.doc.isv/gu
 ## 2026-10-06 — first runtime adapter
 
 Inspected SAP ADT 3.60 installed interfaces with javap: IAbapThread extends Eclipse IThread; IAbapStackFrame extends IStackFrame and IAbapStackEntry supplies URI, program/include and absolute line coordinates. Added DebugMonitorView using these exported types and debug events, with background reads, bounded variables and disposal cleanup. Compiled against the installed ADT bundle pool and packaged the prototype. This is a read-only monitor, not the VS Code Visual Debug implementation; live-session behavior remains unverified.
+
+## 2026-10-10 — Visual Debug over the ADT debug model (option B)
+
+Debug Monitor became Visual Debug: the view keeps its ID and loads the shared VS Code page;
+`VisualDebugSession.java` answers the page's commands from `IAbapThread`, `IAbapStackFrame`,
+`IAbapVariable` and ADT line breakpoints, and `eclipse/visual-debug-host.js` bridges the page to
+it. Stepping, run-to-line, frames, variables, rows, breakpoints, detach and terminate go to the
+existing ADT session; Run starts the object in Eclipse's embedded SAP GUI. Prediction does not
+exist here (`settle` is a no-op). Compiled and packaged; the live ADT session check is the next step.

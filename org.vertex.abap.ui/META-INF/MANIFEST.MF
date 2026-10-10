@@ -20,7 +20,9 @@ Require-Bundle: org.eclipse.ui,
  com.sap.adt.destinations.ui,
  org.eclipse.debug.core,
  com.sap.adt.debugger,
+ com.sap.adt.sapgui.ui,
  org.eclipse.core.expressions,
  org.eclipse.ui.editors,
  org.eclipse.compare.core
-Import-Package: org.osgi.framework
+Import-Package: org.osgi.framework,
+ com.google.gson

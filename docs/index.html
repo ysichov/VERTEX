@@ -164,7 +164,7 @@
   <tr><th>Tool</th><th>What it does</th><th>ABAP backend</th></tr>
   <tr><td><b>Enhanced Code Editor</b> (VS Code)</td><td>Hover with a data element's domain resolved, Go to (F12), Outline, Save &amp; Activate and block-by-block Review &amp; Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1)</td><td>not needed</td></tr>
   <tr><td><b>AI-driven ADT debugger</b> (VS Code)</td><td>Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values</td><td>not needed</td></tr>
-  <tr><td><b>Visual Debug</b> (VS Code)</td><td>The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player</td><td>not needed</td></tr>
+  <tr><td><b>Visual Debug</b> (VS Code; Eclipse in test)</td><td>The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player</td><td>not needed</td></tr>
   <tr><td><b>Value Origin</b></td><td><i>Forward Usage Analysis</i>: how a value is computed, down from a line across calls - the static call stack, the derivation as <i>FLOW</i> or <i>Formula</i>, each as a tree or a diagram. <i>Backward Usage Analysis</i>: where the values of a routine go in its callers, by SAP's where-used</td><td>not needed</td></tr>
   <tr><td><b>AI Assistant</b></td><td>Chat over the SAP system: reads, explains and changes code &mdash; the change is reviewed block by block before activation &mdash; runs the tests and ATC on an object, and drives the debugger</td><td>not needed</td></tr>
   <tr><td><b>Versions / Reviewer</b></td><td>Version history, the diff between two versions, the review of a whole transport with approve, decline and comments</td><td>to save reviews in SAP</td></tr>
@@ -215,7 +215,7 @@
 </p>
 
 <p>
-  The ABAP editor, the AI-driven debugger and Visual Debug
+  The ABAP editor and the AI-driven debugger
   remain VS Code only by design, while the explorer pages are shared between
   the two hosts. The VS Code extension also runs ABAP tests and ATC checks from chat, integrates
   test results with Test Explorer and Problems, provides where-used and SAP keyword documentation,
@@ -239,6 +239,14 @@
   In a VERTEX source tab, <b>VERTEX: Open Visual Debug</b> reveals a right-hand panel for the
   current object without replacing the source, and highlights its stopped line; F5-F8 step that same session.
   <a href="https://github.com/ysichov/VERTEX/blob/main/vscode/README.md#visual-debug-the-debugger-on-screen-pilot">Details</a>.
+</p>
+
+<p>
+  In Eclipse, <b>VERTEX: Open Visual Debug</b> (it replaces Debug Monitor) shows the same page over
+  ADT's own debug session: stepping, frames, variables, tables and breakpoints are ADT's, and Run
+  opens the object in Eclipse's embedded SAP GUI. It is in a local test build only, not on this
+  update site yet, and has not been checked on a live session.
+  <a href="https://github.com/ysichov/VERTEX/blob/main/eclipse/README.md#visual-debug-replaces-debug-monitor">Details</a>.
 </p>
 
 <footer>

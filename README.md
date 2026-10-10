@@ -19,7 +19,7 @@ to files. The Eclipse plugin does the same. The last column below says what need
 |---|---|---|---|---|---|
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | ✓ | — | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values; the VERTEX chat has it built in, Claude Code and Codex reach it over MCP as `vertex-debug` | ✓ | — | not needed |
-| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | ✓ | — | not needed |
+| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | ✓ | ✓ ³ | not needed |
 | **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Forward Usage Analysis - how a value is computed, down from a line across calls: the static call stack, the derivation as *FLOW* or *Formula*, each as a tree or a diagram; Backward Usage Analysis - where the values of a routine go in its callers, by SAP's where-used | ✓ | ✓ | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | ✓ | ✓ ¹ | not needed |
 | **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | ✓ | ✓ ² | to save reviews in SAP |
@@ -33,10 +33,15 @@ See [eclipse/README.md](eclipse/README.md).
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
 **0.8.8.202610092043**; the VS Code extension is **0.8.8**.
 
+³ In Eclipse, Visual Debug drives ADT's own debug session instead of a second debugger, and Run
+opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,
+not yet on the update site, and has not been checked on a live ADT session.
+
 **Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; in VS Code the version history and its diff come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is built from them in the window, with AVE's rules for choosing the versions and cutting blocks. Saving it to SAP goes through one resource of VERTEX's own ABAP, `ZCL_VX_ADT_RES_STORE`, into the `ZAVE_REVIEW` table AVE uses too - ADT's data preview can read a table but not write it; reviews can also be kept in files. The AVE repository itself is not needed. The Eclipse plugin reads them the same way.
 
-**Where the two hosts stand apart.** The editor, debugger and Visual Debug are VS Code
-only by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace them. Eclipse
+**Where the two hosts stand apart.** The editor and the AI-driven debugger are VS Code
+only by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace them -
+Visual Debug in Eclipse puts ADT's debugger session on screen rather than running its own. Eclipse
 also has its own built-in assistant and standalone MCP setup. Shared Tools pages are updated in the
 repository, but the published update site can lag behind the source until it is rebuilt.
 

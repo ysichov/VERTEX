@@ -10,6 +10,7 @@ function bundle(root){
  code=code.replace(/require\(['"]([^'"]+)['"]\)/g,(all,name)=>{let target;try{target=require.resolve(name,{paths:[path.dirname(file)]});}catch(e){throw new Error(file+': '+name);}if(!path.isAbsolute(target)){if(name==='crypto')return '(new Proxy({}, {get:()=>()=>{throw new Error("Node crypto is unavailable in browser analysis");}}))';throw new Error('Browser cannot load '+name+' from '+file);}return '__vertexRequire('+add(target)+')';});
  modules[id]='function(module,exports,__vertexRequire){\nvar require=__vertexRequire;\n'+code+'\n}';return id;}
  const entry=add(path.join(root,'vscode/frontend-analysis.js'));
- return `(function(){var process={env:{}};${fs.readFileSync(path.join(__dirname,'browser-buffer.js'),'utf8')}var modules=[${modules.join(',\n')}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(${entry});})();`;
+ const debug=add(path.join(root,'eclipse/debug-analysis.js'));
+ return `(function(){var process={env:{}};${fs.readFileSync(path.join(__dirname,'browser-buffer.js'),'utf8')}var modules=[${modules.join(',\n')}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(${entry});window.vertexDebugAnalysis=load(${debug});})();`;
 }
 module.exports={bundle};

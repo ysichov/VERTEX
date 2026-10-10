@@ -1,5 +1,14 @@
 # Release history
 
+## 2026-10-10 — Eclipse plugin source 0.8.8.qualifier: Visual Debug replaces Debug Monitor
+
+Local test build 0.8.8.20261010103956 only; not on the update site, not checked on a live ADT session.
+
+- **Visual Debug in Eclipse.** **VERTEX: Open Visual Debug** (formerly *VERTEX: Debug Monitor*, same view ID) opens the VS Code Visual Debug page over ADT's own debug session: the stack and frame switching, variables and table rows, Step Into / Over / Return / Continue, run to line, Detach and Terminate, and breakpoints shared with ADT. The flow chart, recording and player work as in VS Code. With several ADT debug threads, a selector picks one.
+- **Run** needs an active breakpoint, switches on ADT debugging and starts the object in Eclipse's embedded SAP GUI; a short dump opens there too.
+- No step prediction in Eclipse: ADT reads the stack at every suspend.
+- The plugin now requires `com.sap.adt.sapgui.ui` and imports `com.google.gson`.
+
 ## 2026-10-09 — Eclipse plugin source 0.8.8.qualifier: Versions and the review without the backend
 
 Source only; the plugin has not been built at this number yet.

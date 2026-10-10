@@ -42,6 +42,24 @@ $old = ($metadata.repository.units.unit | Where-Object { $_.id -eq 'org.vertex.a
 if (!$old) { throw 'Expected a PDE-exported repository in docs/ as the packaging template.' }
 $content = $content.Replace($old, $version)
 $content = [regex]::Replace($content, "(name='p2.timestamp' value=')[0-9]+", ('${1}' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()))
+# The template can predate a new adapter dependency; p2 must resolve it too.
+[xml]$updatedMetadata = $content
+$requirements = ($updatedMetadata.repository.units.unit | Where-Object id -eq 'org.vertex.abap.ui').requires
+$manifestText = [IO.File]::ReadAllText((Join-Path $project 'META-INF/MANIFEST.MF')) -replace '\r?\n ', ''
+foreach ($header in @(@{Name='Require-Bundle'; Namespace='osgi.bundle'}, @{Name='Import-Package'; Namespace='java.package'})) {
+    $match = [regex]::Match($manifestText, '(?m)^' + $header.Name + ':\s*([^\r\n]+)')
+    foreach ($name in $match.Groups[1].Value.Split(',') | ForEach-Object { $_.Split(';')[0].Trim() } | Where-Object { $_ }) {
+        if (!@($requirements.required | Where-Object { $_.namespace -eq $header.Namespace -and $_.name -eq $name }).Count) {
+            $dependency = $updatedMetadata.CreateElement('required')
+            $dependency.SetAttribute('namespace', $header.Namespace)
+            $dependency.SetAttribute('name', $name)
+            $dependency.SetAttribute('range', '0.0.0')
+            $requirements.AppendChild($dependency) | Out-Null
+        }
+    }
+}
+$requirements.SetAttribute('size', [string]$requirements.ChildNodes.Count)
+$content = $updatedMetadata.OuterXml
 
 $binary = Join-Path $site ('plugins/org.vertex.abap.ui_' + $version + '.jar')
 $zip = [IO.Compression.ZipFile]::Open($binary, 'Create')

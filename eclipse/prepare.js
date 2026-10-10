@@ -26,3 +26,7 @@ console.log("Prepared Eclipse Value origin.");
 fs.writeFileSync(path.join(root,'org.vertex.abap.ui/resources/vertex-frontend.js'),require('./frontend-bundle').bundle(root));
 
 fs.copyFileSync(path.join(root,"vscode/licenses/abaplint-MIT.txt"),path.join(root,"org.vertex.abap.ui/resources/abaplint-MIT.txt"));
+
+// Visual Debug is the same page in both editors; only its host bridge differs.
+fs.copyFileSync(path.join(root, 'vscode/pages/visual-debug.html'), path.join(target, 'visual-debug.html'));
+fs.copyFileSync(path.join(__dirname, 'visual-debug-host.js'), path.join(target, 'visual-debug-host.js'));

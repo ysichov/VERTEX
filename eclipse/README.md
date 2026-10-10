@@ -117,7 +117,7 @@ The shared Tools pages include help for source links, Logic only, procedure exit
 
 A separate **VERTEX: Visual Flow Analysis** editor-context command opens static Calls with Classes / Methods and a **Logic** toggle. Logic uses the standard Tools page and follows the selected routine in the ADT editor. Source links open ADT source and reveal the requested line or method. Value Origin now bundles the shared ABAP control and call modules required by FLOW.
 
-This preparation retains Eclipse's existing SAP ACE analysis endpoints. It does not claim the VS Code ADT + abaplint host adapter has been ported. Runtime Debug, recording and debugger controls are outside this release. ADT editor scrolling and runtime behavior still require checking in Eclipse.
+0.8.1 still used Eclipse's SAP ACE analysis endpoints; later builds replaced them with standard ADT reads and abaplint (see *Eclipse Tools: standard ADT analysis* below). Runtime debugging was outside 0.8.1; it now lives in *Visual Debug* below.
 
 ### Export 0.8.1
 
@@ -129,13 +129,31 @@ Verify Visual Flow Analysis, Classes / Methods, Logic toggling, cursor and range
 
 Java sources compiled successfully with `--release 21` against the installed Eclipse/ADT bundle pool. The packaging script completed and verified the install archive: [vertex-eclipse-0.8.1.20261006202315.zip](../target/eclipse-0.8.1.20261006202315/vertex-eclipse-0.8.1.20261006202315.zip). Install via **Help > Install New Software > Add > Archive**, restart, and run the export checks above. No live Eclipse/SAP validation or publication has been performed.
 
-### Eclipse Debug Monitor prototype
+### Visual Debug (replaces Debug Monitor)
 
-**VERTEX: Debug Monitor** observes an existing SAP ADT debug session using exported SAP `IAbapThread` / `IAbapStackFrame` and Eclipse debug events. It does not establish a second connection or change breakpoints. Open it from an ABAP editor context menu after starting the normal ADT debugger. It reads stopped frames and up to 100 top-frame variables in background jobs; Refresh retries the read. If multiple threads are present, choose one explicitly. Large displayed values are truncated at 2,000 characters, and variable children are not fetched recursively.
+**VERTEX: Open Visual Debug** in an ADT editor's context menu opens the VS Code Visual Debug page
+in Eclipse. It does not open a debugger of its own: it drives the ADT debug session Eclipse
+already has, through SAP's `IAbapThread` / `IAbapStackFrame` / `IAbapVariable` and Eclipse debug
+events, so there is still one listener per user. The view keeps Debug Monitor's ID, so existing
+shortcuts open it.
 
-When an ABAP class frame supplies its class URI and absolute source line, the monitor passes that coordinate to the Tools Logic view. Include-local coordinates are not guessed. Editor selection remains available for source following. Step, Continue, terminate, recording, table expansion and frame-selection control remain in the normal ADT debugger for this prototype.
+- Stack, frame switching, scopes, variables and table rows come from the stopped ADT thread.
+- Step Into / Over / Return / Continue and run-to-line call ADT's own stepping; Detach and
+  Terminate go to the same thread.
+- Breakpoints set or cleared in the page are ADT breakpoints, and ADT's own appear in the page.
+- The flow chart, recording and player run on the page as in VS Code; the stopped line opens in
+  the ADT editor and the Logic diagram follows it.
+- With several ADT debug threads, a thread selector appears in the page header.
 
-The installed SAP ADT 3.60 interfaces were inspected locally, and Java 21 compilation and archive packaging passed. No live debug session or light/dark runtime check has been performed. Install the test archive before using this as a release feature.
+Differences from VS Code: no step prediction (Eclipse reads the stack at every suspend, so a step
+is not shortened). **Run** needs an active breakpoint: it switches on ADT debugging, sends the
+breakpoints to SAP and starts the object in Eclipse's embedded SAP GUI instead of WebGUI. A short
+dump opens the same way.
+
+Status: Java 21 compilation and archive packaging passed
+(`target/eclipse-0.8.8.20261010103956`), as did the Node adapter and analysis checks. **Not checked
+yet:** a live ADT session - how the stack and values update on each step - and light/dark rendering
+in Eclipse.
 
 
 ### Eclipse Tools: standard ADT analysis

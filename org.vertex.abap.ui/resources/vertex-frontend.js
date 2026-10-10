@@ -101084,4 +101084,898 @@ function page(result) {
 
 module.exports = { analyze, page, bindings, performBindings, follow, placeOf, routineAddress };
 
-}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(0);})();
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+'use strict';
+// Adapter only: parsing, source closure, BSE, FLOW and formulas are the VS Code modules.
+const {parseSource} = __vertexRequire(5);
+const origin = __vertexRequire(1537);
+const points = __vertexRequire(1540);
+const {collect} = __vertexRequire(1541);
+const {formula} = __vertexRequire(1543);
+const panes = __vertexRequire(1544);
+let lastSources = [];
+const upper = value => String(value || '').toUpperCase();
+
+async function request(api, request, progress = () => {}) {
+  if (request.open) {
+    const source = lastSources.find(s => s.id === request.open.source);
+    if (!source) throw new Error('Run the analysis again: this source is no longer in its result.');
+    return {reveal:{url:source.id, line:request.open.line}};
+  }
+  const args = request.variables || request, name = upper(args.object_name), type = upper(args.object_type || 'PROG');
+  if (!name) throw new Error('An ABAP object is required.');
+  const reader = api.analysisReader(), loaded = new Map(), warnings = [];
+  let steps = 0;
+  async function load(name, type, include = 'main') {
+    const key = upper(type) + ':' + upper(name) + ':' + include;
+    if (loaded.has(key)) return loaded.get(key);
+    progress({stage:'Reading source',object:name,sources:loaded.size,steps});
+    let data;
+    try { data = await reader({object_name:upper(name),object_type:upper(type),include}); }
+    catch (error) {
+      if (type !== 'CLAS') throw error;
+      data = await reader({object_name:upper(name),object_type:'INTF',include});
+    }
+    const parsed = parseSource({id:data.source_url,name:upper(name),objectName:upper(name),objectType:data.object_type,include,text:data.source});
+    const sources = [parsed.source]; loaded.set(key, sources); warnings.push(...parsed.warnings);
+    steps += parsed.source.aceStatements.length;
+    progress({stage:'Sources parsed',object:name,sources:loaded.size,steps});
+    return sources;
+  }
+  const initial = await load(name, type), source = initial[0], lines = source.text.split(/\r?\n/);
+  const variable = upper(args.variable), bounded = Number.isInteger(args.from);
+  const line = request.variables ? 1 : (variable ? points.lastUse(source.text, variable) : 0) || Number(args.line) || 1;
+  const column = points.columnOf(lines[line - 1] || '', variable);
+  const position = lines.slice(0, line - 1).reduce((n, row) => n + row.length + 1, 0) + column;
+  const target = {source:source.id,line,column,offset:source.aceStatements.filter(s => s.offset <= position).at(-1)?.offset ?? position,
+    variable, declarationTypes:!!request.variables, flowPath:bounded && !variable};
+  if (bounded) {
+    target.flowRange = {from:args.from,to:Number.isInteger(args.to) ? args.to : lines.length};
+    target.flowBounds = {source:source.id,...target.flowRange};
+  }
+  const closure = await collect(initial,target,{load,loadPart:(name,include) => load(name,'CLAS',include),progress:name => progress({stage:'Reading source',object:name,sources:loaded.size,steps})});
+  const graph = origin.analyze(closure.sources,target); warnings.push(...closure.warnings);
+  if (request.variables) {
+    const declarations = graph.declarations || [], own = declarations.filter(d => d.source === source.id);
+    const focus = args.routine ? declarations.find(d => upper(d.owner) + '->' + upper(d.name) === upper(args.routine))
+      : own.find(d => d.name !== 'GLOBAL' && args.line >= d.first && args.line <= d.last);
+    const global = own.find(d => d.name === 'GLOBAL');
+    return {object_name:name,object_type:type,line:args.line || null,scope:focus ? upper(focus.owner) + '->' + upper(focus.name) : '',name:focus?.name || '',
+      params:focus?.params || [],locals:focus?.locals || [],globals:!focus || args.globals ? global?.locals || [] : null,warnings};
+  }
+  lastSources = closure.sources;
+  const found = points.pointsOf(graph,closure.sources), flow = points.pathRows(graph,closure.sources), sites = points.siteRows(graph,closure.sources);
+  const derived = formula(graph), link = node => 'origin:' + node.source + '|' + (node.location || '');
+  return {variable,points:found,flow,sites,formula:{nodes:derived.nodes,edges:derived.edges,maxLevel:derived.maxLevel},
+    panes:{formula:panes.formulaPane(graph,derived,link),expression:panes.expressionPane(derived,link)},
+    bounds:bounded ? target.flowRange : null,read:{sources:closure.sources.length,nodes:graph.nodes.length,flow_rows:flow.length,places:found.length},
+    analysisLog:JSON.stringify({engine:'ADT + abaplint',request:args,target,warnings,sourceClosure:closure.sources.map(s => ({id:s.id,name:s.name})),nodes:graph.nodes,edges:graph.edges,FLOW:{rows:flow,sites},Formula:derived},null,2)};
+}
+module.exports = {request};
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// The places a backward slice reaches, as the debugger needs them: the same
+// statements the Value origin view draws and colours, not a second reading of
+// ACE's flow rows. A place is a calculation, a SELECT, a call that returns or
+// changes the value, or a parameter handed over - one point per statement.
+const OPERATIONS = new Set(["calculation", "select", "call", "parameter"]);
+const upper = value => String(value || "").toUpperCase();
+// 'ZCL_CALC_FACADE->RUN' -> 'RUN'; a program's block has no '->'.
+const methodOf = location => String(location || "").includes("->") ? upper(String(location).split("->").pop()) : "";
+
+function pointsOf(graph, sources) {
+  const byId = new Map(sources.map(source => [source.id, source]));
+  // ACE's own facts for a statement: the name it changes and the names it is
+  // made of - in a called routine these are its own (IV_SCENARIO where the
+  // caller had LV_SCENARIO), which is why the analysis is asked, not the record read.
+  const facts = new Map((graph.flow || []).map(row => [row.source + ":" + row.line, row]));
+  const seen = new Set(), points = [];
+  for (const node of graph.nodes || []) {
+    if (!OPERATIONS.has(node.kind)) { continue; }
+    const source = byId.get(node.source);
+    const name = source && (source.aceOwner || source.objectName || source.name);
+    if (!name) { continue; }
+    const key = name + ":" + node.line;
+    if (seen.has(key)) { continue; }
+    seen.add(key);
+    const row = facts.get(node.source + ":" + node.line);
+    const names = row ? [upper(row.changed), ...(row.dependencies || []).map(upper)]
+      .filter((one, at, all) => one && all.indexOf(one) === at) : [];
+    const statement = (source.aceStatements || []).find(item => item.line === node.line);
+    points.push({ name, type: (source.aceOwner ? source.aceOwnerType : source.objectType) || "CLAS",
+      line: node.line, text: (statement && statement.text) || node.text || "", names,
+      method: methodOf(node.location), object_name: source.objectName || "", object_type: source.objectType || "" });
+  }
+  return points;
+}
+
+// The flow between two breakpoints as the debugger's panel lists it: what Value origin shows as FLOW - the statement
+// stream of ACE, bounded, each statement under the routine it belongs to - with `included` where the slice of a
+// chosen value reaches it. It is there with no value chosen too; the slice only marks.
+function pathRows(graph, sources) {
+  const byId = new Map(sources.map(source => [source.id, source]));
+  const rows = [];
+  for (const row of graph.fullFlow || []) {
+    const source = byId.get(row.source);
+    const name = source && (source.aceOwner || source.objectName || source.name);
+    if (!name) { continue; }
+    const scope = String(row.scope || ""), at = scope.indexOf("→");
+    const type = (source.aceOwner ? source.aceOwnerType : source.objectType) || "CLAS";
+    const method = at >= 0 ? upper(scope.slice(at + 1)) : "";
+    // The model files a statement outside every procedure under START-OF-SELECTION. In a class that is no event:
+    // it is the class's own text between methods (sections, METHODS ...), which runs nothing.
+    if (type === "CLAS" && method === "START-OF-SELECTION") { continue; }
+    rows.push({ name, type,
+      line: row.line, aceLine: row.line, source: row.source, location: scope.replace("→", "->"),
+      control: row.control, text: String(row.text || "").trim(), scope, included: !!row.included, outside: !!row.outside,
+      method,
+      object_name: source.objectName || "", object_type: source.objectType || "" });
+  }
+  return rows;
+}
+
+// The calls of the flow's statements: where each is made (the statement's place, as a row's) and the routines it
+// reaches, named as the rows' scopes are - OWNER→ROUTINE - so the flow can nest a call where it happens.
+function siteRows(graph, sources) {
+  const byId = new Map(sources.map(source => [source.id, source]));
+  const rows = [];
+  for (const site of graph.callSites || []) {
+    const source = byId.get(site.source), name = source && (source.aceOwner || source.objectName || source.name);
+    if (!name) { continue; }
+    rows.push({ name, type: (source.aceOwner ? source.aceOwnerType : source.objectType) || "CLAS", line: site.line,
+      method: methodOf(site.caller), object_name: source.objectName || "", object_type: source.objectType || "",
+      callees: site.callees.map(callee => upper(callee.owner) + "→" + upper(callee.name)),
+      parameters: [...new Map((graph.nodes || []).filter(n => n.kind === 'parameter' && n.source === site.source && n.line === site.line).map(n => [n.text,{ text: n.text, source: n.source, line: n.line }])).values()] });
+  }
+  return rows;
+}
+
+// The routine a line of the source is in, from what the analysis declares: the routine of the object's own source whose lines
+// hold it (a program's line is the analysis's line), and for a global class the method whose start in the class source - as
+// ADT's class structure gives it - and whose length in its own include hold it. Null where the line is in none: the program's
+// events and the class's own text, whose variables are the program's or the class's.
+function routineAt(declarations, { objectType, objectName, targetSource, line, starts }) {
+  if (!Number.isInteger(line)) { return null; }
+  if (upper(objectType) !== "CLAS") {
+    return declarations.find(item => item.source === targetSource && item.name !== "GLOBAL" && line >= item.first && line <= item.last) || null;
+  }
+  return declarations.find(item => {
+    if (item.name === "GLOBAL" || upper(item.owner) !== upper(objectName)) { return false; }
+    const start = starts && starts[upper(item.name)];
+    return Number.isInteger(start) && line >= start && line <= start + (item.last - item.first);
+  }) || null;
+}
+
+// A structure type declared in another object (ZIF_T=>TY_CTX) is read from that object when the analysis's own sources did not
+// bring it: `read(owner)` answers its source text or throws. What cannot be read is marked on the variable, and said once per
+// owner in the returned warnings - a type without components is never left without a word.
+async function completeStructures(variables, typeComponents, read) {
+  const warnings = [], seen = new Map();
+  const entries = [...variables.globals, ...variables.routines.flatMap(routine => [...routine.params, ...routine.locals])];
+  for (const entry of entries) {
+    const type = String(entry.type || ""), at = type.indexOf("=>");
+    if (entry.components || at < 0 || /^(REF TO|STANDARD|SORTED|HASHED|TABLE)/i.test(type)) { continue; }
+    const owner = upper(type.slice(0, at));
+    if (!seen.has(owner)) {
+      seen.set(owner, read(owner).then(text => ({ id: owner, name: owner, text, objectName: owner, objectType: "INTF" }),
+        error => ({ error: (error && error.message) || String(error) })));
+    }
+    const source = await seen.get(owner);
+    if (source.error) {
+      entry.unresolved = "The structure " + type + " could not be read: " + source.error;
+      if (!warnings.some(text => text.startsWith("Structures of " + owner + " "))) {
+        warnings.push("Structures of " + owner + " could not be read (" + source.error + ").");
+      }
+      continue;
+    }
+    const components = typeComponents([source], type);
+    if (components) { entry.components = components; }
+    else { entry.unresolved = type + " is not a structure declared with TYPES BEGIN OF in " + owner + "."; }
+  }
+  return warnings;
+}
+
+// ACE counts the lines of a global class's method inside the method's own
+// include - METHOD is line 1 - and the debugger counts them in the class's
+// main source, where the method starts at the line ADT's class structure gives.
+// A point of a class is moved from the first reading to the second; a program,
+// and a local class inside one, count the same in both.
+function classLines(points, startsOf) {
+  return points.map(point => {
+    if (point.object_type !== "CLAS" || !point.method || upper(point.object_name) !== upper(point.name)) { return point; }
+    const starts = startsOf(point.name);
+    const start = starts && starts[point.method];
+    if (!Number.isInteger(start)) {
+      throw new Error("Cannot place " + point.name + "=>" + point.method + " in the class source: ADT's class structure does not list it.");
+    }
+    return { ...point, line: start + point.line - 1 };
+  });
+}
+
+// The same move for a list that is shown and not run: the flow's rows. The analysis counts in ACE's lines and needs no
+// move; the move only lets a click open the line in the class's main source. A row ADT's structure cannot place keeps
+// ACE's line and says `unplaced`, so the panel shows it and does not pretend to open it.
+function placeRows(rows, startsOf) {
+  return rows.map(row => {
+    try { return classLines([row], startsOf)[0]; }
+    catch (error) { return { ...row, unplaced: true }; }
+  });
+}
+
+// Where on the stopped line the analysis starts. The statement it belongs to is
+// the one the position falls inside: column 0 of an indented line is before it,
+// which anchors the analysis one statement too early. The variable's own place
+// in the line, as the cursor would give it; else the first character of the line.
+function columnOf(lineText, variable) {
+  const text = String(lineText || ""), whole = text.toUpperCase().indexOf(upper(variable));
+  if (whole >= 0) { return whole; }
+  const root = text.toUpperCase().indexOf(upper(variable).split("-")[0]);
+  return root >= 0 ? root : Math.max(0, text.length - text.trimStart().length);
+}
+
+// The line a value is looked for from: the last place of the source that names it, as the cursor would stand on it
+// in the editor. Where the run happens to be says nothing about it - before the statement that assigns the value,
+// the value has no history yet. A name inside a literal or a comment is not a use. Lines from 1; 0 for none.
+function lastUse(source, variable) {
+  const { literalAt } = __vertexRequire(1);
+  const root = upper(variable).split("-")[0], text = String(source || ""), code = text.toUpperCase();
+  const word = ch => !!ch && /[A-Z0-9_/<>~]/i.test(ch);
+  for (let from = code.length; from >= 0; ) {
+    const at = from === 0 ? -1 : code.lastIndexOf(root, from - 1);
+    if (at < 0) { return 0; }
+    from = at;
+    if (word(code[at - 1]) || word(code[at + root.length]) || literalAt(text, at)) { continue; }
+    return text.slice(0, at).split("\n").length;
+  }
+  return 0;
+}
+module.exports = { pointsOf, pathRows, siteRows, placeRows, completeStructures, routineAt, classLines, columnOf, lastUse };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+/* Which sources a Value origin analysis reads, decided once for both hosts. VS Code and Eclipse each read SAP their
+   own way - VS Code through its ADT client, Eclipse through the ABAP project's session - so each hands in only how to
+   read an object (load) and a part of a class (loadPart). How much is read is not theirs to choose: the two once
+   diverged, Eclipse reading every customer object the source named while VS Code read only what the slice needed. */
+const { collectDemandSources } = __vertexRequire(1542);
+
+const MAX_SOURCES = 240;
+
+/* initial: the sources of the object the cursor is in; target: the value, located in them.
+   Answers { sources, warnings, skipped }. */
+function collect(initial, target, { load, loadPart, cancelled, progress } = {}) {
+  if (typeof load !== "function" || typeof loadPart !== "function") {
+    throw new Error("Value origin needs a reader for objects and for class parts.");
+  }
+  return collectDemandSources(initial, target, load, loadPart, { maxSources: MAX_SOURCES, cancelled, progress });
+}
+
+module.exports = { collect, MAX_SOURCES };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+const { analyze, buildIndex, customerObject } = __vertexRequire(1);
+const { tokenize } = __vertexRequire(2);
+const callGraph = __vertexRequire(4);
+const up = value => String(value || '').toUpperCase();
+
+function objectsIn(tokens) {
+  const found = new Map();
+  for (let i = 0; i < tokens.length; i++) {
+    const at = up(tokens[i].value);
+    if (at === 'NEW' && tokens[i + 1]?.kind === 'word') found.set(up(tokens[i + 1].value), 'CLAS');
+    if (tokens[i].kind === 'word' && tokens[i + 1]?.value === '=>') found.set(at, 'CLAS');
+    if (at === 'INTERFACES' && tokens[i + 1]) found.set(up(tokens[i + 1].value), 'INTF');
+    if (at === 'REF' && up(tokens[i + 1]?.value) === 'TO' && tokens[i + 2]?.kind === 'word') found.set(up(tokens[i + 2].value), 'CLAS');
+  }
+  return found;
+}
+
+// Resolve the current slice, then fetch only objects named by reached source
+// statements or the signatures needed to resolve their calls. Re-run until
+// loading new code no longer reveals dependencies. Full FLOW consequently
+// describes the loaded closure; it is not a promise to fetch the whole system.
+async function collectDemandSources(initial, target, load, loadPart, options = {}) {
+  const sources = initial.slice(), warnings = [], skipped = new Set();
+  const visited = new Set(sources.map(s => up(s.objectName))), parts = new Set(sources.map(s => s.id));
+  const limit = options.maxSources || 240;
+  for (;;) {
+    if (options.cancelled?.()) throw new Error('Value origin cancelled.');
+    const index = buildIndex(sources), graph = analyze(sources, target);
+    const requested = new Map(), neededParts = new Map();
+    const reached = new Map();
+    if (target.declarationTypes) {
+      // Inline DATA(result) = receiver->method(...) needs the method's
+      // RETURNING signature even without a selected value/backward slice.
+      const own = sources.find(s => s.id === target.source);
+      for (const statement of own?.aceStatements || [])
+        for (const [name, type] of objectsIn(statement.tokens)) requested.set(name, type);
+      for (const site of graph.callSites.filter(site => site.source === target.source)) {
+        for (const called of site.callees) {
+          const procedure = index.procedures.find(p => p.owner === called.owner && p.name === called.name);
+          if (!procedure) continue;
+          for (const param of index.signature(procedure))
+            for (const [name, type] of objectsIn(tokenize(param.type || ''))) requested.set(name, type);
+        }
+      }
+    }
+    // A breakpoint-to-breakpoint path has no selected value, so a backward
+    // slice cannot discover its callees. Walk calls from the requested entry
+    // range instead, then read dependencies in those reached routine bodies.
+    if (target.flowPath) {
+      const entry = index.procedures.filter(p => p.source.id === target.source &&
+        p.body.some(s => s.line >= target.flowRange.from && s.line <= target.flowRange.to));
+      const executionCalls=callGraph.create(index);
+      await callGraph.walk(entry,{range:target.flowRange,maxDepth:options.maxDepth,cancelled:options.cancelled,
+        calls:(p,s)=>executionCalls.calls(p,s),
+        onStatement:(p,s)=>{
+        if (!reached.has(p.source.id)) reached.set(p.source.id, new Set());
+          reached.get(p.source.id).add(s.line);
+          for (const [name, type] of objectsIn(s.tokens)) requested.set(name, type);
+        }
+      });
+    }
+    for (const node of graph.nodes) {
+      if (!reached.has(node.source)) reached.set(node.source, new Set());
+      reached.get(node.source).add(node.line);
+      for (const [name, type] of objectsIn(tokenize(node.text || ''))) requested.set(name, type);
+    }
+    for (const source of sources) {
+      const lines = reached.get(source.id);
+      if (!lines) continue;
+      const statements = source.aceStatements || [];
+      for (const statement of statements) {
+        const tokens = statement.tokens, first = up(tokens[0]?.value);
+        if (lines.has(statement.line) || first === 'INTERFACES') {
+          for (const [name, type] of objectsIn(tokens)) requested.set(name, type);
+        }
+        if (source.objectType === 'CLAS' && lines.has(statement.line) && ['Unknown', 'MacroCall', 'MacroContent'].includes(statement.parserKind)) neededParts.set(source.objectName, 'macros');
+      }
+      for (const procedure of index.procedures.filter(p => p.source.id === source.id &&
+        graph.nodes.some(n => n.source === source.id && n.location === (p.owner ? p.owner + '->' + p.name : source.objectName)))) {
+        for (const param of index.signature(procedure)) for (const [name, type] of objectsIn(tokenize(param.type || ''))) requested.set(name, type);
+        if (source.objectType === 'CLAS' && procedure.body.some(statement => ['Unknown', 'MacroCall', 'MacroContent'].includes(statement.parserKind))) neededParts.set(source.objectName, 'macros');
+      }
+      // A local call with no implementation can live in class local includes.
+      const missingLocal = [...requested.keys()].some(name => /^(LCL_|LIF_)/.test(name) &&
+        !index.procedures.some(p => p.owner === name && p.name !== 'GLOBAL'));
+      const unresolvedLocal = graph.nodes.some(n => n.source === source.id && n.kind === 'unknown' && /^Unresolved call:/.test(n.text) &&
+        !/(?:->|=>)/.test(n.text));
+      if (source.objectType === 'CLAS' && (missingLocal || unresolvedLocal)) {
+        const have = sources.filter(s => s.objectName === source.objectName).map(s => s.include || 'main');
+        neededParts.set(source.objectName, have.includes('definitions') ? 'implementations' : 'definitions');
+      }
+    }
+    let added = false;
+    for (const [name, type] of requested) {
+      if (visited.has(name) || index.procedures.some(p => p.owner === name)) continue;
+      if (!customerObject(name)) { skipped.add(name); continue; }
+      visited.add(name);
+      if (sources.length >= limit) { warnings.push('Source limit reached: ' + name); continue; }
+      try {
+        const loaded = await load(name, type);
+        for (const source of loaded) if (!parts.has(source.id)) { sources.push(source); parts.add(source.id); added = true; }
+      } catch (error) {
+        if (options.cancelled?.()) throw error;
+        warnings.push(name + ': ' + error.message);
+      }
+    }
+    for (const [name, include] of neededParts) {
+      if (sources.length >= limit) { warnings.push('Source limit reached: ' + name + '.' + include); continue; }
+      const key = name + ':' + include;
+      if (parts.has(key)) continue;
+      parts.add(key);
+      try {
+        const loaded = await loadPart(name, include);
+        for (const source of loaded) if (!parts.has(source.id)) { sources.push(source); parts.add(source.id); added = true; }
+      } catch (error) {
+        if (options.cancelled?.()) throw error;
+        warnings.push(key + ': ' + error.message);
+      }
+    }
+    if (!added) return { sources, warnings, skipped: [...skipped] };
+  }
+}
+module.exports = { collectDemandSources };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+/* The derivation of a value as formulas: the one algorithm behind the Formula view of Value origin and of the debugger's
+   analysis. It reads the analysis graph (nodes, edges, root, flowBounds) and gives the formula graph - one node per
+   definition, with the level it is first reached at - and the tree of the derivation, a definition under every
+   branch that reads it. How the tree is drawn is the view's own. */
+
+// How deep a routine stands in the calls from the entry program.
+function scopeStacks(graph) {
+  const scopeKey = label => String(label || '').replace(/->/g, '→').toUpperCase();
+  const callsFrom = new Map();
+  for (const call of graph.calls || []) {
+    const from = scopeKey(call.caller);
+    if (!callsFrom.has(from)) callsFrom.set(from, new Set());
+    for (const target of call.targets || []) callsFrom.get(from).add(scopeKey(target.label));
+  }
+  const scopeDepth = new Map();
+  {
+    const entry = String(graph.selectedProgram || '').toUpperCase();
+    const queue = [...callsFrom.keys()].filter(key => key === entry || key.startsWith(entry + '→'));
+    queue.forEach(key => scopeDepth.set(key, 0));
+    while (queue.length) {
+      const from = queue.shift(), depth = scopeDepth.get(from) || 0;
+      for (const to of callsFrom.get(from) || []) {
+        if (scopeDepth.has(to) && scopeDepth.get(to) <= depth + 1) continue;
+        scopeDepth.set(to, depth + 1);
+        queue.push(to);
+      }
+    }
+  }
+  const stackOfScope = label => scopeDepth.get(scopeKey(label)) ?? 0;
+  const maxStack = Math.max(0, ...scopeDepth.values());
+  return { stackOfScope, maxStack };
+}
+
+/* CONV and CAST change the type of a value, not what it is computed from: they are left out of a formula, and the brackets
+   round the converted expression stay only where they hold more than one operand. Returns the indexes of tokens to drop. */
+function conversions(tokens) {
+  const { variablePaths } = __vertexRequire(1);
+  const dropped = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const word = String(tokens[i].value).toUpperCase();
+    if (word !== 'CONV' && word !== 'CAST') { continue; }
+    const open = tokens.findIndex((token, j) => j > i && j <= i + 3 && token.value === '(');
+    if (open < 0) { continue; }
+    let depth = 0, close = -1;
+    for (let j = open; j < tokens.length; j++) { if (tokens[j].value === '(') depth++; if (tokens[j].value === ')' && --depth === 0) { close = j; break; } }
+    if (close < 0) { continue; }
+    const inner = tokens.slice(open + 1, close), paths = variablePaths(inner);
+    const simple = inner.length === 1 || (paths.length === 1 && paths[0].from === 0 && paths[0].to === inner.length);
+    for (let j = i; j < open; j++) { dropped.push(j); }
+    if (simple) { dropped.push(open, close); }
+  }
+  return dropped;
+}
+// A statement's text without its conversions.
+function withoutConversions(text) {
+  const tokens = __vertexRequire(2).tokenize(text), dropped = conversions(tokens);
+  if (!dropped.length) { return text; }
+  let out = '', at = 0;
+  for (const index of dropped) { out += text.slice(at, tokens[index].offset); at = tokens[index].endOffset; }
+  return (out + text.slice(at)).split(/\s+/).join(' ').trim();
+}
+
+function formula(graph) {
+  const { stackOfScope } = scopeStacks(graph);
+  const bseById = new Map((graph.nodes || []).map(node => [node.id, node]));
+  const canonical = value => String(value || '').toUpperCase().replace(/\s+/g, '');
+  const formulaGraph = { nodes: [], edges: [] };
+  // A formula node is read as an expression, not as the statement it came from.
+  // An assignment already reads as one; a SELECT is reduced to what it takes
+  // and where from, because its projection is not part of the derivation.
+  const formulaLabel = value => {
+    const flat = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!/^SELECT\b/i.test(flat)) return withoutConversions(flat);
+    const table = /\bFROM\s+([\w~\/]+)/i.exec(flat)?.[1] || '?';
+    const into = /\bINTO\s+(?:CORRESPONDING\s+FIELDS\s+OF\s+)?(?:TABLE\s+)?([\w@\-]+)/i.exec(flat)?.[1] || '';
+    const fields = flat.replace(/^SELECT\s+(?:SINGLE\s+)?/i, '').split(/\bFROM\b/i)[0]
+      .split(',').map(field => field.trim().split(/\s+AS\s+/i).at(-1)).filter(Boolean);
+    const shown = fields.length > 3 ? fields.slice(0, 3).join(', ') + ', … (' + fields.length + ')' : fields.join(', ');
+    return (into ? into + ' = ' : '') + 'SELECT ' + shown + ' FROM ' + table + '.';
+  };
+  const isInvocationResult = node => node?.kind === 'calculation' && /=\s*(?:NEW\s+)?[A-Za-z_]\w*(?:\s*\([^)]*\))?\s*(?:->|=>)/i.test(node.text || '');
+  const isDataTransfer = node => /^\s*(?:DATA\s*\(\s*)?[A-Za-z_]\w*(?:-[A-Za-z_]\w*)?\s*\)?\s*=\s*[A-Za-z_]\w*(?:-[A-Za-z_]\w*)?\s*\.\s*$/i.test(node?.text || '');
+  const isTechnicalValue = node => node?.kind === 'value' && /^(?:LO_|LT_|LS_STEP|RT_|RO_)/i.test(node.text || '');
+  // The breakpoint pair bounds every Type, Formula included. As everywhere
+  // else, it bounds the entry program alone: a called method keeps its whole
+  // frame, because its lines are not in the editor's coordinate system.
+  const withinBounds = node => !graph.flowBounds || !node || node.source !== graph.selectedSource
+    || (node.line >= graph.flowBounds.from && node.line <= graph.flowBounds.to);
+  const formulaInputs = nodeId => (graph.edges || []).filter(edge => edge.to === nodeId).map(edge => bseById.get(edge.from)).filter(node => node?.kind === 'value' && !isTechnicalValue(node) && withinBounds(node));
+  const formulaDefinitions = (valueId, visited = new Set(), component = '') => {
+    if (!valueId || visited.has(valueId)) return [];
+    const value = bseById.get(valueId);
+    component = value?.kind === 'value' && value.text.includes('-')
+      ? canonical(value.text).split('-').slice(1).join('-') : component;
+    const next = new Set(visited).add(valueId);
+    return (graph.edges || []).filter(edge => edge.to === valueId).flatMap(edge => {
+      const node = bseById.get(edge.from);
+      if (!node || !withinBounds(node)) return [];
+      if (node.kind === 'select' && component && /INTO\s+CORRESPONDING\s+FIELDS/i.test(node.text)) {
+        const projection = node.text.split(/\bFROM\b/i)[0].replace(/^SELECT\s+(?:SINGLE\s+)?/i, '');
+        const fields = projection.split(',').map(field => canonical(field.trim().split(/\s+AS\s+/i).at(-1)).split('~').at(-1));
+        if (!fields.includes('*') && !fields.includes(component)) return [];
+      }
+      if (['calculation', 'select'].includes(node.kind) && !isInvocationResult(node)) return isDataTransfer(node) ? formulaInputs(node.id).flatMap(input => formulaDefinitions(input.id, next, component)) : [node];
+      if (node.kind === 'calculation' && isInvocationResult(node)) return formulaDefinitions(node.id, next, component);
+      if (['call', 'parameter'].includes(node.kind)) return formulaInputs(node.id).flatMap(input => formulaDefinitions(input.id, next, component));
+      if (node.kind === 'loop') return formulaInputs(node.id).flatMap(input => formulaDefinitions(input.id, next, component));
+      return [];
+    });
+  };
+  // The conditions a definition stands under, as the analysis links them: IF, ELSEIF, ELSE, WHEN - each node's text is the
+  // block's statement and, for a branch, ' / ' and the branch's.
+  const conditionsOf = id => (graph.edges || []).filter(edge => edge.to === id && edge.label === 'execution condition')
+    .map(edge => bseById.get(edge.from)).filter(node => node && node.kind === 'condition').map(node => node.text);
+  let maxLevel = 0;
+  const expanded = new Set();
+  // Each definition of a value, with the derivation of what it reads under it. The guard is the path walked to here, not
+  // every value ever seen: a variable read by two branches expands under both.
+  const formulaSteps = (valueId, depth, parentId, edgeLabel, walked, whole = false) => {
+    if (!valueId || walked.has(valueId) || depth > 40) return [];
+    const path = new Set(walked).add(valueId);
+    const definitions = formulaDefinitions(valueId);
+    if (definitions.length && !whole) maxLevel = Math.max(maxLevel, depth + 1);
+    return definitions.map(definition => {
+      if (whole) {
+        const inputs = formulaInputs(definition.id);
+        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id),
+          children: inputs.flatMap(input => formulaSteps(input.id, depth + 1, definition.id, input.text, path, true)) };
+      }
+      const known = formulaGraph.nodes.find(node => node.id === definition.id);
+      if (known) { if ((known.level ?? 0) > depth + 1) known.level = depth + 1; }
+      else {
+        const formulaVariables = new Set([...formulaInputs(definition.id).map(node => canonical(node.text)), ...(graph.edges || []).filter(edge => edge.from === definition.id).map(edge => bseById.get(edge.to)).filter(node => node?.kind === 'value').map(node => canonical(node.text))]);
+        formulaGraph.nodes.push({ ...definition, location: definition.location || definition.source, dataText: definition.text, label: formulaLabel(definition.text), stack: stackOfScope(definition.location), level: depth + 1, variables: [...formulaVariables] });
+      }
+      if (parentId && !formulaGraph.edges.some(edge => edge.from === parentId && edge.to === definition.id)) {
+        formulaGraph.edges.push({ from: parentId, to: definition.id, label: edgeLabel });
+      }
+      // A definition is derived once, where it is first met; met again it is not drawn again (the graph keeps the edge to it).
+      const key = [definition.source, definition.line, canonical(definition.text), formulaInputs(definition.id).map(input => canonical(input.text)).sort().join(',')].join('|');
+      if (expanded.has(key)) return null;
+      expanded.add(key);
+      const children = formulaInputs(definition.id).flatMap(input => [formulaSteps(input.id, depth + 1, definition.id, input.text, path)]).flat();
+      return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, children };
+    }).filter(Boolean);
+  };
+  // A derivation has one top: the value that was asked about. Its definitions are its branches, however many of them there
+  // are - several tops would read as several unrelated formulas.
+  const id = 'formularoot', value = bseById.get(graph.root);
+  const source = value?.source || graph.selectedSource, line = value?.line || graph.selectedLine || 0;
+  const branches = formulaSteps(graph.root, 0, id, graph.selectedVariable || '', new Set());
+  let tree = null;
+  if (branches.length) {
+    formulaGraph.nodes.unshift({ id, location: value?.location || graph.selectedProgram || graph.selectedSource,
+      text: graph.selectedVariable || '?', label: graph.selectedVariable || '?', dataText: graph.selectedVariable || '?',
+      source, line, stack: 0, level: 0, variables: [] });
+    tree = { id, level: 0, text: graph.selectedVariable || '?', location: '', of: '', source, line, children: branches };
+  }
+  // The whole derivation, with no definition left out for having been met before: the one formula it comes to.
+  let expression = null;
+  if (tree) {
+    const whole = { id, text: tree.text, of: '', location: '', children: formulaSteps(graph.root, 0, id, graph.selectedVariable || '', new Set(), true) };
+    if (graph.pipeline && Array.isArray(graph.pipeline.steps)) { sequence(whole, graph.pipeline.steps); }
+    expression = oneFormula(whole); if (process.env.DUMP) { const d = (n, k) => { console.log(" ".repeat(k * 2) + n.of + " <= " + String(n.location).split("->")[0] + " | " + String(n.text).slice(0, 60)); n.children.forEach(c => d(c, k + 1)); }; d(whole, 0); }
+  }
+  // The steps of a loaded pipeline put the definitions that the loop over it makes into the order they run in.
+  if (tree && graph.pipeline && Array.isArray(graph.pipeline.steps)) {
+    const skipped = sequence(tree, graph.pipeline.steps);
+    const depths = new Map(), edges = [];
+    const walk = (node, depth) => {
+      node.level = depth; if (!depths.has(node.id) || depths.get(node.id) > depth) { depths.set(node.id, depth); }
+      node.children.forEach(child => { edges.push({ from: node.id, to: child.id, label: child.of }); walk(child, depth + 1); });
+    };
+    walk(tree, 0);
+    formulaGraph.nodes = formulaGraph.nodes.filter(node => depths.has(node.id)).map(node => ({ ...node, level: depths.get(node.id) }));
+    formulaGraph.edges = edges;
+    maxLevel = Math.max(0, ...depths.values());
+    return { nodes: formulaGraph.nodes, edges: formulaGraph.edges, maxLevel, tree, expression, skipped, pipeline: graph.pipeline.scenario || '' };
+  }
+  return { nodes: formulaGraph.nodes, edges: formulaGraph.edges, maxLevel, tree, expression, skipped: [], pipeline: '' };
+}
+
+/* Definitions of one value that are the same step of different classes (every modifier's APPLY) are run by a loop over data:
+   their order is the pipeline's. In that order each reads what the one before left, so it stands under the one after it,
+   and the definitions made before the loop stand under the first. A class that is not in the pipeline is not run; it is
+   removed and named. Returns the names removed. */
+function sequence(tree, steps) {
+  const upper = value => String(value || '').toUpperCase();
+  const canonical = value => upper(value).split(' ').join('');
+  const order = new Map(steps.map(step => [upper(step.modifier_class), Number(step.step_no)]));
+  const classOf = node => upper(node.location).split('->')[0], methodOf = node => upper(node.location).split('->')[1] || '';
+  const skipped = [];
+  const visit = node => {
+    const groups = new Map();
+    node.children.forEach(child => { if (!groups.has(child.of)) groups.set(child.of, []); groups.get(child.of).push(child); });
+    for (const members of groups.values()) {
+      if (members.length < 2) { continue; }
+      const methods = new Set(members.filter(member => order.has(classOf(member))).map(methodOf));
+      if (!methods.size) { continue; }
+      const stepped = members.filter(member => methods.has(methodOf(member)));
+      const run = stepped.filter(member => order.has(classOf(member))).sort((a, b) => order.get(classOf(a)) - order.get(classOf(b)));
+      skipped.push(...stepped.filter(member => !order.has(classOf(member))).map(classOf));
+      let before = members.filter(member => !stepped.includes(member));
+      // What a step reads of the value it updates is what the step before left: the model's own reading of it (a definition
+      // from outside the loop, found by a name) gives way to that.
+      for (const member of run) {
+        before.forEach(previous => { previous.previous = true; });
+        member.children = member.children.filter(child => !(child.of && canonical(child.of) === canonical(member.of))).concat(before);
+        before = [member];
+      }
+      const at = node.children.indexOf(members[0]);
+      node.children = node.children.filter(child => !members.includes(child));
+      node.children.splice(at, 0, ...before);
+    }
+    node.children.forEach(visit);
+  };
+  visit(tree);
+  return skipped;
+}
+
+/* The derivation as one expression, by substitution alone: each definition `x = expression` stands in place of x wherever
+   its parent reads it, in brackets; no algebra is done. What is not an assignment (a SELECT, a call) stays a named value
+   and is listed under the formula as `where`. Several definitions of one value are given as {a | b}. */
+/* A condition as a formula reads it, from the analysis's text of it: 'IF a > 1.' is a > 1, 'IF a > 1. / ELSE.' is
+   NOT (a > 1), 'IF a. / ELSEIF b.' is b, 'CASE x. / WHEN 1.' is x = 1. The words come from the tokens, not the text. */
+function conditionText(raw) {
+  const { tokenize } = __vertexRequire(2);
+  const [statement, branch] = String(raw || '').split(' / ');
+  const rest = text => {
+    const tokens = tokenize(text).filter(token => token.value !== '.');
+    return tokens.length > 1 ? text.slice(tokens[1].offset, tokens[tokens.length - 1].endOffset) : '';
+  };
+  const first = text => String((tokenize(text || '')[0] || {}).value || '').toUpperCase();
+  if (!branch) { return rest(statement); }
+  if (first(branch) === 'ELSE') { return 'NOT (' + rest(statement) + ')'; }
+  if (first(branch) === 'WHEN' && first(statement) === 'CASE') { return rest(statement) + ' = ' + rest(branch); }
+  return rest(branch);
+}
+
+function oneFormula(tree) {
+  const { tokenize } = __vertexRequire(2);
+  const { assignment, variablePaths } = __vertexRequire(1);
+  const canonical = value => String(value || '').toUpperCase().split(' ').join('');
+  const where = new Map(), steps = [], named = new Map(), counts = new Map();
+  // A value that comes from a table is named by what it is; where two different ones share a name, by the class too.
+  const origins = new Map();
+  const shortName = of => String(of).split('-').pop();
+  const collect = node => {
+    const all = tokenize(node.raw || ''), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    if (!a || !a.expression.length) { const set = origins.get(shortName(node.of)) || new Set(); set.add(node.source + ':' + node.line); origins.set(shortName(node.of), set); }
+    node.children.forEach(collect);
+  };
+  collect(tree);
+  // Written by the name of the value itself (WEIGHT_KG, not CS_CONTEXT-WEIGHT_KG); its class and its statement are one click away.
+  // Two different values of one name are told apart by their class.
+  const label = node => (origins.get(shortName(node.of)).size > 1 ? shortName(node.of) + '[' + (String(node.location).split('->')[0] || 'program') + ']' : shortName(node.of));
+  const plain = text => text.split(/\s+/).join(' ').trim();
+  const inBrackets = text => (text.includes(' ') ? '(' + text + ')' : text);
+  const subscript = number => String(number).split('').map(digit => '₀₁₂₃₄₅₆₇₈₉'[Number(digit)]).join('');
+  // A value that every statement of a step reads is computed once, under a name of its own - substituted in place it would
+  // be written out again at each reading, and the formula would grow with every step.
+  const step = (node, context) => {
+    if (named.has(node)) { return named.get(node); }
+    const all = tokenize(node.raw), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    const text = body(node, context), existing = steps.find(item => item.text === text && item.variable === (a ? canonical(a.name) : node.of));
+    if (existing) { named.set(node, existing.name); return existing.name; }
+    const key = a ? canonical(a.name) : node.of, number = (counts.get(key) || 0) + 1;
+    counts.set(key, number);
+    const name = (a ? a.name : node.of) + subscript(number);
+    steps.push({ name, text, variable: key });
+    named.set(node, name);
+    return name;
+  };
+  const define = (definitions, name, context, asStep = false) => {
+    if (!definitions.length) { return name; }
+    // Alternatives say when each holds: the one under a condition `when` it, the one it overrides `otherwise`.
+    const guarded = definitions.length > 1 && definitions.some(definition => (definition.conditions || []).length);
+    const parts = [...new Set(definitions.map(definition => {
+      const value = asStep ? step(definition, context) : body(definition, context);
+      if (!guarded) { return value; }
+      const when = (definition.conditions || []).map(conditionText).filter(Boolean);
+      return value + (when.length ? ' when ' + when.join(' AND ') : ' otherwise');
+    }))];
+    return parts.length === 1 ? parts[0] : '{' + parts.join(' | ') + '}';
+  };
+  function body(node, context) {
+    const all = tokenize(node.raw), ts = all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all;
+    const a = assignment(ts);
+    if (!a || !a.expression.length) { const name = label(node); where.set(name, { text: selectOf(node.raw, node.of) || node.text, id: node.id, source: node.source, line: node.line, location: node.location, full: node.of }); return name; }
+    // A step that has the value before it as a child: its own statements all read that, wherever they stand under it.
+    const previous = node.children.filter(child => child.previous);
+    if (previous.length) { context = { name: canonical(a.name), kids: previous }; }
+    const text = node.raw, first = a.expression[0].offset, last = a.expression[a.expression.length - 1].endOffset;
+    const edits = conversions(a.expression).map(index => ({ from: a.expression[index].offset, to: a.expression[index].endOffset, rep: '' }));
+    for (const path of variablePaths(a.expression)) {
+      const reads = canonical(path.name), reading = context && reads === context.name;
+      const kids = reading ? context.kids : node.children.filter(child => canonical(child.of) === reads && !child.previous);
+      if (!kids.length) { continue; }
+      edits.push({ from: a.expression[path.from].offset, to: a.expression[path.to - 1].endOffset, rep: inBrackets(define(kids, path.name, context, reading)) });
+    }
+    edits.sort((x, y) => x.from - y.from);
+    let out = '', at = first;
+    for (const edit of edits) { out += text.slice(at, edit.from) + edit.rep; at = edit.to; }
+    out += text.slice(at, last);
+    if (a.compound) {
+      const operator = ts.find(token => ['+=', '-=', '*=', '/='].includes(token.value)).value[0];
+      const reading = context && canonical(a.name) === context.name;
+      const before = define(reading ? context.kids : node.children.filter(child => canonical(child.of) === canonical(a.name)), a.name, context, reading);
+      out = inBrackets(before) + ' ' + operator + ' (' + plain(out) + ')';
+    }
+    return plain(out);
+  }
+  if (!tree.children.length) { return null; }
+  const top = { name: '', text: define(tree.children, tree.text, null, true) };
+  const items = steps.map(item => ({ name: item.name, text: item.text }));
+  const isDigit = character => character >= '₀' && character <= '₉';
+  const positions = (text, name) => { const found = []; for (let at = text.indexOf(name); at >= 0; at = text.indexOf(name, at + 1)) { if (!isDigit(text[at + name.length] || '')) { found.push(at); } } return found; };
+  // A step that adds or takes off a share of the value before it is that value times one plus or minus the share: it then
+  // reads the value before it once.
+  for (const item of items) {
+    for (const before of items) {
+      for (const sign of ['+', '-']) {
+        const head = before.name + ' ' + sign + ' (' + before.name + ' * ';
+        if (item.text.startsWith(head) && item.text.endsWith(')')) { item.text = before.name + ' * (1 ' + sign + ' ' + item.text.slice(head.length, -1) + ')'; }
+      }
+    }
+  }
+  // What is read once is written where it is read; what is read more than once stays a step.
+  for (let again = true; again;) {
+    again = false;
+    for (let i = items.length - 1; i >= 0 && !again; i--) {
+      const it = items[i], holders = [top, ...items.filter(other => other !== it)].filter(holder => positions(holder.text, it.name).length);
+      const total = holders.reduce((sum, holder) => sum + positions(holder.text, it.name).length, 0);
+      if (total !== 1) { continue; }
+      const holder = holders[0], at = positions(holder.text, it.name)[0];
+      holder.text = holder.text.slice(0, at) + (holder === top && top.text === it.name ? it.text : inBrackets(it.text)) + holder.text.slice(at + it.name.length);
+      items.splice(i, 1); again = true;
+    }
+  }
+  return { text: tree.text + ' = ' + top.text, steps: items, where: [...where].map(([name, found]) => ({ name, ...found })) };
+}
+
+/* The SELECT that reads a value, reduced to what concerns it: the field the value is, the table, and the conditions - not
+   the other fields it happens to fetch with it. Null where the statement is not a SELECT, or does not name the field. */
+function selectOf(raw, of) {
+  const { tokenize } = __vertexRequire(2);
+  const tokens = tokenize(raw || ''), upper = value => String(value).toUpperCase();
+  if (!tokens.length || upper(tokens[0].value) !== 'SELECT' && !(tokens[0].value === '@' && upper(tokens[1] && tokens[1].value) === 'SELECT')) {
+    const at = tokens.findIndex(token => upper(token.value) === 'SELECT');
+    if (at < 0) { return null; }
+    tokens.splice(0, at);
+  }
+  const from = tokens.findIndex(token => upper(token.value) === 'FROM');
+  if (from < 0) { return null; }
+  let start = 1;
+  while (['SINGLE', 'DISTINCT'].includes(upper(tokens[start] && tokens[start].value))) { start++; }
+  // The fields: separated by commas outside brackets; a field is known by its alias, else by its last name.
+  const fields = []; let current = [], depth = 0;
+  for (const token of tokens.slice(start, from)) {
+    if (token.value === '(') depth++; if (token.value === ')') depth--;
+    if (token.value === ',' && !depth) { fields.push(current); current = []; } else { current.push(token); }
+  }
+  if (current.length) { fields.push(current); }
+  const nameOf = field => { const words = field.filter(token => token.kind === 'word'); return upper(words.length ? words[words.length - 1].value : ''); };
+  const want = upper(String(of).split('-').pop());
+  // One field fetched is the value, whatever it is called here.
+  const field = fields.find(item => nameOf(item) === want) || (fields.length === 1 ? fields[0] : null);
+  if (!field) { return null; }
+  const stops = ['WHERE', 'INTO', 'ORDER', 'GROUP', 'HAVING', 'UP', 'FOR'];
+  let end = tokens.findIndex((token, index) => index > from && stops.includes(upper(token.value)));
+  const table = tokens.slice(from + 1, end < 0 ? tokens.length : end).filter(token => token.value !== '.');
+  const whereAt = tokens.findIndex((token, index) => index > from && upper(token.value) === 'WHERE');
+  let condition = [];
+  if (whereAt >= 0) {
+    const after = tokens.findIndex((token, index) => index > whereAt && ['INTO', 'ORDER', 'GROUP', 'HAVING', 'UP', 'FOR'].includes(upper(token.value)));
+    condition = tokens.slice(whereAt + 1, after < 0 ? tokens.length : after).filter(token => token.value !== '.');
+  }
+  const written = list => (list.length ? raw.slice(list[0].offset, list[list.length - 1].endOffset).split(/\s+/).join(' ') : '');
+  return 'SELECT ' + written(field) + ' FROM ' + written(table) + (condition.length ? ' WHERE ' + written(condition) : '') + '.';
+}
+
+module.exports = { selectOf, formula, scopeStacks, sequence, oneFormula };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+/* The Formula pane of the analysis as HTML, and the symbolic writing of an expression it uses: one drawing for Value origin
+   and for the debugger's flow path. `sourceOf(node)` names the source a </> button opens - the analysis's own source id
+   in Value origin, the debugger's "origin:<source>|<routine>" marker there. */
+const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function symbolic(graph) {
+  const bseById = new Map((graph.nodes || []).map(node => [node.id, node])), dataDefinitions = new Map();
+  const canonical = value => String(value || '').toUpperCase().replace(/\s+/g, '');
+  for (const edge of graph.edges || []) {
+    const value = bseById.get(edge.to), definition = bseById.get(edge.from);
+    if (value?.kind !== 'value' || !definition || !['calculation', 'parameter', 'call'].includes(definition.kind)) continue;
+    if (!dataDefinitions.has(canonical(value.text))) dataDefinitions.set(canonical(value.text), { definition, valueId: value.id });
+  }
+  const stripData = value => String(value || '').replace(/\bDATA\s*\(\s*([^()]+?)\s*\)/ig, '$1');
+  const dataNames = step => {
+    const text = stripData(step.text || step.caller), assigned = text.match(/\b([A-Za-z_]\w*(?:-[A-Za-z_]\w*)?)\s*=/i);
+    const calculated = new Set((step.calculated || []).map(canonical));
+    if (assigned) calculated.add(canonical(assigned[1]));
+    const composed = new Set((step.composed || []).map(canonical));
+    const right = assigned ? text.slice(text.indexOf('=') + 1) : text;
+    for (const name of right.match(/\b[a-z][a-z0-9_]*(?:-[a-z][a-z0-9_]*)?\b/ig) || []) {
+      if (!['new', 'value', 'conv', 'cond', 'when', 'then', 'else', 'true', 'false', 'abap_true', 'abap_false'].includes(name.toLowerCase())) composed.add(canonical(name));
+    }
+    return { calculated, composed };
+  };
+  const dataText = step => stripData(step.text || step.caller);
+  const syntaxCode = value => {
+    const text = String(value || ''), token = /'(?:''|[^'])*'|\b(?:DATA|NEW|VALUE|CONV|WHEN|THEN|ELSE|IF|ENDIF|SELECT|FROM|INTO|CORRESPONDING|FIELDS|OF|TABLE|ORDER|BY|CHANGING|EXPORTING|IMPORTING|RETURNING)\b|\b\d+(?:\.\d+)?\b/ig;
+    let output = '', offset = 0, match;
+    while ((match = token.exec(text))) {
+      output += escape(text.slice(offset, match.index));
+      const value = match[0], kind = value.startsWith("'") ? 'string' : /^\d/.test(value) ? 'number' : 'keyword';
+      output += `<span class="syntax-${kind}">${escape(value)}</span>`; offset = match.index + value.length;
+    }
+    return output + escape(text.slice(offset));
+  };
+  const symbolicExpression = (step, removeData = false) => {
+    const text = removeData ? dataText(step) : String(step.text || step.caller), names = dataNames(step), token = /\b[a-z][a-z0-9_]*(?:-[a-z][a-z0-9_]*)?\b/ig;
+    let output = '', offset = 0, match;
+    while ((match = token.exec(text))) {
+      output += syntaxCode(text.slice(offset, match.index));
+      const name = match[0], key = canonical(name), definition = dataDefinitions.get(key)?.definition;
+      if (names.calculated.has(key)) output += `<span class="data-calculated">${escape(name)}</span>`;
+      else if (names.composed.has(key)) output += definition ? `<button class="data-composed" title="Open the definition of ${escape(name)}" data-node="${escape(definition.id)}" data-source="${escape(definition.source)}" data-line="${definition.line}">${escape(name)}</button>` : `<span class="data-composed">${escape(name)}</span>`;
+      else output += syntaxCode(name);
+      offset = match.index + name.length;
+    }
+    return output + syntaxCode(text.slice(offset));
+  };
+  const dataFormula = step => symbolicExpression(step, true);
+  const codeFormula = step => symbolicExpression(step, true);
+  return { bseById, canonical, stripData, dataNames, dataText, syntaxCode, symbolicExpression, dataFormula, codeFormula };
+}
+
+function formulaPane(graph, derivation, sourceOf = node => node.source) {
+  const { dataFormula } = symbolic(graph);
+  const formulaHtml = (node, root = false) => {
+    const children = node.children.map(child => formulaHtml(child)).join('');
+    const caption = root
+      ? `<span class="formula-expression">${escape(node.text)}</span><button class="location code-location" title="Open the selected value in source; Ctrl+Click opens beside" data-node="${escape(node.id)}" data-source="${escape(sourceOf(node))}" data-line="${node.line}">&lt;/&gt;</button>`
+      : `<span class="formula-expression">${dataFormula({ text: node.text, calculated: [], composed: [] })}</span><button class="location code-location" title="Open this formula in source; Ctrl+Click opens beside" data-node="${escape(node.id)}" data-source="${escape(sourceOf(node))}" data-line="${node.line}">&lt;/&gt;</button>`;
+    return children ? `<details class="formula-node" data-formula-node="${escape(node.id)}" data-level="${node.level}"${root ? ' open' : ''}><summary>${caption}</summary><div class="formula-children">${children}</div></details>` : `<div class="formula-leaf" data-formula-node="${escape(node.id)}" data-level="${node.level}">${caption}</div>`;
+  };
+  // What the loaded pipeline took out is said above the tree, never left out without a word.
+  const pipelineNote = derivation.pipeline !== '' || derivation.skipped.length
+    ? `<p class="edge">Ordered by the loaded pipeline${derivation.pipeline ? ' of scenario ' + escape(derivation.pipeline) : ''}${derivation.skipped.length ? '; not in it, so not run: ' + escape([...new Set(derivation.skipped)].join(', ')) : ''}.</p>` : '';
+  const formulaView = derivation.tree ? pipelineNote + formulaHtml(derivation.tree, true) : '<p class="edge">No symbolic formula was resolved for this value.</p>';
+  return '<p class="edge">Formula derivation — click a branch to expand its input formulas</p>' + formulaView;
+}
+
+// The derivation as the one expression it comes to (see oneFormula): the steps in the order they run, then where its
+// named values come from.
+function expressionPane(derivation, sourceOf = node => node.source) {
+  const expression = derivation.expression;
+  if (!expression) { return '<p class="edge">No symbolic formula was resolved for this value.</p>'; }
+  const note = derivation.pipeline !== '' || derivation.skipped.length
+    ? `<p class="edge">Ordered by the loaded pipeline${derivation.pipeline ? ' of scenario ' + escape(derivation.pipeline) : ''}${derivation.skipped.length ? '; not in it, so not run: ' + escape([...new Set(derivation.skipped)].join(', ')) : ''}.</p>` : '';
+  // A value that comes from a table is a link to the statement that reads it; its class shows when the pointer rests on it.
+  const known = new Map(expression.where.map(item => [item.name, item]));
+  const names = [...known.keys()].sort((a, b) => b.length - a.length);
+  const isName = character => /[A-Za-z0-9_\-\[\]\/]/.test(character || '');
+  const link = item => `<button class="data-composed" title="${escape(item.full)} · ${escape(String(item.location).split('->')[0])} · ${escape(item.text)}" data-node="${escape(item.id)}" data-source="${escape(sourceOf(item))}" data-line="${item.line}">${escape(item.name)}</button>`;
+  const write = text => {
+    let out = '', at = 0;
+    while (at < text.length) {
+      const name = isName(text[at - 1]) ? null : names.find(candidate => text.startsWith(candidate, at) && !isName(text[at + candidate.length]));
+      if (name) { out += link(known.get(name)); at += name.length; } else { out += escape(text[at]); at++; }
+    }
+    return out;
+  };
+  const steps = expression.steps.slice().reverse().map(step => `<li><code>${escape(step.name)} = ${write(step.text)}</code></li>`).join('');
+  const where = expression.where.map(item => `<li><code>${link(item)}</code> &larr; <code>${escape(item.text)}</code> <span class="edge">${escape(String(item.location).split('->')[0])}</span></li>`).join('');
+  return `<p class="edge">Expression - the derivation written out, nothing simplified</p>${note}<p><code>${write(expression.text)}</code></p>`
+    + (steps ? `<p class="edge">Values read more than once, from the last</p><ol class="expression-steps">${steps}</ol>` : '')
+    + (where ? `<p class="edge">Where the values come from</p><ul class="expression-where">${where}</ul>` : '');
+}
+
+module.exports = { symbolic, formulaPane, expressionPane, escape };
+
+}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(0);window.vertexDebugAnalysis=load(1539);})();
