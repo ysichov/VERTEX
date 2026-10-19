@@ -143,16 +143,26 @@ test("a reference is declared as REF TO: as a result it is kept for Variables, n
 });
 
 test("a required class reference is created by default and exposes its class variables", () => {
-  const log = "CLASS zcl_calc_log DEFINITION PUBLIC FINAL CREATE PRIVATE.\n  PRIVATE SECTION.\n    DATA mt_log TYPE string.\nENDCLASS.\nCLASS zcl_calc_log IMPLEMENTATION.\nENDCLASS.\n";
+  const log = "CLASS zcl_calc_log DEFINITION PUBLIC ABSTRACT CREATE PRIVATE.\n  PUBLIC SECTION.\n    METHODS constructor IMPORTING iv_value TYPE i.\n  PRIVATE SECTION.\n    DATA mt_log TYPE string.\nENDCLASS.\nCLASS zcl_calc_log IMPLEMENTATION.\n  METHOD constructor. ENDMETHOD.\nENDCLASS.\n";
   const owner = "CLASS zcl_owner DEFINITION PUBLIC CREATE PUBLIC.\n  PUBLIC SECTION.\n    METHODS run IMPORTING io_log TYPE REF TO zcl_calc_log.\nENDCLASS.\nCLASS zcl_owner IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\nENDCLASS.\n";
   const { paths } = folder({ "zcl_calc_log.clas.abap": log, "zcl_owner.clas.abap": owner });
   const target = entry.targetAt(paths[1], owner, 6), screen = entry.screenOf(entry.parametersOf(target, paths), paths);
   const shape = screen.parameters[0].shape;
   assert.equal(shape.className, "ZCL_CALC_LOG");
   assert.equal(shape.createDefault, true);
+  assert.deepEqual(shape.constructorArgs, ["IV_VALUE"]);
   assert.deepEqual(shape.attributes.map(a => a.name), ["MT_LOG"]);
-  assert.match(entry.driverSource(screen, {}), /IO_LOG = NEW zcl_calc_log\( \)\./);
-  assert.match(entry.driverSource(screen, { parameters: { IO_LOG: { create: true } } }), /IO_LOG = NEW zcl_calc_log\( \)\./);
+  assert.match(entry.driverSource(screen, {}), /IO_LOG = NEW zcl_calc_log\( iv_value = VALUE #\( \) \)\./);
+  assert.match(entry.driverSource(screen, { parameters: { IO_LOG: { create: true } } }), /IO_LOG = NEW zcl_calc_log\( iv_value = VALUE #\( \) \)\./);
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-reference-copy-"));
+  try {
+    fs.mkdirSync(path.join(projectRoot, "src"));
+    fs.writeFileSync(path.join(projectRoot, "vertex-includes.json"), "{}");
+    const copy = path.join(projectRoot, "src", "zcl_calc_log.clas.abap");
+    fs.writeFileSync(copy, log);
+    entry.relaxReferenceClasses({ root: projectRoot }, screen);
+    assert.match(fs.readFileSync(copy, "utf8"), /DEFINITION PUBLIC CREATE PUBLIC/);
+  } finally { if (projectRoot.startsWith(os.tmpdir() + path.sep)) fs.rmSync(projectRoot, { recursive: true, force: true }); }
 });
 
 test("the call program is not recorded: the run shows only the code it calls", () => {

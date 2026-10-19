@@ -649,12 +649,12 @@ async function launch(vscode, debug, options = {}) {
   const workspaceRoot = vscode.workspace.getWorkspaceFolder(document?.uri)?.uri.fsPath;
   if (document.isDirty) await document.save();
   // A method or a function module: the program that calls it with the values of the screen is what runs.
-  let driver = null, driverDocument = null;
+  let driver = null, driverDocument = null, entryScreenData = null;
   const called = options.selection && options.selection.$entry;
   if (called) {
-    const screen = entryScreen(document, options.entryLine);
-    if (!screen) throw new Error("The cursor is no longer in a method or a function module of " + path.basename(document.uri.fsPath) + ".");
-    const source = require("./local-entry").driverSource(screen, called);
+    entryScreenData = entryScreen(document, options.entryLine);
+    if (!entryScreenData) throw new Error("The cursor is no longer in a method or a function module of " + path.basename(document.uri.fsPath) + ".");
+    const source = require("./local-entry").driverSource(entryScreenData, called);
     const folder = path.join(os.tmpdir(), "vertex-local-entry", String(process.pid));
     fs.mkdirSync(folder, { recursive: true });
     driver = path.join(folder, require("./local-entry").DRIVER + ".prog.abap");
@@ -662,6 +662,7 @@ async function launch(vscode, debug, options = {}) {
     driverDocument = { uri: { fsPath: driver, scheme: "file" }, getText: () => source, isDirty: false };
   }
   const project = projectFor(document, workspaceRoot, driver);
+  if (entryScreenData) require("./local-entry").relaxReferenceClasses(project, entryScreenData);
   const output = vscode.window.createOutputChannel("VERTEX Local ABAP");
   // A run unchanged since its last transpiling - an SAP object's same build (sap-cache.js), or a local file whose folder
   // has not changed (projectFor's stamp) - and no call program of its own takes that transpiled code again, from its

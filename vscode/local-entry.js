@@ -142,13 +142,13 @@ function screenOf(signature, files) {
   const scopes = [], walk = node => { scopes.push(node); (node.getChildren?.() || []).forEach(walk); };
   walk(run.spaghetti.getTop());
   const shape = name => {
-    for (const scope of scopes) { const found = scope.findVariable(name); if (found && /zvertex_run/i.test(found.getFilename())) return describe(found.getType(), classSources); }
+    for (const scope of scopes) { const found = scope.findVariable(name); if (found && /zvertex_run/i.test(found.getFilename())) return describe(found.getType(), classSources, registry); }
     throw new Error("The call program declares no variable " + name + ".");
   };
   const fields = list => list.map(p => ({ ...p, shape: shape(variable(p)) }));
   return { target: signature.target, parameters: fields(signature.parameters), creation: fields(signature.creation || []) };
 }
-function describe(type, classSources = new Map()) {
+function describe(type, classSources = new Map(), registry) {
   const abaplint = lint();
   if (type instanceof abaplint.BasicTypes.ObjectReferenceType) {
     const className = String(type.getIdentifierName?.() || "").toUpperCase(), source = classSources.get(className) || "";
@@ -157,28 +157,61 @@ function describe(type, classSources = new Map()) {
       .map(match => { const declared = match[3].trim(), value = /\s+VALUE\s+(.+)$/i.exec(declared);
         return { name: match[2].toUpperCase(), type: value ? declared.slice(0, value.index).trim() : declared,
           initial: value ? value[1].trim() : "Initial", static: /^CLASS-DATA$/i.test(match[1]) }; });
+    let constructorArgs = [];
+    const object = registry?.getObject("CLAS", className);
+    if (object) {
+      const scope = findClass(new abaplint.SyntaxLogic(registry, object).run().spaghetti.getTop(), className);
+      const constructor = [...(scope?.getMethodDefinitions().getAll() || [])].find(method => method.getName().toUpperCase() === "CONSTRUCTOR");
+      if (constructor) {
+        const parameters = constructor.getParameters(), optional = new Set(parameters.getOptional().map(name => name.toUpperCase()));
+        constructorArgs = [...parameters.getImporting()].map(parameter => parameter.getName().toUpperCase())
+          .filter(name => !optional.has(name) && !parameters.getParameterDefault?.(name));
+      }
+    }
     return { kind: "reference", type: type.toText?.() || "", className, attributes,
-      // This standalone simulation can create a class even when SAP access or abstract checks would reject it.
-      // No constructor values are supplied by this default action.
-      createDefault: !!definition };
+      constructorArgs, createDefault: !!definition };
   }
   if (type instanceof abaplint.BasicTypes.DataReference) return { kind: "reference", type: type.toText?.() || "" };
   if (type instanceof abaplint.BasicTypes.UnknownType) throw new Error("A type of the call is not known: " + (type.getError?.() || "") + ".");
-  if (type instanceof abaplint.BasicTypes.StructureType) return { kind: "structure", fields: type.getComponents().map(c => ({ name: c.name.toUpperCase(), shape: describe(c.type, classSources) })) };
-  if (type instanceof abaplint.BasicTypes.TableType) return { kind: "table", row: describe(type.getRowType(), classSources) };
+  if (type instanceof abaplint.BasicTypes.StructureType) return { kind: "structure", fields: type.getComponents().map(c => ({ name: c.name.toUpperCase(), shape: describe(c.type, classSources, registry) })) };
+  if (type instanceof abaplint.BasicTypes.TableType) return { kind: "table", row: describe(type.getRowType(), classSources, registry) };
   return { kind: "simple", type: type.toABAP ? type.toABAP() : "" };
+}
+
+/* SAP snapshots are private run copies. Relax class instantiation rules there only, so the generated
+   standalone caller can create reference parameters without changing the active SAP source. */
+function relaxReferenceClasses(project, screen) {
+  if (!fs.existsSync(path.join(project.root, "vertex-includes.json"))) return;
+  const names = new Set(), visit = shape => {
+    if (!shape) return;
+    if (shape.kind === "reference" && shape.createDefault) names.add(shape.className);
+    else if (shape.kind === "structure") shape.fields.forEach(field => visit(field.shape));
+    else if (shape.kind === "table") visit(shape.row);
+  };
+  for (const parameter of [...screen.parameters, ...(screen.creation || [])]) visit(parameter.shape);
+  for (const name of names) {
+    const file = path.join(project.root, "src", name.toLowerCase() + ".clas.abap");
+    if (!fs.existsSync(file)) continue;
+    const source = fs.readFileSync(file, "utf8");
+    const pattern = new RegExp("\\bCLASS\\s+" + name + "\\s+DEFINITION\\b[^.]*\\.", "i");
+    const changed = source.replace(pattern, header => header.replace(/\bABSTRACT\b\s*/i, "")
+      .replace(/\bCREATE\s+(?:PRIVATE|PROTECTED)\b/i, "CREATE PUBLIC"));
+    if (changed !== source) fs.writeFileSync(file, changed);
+  }
 }
 
 const label = target => target.kind === "function" ? target.name : target.object + "=>" + target.name;
 const variable = p => p.ctor ? ("c_" + p.name).slice(0, 30) : p.name;
 const literal = value => "'" + String(value ?? "").replace(/'/g, "''") + "'";
+const defaultReference = shape => { const args = (shape.constructorArgs || []).map(name => name.toLowerCase() + " = VALUE #( )");
+  return "NEW " + shape.className.toLowerCase() + "( " + args.join(" ") + (args.length ? " " : "") + ")."; };
 
 /* The values given for a parameter, as assignments: a field, a structure's fields, a table's rows. A table inside a
    structure, or a structure inside a table's row field, is not entered on the screen and fails here. */
 function assignments(target, shape, value, name, symbols) {
   if (value === undefined || value === null) return [];
   if (shape.kind === "reference") {
-    if (value?.create && shape.createDefault) return [target + " = NEW " + shape.className.toLowerCase() + "( )."];
+    if (value?.create && shape.createDefault) return [target + " = " + defaultReference(shape)];
     throw new Error(name + " is a reference: this class cannot be initialized with a default constructor.");
   }
   if (shape.kind === "simple") return [target + " = " + literal(value) + "."];
@@ -246,7 +279,7 @@ function driverSource(signature, values) {
       const value = valuesOf[p.name];
       if (value !== undefined) lines.push(...assignments(variable(p), p.shape || { kind: "simple" }, value, p.name, symbols));
       else if (p.shape?.kind === "reference" && !p.optional && p.shape.createDefault)
-        lines.push(variable(p) + " = NEW " + p.shape.className.toLowerCase() + "( ).");
+        lines.push(variable(p) + " = " + defaultReference(p.shape));
       else if (p.default) lines.push(variable(p) + " = " + p.default + ".");
     }
   };
@@ -281,4 +314,4 @@ function driverSource(signature, values) {
   return lines.join("\n") + "\n";
 }
 
-module.exports = { DRIVER, targetAt, parametersOf, screenOf, driverSource, label };
+module.exports = { DRIVER, targetAt, parametersOf, screenOf, driverSource, relaxReferenceClasses, label };

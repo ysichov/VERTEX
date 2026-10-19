@@ -6,6 +6,8 @@ Logic diagrams retain their scroll position and zoom when a live recording updat
 
 The SAP run window opens without reading SAP. Execute uses the saved build when valid and reads SAP only when needed; Recompile explicitly reads a fresh build.
 
+Object reference parameters now show a class-variables button instead of a text field. A required class reference is initialized for a standalone run; local copies relax class creation restrictions and supply initial values for required constructor arguments.
+
 ## 2026-10-19 — VS Code 0.9.18: package search and name fallback
 
 Direct SAP object search now includes packages (`DEVC/K`). A single package match opens in Object Navigator. When a plain name has no exact result, VERTEX searches `name*` and then `*name*`; an explicit wildcard pattern is used as entered. Search results remain bounded.
