@@ -1260,6 +1260,7 @@ function activate(context) {
         },
         flow: showFlow,
         recompile: dockedDebugSource.sapCopies?.root ? recompileSap : null,
+        autoSelection: source.autoSelection,
         builtAt: dockedDebugSource.sapCopies?.builtAt || "" } });
       // Written after the window opens, so the panel knows the window holds the run (its Run brings the window back).
       if (dockedDebugView) setDockedHtml(require("./tools-window").debugHtml(dockedDebugInitial()) + "<!-- " + Date.now() + " -->");
@@ -1323,6 +1324,27 @@ function activate(context) {
       const tab = await pinTo(shown.system_name, () => sapCode.sourceUri({ object_name: shown.object_name, object_type: "FUNC", include: "main" }));
       const editor = vscode.window.activeTextEditor;
       entryLine = editor && editor.document.uri.toString() === tab ? editor.selection.active.line + 1 : 1;
+    }
+    // Opening the run window is a choice of what to do next. SAP is read only
+    // after Execute (saved build if possible) or Recompile (fresh read).
+    if (!options.agentRun && !options.started && !options.recompile) {
+      const previous = dockedDebugSource?.sapCopies?.root?.object_name === shown.object_name
+        && dockedDebugSource.sapCopies.root.system_name === shown.system_name ? dockedDebugSource : null;
+      require("./program-window").open(vscode, { name: shown.object_name, host: {
+        deferred: true, builtAt: previous?.sapCopies?.builtAt || "",
+        selection: async () => previous?.document
+          ? (kind === "PROG" ? { screen: require("./local-run").screenFor(previous.document) }
+            : { entry: require("./local-run").entryScreen(previous.document, previous.entryLine) }) : {},
+        adapter: (command, args) => localDebugAdapter?.command(command, args),
+        run: async selection => {
+          await runSapTranspiler(shown, { ...options, started: true, entryLine, selection });
+          return { deferred: true };
+        },
+        recompile: async () => {
+          await runSapTranspiler(shown, { ...options, started: true, recompile: true, entryLine });
+          return {};
+        } } });
+      return;
     }
     // Show the run window before asking SAP for a new build. A failed read or
     // transpilation leaves Recompile available there instead of closing the
@@ -1446,6 +1468,7 @@ function activate(context) {
         note: "Local transpiler simulation. This is not proof of execution in SAP." };
     }
     openVisualDebug(true, { ...require("./local-analysis").sourceObject(document), local: true, document, entryLine, autoRun: true,
+      autoSelection: options.selection && Object.keys(options.selection).length ? options.selection : null,
       sapCopies: { system: shown.system_name, copies, builtAt: read.builtAt || "",
         root: { object_name: shown.object_name, object_type: kind, system_name: shown.system_name }, entryLine } });
   };

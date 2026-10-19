@@ -22,7 +22,8 @@ function open(vscode, { name, host }) {
   const self = { panel };
   current = self;
   panel.onDidDispose(() => { if (current === self) current = null; });
-  panel.webview.html = html({ name, recompile: !!host.recompile, builtAt: host.builtAt || "", pending: !!host.pending });
+  panel.webview.html = html({ name, recompile: !!host.recompile, builtAt: host.builtAt || "", pending: !!host.pending,
+    deferred: !!host.deferred, autoSelection: host.autoSelection || null });
   panel.webview.onDidReceiveMessage(async message => {
     const reply = (value, error) => panel.webview.postMessage({ type: "reply", id: message.id, value, error });
     try {

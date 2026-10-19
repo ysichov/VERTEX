@@ -193,6 +193,13 @@ body.vdrag{cursor:row-resize;user-select:none}
 #selscreen .entry-grid{border-collapse:collapse;margin:4px 0}
 #selscreen .entry-grid th,#selscreen .entry-grid td{padding:2px 4px;text-align:left;font-weight:normal;border:1px solid var(--vscode-widget-border,var(--vscode-panel-border,GrayText))}
 #selscreen .entry-grid th{color:var(--vscode-descriptionForeground)}
+#selscreen .entry-parameter-row{display:flex;align-items:center;gap:10px;margin:4px 0;min-height:22px}
+#selscreen .entry-parameter-row>input[type="text"]{width:208px;box-sizing:border-box;flex:none}
+#selscreen .entry-parameter-row>input[type="text"]+div{white-space:nowrap}
+#selscreen .entry-reference>button{min-width:26px;padding:2px 5px;cursor:pointer}
+#selscreen .entry-reference-dialog{max-width:min(720px,90vw);max-height:75vh;overflow:auto;color:var(--vscode-editor-foreground);background:var(--vscode-editor-background);border:1px solid var(--vscode-panel-border)}
+#selscreen .entry-reference-dialog table{border-collapse:collapse;margin:8px 0}
+#selscreen .entry-reference-dialog th,#selscreen .entry-reference-dialog td{padding:4px 8px;text-align:left;border:1px solid var(--vscode-panel-border)}
 #selscreen input[type="text"]{color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-widget-border,GrayText))}
 #selscreen .screen-block{margin:6px 0;padding:4px 8px;border:1px solid var(--vscode-widget-border,var(--vscode-panel-border,GrayText));border-radius:4px}
 #selscreen div.screen-block{border:none;padding:0}

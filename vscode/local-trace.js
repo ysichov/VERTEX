@@ -19,12 +19,16 @@ function vlq(segment) {
 function mappedLines(map) {
   let source = 0, original = 0;
   return map.mappings.split(";").map(line => {
+    let first = 0, found = false;
     for (const segment of line.split(",")) {
       if (!segment) continue;
       const fields = vlq(segment);
-      if (fields.length >= 4) { source += fields[1]; original += fields[2]; return source === 0 ? original + 1 : 0; }
+      if (fields.length >= 4) {
+        source += fields[1]; original += fields[2];
+        if (!found) { first = source === 0 ? original + 1 : 0; found = true; }
+      }
     }
-    return 0;
+    return first;
   });
 }
 /* Each generated line's place: [source index, 1-based line], or null. A function group's module maps several
@@ -32,12 +36,16 @@ function mappedLines(map) {
 function mappedPlaces(map) {
   let source = 0, original = 0;
   return map.mappings.split(";").map(line => {
+    let first = null;
     for (const segment of line.split(",")) {
       if (!segment) continue;
       const fields = vlq(segment);
-      if (fields.length >= 4) { source += fields[1]; original += fields[2]; return [source, original + 1]; }
+      if (fields.length >= 4) {
+        source += fields[1]; original += fields[2];
+        if (!first) first = [source, original + 1];
+      }
     }
-    return null;
+    return first;
   });
 }
 const JS_KEYWORDS = new Set(("break case catch class const continue debugger default delete do else enum export extends false " +

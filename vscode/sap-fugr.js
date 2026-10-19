@@ -49,6 +49,13 @@ function moduleSignature(text) {
   if (!tokens[end]) throw new Error("FUNCTION statement without its period.");
   const name = up(tokens[start + 1] && tokens[start + 1].value);
   const parts = { IMPORTING: [], EXPORTING: [], CHANGING: [], TABLES: [], EXCEPTIONS: [], RAISING: [] };
+  const qualified = at => {
+    let value = up(tokens[at]?.value), next = at + 1;
+    while (next + 1 < end && ["-", "=>"].includes(tokens[next].value) && tokens[next + 1].kind === "word") {
+      value += tokens[next].value + up(tokens[next + 1].value); next += 2;
+    }
+    return { value, next };
+  };
   let section = null;
   for (let i = start + 2; i < end;) {
     const word = up(tokens[i].value);
@@ -61,19 +68,14 @@ function moduleSignature(text) {
     } else { param.name = word; i++; }
     while (i < end && !SECTIONS.includes(up(tokens[i].value))) {
       const key = up(tokens[i].value);
-      if (key === "TYPE" && up(tokens[i + 1]?.value) === "REF" && up(tokens[i + 2]?.value) === "TO") { param.type = up(tokens[i + 3].value); param.refClass = true; i += 4; }
-      else if (key === "TYPE") { param.type = up(tokens[i + 1].value); i += 2; }
-      else if (key === "LIKE") { param.like = up(tokens[i + 1].value); i += 2; }
-      else if (key === "STRUCTURE") { param.structure = up(tokens[i + 1].value); i += 2; }
+      if (key === "TYPE" && up(tokens[i + 1]?.value) === "REF" && up(tokens[i + 2]?.value) === "TO") { const type = qualified(i + 3); param.type = type.value; param.refClass = true; i = type.next; }
+      else if (key === "TYPE") { const type = qualified(i + 1); param.type = type.value; i = type.next; }
+      else if (key === "LIKE") { const type = qualified(i + 1); param.like = type.value; i = type.next; }
+      else if (key === "STRUCTURE") { const type = qualified(i + 1); param.structure = type.value; i = type.next; }
       else if (key === "DEFAULT") { param.default = tokens[i + 1].value; i += 2; }
       else if (key === "OPTIONAL") { param.optional = true; i++; }
+      else if (tokens[i].value === "#" && tokens[i + 1]?.value === "#" && tokens[i + 2]?.kind === "word") i += 3;
       else break;
-    }
-    // A type can be named with its component or its owner: TYPE zstruct-field and TYPE zif_x=>ty_y each read as one name.
-    while (tokens[i] && (tokens[i].value === "-" || tokens[i].value === "=>") && tokens[i + 1]?.kind === "word" && i < end) {
-      const field = up(tokens[i + 1].value), joint = tokens[i].value;
-      if (param.type) param.type += joint + field; else if (param.like) param.like += joint + field;
-      i += 2;
     }
     // A parameter with a DEFAULT is optional, as SAP has it and abapGit writes it.
     if (param.default !== undefined) param.optional = true;
@@ -188,6 +190,35 @@ function applyModuleDefaults(outputRoot, defaults) {
     else if (/\.fugr\.mjs$/i.test(item.name)) files.push(at);
   } };
   visit(outputRoot);
+  // Some transpiled CALL FUNCTION sites bind ABAP's upper-case parameter
+  // names, while generated modules read lower-case JavaScript properties.
+  for (const file of files) {
+    const original = fs.readFileSync(file, "utf8");
+    const lines = original.split("\n"), inputs = new Map();
+    for (let i = 0; i < lines.length; i++) {
+      if (/^async function \w+\(INPUT\) \{/.test(lines[i])) inputs.clear();
+      if (/^}/.test(lines[i])) inputs.clear();
+      const input = /^  let ([a-z][a-z0-9_]*) = INPUT\.exporting\?\.\1;$/.exec(lines[i]);
+      if (input) inputs.set(input[1], i);
+      const duplicate = /^  let ([a-z][a-z0-9_]*) = INPUT\.importing\?\.\1;$/.exec(lines[i]);
+      if (!duplicate || !inputs.has(duplicate[1])) continue;
+      const name = duplicate[1], first = inputs.get(name);
+      // Older SAP interfaces may declare the same field as IMPORTING and EXPORTING.
+      // It is one ABAP variable; prefer the caller's output field when supplied.
+      lines[first] = "  let " + name + " = INPUT.importing?." + name + " ?? INPUT.exporting?." + name + ";" +
+        " if (INPUT.importing?." + name + " && INPUT.exporting?." + name + ") " + name + ".set(INPUT.exporting?." + name + ");";
+      lines[i] = "";
+      if (lines[i + 1]?.trim() === "if (" + name + " === undefined) {") {
+        let end = i + 2;
+        while (end < lines.length && lines[end].trim() !== "}") end++;
+        if (end < lines.length) for (let at = i + 1; at <= end; at++) lines[at] = "";
+      }
+    }
+    const source = lines.join("\n");
+    const fixed = source.replace(/INPUT\.(exporting|importing|changing|tables)\?\.([a-z][a-z0-9_]*)\b/g,
+      (match, direction, name) => "(INPUT." + direction + "?." + name + " ?? INPUT." + direction + "?." + name.toUpperCase() + ")");
+    if (fixed !== original) fs.writeFileSync(file, fixed);
+  }
   const value = (module, param) => {
     const text = String(param.default).trim();
     if (/^SPACE$/i.test(text)) return JSON.stringify(" ");
@@ -198,7 +229,9 @@ function applyModuleDefaults(outputRoot, defaults) {
   };
   for (const { module, params } of defaults) {
     if (!params.length) continue;
-    const file = files.find(candidate => fs.readFileSync(candidate, "utf8").includes("abap.FunctionModules['" + module + "']"));
+    const registration = "abap.FunctionModules['" + module + "'] = ";
+    const file = files.find(candidate => fs.readFileSync(candidate, "utf8").split("\n")
+      .some(line => line.startsWith(registration)));
     if (!file) throw new Error("The transpiler wrote no code for function module " + module + ".");
     const lines = fs.readFileSync(file, "utf8").split("\n");
     const start = lines.findIndex(line => line.startsWith("async function " + module.toLowerCase().replace(/\//g, "$") + "(INPUT)"));

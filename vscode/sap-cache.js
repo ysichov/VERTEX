@@ -9,7 +9,7 @@ const os = require("os");
 const up = value => String(value || "").toUpperCase();
 // Bump when the generated SAP source or DDIC representation changes. Reloading
 // the extension alone must not reuse a build made by older generator code.
-const FORMAT_VERSION = 4;
+const FORMAT_VERSION = 6;
 
 function cacheFolder(systemKey, object) {
   const safe = value => String(value || "").replace(/[^A-Za-z0-9_-]/g, "_");

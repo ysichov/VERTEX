@@ -41,14 +41,14 @@ const queryOf = rows => {
 test("names a source takes from the dictionary", () => {
   const names = dictionaryNames("DATA a TYPE zship.\nDATA t TYPE STANDARD TABLE OF zrow WITH EMPTY KEY.\nDATA r TYPE REF TO zcl_x.\n" +
     "DATA c TYPE char12.\nDATA f TYPE zs-field.\nSELECT * FROM ztab INNER JOIN zj ON a = b INTO TABLE @t.\n" +
-    "DATA x TYPE zcl_y=>ty.\nDATA i TYPE i.\nDATA date LIKE tcurr-gdatu.\nTYPES ty TYPE RANGE OF zr.\nTYPES BEGIN OF s.\nINCLUDE STRUCTURE zinc.\nTYPES END OF s.\n");
-  assert.deepEqual([...names].sort(), ["CHAR12", "TCURR", "ZCL_X", "ZINC", "ZJ", "ZR", "ZROW", "ZS", "ZSHIP", "ZTAB"]);
+    "DATA x TYPE zcl_y=>ty.\nDATA i TYPE i.\nDATA date LIKE tcurr-gdatu.\nDATA rows LIKE vzzbbas OCCURS 1.\nTYPES ty TYPE RANGE OF zr.\nTYPES BEGIN OF s.\nINCLUDE STRUCTURE zinc.\nTYPES END OF s.\n");
+  assert.deepEqual([...names].sort(), ["CHAR12", "TCURR", "VZZBBAS", "ZCL_X", "ZINC", "ZJ", "ZR", "ZROW", "ZS", "ZSHIP", "ZTAB"]);
 });
 
 test("FROM and JOIN name a table only in Open SQL; TABLES only as its own statement", () => {
-  const names = dictionaryNames("SUBTRACT 1 FROM b.\nDELETE itab FROM idx.\nTABLES t001.\nOPEN CURSOR @c FOR SELECT * FROM t005.\n"
+  const names = dictionaryNames("SUBTRACT 1 FROM b.\nDELETE itab FROM idx.\nTABLES t001.\nTABLES: thol, thoc.\nOPEN CURSOR @c FOR SELECT * FROM t005.\n"
     + "DATA(x) = 1. SELECT SINGLE f FROM zsel INTO @DATA(v).");
-  assert.deepEqual([...names].sort(), ["T001", "T005", "ZSEL"]);
+  assert.deepEqual([...names].sort(), ["T001", "T005", "THOC", "THOL", "ZSEL"]);
 });
 
 test("reads the closure: an include, a table type, data elements and domains of the same name", async () => {

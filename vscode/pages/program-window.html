@@ -46,6 +46,13 @@ main button{color:var(--vscode-button-secondaryForeground,var(--vscode-foregroun
 .entry-grid{border-collapse:collapse;margin:4px 0}
 .entry-grid th,.entry-grid td{padding:2px 4px;text-align:left;font-weight:normal;border:1px solid var(--vscode-widget-border,var(--vscode-panel-border,GrayText))}
 .entry-grid th{color:var(--vscode-descriptionForeground)}
+.entry-parameter-row{display:flex;align-items:center;gap:10px;margin:4px 0;min-height:22px}
+.entry-parameter-row>input[type="text"]{width:208px;box-sizing:border-box;flex:none}
+.entry-parameter-row>input[type="text"]+div{white-space:nowrap}
+.entry-reference>button{min-width:26px;padding:2px 5px;cursor:pointer}
+.entry-reference-dialog{max-width:min(720px,90vw);max-height:75vh;overflow:auto;color:var(--vscode-editor-foreground);background:var(--vscode-editor-background);border:1px solid var(--vscode-panel-border)}
+.entry-reference-dialog table{border-collapse:collapse;margin:8px 0}
+.entry-reference-dialog th,.entry-reference-dialog td{padding:4px 8px;text-align:left;border:1px solid var(--vscode-panel-border)}
 .entry-variants{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
 .entry-note{color:var(--vscode-descriptionForeground)}
 .entry-error{color:var(--vscode-errorForeground)}
@@ -110,14 +117,16 @@ function selection(){var box=$("local-selection"),out={};
     given.forEach(function(input){out.$parameters[input.getAttribute("data-parameter")]=input.type==="checkbox"?(input.checked?"X":""):input.value;});}
   if(entryEditors)out.$entry=readEntry();
   return out;}
-function execute(){if(running)return;if(entryBlocked){status(entryBlocked,true);return;}var missing=missingObligatory();
+function executeWith(values){if(running)return;if(entryBlocked){status(entryBlocked,true);return;}var missing=values?[]:missingObligatory();
   if(missing.length){status("Fill in the required fields: "+missing.join(", ")+".",true);return;}
   running=true;$("execute").disabled=true;status("Transpiling and running "+INITIAL.name+".");
-  ask("run",{selection:selection()}).then(function(result){
+  ask("run",{selection:values||selection()}).then(function(result){
+    if(result&&result.deferred)return;
     showList(result.output);$("flow").disabled=!(result.trace&&result.trace.length);
     var steps=(result.trace||[]).length,seconds=(result.durationMs||0)/1000;
     status(result.ended?"Program finished: "+steps+" recorded steps, "+seconds.toFixed(3)+" s.":"Stopped at a breakpoint: Visual Debug shows where.");
   }).catch(function(error){status(error.message,true);}).then(function(){running=false;$("execute").disabled=false;});}
+function execute(){executeWith(null);}
 $("name").textContent=INITIAL.name;
 $("execute").onclick=execute;
 $("back").onclick=function(){showScreen();status("");};
@@ -130,8 +139,10 @@ document.addEventListener("keydown",function(e){
   else if(e.key==="F3"&&$("screen").hidden&&hasScreen){e.preventDefault();showScreen();status("");}});
 // A program with a selection screen shows it first; one without runs at once, as SAP starts it.
 if(INITIAL.pending){$("execute").disabled=true;$("mode").textContent="Preparing build";status("Reading SAP for the transpiler.");}
-loadScreen().then(function(screen){if(screen){showScreen();if(INITIAL.builtAt&&!INITIAL.pending)status("Build of "+new Date(INITIAL.builtAt).toLocaleString()+".");}
-  else if(!INITIAL.pending)execute();})
+else if(INITIAL.deferred){$("mode").textContent="Ready";status("Execute uses the saved build when available; Recompile reads SAP again.");}
+loadScreen().then(function(screen){if(screen){showScreen();if(INITIAL.autoSelection)executeWith(INITIAL.autoSelection);
+    else if(INITIAL.builtAt&&!INITIAL.pending)status("Build of "+new Date(INITIAL.builtAt).toLocaleString()+".");}
+  else if(!INITIAL.pending&&!INITIAL.deferred)execute();})
   .catch(function(error){status(error.message,true);});
 </script>
 </body></html>

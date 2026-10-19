@@ -1,5 +1,29 @@
 # Development history
 
+## Unreleased — Logic position and ALC function module
+
+The shared Logic diagram reset its viewport on each graph redraw, including Visual Debug record updates. It now fits once and preserves scroll and zoom on later redraws. The function module selection screen puts simple input labels beside the fields. In the ALC snapshot of `FIMA_DAYS_BETWEEN_TWO_DATES_2`, an unrelated SLO2 FORM called missing `FILL_AN_ENTRY`; unreachable function-group FORMs are omitted while keeping source line numbers. The saved snapshot transpiled after this change. Further offline execution encountered dictionary objects absent from that old snapshot, so full execution still requires a fresh SAP read. Dictionary closure now collects bare LIKE and chained TABLES dependencies, and format 6 refreshes old snapshots when used. Generated default binding is applied to the defining group, duplicate importing/exporting names are bound once, and legacy `><` is normalized for the transpiler. Focused local tests cover these cases and the Logic viewport behavior.
+
+The SAP run command now opens its program window without starting a dictionary read. Its first Execute starts the normal cached-build path; Recompile starts the fresh-read path. Previously compiled parameters are shown when the open Visual Debug source has them. After an Execute that needs to prepare a build, the new run window executes the already entered selection; without a prior selection it displays the newly compiled parameters for entry. The agent run path retains its direct behavior.
+
+## 2026-10-19 — 0.9.18: direct search finds packages
+
+`search_sap_objects` now queries ADT's `DEVC/K` type and maps it to `DEVC`. The direct chat route retries a bare name as prefix and contains patterns only after an empty exact search. Package choices use `open_sap_object` to open the package's Object Navigator in the correct system. Focused tests cover package metadata, ordered fallback and package opening.
+
+## 2026-10-19 — 0.9.17: empty recording after a successful function call
+
+The saved ALC `FIMA_END_OF_MONTH_DETERMINE` snapshot returned output in the non-live runner but no trace. `mappedPlaces` and `mappedLines` decoded only the first source-map segment on each generated line, leaving subsequent source and line deltas unapplied; later source positions became negative. Both decoders now consume every segment and retain the first mapped position for each line. A regression test uses two segments on one line, and the live offline run records ten steps and returns `E_DAYS_OF_MONTH=29` for `I_DATE=20160210`.
+
+## 2026-10-19 — 0.9.16: FIMA_DAYS_BETWEEN_TWO_DATES
+
+The saved ALC snapshot reproduced `Variable name "DEFAULT" already defined`: `moduleSignature` stopped at the hyphen in `LIKE VTBBEWE-JINTRADAY`, then treated the following DEFAULT as another parameter. It now consumes qualified type names and ADT pragmas. The old snapshot carried the incorrect parsed signature, so format 5 rereads that object on next use. The standalone call declares this module's generic `E_TAGE` as integer. The next local failures revealed unsupported `STATICS`, a standard module in FF05 omitted from FF04's call closure, and upper-case call binding keys that the generated callee read only in lower case. Statics now move to private, persistent group globals; reached standard modules in another group are included; generated callees accept either parameter spelling.
+
+With ALC's `FIMA_INTEREST_METHOD_CONVERT` source supplied temporarily for the offline check, the saved snapshot transpiled and executed with `I_DATUM_VON=20260115`, `I_DATUM_BIS=20271002`: `E_TAGE=617`, `E_SEKUNDEN=0`. The temporary SAP source was removed from the repository after verification. Focused regression tests cover signatures, cross-group calls, statics and parameter binding case. No direct SAP execution comparison was available.
+
+## 2026-10-19 — 0.9.15: ENDIF layout after an early return
+
+The Logic only diagram placed the next IF under the surviving branch when the other branch returned. The scheme now keeps the exit node as a structural tail to the visible `ENDIF` and draws continuation from that join only when a live path remains. No invisible layout edges are used. Focused tests cover the early RETURN, nested IF and TRY/CATCH cases. The universal VSIX was packaged, verified and installed locally.
+
 ## 2026-10-19 — 0.9.15: FIMA function module snapshot and offline run
 
 The ALC snapshot for `FIMA_DAYS_AND_MONTHS_AND_YEARS` exposed duplicate `GPDAYS`/`IDENT` fields because DD03L include/append markers were emitted beside flattened fields. `normalizeTableFields` now compares nesting depth (`ADMINFIELD`) and removes those markers. The collector saves `TYPE-POOLS` sources such as `TRFF`; the dictionary reader follows `LIKE TCURR-GDATU`, keeps `TYPES: BEGIN OF` scope across statements, and reads explicit table keys from DD42S. In `FIMA_END_OF_MONTH_DETERMINE`, the two `STATICS` fields are assigned before each read; its transpiler copy uses local `DATA` because the bundled transpiler throws at runtime for `STATICS`. The SAP source is unchanged.

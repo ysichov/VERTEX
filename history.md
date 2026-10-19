@@ -1,5 +1,29 @@
 # Release history
 
+## Unreleased — Logic scroll and function module build
+
+Logic diagrams retain their scroll position and zoom when a live recording updates the graph. Fit still applies on first display or when requested. Function module input labels appear to the right of their fields on one row. Unused function-group FORMs with unresolved calls no longer block transpilation; SAP dictionary discovery also includes bare LIKE references and all tables in a chained TABLES declaration. Cached snapshots are refreshed lazily under format 6.
+
+The SAP run window opens without reading SAP. Execute uses the saved build when valid and reads SAP only when needed; Recompile explicitly reads a fresh build.
+
+## 2026-10-19 — VS Code 0.9.18: package search and name fallback
+
+Direct SAP object search now includes packages (`DEVC/K`). A single package match opens in Object Navigator. When a plain name has no exact result, VERTEX searches `name*` and then `*name*`; an explicit wildcard pattern is used as entered. Search results remain bounded.
+
+## 2026-10-19 — VS Code 0.9.17: recorded function module output
+
+Source-map decoding now advances through every mapping segment on a generated line. This restores the recorded steps for function modules whose transpiled map contains multiple segments per line; without a first step, the run window reported `Local ABAP completed without a recorded statement` and hid the output. The saved ALC snapshot of `FIMA_END_OF_MONTH_DETERMINE` completed in the live runner with `I_DATE=20160210`, returning `E_DAYS_OF_MONTH=29` and an empty `E_FLG_END_OF_MONTH`.
+
+## 2026-10-19 — VS Code 0.9.16: advanced SAP function module runs
+
+Function signatures now keep qualified `LIKE table-field` types, their `DEFAULT` values and ADT pragmas without inventing parameters named `DEFAULT`. A reached standard SAP function module in another function group is read for the run. Module `STATICS` are stored as private function-group data so their values persist across calls, and generated function calls accept ABAP parameter names in either case. `FIMA_DAYS_BETWEEN_TWO_DATES` receives its generic `E_TAGE` in an integer field for a standalone run. Saved snapshots from the older signature format are refreshed when opened.
+
+An offline run from the ALC snapshot, with `I_DATUM_VON=20260115` and `I_DATUM_BIS=20271002`, completed with `E_TAGE=617` and `E_SEKUNDEN=0`. The separate `FIMA_INTEREST_METHOD_CONVERT` source was read from ALC for that check. This is a local result, not a comparison with execution in SAP.
+
+## 2026-10-19 — VS Code 0.9.15: Logic diagram ENDIF
+
+When one IF branch ends with `RETURN`, the Logic diagram now draws an explicit `ENDIF` reached from both displayed branches and starts the following block from it. This keeps the diagram centred. `RETURN` still ends execution; the connection to `ENDIF` shows the source structure.
+
 ## 2026-10-19 — VS Code 0.9.15: SAP function module transpilation
 
 Function module builds now read referenced type groups and a fuller SAP Dictionary snapshot, including flattened include/append fields, table type keys and tables named by `LIKE table-field`. This fixes duplicate fields such as `VTBKOND_MNT-GPDAYS` and missing types seen while compiling `FIMA_DAYS_AND_MONTHS_AND_YEARS`. A failed build is marked for a fresh SAP read; **Recompile** also rereads the sources and dictionary. The snapshot format changed, so an older saved build is refreshed when that object is next opened; other objects are not compiled in advance.

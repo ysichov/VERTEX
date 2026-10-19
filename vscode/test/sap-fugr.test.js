@@ -48,6 +48,33 @@ test("a module's signature in its FUNCTION statement, and its body on the same l
   assert.equal(body.split("\n")[11], "  PERFORM add USING iv_a iv_b CHANGING ev_sum.");
 });
 
+test("qualified LIKE fields and ADT pragmas do not become function parameters", () => {
+  const text = "FUNCTION fima_days_between_two_dates\n IMPORTING\n VALUE(i_flag) LIKE vtbbewe-jintraday DEFAULT SPACE\n" +
+    " VALUE(i_date) LIKE vtbbewe-dbervon DEFAULT '00010101'\n EXPORTING\n" +
+    " VALUE(e_tage) TYPE ANY ##ADT_PARAMETER_UNTYPED\n VALUE(e_seconds) TYPE tfmasekunden.\nENDFUNCTION.";
+  const parts = fugr.moduleSignature(text).parts;
+  assert.deepEqual(parts.IMPORTING.map(p => [p.name, p.like, p.default]),
+    [["I_FLAG", "VTBBEWE-JINTRADAY", "SPACE"], ["I_DATE", "VTBBEWE-DBERVON", "'00010101'"]]);
+  assert.deepEqual(parts.EXPORTING.map(p => p.name), ["E_TAGE", "E_SECONDS"]);
+});
+
+test("a reached standard module in another function group joins the run", async () => {
+  const first = "FUNCTION fima_days_between_two_dates.\n CALL FUNCTION 'FIMA_INTEREST_METHOD_CONVERT'.\nENDFUNCTION.";
+  const second = "FUNCTION fima_interest_method_convert.\nENDFUNCTION.";
+  const groupSources = (group, module, text) => ({ sources: [
+    { name: "SAPL" + group, kind: "main", text: "INCLUDE L" + group + "TOP." },
+    { name: "L" + group + "TOP", kind: "include", text: "FUNCTION-POOL " + group + "." },
+    { name: module, kind: "module", text, signature: fugr.moduleSignature(text) }
+  ] });
+  const bridge = { of: async module => module === "FIMA_INTEREST_METHOD_CONVERT" ? "FF05" : "FF04",
+    read: async group => group === "FF05"
+      ? groupSources("FF05", "FIMA_INTEREST_METHOD_CONVERT", second)
+      : groupSources("FF04", "FIMA_DAYS_BETWEEN_TWO_DATES", first) };
+  const sources = await collect(async () => { throw new Error("unexpected source read"); },
+    { name: "FIMA_DAYS_BETWEEN_TWO_DATES", type: "FUNC" }, { groups: bridge, customer: () => false });
+  assert.ok(sources.some(source => source.name === "FF05" && source.include === "FIMA_INTEREST_METHOD_CONVERT"));
+});
+
 test("the group is read whole: main program, includes but the generated UXX, every module", async () => {
   const read = await groups.read("ZFG");
   assert.deepEqual(read.sources.map(s => s.kind + " " + s.name),
@@ -74,6 +101,22 @@ test("a program calling a module brings its group, and steps into the module and
     assert.ok(result.records.some(r => path.basename(r.file) === "zfg.fugr.z_add.abap" && r.line === 12), "the module's line, as its tab has it");
     assert.ok(result.records.some(r => path.basename(r.file) === "zfg.fugr.lzfgf01.abap" && r.line === 3), "the FORM in the group's include");
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("an unused group FORM is not compiled with unresolved calls", async () => {
+  const extra = "\nFORM unused.\n  PERFORM missing_form.\nENDFORM.\n";
+  const isolated = { of: groups.of, read: async group => {
+    const data = await groups.read(group);
+    return { ...data, sources: data.sources.map(source => source.name === "LZFGF01"
+      ? { ...source, text: source.text + extra } : source) };
+  } };
+  const sources = await collect(async () => { throw Error("no program"); },
+    { name: "Z_ADD", type: "FUNC" }, { groups: isolated });
+  const include = sources.find(source => source.include === "LZFGF01");
+  assert.match(include.text, /FORM unused\./i);
+  assert.doesNotMatch(include.text, /PERFORM missing_form/i);
+  assert.match(include.text, /ASSERT 1 = 2/);
+  assert.match(include.text, /FORM add[\s\S]*sum = a \+ b/i);
 });
 
 test("a module runs by itself from its copy, its parameters asked", async () => {
@@ -114,5 +157,79 @@ test("a function group's non-L include provides its constants to modules", async
     await launch(out.vscode, false, { document, entryLine: 2, selection: {}, trace: true })
       .catch(error => { throw new Error(error.message + "\n" + out.log()); });
     assert.ok(fs.existsSync(path.join(folder, "output", "index.mjs")));
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("legacy ABAP >< is normalized without changing a quoted literal", () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-legacy-ne-"));
+  try {
+    const sources = [
+      { type: "FUGR", name: "ZFG", kind: "main", include: "SAPLZFG", text: "INCLUDE LZFGTOP.\nINCLUDE LZFGF01.\n" },
+      { type: "FUGR", name: "ZFG", kind: "include", include: "LZFGTOP", text: "FUNCTION-POOL ZFG.\n" },
+      { type: "FUGR", name: "ZFG", kind: "include", include: "LZFGF01", text: "FORM check.\n  IF a >< b.\n    WRITE ' >< '.\n  ENDIF.\nENDFORM.\n" }
+    ];
+    writeProject("TEST", sources, [], folder);
+    const text = fs.readFileSync(copyPath(folder, sources[2]), "utf8");
+    assert.match(text, /IF a <> b/);
+    assert.match(text, /WRITE ' >< '/);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("module STATICS become private group data with persistent VALUE initialization", () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-statics-"));
+  try {
+    const body = "FUNCTION z_count EXPORTING VALUE(ev_count) TYPE i.\n" +
+      "  STATICS: count TYPE i VALUE 1, total TYPE i.\n" +
+      "  count = count + 1.\n  total = total + count.\n  ev_count = total.\nENDFUNCTION.";
+    const sources = [
+      { type: "FUGR", name: "ZFG", kind: "main", include: "SAPLZFG", text: "INCLUDE LZFGTOP." },
+      { type: "FUGR", name: "ZFG", kind: "include", include: "LZFGTOP", text: "FUNCTION-POOL ZFG." },
+      { type: "FUGR", name: "ZFG", kind: "module", include: "Z_COUNT", text: body, signature: fugr.moduleSignature(body) }
+    ];
+    writeProject("TEST", sources, [], folder);
+    const top = fs.readFileSync(copyPath(folder, sources[1]), "utf8");
+    const module = fs.readFileSync(copyPath(folder, sources[2]), "utf8");
+    const aliases = [...top.matchAll(/ZVX_S[A-F0-9]{20}/g)].map(match => match[0]);
+    assert.equal(new Set(aliases).size, 2);
+    assert.match(top, /DATA: ZVX_S[A-F0-9]{20} TYPE i VALUE 1, ZVX_S[A-F0-9]{20} TYPE i\./i);
+    for (const alias of aliases) assert.match(module, new RegExp(alias));
+    assert.doesNotMatch(module, /STATICS|\bcount\b|\btotal\b/i);
+    assert.equal(module.split("\n").length, body.split("\n").length);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("generated modules accept upper-case ABAP parameter bindings", () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-params-"));
+  try {
+    const file = path.join(folder, "zfg.fugr.mjs");
+    fs.writeFileSync(file, "async function z_read(INPUT) { let e_days = INPUT.importing?.e_days; let i_date = INPUT.exporting?.i_date; }\n");
+    fugr.applyModuleDefaults(folder, [{ module: "Z_READ", params: [] }]);
+    const code = fs.readFileSync(file, "utf8");
+    assert.match(code, /INPUT\.importing\?\.e_days \?\? INPUT\.importing\?\.E_DAYS/);
+    assert.match(code, /INPUT\.exporting\?\.i_date \?\? INPUT\.exporting\?\.I_DATE/);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("module defaults are patched in the defining group, not a caller's group", () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-default-owner-"));
+  try {
+    fs.writeFileSync(path.join(folder, "a.fugr.mjs"), "if (abap.FunctionModules['Z_READ'] === undefined) throw Error();\n");
+    const owner = path.join(folder, "b.fugr.mjs");
+    fs.writeFileSync(owner, "async function z_read(INPUT) {\n  let i_flag = INPUT.exporting?.i_flag;\n  if (i_flag === undefined) {\n    i_flag = new abap.types.Character(1);\n  }\n}\nabap.FunctionModules['Z_READ'] = z_read;\n");
+    fugr.applyModuleDefaults(folder, [{ module: "Z_READ", params: [{ name: "I_FLAG", default: "SPACE" }] }]);
+    assert.match(fs.readFileSync(owner, "utf8"), /i_flag\.set\(" "\)/);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("a field declared as both importing and exporting has one generated binding", () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-shared-param-"));
+  try {
+    const file = path.join(folder, "zfg.fugr.mjs");
+    fs.writeFileSync(file, "async function z_read(INPUT) {\n  let date = INPUT.exporting?.date;\n  let date = INPUT.importing?.date;\n  if (date === undefined) {\n    date = (() => { throw Error('void'); })();\n  }\n}\nabap.FunctionModules['Z_READ'] = z_read;\n");
+    fugr.applyModuleDefaults(folder, [{ module: "Z_READ", params: [] }]);
+    const code = fs.readFileSync(file, "utf8");
+    assert.equal((code.match(/let date =/g) || []).length, 1);
+    assert.doesNotMatch(code, /throw Error\('void'\)/);
+    assert.match(code, /date\.set\(\(INPUT\.exporting\?\.date \?\? INPUT\.exporting\?\.DATE\)\)/);
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });

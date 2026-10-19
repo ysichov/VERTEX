@@ -7,6 +7,13 @@ const os = require("os");
 const path = require("path");
 const entry = require("../local-entry");
 
+test("source-map positions advance through every segment on a generated line", () => {
+  const trace = require("../local-trace");
+  const map = { mappings: "AAAA,AEOA;AAEA" };
+  assert.deepEqual(trace.mappedPlaces(map), [[0, 1], [2, 10]]);
+  assert.deepEqual(trace.mappedLines(map), [1, 0]);
+});
+
 const CLASS = `CLASS zcl_calc DEFINITION PUBLIC CREATE PUBLIC.
   PUBLIC SECTION.
     TYPES: BEGIN OF ty_item, matnr TYPE c LENGTH 18, qty TYPE i, END OF ty_item,
@@ -133,6 +140,19 @@ test("a reference is declared as REF TO: as a result it is kept for Variables, n
   const source = entry.driverSource(screen, { parameters: { IV_NAME: "X" } });
   assert.ok(source.includes("DATA RO_MODIFIER TYPE REF TO zif_mod."));
   assert.ok(!source.includes("'RO_MODIFIER ='"), "a reference is not written");
+});
+
+test("a required class reference is created by default and exposes its class variables", () => {
+  const log = "CLASS zcl_calc_log DEFINITION PUBLIC FINAL CREATE PRIVATE.\n  PRIVATE SECTION.\n    DATA mt_log TYPE string.\nENDCLASS.\nCLASS zcl_calc_log IMPLEMENTATION.\nENDCLASS.\n";
+  const owner = "CLASS zcl_owner DEFINITION PUBLIC CREATE PUBLIC.\n  PUBLIC SECTION.\n    METHODS run IMPORTING io_log TYPE REF TO zcl_calc_log.\nENDCLASS.\nCLASS zcl_owner IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\nENDCLASS.\n";
+  const { paths } = folder({ "zcl_calc_log.clas.abap": log, "zcl_owner.clas.abap": owner });
+  const target = entry.targetAt(paths[1], owner, 6), screen = entry.screenOf(entry.parametersOf(target, paths), paths);
+  const shape = screen.parameters[0].shape;
+  assert.equal(shape.className, "ZCL_CALC_LOG");
+  assert.equal(shape.createDefault, true);
+  assert.deepEqual(shape.attributes.map(a => a.name), ["MT_LOG"]);
+  assert.match(entry.driverSource(screen, {}), /IO_LOG = NEW zcl_calc_log\( \)\./);
+  assert.match(entry.driverSource(screen, { parameters: { IO_LOG: { create: true } } }), /IO_LOG = NEW zcl_calc_log\( \)\./);
 });
 
 test("the call program is not recorded: the run shows only the code it calls", () => {

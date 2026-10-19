@@ -3,6 +3,7 @@
 // JSON-facing repository operations. No VS Code, model, MCP or credentials here.
 const { createHash, randomUUID } = require("crypto");
 const TYPES = Object.freeze({ PROG: "PROG/P", INCL: "PROG/I", CLAS: "CLAS/OC", FUNC: "FUGR/FF", INTF: "INTF/OI" });
+const PACKAGE_TYPE = "DEVC/K";
 const MAX_ANALYSED_LINES = 50000;
 const ANALYSIS_BUDGET_MS = 20000;
 const DOCU_RADIUS = 400;
@@ -51,7 +52,7 @@ function row(item) {
     object_name: item["adtcore:name"],
     // Some ADT backends expose a function module as its generated include
     // (`FUGR/I`) rather than the usual module reference (`FUGR/FF`).
-    object_type: Object.keys(TYPES).find(key => TYPES[key] === item["adtcore:type"])
+    object_type: item["adtcore:type"] === PACKAGE_TYPE ? "DEVC" : Object.keys(TYPES).find(key => TYPES[key] === item["adtcore:type"])
       || (/^FUGR\//.test(String(item["adtcore:type"])) ? "FUNC" : undefined),
     description: item["adtcore:description"] || "",
     package: item["adtcore:packageName"] || "",
@@ -81,12 +82,14 @@ function createRepository({ client, systemId, emit = () => {} }) {
     }
     const max = args.limit === undefined ? 50 : args.limit;
     if (!Number.isInteger(max) || max < 1 || max > 200) { throw new Error("limit must be 1..200."); }
-    const types = args.object_type ? [type(args.object_type)] : Object.keys(TYPES);
+    const types = args.object_type ? [args.object_type === "DEVC" ? "DEVC" : type(args.object_type)]
+      : Object.keys(TYPES).concat("DEVC");
     const all = [];
     // A stateful SAP client is never shared by parallel requests.
     for (const key of types) {
-      const matches = await client.searchObject(query.toUpperCase(), TYPES[key], max + 1);
-      all.push(...matches.filter(x => x["adtcore:type"] === TYPES[key]).map(row));
+      const adtType = key === "DEVC" ? PACKAGE_TYPE : TYPES[key];
+      const matches = await client.searchObject(query.toUpperCase(), adtType, max + 1);
+      all.push(...matches.filter(x => x["adtcore:type"] === adtType).map(row));
       if (key === "FUNC" && !matches.some(x => x["adtcore:type"] === TYPES.FUNC)) {
         // Some ADT systems index function modules under another FUGR type.
         // Use the same unfiltered fallback as resolve() before reporting none.

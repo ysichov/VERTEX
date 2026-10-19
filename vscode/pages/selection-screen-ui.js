@@ -75,8 +75,30 @@ function structureEditor(p,onChange){
   return {el:fold,fold:fold,read:function(){var o={},any=false;Object.keys(parts).forEach(function(k){var v=parts[k].read();if(v!==undefined){o[k]=v;any=true;}});return any?o:(p.optional?undefined:{});},
     write:function(v){Object.keys(parts).forEach(function(k){parts[k].write(v&&v[k]);});refresh();}};
 }
+function referenceEditor(p){
+  var shape=p.shape,wrap=document.createElement("span"),button=document.createElement("button"),dialog=document.createElement("dialog");
+  var enabled=!!shape.createDefault&&!p.optional;
+  wrap.className="entry-reference";button.type="button";button.textContent="▣";
+  button.title="Open class variables of "+(shape.className||shape.type);button.setAttribute("aria-label",button.title);
+  dialog.className="entry-reference-dialog";
+  var title=document.createElement("h3");title.textContent=shape.className||shape.type;dialog.appendChild(title);
+  var note=document.createElement("p");note.textContent=shape.createDefault
+    ? "Default class instance. Runtime values appear in Variables after the run."
+    : "This reference has no available default class constructor.";dialog.appendChild(note);
+  if(p.optional&&shape.createDefault){var choice=document.createElement("label"),check=document.createElement("input");check.type="checkbox";
+    choice.append(check,document.createTextNode(" Create default instance"));dialog.appendChild(choice);
+    check.onchange=function(){enabled=check.checked;};}
+  if(shape.attributes&&shape.attributes.length){var table=document.createElement("table"),head=document.createElement("tr");
+    ["Variable","Type","Scope","Declared default"].forEach(function(s){var cell=document.createElement("th");cell.textContent=s;head.appendChild(cell);});table.appendChild(head);
+    shape.attributes.forEach(function(a){var row=document.createElement("tr");[a.name,a.type,a.static?"Class":"Instance",a.initial||"Initial"].forEach(function(s){var cell=document.createElement("td");cell.textContent=s;row.appendChild(cell);});table.appendChild(row);});dialog.appendChild(table);
+  }else{var empty=document.createElement("p");empty.textContent="No class variables in the saved source.";dialog.appendChild(empty);}
+  var close=document.createElement("button");close.type="button";close.textContent="Close";close.onclick=function(){dialog.close();};dialog.appendChild(close);
+  button.onclick=function(){dialog.showModal();};wrap.append(button,dialog);
+  return {el:wrap,read:function(){return enabled?{create:true}:undefined;},write:function(v){enabled=!!shape.createDefault&&(!p.optional||!!v?.create);if(check)check.checked=enabled;}};
+}
 function entryEditor(p,onChange){
   var shape=p.shape||{kind:"simple"};
+  if(shape.kind==="reference")return referenceEditor(p);
   if(shape.kind==="structure")return structureEditor(p,onChange);
   // A table of structures: its rows shown as a table; the row picked is entered below it as a structure, and a row is
   // duplicated to make the next one from it.
@@ -150,7 +172,9 @@ function fillEntry(box,entry){
   var group=function(title,list,into){if(!list.length)return;var field=document.createElement("fieldset"),legend=document.createElement("legend");legend.textContent=title;field.appendChild(legend);
     list.forEach(function(p){var label=document.createElement("div"),head=document.createElement("div"),editor=entryEditor(p);
       head.textContent=p.name+(p.optional?" (optional)":"")+(p.shape&&p.shape.kind!=="simple"?" · "+p.shape.kind:p.shape&&p.shape.type?" · "+p.shape.type:"");
-      label.append(head,editor.el);label.style.margin="4px 0";field.appendChild(label);into[p.name]=editor;});box.appendChild(field);};
+      label.className="entry-parameter-row";
+      if(!p.shape||p.shape.kind==="simple")label.append(editor.el,head);else label.append(head,editor.el);
+      field.appendChild(label);into[p.name]=editor;});box.appendChild(field);};
   group("Constructor of "+(t.object||""),entry.creation||[],entryEditors.creation);
   var ins=(entry.parameters||[]).filter(function(p){return ["importing","changing","tables"].indexOf(p.direction)>=0;});
   group((t.kind==="function"?"CALL FUNCTION '"+t.name+"'":t.object+(t.static?"=>":"->")+t.name)+" · importing, changing, tables",ins,entryEditors.parameters);

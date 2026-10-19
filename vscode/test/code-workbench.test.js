@@ -150,6 +150,15 @@ test("read_sap_method exposes a bounded method instead of the whole class", asyn
   assert.equal(result.next_line, 4);
   assert.ok(!result.source.includes("CLASS ztest"));
 });
+test("opening a package uses Object Navigator", async () => {
+  const h = host();
+  const result = await h.tools.execute("open_sap_object", { object_type: "DEVC", object_name: "Z_RIG" });
+  assert.equal(result.opened, true);
+  assert.equal(h.diffs.at(-1)[0], "vertex.tools");
+  assert.deepEqual(JSON.parse(JSON.stringify(h.diffs.at(-1)[1])),
+    { type: "DEVC", name: "Z_RIG", action: "navigator", systemName: "DEV" });
+  assert.equal(h.documents.length, 0);
+});
 test("chained constructor method navigation opens implementation and replaces a clean tab", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "PROG" });

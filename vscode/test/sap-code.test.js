@@ -12,6 +12,7 @@ function fixture(kind = "PROG") {
   const client = {
     async searchObject(query, filter) {
       calls.push(["search", query, filter]);
+      if (filter === "DEVC/K" && query !== "$TMP" && query !== "Z_RIG") return [];
       if (filter === "DEVC/K" || filter === "FUGR/F") {
         return [{ "adtcore:name": query, "adtcore:type": filter, "adtcore:uri": "/sap/bc/adt/packages/local", "adtcore:packageName": "$TMP" }];
       }
@@ -208,6 +209,12 @@ test("function module search finds a module indexed outside FUGR/FF", async () =
   assert.deepEqual(result.objects.map(object => [object.object_type, object.object_name]),
     [["FUNC", "FIMA_DAYS_AND_MONTHS_AND_YEARS"]]);
   assert.ok(filters.includes(undefined));
+});
+test("package search returns DEVC results", async () => {
+  const f = fixture();
+  const result = await f.repo.execute("search_sap_objects", { query: "Z_RIG", object_type: "DEVC" });
+  assert.deepEqual(result.objects.map(object => [object.object_type, object.object_name]), [["DEVC", "Z_RIG"]]);
+  assert.deepEqual(f.calls.filter(call => call[0] === "search"), [["search", "Z_RIG", "DEVC/K"]]);
 });
 test("a second SAP search waits for the first instead of reporting a busy session", async () => {
   const f = fixture();

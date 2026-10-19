@@ -40,9 +40,13 @@ function dictionaryNames(text) {
       }
       add(j);
     }
-    // LIKE dbtab-field also needs the table definition; TYPE alone misses it.
-    if (current === "LIKE" && at(i + 2) === "-") add(i + 1);
-    if ((sql && (current === "FROM" || current === "JOIN") || current === "TABLES" && first === "TABLES") && tokens[i + 1]) add(i + 1);
+    // LIKE can name a Dictionary structure as well as dbtab-field.
+    if (current === "LIKE") add(i + 1);
+    if (sql && (current === "FROM" || current === "JOIN") && tokens[i + 1]) add(i + 1);
+    if (current === "TABLES" && first === "TABLES") {
+      for (let j = i + 1; j < tokens.length && at(j) !== "."; j++)
+        if (tokens[j].kind === "word" && (j === i + 1 || [":", ","].includes(at(j - 1)))) add(j);
+    }
   }
   return names;
 }

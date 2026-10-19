@@ -9,12 +9,14 @@ const SYSTEM = { type: "string", description: "SAP system name from vertex.syste
   + "Use it when the user names a system, or to reach the system an open editor or VERTEX Tools window belongs to." };
 const withSystem = tool => tool.name === "review_sap_changes" ? tool : { ...tool,
   inputSchema: { ...tool.inputSchema, properties: { ...tool.inputSchema.properties, system: SYSTEM } } };
+const openSchema = require("./schemas/sap-code-tools.json").find(t => t.name === "read_sap_object").inputSchema;
 const schemas = require("./schemas/sap-code-tools.json").concat([{
   name: "open_sap_object",
-  description: "Open SAP source in an editable VS Code tab on the right. Use for requests to open/show code. Does not save to SAP.",
+  description: "Open SAP source in an editable VS Code tab, or a package in Object Navigator. Does not save to SAP.",
   // Opens the SAP editor without modifying repository data.
   annotations: { readOnlyHint: true, destructiveHint: false },
-  inputSchema: require("./schemas/sap-code-tools.json").find(t => t.name === "read_sap_object").inputSchema
+  inputSchema: { ...openSchema, properties: { ...openSchema.properties,
+    object_type: { ...openSchema.properties.object_type, enum: openSchema.properties.object_type.enum.concat("DEVC") } } }
 }, {
   name: "run_abap_unit",
   description: "Run the ABAP Unit tests of a class or program in SAP and return the result: test classes, passed, failed and the failure messages. "
@@ -1164,6 +1166,13 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     return entry;
   }
   async function showSource(repo, args) {
+    if (args.object_type === "DEVC") {
+      const packageName = String(args.object_name || "").toUpperCase();
+      if (!/^[A-Z0-9_/$]+$/.test(packageName) || packageName.length > 40) throw new Error("Invalid package name.");
+      await vscode.commands.executeCommand("vertex.tools", { type: "DEVC", name: packageName,
+        action: "navigator", systemName: repo.system.name });
+      return { opened: true, object_name: packageName, object_type: "DEVC", system: repo.label };
+    }
     const entry = await sourceDocument(repo, args);
     await vscode.window.showTextDocument(entry.document, { preview: false, viewColumn: vscode.ViewColumn.Beside });
     if (debuggerApi) queueBreakpointSync();
