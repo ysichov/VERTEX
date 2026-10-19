@@ -181,6 +181,26 @@ async function collect(read, root, { progress = () => {}, cancelled = () => fals
     // A group's own INCLUDEs are read with the group.
     for (const [name, type] of named.objects) if (!(inGroup && type === "INCL") && !seen.has(name)) { seen.add(name); queue.push({ name, type }); }
   };
+  const scannedModules = new Set();
+  const scanCalledModules = () => {
+    for (let again = true; again;) {
+      again = false;
+      for (const source of loaded) {
+        if (source.type !== "FUGR" || source.kind !== "module" || !called.has(source.include)
+          || scannedModules.has(source.include)) continue;
+        scannedModules.add(source.include);
+        // Calls to SAP-standard modules in the same group are local to this
+        // build too, even though `customerObject` would not queue them.
+        const available = new Set(loaded.filter(item => item.type === "FUGR" && item.kind === "module"
+          && item.name === source.name).map(item => item.include));
+        for (const module of namedObjects(source.text, () => true).functions)
+          if (available.has(module)) called.add(module);
+        scan(source.name, statementsOf(source.text), true);
+        settle();
+        again = true;
+      }
+    }
+  };
   if (up(root.type) === "FUNC") { seen.add("FUNC:" + up(root.name)); called.add(up(root.name)); queue.push({ name: up(root.name), type: "FUNC" }); }
   else { seen.add(up(root.name)); queue.push({ name: up(root.name), type: up(root.type) }); }
   while (queue.length) {
@@ -199,6 +219,7 @@ async function collect(read, root, { progress = () => {}, cancelled = () => fals
         offer(source.name, "FUGR", source.text, true, false);
       }
       settle();
+      scanCalledModules();
       continue;
     }
     let data;
@@ -229,6 +250,7 @@ async function collect(read, root, { progress = () => {}, cancelled = () => fals
       offer(next.name, "CLAS", part.source, false, false);
     }
     settle();
+    scanCalledModules();
   }
   // What the run reaches is all that goes to the transpiler: a class keeps its definition and the bodies of its reached
   // methods only.
@@ -237,13 +259,18 @@ async function collect(read, root, { progress = () => {}, cancelled = () => fals
     const names = new Set([...reached].filter(key => key.startsWith(source.name + ":")).map(key => key.slice(source.name.length + 1)));
     source.text = stubUnreached(source.text, names);
   }
-  return loaded;
+  // A direct function-module run compiles the called modules only. An SAP
+  // function group can contain many unrelated modules with unsupported ABAP;
+  // their bodies are not part of this run's call closure.
+  return up(root.type) === "FUNC" ? loaded.filter(source => source.type !== "FUGR" || source.kind !== "module"
+    || called.has(source.include)) : loaded;
 }
 
 /* abapGit's file name of an object: lower case, a namespace's slashes as #. A function group's part is
    <group>.fugr.<part>.abap. */
 function fileName(name, type, include = "main") {
   const base = name.toLowerCase().replace(/\//g, "#");
+  if (type === "TYPE") return base + ".type.abap";
   if (type === "FUGR") return base + ".fugr." + include.toLowerCase().replace(/\//g, "#") + ".abap";
   if (type === "CLAS") return base + ".clas." + (include === "main" ? "" : CLASS_PARTS[include] + ".") + "abap";
   if (type === "INTF") return base + ".intf.abap";
@@ -313,8 +340,35 @@ function writeProject(system, sources, dictionary = [], folder = path.join(os.tm
   fs.mkdirSync(src, { recursive: true });
   fs.mkdirSync(sap, { recursive: true });
   const written = [], programs = [], texts = new Map();
+  // abaplint associates function-group includes only when their names start
+  // with L. SAP groups can also include arbitrary names (FF04 uses
+  // FIMA_CONSTANTS), so give those files an internal L-prefixed alias.
+  const aliasCounts = new Map();
+  const nonLIncludes = sources.filter(source => source.type === "FUGR" && source.kind === "include"
+    && !source.include.toUpperCase().startsWith("L"));
+  const aliasSources = nonLIncludes.map(source => {
+    const number = (aliasCounts.get(source.name) || 0) + 1;
+    aliasCounts.set(source.name, number);
+    return { ...source, include: "L" + source.name + "VERTEX" + String(number).padStart(3, "0") };
+  });
+  const projectSources = sources.concat(aliasSources);
+  const includeAliases = new Map(nonLIncludes.map((source, index) =>
+    [source.name + "|" + source.include.toUpperCase(), aliasSources[index].include]));
+  const aliasedText = source => source.text.replace(/\bINCLUDE\s+([A-Z0-9_\/]+)(\s*\.)/gi,
+    (statement, include, end) => "INCLUDE " + (includeAliases.get(source.name + "|" + include.toUpperCase()) || include) + end)
+    .replace(/\bVALUE\s+space\b/gi, "VALUE ' '");
+  const moduleText = source => {
+    let body = require("./sap-fugr").moduleBody(source.text, source.signature);
+    // The transpiler emits an unconditional runtime error for STATICS. In this
+    // SAP module both fields are assigned before every read, so local DATA has
+    // the same observable value on every invocation.
+    if (source.include === "FIMA_END_OF_MONTH_DETERMINE")
+      body = body.replace(/\bSTATICS\s*:\s*HLP_DATE_YEAR\s+TYPE\s+I\s*,\s*HLP_REST\s+TYPE\s+I\s*\./i,
+        "DATA: HLP_DATE_YEAR TYPE I,\n      HLP_REST TYPE I.");
+    return body;
+  };
   let shown = null;
-  for (const source of sources) {
+  for (const source of projectSources) {
     if (source.type === "PROG" || source.type === "INCL") {
       const file = copyPath(folder, source);
       fs.writeFileSync(file, source.text);
@@ -324,8 +378,7 @@ function writeProject(system, sources, dictionary = [], folder = path.join(os.tm
       continue;
     }
     const file = copyPath(folder, source);
-    fs.writeFileSync(file, omitListFormat(source.kind === "module"
-      ? require("./sap-fugr").moduleBody(source.text, source.signature) : source.text));
+    fs.writeFileSync(file, omitListFormat(source.kind === "module" ? moduleText(source) : aliasedText(source)));
     written.push(file);
   }
   // The DEFAULTs of the modules' optional parameters, which the transpiler leaves unset (sap-fugr applyModuleDefaults).
@@ -333,9 +386,9 @@ function writeProject(system, sources, dictionary = [], folder = path.join(os.tm
     .map(source => ({ module: source.include, params: [...source.signature.parts.IMPORTING, ...source.signature.parts.CHANGING]
       .filter(param => param.default !== undefined).map(param => ({ name: param.name, default: param.default })) }))));
   // Each function group's XML: its includes and its modules' signatures.
-  for (const group of new Set(sources.filter(source => source.type === "FUGR").map(source => source.name))) {
+  for (const group of new Set(projectSources.filter(source => source.type === "FUGR").map(source => source.name))) {
     const file = path.join(src, group.toLowerCase().replace(/\//g, "#") + ".fugr.xml");
-    fs.writeFileSync(file, require("./sap-fugr").groupXml(group, sources.filter(source => source.type === "FUGR" && source.name === group)));
+    fs.writeFileSync(file, require("./sap-fugr").groupXml(group, projectSources.filter(source => source.type === "FUGR" && source.name === group)));
     written.push(file);
   }
   const maps = [];

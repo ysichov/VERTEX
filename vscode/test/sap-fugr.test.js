@@ -80,6 +80,8 @@ test("a module runs by itself from its copy, its parameters asked", async () => 
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-fm-"));
   try {
     const sources = await collect(async () => { throw new Error("no program"); }, { name: "Z_TWICE", type: "FUNC" }, { groups });
+    assert.deepEqual(sources.filter(s => s.kind === "module").map(s => s.include), ["Z_TWICE"],
+      "an unrelated module of the group is not compiled for a direct FM run");
     writeProject("TEST", sources, [], folder);
     const module = sources.find(s => s.include === "Z_TWICE");
     const file = copyPath(folder, module);
@@ -89,5 +91,28 @@ test("a module runs by itself from its copy, its parameters asked", async () => 
     const result = await launch(out.vscode, false, { document, entryLine: 6, trace: true, selection: { $entry: { parameters: { IV_N: "21" } } } })
       .catch(error => { throw new Error(error.message + "\n" + out.log()); });
     assert.match(result.output, /VERTEX:S	EV_N	42/);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
+test("a function group's non-L include provides its constants to modules", async () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-fugr-nonl-"));
+  try {
+    const body = "FUNCTION z_constant IMPORTING VALUE(iv_blank) TYPE c DEFAULT SPACE EXPORTING VALUE(ev_n) TYPE i.\n  ev_n = con_answer.\nENDFUNCTION.\n";
+    const sources = [
+      { type: "FUGR", name: "ZFG", kind: "main", include: "SAPLZFG", text: "INCLUDE lzfgtop.\n" },
+      { type: "FUGR", name: "ZFG", kind: "include", include: "LZFGTOP", text: "FUNCTION-POOL zfg.\nINCLUDE ZCONSTANTS.\n" },
+      { type: "FUGR", name: "ZFG", kind: "include", include: "ZCONSTANTS", text: "CONSTANTS con_answer TYPE i VALUE 42.\nCONSTANTS con_space TYPE c VALUE space.\n" },
+      { type: "FUGR", name: "ZFG", kind: "module", include: "Z_CONSTANT", text: body,
+        signature: fugr.moduleSignature(body) }
+    ];
+    const file = writeProject("TEST", sources, [], folder);
+    assert.match(fs.readFileSync(path.join(folder, "src", "zfg.fugr.xml"), "utf8"), /<SOBJ_NAME>LZFGVERTEX001<\/SOBJ_NAME>/);
+    assert.ok(fs.existsSync(path.join(folder, "src", "zfg.fugr.lzfgvertex001.abap")));
+    const module = copyPath(folder, sources[3]);
+    const document = { uri: { scheme: "file", fsPath: module }, getText: () => fs.readFileSync(module, "utf8") };
+    const out = silent();
+    await launch(out.vscode, false, { document, entryLine: 2, selection: {}, trace: true })
+      .catch(error => { throw new Error(error.message + "\n" + out.log()); });
+    assert.ok(fs.existsSync(path.join(folder, "output", "index.mjs")));
   } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });

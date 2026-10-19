@@ -1,5 +1,20 @@
 # Release history
 
+## 2026-10-19 — VS Code 0.9.15: SAP function module transpilation
+
+Function module builds now read referenced type groups and a fuller SAP Dictionary snapshot, including flattened include/append fields, table type keys and tables named by `LIKE table-field`. This fixes duplicate fields such as `VTBKOND_MNT-GPDAYS` and missing types seen while compiling `FIMA_DAYS_AND_MONTHS_AND_YEARS`. A failed build is marked for a fresh SAP read; **Recompile** also rereads the sources and dictionary. The snapshot format changed, so an older saved build is refreshed when that object is next opened; other objects are not compiled in advance.
+
+The function module was transpiled and executed offline from an ALC snapshot with dates 2026-01-15 and 2027-10-02. Direct comparison with SAP was unavailable because the RFC WebSocket endpoint did not connect.
+
+## 2026-10-18 — VS Code 0.9.15: watchpoints and local hypothesis runs
+
+The assistant can add and remove SAP ADT variable watchpoints during a stopped debug session. Local transpiler runs can replace a scalar variable at a chosen source line and occurrence; the recorded history identifies the replacement and its before and after values. History responses continue to send changes by default, with full state available on request.
+Visual Debug now has the same Watch control for SAP and transpiler runs. Without a condition, it stops on any change; the optional When comparison stops only when the new value reaches the requested condition. Watch Follow expands the existing value analysis into watchpoints for the variable names on that calculation path and applies the condition to each.
+
+## 2026-10-18 — VS Code 0.9.15: SAP selection texts in transpiler runs
+
+The selection screen of a SAP program run with the transpiler now reads its parameter labels and text symbols through ADT's text elements endpoint. The screen shows the labels configured in SAP instead of technical names such as `P_CLEAN`.
+
 ## Unreleased — ADT workspace import on macOS
 
 Import SAP Systems can read system ID, server, instance, client and user from ABAP projects in an Eclipse ADT workspace without SAP Logon. On macOS it also looks for Eclipse app bundles and their recent workspaces. The usual ADT HTTP ports are still checked before a system is offered.

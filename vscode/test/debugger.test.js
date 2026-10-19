@@ -19,7 +19,7 @@ function fakeDumps(entries = []) {
    Each stop carries the variables the program has there. */
 function fakeSap({ stops = [], conflict = false, probe = fakeDumps(), dumpOnEnd = null, manualPoll = false,
   attachError = null, stepError = null, explain, connectGate = null, timers = {} } = {}) {
-  const calls = [], sent = [], scopedSent = [];
+  const calls = [], sent = [], scopedSent = [], watchpoints = [];
   let released = null, position = -1;
   let polls = 0, mostPolls = 0, connects = 0;
   const hit = { DEBUGGEE_ID: "D1", PRG_CURR: "Z_CALC", INCL_CURR: "Z_CALC", LINE_CURR: stops[0] && stops[0].line };
@@ -92,11 +92,23 @@ function fakeSap({ stops = [], conflict = false, probe = fakeDumps(), dumpOnEnd 
         if (dumpOnEnd) { probe.push(dumpOnEnd); }
         throw new Error("An exception was raised");
       }
-      return { reachedBreakpoints: stops[position].reached ? [{ id: stops[position].reached }] : [] };
+      return { reachedBreakpoints: stops[position].reached ? [{ id: stops[position].reached }] : [],
+        reachedWatchpoints: stops[position].watchpoint ? [{ id: stops[position].watchpoint }] : [] };
     },
     // ADT's debugger batch: the step and the stack after it, as SAP answers them.
     httpClient: {
       async request(url, options) {
+        if (url.startsWith("/sap/bc/adt/debugger/watchpoints")) {
+          calls.push(options.method + " " + url);
+          if (options.method === "POST") {
+            const params = new URL("https://sap.example" + url).searchParams;
+            watchpoints.push({ id: "WP1", variableName: params.get("variableName"), condition: params.get("condition") || "" });
+          } else if (options.method === "DELETE") watchpoints.splice(watchpoints.findIndex(w => w.id === url.split("/").at(-1)), 1);
+          const body = '<dbg:watchpoints xmlns:dbg="http://www.sap.com/adt/debugger">' + watchpoints.map(w =>
+            '<dbg:watchpoint id="' + w.id + '" variableName="' + w.variableName + '"><dbg:condition>' + w.condition
+            + '</dbg:condition><dbg:oldValue>1</dbg:oldValue><dbg:currentValue>2</dbg:currentValue></dbg:watchpoint>').join("") + '</dbg:watchpoints>';
+          return { status: 200, body };
+        }
         if (url !== "/sap/bc/adt/debugger/batch") { throw new Error("unexpected request " + url); }
         calls.push("batch");
         const kind = /method=(\w+) HTTP/.exec(options.body)[1];
@@ -104,7 +116,8 @@ function fakeSap({ stops = [], conflict = false, probe = fakeDumps(), dumpOnEnd 
         const part = (status, body) => "--" + boundary + "\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 " + status
           + "\r\nContent-Type: application/xml\r\n\r\n" + body + "\r\n";
         let step;
-        try { await session.debuggerStep(kind); step = part("200 OK", '<?xml version="1.0"?><dbg:step xmlns:dbg="http://www.sap.com/adt/debugger" isSteppingPossible="true"/>'); }
+        try { const result = await session.debuggerStep(kind); step = part("200 OK", '<?xml version="1.0"?><dbg:step xmlns:dbg="http://www.sap.com/adt/debugger" isSteppingPossible="true">'
+          + (result.reachedWatchpoints || []).map(w => '<dbg:reachedWatchpoints><dbg:watchpoint id="' + w.id + '"/></dbg:reachedWatchpoints>').join("") + '</dbg:step>'); }
         catch (error) {
           const failed = '<?xml version="1.0"?><exc:exception xmlns:exc="http://www.sap.com/abapxml/types/communicationframework"><message lang="EN">' + error.message + "</message></exc:exception>";
           return { status: 202, body: part("400 Bad Request", failed) + part("400 Bad Request", failed) + "--" + boundary + "--\r\n" };
@@ -155,6 +168,26 @@ function fakeSap({ stops = [], conflict = false, probe = fakeDumps(), dumpOnEnd 
 
 const simple = (name, value) => ({ ID: name, NAME: name, META_TYPE: "simple", VALUE: value });
 const turn = () => new Promise(resolve => setImmediate(resolve));
+
+test("SAP watchpoint is registered, reports a hit, and is removed", async () => {
+  const f = fakeSap({ stops: [
+    { line: 10, vars: [simple("LV_TOTAL", "1")] },
+    { line: 11, vars: [simple("LV_TOTAL", "2")], watchpoint: "WP1" }
+  ] });
+  await f.dbg.setBreakpoint({ name: "Z_CALC", line: 10 });
+  await f.dbg.wait(1);
+  const created = await f.dbg.setWatchpoint("lv_total");
+  assert.equal(created.id, "WP1");
+  assert.equal(created.variableName, "LV_TOTAL");
+  await f.dbg.step();
+  const hit = f.dbg.picture().stopped.watchpoints[0];
+  assert.equal(hit.id, "WP1");
+  assert.equal(hit.oldValue, "1");
+  assert.equal(hit.currentValue, "2");
+  await f.dbg.clearWatchpoint("WP1");
+  assert.deepEqual(f.dbg.listWatchpoints(), []);
+  await f.dbg.stop();
+});
 
 function fakeTimers() {
   const pending = new Map();

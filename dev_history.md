@@ -1,5 +1,21 @@
 # Development history
 
+## 2026-10-19 — 0.9.15: FIMA function module snapshot and offline run
+
+The ALC snapshot for `FIMA_DAYS_AND_MONTHS_AND_YEARS` exposed duplicate `GPDAYS`/`IDENT` fields because DD03L include/append markers were emitted beside flattened fields. `normalizeTableFields` now compares nesting depth (`ADMINFIELD`) and removes those markers. The collector saves `TYPE-POOLS` sources such as `TRFF`; the dictionary reader follows `LIKE TCURR-GDATU`, keeps `TYPES: BEGIN OF` scope across statements, and reads explicit table keys from DD42S. In `FIMA_END_OF_MONTH_DETERMINE`, the two `STATICS` fields are assigned before each read; its transpiler copy uses local `DATA` because the bundled transpiler throws at runtime for `STATICS`. The SAP source is unchanged.
+
+Snapshot format 4 invalidates older saved dictionaries only when their object is used again. Failed builds require a fresh read, and Recompile forces one. The saved ALC snapshot passed offline transpilation and local execution with `I_DATE_FROM=20260115`, `I_DATE_TO=20271002`, returning `E_DAYS=625`, `E_MONTHS=21`, `E_YEARS=2`. Fixture additions for `TCURR`, `SKONDGRP` and `LVC_T_STYL` were checked against ALC; the new reader gets them on a fresh build. Focused tests passed (49/49). Direct SAP RFC comparison was blocked by the unavailable `ZADT_VSP` WebSocket endpoint. The universal VSIX was packaged, verified and installed locally.
+
+## 2026-10-18 — ADT watchpoints and local variable interventions
+
+The SAP debugger now calls ADT's watchpoint create/list/delete endpoints and reads reached watchpoint IDs from step responses. The local transpiler instruments requested executable source lines, applies a scalar replacement on the requested occurrence and records its observed before/after values in the trace. The run tool passes interventions through both launch paths and the history tool exposes them. Local integration and fake ADT protocol tests cover the behavior; live SAP watchpoints have not yet been exercised.
+Visual Debug's Variables pane can add and remove watchpoints through the same commands in both modes. Local live Continue stops on matching changes; recorded Continue finds the next matching trace event. Component comparison checks that field's previous and current values. Watch Follow reuses the value origin points' `names` list to cover aliases across calculations and calls. Focused adapter, trace matching and fake ADT tests pass.
+The 0.9.15 panel also accepts a When comparator. It sends a full ABAP condition to SAP's ADT watchpoint endpoint and evaluates the same numeric or quoted-text comparison on the new value in the transpiler trace. Focused tests cover a threshold and the condition across renamed Follow variables.
+
+## 2026-10-18 — 0.9.15: selection texts for SAP transpiler runs
+
+The SAP run path previously fetched text elements with `getObjectSource`, which requests ABAP source and cannot read the text elements media type. `sap-code` now exposes the ADT client's `getTextElements`; `code-workbench` converts its selection and symbol entries into the screen's text map. A focused repository test verifies the endpoint and category. The universal `vertex-abap-0.9.15.vsix` passed the packaging wrapper's archive and page checks. The SAP endpoint itself has not been exercised against a live system.
+
 ## 2026-10-18 — ADT workspace import on macOS
 
 The 0.9.14 importer stopped before workspace selection when SAP Logon was absent. It now reads each ABAP project's `.destination.properties` from the Eclipse workspace and uses its system ID, server, instance, client and user. It scans macOS Eclipse app bundles for recent workspaces and offers common workspace folders. SAP Logon entries continue to work. The focused system setup tests pass (7/7). Built and verified the universal `vertex-abap-0.9.14.vsix`; its archive contains the new importer. macOS discovery has not been run on a Mac.

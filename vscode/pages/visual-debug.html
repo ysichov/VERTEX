@@ -305,6 +305,7 @@ body.vertex-docked-debug #right{width:100%}
     <section id="stacksec"><h3><span>Stack</span><span id="depth" class="dim"></span><span class="grow"></span><button id="callers" hidden></button></h3><div class="list" id="stack"></div></section>
     <section id="bpsec" hidden><h3><span>Breakpoints</span><span class="grow"></span><button id="bpscope" class="vertex-toggle" hidden title="Off: only the breakpoints in this object and the sources it uses. On: every ABAP breakpoint in VS Code - for a run that should stop in other objects too">All BP</button><button id="bpall" title="Turn every breakpoint off, or on again, keeping them">Deactivate all</button><button id="bpclear" title="Remove every breakpoint, here and in SAP">Clear all</button></h3><div class="list" id="bps"></div></section>
     <section id="varsec"><h3><span>Variables</span><span id="partial" class="dim"></span><span class="grow"></span>
+      <input id="watchname" placeholder="Watch variable" title="Variable whose change should stop the run" spellcheck="false"><input id="watchwhen" placeholder="When (e.g. >= 10)" title="Optional condition on the new value: = 10, >= 10 or = 'DONE'" spellcheck="false"><button id="watchadd" title="Stop when this variable changes and its optional condition is true">+ Watch</button><button id="watchfollow" title="Watch every variable name in the selected value's Follow calculation, with the same condition">Watch Follow</button>
       <button id="globals" class="on" title="Read the global variables">Globals</button>
       <button id="locals" class="on" title="Read the local variables">Locals</button>
       <button id="params" class="on" title="Read the parameters">Params</button>
@@ -312,7 +313,7 @@ body.vertex-docked-debug #right{width:100%}
       <button id="initials" title="Show variables with an initial value">Initials</button>
       <span id="chosenvalue" hidden></span>
       <input id="filter" placeholder="Filter" spellcheck="false"></h3>
-      <div class="list" id="vars"></div></section>
+      <div class="list" id="watchpoints"></div><div class="list" id="vars"></div></section>
     <section id="dumpsec" hidden><h3><span>Dump</span><span id="dumpwhen" class="dim"></span><span class="grow"></span>
       <button id="dumpcheck" title="Ask ST22 now whether this user has a new short dump since the run started">Check ST22</button>
       <button id="dumpfull" hidden title="Show the whole dump as SAP wrote it">Whole dump</button>
@@ -326,7 +327,7 @@ body.vertex-docked-debug #right{width:100%}
 </main>
 <div id="dumppage" hidden><div id="dumpbar"><b>Short dump</b><span id="dumppagename" class="dim"></span><span class="grow"></span><button id="dumppageclose" class="x" title="Close (Esc)">&#215;</button></div><div id="dumppagebody"></div></div>
 <div id="tip"></div>
-<div id="vmenu"><button id="vfollow"></button><button id="vfromflow"></button><button id="vfromback"></button><button id="vcopyname"></button><button id="vcopyvalue"></button></div>
+<div id="vmenu"><button id="vfollow"></button><button id="vwatch"></button><button id="vwatchfollow"></button><button id="vfromflow"></button><button id="vfromback"></button><button id="vcopyname"></button><button id="vcopyvalue"></button></div>
 <div id="bpedit">
   <div id="bpwhere"></div>
   <input id="bpcond" placeholder="Condition, as an ABAP IF: lv_total > 1000" spellcheck="false">
@@ -1024,6 +1025,7 @@ function breakpointOn(url,line){return picture.breakpoints.some(function(b){retu
    way, and a point means the statement is not run - so the run ends there. */
 function stopsHere(p){
   var s=p&&p.stopped;if(!s)return false;
+  if(s.watchpoints&&s.watchpoints.length)return true;
   if(s.breakpoint)return true;
   var f=s.frames&&s.frames[0];if(!f)return false;
   return picture.breakpoints.some(function(b){
@@ -2481,6 +2483,49 @@ function follow(path){
 function valuePath(v,owner,parent){return parent?parent+"-"+v.name:String(v.name||"");}
 /* The menu of a row in Variables: one deliberate way to choose, or drop, the value the analysis follows. */
 var menuFor="",menuValue="",menuPoint=null;
+function drawWatchpoints(){
+  var box=$("watchpoints");box.textContent="";
+  (picture.watchpoints||[]).forEach(function(w){
+    var row=document.createElement("div");row.className="empty";
+    var hit=(picture.stopped&&picture.stopped.watchpoints||[]).some(function(x){return x.id===w.id;});
+    row.textContent=(hit?"● ":"◎ ")+(w.name||w.variableName||"")+(w.condition?" when "+w.condition:"")+(hit?" — reached":"");
+    var remove=document.createElement("button");remove.textContent="×";remove.title="Remove watchpoint";
+    remove.onclick=function(){debug("watchpointRemove",{id:w.id}).then(refresh).catch(failed);};
+    row.appendChild(remove);box.appendChild(row);
+  });
+  $("watchadd").disabled=!picture.stopped;
+  $("watchfollow").disabled=!picture.stopped||!chosenValue;
+}
+function addWatchpoint(name){
+  if(!picture.stopped){notice("Stop at a breakpoint before adding a watchpoint.");return Promise.resolve();}
+  var condition=watchCondition(name);
+  if(condition===null)return Promise.resolve();
+  return debug("watchpointAdd",{name:name,condition:condition}).then(function(){ $("watchname").value="";return refresh(); }).catch(failed);
+}
+function watchCondition(name){
+  var when=$("watchwhen").value.trim();if(!when)return "";
+  if(!/^(?:>=|<=|<>|=|>|<)\s*(?:-?\d+(?:\.\d+)?|'(?:[^']|'')*')$/.test(when)){
+    notice("Use a comparison with a number or quoted text, for example >= 10 or = 'DONE'.");return null;
+  }
+  return String(name).toUpperCase()+" "+when;
+}
+$("watchadd").onclick=function(){addWatchpoint($("watchname").value);};
+$("watchname").onkeydown=function(e){if(e.key==="Enter")addWatchpoint(this.value);};
+function watchFollow(path){
+  if(!picture.stopped){notice("Stop at a breakpoint before adding a watchpoint.");return;}
+  if(!chosenValue||chosenValue.name!==String(path).toUpperCase())chooseValue(path);
+  return fetchSlice().then(function(points){
+    var names=[String(path).toUpperCase()];
+    points.forEach(function(point){(point.names||[]).forEach(function(name){
+      name=String(name).toUpperCase();if(/^[A-Z_][A-Z0-9_]*(?:-[A-Z_][A-Z0-9_]*)*$/.test(name)&&names.indexOf(name)<0)names.push(name);
+    });});
+    var added=0,missed=[];
+    return names.reduce(function(chain,name){return chain.then(function(){var condition=watchCondition(name);if(condition===null)return;
+      return debug("watchpointAdd",{name:name,condition:condition}).then(function(){added++;},function(error){missed.push(name+": "+(error&&error.message||error));});});},Promise.resolve())
+      .then(function(){return refresh();}).then(function(){notice("Watching "+added+" names of "+path+(missed.length?". Could not watch: "+missed.join("; "):"."));});
+  }).catch(failed);
+}
+$("watchfollow").onclick=function(){if(chosenValue)watchFollow(chosenValue.name);};
 /* Where a recorded stop stands, as a point the analyses start from: its object, the object's type and the line. */
 function stopPoint(i){
   var t=(flow.timeline||[])[i],at=t&&t.at;if(!at||!at.url||!at.line)return null;
@@ -2493,6 +2538,10 @@ function stopPoint(i){
 function openValueMenu(path,x,y,value){
   menuFor=path;menuValue=String(value===undefined?"":value);var on=followed.indexOf(path.toUpperCase())>=0,m=$("vmenu");
   $("vfollow").textContent=on?"Stop following "+path:"Follow "+path+" in the analysis";
+  $("vwatch").textContent="Watch changes to "+path;
+  $("vwatch").hidden=typeof picture==="undefined"||!picture.stopped;
+  $("vwatchfollow").textContent="Watch Follow of "+path;
+  $("vwatchfollow").hidden=typeof picture==="undefined"||!picture.stopped;
   // At a stop of the record the analyses start from that stop: no run is needed for them.
   var point=replayAt!=null?stopPoint(replayAt):null;menuPoint=point;
   $("vfromflow").hidden=$("vfromback").hidden=!point;
@@ -2508,6 +2557,8 @@ function copyFromMenu(text){closeValueMenu();debug("copy",{text:text}).catch(fai
 $("vcopyname").onclick=function(){copyFromMenu(menuFor);};
 $("vcopyvalue").onclick=function(){copyFromMenu(menuValue);};
 $("vfollow").onclick=function(){var path=menuFor;closeValueMenu();follow(path);};
+$("vwatch").onclick=function(){var path=menuFor;closeValueMenu();addWatchpoint(path);};
+$("vwatchfollow").onclick=function(){var path=menuFor;closeValueMenu();watchFollow(path);};
 // From a recorded stop: the value is followed, and the flow forward or the usage backward is analysed from that line.
 $("vfromflow").onclick=function(){var path=menuFor,point=menuPoint;closeValueMenu();
   if(!chosenValue||chosenValue.name!==path.toUpperCase())chooseValue(path);
@@ -2944,7 +2995,7 @@ function apply(p){
   // Rec is for every stop, whoever made it: F5-F8 here, the assistant, a
   // breakpoint. A Flow or Rec run records its own stops.
   if(p.stopped&&recording()&&!INITIAL.local&&!(series&&(series.flow||series.rec)))recordStop(p);
-  drawBreakpoints();drawStack();drawButtons();
+  drawBreakpoints();drawWatchpoints();drawStack();drawButtons();
   // A dump is written after the program is gone, so it can arrive a moment
   // after the ending did: the mark changes when it does, and the section is
   // filled then rather than staying on "the program ended".

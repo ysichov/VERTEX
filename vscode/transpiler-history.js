@@ -123,6 +123,7 @@ function create(root = () => "") {
       if (index < from - 1) continue;
       steps.push({ step: index + 1, object: item.owner, routine: item.routine, line: item.line,
         stack: item.stack, changed: item.changed || {}, sy_changed: item.sy || {}, sql: item.sql || [],
+        ...(item.interventions?.length ? { interventions: item.interventions } : {}),
         ...(args.include_state ? { variables: { ...states.get(key) }, sy: { ...sy } } : {}) });
     }
     return { run_id: args.run_id, mode: "transpiler", total_steps: run.records.length,

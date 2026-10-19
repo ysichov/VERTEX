@@ -129,3 +129,22 @@ test("a kept transpiler run opens at its cited step with its output", async () =
   assert.equal(restored.trace.length, 3);
   await assert.rejects(adapter.command("run"), /kept/);
 });
+
+test("local Visual Debug watchpoint stops replay on a changed structure component", async () => {
+  const vscode = { debug: { breakpoints: [] }, commands: { async executeCommand() {} } };
+  const document = { uri: { fsPath: "C:/runs/zlab.prog.abap" } };
+  const records = [
+    { file: document.uri.fsPath, line: 1, owner: "ZLAB", routine: "ZLAB", changed: { "LS_VAR-COUNT": 1 } },
+    { file: document.uri.fsPath, line: 2, owner: "ZLAB", routine: "ZLAB", changed: {} },
+    { file: document.uri.fsPath, line: 3, owner: "ZLAB", routine: "ZLAB", changed: { "LS_VAR-COUNT": 2 } },
+    { file: document.uri.fsPath, line: 4, owner: "ZLAB", routine: "ZLAB", changed: {} }
+  ];
+  const adapter = create(vscode, document, () => {}, () => {}, null, { trace: { records, at: 0 } });
+  const point = await adapter.command("watchpointAdd", { name: "ls_var-count" });
+  assert.equal(point.name, "LS_VAR-COUNT");
+  await adapter.command("step", { kind: "continue" });
+  assert.equal(adapter.picture().stopped.at, "ZLAB:3");
+  assert.equal(adapter.picture().stopped.watchpoints[0].id, point.id);
+  await adapter.command("watchpointRemove", { id: point.id });
+  assert.deepEqual(adapter.picture().watchpoints, []);
+});

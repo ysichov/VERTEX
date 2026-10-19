@@ -190,6 +190,7 @@ function applyModuleDefaults(outputRoot, defaults) {
   visit(outputRoot);
   const value = (module, param) => {
     const text = String(param.default).trim();
+    if (/^SPACE$/i.test(text)) return JSON.stringify(" ");
     if (/^-?\d+$/.test(text)) return text;
     const quoted = /^'((?:[^']|'')*)'$/.exec(text) || /^`((?:[^`]|``)*)`$/.exec(text);
     if (quoted) return JSON.stringify(quoted[1].replace(/''/g, "'").replace(/``/g, "`"));

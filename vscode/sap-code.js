@@ -87,6 +87,13 @@ function createRepository({ client, systemId, emit = () => {} }) {
     for (const key of types) {
       const matches = await client.searchObject(query.toUpperCase(), TYPES[key], max + 1);
       all.push(...matches.filter(x => x["adtcore:type"] === TYPES[key]).map(row));
+      if (key === "FUNC" && !matches.some(x => x["adtcore:type"] === TYPES.FUNC)) {
+        // Some ADT systems index function modules under another FUGR type.
+        // Use the same unfiltered fallback as resolve() before reporting none.
+        const fallback = await client.searchObject(query.toUpperCase(), undefined, max + 1);
+        all.push(...fallback.filter(x => /^FUGR\//.test(String(x["adtcore:type"]))
+          && /\/fmodules\//.test(String(x["adtcore:uri"]))).map(row));
+      }
     }
     return { system: systemId, objects: all.slice(0, max), truncated: all.length > max };
   }
@@ -317,18 +324,23 @@ function createRepository({ client, systemId, emit = () => {} }) {
   }
   const handlers = { read_value_origin_pipeline: valueOriginPipeline, search_sap_objects: search, read_sap_object: read,
     create_sap_object: create, modify_sap_object: modify };
+  let executionQueue = Promise.resolve();
   async function execute(tool, args) {
-    if (applying || executing) { throw new Error("SAP session is busy. Use separate sessions for parallel operations."); }
     if (!Object.hasOwn(handlers, tool)) { throw new Error("Unknown SAP code tool: " + tool); }
-    executing = true;
-    const task_id = randomUUID();
-    emit({ type: "tool.call", task_id, tool });
-    try {
-      const result = await handlers[tool](args || {});
-      emit({ type: "tool.result", task_id, tool });
-      return result;
-    } catch (error) { emit({ type: "error", task_id, tool, message: error.message }); throw error; }
-    finally { executing = false; }
+    const request = executionQueue.then(async () => {
+      if (applying) throw new Error("SAP session is busy saving an object. Try again after it finishes.");
+      executing = true;
+      const task_id = randomUUID();
+      emit({ type: "tool.call", task_id, tool });
+      try {
+        const result = await handlers[tool](args || {});
+        emit({ type: "tool.result", task_id, tool });
+        return result;
+      } catch (error) { emit({ type: "error", task_id, tool, message: error.message }); throw error; }
+      finally { executing = false; }
+    });
+    executionQueue = request.then(() => {}, () => {});
+    return request;
   }
   // What the ABAP compiler knows about a name at a position of the source -
   // ADT's own element info and navigation, what F3 and the hover use in
@@ -385,6 +397,8 @@ function createRepository({ client, systemId, emit = () => {} }) {
   // an interface, another class - whatever kind of object it is.
   // The address goes without its fragment and its query (a version SAP adds): the version read is the active one.
   const sourceAt = url => client.getObjectSource(adtPath(String(url).split(/[?#]/)[0]), { version: "active" });
+  const textElements = (program, category) => client.getTextElements(
+    require("abap-adt-api").ADTClient.textElementsUrl("PROG/P", program), category);
   // A data element's domain or built-in type, for its hover.
   const dataElement = async elementName => (await client.getDataElementProperties(
     "/sap/bc/adt/ddic/dataelements/" + encodeURIComponent(name(elementName, "data element").toLowerCase()))).properties;
@@ -565,7 +579,7 @@ function createRepository({ client, systemId, emit = () => {} }) {
     { method: "POST", qs: { remote: remote || "", expect: expect || "" }, headers: { "Content-Type": "application/json", Accept: "application/json" }, body });
   // ADT's object structure of a class: its components with their kinds and visibility, read without parsing.
   const classComponents = url => client.classComponents(adtPath(url));
-  return { classComponents, execute, apply, query, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, dataElement, discard: id => drafts.delete(id),
+  return { classComponents, execute, apply, query, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, textElements, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath, dataPreviewLines };

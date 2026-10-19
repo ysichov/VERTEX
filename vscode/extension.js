@@ -759,7 +759,7 @@ function debuggerFor(context, auth) {
 /* The source tools with the debugger's added: the schemas and the method the
    chat is told, and a call that sends debug_* to the debugger. The Anthropic
    API path calls execute directly, so it gets the answer as text. */
-const TRANSPILER_AGENT_INSTRUCTIONS = "A request such as 'find the bug in the debugger' does not choose the SAP runtime. When execution or debugging is needed and the user has not specified a mode, use run_abap_transpiler first for a runnable report or method. It is a simulation, not proof of behavior in SAP. Use screen_only to inspect selection fields and ask for missing values. When the question concerns several scenarios or selections and no run of this request covers one of them, run it with run_abap_transpiler yourself instead of asking; a run shown in Visual Debug or in an earlier answer covers only the selection it ran with. The result's run_id permits paged read_abap_transpiler_history and virtual line breakpoints or variable watchpoints with find_abap_transpiler_stops. Do not reason from source code about what a run did. When the user asks to compare runs, explain a result or find a cause, call find_abap_transpiler_stops or read_abap_transpiler_history on the relevant run_ids before answering; finishing without those calls is not an answer to such a request. Every claim about values, control flow, a cause or a missing check must cite a run_id and the step, line and value that show it. If the history cannot be read, list what the run outputs show, mark the rest as not verified and say why. Never reply with only a status line: report the results you have. Cite each piece of evidence as [run <first 8 characters of run_id> step <n>], exactly in this form and in English whatever the reply language, one citation per run and step; VERTEX shows it to the user as 'run <run_number>, step <n>', a link that opens the run at that step. In other text refer to a run by its run_number, never by run_id. Use transpiler output and history first; if a specific class method's source is needed, use read_sap_method before reading the whole object. If the transpiler cannot run the case, explain why and ask whether the user wants a SAP run; never silently switch modes. If the user explicitly requests a SAP run, use the SAP debugger tools.";
+const TRANSPILER_AGENT_INSTRUCTIONS = "A request such as 'find the bug in the debugger' does not choose the SAP runtime. When execution or debugging is needed and the user has not specified a mode, use run_abap_transpiler first for a runnable report or method. It is a simulation, not proof of behavior in SAP. Use screen_only to inspect selection fields and ask for missing values. When the question concerns several scenarios or selections and no run of this request covers one of them, run it with run_abap_transpiler yourself instead of asking; a run shown in Visual Debug or in an earlier answer covers only the selection it ran with. The result's run_id permits paged read_abap_transpiler_history and virtual line breakpoints or variable watchpoints with find_abap_transpiler_stops. Do not reason from source code about what a run did. When the user asks to compare runs, explain a result or find a cause, call find_abap_transpiler_stops or read_abap_transpiler_history on the relevant run_ids before answering; finishing without those calls is not an answer to such a request. Every claim about values, control flow, a cause or a missing check must cite a run_id and the step, line and value that show it. If the history cannot be read, list what the run outputs show, mark the rest as not verified and say why. Never reply with only a status line: report the results you have. Cite each piece of evidence as [run <first 8 characters of run_id> step <n>], exactly in this form and in English whatever the reply language, one citation per run and step; VERTEX shows it to the user as 'run <run_number>, step <n>', a link that opens the run at that step. In other text refer to a run by its run_number, never by run_id. For a local hypothesis, rerun with interventions at an executable ABAP line and occurrence; compare the original and modified runs using their histories. The history returns changes by default, and each applied intervention records its before and after values. Use include_state only when the full variable state is needed. Use transpiler output and history first; if a specific class method's source is needed, use read_sap_method before reading the whole object. If the transpiler cannot run the case, explain why and ask whether the user wants a SAP run; never silently switch modes. If the user explicitly requests a SAP run, use the SAP debugger tools.";
 
 function withDebugger(sapCode, debugTools, runTranspiler, transpilerHistory) {
   // Getters, read when asked - as the source tools' own text is: it names the
@@ -818,7 +818,7 @@ function activate(context) {
     if (own && own !== configured.name) throw new Error("This VERTEX window works with " + own + " only.");
     return runSapTranspiler({ ...request, system_name: configured.name },
       { agentRun: true, screenOnly: args.screen_only === true, entryLine: request.entryLine,
-        selection: request.selection, history: transpilerHistory });
+        selection: request.selection, interventions: request.interventions, history: transpilerHistory });
   }, transpilerHistory);
   const toolsContextState = require("./tools-context-state").create();
   // What the Visual Debug panel shows - the record, and the flow of the analysis - for the chat to be given with a question.
@@ -1324,6 +1324,29 @@ function activate(context) {
       const editor = vscode.window.activeTextEditor;
       entryLine = editor && editor.document.uri.toString() === tab ? editor.selection.active.line + 1 : 1;
     }
+    // Show the run window before asking SAP for a new build. A failed read or
+    // transpilation leaves Recompile available there instead of closing the
+    // only route back to the object. Previous compiled parameters can still
+    // be shown while the new build is prepared.
+    let preparing = true, queuedRecompile = false;
+    const previous = dockedDebugSource?.sapCopies?.root?.object_name === shown.object_name
+      && dockedDebugSource.sapCopies.root.system_name === shown.system_name ? dockedDebugSource : null;
+    const pendingPanel = options.agentRun ? null : require("./program-window").open(vscode, { name: shown.object_name, host: {
+      pending: true, builtAt: previous?.sapCopies?.builtAt || "",
+      selection: async () => previous?.document
+        ? (kind === "PROG" ? { screen: require("./local-run").screenFor(previous.document) }
+          : { entry: require("./local-run").entryScreen(previous.document, previous.entryLine) }) : {},
+      adapter: (command, args) => localDebugAdapter?.command(command, args),
+      run: async () => { throw new Error("Recompile the SAP object before running it."); },
+      recompile: async () => {
+        if (preparing) {
+          queuedRecompile = true;
+          void pendingPanel.panel.webview.postMessage({ type: "status", message: "Recompile queued after the current SAP read." });
+          return {};
+        }
+        await runSapTranspiler(shown, { recompile: true, entryLine });
+        return {};
+      } } });
     const readSources = () => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
       title: "VERTEX: " + (options.recompile ? "recompiling " : "reading ") + shown.object_name + " for the transpiler" },
       report => pinTo(shown.system_name, () => sapCode.transpileSources(shown, name => report.report({ message: name }), { recompile: options.recompile === true,
@@ -1331,7 +1354,12 @@ function activate(context) {
         entryLine: kind === "CLAS" ? entryLine : 0 })));
     // SAP/cache reads share one system session and one vertex-read.json. Keep
     // that short phase ordered, then transpile/execute independent runs at once.
-    const read = await (options.agentRun ? agentSourceQueue(readSources) : readSources());
+    const read = await (options.agentRun ? agentSourceQueue(readSources) : readSources()).catch(error => {
+      if (queuedRecompile) return null;
+      if (pendingPanel) void pendingPanel.panel.webview.postMessage({ type: "status", message: error.message, error: true });
+      throw error;
+    }).finally(() => { preparing = false; });
+    if (queuedRecompile) return runSapTranspiler(shown, { recompile: true, entryLine });
     // The project is written again only when what was read changed; its fingerprint goes with it, for local-run to
     // take the transpiled code again (sap-cache.js).
     const transpile = require("./sap-transpile"), project = path.join(read.folder, "project"),
@@ -1386,7 +1414,7 @@ function activate(context) {
         ready.catch(() => {});
         agentBuilds.set(buildKey, ready);
         let runError;
-        try { result = await localRun.launch(vscode, false, { document, entryLine, selection, trace: true }); }
+        try { result = await localRun.launch(vscode, false, { document, entryLine, selection, interventions: options.interventions, trace: true }); }
         catch (error) { runError = error; }
         try {
           if (!fs.existsSync(path.join(project, "output-pristine")) || !fs.existsSync(path.join(project, "vertex-built.json")))
@@ -1404,7 +1432,7 @@ function activate(context) {
         fs.cpSync(snapshot, privateProject, { recursive: true });
         const privateFile = path.join(privateProject, path.relative(project, document.uri.fsPath));
         privateDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(privateFile));
-        result = await localRun.launch(vscode, false, { document: privateDocument, entryLine, selection, trace: true });
+        result = await localRun.launch(vscode, false, { document: privateDocument, entryLine, selection, interventions: options.interventions, trace: true });
       }
       const run_id = options.history.save(result.records || [], { object_name: shown.object_name,
         object_type: kind, system: shown.system_name },
@@ -1413,6 +1441,8 @@ function activate(context) {
         run_id, run_number: options.history.number(run_id),
         output: String(result.output || "").slice(0, 12000), output_truncated: String(result.output || "").length > 12000,
         recorded_steps: result.records?.length || 0, duration_ms: result.durationMs || 0,
+        interventions: options.interventions?.map(item => ({ ...item, applied: !!result.records?.some(record =>
+          record.interventions?.some(change => change.id === item.id)) })) || undefined,
         note: "Local transpiler simulation. This is not proof of execution in SAP." };
     }
     openVisualDebug(true, { ...require("./local-analysis").sourceObject(document), local: true, document, entryLine, autoRun: true,

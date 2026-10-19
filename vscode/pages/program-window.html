@@ -80,7 +80,8 @@ var vscode=acquireVsCodeApi(),pending={},serial=0,running=false,hasScreen=false;
 function $(id){return document.getElementById(id);}
 function ask(call,extra){return new Promise(function(resolve,reject){var id=++serial;pending[id]={resolve:resolve,reject:reject};
   vscode.postMessage(Object.assign({call:call,id:id},extra||{}));});}
-window.addEventListener("message",function(event){var m=event.data;if(m&&m.type==="reply"&&pending[m.id]){var p=pending[m.id];delete pending[m.id];
+window.addEventListener("message",function(event){var m=event.data;if(m&&m.type==="status"){status(m.message,m.error);return;}
+  if(m&&m.type==="reply"&&pending[m.id]){var p=pending[m.id];delete pending[m.id];
   if(m.error)p.reject(new Error(m.error));else p.resolve(m.value);}});
 function status(text,error){$("statusbar").textContent=text||"";$("statusbar").className=error?"error":"";}
 // What the shared screen code asks of its page: the variants of a method's or module's values, and a failure said.
@@ -128,7 +129,9 @@ document.addEventListener("keydown",function(e){
   if(e.key==="F8"&&!$("screen").hidden){e.preventDefault();execute();}
   else if(e.key==="F3"&&$("screen").hidden&&hasScreen){e.preventDefault();showScreen();status("");}});
 // A program with a selection screen shows it first; one without runs at once, as SAP starts it.
-loadScreen().then(function(screen){if(screen){showScreen();if(INITIAL.builtAt)status("Build of "+new Date(INITIAL.builtAt).toLocaleString()+".");}else execute();})
+if(INITIAL.pending){$("execute").disabled=true;$("mode").textContent="Preparing build";status("Reading SAP for the transpiler.");}
+loadScreen().then(function(screen){if(screen){showScreen();if(INITIAL.builtAt&&!INITIAL.pending)status("Build of "+new Date(INITIAL.builtAt).toLocaleString()+".");}
+  else if(!INITIAL.pending)execute();})
   .catch(function(error){status(error.message,true);});
 </script>
 </body></html>

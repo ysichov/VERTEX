@@ -344,7 +344,7 @@ function fail(text) {
    says how the tools fit together and what must not be done. */
 const DEBUG_INSTRUCTIONS = [
   "These tools debug ABAP on the user's SAP system through ADT when a SAP runtime run is chosen.",
-  "For SAP runtime debugging: form a hypothesis, set breakpoints (prefer a condition written like an ABAP IF, or mode log for a watchpoint, over stepping line by line), start the program with debug_run, collect stops with debug_wait, read what matters with debug_read, refine, and end with a verdict that names the line and the values that prove it.",
+  "For SAP runtime debugging: form a hypothesis, set conditional line breakpoints, start with debug_run, collect stops with debug_wait, read what matters with debug_read, refine, and end with a verdict that names the line and values that prove it. At a stop, use debug_watchpoint to stop when SAP changes a variable; use mode log on a line breakpoint when you want a continuing trace.",
   "A run started from SAP Logon (standalone SAP GUI) is never caught - SAP's design. Start it with debug_run, which opens WebGUI.",
   "Nothing here changes a variable or the code. Do not ask for more than a question needs: stops return only what changed and tables in short.",
   "The user may take minutes to log on to WebGUI and start the program: call debug_wait again while it says it is still listening, and if nothing has stopped after a few minutes, ask the user whether the program ran - do not end the session on your own.",
@@ -378,6 +378,17 @@ const DEBUG_TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: false },
     description: "Remove one breakpoint by its id from debug_status, or all of them without an id.",
     inputSchema: { type: "object", additionalProperties: false, properties: { id: { type: "string" } } }
+  },
+  {
+    name: "debug_watchpoint",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description: "Manage true SAP ADT watchpoints on the currently stopped program. Add one for a variable so Continue stops when SAP changes it; list or remove only watchpoints owned by this debug session. This is distinct from a log-mode line breakpoint.",
+    inputSchema: { type: "object", additionalProperties: false, required: ["action"], properties: {
+      action: { type: "string", enum: ["add", "list", "remove"] },
+      name: { type: "string", description: "ABAP variable name, required for add." },
+      condition: { type: "string", description: "Optional ABAP condition evaluated by SAP." },
+      id: { type: "string", description: "SAP watchpoint ID returned by add, required for remove." }
+    } }
   },
   {
     name: "debug_run",
@@ -466,6 +477,12 @@ function debugSet(dbg) {
             : "No new short dump for this user since the run started.");
         }
         case "debug_read": return debugAnswer(dbg, await dbg.read(args.name, args.from, args.to));
+        case "debug_watchpoint": {
+          if (args.action === "add") return debugAnswer(dbg, await dbg.setWatchpoint(args.name, args.condition));
+          if (args.action === "remove") { await dbg.clearWatchpoint(args.id); return debugAnswer(dbg, "Removed watchpoint " + args.id + "."); }
+          if (args.action === "list") return debugAnswer(dbg, dbg.listWatchpoints());
+          throw new Error("Watchpoint action must be add, list or remove.");
+        }
         case "debug_step": return debugAnswer(dbg, await dbg.step(args.kind));
         case "debug_status": return debugAnswer(dbg, dbg.status());
         case "debug_log": return debugAnswer(dbg, dbg.log());

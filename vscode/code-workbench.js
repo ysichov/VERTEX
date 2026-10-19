@@ -2604,8 +2604,14 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const textsOf = async sources => {
       const texts = {};
       for (const source of sources.filter(source => source.type === 'PROG')) {
-        const base = '/sap/bc/adt/textelements/programs/' + encodeURIComponent(source.name.toLowerCase()) + '/source/';
-        try { texts[source.name] = require('./selection-screen').adtTexts(await repo.api.sourceAt(base + 'selections'), await repo.api.sourceAt(base + 'symbols')); }
+        try {
+          const [selections, symbols] = await Promise.all([
+            repo.api.textElements(source.name, 'selections'), repo.api.textElements(source.name, 'symbols')]);
+          texts[source.name] = {
+            selections: Object.fromEntries(selections.textElements.map(item => [item.id.toUpperCase(), item.text])),
+            symbols: Object.fromEntries(symbols.textElements.map(item => [item.id.toUpperCase(), item.text]))
+          };
+        }
         catch (error) { texts[source.name] = { selections: {}, symbols: {}, error: error.message }; }
       }
       return texts;
@@ -2628,6 +2634,18 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     // Through SAP's ADT extension standard SAP cannot be read, and only the system's own namespaces are customer code.
     const sources = await require('./sap-transpile').collect(read, { name: first.object_name, type: first.object_type },
       { progress, groups, entryLine: options.entryLine || 0, ...(repo.api.customerName ? { customer: repo.api.customerName } : {}) });
+    // Type groups are source objects, not DD03L/DD04L entries. Keep their
+    // definitions beside the run so a saved snapshot can execute offline.
+    const pools = new Set();
+    for (const source of sources) for (const match of source.text.matchAll(/^\s*TYPE-POOLS\s*:?[ \t]*([A-Z0-9_, \t]+)\./gmi))
+      for (const name of match[1].split(",").map(value => value.trim().toUpperCase()).filter(Boolean)) pools.add(name);
+    for (const name of pools) {
+      progress(name);
+      let text;
+      try { text = await repo.api.sourceAt("/sap/bc/adt/ddic/typegroups/" + encodeURIComponent(name.toLowerCase()) + "/source/main"); }
+      catch (error) { throw new Error("Type group " + name + " could not be read from SAP: " + error.message); }
+      sources.push({ name, type: "TYPE", include: "main", text });
+    }
     // The dictionary objects the sources use, beside open-abap-core's and the classes read.
     const ddic = require('./sap-ddic'), named = new Set();
     for (const source of sources) for (const name of ddic.dictionaryNames(source.text)) named.add(name);

@@ -40,6 +40,8 @@ function dictionaryNames(text) {
       }
       add(j);
     }
+    // LIKE dbtab-field also needs the table definition; TYPE alone misses it.
+    if (current === "LIKE" && at(i + 2) === "-") add(i + 1);
     if ((sql && (current === "FROM" || current === "JOIN") || current === "TABLES" && first === "TABLES") && tokens[i + 1]) add(i + 1);
   }
   return names;
@@ -51,13 +53,13 @@ function dictionaryNames(text) {
 function declaredTypes(text) {
   const tokens = tokenize(text), names = new Set();
   const at = i => up(tokens[i] && tokens[i].value), sym = i => tokens[i] && tokens[i].kind === "symbol" ? tokens[i].value : "";
+  let depth = 0;
   for (let i = 0; i < tokens.length; i++) {
     if (at(i) !== "TYPES" || (i > 0 && sym(i - 1) !== "." )) continue;
     let j = i + 1;
     if (sym(j) === ":") j++;
     // One element of the chain at a time: its name, then on to the next comma or the period.
     // Inside BEGIN OF ... END OF the names are components, not types: only the structure itself counts.
-    let depth = 0;
     while (j < tokens.length && sym(j) !== ".") {
       if (at(j) === "BEGIN" && at(j + 1) === "OF") { if (depth === 0 && tokens[j + 2] && tokens[j + 2].kind === "word") names.add(at(j + 2)); depth++; }
       else if (at(j) === "END" && at(j + 1) === "OF") depth = Math.max(0, depth - 1);
@@ -79,6 +81,23 @@ async function selectIn(query, select, column, names) {
     rows.push(...(data.values || []).map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [up(key), value]))));
   }
   return rows;
+}
+
+function normalizeTableFields(table) {
+  // DD03L includes both an include marker and its already flattened fields.
+  // Emit the flattened representation only, including when loading a saved SAP snapshot.
+  table.fields.sort((a, b) => Number(a.POSITION) - Number(b.POSITION));
+  const marker = row => [".INCLUDE", ".APPEND"].includes(up(row.FIELDNAME))
+    || up(row.FIELDNAME).startsWith(".INCLU-");
+  table.fields = table.fields.filter((row, index, fields) => {
+    if (!marker(row)) return true;
+    for (let next = index + 1; next < fields.length; next++) {
+      if (marker(fields[next])) break;
+      if (Number(fields[next].ADMINFIELD || 0) > Number(row.ADMINFIELD || 0)) return false;
+    }
+    return true;
+  });
+  return table;
 }
 
 /* The dictionary closure of the names, without those `known` (open-abap-core's, the classes read). A data element and
@@ -105,13 +124,19 @@ async function readDictionary(query, start, known = new Set()) {
       types.set(up(row.TABNAME), { kind: "TABL", name: up(row.TABNAME), tabclass: row.TABCLASS, fields: [] });
     const tables = names.filter(name => types.has(name));
     for (const row of await selectIn(query, "SELECT tabname, fieldname, position, keyflag, rollname, comptype, precfield, " +
-        "datatype, leng, decimals, reftype, notnull FROM dd03l", "tabname", tables)) {
+        "datatype, leng, decimals, reftype, notnull, adminfield FROM dd03l", "tabname", tables)) {
       const table = types.get(up(row.TABNAME));
       table.fields.push(row);
-      const field = up(row.FIELDNAME), comptype = up(row.COMPTYPE);
-      if (field === ".INCLUDE" || field.startsWith(".INCLU-") || field === ".APPEND") need(row.PRECFIELD, table.name);
-      else if (["E", "S", "L"].includes(comptype)) need(row.ROLLNAME, table.name);
-      else if (comptype === "R" && ["E", "S", "L"].includes(up(row.REFTYPE))) need(row.ROLLNAME, table.name);
+    }
+    for (const tableName of tables) {
+      const table = types.get(tableName);
+      normalizeTableFields(table);
+      for (const row of table.fields) {
+        const field = up(row.FIELDNAME), comptype = up(row.COMPTYPE);
+        if (field === ".INCLUDE" || field.startsWith(".INCLU-") || field === ".APPEND") need(row.PRECFIELD, table.name);
+        else if (["E", "S", "L"].includes(comptype)) need(row.ROLLNAME, table.name);
+        else if (comptype === "R" && ["E", "S", "L"].includes(up(row.REFTYPE))) need(row.ROLLNAME, table.name);
+      }
     }
     const rest = names.filter(name => !types.has(name));
     for (const row of await selectIn(query, "SELECT rollname, domname, datatype, leng, decimals, refkind, reftype FROM dd04l", "rollname", rest)) {
@@ -126,6 +151,9 @@ async function readDictionary(query, start, known = new Set()) {
       types.set(type.name, type);
       if (["E", "S", "L"].includes(up(row.ROWKIND))) need(row.ROWTYPE, type.name);
     }
+    const tableTypes = left.filter(name => types.get(name)?.kind === "TTYP");
+    for (const row of await selectIn(query, "SELECT typename, seckeyname, keyfdpos, keyfield FROM dd42s", "typename", tableTypes))
+      (types.get(up(row.TYPENAME)).keys ||= []).push(row);
     for (const row of await selectIn(query, "SELECT domname, datatype, leng, decimals FROM dd01l", "domname", domainNames))
       domains.set(up(row.DOMNAME), { kind: "DOMA", name: up(row.DOMNAME), row });
   }
@@ -139,6 +167,9 @@ async function readDictionary(query, start, known = new Set()) {
 const escape = value => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const tag = (name, value) => value === undefined || value === null || String(value) === "" ? "" : "<" + name + ">" + escape(value) + "</" + name + ">";
 const number = value => String(Number(value || 0)).padStart(6, "0");
+// ABAP Dictionary names D16N/D34N as the numeric decimal float types. The
+// bundled abaplint DDIC reader recognizes their ABAP names instead.
+const transpilerDatatype = value => ({ D16N: "DECFLOAT16", D34N: "DECFLOAT34" })[up(value)] || value;
 const wrap = (serializer, body) => `<?xml version="1.0" encoding="utf-8"?>\n<abapGit version="v1.0.0" serializer="${serializer}" serializer_version="v1.0.0"><asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0"><asx:values>${body}</asx:values></asx:abap></abapGit>\n`;
 
 /* One object as abapGit's XML, with its file name. */
@@ -149,7 +180,7 @@ function objectXml(object) {
       const name = up(field.FIELDNAME);
       return "<DD03P>" + tag("FIELDNAME", name === ".APPEND" ? ".INCLU--AP" : name) + tag("KEYFLAG", field.KEYFLAG) +
         tag("ROLLNAME", field.ROLLNAME) + tag("PRECFIELD", field.PRECFIELD) + tag("NOTNULL", field.NOTNULL) +
-        tag("DATATYPE", field.DATATYPE) + (Number(field.LENG) ? tag("LENG", number(field.LENG)) : "") +
+        tag("DATATYPE", transpilerDatatype(field.DATATYPE)) + (Number(field.LENG) ? tag("LENG", number(field.LENG)) : "") +
         (field.DECIMALS && Number(field.DECIMALS) ? tag("DECIMALS", number(field.DECIMALS)) : "") +
         tag("COMPTYPE", field.COMPTYPE) + tag("REFTYPE", field.REFTYPE) + "</DD03P>";
     }).join("");
@@ -158,13 +189,16 @@ function objectXml(object) {
   }
   const row = object.row;
   if (object.kind === "DTEL") return { file: base + ".dtel.xml", xml: wrap("LCL_OBJECT_DTEL", "<DD04V>" + tag("ROLLNAME", object.name) +
-    tag("DOMNAME", row.DOMNAME) + tag("DATATYPE", row.DATATYPE) + tag("LENG", number(row.LENG)) +
+    tag("DOMNAME", row.DOMNAME) + tag("DATATYPE", transpilerDatatype(row.DATATYPE)) + tag("LENG", number(row.LENG)) +
     (Number(row.DECIMALS) ? tag("DECIMALS", number(row.DECIMALS)) : "") + tag("REFKIND", row.REFKIND) + tag("REFTYPE", row.REFTYPE) + "</DD04V>") };
   if (object.kind === "DOMA") return { file: base + ".doma.xml", xml: wrap("LCL_OBJECT_DOMA", "<DD01V>" + tag("DOMNAME", object.name) +
-    tag("DATATYPE", row.DATATYPE) + tag("LENG", number(row.LENG)) + (Number(row.DECIMALS) ? tag("DECIMALS", number(row.DECIMALS)) : "") + "</DD01V>") };
+    tag("DATATYPE", transpilerDatatype(row.DATATYPE)) + tag("LENG", number(row.LENG)) + (Number(row.DECIMALS) ? tag("DECIMALS", number(row.DECIMALS)) : "") + "</DD01V>") };
+  const keys = (object.keys || []).sort((a, b) => Number(a.KEYFDPOS) - Number(b.KEYFDPOS))
+    .map(key => "<DD42V>" + tag("SECKEYNAME", key.SECKEYNAME) + tag("KEYFIELD", key.KEYFIELD) + "</DD42V>").join("");
   return { file: base + ".ttyp.xml", xml: wrap("LCL_OBJECT_TTYP", "<DD40V>" + tag("TYPENAME", object.name) + tag("ROWTYPE", row.ROWTYPE) +
     tag("ROWKIND", row.ROWKIND) + tag("DATATYPE", row.DATATYPE) + (Number(row.LENG) ? tag("LENG", number(row.LENG)) : "") +
-    (Number(row.DECIMALS) ? tag("DECIMALS", number(row.DECIMALS)) : "") + tag("ACCESSMODE", row.ACCESSMODE) + tag("KEYDEF", row.KEYDEF) + "</DD40V>") };
+    (Number(row.DECIMALS) ? tag("DECIMALS", number(row.DECIMALS)) : "") + tag("ACCESSMODE", row.ACCESSMODE) + tag("KEYDEF", row.KEYDEF) +
+    "</DD40V>" + (keys ? "<DD42V>" + keys + "</DD42V>" : "")) };
 }
 
 /* The DDIC names the run takes from open-abap-core, which goes with it whole: its tables and structures, data elements,
@@ -183,4 +217,4 @@ function coreNames(core = path.join(__dirname, "vendor", "open-abap-core", "src"
   return names;
 }
 
-module.exports = { dictionaryNames, declaredTypes, readDictionary, objectXml, coreNames };
+module.exports = { dictionaryNames, declaredTypes, readDictionary, normalizeTableFields, objectXml, coreNames };

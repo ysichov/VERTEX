@@ -76,6 +76,8 @@ async function debugCommand(dbg, command, a, fetchVertex) {
       const bp = await dbg.setBreakpointAt({ url: a.url, line: a.line, condition: a.condition, mode: a.mode, take_over: a.take_over === true });
       return { id: bp.id };
     }
+    case "watchpointAdd": return dbg.setWatchpoint(a.name, a.condition);
+    case "watchpointRemove": await dbg.clearWatchpoint(a.id); return {};
     // A point by the object's name, for places the window did not read as a
     // source: the analysis names them that way.
     case "setAt": {
