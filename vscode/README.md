@@ -33,7 +33,7 @@ what needs it.
 |---|---|---|---|
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values | not needed |
-| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player | not needed |
+| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, and the flow chart and player for a recorded run. Saved SAP debug sessions can be opened, renamed or deleted from Debug Session Logs. | not needed |
 | **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW*, *Formula* or *Expression*, each as a tree or a diagram | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
 | **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | to save reviews in SAP |
@@ -621,6 +621,8 @@ chosen, the first enabled model is used. A provider switched off
 keeps its model ticks but is left out of every provider choice; the one in use cannot be switched
 off - choose another first. Save refuses a provider with no model ticked, and resets a chosen
 model that is no longer offered. The choice is kept in `vertex.ai.modelConfig`.
+If a provider has no model entries, the panel explains that instead of showing a blank table.
+Model-loading errors in the sidebar appear below the model selector.
 
 - **Claude subscription** lists Claude versions by full id (`claude-opus-5`, `claude-sonnet-4-6`,
   ...). Claude Code reports no list of its own, so this list is VERTEX's, in `assistant.js`
@@ -832,7 +834,8 @@ agent can then pass radio choices, parameters and ranges in `selection`. Missing
 values are reported before execution. Names are matched without regard to case, as in ABAP:
 a radio group is given as `{"SC": "P_PREC"}`. A key the selection screen does not have, or a
 choice its radio group does not offer, stops the call with an error naming what the screen
-accepts, instead of running the defaults. A completed run returns its output and a `run_id`.
+accepts, instead of running the defaults. A completed run returns its output and a GUID
+`session_id` (also returned as `run_id` for compatibility).
 `read_abap_transpiler_history` pages through every recorded step and its variable changes;
 `find_abap_transpiler_stops` finds source lines or changes to a variable, including a
 structure field such as `LS_RESULT-AMOUNT`. These are virtual watchpoints over the recorded
@@ -1105,6 +1108,8 @@ it - `LS_ORDER`, `GS_INVOICE-ITEMS`, `ME->MV_RATE`.
 **Visual Debug** is the right-hand panel beside the source tab (programs, classes and function modules); it shows the same
 debugger the assistant drives - one session, not a second one:
 
+Use **Save log** on the replay bar to keep a SAP recording and its available source snapshots as a local file. Each saved SAP recording has a GUID `session_id`; evidence citations such as `[session a1b2c3d4 step 4]` open that recording at the cited step. **Logs** opens the saved-recording list, showing date/time, program and recorded-step count; selecting an entry opens an offline replay. The default folder is VERTEX's extension storage; `vertex.debug.runPath` selects another folder. Existing recordings receive a stable ID the first time VERTEX reads them.
+
 - **The source stays in the editor.** The panel opens beside the source tab and draws no copy
   of it; the lines are those of the active version, which is what the program runs. Breakpoints the assistant set appear
   here, and those set here are the assistant's too.
@@ -1164,7 +1169,8 @@ debugger the assistant drives - one session, not a second one:
   at 1, 2, 3, 5 or 10 stops a second or as fast as the window draws (max), with the
   milliseconds each stop took on screen (kept after the replay). Rec reads a routine's
   Parameters and Locals where it starts and where it ends; the player shows them in Variables,
-  and at the stops between, the values last read in that routine.
+  and at the stops between, the values last read in that routine. The first recorded SAP stop
+  also captures Globals, including selection-screen values, so they can be inspected at that step.
   A click on a block moves the player to the next time the run entered that routine, its source
   shown here; a SAP standard block the run stepped over shows its source (class, function module
   or program). **Stack** is a table as in SAP's debugger: depth number, event type, event,

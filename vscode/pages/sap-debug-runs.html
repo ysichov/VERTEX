@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{margin:0;padding:24px;background:var(--vscode-editor-background,Canvas);color:var(--vscode-editor-foreground,CanvasText);font:13px var(--vscode-font-family,system-ui,sans-serif)}
+header{display:flex;align-items:center;gap:12px;margin-bottom:16px}h1{font-size:18px;font-weight:600;margin:0;flex:1}
+input{width:min(320px,40vw);padding:6px 8px;color:var(--vscode-input-foreground,var(--vscode-foreground));background:var(--vscode-input-background,var(--vscode-editor-background));border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:3px}
+table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--vscode-descriptionForeground);font-weight:600}th,td{padding:9px 10px;border-bottom:1px solid var(--vscode-panel-border,var(--vscode-editorWidget-border,GrayText))}tr[data-file]{cursor:pointer}tr[data-file]:hover td,tr[data-file]:focus td{background:var(--vscode-list-hoverBackground,transparent)}
+.actions{display:flex;gap:4px;justify-content:flex-end}button{width:28px;height:28px;padding:3px;color:var(--vscode-descriptionForeground,var(--vscode-foreground));background:transparent;border:1px solid transparent;border-radius:3px;cursor:pointer;font:inherit}button:hover,button:focus-visible{color:var(--vscode-foreground);background:var(--vscode-toolbar-hoverBackground,var(--vscode-list-hoverBackground));border-color:var(--vscode-panel-border,transparent)}button:focus-visible,tr[data-file]:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:-1px}
+#empty{padding:24px;color:var(--vscode-descriptionForeground)}.count{color:var(--vscode-descriptionForeground);white-space:nowrap}
+</style></head><body>
+<header><h1>SAP Debug Session Logs</h1><span id="count" class="count"></span><input id="filter" type="search" placeholder="Filter by program or date" aria-label="Filter debug session logs"></header>
+<table><thead><tr><th>Date &amp; time</th><th>Program</th><th>Steps</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+<div id="empty" hidden>No saved SAP debug logs yet. Use “Save log” in Visual Debug to keep the current recording.</div>
+<script>
+const vscode=acquireVsCodeApi();let runs=[];
+const date=value=>{const parsed=new Date(value);return Number.isNaN(parsed.getTime())?String(value||""):parsed.toLocaleString();};
+function button(label,action){const element=document.createElement("button");element.textContent=label;element.title=action==="rename"?"Rename session":"Delete session";element.setAttribute("aria-label",element.title);element.onclick=event=>{event.stopPropagation();vscode.postMessage({action,file:element.closest("tr").dataset.file});};return element;}
+function draw(){const wanted=document.getElementById("filter").value.trim().toLowerCase(),rows=document.getElementById("rows");rows.textContent="";const shown=runs.filter(run=>(run.name+" "+run.created).toLowerCase().includes(wanted));
+  document.getElementById("count").textContent=runs.length+" log"+(runs.length===1?"":"s");document.getElementById("empty").hidden=shown.length>0;
+  shown.forEach(run=>{const row=document.createElement("tr");row.dataset.file=run.file;row.tabIndex=0;row.setAttribute("role","button");row.setAttribute("aria-label","Open debug session for "+run.name);const open=()=>vscode.postMessage({action:"open",file:run.file});row.onclick=open;row.onkeydown=event=>{if(event.target===row&&(event.key==="Enter"||event.key===" ")){event.preventDefault();open();}};const time=document.createElement("td");time.textContent=date(run.created);const name=document.createElement("td");name.textContent=run.name;const steps=document.createElement("td");steps.textContent=String(run.steps);const actions=document.createElement("td"),group=document.createElement("div");group.className="actions";group.append(button("✎","rename"),button("🗑","delete"));actions.append(group);row.append(time,name,steps,actions);rows.append(row);});}
+document.getElementById("filter").addEventListener("input",draw);
+window.addEventListener("message",event=>{if(event.data.type==="runs"){runs=event.data.runs||[];draw();}});
+vscode.postMessage({action:"ready"});
+</script></body></html>

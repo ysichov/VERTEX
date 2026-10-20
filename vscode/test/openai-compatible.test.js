@@ -21,6 +21,9 @@ test("LLM Providers offers an independent fold control for each model list", () 
   assert.match(panel.webview.html, /Collapse models/);
   assert.match(panel.webview.html, /s\.expanded = !s\.expanded/);
   assert.match(panel.webview.html, /body\.hidden = !s\.expanded/);
+  assert.match(panel.webview.html, /if \(!s\.rows\.length\)/);
+  assert.match(panel.webview.html, /no models were returned/);
+  assert.match(panel.webview.html, /this is not an account sign-in check/);
   assert.match(panel.webview.html, /select-key/);
   assert.match(panel.webview.html, /all \? "Clear all" : "Select all"/);
   assert.match(panel.webview.html, /s\.rows\.forEach\(r => \{ r\.on = next; \}\)/);

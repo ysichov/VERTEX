@@ -304,6 +304,13 @@ function fill(id) {
     return;
   }
   if (!s.rows) { body.appendChild(el("div", { className: "note", textContent: "Loading ..." })); return; }
+  if (!s.rows.length) {
+    body.appendChild(el("div", { className: "error", textContent: s.label + ": no models were returned. Reopen Config models to retry." }));
+    if (id === "claude") {
+      body.appendChild(el("div", { className: "note", textContent: "Claude's model list is built into VERTEX; this is not an account sign-in check." }));
+    }
+    return;
+  }
   const bulk = el("button", { type: "button" });
   const updateBulk = () => {
     const all = s.rows.length > 0 && s.rows.every(r => r.on);

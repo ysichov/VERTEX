@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.14",
+  "version": "0.9.18",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -419,6 +419,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Folder that keeps each transpiler run of the chat as a folder of its own: its record, output and the sources it stepped through. A kept run opens again after a restart, from a chat citation or with **VERTEX: Open Transpiler Run...**, and its folder can be handed to someone else. Empty keeps runs for this session only."
+        },
+        "vertex.debug.runPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Folder for saved SAP debug recordings. Empty uses VERTEX's extension storage. Open the searchable run list with **VERTEX: SAP Debug Runs...**."
         },
         "vertex.ai.logPath": {
           "type": "string",

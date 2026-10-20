@@ -9,6 +9,18 @@ const vm = require("node:vm");
 const helpers = html => ["function poolName(program){", "function recordedUnitKey(owner,unit){"].map(start =>
   html.slice(html.indexOf(start), html.indexOf("\n", html.indexOf(start)))).join("\n") + "\n";
 
+test("a SAP recording snapshots the initial stop before stepping", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "latin1");
+  const start = html.indexOf("function runVisual(){");
+  const next = html.indexOf("function next(){", start);
+  assert.ok(start >= 0 && next > start);
+  const begin = html.slice(start, next);
+  assert.match(begin, /record\(picture\.stopped\.frames\);s\.valueDue=!!chosenValue;s\.snapDue=!INITIAL\.local/);
+  const snapshot = html.indexOf('if(s.snapDue&&!s.stop)', next);
+  const step = html.indexOf('debug("step",{kind:"into"', next);
+  assert.ok(snapshot > next && snapshot < step, "the initial scope read completes before the first step");
+});
+
 test("recorded structures expand and table rows are paged", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "latin1");
   const start = html.indexOf("var recordedOpen={},recordedPages={};");

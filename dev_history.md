@@ -1,5 +1,25 @@
 # Development history
 
+## 2026-10-20 — sidebar model diagnostics
+
+Model-loading failures now populate an accessible status message below the sidebar selector; a successful response clears it. The focused sidebar, assistant and chat tests pass (37 tests). The universal 0.9.18 VSIX is repackaged with the updated sidebar and README, retaining the previously packaged dependencies.
+
+## 2026-10-20 — explicit empty state for provider models
+
+When a provider returned an empty model array, **Config models** rendered the header and an empty table with no explanation. The panel now shows an explicit retry message; for Claude it also explains that the catalog is bundled in VERTEX and does not test subscription sign-in. Added a focused UI-source regression assertion. VS Code only; no host package was built.
+
+## 2026-10-20 — Debug Session Logs row actions
+
+The Visual Debug header now names the saved-recording list **Debug Session Logs**, distinct from the on-screen **Log** pane. In the list, clicking a session row opens it; icon buttons invoke rename and delete, with accessible labels and keyboard row activation. The rename prompt and delete confirmation remain host-side. The extension panel title and VS Code-facing feature descriptions use the same name. The Eclipse update site was not rebuilt.
+
+The first step a SAP recording creates at Continue used to lack its Variables snapshot: the page added the stop to the timeline, then stepped before asking for values. It now reads the scopes at that initial stop and stores the Globals on the step, regardless of the full Steps & values mode. Selection parameters are available under Globals when the user replays the first step. The transpiler run path is unchanged.
+
+The first step a SAP recording creates at Continue used to lack its Variables snapshot: the page added the stop to the timeline, then stepped before asking for values. It now reads the scopes at that initial stop and stores the Globals on the step, regardless of the full Steps & values mode. Selection parameters are available under Globals when the user replays the first step. The transpiler run path is unchanged.
+
+## 2026-10-20 — stable IDs and citations for SAP debug sessions
+
+Saved SAP debugger files now carry GUID `session_id`s; legacy recordings acquire one on first read. VS Code chat recognises `[session <id> step <n>]` citations and opens the saved offline replay at that step. Transpiler runs expose the same ID as `session_id` while retaining `run_id` for existing tool schemas and citations. The saved-session list supplies IDs for citation resolution. Focused history, renderer and transpiler tests pass. This change is VS Code-only; no Eclipse host build is claimed.
+
 ## 2026-10-18 — ADT workspace import on macOS
 
 The 0.9.14 importer stopped before workspace selection when SAP Logon was absent. It now reads each ABAP project's `.destination.properties` from the Eclipse workspace and uses its system ID, server, instance, client and user. It scans macOS Eclipse app bundles for recent workspaces and offers common workspace folders. SAP Logon entries continue to work. The focused system setup tests pass (7/7). Built and verified the universal `vertex-abap-0.9.14.vsix`; its archive contains the new importer. macOS discovery has not been run on a Mac.

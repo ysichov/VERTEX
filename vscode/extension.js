@@ -759,7 +759,7 @@ function debuggerFor(context, auth) {
 /* The source tools with the debugger's added: the schemas and the method the
    chat is told, and a call that sends debug_* to the debugger. The Anthropic
    API path calls execute directly, so it gets the answer as text. */
-const TRANSPILER_AGENT_INSTRUCTIONS = "A request such as 'find the bug in the debugger' does not choose the SAP runtime. When execution or debugging is needed and the user has not specified a mode, use run_abap_transpiler first for a runnable report or method. It is a simulation, not proof of behavior in SAP. Use screen_only to inspect selection fields and ask for missing values. When the question concerns several scenarios or selections and no run of this request covers one of them, run it with run_abap_transpiler yourself instead of asking; a run shown in Visual Debug or in an earlier answer covers only the selection it ran with. The result's run_id permits paged read_abap_transpiler_history and virtual line breakpoints or variable watchpoints with find_abap_transpiler_stops. Do not reason from source code about what a run did. When the user asks to compare runs, explain a result or find a cause, call find_abap_transpiler_stops or read_abap_transpiler_history on the relevant run_ids before answering; finishing without those calls is not an answer to such a request. Every claim about values, control flow, a cause or a missing check must cite a run_id and the step, line and value that show it. If the history cannot be read, list what the run outputs show, mark the rest as not verified and say why. Never reply with only a status line: report the results you have. Cite each piece of evidence as [run <first 8 characters of run_id> step <n>], exactly in this form and in English whatever the reply language, one citation per run and step; VERTEX shows it to the user as 'run <run_number>, step <n>', a link that opens the run at that step. In other text refer to a run by its run_number, never by run_id. Use transpiler output and history first; if a specific class method's source is needed, use read_sap_method before reading the whole object. If the transpiler cannot run the case, explain why and ask whether the user wants a SAP run; never silently switch modes. If the user explicitly requests a SAP run, use the SAP debugger tools.";
+const TRANSPILER_AGENT_INSTRUCTIONS = "A request such as 'find the bug in the debugger' does not choose the SAP runtime. When execution or debugging is needed and the user has not specified a mode, use run_abap_transpiler first for a runnable report or method. It is a simulation, not proof of behavior in SAP. Use screen_only to inspect selection fields and ask for missing values. When the question concerns several scenarios or selections and no run of this request covers one of them, run it with run_abap_transpiler yourself instead of asking; a run shown in Visual Debug or in an earlier answer covers only the selection it ran with. The result's run_id permits paged read_abap_transpiler_history and virtual line breakpoints or variable watchpoints with find_abap_transpiler_stops. A saved SAP Visual Debug recording shown in the open window has a session_id; cite its recorded evidence as [session <first 8 characters of session_id> step <n>]. A session citation opens that saved recording at the cited step. Do not claim that a SAP recording lacks an ID when the open Visual Debug context supplies session_id. Do not reason from source code about what a run did. When the user asks to compare runs, explain a result or find a cause, call find_abap_transpiler_stops or read_abap_transpiler_history on the relevant run_ids before answering; finishing without those calls is not an answer to such a request. Every claim about values, control flow, a cause or a missing check must cite the run/session ID and the step, line and value that show it. If the history cannot be read, list what the available record shows, mark the rest as not verified and say why. Never reply with only a status line: report the results you have. Cite transpiler evidence as [run <first 8 characters of run_id> step <n>] and saved SAP recording evidence as [session <first 8 characters of session_id> step <n>], exactly in this form and in English whatever the reply language, one citation per run/session and step; VERTEX makes known citations clickable in its chat. Use transpiler output and history first; if a specific class method's source is needed, use read_sap_method before reading the whole object. If the transpiler cannot run the case, explain why and ask whether the user wants a SAP run; never silently switch modes. If the user explicitly requests a SAP run, use the SAP debugger tools.";
 
 function withDebugger(sapCode, debugTools, runTranspiler, transpilerHistory) {
   // Getters, read when asked - as the source tools' own text is: it names the
@@ -826,9 +826,13 @@ function activate(context) {
   // What Visual Debug shows, for the chat: a kept run says so, so it is not taken for a run of this request.
   const debugContextForChat = () => {
     const kept = dockedDebugSource?.storedRun;
-    if (!latestDebugContext || !kept) return latestDebugContext;
-    return { ...latestDebugContext, kept_run: { run_id: kept.run_id, run_number: transpilerHistory.number(kept.run_id),
+    const savedRecord = dockedDebugSource?.storedDebugRecord;
+    let context = latestDebugContext;
+    if (kept && context) context = { ...context, kept_run: { run_id: kept.run_id, run_number: transpilerHistory.number(kept.run_id),
       note: "Visual Debug shows a kept transpiler run opened for viewing. It covers only the selection it ran with; run other cases with run_abap_transpiler." } };
+    if (savedRecord && context) context = { ...context, saved_session: { session_id: savedRecord.session_id,
+      note: "Visual Debug shows this saved SAP debugger recording offline. Cite recorded steps with [session <first 8 characters of session_id> step <n>]." } };
+    return context;
   };
   const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
   const chatSet = {
@@ -877,7 +881,7 @@ function activate(context) {
       chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext()) }, initial);
   // The normal source tab remains the sole code editor.  The debugger is a
   // docked panel, not another editor tab showing a second copy of that source.
-  let dockedDebugView = null, dockedDebugSource = null, localDebugAdapter = null;
+  let dockedDebugView = null, dockedDebugSource = null, localDebugAdapter = null, sapDebugRunsPanel = null;
   const localHistoryMark = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
     backgroundColor: new vscode.ThemeColor("editor.stackFrameHighlightBackground"),
@@ -919,7 +923,9 @@ function activate(context) {
     entry: dockedDebugSource.local ? localEntry(dockedDebugSource) : null,
     parameters: dockedDebugSource.local ? require("./local-run").parametersFor(dockedDebugSource.document) : [],
     // The whole selection screen with its texts, which the panel draws.
-    screen: dockedDebugSource.local ? require("./local-run").screenFor(dockedDebugSource.document) : null
+    screen: dockedDebugSource.local ? require("./local-run").screenFor(dockedDebugSource.document) : null,
+    savedRecord: dockedDebugSource.storedDebugRecord || null,
+    replayStep: dockedDebugSource.replayStep || null
   };
   // A transpiler run of an SAP program works on copies of its sources; the reader works in the SAP tabs. These turn one
   // into the other: a copy's path and its tab's address. A local file is its own path.
@@ -941,6 +947,7 @@ function activate(context) {
     return program !== undefined && program === vscode.window.tabGroups?.activeTabGroup?.viewColumn ? vscode.ViewColumn.Beside : undefined;
   };
   const postDockedPicture = () => {
+    if (dockedDebugSource?.storedDebugRecord) return;
     if (dockedDebugSource?.local && localDebugAdapter) {
       const frame = localDebugAdapter.picture().stopped?.frames?.[0];
       const editor = (vscode.window.visibleTextEditors || []).find(item =>
@@ -970,11 +977,12 @@ function activate(context) {
         setTimeout(() => void view.webview.postMessage({ type: "localVariables", state: latestLocalVariables }), 150);
       }
       let logicReceive=null,logicDisposers=[];
-      const unwatch = dbg.watch(postDockedPicture);
+      const unwatch = dockedDebugSource?.storedDebugRecord ? () => {} : dbg.watch(postDockedPicture);
       // The reader's place in a VERTEX source, for the variables it shows before the program runs: the object and the line the
       // cursor is on, whichever VERTEX tab is in front. A change is sent once the cursor has rested a moment.
       let cursorTimer;
       const sendCursor = () => {
+        if (dockedDebugSource?.storedDebugRecord) return;
         const editor = vscode.window.activeTextEditor, object = editor && (dockedDebugSource?.local
           ? require("./local-analysis").sourceObject(editor.document) : sapCode.documentObject(editor.document));
         if (!object) { return; }
@@ -1127,6 +1135,23 @@ function activate(context) {
           const args = message.args || [];
           const command = String(args[0] || "");
           const commandArgs = JSON.parse(String(args[1] || "{}"));
+          if (command === "saveRecord") {
+            const folder = String(vscode.workspace.getConfiguration("vertex").get("debug.runPath", "") || "").trim()
+              || path.join(context.globalStorageUri.fsPath, "sap-debug-runs");
+            fs.mkdirSync(folder, { recursive: true });
+            const safeName = String(commandArgs.meta?.name || "SAP").replace(/[^A-Za-z0-9_-]/g, "_");
+            const now = new Date(), pad = value => String(value).padStart(2, "0");
+            const stamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+            const file = path.join(folder, stamp + "_" + safeName + ".vertex-debug.json");
+            require("./sap-debug-history").save(file, commandArgs);
+            await replyTo(JSON.stringify({ path: file }));
+            return;
+          }
+          if (command === "openRuns") {
+            await vscode.commands.executeCommand("vertex.openSapDebugRuns");
+            await replyTo("{}");
+            return;
+          }
           // Recompile: the SAP object of this run read and transpiled again, and the panel opened on that build.
           if (command === "sapRecompile") { await recompileSap(); return; }
           if (command === "toProgram") {
@@ -1410,7 +1435,7 @@ function activate(context) {
         object_type: kind, system: shown.system_name },
         { output: result.output, main: (privateDocument || document).uri.fsPath });
       return { status: "completed", mode: "transpiler", object_name: shown.object_name,
-        run_id, run_number: options.history.number(run_id),
+        session_id: run_id, run_id, run_number: options.history.number(run_id),
         output: String(result.output || "").slice(0, 12000), output_truncated: String(result.output || "").length > 12000,
         recorded_steps: result.records?.length || 0, duration_ms: result.durationMs || 0,
         note: "Local transpiler simulation. This is not proof of execution in SAP." };
@@ -1473,6 +1498,80 @@ function activate(context) {
         await openVisualDebug(false, { object_name: run.meta.object_name || path.basename(run.main), object_type: run.meta.object_type || "PROG",
           local: true, document, entryLine: 1, autoRun: false,
           storedRun: { run_id: run.run_id, records: run.records, output: run.output, at: step - 1 } });
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }),
+    vscode.commands.registerCommand("vertex.openSapDebugRuns", async () => {
+      try {
+        const folder = String(vscode.workspace.getConfiguration("vertex").get("debug.runPath", "") || "").trim()
+          || path.join(context.globalStorageUri.fsPath, "sap-debug-runs");
+        const history = require("./sap-debug-history");
+        if (sapDebugRunsPanel) {
+          sapDebugRunsPanel.reveal(vscode.ViewColumn.Beside);
+          await sapDebugRunsPanel.webview.postMessage({ type: "runs", runs: history.list(folder) });
+          return;
+        }
+        sapDebugRunsPanel = vscode.window.createWebviewPanel("vertex.sapDebugRuns", "SAP Debug Session Logs",
+          vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
+        const panel = sapDebugRunsPanel;
+        const nonce = require("crypto").randomBytes(18).toString("base64");
+        panel.webview.html = fs.readFileSync(path.join(__dirname, "pages", "sap-debug-runs.html"), "utf8")
+          .replace("<head>", "<head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'nonce-" + nonce
+            + "'; script-src 'nonce-" + nonce + "';\">")
+          .replace("<style>", "<style nonce=\"" + nonce + "\">")
+          .replace("<script>", "<script nonce=\"" + nonce + "\">");
+        panel.webview.onDidReceiveMessage(async message => {
+          try {
+            if (message.action === "ready") {
+              await panel.webview.postMessage({ type: "runs", runs: history.list(folder) });
+            } else if (message.action === "open") {
+              const item = history.list(folder).find(run => run.file === message.file);
+              if (!item) throw new Error("The selected SAP debug log is no longer available.");
+              const record = history.load(item.file);
+              panel.dispose();
+              await openVisualDebug(false, { object_name: record.meta.name, object_type: record.meta.type,
+                storedDebugRecord: record, autoRun: false });
+            } else if (message.action === "rename") {
+              const item = history.list(folder).find(run => run.file === message.file);
+              if (!item) throw new Error("The selected SAP debug log is no longer available.");
+              const name = await vscode.window.showInputBox({ title: "Rename SAP debug log", value: item.name, prompt: "Name shown in the saved-log list" });
+              if (name === undefined) return;
+              history.rename(folder, item.file, name);
+              await panel.webview.postMessage({ type: "runs", runs: history.list(folder) });
+            } else if (message.action === "delete") {
+              const item = history.list(folder).find(run => run.file === message.file);
+              if (!item) throw new Error("The selected SAP debug log is no longer available.");
+              const confirm = await vscode.window.showWarningMessage("Delete saved SAP debug log ‘" + item.name + "’?", { modal: true }, "Delete");
+              if (confirm !== "Delete") return;
+              history.remove(folder, item.file);
+              await panel.webview.postMessage({ type: "runs", runs: history.list(folder) });
+            }
+          } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+        });
+        panel.onDidDispose(() => { if (sapDebugRunsPanel === panel) sapDebugRunsPanel = null; });
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }),
+    vscode.commands.registerCommand("vertex.knownEvidenceSessions", () => {
+      const folder = String(vscode.workspace.getConfiguration("vertex").get("debug.runPath", "") || "").trim()
+        || path.join(context.globalStorageUri.fsPath, "sap-debug-runs");
+      const saved = require("./sap-debug-history").list(folder)
+        .map(run => ({ kind: "sap", session_id: run.session_id, name: run.name }));
+      const transpiler = transpilerHistory.known().map(run_id => ({ kind: "transpiler", session_id: run_id,
+        run_id, number: transpilerHistory.number(run_id) }));
+      return saved.concat(transpiler);
+    }),
+    vscode.commands.registerCommand("vertex.openDebugSession", async target => {
+      try {
+        const folder = String(vscode.workspace.getConfiguration("vertex").get("debug.runPath", "") || "").trim()
+          || path.join(context.globalStorageUri.fsPath, "sap-debug-runs");
+        const prefix = String(target?.session_id || "").toLowerCase();
+        const matches = require("./sap-debug-history").list(folder).filter(item => item.session_id.startsWith(prefix));
+        if (matches.length !== 1) throw new Error(matches.length ? "That SAP debug session ID is ambiguous." : "No saved SAP debug session matches " + prefix + ".");
+        const run = matches[0];
+        const record = require("./sap-debug-history").load(run.file), step = Number(target?.step);
+        if (!Number.isInteger(step) || step < 1 || step > record.timeline.length)
+          throw new Error("SAP debug session " + record.session_id + " has " + record.timeline.length + " steps, not step " + step + ".");
+        await openVisualDebug(false, { object_name: record.meta.name, object_type: record.meta.type,
+          storedDebugRecord: record, replayStep: step, autoRun: false });
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }),
     // The runs a chat answer may cite: their run_ids, for the links the chat draws.

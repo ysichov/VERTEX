@@ -12,9 +12,11 @@ test("sidebar HTML contains an executable chat script", () => {
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /requestSubmit\(\)/);
   assert.match(script, /action: 'ready'/);
+  assert.match(html, /id="model-status" role="status"/);
+  assert.match(script, /status\.textContent = data\.error/);
 });
 
-test("a run citation in an answer becomes a link only when the run is known", () => {
+test("run and saved SAP-session citations link only when their session is known", () => {
   const folder = path.join(__dirname, "..");
   const source = fs.readFileSync(path.join(folder, "sidebar.js"), "utf8");
   const sandbox = { module: { exports: {} }, require, __dirname: folder };
@@ -27,12 +29,18 @@ test("a run citation in an answer becomes a link only when the run is known", ()
   const posted = [], parent = node("p");
   const context = { document: { createElement: node, createTextNode: text => ({ text }) }, api: { postMessage: m => posted.push(m) } };
   vm.runInNewContext(pick("inline") + pick("runLinks"), context);
-  context.inline("both read 4712 [run d6c436b8 step 13] and [run 99999999 step 2]", parent);
+  context.inline("both read 4712 [run d6c436b8 step 13], [session a1b2c3d4 step 4] and [session 99999999 step 2]", parent);
   const cites = parent.children.filter(child => child.className === "run-cite");
-  assert.deepEqual(cites.map(c => [c.dataset.run, c.dataset.step]), [["d6c436b8", "13"], ["99999999", "2"]]);
-  context.runLinks({ querySelectorAll: () => cites }, [{ run_id: "d6c436b8-0000-4000-8000-000000000000", number: 2 }]);
-  assert.ok(cites[0].replaced && !cites[1].replaced);
+  assert.deepEqual(cites.map(c => [c.dataset.kind, c.dataset.run, c.dataset.step]),
+    [["run", "d6c436b8", "13"], ["session", "a1b2c3d4", "4"], ["session", "99999999", "2"]]);
+  context.runLinks({ querySelectorAll: () => cites }, [
+    { kind: "transpiler", session_id: "d6c436b8-0000-4000-8000-000000000000", run_id: "d6c436b8-0000-4000-8000-000000000000", number: 2 },
+    { kind: "sap", session_id: "a1b2c3d4-0000-4000-8000-000000000000" }
+  ]);
+  assert.ok(cites[0].replaced && cites[1].replaced && !cites[2].replaced);
   assert.equal(cites[0].replaced.textContent, "run 2, step 13");
   cites[0].replaced.click({ preventDefault() {} });
   assert.deepEqual(JSON.parse(JSON.stringify(posted)), [{ action: "openRun", run_id: "d6c436b8-0000-4000-8000-000000000000", step: 13 }]);
+  cites[1].replaced.click({ preventDefault() {} });
+  assert.deepEqual(JSON.parse(JSON.stringify(posted[1])), { action: "openSession", session_id: "a1b2c3d4-0000-4000-8000-000000000000", step: 4 });
 });

@@ -55,7 +55,7 @@ function store(root, run_id, records, meta, extra) {
   };
   const main = copy(extra.main);
   const kept = records.map(record => record.file ? { ...record, file: copy(record.file) } : record);
-  fs.writeFileSync(path.join(folder, RUN_FILE), JSON.stringify({ format: 1, run_id, created: now.toISOString(),
+  fs.writeFileSync(path.join(folder, RUN_FILE), JSON.stringify({ format: 1, session_id: run_id, run_id, created: now.toISOString(),
     meta, output: String(extra.output || ""), main, records: kept }));
   return folder;
 }
@@ -67,7 +67,7 @@ function load(folder) {
   if (run.format !== 1 || !run.run_id || !Array.isArray(run.records) || !run.main)
     throw new Error(path.join(folder, RUN_FILE) + " is not a VERTEX transpiler run.");
   const full = file => path.join(folder, file);
-  return { run_id: run.run_id, meta: run.meta || {}, output: run.output || "", main: full(run.main), folder,
+  return { session_id: run.session_id || run.run_id, run_id: run.run_id, meta: run.meta || {}, output: run.output || "", main: full(run.main), folder,
     records: run.records.map(record => record.file ? { ...record, file: full(record.file) } : record) };
 }
 
@@ -79,7 +79,7 @@ function create(root = () => "") {
   function save(records, meta = {}, extra = null) {
     const run_id = randomUUID();
     const folder = root() && extra ? store(root(), run_id, records, meta, extra) : null;
-    runs.set(run_id, { records, meta, folder, output: extra?.output || "", main: extra?.main || "" });
+    runs.set(run_id, { session_id: run_id, records, meta, folder, output: extra?.output || "", main: extra?.main || "" });
     while (runs.size > 20) runs.delete(runs.keys().next().value);
     numbers.set(run_id, numbers.size + 1);
     return run_id;
@@ -125,7 +125,7 @@ function create(root = () => "") {
         stack: item.stack, changed: item.changed || {}, sy_changed: item.sy || {}, sql: item.sql || [],
         ...(args.include_state ? { variables: { ...states.get(key) }, sy: { ...sy } } : {}) });
     }
-    return { run_id: args.run_id, mode: "transpiler", total_steps: run.records.length,
+    return { session_id: run.run_id, run_id: args.run_id, mode: "transpiler", total_steps: run.records.length,
       from_step: from, steps, next_step: from + steps.length <= run.records.length ? from + steps.length : null,
       ...run.meta };
   }
@@ -168,7 +168,7 @@ function create(root = () => "") {
       matches.push({ step: i + 1, object: item.owner, routine: item.routine, line: item.line,
         ...(variable ? { variable, before: before ?? null, after } : { changed: item.changed || {} }) });
     }
-    return { run_id: args.run_id, total_steps: records.length, matches, next_step };
+    return { session_id: run.run_id, run_id: args.run_id, total_steps: records.length, matches, next_step };
   }
   const number = run_id => numbers.get(run_id) || null;
   // A new conversation numbers its runs from 1 again.

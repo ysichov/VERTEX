@@ -12,6 +12,7 @@ test("a transpiler run kept in the run folder opens again from a new session", (
   const first = history.create(() => root);
   const run_id = first.save(records, { object_name: "ZLAB", object_type: "PROG" }, { output: "out", main });
   assert.equal(first.number(run_id), 1);
+  assert.equal(first.get(run_id).session_id, run_id);
   assert.equal(first.number(first.save(records, { object_name: "ZLAB" })), 2);
   first.resetNumbers();
   assert.equal(first.number(run_id), null);

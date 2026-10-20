@@ -141,7 +141,8 @@
       its formula, and which values are good.</li>
   <li><b>Claude models by version.</b> The Assistant offers the newest Claude model of each
       family by full id, and <i>Specify version…</i> checks any other id with one request
-      before keeping it.</li>
+      before keeping it. If a provider returns no model entries, the VS Code provider panel
+      explains that instead of leaving a blank table.</li>
 </ul>
 
 <p>
@@ -164,7 +165,7 @@
   <tr><th>Tool</th><th>What it does</th><th>ABAP backend</th></tr>
   <tr><td><b>Enhanced Code Editor</b> (VS Code)</td><td>Hover with a data element's domain resolved, Go to (F12), Outline, Save &amp; Activate and block-by-block Review &amp; Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1)</td><td>not needed</td></tr>
   <tr><td><b>AI-driven ADT debugger</b> (VS Code)</td><td>Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values</td><td>not needed</td></tr>
-  <tr><td><b>Visual Debug</b> (VS Code; Eclipse in test)</td><td>The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player</td><td>not needed</td></tr>
+  <tr><td><b>Visual Debug</b> (VS Code; Eclipse in test)</td><td>The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player. The first recorded SAP stop includes Globals such as selection-screen values. VS Code's Debug Session Logs opens, renames or deletes saved sessions.</td><td>not needed</td></tr>
   <tr><td><b>Value Origin</b></td><td><i>Forward Usage Analysis</i>: how a value is computed, down from a line across calls - the static call stack, the derivation as <i>FLOW</i> or <i>Formula</i>, each as a tree or a diagram. <i>Backward Usage Analysis</i>: where the values of a routine go in its callers, by SAP's where-used</td><td>not needed</td></tr>
   <tr><td><b>AI Assistant</b></td><td>Chat over the SAP system: reads, explains and changes code &mdash; the change is reviewed block by block before activation &mdash; runs the tests and ATC on an object, and drives the debugger</td><td>not needed</td></tr>
   <tr><td><b>Versions / Reviewer</b></td><td>Version history, the diff between two versions, the review of a whole transport with approve, decline and comments</td><td>to save reviews in SAP</td></tr>
@@ -233,6 +234,7 @@ In VS Code, VERTEX reaches SNC systems through its direct RFC connection (<code>
   Its LLM Providers window has independently collapsible model lists and API-key
   providers for Anthropic, OpenAI, Mistral, Gemini, Groq, Cerebras, OpenRouter and NVIDIA.
   Each provider's model list has a Clear all / Select all control.
+  Model-loading errors in the VS Code sidebar appear below the model selector.
   With a local .abap file active, the chat can explain its current editor text without a SAP connection.
   Local ABAP programs and classes also support Outline, definition navigation, UML, metrics,
   Logic and Calls diagrams, and forward/backward usage analysis. VERTEX: Run with ABAP Transpiler on a local ABAP file asks the selection screen in a popup and shows the program's output; with a breakpoint set the same panel is the debugger, which stops there and steps on. Visual Analysis / Debug opens the whole panel for analysis. After a run, Formula and Expression of a chosen value keep only the path the run took, with the recorded values in brackets. VERTEX bundles the transpiler and runtime and generates a temporary project configuration when needed. Version history and SAP execution require a system.

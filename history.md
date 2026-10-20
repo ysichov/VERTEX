@@ -1,5 +1,23 @@
 # Release history
 
+## 2026-10-20 — VS Code 0.9.18: visible model-loading errors
+
+The sidebar displays the reason a model list failed below the selector, as well as in its tooltip.
+
+## Unreleased — explicit empty state for provider models
+
+The VS Code LLM Providers panel now explains when a provider returns no models instead of showing a blank table. The Claude message clarifies that its model list is built into VERTEX and is not an account sign-in check.
+
+## Unreleased — session links for saved SAP debug recordings
+
+Saved SAP debug recordings now receive stable GUID session IDs. The assistant can cite a recorded step as `[session <id> step <n>]`, and the VS Code chat opens the saved recording at that step. Older recording files receive an ID when first read. Transpiler sessions expose the same `session_id` alongside the compatible `run_id`.
+
+VS Code's **Debug Session Logs** opens saved recordings by clicking a row; compact edit and delete icon buttons manage each session.
+
+The first stop recorded in a SAP Visual run now includes the available Globals, including selection-screen values, even when full Steps &amp; values recording is off.
+
+The first stop recorded in a SAP Visual run now includes the available Globals, including selection-screen values, even when full Steps &amp; values recording is off.
+
 ## Unreleased — ADT workspace import on macOS
 
 Import SAP Systems can read system ID, server, instance, client and user from ABAP projects in an Eclipse ADT workspace without SAP Logon. On macOS it also looks for Eclipse app bundles and their recent workspaces. The usual ADT HTTP ports are still checked before a system is offered.

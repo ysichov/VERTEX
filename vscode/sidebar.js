@@ -86,6 +86,10 @@ function register(vscode, context, active, ask, systems, toolContext) {
           await vscode.commands.executeCommand("vertex.openTranspilerRun", { run_id: String(message.run_id), step: Number(message.step) });
           return;
         }
+        if (message.action === "openSession") {
+          await vscode.commands.executeCommand("vertex.openDebugSession", { session_id: String(message.session_id), step: Number(message.step) });
+          return;
+        }
         if (message.action === "openObject") {
           try { await ask.openObject({ object_type: String(message.object_type), object_name: String(message.object_name) }); }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
@@ -101,7 +105,7 @@ function register(vscode, context, active, ask, systems, toolContext) {
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId, answer: reply.answer,
               done: true, usage: usageLine(reply), choices: reply.choices || [],
-              runs: (await vscode.commands.executeCommand("vertex.knownTranspilerRuns")) || [] } });
+              runs: (await vscode.commands.executeCommand("vertex.knownEvidenceSessions")) || [] } });
             // The answer names a VERTEX function to run - a table's data, a
             // class's diff - and the panel has no view of its own for it, so
             // a Tools window opens on it, on the panel's system.
@@ -200,7 +204,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 <button type="button" data-action="logs" id="logs" title="Session logs" aria-label="Open session logs">📜</button></div>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
@@ -336,8 +340,12 @@ window.addEventListener('message', event => {
     if (data.error) {
       select.replaceChildren(new Option('no models', ''));
       select.title = data.error;
+      const status = document.getElementById('model-status');
+      if (status) status.textContent = data.error;
     } else {
       select.title = 'Model';
+      const status = document.getElementById('model-status');
+      if (status) status.textContent = '';
       select.replaceChildren(...data.models.map(m => new Option(m.label, m.id)));
       // A chosen model no longer switched on is shown as it is, not swapped.
       if (data.model && !data.models.some(m => m.id === data.model)) { select.add(new Option(data.model + ' (off)', data.model)); }
@@ -383,27 +391,31 @@ function links(item, choices) {
     name.replaceWith(link);
   });
 }
-// A citation whose id begins exactly one known run opens that run at the cited step.
+// A citation whose id begins exactly one known session opens it at the cited step.
 function runLinks(item, runs) {
   item.querySelectorAll('.run-cite').forEach(cite => {
-    const matches = runs.filter(run => run.run_id.startsWith(cite.dataset.run));
+    const matches = runs.filter(run => run.session_id.startsWith(cite.dataset.run)
+      && (cite.dataset.kind !== 'run' || run.kind === 'transpiler'));
     if (matches.length !== 1) return;
     const run = matches[0], link = document.createElement('a');
-    link.href = '#'; link.className = 'link'; link.title = 'Open run ' + run.run_id + ' at step ' + cite.dataset.step + ' in Visual Debug';
+    link.href = '#'; link.className = 'link'; link.title = 'Open ' + run.kind + ' session ' + run.session_id + ' at step ' + cite.dataset.step + ' in Visual Debug';
     // A run of this conversation reads as its number; one from elsewhere keeps the cited id.
-    link.textContent = run.number ? 'run ' + run.number + ', step ' + cite.dataset.step : cite.textContent;
-    link.addEventListener('click', event => { event.preventDefault(); api.postMessage({ action: 'openRun', run_id: run.run_id, step: Number(cite.dataset.step) }); });
+    link.textContent = run.kind === 'transpiler' && run.number ? 'run ' + run.number + ', step ' + cite.dataset.step : cite.textContent;
+    link.addEventListener('click', event => { event.preventDefault();
+      api.postMessage(run.kind === 'transpiler'
+        ? { action: 'openRun', run_id: run.run_id, step: Number(cite.dataset.step) }
+        : { action: 'openSession', session_id: run.session_id, step: Number(cite.dataset.step) }); });
     cite.replaceWith(link);
   });
 }
 // Markdown built as DOM nodes with textContent only, so an answer cannot inject markup.
 function inline(text, parent) {
-  text.split(/(\\[run [0-9a-f-]{6,36} step \\d+\\]|\\x60[^\\x60]+\\x60|\\*\\*[^*]+\\*\\*|\\*[^*\\s][^*]*\\*)/).forEach(token => {
+  text.split(/(\\[(?:run|session) [0-9a-f-]{6,36} step \\d+\\]|\\x60[^\\x60]+\\x60|\\*\\*[^*]+\\*\\*|\\*[^*\\s][^*]*\\*)/).forEach(token => {
     if (!token) return;
     let node;
-    const cite = /^\\[run ([0-9a-f-]{6,36}) step (\\d+)\\]$/.exec(token);
+    const cite = /^\\[(run|session) ([0-9a-f-]{6,36}) step (\\d+)\\]$/.exec(token);
     // A cited step of a transpiler run: a link once the run is known (runLinks), plain text otherwise.
-    if (cite) { node = document.createElement('span'); node.className = 'run-cite'; node.dataset.run = cite[1]; node.dataset.step = cite[2]; node.textContent = token; }
+    if (cite) { node = document.createElement('span'); node.className = 'run-cite'; node.dataset.kind = cite[1]; node.dataset.run = cite[2]; node.dataset.step = cite[3]; node.textContent = token; }
     else if (/^\\x60[^\\x60]+\\x60$/.test(token)) { node = document.createElement('code'); node.textContent = token.slice(1, -1); }
     else if (/^\\*\\*[^*]+\\*\\*$/.test(token)) { node = document.createElement('strong'); node.textContent = token.slice(2, -2); }
     else if (/^\\*[^*\\s][^*]*\\*$/.test(token)) { node = document.createElement('em'); node.textContent = token.slice(1, -1); }
