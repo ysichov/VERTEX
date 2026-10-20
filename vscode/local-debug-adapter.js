@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { hits: watchHits, conditionOf } = require("./local-watchpoint");
 
 /* scope: the sources of this run ({ files } or { root }), read when the object is opened and again at each run. */
 /* more.entry: the method or function module screen at the panel's line; more.variants: where named sets of its values
@@ -14,6 +15,8 @@ function create(vscode, document, launch, publish, scope, more = {}) {
   const name = path.basename(document.uri.fsPath).replace(/\.(?:prog|clas|intf)\.abap$/i, "").toUpperCase();
   let latest = null, listening = false, ended = 0, error = "", pendingStep = null;
   let trace = [], traceIndex = 0, live = null, traceEnded = false, traceMs = 0, storedOutput = "";
+  let watchpoints = [], nextWatchpoint = 1;
+  const watchHit = (record, index = traceIndex) => watchHits(record, trace.slice(0, index), watchpoints);
   function atTrace(index) {
     traceIndex = index;
     // The variables of the routine the program stands in: those its own stops changed. The transpiler's record keeps
@@ -53,9 +56,10 @@ function create(vscode, document, launch, publish, scope, more = {}) {
       line = latest?.line || 0;
     const breakpoints = points();
     const hit = breakpoints.find(bp => bp.active && bp.url.toLowerCase() === source.toLowerCase() && bp.line === line);
-    return { system: "Transpiler", listening, ended, ending: null, error, breakpoints,
+    return { system: "Transpiler", listening, ended, ending: null, error, breakpoints, watchpoints: watchpoints.map(w => ({ ...w })),
       traceLength: trace.length,
       stopped: latest?.frame && line ? { at: name + ":" + line, breakpoint: hit || null,
+        watchpoints: watchHit(trace[traceIndex]),
         frames: [{ n: 0, current: true, label: "EVENT " + latest.frame,
           program: latest.owner || name, include: latest.owner || name, unitType: "EVENT", unit: latest.frame,
           url: source, line }] } : null };
@@ -113,7 +117,7 @@ function create(vscode, document, launch, publish, scope, more = {}) {
           if (live && first && !breakpoints.some(bp => bp.active && bp.url.toLowerCase() === first.file.toLowerCase() && bp.line === first.line)) {
             // The time the program ran, not the time it was transpiled or stood at a breakpoint.
             const started = Date.now();
-            const next = await live.next("continue", breakpoints);
+            const next = await live.next("continue", breakpoints, watchpoints);
             durationMs = Date.now() - started;
             trace.push(...next.records); ended = next.ended;
           }
@@ -129,7 +133,7 @@ function create(vscode, document, launch, publish, scope, more = {}) {
         if (args.live) {
           if (!live) return { records: [], ended: true, picture: picture(), groups: localGroups() };
           const started = Date.now();
-          const next = await live.next(args.kind, points());
+          const next = await live.next(args.kind, points(), watchpoints);
           const durationMs = Date.now() - started;
           trace.push(...next.records); traceEnded = next.ended; traceMs += durationMs;
           atTrace(trace.length - 1);
@@ -139,8 +143,8 @@ function create(vscode, document, launch, publish, scope, more = {}) {
           let next = Math.min(trace.length - 1, traceIndex + 1);
           if (args.kind === "continue") {
             const breakpoints = points();
-            const hit = trace.findIndex((record, index) => index > traceIndex && breakpoints.some(bp =>
-              bp.active && bp.url.toLowerCase() === record.file.toLowerCase() && bp.line === record.line));
+            const hit = trace.findIndex((record, index) => index > traceIndex && (breakpoints.some(bp =>
+              bp.active && bp.url.toLowerCase() === record.file.toLowerCase() && bp.line === record.line) || watchHit(record, index).length));
             next = hit >= 0 ? hit : trace.length - 1;
           }
           atTrace(next);
@@ -175,6 +179,17 @@ function create(vscode, document, launch, publish, scope, more = {}) {
           new vscode.Position(Math.max(0, args.line - 1), 0)), true, args.condition || undefined);
         vscode.debug.addBreakpoints([bp]); return { id: bp.id };
       }
+      case "watchpointAdd": {
+        const variable = String(args.name || "").trim().toUpperCase();
+        if (!/^[A-Z_][A-Z0-9_]*(?:-[A-Z_][A-Z0-9_]*)*$/.test(variable)) throw new Error("Choose an ABAP variable or structure component.");
+        const condition = String(args.condition || "").trim();
+        conditionOf(variable, condition);
+        const existing = watchpoints.find(w => w.name === variable && w.condition === condition);
+        if (existing) return existing;
+        const added = { id: "LOCAL-WP" + nextWatchpoint++, name: variable, condition };
+        watchpoints.push(added); publish(picture()); return added;
+      }
+      case "watchpointRemove": watchpoints = watchpoints.filter(w => w.id !== String(args.id)); publish(picture()); return {};
       case "clear": vscode.debug.removeBreakpoints((vscode.debug.breakpoints || []).filter(bp =>
         args.id ? bp.id === args.id : isAbap(bp.location?.uri) && ours(bp.location.uri))); return {};
       case "activate": return {};

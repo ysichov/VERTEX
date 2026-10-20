@@ -86,7 +86,14 @@ function sapText(body) {
 }
 function parseStep(body) {
   const raw = fullParse(body, { removeNSPrefix: true });
-  return { ...xmlNodeAttr(raw.step), actions: xmlArray(raw, "step", "actions", "action").map(xmlNodeAttr), settings: xmlNodeAttr(raw.step && raw.step.settings) };
+  return { ...xmlNodeAttr(raw.step), actions: xmlArray(raw, "step", "actions", "action").map(xmlNodeAttr), settings: xmlNodeAttr(raw.step && raw.step.settings),
+    reachedWatchpoints: xmlArray(raw, "step", "reachedWatchpoints", "watchpoint").map(xmlNodeAttr) };
+}
+function watchpointRows(body) {
+  const raw = fullParse(body, { removeNSPrefix: true });
+  return xmlArray(raw, "watchpoints", "watchpoint").map(row => ({ ...xmlNodeAttr(row),
+    condition: String(row.condition || ""), oldValue: row.oldValue == null ? undefined : String(row.oldValue),
+    currentValue: row.currentValue == null ? undefined : String(row.currentValue) }));
 }
 function parseStack(body) {
   const raw = fullParse(body, { removeNSPrefix: true });
@@ -182,6 +189,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
   let numbered = 0, answers = { calls: 0, chars: 0 };
   let sap = null;              // { system, user, listener, open }
   let frames = [];             // the stack of the stop, for the Visual Debug window
+  let watchpoints = [];        // true ADT watchpoints, owned by the attached session
   let ended = 0;               // runs that ended, counted for the window
   // Where the reader is debugging from, so a stop is followed there and
   // nowhere else: the editor, or a VERTEX window that shows the source
@@ -251,7 +259,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
       await session.client.debuggerStep(STEPS.continue).catch(() => {});
       await session.client.logout().catch(() => {});
       await session.client.dispose?.();
-      session = null; stopped = null; frames = [];
+      session = null; stopped = null; frames = []; watchpoints = [];
     });
     // Out loud: letting a program go is not something to do quietly.
     problems.push(why);
@@ -682,7 +690,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
           try { await attach(hit); }
           catch (error) {
             if (session) { await session.client.dispose?.(); }
-            session = null; stopped = null; frames = [];
+            session = null; stopped = null; frames = []; watchpoints = [];
             problems.push("Could not attach to the stopped program: " + explain(error));
           }
           wake();
@@ -702,6 +710,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
     const { open, user } = await systemNow();
     const client = await open();                     // a stateful session of its own
     session = { client, debuggee: hit, program: hit.PRG_CURR };
+    watchpoints = [];
     unplaced = "";
     values = new Map();
     sources = new Map();
@@ -748,6 +757,14 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
         ? { changed: undefined, tables: undefined, source: "",
           stack: stack.stack.slice(0, 6).map(f => where(f) + (f.eventName ? " " + f.eventType + " " + f.eventName : "")) }
         : await snapshot(stack);
+      const reachedWatchpoints = (step?.reachedWatchpoints || []).map(hit => watchpoints.find(w => w.id === hit.id)
+        || { id: hit.id, variableName: hit.variableName || "" });
+      if (reachedWatchpoints.length) {
+        try {
+          const current = watchpointRows((await session.client.httpClient.request("/sap/bc/adt/debugger/watchpoints", { method: "GET", headers: { Accept: "application/xml" } })).body);
+          for (const reached of reachedWatchpoints) Object.assign(reached, current.find(w => w.id === reached.id) || {});
+        } catch (error) { problems.push("Watchpoint values could not be read: " + explain(error)); }
+      }
       frames = stack.stack.map((f, n) => ({ n, label: where(f) + (f.eventName ? " " + f.eventType + " " + f.eventName : ""),
         url: f.uri && f.uri.uri || "", line: f.line, position: f.stackUri || f.stackPosition, current: n === 0,
         program: f.programName || "", include: f.includeName || "", system: f.systemProgram === true,
@@ -778,7 +795,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
         }
       }
       stopped = { breakpoint: bp && !logs ? bp.id : null, at: where(top), stack: state.stack, source: state.source,
-        changed: state.changed, tables: state.tables,
+        changed: state.changed, tables: state.tables, watchpoints: reachedWatchpoints,
         note: quick ? "Reached by the Visual Debug window stepping without reading variables; what changed shows at the next ordinary stop." : undefined,
         problem: unresolved ? "SAP could not evaluate the condition: " + unresolved.unresolvableCondition : (unplaced || undefined) };
       wake();
@@ -791,6 +808,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
   }
 
   async function end(error) {
+    watchpoints = [];
     const lost = sessionLost(error);
     const run = { program: session.program, logged: logged.length - loggedRead,
       note: lost ? "The debugging session on " + session.program + " ended: " + explain(error)
@@ -798,7 +816,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
     finished.push(run); ended++; ending = run;
     await session.client.logout().catch(() => {});
     await session.client.dispose?.();
-    session = null; stopped = null; frames = [];
+    session = null; stopped = null; frames = []; watchpoints = [];
     wake();
     // The step threw because the program is gone. Whether it finished or died
     // is not in that error - a step into a class whose load fails throws just
@@ -1092,7 +1110,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
       if (stopped) { await bounded("Debuggee continue", () => client.debuggerStep(STEPS.continue), abandon); }
       if (alive) { await bounded("Debuggee logout", () => client.logout(), abandon); }
       if (alive) { await bounded("Debuggee disposal", () => client.dispose?.(), abandon); }
-      session = null; stopped = null; frames = [];
+      session = null; stopped = null; frames = []; watchpoints = [];
     }
     wake();
     if (sap) {
@@ -1164,7 +1182,9 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
         hasPage: !!d.page })) } : null,
       breakpoints: breakpoints.map(b => ({ id: b.id, objectType: b.objectType, name: b.name, url: b.url, line: b.line,
         condition: b.condition || "", mode: b.mode, active: b.active !== false, ...(b.local ? { local: true } : {}) })),
-      stopped: stopped ? { at: stopped.at, breakpoint: stopped.breakpoint, problem: stopped.problem || "", frames } : null
+      watchpoints: listWatchpoints(),
+      stopped: stopped ? { at: stopped.at, breakpoint: stopped.breakpoint, problem: stopped.problem || "", frames,
+        watchpoints: stopped.watchpoints || [] } : null
     };
   }
 
@@ -1304,6 +1324,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
       stopped: stopped ? stopped.at : null,
       breakpoints: breakpoints.map(b => ({ id: b.id, at: b.name + ":" + b.line, mode: b.mode, condition: b.condition || undefined,
         inactive: b.active === false || undefined })),
+      watchpoints: listWatchpoints(),
       logged: logged.length,
       dumps: dumpsKnown ? dumpsFound.length : "not watched - the feed could not be read",
       answers: answers.calls + " answers, " + answers.chars + " characters (about " + Math.round(answers.chars / 4) + " tokens)"
@@ -1312,10 +1333,38 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
 
   function counted(text) { answers.calls++; answers.chars += text.length; return text; }
 
+  function setWatchpoint(name, condition = "") {
+    return lifecycle(async () => {
+      mustBeStopped();
+      const variableName = String(name || "").trim().toUpperCase();
+      if (!/^[A-Z_][A-Z0-9_]*(?:-[A-Z_][A-Z0-9_]*|\[\d+\])*$/.test(variableName))
+        throw new Error("Use an ABAP variable name or a structure/table component for a watchpoint.");
+      if (String(condition).length > 255) throw new Error("A watchpoint condition must be at most 255 characters.");
+      const query = "?variableName=" + encodeURIComponent(variableName) + (condition ? "&condition=" + encodeURIComponent(condition) : "");
+      const response = await session.client.httpClient.request("/sap/bc/adt/debugger/watchpoints" + query,
+        { method: "POST", headers: { Accept: "application/xml" } });
+      const [created] = watchpointRows(response.body);
+      if (!created?.id) throw new Error("SAP did not return an ID for the watchpoint.");
+      watchpoints.push(created); changed();
+      return created;
+    });
+  }
+  function clearWatchpoint(id) {
+    return lifecycle(async () => {
+      mustBeStopped();
+      const target = watchpoints.find(item => item.id === String(id));
+      if (!target) throw new Error("This debug session has no watchpoint " + id + ".");
+      await session.client.httpClient.request("/sap/bc/adt/debugger/watchpoints/" + encodeURIComponent(target.id), { method: "DELETE" });
+      watchpoints = watchpoints.filter(item => item !== target); changed();
+    });
+  }
+  function listWatchpoints() { return watchpoints.map(item => ({ ...item })); }
+
   function drivenBy(name) { if (name === "editor" || name === "window") { driver = name; } }
   function drivenFrom() { return driver; }
   return { drivenBy, drivenFrom,
-    setBreakpoint, clearBreakpoints, activateBreakpoints, wait, step, read, run, openDump, dumpPage, checkDumps, stop, detach, status, counted,
+    setBreakpoint, clearBreakpoints, activateBreakpoints, setWatchpoint, clearWatchpoint, listWatchpoints,
+    wait, step, read, run, openDump, dumpPage, checkDumps, stop, detach, status, counted,
     log: () => logged.slice(),
     setBreakpointAt, advance, terminate, stopValues, watch, picture, scopes, children, variables, tableRows, frame, source,
     classMethods };

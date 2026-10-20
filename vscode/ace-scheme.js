@@ -57,6 +57,7 @@ function scheme(p,expandedText='',logicOnly=false) {
     emit('o'+first,run.length+(run.length===1?' operation':' operations'),'foldnode');click('o'+first,'aceexp_'+first);
   }
   function ops(from,to,prior,edgeLabel){
+    lastExit='';
     if(!prior||from<=0||to<=from+1)return prior;
     let chain=prior;
     function append(id,text,shape='round',klass=''){
@@ -68,7 +69,7 @@ function scheme(p,expandedText='',logicOnly=false) {
     const flush=()=>{folded(run,(id,text,klass)=>append(id,text,'round',klass));run=[];};
     for(const r of rows.filter(r=>r.line>from&&r.line<to&&r.kind==='P'&&!r.flow.declaration)){
       if(!label(r.text))continue;
-      if(exits(r)){flush();append('p'+r.line,r.text,'round','exitnode');click('p'+r.line,'acego_'+r.source_line+'_'+r.source_line);return '';}
+      if(exits(r)){flush();append('p'+r.line,r.text,'round','exitnode');click('p'+r.line,'acego_'+r.source_line+'_'+r.source_line);lastExit='p'+r.line;return '';}
       if(logicOnly&&!external(r)){run.push(r);continue;}
       flush();
       append('p'+r.line,r.text,'round',r.call?'callnode':r.flow.sideEffect?'dbnode':'');
@@ -76,9 +77,10 @@ function scheme(p,expandedText='',logicOnly=false) {
     flush();
     return chain;
   }
+  let lastExit='';
   if(!root&&label(title)){mm.push('start(["'+label(title)+'"])');prev='start';}
   for(const r of rows){
-    while(conds.length&&conds[0].close===r.line){const c=conds.shift();const tail=ops(prevLine,r.line,prev,pendingLabel);c.tails.push(tail?{id:tail,label:tail===prev?pendingLabel:''}:null);pendingLabel='';const id='j'+r.line,live=c.tails.filter(Boolean),fallthrough=c.word==='IF'&&!c.hasElse;if(live.length||fallthrough){mm.push(id+'("'+label(r.text)+'")');live.forEach(t=>connect(t,id));if(fallthrough)connect(c.header,id,'false');prev=id;}else prev='';prevLine=r.line;}
+    while(conds.length&&conds[0].close===r.line){const c=conds.shift();const tail=ops(prevLine,r.line,prev,pendingLabel);c.tails.push(tail?{id:tail,label:tail===prev?pendingLabel:''}:null);if(c.word==='IF'&&!tail&&lastExit)c.exitTails.push(lastExit);pendingLabel='';const id='j'+r.line,live=c.tails.filter(Boolean),fallthrough=c.word==='IF'&&!c.hasElse;if(live.length||fallthrough||c.exitTails.length){mm.push(id+'("'+label(r.text)+'")');live.forEach(t=>connect(t,id));/* Draw the structural ENDIF after every branch so the following diagram stays centred; RETURN still ends execution. */c.exitTails.forEach(exit=>connect(exit,id));if(fallthrough)connect(c.header,id,'false');prev=live.length||fallthrough?id:'';}else prev='';prevLine=r.line;}
     while(subs.length&&subs[0]<r.line){mm.push('end');subs.shift();}
     if(!['O','B','S'].includes(r.kind))continue;
     const id='n'+r.line,condition=['IF','ELSEIF'].includes(r.word)?conditionLabel(r.tokens,p.owner,label):null,text=condition?condition.label:label(r.line===root?title:r.text);
@@ -88,7 +90,7 @@ function scheme(p,expandedText='',logicOnly=false) {
     if(loop&&r.word==='LOOP')clusterRanges['g'+r.line]=[r.source_line,rows[r.all]?.source_line||r.source_line];
     if(loop){prev=ops(prevLine,r.line,prev,pendingLabel);pendingLabel='';prevLine=r.line;}
     if(loop&&!prev)continue;
-    if(loop&&inner){mm.push('subgraph g'+r.line+'["'+text+'"]','direction LR');if(r.word==='TRY'){styles.push('class g'+r.line+' tryblk');/* A CATCH is not the next step of the TRY body: it is entered from the TRY, and the body and every handler meet at ENDTRY. */conds.unshift({close:r.all+1,depth:r.depth,word:'TRY',header:prev,seen:false,tails:[]});}subs.unshift(r.all);continue;}
+    if(loop&&inner){mm.push('subgraph g'+r.line+'["'+text+'"]','direction LR');if(r.word==='TRY'){styles.push('class g'+r.line+' tryblk');/* A CATCH is not the next step of the TRY body: it is entered from the TRY, and the body and every handler meet at ENDTRY. */conds.unshift({close:r.all+1,depth:r.depth,word:'TRY',header:prev,seen:false,tails:[],exitTails:[]});}subs.unshift(r.all);continue;}
     if(loop){
       mm.push('subgraph g'+r.line+'["'+text+'"]','direction LR');let chain='',first='';
       let run=[];
@@ -99,7 +101,7 @@ function scheme(p,expandedText='',logicOnly=false) {
       mm.push('end');connect(prev,first,pendingLabel);pendingLabel='';if(first){prev=chain;prevLine=r.all;}continue;
     }
     const branch=conds[0];
-    if(r.kind==='B'&&branch&&branch.depth===r.depth){const tail=ops(prevLine,r.line,prev,pendingLabel);
+    if(r.kind==='B'&&branch&&branch.depth===r.depth){const tail=ops(prevLine,r.line,prev,pendingLabel);if(branch.word==='IF'&&!tail&&lastExit)branch.exitTails.push(lastExit);
       if(branch.word==='CASE'&&!branch.seen){if(tail!==branch.header)branch.header=tail;}else if(tail&&(branch.word==='IF'||branch.word==='TRY'||tail!==branch.header))branch.tails.push({id:tail,label:tail===prev?pendingLabel:''});
       if(branch.word==='TRY'){mm.push(id+'("'+text+'")');connect(branch.header,id);click(id,'acego_'+r.source_line+'_'+r.source_line);branch.seen=true;pendingLabel='';prev=id;prevLine=r.line;continue;}
       if(branch.word==='IF'){
@@ -118,7 +120,7 @@ function scheme(p,expandedText='',logicOnly=false) {
     mm.push(id+shape);
     click(id,'acego_'+r.source_line+'_'+(rows[Math.max(r.all,r.end,r.line)-1]?.source_line||r.source_line));
     if(prev){connect(after,id,after===prev?pendingLabel:'');pendingLabel='';}
-    if(r.kind==='O'&&r.all>r.line&&['IF','CASE'].includes(r.word))conds.unshift({close:r.all+1,depth:r.depth,word:r.word,header:id,seen:false,tails:[]});
+    if(r.kind==='O'&&r.all>r.line&&['IF','CASE'].includes(r.word))conds.unshift({close:r.all+1,depth:r.depth,word:r.word,header:id,seen:false,tails:[],exitTails:[]});
     prev=id;prevLine=r.line;if(r.word==='IF')pendingLabel='true';
   }
   while(subs.length){mm.push('end');subs.shift();}

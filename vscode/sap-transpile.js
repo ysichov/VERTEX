@@ -9,10 +9,22 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto");
 const { tokenize } = require("./value-origin-tokens");
 const { customerObject } = require("./value-origin-model");
 
 const up = value => String(value || "").toUpperCase();
+// SAP accepts >< as an old spelling of <>; the bundled transpiler emits invalid JavaScript for it.
+function normalizeLegacyNotEqual(source) {
+  const tokens = tokenize(source), places = [];
+  for (let i = 0; i + 1 < tokens.length; i++) if (tokens[i].kind === "symbol" && tokens[i].value === ">"
+    && tokens[i + 1].kind === "symbol" && tokens[i + 1].value === "<"
+    && tokens[i].endOffset === tokens[i + 1].offset) places.push(tokens[i].offset);
+  if (!places.length) return source;
+  let fixed = source;
+  for (const at of places.reverse()) fixed = fixed.slice(0, at) + "<>" + fixed.slice(at + 2);
+  return fixed;
+}
 // The class includes a run needs; test classes are not run.
 const CLASS_PARTS = { definitions: "locals_def", implementations: "locals_imp", macros: "macros" };
 
@@ -85,14 +97,14 @@ const STUB = 'ASSERT 1 = 2. " VERTEX: not transpiled - not reached from where th
 /* A class source with the bodies of the methods not in `reached` (names) left out: the METHOD and ENDMETHOD lines stay, the
    first line between them fails if the run gets there after all, the others are blank - every line keeps its number, so
    breakpoints and steps stand where SAP has them. */
-function stubUnreached(text, reached) {
+function stubUnreached(text, reached, kinds = ["METHOD"]) {
   const lines = text.split("\n");
   for (const [name, list] of partsOf(text).routines) {
     if (reached.has(name)) continue;
     for (const routine of list) {
-      if (up(routine.statements[0][0].value) !== "METHOD") continue;
+      if (!kinds.includes(up(routine.statements[0][0].value))) continue;
       const open = routine.statements[0], close = routine.statements[routine.statements.length - 1];
-      const from = open[open.length - 1].line, to = close[0].line;     // the METHOD statement's last line, ENDMETHOD's line
+      const from = open[open.length - 1].line, to = close[0].line;
       if (to - from < 2) continue;                                      // no line of its own for the body
       for (let line = from + 1; line < to; line++) lines[line - 1] = line === from + 1 ? STUB : "";
     }
@@ -171,7 +183,9 @@ async function collect(read, root, { progress = () => {}, cancelled = () => fals
   };
   const take = (owner, text, inGroup = false) => {
     const named = namedObjects(text, customer);
-    for (const module of named.functions) {
+    // A standard SAP module called by a reached function-group routine must
+    // be read too, even when it belongs to another function group.
+    for (const module of inGroup ? namedObjects(text, () => true).functions : named.functions) {
       // A module called is reached, in a group read already or one read for it.
       called.add(module);
       if (seen.has("FUNC:" + module)) continue;
@@ -180,6 +194,26 @@ async function collect(read, root, { progress = () => {}, cancelled = () => fals
     }
     // A group's own INCLUDEs are read with the group.
     for (const [name, type] of named.objects) if (!(inGroup && type === "INCL") && !seen.has(name)) { seen.add(name); queue.push({ name, type }); }
+  };
+  const scannedModules = new Set();
+  const scanCalledModules = () => {
+    for (let again = true; again;) {
+      again = false;
+      for (const source of loaded) {
+        if (source.type !== "FUGR" || source.kind !== "module" || !called.has(source.include)
+          || scannedModules.has(source.include)) continue;
+        scannedModules.add(source.include);
+        // Calls to SAP-standard modules in the same group are local to this
+        // build too, even though `customerObject` would not queue them.
+        const available = new Set(loaded.filter(item => item.type === "FUGR" && item.kind === "module"
+          && item.name === source.name).map(item => item.include));
+        for (const module of namedObjects(source.text, () => true).functions)
+          if (available.has(module)) called.add(module);
+        scan(source.name, statementsOf(source.text), true);
+        settle();
+        again = true;
+      }
+    }
   };
   if (up(root.type) === "FUNC") { seen.add("FUNC:" + up(root.name)); called.add(up(root.name)); queue.push({ name: up(root.name), type: "FUNC" }); }
   else { seen.add(up(root.name)); queue.push({ name: up(root.name), type: up(root.type) }); }
@@ -199,6 +233,7 @@ async function collect(read, root, { progress = () => {}, cancelled = () => fals
         offer(source.name, "FUGR", source.text, true, false);
       }
       settle();
+      scanCalledModules();
       continue;
     }
     let data;
@@ -229,21 +264,31 @@ async function collect(read, root, { progress = () => {}, cancelled = () => fals
       offer(next.name, "CLAS", part.source, false, false);
     }
     settle();
+    scanCalledModules();
   }
   // What the run reaches is all that goes to the transpiler: a class keeps its definition and the bodies of its reached
   // methods only.
   for (const source of loaded) {
-    if (source.type !== "CLAS") continue;
-    const names = new Set([...reached].filter(key => key.startsWith(source.name + ":")).map(key => key.slice(source.name.length + 1)));
-    source.text = stubUnreached(source.text, names);
+    if (source.type === "CLAS") {
+      const names = new Set([...reached].filter(key => key.startsWith(source.name + ":")).map(key => key.slice(source.name.length + 1)));
+      source.text = stubUnreached(source.text, names);
+    } else if (source.type === "FUGR" && source.kind === "include") {
+      const names = new Set([...reached].filter(key => key.startsWith(source.include + ":")).map(key => key.slice(source.include.length + 1)));
+      source.text = stubUnreached(source.text, names, ["FORM"]);
+    }
   }
-  return loaded;
+  // A direct function-module run compiles the called modules only. An SAP
+  // function group can contain many unrelated modules with unsupported ABAP;
+  // their bodies are not part of this run's call closure.
+  return up(root.type) === "FUNC" ? loaded.filter(source => source.type !== "FUGR" || source.kind !== "module"
+    || called.has(source.include)) : loaded;
 }
 
 /* abapGit's file name of an object: lower case, a namespace's slashes as #. A function group's part is
    <group>.fugr.<part>.abap. */
 function fileName(name, type, include = "main") {
   const base = name.toLowerCase().replace(/\//g, "#");
+  if (type === "TYPE") return base + ".type.abap";
   if (type === "FUGR") return base + ".fugr." + include.toLowerCase().replace(/\//g, "#") + ".abap";
   if (type === "CLAS") return base + ".clas." + (include === "main" ? "" : CLASS_PARTS[include] + ".") + "abap";
   if (type === "INTF") return base + ".intf.abap";
@@ -263,6 +308,45 @@ function copyPath(folder, source) {
 function omitListFormat(text) {
   return String(text).split(/\r?\n/).map(line => /^\s*FORMAT\b[^.]*\.\s*(?:".*)?$/i.test(line)
     ? "* VERTEX transpiler: FORMAT list presentation omitted" : line).join("\n");
+}
+
+/* The bundled transpiler rejects STATICS at runtime. Move each module's
+   statics to its function group's TOP include under private, stable names.
+   This preserves their value across calls while keeping source line counts. */
+function liftModuleStatics(text, group, module) {
+  const tokens = tokenize(text), changes = [], declarations = [], renamed = new Map(), ranges = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (up(tokens[i].value) !== "STATICS") continue;
+    let end = i + 1;
+    while (end < tokens.length && tokens[end].value !== ".") end++;
+    if (end === tokens.length) throw new Error(module + ": STATICS without its period.");
+    const begin = tokens[i].offset, finish = tokens[end].endOffset;
+    const names = [], colon = tokens[i + 1]?.value === ":";
+    for (let at = i + (colon ? 2 : 1); at < end; at++)
+      if ((at === i + (colon ? 2 : 1) || tokens[at - 1].value === ",") && tokens[at].kind === "word") names.push(tokens[at]);
+    if (!names.length) throw new Error(module + ": STATICS declaration has no field.");
+    let declaration = text.slice(begin, finish);
+    for (const name of names.slice().reverse()) {
+      const key = up(name.value);
+      const alias = "ZVX_S" + crypto.createHash("sha1").update(group + "|" + module + "|" + key).digest("hex").slice(0, 20).toUpperCase();
+      renamed.set(key, alias);
+      const from = name.offset - begin;
+      declaration = declaration.slice(0, from) + alias + declaration.slice(from + name.value.length);
+    }
+    declaration = declaration.replace(/^STATICS/i, "DATA");
+    declarations.push(declaration);
+    ranges.push([begin, finish]);
+    changes.push({ begin, finish, value: text.slice(begin, finish).replace(/[^\r\n]/g, " ") });
+    i = end;
+  }
+  for (const token of tokens) {
+    const alias = token.kind === "word" && renamed.get(up(token.value));
+    if (alias && !ranges.some(([begin, finish]) => token.offset >= begin && token.offset < finish))
+      changes.push({ begin: token.offset, finish: token.endOffset, value: alias });
+  }
+  changes.sort((a, b) => b.begin - a.begin);
+  for (const change of changes) text = text.slice(0, change.begin) + change.value + text.slice(change.finish);
+  return { text, declarations };
 }
 
 const progXml = (name, kind) => `<?xml version="1.0" encoding="utf-8"?>\n<abapGit version="v1.0.0" serializer="LCL_OBJECT_PROG" serializer_version="v1.0.0"><asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0"><asx:values><PROGDIR><NAME>${name}</NAME><SUBC>${kind}</SUBC></PROGDIR></asx:values></asx:abap></abapGit>\n`;
@@ -313,8 +397,40 @@ function writeProject(system, sources, dictionary = [], folder = path.join(os.tm
   fs.mkdirSync(src, { recursive: true });
   fs.mkdirSync(sap, { recursive: true });
   const written = [], programs = [], texts = new Map();
+  // abaplint associates function-group includes only when their names start
+  // with L. SAP groups can also include arbitrary names (FF04 uses
+  // FIMA_CONSTANTS), so give those files an internal L-prefixed alias.
+  const aliasCounts = new Map();
+  const nonLIncludes = sources.filter(source => source.type === "FUGR" && source.kind === "include"
+    && !source.include.toUpperCase().startsWith("L"));
+  const aliasSources = nonLIncludes.map(source => {
+    const number = (aliasCounts.get(source.name) || 0) + 1;
+    aliasCounts.set(source.name, number);
+    return { ...source, include: "L" + source.name + "VERTEX" + String(number).padStart(3, "0") };
+  });
+  const projectSources = sources.concat(aliasSources);
+  const includeAliases = new Map(nonLIncludes.map((source, index) =>
+    [source.name + "|" + source.include.toUpperCase(), aliasSources[index].include]));
+  const aliasedText = source => source.text.replace(/\bINCLUDE\s+([A-Z0-9_\/]+)(\s*\.)/gi,
+    (statement, include, end) => "INCLUDE " + (includeAliases.get(source.name + "|" + include.toUpperCase()) || include) + end)
+    .replace(/\bVALUE\s+space\b/gi, "VALUE ' '");
+  const moduleBodies = new Map(), groupStatics = new Map();
+  for (const source of sources.filter(source => source.type === "FUGR" && source.kind === "module")) {
+    const result = liftModuleStatics(require("./sap-fugr").moduleBody(source.text, source.signature), source.name, source.include);
+    moduleBodies.set(source, result.text);
+    if (result.declarations.length) {
+      if (!groupStatics.has(source.name)) groupStatics.set(source.name, []);
+      groupStatics.get(source.name).push(...result.declarations);
+    }
+  }
+  for (const [group] of groupStatics) if (!projectSources.some(source => source.type === "FUGR" && source.name === group
+      && source.kind === "include" && /TOP$/i.test(source.include)))
+    throw new Error("Function group " + group + " has STATICS but no TOP include for their saved values.");
+  const moduleText = source => {
+    return moduleBodies.get(source);
+  };
   let shown = null;
-  for (const source of sources) {
+  for (const source of projectSources) {
     if (source.type === "PROG" || source.type === "INCL") {
       const file = copyPath(folder, source);
       fs.writeFileSync(file, source.text);
@@ -324,8 +440,10 @@ function writeProject(system, sources, dictionary = [], folder = path.join(os.tm
       continue;
     }
     const file = copyPath(folder, source);
-    fs.writeFileSync(file, omitListFormat(source.kind === "module"
-      ? require("./sap-fugr").moduleBody(source.text, source.signature) : source.text));
+    const body = source.kind === "module" ? moduleText(source) : aliasedText(source);
+    const statics = source.type === "FUGR" && source.kind === "include" && /TOP$/i.test(source.include)
+      ? groupStatics.get(source.name) : null;
+    fs.writeFileSync(file, omitListFormat(normalizeLegacyNotEqual(body + (statics?.length ? "\n" + statics.join("\n") + "\n" : ""))));
     written.push(file);
   }
   // The DEFAULTs of the modules' optional parameters, which the transpiler leaves unset (sap-fugr applyModuleDefaults).
@@ -333,9 +451,9 @@ function writeProject(system, sources, dictionary = [], folder = path.join(os.tm
     .map(source => ({ module: source.include, params: [...source.signature.parts.IMPORTING, ...source.signature.parts.CHANGING]
       .filter(param => param.default !== undefined).map(param => ({ name: param.name, default: param.default })) }))));
   // Each function group's XML: its includes and its modules' signatures.
-  for (const group of new Set(sources.filter(source => source.type === "FUGR").map(source => source.name))) {
+  for (const group of new Set(projectSources.filter(source => source.type === "FUGR").map(source => source.name))) {
     const file = path.join(src, group.toLowerCase().replace(/\//g, "#") + ".fugr.xml");
-    fs.writeFileSync(file, require("./sap-fugr").groupXml(group, sources.filter(source => source.type === "FUGR" && source.name === group)));
+    fs.writeFileSync(file, require("./sap-fugr").groupXml(group, projectSources.filter(source => source.type === "FUGR" && source.name === group)));
     written.push(file);
   }
   const maps = [];

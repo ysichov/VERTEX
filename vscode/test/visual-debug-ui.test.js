@@ -4,6 +4,19 @@ const test = require("node:test"), assert = require("node:assert/strict"), vm = 
 const page = require("node:fs").readFileSync(path.resolve(__dirname, "../pages/visual-debug.html"), "utf8");
 const part = (from, to) => page.slice(page.indexOf(from), page.indexOf(to));
 
+test("Watch Follow expands the calculation's renamed variable names", async () => {
+  const calls = [], notices = [], nodes = { watchfollow: {}, watchwhen: { value: ">= 10" } };
+  const context = vm.createContext({ picture: { stopped: {} }, chosenValue: { name: "LS_VAR-COUNT" },
+    $: id => nodes[id] || (nodes[id] = {}), notice: message => notices.push(message), failed: error => { throw error; },
+    fetchSlice: async () => [{ names: ["LS_VAR-COUNT", "CS_VAR-COUNT"] }, { names: ["CS_VAR-COUNT"] }],
+    debug: async (command, args) => { calls.push([command, args.name, args.condition]); }, refresh: async () => {} });
+  vm.runInContext(part("function watchCondition(name){", "/* Where a recorded stop stands"), context);
+  await vm.runInContext('watchFollow("LS_VAR-COUNT")', context);
+  assert.deepEqual(calls, [["watchpointAdd", "LS_VAR-COUNT", "LS_VAR-COUNT >= 10"],
+    ["watchpointAdd", "CS_VAR-COUNT", "CS_VAR-COUNT >= 10"]]);
+  assert.match(notices.at(-1), /Watching 2 names/);
+});
+
 test("a value is followed from the row's menu, not by a click on it", () => {
   const nodes = {}, listeners = {}, chosen = [];
   const node = id => nodes[id] || (nodes[id] = { id, style: {}, classList: { on: false, add() { this.on = true; }, remove() { this.on = false; } } });

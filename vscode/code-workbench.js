@@ -9,12 +9,14 @@ const SYSTEM = { type: "string", description: "SAP system name from vertex.syste
   + "Use it when the user names a system, or to reach the system an open editor or VERTEX Tools window belongs to." };
 const withSystem = tool => tool.name === "review_sap_changes" ? tool : { ...tool,
   inputSchema: { ...tool.inputSchema, properties: { ...tool.inputSchema.properties, system: SYSTEM } } };
+const openSchema = require("./schemas/sap-code-tools.json").find(t => t.name === "read_sap_object").inputSchema;
 const schemas = require("./schemas/sap-code-tools.json").concat([{
   name: "open_sap_object",
-  description: "Open SAP source in an editable VS Code tab on the right. Use for requests to open/show code. Does not save to SAP.",
+  description: "Open SAP source in an editable VS Code tab, or a package in Object Navigator. Does not save to SAP.",
   // Opens the SAP editor without modifying repository data.
   annotations: { readOnlyHint: true, destructiveHint: false },
-  inputSchema: require("./schemas/sap-code-tools.json").find(t => t.name === "read_sap_object").inputSchema
+  inputSchema: { ...openSchema, properties: { ...openSchema.properties,
+    object_type: { ...openSchema.properties.object_type, enum: openSchema.properties.object_type.enum.concat("DEVC") } } }
 }, {
   name: "run_abap_unit",
   description: "Run the ABAP Unit tests of a class or program in SAP and return the result: test classes, passed, failed and the failure messages. "
@@ -1164,6 +1166,13 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     return entry;
   }
   async function showSource(repo, args) {
+    if (args.object_type === "DEVC") {
+      const packageName = String(args.object_name || "").toUpperCase();
+      if (!/^[A-Z0-9_/$]+$/.test(packageName) || packageName.length > 40) throw new Error("Invalid package name.");
+      await vscode.commands.executeCommand("vertex.tools", { type: "DEVC", name: packageName,
+        action: "navigator", systemName: repo.system.name });
+      return { opened: true, object_name: packageName, object_type: "DEVC", system: repo.label };
+    }
     const entry = await sourceDocument(repo, args);
     await vscode.window.showTextDocument(entry.document, { preview: false, viewColumn: vscode.ViewColumn.Beside });
     if (debuggerApi) queueBreakpointSync();
@@ -2604,8 +2613,14 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const textsOf = async sources => {
       const texts = {};
       for (const source of sources.filter(source => source.type === 'PROG')) {
-        const base = '/sap/bc/adt/textelements/programs/' + encodeURIComponent(source.name.toLowerCase()) + '/source/';
-        try { texts[source.name] = require('./selection-screen').adtTexts(await repo.api.sourceAt(base + 'selections'), await repo.api.sourceAt(base + 'symbols')); }
+        try {
+          const [selections, symbols] = await Promise.all([
+            repo.api.textElements(source.name, 'selections'), repo.api.textElements(source.name, 'symbols')]);
+          texts[source.name] = {
+            selections: Object.fromEntries(selections.textElements.map(item => [item.id.toUpperCase(), item.text])),
+            symbols: Object.fromEntries(symbols.textElements.map(item => [item.id.toUpperCase(), item.text]))
+          };
+        }
         catch (error) { texts[source.name] = { selections: {}, symbols: {}, error: error.message }; }
       }
       return texts;
@@ -2628,6 +2643,18 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     // Through SAP's ADT extension standard SAP cannot be read, and only the system's own namespaces are customer code.
     const sources = await require('./sap-transpile').collect(read, { name: first.object_name, type: first.object_type },
       { progress, groups, entryLine: options.entryLine || 0, ...(repo.api.customerName ? { customer: repo.api.customerName } : {}) });
+    // Type groups are source objects, not DD03L/DD04L entries. Keep their
+    // definitions beside the run so a saved snapshot can execute offline.
+    const pools = new Set();
+    for (const source of sources) for (const match of source.text.matchAll(/^\s*TYPE-POOLS\s*:?[ \t]*([A-Z0-9_, \t]+)\./gmi))
+      for (const name of match[1].split(",").map(value => value.trim().toUpperCase()).filter(Boolean)) pools.add(name);
+    for (const name of pools) {
+      progress(name);
+      let text;
+      try { text = await repo.api.sourceAt("/sap/bc/adt/ddic/typegroups/" + encodeURIComponent(name.toLowerCase()) + "/source/main"); }
+      catch (error) { throw new Error("Type group " + name + " could not be read from SAP: " + error.message); }
+      sources.push({ name, type: "TYPE", include: "main", text });
+    }
     // The dictionary objects the sources use, beside open-abap-core's and the classes read.
     const ddic = require('./sap-ddic'), named = new Set();
     for (const source of sources) for (const name of ddic.dictionaryNames(source.text)) named.add(name);

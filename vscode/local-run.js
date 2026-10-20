@@ -82,6 +82,7 @@ function screenFor(document) {
     if (fs.existsSync(read)) {
       const all = JSON.parse(fs.readFileSync(read, "utf8")), own = all[path.basename(file).split(".")[0].toUpperCase()];
       if (own) Object.assign(texts, own);
+      if (own?.error) texts.error = own.error;
       break;
     }
     if (path.dirname(dir) === dir) break;
@@ -648,12 +649,12 @@ async function launch(vscode, debug, options = {}) {
   const workspaceRoot = vscode.workspace.getWorkspaceFolder(document?.uri)?.uri.fsPath;
   if (document.isDirty) await document.save();
   // A method or a function module: the program that calls it with the values of the screen is what runs.
-  let driver = null, driverDocument = null;
+  let driver = null, driverDocument = null, entryScreenData = null;
   const called = options.selection && options.selection.$entry;
   if (called) {
-    const screen = entryScreen(document, options.entryLine);
-    if (!screen) throw new Error("The cursor is no longer in a method or a function module of " + path.basename(document.uri.fsPath) + ".");
-    const source = require("./local-entry").driverSource(screen, called);
+    entryScreenData = entryScreen(document, options.entryLine);
+    if (!entryScreenData) throw new Error("The cursor is no longer in a method or a function module of " + path.basename(document.uri.fsPath) + ".");
+    const source = require("./local-entry").driverSource(entryScreenData, called);
     const folder = path.join(os.tmpdir(), "vertex-local-entry", String(process.pid));
     fs.mkdirSync(folder, { recursive: true });
     driver = path.join(folder, require("./local-entry").DRIVER + ".prog.abap");
@@ -661,6 +662,7 @@ async function launch(vscode, debug, options = {}) {
     driverDocument = { uri: { fsPath: driver, scheme: "file" }, getText: () => source, isDirty: false };
   }
   const project = projectFor(document, workspaceRoot, driver);
+  if (entryScreenData) require("./local-entry").relaxReferenceClasses(project, entryScreenData);
   const output = vscode.window.createOutputChannel("VERTEX Local ABAP");
   // A run unchanged since its last transpiling - an SAP object's same build (sap-cache.js), or a local file whose folder
   // has not changed (projectFor's stamp) - and no call program of its own takes that transpiled code again, from its
@@ -714,6 +716,7 @@ async function launch(vscode, debug, options = {}) {
     }
     output.hide?.();
   } catch (error) {
+    require("./sap-cache").requireRecompile(project.root);
     output.show(true);
     throw error;
   }
@@ -745,7 +748,8 @@ async function launch(vscode, debug, options = {}) {
     const outputRoot = path.dirname(project.entry);
     const traceFile = path.join(outputRoot, "vertex-local-trace.json");
     // The program written to call a method or function module is not recorded: the run shows the code it calls.
-    const instrumented = require("./local-trace").instrumentProject(outputRoot, !!options.live, driver ? [path.basename(driver)] : []);
+    const instrumented = require("./local-trace").instrumentProject(outputRoot, !!options.live,
+      driver ? [path.basename(driver)] : [], options.interventions || []);
     if (!instrumented) throw new Error("No generated ABAP source maps were found for tracing.");
     output.appendLine("Instrumented " + instrumented + " ABAP modules.");
     const traceEntry = require("./local-trace").traceBootstrap(outputRoot, entry, traceFile, !!options.live);
@@ -785,7 +789,8 @@ async function launch(vscode, debug, options = {}) {
               const depth = record.stack?.length || 1;
               const hit = pending.breakpoints.some(bp => bp.active && bp.line === record.line &&
                 bp.url.toLowerCase() === record.file.toLowerCase());
-              const stop = pending.kind === "into" || pending.kind === "continue" && hit ||
+              const watched = require("./local-watchpoint").hits(record, records.slice(0, -1), pending.watchpoints).length > 0;
+              const stop = pending.kind === "into" || pending.kind === "continue" && (hit || watched) ||
                 pending.kind === "over" && depth <= pending.depth || pending.kind === "out" && depth < pending.depth;
               if (stop) { const done = pending; pending = null; done.resolve({ records: done.records, ended: false }); }
               else resume();
@@ -827,11 +832,11 @@ async function launch(vscode, debug, options = {}) {
       });
       await first;
       return { records: [initial], live: {
-        next(kind, breakpoints = []) {
+        next(kind, breakpoints = [], watchpoints = []) {
           if (closed) return Promise.resolve({ records: [], ended: true });
           if (pending) return Promise.reject(new Error("A local step is already running."));
           return new Promise((resolve, reject) => {
-            pending = { resolve, reject, records: [], kind, breakpoints,
+            pending = { resolve, reject, records: [], kind, breakpoints, watchpoints,
               depth: records.at(-1)?.stack?.length || 1 };
             resume();
           });

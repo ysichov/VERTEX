@@ -19,12 +19,16 @@ function vlq(segment) {
 function mappedLines(map) {
   let source = 0, original = 0;
   return map.mappings.split(";").map(line => {
+    let first = 0, found = false;
     for (const segment of line.split(",")) {
       if (!segment) continue;
       const fields = vlq(segment);
-      if (fields.length >= 4) { source += fields[1]; original += fields[2]; return source === 0 ? original + 1 : 0; }
+      if (fields.length >= 4) {
+        source += fields[1]; original += fields[2];
+        if (!found) { first = source === 0 ? original + 1 : 0; found = true; }
+      }
     }
-    return 0;
+    return first;
   });
 }
 /* Each generated line's place: [source index, 1-based line], or null. A function group's module maps several
@@ -32,12 +36,16 @@ function mappedLines(map) {
 function mappedPlaces(map) {
   let source = 0, original = 0;
   return map.mappings.split(";").map(line => {
+    let first = null;
     for (const segment of line.split(",")) {
       if (!segment) continue;
       const fields = vlq(segment);
-      if (fields.length >= 4) { source += fields[1]; original += fields[2]; return [source, original + 1]; }
+      if (fields.length >= 4) {
+        source += fields[1]; original += fields[2];
+        if (!first) first = [source, original + 1];
+      }
     }
-    return null;
+    return first;
   });
 }
 const JS_KEYWORDS = new Set(("break case catch class const continue debugger default delete do else enum export extends false " +
@@ -74,10 +82,10 @@ function sourceContext(sourceFile, source) {
     if (/^\s*(?:ENDMETHOD|ENDFORM|ENDFUNCTION)\b/i.test(line)) routine = owner;
     return current;
   });
-  return { sourceFile, original, values, owner, routines };
+  return { sourceFile, original, values, names, owner, routines };
 }
 /* sources: [{ index, file, text }] - the sources of the map to record, by their index in it. */
-function instrumentSources(file, sources, live = false) {
+function instrumentSources(file, sources, live = false, interventions = [], matched = new Set()) {
   const map = JSON.parse(fs.readFileSync(file + ".map", "utf8"));
   const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
   const places = mappedPlaces(map);
@@ -90,7 +98,15 @@ function instrumentSources(file, sources, live = false) {
         /^\s*(?:abap\.|[A-Za-z_]\w*\.|await\b|return\b|if\s*\(|for\s*\(|while\s*\(|throw\b)/.test(lines[index])) {
       // On the statement's own line: the generated lines keep their numbers, so a stack and the map still agree.
       const indent = /^\s*/.exec(lines[index])[0];
-      output.push(`${indent}${live ? "await " : ""}globalThis.__vertexTrace?.capture(${JSON.stringify(context.sourceFile)},${at},{${context.values}},` +
+      const injections = interventions.filter(item => item.line === at &&
+        path.basename(context.sourceFile).toUpperCase().split(".").includes(item.object_name));
+      const prefix = injections.map(item => {
+        if (!context.names.includes(item.name.toLowerCase())) throw new Error("Intervention variable " + item.name + " is not declared in " + item.object_name + ".");
+        matched.add(item.id);
+        const variable = item.name.toLowerCase();
+        return `globalThis.__vertexTrace.inject(${JSON.stringify(item)},()=>${variable},value=>${variable}.set(value)); `;
+      }).join("");
+      output.push(`${indent}${prefix}${live ? "await " : ""}globalThis.__vertexTrace?.capture(${JSON.stringify(context.sourceFile)},${at},{${context.values}},` +
         `${JSON.stringify(context.owner)},${JSON.stringify(context.routines[at - 1])}); ` + lines[index].slice(indent.length));
       continue;
     }
@@ -103,8 +119,8 @@ function instrument(file, sourceFile, source, live = false) {
 }
 /* skip: sources not recorded - the program VERTEX writes to call a method or function module, so a run shows only
    the code it calls. */
-function instrumentProject(outputRoot, live = false, skip = []) {
-  let count = 0;
+function instrumentProject(outputRoot, live = false, skip = [], interventions = []) {
+  let count = 0; const matched = new Set();
   function visit(folder) {
     for (const item of fs.readdirSync(folder, { withFileTypes: true })) {
       const file = path.join(folder, item.name);
@@ -119,10 +135,11 @@ function instrumentProject(outputRoot, live = false, skip = []) {
           && !source.file.toLowerCase().split(/[\\/]/).includes("open-abap-core"))
         .map(source => ({ ...source, text: fs.readFileSync(source.file, "utf8") }));
       if (!sources.length) continue;
-      instrumentSources(file, sources, live); count++;
+      instrumentSources(file, sources, live, interventions, matched); count++;
     }
   }
   visit(outputRoot);
+  for (const item of interventions) if (!matched.has(item.id)) throw new Error("Intervention target " + item.object_name + " line " + item.line + " was not found in executable transpiled code.");
   return count;
 }
 function traceBootstrap(outputRoot, entry, traceFile, live = false) {
@@ -131,13 +148,16 @@ function traceBootstrap(outputRoot, entry, traceFile, live = false) {
   fs.writeFileSync(wrapper, `import fs from 'node:fs';\n` +
     (live ? `import readline from 'node:readline';\nlet resumeTrace;\n` +
       `readline.createInterface({input:process.stdin}).on('line',line=>{try{if(JSON.parse(line).vertexTrace==='resume'){const done=resumeTrace;resumeTrace=null;done?.();}}catch{}});\n` : "") +
-    `const records=[]; const last=new Map();\n` +
+    `const records=[]; const last=new Map();const injectionHits=new Map();const injections=[];\n` +
     `function safe(value){try {const seen=new WeakSet();const json=JSON.stringify(value,(_key,item)=>{\n` +
     ` if(typeof item==='bigint')return item.toString();\n` +
     ` if(item&&typeof item==='object'){if(seen.has(item))return '[circular]';seen.add(item);}\n` +
     ` return item;});return json===undefined?['undefined',undefined]:[json,JSON.parse(json)];}\n` +
     ` catch(error){return [String(value),String(value)];}}\n` +
-    `globalThis.__vertexTrace={sql:[],read(value,depth=0){\n` +
+    `globalThis.__vertexTrace={sql:[],inject(spec,get,set){const hit=(injectionHits.get(spec.id)||0)+1;injectionHits.set(spec.id,hit);\n` +
+    ` if(hit!==spec.occurrence)return;const target=get();if(!target||typeof target.set!=='function')throw Error('Intervention '+spec.name+' cannot be set at '+spec.object_name+':'+spec.line);\n` +
+    ` const before=this.read(target);set(spec.value);const after=this.read(target);injections.push({id:spec.id,name:spec.name,object_name:spec.object_name,line:spec.line,occurrence:hit,before,requested:spec.value,after});\n` +
+    ` },read(value,depth=0){\n` +
     ` if(depth>5)return '[nested]';\n` +
     ` try{if(value&&typeof value.array==='function')return value.array().map(row=>this.read(row,depth+1));\n` +
     ` if(value&&typeof value.get==='function')return this.read(value.get(),depth+1);\n` +
@@ -156,6 +176,7 @@ function traceBootstrap(outputRoot, entry, traceFile, live = false) {
     ` const sy={};try{const fields=globalThis.abap?.builtin?.sy?.get?.()||{};for(const name of ['subrc','tabix','index','dbcnt','fdpos']){\n` +
     ` if(!fields[name])continue;const [signature,plain]=safe(this.read(fields[name]));if(last.get('sy-'+name)!==signature){sy[name.toUpperCase()]=plain;last.set('sy-'+name,signature);}}}catch{}\n` +
     ` const record={file,line,owner,routine,stack:stack.length?stack:[{owner,unit:routine}],changed};\n` +
+    ` if(injections.length)record.interventions=injections.splice(0);\n` +
     ` if(Object.keys(sy).length)record.sy=sy;if(this.sql.length)record.sql=this.sql.splice(0);records.push(record);\n` +
     (live ? ` process.stdout.write('VERTEX_TRACE_RECORD:'+JSON.stringify(record)+'\\n');await new Promise(resolve=>{resumeTrace=resolve;});` : "") +
     `}};\n` +

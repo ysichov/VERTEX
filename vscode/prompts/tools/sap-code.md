@@ -1,6 +1,6 @@
 # SAP source tools
 
-When asked to open or show source, use open_sap_object. Search first if the
+When asked to open or show source, use open_sap_object. For a package, that tool opens Object Navigator. Search first if the
 object type or exact name is unknown. If several matches are ambiguous, ask
 which one to open. The tool opens an editable tab on the right; do not paste
 the source into chat or review, explain or modify it unless requested.
@@ -24,7 +24,7 @@ panel; do not claim anything was saved until the panel completes application.
 Search by technical name with search_sap_objects. Read the exact object using
 read_sap_object before explaining or changing it. Search matches are metadata,
 not evidence of the implementation. Use PROG for executable programs, CLAS for
-global classes and FUNC for function modules.
+global classes, FUNC for function modules and DEVC for packages. A package has no source to read with read_sap_object.
 
 Read the relevant class local includes as well as main source when dependencies
 require them. Each include has its own revision. Preserve untouched source.

@@ -60,6 +60,25 @@ test("local transpiler records Fibonacci steps without a debug session", async (
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test("a local intervention changes execution and records the observed value", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-inject-"));
+  try {
+    const source = path.join(root, "ztry.prog.abap");
+    fs.writeFileSync(source, "REPORT ztry.\nDATA lv_count TYPE i.\nlv_count = 1.\nlv_count = lv_count + 1.\nWRITE lv_count.\n");
+    const document = { uri: { scheme: "file", fsPath: source }, getText: () => fs.readFileSync(source, "utf8") };
+    const vscode = { workspace: { getWorkspaceFolder: () => ({ uri: { fsPath: root } }) },
+      window: { createOutputChannel: () => ({ append() {}, appendLine() {}, hide() {}, show() {} }) } };
+    const baseline = await launch(vscode, false, { document, selection: {}, trace: true });
+    const changed = await launch(vscode, false, { document, selection: {}, trace: true, interventions: [
+      { id: 1, object_name: "ZTRY", line: 4, name: "LV_COUNT", value: 9, occurrence: 1 }
+    ] });
+    assert.match(baseline.output, /2/);
+    assert.match(changed.output, /10/);
+    assert.deepEqual(changed.records.find(record => record.interventions?.length).interventions[0],
+      { id: 1, name: "LV_COUNT", object_name: "ZTRY", line: 4, occurrence: 1, before: 1, requested: 9, after: 9 });
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("transpiled SELECT fetches SAP rows through SelecTor", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-select-"));
   let queried = "";

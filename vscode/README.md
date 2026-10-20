@@ -101,6 +101,8 @@ is in the VERTEX Local ABAP channel. A run stays alive while
 the panel is closed: opened again, the panel shows it as it stands - the steps, where it stopped, the output - and
 **Clear** starts a new one.
 
+For an SAP object, the saved build includes the source and the SAP Dictionary definitions it used. Opening the same successful build can reuse that snapshot. **Recompile** reads the sources and dictionary again, including changes made in SAP by someone else; a failed build also requires a fresh read before the next attempt. When the snapshot format changes, each older build is refreshed when its object is next opened. Other saved objects are not compiled in advance.
+
 **A method or a function module runs too.** With the cursor inside a method of a local class
 (`zcl_x.clas.abap`) or inside a function module of a local function group (`zfg.fugr.z_fm.abap`, abapGit
 layout), the panel's screen is the call's: the constructor's importing parameters for an instance method, then
@@ -772,6 +774,18 @@ not step through the code.
 
 The debugger sets breakpoints and holds a listener. It never changes a variable, never jumps
 over code and never writes source or data.
+At a stopped SAP session, `debug_watchpoint` adds a real ADT watchpoint for a variable;
+Continue stops when SAP reports a change. The agent can list and remove watchpoints.
+In Visual Debug 0.9.15, enter a name beside Variables or right-click a variable and choose Watch.
+Without a condition, the same control stops SAP or a live transpiler run on any change;
+a recorded transpiler run can also continue to its next recorded change. The optional
+**When** field accepts a comparison of the new value such as `>= 10` or `= 'DONE'`.
+The program stops only when that comparison holds. **Watch Follow** uses the
+existing value analysis to watch the names it follows through assignments and calls,
+including renamed parameters such as `LS_VAR-COUNT` and `CS_VAR-COUNT` when the analysis
+connects them. The same When comparison is applied to every name. Each watchpoint is
+listed separately and can be removed. The local transpiler supports numeric and quoted
+text comparisons; SAP evaluates the corresponding ABAP condition through ADT.
 
 ### Before you start
 
@@ -837,6 +851,11 @@ choice its radio group does not offer, stops the call with an error naming what 
 accepts, instead of running the defaults. A completed run returns its output and a GUID
 `session_id` (also returned as `run_id` for compatibility).
 `read_abap_transpiler_history` pages through every recorded step and its variable changes;
+by default each step contains only changed variables. Pass `include_state: true` to read
+the full state at each step. `run_abap_transpiler` also accepts local scalar
+`interventions` with object, line, variable, value and optional occurrence. A rerun applies
+each replacement before that executable line and records its before and after values in
+the history, so the agent can test a hypothesis against the original run.
 `find_abap_transpiler_stops` finds source lines or changes to a variable, including a
 structure field such as `LS_RESULT-AMOUNT`. These are virtual watchpoints over the recorded
 run. To compare runs, explain a result or find a cause, the agent must query that history
@@ -1205,6 +1224,7 @@ Use **Save log** on the replay bar to keep a SAP recording and its available sou
   [Local ABAP execution](#local-abap-execution)). A customer function module the code calls brings its whole function
   group - main program, includes and every module - and a step goes into the module's VERTEX tab; the group's other
   includes open as copies, having no tab of their own. It reads
+  selection texts and text symbols for a SAP program's selection screen from ADT, so its controls carry the labels maintained in SAP.
   the program's active version, its includes and the customer classes and interfaces the run can reach from where it
   starts - those the reached methods and routines name, and the attributes they use, with their local definitions and
   implementations, not their test classes - into a temporary folder. A class nothing reached names is not read, and a

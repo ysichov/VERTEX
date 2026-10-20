@@ -33,15 +33,20 @@ test("the Tree / Diagram switch is two icons, each named by its title", () => {
   }
 });
 
-test("opening or closing a node keeps the zoom and the place; the other redrawings are still fitted", () => {
+test("opening or closing a node keeps the zoom and the place; the first drawing is fitted", () => {
   const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
   const toggle = script.slice(script.indexOf("window.bseMermaidToggle="), script.indexOf("const mermaidNode="));
   assert.equal((toggle.match(/keepView=true/g) || []).length, 3, "set where a node is opened or closed - flow, formula, tree");
   assert.ok(/flowExpanded\.add\(id\);keepView=true;rebuild\(\)/.test(toggle), "in the flow, right before the redrawing that follows");
   assert.ok(!/setTimeout\(\(\)=>\{[^}]*keepView=true;if\(document\.body/.test(toggle), "never before it is known that a redrawing follows: the next one would lose its fit");
-  const rendered = script.slice(script.indexOf("document.addEventListener('bse:mermaid-rendered',()=>{if(keepView)"), script.indexOf("document.addEventListener('keydown',e=>{if(e.key==='Escape'"));
-  assert.ok(rendered.includes("keepView=false;requestAnimationFrame(applyZoom)") && rendered.includes("else requestAnimationFrame(fit)"), "kept for that drawing only, fitted otherwise");
+  const rendered = script.slice(script.indexOf("document.addEventListener('bse:mermaid-rendered',()=>{if(!renderedOnce"), script.indexOf("document.addEventListener('keydown',e=>{if(e.key==='Escape'"));
+  assert.ok(rendered.includes("if(!renderedOnce&&!keepView)") && rendered.includes("requestAnimationFrame(fit)") && rendered.includes("viewport.scrollTop=scroll.top"), "the first drawing fits, later redraws preserve the viewport");
   assert.ok(script.includes("document.getElementById('mermaid-fit').click()"), "a view or direction change still fits");
+});
+
+test("a live redraw keeps the reader's scroll position in Logic", () => {
+  assert.match(source, /preservedScroll=\{left:document\.getElementById\('mermaid-viewport'\)\.scrollLeft,top:document\.getElementById\('mermaid-viewport'\)\.scrollTop\}/);
+  assert.match(source, /if\(!renderedOnce&&!keepView\).*requestAnimationFrame\(fit\).*viewport\.scrollLeft=scroll\.left;viewport\.scrollTop=scroll\.top/);
 });
 
 test("FLOW shares the Calls palette and BSE overrides routine colour",()=>{
@@ -51,7 +56,7 @@ test("FLOW shares the Calls palette and BSE overrides routine colour",()=>{
  assert.equal(graph.routineColor('RUN',{type:'PROG'}),'form');
  assert.equal(graph.routineColor('CONSTRUCTOR',{type:'CLAS'}),'constr');
  assert.match(source,/graph\.bseFlow&&graph\.bseFlow\.palette/);
- assert.ok(source.indexOf("style.textContent+='g.node.bse-operator")>source.indexOf("Object.keys(palette).forEach"));
+ assert.ok(source.indexOf("g.node.bse-operator rect")>source.indexOf("Object.keys(palette).forEach"));
 });
 
 test("Show from here draws the FLOW diagram from one node, and the path bar and Esc go back", () => {

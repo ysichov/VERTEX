@@ -20,6 +20,48 @@ The first step a SAP recording creates at Continue used to lack its Variables sn
 
 Saved SAP debugger files now carry GUID `session_id`s; legacy recordings acquire one on first read. VS Code chat recognises `[session <id> step <n>]` citations and opens the saved offline replay at that step. Transpiler runs expose the same ID as `session_id` while retaining `run_id` for existing tool schemas and citations. The saved-session list supplies IDs for citation resolution. Focused history, renderer and transpiler tests pass. This change is VS Code-only; no Eclipse host build is claimed.
 
+## Unreleased — Logic position and ALC function module
+
+The shared Logic diagram reset its viewport on each graph redraw, including Visual Debug record updates. It now fits once and preserves scroll and zoom on later redraws. The function module selection screen puts simple input labels beside the fields. In the ALC snapshot of `FIMA_DAYS_BETWEEN_TWO_DATES_2`, an unrelated SLO2 FORM called missing `FILL_AN_ENTRY`; unreachable function-group FORMs are omitted while keeping source line numbers. The saved snapshot transpiled after this change. Further offline execution encountered dictionary objects absent from that old snapshot, so full execution still requires a fresh SAP read. Dictionary closure now collects bare LIKE and chained TABLES dependencies, and format 6 refreshes old snapshots when used. Generated default binding is applied to the defining group, duplicate importing/exporting names are bound once, and legacy `><` is normalized for the transpiler. Focused local tests cover these cases and the Logic viewport behavior.
+
+The SAP run command now opens its program window without starting a dictionary read. Its first Execute starts the normal cached-build path; Recompile starts the fresh-read path. Previously compiled parameters are shown when the open Visual Debug source has them. After an Execute that needs to prepare a build, the new run window executes the already entered selection; without a prior selection it displays the newly compiled parameters for entry. The agent run path retains its direct behavior.
+
+The saved ALC `ZCL_MOD_FUEL` class has a required `IO_LOG TYPE REF TO ZCL_CALC_LOG`, whose `MT_LOG` is an instance attribute. The selection screen now opens a read-only dialog of declared class variables from an icon in place of the reference text field. Its required reference is constructed by default. On generated SAP run copies, abstract and private/protected creation restrictions are relaxed before transpilation; mandatory constructor parameters receive `VALUE #( )` initial values. The original SAP source is untouched. An offline run of the ALC snapshot transpiled, reached the entry and proceeded to its SELECT; without a configured SAP system, the SELECT then stopped. A changed copy with abstract/private creation and a mandatory constructor argument likewise transpiled and reached the entry. Local tests cover reference shapes, generated calls and copy-only relaxation.
+
+## 2026-10-19 — 0.9.18: direct search finds packages
+
+`search_sap_objects` now queries ADT's `DEVC/K` type and maps it to `DEVC`. The direct chat route retries a bare name as prefix and contains patterns only after an empty exact search. Package choices use `open_sap_object` to open the package's Object Navigator in the correct system. Focused tests cover package metadata, ordered fallback and package opening.
+
+## 2026-10-19 — 0.9.17: empty recording after a successful function call
+
+The saved ALC `FIMA_END_OF_MONTH_DETERMINE` snapshot returned output in the non-live runner but no trace. `mappedPlaces` and `mappedLines` decoded only the first source-map segment on each generated line, leaving subsequent source and line deltas unapplied; later source positions became negative. Both decoders now consume every segment and retain the first mapped position for each line. A regression test uses two segments on one line, and the live offline run records ten steps and returns `E_DAYS_OF_MONTH=29` for `I_DATE=20160210`.
+
+## 2026-10-19 — 0.9.16: FIMA_DAYS_BETWEEN_TWO_DATES
+
+The saved ALC snapshot reproduced `Variable name "DEFAULT" already defined`: `moduleSignature` stopped at the hyphen in `LIKE VTBBEWE-JINTRADAY`, then treated the following DEFAULT as another parameter. It now consumes qualified type names and ADT pragmas. The old snapshot carried the incorrect parsed signature, so format 5 rereads that object on next use. The standalone call declares this module's generic `E_TAGE` as integer. The next local failures revealed unsupported `STATICS`, a standard module in FF05 omitted from FF04's call closure, and upper-case call binding keys that the generated callee read only in lower case. Statics now move to private, persistent group globals; reached standard modules in another group are included; generated callees accept either parameter spelling.
+
+With ALC's `FIMA_INTEREST_METHOD_CONVERT` source supplied temporarily for the offline check, the saved snapshot transpiled and executed with `I_DATUM_VON=20260115`, `I_DATUM_BIS=20271002`: `E_TAGE=617`, `E_SEKUNDEN=0`. The temporary SAP source was removed from the repository after verification. Focused regression tests cover signatures, cross-group calls, statics and parameter binding case. No direct SAP execution comparison was available.
+
+## 2026-10-19 — 0.9.15: ENDIF layout after an early return
+
+The Logic only diagram placed the next IF under the surviving branch when the other branch returned. The scheme now keeps the exit node as a structural tail to the visible `ENDIF` and draws continuation from that join only when a live path remains. No invisible layout edges are used. Focused tests cover the early RETURN, nested IF and TRY/CATCH cases. The universal VSIX was packaged, verified and installed locally.
+
+## 2026-10-19 — 0.9.15: FIMA function module snapshot and offline run
+
+The ALC snapshot for `FIMA_DAYS_AND_MONTHS_AND_YEARS` exposed duplicate `GPDAYS`/`IDENT` fields because DD03L include/append markers were emitted beside flattened fields. `normalizeTableFields` now compares nesting depth (`ADMINFIELD`) and removes those markers. The collector saves `TYPE-POOLS` sources such as `TRFF`; the dictionary reader follows `LIKE TCURR-GDATU`, keeps `TYPES: BEGIN OF` scope across statements, and reads explicit table keys from DD42S. In `FIMA_END_OF_MONTH_DETERMINE`, the two `STATICS` fields are assigned before each read; its transpiler copy uses local `DATA` because the bundled transpiler throws at runtime for `STATICS`. The SAP source is unchanged.
+
+Snapshot format 4 invalidates older saved dictionaries only when their object is used again. Failed builds require a fresh read, and Recompile forces one. The saved ALC snapshot passed offline transpilation and local execution with `I_DATE_FROM=20260115`, `I_DATE_TO=20271002`, returning `E_DAYS=625`, `E_MONTHS=21`, `E_YEARS=2`. Fixture additions for `TCURR`, `SKONDGRP` and `LVC_T_STYL` were checked against ALC; the new reader gets them on a fresh build. Focused tests passed (49/49). Direct SAP RFC comparison was blocked by the unavailable `ZADT_VSP` WebSocket endpoint. The universal VSIX was packaged, verified and installed locally.
+
+## 2026-10-18 — ADT watchpoints and local variable interventions
+
+The SAP debugger now calls ADT's watchpoint create/list/delete endpoints and reads reached watchpoint IDs from step responses. The local transpiler instruments requested executable source lines, applies a scalar replacement on the requested occurrence and records its observed before/after values in the trace. The run tool passes interventions through both launch paths and the history tool exposes them. Local integration and fake ADT protocol tests cover the behavior; live SAP watchpoints have not yet been exercised.
+Visual Debug's Variables pane can add and remove watchpoints through the same commands in both modes. Local live Continue stops on matching changes; recorded Continue finds the next matching trace event. Component comparison checks that field's previous and current values. Watch Follow reuses the value origin points' `names` list to cover aliases across calculations and calls. Focused adapter, trace matching and fake ADT tests pass.
+The 0.9.15 panel also accepts a When comparator. It sends a full ABAP condition to SAP's ADT watchpoint endpoint and evaluates the same numeric or quoted-text comparison on the new value in the transpiler trace. Focused tests cover a threshold and the condition across renamed Follow variables.
+
+## 2026-10-18 — 0.9.15: selection texts for SAP transpiler runs
+
+The SAP run path previously fetched text elements with `getObjectSource`, which requests ABAP source and cannot read the text elements media type. `sap-code` now exposes the ADT client's `getTextElements`; `code-workbench` converts its selection and symbol entries into the screen's text map. A focused repository test verifies the endpoint and category. The universal `vertex-abap-0.9.15.vsix` passed the packaging wrapper's archive and page checks. The SAP endpoint itself has not been exercised against a live system.
+
 ## 2026-10-18 — ADT workspace import on macOS
 
 The 0.9.14 importer stopped before workspace selection when SAP Logon was absent. It now reads each ABAP project's `.destination.properties` from the Eclipse workspace and uses its system ID, server, instance, client and user. It scans macOS Eclipse app bundles for recent workspaces and offers common workspace folders. SAP Logon entries continue to work. The focused system setup tests pass (7/7). Built and verified the universal `vertex-abap-0.9.14.vsix`; its archive contains the new importer. macOS discovery has not been run on a Mac.

@@ -19,7 +19,7 @@ VERTEX is a set of plugins for VS Code and Eclipse ADT. Each window reads over t
 
 - a report, a method of a local class or a function module, its parameters asked in a panel and kept as named variants
 - only SELECTs go to the SAP system, read through ADT; the logic runs locally
-- every step and every value change recorded: step, set breakpoints, replay the run to any step
+- every step and every value change recorded: step, set breakpoints and conditional variable watchpoints, replay the run to any step
 - a value followed back to a clickable formula of how it was calculated, each part opening the line that produced it
 
 **Against SAP:**
@@ -47,7 +47,7 @@ Each list has a Clear all / Select all control for its model checkboxes.
 If a provider returns no models, LLM Providers displays an explicit empty-state message.
 In the VS Code sidebar, model-loading errors appear below the model selector.
 The VS Code chat can explain an active local `.abap` file using its current editor text, even without a SAP connection.
-Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **Visual Analysis / Debug** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **VERTEX: Run with ABAP Transpiler** in its editor's context menu or beside Run in SAP: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
+Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **Visual Analysis / Debug** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **VERTEX: Run with ABAP Transpiler** in its editor's context menu or beside Run in SAP: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. SAP program selection screens use the selection texts and text symbols maintained in SAP. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
 
 
 | Tool | Grew out of | What it does | VS Code | Eclipse | ABAP backend |
@@ -311,7 +311,7 @@ Copilot in VS Code, Claude Code and Codex; others are not supported yet.
 
 **The debugger.** Claude Code and Codex get the whole ADT debugger as a second MCP server of the
 extension, `/debug`, registered as `vertex-debug`: `debug_set_breakpoint` (with a condition SAP
-evaluates, or mode `log` for a watchpoint), `debug_run`, `debug_wait`, `debug_read`, `debug_step`,
+evaluates, or mode `log` for a continuing line trace), `debug_watchpoint` (a SAP variable-change stop), `debug_run`, `debug_wait`, `debug_read`, `debug_step`,
 `debug_status`, `debug_log`, `debug_clear_breakpoints` and `debug_stop`. Nothing there changes a
 variable or the code. It is the same session the VERTEX chat and Visual Debug drive, so a step
 made in one is seen by the others. It runs on the active system, needs a VS Code window with

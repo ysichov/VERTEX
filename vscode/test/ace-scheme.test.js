@@ -1,10 +1,10 @@
 "use strict";
 const test=require('node:test'),assert=require('node:assert/strict');
 const {parseSource}=require('../value-origin-linter'),{buildIndex}=require('../value-origin-model'),{scheme}=require('../ace-scheme');
-function draw(body,expand=''){
+function draw(body,expand='',logicOnly=false){
  const text=['CLASS zcl_test DEFINITION.','PUBLIC SECTION.','METHODS run.','ENDCLASS.','CLASS zcl_test IMPLEMENTATION.','METHOD run.',...body,'ENDMETHOD.','ENDCLASS.'].join('\n');
  const source=parseSource({id:'test',name:'ZCL_TEST',objectName:'ZCL_TEST',objectType:'CLAS',text}).source;
- const p=buildIndex([source]).procedures.find(p=>p.name==='RUN');return scheme(p,expand).mermaid;
+ const p=buildIndex([source]).procedures.find(p=>p.name==='RUN');return scheme(p,expand,logicOnly).mermaid;
 }
 test('scheme preserves ACE method shape, CHECK sequencing and call styling',()=>{
  const mm=draw(['CHECK x IS BOUND.','result = x->get_schema( ).']);
@@ -49,6 +49,14 @@ test('nested IF false paths join their own ENDIF',()=>{
  assert.match(mm,/n2 -->\|"false"\| j7/);
  assert.match(mm,/j5 --> p6/);assert.match(mm,/j7 --> p8/);
  assert.doesNotMatch(mm,/n3 -->\|"false"\| j7/);
+});
+test('an IF with an early RETURN keeps a visible ENDIF before the next condition',()=>{
+ const mm=draw(['IF x IS INITIAL.','MESSAGE e001(zx).','RETURN.','ELSE.','CALL METHOD zcl_x=>run( ).','ENDIF.','IF y IS NOT INITIAL.','WRITE y.','ENDIF.'],'',true);
+ assert.match(mm,/j7\("ENDIF\."\)/);
+ assert.match(mm,/p4 --> j7/);
+ assert.match(mm,/p6 --> j7/);
+ assert.match(mm,/j7 --> n8/);
+ assert.doesNotMatch(mm,/~~~/);
 });
 test('labels keep the code as written: operators, => and field symbols; only " and | are replaced, < travels as U+E000',()=>{
  const mm=draw(['IF a <> zcl_x=>c AND b <= 3.','ASSIGN ls-f TO <fs>.','ENDIF.']);

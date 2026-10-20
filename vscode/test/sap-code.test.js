@@ -12,6 +12,7 @@ function fixture(kind = "PROG") {
   const client = {
     async searchObject(query, filter) {
       calls.push(["search", query, filter]);
+      if (filter === "DEVC/K" && query !== "$TMP" && query !== "Z_RIG") return [];
       if (filter === "DEVC/K" || filter === "FUGR/F") {
         return [{ "adtcore:name": query, "adtcore:type": filter, "adtcore:uri": "/sap/bc/adt/packages/local", "adtcore:packageName": "$TMP" }];
       }
@@ -53,6 +54,16 @@ test('analysis source reader fetches one version and caches metadata and request
   await read({ object_name: 'ZTEST', object_type: 'CLAS', include: 'testclasses' });
   assert.equal(structures, 1);
   assert.equal(f.calls.filter(c => c[0] === 'read').length, 2);
+});
+test('program text elements use the ADT text endpoint', async () => {
+  const f = fixture();
+  f.client.getTextElements = async (url, category) => {
+    f.calls.push(['texts', url, category]);
+    return { textElements: [{ id: 'P_CLEAN', text: 'CLEAN - baseline calculation' }] };
+  };
+  assert.deepEqual((await f.repo.textElements('ZTEST', 'selections')).textElements,
+    [{ id: 'P_CLEAN', text: 'CLEAN - baseline calculation' }]);
+  assert.deepEqual(f.calls.at(-1), ['texts', '/sap/bc/adt/textelements/programs/ztest', 'selections']);
 });
 test('value origin reads only the configured pipeline for one scenario', async () => {
   const f = fixture(), seen = [];
@@ -183,6 +194,46 @@ test("function module read falls back to an unfiltered exact FUGR search", async
   assert.equal(result.object_type, "FUNC");
   assert.equal(result.object_name, "SAPGUI_PROGRESS_INDICATOR");
   assert.equal(result.source, "original");
+});
+test("function module search finds a module indexed outside FUGR/FF", async () => {
+  const f = fixture("FUNC"), search = f.client.searchObject, filters = [];
+  f.client.searchObject = async (query, filter) => {
+    filters.push(filter);
+    if (filter === "FUGR/FF") return [];
+    if (filter === undefined) return [{ "adtcore:name": "FIMA_DAYS_AND_MONTHS_AND_YEARS", "adtcore:type": "FUGR/I",
+      "adtcore:uri": "/sap/bc/adt/functions/groups/fima/fmodules/fima_days_and_months_and_years",
+      "adtcore:packageName": "FIMA" }];
+    return search(query, filter);
+  };
+  const result = await f.repo.execute("search_sap_objects", { query: "FIMA_DAYS_AND_MONTHS_AND_YEARS" });
+  assert.deepEqual(result.objects.map(object => [object.object_type, object.object_name]),
+    [["FUNC", "FIMA_DAYS_AND_MONTHS_AND_YEARS"]]);
+  assert.ok(filters.includes(undefined));
+});
+test("package search returns DEVC results", async () => {
+  const f = fixture();
+  const result = await f.repo.execute("search_sap_objects", { query: "Z_RIG", object_type: "DEVC" });
+  assert.deepEqual(result.objects.map(object => [object.object_type, object.object_name]), [["DEVC", "Z_RIG"]]);
+  assert.deepEqual(f.calls.filter(call => call[0] === "search"), [["search", "Z_RIG", "DEVC/K"]]);
+});
+test("a second SAP search waits for the first instead of reporting a busy session", async () => {
+  const f = fixture();
+  let release;
+  const firstGate = new Promise(resolve => { release = resolve; });
+  const search = f.client.searchObject;
+  let calls = 0;
+  f.client.searchObject = async (...args) => {
+    if (++calls === 1) await firstGate;
+    return search(...args);
+  };
+  const first = f.repo.execute("search_sap_objects", { query: "ZTEST", object_type: "PROG" });
+  const second = f.repo.execute("search_sap_objects", { query: "ZTEST", object_type: "PROG" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 1);
+  release();
+  const results = await Promise.all([first, second]);
+  assert.equal(calls, 2);
+  assert.equal(results[1].objects[0].object_name, "ZTEST");
 });
 test("class includes use their discovered source URL", async () => {
   const f = fixture("CLAS");

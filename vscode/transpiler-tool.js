@@ -3,13 +3,19 @@
 const schema = {
   name: "run_abap_transpiler",
   annotations: { readOnlyHint: true, destructiveHint: false },
-  description: "Run an ABAP report, class method or function module with the local transpiler and return its output. This simulates ABAP execution; it is not a SAP runtime run. SELECT may read the selected SAP system through VERTEX. Parallel runs use isolated local projects. Use this first for runnable code; if compilation or runtime says the case is unsupported, explain why and ask the user whether to run it in SAP. For a class, read its source and supply entry_line inside the method. Supply selection values for reports that need parameters.",
+  description: "Run an ABAP report, class method or function module with the local transpiler and return its output. This simulates ABAP execution; it is not a SAP runtime run. SELECT may read the selected SAP system through VERTEX. Parallel runs use isolated local projects. Use interventions to replace a scalar variable immediately before a specified ABAP line for a testable hypothesis; the trace records before and after values. Use this first for runnable code; if compilation or runtime says the case is unsupported, explain why and ask the user whether to run it in SAP. For a class, read its source and supply entry_line inside the method. Supply selection values for reports that need parameters.",
   inputSchema: { type: "object", additionalProperties: false, required: ["object_type", "object_name"], properties: {
     object_type: { type: "string", enum: ["PROG", "CLAS", "FUNC"] },
     object_name: { type: "string", description: "Exact SAP technical name." },
     entry_line: { type: "integer", minimum: 1, description: "Line inside the class method or function module to execute. Required for CLAS." },
     screen_only: { type: "boolean", description: "Return the selection screen or method argument fields without executing." },
     selection: { type: "object", description: "Selection screen values. Radio group IDs map to chosen parameter names; other values go in $parameters. For a method or function module, supply its $entry arguments.", additionalProperties: true },
+    interventions: { type: "array", maxItems: 10, description: "Local transpiler only: replace a scalar ABAP variable before the chosen source line. Each replacement is recorded in the run history.", items: { type: "object", additionalProperties: false,
+      required: ["object_name", "line", "name", "value"], properties: {
+        object_name: { type: "string", description: "Exact program, class, include or function module name containing the line." },
+        line: { type: "integer", minimum: 1 }, name: { type: "string", description: "Simple ABAP variable or parameter name." },
+        value: { type: ["string", "number", "boolean"] }, occurrence: { type: "integer", minimum: 1, description: "Which execution of this line; default 1." }
+      } } },
     system: { type: "string", description: "Configured SAP system; defaults to the active system." }
   } }
 };
@@ -25,7 +31,17 @@ function validate(args) {
     throw new Error("entry_line must be a positive source line.");
   if (args.selection !== undefined && (!args.selection || Array.isArray(args.selection) || typeof args.selection !== "object"))
     throw new Error("selection must be an object of parameter values.");
-  return { object_name, object_type: kind, entryLine: args.entry_line || 0, selection: args.selection || {} };
+  const interventions = args.interventions || [];
+  if (!Array.isArray(interventions) || interventions.length > 10) throw new Error("interventions must contain at most 10 replacements.");
+  for (const item of interventions) {
+    if (!item || !/^[A-Z0-9_/$]+$/i.test(item.object_name || "") || !/^[A-Z_][A-Z0-9_]*$/i.test(item.name || "")
+      || !Number.isInteger(item.line) || item.line < 1 || item.occurrence !== undefined && (!Number.isInteger(item.occurrence) || item.occurrence < 1)
+      || !["string", "number", "boolean"].includes(typeof item.value) || typeof item.value === "number" && !Number.isFinite(item.value))
+      throw new Error("Each intervention needs an exact object_name, positive line, simple variable name, finite scalar value and optional positive occurrence.");
+  }
+  return { object_name, object_type: kind, entryLine: args.entry_line || 0, selection: args.selection || {},
+    ...(interventions.length ? { interventions: interventions.map((item, index) => ({ id: index + 1, object_name: item.object_name.toUpperCase(),
+      line: item.line, name: item.name.toUpperCase(), value: item.value, occurrence: item.occurrence || 1 })) } : {}) };
 }
 
 function describeScreen(screen) {

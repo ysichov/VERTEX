@@ -22,6 +22,7 @@ const dictionary = {
   DD04L: [{ ROLLNAME: "ZCHAR7", DOMNAME: "ZCHAR7", DATATYPE: "CHAR", LENG: "000007", DECIMALS: "000000", REFKIND: "D", REFTYPE: "" },
     { ROLLNAME: "ZLAND", DOMNAME: "ZLAND_D", DATATYPE: "CHAR", LENG: "000003", DECIMALS: "000000", REFKIND: "D", REFTYPE: "" }],
   DD40L: [{ TYPENAME: "ZSHIP_TT", ROWTYPE: "ZSHIP", ROWKIND: "S", DATATYPE: "", LENG: "000000", DECIMALS: "000000", ACCESSMODE: "T", KEYDEF: "D" }],
+  DD42S: [],
   DD01L: [{ DOMNAME: "ZCHAR7", DATATYPE: "CHAR", LENG: "000007", DECIMALS: "000000" },
     { DOMNAME: "ZLAND_D", DATATYPE: "CHAR", LENG: "000003", DECIMALS: "000000" }]
 };
@@ -40,14 +41,14 @@ const queryOf = rows => {
 test("names a source takes from the dictionary", () => {
   const names = dictionaryNames("DATA a TYPE zship.\nDATA t TYPE STANDARD TABLE OF zrow WITH EMPTY KEY.\nDATA r TYPE REF TO zcl_x.\n" +
     "DATA c TYPE char12.\nDATA f TYPE zs-field.\nSELECT * FROM ztab INNER JOIN zj ON a = b INTO TABLE @t.\n" +
-    "DATA x TYPE zcl_y=>ty.\nDATA i TYPE i.\nTYPES ty TYPE RANGE OF zr.\nTYPES BEGIN OF s.\nINCLUDE STRUCTURE zinc.\nTYPES END OF s.\n");
-  assert.deepEqual([...names].sort(), ["CHAR12", "ZCL_X", "ZINC", "ZJ", "ZR", "ZROW", "ZS", "ZSHIP", "ZTAB"]);
+    "DATA x TYPE zcl_y=>ty.\nDATA i TYPE i.\nDATA date LIKE tcurr-gdatu.\nDATA rows LIKE vzzbbas OCCURS 1.\nTYPES ty TYPE RANGE OF zr.\nTYPES BEGIN OF s.\nINCLUDE STRUCTURE zinc.\nTYPES END OF s.\n");
+  assert.deepEqual([...names].sort(), ["CHAR12", "TCURR", "VZZBBAS", "ZCL_X", "ZINC", "ZJ", "ZR", "ZROW", "ZS", "ZSHIP", "ZTAB"]);
 });
 
 test("FROM and JOIN name a table only in Open SQL; TABLES only as its own statement", () => {
-  const names = dictionaryNames("SUBTRACT 1 FROM b.\nDELETE itab FROM idx.\nTABLES t001.\nOPEN CURSOR @c FOR SELECT * FROM t005.\n"
+  const names = dictionaryNames("SUBTRACT 1 FROM b.\nDELETE itab FROM idx.\nTABLES t001.\nTABLES: thol, thoc.\nOPEN CURSOR @c FOR SELECT * FROM t005.\n"
     + "DATA(x) = 1. SELECT SINGLE f FROM zsel INTO @DATA(v).");
-  assert.deepEqual([...names].sort(), ["T001", "T005", "ZSEL"]);
+  assert.deepEqual([...names].sort(), ["T001", "T005", "THOC", "THOL", "ZSEL"]);
 });
 
 test("reads the closure: an include, a table type, data elements and domains of the same name", async () => {
@@ -64,6 +65,46 @@ test("a definition's missing dependency stops the run; a source's unknown name d
   assert.deepEqual(await readDictionary(queryOf(dictionary).query, new Set(["TY_LOCAL"])), []);
 });
 
+test("SAP include and append components are not emitted twice in a structure", async () => {
+  const rows = { DD02L: [{ TABNAME: "ZVTBKOND", TABCLASS: "INTTAB" },
+    { TABNAME: "ZVTBKOND_GP_CMLCHN", TABCLASS: "INTTAB" },
+    { TABNAME: "ZSCSTFACD", TABCLASS: "INTTAB" }, { TABNAME: "ZTFACD", TABCLASS: "INTTAB" }],
+  DD03L: [field("ZVTBKOND", "BASE", 155, "", "", "CHAR", 1),
+    field("ZVTBKOND", ".INCLU--AP", 156, "", "S", "", 0, 0, { PRECFIELD: "ZVTBKOND_GP_CMLCHN" }),
+    field("ZVTBKOND", "GPDAYS", 157, "ZNUM2", "E", "NUMC", 2, 0, { ADMINFIELD: "1" }),
+    field("ZVTBKOND_GP_CMLCHN", "GPDAYS", 1, "ZNUM2", "E", "NUMC", 2),
+    field("ZVTBKOND_MNT", ".INCLU--AP", 157, "", "S", "", 0, 0, { PRECFIELD: "ZVTBKOND_GP_CMLCHN", ADMINFIELD: "1" }),
+    field("ZVTBKOND_MNT", "GPDAYS", 158, "ZNUM2", "E", "NUMC", 2, 0, { ADMINFIELD: "2" }),
+    field("ZSCSTFACD", ".INCLUDE", 1, "", "S", "", 0, 0, { PRECFIELD: "ZTFACD" }),
+    field("ZSCSTFACD", "IDENT", 2, "ZIDENT", "E", "CHAR", 1, 0, { ADMINFIELD: "1" }),
+    field("ZTFACD", "IDENT", 1, "ZIDENT", "E", "CHAR", 1)],
+  DD04L: [{ ROLLNAME: "ZNUM2", DOMNAME: "ZNUM2", DATATYPE: "NUMC", LENG: "000002", DECIMALS: "000000", REFKIND: "D", REFTYPE: "" },
+    { ROLLNAME: "ZIDENT", DOMNAME: "ZIDENT", DATATYPE: "CHAR", LENG: "000001", DECIMALS: "000000", REFKIND: "D", REFTYPE: "" }],
+  DD01L: [{ DOMNAME: "ZNUM2", DATATYPE: "NUMC", LENG: "000002", DECIMALS: "000000" },
+    { DOMNAME: "ZIDENT", DATATYPE: "CHAR", LENG: "000001", DECIMALS: "000000" }] };
+  rows.DD02L.push({ TABNAME: "ZVTBKOND_MNT", TABCLASS: "INTTAB" });
+  const objects = await readDictionary(queryOf(rows).query, new Set(["ZVTBKOND", "ZSCSTFACD", "ZVTBKOND_MNT"]));
+  const parent = objects.find(object => object.name === "ZVTBKOND");
+  assert.deepEqual(parent.fields.map(row => row.FIELDNAME), ["BASE", "GPDAYS"]);
+  assert.doesNotMatch(objectXml(parent).xml, /<PRECFIELD>ZVTBKOND_GP_CMLCHN<\/PRECFIELD>/);
+  const calendar = objects.find(object => object.name === "ZSCSTFACD");
+  assert.deepEqual(calendar.fields.map(row => row.FIELDNAME), ["IDENT"]);
+  assert.deepEqual(objects.find(object => object.name === "ZVTBKOND_MNT").fields.map(row => row.FIELDNAME), ["GPDAYS"]);
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-append-"));
+  try {
+    const file = writeProject("TEST", [{ name: "ZAPPEND", type: "PROG", include: "main",
+      text: "REPORT zappend.\nDATA ls TYPE zvtbkond.\nDATA lc TYPE zscstfacd.\nls-gpdays = '12'.\n" +
+        "lc-ident = 'X'.\nWRITE: ls-gpdays, lc-ident.\n" }], objects, folder);
+    const document = { uri: { scheme: "file", fsPath: file }, getText: () => fs.readFileSync(file, "utf8") };
+    let log = "";
+    const vscode = { workspace: { getWorkspaceFolder: () => undefined },
+      window: { createOutputChannel: () => ({ append: t => { log += t; }, appendLine: t => { log += t + "\n"; }, hide() {}, show() {} }) } };
+    const result = await launch(vscode, false, { document, selection: {}, trace: true })
+      .catch(error => { throw new Error(error.message + "\n" + log); });
+    assert.match(result.output, /12/);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});
+
 test("abapGit XML of the objects", async () => {
   const objects = await readDictionary(queryOf(dictionary).query, new Set(["ZSHIP_TT"]));
   const table = objectXml(objects.find(o => o.name === "ZSHIP"));
@@ -73,6 +114,28 @@ test("abapGit XML of the objects", async () => {
   assert.match(table.xml, /<FIELDNAME>WEIGHT<\/FIELDNAME><DATATYPE>DEC<\/DATATYPE><LENG>000017<\/LENG><DECIMALS>000003<\/DECIMALS>/);
   assert.equal(objectXml(objects.find(o => o.kind === "DOMA" && o.name === "ZCHAR7")).file, "zchar7.doma.xml");
   assert.ok(coreNames().has("MANDT"));
+});
+
+test("SAP decimal float dictionary types use names understood by the transpiler", () => {
+  const field = { FIELDNAME: "AMOUNT", DATATYPE: "D34N", LENG: "000034" };
+  const xml = objectXml({ kind: "TABL", name: "ZFLOAT", tabclass: "INTTAB", fields: [field] }).xml;
+  assert.match(xml, /<DATATYPE>DECFLOAT34<\/DATATYPE>/);
+  assert.equal(field.DATATYPE, "D34N", "the SAP snapshot stays as read");
+});
+
+test("a saved type group supplies types to an offline program", async () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-typepool-"));
+  try {
+    const file = writeProject("TEST", [
+      { name: "ZPOOLRUN", type: "PROG", include: "main", text: "REPORT zpoolrun.\nTYPE-POOLS ztp.\nDATA number TYPE ztp_n.\nnumber = '42'.\nWRITE number.\n" },
+      { name: "ZTP", type: "TYPE", include: "main", text: "TYPE-POOL ztp.\nTYPES ztp_n TYPE n LENGTH 2.\n" }
+    ], [], folder);
+    const document = { uri: { scheme: "file", fsPath: file }, getText: () => fs.readFileSync(file, "utf8") };
+    const vscode = { workspace: { getWorkspaceFolder: () => undefined },
+      window: { createOutputChannel: () => ({ append() {}, appendLine() {}, hide() {}, show() {} }) } };
+    const result = await launch(vscode, false, { document, selection: {}, trace: true });
+    assert.match(result.output, /42/);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
 });
 
 test("a program typed by the dictionary transpiles and runs", async () => {
@@ -122,6 +185,17 @@ test("the types a source declares with TYPES are its own, not its components", (
   const names = declaredTypes("INTERFACE zif_t PUBLIC.\n  TYPES: BEGIN OF ty_step, step_no TYPE zlog_pipeline-step_no, matnr TYPE matnr, END OF ty_step,\n"
     + "    tt_steps TYPE STANDARD TABLE OF ty_step WITH EMPTY KEY.\n  TYPES ty_amount TYPE p LENGTH 15 DECIMALS 2.\n  DATA lv TYPE matnr.\nENDINTERFACE.");
   assert.deepEqual([...names], ["TY_STEP", "TT_STEPS", "TY_AMOUNT"]);
+  const split = declaredTypes("TYPES: BEGIN OF ty_record.\n INCLUDE TYPE ty_base.\n TYPES: component TYPE zfield,\n END OF ty_record.\n TYPES ty_next TYPE c.");
+  assert.deepEqual([...split], ["TY_RECORD", "TY_NEXT"]);
+});
+
+test("table type key components are read from DD42S", async () => {
+  const rows = { ...dictionary, DD40L: [{ ...dictionary.DD40L[0], KEYDEF: "K" }],
+    DD42S: [{ TYPENAME: "ZSHIP_TT", SECKEYNAME: "", KEYFDPOS: "0001", KEYFIELD: "ID" }] };
+  const objects = await readDictionary(queryOf(rows).query, new Set(["ZSHIP_TT"]));
+  const tableType = objects.find(object => object.name === "ZSHIP_TT");
+  assert.deepEqual(tableType.keys.map(key => key.KEYFIELD), ["ID"]);
+  assert.match(objectXml(tableType).xml, /<DD42V><DD42V><KEYFIELD>ID<\/KEYFIELD><\/DD42V><\/DD42V>/);
 });
 
 test("a domain named as one of open-abap-core's data elements is read from SAP: a data element is no domain", async () => {

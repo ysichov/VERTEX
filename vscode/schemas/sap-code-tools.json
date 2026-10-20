@@ -2,10 +2,10 @@
   {
     "name": "search_sap_objects",
     "annotations": { "readOnlyHint": true, "destructiveHint": false },
-    "description": "Search SAP programs, global classes, interfaces and function modules by name pattern. Returns bounded metadata, no source.",
+    "description": "Search SAP programs, global classes, interfaces, function modules and packages by name pattern. Returns bounded metadata, no source.",
     "inputSchema": { "type": "object", "additionalProperties": false, "required": ["query"], "properties": {
       "query": { "type": "string", "description": "SAP name pattern, e.g. ZCL_*" },
-      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC", "INTF"] },
+      "object_type": { "type": "string", "enum": ["PROG", "CLAS", "FUNC", "INTF", "DEVC"] },
       "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
     } }
   },
