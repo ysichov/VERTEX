@@ -1,5 +1,17 @@
 # Release history
 
+## Unreleased — sidebar SNC/password switch
+
+The VS Code sidebar can switch the selected SAP system between SNC and password authentication with a checkbox beside the system selector. Switching to password preserves saved SNC/RFC details for a later switch back; enabling SNC validates the required partner name and RFC host/instance.
+
+## 2026-10-21 — VS Code documentation: chat-led program analysis
+
+The repository and VS Code guides now explain starting chat with a package or program name, comparing several transpiler selections in one assistant request, inspecting class variables for reference parameters, and managing saved SAP debug sessions. They also describe using an open saved recording as cited evidence in chat.
+
+## Unreleased — assistant session log panel placement
+
+The VS Code assistant session log report opens beside the active editor and returns to that column when reopened, so it is easier to locate from the VERTEX sidebar.
+
 ## 2026-10-20 — VS Code 0.9.18: visible model-loading errors
 
 The sidebar displays the reason a model list failed below the selector, as well as in its tooltip.

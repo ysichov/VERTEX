@@ -46,6 +46,9 @@ Cerebras, OpenRouter and NVIDIA. Provider model lists can be collapsed independe
 Each list has a Clear all / Select all control for its model checkboxes.
 If a provider returns no models, LLM Providers displays an explicit empty-state message.
 In the VS Code sidebar, model-loading errors appear below the model selector.
+Start chat by naming the package or program to inspect; a single match opens in Object Navigator.
+For a plain name without an exact match, VERTEX tries prefix and contained-name searches; explicit
+wildcards are used as written.
 The VS Code chat can explain an active local `.abap` file using its current editor text, even without a SAP connection.
 Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **Visual Analysis / Debug** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **VERTEX: Run with ABAP Transpiler** in its editor's context menu or beside Run in SAP: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. SAP program selection screens use the selection texts and text symbols maintained in SAP. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
 
@@ -112,6 +115,12 @@ OS credential store through VS Code SecretStorage, never in settings. A refused
 password is discarded; the next operation asks again. Basic also works on remote
 extension hosts. **VERTEX: Forget Credentials** clears the active system's stored
 credentials.
+
+In the VERTEX panel, the **SNC** checkbox beside the SAP system selector switches
+the selected system between SNC single sign-on and password authentication.
+Turning SNC off keeps its connection details; turning it back on requires the
+system's SNC partner name and RFC application-server host/instance settings. The
+checkbox does not delete or re-import the system.
 
 The universal VSIX carries prebuilt RFC bindings for Windows x64 and macOS on
 Apple silicon. SNC requires local VS Code, Secure Login Client, and the SAP NW
@@ -256,7 +265,7 @@ Eclipse Tools selects the active ADT class or program when opened from its edito
 Each API provider can have several named keys, with one selected manually.
 For Mistral and other compatible APIs, the VS Code chat shows the token usage returned by the provider, summed across tool calls.
 With `vertex.ai.logPath` set, the VS Code assistant writes an Anthropic-compatible JSONL log for any provider. Each direct API or Copilot model call has its own record; CLI subscriptions are recorded per VERTEX invocation. Choose the folder in LLM Providers or Settings. Raw HTTP request bodies are not stored.
-The 📜 button on the VERTEX panel opens a session report for these logs, with date, provider, model and prompt filters and token totals. It shows only question, answer and tool content enabled in log settings.
+The 📜 button on the VERTEX panel opens a session report for these logs beside the active editor, with date, provider, model and prompt filters and token totals. It shows only question, answer and tool content enabled in log settings.
 Eclipse's built-in
 Assistant uses Codex or Claude Code; Copilot Chat in Eclipse connects separately
 through MCP.

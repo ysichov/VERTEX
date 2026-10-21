@@ -12,8 +12,35 @@ test("SAP Logon SNC single sign-on imports direct RFC settings", () => {
     const { systems } = landscape([file]);
     assert.deepEqual(systems[0].snc, { partnerName: "p:CN=SNC", qop: "9" });
     assert.equal(systems[0].host, "snchost");
-    assert.equal(systems[1].snc, undefined);
+    assert.deepEqual(systems[1].snc, { partnerName: "p:CN=PWD" });
+    assert.equal(systems[1].authType, undefined);
   } finally { fs.unlinkSync(file); }
+});
+
+test("the sidebar auth switch updates only authType and retains SNC settings", async () => {
+  const { setSystemAuthType } = require("../system-setup");
+  const values = { systems: [{ name: "DEV", url: "https://dev", user: "USER", authType: "snc",
+    snc: { partnerName: "p:CN=DEV" }, rfc: { ashost: "devhost", sysnr: "00" } }] };
+  const updates = [];
+  const config = { get: key => values[key], inspect: () => ({ workspaceValue: values.systems }),
+    update: async (key, value, target) => { updates.push({ key, value, target }); values[key] = value; } };
+  const vscode = { ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 }, workspace: { getConfiguration: () => config } };
+  await setSystemAuthType(vscode, "DEV", false);
+  assert.equal(values.systems[0].authType, "basic");
+  assert.deepEqual(values.systems[0].snc, { partnerName: "p:CN=DEV" });
+  await setSystemAuthType(vscode, "DEV", true);
+  assert.equal(values.systems[0].authType, "snc");
+  assert.equal(updates.length, 2);
+  assert.ok(updates.every(update => update.target === 2));
+});
+
+test("the sidebar auth switch refuses SNC without its RFC parameters", async () => {
+  const { setSystemAuthType } = require("../system-setup");
+  let updated = false;
+  const config = { get: () => [{ name: "DEV", url: "https://dev", user: "USER" }], inspect: () => ({}),
+    update: async () => { updated = true; } };
+  await assert.rejects(() => setSystemAuthType({ workspace: { getConfiguration: () => config } }, "DEV", true), /snc.partnerName/);
+  assert.equal(updated, false);
 });
 
 test("remove systems updates the configured scope and repairs an active selection", async () => {

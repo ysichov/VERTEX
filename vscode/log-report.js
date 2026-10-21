@@ -98,8 +98,8 @@ function readSessions(root) {
 
 let panel;
 function open(vscode) {
-  if (panel) { panel.reveal(vscode.ViewColumn.Active); return panel; }
-  panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Session Logs", vscode.ViewColumn.Active,
+  if (panel) { panel.reveal(vscode.ViewColumn.Beside, false); return panel; }
+  panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Session Logs", vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   const nonce = crypto.randomBytes(16).toString("hex");
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce);

@@ -29,7 +29,8 @@ function landscape(files) {
       const a = attributes(tag);
       if (a.type !== "SAPGUI" || !a.systemid) { continue; }
       const title = a.name || a.systemid;
-      const snc = a.sncname && a.sncnosso !== "1";
+      const sncDetails = a.sncname ? { partnerName: a.sncname, ...(a.sncop ? { qop: a.sncop } : {}) } : null;
+      const snc = sncDetails && a.sncnosso !== "1";
       if (a.msid) {
         if (snc) { skipped.push(title + " (SNC logon group: no application server for RFC is specified)"); continue; }
         const ms = messageServers[a.msid], port = ms && /^36(\d\d)$/.exec(ms.port || "");
@@ -40,7 +41,7 @@ function landscape(files) {
       const server = /^(.+):32(\d\d)$/.exec(a.server || "");
       if (!server) { skipped.push(title + " (server " + (a.server || "not given") + ")"); continue; }
       systems.push({ id: a.systemid, title, host: server[1], instance: server[2],
-        ...(snc ? { snc: { partnerName: a.sncname, ...(a.sncop ? { qop: a.sncop } : {}) } } : {}) });
+        ...(sncDetails ? { snc: sncDetails } : {}), ...(snc ? { authType: "snc" } : {}) });
     }
   }
   return { systems, skipped };
@@ -292,7 +293,7 @@ async function importSystems(vscode, context) {
           logon: { client: s.client || logons[s.id]?.client || "", user: s.user || logons[s.id]?.user || "" } }; })));
   const items = candidates.map(c => ({
     label: c.id + "  " + c.title + (c.group !== undefined ? "  (logon group " + c.group + ", message server " + c.host + ")" : ""),
-    description: (c.snc ? "SNC · " : "") + (c.found ? c.found.url + (c.found.insecure ? " (certificate not verified)" : "") : "ADT did not answer on any usual port"),
+    description: (c.authType === "snc" ? "SNC · " : "") + (c.found ? c.found.url + (c.found.insecure ? " (certificate not verified)" : "") : "ADT did not answer on any usual port"),
     detail: [c.webgui ? "WebGUI at " + c.webgui : c.found && c.webgui === null ? "WebGUI not found" : "", c.logon.client ? "client " + c.logon.client : "client: asked", c.logon.user ? "user " + c.logon.user : "user: asked",
       known.has(c.id) ? "a system named " + c.id + " is already configured" : ""].filter(Boolean).join(" · "),
     picked: !!c.found && !known.has(c.id), candidate: c }));
@@ -316,11 +317,9 @@ async function importSystems(vscode, context) {
     const user = c.logon.user || await vscode.window.showInputBox({ title: c.id + ": SAP user", ignoreFocusOut: true });
     if (!user) { continue; }
     const system = { name, url, ...(client ? { client } : {}), user };
-    if (c.snc) {
-      system.authType = "snc";
-      system.snc = c.snc;
-      system.rfc = { ashost: c.host, sysnr: c.instance };
-    }
+    if (c.authType === "snc") { system.authType = "snc"; }
+    if (c.snc) { system.snc = c.snc; }
+    if (c.group === undefined) { system.rfc = { ashost: c.host, sysnr: c.instance }; }
     if (c.found && c.found.insecure) { system.allowInsecureCertificate = true; }
     // WebGUI found somewhere else than url: the debugger opens it there. Not found at all: said, left to the reader.
     if (url === (c.found && c.found.url) && c.webgui) { system.webgui = c.webgui; }
@@ -384,4 +383,23 @@ async function removeSystems(vscode) {
   vscode.window.showInformationMessage("VERTEX: removed " + selected.map(item => item.label).join(", ") + " from vertex.systems.");
 }
 
-module.exports = { importSystems, removeSystems, findWebgui, webguiAt, landscape, eclipseLogons, eclipseProjects, eclipseWorkspaces, recentWorkspaces, probe, answers };
+async function setSystemAuthType(vscode, name, useSNC) {
+  const config = vscode.workspace.getConfiguration("vertex");
+  const existing = config.get("systems") || [];
+  const index = existing.findIndex(system => String(system && system.name || "").toLowerCase() === String(name || "").toLowerCase());
+  if (index < 0) { throw new Error("SAP system " + name + " is no longer configured."); }
+  const updated = existing.map(system => ({ ...system }));
+  const candidate = { ...updated[index], authType: useSNC ? "snc" : "basic" };
+  if (useSNC) {
+    const validated = require("./auth/systems").readSystem(candidate);
+    if (validated.error) { throw new Error(validated.error); }
+  }
+  updated[index] = candidate;
+  const scope = config.inspect && config.inspect("systems");
+  const target = scope && scope.workspaceFolderValue !== undefined ? vscode.ConfigurationTarget.WorkspaceFolder
+    : scope && scope.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+  await config.update("systems", updated, target);
+}
+
+module.exports = { importSystems, removeSystems, setSystemAuthType, findWebgui, webguiAt, landscape, eclipseLogons, eclipseProjects, eclipseWorkspaces, recentWorkspaces, probe, answers };

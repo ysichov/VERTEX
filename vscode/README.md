@@ -116,8 +116,10 @@ itself. The exporting, changing and returning results are written to Output: a s
 field, a table as a table - a heading of its columns and a line per row, each column as wide as its type. A function module's file is recognised by its abapGit name, `<group>.fugr.<module>.abap`.
 Any method runs, whatever its visibility: the transpiler does not check it, so a private or protected method is
 called as a public one would be (SAP itself would refuse that call). A method of an interface the class
-implements (`METHOD zif_x~m`) is called through the interface. A reference parameter is not entered; as a result
-it stands in Variables. A parameter of a type with no name or one not among the local sources, a table inside a structure, and a project with its own `abap_transpile.json` are refused with the
+implements (`METHOD zif_x~m`) is called through the interface. A `TYPE REF TO` parameter has a
+class-variables button in place of a text field; it opens a read-only view of the class's declared
+variables. A required class reference is initialized for the standalone call, and its values appear
+in Variables. A parameter of a type with no name or one not among the local sources, a table inside a structure, and a project with its own `abap_transpile.json` are refused with the
 reason; nothing else is run in their place. Opened by Visual
 Analysis / Debug it is always the whole panel, for analysis with no run at all. A SELECT that fails says why in the
 Output and the VERTEX Local ABAP channel instead of reading as an empty result. VERTEX
@@ -228,6 +230,13 @@ OS credential store through VS Code SecretStorage, never in settings. A refused
 password is discarded; the next operation asks again. Basic also works on remote
 extension hosts. **VERTEX: Forget Credentials** clears the active system's stored
 credentials.
+
+In the VERTEX panel, the **SNC** checkbox beside the SAP system selector switches
+the selected system between SNC single sign-on and password authentication.
+Turning SNC off keeps its connection details in settings; turning it back on
+requires `snc.partnerName` and `rfc.ashost`/`rfc.sysnr`. The checkbox changes only
+that system's `authType`, without deleting or re-importing it. Basic authentication
+asks for a password on the next request.
 
 The universal VSIX carries prebuilt RFC bindings for Windows x64 and macOS on
 Apple silicon. SNC requires local VS Code, Secure Login Client, and the SAP NW
@@ -533,7 +542,10 @@ The **VERTEX** panel in the Activity Bar has a free-prompt chat. The top line ho
 box, the provider and model lists and **New conversation** stay at the bottom of the panel; the
 answers scroll above them, questions and answers in different colours. Asking for a VERTEX
 function — *open table SFLIGHT*, *show the diff of ZCL_FOO* — opens a **VERTEX Tools** window on
-it.
+it. To begin with a package or program, name it in the first request, for example *open package
+Z_BILLING* or *open program Z_INVOICE*. A single match opens in Object Navigator; if a plain
+name has no exact match, VERTEX tries a prefix and then a contained-name search. An explicit
+wildcard is used as written.
 
 With a local `.abap` file active, the chat receives its current editor text, including unsaved
 edits (up to 24,000 characters). It can explain that source without a configured SAP system;
@@ -551,7 +563,7 @@ record with its reported usage; Claude Code and Codex subscriptions have one rec
 CLI invocation because their internal model calls are not exposed. The format is the same for
 every provider and does not capture raw HTTP payloads. Use **Choose log folder...** in LLM
 Providers or the folder link beside `vertex.ai.logPath` in Settings; the gear opens the log settings.
-The 📜 button beside **LLM Providers** opens the session report inside VS Code. It reads the
+The 📜 button beside **LLM Providers** opens the session report beside the active editor. It reads the
 configured log folder and shows sessions, prompts and token usage by day or across all dates.
 Filter by provider, model or prompt text; click a row to inspect any request context, answer and tool details
 retained by the log settings. JSON tool results are indented for reading. The report has a refresh button and a log-folder picker.
@@ -863,6 +875,11 @@ before answering and back every statement about values, control flow or a cause 
 `run_id` and the step, line and value; if the history cannot be read, it reports the run
 outputs and marks the rest as not verified. When a question covers several scenarios and a run of one of them is missing, the agent runs it rather than asking; a kept run open in Visual Debug is reported to the agent as such and counts only for the selection it ran with. If the transpiler cannot run the code, the agent asks before switching to a SAP run.
 
+You can ask for the full comparison in one request, for example: *Run all scenarios for Z_PRICING,
+compare their results, and explain the differences.* The assistant runs the available scenarios,
+reads each run's history, and cites the steps behind its comparison. A run already open in Visual
+Debug counts only for the selection it used.
+
 Runs are numbered within a chat conversation from 1, and **New conversation** starts again at 1.
 The agent cites its evidence as `[run d6c436b8 step 13]`; the chat shows such a citation as
 **run 2, step 13**, a link when it names exactly one known run (a run from another conversation
@@ -1127,7 +1144,7 @@ it - `LS_ORDER`, `GS_INVOICE-ITEMS`, `ME->MV_RATE`.
 **Visual Debug** is the right-hand panel beside the source tab (programs, classes and function modules); it shows the same
 debugger the assistant drives - one session, not a second one:
 
-Use **Save log** on the replay bar to keep a SAP recording and its available source snapshots as a local file. Each saved SAP recording has a GUID `session_id`; evidence citations such as `[session a1b2c3d4 step 4]` open that recording at the cited step. **Logs** opens the saved-recording list, showing date/time, program and recorded-step count; selecting an entry opens an offline replay. The default folder is VERTEX's extension storage; `vertex.debug.runPath` selects another folder. Existing recordings receive a stable ID the first time VERTEX reads them.
+Use **Save log** on the replay bar to keep a SAP recording and its available source snapshots as a local file. Each saved SAP recording has a GUID `session_id`; evidence citations such as `[session a1b2c3d4 step 4]` open that recording at the cited step. The **Logs** button opens **SAP Debug Session Logs**, which lists date/time, program and recorded-step count. Click a row to open an offline replay; use its rename and delete icons to manage the saved log. With a recording open, the VERTEX assistant can use its recorded steps as evidence and link to cited steps. The default folder is VERTEX's extension storage; `vertex.debug.runPath` selects another folder. Existing recordings receive a stable ID the first time VERTEX reads them.
 
 - **The source stays in the editor.** The panel opens beside the source tab and draws no copy
   of it; the lines are those of the active version, which is what the program runs. Breakpoints the assistant set appear

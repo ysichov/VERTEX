@@ -9,3 +9,8 @@ vscode/node_modules/
 # Build output of `vsce package`. Every export is a distinct version, so these
 # accumulate; the one that matters is attached to a Release, not committed.
 *.vsix
+
+# Local presentation drafts and authoring files.
+/output/
+/presentation_work/
+.DS_Store

@@ -14,6 +14,8 @@ test("sidebar HTML contains an executable chat script", () => {
   assert.match(script, /action: 'ready'/);
   assert.match(html, /id="model-status" role="status"/);
   assert.match(script, /status\.textContent = data\.error/);
+  assert.match(html, /id="system-snc-checkbox" type="checkbox"/);
+  assert.match(script, /action: 'setSystemSNC'/);
 });
 
 test("run and saved SAP-session citations link only when their session is known", () => {

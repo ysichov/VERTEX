@@ -35,17 +35,20 @@ test("session report reads provider logs without treating tool results as prompt
 });
 
 test("sidebar scroll button opens the theme-aware report from the configured log folder", async () => {
-  const commands = new Map(), posted = [], executed = [];
+  const commands = new Map(), posted = [], executed = [], created = [], revealed = [];
   let receive;
   const panel = { webview: { postMessage: message => posted.push(message), onDidReceiveMessage: callback => { receive = callback; }, html: "" },
-    onDidDispose() {}, reveal() {} };
-  const vscode = { ViewColumn: { Active: 1 }, workspace: { getConfiguration: () => ({ get: () => "" }) },
+    onDidDispose() {}, reveal: (...args) => revealed.push(args) };
+  const vscode = { ViewColumn: { Active: 1, Beside: 2 }, workspace: { getConfiguration: () => ({ get: () => "" }) },
     commands: { registerCommand: (name, callback) => { commands.set(name, callback); return { dispose() {} }; },
       executeCommand: async (...args) => { executed.push(args); } },
-    window: { createWebviewPanel: () => panel } };
+    window: { createWebviewPanel: (...args) => { created.push(args); return panel; } } };
   report.register(vscode, { subscriptions: [] });
   assert.match(fs.readFileSync(path.join(__dirname, "../sidebar.js"), "utf8"), /data-action="logs"[^>]*>📜<\/button>/);
   commands.get("vertex.showLogs")();
+  assert.equal(created[0][2], vscode.ViewColumn.Beside);
+  commands.get("vertex.showLogs")();
+  assert.deepEqual(revealed[0], [vscode.ViewColumn.Beside, false]);
   await receive({ action: "ready" });
   await receive({ action: "settings" });
   assert.equal(posted[0].report.configured, false);

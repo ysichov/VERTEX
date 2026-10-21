@@ -1,5 +1,17 @@
 # Development history
 
+## 2026-10-21 — sidebar SNC/password switch
+
+Add an inline SNC checkbox beside the VS Code sidebar's SAP-system selector. It updates only the selected entry's `authType`, preserves SNC/RFC settings when switched to password, and validates required SNC data before switching back. SAP Logon import retains SNC details for password-mode direct entries when available. Add focused tests for toggle behavior and validation. VS Code only; no host version or package is claimed.
+
+## 2026-10-21 — assistant log report opens beside the editor
+
+The VERTEX sidebar's assistant session-log action opened its report in the active editor column, which made the new panel easy to miss in the Mac presentation workflow. Open and reveal the report in a dedicated adjacent column instead. Add a regression assertion for the initial placement and repeat-open behavior; the log parser and command registration tests pass. VS Code only; no Eclipse package is affected.
+
+## 2026-10-21 — documentation for chat-led runs and saved debug sessions
+
+The VS Code and repository guides now show how to begin with a package or program name, compare multiple transpiler selections in a single assistant request, inspect declared class variables for a reference parameter, and open, rename or delete saved SAP debug recordings. They also explain that an open saved recording supplies cited history to the assistant. The Eclipse guide is unchanged because these details concern VS Code.
+
 ## 2026-10-20 — sidebar model diagnostics
 
 Model-loading failures now populate an accessible status message below the sidebar selector; a successful response clears it. The focused sidebar, assistant and chat tests pass (37 tests). The universal 0.9.18 VSIX is repackaged with the updated sidebar and README, retaining the previously packaged dependencies.
