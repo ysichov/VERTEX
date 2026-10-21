@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-10-21 — VS Code 0.9.21: lens tests follow the scale rule
+
+Three `vertex-lens` tests had failed since the 0.8.1 refactor added a scale check to `vertex-lens.js`: the lens is hidden on a diagram already drawn at 70% of its natural size or more, and its magnification never goes past that point. The check is intended; the tests still assumed a lens over any diagram with a fixed 1.5×–6× range. A first attempt removed the check from the code and was reverted. The tests now draw their SVG with a viewBox at a known scale, and a new test covers the hidden lens at 70%. All seven lens tests pass. The remaining failing tests (stale page harnesses, outdated markup expectations, `auth-manifest`, `code-workbench`, `value-origin`) are not touched in this landing.
+
 ## 2026-10-21 — merging work from two machines
 
 Work done on another machine (0.9.20: SNC/password switch, chat-led analysis docs, session log placement) and local 0.9.18–0.9.19 work diverged from the same base. Rebased the local work onto 0.9.20; code merged without conflicts, only versions and docs collided. Kept 0.9.20, kept both sides of both histories, and merged the Visual Debug save paragraph: the local rename to **Save session** with first-step IDs, plus the remote rename/delete description. The empty-state hint in SAP Debug Session Logs still said "Save log" and now matches the button.

@@ -27,7 +27,10 @@ function page() {
   vm.runInContext(lensSource, context);
   return { window, document, body, element };
 }
-const svgIn = ({ element }) => { const svg = element("svg"); svg.tagName = "svg"; return svg; };
+// A diagram drawn at `scale` of its natural size: 400px on screen for a viewBox of 400 / scale.
+const svgIn = ({ element }, scale = 0.2) => {
+  const svg = element("svg"); svg.tagName = "svg"; svg.viewBox = { baseVal: { width: 400 / scale } }; return svg;
+};
 const lenses = ({ body }) => body.children.filter(c => c.className === "uml-lens");
 
 test("the lens is put on the diagram only while it is on, and goes with the drawing it was on", () => {
@@ -42,7 +45,15 @@ test("the lens is put on the diagram only while it is on, and goes with the draw
   assert.equal(lenses(p).length, 0, "switched off: gone");
 });
 
-test("the lens does not go out while the pointer moves over a diagram, whatever its size", () => {
+test("a diagram already drawn at 70% of its natural size or more gets no lens", () => {
+  const p = page(), svg = svgIn(p, 0.7);
+  p.window.vertexLens.setEnabled(true);
+  p.window.vertexLens.install(svg, true);
+  svg.listeners.pointermove({ currentTarget: svg, target: svg, clientX: 120, clientY: 80 });
+  assert.equal(lenses(p)[0].style.display, "none");
+});
+
+test("the lens does not go out while the pointer moves over a small-scale diagram", () => {
   const p = page(), svg = svgIn(p);
   p.window.vertexLens.setEnabled(true);
   p.window.vertexLens.install(svg, true);
@@ -67,17 +78,17 @@ test("on a class diagram the lens is over a node only", () => {
   assert.equal(lens.style.display, "block");
 });
 
-test("Shift and the wheel set how strong the lens is, within limits", () => {
-  const p = page(), svg = svgIn(p);
+test("Shift and the wheel set how strong the lens is, never past 70% of the natural size", () => {
+  const p = page(), svg = svgIn(p, 0.2);
   p.window.vertexLens.setEnabled(true);
   p.window.vertexLens.install(svg, true);
   const lens = lenses(p)[0], badge = lens.children[lens.children.length - 1];
   svg.listeners.pointermove({ currentTarget: svg, target: svg, clientX: 10, clientY: 10 });
   const wheel = deltaY => svg.listeners.wheel({ shiftKey: true, deltaX: 0, deltaY, preventDefault() {}, stopPropagation() {}, currentTarget: svg, target: svg, clientX: 10, clientY: 10 });
   wheel(-1000);
-  assert.equal(badge.textContent, "6.0×", "no stronger than 6");
+  assert.equal(badge.textContent, "3.5×", "no stronger than 70% of the natural size (0.7 / 0.2)");
   wheel(1000);
-  assert.equal(badge.textContent, "1.5×", "no weaker than 1.5");
+  assert.equal(badge.textContent, "2.1×", "the weakest setting, 1.5 of 2.5, takes 60% of that ceiling");
 });
 
 test("the switch is an icon, and its state is marked both ways the pages style a switch", () => {
