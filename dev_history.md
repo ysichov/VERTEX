@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-10-21 — page test harnesses catch up with their pages
+
+Twenty-two tests cut functions out of `table.html` and `visual-debug.html` and ran them against a stub page, and the pages had outgrown the stubs. SelecTor's script now wires its field-label toggle with `document.querySelectorAll` at load, so the stub document gets one returning nothing (15 tests). The local-history tests looked for a section by an LF boundary in a CRLF file, and `replay` now publishes `window.sdeReplayStep` (2). In Visual Debug the step and slice graphs call `poolName`, `recordedUnitKey` and `callerFrames`, and two functions read `INITIAL` and `focusedRoutine`; the tests now load the page's real helpers instead of stubbing them, so the code under test is unchanged. Product code is not touched. Two of these Visual Debug tests then failed on their assertions instead of a missing name — node keys now carry an `m|` prefix — and join the group of outdated expectations. The suite stands at 895 of 908.
+
 ## 2026-10-21 — VS Code 0.9.21: lens tests follow the scale rule
 
 Three `vertex-lens` tests had failed since the 0.8.1 refactor added a scale check to `vertex-lens.js`: the lens is hidden on a diagram already drawn at 70% of its natural size or more, and its magnification never goes past that point. The check is intended; the tests still assumed a lens over any diagram with a fixed 1.5×–6× range. A first attempt removed the check from the code and was reverted. The tests now draw their SVG with a viewBox at a known scale, and a new test covers the hidden lens at 70%. All seven lens tests pass. The remaining failing tests (stale page harnesses, outdated markup expectations, `auth-manifest`, `code-workbench`, `value-origin`) are not touched in this landing.

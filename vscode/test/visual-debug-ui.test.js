@@ -3,6 +3,8 @@ const flowGraph = require("../../org.vertex.abap.ui/resources/vertex-flow-graph.
 const test = require("node:test"), assert = require("node:assert/strict"), vm = require("node:vm"), path = require("node:path");
 const page = require("node:fs").readFileSync(path.resolve(__dirname, "../pages/visual-debug.html"), "utf8");
 const part = (from, to) => page.slice(page.indexOf(from), page.indexOf(to));
+// A one-line helper function of the page, by name.
+const line = name => { const at = page.indexOf("function " + name + "("); return page.slice(at, page.indexOf("\n", at) + 1); };
 
 test("Watch Follow expands the calculation's renamed variable names", async () => {
   const calls = [], notices = [], nodes = { watchfollow: {}, watchwhen: { value: ">= 10" } };
@@ -89,7 +91,7 @@ test("a stop of the record on a statement of the slice marks its class and routi
 test("a source link of the diagram moves the editor when docked, and the window's own pane otherwise", () => {
   const run = docked => {
     let listener; const revealed = [], shown = [];
-    const context = vm.createContext({ failed() {}, window: {}, sdeReveal: frame => revealed.push(frame),
+    const context = vm.createContext({ failed() {}, window: {}, focusedRoutine: "", sdeReveal: frame => revealed.push(frame),
       show: (...args) => { shown.push(args); return Promise.resolve(); },
       document: { addEventListener: (type, fn) => { if (type === "click") { listener = fn; } },
         body: { classList: { contains: name => docked && name === "vertex-docked-debug" } } } });
@@ -156,7 +158,7 @@ test("the diagram of a record draws the branch the run went through, and only th
   const context = vm.createContext({ flow: { timeline: [stop(7), stop(9), stop(7), stop(9)] }, stepIndex: null,
     closesBlock: () => false, stepText: f => "text" + f.line,
     shapeIn: () => ({ parent: { 7: null, 8: 7, 9: 8, 10: 7, 11: 10 } }) });
-  vm.runInContext(part("function stepKey(t)", "/* The blocks a statement of a routine stands in") + part("function stepFlow(){", "/* The running block, green"), context);
+  vm.runInContext(line("poolName") + line("recordedUnitKey") + part("function stepKey(t)", "/* The blocks a statement of a routine stands in") + part("function stepFlow(){", "/* The running block, green"), context);
   const S = vm.runInContext("stepFlow()", context);
   const key = line => "MODIFIER_FOR|ZCL_CALC_FACADE===CM001:" + line;
   assert.ok(S.nodes[key(7)] && S.nodes[key(9)], "the statements the run stopped on");
@@ -300,7 +302,7 @@ test("at the level of classes and of methods, what holds a statement of the slic
     valueTrail: () => ({ why: "no values in this record" }), stepKey: () => "", stepFlow: () => { throw new Error("not the steps reading"); },
     sliceAt: (owner, line) => slice.has(String(owner).toUpperCase() + ":" + line) ? { text: "x" } : null,
     inSlice: (owner, line) => slice.has(String(owner).toUpperCase() + ":" + line) });
-  vm.runInContext(part("function callGraph(byOwner){", "/* Where the chosen value changed, from the record alone.")
+  vm.runInContext(line("poolName") + line("recordedUnitKey") + part("function callGraph(byOwner){", "/* Where the chosen value changed, from the record alone.")
     + part("/* The stops of the record at a statement the slice names", "function loadControls(){"), context);
   const graph = mode => vm.runInContext("sharedFlowGraph(" + JSON.stringify(mode) + ")", context).bseFlow.nodes;
   const green = mode => Array.from(graph(mode)).filter(node => node.bse).map(node => node.key).sort();
@@ -370,12 +372,12 @@ test("what leads to a statement of the slice is part of the slice; what leads no
   const stop = line => ({ cur: { name: "ZCL_CALC_FACADE=>MODIFIER_FOR", owner: "ZCL_CALC_FACADE" }, at: { url: "/u", line, ord: 0 }, stack: [frame(line)] });
   // 7 CASE; 8 WHEN fuel, 9 its statement (in the slice); 10 WHEN tax, 11 its statement (not in the slice); 12 a log call.
   const slice = new Set(["ZCL_CALC_FACADE:9"]);
-  const context = vm.createContext({ flow: { timeline: [stop(7), stop(9), stop(11), stop(12)] }, stepIndex: null, chosenValue: { name: "X" }, sharedIds: null,
+  const context = vm.createContext({ flow: { timeline: [stop(7), stop(9), stop(11), stop(12)] }, INITIAL: {}, stepIndex: null, chosenValue: { name: "X" }, sharedIds: null,
     closesBlock: () => false, stepText: f => "text" + f.line, valueTrail: () => ({ why: "no values" }),
     shapeIn: () => ({ parent: { 7: null, 8: 7, 9: 8, 10: 7, 11: 10, 12: 7 } }),
     sliceAt: (owner, line) => slice.has(String(owner).toUpperCase() + ":" + line) ? { text: "text" + line } : null,
     inSlice: (owner, line) => slice.has(String(owner).toUpperCase() + ":" + line) });
-  vm.runInContext(part("function stepKey(t)", "/* The blocks a statement of a routine stands in") + part("function stepFlow(){", "/* The running block, green")
+  vm.runInContext(part("function callerFrames(", "function shownDepth(") + line("poolName") + line("recordedUnitKey") + part("function stepKey(t)", "/* The blocks a statement of a routine stands in") + part("function stepFlow(){", "/* The running block, green")
     + part("/* The stops of the record at a statement the slice names", "function loadControls(){"), context);
   const nodes = vm.runInContext("sharedFlowGraph('steps')", context).bseFlow.nodes;
   const green = Array.from(nodes).filter(n => n.bse).map(n => n.line === undefined ? n.text : n.line).sort((a, b) => a - b);
@@ -409,7 +411,7 @@ test("Run in SAP has a light green background that follows the theme", () => {
 
 test("the </> of a node in the diagram opens its source: the editor when docked", () => {
   const revealed = [], shown = [];
-  const context = vm.createContext({ failed() {}, window: {}, sdeReveal: frame => revealed.push(frame),
+  const context = vm.createContext({ failed() {}, window: {}, focusedRoutine: "", sdeReveal: frame => revealed.push(frame),
     show: (...args) => { shown.push(args); return Promise.resolve(); },
     document: { addEventListener() {}, body: { classList: { contains: name => name === "vertex-docked-debug" } } } });
   vm.runInContext(part('document.addEventListener("click",function(e){', "/* Depth, Collapse all"), context);
@@ -663,7 +665,7 @@ test("the variables before the run follow the reader's place: a routine shows it
 
 test("SYST and Initials are offered only while the program is stopped", () => {
   const shown = { syst: { style: {} }, initials: { style: {} } };
-  const context = vm.createContext({ picture: { stopped: null }, $: id => shown[id] });
+  const context = vm.createContext({ picture: { stopped: null }, INITIAL: {}, $: id => shown[id] });
   vm.runInContext(part("function syncVarSwitches(){", "function drawVars(){"), context);
   vm.runInContext("syncVarSwitches()", context);
   assert.deepEqual([shown.syst.style.display, shown.initials.style.display], ["none", "none"], "no values yet: no switches for them");
