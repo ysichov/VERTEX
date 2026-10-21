@@ -1,6 +1,6 @@
 "use strict";
 const test = require("node:test"), assert = require("node:assert/strict");
-const { create, sourceUrl, objectOf } = require("../debugger");
+const { create, sourceUrl, objectOf, webGuiUrl } = require("../debugger");
 
 const URL_MAIN = "/sap/bc/adt/programs/programs/z_calc/source/main";
 
@@ -941,6 +941,15 @@ test("a run opens WebGUI on the system, and needs a breakpoint first", async () 
   assert.match(decodeURIComponent(opened[0]), /RS38M-PROGRAMM=Z_CALC;DYNP_OKCODE=STRT/);
   assert.match(opened[0], /sap-client=100/);
   await dbg.stop();
+});
+
+test("WebGUI links for editor runs do not require a debugger breakpoint", () => {
+  const system = { name: "SAP", url: "https://sap.example:44300", client: "100" };
+  assert.match(decodeURIComponent(webGuiUrl(system, "z_calc")),
+    /RS38M-PROGRAMM=Z_CALC;DYNP_OKCODE=STRT/);
+  assert.match(decodeURIComponent(webGuiUrl(system, "z_class", "CLAS")), /SE24 SEOCLASS-CLSNAME=Z_CLASS/);
+  assert.match(decodeURIComponent(webGuiUrl(system, "z_func", "FUNC")), /SE37 RS38L-NAME=Z_FUNC/);
+  assert.throws(() => webGuiUrl(system, "Z_CALC", "INCL"), /test run/);
 });
 
 test("stop removes every breakpoint and the listener", async () => {

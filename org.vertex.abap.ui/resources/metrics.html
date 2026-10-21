@@ -1916,7 +1916,9 @@ function onDiagramClick(e) {
   var callLink=e.target.closest&&e.target.closest('a[data-call-method]');
   if(callLink&&typeof sdeOpenToolSource==='function'){e.preventDefault();e.stopPropagation();if(callLink.dataset.callOwner)sdeOpenToolSource({name:callLink.dataset.callOwner,type:'CLAS',method:callLink.dataset.callMethod});else sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(callLink.dataset.callLine)});return;}
   if(mode==='scheme'&&typeof sdeOpenToolSource==='function'){
-    var sourceNode=e.target.closest&&e.target.closest('g.node[data-source-line]');
+    // A folded operations block has a source range too, but its first click
+    // must reach the aceexp handler below so the block expands in place.
+    var sourceNode=e.target.closest&&e.target.closest('g.node[data-source-line]:not(.foldnode)');
     if(sourceNode){e.preventDefault();e.stopPropagation();sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(sourceNode.dataset.sourceLine)});return;}
   }
   if (mode === "calls") {

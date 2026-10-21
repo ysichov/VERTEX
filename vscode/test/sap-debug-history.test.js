@@ -18,6 +18,11 @@ test("saved SAP debug recordings have stable session IDs, including legacy files
   assert.equal(history.load(file).session_id, first);
   assert.equal(history.list(folder)[0].session_id, first);
 
+  const liveId = "a1b2c3d4-0000-4000-8000-000000000000";
+  const liveFile = path.join(folder, "live.vertex-debug.json");
+  history.save(liveFile, { ...record, session_id: liveId });
+  assert.equal(history.load(liveFile).session_id, liveId, "saving keeps the ID already published for the live session");
+
   const legacyFile = path.join(folder, "legacy.vertex-debug.json");
   fs.writeFileSync(legacyFile, JSON.stringify({ ...record, session_id: undefined }));
   const migrated = history.load(legacyFile).session_id;

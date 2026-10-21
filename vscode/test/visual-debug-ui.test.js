@@ -713,12 +713,15 @@ test("the chat is given what the window shows in two labelled parts: what ran, w
     stop(["ZCL_Y=>M", "ZCL_X=>RUN", "ZREP"], "ZCL_Y=>M", 7), stop(["ZCL_X=>RUN", "ZREP"], "ZCL_X=>RUN", 31)];
   const row = (name, line, text, included) => ({ name, type: "PROG", line, aceLine: line, text, scope: name + arrow + "RUN", source: "s", location: name + "->RUN", included: !!included });
   const context = vm.createContext({ flow: { timeline }, chosenValue: { name: "LS_X" }, slicePoints: { "ZCL_X:30": {} }, inSlice: (o, l) => o === "ZCL_X" && l === 30,
+    INITIAL: { local: false }, sessionId: "a1b2c3d4-0000-4000-8000-000000000000",
     picture: { stopped: { at: "ZCL_X:31" } }, object: { name: "ZREP", type: "PROG" }, window: { vertexFlow: { depth: () => context.depth } }, depth: null,
     staticFlow: { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, rows: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)], sites: [], point: { url: "u" }, name: "ZREP", from: 10, stopAt: { name: "ZREP", line: 15 } },
-    staticFlowGraph: () => ({ sequence: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)] }), MAX_CONTEXT: 150 });
+    staticFlowGraph: () => ({ sequence: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)] }), MAX_CONTEXT: 150,
+    debugHistorySlice: () => ({ note: "Recorded values", totalStops: timeline.length, stopsWithWatch: 0, stops: [] }) });
   vm.runInContext(part("function debugContext(){", "var contextTimer=null;"), context);
   const read = () => JSON.parse(JSON.stringify(vm.runInContext("debugContext()", context)));
   let got = read();
+  assert.equal(got.session_id, "a1b2c3d4-0000-4000-8000-000000000000", "the live recording carries its ID before it is saved");
   assert.deepEqual(got.recorded.steps.map(s => s.depth + ":" + s.at), ["0:ZREP:10", "0:ZREP:15", "1:ZCL_X=>RUN:30", "2:ZCL_Y=>M:7", "1:ZCL_X=>RUN:31"], "consecutive repeats once, with the depth below the first stop");
   assert.equal(got.recorded.steps[2].slice, true, "a statement of the slice is marked");
   assert.match(got.recorded.note, /actually did/);
@@ -729,6 +732,21 @@ test("the chat is given what the window shows in two labelled parts: what ran, w
   assert.deepEqual(got.recorded.steps.map(s => s.at), ["ZREP:10", "ZREP:15", "ZCL_X=>RUN:30", "ZCL_X=>RUN:31"], "only as deep as the depth control shows");
   context.flow = { timeline: [] }; context.staticFlow = null;
   assert.equal(vm.runInContext("debugContext()", context), null, "neither a record nor an analysis: nothing to give");
+});
+test("a live SAP recording keeps one session ID until a new run starts", () => {
+  let next = 0;
+  const context = vm.createContext({ INITIAL: { local: false }, flow: { nodes: {}, edges: {}, order: [] }, flowPath: [], maps: {},
+    sessionId: null, crypto: { randomUUID: () => "session-" + ++next }, callerFrames: () => 0,
+    unitOf: frame => ({ name: frame.program }), note: () => {}, picture: { ended: 0 } });
+  vm.runInContext(part("function record(frames){", "/* The statements of the routine"), context);
+  const frame = [{ program: "ZREP", line: 10, label: "ZREP" }];
+  context.record(frame);
+  const first = context.sessionId;
+  context.record(frame);
+  assert.equal(context.sessionId, first);
+  context.flow = { nodes: {}, edges: {}, order: [] };
+  context.record(frame);
+  assert.equal(context.sessionId, "session-2");
 });
 test("the followed value read with the step is used without asking again", async () => {
   const asked = [];

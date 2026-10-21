@@ -1174,7 +1174,8 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       return { opened: true, object_name: packageName, object_type: "DEVC", system: repo.label };
     }
     const entry = await sourceDocument(repo, args);
-    await vscode.window.showTextDocument(entry.document, { preview: false, viewColumn: vscode.ViewColumn.Beside });
+    const viewColumn = vscode.window.activeTextEditor?.viewColumn || vscode.ViewColumn.One;
+    await vscode.window.showTextDocument(entry.document, { preview: false, viewColumn });
     if (debuggerApi) queueBreakpointSync();
     return { opened: true, object_name: entry.data.object_name, object_type: entry.data.object_type,
       include: entry.data.include, system: repo.label, note: "Editable local buffer opened. No changes saved to SAP." };

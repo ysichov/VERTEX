@@ -174,6 +174,25 @@ function plain(v) {
   return "<" + v.META_TYPE + (v.ACTUAL_TYPE_NAME ? " " + v.ACTUAL_TYPE_NAME : "") + ">";
 }
 
+function webGuiAddress(target, transaction) {
+  const address = target.webgui || target.url;
+  if (!/^https?:\/\/[^/\s]+/i.test(String(address)))
+    throw new Error("The WebGUI address of " + target.name + " is not an http(s) URL: " + address + ". Check webgui in vertex.systems.");
+  return String(address).replace(/\/$/, "") + "/sap/bc/gui/sap/its/webgui?~transaction=" + encodeURIComponent(transaction)
+    + "&sap-client=" + encodeURIComponent(target.client || "") + "&sap-language=EN";
+}
+
+function webGuiUrl(target, program, test) {
+  const name = String(program).toUpperCase();
+  if (!/^[A-Z0-9_/]+$/.test(name)) throw new Error("Not an object name: " + program);
+  const kind = String(test || "").toUpperCase();
+  const transaction = kind === "FUNC" ? "SE37 RS38L-NAME=" + name
+    : kind === "CLAS" ? "SE24 SEOCLASS-CLSNAME=" + name
+    : kind ? null : "*SE38 RS38M-PROGRAMM=" + name + ";DYNP_OKCODE=STRT";
+  if (!transaction) throw new Error("A test run is for a function module or a class, not " + test + ".");
+  return webGuiAddress(target, transaction);
+}
+
 function create({ connect, current, openUrl, ideId, terminalId, localOnly = () => false, listenerStopMs = LISTENER_STOP_MS, setTimeout: stopSetTimeout = global.setTimeout, clearTimeout: stopClearTimeout = global.clearTimeout, explain = error => error && error.message || String(error) }) {
   let listening = false, stopListening = false;
   let listenLoop = null, generation = 0, pendingStops = 0;
@@ -1023,13 +1042,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
   function run(program, test) { return lifecycle(() => runNow(program, test)); }
   async function runNow(program, test) {
     const { system: target } = await systemNow();
-    const name = String(program).toUpperCase();
-    if (!/^[A-Z0-9_/]+$/.test(name)) { throw new Error("Not an object name: " + program); }
-    const kind = String(test || "").toUpperCase();
-    const transaction = kind === "FUNC" ? "SE37 RS38L-NAME=" + name
-      : kind === "CLAS" ? "SE24 SEOCLASS-CLSNAME=" + name
-      : kind ? null : "*SE38 RS38M-PROGRAMM=" + name + ";DYNP_OKCODE=STRT";
-    if (!transaction) { throw new Error("A test run is for a function module or a class, not " + test + "."); }
+    const url = webGuiUrl(target, program, test);
     if (!breakpoints.some(b => b.active !== false)) { throw new Error("Set or activate a breakpoint before running: without one nothing will stop."); }
     // After Detach the breakpoints are kept here but not in SAP, and nothing
     // listens: both come back before the run starts.
@@ -1038,21 +1051,8 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
     // Everything in ST22 up to now is history; from here a dump belongs to
     // this run until something proves otherwise.
     await markDumps();
-    const url = webgui(target, transaction);
     await openUrl(url);
     return url;
-  }
-
-  /* A WebGUI address for a transaction. A system can name its own: SAP may
-     redirect its HTTP port to an HTTPS host name this machine does not
-     resolve. */
-  function webgui(target, transaction) {
-    const address = target.webgui || target.url;
-    if (!/^https?:\/\/[^/\s]+/i.test(String(address))) {
-      throw new Error("The WebGUI address of " + target.name + " is not an http(s) URL: " + address + ". Check webgui in vertex.systems.");
-    }
-    return String(address).replace(/\/$/, "") + "/sap/bc/gui/sap/its/webgui?~transaction=" + encodeURIComponent(transaction)
-      + "&sap-client=" + encodeURIComponent(target.client || "") + "&sap-language=EN";
   }
 
   /* SAP's own dump page, as it came from the feed, for the id asked for. */
@@ -1068,7 +1068,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
      of a moment ago is the first entry. */
   async function openDump() {
     const { system: target } = await system();
-    const url = webgui(target, "ST22");
+    const url = webGuiAddress(target, "ST22");
     await openUrl(url);
     return url;
   }
@@ -1370,4 +1370,4 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
     classMethods };
 }
 
-module.exports = { create, sourceUrl, objectOf, plain };
+module.exports = { create, sourceUrl, objectOf, plain, webGuiUrl };

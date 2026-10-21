@@ -10,7 +10,7 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--vscode-
 </style></head><body>
 <header><h1>SAP Debug Session Logs</h1><span id="count" class="count"></span><input id="filter" type="search" placeholder="Filter by program or date" aria-label="Filter debug session logs"></header>
 <table><thead><tr><th>Date &amp; time</th><th>Program</th><th>Steps</th><th></th></tr></thead><tbody id="rows"></tbody></table>
-<div id="empty" hidden>No saved SAP debug logs yet. Use “Save log” in Visual Debug to keep the current recording.</div>
+<div id="empty" hidden>No saved SAP debug logs yet. Use “Save session” in Visual Debug to keep the current recording.</div>
 <script>
 const vscode=acquireVsCodeApi();let runs=[];
 const date=value=>{const parsed=new Date(value);return Number.isNaN(parsed.getTime())?String(value||""):parsed.toLocaleString();};

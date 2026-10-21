@@ -210,6 +210,8 @@
 
 <h2>VS Code</h2>
 
+<p>When VERTEX chat finds one SAP object by name, its answer links the object and its package to their SAP tabs.</p>
+
 <p>
   The same three pages run under a VS Code extension, from the same files:
   <a href="https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap">VERTEX ABAP on the Marketplace</a>.
@@ -291,6 +293,10 @@ In VS Code, the <b>SNC</b> checkbox beside the SAP system selector switches betw
   grids. It is one session with the assistant's, so what either does, the other sees. A recorded run is drawn as a top-down chart of the calls and replayed stop by stop.
   In a VERTEX source tab, <b>VERTEX: Visual Analysis / Debug</b> reveals a right-hand panel for the
   current object without replacing the source, and highlights its stopped line; F5-F8 step that same session.
+  Recorded SAP steps have a session ID from the first stop, so chat citations can open them before or after Save session.
+  A run started here with the ABAP Transpiler is registered in transpiler history and passed to chat with its run ID, so citations open its recorded steps.
+  Ordinary diagram nodes have transparent backgrounds, and their clickable labels keep the editor text color.
+  The editor's <b>VERTEX: Run SAP in web GUI</b> opens a program or a class/function module test screen without requiring a breakpoint.
   <a href="https://github.com/ysichov/VERTEX/blob/main/vscode/README.md#visual-debug-the-debugger-on-screen-pilot">Details</a>.
 </p>
 
