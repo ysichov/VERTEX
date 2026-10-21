@@ -1,5 +1,13 @@
 # Development history
 
+## 2026-10-21 — Logic: an opened operations block stays open
+
+Checked whether folding in Tools Logic had regressed. A block such as `5 operations` still opens on click. Since the 0.9.19 source-line handler, a click on one of the opened operations goes to its source, where the comments in `metrics.html` and `ace-scheme.js` still promised that it folds the block again. The owner chose the current behaviour, open and then go to the code, so only the two comments changed. The three failing `ace-scheme` tests are unrelated: they draw the full scheme, which never folds, and have failed since they were added in 0.8.1.
+
+## 2026-10-21 — tests follow recorded design decisions
+
+Four failing tests still expected what earlier landings had deliberately changed, each change recorded in this history: Run in SAP's pale blue fill (0.8.1, the test still asked for green), the depth slider running from 1 to the maximum (the test asked for `min="0"`), and the builder's node keys `m|routine` and step keys `OWNER=>ROUTINE|include:line`. The expectations now name the current form. Two of them pass; the record-diagram test and the formula depth test then fail further on, on what is drawn rather than how it is named. Those, the three `ace-scheme` tests (a loop and plain operations are no longer folded by default; an empty method draws its ENDMETHOD and an edge), the FLOW demo and the two Visual Debug block tests are behaviour differences without a recorded decision and are left for the owner. Product code is not touched; the suite stands at 897 of 908.
+
 ## 2026-10-21 — page test harnesses catch up with their pages
 
 Twenty-two tests cut functions out of `table.html` and `visual-debug.html` and ran them against a stub page, and the pages had outgrown the stubs. SelecTor's script now wires its field-label toggle with `document.querySelectorAll` at load, so the stub document gets one returning nothing (15 tests). The local-history tests looked for a section by an LF boundary in a CRLF file, and `replay` now publishes `window.sdeReplayStep` (2). In Visual Debug the step and slice graphs call `poolName`, `recordedUnitKey` and `callerFrames`, and two functions read `INITIAL` and `focusedRoutine`; the tests now load the page's real helpers instead of stubbing them, so the code under test is unchanged. Product code is not touched. Two of these Visual Debug tests then failed on their assertions instead of a missing name — node keys now carry an `m|` prefix — and join the group of outdated expectations. The suite stands at 895 of 908.

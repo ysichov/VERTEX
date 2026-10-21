@@ -1950,7 +1950,7 @@ function onDiagramClick(e) {
   }
   if (href.indexOf("sapevent:") !== 0) { return; }
   e.preventDefault();
-  // A block of folded operations opens; a click on one of them, opened, folds them again.
+  // A block of folded operations opens; once opened, a click on one of them goes to its source (handled above).
   var fold = /^sapevent:aceexp_(\d+)$/.exec(href);
   if (fold) {
     var at = expanded.indexOf(fold[1]);

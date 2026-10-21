@@ -160,7 +160,7 @@ test("the diagram of a record draws the branch the run went through, and only th
     shapeIn: () => ({ parent: { 7: null, 8: 7, 9: 8, 10: 7, 11: 10 } }) });
   vm.runInContext(line("poolName") + line("recordedUnitKey") + part("function stepKey(t)", "/* The blocks a statement of a routine stands in") + part("function stepFlow(){", "/* The running block, green"), context);
   const S = vm.runInContext("stepFlow()", context);
-  const key = line => "MODIFIER_FOR|ZCL_CALC_FACADE===CM001:" + line;
+  const key = line => "ZCL_CALC_FACADE=>MODIFIER_FOR|ZCL_CALC_FACADE===CM001:" + line;
   assert.ok(S.nodes[key(7)] && S.nodes[key(9)], "the statements the run stopped on");
   assert.ok(S.nodes[key(8)], "the WHEN the run went through, which was never stopped on");
   assert.equal(S.nodes[key(8)].branch, true);
@@ -307,7 +307,7 @@ test("at the level of classes and of methods, what holds a statement of the slic
   const graph = mode => vm.runInContext("sharedFlowGraph(" + JSON.stringify(mode) + ")", context).bseFlow.nodes;
   const green = mode => Array.from(graph(mode)).filter(node => node.bse).map(node => node.key).sort();
   assert.deepEqual(green("classes"), ["ZCL_CALC_FACADE", "ZCL_MOD_FUEL", "ZVERTEX_DEBUG_LAB"], "ZCL_CALC_LOG has nothing of the slice in it");
-  assert.deepEqual(green("methods"), ["ZCL_CALC_FACADE=>RUN", "ZCL_MOD_FUEL=>ZIF_CALC_MODIFIER~APPLY", "ZVERTEX_DEBUG_LAB=>EVENT START-OF-SELECTION"],
+  assert.deepEqual(green("methods"), ["m|ZCL_CALC_FACADE=>RUN", "m|ZCL_MOD_FUEL=>ZIF_CALC_MODIFIER~APPLY", "m|ZVERTEX_DEBUG_LAB=>EVENT START-OF-SELECTION"],
     "~NAME of the same class and ADD of the log are not marked");
 });
 
@@ -403,8 +403,8 @@ test("the analysis answers on a channel of its own, by number, in whatever order
   vm.runInContext('sdeOriginReady(JSON.stringify({id:99,answer:{}}))', context);   // a stray answer is ignored
 });
 
-test("Run in SAP has a light green background that follows the theme", () => {
-  assert.match(page, /#run\{background:color-mix\(in srgb,var\(--vscode-testing-iconPassed/);
+test("Run in SAP has a pale blue background that follows the theme", () => {
+  assert.match(page, /#run\{background:color-mix\(in srgb,var\(--vscode-terminal-ansiBrightBlue/);
   assert.doesNotMatch(part("#run{background", "#run svg.clock"), /background:#/i, "no fixed colour as the background");
   assert.match(part("#run{background", "#run svg.clock"), /var\(--vscode-editor-background/, "mixed into the editor's own background");
 });
