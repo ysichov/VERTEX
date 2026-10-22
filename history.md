@@ -8,6 +8,8 @@ ABAP blocks and their branches fold in the editor by the code's structure rather
 
 Double-click, F12 and Ctrl+click between a block's opening and closing statements follow the code's structure: a call parameter named CLASS at the start of a line no longer breaks the matching of the blocks after it.
 
+In the Logic diagram every statement opens its source line, CONTINUE and ENDIF included, and a lone left-out operation is drawn as itself instead of a "1 operation" block. The window you work in leads: after a click or a scroll in the diagram the editor no longer moves it, and scrolling the diagram no longer moves the source; a click or a scroll in the editor gives the lead back to the code; scrolling the source into another method still opens that method's diagram.
+
 ## Unreleased — individual AI tool disclosures
 
 Each AI tool call starts collapsed under its name. Its arguments, matching result and recording/object links open together. Repeated and concurrent calls remain separate and are matched to results by tool-call ID.

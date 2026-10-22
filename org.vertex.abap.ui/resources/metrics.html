@@ -1103,7 +1103,7 @@ var natural = null;      // the size mermaid drew, before any scaling
 var fitted = true;
 var fittedFor = null;    // the pane size the current fit was worked out for
 var fitQueued = false;
-var followCode=true,logicOnly=true,lastLogicMermaid=null,latestCodeCursor=null;
+var logicOnly=true,lastLogicMermaid=null,latestCodeCursor=null;
 var schemeNodeLines={},schemeNodeRanges={},schemeClusterRanges={},schemeConditionCalls={};
 /* Reachability: the host gives, for each drawn line of a METHOD or FORM, the lines of the path that reaches it; a click on a
    node lights them up and quiets the rest. reachLine is the node chosen, kept across redraws. */
@@ -1751,7 +1751,7 @@ function draw(preserveViewport) {
     installUmlLens(pane, !isClass);
     showReach();
     status(lastCaption);
-    if(mode==="scheme"){if(latestCodeCursor)sdeCodeCursor(latestCodeCursor);else if(INITIAL&&INITIAL.cursorLine)sdeCodeCursor({name:loadedObject,line:INITIAL.cursorLine,endLine:INITIAL.cursorLine});}
+    if(mode==="scheme"){if(latestCodeCursor){sdeCodeCursor(Object.assign({},latestCodeCursor,{replay:!positionAfterDraw}));positionAfterDraw=false;}else if(INITIAL&&INITIAL.cursorLine)sdeCodeCursor({name:loadedObject,line:INITIAL.cursorLine,endLine:INITIAL.cursorLine});}
     endAnalysis();
   }, function (e) {
     endAnalysis();
@@ -2292,20 +2292,18 @@ function showReach(){
 }
 document.getElementById('reach').addEventListener('click',function(){reachOn=!reachOn;this.classList.toggle('on',reachOn);this.setAttribute('aria-pressed',String(reachOn));if(!reachOn)reachLine=0;showReach();});
 document.getElementById('logic-only').addEventListener('click',function(){logicOnly=!logicOnly;this.classList.toggle('on',logicOnly);this.setAttribute('aria-pressed',String(logicOnly));if(lastMermaid){refit=true;draw();}});
-var sourceScrollTimer,lastScrollLine,codeFollowingUntil=0;
-document.getElementById('diagram').addEventListener('pointerdown',function(){followCode=false;});
-document.getElementById('diagram').addEventListener('wheel',function(){followCode=false;},{passive:true});
-function sdeCodeFocus(){followCode=true;}
-
+/* The code moves the diagram, never the other way round: a click, a key or a scroll in the editor positions it; scrolling
+   the diagram is the reader's own and stays there, and the diagram reaches the code only by a click on a node. The host
+   passes on only real moves of the editor, not the ones a click in the diagram caused. A redraw (Logic only, a fold)
+   marks the code's place again without scrolling; only a method just opened for the code is scrolled to it. */
+var positionAfterDraw=false;
 function sdeCodeCursor(value){
- if(value.userFocus)followCode=true;
- if(!followCode)return;
  if(mode!=='scheme'||String(value.name).toUpperCase()!==String(loadedObject).toUpperCase())return;
- latestCodeCursor=value;
  // The cursor and scrolling alike: a line in another method (for scrolling, the line a third down the visible source)
  // opens that method's diagram.
  var targetUnit=units.find(function(unit){return value.line>=unit.line_from&&value.line<=unit.line_to;});
- if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){openUnit(targetUnit);return;}
+ if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){latestCodeCursor=value;positionAfterDraw=true;openUnit(targetUnit);return;}
+ if(!value.replay)latestCodeCursor=value;
 
  var pane=document.getElementById('diagram'),clusters=Array.from(pane.querySelectorAll('g.cluster[data-source-line]')),selectedClusters=clusters.filter(function(cluster){return [Number(cluster.dataset.sourceLine),Number(cluster.dataset.sourceEnd)].some(function(line){return line>=value.line&&line<=value.endLine;});});
  if(!value.scrollOnly)clusters.forEach(function(cluster){var active=selectedClusters.includes(cluster),shape=cluster.querySelector('rect');if(!shape)return;if(active){if(!shape.hasAttribute('data-prior-style'))shape.setAttribute('data-prior-style',shape.getAttribute('style')||'');shape.style.setProperty('fill',toward(ground(),themeColour('--vscode-focusBorder','#0a66c2'),darkPage()?0.28:0.18),'important');shape.style.setProperty('stroke','var(--vscode-focusBorder,#0a66c2)','important');}else if(shape.hasAttribute('data-prior-style')){shape.setAttribute('style',shape.getAttribute('data-prior-style'));shape.removeAttribute('data-prior-style');}});
@@ -2326,17 +2324,9 @@ function sdeCodeCursor(value){
    else if(shape.hasAttribute('data-prior-style')){shape.setAttribute('style',shape.getAttribute('data-prior-style'));shape.removeAttribute('data-prior-style');}
   });
  });
- var focusTarget=selectedClusters[0]||selected[0];if(focusTarget){codeFollowingUntil=Date.now()+500;clearTimeout(sourceScrollTimer);focusTarget.scrollIntoView({block:selectedClusters.length?'start':'center',inline:'nearest'});}
+ var focusTarget=selectedClusters[0]||selected[0];if(focusTarget&&!value.replay){focusTarget.scrollIntoView({block:selectedClusters.length?'start':'center',inline:'nearest'});}
 }
 
-document.getElementById("diagram").addEventListener("scroll",function(){
- clearTimeout(sourceScrollTimer);sourceScrollTimer=setTimeout(function(){
-  if(followCode||Date.now()<codeFollowingUntil||mode!=='scheme'||typeof sdeOpenToolSource!=='function')return;
-  var pane=document.getElementById('diagram'),area=pane.getBoundingClientRect(),best=null,distance=Infinity;
-  pane.querySelectorAll('g.node[data-source-line]').forEach(function(node){var box=node.getBoundingClientRect();if(box.bottom<area.top||box.top>area.bottom)return;var d=Math.abs(box.top-(area.top+area.height/3));if(d<distance){distance=d;best=node;}});
-  if(best&&lastScrollLine!==best.dataset.sourceLine){lastScrollLine=best.dataset.sourceLine;sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(lastScrollLine),preserveFocus:true});}
- },180);
-});
 
 Array.prototype.forEach.call(document.querySelectorAll("#blockmode button"), function (button) {
   button.addEventListener("click", function () {

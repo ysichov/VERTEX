@@ -82,6 +82,7 @@ test('Logic only folds the operations it leaves out into one block, opened by it
  const p=buildIndex([source]).procedures.find(p=>p.name==='RUN');
  const folded=scheme(p,'',true).mermaid,open=scheme(p,'2',true).mermaid;
  assert.match(folded,/o2\("2 operations"\)/);assert.match(folded,/class o2 foldnode/);assert.match(folded,/click o2 "sapevent:aceexp_2"/);
- assert.match(folded,/o5\("1 operation"\)/);assert.match(folded,/p4\(/);
+ // A single left-out operation is shown as itself, and leads to its line.
+ assert.doesNotMatch(folded,/o5\(/);assert.match(folded,/p5\("c = 3\."\)/);assert.match(folded,/click p5 "sapevent:acego_\d+_\d+"/);assert.match(folded,/p4\(/);
  assert.match(open,/p2\("a = 1\."\)/);assert.match(open,/p3\("b = 2\."\)/);assert.match(open,/click p2 "sapevent:aceexp_2"/);assert.doesNotMatch(open,/o2\(/);
 });

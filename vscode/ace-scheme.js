@@ -47,6 +47,9 @@ function scheme(p,expandedText='',logicOnly=false) {
   const arrow=l=>l?' -->|"'+l+'"| ':' --> ';
   const connect=(a,b,l='')=>{if(a&&typeof a==='object'){connect(a.id,b,a.label);return;}if(a&&b)edges.push(a+arrow(l)+b);};
   const click=(id,action)=>clicks.push('click '+id+' "sapevent:'+action+'" _self');
+  /* Every node standing for one line of code leads to it - a plain operation, CONTINUE, ENDIF - unless it already has its own click. */
+  const lineOf=id=>rows[Number(id.slice(1))-1]?.source_line;
+  const toCode=id=>{if(!clicks.some(c=>c.startsWith('click '+id+' '))&&lineOf(id))click(id,'acego_'+lineOf(id)+'_'+lineOf(id));};
   /* Logic only: the operations it leaves out between two shown steps stand as one block saying how many, opened
      by a click (its first line goes into EXPANDED); the page sends a click on an opened operation to its source. */
   const opened=new Set(String(expandedText||'').split(',').filter(Boolean).map(Number));
@@ -54,7 +57,9 @@ function scheme(p,expandedText='',logicOnly=false) {
     if(!run.length)return;
     const first=run[0].line;
     if(opened.has(first)){run.forEach(x=>{emit('p'+x.line,x.text,x.call?'callnode':x.flow.sideEffect?'dbnode':'');click('p'+x.line,'aceexp_'+first);});return;}
-    emit('o'+first,run.length+(run.length===1?' operation':' operations'),'foldnode');click('o'+first,'aceexp_'+first);
+    // One operation folded would take a box anyway: it is shown as itself, and only two or more fold.
+    if(run.length===1){const x=run[0];emit('p'+x.line,x.text,x.call?'callnode':x.flow.sideEffect?'dbnode':'');return;}
+    emit('o'+first,run.length+' operations','foldnode');click('o'+first,'aceexp_'+first);
   }
   function ops(from,to,prior,edgeLabel){
     lastExit='';
@@ -126,6 +131,8 @@ function scheme(p,expandedText='',logicOnly=false) {
   while(subs.length){mm.push('end');subs.shift();}
   const last=rows.at(-1);if(last&&prev){const tail=ops(prevLine,endRow?last.line:last.line+1,prev,pendingLabel);if(endRow)connect(tail,endId);}
   if(endRow){mm.push(endId+'(["'+endRow.word+'"])');click(endId,'acego_'+endRow.source_line+'_'+endRow.source_line);}
-  return {conditionCalls,clusterRanges,nodeRanges,nodeLines:Object.fromEntries(rows.flatMap(r=>['n','p','o'].map(prefix=>[prefix+r.line,r.source_line]))),mermaid:'flowchart LR\n'+[...mm,'classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000','classDef default color:#12369e','classDef callnode fill:#fbeeee,stroke:#800000,color:#800000','classDef dbnode fill:#e8f2f6,stroke:#1f6f8b,color:#0f5468','classDef foldnode stroke-dasharray:4 3',...styles,...edges,...clicks].join('\n'),steps:mm.length,line_from:rows[0]?.source_line||p.line,line_to:last?.source_line||p.line};
+  // Last, so a node's own click (an exit, an opened operation's aceexp) stays the one it has.
+  mm.forEach(line=>{const id=line.split('(')[0];if(/^[pj]\d+$/.test(id))toCode(id);});
+  return {conditionCalls,clusterRanges,nodeRanges,nodeLines:Object.fromEntries(rows.flatMap(r=>['n','p','o','j'].map(prefix=>[prefix+r.line,r.source_line]))),mermaid:'flowchart LR\n'+[...mm,'classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000','classDef default color:#12369e','classDef callnode fill:#fbeeee,stroke:#800000,color:#800000','classDef dbnode fill:#e8f2f6,stroke:#1f6f8b,color:#0f5468','classDef foldnode stroke-dasharray:4 3',...styles,...edges,...clicks].join('\n'),steps:mm.length,line_from:rows[0]?.source_line||p.line,line_to:last?.source_line||p.line};
 }
 module.exports={scheme,analyze,label};

@@ -139,7 +139,6 @@ function open(vscode, context, deps, initial) {
     }
     window.addEventListener("message",e=>{
       if(e.data.type==="result"){pending=e.data.payload;sdeReady();}
-      if(e.data.type==="codeFocus"&&typeof sdeCodeFocus==="function")sdeCodeFocus();
       if(e.data.type==="codeCursor"&&typeof sdeCodeCursor==="function")sdeCodeCursor(e.data.payload);
       if(e.data.type==="progress"&&typeof sdeWorkspaceProgress==="function")sdeWorkspaceProgress(e.data.path,e.data.payload);
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
@@ -168,34 +167,41 @@ function open(vscode, context, deps, initial) {
   });
   // What the assistant is told about the open Tools window ends with the window: a closed class is not in the context.
   let cursorTimer,scrollTimer,sourceNavigationUntil=0;
+  /* VS Code repeats these events with nothing moved - on a change of focus, among others -, and each would take the lead
+     from the diagram for the code. Only a real move counts; the place is remembered in the quiet time too, so the line a
+     click in the diagram opened is not taken for a move afterwards. */
+  let lastSelection='',lastRange='';
   const cursorChanges=initial?.boundObject&&vscode.window.onDidChangeTextEditorSelection?vscode.window.onDidChangeTextEditorSelection(event=>{
     clearTimeout(cursorTimer);
+    const at=event.textEditor.document.uri.toString()+'|'+event.selections.map(s=>s.start.line+':'+s.start.character+'-'+s.end.line+':'+s.end.character).join(',');
+    if(at===lastSelection)return;
+    lastSelection=at;
     if(Date.now()<sourceNavigationUntil)return;
     cursorTimer=setTimeout(()=>{
       if(Date.now()<sourceNavigationUntil)return;
       const object=local ? local.documentObject(event.textEditor.document) : deps.documentObject(event.textEditor.document),selection=event.selections[0];
-      if(object&&selection)void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line:selection.start.line+1,endLine:selection.end.line+1,userFocus:event.kind!=null}});
+      if(object&&selection)void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line:selection.start.line+1,endLine:selection.end.line+1}});
     },80);
   }):null;
   const scrollChanges=initial?.boundObject&&vscode.window.onDidChangeTextEditorVisibleRanges?vscode.window.onDidChangeTextEditorVisibleRanges(event=>{
     clearTimeout(scrollTimer);
+    const at=event.textEditor.document.uri.toString()+'|'+event.visibleRanges.map(r=>r.start.line+'-'+r.end.line).join(',');
+    if(at===lastRange)return;
+    lastRange=at;
     if(Date.now()<sourceNavigationUntil)return;
     scrollTimer=setTimeout(()=>{
       if(Date.now()<sourceNavigationUntil)return;
       const object=local ? local.documentObject(event.textEditor.document) : deps.documentObject(event.textEditor.document),ranges=event.visibleRanges;
       if(!object||!ranges.length)return;
       const range=ranges[0],line=range.start.line+Math.floor((range.end.line-range.start.line)/3)+1;
-      void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line,endLine:line,scrollOnly:true,userFocus:event.textEditor===vscode.window.activeTextEditor}});
+      void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line,endLine:line,scrollOnly:true}});
     },100);
-  }):null;
-  const focusChanges=initial?.boundObject&&vscode.window.onDidChangeActiveTextEditor?vscode.window.onDidChangeActiveTextEditor(editor=>{
-   if(editor&&Date.now()>=sourceNavigationUntil)void panel.webview.postMessage({type:'codeFocus'});
   }):null;
   let reported = false, analysisJob;
   const viewStateChanges = panel.onDidChangeViewState && panel.onDidChangeViewState(event => {
     if (event.webviewPanel.active && reported) deps.setContext(panel, undefined);
   });
-  panel.onDidDispose(() => { if(analysisJob)analysisJob.cancelled=true;clearTimeout(cursorTimer);clearTimeout(scrollTimer);if(viewStateChanges)viewStateChanges.dispose();if(scrollChanges)scrollChanges.dispose();if(focusChanges)focusChanges.dispose();if(cursorChanges)cursorChanges.dispose();changes.dispose(); if (reported) { deps.setContext(panel, null); } });
+  panel.onDidDispose(() => { if(analysisJob)analysisJob.cancelled=true;clearTimeout(cursorTimer);clearTimeout(scrollTimer);if(viewStateChanges)viewStateChanges.dispose();if(scrollChanges)scrollChanges.dispose();if(cursorChanges)cursorChanges.dispose();changes.dispose(); if (reported) { deps.setContext(panel, null); } });
   panel.webview.onDidReceiveMessage(message => pin(async () => {
     const args = message.args || [];
     try {
@@ -221,7 +227,9 @@ function open(vscode, context, deps, initial) {
         sourceNavigationUntil=Date.now()+700;
         // Nothing waits for an answer to a click, so a failure is said here, not posted to a page that drops it.
         const asked=JSON.parse(String(args[0]||"{}")),open=local ? local.openSource : deps.openToolSource;
-        try { await open(asked); }
+        // The editor scrolls and moves its cursor while the line opens, and a SAP source can take long to open: the
+        // quiet time counts from when it is open, so those moves are not taken for the reader's.
+        try { await open(asked); sourceNavigationUntil=Date.now()+700; }
         catch(error) {
           // An include that is not there opens where it is named, and says so.
           if(asked.declaredIn&&/not found/i.test(error.message)){

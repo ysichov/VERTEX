@@ -108,7 +108,7 @@ function sdeMonitorState(state){
  if(state.variables&&state.variables.length){const list=document.createElement('pre');list.textContent=state.variables.map(value=>value.name+' = '+value.value).join('\n');body.append(list);}
  // Use ADT's absolute source coordinate when available; include-local positions are not guessed.
  const top=state.frames&&state.frames[0],match=top&&String(top.uri).match(/\/classes\/([^/]+)/i);
- if(match&&top.absoluteLine>0)sdeCodeCursor({name:decodeURIComponent(match[1]).toUpperCase(),type:'CLAS',line:top.absoluteLine,endLine:top.absoluteLine,userFocus:true});
+ if(match&&top.absoluteLine>0)sdeCodeCursor({name:decodeURIComponent(match[1]).toUpperCase(),type:'CLAS',line:top.absoluteLine,endLine:top.absoluteLine});
 }
 let result = null;
 const resultFrames = new Map();
@@ -400,7 +400,6 @@ function mountChat(){
 }
 // iframe documents do not inherit the host's CSS variables or theme updates.
 // Copy the complete VS Code theme onto their body, where existing palettes live.
-function sdeCodeFocus(){if(result&&result.contentWindow&&typeof result.contentWindow.sdeCodeFocus==='function')result.contentWindow.sdeCodeFocus();}
 let latestEditorCursor=null;
 function sdeCodeCursor(value){
  latestEditorCursor=value;
