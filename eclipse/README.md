@@ -1,5 +1,8 @@
 # Built-in Eclipse Assistant
 
+The assistant JSONL log omits program bodies from tool arguments and results; object names and result summaries are retained. Source-code logging has no separate option.
+
+
 SelecTor offers **Technical names / Text** for selection labels and table headers. The choice is remembered.
 
 The plugin depends on none of the projects VERTEX grew out of - Simple Data Explorer, ACE, AVE:

@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.20",
+  "version": "0.9.22",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -156,6 +156,10 @@
       {
         "command": "vertex.showLogs",
         "title": "VERTEX: Session Logs"
+      },
+      {
+        "command": "vertex.openSapDebugRuns",
+        "title": "VERTEX: SAP & Transpiler Logs"
       },
       {
         "command": "vertex.tools",
@@ -418,12 +422,12 @@
         "vertex.transpiler.runPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Folder that keeps each transpiler run of the chat as a folder of its own: its record, output and the sources it stepped through. A kept run opens again after a restart, from a chat citation or with **VERTEX: Open Transpiler Run...**, and its folder can be handed to someone else. Empty keeps runs for this session only."
+          "markdownDescription": "Folder that keeps each transpiler run of the chat as a folder of its own: its record, output and the sources it stepped through. A kept run opens again after a restart, from a chat citation or with **VERTEX: Open Transpiler Run...**, and its folder can be handed to someone else. Empty uses VERTEX's extension storage."
         },
         "vertex.debug.runPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Folder for saved SAP debug recordings. Empty uses VERTEX's extension storage. Open the searchable run list with **VERTEX: SAP Debug Runs...**."
+          "markdownDescription": "Folder for saved SAP debug recordings. Empty uses VERTEX's extension storage. Open the searchable run list with **VERTEX: SAP & Transpiler Logs**."
         },
         "vertex.ai.logPath": {
           "type": "string",
@@ -443,17 +447,12 @@
         "vertex.ai.log.tools": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Log SAP tool calls: names, arguments and a summary of each result (object, size, error), without source."
-        },
-        "vertex.ai.log.code": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Also log SAP source inside tool calls and results. Takes effect only with **Log tools**."
+          "markdownDescription": "Log tool calls, source-free arguments, result summaries and links to ABAP objects and recorded runs."
         },
         "vertex.ai.log.request": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Log VERTEX's full instructions and composed model request, including workspace and visible UML/code context, available tool definitions and answer schema. May contain source code, conversation history and local paths. Applies only to new requests; provider-internal instructions are not available to VERTEX."
+          "markdownDescription": "Log VERTEX instructions, model context, UML and metrics snapshots, tool definitions and answer schema. Program source is replaced with object references. May contain conversation history and local paths. Applies only to new requests; provider-internal instructions are not available to VERTEX."
         },
         "vertex.ai.personalInstructions": {
           "type": "boolean",

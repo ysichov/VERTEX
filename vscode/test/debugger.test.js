@@ -18,7 +18,7 @@ function fakeDumps(entries = []) {
 /* A fake SAP: the program stops at the lines in STOPS in turn, then ends.
    Each stop carries the variables the program has there. */
 function fakeSap({ stops = [], conflict = false, probe = fakeDumps(), dumpOnEnd = null, manualPoll = false,
-  attachError = null, stepError = null, explain, connectGate = null, timers = {} } = {}) {
+  attachError = null, stepError = null, explain, connectGate = null, timers = {}, assistantRecording = null, runGate = null, onOpen = null } = {}) {
   const calls = [], sent = [], scopedSent = [], watchpoints = [];
   let released = null, position = -1;
   let polls = 0, mostPolls = 0, connects = 0;
@@ -39,7 +39,7 @@ function fakeSap({ stops = [], conflict = false, probe = fakeDumps(), dumpOnEnd 
       if (conflict) { const e = new Error("conflict"); e.type = "conflictDetected"; e.properties = { conflictText: "Eclipse of DEVELOPER" }; throw e; }
     },
     async debuggerListen() {
-      if (!delivered && stops.length) { delivered = true; return hit; }
+      if (!delivered && stops.length) { if (runGate) await runGate; delivered = true; return hit; }
       polls++; mostPolls = Math.max(mostPolls, polls);
       try { await new Promise(resolve => { released = resolve; }); }
       finally { polls--; }
@@ -156,9 +156,9 @@ function fakeSap({ stops = [], conflict = false, probe = fakeDumps(), dumpOnEnd 
     async classComponents() { calls.push("probe class"); return {}; } });
   const opened = [];
   const dbg = create({
-    ...timers, explain,
+    ...timers, explain, assistantRecording,
     ideId: "IDE", terminalId: "TERM",
-    openUrl: async url => opened.push(url),
+    openUrl: async url => { opened.push(url); onOpen?.(); },
     connect: async () => { connects++; if (connectGate) { await connectGate; } return ({ system: { name: "QAS", url: "https://sap.example:44300", client: "100" }, user: "DEVELOPER",
       listener, probe, open: async () => session }); }
   });
@@ -586,7 +586,7 @@ function debuggerHost(auth, initial) {
   let system = initial;
   const opened = [];
   const host = { stopDebugger: null, auth, tools: null, output: null, require: name => name === "./debugger" ? require("../debugger") : name === "./auth/systems" ? require("../auth/systems")
-    : name === "abap-adt-api" ? { ADTClient: function () { return auth.makeLegacy(); } } : name === "./sap-http" ? { create: () => ({}) } : require(name),
+    : name === "./assistant-debug-recording" ? require("../assistant-debug-recording") : name === "abap-adt-api" ? { ADTClient: function () { return auth.makeLegacy(); } } : name === "./sap-http" ? { create: () => ({}) } : require(name),
     password: async () => "test",
     active: () => ({ system }), vscode: { env: { openExternal: async url => opened.push(url) }, Uri: { parse: url => url } } };
   vm.createContext(host); vm.runInContext(code.slice(start, end) + ";this.factory = debuggerFor;", host);
@@ -1164,4 +1164,29 @@ test("extension-system breakpoints stay local through the lifecycle queue", asyn
   assert.equal(point.adt, null);
   await dbg.stop();
   assert.equal(connects, 0);
+});
+
+test("assistant debug_run saves stops and returns its replay reference through MCP", async () => {
+  const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-assistant-debug-"));
+  let opened;
+  const runGate = new Promise(resolve => { opened = resolve; });
+  const recorder = require("../assistant-debug-recording").create({ folder: () => folder });
+  const f = fakeSap({ stops: [{ line: 10, vars: [simple("LV", "1")] }, { line: 11, vars: [simple("LV", "2")] }], assistantRecording: recorder, runGate, onOpen: opened });
+  try {
+    await f.dbg.setBreakpoint({ name: "Z_CALC", line: 10 });
+    const tools = require("../mcp").debugSet(f.dbg);
+    const started = await tools.call({}, "debug_run", { program: "Z_CALC" });
+    assert.equal(started.vertex_recording.kind, "sap");
+    const stopped = await tools.call({}, "debug_wait", { seconds: 1 });
+    assert.equal(stopped.vertex_recording.recorded_steps, 1);
+    assert.equal(stopped.vertex_recording.id, started.vertex_recording.id);
+    await tools.call({}, "debug_status", {});
+    assert.equal(recorder.reference().recorded_steps, 1);
+    const stepped = await tools.call({}, "debug_step", { kind: "over" });
+    assert.equal(stepped.vertex_recording.recorded_steps, 2);
+    const rows = require("../sap-debug-history").list(folder);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].steps, 2);
+  } finally { await f.dbg.stop(); fs.rmSync(folder, { recursive: true, force: true }); }
 });

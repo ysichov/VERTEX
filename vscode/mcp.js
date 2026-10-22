@@ -450,7 +450,10 @@ function debugAnswer(dbg, value) {
   if (text.length > BUDGET) {
     text = text.substring(0, BUDGET) + "\n... cut at " + BUDGET + " characters. Read a table in smaller ranges with debug_read.";
   }
-  return ok(dbg.counted(text));
+  const answer = ok(dbg.counted(text));
+  const recording = dbg.recordingReference?.();
+  if (recording) answer.vertex_recording = recording;
+  return answer;
 }
 
 function debugSet(dbg) {
@@ -468,7 +471,7 @@ function debugSet(dbg) {
           await dbg.clearBreakpoints(args.id);
           return debugAnswer(dbg, args.id ? "Removed " + args.id + "." : "Removed every breakpoint.");
         case "debug_run":
-          return debugAnswer(dbg, "Opened in the browser: " + await dbg.run(args.program)
+          return debugAnswer(dbg, "Opened in the browser: " + await dbg.run(args.program, undefined, { record: true })
             + "\nNow call debug_wait. If the user has to log on, the program starts after that.");
         case "debug_wait": return debugAnswer(dbg, await dbg.wait(args.seconds));
         case "debug_dumps": {

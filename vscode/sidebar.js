@@ -8,6 +8,7 @@ const ACTIONS = Object.freeze({
   metrics: "vertex.metrics",
   versions: "vertex.versions",
   logs: "vertex.showLogs",
+  executionLogs: "vertex.openSapDebugRuns",
   system: "vertex.switchSystem",
   settings: "workbench.action.openSettings"
 });
@@ -211,7 +212,8 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <label id="system-snc" title="Use SNC single sign-on instead of a password"><input id="system-snc-checkbox" type="checkbox"> SNC</label>
 <a href="#" class="link" id="llm-settings" title="Providers and the models they offer">LLM Providers</a>
-<button type="button" data-action="logs" id="logs" title="Session logs" aria-label="Open session logs">📜</button></div>
+<button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs">📜 AI</button>
+<button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs">📜 SAP</button></div>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>

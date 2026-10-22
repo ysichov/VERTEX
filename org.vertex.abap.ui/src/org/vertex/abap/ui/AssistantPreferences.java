@@ -22,7 +22,6 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
         { "logQuestions", "Log questions" },
         { "logAnswers", "Log answers" },
         { "logTools", "Log SAP tool calls (names, arguments, result summaries)" },
-        { "logCode", "Log SAP source in tool calls (only with tool calls)" },
         { "personalInstructions", "Let Claude Code load my personal CLAUDE.md and auto-memory" }
     };
     private final Button[] flags = new Button[FLAGS.length];

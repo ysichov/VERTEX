@@ -174,7 +174,7 @@ function plain(v) {
   return "<" + v.META_TYPE + (v.ACTUAL_TYPE_NAME ? " " + v.ACTUAL_TYPE_NAME : "") + ">";
 }
 
-function create({ connect, current, openUrl, ideId, terminalId, localOnly = () => false, listenerStopMs = LISTENER_STOP_MS, setTimeout: stopSetTimeout = global.setTimeout, clearTimeout: stopClearTimeout = global.clearTimeout, explain = error => error && error.message || String(error) }) {
+function create({ connect, current, openUrl, ideId, terminalId, assistantRecording = null, localOnly = () => false, listenerStopMs = LISTENER_STOP_MS, setTimeout: stopSetTimeout = global.setTimeout, clearTimeout: stopClearTimeout = global.clearTimeout, explain = error => error && error.message || String(error) }) {
   let listening = false, stopListening = false;
   let listenLoop = null, generation = 0, pendingStops = 0;
   let session = null;          // { client, debuggee, busy }
@@ -769,6 +769,8 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
         url: f.uri && f.uri.uri || "", line: f.line, position: f.stackUri || f.stackPosition, current: n === 0,
         program: f.programName || "", include: f.includeName || "", system: f.systemProgram === true,
         unit: String(f.eventName || ""), unitType: String(f.eventType || "") }));
+      try { assistantRecording?.capture(frames, state, sources); }
+      catch (error) { problems.push("Could not save the assistant's SAP debug recording: " + explain(error)); }
       if (logs) {
         logged.push({ n: logged.length + 1, breakpoint: bp.id, at: where(top), changed: state.changed });
         if (!quick) {
@@ -808,6 +810,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
   }
 
   async function end(error) {
+    assistantRecording?.finish();
     watchpoints = [];
     const lost = sessionLost(error);
     const run = { program: session.program, logged: logged.length - loggedRead,
@@ -1020,8 +1023,8 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
   /* A program is started in SE38. A function module or a class has no run
      of its own: its test screen opens - SE37 or SE24 with the name filled in
      - and the user starts the test there (F8) with the data it asks for. */
-  function run(program, test) { return lifecycle(() => runNow(program, test)); }
-  async function runNow(program, test) {
+  function run(program, test, options) { return lifecycle(() => runNow(program, test, options)); }
+  async function runNow(program, test, options) {
     const { system: target } = await systemNow();
     const name = String(program).toUpperCase();
     if (!/^[A-Z0-9_/]+$/.test(name)) { throw new Error("Not an object name: " + program); }
@@ -1039,7 +1042,10 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
     // this run until something proves otherwise.
     await markDumps();
     const url = webgui(target, transaction);
-    await openUrl(url);
+    if (options?.record) assistantRecording?.begin(name, target.name);
+    else assistantRecording?.reset();
+    try { await openUrl(url); }
+    catch (error) { assistantRecording?.reset(); throw error; }
     return url;
   }
 
@@ -1101,6 +1107,7 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
   }
 
   async function stopRun() {
+    assistantRecording?.finish();
     ++generation;
     stopListening = true;
     if (session) {
@@ -1363,6 +1370,8 @@ function create({ connect, current, openUrl, ideId, terminalId, localOnly = () =
   function drivenBy(name) { if (name === "editor" || name === "window") { driver = name; } }
   function drivenFrom() { return driver; }
   return { drivenBy, drivenFrom,
+    recordingReference: () => assistantRecording?.reference() || null,
+    discardRecording: id => assistantRecording?.discard(id),
     setBreakpoint, clearBreakpoints, activateBreakpoints, setWatchpoint, clearWatchpoint, listWatchpoints,
     wait, step, read, run, openDump, dumpPage, checkDumps, stop, detach, status, counted,
     log: () => logged.slice(),

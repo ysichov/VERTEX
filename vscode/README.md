@@ -33,7 +33,7 @@ what needs it.
 |---|---|---|---|
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values | not needed |
-| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, and the flow chart and player for a recorded run. Saved SAP debug sessions can be opened, renamed or deleted from Debug Session Logs. | not needed |
+| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, and the flow chart and player for a recorded run. SAP & Transpiler Logs lists SAP recordings and available transpiler runs for replay or deletion; SAP recordings can also be renamed. | not needed |
 | **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW*, *Formula* or *Expression*, each as a tree or a diagram | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
 | **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | to save reviews in SAP |
@@ -553,20 +553,20 @@ SAP search, changes, tests and debugger actions require a system.
 For API-key providers, the chat displays the provider's input, cached and output token counts
 for the complete answer, including model requests made around tool calls when reported by the API.
 Set `vertex.ai.logPath` to write a Claude-compatible JSONL conversation log in its
-`claude_compatible` subfolder. `vertex.ai.log.questions`, `.answers`, `.tools`, `.code` and `.request`
-control which content is retained. Enable `vertex.ai.log.request` to inspect VERTEX's full instructions,
-composed request context, available tool definitions and answer schema in new log entries. It can include
-source code, conversation history and local paths, so it is off by default. The provider's own hidden
+`claude_compatible` subfolder. `vertex.ai.log.questions`, `.answers`, `.tools` and `.request`
+control which content is retained. Program bodies are omitted from tool arguments, results and request context, with links to the current ABAP object or local file instead. Enable `vertex.ai.log.request` to inspect VERTEX instructions, source-free request context, tool definitions and answer schema in new entries. Conversation history and local paths can be included, so it is off by default. The provider's own hidden
 instructions are not available to VERTEX. Direct Anthropic API tool calls are included when `.tools`
 is on. Each direct Anthropic, compatible API and Copilot model call gets a separate assistant
 record with its reported usage; Claude Code and Codex subscriptions have one record per VERTEX
 CLI invocation because their internal model calls are not exposed. The format is the same for
 every provider and does not capture raw HTTP payloads. Use **Choose log folder...** in LLM
 Providers or the folder link beside `vertex.ai.logPath` in Settings; the gear opens the log settings.
-The 📜 button beside **LLM Providers** opens the session report beside the active editor. It reads the
+The **📜 AI** button beside **LLM Providers** opens the session report beside the active editor. It reads the
 configured log folder and shows sessions, prompts and token usage by day or across all dates.
-Filter by provider, model or prompt text; click a row to inspect any request context, answer and tool details
-retained by the log settings. JSON tool results are indented for reading. The report has a refresh button and a log-folder picker.
+Filter by provider, model or prompt text; expand a session and its sections to inspect the content
+retained by the log settings. Sessions and their content sections start collapsed: **User**, **Model answer**, **Tools**, instructions and request context open independently. Three theme-aware accent colours distinguish user questions, plain model answers and technical details. JSON tool results are indented for reading. Each tool call starts collapsed under its name; expand it to inspect its arguments, matching result and links. The report has a refresh button and a log-folder picker. Each assistant transpiler call links to its recording when one exists. With tool logging enabled, SAP runs started by the assistant save observed stops to `vertex.debug.runPath` (or extension storage) and link to that recording; intermediate statements skipped by Continue are not recorded. Links open an offline replay without running the program again. Assistant transpiler recordings are kept in extension storage by default, so their links survive a restart; `vertex.transpiler.runPath` selects another folder.
+
+Request-context entries retain compact UML and metrics JSON snapshots. **Open recorded UML** and **Open recorded metrics** render the exact structure and values supplied to the assistant without reading SAP again. UML snapshots contain class/interface names, supplied method names and relationship endpoints; metrics snapshots contain the supplied columns, rows and totals, including any original truncation. **Open current object** opens today’s source, which may differ from the source used for that request. Program source snapshots remain part of separate execution recordings for offline replay, rather than the assistant JSONL log. Select conversation checkboxes and use **Clear selected conversations** to delete their JSONL logs after confirmation. Execution recordings remain in their own folders; pending responses do not recreate cleared conversations.
 
 Local ABAP programs and classes also have VERTEX navigation in the editor: Outline,
 Go to Definition for local method and class calls, and Back. The **VERTEX Tools** context
@@ -886,11 +886,11 @@ The agent cites its evidence as `[run d6c436b8 step 13]`; the chat shows such a 
 keeps its id). The link opens that run in Visual Debug at the cited step, with its record, variables, SQL and output, without running the program again. A kept
 run is looked at, not executed; Run in that panel says so.
 
-Set `vertex.transpiler.runPath` to keep the chat's runs on disk. Each run is a folder of its
-own (`vertex-run.json` and copies of the sources it stepped through), so citations still open
-after a restart, and a folder copied elsewhere or sent to someone else opens with
-**VERTEX: Open Transpiler Run...**. Without the setting, runs last for the session only, and a
-citation of an older run reports that the run is unknown.
+The chat’s transpiler runs are kept on disk in VERTEX extension storage. Set
+`vertex.transpiler.runPath` to use another folder. Each run has its own folder
+(`vertex-run.json` and copies of the sources it stepped through), so citations still open
+after a restart. A folder copied elsewhere or sent to someone else opens with
+**VERTEX: Open Transpiler Run...**. Deleting a recording makes its old citations unavailable.
 
 ### How a run is caught
 
@@ -1144,7 +1144,7 @@ it - `LS_ORDER`, `GS_INVOICE-ITEMS`, `ME->MV_RATE`.
 **Visual Debug** is the right-hand panel beside the source tab (programs, classes and function modules); it shows the same
 debugger the assistant drives - one session, not a second one:
 
-Use **Save log** on the replay bar to keep a SAP recording and its available source snapshots as a local file. Each saved SAP recording has a GUID `session_id`; evidence citations such as `[session a1b2c3d4 step 4]` open that recording at the cited step. The **Logs** button opens **SAP Debug Session Logs**, which lists date/time, program and recorded-step count. Click a row to open an offline replay; use its rename and delete icons to manage the saved log. With a recording open, the VERTEX assistant can use its recorded steps as evidence and link to cited steps. The default folder is VERTEX's extension storage; `vertex.debug.runPath` selects another folder. Existing recordings receive a stable ID the first time VERTEX reads them.
+Use **Save log** on the replay bar to keep a SAP recording and its available source snapshots as a local file. Each saved SAP recording has a GUID `session_id`; evidence citations such as `[session a1b2c3d4 step 4]` open that recording at the cited step. The **📜 SAP** sidebar button and **SAP / Transpiler Logs** in Visual Debug open **SAP & Transpiler Logs**, which lists SAP recordings and available transpiler runs with date/time, type, program and step count. Click a row to open an offline replay. SAP recordings have a rename action; either type can be deleted individually or selected with checkboxes for **Delete selected recordings**. Deleting a persisted transpiler run removes its recording folder and private source copies, leaving the original source file intact. Transpiler entries marked **this session** are held in memory and disappear after restarting VS Code. With a recording open, the VERTEX assistant can use its recorded steps as evidence and link to cited steps. The default folder is VERTEX's extension storage; `vertex.debug.runPath` selects another folder. Existing recordings receive a stable ID the first time VERTEX reads them.
 
 - **The source stays in the editor.** The panel opens beside the source tab and draws no copy
   of it; the lines are those of the active version, which is what the program runs. Breakpoints the assistant set appear

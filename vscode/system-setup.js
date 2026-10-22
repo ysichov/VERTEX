@@ -312,9 +312,9 @@ async function importSystems(vscode, context) {
         value: "https://" + c.host + ":443" + c.instance });
       if (!url) { continue; }
     }
-    const client = c.logon.client || await vscode.window.showInputBox({ title: c.id + ": SAP client", prompt: "Empty for the system default", ignoreFocusOut: true });
+    const client = c.logon.client || await vscode.window.showInputBox({ title: c.id + ": SAP client", prompt: "Enter the SAP client (leave empty for the system default)", ignoreFocusOut: true });
     if (client === undefined) { continue; }
-    const user = c.logon.user || await vscode.window.showInputBox({ title: c.id + ": SAP user", ignoreFocusOut: true });
+    const user = c.logon.user || await vscode.window.showInputBox({ title: c.id + ": SAP user", prompt: "Enter the SAP user", ignoreFocusOut: true });
     if (!user) { continue; }
     const system = { name, url, ...(client ? { client } : {}), user };
     if (c.authType === "snc") { system.authType = "snc"; }

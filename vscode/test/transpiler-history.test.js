@@ -31,3 +31,25 @@ test("transpiler virtual watchpoints find changes to a structure field", () => {
   assert.deepEqual(found.matches.map(m => [m.step, m.before, m.after]), [[1, null, 0], [2, 0, 10]]);
   assert.deepEqual(store.find({ run_id, object: "ZCL_A", line: 4 }).matches.map(m => m.step), [2]);
 });
+
+test("recording list and deletion cover disk and memory without deleting original sources", () => {
+  const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-remove-run-"));
+  try {
+    const original = path.join(folder, "original.abap");
+    fs.writeFileSync(original, "REPORT z_original.");
+    const root = path.join(folder, "recordings"), store = create(() => root);
+    const first = store.save([{ line: 1, file: original }], { object_name: "Z_ORIGINAL" }, { main: original, output: "one" });
+    const runFolder = store.get(first).folder;
+    assert.equal(store.list()[0].saved, true);
+    assert.throws(() => store.remove("../outside"));
+    store.remove(first);
+    assert.equal(fs.existsSync(runFolder), false);
+    assert.ok(fs.existsSync(original));
+    assert.equal(create(() => root).known().length, 0);
+    const second = store.save([], { object_name: "Z_SECOND" });
+    assert.equal(store.number(second), 2);
+    store.remove(second);
+    assert.equal(store.list().length, 0);
+  } finally { fs.rmSync(folder, { recursive: true, force: true }); }
+});

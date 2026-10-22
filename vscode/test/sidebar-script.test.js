@@ -13,6 +13,8 @@ test("sidebar HTML contains an executable chat script", () => {
   assert.match(script, /requestSubmit\(\)/);
   assert.match(script, /action: 'ready'/);
   assert.match(html, /id="model-status" role="status"/);
+  assert.match(html, /data-action="logs"[^>]*>📜 AI/);
+  assert.match(html, /data-action="executionLogs"[^>]*>📜 SAP/);
   assert.match(script, /status\.textContent = data\.error/);
   assert.match(html, /id="system-snc-checkbox" type="checkbox"/);
   assert.match(script, /action: 'setSystemSNC'/);

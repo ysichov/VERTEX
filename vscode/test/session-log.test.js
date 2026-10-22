@@ -52,7 +52,7 @@ test("the minimal log is tokens only: no question, answer, tool call or code", a
   assert.equal(lines[1].message.model, "claude-sonnet-5");
 });
 
-test("questions, answers and tool calls are logged by choice, and code only when it is chosen too", async () => {
+test("questions, answers and tool calls are optional; source is omitted even with legacy code enabled", async () => {
   const withoutCode = await session({ questions: true, answers: true, tools: true });
   assert.doesNotMatch(withoutCode.raw, /SECRET/);
   const lines = withoutCode.lines;
@@ -66,7 +66,7 @@ test("questions, answers and tool calls are logged by choice, and code only when
   assert.equal(lines[5].message.content[0].text, "The answer.");
 
   const withCode = await session({ tools: true, code: true });
-  assert.match(withCode.raw, /SECRET/);
+  assert.doesNotMatch(withCode.raw, /SECRET/);
   assert.doesNotMatch(withCode.raw, /explain Z_CALC|The answer/);
 
   const codeWithoutTools = await session({ code: true });
@@ -85,5 +85,60 @@ test("direct Anthropic-style assistant tools keep the result and log the call", 
     assert.equal(lines[0].message.content[0].name, "read_sap_object");
     assert.equal(lines[1].message.content[0].tool_use_id, lines[0].message.content[0].id);
     assert.doesNotMatch(JSON.stringify(lines), /CLASS zcl_a/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("request context replaces nested source with object references and retains UML and metrics snapshots", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-context-"));
+  try {
+    const log = sessionLog.create(root, "claude", "context", { request: true, tools: true, code: true });
+    const uml = { nodes: [{ name: "ZCL_A", kind: "class", methods: ["RUN"] }], edges: [{ source: "ZCL_A", target: "ZIF_A", kind: "implementation" }] };
+    const metrics = { columns: ["unit_name", "complexity"], units: [{ unit_name: "RUN", complexity: 3 }], totals: { complexity: 3 } };
+    const context = { object_type: "CLAS", object_name: "ZCL_A", source: "CLASS zcl_a. SECRET_BODY", selected_fragment: { text: "SECRET_FRAGMENT" },
+      nested: { new_source: "SECRET_EDIT" }, vertex_view: { type: "CLAS", name: "ZCL_A", view: "uml", uml, metrics } };
+    log.request({ instructions: "Explain visible code", prompt: "Current view:\n" + JSON.stringify(context, null, 2), tools: [], schema: null });
+    const raw = fs.readFileSync(log.file, "utf8"), entry = JSON.parse(raw);
+    assert.doesNotMatch(raw, /SECRET_BODY|SECRET_FRAGMENT|SECRET_EDIT/);
+    assert.deepEqual(entry.vertex_snapshots.map(s => s.kind), ["uml", "metrics"]);
+    assert.deepEqual(entry.vertex_snapshots[0].data, uml);
+    assert.deepEqual(entry.vertex_snapshots[1].data, metrics);
+    assert.ok(entry.vertex_objects.some(o => o.object_name === "ZCL_A" && o.object_type === "CLAS"));
+    assert.match(entry.request.prompt, /"source": "ZCL_A"/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("five assistant transpiler calls retain distinct recording links without source", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-run-links-"));
+  try {
+    const log = sessionLog.create(root, "anthropic-api", "runs", { tools: true });
+    log.user("Run five cases");
+    for (let n = 1; n <= 5; n++) await sessionLog.assistantTool(log, "run_abap_transpiler", { object_name: "Z_CALC", object_type: "PROG", selection: { CASE: n } },
+      async () => ({ run_id: "run-" + n, session_id: "run-" + n, mode: "transpiler", recorded_steps: 4, source: "SECRET_SOURCE" }));
+    const raw = fs.readFileSync(log.file, "utf8");
+    assert.doesNotMatch(raw, /SECRET_SOURCE/);
+    const session = require("../log-report").parseSession(raw, "anthropic-api_20261022_120000.jsonl");
+    const calls = session.prompts[0].details.filter(d => d.type === "tool");
+    assert.equal(calls.length, 5);
+    assert.ok(calls.every(c => c.name === "run_abap_transpiler" && c.tool_id));
+    assert.equal(new Set(calls.map(c => c.tool_id)).size, 5);
+    assert.deepEqual(session.prompts[0].details.filter(d => d.type === "tool result").map(d => d.tool_id), calls.map(c => c.tool_id));
+    assert.deepEqual(calls.map(c => c.recording.id), ["run-1", "run-2", "run-3", "run-4", "run-5"]);
+    assert.ok(calls.every(c => c.recording.kind === "transpiler"));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("SAP debug_run gains its saved-recording link when a later assistant tool saves a stop", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-sap-link-"));
+  try {
+    const log = sessionLog.create(root, "claude", "sap", { tools: true });
+    log.user("Debug in SAP");
+    const run = log.toolUse("debug_run", { program: "Z_CALC" });
+    log.toolResult(run, { content: [{ type: "text", text: "Opened browser" }], vertex_recording: { kind: "sap", id: "sap-run-1", recorded_steps: 0 } });
+    const report = require("../log-report");
+    assert.equal(report.parseSession(fs.readFileSync(log.file, "utf8"), "claude.jsonl").prompts[0].details[0].recording, undefined);
+    const wait = log.toolUse("debug_wait", {});
+    log.toolResult(wait, { content: [{ type: "text", text: "Stopped" }], vertex_recording: { kind: "sap", id: "sap-run-1", recorded_steps: 1 } });
+    const calls = report.parseSession(fs.readFileSync(log.file, "utf8"), "claude.jsonl").prompts[0].details.filter(d => d.type === "tool");
+    assert.ok(calls.every(c => c.recording.id === "sap-run-1" && c.recording.kind === "sap"));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

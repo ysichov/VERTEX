@@ -18,6 +18,10 @@
     border: 1px solid var(--vscode-button-border, transparent); padding: 3px 10px; cursor: pointer; font: inherit;
   }
   button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  button:disabled { opacity: .5; cursor: default; }
+  .select-session { accent-color: var(--vscode-focusBorder); }
+  .recording-link { margin: 4px 8px; color: var(--vscode-textLink-foreground); background: transparent; border: 0; padding: 0; text-decoration: underline; }
+  .recording-link:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   .muted { color: var(--vscode-descriptionForeground); }
   .error { color: var(--vscode-errorForeground); }
   .totals { margin: 6px 0 12px; }
@@ -30,12 +34,18 @@
   th, td { text-align: left; padding: 4px 8px; border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border)); vertical-align: top; }
   th { color: var(--vscode-descriptionForeground); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; }
-  tr.prompt { cursor: pointer; }
-  tr.prompt:hover { background: var(--vscode-list-hoverBackground); }
-  .text { white-space: pre-wrap; word-break: break-word; max-height: 4.5em; overflow: hidden; }
-  tr.open .text { max-height: none; }
-  .detail { margin: 4px 0; padding: 4px 6px; background: var(--vscode-textCodeBlock-background); white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); font-size: 0.9em; max-height: 20em; overflow: auto; }
-  .kind { color: var(--vscode-descriptionForeground); font-size: 0.85em; text-transform: uppercase; }
+  .conversation { min-width: 240px; }
+  .entry { --entry-color: var(--vscode-charts-orange, var(--vscode-descriptionForeground)); margin: 6px 0; border-left: 3px solid var(--entry-color); background: var(--vscode-editor-background); }
+  .entry.user { --entry-color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
+  .entry.model { --entry-color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }
+  .entry > summary { padding: 6px 8px; cursor: pointer; color: var(--entry-color); font-weight: 600; }
+  .entry > summary:hover { background: var(--vscode-list-hoverBackground); }
+  summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+  .detail { margin: 0; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--vscode-editor-foreground); }
+  .technical .detail { background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
+  .entry-body { padding: 0 8px 4px; }
+  .kind { padding: 4px 8px; color: var(--entry-color); font-size: 0.9em; }
+  .table-scroll { overflow-x: auto; }
 </style>
 </head>
 <body>
@@ -44,6 +54,7 @@
   <button id="folder">Choose Folder…</button>
   <button id="settings">Log Settings</button>
   <button id="refresh">Refresh</button>
+  <button id="clear-conversations" disabled>Clear selected conversations</button>
 </header>
 <div id="status" class="muted">Loading…</div>
 <div class="muted">Enable <code>vertex.ai.log.request</code> to see VERTEX instructions and context for new prompts.</div>
@@ -54,6 +65,10 @@
   var vscode = acquireVsCodeApi();
   var status = document.getElementById("status");
   var content = document.getElementById("content");
+  var selected = new Set();
+  var clear = document.getElementById("clear-conversations");
+  clear.onclick = function () { vscode.postMessage({ action: "clearConversations", ids: Array.from(selected) }); };
+  function selectionChanged() { clear.disabled = selected.size === 0; }
   document.getElementById("refresh").onclick = function () { vscode.postMessage({ action: "refresh" }); };
   document.getElementById("folder").onclick = function () { vscode.postMessage({ action: "chooseFolder" }); };
   document.getElementById("settings").onclick = function () { vscode.postMessage({ action: "settings" }); };
@@ -79,7 +94,85 @@
     return String(prompts[0].text).replace(/\s+/g, " ").trim();
   }
 
+  function section(label, cls, text) {
+    var box = el("details", "entry " + cls);
+    box.appendChild(el("summary", "", label));
+    if (text !== undefined) box.appendChild(el("div", "detail", text));
+    return box;
+  }
+  function objectLinks(parent, objects) {
+    (objects || []).forEach(function (object) {
+      var link = el("button", "recording-link", "Open current object: " + (object.object_name || object.path));
+      link.type = "button";
+      link.title = "Opens the current source; it may have changed since this conversation.";
+      link.onclick = function () { vscode.postMessage({ action: "openObject", object: object }); };
+      parent.appendChild(link);
+    });
+  }
+  function conversation(p) {
+    var body = el("div", "conversation");
+    var user = section("User", "user", p.text);
+    objectLinks(user, p.objects);
+    body.appendChild(user);
+    var answers = p.details.filter(function (d) { return d.type === "answer"; });
+    if (answers.length) {
+      var answer = section("Model answer", "model");
+      answers.forEach(function (d, i) {
+        if (answers.length > 1) answer.appendChild(el("div", "kind", "Response " + (i + 1)));
+        answer.appendChild(el("div", "detail", d.text));
+        objectLinks(answer, d.objects);
+      });
+      body.appendChild(answer);
+    }
+    var tools = p.details.filter(function (d) { return d.type === "tool" || d.type === "tool result"; });
+    if (tools.length) {
+      var calls = tools.filter(function (d) { return d.type === "tool"; });
+      var toolBox = section("Tools (" + calls.length + " calls)", "technical");
+      var entries = new Map();
+      function appendEntry(target, d) {
+        target.appendChild(el("div", "kind", d.type === "tool" ? "Arguments" : "Result"));
+        if (d.recording) {
+          var link = el("button", "recording-link", (d.recording.kind === "transpiler" ? "Open transpiler recording " : "Open SAP debug recording ") + d.recording.id.slice(0, 8));
+          link.type = "button";
+          link.onclick = function () { vscode.postMessage({ action: "openRecording", recording: d.recording }); };
+          target.appendChild(link);
+        }
+        var text = d.type === "tool" ? d.text.slice(d.text.indexOf("\n") + 1) : d.text;
+        target.appendChild(el("div", "detail", text));
+        objectLinks(target, d.objects);
+      }
+      calls.forEach(function (d) {
+        var entry = section(d.name || d.text.split("\n")[0], "technical");
+        if (d.tool_id) entries.set(d.tool_id, entry);
+        appendEntry(entry, d);
+        toolBox.appendChild(entry);
+      });
+      tools.filter(function (d) { return d.type === "tool result"; }).forEach(function (d) {
+        var entry = d.tool_id && entries.get(d.tool_id);
+        if (!entry) { entry = section("Tool result", "technical"); toolBox.appendChild(entry); }
+        appendEntry(entry, d);
+      });
+      body.appendChild(toolBox);
+    }
+    p.details.forEach(function (d) {
+      if (d.type === "answer" || d.type === "tool" || d.type === "tool result") return;
+      var label = d.type === "Model request and context" ? "Request and context" : d.type;
+      if (d.snapshot) label = d.snapshot.kind === "uml" ? "Recorded UML" : "Recorded metrics";
+      var detail = section(label, "technical", d.text);
+      objectLinks(detail, d.objects);
+      if (d.snapshot) {
+        var open = el("button", "recording-link", "Open recorded " + (d.snapshot.kind === "uml" ? "UML" : "metrics"));
+        open.type = "button";
+        open.onclick = function () { vscode.postMessage({ action: "openSnapshot", snapshot: d.snapshot }); };
+        detail.appendChild(open);
+      }
+      body.appendChild(detail);
+    });
+    return body;
+  }
+
   function render(report) {
+    selected.clear(); selectionChanged();
     content.textContent = "";
     if (!report.configured) { status.className = "muted"; status.textContent = "No log folder is set. Choose a folder to read session logs from."; return; }
     if (!report.sessions.length) { status.className = "muted"; status.textContent = "No sessions in " + report.folder + "."; return; }
@@ -92,6 +185,12 @@
     report.sessions.forEach(function (s) {
       var box = el("details", "session");
       var head = el("summary");
+      var select = el("input", "select-session");
+      select.type = "checkbox";
+      select.setAttribute("aria-label", "Select conversation " + s.provider + " " + time(s.start));
+      select.onclick = function (event) { event.stopPropagation(); };
+      select.onchange = function () { if (select.checked) selected.add(s.id); else selected.delete(s.id); selectionChanged(); };
+      head.appendChild(select);
       head.appendChild(el("span", "provider", s.provider));
       head.appendChild(el("span", "", time(s.start)));
       head.appendChild(el("span", "muted", span(s.start, s.end)));
@@ -107,33 +206,23 @@
 
       var table = el("table");
       var hr = el("tr");
-      ["Time", "Prompt", "Model", "In", "Out", "Cache read"].forEach(function (h, i) { hr.appendChild(el("th", i > 2 ? "num" : "", h)); });
+      ["Time", "Conversation", "Model", "In", "Out", "Cache read"].forEach(function (h, i) { hr.appendChild(el("th", i > 2 ? "num" : "", h)); });
       table.appendChild(hr);
       s.prompts.forEach(function (p) {
-        var row = el("tr", "prompt");
+        var row = el("tr");
         row.appendChild(el("td", "", time(p.time)));
         var cell = el("td");
-        cell.appendChild(el("div", "text", p.text));
-        var more = el("div");
-        more.hidden = true;
-        p.details.forEach(function (d) {
-          more.appendChild(el("div", "kind", d.type));
-          more.appendChild(el("div", "detail", d.text));
-        });
-        cell.appendChild(more);
+        cell.appendChild(conversation(p));
         row.appendChild(cell);
         row.appendChild(el("td", "", p.model));
         row.appendChild(el("td", "num", n(p.usage.input)));
         row.appendChild(el("td", "num", n(p.usage.output)));
         row.appendChild(el("td", "num", n(p.usage.cacheRead)));
-        row.onclick = function (e) {
-          if (e.target.closest(".detail")) return;
-          more.hidden = !more.hidden;
-          row.classList.toggle("open", !more.hidden);
-        };
         table.appendChild(row);
       });
-      box.appendChild(table);
+      var scroll = el("div", "table-scroll");
+      scroll.appendChild(table);
+      box.appendChild(scroll);
       content.appendChild(box);
     });
   }

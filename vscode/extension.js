@@ -714,6 +714,12 @@ function debuggerFor(context, auth) {
     context.globalState.update("vertex.debug.ideId", id);
   }
   const dbg = require("./debugger").create({
+    assistantRecording: require("./assistant-debug-recording").create({
+      enabled: () => { const config = vscode.workspace.getConfiguration("vertex.ai");
+        return !!config.get("logPath", "") && config.get("log.tools", false); },
+      folder: () => String(vscode.workspace.getConfiguration("vertex").get("debug.runPath", "") || "").trim()
+        || path.join(context.globalStorageUri.fsPath, "sap-debug-runs")
+    }),
     ideId: id,
     terminalId: id,
     openUrl: url => vscode.env.openExternal(vscode.Uri.parse(url)),
@@ -776,6 +782,8 @@ function withDebugger(sapCode, debugTools, runTranspiler, transpilerHistory) {
       if (!/^debug_/.test(name)) { return sapCode.execute(name, args); }
       const answer = await debugTools.call({}, name, args || {});
       if (answer.isError) { throw new Error(answer.content[0].text); }
+      if (answer.vertex_recording) return { result: answer.content[0].text, mode: "sap",
+        session_id: answer.vertex_recording.id, recorded_steps: answer.vertex_recording.recorded_steps };
       return answer.content[0].text;
     } }
   });
@@ -805,7 +813,9 @@ function activate(context) {
   const dbg = debuggerFor(context, auth);
   sapCode.attachDebugger(dbg);
   const debugTools = mcp.debugSet(dbg);
-  const transpilerHistory = require("./transpiler-history").create(() => String(vscode.workspace.getConfiguration("vertex").get("transpiler.runPath", "") || "").trim());
+  const transpilerRunFolder = () => String(vscode.workspace.getConfiguration("vertex").get("transpiler.runPath", "") || "").trim()
+    || (context.globalStorageUri?.fsPath ? path.join(context.globalStorageUri.fsPath, "transpiler-runs") : "");
+  const transpilerHistory = require("./transpiler-history").create(transpilerRunFolder);
   const agentSourceQueue = require("./transpiler-tool").createRunQueue();
   const agentBuilds = new Map();
   const chatTools = withDebugger(sapCode, debugTools, async args => {
@@ -1540,7 +1550,7 @@ function activate(context) {
         else {
           const picked = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
             openLabel: "Open transpiler run",
-            defaultUri: (() => { const root = vscode.workspace.getConfiguration("vertex").get("transpiler.runPath", ""); return root ? vscode.Uri.file(root) : undefined; })() });
+            defaultUri: transpilerRunFolder() ? vscode.Uri.file(transpilerRunFolder()) : undefined });
           if (!picked?.length) return;
           run = require("./transpiler-history").load(picked[0].fsPath);
         }
@@ -1558,12 +1568,15 @@ function activate(context) {
         const folder = String(vscode.workspace.getConfiguration("vertex").get("debug.runPath", "") || "").trim()
           || path.join(context.globalStorageUri.fsPath, "sap-debug-runs");
         const history = require("./sap-debug-history");
+        const recordings = () => history.list(folder).map(run => ({ ...run, kind: "sap", key: "sap:" + run.session_id }))
+          .concat(transpilerHistory.list().map(run => ({ ...run, key: "transpiler:" + run.run_id })))
+          .sort((a, b) => b.created.localeCompare(a.created));
         if (sapDebugRunsPanel) {
           sapDebugRunsPanel.reveal(vscode.ViewColumn.Beside);
-          await sapDebugRunsPanel.webview.postMessage({ type: "runs", runs: history.list(folder) });
+          await sapDebugRunsPanel.webview.postMessage({ type: "runs", runs: recordings() });
           return;
         }
-        sapDebugRunsPanel = vscode.window.createWebviewPanel("vertex.sapDebugRuns", "SAP Debug Session Logs",
+        sapDebugRunsPanel = vscode.window.createWebviewPanel("vertex.sapDebugRuns", "SAP & Transpiler Logs",
           vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
         const panel = sapDebugRunsPanel;
         const nonce = require("crypto").randomBytes(18).toString("base64");
@@ -1574,29 +1587,36 @@ function activate(context) {
           .replace("<script>", "<script nonce=\"" + nonce + "\">");
         panel.webview.onDidReceiveMessage(async message => {
           try {
-            if (message.action === "ready") {
-              await panel.webview.postMessage({ type: "runs", runs: history.list(folder) });
+            if (message.action === "ready" || message.action === "refresh") {
+              await panel.webview.postMessage({ type: "runs", runs: recordings() });
             } else if (message.action === "open") {
-              const item = history.list(folder).find(run => run.file === message.file);
-              if (!item) throw new Error("The selected SAP debug log is no longer available.");
-              const record = history.load(item.file);
-              panel.dispose();
-              await openVisualDebug(false, { object_name: record.meta.name, object_type: record.meta.type,
-                storedDebugRecord: record, autoRun: false });
+              const item = recordings().find(run => run.key === message.key);
+              if (!item) throw new Error("The selected execution recording is no longer available.");
+              if (item.kind === "transpiler") {
+                await vscode.commands.executeCommand("vertex.openTranspilerRun", { run_id: item.run_id, step: 1 });
+              } else {
+                const record = history.load(item.file);
+                await openVisualDebug(false, { object_name: record.meta.name, object_type: record.meta.type,
+                  storedDebugRecord: record, autoRun: false });
+              }
             } else if (message.action === "rename") {
-              const item = history.list(folder).find(run => run.file === message.file);
-              if (!item) throw new Error("The selected SAP debug log is no longer available.");
+              const item = recordings().find(run => run.key === message.key && run.kind === "sap");
+              if (!item) throw new Error("The selected SAP debug recording is no longer available.");
               const name = await vscode.window.showInputBox({ title: "Rename SAP debug log", value: item.name, prompt: "Name shown in the saved-log list" });
               if (name === undefined) return;
               history.rename(folder, item.file, name);
-              await panel.webview.postMessage({ type: "runs", runs: history.list(folder) });
-            } else if (message.action === "delete") {
-              const item = history.list(folder).find(run => run.file === message.file);
-              if (!item) throw new Error("The selected SAP debug log is no longer available.");
-              const confirm = await vscode.window.showWarningMessage("Delete saved SAP debug log ‘" + item.name + "’?", { modal: true }, "Delete");
+              await panel.webview.postMessage({ type: "runs", runs: recordings() });
+            } else if (message.action === "delete" || message.action === "deleteSelected") {
+              const keys = new Set(message.action === "delete" ? [message.key] : Array.isArray(message.keys) ? message.keys : []);
+              const selected = recordings().filter(run => keys.has(run.key));
+              if (!selected.length) return;
+              const confirm = await vscode.window.showWarningMessage("Delete " + selected.length + " execution recording(s)? Links to these recordings will stop opening.", { modal: true }, "Delete");
               if (confirm !== "Delete") return;
-              history.remove(folder, item.file);
-              await panel.webview.postMessage({ type: "runs", runs: history.list(folder) });
+              for (const item of selected) {
+                if (item.kind === "transpiler") transpilerHistory.remove(item.run_id);
+                else { history.remove(folder, item.file); dbg.discardRecording(item.session_id); }
+              }
+              await panel.webview.postMessage({ type: "runs", runs: recordings() });
             }
           } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
         });
@@ -1648,7 +1668,7 @@ function activate(context) {
   require("./sidebar").register(vscode, context, active,
     require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext()), systems,
     () => withShownDiff(context, toolsContextState.current()));
-  require("./log-report").register(vscode, context);
+  require("./log-report").register(vscode, context, { openObject: object => chatTools.execute("open_sap_object", object) });
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation
   // so a registered Codex/Claude connection also works after a window reload.

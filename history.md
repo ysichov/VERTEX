@@ -1,5 +1,23 @@
 # Release history
 
+## Unreleased — individual AI tool disclosures
+
+Each AI tool call starts collapsed under its name. Its arguments, matching result and recording/object links open together. Repeated and concurrent calls remain separate and are matched to results by tool-call ID.
+
+## 2026-10-22 — VS Code 0.9.22: assistant evidence and execution logs
+
+The sidebar has matching **📜 AI** and **📜 SAP** log buttons. **SAP & Transpiler Logs** combines SAP recordings and available transpiler runs with type labels, replay and individual or selected deletion.
+
+The session report adds **Clear selected conversations**, which removes selected JSONL logs after confirmation and leaves execution recordings in their own folders. Pending responses cannot recreate a cleared conversation.
+
+Assistant tool calls link to transpiler recordings and saved SAP debug stops. With tool logging on, assistant-started SAP runs save their observed stops for offline replay. Assistant transpiler recordings use extension storage when no custom run folder is configured, so log links remain useful after a restart. Repeated runs keep separate IDs; the initial debug_run link becomes available after the first saved stop. Opening a link never starts another run.
+
+Assistant JSONL logs omit program bodies in tool arguments, results and composed request context, even when an old source-logging setting remains enabled. The source-logging checkbox is removed from VS Code and Eclipse preferences. Current-object links replace source bodies. UML and metrics context is retained as JSON snapshots that can be rendered from the session report without reading current SAP data.
+
+## 2026-10-22 — VS Code 0.9.21: assistant log controls
+
+The assistant session-log report opens in a column beside the active editor and returns to that column when reopened. Its **Log Settings** button opens all assistant logging options, including question and answer text, tools and request context. Session content starts collapsed, with separate sections for user questions, plain model answers, tools, instructions and context. Three theme-aware accent colours distinguish user, model and technical content. SAP-system import prompts clearly ask for the SAP client and user when they are not available from SAP Logon or the ADT workspace.
+
 ## Unreleased — sidebar SNC/password switch
 
 The VS Code sidebar can switch the selected SAP system between SNC and password authentication with a checkbox beside the system selector. Switching to password preserves saved SNC/RFC details for a later switch back; enabling SNC validates the required partner name and RFC host/instance.

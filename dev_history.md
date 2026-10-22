@@ -1,5 +1,35 @@
 # Development history
 
+## 2026-10-22 — individual tool calls collapsed in AI logs
+
+Retain each call ID in the parsed report and pair results by that ID. The Tools section lists independent native disclosures headed by tool name, initially closed; arguments, results and links are inside the corresponding call. Calls retain invocation order, and orphan results remain visible separately. Keep the package version at 0.9.22 as requested.
+
+## 2026-10-22 — VS Code 0.9.22 package
+
+Built the universal `vscode/vertex-abap-0.9.22.vsix`. The archive verifier checks all entries and both Windows x64/macOS Apple silicon bindings. Packaged logger, replay handlers, snapshot viewer, AI/SAP sidebar actions and execution-manager page match the current sources; the source-logging setting is absent.
+
+The focused suite passed 122 tests. The final storage changes passed 77 related tests, and snapshot-script and packaged Scheme checks passed. Headless-browser checks covered recorded UML, metrics, log disclosure sections, AI/SAP buttons, filtering, selection and deletion messages in light and dark themes. SAP recording lifecycle was tested with a fake SAP connection; no live SAP session or Eclipse package was checked. The user accepted 0.9.22 and instructed that future version changes wait for their publication notice.
+
+## 2026-10-22 — assistant evidence links and context snapshots
+
+Preserve run/session IDs in source-free tool summaries and associate tool results with their original calls. Report links dispatch only the existing offline replay commands. SAP assistant runs use a separate stop recorder, enabled with assistant tool logging, so no Visual Debug webview is needed to save observed frames, values and available source snapshots. Manual run controls do not start assistant recordings.
+
+Source-free logging removes the legacy code flag, sanitizes nested request JSON and tool arguments, and retains current-object references. The Eclipse logger copy and preference fields follow the same source omission policy. Request-context logging retains UML and metrics snapshots; the report renders those saved structures separately from current-source links.
+
+Conversation selection uses native checkboxes; clearing resolves IDs against the configured log folder and confirms deletion. Shared logger instances are discarded for cleared files so pending responses cannot recreate deleted logs. Execution recording files are untouched by conversation clearing. The matching AI and SAP sidebar log buttons open distinct managers. The execution manager combines SAP recordings and memory/persisted transpiler runs, uses kind-and-ID keys for opening and selected deletion, and rejects unknown selections. Transpiler deletion is scoped to validated recording folders and preserves original ABAP documents. Deleting a live assistant SAP recording discards its recorder so later stops cannot recreate it. The extension defaults assistant transpiler storage to its own recording folder, preserving log links across restarts without an extra setting.
+
+## 2026-10-22 — VS Code 0.9.21 package
+
+Built the universal `vscode/vertex-abap-0.9.21.vsix` with the standard packaging wrapper and dependencies from the lock file. npm and vsce were installed in a temporary tools directory because they were absent from PATH. Archive policy, entry integrity, version and packaged Scheme checks pass. The report HTML, settings handler and SAP-system prompts match the current sources inside the archive; Windows x64 and macOS Apple silicon RFC bindings are present. All 11 focused log-report and system-setup tests pass. The log UI has not been checked visually in a live VS Code window. No Eclipse package was built.
+
+## 2026-10-22 — collapsed assistant log sections
+
+Replace the prompt-row expansion with native, keyboard-accessible disclosure sections for User, Model answer, Tools, instructions and request context. Each starts collapsed. User and model content use normal text typography; technical payloads retain monospace formatting. Three accents use VS Code theme colours for user, model and technical content. The shared HTML source and its generated VS Code copy stay aligned. The two log-report tests pass. This report is a VS Code feature; no Eclipse host is built.
+
+## 2026-10-22 — VS Code 0.9.21: assistant log report placement
+
+The installed 0.9.18 report opened in the active editor column and could be hard to locate from the sidebar. Keep the session-log report in the column beside the active editor, including when reopening it. Its settings action used a search filter for only `vertex.ai.log.request`, which hid the question, answer and tool logging options. Open the full `vertex.ai.log` setting group instead. When SAP Logon or an ADT workspace has no client or user, label both import prompts with explicit “Enter the SAP …” instructions; the empty client remains valid for the system default. Package as VS Code 0.9.21; the existing VS Code guide already describes the report placement and logging controls. No Eclipse build is part of this change.
+
 ## 2026-10-21 — sidebar SNC/password switch
 
 Add an inline SNC checkbox beside the VS Code sidebar's SAP-system selector. It updates only the selected entry's `authType`, preserves SNC/RFC settings when switched to password, and validates required SNC data before switching back. SAP Logon import retains SNC details for password-mode direct entries when available. Add focused tests for toggle behavior and validation. VS Code only; no host version or package is claimed.

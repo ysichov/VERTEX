@@ -67,7 +67,7 @@ function load(folder) {
   if (run.format !== 1 || !run.run_id || !Array.isArray(run.records) || !run.main)
     throw new Error(path.join(folder, RUN_FILE) + " is not a VERTEX transpiler run.");
   const full = file => path.join(folder, file);
-  return { session_id: run.session_id || run.run_id, run_id: run.run_id, meta: run.meta || {}, output: run.output || "", main: full(run.main), folder,
+  return { session_id: run.session_id || run.run_id, run_id: run.run_id, created: run.created || "", meta: run.meta || {}, output: run.output || "", main: full(run.main), folder,
     records: run.records.map(record => record.file ? { ...record, file: full(record.file) } : record) };
 }
 
@@ -79,7 +79,7 @@ function create(root = () => "") {
   function save(records, meta = {}, extra = null) {
     const run_id = randomUUID();
     const folder = root() && extra ? store(root(), run_id, records, meta, extra) : null;
-    runs.set(run_id, { session_id: run_id, records, meta, folder, output: extra?.output || "", main: extra?.main || "" });
+    runs.set(run_id, { session_id: run_id, created: new Date().toISOString(), records, meta, folder, output: extra?.output || "", main: extra?.main || "" });
     while (runs.size > 20) runs.delete(runs.keys().next().value);
     numbers.set(run_id, numbers.size + 1);
     return run_id;
@@ -172,9 +172,32 @@ function create(root = () => "") {
     return { session_id: run.run_id, run_id: args.run_id, total_steps: records.length, matches, next_step };
   }
   const number = run_id => numbers.get(run_id) || null;
+  function list() {
+    return known().map(id => {
+      try {
+        const run = get(id);
+        return { kind: "transpiler", session_id: run.run_id, run_id: run.run_id,
+          name: run.meta.object_name || "Unknown", type: run.meta.object_type || "", created: run.created || "",
+          steps: run.records.length, saved: !!run.folder };
+      } catch (_) { return null; }
+    }).filter(Boolean).sort((a, b) => b.created.localeCompare(a.created));
+  }
+  function remove(id) {
+    const run = get(id);
+    if (run.folder) {
+      const folder = path.resolve(run.folder), configured = root();
+      if (!configured || path.dirname(folder) !== path.resolve(configured)
+        || ID.exec(path.basename(folder))?.[0] !== run.run_id || fs.lstatSync(folder).isSymbolicLink()
+        || load(folder).run_id !== run.run_id) throw new Error("This transpiler recording is outside the configured run folder.");
+      // The folder holds only the saved recording and its private source copies.
+      // The original ABAP document is never removed.
+      fs.rmSync(folder, { recursive: true });
+    }
+    runs.delete(run.run_id);
+  }
   // A new conversation numbers its runs from 1 again.
   const resetNumbers = () => { numbers = new Map(); };
-  return { save, read, find, get, known, resolve, number, resetNumbers };
+  return { save, read, find, get, known, resolve, number, resetNumbers, list, remove };
 }
 
 module.exports = { schema, findSchema, create, load };
