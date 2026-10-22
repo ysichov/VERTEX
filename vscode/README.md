@@ -368,7 +368,8 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
   **Depth** in Logic (1 by default) is how many levels inside the method are shown: 1 its own statements - an IF with
   its ENDIF, not what is inside -, 2 the inside of those blocks too, and so on. A block deeper than that shows its opening
   and closing statement, with what is inside folded into one node that says how many operations it hides; a click on that
-  node opens the block in place.
+  node opens the block in place, a step at a time: a block with branches (WHEN, ELSEIF, ELSE, CATCH) first shows its
+  branches, each with its own inside folded, and a branch opens to one more level on its own click.
   Every statement in the Logic diagram leads to its line in the source with a click - plain operations, CONTINUE and
   ENDIF included; a single left-out operation in *Logic only* is drawn as itself, and only two or more fold into one
   block. The code moves the diagram, not the other way round: a click, a key or a scroll in the editor positions the

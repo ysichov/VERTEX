@@ -172,6 +172,25 @@ function codeView(p,expandedText='',maxDepth=0){
   // A fold runs to the line before the block's closing statement: a comment there is inside the block and hidden with it.
   const ranges=folds(rows,maxDepth,opened).map(({open,inner,count})=>{const close=rows[open.all];
     return {from:lastLine(open)+1,to:close&&close.line===open.all+1?close.source_line-1:(inner.length?Math.max(...inner.map(lastLine)):lastLine(open)),fold:open.line,count};}).filter(f=>f.to>=f.from);
+  /* Opened a step at a time: a block that Depth folds and the reader opened shows its branches - WHEN, ELSEIF, ELSE,
+     CATCH, CLEANUP - each with its own inside folded, opened in turn. The inside before the first branch is keyed by
+     the opening's row negated, a branch's by its row. A block without branches opens to its inside at once. */
+  if(maxDepth>0){
+    const routine=rows.some(r=>r.kind==='O'&&Object.hasOwn(procedureEnds,r.word)),levelOf=r=>r.depth-(routine?1:0)+1;
+    for(const r of rows){
+      if(r.kind!=='O'||Object.hasOwn(procedureEnds,r.word)||levelOf(r)<maxDepth||!opened.has(r.line))continue;
+      const heads=[r,...rows.filter(x=>x.kind==='B'&&x.depth===r.depth&&x.line>r.line&&x.line<=r.all)];
+      if(heads.length<2)continue;
+      const close=rows[r.all];
+      heads.forEach((head,at)=>{
+        const key=at?head.line:-r.line,next=heads[at+1];
+        if(opened.has(key))return;
+        const from=lastLine(head)+1,to=(next?next.source_line:close&&close.line===r.all+1?close.source_line:last+1)-1;
+        const end=next?next.line:r.all+1,count=rows.filter(x=>x.line>head.line&&x.line<end&&!['C','B'].includes(x.kind)).length;
+        if(to>=from)ranges.push({from,to,fold:key,count});
+      });
+    }
+  }
   // The parser's colouring of the tokens (value-origin-linter lexColors), by line: a line becomes its pieces, each a
   // stretch of text and the kind of token it is, '' for what is left plain.
   const painted=new Map();
