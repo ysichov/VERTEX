@@ -16,6 +16,7 @@
 - AI-driven ADT debugger: conditions SAP evaluates, a verdict naming the line
 - visual debugger with recording and replay
 - forward and backward usage analysis, down to the formula of a value (BSE)
+- the path to a line: the conditions inside its METHOD or FORM under which it runs
 - version history, diff and transport review
 - code explorer: metrics, UML, Logic and Calls diagrams
 - data explorer (SelecTor): tables, joins, pivots
@@ -576,6 +577,9 @@ workspace files and include unsaved editor text. Backward usage locates callers 
 call matching within the workspace, so check ambiguous calls. Diagram links return to local
 source lines. Diff/version history, SAP where-used, tests, ATC, debugger and activation
 require a configured SAP system.
+
+**VERTEX: Path to This Line** (editor context menu, ABAP sources) opens a panel with what the line under the cursor needs to run inside its METHOD or FORM: the enclosing IF, ELSEIF, CASE/WHEN, LOOP and CATCH branches with the earlier branches that must be false, the CHECKs before it, and the earlier branches that must not be taken because they leave the routine (RETURN, RAISE, LEAVE PROGRAM, EXIT) - with conditions nested inside them shown under the branch. A CHECK, CONTINUE or EXIT that only leaves one pass of a loop counts only for lines inside that loop. Conditions are shown exactly as written in the code; a click on a line number goes to it. A line after a statement that always leaves is reported as not reachable. The source is parsed locally, unsaved text included, so no SAP system is needed. The path stays inside the routine: callers, dynamic calls and values changed between a check and the line are not followed.
+
 For a folder of local ABAP files, choose **VERTEX Tools: Analyze Local ABAP Package**
 from its Explorer context menu. UML includes its classes and interfaces; Metrics summarizes
 all recognized `.abap` objects in that folder and subfolders. Source links open files from

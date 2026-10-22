@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-22 — VS Code 0.9.23: path to a line
+
+**VERTEX: Path to This Line** in the ABAP editor's context menu shows the conditions under which the line at the cursor runs inside its METHOD or FORM: enclosing branches, earlier branches that must be false, CHECKs, and earlier branches that must not be taken because they leave the routine. Conditions appear as written in the code; a line after an unconditional exit is reported as not reachable. Works on local and SAP sources without a system call.
+
 ## Unreleased — individual AI tool disclosures
 
 Each AI tool call starts collapsed under its name. Its arguments, matching result and recording/object links open together. Repeated and concurrent calls remain separate and are matched to results by tool-call ID.

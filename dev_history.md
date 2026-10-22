@@ -1,5 +1,15 @@
 # Development history
 
+## 2026-10-22 — VS Code 0.9.23: path to a line
+
+New `vscode/reach-path.js`, command `vertex.reachPath` (editor context menu for ABAP, hidden from the palette). Scope chosen by the user: only inside the line's METHOD or FORM; conditions shown as written, no negation rewriting; a separate panel rather than a CodeLens. (An earlier proposal called the CodeLens option "Lens", which in VERTEX means the diagram magnifier - corrected in the discussion.)
+
+Structure comes from abaplint statement kinds (`parserKind` from value-origin-linter's parse of the editor text, unsaved edits included), not from text patterns. One pass from the routine's start to the cursor's statement keeps a stack of open blocks; each branch records its CHECKs, the inner branches that leave, and an unconditional exit. On close, a branch that leaves becomes "must not be taken" in its parent, a branch with conditional exits becomes "if taken:" with them nested; when every branch of a covering IF/CASE leaves, the parent branch itself leaves. CHECK/CONTINUE/EXIT inside a loop are scoped to that loop and dropped when it closes. The open stack then gives the path: earlier branches false, the taken branch true (ELSE/WHEN OTHERS unlabelled), loops entered, CATCH as raised and caught.
+
+First test run missed the innermost IF: the cursor was in the indentation of a line, and the statement chosen by offset was the previous multi-line IF. The statement starting on the cursor's line now wins. FUNCTION and MODULE are not handled (not asked); a line outside METHOD/FORM fails with a message. Not followed: callers, dynamic calls, values changed between a check and the line. Parser warnings (macros, unknown statements) are shown as a warning that the path may miss conditions.
+
+Checked: 6 new tests in `test/reach-path.test.js`; the full suite passes 924 tests; the page HTML was generated in Node. Built `vscode/vertex-abap-0.9.23.vsix` (contains reach-path.js). Not checked: the panel inside VS Code, light and dark themes by eye (the page uses only VS Code theme variables), Eclipse (not built).
+
 ## 2026-10-22 — individual tool calls collapsed in AI logs
 
 Retain each call ID in the parsed report and pair results by that ID. The Tools section lists independent native disclosures headed by tool name, initially closed; arguments, results and links are inside the corresponding call. Calls retain invocation order, and orphan results remain visible separately. Keep the package version at 0.9.22 as requested.
