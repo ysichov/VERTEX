@@ -366,14 +366,16 @@ async function request(api, resource, progress, cancelled = () => false) {
       return { ...base, mode, depth:callDepth, steps: ids.size, places, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
     }
     if (chosen.length !== 1) throw new Error('Pick one method to draw its logic diagram.');
-    const drawn = require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '');
+    // Logic's depth: the levels of nested blocks drawn, deeper ones folded; 3 when the page names none.
+    const logicDepth = Number.isFinite(requestedDepth) && requestedDepth > 0 ? Math.min(99, Math.floor(requestedDepth)) : 3;
+    const drawn = require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '', false, logicDepth);
     // Reachability: the path to each drawn line inside its METHOD or FORM (reach-path.js), for the page to light up on a click.
     const reach = ['METHOD', 'FORM'].includes(chosen[0].unitType)
       ? require('./reach-path').reachLines(chosen[0].source.aceStatements, Object.values(drawn.nodeLines)) : null;
     // The source the routine is written in: its include when a program keeps it in one - where a node click opens.
     const written = chosen[0].source.programInclude ? { name: chosen[0].source.programInclude, type: api.local ? 'PROG' : 'INCL' } : null;
     return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType, ...drawn, reach, ...(written ? { writtenIn: written } : {}),
-      logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
+      logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true,logicDepth).mermaid };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }
 // The object an ADT source address belongs to, and the address of its source: what where-used names is a place in a

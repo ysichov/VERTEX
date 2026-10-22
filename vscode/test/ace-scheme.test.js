@@ -86,3 +86,21 @@ test('Logic only folds the operations it leaves out into one block, opened by it
  assert.doesNotMatch(folded,/o5\(/);assert.match(folded,/p5\("c = 3\."\)/);assert.match(folded,/click p5 "sapevent:acego_\d+_\d+"/);assert.match(folded,/p4\(/);
  assert.match(open,/p2\("a = 1\."\)/);assert.match(open,/p3\("b = 2\."\)/);assert.match(open,/click p2 "sapevent:aceexp_2"/);assert.doesNotMatch(open,/o2\(/);
 });
+
+test('Logic depth: a block nested deeper keeps its opening and closing statement and hides what is inside until opened', () => {
+  const text = ['REPORT z.', 'FORM f.', '  IF a = 1.', '    IF b = 1.', '      IF c = 1.', '        IF d = 1.', '          x = 1.', '          y = 2.',
+    '        ENDIF.', '      ENDIF.', '    ENDIF.', '  ENDIF.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  const folded = scheme(p, '', false, 3).mermaid;
+  assert.match(folded, /p5\("IF d = 1\."\)/);
+  assert.match(folded, /p6\("\(2 operations hidden\)"\)/);
+  assert.match(folded, /p8\("ENDIF\."\)/);
+  assert.match(folded, /class p6 foldnode/);
+  assert.match(folded, /click p6 "sapevent:aceexp_5"/);
+  assert.doesNotMatch(folded, /x = 1/);
+  const opened = scheme(p, '5', false, 3).mermaid;
+  assert.match(opened, /x = 1/);
+  assert.doesNotMatch(opened, /hidden/);
+  assert.match(scheme(p, '', false, 0).mermaid, /x = 1/);
+});

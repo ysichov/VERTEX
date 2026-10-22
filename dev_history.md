@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-10-22 — VS Code 0.9.24: Logic depth
+
+The user asked for a nesting level in Logic, 3 by default as in Calls, so a complex method is not drawn in full depth at once; the version is 0.9.24 at their word. ace-scheme's `scheme` takes `maxDepth`: a block whose level (its row depth, counted from 1 inside the routine) exceeds it is turned, before drawing, into its opening statement, one node for its inside and its closing statement - all three plain operations marked as logic so *Logic only* keeps them -, the inner rows marked hidden (`X`) so every row index the drawing uses stays where it was. First the block was one node "IF d = 1 … ENDIF."; the user wanted the closing statement always shown and the inside hidden ("like 50 operations hidden"), so the inside node reads "(N operations hidden)", is a `foldnode` and opens through the existing `aceexp_` mechanism keyed by the opening's row. frontend-analysis passes the request's `depth` (3 when none) to both drawings. metrics.html shows the Calls Depth field in Logic (`body.logic #depthbox`, without Calls' Classes/Methods), keeps a separate `logicDepth`, and sends it with the scheme request. Checked: test in ace-scheme.test.js (folded, opened, depth 0 draws all), 937 pass; in the browser on AVE's ON_TOOLBAR_CLICK the field shows 3, three blocks fold (313 instead of 381 nodes), and a click on a fold node asks for its expansion at the same depth. Not seen in VS Code itself.
+
 ## 2026-10-22 — VS Code 0.9.23: path to a line
 
 New `vscode/reach-path.js`, command `vertex.reachPath` (editor context menu for ABAP, hidden from the palette). Scope chosen by the user: only inside the line's METHOD or FORM; conditions shown as written, no negation rewriting; a separate panel rather than a CodeLens. (An earlier proposal called the CodeLens option "Lens", which in VERTEX means the diagram magnifier - corrected in the discussion.)

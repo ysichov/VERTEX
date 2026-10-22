@@ -190,6 +190,7 @@
   /* Depth is a question about following calls, so only the flow asks it. */
   .bar .depth { display: none; color: var(--muted); gap: 3px; align-items: center; }
   body.calls .bar .depth { display: flex; }
+  body.logic .bar #depthbox { display: flex; }
   .bar .depth input { width: 3.2rem; font: inherit; padding: 2px 4px; color: var(--fg);
                       background: var(--field-bg); border: 1px solid var(--field-border); }
   /* The diagram sizes itself; the pane scrolls in both directions rather
@@ -1087,6 +1088,8 @@ var diagramSeq = 0;
    a picture too big to read the first time; three is enough to see the shape
    and the reader winds it out from there. */
 var depth = 2;
+// Logic's depth: how many levels of nested blocks are drawn; inside a deeper block, its operations fold into one node, opened by a click.
+var logicDepth = 3;
 
 var direction = "TB";
 // A method is drawn to fit the pane when it is opened: one fixed percentage
@@ -1152,6 +1155,10 @@ function shown(unit) {
 function setMode(next) {
   mode = next;
   document.getElementById("logic-only").hidden=next!=="scheme";
+  // One Depth field, two meanings: how far Calls follows calls, how deep Logic draws nested blocks.
+  document.body.classList.toggle("logic", next === "scheme");
+  document.getElementById("depth").value = next === "scheme" ? logicDepth : depth;
+  document.getElementById("depthbox").title = next === "scheme" ? "How many levels of nested blocks are drawn; a deeper block shows its opening and closing statement, and a click opens what is inside" : "How far the calls are followed";
   document.getElementById("reach").hidden=next!=="scheme"||!schemeReach;
   document.getElementById("mode").value = next;
   document.body.classList.toggle("flow", flowMode());
@@ -1307,7 +1314,7 @@ function requestDiagram() {
             callStart ? callStart.name : "", callStart ? callStart.type : "");
   } else {
     sdeFlow(loadedObject, loadedType, "scheme", shownUnit.include,
-            shownUnit.name, expanded.join(","), "");
+            shownUnit.name, expanded.join(","), String(logicDepth));
   }
 }
 
@@ -2271,6 +2278,12 @@ function applyDepth() {
   if (!asked || asked < 1) { asked = 1; }
   if (asked > 99) { asked = 99; }
   document.getElementById("depth").value = asked;
+  if (mode === "scheme") {
+    if (asked === logicDepth) { return; }
+    logicDepth = asked; refit = true;
+    if (shownUnit) { requestDiagram(); }
+    return;
+  }
   if (asked === depth) { return; }
   depth = asked;
   // A different depth is a different picture, so it is fitted again.
