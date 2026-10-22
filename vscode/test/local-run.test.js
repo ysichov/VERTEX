@@ -9,6 +9,9 @@ const { execFileSync } = require("node:child_process");
 const { projectFor, scenariosFor, transpile, stageRuntime, initializeSelectorDatabase, entryFor, debugConfiguration,
   flowClasses, prepareFlow, selectorSql, startSelectorBridge, launch, setSelectorQuery, repairSelectLoops } = require("../local-run");
 
+// The transpiler's maps name a source by its real path, and macOS keeps its temporary folder behind /var -> /private/var.
+const tmp = fs.realpathSync(os.tmpdir());
+
 test("scalar SELECT loop reads the selected DDIC field", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-select-fix-"));
   try {
@@ -45,7 +48,7 @@ test("SAP SelecTor SQL keeps ABAP ordering and removes the row limit for data pr
 });
 
 test("local transpiler records Fibonacci steps without a debug session", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-trace-") );
+  const root = fs.mkdtempSync(path.join(tmp, "vertex-trace-") );
   try {
     const source = path.join(root, "zfib.prog.abap");
     fs.writeFileSync(source, "REPORT zfib.\nDATA a TYPE i.\nDATA b TYPE i.\n" +
@@ -135,7 +138,7 @@ test("local report launch uses the generated program and retains its ABAP map", 
 });
 
 test("automatic configuration and selected radio value execute without project npm files", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-auto-run-"));
+  const root = fs.mkdtempSync(path.join(tmp, "vertex-auto-run-"));
   let project;
   try {
     const source = path.join(root, "src", "zcalc.prog.abap");

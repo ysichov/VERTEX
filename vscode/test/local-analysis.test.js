@@ -4,6 +4,10 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const local = require("../local-analysis");
 const navigation = require("../local-navigation");
+const path = require("node:path");
+
+// Folders on the platform's own drive, so path splits them on Windows and macOS alike.
+const disk = (...parts) => path.join(path.parse(process.cwd()).root, ...parts);
 
 function document(name, text) {
   const uri = { scheme: "file", fsPath: name, toString: () => "file:///" + name };
@@ -52,10 +56,10 @@ test("local UML method opens beside the diagram without taking focus", async () 
 });
 
 test("local folder analyzes its ABAP classes as one package", async () => {
-  const folder = { scheme: "file", fsPath: "C:\\work", path: "C:\\work" };
-  const first = document("C:\\work\\zcl_first.clas.abap", "CLASS zcl_first DEFINITION.\n PUBLIC SECTION.\n METHODS run.\nENDCLASS.\nCLASS zcl_first IMPLEMENTATION.\n METHOD run.\n ENDMETHOD.\nENDCLASS.");
-  const second = document("C:\\work\\sub\\zcl_second.clas.abap", "CLASS zcl_second DEFINITION.\n PUBLIC SECTION.\n METHODS run.\nENDCLASS.\nCLASS zcl_second IMPLEMENTATION.\n METHOD run.\n ENDMETHOD.\nENDCLASS.");
-  const outside = document("C:\\other\\zcl_outside.clas.abap", "CLASS zcl_outside DEFINITION. ENDCLASS.");
+  const folder = { scheme: "file", fsPath: disk("work"), path: disk("work") };
+  const first = document(disk("work", "zcl_first.clas.abap"), "CLASS zcl_first DEFINITION.\n PUBLIC SECTION.\n METHODS run.\nENDCLASS.\nCLASS zcl_first IMPLEMENTATION.\n METHOD run.\n ENDMETHOD.\nENDCLASS.");
+  const second = document(disk("work", "sub", "zcl_second.clas.abap"), "CLASS zcl_second DEFINITION.\n PUBLIC SECTION.\n METHODS run.\nENDCLASS.\nCLASS zcl_second IMPLEMENTATION.\n METHOD run.\n ENDMETHOD.\nENDCLASS.");
+  const outside = document(disk("other", "zcl_outside.clas.abap"), "CLASS zcl_outside DEFINITION. ENDCLASS.");
   const files = new Map([first, second, outside].map(item => [item.uri.toString(), item]));
   const host = { ...vscode, RelativePattern: class { constructor(base, pattern) { this.base = base; this.pattern = pattern; } },
     workspace: { findFiles: async () => [...files.values()].map(item => item.uri), openTextDocument: async uri => files.get(uri.toString()) } };
@@ -69,9 +73,9 @@ test("local folder analyzes its ABAP classes as one package", async () => {
 });
 
 test("local package cache refreshes after an editor change", async () => {
-  const folder = { scheme: "file", fsPath: "C:\\work", path: "C:\\work" };
+  const folder = { scheme: "file", fsPath: disk("work"), path: disk("work") };
   let text = "CLASS zcl_live DEFINITION. PUBLIC SECTION. METHODS first. ENDCLASS. CLASS zcl_live IMPLEMENTATION. METHOD first. ENDMETHOD. ENDCLASS.";
-  const item = document("C:\\work\\zcl_live.clas.abap", text);
+  const item = document(disk("work", "zcl_live.clas.abap"), text);
   item.version = 1; item.getText = () => text;
   const host = { ...vscode, RelativePattern: class {}, workspace: { findFiles: async () => [item.uri], openTextDocument: async () => item } };
   const session = await local.createPackage(host, folder);
@@ -82,9 +86,9 @@ test("local package cache refreshes after an editor change", async () => {
 });
 
 test("local source lookup prefers the active file's package folder", async () => {
-  const owner = document("C:\\work\\src\\zmain.prog.abap", "REPORT zmain.");
-  const ownClass = document("C:\\work\\src\\zcl_target.clas.abap", "CLASS zcl_target DEFINITION. ENDCLASS.");
-  const foreignClass = document("C:\\other\\zcl_target.clas.abap", "CLASS zcl_target DEFINITION. ENDCLASS.");
+  const owner = document(disk("work", "src", "zmain.prog.abap"), "REPORT zmain.");
+  const ownClass = document(disk("work", "src", "zcl_target.clas.abap"), "CLASS zcl_target DEFINITION. ENDCLASS.");
+  const foreignClass = document(disk("other", "zcl_target.clas.abap"), "CLASS zcl_target DEFINITION. ENDCLASS.");
   const files = new Map([foreignClass, owner, ownClass].map(item => [item.uri.toString(), item]));
   const host = { ...vscode, workspace: { findFiles: async () => [...files.values()].map(item => item.uri),
     openTextDocument: async uri => files.get(uri.toString()) } };
@@ -93,11 +97,11 @@ test("local source lookup prefers the active file's package folder", async () =>
 });
 
 test("local variables expand an inline method result using its interface structure", async () => {
-  const report = document("C:\\work\\src\\zresult.prog.abap",
+  const report = document(disk("work", "src", "zresult.prog.abap"),
     "REPORT zresult.\nSTART-OF-SELECTION.\nDATA(ls_result) = NEW zcl_calc_facade( )->run( ).\nWRITE ls_result-amount.");
-  const facade = document("C:\\work\\src\\zcl_calc_facade.clas.abap",
+  const facade = document(disk("work", "src", "zcl_calc_facade.clas.abap"),
     "CLASS zcl_calc_facade DEFINITION.\n PUBLIC SECTION.\n METHODS run RETURNING VALUE(rs_result) TYPE zif_calc_types=>ty_result.\nENDCLASS.\nCLASS zcl_calc_facade IMPLEMENTATION.\n METHOD run.\n ENDMETHOD.\nENDCLASS.");
-  const types = document("C:\\work\\src\\zif_calc_types.intf.abap",
+  const types = document(disk("work", "src", "zif_calc_types.intf.abap"),
     "INTERFACE zif_calc_types.\n TYPES: BEGIN OF ty_result,\n amount TYPE i,\n currency TYPE string,\n END OF ty_result.\nENDINTERFACE.");
   const files = new Map([report, facade, types].map(item => [item.uri.toString(), item]));
   const host = { ...vscode, workspace: { findFiles: async () => [...files.values()].map(item => item.uri),
@@ -110,7 +114,7 @@ test("local variables expand an inline method result using its interface structu
 
 test("a followed demo result loads its local call path, BSE and formula", async () => {
   const fixture = require("./fixtures/value-origin-demo.json");
-  const files = fixture.map(source => document("C:\\work\\demo\\" + source.id, source.text));
+  const files = fixture.map(source => document(disk("work", "demo") + path.sep + source.id, source.text));
   const byUri = new Map(files.map(item => [item.uri.toString(), item]));
   const host = { ...vscode, workspace: { findFiles: async () => files.map(item => item.uri),
     openTextDocument: async uri => byUri.get(uri.toString()) } };
@@ -127,9 +131,9 @@ test("a followed demo result loads its local call path, BSE and formula", async 
 });
 
 test("local source lookup rejects ambiguous names outside the active package folder", async () => {
-  const owner = document("C:\\work\\src\\zmain.prog.abap", "REPORT zmain.");
-  const left = document("C:\\work\\left\\zcl_target.clas.abap", "CLASS zcl_target DEFINITION. ENDCLASS.");
-  const right = document("C:\\work\\right\\zcl_target.clas.abap", "CLASS zcl_target DEFINITION. ENDCLASS.");
+  const owner = document(disk("work", "src", "zmain.prog.abap"), "REPORT zmain.");
+  const left = document(disk("work", "left", "zcl_target.clas.abap"), "CLASS zcl_target DEFINITION. ENDCLASS.");
+  const right = document(disk("work", "right", "zcl_target.clas.abap"), "CLASS zcl_target DEFINITION. ENDCLASS.");
   const files = new Map([owner, left, right].map(item => [item.uri.toString(), item]));
   const host = { ...vscode, workspace: { findFiles: async () => [...files.values()].map(item => item.uri),
     openTextDocument: async uri => files.get(uri.toString()) } };
@@ -138,9 +142,9 @@ test("local source lookup rejects ambiguous names outside the active package fol
 });
 
 test("local package reports ambiguous object names instead of opening another package's file", async () => {
-  const folder = { scheme: "file", fsPath: "C:\\work", path: "C:\\work" };
-  const first = document("C:\\work\\one\\zcl_same.clas.abap", "CLASS zcl_same DEFINITION. ENDCLASS.");
-  const second = document("C:\\work\\two\\zcl_same.clas.abap", "CLASS zcl_same DEFINITION. ENDCLASS.");
+  const folder = { scheme: "file", fsPath: disk("work"), path: disk("work") };
+  const first = document(disk("work", "one", "zcl_same.clas.abap"), "CLASS zcl_same DEFINITION. ENDCLASS.");
+  const second = document(disk("work", "two", "zcl_same.clas.abap"), "CLASS zcl_same DEFINITION. ENDCLASS.");
   const files = new Map([first, second].map(item => [item.uri.toString(), item]));
   const host = { ...vscode, workspace: { findFiles: async () => [...files.values()].map(item => item.uri),
     openTextDocument: async uri => files.get(uri.toString()) } };

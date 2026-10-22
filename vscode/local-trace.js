@@ -193,7 +193,8 @@ function traceBootstrap(outputRoot, entry, traceFile, live = false) {
    no place of the text is ABAP's. */
 function abapFailure(text) {
   const places = [], seen = new Set(), maps = new Map();
-  for (const found of String(text || "").matchAll(/(?:file:\/\/\/)?((?:[A-Za-z]:|\/)[^\s:()'"]*?\.mjs):(\d+)/g)) {
+  // A drive letter stands alone: the "e:" of "file:///" on macOS or Linux is not one.
+  for (const found of String(text || "").matchAll(/(?:file:\/\/\/)?((?<![A-Za-z])(?:[A-Za-z]:|\/)[^\s:()'"]*?\.mjs):(\d+)/g)) {
     const file = path.resolve(decodeURI(found[1])), line = Number(found[2]);
     if (!maps.has(file)) {
       let map = null;
