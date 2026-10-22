@@ -361,10 +361,9 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
 
   Every statement in the Logic diagram leads to its line in the source with a click - plain operations, CONTINUE and
   ENDIF included; a single left-out operation in *Logic only* is drawn as itself, and only two or more fold into one
-  block. The window you work in leads: after a click or a scroll in the diagram, the editor's cursor and scrolling no
-  longer move it, and scrolling the diagram stays in the diagram; a click, a key or a scroll in the editor gives the lead
-  back to the code.
-  Scrolling the source into another method always opens that method's diagram.
+  block. The code moves the diagram, not the other way round: a click, a key or a scroll in the editor positions the
+  diagram, and scrolling into another method opens that method's diagram; scrolling the diagram stays in the diagram, and
+  it reaches the code only by a click on a node.
 
   In Code Explorer, **?** explains every metric: what ACE counts, the formula, and which values
   are good.
