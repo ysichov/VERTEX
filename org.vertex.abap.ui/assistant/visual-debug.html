@@ -12,9 +12,14 @@ button{--accent:var(--vscode-focusBorder,#0a66c2);cursor:pointer;padding:1px 8px
 button:hover:not(:disabled){color:var(--vscode-editor-foreground,CanvasText)}
 button.on{color:var(--vscode-editor-foreground,CanvasText);border-bottom-color:var(--accent);box-shadow:0 3px 8px -3px var(--accent)}
 button:disabled{opacity:.45;cursor:default}
-/* The two that end something - the program or the whole session - stand out. */
-#terminate,#stop{color:var(--vscode-errorForeground,#c72e0f);--accent:var(--vscode-errorForeground,#c72e0f)}
-#terminate:hover:not(:disabled),#stop:hover:not(:disabled){color:var(--vscode-errorForeground,#c72e0f);border-bottom-color:var(--accent)}
+/* The actions of the header - Exit program, Detach, Recompile, the SAP program's transpiler run and
+   Clear - are one kind of button: VS Code's secondary button. Run alone keeps its fill, as the panel's first action. */
+#terminate,#stop,#recompile,#sapTranspile,#clearpanel,#debug-runs{padding:2px 10px;border:1px solid var(--vscode-button-border,var(--vscode-panel-border));
+  border-radius:5px;background:var(--vscode-button-secondaryBackground,var(--vscode-editorWidget-background));
+  color:var(--vscode-button-secondaryForeground,var(--vscode-editor-foreground))}
+#terminate:hover:not(:disabled),#stop:hover:not(:disabled),#recompile:hover:not(:disabled),
+#sapTranspile:hover:not(:disabled),#clearpanel:hover:not(:disabled),#debug-runs:hover:not(:disabled){background:var(--vscode-button-secondaryHoverBackground,var(--vscode-list-hoverBackground));
+  color:var(--vscode-button-secondaryForeground,var(--vscode-editor-foreground))}
 #analysis-copy{position:absolute;right:44px;top:6px;width:28px;height:28px;padding:2px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground,var(--vscode-editorWidget-background));color:var(--vscode-button-secondaryForeground,var(--vscode-editor-foreground))}header{position:relative;flex:none;padding:6px 80px 6px 8px;border-bottom:1px solid var(--vscode-panel-border,GrayText);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .grp{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
 .grp+.grp{padding-left:8px;border-left:1px solid var(--vscode-panel-border,GrayText)}
@@ -62,6 +67,10 @@ section h3 label{font-weight:400;display:flex;gap:3px;align-items:center}
 .list{overflow:auto;font-family:var(--vscode-editor-font-family,monospace)}
 #stack,#bps,#vars,#logbox{flex:1;min-height:0}
 #run,#into,#over,#out,#cont{display:inline-flex;align-items:center;gap:5px}
+/* Clear, the debugger icon and ? stand in the header's top right corner: the first row leaves them room, and the title
+   is cut with an ellipsis rather than run under them. */
+header .grp:has(#run){padding-right:170px;box-sizing:border-box;max-width:100%;min-width:0}
+#title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #run{background:color-mix(in srgb,var(--vscode-terminal-ansiBrightBlue,#75bfff) 22%,var(--vscode-editor-background,Canvas));transition:background .12s,color .12s,box-shadow .12s}
 #run:hover:not(:disabled){background:color-mix(in srgb,var(--vscode-terminal-ansiBrightBlue,#75bfff) 34%,var(--vscode-editor-background,Canvas));box-shadow:0 3px 8px -3px var(--accent)}
 svg.dbg{width:16px;height:16px;flex:none}
@@ -157,6 +166,9 @@ body.vdrag{cursor:row-resize;user-select:none}
 #fdepth{width:90px;vertical-align:middle}
 #recbar{display:flex;align-items:center;gap:4px;padding:2px 6px;border-bottom:1px solid var(--vscode-panel-border,GrayText)}
 #recbar[hidden]{display:none}
+#recmode[hidden]{display:none}
+#bpscope[hidden]{display:none}
+#vmenu button[hidden]{display:none}
 /* The view sizes itself to a whole page; here it sizes itself to the section,
    so every level of it has to say that, or the diagram keeps the height of
    its own drawing and Fit has nothing to fit into. */
@@ -173,12 +185,63 @@ body.vdrag{cursor:row-resize;user-select:none}
 #selscreen h3{margin:0 0 8px;font-size:13px}
 #selscreen .selbar{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
 #selscreen .selbar button.primary{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+#selscreen .entry-fold>summary{cursor:pointer;color:var(--vscode-descriptionForeground)}
+#selscreen .entry-table tr.chosen td{background:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}
+#selscreen .entry-row-form{margin:4px 0 0 12px}
+#selscreen .entry-row-title{color:var(--vscode-descriptionForeground)}
+#selscreen .entry-row-tools{display:inline-flex;gap:4px}
+#selscreen .entry-grid{border-collapse:collapse;margin:4px 0}
+#selscreen .entry-grid th,#selscreen .entry-grid td{padding:2px 4px;text-align:left;font-weight:normal;border:1px solid var(--vscode-widget-border,var(--vscode-panel-border,GrayText))}
+#selscreen .entry-grid th{color:var(--vscode-descriptionForeground)}
+#selscreen .entry-parameter-row{display:flex;align-items:center;gap:10px;margin:4px 0;min-height:22px}
+#selscreen .entry-parameter-row>input[type="text"]{width:208px;box-sizing:border-box;flex:none}
+#selscreen .entry-parameter-row>input[type="text"]+div{white-space:nowrap}
+#selscreen .entry-reference>button{min-width:26px;padding:2px 5px;cursor:pointer}
+#selscreen .entry-reference-dialog{max-width:min(720px,90vw);max-height:75vh;overflow:auto;color:var(--vscode-editor-foreground);background:var(--vscode-editor-background);border:1px solid var(--vscode-panel-border)}
+#selscreen .entry-reference-dialog table{border-collapse:collapse;margin:8px 0}
+#selscreen .entry-reference-dialog th,#selscreen .entry-reference-dialog td{padding:4px 8px;text-align:left;border:1px solid var(--vscode-panel-border)}
+#selscreen input[type="text"]{color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-widget-border,GrayText))}
+#selscreen .screen-block{margin:6px 0;padding:4px 8px;border:1px solid var(--vscode-widget-border,var(--vscode-panel-border,GrayText));border-radius:4px}
+#selscreen div.screen-block{border:none;padding:0}
+#selscreen .screen-block legend{color:var(--vscode-foreground);font-weight:600;padding:0 4px}
+#selscreen .screen-line{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#selscreen .screen-item{display:flex;gap:6px;align-items:center;margin:3px 0}
+#selscreen .screen-label{min-width:140px;color:var(--vscode-foreground)}
+#selscreen .screen-comment{color:var(--vscode-descriptionForeground);margin:3px 0}
+#selscreen .screen-note{color:var(--vscode-descriptionForeground);font-style:italic;margin:3px 0}
+#selscreen .screen-range{margin:4px 0}
+#selscreen .range-row{display:flex;gap:4px;align-items:center;margin:2px 0 2px 140px}
+#selscreen .range-row input[type="text"]{width:11em}
+#selscreen select{color:var(--vscode-dropdown-foreground);background:var(--vscode-dropdown-background);border:1px solid var(--vscode-dropdown-border,var(--vscode-widget-border,GrayText))}
+#selscreen hr{border:none;border-top:1px solid var(--vscode-widget-border,var(--vscode-panel-border,GrayText))}
+#selscreen .entry-variants{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+#selscreen .entry-variants select{color:var(--vscode-dropdown-foreground);background:var(--vscode-dropdown-background);border:1px solid var(--vscode-dropdown-border,GrayText)}
+#selscreen .entry-note{color:var(--vscode-descriptionForeground);margin:6px 0 0}
+#selscreen .entry-error{color:var(--vscode-errorForeground)}
 /* A transpiler run with no breakpoint is a run, not a debug: the selection screen and the output, nothing else. A
    breakpoint set turns the panel into the debugger. */
 body.vx-run-only header .grp:has(#into),body.vx-run-only header .grp:has(#zonly),body.vx-run-only #stop,body.vx-run-only #terminate,
 body.vx-run-only #recbar,body.vx-run-only #runline,body.vx-run-only #panes button:not([data-pane="outsec"]),
 body.vx-run-only #stacksec,body.vx-run-only #bpsec,body.vx-run-only #varsec,body.vx-run-only #dumpsec,body.vx-run-only #flowpane,body.vx-run-only #logsec{display:none!important}
 body.vx-run-only #outsec{display:flex!important;flex:1 1 auto;height:auto!important;max-height:none!important}
+/* A run with no breakpoint is one program: its selection screen, then its list, and back. */
+body.vx-run-only.vx-screen #outsec{display:none!important}
+body.vx-run-only.vx-screen #runscreen{display:flex!important;flex-direction:column;flex:1 1 auto;overflow:auto}
+#runscreen #runscreenbody{padding:6px 10px;overflow:auto}
+#runscreen .screen-block{margin:6px 0;padding:4px 8px;border:1px solid var(--vscode-widget-border,var(--vscode-panel-border,GrayText));border-radius:4px}
+#runscreen div.screen-block{border:none;padding:0}
+#runscreen .screen-block legend{color:var(--vscode-foreground);font-weight:600;padding:0 4px}
+#runscreen .screen-line{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#runscreen .screen-item{display:flex;gap:6px;align-items:center;margin:3px 0}
+#runscreen .screen-label{min-width:140px;color:var(--vscode-foreground)}
+#runscreen .screen-comment,#runscreen .screen-note{color:var(--vscode-descriptionForeground);margin:3px 0}
+#runscreen .screen-note{font-style:italic}
+#runscreen .range-row{display:flex;gap:4px;align-items:center;margin:2px 0 2px 140px}
+#runscreen .range-row input[type="text"]{width:11em}
+#runscreen input[type="text"]{color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-widget-border,GrayText))}
+#runscreen select{color:var(--vscode-dropdown-foreground);background:var(--vscode-dropdown-background);border:1px solid var(--vscode-dropdown-border,var(--vscode-widget-border,GrayText))}
+#runscreen button.primary{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+
 #outbox{margin:0;padding:4px 8px;font-family:var(--vscode-editor-font-family,monospace);white-space:pre;overflow:auto;color:var(--vscode-editor-foreground);background:var(--vscode-editor-background)}
 #flowvalue{margin-right:6px}
 #flowvalue,#chosenvalue select{font:inherit;font-weight:bold;max-width:260px;background:var(--vscode-dropdown-background,var(--vscode-editor-background));color:var(--vscode-dropdown-foreground,var(--vscode-foreground));border:1px solid var(--vscode-dropdown-border,var(--vscode-panel-border,transparent));border-radius:3px}
@@ -218,12 +281,12 @@ body.vertex-docked-debug #right{width:100%}
 ::-webkit-scrollbar-thumb:hover{background:var(--vscode-scrollbarSlider-hoverBackground,rgba(128,128,128,.6))}
 .debug-help{position:absolute;right:8px;top:6px;z-index:60}.debug-help>summary{cursor:pointer;list-style:none;padding:3px 9px;border:1px solid var(--vscode-panel-border);border-radius:5px;background:var(--vscode-button-secondaryBackground,var(--vscode-editorWidget-background))}.debug-help>div{position:absolute;right:0;width:min(440px,85vw);max-height:65vh;overflow:auto;padding:14px;border:1px solid var(--vscode-panel-border);background:var(--vscode-editorWidget-background,var(--vscode-editor-background));color:var(--vscode-editor-foreground);box-shadow:0 4px 18px var(--vscode-widget-shadow)}
 </style></head><body>
-<header><button id="clearpanel" title="Start this panel again: the record, the analysed path, the values followed and the output are dropped; the breakpoints and a SAP debug session stay">Clear</button><details class="debug-help"><summary aria-label="Visual Debug help" title="Visual Debug help">?</summary><div><strong>Visual Debug</strong><p>Classes / Methods changes the call graph. Depth counts entered routines; expansion, zoom and position are retained.</p><p>Logic embeds the standard Tools Logic view for the active source editor. Turn it off to return to the call graph. Logic only keeps branches, loops, calls and exits; turn that filter off to see all operations.</p><p>Click linked labels or breakpoint locations to open source. Alt+Left returns. Source selections highlight diagram nodes; the focused view drives scrolling.</p><p>Detach continues a stopped program and disconnects, or cancels listening. It is disabled without a connection. Exit program ends a stopped program.</p><p>Analysis progress updates every three seconds. The bug button copies the full diagnostic log. Parsed statement counts are analysis work, not executed steps.</p><p>The zoom slider is 10–100%. The lens works below 70%, magnifying up to that effective scale. Changing the theme preserves zoom and position.</p></div></details><button id="analysis-copy" aria-label="Copy analysis log" title="Copy the latest path and value analysis, including FLOW, Formula and Expression">🐞</button>
+<header><button id="clearpanel" title="Start this panel again: the record, the analysed path, the values followed and the output are dropped; the breakpoints and a SAP debug session stay">Clear</button><details class="debug-help"><summary aria-label="Visual Debug help" title="Visual Debug help">?</summary><div><strong>Visual Debug</strong><p><b>Run in SAP</b> starts the program in WebGUI and the breakpoints catch it there. <b>Run with ABAP Transpiler</b> runs it on this machine: a program opens in its own window - selection screen, Execute (F8), the list, Back (F3) - and Run here brings that window back; a method or a function module asks its parameters first.</p><p>An SAP object runs its last build, as SAP runs a load. <b>Recompile</b> reads it and what it uses from SAP again; its tooltip says when the build was read.</p><p>Single Step, Execute, Return and Continue (F5-F8, here or in the editor) step from a stop. A transpiler run records every step: the slider replays it, and Variables shows the routine's values, SY and the SELECTs of the statement before.</p><p>Output is what the program wrote; a call's results follow it, structures as trees and tables as columns. A failed run names the ABAP line it stopped on.</p><p>Exit program ends a stopped program; for an SAP run, Detach lets it go on and stops listening. The breakpoints stay for the next run. Clear starts this panel again.</p><p>Click a linked label or a breakpoint's place to open its source; Alt+Left returns. The bug button copies the full diagnostic log.</p><p>The zoom slider is 10-100%. The lens works below 70%, magnifying up to that effective scale. Changing the theme preserves zoom and position.</p></div></details><button id="debug-runs" title="Open SAP debug and transpiler recordings">SAP / Transpiler Logs</button><button id="analysis-copy" aria-label="Copy analysis log" title="Copy the latest path and value analysis, including FLOW, Formula and Expression">🐞</button>
   <!-- Three groups, because they answer three questions: what to do with the
        program, how to step, and how a run behaves. -->
-  <span class="grp"><button id="run" title="Start the program in SAP (WebGUI) - the breakpoints catch it there"><svg class="clock" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#fff" stroke="#3a3a3a" stroke-width="1.2"/><path d="M8 3.8V8l2.6 1.6" fill="none" stroke="#3a3a3a" stroke-width="1.3" stroke-linecap="round"/><path d="M9.2 12.2l1.8 1.8 3.6-4" fill="none" stroke="#2e9e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Run in SAP</button><input id="program" placeholder="Program, or empty for a test" title="A class or a function module is not run by itself: name the program that calls it, started in WebGUI" spellcheck="false"><span id="title">Visual Debug</span><button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Exit program</button><button id="stop" title="Let the program go and stop listening; the breakpoints stay here for the next run" disabled>Detach</button></span>
+  <span class="grp"><button id="run" title="Start the program in SAP (WebGUI) - the breakpoints catch it there"><svg class="clock" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#fff" stroke="#3a3a3a" stroke-width="1.2"/><path d="M8 3.8V8l2.6 1.6" fill="none" stroke="#3a3a3a" stroke-width="1.3" stroke-linecap="round"/><path d="M9.2 12.2l1.8 1.8 3.6-4" fill="none" stroke="#2e9e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Run in SAP</button><button id="recompile" hidden>Recompile</button><button id="sapTranspile" hidden title="Read this program, the class of the method the cursor is in or this function module's group, and what it uses from SAP, and run it with the ABAP transpiler">Run with ABAP Transpiler</button><input id="program" placeholder="Program, or empty for a test" title="A class or a function module is not run by itself: name the program that calls it, started in WebGUI" spellcheck="false"><span id="title">Visual Debug</span><button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Exit program</button><button id="stop" title="Let the program go and stop listening; the breakpoints stay here for the next run" disabled>Detach</button></span>
   <span class="grp"><button id="into" title="Single Step (F5)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v8h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 8l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Single Step</span></button><button id="over" title="Execute (F6)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v11h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 11l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Execute</span></button><button id="out" title="Return (F7)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M3 14V4h4" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 2l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Return</span></button><button id="cont" title="Continue to the next breakpoint (F8)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M4 1.5v12" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11.5l2 2 2-2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Continue</span></button></span>
-  <span class="grp"><button id="zonly" class="on" title="In a run of F5 steps, a step that lands outside Z/Y code returns at once (F7): SAP's own code is passed in one go">Z only</button><button id="flow" title="Continue (F8) from call to call, recording which routine calls which - the program's real flow, drawn as a diagram">Flow</button><span class="vertex-segment-toggle" id="recmode" role="group" aria-label="Record" title="Continue (F8) as a run of F5 steps, keeping every stop for the player. Values are the expensive half of a stop - with Steps &amp; values the parameters and locals are read at every stop, so Formula and Expression can say which statement changed a value"><button data-rec="off">No record</button><button class="active" data-rec="steps">Rec steps</button><button data-rec="values">Steps &amp; values</button></span><button id="predict" class="on" title="Use the statement map to go faster: the next line is taken from it where the text alone decides it, and, with a value followed, a loop, an IF/CASE block, a run of statements or a call its slice does not touch is passed in one go. On by default. Off, SAP is asked where the program is after every step - slower, and every stop was read rather than worked out. Loops are always stepped through otherwise">Predict</button></span>
+  <span class="grp"><button id="zonly" class="on" title="In a run of F5 steps, a step that lands outside Z/Y code returns at once (F7): SAP's own code is passed in one go">Z only</button><span class="vertex-segment-toggle" id="recmode" role="group" aria-label="Record" title="Continue (F8) as a run of F5 steps, keeping every stop for the player. Values are the expensive half of a stop - with Steps &amp; values the parameters and locals are read at every stop, so Formula and Expression can say which statement changed a value"><button data-rec="off">No record</button><button class="active" data-rec="steps">Rec steps</button><button data-rec="values">Steps &amp; values</button></span></span>
   <span id="state">Click beside a line number to set a breakpoint; right-click for a condition.</span>
 </header>
 <div id="local-selection" hidden></div>
@@ -242,13 +305,14 @@ body.vertex-docked-debug #right{width:100%}
     <!-- The record belongs to the whole window, not to the diagram: the
          player moves the stack, the variables and the source as well, and it
          is there whether a diagram is open or not. -->
-    <div id="recbar" hidden><button id="ffirst" title="The first recorded stop">&#9198;</button><button id="fprev" title="One stop back in the recorded run">&#9664;</button><input type="range" id="fslide" min="1" max="1" value="1" title="Any recorded stop"><span id="fpos" class="dim"></span><button id="fnext" title="One stop forward; past the last one the chart is live again">&#9654;</button><button id="flast" title="The last stop - where the program is now">&#9197;</button><button id="fplay" title="Replay the recorded run as fast as the chart draws">&#9205;</button><select id="fspeed" title="Replay speed, stops per second"><option value="1">1/s</option><option value="2">2/s</option><option value="3" selected>3/s</option><option value="5">5/s</option><option value="10">10/s</option><option value="0">max</option></select></div>
+    <div id="recbar" hidden><button id="ffirst" title="The first recorded stop">&#9198;</button><button id="fprev" title="One stop back in the recorded run">&#9664;</button><input type="range" id="fslide" min="1" max="1" value="1" title="Any recorded stop"><span id="fpos" class="dim"></span><button id="fnext" title="One stop forward; past the last one the chart goes live again">&#9654;</button><button id="flast" title="The last recorded stop">&#9197;</button><button id="fplay" title="Replay the recorded run as fast as the chart draws">&#9205;</button><select id="fspeed" title="Replay speed, stops per second"><option value="1">1/s</option><option value="2">2/s</option><option value="3" selected>3/s</option><option value="5">5/s</option><option value="10">10/s</option><option value="0">max</option></select><button id="saveRecord" hidden title="Save this SAP debug session and its source snapshots to a file">Save session</button></div>
     <div id="panes" title="Show or hide a section; drag the line between two sections to resize them">
       <button data-pane="stacksec" class="on">Stack</button><button data-pane="bpsec">Breakpoints</button><button data-pane="varsec" class="on">Variables</button><button data-pane="flowpane">Diagram</button><button data-pane="dumpsec">Dump</button><button data-pane="outsec" hidden title="What the program wrote (WRITE), up to where it stands">Output</button><button data-pane="logsec">Log</button>
     </div>
     <section id="stacksec"><h3><span>Stack</span><span id="depth" class="dim"></span><span class="grow"></span><button id="callers" hidden></button></h3><div class="list" id="stack"></div></section>
-    <section id="bpsec" hidden><h3><span>Breakpoints</span><span class="grow"></span><button id="bpall" title="Turn every breakpoint off, or on again, keeping them">Deactivate all</button><button id="bpclear" title="Remove every breakpoint, here and in SAP">Clear all</button></h3><div class="list" id="bps"></div></section>
+    <section id="bpsec" hidden><h3><span>Breakpoints</span><span class="grow"></span><button id="bpscope" class="vertex-toggle" hidden title="Off: only the breakpoints in this object and the sources it uses. On: every ABAP breakpoint in VS Code - for a run that should stop in other objects too">All BP</button><button id="bpall" title="Turn every breakpoint off, or on again, keeping them">Deactivate all</button><button id="bpclear" title="Remove every breakpoint, here and in SAP">Clear all</button></h3><div class="list" id="bps"></div></section>
     <section id="varsec"><h3><span>Variables</span><span id="partial" class="dim"></span><span class="grow"></span>
+      <input id="watchname" placeholder="Watch variable" title="Variable whose change should stop the run" spellcheck="false"><input id="watchwhen" placeholder="When (e.g. >= 10)" title="Optional condition on the new value: = 10, >= 10 or = 'DONE'" spellcheck="false"><button id="watchadd" title="Stop when this variable changes and its optional condition is true">+ Watch</button><button id="watchfollow" title="Watch every variable name in the selected value's Follow calculation, with the same condition">Watch Follow</button>
       <button id="globals" class="on" title="Read the global variables">Globals</button>
       <button id="locals" class="on" title="Read the local variables">Locals</button>
       <button id="params" class="on" title="Read the parameters">Params</button>
@@ -256,20 +320,21 @@ body.vertex-docked-debug #right{width:100%}
       <button id="initials" title="Show variables with an initial value">Initials</button>
       <span id="chosenvalue" hidden></span>
       <input id="filter" placeholder="Filter" spellcheck="false"></h3>
-      <div class="list" id="vars"></div></section>
+      <div class="list" id="watchpoints"></div><div class="list" id="vars"></div></section>
     <section id="dumpsec" hidden><h3><span>Dump</span><span id="dumpwhen" class="dim"></span><span class="grow"></span>
       <button id="dumpcheck" title="Ask ST22 now whether this user has a new short dump since the run started">Check ST22</button>
       <button id="dumpfull" hidden title="Show the whole dump as SAP wrote it">Whole dump</button>
       <button id="dumpopen" title="Open ST22 in SAP, where this dump is the first entry">Open ST22</button></h3>
       <div class="list" id="dumpbox"></div></section>
-    <section id="outsec" hidden><h3><span>Output</span><span class="grow"></span></h3><pre id="outbox" class="list"></pre></section>
+    <section id="runscreen" hidden><h3><span id="runscreentitle">Selection screen</span><span class="grow"></span><button id="runexecute" class="primary">Execute (F8)</button></h3><div id="runscreenbody"></div></section>
+    <section id="outsec" hidden><h3><span>Output</span><span class="grow"></span><button id="runback" hidden title="Back to the selection screen, to run again (F3)">Back (F3)</button></h3><pre id="outbox" class="list"></pre></section>
     <div id="flowpane" hidden><div id="flowbar"><button id="fvalues" class="vertex-toggle on" hidden title="Show the value a recorded run holds for each name of Formula and Expression, in brackets after it. The values come from a run recorded with Steps &amp; values (a transpiler run always has them); before a run there are none to show">With values</button><button id="fclasses" class="active">Classes</button><button id="fmethods">Methods</button><button id="flogic" title="Branches, loops, calls and control transfers">Logic</button><button id="fsteps" hidden title="The recorded run as statements: one node per statement, however many times it ran">Statements</button><span id="fdepthbox" hidden><span class="vertex-segment-toggle" id="fexpand" role="group" aria-label="Branches"><button class="active" data-open="collapse">Collapse all</button><button data-open="expand">Expand all</button></span><label class="fdepth" title="How deep the statements are shown - the program is 0, a class 1, a routine 2">Depth <input type="range" id="fdepth" min="1" max="1" value="1" step="1" aria-label="Depth"><output id="fdepthvalue" class="dim">all</output></label></span><span class="grow"></span><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Hide the diagram">&#215;</button></div><div id="bse-workspace" class="bse-workspace"></div></div>
     <section id="logsec" hidden><h3><span>Log</span><span id="logtime" class="dim"></span></h3><div id="logbox" class="list"></div></section>
   </div>
 </main>
 <div id="dumppage" hidden><div id="dumpbar"><b>Short dump</b><span id="dumppagename" class="dim"></span><span class="grow"></span><button id="dumppageclose" class="x" title="Close (Esc)">&#215;</button></div><div id="dumppagebody"></div></div>
 <div id="tip"></div>
-<div id="vmenu"><button id="vfollow"></button><button id="vcopyname"></button><button id="vcopyvalue"></button></div>
+<div id="vmenu"><button id="vfollow"></button><button id="vwatch"></button><button id="vwatchfollow"></button><button id="vfromflow"></button><button id="vfromback"></button><button id="vcopyname"></button><button id="vcopyvalue"></button></div>
 <div id="bpedit">
   <div id="bpwhere"></div>
   <input id="bpcond" placeholder="Condition, as an ABAP IF: lv_total > 1000" spellcheck="false">
@@ -334,7 +399,8 @@ function sdeOriginReady(raw){
 }
 function ask(send,raw){return new Promise(function(ok,fail){queued.push({ok:ok,fail:fail,raw:raw===true,send:send});sdeNext();});}
 function debug(command,args){if(typeof sdeDebug!=="function")return Promise.reject(new Error("Visual Debug needs the VS Code host."));return ask(function(){sdeDebug(command,args||{});});}
-function notice(text){var n=$("notice");n.textContent=text||"";n.classList.toggle("on",!!text);}
+// A run that failed stays said: clearing the notice brings it back until another run starts.
+function notice(text){var n=$("notice");text=text||(typeof runFailure!=="undefined"?runFailure:"");n.textContent=text||"";n.classList.toggle("on",!!text);}
 /* How the run ended. SAP ends a program the same way whether it finished or
    died of a short dump, so the counter of endings cannot tell them apart -
    ST22 can, and the debugger has already asked it. */
@@ -412,9 +478,19 @@ function stepEnded(r){
   endedNotice({ending:{program:"",dumped:list}});
 }
 function failed(error){notice(error&&error.message||String(error));}
+/* A run that failed after it was started (the transpiler reading SAP): said in the state line and the notice, and kept there -
+   the next state written does not take it away until another run starts. */
+var runFailure="";
+window.sdeRunFailed=function(message){runFailure=String(message||"The run failed.");$("state").textContent="Run failed: "+runFailure;notice(runFailure);};
 
 /* ---------- state ---------- */
 var object={url:"",lines:[],name:INITIAL&&INITIAL.name||"",type:INITIAL&&INITIAL.type||""};
+// Opened with no source - restored by VS Code after a reload, or from a tab VERTEX did not know: said, not left blank.
+if(!object.name)document.addEventListener("DOMContentLoaded",function(){
+  var said="No ABAP source: open a program, class or function module and start Visual Debug from its editor (right-click > Visual Debug, or Run with ABAP Transpiler).";
+  var state=document.getElementById("state");if(state)state.textContent=said;
+  var vars=document.getElementById("vars");if(vars&&!vars.textContent.trim()){var p=document.createElement("div");p.className="empty";p.textContent=said;vars.appendChild(p);}
+});
 var shown={url:"",lines:[],name:""};
 var picture={breakpoints:[],stopped:null,listening:false,ended:0};
 var stopKey="",lastEnded=null,previous={},current={},expanded={},scopes=null;
@@ -618,18 +694,28 @@ function analyzePath(b){
     var shown=end?sequence.indexOf(end)+1:sequence.length;
     bpPaths[b.id]={count:shown,to:end?end.name+":"+end.line:"the end of the flow"};
     pointFocus={object_name:b.name,object_type:type,line:b.line};autoVariables();
-    notice("The flow from line "+b.line+" of "+b.name+" to "+(end?end.name+":"+end.line:"its end")+": "+shown+" statements"+(what?", "+rows.filter(function(w){return w.included;}).length+" of the flow in the slice of "+what:"")+" - in the diagram.");
     setPane("flowpane",true);showFlow();drawBreakpoints();publishDebugContext();
   });
 }
+/* An SAP object's panel shows the breakpoints of that object; All BP shows every one. A local run's host chooses its own
+   (allBreakpoints), so its list is taken as it comes. */
+var sapAllPoints=false;
+function shownBreakpoints(){
+  var own=typeof object!=="undefined"&&object&&object.name?String(object.name).toUpperCase():"";
+  if(INITIAL&&INITIAL.local||sapAllPoints||!own)return picture.breakpoints;
+  return picture.breakpoints.filter(function(b){return String(b.name).toUpperCase()===own;});
+}
 function drawBreakpoints(){
   var box=$("bps");box.textContent="";
-  $("bpall").textContent=picture.breakpoints.some(function(b){return b.active!==false;})?"Deactivate all":"Activate all";
+  var points=shownBreakpoints(),hidden=picture.breakpoints.length-points.length;
+  $("bpall").textContent=points.some(function(b){return b.active!==false;})?"Deactivate all":"Activate all";
   $("bpall").disabled=$("bpclear").disabled=!picture.breakpoints.length;
-  if(!picture.breakpoints.length){box.innerHTML='<div class="empty">No breakpoints.</div>';return;}
+  var others=function(){if(!hidden)return;var n=document.createElement("div");n.className="empty";
+    n.textContent=hidden+" breakpoint"+(hidden===1?"":"s")+" in other objects not shown - All BP shows them.";box.appendChild(n);};
+  if(!points.length){box.innerHTML='<div class="empty">No breakpoints'+(hidden?" in "+object.name:"")+'.</div>';others();return;}
   // The points of one object together; under a point that was analysed, the path from it to the next one.
   var groups={},order=[];
-  picture.breakpoints.forEach(function(b){if(!groups[b.name]){groups[b.name]=[];order.push(b.name);}groups[b.name].push(b);});
+  points.forEach(function(b){if(!groups[b.name]){groups[b.name]=[];order.push(b.name);}groups[b.name].push(b);});
   order.forEach(function(name){
     var h=document.createElement("div");h.className="bpgroup";h.textContent=name;box.appendChild(h);
     groups[name].slice().sort(function(a,c){return a.line-c.line;}).forEach(function(b){
@@ -661,6 +747,15 @@ function drawBreakpoints(){
 
 /* ---------- the stop ---------- */
 function currentFrame(){var s=picture.stopped;if(!s||!s.frames||!s.frames.length)return null;return s.frames.filter(function(f){return f.current;})[0]||s.frames[0];}
+$("bpscope").onclick=function(){var on=!$("bpscope").classList.contains("on");notice("");
+  if(!(INITIAL&&INITIAL.local)){sapAllPoints=on;$("bpscope").classList.toggle("on",on);drawBreakpoints();return;}
+  debug("allBreakpoints",{on:on}).then(function(){$("bpscope").classList.toggle("on",on);return refresh();}).catch(failed);};
+// An SAP object's panel offers All BP too: its list is the object's own points until it is on.
+if(!(INITIAL&&INITIAL.local))$("bpscope").hidden=false;
+// No ADT debugger for this system (reached through SAP's ADT extension): no run in SAP is offered. The steps stay - the
+// transpiler's run is debugged with them.
+// display, not hidden: the buttons' own style would show them again, as #bpscope[hidden] had to be told.
+if(INITIAL&&INITIAL.noSapDebugger)["run","program"].forEach(function(id){var el=$(id);if(el)el.style.display="none";});
 $("bpall").onclick=function(){var anyOn=picture.breakpoints.some(function(b){return b.active!==false;});notice("");debug("activate",{active:!anyOn}).then(refresh).catch(failed);};
 $("bpclear").onclick=function(){notice("");debug("clear",{}).then(refresh).catch(failed);};
 /* The right column's sections: each shown or hidden by its switch, the
@@ -807,7 +902,7 @@ Object.keys(STEP).forEach(function(id){$(id).onclick=function(){
     debug("step",{kind:kind,live:true}).then(function(result){
       if(result.error)throw new Error(result.error);
       if(result.picture)picture=result.picture;
-      localPush(result.records||[]);localEnded=!!result.ended;drawButtons();setOutput(result.output);
+      localPush(result.records||[]);localEnded=!!result.ended;drawButtons();setOutput(result.output);localRunMs+=result.durationMs||0;localStats();
       replay(flow.timeline.length-1);showFlow();
       $("state").textContent=localEnded?"Program finished. "+flow.timeline.length+" recorded steps.":"Paused at step "+flow.timeline.length+".";
     }).catch(failed).then(function(){localFetching=false;});
@@ -818,7 +913,6 @@ Object.keys(STEP).forEach(function(id){$(id).onclick=function(){
     var live=currentFrame();if(live)revealInEditor({at:{url:live.url,line:live.line},stack:[live]});
   }
   if(id==="cont"&&series){series.stop=true;series.reason="paused";return;}
-  if(id==="cont"&&$("flow").classList.contains("on")){runFlow();return;}
   if(id==="cont"&&(INITIAL.local||recording())){if(INITIAL.local)runLocalVisual();else runVisual();return;}
   notice("");var f=currentFrame();
   lastStep=f?{kind:STEP[id],url:f.url,line:f.line,depth:picture.stopped.frames.length,unit:unitName(f)}:null;
@@ -833,34 +927,18 @@ function recordingValues(){return recMode()==="values";}
 $("recmode").querySelectorAll("[data-rec]").forEach(function(b){b.onclick=function(){
   $("recmode").querySelectorAll("[data-rec]").forEach(function(x){x.classList.toggle("active",x===b);});
   drawButtons();};});
-$("predict").onclick=function(){$("predict").classList.toggle("on");};
 /* In SAP's own code with our code below it on the stack - however it got
    there: Z only goes back out (F7) until it stands in our code again. */
 function strayed(frames){
   var top=frames&&frames[0];
   return !!top&&!top.system&&!customer(top.program)&&frames.slice(1).some(function(f){return customer(f.program);});
 }
-/* Out of SAP's code back into ours in one go. F7 leaves one level only, and
-   a standard call can be many deep - constructors, class constructors, one
-   under another. So the nearest Z/Y frame below is taken, points are set on
-   every statement of its routine, its end included, and F8 runs to the first
-   the program reaches after the call returns: F6 as seen from our code.
-   Without a map for that frame, F7. Sets lastMove for the log. */
+/* Out of SAP's code back towards ours: F7, one level. A standard call can be many deep; the run asks again after
+   each step and goes on stepping out until it stands in our code. Sets lastMove for the log. */
 function backToOurs(frames){
-  var top=frames[0],ours=null;
-  for(var i=1;i<frames.length;i++){if(customer(frames[i].program)){ours=frames[i];break;}}
-  var out=function(why){lastMove={action:"outside Z/Y: F7",from:String(top.label),detail:why};return debug("step",{kind:"out",quick:true});};
-  if(!ours)return out("no Z/Y frame below "+top.program);
-  return mapFor(ours.program).then(function(map){return methodsFor(ours).then(function(){return map;});}).then(function(map){
-    var list=map&&listFor(ours,map),at=-1,lines=[];
-    if(list)for(var j=0;j<list.length;j++){if(list[j].line===ours.line){at=j;break;}}
-    if(at<0)return out("top "+top.program+" is not Z/Y; no map for "+ours.label+" below it");
-    var r=routine(list,at);
-    for(var k=r.from+1;k<=r.to;k++){if(list[k].kind!=="decl"&&lines.indexOf(list[k].line)<0)lines.push(list[k].line);}
-    if(!lines.length)return out("top "+top.program+" is not Z/Y; nothing to stop at in "+ours.label);
-    lastMove={action:"back to "+ours.label+": F8",from:String(top.label),detail:"top "+top.program+" is not Z/Y; points on "+lines.join(", ")};
-    return debug("runTo",{url:ours.url,lines:lines}).then(function(x){return x.placed?x:out("points not placed in "+ours.label);});
-  });
+  var top=frames[0];
+  lastMove={action:"outside Z/Y: F7",from:String(top.label),detail:"top "+top.program+" is not Z/Y"};
+  return debug("step",{kind:"out",quick:true});
 }
 /* Customer code: a program, class pool or function group of the Z/Y namespace. */
 function customer(program){return /^(?:SAPL|SAPM|SAPD)?[ZY]/i.test(String(program||""));}
@@ -871,15 +949,6 @@ function customer(program){return /^(?:SAPL|SAPM|SAPD)?[ZY]/i.test(String(progra
    cannot go anywhere else, so that line is taken without the stack; every
    other step asks SAP. A map that cannot be had means asking every time. */
 var maps={};
-function mapFor(program){
-  if(!program)return Promise.resolve(null);
-  if(maps[program]!==undefined)return Promise.resolve(maps[program]);
-  return debug("statements",{program:program}).then(function(d){
-    var byInclude={};(d.includes||[]).forEach(function(i){byInclude[String(i.include).toUpperCase()]=(i.statements||[]).slice().sort(function(a,b){return a.line-b.line;});});
-    maps[program]=byInclude;return byInclude;
-  }).catch(function(e){maps[program]=null;notice("No statement map for "+program+" - every step asks SAP for the stack: "+(e&&e.message||e));return null;});
-}
-var CLOSERS=/^(ELSE|ELSEIF|WHEN|ENDIF|ENDCASE|ENDLOOP|ENDDO|ENDWHILE|ENDTRY|CATCH|CLEANUP|ENDSELECT|ENDAT|ENDON|ENDPROVIDE|ENDFORM|ENDMETHOD|ENDFUNCTION|ENDMODULE)$/i;
 /* Where the frame stands in its include's statements, and what comes next.
    The map counts lines in an include; a frame counts them in the source at
    its address. Which lines match which is taken from SAP, never from reading
@@ -895,12 +964,6 @@ function includeAt(url){
   if(parts.length===9&&parts[4]==="programs"&&(parts[5]==="programs"||parts[5]==="includes")&&parts[7]==="source"&&parts[8]==="main")
     return decodeURIComponent(parts[6]).toUpperCase();
   return "";
-}
-/* A class frame's method starts, read once per class before its first step. */
-function methodsFor(f){
-  if(!f||!classUrl(f.url)||methodsAt[norm(f.url)])return Promise.resolve();
-  return debug("methods",{url:f.url}).then(function(d){methodsAt[norm(f.url)]=d.methods||{};})
-    .catch(function(){methodsAt[norm(f.url)]={};});
 }
 function listFor(f,map){
   var inc=String(f&&f.include||"").toUpperCase(),list=map&&map[inc];
@@ -929,7 +992,8 @@ function explain(f,map,p,what){
   // the map is keyed by it and the two differ.
   var inc=String(f&&f.include||"").toUpperCase(),parts=[];
   var unit=f?(unitOf(f)||{}).name||inc:inc;
-  if(!map)parts.push("no map for "+(f&&f.program));
+  if(map===false){}
+  else if(!map)parts.push("no map for "+(f&&f.program));
   else if(!map[inc])parts.push("no map for "+unit+" (the map has "+Object.keys(map).slice(0,4).join(", ")+(Object.keys(map).length>4?", ...":"")+")");
   else{
     var list=listFor(f,map);
@@ -960,158 +1024,6 @@ function placeOf(f,map){
   var next=null;for(var j=at+1;j<list.length;j++){if(list[j].kind!=="decl"&&list[j].line!==list[at].line){next=list[j];break;}}
   return {here:list[at],next:next};
 }
-/* The statement after the end of the loop that starts here - LOOP, DO or
-   WHILE, matched by nesting. None where that end closes a block or an event
-   too, or where there is nothing after it: the loop is then stepped through. */
-var LOOPS={LOOP:"ENDLOOP",DO:"ENDDO",WHILE:"ENDWHILE"};
-/* Where a loop is left: every statement of the routine after the loop's end,
-   the routine's own end included. Whichever the program reaches first stops
-   it - a loop at the end of a method runs into ENDMETHOD, one inside an IF
-   branch into whatever follows the ENDIF. Lines, or null for no loop here. */
-function loopExit(f,map,table){
-  table=table||LOOPS;
-  var p=placeOf(f,map);if(!p||!table[p.here.kw])return null;
-  var list=listFor(f,map),at=list.indexOf(p.here),open=p.here.kw,close=table[open],depth=0;
-  for(var i=at;i<list.length;i++){
-    if(list[i].kw===open)depth++;
-    else if(list[i].kw===close&&--depth===0){
-      var r=routine(list,at),lines=[];
-      for(var j=i+1;j<=r.to;j++){if(list[j].kind!=="decl"&&lines.indexOf(list[j].line)<0)lines.push(list[j].line);}
-      return lines.length?{lines:lines,line:lines[0]}:null;}
-  }
-  return null;
-}
-/* An IF or a CASE is passed the same way: the statement after its end, or whatever the routine reaches first when
-   the block leaves it. */
-var BLOCKS={IF:"ENDIF",CASE:"ENDCASE"};
-/* A loop passed in one go is a loop not recorded, and a debugger cannot do that to a loop it knows nothing about. It
-   is passed only when the analysis of the chosen value is there and has no place between the loop and its end: what
-   the run would record in it cannot lead to the value. Without a value, or while the analysis is still being asked
-   for, the loop is stepped through. */
-function loopUnlessSliced(f,exit,block,map){
-  if(!exit||!chosenValue||!slicePoints)return null;
-  if(block)for(var l=f.line+1;l<exit.line;l++){if(breakpointOn(f.url,l))return null;}
-  var owner=String((unitOf(f)||{}).owner||f.program||"").toUpperCase(),prefix=owner+":";
-  var inside=Object.keys(slicePoints).some(function(key){
-    if(key.indexOf(prefix)!==0)return false;
-    var line=Number(key.slice(prefix.length));return line>f.line&&line<exit.line;
-  });
-  if(inside)return null;
-  if(block){
-    var list=listFor(f,map),n=0;
-    for(var j=0;list&&j<list.length;j++){if(list[j].kind!=="decl"&&list[j].line>f.line&&list[j].line<exit.line)n++;}
-    if(n<MIN_BLOCK)return null;
-    exit.block=true;}
-  return exit;
-}
-/* Straight-line statements ahead that the slice does not touch are run past in one go: F8 to the first statement
-   that is in it, or that branches or ends the routine. Only from a straight-line statement itself - after an IF the
-   next line is one of two - and never over a breakpoint. Lines to run to, or null where fewer than one is passed. */
-/* F8 to a temporary point costs about two F5 steps (the point is set, the run goes, the point is taken away, the stack
-   is read): a run is passed that way only where it spares at least this many statements, a block where it holds
-   at least MIN_BLOCK - an IF whose branch is not taken spares nothing. */
-var MIN_RUN=3,MIN_BLOCK=4;
-var NONLINEAR=/^(IF|CASE|LOOP|DO|WHILE|SELECT|TRY|RETURN|EXIT|CHECK|CONTINUE|RAISE|LEAVE|STOP|REJECT)$/i;
-function straight(st,owner,line){
-  if(!st||st.kind==="decl"||CLOSERS.test(st.kw)||EVENTS.test(st.kw)||NONLINEAR.test(st.kw))return false;
-  if(inSlice(owner,st.line))return false;
-  return true;
-}
-function skipAhead(f,map){
-  if(!chosenValue||!slicePoints)return null;
-  var list=listFor(f,map),p=placeOf(f,map);if(!list||!p||!p.next)return null;
-  var owner=String((unitOf(f)||{}).owner||f.program||"").toUpperCase(),here=p.here;
-  if(here.kind==="decl"||CLOSERS.test(here.kw)||EVENTS.test(here.kw)||NONLINEAR.test(here.kw))return null;
-    var at=list.indexOf(here),skipped=0,lines=[];
-  for(var i=at+1;i<list.length;i++){
-    var st=list[i];if(st.kind==="decl")continue;
-    if(st.line===here.line)return null;
-    if(!straight(st,owner))break;
-    if(breakpointOn(f.url,st.line))return null;
-    skipped++;
-  }
-  if(i>=list.length||skipped<MIN_RUN||breakpointOn(f.url,list[i].line))return null;
-  return {lines:[list[i].line],line:list[i].line,skip:true,count:skipped};
-}
-/* The rest of a loop pass, once the slice has nothing more in it: from a statement inside a loop, with no place of
-   the slice after it up to the loop's end, F8 to the first statement of the body (the next pass) or to wherever the
-   routine goes after the loop (the last pass) - points on both. Saves the pass's tail and its ENDLOOP stop on every pass. Not
-   from a call that is a place of the slice: that one is entered. Never over a breakpoint; null where it spares fewer
-   than MIN_RUN statements. */
-var LOOP_OPEN=/^(LOOP|DO|WHILE)$/i,LOOP_CLOSE=/^(ENDLOOP|ENDDO|ENDWHILE)$/i;
-function loopRest(f,map){
-  if(!chosenValue||!slicePoints)return null;
-  var p=placeOf(f,map),list=listFor(f,map);if(!p||!list)return null;
-  var here=p.here,at=list.indexOf(here),owner=String((unitOf(f)||{}).owner||f.program||"").toUpperCase();
-  if(LOOP_OPEN.test(here.kw)||LOOP_CLOSE.test(here.kw)||EVENTS.test(here.kw)||ENDS.test(here.kw))return null;
-  if((here.calls||here.kind==="call")&&inSlice(owner,here.line))return null;
-  var r=routine(list,at),head=-1,depth=0,i;
-  for(i=at-1;i>=r.from;i--){
-    if(LOOP_CLOSE.test(list[i].kw))depth++;
-    else if(LOOP_OPEN.test(list[i].kw)){if(depth===0){head=i;break;}depth--;}
-  }
-  if(head<0)return null;
-  var end=-1,n=0;depth=0;
-  for(i=at+1;i<=r.to;i++){
-    var st=list[i];
-    if(st.line!==here.line){
-      if(inSlice(owner,st.line)||breakpointOn(f.url,st.line))return null;
-      if(st.kind!=="decl")n++;
-    }
-    if(LOOP_OPEN.test(st.kw))depth++;
-    else if(LOOP_CLOSE.test(st.kw)){if(depth===0){end=i;break;}depth--;}
-  }
-  if(end<0||n<MIN_RUN)return null;
-  // SAP does not stop at a point on the LOOP statement on the next pass - it runs it once, on entry - so the point
-  // for the next pass goes on the first statement of the body, which every pass runs.
-  var first=null;for(i=head+1;i<end;i++){if(list[i].kind!=="decl"&&list[i].line!==list[head].line){first=list[i];break;}}
-  if(!first)return null;
-  var lines=[first.line];
-  for(i=end+1;i<=r.to;i++){if(list[i].kind!=="decl"&&lines.indexOf(list[i].line)<0)lines.push(list[i].line);}
-  return {lines:lines,line:lines[0],rest:true,count:n};
-}
-/* Where SAP stops next after the statement at `at`: the closers of a branch are no stop - ENDIF, ENDCASE and ENDTRY
-   are passed, and the other branches of the block (ELSE, WHEN, CATCH) are jumped over to its end - while ENDLOOP,
-   ENDSELECT and the end of a routine are. The first statement that is none of those. */
-var BLOCK_OPEN=/^(IF|CASE|TRY)$/i,BLOCK_END=/^(ENDIF|ENDCASE|ENDTRY)$/i,BRANCH_OF_BLOCK=/^(ELSE|ELSEIF|WHEN|CATCH|CLEANUP)$/i;
-function stopAfter(list,at){
-  var line=list[at].line;
-  for(var j=at+1;j<list.length;j++){
-    var st=list[j];
-    if(st.kind==="decl"||st.line===line)continue;
-    if(BLOCK_END.test(st.kw))continue;
-    if(BRANCH_OF_BLOCK.test(st.kw)){
-      var depth=1;
-      for(j=j+1;j<list.length&&depth>0;j++){
-        if(BLOCK_OPEN.test(list[j].kw))depth++;
-        else if(BLOCK_END.test(list[j].kw))depth--;
-      }
-      j--;continue;
-    }
-    return st;
-  }
-  return null;
-}
-/* With a value followed and its analysis loaded, a call that is not itself a place of the slice is not entered: it is
-   stepped over (F6). Nothing in it can lead to the value - a place inside a callee makes the call that reaches it
-   one, as the analysis counts a call and a parameter handed over as places - so what the record keeps of it is the
-   line it stood on. A call that is a place of the slice is entered, and the places in it are recorded. */
-function overCall(st,owner){
-  return !!st&&!!chosenValue&&!!slicePoints&&!!(st.calls||st.kind==="call")&&!inSlice(owner,st.line);
-}
-/* A statement whose every call the map could place goes outside Z/Y code -
-   a standard function module, class or builtin, never ? (unknown). */
-function outside(st){
-  return !!st&&st.kind==="call"&&ownersOutside(st);
-}
-/* Every call the map could place goes outside Z/Y - whatever the statement. */
-function ownersOutside(st){
-  if(!st||st.owners==null)return false;
-  var list=String(st.owners).split(",").filter(Boolean);
-  // No owner named is not "outside": it is unknown - a bare m( ) in a class
-  // include, whose class the map does not know. Unknown is looked into.
-  return list.length>0&&list.indexOf("?")<0&&list.every(function(o){return !customer(o);});
-}
 var EVENTS=/^(FORM|METHOD|FUNCTION|MODULE|START-OF-SELECTION|END-OF-SELECTION|INITIALIZATION|LOAD-OF-PROGRAM|TOP-OF-PAGE|END-OF-PAGE|AT|GET)$/i;
 function breakpointOn(url,line){return picture.breakpoints.some(function(b){return norm(b.url)===norm(url)&&b.line===line;});}
 /* A run of F5 steps is this window's F8, so a breakpoint on the way is this
@@ -1120,61 +1032,12 @@ function breakpointOn(url,line){return picture.breakpoints.some(function(b){retu
    way, and a point means the statement is not run - so the run ends there. */
 function stopsHere(p){
   var s=p&&p.stopped;if(!s)return false;
+  if(s.watchpoints&&s.watchpoints.length)return true;
   if(s.breakpoint)return true;
   var f=s.frames&&s.frames[0];if(!f)return false;
   return picture.breakpoints.some(function(b){
     return b.active!==false&&b.mode!=="log"&&norm(b.url)===norm(f.url)&&b.line===f.line;});
 }
-/* The source address of a program's include, as the stack gives it. */
-function urlOf(program,include){var p=String(program).toLowerCase(),i=String(include).toLowerCase();
-  return "/sap/bc/adt/programs/"+(i===p?"programs/":"includes/")+encodeURIComponent(i)+"/source/main";}
-/* Where a FORM or a METHOD (CLASS=>METHOD) of the program is, and the first
-   statement it runs. */
-function unitIn(map,kw,name){
-  var key=String(name).toUpperCase();
-  for(var include in map){var list=map[include];
-    for(var i=0;i<list.length;i++){if(list[i].kw===kw&&String(list[i].target).toUpperCase()===key){
-      for(var j=i+1;j<list.length;j++){if(list[j].kind!=="decl")return {include:include,first:list[j]};}
-      return null;}}}
-  return null;
-}
-/* The next line without asking SAP, where the text alone decides it and the
-   line itself proves it: plain to plain, and into a plain PERFORM or a named
-   METHOD call, its first statement. Never within one line, and never out of a
-   unit - see below. */
-function predicted(f,map){
-  var p=placeOf(f,map);if(!p)return null;
-  // A prediction is checked by the line changing, and nothing else. Where the
-  // next statement sits on the line the program already stands on - a chained
-  // WRITE, two statements written side by side - there is nothing to check it
-  // against, so SAP is asked instead.
-  if(p.next&&p.next.line===p.here.line)return null;
-  if(p.here.kind==="plain"&&p.next&&p.next.kind==="plain"){
-    return breakpointOn(f.url,p.next.line)?null:{line:p.next.line,st:p.next};}
-  // A call is stepped over, not entered, while a value is followed.
-  if(overCall(p.here,String((unitOf(f)||{}).owner||f.program||"").toUpperCase())){
-    var after=stopAfter(listFor(f,map),listFor(f,map).indexOf(p.here));
-    if(after&&!EVENTS.test(after.kw)&&after.line!==p.here.line){
-      return breakpointOn(f.url,after.line)?null:{line:after.line,st:after,over:true,sliced:true};}}
-  // Calls that all go outside Z/Y code, with Z only on: F6 over the
-  // statement, and the next one is where the program goes on.
-  if($("zonly").classList.contains("on")&&outside(p.here)&&p.next&&!CLOSERS.test(p.next.kw)&&!EVENTS.test(p.next.kw)){
-    return breakpointOn(f.url,p.next.line)?null:{line:p.next.line,st:p.next,over:true};}
-  // A call: into a FORM by PERFORM, into a METHOD by a standalone call the
-  // map could name (lcl=>m( ), me->m( ), m( ), CALL METHOD m).
-  var form=p.here.kw==="PERFORM",method=p.here.kw==="+CALL_METHOD"||p.here.kw==="CALL";
-  if((form||method)&&p.here.target){
-    var t=unitIn(map,form?"FORM":"METHOD",p.here.target);if(!t)return null;
-    var url=urlOf(f.program,t.include);if(breakpointOn(url,t.first.line))return null;
-    var unit=form?"FORM "+String(p.here.target).toUpperCase():"METHOD "+String(p.here.target).toUpperCase().split("=>").pop();
-    return {line:t.first.line,st:t.first,from:p.here,enter:{label:t.include+":"+t.first.line+" "+unit,url:url,include:t.include,program:f.program}};}
-  // The end of a unit is where the frame changes, and a frame the window
-  // invented is the one thing it cannot check. It happens once per call, not
-  // once per statement, so SAP is asked there and the run always knows where
-  // it really stands when control leaves a routine.
-  return null;
-}
-
 /* ---------- Visual: Continue as a run of F5 steps ---------- */
 /* No variable is read on the way - the line and the stack only, and the
    stack only where the map cannot tell - so the run shows how fast one step
@@ -1182,14 +1045,34 @@ function predicted(f,map){
    Pause. */
 var series=null;
 var lastStats=null;
+/* Where a run's time goes, per stage, to find what makes a step slow. */
+function spent(s,name,t0){if(!s.ms)s.ms={};s.ms[name]=(s.ms[name]||0)+(Date.now()-t0);}
+function timed(s,name,promise){var t0=Date.now();return Promise.resolve(promise).then(function(v){spent(s,name,t0);return v;},function(e){spent(s,name,t0);throw e;});}
+function stepShare(s,r,t0){if(!s.ms)s.ms={};var all=Date.now()-t0,sap=r&&r.sap||0,host=Math.max(0,(r&&r.total||0)-sap),queue=r&&r.queued||0;
+  // handler: the host's whole hold of the step; what it spent beyond the queue and the step is its own.
+  var fields=r&&r.structures||0,handler=r&&r.handler!=null?r.handler:sap+host+queue+fields,own=Math.max(0,handler-sap-host-queue-fields);
+  s.ms.values=(s.ms.values||0)+fields;
+  s.ms.sap=(s.ms.sap||0)+sap;s.ms.host=(s.ms.host||0)+host;s.ms.queue=(s.ms.queue||0)+queue;s.ms.handler=(s.ms.handler||0)+own;
+  s.ms.bridge=(s.ms.bridge||0)+Math.max(0,all-handler);}
+function stageText(s){
+  if(!s.ms||!s.steps)return "";
+  var sec=(Date.now()-s.t0),known=0,parts=[];
+  [["sap","SAP"],["host","stack/host"],["queue","queue"],["handler","handler"],["bridge","page-host"],["picture","picture"],["draw","draw"],["values","values"]].forEach(function(k){
+    var v=s.ms[k[0]]||0;known+=v;if(v)parts.push(k[1]+" "+Math.round(v/s.steps));});
+  parts.push("rest "+Math.round(Math.max(0,sec-known)/s.steps));
+  return " · ms per step: "+parts.join(", ");
+}
 function drawStats(s){
   lastStats=s;
   var sec=(Date.now()-s.t0)/1000;
   if(typeof INITIAL!=="undefined"&&INITIAL.local){$("stats").textContent=s.steps+" steps \u00b7 depth "+(picture.stopped?picture.stopped.frames.length:0)+" \u00b7 "+sec.toFixed(1)+" s"+(sec>0&&s.steps?" \u00b7 "+(s.steps/sec).toFixed(1)+" steps/s on average":"");return;}
-  $("stats").textContent=s.steps+" steps ("+s.predicted+" predicted) · depth "+(picture.stopped?picture.stopped.frames.length:0)+" · "+sec.toFixed(1)+" s"
+  $("stats").textContent=s.steps+" steps · depth "+(picture.stopped?picture.stopped.frames.length:0)+" · "+sec.toFixed(1)+" s"
     +(sec>0&&s.steps?" · "+(s.steps/sec).toFixed(1)+" steps/s on average":"")
     +(s.loops?" · "+s.loops+" loops passed":"")+(s.blocks?" · "+s.blocks+" blocks passed":"")+(s.skipped?" · "+s.skipped+" runs past statements outside the slice":"")+(s.rests?" · "+s.rests+" loop pass tails passed":"")+(s.standard?" · "+s.standard+" standard calls passed":"")+(s.over?" · "+s.over+" stepped over":"")+(s.missed?" · "+s.missed+" statement map mismatches":"")
-    +(s.inline?" · "+s.inline+" lines with more than one statement":"")+(s.unitend?" · "+s.unitend+" unit ends":"");
+    +(s.inline?" · "+s.inline+" lines with more than one statement":"")+(s.unitend?" · "+s.unitend+" unit ends":"")+stageText(s);
+  $("stats").title=$("stats").textContent+" (click to copy)";
+  $("stats").onclick=function(){var text=$("stats").textContent;
+    if(navigator.clipboard)navigator.clipboard.writeText(text).then(function(){notice("Copied: "+text);},function(e){notice("Not copied: "+(e&&e.message||e));});};
 }
 function runLocalVisual(){
   if(!picture.stopped)return;
@@ -1241,7 +1124,7 @@ function runVisual(){
   s.rec=recording();s.draw=true;
   if(s.rec){
     if(!flow.order.length||flow.ended!==picture.ended||flow.closed){flow={edges:{},nodes:{},order:[],ended:picture.ended};flowPath=[];}
-    record(picture.stopped.frames);s.valueDue=!!chosenValue;$("cont").title="Pause the recording (F8)";
+    record(picture.stopped.frames);s.valueDue=!!chosenValue;s.snapDue=!INITIAL.local;$("cont").title="Pause the recording (F8)";
   }
   // Steps & values reads the values at every stop: the record then says which statement changed a value,
   // which Formula and Expression are built from. It is the expensive half of a stop, so only when asked for.
@@ -1249,11 +1132,11 @@ function runVisual(){
   function seen(p){
     picture=p;
     if(s.rec&&p.stopped){record(p.stopped.frames);s.snapDue=wantValues();s.valueDue=!!chosenValue||!!slicePoints;}
-    if(s.draw)apply(p);
+    if(s.draw){var td=Date.now();apply(p);spent(s,"draw",td);}
   }
   function next(){
-    if(s.valueDue&&!s.stop){s.valueDue=false;return readChosenValue().then(next);}
-    if(s.snapDue&&!s.stop){s.snapDue=false;return snapshot().then(next);}
+    if(s.valueDue&&!s.stop){s.valueDue=false;var pre=s.preread;s.preread=null;return timed(s,"values",readChosenValue(pre)).then(next);}
+    if(s.snapDue&&!s.stop){s.snapDue=false;var scopes=s.prescopes;s.prescopes=null;return timed(s,"values",snapshot(null,scopes)).then(next);}
     if(s.stop)return Promise.resolve();
     var f=currentFrame(),depth=picture.stopped.frames.length;
     // Still in SAP's own code above ours: back out before anything else.
@@ -1261,82 +1144,44 @@ function runVisual(){
       var t0=Date.now();
       return backToOurs(picture.stopped.frames).then(function(o){
         if(lastMove){lastMove.ms=Date.now()-t0;lastMove.sap=o.sap||0;}
-        s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t0;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
+        stepShare(s,o,t0);s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t0;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
         if(o.ended)return stepEnded(o);
-        return debug("picture").then(function(q){logStep(q);seen(q);if(!q.stopped||stopsHere(q))return;
+        return timed(s,"picture",debug("picture")).then(function(q){logStep(q);seen(q);if(!q.stopped||stopsHere(q))return;
           if(!q.stopped.frames.some(function(x){return s.home[x.program];})){s.left=q.stopped.at;return;}
           return next();});
       });
     }
-    return mapFor(f&&f.program).then(function(map){return methodsFor(f).then(function(){return map;});}).then(function(map){
-      // Predict: what the statement map can tell is used instead of asking -
-      // the next line, and a loop passed in one go. Off, SAP is asked where
-      // the program is after every step and the loop is stepped through.
-      // Visual draws or does not draw, Rec keeps the stops or does not keep
-      // them; neither says how the run steps. This alone does.
-      var guessing=$("predict").classList.contains("on");
-      var expect=guessing?predicted(f,map):null,from=placeOf(f,map),exit=guessing?(loopUnlessSliced(f,loopExit(f,map))||loopRest(f,map)||loopUnlessSliced(f,loopExit(f,map,BLOCKS),true,map)||skipAhead(f,map)):null,t=Date.now();
-      // Why the map was not used, where that is worth seeing: a line holding
-      // more than one statement, and the end of a unit.
-      if(guessing&&!expect&&from){if(from.next&&from.next.line===from.here.line)s.inline++;else if(ENDS.test(from.here.kw))s.unitend++;}
-      // SAP gets the line and the frame to add or drop, not the statements.
-      // F6 over a call leaves the stack as it was: the next line is the map's, and only a
-      // breakpoint SAP reports on the way makes the debugger ask for the stack after all.
-      var told=expect?{line:expect.line,enter:expect.enter,leave:expect.leave}:null,kind=expect&&expect.over?"over":"into";
-      var doing=exit?(exit.rest?"F8 past the rest of the pass ("+exit.count+" statements outside the slice), points on "+exit.lines.join(", "):exit.block?"F8 past the "+from.here.kw+" block, points on "+exit.lines.join(", "):exit.skip?"F8 past "+exit.count+" statements outside the slice, point on "+exit.line:"F8 past the loop, points on "+exit.lines.join(", ")):expect&&expect.over?(expect.sliced?"F6 over a call outside the slice, predicted "+expect.line:"F6 over a call outside Z/Y, predicted "+expect.line):expect?"F5, predicted "+expect.line:"F5, stack asked";
-      explain(f,map,from,doing);
-      lastMove={action:doing,from:String(f.label),detail:from?"line "+from.here.line+" "+from.here.kw+" "+from.here.kind+(from.here.calls?" with a call":"")+" ("+(from.here.owners||"no owner")+")"
-        :!map?"no map for "+f.program:"not placed: "+f.include+" line "+f.line};
-      // A loop is not stepped through: F8 to the statement after it.
-      var go=exit?debug("runTo",{url:f.url,lines:exit.lines}).then(function(r){
-            if(r.placed){r.loop=true;return r;}
-            return debug("step",{kind:kind,quick:true,expect:told});})
-        :debug("step",{kind:kind,quick:true,expect:told});
-      return go.then(function(r){
+    // F5, and SAP says where the program now is: the stack comes back in the same request as the step, and with a
+    // value followed, that value too.
+    var t=Date.now(),reads=s.rec&&chosenValue&&chosenValue.name?[chosenValue.name]:null;
+    explain(f,false,null,"F5");
+    lastMove={action:"F5",from:String(f.label),detail:""};
+    // Steps & values: every scope is read with the step too; the record keeps the ones it wants.
+    return debug("step",{kind:"into",quick:true,read:reads,scopes:wantValues()?["params","locals","globals"]:null}).then(function(r){
         if(lastMove){lastMove.ms=Date.now()-t;lastMove.sap=r.sap||0;}
-        s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;
-        if(r.loop){if(exit.rest)s.rests=(s.rests||0)+1;else if(exit.skip)s.skipped=(s.skipped||0)+1;else if(exit.block)s.blocks=(s.blocks||0)+1;else s.loops++;s.other+=Math.max(0,(r.total||0)-(r.sap||0));from=null;}
-        else if(r.predicted)s.predicted++;
-        else s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
-        if(expect&&expect.over)s.over++;
-        // Where each level now stands, as far as the run knows it.
-        if(r.predicted&&expect){
-          if(expect.enter){spots[depth]=expect.from;spots[depth+1]=expect.st;}
-          else if(expect.leave){spots.length=depth;spots[depth-1]=expect.st;}
-          else spots[depth]=expect.st;
-        }else spots=[];
+        s.preread=r.values||null;s.prescopes=r.scopes||null;
+        stepShare(s,r,t);s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
         drawStats(s);
         if(r.ended)return stepEnded(r);
-        return debug("picture").then(function(p){
+        return timed(s,"picture",debug("picture")).then(function(p){
           logStep(p);
           // Into SAP's own code from ours, with Z only on: F7 at once - the
           // call runs to its end and the run goes on in our code.
           if(p.stopped&&!p.stopped.breakpoint&&$("zonly").classList.contains("on")&&strayed(p.stopped.frames)){
             var t2=Date.now();lastMove={action:"outside Z/Y: F7",from:String(p.stopped.frames[0].label)};
             return debug("step",{kind:"out",quick:true}).then(function(o){if(lastMove){lastMove.ms=Date.now()-t2;lastMove.sap=o.sap||0;}
-              s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t2;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
+              stepShare(s,o,t2);s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t2;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
               if(o.ended)return stepEnded(o);
-              return debug("picture").then(function(q){logStep(q);seen(q);if(!q.stopped||stopsHere(q))return;
+              return timed(s,"picture",debug("picture")).then(function(q){logStep(q);seen(q);if(!q.stopped||stopsHere(q))return;
                 if(!q.stopped.frames.some(function(x){return s.home[x.program];})){s.left=q.stopped.at;return;}
                 return next();});});
           }
           seen(p);if(!p.stopped||stopsHere(p))return;
-          // With Predict off, SAP alone determines the next stop. Only check the map when Predict was used.
-          // The stack was asked after a plain statement: it must stand on the
-          // next statement, unless that closes a block or the step raised.
-          if(guessing&&!r.predicted&&from&&from.here.kind==="plain"&&from.next){
-            var g=p.stopped.frames[0];
-            var off=p.stopped.frames.length!==depth||norm(g.url)!==norm(f.url)
-              ||(g.line!==from.next.line&&!CLOSERS.test(from.next.kw));
-            if(off&&p.stopped.frames.length<=depth){s.missed++;
-              notice("The statement map expected line "+from.next.line+" after line "+from.here.line+"; SAP says "+p.stopped.at+". Lines taken from the map may have been wrong before this stop.");}
-          }
           // The programs on the stack when the run began are gone: the program is
           // over and F5 went on into SAP's own code. The run ends there.
           if(!p.stopped.frames.some(function(x){return s.home[x.program];})){s.left=p.stopped.at;return;}
           return next();});
       });
-    });
   }
   s.done=next().catch(failed).then(function(){
     if(s.left)notice("The run stopped: the program left "+object.name+" - it is now at "+s.left+".");
@@ -1345,15 +1190,7 @@ function runVisual(){
     if(s.rec){apply(picture);replayAt=null;drawPos();if(flow.timeline&&flow.timeline.length)showFlow();}
     // Ended by Stop or Terminate: the program is let go, nothing is read.
     if(s.quiet)return;
-    // Where the run stopped on a predicted line, SAP is asked once where the
-    // program is - the stack a click can use - and the prediction checked.
-    var guess=picture.stopped&&picture.stopped.predicted?picture.stopped:null;
-    if(!guess)return refresh();
-    return debug("settle").then(function(){return debug("picture");}).then(function(p){
-      var a=guess.frames[0],b=p.stopped&&p.stopped.frames[0];
-      if(b&&(p.stopped.frames.length!==guess.frames.length||b.line!==a.line||norm(b.url)!==norm(a.url))){s.missed++;drawStats(s);
-        notice("The statement map had the program at "+guess.at+"; SAP says "+p.stopped.at+". Lines taken from the map may have been wrong before this stop.");}
-      stopKey="";apply(p);});
+    return refresh();
   }).catch(failed);
 }
 window.sdeHistoryStep=function(kind){var id=kind==="continue"?"cont":kind;if(INITIAL.local&&flow.timeline&&flow.timeline.length&&$(id))$(id).onclick();};
@@ -1369,7 +1206,6 @@ document.addEventListener("keydown",function(e){var k={F5:"into",F6:"over",F7:"o
    end. */
 var flow={edges:{},nodes:{},order:[]},flowPath=[],flowMode="classes",flowGrouping="classes",flowDiagram="calls",focusedRoutine="",flowSeq=0,mermaidReady=null;
 var ENDS=/^(ENDMETHOD|ENDFORM|ENDFUNCTION|ENDMODULE)$/,UNITS=/^(METHOD|FORM|FUNCTION|MODULE)$/;
-$("flow").onclick=function(){$("flow").classList.toggle("on");};
 /* The routine a frame is in, and whose it is: a class, or the program. */
 function unitOf(f){
   // A function module is its own block, named as SAP names the frame - not
@@ -1401,18 +1237,17 @@ function snapDue(frames){
   return !!(p&&ENDS.test(p.here.kw));
 }
 var localVarCache={};
-function snapshot(captured){
+function snapshot(captured,pre){
   var tl=flow.timeline,at=tl[tl.length-1];
-  var read=INITIAL.local?(captured?Promise.resolve({groups:captured}):debug("localSnapshot")):debug("scopes",{sy:false});
+  // Outside a routine - an event of a report - its variables are the program's globals.
+  var top=typeof picture!=="undefined"&&picture.stopped&&picture.stopped.frames[0],inEvent=top&&!/^(?:METHOD|FORM|FUNCTION)$/i.test(String(top.unitType||""));
+  // SAP: the host reads the scopes, their variables and their structures' components in one command.
+  var read=INITIAL.local?(captured?Promise.resolve({groups:captured}):debug("localSnapshot")):pre?(pre.error?Promise.reject(new Error(pre.error)):Promise.resolve(pre)):debug("snapshot",{kinds:inEvent?["params","locals","globals"]:["params","locals"]});
   return read.then(function(d){
-    // Outside a routine - an event of a report - its variables are the program's globals.
-    var top=picture.stopped&&picture.stopped.frames[0],inEvent=top&&!/^(?:METHOD|FORM|FUNCTION)$/i.test(String(top.unitType||""));
     var groups=d.groups.filter(function(g){var k=groupKind(g.name);return INITIAL.local||k==="params"||k==="locals"||inEvent&&k==="globals";});
-    return groups.reduce(function(p,g){return p.then(function(){return INITIAL.local&&g.children?undefined:debug("children",{id:g.id}).then(function(c){g.children=c.children;});});},Promise.resolve())
-      // SAP gives a structure as one row: its components are read one level down and kept as an object, so Formula
-      // and Expression can name LS_RESULT-AMOUNT. Tables keep their row count.
-      .then(function(){if(INITIAL.local)return;var all=[];groups.forEach(function(g){(g.children||[]).forEach(function(v){if(v.meta==="structure"&&v.id)all.push(v);});});
-        return all.reduce(function(p,v){return p.then(function(){return debug("children",{id:v.id}).then(function(c){var o={};(c.children||[]).forEach(function(x){o[x.name]=x.value;});v.value=o;}).catch(function(){});});},Promise.resolve());})
+    // A structure's components come kept as an object, so Formula and Expression can name LS_RESULT-AMOUNT. Tables
+    // keep their row count.
+    return Promise.resolve()
       .then(function(){
         var values=groups.map(function(g){return {name:g.name,children:(g.children||[]).map(function(v){return {name:v.name,type:v.type,value:v.value,meta:v.meta};})};});
         if(!INITIAL.local){at.vars=values;return;}
@@ -1435,6 +1270,9 @@ function snapshot(captured){
 var recordedOpen={},recordedPages={};
 function drawRecordedTree(table,name,value,depth,key){
   var complex=value!==null&&typeof value==="object",list=Array.isArray(value);
+  // Show the components of a local run's top-level structures immediately;
+  // an explicit collapse is kept when the player moves to another stop.
+  if(INITIAL.local&&complex&&!list&&depth===0&&recordedOpen[key]===undefined)recordedOpen[key]=true;
   var tr=document.createElement("tr"),n=document.createElement("td"),type=document.createElement("td"),val=document.createElement("td");
   n.className="n";type.className="t";n.style.paddingLeft=(6+depth*14)+"px";
   var marker=document.createElement("span");marker.className="tw";
@@ -1443,6 +1281,12 @@ function drawRecordedTree(table,name,value,depth,key){
   type.textContent=list?"TABLE":complex?"STRUCTURE":"";
   val.textContent=list?value.length+" rows":complex?Object.keys(value).length+" fields":value==null?"":String(value);
   val.title=val.textContent;tr.appendChild(n);tr.appendChild(type);tr.appendChild(val);table.appendChild(tr);
+  // key is group/name/component...: the path to follow is name-component, as SAP names it.
+  var parts=String(key).split("/").slice(1);
+  if(parts.length&&!parts.some(function(x){return /^\d+$/.test(x);})){var path=parts.join("-").toUpperCase();
+    n.title=path+" - right-click to follow this value";
+    if(chosenValue&&chosenValue.name===path)tr.classList.add("chosen-row");
+    tr.oncontextmenu=function(e){e.preventDefault();e.stopPropagation();openValueMenu(path,e.clientX,e.clientY,list?"":complex?"":String(value==null?"":value));};}
   if(!complex||!recordedOpen[key])return;
   var keys=Object.keys(value),limit=list?Math.min(keys.length,(recordedPages[key]||1)*100):keys.length;
   for(var j=0;j<limit;j++){var child=keys[j];drawRecordedTree(table,list?"["+(Number(child)+1)+"]":child,value[child],depth+1,key+"/"+child);}
@@ -1466,7 +1310,9 @@ function drawRecordedVars(i){
 
   if(INITIAL.local){
     var values={};
-    for(var stop=0;stop<=i;stop++)(Array.isArray(tl[stop].vars)?tl[stop].vars:[]).forEach(function(g){
+    // The routine this stop stands in: only its own stops' values, not those of the methods it called.
+    var here=function(x){return !t||!t.cur||!x.cur||x.cur.owner===t.cur.owner&&x.cur.name===t.cur.name;};
+    for(var stop=0;stop<=i;stop++)if(here(tl[stop]))(Array.isArray(tl[stop].vars)?tl[stop].vars:[]).forEach(function(g){
       var group=values[g.name]||(values[g.name]={});
       (g.children||[]).forEach(function(v){if(v.deleted)delete group[v.name];else group[v.name]=v;});
     });
@@ -1477,26 +1323,12 @@ function drawRecordedVars(i){
   if(from.vars.error){box.innerHTML='';var e=document.createElement("div");e.className="empty";e.textContent="The values could not be read at this stop: "+from.vars.error;box.appendChild(e);return;}
   var table=document.createElement("table");table.className="vars";
   from.vars.forEach(function(g){
+    if(!groupOn(g)||/^SY(?:ST)?$/i.test(String(g.name))&&!$("syst").classList.contains("on"))return;
     var tr=document.createElement("tr");tr.className="grp";var td=document.createElement("td");td.colSpan=3;
     td.textContent=g.name+" · "+(k+1===i?"read at this stop":"as read at stop "+(k+2));tr.appendChild(td);table.appendChild(tr);
     g.children.forEach(function(v){drawRecordedTree(table,v.name,v.value,0,g.name+"/"+v.name);});
   });
   box.appendChild(table);
-}
-/* A call stepped over with F6: each routine it names goes on the chart -
-   CLASS=>METHOD, a form, a function module. A map from before CALLEES names
-   only the owners; that is said once, and the blocks carry the owner alone. */
-var calleesMissing=false;
-function stepOver(f,st){
-  if(st.callees===undefined){
-    if(!calleesMissing){calleesMissing=true;notice("The statement map has no callees yet - pull ZCL_VX_ADT_RES_FLOW; standard blocks show the class only.");}
-    String(st.owners).split(",").filter(Boolean).forEach(function(o){note(unitOf(f),{owner:o,name:o});});
-    return;
-  }
-  String(st.callees).split(",").filter(Boolean).forEach(function(c){
-    var owner=c.indexOf("=>")>0?c.split("=>")[0]:c.indexOf(" FORM ")>0?c.split(" FORM ")[0]:c;
-    if(!customer(owner))note(unitOf(f),{owner:owner,name:c});
-  });
 }
 /* One stop into the record, once: the same stop drawn again (a refresh, a
    second event) is not a new one. */
@@ -1519,6 +1351,7 @@ function recordStop(p){
 }
 /* The stack against the one before: each level added below the common part is a call. */
 function record(frames){
+  if(!INITIAL.local&&!(flow.timeline||[]).length)sessionId=crypto.randomUUID();
   // The caller's frames - SE37's or SE24's test frame, the screen - are not the flow.
   var path=frames.slice(0,frames.length-callerFrames(frames)).reverse().filter(function(f){return !f.system;}).map(unitOf);
   var same=0;while(same<path.length&&same<flowPath.length&&path[same].name===flowPath[same].name)same++;
@@ -1537,14 +1370,6 @@ function record(frames){
     at:top?{url:top.url,line:top.line,ord:ord,name:String(top.label||"")}:null,
     stack:frames.map(function(f){return {label:f.label,unitType:f.unitType,unit:f.unit,program:f.program,include:f.include,line:f.line};})});
 }
-/* A statement a flow run stops at: one with a call inside that may enter
-   Z/Y code - CHECK x=>y( ), IF lo->m( ) and CREATE OBJECT as much as a
-   plain call. A map from before CALLS knew only the kind. */
-function callable(st){
-  if(!st||/^(MESSAGE|LEAVE|SET|COMMIT|ROLLBACK)$/.test(st.kw))return false;
-  var calls=st.calls===undefined?st.kind==="call":st.calls===true;
-  return calls&&!ownersOutside(st);
-}
 /* The statements of the routine a statement is in, its end included. */
 function routine(list,at){
   var a=at,b=at;
@@ -1552,100 +1377,12 @@ function routine(list,at){
   for(b=at+1;b<list.length;b++){if(ENDS.test(list[b].kw))break;if(UNITS.test(list[b].kw)||EVENTS.test(list[b].kw)){b--;break;}}
   return {from:a,to:Math.min(b,list.length-1)};
 }
-/* Each run reads the statement maps again: the ABAP side may have been
-   pulled since the window opened, and a map kept from before would be wrong. */
 function fresh(){
-  maps={};lists={};methodsAt={};
   // The analysis belongs to the value, not to the run: read once, as the user chose the value, and kept for the runs
   // after it. Only an answer with no place in it - it may have been asked at a bad moment - is asked for again; asked
   // again anyway, a run would wait for what it already has. Choosing the value again also asks again.
   if(slicePoints&&!Object.keys(slicePoints).length){slicePoints=null;sliceAsked=null;sliceFor="";}
   if(chosenValue&&typeof sdeOrigin==="function")fetchSlice().catch(function(e){notice(e&&e.message||String(e));});
-}
-function runFlow(){
-  if(!picture.stopped)return;
-  notice("");fresh();logStart();
-  series={steps:0,sap:0,total:0,stackMs:0,other:0,over:0,predicted:0,missed:0,loops:0,standard:0,t0:Date.now(),stop:false,flow:true};
-  var s=series,draw=true,shown=null;
-  // The record goes on across Continue; a new one starts once the program
-  // has ended, or after Stop or Terminate.
-  if(!flow.order.length||flow.ended!==picture.ended||flow.closed){flow={edges:{},nodes:{},order:[],ended:picture.ended};flowPath=[];}
-  s.home={};
-  picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
-  $("cont").querySelector(".lbl").textContent="Pause";$("cont").title="Pause the Flow run (F8)";drawButtons();
-  function key(frames){return frames.map(function(f){return f.include+" "+String(f.label).replace(/^\S+\s*/,"");}).join("|");}
-  function took(r,t){if(lastMove){lastMove.ms=Date.now()-t;lastMove.sap=r.sap||0;}s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));drawStats(s);}
-  function arrived(){
-    return debug("picture").then(function(p){
-      picture=p;logStep(p);
-      if(!p.stopped)return false;
-      record(p.stopped.frames);
-      var k=key(p.stopped.frames);
-      if(draw&&k!==shown){shown=k;stopKey="";apply(p);if(!playing){replayAt=null;drawPos();}
-        if(flow.order.length)showFlow();}
-      // The same routine: only the line moves - nothing else is drawn.
-      else if(draw&&!playing){var top=currentFrame();markSource();if(top)scrollTo(top.line);}
-      if(stopsHere(p))return false;
-      if(!p.stopped.frames.some(function(x){return s.home[x.program];})){s.left=p.stopped.at;return false;}
-      return recordingValues()&&snapDue(p.stopped.frames)?snapshot().then(function(){return true;}):true;
-    });
-  }
-  function move(){
-    if(s.stop)return Promise.resolve();
-    var f=currentFrame(),depth=picture.stopped.frames.length;
-    // Still in SAP's own code above ours: back out before anything else.
-    if(strayed(picture.stopped.frames)){
-      var t0=Date.now();s.standard++;
-      return backToOurs(picture.stopped.frames).then(function(o){took(o,t0);if(o.ended)return stepEnded(o);return arrived().then(function(on){if(on)return move();});});
-    }
-    return mapFor(f.program).then(function(map){return methodsFor(f).then(function(){return map;});}).then(function(map){
-      var list=listFor(f,map),p=placeOf(f,map),t=Date.now(),go,why,detail="";
-      if(p&&callable(p.here)){why="a call: F5";go=debug("step",{kind:"into",quick:true});}
-      else if(p&&outside(p.here)){
-        stepOver(f,p.here);
-        why="outside Z/Y: F6";go=debug("step",{kind:"over",quick:true});}
-      else if(p&&ENDS.test(p.here.kw)){why="the end: F5 back";go=debug("step",{kind:"into",quick:true});}
-      else if(p&&list){
-        var r=routine(list,list.indexOf(p.here)),lines=[];
-        for(var i=r.from+1;i<=r.to;i++){if(list[i]!==p.here&&(callable(list[i])||ENDS.test(list[i].kw)))lines.push(list[i].line);}
-        var calls=lines.length&&list.slice(r.from+1,r.to+1).some(function(x){return x!==p.here&&callable(x);});
-        why=!calls?"nothing to call in lines "+list[r.from].line+"-"+list[r.to].line+": F7":"points on "+lines.join(", ")+": F8";
-        // Every statement of the routine with a call in it, and what the run
-        // made of it - so a call it did not stop at shows in the log.
-        var weighed=[];
-        for(var k=r.from+1;k<=r.to;k++){var x=list[k];
-          if(!(x.calls===true||x.kind==="call"))continue;
-          weighed.push(x.line+" "+x.kw+" ("+(x.owners||"no owner")+"): "+(x===p.here?"here":callable(x)?"point":ownersOutside(x)?"outside Z/Y":"skipped"));}
-        detail=weighed.length?weighed.join("; "):"no statement with a call in lines "+list[r.from].line+"-"+list[r.to].line;
-        go=!calls?debug("step",{kind:"out",quick:true})
-          :debug("runTo",{url:f.url,lines:lines}).then(function(x){return x.placed?x:debug("step",{kind:"into",quick:true});});
-      }
-      else{why="F5, not placed";go=debug("step",{kind:"into",quick:true});}
-      if(!detail&&p)detail="line "+p.here.line+" "+p.here.kw+" "+p.here.kind+(p.here.calls?" with a call":"")+" ("+(p.here.owners||"no owner")+")";
-      if(!p)detail=!map?"no map for "+f.program:!list?"map not used for "+f.include+" at "+String(f.url).split("#")[0]:"no statement starts at line "+f.line;
-      explain(f,map,p,why);lastMove={action:why,from:String(f.label),detail:detail};
-      return go.then(function(r){
-        took(r,t);if(r.ended)return stepEnded(r);
-        return arrived().then(function(on){
-          if(!on)return;
-          // Landed outside Z/Y from our code: back out at once.
-          var top=picture.stopped.frames[0];
-          if(strayed(picture.stopped.frames)){
-            var t2=Date.now();s.standard++;lastMove={action:"outside Z/Y: F7",from:String(top.label)};
-            return debug("step",{kind:"out",quick:true}).then(function(o){took(o,t2);if(o.ended)return stepEnded(o);return arrived().then(function(on2){if(on2)return move();});});
-          }
-          return move();
-        });
-      });
-    });
-  }
-  s.done=move().catch(failed).then(function(){
-    if(s.left)notice("The Flow run stopped: the program left "+object.name+" - it is now at "+s.left+".");
-    series=null;$("cont").querySelector(".lbl").textContent="Continue";$("cont").title="Continue to the next breakpoint (F8)";
-    drawStats(s);
-    if(flow.order.length)showFlow();
-    stopKey="";lastStep=null;if(!s.quiet)return refresh();
-  }).catch(failed);
 }
 /* The record as statements: a node is a statement of a procedure, however
    many times the run stood on it, so a loop is drawn once and its back edge
@@ -1781,7 +1518,8 @@ function stepFlow(){
       while(up!=null&&up!==f.line&&chain.length<40){chain.unshift(up);up=shape.parent[up];}
       var above=unitKey;
       chain.forEach(function(blockLine){
-        var pk=unitKey+"|"+String(f.include||"")+":"+blockLine;
+        // Keyed as a statement is: a block the run also stopped on is that one node, not a second.
+        var pk=stepKey({cur:t.cur,stack:[{program:f.program,include:f.include,unit:f.unit,line:blockLine}]});
         if(!nodes[pk]){
           add(pk,{text:stepText({program:f.program,include:f.include,unit:f.unit,line:blockLine},t.at.url,0),type:"statement",
             owner:owner,unit:unit,url:t.at.url,line:blockLine,depth:level,branch:true});
@@ -1937,7 +1675,7 @@ function callGraph(byOwner){
 /* A chosen value is read at every stop of a stepping record - one name, one
    request, which is what makes it affordable where a full snapshot is not.
    Routine boundaries are the Flow run's grid, and its snapshots stay there. */
-function readChosenValue(){
+function readChosenValue(pre){
   var tl=flow.timeline||[],at=tl[tl.length-1];
   if(!at)return Promise.resolve();
   // At a place of the slice the names that matter are its own; elsewhere it is
@@ -1949,6 +1687,13 @@ function readChosenValue(){
   // Always read the selected value as well as the operands at this stop.
   if(chosenValue&&chosenValue.name)names=[chosenValue.name].concat(names).filter(function(name,index,list){return list.indexOf(name)===index;});
   if(!names.length)return Promise.resolve();
+  // Read with the step: used when it holds every name wanted here; a place of the slice may want its operands too.
+  if(pre&&names.every(function(n){return (pre.names||[]).indexOf(String(n).toUpperCase())>=0;})){
+    if(pre.error){at.watch={names:names,error:pre.error};return Promise.resolve();}
+    var got=(pre.read||[]).map(function(v){return {name:v.name,value:v.value,type:v.type};});
+    at.watch=got.length?{read:got,value:got[0].value,name:got[0].name}:{names:names,missing:true};
+    return Promise.resolve();
+  }
   return debug("vars",{names:names}).then(function(d){
     var read=(d.variables||[]).map(function(v){return {name:v.name,value:v.value,type:v.type};});
     at.watch=read.length?{read:read,value:read[0].value,name:read[0].name}:{names:names,missing:true};
@@ -2127,21 +1872,31 @@ function logStep(p){
   var m=lastMove;lastMove=null;if(!m){lastExplain="";return;}
   var s=(p||picture).stopped,top=s&&s.frames[0];
   steplog.rows.push({n:steplog.rows.length?steplog.rows[steplog.rows.length-1].n+1:1,action:m.action,from:m.from,
-    to:s?String(top&&top.label||s.at)+(s.predicted?" (predicted)":""):"program ended",ms:m.ms||0,sap:m.sap||0,detail:[m.detail||"",lastExplain].filter(Boolean).join(" · "),depth:s?s.frames.length:0});
+    to:s?String(top&&top.label||s.at):"program ended",ms:m.ms||0,sap:m.sap||0,detail:[m.detail||"",lastExplain].filter(Boolean).join(" · "),depth:s?s.frames.length:0});
   lastExplain="";
   if(steplog.rows.length>5000)steplog.rows.shift();
   
   if(paneOn("logsec"))drawLog();
 }
-function logText(rows){return rows.map(function(r){return r.n+"\t"+r.ms+" ms (SAP "+r.sap+")\tdepth "+r.depth+"\t"+r.from+"\t-> "+r.to+"\t"+r.action+(r.detail?"\t| "+r.detail:"");}).join("\n");}
-function shownRows(){var f=logFilter.toUpperCase();return steplog.rows.filter(function(r){return !f||(r.action+" "+r.from+" "+r.to+" "+r.detail).toUpperCase().indexOf(f)>=0;});}
+function logText(rows){return rows.map(function(r){return r.n+"\t"+(INITIAL.local?"—":r.ms+" ms (SAP "+r.sap+")")+"\tdepth "+r.depth+"\t"+r.from+"\t-> "+r.to+"\t"+r.action+(r.detail?"\t| "+r.detail:"");}).join("\n");}
+function allLogRows(){
+  if(!INITIAL.local)return steplog.rows;
+  return (flow.timeline||[]).map(function(t,i){
+    var owner=t.cur&&t.cur.owner||t.stack&&t.stack[0]&&t.stack[0].program||"",line=t.at&&t.at.line||0;
+    var previous=i&&flow.timeline[i-1],from=previous&&previous.cur&&previous.cur.owner||"";
+    var source=texts[norm(t.at&&t.at.url||"")],statement=source&&source[line-1]||"";
+    return {n:i+1,action:"recorded",from:i?from+":"+(previous.at&&previous.at.line||0):"start",
+      to:owner+":"+line,ms:"—",sap:"—",detail:statement.trim(),depth:(t.stack||[]).length};
+  });
+}
+function shownRows(){var f=logFilter.toUpperCase();return allLogRows().filter(function(r){return !f||(r.action+" "+r.from+" "+r.to+" "+r.detail).toUpperCase().indexOf(f)>=0;});}
 function drawLog(){
-  var box=$("logbox"),rows=shownRows();
+  var box=$("logbox"),rows=shownRows(),all=allLogRows();
   // What a step costs belongs with the steps, not in the toolbar: an average
   // over the run, and where it goes - the request to SAP, and reading the
   // stack after it.
   var s=series||lastStats;
-  $("logtime").textContent=s&&s.steps?" · "+Math.round(s.total/s.steps)+" ms/step (SAP "
+  $("logtime").textContent=!INITIAL.local&&s&&s.steps?" · "+Math.round(s.total/s.steps)+" ms/step (SAP "
     +Math.round(s.sap/s.steps)+", stack "+(s.steps-s.predicted-s.loops>0?Math.round(s.stackMs/(s.steps-s.predicted-s.loops)):0)+")":"";
   if(!$("logfilter")){
     box.innerHTML='<div class="logbar"><input id="logfilter" placeholder="Filter the steps" spellcheck="false"><button id="logcopy" title="Copy the steps shown, as text">Copy</button><span id="logcount"></span></div><div id="logrows"></div>';
@@ -2152,11 +1907,11 @@ function drawLog(){
     $("logcopy").onclick=function(){var rows=shownRows();
       debug("copy",{text:logText(rows)}).then(function(){$("logcount").textContent="copied "+rows.length+" steps";}).catch(failed);};
   }
-  $("logcount").textContent=rows.length+" of "+steplog.rows.length+" steps";
+  $("logcount").textContent=rows.length+" of "+all.length+" steps";
   var table=document.createElement("table");table.className="grid log";
   var head=document.createElement("tr");["#","ms","depth","from","to","step","why"].forEach(function(t){var th=document.createElement("th");th.textContent=t;head.appendChild(th);});table.appendChild(head);
   rows.slice(-1000).forEach(function(r){var tr=document.createElement("tr");
-    [r.n,r.ms+" ("+r.sap+")",r.depth,r.from,r.to,r.action,r.detail].forEach(function(v){var td=document.createElement("td");td.textContent=v;td.title=v;tr.appendChild(td);});table.appendChild(tr);});
+    [r.n,INITIAL.local?"—":r.ms+" ("+r.sap+")",r.depth,r.from,r.to,r.action,r.detail].forEach(function(v){var td=document.createElement("td");td.textContent=v;td.title=v;tr.appendChild(td);});table.appendChild(tr);});
   var list=$("logrows");list.textContent="";list.appendChild(table);list.scrollTop=list.scrollHeight;
 }
 function showLog(){setPane("logsec",true);}
@@ -2172,11 +1927,17 @@ function stepSources(){
   });},Promise.resolve());
 }
 function showFlow(){
-  if(flowBusy){flowAgain=true;return;}flowBusy=true;
+  if(flowBusy){flowAgain=true;return flowDone;}
+  flowBusy=true;
+  flowDone=(async function(){
+    do {flowAgain=false;await renderFlow();} while(flowAgain);
+  })().catch(failed).finally(function(){flowBusy=false;flowDone=null;});
+  return flowDone;
+}
+function renderFlow(){
   // Nothing recorded yet: say what would fill this, rather than show an empty
   // frame and leave the reader to work it out.
   if(!(flow.timeline||[]).length&&!staticFlow){
-    flowBusy=false;
     if(!paneOn("flowpane")){$("flowpane").hidden=false;document.querySelectorAll('#panes button[data-pane="flowpane"]').forEach(function(b){b.classList.add("on");});layoutPanes();}
     $("bse-workspace").innerHTML='<div class="empty">Nothing recorded yet. With the record on, Continue steps the program and keeps every stop; the flow appears here.</div>';
     return;
@@ -2188,8 +1949,7 @@ function showFlow(){
   // diagram and the controls over both. The window supplies the graph.
   $("fdepthbox").hidden=true;
   if((flow.timeline||[]).length&&(flow.timeline||[]).some(function(t){return t.at&&t.at.url&&!texts[norm(t.at.url)];})){
-    flowBusy=false;return stepSources().then(showFlow).catch(failed);}
-  flowBusy=false;
+    return stepSources().then(function(){flowAgain=true;});}
   return loadMermaid().then(function(){
     mermaid.initialize({startOnLoad:false,securityLevel:"strict",theme:darkPane()?"dark":"default",flowchart:{htmlLabels:false,useMaxWidth:false},maxEdges:100000,maxTextSize:5000000});
     // The shown reading of the one record (or of the analysis) is built now; the shared view asks for another one
@@ -2210,7 +1970,7 @@ function showFlow(){
     if(data.panes)$("bse-workspace").innerHTML='<template data-flow-pane="formula">'+data.panes.formula+'</template><template data-flow-pane="expression">'+data.panes.expression+'</template>';
     return loadFlowView().then(openRecordFlow).then(markNow);
     });
-  }).catch(failed);
+  });
 }
 /* Formula and Expression from the record: where the chosen value changed, the statement that changed it and what that
    statement read, with the values the record holds. Built by the host (abaplint reads the statements); the analysis's,
@@ -2249,10 +2009,8 @@ function withRecordFormula(data){
     var on=rf.hasValues&&$("fvalues").classList.contains("on");
     data.formula={nodes:rf.formula.nodes.map(function(n){return Object.assign({},n,{label:on?n.label:n.text,dataText:on?n.label:n.text});}),edges:rf.formula.edges};
     data.maxLevel=rf.formula.maxLevel;
-    // The formula leads Formula too: the one line of Expression, then the tree that explains it.
-    var expression=analysed?analysed.expression:rf.panes.expression,holder=document.createElement("div");holder.innerHTML=expression;
-    var line=holder.querySelector("p > code");
-    data.panes={formula:(line?'<p>'+line.outerHTML+'</p>':"")+rf.panes.formula,expression:expression};
+    // Both panes must describe this recorded run. A static path may carry an empty Expression.
+    data.panes={formula:rf.panes.formula,expression:rf.panes.expression};
     return data;
   });}).catch(function(error){notice("Formula from the run: "+(error&&error.message||error));return data;});
 }
@@ -2303,10 +2061,14 @@ function annotateValues(){
   if($("fvalues").classList.contains("on")&&steps.length)box.querySelectorAll("[data-full]").forEach(function(e){
     var v=recordedValue(e.dataset.full,e.dataset.location,steps,upto);if(v===undefined)return;
     var s=document.createElement("span");s.className="vx-value";s.textContent=" ("+(v!==null&&typeof v==="object"?JSON.stringify(v):String(v))+")";s.title="Recorded value";e.after(s);});
+  // Its own insertions are not a change to answer: without this the observer starts it again, endlessly.
+  valueObserver.takeRecords();
   annotating=false;
 }
 var annotating=false,annotateTimer=null;
-new MutationObserver(function(){if(annotating)return;clearTimeout(annotateTimer);annotateTimer=setTimeout(annotateValues,50);}).observe($("bse-workspace"),{childList:true,subtree:true});
+function annotateSoon(){clearTimeout(annotateTimer);annotateTimer=setTimeout(annotateValues,50);}
+var valueObserver=new MutationObserver(function(){if(!annotating)annotateSoon();});
+valueObserver.observe($("bse-workspace"),{childList:true,subtree:true});
 /* The zoom, the fit and the magnifier belong to the view now; the window
    keeps only the pane around it. */
 $("ffull").onclick=function(){$("flowpane").classList.toggle("full");};
@@ -2388,23 +2150,27 @@ $("fmethods").onclick=function(){flowGrouping="methods";flowMode=flowDiagram==="
 var replayAt=null,playing=null;
 function stops(){return flow.timeline?flow.timeline.length:0;}
 var playSpeed=0;
-function drawPos(){var any=stops();$("recbar").hidden=!any;if(playing&&playing.frames)playSpeed=Math.round(playing.ms/playing.frames);var n=stops(),sl=$("fslide");sl.max=Math.max(1,n);sl.value=replayAt==null?n:replayAt+1;sl.disabled=!n||!!playing;$("fpos").textContent=n?(replayAt==null?n:replayAt+1)+"/"+n+(playSpeed?" · "+playSpeed+" ms/frame":""):"";
+$("debug-runs").onclick=function(){debug("openRuns",{}).catch(failed);};
+function drawPos(){var any=stops();$("recbar").hidden=!any;$("saveRecord").hidden=!!INITIAL.savedRecord||!!INITIAL.local||!any;if(playing&&playing.frames)playSpeed=Math.round(playing.ms/playing.frames);var n=stops(),sl=$("fslide");sl.max=Math.max(1,n);sl.value=replayAt==null?n:replayAt+1;sl.disabled=!n||!!playing;$("fpos").textContent=n?(replayAt==null?n:replayAt+1)+"/"+n+(playSpeed?" · "+playSpeed+" ms/frame":""):"";
   $("fplay").innerHTML=playing?"&#9208;":"&#9205;";}
 /* One recorded stop on screen: its source line and its block. Only the
    stop at the end is the program's own; the others are the record. */
 /* Docked in VS Code, this window has no source pane of its own - the editor is
    the source - so a replayed stop has to move the editor, the way a live stop
    does. Standing on its own, the window shows it in its own pane. */
-var revealedAt="";
+var revealTimer=null;
 function revealInEditor(t){
   if(!document.body.classList.contains("vertex-docked-debug"))return;
+  if(typeof INITIAL!=="undefined"&&INITIAL.savedRecord)return;
   if(typeof sdeReveal!=="function"||!t||!t.at)return;
-  // Consecutive stops on one line - a loop, a chained statement - are one
-  // place, and at full speed that is most of them.
-  var place=norm(t.at.url)+":"+t.at.line;if(place===revealedAt)return;revealedAt=place;
+  clearTimeout(revealTimer);
+  if(playing)return;
+  // Dragging the slider can pass dozens of stops before an editor opens.
+  // Show only the source at the stop where the player settles.
   var f=t.stack&&t.stack[0];
-  sdeReveal({url:t.at.url,line:t.at.line,program:f&&f.program,include:f&&f.include,
-    unit:f&&f.unit,unitType:f&&f.unitType,label:f&&f.label});
+  var frame={url:t.at.url,line:t.at.line,program:f&&f.program,include:f&&f.include,
+    unit:f&&f.unit,unitType:f&&f.unitType,label:f&&f.label};
+  revealTimer=setTimeout(function(){revealTimer=null;sdeReveal(frame);},150);
 }
 function showStop(i){
   var t=flow.timeline[i];markNow(t.cur,t.upto);if(t.stack)drawStack(t.stack);drawRecordedVars(i);
@@ -2414,8 +2180,12 @@ function showStop(i){
     document.querySelectorAll("#code .line.here").forEach(function(r){r.classList.remove("here");});
     var h=$("l"+t.at.line);if(h)h.classList.add("here");});
 }
-function replay(i){var n=stops();if(!n)return;if(typeof annotateValues==="function")setTimeout(annotateValues,0);replayAt=INITIAL.local?Math.min(n-1,Math.max(0,i)):(i>=n-1?null:Math.max(0,i));drawPos();
+$("saveRecord").onclick=function(){var sources={};Object.keys(texts).forEach(function(key){sources[key]=texts[key].join("\n");});
+  debug("saveRecord",{format:1,session_id:sessionId,meta:{name:object.name,type:object.type,created:new Date().toISOString(),recording:$('[data-rec].active')&&$('[data-rec].active').getAttribute('data-rec')||"steps"},timeline:flow.timeline||[],flow:{nodes:flow.nodes||{},edges:flow.edges||{},order:flow.order||[]},sources:sources})
+    .then(function(result){notice("SAP debug recording saved: "+result.path);}).catch(failed);};
+function replay(i){var n=stops();if(!n)return;if(typeof annotateSoon==="function")annotateSoon();replayAt=INITIAL.local||INITIAL.savedRecord?Math.min(n-1,Math.max(0,i)):(i>=n-1?null:Math.max(0,i));drawPos();
   if(replayAt==null){markNow(liveCur());drawStack();drawVars();var f=currentFrame();if(f)show(f.url,null,f.line).catch(failed);}else showStop(replayAt).catch(failed);}
+window.sdeReplayStep=function(step){if(Number.isInteger(step)&&step>=1&&step<=stops())replay(step-1);};
 $("fprev").onclick=function(){if(playing)return;replay((replayAt==null?stops()-1:replayAt)-1);};
 $("fnext").onclick=function(){if(playing||replayAt==null)return;replay(replayAt+1);};
 $("ffirst").onclick=function(){if(!playing)replay(0);};
@@ -2428,7 +2198,7 @@ $("fplay").onclick=function(){
   // Source and block per stop, one per animation frame: ms/frame is what the
   // window takes to show a stop. The chart itself is not drawn again.
   function frame(){
-    if(playing.stop||at>=n){var p=playing;playing=null;if(!p.stop)replay(n-1);else drawPos();return;}
+    if(playing.stop||at>=n){var p=playing;playing=null;if(!p.stop)replay(n-1);else{drawPos();revealInEditor(flow.timeline[replayAt]);}return;}
     replayAt=at;
     var t0=Date.now();
     showStop(at).then(function(){playing.ms+=Date.now()-t0;playing.frames++;at++;drawPos();
@@ -2521,39 +2291,109 @@ function showDumpPage(id,name){
 function hideDumpPage(){$("dumppage").hidden=true;$("dumppagebody").textContent="";}
 $("dumppageclose").onclick=hideDumpPage;
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!$("dumppage").hidden){e.stopPropagation();hideDumpPage();}},true);
-var localRunSequence=0,localEnded=false,localFetching=false,selDialog=null,selConfirmed=false;
+var localRunSequence=0,localEnded=false,localFetching=false,selDialog=null,selConfirmed=false,localRunMs=0;
+/* The transpiler's selection screen: radio groups and the other PARAMETERS. A value the reader gave is kept while a
+   parameter or a group of that name is still there; a new one starts at its DEFAULT. */
+/* A method or function module run: an editor per parameter - a field, a structure's fields, a table's rows - and the
+   named variants of their values. entryEditors reads them back for the run. */
+function fillSelection(scenarios,parameters,entry,screen){
+  var box=$("local-selection"),kept={};
+  box.querySelectorAll('input[type="radio"]:checked').forEach(function(input){kept["radio:"+input.name]=input.value;});
+  box.querySelectorAll("[data-parameter]").forEach(function(input){kept["p:"+input.getAttribute("data-parameter")]=input.type==="checkbox"?input.checked:input.value;});
+  box.querySelectorAll("[data-range]").forEach(function(range){kept["r:"+range.getAttribute("data-range")]=readRange(range);});
+  box.textContent="";entryEditors=null;entryBlocked="";
+  if(entry){fillEntry(box,entry);box.hidden=false;return;}
+  if(screen&&(screen.elements||[]).some(function(e){return !e.hidden&&e.kind!=="end-block"&&e.kind!=="end-line";})){drawScreen(box,screen,kept);box.hidden=false;return;}
+  (scenarios||[]).forEach(function(group){var field=document.createElement("fieldset"),legend=document.createElement("legend");
+    legend.textContent="Selection screen / "+group.group;field.appendChild(legend);
+    var was=kept["radio:"+group.group],chosen=(group.choices||[]).some(function(c){return c.name===was;})?was:(group.default||group.choices[0]?.name);
+    (group.choices||[]).forEach(function(choice){var label=document.createElement("label"),radio=document.createElement("input");
+      radio.type="radio";radio.name=group.group;radio.value=choice.name;radio.checked=choice.name===chosen;
+      label.append(radio,document.createTextNode(" "+choice.name));field.appendChild(label);});box.appendChild(field);});
+  if((parameters||[]).length){var plain=document.createElement("fieldset"),title=document.createElement("legend");
+    title.textContent="Selection screen / parameters";plain.appendChild(title);
+    parameters.forEach(function(p){var label=document.createElement("label"),input=document.createElement("input"),was=kept["p:"+p.name];
+      input.setAttribute("data-parameter",p.name);
+      if(p.kind==="checkbox"){input.type="checkbox";input.checked=typeof was==="boolean"?was:p.default==="X";label.append(input,document.createTextNode(" "+p.name));}
+      else{input.type="text";input.value=typeof was==="string"?was:p.default||"";label.append(document.createTextNode(p.name+" "),input);}
+      label.style.display="block";plain.appendChild(label);});box.appendChild(plain);}
+  box.hidden=!box.childNodes.length;
+}
+
+/*SELECTION-SCREEN-UI*/
+/* What the run did: the steps recorded and the time the program ran for them - not the transpiling, not the waits at a
+   breakpoint. */
+function localStats(){var n=(flow.timeline||[]).length,sec=localRunMs/1000;
+  $("stats").textContent=n+" recorded steps · execution "+sec.toFixed(3)+" s"+(sec>0?" · "+(n/sec).toFixed(0)+" steps/s":"");}
 $("clearpanel").onclick=function(){if(typeof sdeClear==="function")sdeClear();};
 $("clearpanel").hidden=typeof sdeClear!=="function";
 /* What a transpiler run wrote with WRITE, as far as it has run: the list SAP would show, in the Output section. */
-function setOutput(text){var box=$("outbox");if(!box)return;box.textContent=String(text||"");
+function setOutput(text){var box=$("outbox");if(!box||$("outsec").hasAttribute("data-off"))return;
+  // A call's results, written in VERTEX's form, read as text: values, structures as trees, tables as columns.
+  var split=splitResults(text);box.textContent=split.text+(split.results.length?(split.text?"\n\n":"")+resultsText(split.results):"");
   if(text&&!paneOn("outsec")&&!readerClosed.outsec)setPane("outsec",true);}
 function localPush(trace){var name=String(INITIAL.name||"").toUpperCase();
+  // SY fields stay until set again; the SELECTs belong to one step only and are dropped at the next.
+  var hadSql=(flow.timeline||[]).length&&flow.timeline[flow.timeline.length-1].sqlCount||0;
   trace.forEach(function(row){var owner=row.owner||name,routine=row.routine||"START-OF-SELECTION";
+    var extra=[],sy=Object.keys(row.sy||{}).map(function(key){return {name:"SY-"+key,type:"",value:row.sy[key]};});
+    if(sy.length)extra.push({name:"SY",children:sy});
+    var sql=(row.sql||[]).map(function(entry,index){return {name:"SELECT "+(index+1),type:"",value:String(entry.select||"")+(entry.error?"  -  failed: "+entry.error:"  -  "+entry.rows+" rows")};});
+    for(var i=sql.length;i<hadSql;i++)sql.push({name:"SELECT "+(i+1),deleted:true});
+    if(sql.length)extra.push({name:"SQL",children:sql});hadSql=(row.sql||[]).length;
     var frame={n:0,current:true,label:"EVENT "+routine,program:owner,
     include:owner,unitType:"EVENT",unit:routine,url:row.file,line:row.line};
     var frames=(row.stack||[{owner:owner,unit:routine}]).map(function(entry,index){var program=typeof entry==="string"?entry:entry.owner,unit=index===0?routine:(entry.unit||program);return index===0?frame:{n:index,current:false,label:"METHOD "+unit,program:program,include:program,unitType:"METHOD",unit:unit,url:"",line:0};});
     flow.timeline.push({upto:0,cur:{owner:owner,name:routine},
       at:{url:row.file,line:row.line,ord:0,name:routine},
       stack:frames,vars:[{name:"Locals",children:Object.keys(row.changed||{}).map(function(key){return {
-        name:key,type:"",value:row.changed[key]};})}],varsDelta:true});
+        name:key,type:"",value:row.changed[key]};})}].concat(extra),varsDelta:true,sqlCount:hadSql});
   });
 }
 $("run").onclick=function(){
-  if(INITIAL.local&&selDialog&&!selConfirmed){selDialog.showModal();return;}
+  // The selection screen as the source stands now - saved or not - not as it was when the panel opened.
+  if(INITIAL.local&&selDialog&&!selConfirmed){debug("selection").then(function(d){
+      fillSelection(d.scenarios,d.parameters,d.entry,d.screen);
+      if(!$("local-selection").childNodes.length){selConfirmed=true;$("run").onclick();}
+      else if(document.body.classList.contains("vx-run-only")){placeSelection();showScreen();}
+      else selDialog.showModal();
+    }).catch(failed);return;}
   selConfirmed=false;
   if(INITIAL.local){var runId=++localRunSequence,selection={};document.querySelectorAll('#local-selection input[type="radio"]:checked').forEach(function(input){selection[input.name]=input.value;});
+    if(entryEditors)selection.$entry=readEntry();
+    var ranges=document.querySelectorAll('#local-selection [data-range]');if(ranges.length){selection.$ranges={};
+      ranges.forEach(function(range){selection.$ranges[range.getAttribute("data-range")]=readRange(range);});}
+    var given=document.querySelectorAll('#local-selection [data-parameter]');if(given.length){selection.$parameters={};
+      given.forEach(function(input){selection.$parameters[input.getAttribute("data-parameter")]=input.type==="checkbox"?(input.checked?"X":""):input.value;});}
     flow={edges:{},nodes:{},order:[]};flowPath=[];localVarCache={};recordedOpen={};recordedPages={};replayAt=null;recKey="";localEnded=false;localFetching=false;drawPos();
     $("stats").textContent="";$("state").textContent="Transpiling and running to the first breakpoint.";$("bse-workspace").hidden=true;
     notice("");debug("run",{selection:selection}).then(function(result){
       if(runId!==localRunSequence)return;
-      var trace=result.trace||[];
-      flow={edges:{},nodes:{},order:[],timeline:[],ended:picture.ended};flowPath=[];
-      localPush(trace);localEnded=!!result.ended;setOutput(result.output);
-      if(!trace.length){$("state").textContent="Transpiler run recorded 0 ABAP steps. See VERTEX Local ABAP output.";notice("No ABAP steps were recorded in this run.");return;}
-      $("bse-workspace").hidden=false;replay(trace.length-1);showFlow();
-      $("state").textContent=localEnded?"Program finished without reaching a breakpoint. "+trace.length+" recorded steps.":"Stopped at step "+trace.length+". Continue runs to the next breakpoint.";
+      localResult(result);
     }).catch(function(error){if(runId!==localRunSequence)return;$("state").textContent="Transpiler run failed.";failed(error);});return;}
+  sapRun();
+};
+/* A transpiler run's record on the page: from Run, or from a run still alive when the panel was opened again. */
+function localResult(result){
+      // Back to the screen, in a plain run of a program that has one.
+      $("runback").hidden=!(document.body.classList.contains("vx-run-only")&&$("local-selection").childNodes.length);
+      var trace=result.trace||[];
+      // An old empty restore may arrive after a newer run has already published its first stop.
+      if(!trace.length&&picture.traceLength>0)return;
+      flow={edges:{},nodes:{},order:[],timeline:[],ended:picture.ended};flowPath=[];
+      localPush(trace);localEnded=!!result.ended;setOutput(result.output);localRunMs=result.durationMs||0;localStats();
+      if(paneOn("logsec"))drawLog();
+      if(!trace.length){$("state").textContent="Transpiler run recorded 0 ABAP steps. See VERTEX Local ABAP output.";notice("No ABAP steps were recorded in this run.");return;}
+      $("bse-workspace").hidden=false;replay(result.at!=null?result.at:trace.length-1);showFlow();
+      $("state").textContent=localEnded?"Program finished without reaching a breakpoint. "+trace.length+" recorded steps.":"Stopped at step "+trace.length+". Continue runs to the next breakpoint.";
+      publishDebugContext();
+}
+/* Run in SAP: the program started in WebGUI, or a class or function module on its test screen. */
+function sapRun(){
   var p=$("program").hidden?String(INITIAL.name):$("program").value.trim();
+  // A program is run itself: the empty field opens a test screen only for a class or a function module.
+  if(!p&&["PROG","REPS"].indexOf(String(INITIAL.type||"").toUpperCase())>=0)p=String(INITIAL.name);
+  $("state").textContent="Starting "+(p||INITIAL.name)+" in SAP...";
   // An empty field for a class or a function module: its own test screen,
   // SE24 or SE37 with the name filled in; the test is started there with F8.
   if(!p){notice("");debug("run",{program:INITIAL.name,test:INITIAL.type}).then(function(){
@@ -2630,7 +2470,7 @@ var chosenValue=null;
 /* The values followed: one or several, a structure as its components. One of them is the chosen value, the one
    Formula, Expression and the places are about; the list on the chip switches between them. The analysed path is kept
    per value, so switching back to one is immediate. */
-var followed=[],flowByValue={};
+var followed=[],flowByValue={},bseAfterFollow=false;
 function componentsOf(name){
   var base=String(name).toUpperCase();if(base.indexOf("-")>=0)return [];
   // After a run: the components the run changed.
@@ -2653,14 +2493,77 @@ function follow(path){
   var parts=componentsOf(name);
   if(!parts.length)parts=[name];
   parts.forEach(function(p){if(followed.indexOf(p)<0)followed.push(p);});
+  bseAfterFollow=true;
   chooseValue(parts[0]);
 }
 function valuePath(v,owner,parent){return parent?parent+"-"+v.name:String(v.name||"");}
 /* The menu of a row in Variables: one deliberate way to choose, or drop, the value the analysis follows. */
-var menuFor="",menuValue="";
+var menuFor="",menuValue="",menuPoint=null;
+function drawWatchpoints(){
+  var box=$("watchpoints");box.textContent="";
+  (picture.watchpoints||[]).forEach(function(w){
+    var row=document.createElement("div");row.className="empty";
+    var hit=(picture.stopped&&picture.stopped.watchpoints||[]).some(function(x){return x.id===w.id;});
+    row.textContent=(hit?"● ":"◎ ")+(w.name||w.variableName||"")+(w.condition?" when "+w.condition:"")+(hit?" — reached":"");
+    var remove=document.createElement("button");remove.textContent="×";remove.title="Remove watchpoint";
+    remove.onclick=function(){debug("watchpointRemove",{id:w.id}).then(refresh).catch(failed);};
+    row.appendChild(remove);box.appendChild(row);
+  });
+  $("watchadd").disabled=!picture.stopped;
+  $("watchfollow").disabled=!picture.stopped||!chosenValue;
+}
+function addWatchpoint(name){
+  if(!picture.stopped){notice("Stop at a breakpoint before adding a watchpoint.");return Promise.resolve();}
+  var condition=watchCondition(name);
+  if(condition===null)return Promise.resolve();
+  return debug("watchpointAdd",{name:name,condition:condition}).then(function(){ $("watchname").value="";return refresh(); }).catch(failed);
+}
+function watchCondition(name){
+  var when=$("watchwhen").value.trim();if(!when)return "";
+  if(!/^(?:>=|<=|<>|=|>|<)\s*(?:-?\d+(?:\.\d+)?|'(?:[^']|'')*')$/.test(when)){
+    notice("Use a comparison with a number or quoted text, for example >= 10 or = 'DONE'.");return null;
+  }
+  return String(name).toUpperCase()+" "+when;
+}
+$("watchadd").onclick=function(){addWatchpoint($("watchname").value);};
+$("watchname").onkeydown=function(e){if(e.key==="Enter")addWatchpoint(this.value);};
+function watchFollow(path){
+  if(!picture.stopped){notice("Stop at a breakpoint before adding a watchpoint.");return;}
+  if(!chosenValue||chosenValue.name!==String(path).toUpperCase())chooseValue(path);
+  return fetchSlice().then(function(points){
+    var names=[String(path).toUpperCase()];
+    points.forEach(function(point){(point.names||[]).forEach(function(name){
+      name=String(name).toUpperCase();if(/^[A-Z_][A-Z0-9_]*(?:-[A-Z_][A-Z0-9_]*)*$/.test(name)&&names.indexOf(name)<0)names.push(name);
+    });});
+    var added=0,missed=[];
+    return names.reduce(function(chain,name){return chain.then(function(){var condition=watchCondition(name);if(condition===null)return;
+      return debug("watchpointAdd",{name:name,condition:condition}).then(function(){added++;},function(error){missed.push(name+": "+(error&&error.message||error));});});},Promise.resolve())
+      .then(function(){return refresh();}).then(function(){notice("Watching "+added+" names of "+path+(missed.length?". Could not watch: "+missed.join("; "):"."));});
+  }).catch(failed);
+}
+$("watchfollow").onclick=function(){if(chosenValue)watchFollow(chosenValue.name);};
+/* Where a recorded stop stands, as a point the analyses start from: its object, the object's type and the line. */
+function stopPoint(i){
+  var t=(flow.timeline||[])[i],at=t&&t.at;if(!at||!at.url||!at.line)return null;
+  var url=String(at.url).split("#")[0],m;
+  if((m=/\/oo\/classes\/([^/]+)\//i.exec(url)))return {id:"stop:"+i,url:url,line:at.line,name:decodeURIComponent(m[1]).toUpperCase(),objectType:"CLAS"};
+  if((m=/\/programs\/(?:programs|includes)\/([^/]+)\//i.exec(url)))return {id:"stop:"+i,url:url,line:at.line,name:decodeURIComponent(m[1]).toUpperCase(),objectType:"PROG"};
+  if((m=/([^\\/]+)\.(clas|prog)\.abap$/i.exec(url)))return {id:"stop:"+i,url:url,line:at.line,name:m[1].toUpperCase(),objectType:m[2].toUpperCase()==="CLAS"?"CLAS":"PROG"};
+  return null;
+}
 function openValueMenu(path,x,y,value){
   menuFor=path;menuValue=String(value===undefined?"":value);var on=followed.indexOf(path.toUpperCase())>=0,m=$("vmenu");
   $("vfollow").textContent=on?"Stop following "+path:"Follow "+path+" in the analysis";
+  $("vwatch").textContent="Watch changes to "+path;
+  $("vwatch").hidden=typeof picture==="undefined"||!picture.stopped;
+  $("vwatchfollow").textContent="Watch Follow of "+path;
+  $("vwatchfollow").hidden=typeof picture==="undefined"||!picture.stopped;
+  // At a stop of the record the analyses start from that stop: no run is needed for them.
+  var point=replayAt!=null?stopPoint(replayAt):null;menuPoint=point;
+  $("vfromflow").hidden=$("vfromback").hidden=!point;
+  if(point){$("vfromflow").textContent="Flow of "+path+" from stop "+(replayAt+1)+" ("+point.name+":"+point.line+")";
+    $("vfromback").textContent="Backward of "+path+" from stop "+(replayAt+1);
+    $("vfromback").hidden=typeof sdeBackward!=="function";}
   $("vcopyname").textContent="Copy name";$("vcopyvalue").textContent="Copy value";
   m.style.left=Math.max(0,Math.min(x,window.innerWidth-260))+"px";m.style.top=Math.max(0,Math.min(y,window.innerHeight-100))+"px";
   m.classList.add("on");
@@ -2670,11 +2573,20 @@ function copyFromMenu(text){closeValueMenu();debug("copy",{text:text}).catch(fai
 $("vcopyname").onclick=function(){copyFromMenu(menuFor);};
 $("vcopyvalue").onclick=function(){copyFromMenu(menuValue);};
 $("vfollow").onclick=function(){var path=menuFor;closeValueMenu();follow(path);};
+$("vwatch").onclick=function(){var path=menuFor;closeValueMenu();addWatchpoint(path);};
+$("vwatchfollow").onclick=function(){var path=menuFor;closeValueMenu();watchFollow(path);};
+// From a recorded stop: the value is followed, and the flow forward or the usage backward is analysed from that line.
+$("vfromflow").onclick=function(){var path=menuFor,point=menuPoint;closeValueMenu();
+  if(!chosenValue||chosenValue.name!==path.toUpperCase())chooseValue(path);
+  analyzePath(point).catch(function(err){notice(err&&err.message||String(err));});};
+$("vfromback").onclick=function(){var path=menuFor,point=menuPoint;closeValueMenu();
+  if(!chosenValue||chosenValue.name!==path.toUpperCase())chooseValue(path);
+  sdeBackward({url:point.url,line:point.line,program:point.name,variable:path.toUpperCase()});};
 document.addEventListener("mousedown",function(e){if(!(e.target.closest&&e.target.closest("#vmenu")))closeValueMenu();});
 document.addEventListener("keydown",function(e){if(e.key==="Escape")closeValueMenu();});
 function chooseValue(name){
   chosenValue=name?{name:String(name).toUpperCase()}:null;
-  if(!chosenValue)followed=[];else if(followed.indexOf(chosenValue.name)<0)followed.push(chosenValue.name);
+  if(!chosenValue){followed=[];bseAfterFollow=false;}else if(followed.indexOf(chosenValue.name)<0)followed.push(chosenValue.name);
   // The analysed path of this value, if it was analysed; else the path of the point is analysed for it.
   if(chosenValue&&staticFlow&&staticFlow.point){var kept=flowByValue[chosenValue.name+"|"+staticFlow.point.id];
     // Not analysed yet: a copy, so the slice that arrives for it does not write into the previous value's path.
@@ -2704,12 +2616,14 @@ function inSlice(owner,line){return !!sliceAt(owner,line);}
 /* The slice itself: where the analysis says the chosen value can be changed,
    with the names each of those places is about. Asked for once per value; BSE
    is what it shows, and Points turns the same places into breakpoints. */
-var sliceFor="",sliceAsked=null;
+var sliceFor="",sliceAsked=null,sliceSeq=0;
 /* The line of the analysed object the analysis starts from: the object's own frame on the stack, not the frame the
    run happens to be in - a line inside a called method belongs to another source. A frame the run has left for a
    call is on its call; the value is looked for from the statement after it. */
 function originLine(){
   var frames=(picture.stopped&&picture.stopped.frames)||[],name=String(object.name||"").toUpperCase();
+  // At a stop of the record, the slice starts from that stop when it stands in this object.
+  var stop=replayAt!=null?stopPoint(replayAt):null;if(stop&&stop.name===name)return stop.line;
   var mine=frames.filter(function(f){return String(f.program||"").toUpperCase().indexOf(name)===0;});
   // Only a hint: the host starts from the last place of the source that names the value, and uses this line
   // only for a name the source does not contain.
@@ -2724,10 +2638,12 @@ function fetchSlice(){
   if(typeof sdeOrigin!=="function")return Promise.reject(new Error("This host cannot run the analysis."));
   if(sliceFor===chosenValue.name&&sliceAsked)return sliceAsked;
   var line;try{line=originLine();}catch(e){return Promise.reject(e);}
-  sliceFor=chosenValue.name;
+  var variable=chosenValue.name,requestSeq=++sliceSeq;
+  sliceFor=variable;
   notice("Asking the analysis where "+chosenValue.name+" can be changed…");
-  sliceAsked=askOrigin({object_name:object.name,object_type:object.type,line:line,variable:chosenValue.name})
-    .then(function(answer){
+  var request=askOrigin({object_name:object.name,object_type:object.type,line:line,variable:variable})
+    .then(async function(answer){
+      if(requestSeq!==sliceSeq||!chosenValue||chosenValue.name!==variable)return [];
       var points=(answer&&answer.points)||[];
       slicePoints={};points.forEach(function(p){slicePoints[String(p.name).toUpperCase()+":"+p.line]=p;});
       // A path drawn before selecting a value has no included rows. Replace
@@ -2751,12 +2667,17 @@ function fetchSlice(){
       }
       drawChosen();publishDebugContext();
       // The places of this value are known now: the diagram marks them.
-      if(paneOn("flowpane")&&((flow.timeline||[]).length||staticFlow))showFlow();
-      if(paneOn("flowpane")&&(staticFlow||(flow.timeline||[]).length))showFlow();
+      if(paneOn("flowpane")&&(staticFlow||(flow.timeline||[]).length))await showFlow();
+      if(bseAfterFollow&&chosenValue&&chosenValue.name===variable){
+        bseAfterFollow=false;
+        var bse=document.querySelector('[data-flow-scope="bse"]');
+        if(bse&&!bse.classList.contains("active"))bse.click();
+      }
       return points;
     });
-  sliceAsked.catch(function(){sliceAsked=null;sliceFor="";});
-  return sliceAsked;
+  sliceAsked=request;
+  request.catch(function(){if(requestSeq===sliceSeq){sliceAsked=null;sliceFor="";}});
+  return request;
 }
 function pointsFromBse(){
   fetchSlice().then(function(points){
@@ -2900,6 +2821,7 @@ function syncVarSwitches(){
    only as deep as the depth control shows, consecutive repeats once, at most MAX_CONTEXT entries each. Null where there is
    neither. The text of each part says what it is, so that the chat does not have to guess. */
 var MAX_CONTEXT=150;
+var sessionId=typeof INITIAL!=="undefined"&&INITIAL.savedRecord&&INITIAL.savedRecord.session_id||null;
 function debugContext(){
   var tl=flow.timeline||[],limit=(window.vertexFlow&&window.vertexFlow.depth)?window.vertexFlow.depth():null;
   var recorded=null,analysis=null;
@@ -2924,7 +2846,7 @@ function debugContext(){
       statements:shown.map(function(w){var r={at:w.name+":"+w.line,text:String(w.text).slice(0,90)};if(w.included)r.slice=true;return r;}),truncated:seq.length>shown.length};
   }
   if(!recorded&&!analysis)return null;
-  return {view:"Visual Debug",object:typeof object!=="undefined"&&object?{name:object.name,type:object.type}:null,
+  return {view:"Visual Debug",session_id:!INITIAL.local&&recorded?sessionId:null,object:typeof object!=="undefined"&&object?{name:object.name,type:object.type}:null,
     state:picture.stopped?"stopped at "+picture.stopped.at:"no stopped program",
     chosen_value:chosenValue?{name:chosenValue.name,slice_places:slicePoints?Object.keys(slicePoints).length:null}:null,
     recorded:recorded,analysis:analysis};
@@ -2937,6 +2859,8 @@ function publishDebugContext(){
 function drawVars(){
   syncVarSwitches();
   drawChosen();
+  // The player stands at a stop of the record: its values are what Variables shows, whatever was chosen meanwhile.
+  if(replayAt!=null&&(flow.timeline||[]).length){drawRecordedVars(replayAt);return;}
   var box=$("vars");box.textContent="";
   var waiting=picture.stopped?scopesLoading:variablesLoading;
   $("partial").textContent=waiting?"Loading variables.":"";
@@ -2997,7 +2921,7 @@ function switched(id,read){$(id).onclick=function(){var on=$(id).classList.toggl
   if(!on||!scopes||!picture.stopped||series){drawVars();return;}
   if(id==="params"&&!scopes.groups.some(function(g){return groupKind(g.name)==="params";})){loadScopes().catch(failed);return;}
   read().then(drawVars).catch(failed);};}
-switched("syst",function(){return scopes.sy?Promise.resolve():debug("vars",{names:["SY"]}).then(function(d){scopes.sy=d.variables[0]||null;if(INITIAL.local&&!scopes.sy)notice("SY fields are not available from the local transpiler runtime yet.");});});
+switched("syst",function(){return scopes.sy?Promise.resolve():debug("vars",{names:["SY"]}).then(function(d){scopes.sy=d.variables[0]||null;if(INITIAL.local&&!scopes.sy)notice("No SY field has been set yet in this run.");});});
 ["globals","locals","params"].forEach(function(kind){switched(kind,function(){
   return scopes.groups.filter(function(g){return groupKind(g.name)===kind&&!g.children;}).reduce(function(p,g){return p.then(function(){return debug("children",{id:g.id}).then(function(c){g.children=c.children;});});},Promise.resolve());});});$("filter").oninput=drawVars;
 
@@ -3059,7 +2983,26 @@ function syncRunOnly(p){
   if(typeof INITIAL==="undefined"||!INITIAL.local||!INITIAL.runOnly)return;
   var run=!((p||picture).breakpoints||[]).some(function(b){return b.active!==false;});
   document.body.classList.toggle("vx-run-only",run);
+  placeSelection();
 }
+/* A run with no breakpoint is one program, as in SAP: its selection screen stands in the panel and Execute (F8) turns it
+   into the list the program wrote; Back (F3) returns to the screen with its values, to run again. A debug run asks the
+   screen in a window of its own, as before. */
+function placeSelection(){var box=$("local-selection");if(!box||!selDialog)return;
+  var inPanel=document.body.classList.contains("vx-run-only"),home=inPanel?$("runscreenbody"):selDialog;
+  if(box.parentNode!==home){if(inPanel)home.appendChild(box);else selDialog.insertBefore(box,selDialog.querySelector(".selbar"));}
+  if(!inPanel)document.body.classList.remove("vx-screen");}
+function showScreen(){document.body.classList.add("vx-screen");var first=$("local-selection").querySelector("input,select");if(first)first.focus();}
+/* Execute: an obligatory field left empty, or a call that cannot be made, keeps the screen; otherwise the program runs. */
+function executeScreen(){if(entryBlocked){notice(entryBlocked);return;}
+  var missing=missingObligatory();if(missing.length){notice("Fill in the required fields: "+missing.join(", ")+".");return;}
+  notice("");selConfirmed=true;if(selDialog&&selDialog.open)selDialog.close();document.body.classList.remove("vx-screen");$("run").onclick();}
+/* Execute, Back and their keys, wired once the transpiler's panel is set up. */
+function wireScreen(){$("runexecute").onclick=executeScreen;$("runback").onclick=function(){showScreen();};
+  document.addEventListener("keydown",function(e){if(!document.body.classList.contains("vx-run-only"))return;
+    var onScreen=document.body.classList.contains("vx-screen");
+    if(e.key==="F8"&&onScreen){e.preventDefault();executeScreen();}
+    else if(e.key==="F3"&&!onScreen&&$("local-selection").childNodes.length){e.preventDefault();showScreen();}});}
 function apply(p){
   syncRunOnly(p);
   picture=p;
@@ -3069,7 +3012,7 @@ function apply(p){
   // Rec is for every stop, whoever made it: F5-F8 here, the assistant, a
   // breakpoint. A Flow or Rec run records its own stops.
   if(p.stopped&&recording()&&!INITIAL.local&&!(series&&(series.flow||series.rec)))recordStop(p);
-  drawBreakpoints();drawStack();drawButtons();
+  drawBreakpoints();drawWatchpoints();drawStack();drawButtons();
   // A dump is written after the program is gone, so it can arrive a moment
   // after the ending did: the mark changes when it does, and the section is
   // filled then rather than staying on "the program ended".
@@ -3136,8 +3079,15 @@ function readNamed(names){
 function refresh(){return debug("picture").then(apply);}
 // During a Visual run the run draws each stop itself; the same stop told
 // again by the debugger would be drawn twice.
+var localRestorePending=false;
 function sdeDebugEvent(raw){if(series||INITIAL.local&&typeof localFetching!=="undefined"&&localFetching)return;try{
   var next=JSON.parse(raw);
+  // Schedule the restore before drawing: an unrelated or incomplete variable snapshot must not suppress it.
+  if(INITIAL.local&&next.traceLength>0&&!(flow.timeline||[]).length&&!localRestorePending){
+    localRestorePending=true;
+    debug("restore").then(function(result){if(result.trace&&result.trace.length)localResult(result);}).catch(failed)
+      .then(function(){localRestorePending=false;});
+  }
   if(INITIAL.local&&replayAt!=null&&(!next.stopped||!picture.stopped||
       next.ended!==picture.ended||next.stopped.at!==picture.stopped.at)){
     replayAt=null;drawPos();
@@ -3173,37 +3123,75 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
 /* ---------- start: the object's active source, then the debugger as it is ---------- */
 (function(){
   if(!INITIAL||!INITIAL.name)return;
+  if(INITIAL.savedRecord){
+    var saved=INITIAL.savedRecord, timeline=saved.timeline||[],first=timeline[0]&&timeline[0].at&&timeline[0].at.url;
+    document.body.classList.remove("vertex-docked-debug");
+    object.name=saved.meta.name||INITIAL.name;object.type=saved.meta.type||INITIAL.type||"PROG";
+    flow.timeline=timeline;flow.nodes=saved.flow&&saved.flow.nodes||{};flow.edges=saved.flow&&saved.flow.edges||{};flow.order=saved.flow&&saved.flow.order||[];flow.ended=saved.meta.created||0;
+    Object.keys(saved.sources||{}).forEach(function(url){texts[norm(url)]=String(saved.sources[url]||"").split(/\r?\n/);});
+    object.url=first||Object.keys(saved.sources||{})[0]||"";object.lines=texts[norm(object.url)]||[];
+    shown={url:object.url,lines:object.lines,name:object.name};drawSource();
+    $("title").textContent=object.name+" · Saved SAP Debug Run";
+    $("state").textContent=new Date(saved.meta.created).toLocaleString()+" · "+timeline.length+" recorded steps · offline replay";
+    ["run","recompile","sapTranspile","into","over","out","cont","terminate","stop","recmode","program","zonly"].forEach(function(id){if($(id))$(id).disabled=true;});
+    $("run").hidden=true;$("recompile").hidden=true;$("sapTranspile").hidden=true;$("stop").hidden=true;$("terminate").hidden=true;
+    replayAt=Number.isInteger(INITIAL.replayStep)?Math.max(0,Math.min(timeline.length-1,INITIAL.replayStep-1)):0;
+    drawPos();showStop(replayAt).catch(failed);publishDebugContext();return;
+  }
   $("title").textContent=INITIAL.name+(INITIAL.local?" · Visual Transpiler Debug":" · Visual Debug");
   if(INITIAL.local){
     $("run").lastChild.textContent="Run with ABAP Transpiler";
     document.querySelectorAll('#panes button[data-pane="outsec"]').forEach(function(b){b.hidden=false;});
     $("run").title="Transpile and debug this local ABAP program";
+    // Run from the program window: Run here brings that window back - its screen and list - rather than a second way of
+    // running; a run there that reaches a breakpoint opens this panel by itself.
+    // The list stands in the program window: no second Output here.
+    if(INITIAL.programWindow){$("outsec").hidden=true;$("outsec").setAttribute("data-off","");document.querySelectorAll('#panes button[data-pane="outsec"]').forEach(function(b){b.hidden=true;});}
+    if(INITIAL.programWindow){$("run").title="Back to the program window: run it there - a breakpoint it reaches opens this panel";
+      $("run").onclick=function(){debug("toProgram").catch(failed);};}
+    // Detach lets a SAP program go on and stops listening; a transpiler run has no session to leave: Exit program ends it.
+    $("stop").hidden=true;
+    // An SAP object's run takes its last build, as SAP runs a program's load; Recompile reads SAP's code again.
+    if(INITIAL.sapBuild){var built=INITIAL.sapBuild.builtAt?new Date(INITIAL.sapBuild.builtAt).toLocaleString():"";
+      $("run").title="Run the last build of "+INITIAL.sapBuild.name+(built?", read from SAP "+built:"")+" - Recompile takes SAP's code as it is now";
+      $("recompile").hidden=false;$("recompile").title="Read "+INITIAL.sapBuild.name+" and what it uses from SAP again and transpile it"+(built?" (this build: "+built+")":"");
+      $("recompile").onclick=function(){runFailure="";notice("");$("state").textContent="Recompiling "+INITIAL.sapBuild.name+" from SAP.";
+        debug("sapRecompile").catch(function(error){$("state").textContent="Recompile failed.";failed(error);});};
+      if(built)$("state").textContent="Build of "+built+".";}
     variablesStarted=true;$("initials").classList.add("on");
     $("recmode").querySelector('[data-rec="values"]').click();$("recmode").hidden=true;
-    $("predict").classList.remove("on");$("predict").hidden=true;
+    $("bpscope").hidden=false;
     var selection=$("local-selection");
-    (INITIAL.scenarios||[]).forEach(function(group){var field=document.createElement("fieldset"),legend=document.createElement("legend");
-      legend.textContent="Selection screen / "+group.group;field.appendChild(legend);
-      (group.choices||[]).forEach(function(choice){var label=document.createElement("label"),radio=document.createElement("input");
-        radio.type="radio";radio.name=group.group;radio.value=choice.name;
-        radio.checked=choice.name===(group.default||group.choices[0]?.name);
-        label.append(radio,document.createTextNode(" "+choice.name));field.appendChild(label);});selection.appendChild(field);});
+    fillSelection(INITIAL.scenarios,INITIAL.parameters,INITIAL.entry,INITIAL.screen);
     // The selection screen is asked once per run, in a window of its own, and takes no room in the panel.
-    if(selection.childNodes.length){
+    {
       selDialog=document.createElement("dialog");selDialog.id="selscreen";
       var head=document.createElement("h3");head.textContent=INITIAL.name+" · Selection screen";selDialog.appendChild(head);
       selection.hidden=false;selDialog.appendChild(selection);
       var bar=document.createElement("div");bar.className="selbar";
       var go=document.createElement("button");go.className="primary";go.textContent="Execute (F8)";
-      go.onclick=function(){selConfirmed=true;selDialog.close();$("run").onclick();};
+      go.onclick=executeScreen;
       var cancel=document.createElement("button");cancel.textContent="Cancel";cancel.onclick=function(){selDialog.close();};
       bar.appendChild(go);bar.appendChild(cancel);selDialog.appendChild(bar);
       selDialog.addEventListener("keydown",function(e){if(e.key==="F8"||e.key==="Enter"){e.preventDefault();go.onclick();}});
       document.body.appendChild(selDialog);
-    }else selection.hidden=true;
+      $("runscreentitle").textContent=INITIAL.name+" \u00b7 Selection screen";wireScreen();placeSelection();
+    }
   }
   // A program runs itself; only a class or a function module needs the program that calls it.
-  if(String(INITIAL.type).toUpperCase()==="PROG")$("program").hidden=true;
+  // A method or function module run calls itself from its own program: no calling program is asked either.
+  if(String(INITIAL.type).toUpperCase()==="PROG"||INITIAL.local&&INITIAL.entry)$("program").hidden=true;
+  // An SAP program, or the method of an SAP class the cursor is in, can also be run with the transpiler: its sources are read
+  // from SAP, and the panel turns to the transpiler's.
+  if(!INITIAL.local&&["PROG","CLAS","FUNC"].indexOf(String(INITIAL.type).toUpperCase())>=0&&document.body.classList.contains("vertex-docked-debug")){
+    $("sapTranspile").hidden=false;
+    $("sapTranspile").onclick=function(){runFailure="";notice("");$("state").textContent="Reading the program and what it uses from SAP.";debug("sapTranspile").catch(function(error){$("state").textContent="Transpiler run failed.";failed(error);});};
+  }
+  // Run with ABAP Transpiler runs at once: the selection screen first, if the program has one, then to the first
+  // breakpoint, or to the end with the output when there is none.
+  if(INITIAL.local&&INITIAL.autoRun)setTimeout(function(){$("run").onclick();},0);
+  // The panel opened again on a run that is still alive: its record as it stands, not a new run. Clear starts one.
+  if(INITIAL.local&&INITIAL.restore)setTimeout(function(){debug("restore").then(localResult).catch(failed);},0);
   if(document.body.classList.contains("vertex-docked-debug")){refresh().catch(failed);return;}
   ask(function(){sdeSource(INITIAL.name,INITIAL.type);}).then(function(d){
     object.url=d.source_url;object.name=d.object_name||INITIAL.name;

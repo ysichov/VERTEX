@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-23 — Eclipse 0.8.15.20261023010021: rebuilt from the current sources
+
+The Eclipse plugin is rebuilt with the shared pages and analysis of VS Code 0.9.26: Logic view with Code and Diagram, Depth and step-by-step opening, folding back on a double-click, token colours and Reachability; a program's includes read by Calls, Logic and Metrics; the call scanner's fixes; reviews that list an unreadable object instead of failing. What VS Code does on its own host - Object Navigator, Path to This Line, editor folding and jumps, the transpiler, assistant logs - is not part of it.
+
 ## 2026-10-23 — VS Code 0.9.26: no review code in assistant logs
 
 A review block given to the assistant as context is logged as a reference to its part - the object and the part's type - instead of its diff text, as the rest of a session log already omits code.

@@ -81,7 +81,9 @@ function create(index,units=index.procedures){
  function calls(p,s){
   const found=model.callsIn(s.tokens),t=s.tokens.map(t=>upper(t.value));
   let classic;
-  if(t[0]==='PERFORM'&&/^[\w/]+$/.test(t[1]||'')){const at=t.indexOf('PROGRAM');classic={method:t[1],owner:at>=0?t[at+1]:'',receiver:'',kind:'FORM'};}
+  // PERFORM f IN PROGRAM prog and its short form PERFORM f(prog) - the program in parentheses right at the name - call a
+  // form of another program, which the walk then reads.
+  if(t[0]==='PERFORM'&&/^[\w/]+$/.test(t[1]||'')){const at=t.indexOf('PROGRAM'),tk=s.tokens,short=t[2]==='('&&t[4]===')'&&tk[2].offset===tk[1].endOffset&&/^[\w/]+$/.test(t[3]||'');classic={method:t[1],owner:at>=0?t[at+1]:short?t[3]:'',receiver:'',kind:'FORM'};}
   else if(t[0]==='CALL'&&t[1]==='FUNCTION'&&/^'[^']+'$/.test(t[2]||''))classic={method:t[2].slice(1,-1),owner:'',receiver:'',kind:'FUNCTION'};
   else if(t[0]==='CALL'&&t[1]==='METHOD'&&!found.length){const at=t.findIndex(v=>v==='->'||v==='=>');if(at>1)classic={method:t[at+1],owner:t[at]==='=>'?t[at-1]:'',receiver:t[at-1],arrow:t[at]};else if(/^[\w~]+$/.test(t[2]||''))classic={method:t[2],owner:'',receiver:''};}
   if(classic)found.unshift(classic);
@@ -90,7 +92,11 @@ function create(index,units=index.procedures){
    const owners=call.kind==='FORM'?[call.owner||p.source.objectName]:call.kind==='FUNCTION'?[call.method]:resolve.owners(call,p,s.offset).filter(Boolean);
    const targets=call.kind==='FORM'?units.filter(q=>kind(q)==='FORM'&&q.name===call.method&&q.source.objectName===owners[0]):call.kind==='FUNCTION'?units.filter(q=>kind(q)==='FUNCTION'&&q.name===call.method):resolve(call,p,s.offset,{}).map(q=>units.find(u=>u.id===q.id)||q);
    return {call,owners,targets};
-  });
+  }).filter(({call,targets})=>!builtin(call,targets));
+ }
+ // lines( ), xsdbool( ), condense( ): ABAP's built-in functions are no calls - unless the routine has a method of that name.
+ function builtin(call,targets){
+  return !call.kind&&!call.owner&&!call.receiver&&!targets.length&&!!require('@abaplint/core').BuiltIn.searchBuiltin(upper(call.method));
  }
  return {calls};
 }
@@ -248,9 +254,11 @@ function callOf(ts) {
     if (['->', '=>'].includes(ts[p.end]?.value)) { receiver = p.name; arrow = ts[p.end].value; at = p.end + 1; if (arrow === '=>') owner = receiver; }
   }
   const method = pathAt(ts, at);
-  // After an arrow a name is a method, whatever statement it would be on its own: lo->add( ) is no ADD statement.
-  if (!method || (!arrow && words.has(method.name))) return null;
-  const open = method.end;
+  const open = method && method.end;
+  // After an arrow a name is a method, whatever statement it would be on its own: lo->add( ) is no ADD statement. So is a
+  // keyword with its parenthesis right at it and a blank inside - add( x ) -, which no statement writes so.
+  const called = method && ts[open]?.value === '(' && ts[open - 1].endOffset === ts[open].offset && callOpen(ts, open);
+  if (!method || (!arrow && words.has(method.name) && !called)) return null;
   if (ts[open]?.value === '(' && close(ts, open) === ts.length - 1) return { receiver, owner, arrow, method: method.name, args: ts.slice(open + 1, -1) };
   return null;
 }
@@ -270,6 +278,9 @@ function typeAfter(ts, at) {
 }
 // Every call in a token list, the ones inside the arguments of another included: lo->m( x = me->n( ) ) is two. A call is
 // a path, an optional ->/=> and a method name, then a balanced ( ... ); NEW x( )->m( ) is one call.
+/* A functional call has a blank after its parenthesis - m( ), m( x ) -; a parenthesis right at the word is offset/length
+   access (s370(4), name+2(3)) or an inline declaration (DATA(x), FIELD-SYMBOL(<fs>)), never a call. */
+const callOpen = (ts, at) => ts[at]?.value === '(' && ts[at + 1] && ts[at + 1].offset > ts[at].endOffset;
 function callsIn(ts, withTokens = false) {
   const found = [];
   for (let i = 0; i < ts.length; i++) {
@@ -283,7 +294,7 @@ function callsIn(ts, withTokens = false) {
       continue;
     }
     let end = -1;
-    if (val(ts, i) === 'NEW' && word(ts[i + 1]) && ts[i + 2]?.value === '(') {
+    if (val(ts, i) === 'NEW' && word(ts[i + 1]) && callOpen(ts, i + 2)) {
       const first = close(ts, i + 2);
       if(first>=0){
         found.push({owner:val(ts,i+1),receiver:'',arrow:'->',method:'CONSTRUCTOR',args:ts.slice(i+3,first),...(withTokens?{tokens:ts.slice(i,first+1)}:{})},...callsIn(ts.slice(i+3,first), withTokens));
@@ -291,13 +302,13 @@ function callsIn(ts, withTokens = false) {
       }
       if (first >= 0 && ts[first + 1]?.value === '->') {
         const method = pathAt(ts, first + 2);
-        if (method && ts[method.end]?.value === '(') end = close(ts, method.end);
+        if (method && callOpen(ts, method.end)) end = close(ts, method.end);
       }
     } else {
       const path = pathAt(ts, i); if (!path) continue;
       let open = path.end;
       if (['->', '=>'].includes(ts[path.end]?.value)) { const method = pathAt(ts, path.end + 1); if (!method) continue; open = method.end; }
-      if (ts[open]?.value === '(') end = close(ts, open);
+      if (callOpen(ts, open)) end = close(ts, open);
     }
     if (end < 0) continue;
     const call = callOf(ts.slice(i, end + 1));
@@ -308,6 +319,20 @@ function callsIn(ts, withTokens = false) {
   return found;
 }
 // The parameters a FORM takes: USING, CHANGING and TABLES, each name with the type written after it.
+/* The interface a FUNCTION statement writes - IMPORTING, EXPORTING, CHANGING, TABLES - read by the transpiler's own reader of it
+   (sap-fugr.js moduleSignature, over the statement's tokens). A module whose source has no interface there has none here. */
+function functionParameters(p) {
+  if (!p.functionStatement) return [];
+  let parts;
+  // The statement as the source writes it: tokens joined again would part ZIF_X=>TY_Y into three names.
+  const first = p.functionStatement[0], last = p.functionStatement[p.functionStatement.length - 1];
+  const text = Number.isInteger(first && first.offset) && Number.isInteger(last && last.endOffset)
+    ? p.source.text.slice(first.offset, last.endOffset) : p.functionStatement.map(t => t.value).join('');
+  try { parts = require('./sap-fugr').moduleSignature(text + '.').parts; }
+  catch (_) { return []; }
+  return ['IMPORTING', 'EXPORTING', 'CHANGING', 'TABLES'].flatMap(mode => (parts[mode] || []).map(x =>
+    ({ name: U(x.name), mode, type: x.refClass ? 'REF TO ' + x.type : x.type || x.structure || x.like || '' })));
+}
 function formParameters(ts) {
   const out = []; let mode = '';
   for (let i = 2; i < ts.length; i++) {
@@ -320,6 +345,10 @@ function formParameters(ts) {
   return out;
 }
 function parameters(ts) {
+  // !name marks a name as no keyword (IMPORTING !is_x TYPE ...), as SAP's generator and ADT's formatter write it.
+  // abaplint gives it as one token (!is_x), the source tokenizer as a symbol before the name: both are taken as the name.
+  ts = ts.filter(t => !(t.kind === 'symbol' && t.value === '!'))
+    .map(t => typeof t.value === 'string' && t.value.length > 1 && t.value[0] === '!' ? { ...t, value: t.value.slice(1), kind: 'word' } : t);
   const result = []; let mode = '';
   for (let i = 0; i < ts.length; i++) {
     if (modes.has(val(ts, i))) { mode = val(ts, i); continue; }
@@ -417,6 +446,24 @@ function radioGroups(sources) {
   }
   return [...groups.values()];
 }
+/* The selection screen's other PARAMETERS - a value or AS CHECKBOX - with DEFAULT as written (a literal unquoted) and
+   whether SAP would upper-case the input (no LOWER CASE, a character type). Radio buttons are radioGroups'. */
+function selectionParameters(sources) {
+  const result = [];
+  for (const source of sources) for (const statement of localStatements(source)) {
+    const ts = statement.tokens;
+    if (val(ts, 0) !== 'PARAMETERS' || find(ts, 'RADIOBUTTON') >= 0) continue;
+    const parameter = pathAt(ts, 1); if (!parameter) continue;
+    const checkbox = find(ts, 'CHECKBOX') >= 0, def = find(ts, 'DEFAULT'), type = find(ts, 'TYPE');
+    let value = def >= 0 && ts[def + 1] ? String(ts[def + 1].value) : '';
+    if (/^'.*'$|^`.*`$/.test(value)) value = value.slice(1, -1).replace(/''/g, "'");
+    const typeName = type >= 0 ? val(ts, type + 1) : 'C';
+    const numeric = ['I', 'INT8', 'P', 'F', 'N', 'DECFLOAT16', 'DECFLOAT34'].includes(typeName);
+    result.push({ name: parameter.name, kind: checkbox ? 'checkbox' : 'value', default: checkbox ? (U(value) === 'X' ? 'X' : '') : value,
+      numeric, upper: !checkbox && !numeric && !(find(ts, 'LOWER') >= 0 && val(ts, find(ts, 'LOWER') + 1) === 'CASE') });
+  }
+  return result;
+}
 function buildIndex(sources) {
   const procedures = [], signatures = new Map(), interfaces = new Map(), dependencies = new Map(), referenceTypes = new Map();
   for (const source of sources) {
@@ -490,9 +537,11 @@ function buildIndex(sources) {
           procedures.push(current);
         }
         if (first === 'FORM') current.declaration = ts;
+        // A function module as ADT and SAP's ADT extension show it carries its interface in the FUNCTION statement itself.
+        if (first === 'FUNCTION') current.functionStatement = ts;
         conditions = []; continue;
       }
-      if (isProcedureEnd(first)) { current.end = s.offset; current = global; conditions = []; continue; }
+      if (isProcedureEnd(first)) { current.end = s.offset; current.endLine = s.line; current = global; conditions = []; continue; }
       if (['ENDIF', 'ENDCASE', 'ENDLOOP', 'ENDDO', 'ENDWHILE', 'ENDTRY'].includes(first)) conditions.pop();
       if (['ELSE', 'ELSEIF', 'WHEN', 'CATCH'].includes(first) && conditions.length) {
         const group = conditions[conditions.length - 1]; conditions[conditions.length - 1] = { ...group, branch: s };
@@ -510,6 +559,12 @@ function buildIndex(sources) {
         if (call.class && !call.class.includes('(')) dependencies.set(U(call.class), 'CLAS');
         if (U(call.event) === 'FUNCTION' && call.name && !call.name.includes('(')) dependencies.set(U(call.name), 'FUNC');
       }
+    }
+    // A module of a local function group: its interface comes from the group's XML (sap-fugr.js moduleParameters).
+    for (const param of source.functionParams || []) {
+      const key = '~' + U(param.module), params = signatures.get(key) || [];
+      if (!params.some(p => p.name === U(param.name))) params.push({ name: U(param.name), mode: param.mode, type: param.type || '' });
+      signatures.set(key, params);
     }
     for (const param of source.aceParams || []) {
       // ACE ts_params names the method in EVENT; NAME is the class/unit name
@@ -577,7 +632,7 @@ function resolver(index) {
   const resolving = new Set();
   function types(ts, p, before, bound, depth = 0) {
     if (depth > 15) return new Set();
-    if (val(ts, 0) === 'NEW' && word(ts[1])) return new Set([val(ts, 1)]);
+    if (newOnly(ts)) return new Set([val(ts, 1)]);
     const call = callOf(ts);
     if (call) {
       const result = new Set();
@@ -967,7 +1022,10 @@ function analyze(sources, target, options = {}) {
       statement.offset >= item.start && (statement.offset < item.end ||
         (isProcedureEnd(first) && statement.offset === item.end)) && item.name !== 'GLOBAL') ||
       index.procedures.find(item => item.source.id === source.id && item.name === 'GLOBAL');
-    const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included);
+    // A statement is the slice's where ACE's flow says so, or - with no ACE flow, as in a local analysis - where the
+    // backward slice itself reached a calculation on its line.
+    const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included)
+      || (!(source.aceFlowSteps || []).length && nodes.some(node => node.source === source.id && node.line === statement.line && node.kind === 'calculation'));
     return [{ id: source.id + ':full:' + statement.offset, source: source.id, line: statement.line, statementIndex,
       control: classification, text: statement.text, changed: statement.text, scope: ((procedure && procedure.name !== 'GLOBAL' && procedure.owner) || source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
   });
@@ -994,8 +1052,9 @@ function analyze(sources, target, options = {}) {
   }
   // What each routine declares and takes, for a panel that shows the variables before anything has run.
   const declarations = index.procedures.map(p => ({ source: p.source.id, owner: p.owner || p.source.objectName || '', name: p.name,
-    first: p.line, last: (p.body.length ? p.body[p.body.length - 1].line : p.line) + 1,
-    params: (p.declaration ? formParameters(p.declaration) : (index.signature(p) || [])).map(x => {
+    // The routine ends at its ENDMETHOD, ENDFORM or ENDFUNCTION; without one, after the last line of its last statement.
+    first: p.line, last: p.endLine || (p.body.length ? (p.body[p.body.length - 1].tokens?.at(-1)?.line || p.body[p.body.length - 1].line) : p.line) + 1,
+    params: (p.declaration ? formParameters(p.declaration) : (index.signature(p) || []).length ? index.signature(p) : functionParameters(p)).map(x => {
       const type = x.type || '', components = type && !/^(REF TO|STANDARD|SORTED|HASHED|TABLE)/i.test(type) ? typeComponents(sources, type) : null;
       return components ? { name: x.name, mode: x.mode, type, components } : { name: x.name, mode: x.mode, type };
     }),
@@ -1010,13 +1069,23 @@ function analyze(sources, target, options = {}) {
             const returning = (index.signature(callee) || []).find(x => x.mode === 'RETURNING');
             if (returning?.type) { type = returning.type; break; }
           }
-        } else if (val(expression, 0) === 'NEW' && word(expression[1]) && expression[2]?.value === '(') type = 'REF TO ' + expression[1].value;
+        } else if (newOnly(expression)) type = 'REF TO ' + expression[1].value;
       }
       const components = type && !/^(REF TO|STANDARD|SORTED|HASHED|TABLE)/i.test(type) ? typeComponents(sources, type) : null;
       return components ? { ...local, type, components } : { ...local, type };
     }) }));
   return { root, nodes, edges, callSites, declarations, calls: orderedCalls, flow, boundedFlow, fullFlow, executionFlow, flowBounds, flowLog, scenarios: radioGroups(sources), selectedVariable: U(target.variable), selectedSource: target.source, selectedProgram,
     selectedLine: target.line, truncated, mode: 'static', notice: 'Backward source dependencies across calls. Possible dispatch targets and branches are alternatives; loop order, database contents and runtime values are not inferred.' };
+}
+/* NEW x( ... ) and nothing after it: the object made is the value. NEW x( )->m( ) is the value m returns. */
+function newOnly(ts) {
+  if (val(ts, 0) !== 'NEW' || !word(ts[1]) || ts[2]?.value !== '(') return false;
+  let depth = 0;
+  for (let i = 2; i < ts.length; i++) {
+    if (ts[i].value === '(') depth++;
+    else if (ts[i].value === ')' && --depth === 0) return i === ts.length - 1 || (i === ts.length - 2 && ts[i + 1].value === '.');
+  }
+  return false;
 }
 function variableAt(source, offset) {
   // Editor hit testing only. The selected SAP source is parsed by ACE.
@@ -1080,7 +1149,7 @@ async function collectSources(initial, load, options = {}) {
   }
   return { sources, warnings, skipped };
 }
-module.exports = { analyze, buildIndex, collectSources, radioGroups, variableAt, literalAt, customerObject, typeComponents, assignment, variablePaths, callsIn, resolver, declaredIn, formParameters };
+module.exports = { analyze, buildIndex, collectSources, radioGroups, selectionParameters, variableAt, literalAt, customerObject, typeComponents, assignment, variablePaths, callsIn, resolver, declaredIn, formParameters };
 
 },
 "./value-origin": function (module, exports, require) {

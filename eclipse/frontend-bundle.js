@@ -7,7 +7,8 @@ function bundle(root){
  if(file===path.join(root,'vscode','abap-control.js'))file=path.join(root,'org.vertex.abap.ui','resources','vertex-abap-control.js');
  if(ids.has(file))return ids.get(file);const id=modules.length;ids.set(file,id);modules.push('');let code=fs.readFileSync(file,'utf8');
  if(file.endsWith('value-origin-linter.js'))code=code.slice(0,code.indexOf('function createParser'))+`function createParser(){return {parse:async source=>parseSource(source),close:async()=>{}};} module.exports={parseSource,createParser};`;
- code=code.replace(/require\(['"]([^'"]+)['"]\)/g,(all,name)=>{let target;try{target=require.resolve(name,{paths:[path.dirname(file)]});}catch(e){throw new Error(file+': '+name);}if(!path.isAbsolute(target)){if(name==='crypto')return '(new Proxy({}, {get:()=>()=>{throw new Error("Node crypto is unavailable in browser analysis");}}))';throw new Error('Browser cannot load '+name+' from '+file);}return '__vertexRequire('+add(target)+')';});
+ code=code.replace(/require\(['"]([^'"]+)['"]\)/g,(all,name)=>{let target;try{target=require.resolve(name,{paths:[path.dirname(file)]});}catch(e){throw new Error(file+': '+name);}if(!path.isAbsolute(target)){// Node's crypto, fs and path have no browser side: what needs them (a local file's function group XML) says so when used.
+if(['crypto','fs','path'].includes(name))return '(new Proxy({}, {get:()=>()=>{throw new Error("Node '+name+' is unavailable in browser analysis");}}))';throw new Error('Browser cannot load '+name+' from '+file);}return '__vertexRequire('+add(target)+')';});
  modules[id]='function(module,exports,__vertexRequire){\nvar require=__vertexRequire;\n'+code+'\n}';return id;}
  const entry=add(path.join(root,'vscode/frontend-analysis.js'));
  const debug=add(path.join(root,'eclipse/debug-analysis.js'));
