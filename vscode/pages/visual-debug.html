@@ -305,7 +305,7 @@ body.vertex-docked-debug #right{width:100%}
     <!-- The record belongs to the whole window, not to the diagram: the
          player moves the stack, the variables and the source as well, and it
          is there whether a diagram is open or not. -->
-    <div id="recbar" hidden><button id="ffirst" title="The first recorded stop">&#9198;</button><button id="fprev" title="One stop back in the recorded run">&#9664;</button><input type="range" id="fslide" min="1" max="1" value="1" title="Any recorded stop"><span id="fpos" class="dim"></span><button id="fnext" title="One stop forward; past the last one the chart goes live again">&#9654;</button><button id="flast" title="The last recorded stop">&#9197;</button><button id="fplay" title="Replay the recorded run as fast as the chart draws">&#9205;</button><select id="fspeed" title="Replay speed, stops per second"><option value="1">1/s</option><option value="2">2/s</option><option value="3" selected>3/s</option><option value="5">5/s</option><option value="10">10/s</option><option value="0">max</option></select><button id="saveRecord" hidden title="Save this SAP debug recording and its source snapshots to a file">Save log</button></div>
+    <div id="recbar" hidden><button id="ffirst" title="The first recorded stop">&#9198;</button><button id="fprev" title="One stop back in the recorded run">&#9664;</button><input type="range" id="fslide" min="1" max="1" value="1" title="Any recorded stop"><span id="fpos" class="dim"></span><button id="fnext" title="One stop forward; past the last one the chart goes live again">&#9654;</button><button id="flast" title="The last recorded stop">&#9197;</button><button id="fplay" title="Replay the recorded run as fast as the chart draws">&#9205;</button><select id="fspeed" title="Replay speed, stops per second"><option value="1">1/s</option><option value="2">2/s</option><option value="3" selected>3/s</option><option value="5">5/s</option><option value="10">10/s</option><option value="0">max</option></select><button id="saveRecord" hidden title="Save this SAP debug session and its source snapshots to a file">Save session</button></div>
     <div id="panes" title="Show or hide a section; drag the line between two sections to resize them">
       <button data-pane="stacksec" class="on">Stack</button><button data-pane="bpsec">Breakpoints</button><button data-pane="varsec" class="on">Variables</button><button data-pane="flowpane">Diagram</button><button data-pane="dumpsec">Dump</button><button data-pane="outsec" hidden title="What the program wrote (WRITE), up to where it stands">Output</button><button data-pane="logsec">Log</button>
     </div>
@@ -1351,6 +1351,7 @@ function recordStop(p){
 }
 /* The stack against the one before: each level added below the common part is a call. */
 function record(frames){
+  if(!INITIAL.local&&!(flow.timeline||[]).length)sessionId=crypto.randomUUID();
   // The caller's frames - SE37's or SE24's test frame, the screen - are not the flow.
   var path=frames.slice(0,frames.length-callerFrames(frames)).reverse().filter(function(f){return !f.system;}).map(unitOf);
   var same=0;while(same<path.length&&same<flowPath.length&&path[same].name===flowPath[same].name)same++;
@@ -2179,10 +2180,11 @@ function showStop(i){
     var h=$("l"+t.at.line);if(h)h.classList.add("here");});
 }
 $("saveRecord").onclick=function(){var sources={};Object.keys(texts).forEach(function(key){sources[key]=texts[key].join("\n");});
-  debug("saveRecord",{format:1,meta:{name:object.name,type:object.type,created:new Date().toISOString(),recording:$('[data-rec].active')&&$('[data-rec].active').getAttribute('data-rec')||"steps"},timeline:flow.timeline||[],flow:{nodes:flow.nodes||{},edges:flow.edges||{},order:flow.order||[]},sources:sources})
+  debug("saveRecord",{format:1,session_id:sessionId,meta:{name:object.name,type:object.type,created:new Date().toISOString(),recording:$('[data-rec].active')&&$('[data-rec].active').getAttribute('data-rec')||"steps"},timeline:flow.timeline||[],flow:{nodes:flow.nodes||{},edges:flow.edges||{},order:flow.order||[]},sources:sources})
     .then(function(result){notice("SAP debug recording saved: "+result.path);}).catch(failed);};
 function replay(i){var n=stops();if(!n)return;if(typeof annotateSoon==="function")annotateSoon();replayAt=INITIAL.local||INITIAL.savedRecord?Math.min(n-1,Math.max(0,i)):(i>=n-1?null:Math.max(0,i));drawPos();
   if(replayAt==null){markNow(liveCur());drawStack();drawVars();var f=currentFrame();if(f)show(f.url,null,f.line).catch(failed);}else showStop(replayAt).catch(failed);}
+window.sdeReplayStep=function(step){if(Number.isInteger(step)&&step>=1&&step<=stops())replay(step-1);};
 $("fprev").onclick=function(){if(playing)return;replay((replayAt==null?stops()-1:replayAt)-1);};
 $("fnext").onclick=function(){if(playing||replayAt==null)return;replay(replayAt+1);};
 $("ffirst").onclick=function(){if(!playing)replay(0);};
@@ -2383,6 +2385,7 @@ function localResult(result){
       if(!trace.length){$("state").textContent="Transpiler run recorded 0 ABAP steps. See VERTEX Local ABAP output.";notice("No ABAP steps were recorded in this run.");return;}
       $("bse-workspace").hidden=false;replay(result.at!=null?result.at:trace.length-1);showFlow();
       $("state").textContent=localEnded?"Program finished without reaching a breakpoint. "+trace.length+" recorded steps.":"Stopped at step "+trace.length+". Continue runs to the next breakpoint.";
+      publishDebugContext();
 }
 /* Run in SAP: the program started in WebGUI, or a class or function module on its test screen. */
 function sapRun(){
@@ -2817,6 +2820,7 @@ function syncVarSwitches(){
    only as deep as the depth control shows, consecutive repeats once, at most MAX_CONTEXT entries each. Null where there is
    neither. The text of each part says what it is, so that the chat does not have to guess. */
 var MAX_CONTEXT=150;
+var sessionId=typeof INITIAL!=="undefined"&&INITIAL.savedRecord&&INITIAL.savedRecord.session_id||null;
 function debugContext(){
   var tl=flow.timeline||[],limit=(window.vertexFlow&&window.vertexFlow.depth)?window.vertexFlow.depth():null;
   var recorded=null,analysis=null;
@@ -2841,7 +2845,7 @@ function debugContext(){
       statements:shown.map(function(w){var r={at:w.name+":"+w.line,text:String(w.text).slice(0,90)};if(w.included)r.slice=true;return r;}),truncated:seq.length>shown.length};
   }
   if(!recorded&&!analysis)return null;
-  return {view:"Visual Debug",object:typeof object!=="undefined"&&object?{name:object.name,type:object.type}:null,
+  return {view:"Visual Debug",session_id:!INITIAL.local&&recorded?sessionId:null,object:typeof object!=="undefined"&&object?{name:object.name,type:object.type}:null,
     state:picture.stopped?"stopped at "+picture.stopped.at:"no stopped program",
     chosen_value:chosenValue?{name:chosenValue.name,slice_places:slicePoints?Object.keys(slicePoints).length:null}:null,
     recorded:recorded,analysis:analysis};

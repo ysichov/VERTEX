@@ -6,14 +6,14 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const page = fs.readFileSync(path.join(__dirname, "../pages/visual-debug.html"), "latin1");
+const page = fs.readFileSync(path.join(__dirname, "../pages/visual-debug.html"), "latin1").replace(/\r\n/g, "\n");
 const section = (start, end) => page.slice(page.indexOf(start), page.indexOf(end));
 
 test("local playback shows the recorded values for its last frame", () => {
   const seen = [];
   const context = vm.createContext({ INITIAL: { local: true }, replayAt: null,
     stops: () => 2, drawPos() {}, showStop: i => { seen.push(i); return Promise.resolve(); },
-    failed() {} });
+    failed() {}, window: {} });
   vm.runInContext(section("function replay(i){", '$("fprev").onclick='), context);
   vm.runInContext("replay(1)", context);
   assert.equal(context.replayAt, 1);
@@ -49,7 +49,7 @@ test("local playback reconstructs unchanged values from earlier stops", () => {
     { vars: [] }
   ];
   const body = section('  if(INITIAL.local){\n    var values={};', '}else while(k>=0') + '}';
-  const context = vm.createContext({ INITIAL: { local: true }, tl: timeline, i: 2, k: 2, from: null });
+  const context = vm.createContext({ INITIAL: { local: true }, tl: timeline, t: {}, i: 2, k: 2, from: null });
   vm.runInContext(body, context);
   const variables = context.from.vars[0].children;
   assert.deepEqual(Array.from(variables, variable => [variable.name, variable.value]),

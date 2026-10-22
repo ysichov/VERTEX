@@ -54,8 +54,10 @@ async function answer(text, { search, open, system, choices = () => {} }) {
   if (objects.length === 1 || exact.length === 1) {
     const object = exact[0] || objects[0];
     await open({ object_type: object.object_type, object_name: object.object_name });
+    choices([{ object_type: object.object_type, object_name: object.object_name },
+      ...(object.package ? [{ object_type: "DEVC", object_name: object.package }] : [])]);
     return "Opened " + object.object_type + " **" + object.object_name + "**"
-      + (object.package ? " (package " + object.package + ")" : "") + where + ".";
+      + (object.package ? " (package **" + object.package + "**)" : "") + where + ".";
   }
   if (!objects.length) {
     return "No program, class, function module or package named **" + query + "**" + where + ".";

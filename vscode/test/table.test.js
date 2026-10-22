@@ -32,6 +32,7 @@ function page(host) {
       getElementById(id) { return elements[id] || (elements[id] = element("div")); },
       createElement: element,
       createTextNode: text => ({ textContent: text }),
+      querySelectorAll: () => [],
       addEventListener() {}
     },
     sdeLoad: (...args) => calls.push(["load", ...args]),

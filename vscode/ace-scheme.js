@@ -48,7 +48,7 @@ function scheme(p,expandedText='',logicOnly=false) {
   const connect=(a,b,l='')=>{if(a&&typeof a==='object'){connect(a.id,b,a.label);return;}if(a&&b)edges.push(a+arrow(l)+b);};
   const click=(id,action)=>clicks.push('click '+id+' "sapevent:'+action+'" _self');
   /* Logic only: the operations it leaves out between two shown steps stand as one block saying how many, opened
-     by a click (its first line goes into EXPANDED) and closed again by a click on any of them. */
+     by a click (its first line goes into EXPANDED); the page sends a click on an opened operation to its source. */
   const opened=new Set(String(expandedText||'').split(',').filter(Boolean).map(Number));
   function folded(run,emit){
     if(!run.length)return;

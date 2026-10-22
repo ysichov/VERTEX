@@ -33,6 +33,10 @@ VERTEX is a set of plugins for VS Code and Eclipse ADT. Each window reads over t
 - code explorer: metrics, UML, Logic and Calls diagrams
 - data explorer (SelecTor): tables, joins, pivots
 
+Visual Debug gives each recorded SAP session an ID from its first step; the chat can cite and open those steps before or after **Save session**.
+Runs started in Visual Debug with the ABAP Transpiler are registered in transpiler history and included in chat context, so the assistant can cite and open their recorded steps.
+Ordinary diagram nodes have transparent backgrounds, and their clickable labels follow the editor text color in every theme.
+
 
 ![VERTEX architecture: VS Code and Eclipse ADT connect to shared VERTEX Web UI tools, with an MCP server for AI assistants and an optional SAP backend](docs/architecture2.png)
 
@@ -51,6 +55,8 @@ For a plain name without an exact match, VERTEX tries prefix and contained-name 
 wildcards are used as written.
 The VS Code chat can explain an active local `.abap` file using its current editor text, even without a SAP connection.
 Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **Visual Analysis / Debug** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **VERTEX: Run with ABAP Transpiler** in its editor's context menu or beside Run in SAP: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. SAP program selection screens use the selection texts and text symbols maintained in SAP. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
+
+From a SAP source tab's context menu, **VERTEX: Run SAP in web GUI** opens the program in WebGUI or a class/function module's test screen. It works without a breakpoint.
 
 
 | Tool | Grew out of | What it does | VS Code | Eclipse | ABAP backend |
@@ -273,6 +279,8 @@ through MCP.
 ## What each host has
 
 ### VS Code 
+
+When the VERTEX chat resolves a single SAP object name, its answer links both the object and its package to their SAP tabs.
 
 - **VERTEX Tools** — pick an object type and a name; the functions offered depend on the type
   (Object Navigator, Data, UML, Metrics, Calls and Logic diagrams, Diff, Versions). Object Navigator is the SE80

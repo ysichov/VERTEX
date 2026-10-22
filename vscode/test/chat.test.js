@@ -297,6 +297,11 @@ test("a bare object name is searched and opened without a model", async (t) => {
   const opened = await ask("z_calc");
   assert.equal(opened.direct, true);
   assert.match(opened.answer, /Opened PROG \*\*Z_CALC\*\*.*QAS/);
+  assert.deepEqual(opened.choices, [
+    { object_type: "PROG", object_name: "Z_CALC" },
+    { object_type: "DEVC", object_name: "$TMP" }
+  ]);
+  assert.match(opened.answer, /package \*\*\$TMP\*\*/);
   assert.deepEqual(calls[1], ["open_sap_object", { object_type: "PROG", object_name: "Z_CALC" }]);
   const explicit = await ask("Open Z_CALC please", { state: { workspace: { type: "CLAS", name: "Z_OTHER" } } });
   assert.equal(explicit.direct, true);
@@ -307,14 +312,19 @@ test("a bare object name is searched and opened without a model", async (t) => {
 
 test("a name pattern with one result opens it without asking again", async () => {
   const direct = require("../direct-search");
-  const opened = [];
+  const opened = [], choices = [];
   const text = await direct.answer("ZVERTEX*LAB", {
     system: "A4H",
     search: async () => ({ objects: [{ object_type: "PROG", object_name: "ZVERTEX_DEBUG_LAB", package: "Z_RIG" }] }),
-    open: async object => { opened.push(object); }
+    open: async object => { opened.push(object); },
+    choices: objects => { choices.push(...objects); }
   });
   assert.match(text, /Opened PROG \*\*ZVERTEX_DEBUG_LAB\*\*.*A4H/);
   assert.deepEqual(opened, [{ object_type: "PROG", object_name: "ZVERTEX_DEBUG_LAB" }]);
+  assert.deepEqual(choices, [
+    { object_type: "PROG", object_name: "ZVERTEX_DEBUG_LAB" },
+    { object_type: "DEVC", object_name: "Z_RIG" }
+  ]);
 });
 
 test("a plain name tries exact, prefix and contains patterns in order", async () => {

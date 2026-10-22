@@ -29,6 +29,35 @@ The repository and VS Code guides now explain starting chat with a package or pr
 ## Unreleased — assistant session log panel placement
 
 The VS Code assistant session log report opens beside the active editor and returns to that column when reopened, so it is easier to locate from the VERTEX sidebar.
+## 2026-10-20 — VS Code 0.9.19: citations for Visual Debug transpiler runs
+
+ABAP Transpiler runs started in Visual Debug are registered in transpiler history and included in chat context. The assistant can cite recorded steps with clickable run links.
+
+## 2026-10-20 — VS Code 0.9.19: transparent diagram nodes
+
+Visual Debug diagrams use transparent fills on ordinary nodes and clickable labels use the editor foreground without browser link underlines. Group frames and special node colors remain visible.
+
+Tools Logic view lets a folded operations node expand on click; the source-line handler no longer intercepts it.
+
+The Command Palette hides debugger stepping commands, local package analysis and the F12 method picker; their keyboard shortcuts, panels and context menus remain available.
+
+Direct search keeps separate object and package links even when their displayed names match.
+
+## 2026-10-20 — VS Code 0.9.19: open SAP sources in the current editor group
+
+Opening a SAP source from VERTEX now reuses the active editor group, avoiding an extra empty split.
+
+## 2026-10-20 — VS Code 0.9.18: live SAP session citations
+
+SAP debugger recordings now receive an ID at the first recorded step. Chat can cite and open steps before saving; **Save session** keeps the same ID in the file.
+
+## 2026-10-20 — VS Code 0.9.18: object and package links in chat
+
+When a direct search opens one SAP object, the answer now links both the object name and its package to their SAP tabs.
+
+## 2026-10-20 — VS Code 0.9.18: WebGUI run from the editor
+
+The SAP source editor's context menu now has **VERTEX: Run SAP in web GUI** for programs, classes and function modules. It opens WebGUI without requiring a debugger breakpoint.
 
 ## 2026-10-20 — VS Code 0.9.18: visible model-loading errors
 
@@ -2089,3 +2118,7 @@ BSE identifies code relevant to the selected value. Predict can skip irrelevant 
 ### Value Origin: selected assignment and Copy log
 
 Selecting a variable on the left side of an assignment includes that assignment in its backward slice. Selecting an operand keeps the incoming-value analysis. This retains the selected calculation and its condition and dependencies in BSE. Copy log uses the VS Code host clipboard and displays success or failure instead of relying on webview clipboard permissions.
+
+## VS Code 0.9.19 — Command Palette cleanup
+
+Reduced the Command Palette to five global VERTEX entries: Open Transpiler Run..., Open Panel, VERTEX Tools, Add the VERTEX MCP server to Claude Code or Codex, and Get Started. ABAP editor actions remain available from their context menus; debugger stepping and system management remain in their dedicated UI.

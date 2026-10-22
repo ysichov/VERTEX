@@ -29,6 +29,25 @@ Replace the prompt-row expansion with native, keyboard-accessible disclosure sec
 ## 2026-10-22 — VS Code 0.9.21: assistant log report placement
 
 The installed 0.9.18 report opened in the active editor column and could be hard to locate from the sidebar. Keep the session-log report in the column beside the active editor, including when reopening it. Its settings action used a search filter for only `vertex.ai.log.request`, which hid the question, answer and tool logging options. Open the full `vertex.ai.log` setting group instead. When SAP Logon or an ADT workspace has no client or user, label both import prompts with explicit “Enter the SAP …” instructions; the empty client remains valid for the system default. Package as VS Code 0.9.21; the existing VS Code guide already describes the report placement and logging controls. No Eclipse build is part of this change.
+## 2026-10-21 — Logic: an opened operations block stays open
+
+Checked whether folding in Tools Logic had regressed. A block such as `5 operations` still opens on click. Since the 0.9.19 source-line handler, a click on one of the opened operations goes to its source, where the comments in `metrics.html` and `ace-scheme.js` still promised that it folds the block again. The owner chose the current behaviour, open and then go to the code, so only the two comments changed. The three failing `ace-scheme` tests are unrelated: they draw the full scheme, which never folds, and have failed since they were added in 0.8.1.
+
+## 2026-10-21 — tests follow recorded design decisions
+
+Four failing tests still expected what earlier landings had deliberately changed, each change recorded in this history: Run in SAP's pale blue fill (0.8.1, the test still asked for green), the depth slider running from 1 to the maximum (the test asked for `min="0"`), and the builder's node keys `m|routine` and step keys `OWNER=>ROUTINE|include:line`. The expectations now name the current form. Two of them pass; the record-diagram test and the formula depth test then fail further on, on what is drawn rather than how it is named. Those, the three `ace-scheme` tests (a loop and plain operations are no longer folded by default; an empty method draws its ENDMETHOD and an edge), the FLOW demo and the two Visual Debug block tests are behaviour differences without a recorded decision and are left for the owner. Product code is not touched; the suite stands at 897 of 908.
+
+## 2026-10-21 — page test harnesses catch up with their pages
+
+Twenty-two tests cut functions out of `table.html` and `visual-debug.html` and ran them against a stub page, and the pages had outgrown the stubs. SelecTor's script now wires its field-label toggle with `document.querySelectorAll` at load, so the stub document gets one returning nothing (15 tests). The local-history tests looked for a section by an LF boundary in a CRLF file, and `replay` now publishes `window.sdeReplayStep` (2). In Visual Debug the step and slice graphs call `poolName`, `recordedUnitKey` and `callerFrames`, and two functions read `INITIAL` and `focusedRoutine`; the tests now load the page's real helpers instead of stubbing them, so the code under test is unchanged. Product code is not touched. Two of these Visual Debug tests then failed on their assertions instead of a missing name — node keys now carry an `m|` prefix — and join the group of outdated expectations. The suite stands at 895 of 908.
+
+## 2026-10-21 — VS Code 0.9.21: lens tests follow the scale rule
+
+Three `vertex-lens` tests had failed since the 0.8.1 refactor added a scale check to `vertex-lens.js`: the lens is hidden on a diagram already drawn at 70% of its natural size or more, and its magnification never goes past that point. The check is intended; the tests still assumed a lens over any diagram with a fixed 1.5×–6× range. A first attempt removed the check from the code and was reverted. The tests now draw their SVG with a viewBox at a known scale, and a new test covers the hidden lens at 70%. All seven lens tests pass. The remaining failing tests (stale page harnesses, outdated markup expectations, `auth-manifest`, `code-workbench`, `value-origin`) are not touched in this landing.
+
+## 2026-10-21 — merging work from two machines
+
+Work done on another machine (0.9.20: SNC/password switch, chat-led analysis docs, session log placement) and local 0.9.18–0.9.19 work diverged from the same base. Rebased the local work onto 0.9.20; code merged without conflicts, only versions and docs collided. Kept 0.9.20, kept both sides of both histories, and merged the Visual Debug save paragraph: the local rename to **Save session** with first-step IDs, plus the remote rename/delete description. The empty-state hint in SAP Debug Session Logs still said "Save log" and now matches the button.
 
 ## 2026-10-21 — sidebar SNC/password switch
 
@@ -41,6 +60,35 @@ The VERTEX sidebar's assistant session-log action opened its report in the activ
 ## 2026-10-21 — documentation for chat-led runs and saved debug sessions
 
 The VS Code and repository guides now show how to begin with a package or program name, compare multiple transpiler selections in a single assistant request, inspect declared class variables for a reference parameter, and open, rename or delete saved SAP debug recordings. They also explain that an open saved recording supplies cited history to the assistant. The Eclipse guide is unchanged because these details concern VS Code.
+## 2026-10-20 — transpiler citations from Visual Debug
+
+Visual Debug runs now save their recorded trace in transpiler history, publish the run ID in the debug context and refresh context after a local run completes. The assistant instructions identify the correct run citation format, and the existing known-run list resolves its links.
+
+## 2026-10-20 — remove ordinary node backgrounds
+
+Mermaid uses editor widgets for ordinary node fills, which can create high-contrast label rectangles in some themes. Ordinary node fills are now transparent, and navigable labels use the editor foreground without browser link underlines; group and special-node colors remain themed.
+
+Tools Logic diagram click handling now lets `foldnode` events reach the `aceexp` toggle rather than opening the folded block's first source line.
+
+VS Code command contributions now set low-level debugger steps, local package analysis and Go to Method to `commandPalette: false`, leaving their keybindings or contextual entry points intact.
+
+The chat assigns repeated matching labels to the next unused target choice, so an object and its package both remain clickable when their displayed names match.
+
+## 2026-10-20 — stop creating empty editor splits
+
+`open_sap_object` used `ViewColumn.Beside` unconditionally, creating a new editor group even when the source could open in the current one. It now targets the active editor's group, or the first group when no editor is active.
+
+## 2026-10-20 — live SAP recording IDs
+
+The Visual Debug page creates a session ID when its first SAP stop is recorded, publishes it with the chat context and writes it unchanged to a saved file. Live sessions join the known evidence list, and clicking a citation replays the step in the current Visual Debug panel. Opening a new panel clears stale debug context. The replay bar button is now **Save session**.
+
+## 2026-10-20 — direct-search links
+
+Single-result direct search now returns opening choices for the object and its package, and the sidebar links matching names in the whole answer instead of only list items. The package name is bold in the Markdown answer so it can become a link. Focused chat and sidebar tests pass (23 tests).
+
+## 2026-10-20 — WebGUI run without a breakpoint
+
+The SAP editor context menu now exposes **Run SAP in web GUI** for programs, classes and function modules. It reuses the debugger's WebGUI transaction URL construction but opens the URL directly, so a breakpoint and listener are unnecessary. The debugger's existing Run in SAP behavior remains tied to a breakpoint.
 
 ## 2026-10-20 — sidebar model diagnostics
 
@@ -4112,3 +4160,7 @@ Added a multi-select Remove SAP Systems command that updates the effective confi
 The user's direct SNC use case exposed a stale exclusion in the SAP Logon importer. Direct entries now preserve `sncname` and `sncop` and create `authType: snc` with the RFC application server and instance from `server`. SNC logon groups without an application server remain skipped with an explicit reason; guessing the message server as `rfc.ashost` would be wrong. Added parser tests. At the user's request rebuilt the universal VSIX as 0.9.10 without a version bump; the package verifier passed.
 
 The user still saw the ADT destination after selecting an import candidate. The importer added systems but did not change `vertex.active`, so the sidebar stayed on the old destination. It now selects the newly added SNC system and names that selection in the completion message. The importer also writes to the effective `vertex.systems` scope instead of always writing globally, which a workspace setting could mask. These changes are in source pending a new package. The local SAP GUI landscape inspected on the development host contains no ER6 entry, so the user's ER6 import result from their VS Code environment still needs confirmation.
+
+### VS Code 0.9.19 — Command Palette cleanup
+
+The Command Palette now exposes only Open Transpiler Run..., Open Panel, VERTEX Tools, Add the VERTEX MCP server to Claude Code or Codex, and Get Started. All other contributed commands are explicitly hidden there; editor and panel entry points remain registered.

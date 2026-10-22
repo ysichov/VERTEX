@@ -404,10 +404,17 @@ window.addEventListener('message', event => {
   }
 });
 function links(item, choices) {
-  item.querySelectorAll('li').forEach(li => {
-    const name = li.querySelector('strong'), type = li.firstChild && li.firstChild.nodeType === 3 ? li.firstChild.textContent.trim() : '';
-    const object = name && choices.find(choice => choice.object_name === name.textContent && choice.object_type === type);
+  const used = new Set();
+  item.querySelectorAll('strong').forEach(name => {
+    const li = name.closest('li');
+    const type = li && li.firstChild && li.firstChild.nodeType === 3 ? li.firstChild.textContent.trim() : '';
+    // The object and package may have identical visible names. Assign each
+    // occurrence to the next matching destination so both remain clickable.
+    const index = choices.findIndex((choice, i) => !used.has(i) && choice.object_name === name.textContent
+      && (!type || choice.object_type === type));
+    const object = index >= 0 ? choices[index] : null;
     if (!object) return;
+    used.add(index);
     const link = document.createElement('a');
     link.href = '#'; link.className = 'link'; link.title = 'Open ' + object.object_type + ' ' + object.object_name;
     link.appendChild(name.cloneNode(true));

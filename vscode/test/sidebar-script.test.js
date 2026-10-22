@@ -48,3 +48,28 @@ test("run and saved SAP-session citations link only when their session is known"
   cites[1].replaced.click({ preventDefault() {} });
   assert.deepEqual(JSON.parse(JSON.stringify(posted[1])), { action: "openSession", session_id: "a1b2c3d4-0000-4000-8000-000000000000", step: 4 });
 });
+
+test("direct search answer links both the program and its package", () => {
+  const folder = path.join(__dirname, "..");
+  const source = fs.readFileSync(path.join(folder, "sidebar.js"), "utf8");
+  const sandbox = { module: { exports: {} }, require, __dirname: folder };
+  vm.runInNewContext(source + "\nmodule.exports.renderForTest = html;", sandbox);
+  const html = sandbox.module.exports.renderForTest("test-nonce");
+  const script = html.slice(html.indexOf('<script nonce="test-nonce">') + '<script nonce="test-nonce">'.length, html.indexOf("</script>"));
+  const start = script.indexOf("function links("), end = script.indexOf("\n}", start) + 2;
+  const posted = [];
+  const context = { document: { createElement: () => ({ appendChild() {}, addEventListener(_, callback) { this.click = callback; } }) },
+    api: { postMessage: message => posted.push(message) } };
+  vm.runInNewContext(script.slice(start, end), context);
+  const names = ["ZVERTEX_DEBUG_LAB", "Z_RIG"].map(textContent => ({ textContent,
+    closest: () => null, cloneNode: () => ({}), replaceWith(link) { this.link = link; } }));
+  context.links({ querySelectorAll: () => names }, [
+    { object_type: "PROG", object_name: "ZVERTEX_DEBUG_LAB" },
+    { object_type: "DEVC", object_name: "Z_RIG" }
+  ]);
+  names.forEach(name => name.link.click({ preventDefault() {} }));
+  assert.deepEqual(JSON.parse(JSON.stringify(posted)), [
+    { action: "openObject", object_type: "PROG", object_name: "ZVERTEX_DEBUG_LAB" },
+    { action: "openObject", object_type: "DEVC", object_name: "Z_RIG" }
+  ]);
+});

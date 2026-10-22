@@ -218,7 +218,7 @@ the version history, its diff and building a review - reads SAP over ADT and nee
    The top line shows the active system; **VERTEX: Switch System** picks another.
 5. **Open an object**: **VERTEX Tools** in the panel, pick a type, type a name - `Z*` lists what
    matches - and pick a function. For basic, VERTEX asks for the password once per system and keeps it in the
-   operating system's credential store; SNC logs on through Secure Login Client without a prompt. Or just ask the chat: *open table SFLIGHT*.
+   operating system's credential store; SNC logs on through Secure Login Client without a prompt. Or just ask the chat: *open table SFLIGHT*. When a name resolves to one object, the answer links its name and package to their SAP tabs; opening a source uses the current editor group.
 
 ## Settings
 
@@ -886,6 +886,8 @@ The agent cites its evidence as `[run d6c436b8 step 13]`; the chat shows such a 
 keeps its id). The link opens that run in Visual Debug at the cited step, with its record, variables, SQL and output, without running the program again. A kept
 run is looked at, not executed; Run in that panel says so.
 
+A run started with **Run with ABAP Transpiler** in Visual Debug is also registered in this history. Its `run_id` is included in the debug context sent to chat, so the assistant can cite its steps as `[run <first 8 characters of run_id> step <n>]`; the link opens that run's recorded trace.
+
 The chat’s transpiler runs are kept on disk in VERTEX extension storage. Set
 `vertex.transpiler.runPath` to use another folder. Each run has its own folder
 (`vertex-run.json` and copies of the sources it stepped through), so citations still open
@@ -1109,7 +1111,8 @@ path and the values of an earlier local debug session; a live SAP debug session 
 
 **Show from here.** Right-click a node or a routine frame of the diagram for *Show from here*, *Expand this
 branch* and *Collapse this branch*. Show from here draws the diagram from that node down; the path bar above
-it returns to a wider view, and Escape steps back.
+it returns to a wider view, and Escape steps back. In Tools Logic view, click a folded *n operations* block to
+expand its statements; clicking a source-linked statement such as **ENDIF** opens that line in the source.
 
 A Visual or Rec run is F8 made of F5 steps, and it ends at a breakpoint it steps onto -
 including one in the program that called the class being stepped through, where SAP reports a
@@ -1235,6 +1238,7 @@ Use **Save log** on the replay bar to keep a SAP recording and its available sou
 - **Run in SAP** (first in the header, with the SAP execute clock) starts the program in WebGUI, as `debug_run` does. A program runs itself. For a class
   or a function module, name the program that calls it in the field - or leave it empty for the
   object's test screen, SE24 or SE37 with the name filled in, and start the test there with F8.
+- **Run SAP in web GUI** in a SAP program, class or function module editor's context menu opens the program or the object's test screen directly. No breakpoint is needed; a class or function module test starts with F8 in WebGUI.
 - **Run with ABAP Transpiler** (beside Run in SAP, for a program, a class or a function module) runs the SAP program on
   your machine instead - or, for a class, the method the cursor stands in, in the tab of the class's source; or the
   function module: the panel asks the parameters, with their DEFAULTs, as for a local one (see

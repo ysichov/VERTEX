@@ -3,6 +3,8 @@ const flowGraph = require("../../org.vertex.abap.ui/resources/vertex-flow-graph.
 const test = require("node:test"), assert = require("node:assert/strict"), vm = require("node:vm"), path = require("node:path");
 const page = require("node:fs").readFileSync(path.resolve(__dirname, "../pages/visual-debug.html"), "utf8");
 const part = (from, to) => page.slice(page.indexOf(from), page.indexOf(to));
+// A one-line helper function of the page, by name.
+const line = name => { const at = page.indexOf("function " + name + "("); return page.slice(at, page.indexOf("\n", at) + 1); };
 
 test("Watch Follow expands the calculation's renamed variable names", async () => {
   const calls = [], notices = [], nodes = { watchfollow: {}, watchwhen: { value: ">= 10" } };
@@ -89,7 +91,7 @@ test("a stop of the record on a statement of the slice marks its class and routi
 test("a source link of the diagram moves the editor when docked, and the window's own pane otherwise", () => {
   const run = docked => {
     let listener; const revealed = [], shown = [];
-    const context = vm.createContext({ failed() {}, window: {}, sdeReveal: frame => revealed.push(frame),
+    const context = vm.createContext({ failed() {}, window: {}, focusedRoutine: "", sdeReveal: frame => revealed.push(frame),
       show: (...args) => { shown.push(args); return Promise.resolve(); },
       document: { addEventListener: (type, fn) => { if (type === "click") { listener = fn; } },
         body: { classList: { contains: name => docked && name === "vertex-docked-debug" } } } });
@@ -156,9 +158,9 @@ test("the diagram of a record draws the branch the run went through, and only th
   const context = vm.createContext({ flow: { timeline: [stop(7), stop(9), stop(7), stop(9)] }, stepIndex: null,
     closesBlock: () => false, stepText: f => "text" + f.line,
     shapeIn: () => ({ parent: { 7: null, 8: 7, 9: 8, 10: 7, 11: 10 } }) });
-  vm.runInContext(part("function stepKey(t)", "/* The blocks a statement of a routine stands in") + part("function stepFlow(){", "/* The running block, green"), context);
+  vm.runInContext(line("poolName") + line("recordedUnitKey") + part("function stepKey(t)", "/* The blocks a statement of a routine stands in") + part("function stepFlow(){", "/* The running block, green"), context);
   const S = vm.runInContext("stepFlow()", context);
-  const key = line => "MODIFIER_FOR|ZCL_CALC_FACADE===CM001:" + line;
+  const key = line => "ZCL_CALC_FACADE=>MODIFIER_FOR|ZCL_CALC_FACADE===CM001:" + line;
   assert.ok(S.nodes[key(7)] && S.nodes[key(9)], "the statements the run stopped on");
   assert.ok(S.nodes[key(8)], "the WHEN the run went through, which was never stopped on");
   assert.equal(S.nodes[key(8)].branch, true);
@@ -300,12 +302,12 @@ test("at the level of classes and of methods, what holds a statement of the slic
     valueTrail: () => ({ why: "no values in this record" }), stepKey: () => "", stepFlow: () => { throw new Error("not the steps reading"); },
     sliceAt: (owner, line) => slice.has(String(owner).toUpperCase() + ":" + line) ? { text: "x" } : null,
     inSlice: (owner, line) => slice.has(String(owner).toUpperCase() + ":" + line) });
-  vm.runInContext(part("function callGraph(byOwner){", "/* Where the chosen value changed, from the record alone.")
+  vm.runInContext(line("poolName") + line("recordedUnitKey") + part("function callGraph(byOwner){", "/* Where the chosen value changed, from the record alone.")
     + part("/* The stops of the record at a statement the slice names", "function loadControls(){"), context);
   const graph = mode => vm.runInContext("sharedFlowGraph(" + JSON.stringify(mode) + ")", context).bseFlow.nodes;
   const green = mode => Array.from(graph(mode)).filter(node => node.bse).map(node => node.key).sort();
   assert.deepEqual(green("classes"), ["ZCL_CALC_FACADE", "ZCL_MOD_FUEL", "ZVERTEX_DEBUG_LAB"], "ZCL_CALC_LOG has nothing of the slice in it");
-  assert.deepEqual(green("methods"), ["ZCL_CALC_FACADE=>RUN", "ZCL_MOD_FUEL=>ZIF_CALC_MODIFIER~APPLY", "ZVERTEX_DEBUG_LAB=>EVENT START-OF-SELECTION"],
+  assert.deepEqual(green("methods"), ["m|ZCL_CALC_FACADE=>RUN", "m|ZCL_MOD_FUEL=>ZIF_CALC_MODIFIER~APPLY", "m|ZVERTEX_DEBUG_LAB=>EVENT START-OF-SELECTION"],
     "~NAME of the same class and ADD of the log are not marked");
 });
 
@@ -370,12 +372,12 @@ test("what leads to a statement of the slice is part of the slice; what leads no
   const stop = line => ({ cur: { name: "ZCL_CALC_FACADE=>MODIFIER_FOR", owner: "ZCL_CALC_FACADE" }, at: { url: "/u", line, ord: 0 }, stack: [frame(line)] });
   // 7 CASE; 8 WHEN fuel, 9 its statement (in the slice); 10 WHEN tax, 11 its statement (not in the slice); 12 a log call.
   const slice = new Set(["ZCL_CALC_FACADE:9"]);
-  const context = vm.createContext({ flow: { timeline: [stop(7), stop(9), stop(11), stop(12)] }, stepIndex: null, chosenValue: { name: "X" }, sharedIds: null,
+  const context = vm.createContext({ flow: { timeline: [stop(7), stop(9), stop(11), stop(12)] }, INITIAL: {}, stepIndex: null, chosenValue: { name: "X" }, sharedIds: null,
     closesBlock: () => false, stepText: f => "text" + f.line, valueTrail: () => ({ why: "no values" }),
     shapeIn: () => ({ parent: { 7: null, 8: 7, 9: 8, 10: 7, 11: 10, 12: 7 } }),
     sliceAt: (owner, line) => slice.has(String(owner).toUpperCase() + ":" + line) ? { text: "text" + line } : null,
     inSlice: (owner, line) => slice.has(String(owner).toUpperCase() + ":" + line) });
-  vm.runInContext(part("function stepKey(t)", "/* The blocks a statement of a routine stands in") + part("function stepFlow(){", "/* The running block, green")
+  vm.runInContext(part("function callerFrames(", "function shownDepth(") + line("poolName") + line("recordedUnitKey") + part("function stepKey(t)", "/* The blocks a statement of a routine stands in") + part("function stepFlow(){", "/* The running block, green")
     + part("/* The stops of the record at a statement the slice names", "function loadControls(){"), context);
   const nodes = vm.runInContext("sharedFlowGraph('steps')", context).bseFlow.nodes;
   const green = Array.from(nodes).filter(n => n.bse).map(n => n.line === undefined ? n.text : n.line).sort((a, b) => a - b);
@@ -401,15 +403,15 @@ test("the analysis answers on a channel of its own, by number, in whatever order
   vm.runInContext('sdeOriginReady(JSON.stringify({id:99,answer:{}}))', context);   // a stray answer is ignored
 });
 
-test("Run in SAP has a light green background that follows the theme", () => {
-  assert.match(page, /#run\{background:color-mix\(in srgb,var\(--vscode-testing-iconPassed/);
+test("Run in SAP has a pale blue background that follows the theme", () => {
+  assert.match(page, /#run\{background:color-mix\(in srgb,var\(--vscode-terminal-ansiBrightBlue/);
   assert.doesNotMatch(part("#run{background", "#run svg.clock"), /background:#/i, "no fixed colour as the background");
   assert.match(part("#run{background", "#run svg.clock"), /var\(--vscode-editor-background/, "mixed into the editor's own background");
 });
 
 test("the </> of a node in the diagram opens its source: the editor when docked", () => {
   const revealed = [], shown = [];
-  const context = vm.createContext({ failed() {}, window: {}, sdeReveal: frame => revealed.push(frame),
+  const context = vm.createContext({ failed() {}, window: {}, focusedRoutine: "", sdeReveal: frame => revealed.push(frame),
     show: (...args) => { shown.push(args); return Promise.resolve(); },
     document: { addEventListener() {}, body: { classList: { contains: name => name === "vertex-docked-debug" } } } });
   vm.runInContext(part('document.addEventListener("click",function(e){', "/* Depth, Collapse all"), context);
@@ -663,7 +665,7 @@ test("the variables before the run follow the reader's place: a routine shows it
 
 test("SYST and Initials are offered only while the program is stopped", () => {
   const shown = { syst: { style: {} }, initials: { style: {} } };
-  const context = vm.createContext({ picture: { stopped: null }, $: id => shown[id] });
+  const context = vm.createContext({ picture: { stopped: null }, INITIAL: {}, $: id => shown[id] });
   vm.runInContext(part("function syncVarSwitches(){", "function drawVars(){"), context);
   vm.runInContext("syncVarSwitches()", context);
   assert.deepEqual([shown.syst.style.display, shown.initials.style.display], ["none", "none"], "no values yet: no switches for them");
@@ -713,12 +715,15 @@ test("the chat is given what the window shows in two labelled parts: what ran, w
     stop(["ZCL_Y=>M", "ZCL_X=>RUN", "ZREP"], "ZCL_Y=>M", 7), stop(["ZCL_X=>RUN", "ZREP"], "ZCL_X=>RUN", 31)];
   const row = (name, line, text, included) => ({ name, type: "PROG", line, aceLine: line, text, scope: name + arrow + "RUN", source: "s", location: name + "->RUN", included: !!included });
   const context = vm.createContext({ flow: { timeline }, chosenValue: { name: "LS_X" }, slicePoints: { "ZCL_X:30": {} }, inSlice: (o, l) => o === "ZCL_X" && l === 30,
+    INITIAL: { local: false }, sessionId: "a1b2c3d4-0000-4000-8000-000000000000",
     picture: { stopped: { at: "ZCL_X:31" } }, object: { name: "ZREP", type: "PROG" }, window: { vertexFlow: { depth: () => context.depth } }, depth: null,
     staticFlow: { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, rows: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)], sites: [], point: { url: "u" }, name: "ZREP", from: 10, stopAt: { name: "ZREP", line: 15 } },
-    staticFlowGraph: () => ({ sequence: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)] }), MAX_CONTEXT: 150 });
+    staticFlowGraph: () => ({ sequence: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)] }), MAX_CONTEXT: 150,
+    debugHistorySlice: () => ({ note: "Recorded values", totalStops: timeline.length, stopsWithWatch: 0, stops: [] }) });
   vm.runInContext(part("function debugContext(){", "var contextTimer=null;"), context);
   const read = () => JSON.parse(JSON.stringify(vm.runInContext("debugContext()", context)));
   let got = read();
+  assert.equal(got.session_id, "a1b2c3d4-0000-4000-8000-000000000000", "the live recording carries its ID before it is saved");
   assert.deepEqual(got.recorded.steps.map(s => s.depth + ":" + s.at), ["0:ZREP:10", "0:ZREP:15", "1:ZCL_X=>RUN:30", "2:ZCL_Y=>M:7", "1:ZCL_X=>RUN:31"], "consecutive repeats once, with the depth below the first stop");
   assert.equal(got.recorded.steps[2].slice, true, "a statement of the slice is marked");
   assert.match(got.recorded.note, /actually did/);
@@ -729,6 +734,21 @@ test("the chat is given what the window shows in two labelled parts: what ran, w
   assert.deepEqual(got.recorded.steps.map(s => s.at), ["ZREP:10", "ZREP:15", "ZCL_X=>RUN:30", "ZCL_X=>RUN:31"], "only as deep as the depth control shows");
   context.flow = { timeline: [] }; context.staticFlow = null;
   assert.equal(vm.runInContext("debugContext()", context), null, "neither a record nor an analysis: nothing to give");
+});
+test("a live SAP recording keeps one session ID until a new run starts", () => {
+  let next = 0;
+  const context = vm.createContext({ INITIAL: { local: false }, flow: { nodes: {}, edges: {}, order: [] }, flowPath: [], maps: {},
+    sessionId: null, crypto: { randomUUID: () => "session-" + ++next }, callerFrames: () => 0,
+    unitOf: frame => ({ name: frame.program }), note: () => {}, picture: { ended: 0 } });
+  vm.runInContext(part("function record(frames){", "/* The statements of the routine"), context);
+  const frame = [{ program: "ZREP", line: 10, label: "ZREP" }];
+  context.record(frame);
+  const first = context.sessionId;
+  context.record(frame);
+  assert.equal(context.sessionId, first);
+  context.flow = { nodes: {}, edges: {}, order: [] };
+  context.record(frame);
+  assert.equal(context.sessionId, "session-2");
 });
 test("the followed value read with the step is used without asking again", async () => {
   const asked = [];

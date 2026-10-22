@@ -89,7 +89,7 @@ test('every Type carries the call-stack depth of its procedure, and the page can
   const output = html(analyze(require('./fixtures/value-origin-demo.json'),
     { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' }), 'test');
   const slider = output.match(/id="bse-depth"[^>]*/)[0];
-  assert.match(slider, /min="0"/);
+  assert.match(slider, /min="1"/);
   const graph = JSON.parse(output.match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]);
   // The maxima are stated in the graph the shared flow script is given, which
   // is where the slider reads them from.

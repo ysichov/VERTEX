@@ -41,6 +41,7 @@ function debugHtml(initial) {
       if(event.data.type==="result"){pending=event.data.payload;sdeReady();}
       if(event.data.type==="debug")sdeDebugEvent(event.data.payload);
       if(event.data.type==="historyStep"&&typeof sdeHistoryStep==="function")sdeHistoryStep(event.data.kind);
+      if(event.data.type==="replayStep"&&typeof sdeReplayStep==="function")sdeReplayStep(event.data.step);
       if(event.data.type==="origin")sdeOriginReady(event.data.payload);
       if(event.data.type==="originProgress")sdeOriginProgress(event.data.payload);
       if(event.data.type==="cursor"&&typeof sdeCursor==="function")sdeCursor(event.data.payload);
