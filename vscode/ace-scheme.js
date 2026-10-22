@@ -171,15 +171,19 @@ function codeView(p,expandedText='',maxDepth=0){
   const text=String(p.source.text||'').split(/\r?\n/),first=rows[0]?.source_line||1,last=rows.length?lastLine(rows.at(-1)):first;
   // A fold runs to the line before the block's closing statement: a comment there is inside the block and hidden with it.
   const ranges=folds(rows,maxDepth,opened).map(({open,inner,count})=>{const close=rows[open.all];
-    return {from:lastLine(open)+1,to:close&&close.line===open.all+1?close.source_line-1:(inner.length?Math.max(...inner.map(lastLine)):lastLine(open)),fold:open.line,count};}).filter(f=>f.to>=f.from);
+    return {from:lastLine(open)+1,to:close&&close.line===open.all+1?close.source_line-1:(inner.length?Math.max(...inner.map(lastLine)):lastLine(open)),fold:open.line,count};}).filter(f=>f.to>=f.from&&f.count>0);
   /* Opened a step at a time: a block that Depth folds and the reader opened shows its branches - WHEN, ELSEIF, ELSE,
      CATCH, CLEANUP - each with its own inside folded, opened in turn. The inside before the first branch is keyed by
      the opening's row negated, a branch's by its row. A block without branches opens to its inside at once. */
+  // closes: the line that opened a block or a branch, and the keys that fold it again (a double-click on it).
+  const closes=new Map();
   if(maxDepth>0){
     const routine=rows.some(r=>r.kind==='O'&&Object.hasOwn(procedureEnds,r.word)),levelOf=r=>r.depth-(routine?1:0)+1;
     for(const r of rows){
       if(r.kind!=='O'||Object.hasOwn(procedureEnds,r.word)||levelOf(r)<maxDepth||!opened.has(r.line))continue;
+      closes.set(r.source_line,[r.line,-r.line]);
       const heads=[r,...rows.filter(x=>x.kind==='B'&&x.depth===r.depth&&x.line>r.line&&x.line<=r.all)];
+      heads.slice(1).forEach(head=>{if(opened.has(head.line))closes.set(head.source_line,[head.line]);});
       if(heads.length<2)continue;
       const close=rows[r.all];
       heads.forEach((head,at)=>{
@@ -187,7 +191,8 @@ function codeView(p,expandedText='',maxDepth=0){
         if(opened.has(key))return;
         const from=lastLine(head)+1,to=(next?next.source_line:close&&close.line===r.all+1?close.source_line:last+1)-1;
         const end=next?next.line:r.all+1,count=rows.filter(x=>x.line>head.line&&x.line<end&&!['C','B'].includes(x.kind)).length;
-        if(to>=from)ranges.push({from,to,fold:key,count});
+        // Nothing but comments inside: shown as they are, a fold of no operations would only hide them.
+        if(to>=from&&count>0)ranges.push({from,to,fold:key,count});
       });
     }
   }
@@ -202,7 +207,7 @@ function codeView(p,expandedText='',maxDepth=0){
   for(let n=first;n<=last;n++){
     const fold=ranges.find(f=>f.from===n);
     if(fold){items.push({fold:fold.fold,count:fold.count,line:n,to:fold.to});n=fold.to;continue;}
-    items.push({line:n,text:text[n-1]??'',...(painted.has(n)?{parts:parts(text[n-1]??'',painted.get(n))}:{})});
+    items.push({line:n,text:text[n-1]??'',...(painted.has(n)?{parts:parts(text[n-1]??'',painted.get(n))}:{}),...(closes.has(n)?{closes:closes.get(n)}:{})});
   }
   return items;
 }

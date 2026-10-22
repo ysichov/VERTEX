@@ -4,6 +4,8 @@
 
 Opening a folded block in Logic's Code view no longer pours out everything inside it: a block with branches - a CASE's WHENs, an IF's ELSEIF and ELSE, a TRY's CATCH - first shows its branch lines, each with its own inside folded, and a click on a branch opens it one more level, with the blocks nested in it still folded.
 
+A double-click on the line that opened a block or a branch folds it again. A block or branch holding nothing but comments is shown as it is instead of as "(0 operations hidden)".
+
 ## 2026-10-22 — VS Code 0.9.24: Logic depth
 
 The Logic diagram has a **Depth** field, 1 by default, as Calls has - the levels inside the method that are shown, 1 being the method's own statements: blocks whose inside is deeper keep their opening and closing statement, and what is inside them is one node saying how many operations it hides (for example *(24 operations hidden)*); a click on it opens the block in place. Large methods no longer draw every level at once.

@@ -1719,6 +1719,15 @@ function drawCode() {
         var piece = document.createElement("span"); piece.textContent = part.t; if (part.k) piece.className = "tk-" + part.k; text.appendChild(piece);
       });
       else text.textContent = item.text || " ";
+      // The line that opened a block or a branch folds it again on a double-click.
+      if (item.closes) {
+        text.title = "Double-click to fold";
+        text.addEventListener("dblclick", function (e) {
+          e.preventDefault();
+          expanded = expanded.filter(function (key) { return item.closes.indexOf(Number(key)) < 0; });
+          requestDiagram();
+        });
+      }
       // A line opens in the editor through the opener every Tools window has, as a UML method does: there is nothing to
       // unfold in place. With none, the number is no link.
       var opener = umlSourceOpener();

@@ -154,3 +154,13 @@ test('Logic Code view opens a block a step at a time: its branches first, each b
   assert.deepEqual(view('2,3'), [2, 3, 4, 5, 6, 'fold 5:1', 8, 9, 'fold 8:1', 11, 12]);
   assert.deepEqual(view('2,3,5,8'), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 });
+
+test('Logic Code view: the line that opened a block or a branch carries the keys that fold it again; no fold hides only comments', () => {
+  const { codeView } = require('../ace-scheme');
+  const text = ['REPORT z.', 'FORM f.', '  CASE a.', '    WHEN 1.', '      x = 1.', '    WHEN OTHERS.', '      " nothing to do', '  ENDCASE.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  const items = codeView(p, '2,3', 1);
+  assert.deepEqual(items.filter(i => i.closes).map(i => i.line + ':' + i.closes.join(',')), ['3:2,-2', '4:3']);
+  assert.deepEqual(items.map(i => i.fold ? 'fold' : i.line), [2, 3, 4, 5, 6, 7, 8, 9]);
+});
