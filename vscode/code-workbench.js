@@ -629,11 +629,8 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     }
     return null;
   }
-  const blockOpen = { DO: "ENDDO", LOOP: "ENDLOOP", METHOD: "ENDMETHOD", FORM: "ENDFORM", IF: "ENDIF", CASE: "ENDCASE",
-    CLASS: "ENDCLASS", INTERFACE: "ENDINTERFACE" };
   // CLASS ... DEFINITION DEFERRED / LOAD / LOCAL FRIENDS and INTERFACE ... DEFERRED / LOAD have no end of their own.
   const noBlock = /^\s*(?:CLASS|INTERFACE)\s+\S+\s+(?:DEFINITION\s+)?(?:DEFERRED|LOAD|LOCAL\s+FRIENDS)\b/i;
-  const blockClose = Object.fromEntries(Object.entries(blockOpen).map(([open, close]) => [close, open]));
   function structuralAnchor(document, at) {
     const line = document.getText().split(/\r?\n/)[at.line] || "";
     const match = /^\s*(DO|ENDDO|LOOP|ENDLOOP|METHOD|ENDMETHOD|FORM|ENDFORM|IF|ELSEIF|ELSE|ENDIF|CASE|WHEN|ENDCASE|CLASS|ENDCLASS|INTERFACE|ENDINTERFACE)\b/i.exec(line);
@@ -644,32 +641,20 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
   }
   /* Double-click jumps from a block's opening to its end and back; with
      BRANCHES - Ctrl+click and F12 - IF and CASE step through ELSEIF, ELSE
-     and WHEN on the way. */
-  function structuralTarget(document, at, branches) {
+     and WHEN on the way. The blocks come from abaplint's parse (abap-folding
+     blockJumps), shared with folding: a line that only starts with a keyword -
+     a parameter named CLASS in a call - is no block. */
+  async function structuralTarget(document, at, branches) {
     const anchor = structuralAnchor(document, at);
     if (!anchor) return undefined;
-    const lines = document.getText().split(/\r?\n/), frames = [], targets = new Map();
-    lines.forEach((line, index) => {
-      const hit = /^\s*(DO|ENDDO|LOOP|ENDLOOP|METHOD|ENDMETHOD|FORM|ENDFORM|IF|ELSEIF|ELSE|ENDIF|CASE|WHEN|ENDCASE|CLASS|ENDCLASS|INTERFACE|ENDINTERFACE)\b/i.exec(line);
-      if (!hit || noBlock.test(line)) return;
-      const word = hit[1].toUpperCase(), column = hit.index + hit[0].indexOf(hit[1]);
-      if (blockOpen[word]) { frames.push({ kind: word, start: { index, column, word }, branches: [] }); return; }
-      if (word === "ELSEIF" || word === "ELSE" || word === "WHEN") {
-        const expected = word === "WHEN" ? "CASE" : "IF";
-        const frame = [...frames].reverse().find(item => item.kind === expected);
-        if (frame) frame.branches.push({ index, column, word });
-        return;
-      }
-      const expected = blockClose[word], frame = frames.length && frames[frames.length - 1];
-      if (!expected || !frame || frame.kind !== expected) return;
-      frames.pop();
-      const end = { index, column, word }, next = pos => ({ document, target: location(document.uri, pos.index, pos.column, pos.word.length) });
-      targets.set(frame.start.index, branches && frame.branches[0] || end);
-      frame.branches.forEach((branch, item) => targets.set(branch.index, frame.branches[item + 1] || end));
-      targets.set(end.index, frame.start);
-    });
-    const target = targets.get(anchor.line);
-    return target && { document, target: location(document.uri, target.index, target.column, target.word.length) };
+    const statements = await require("./abap-statements").statementsOf(document);
+    const own = statements.find(statement => statement.line === anchor.line + 1);
+    if (!own) return undefined;
+    const target = require("./abap-folding").blockJumps(statements, branches).get(own.line);
+    if (!target) return undefined;
+    // abaplint counts offsets from the start after each \n, so a \r stays part of its line here too.
+    const keyword = target.tokens[0], column = document.getText().split("\n").slice(0, keyword.line - 1).reduce((sum, line) => sum + line.length + 1, 0);
+    return { document, target: location(document.uri, keyword.line - 1, keyword.offset - column, String(keyword.value).length) };
   }
   function methodSignature(source, name) {
     const wanted = new RegExp("^\\s*" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
@@ -1706,7 +1691,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       return;
     }
     // F12 walks the branches; the double-click (QUIET) jumps to the end.
-    const structure = structuralTarget(editor.document, at, !quiet);
+    const structure = await structuralTarget(editor.document, at, !quiet);
     if (structure) { await moveTo(editor, structure); return; }
     // A class, an interface or a form this source declares itself is found in it - no SAP request, so a source
     // too large to send to SAP still navigates to its own declarations.
@@ -1877,7 +1862,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     context.subscriptions.push(vscode.languages.registerDefinitionProvider(
       [{ scheme: "vertex-sap", language: "abap" }, { scheme: "vertex-source", language: "abap" }], {
         async provideDefinition(document, at) {
-          const result = structuralTarget(document, at, true) || await methodCounterpart(document, at)
+          const result = await structuralTarget(document, at, true) || await methodCounterpart(document, at)
             || await externalCallTarget(document, at);
           return result && !result.interfaceDispatch && result.target;
         }

@@ -35,6 +35,7 @@ const required = [
     "extension/ace-scheme.js",
     "extension/reach-path.js",
     "extension/abap-folding.js",
+    "extension/abap-statements.js",
     "extension/log-report.js",
     "extension/log-snapshot.js",
     "extension/resources/mermaid.min.js",

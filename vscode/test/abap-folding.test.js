@@ -33,3 +33,11 @@ test('blocks fold to the line before their end, branches to the next branch; a s
 test('unformatted code folds the same as formatted code', () => {
   assert.deepEqual(ranges(text.split('\n').map(line => line.trim()).join('\n')), ranges(text));
 });
+
+test('a call parameter named CLASS at the start of a line opens no block for the jumps', () => {
+  const source = ['REPORT z.', 'FORM f.', '  LOOP AT t INTO w.', '    LOOP AT w-t INTO v.', '      x = y=>m(', '        class = v ).', '    ENDLOOP.', '  ENDLOOP.', 'ENDFORM.'].join('\n');
+  const jumps = require('../abap-folding').blockJumps(parseSource({ id: 'z', name: 'z', objectName: 'Z', objectType: 'PROG', text: source }).source.aceStatements, false);
+  assert.equal(jumps.get(8).line, 3);
+  assert.equal(jumps.get(3).line, 8);
+  assert.equal(jumps.get(7).line, 4);
+});

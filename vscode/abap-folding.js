@@ -39,24 +39,36 @@ function foldingRanges(statements) {
   return ranges;
 }
 
+/* Where a block keyword leads: an opening statement to its end and the end back to the opening; with branches (F12,
+   Ctrl+click) IF and CASE step through ELSEIF, ELSE and WHEN on the way, TRY through CATCH and CLEANUP. Keys and
+   targets are statements, by the line of their first token. */
+function blockJumps(statements, branches) {
+  const jumps = new Map(), stack = [];
+  for (const s of statements || []) {
+    const kind = s.parserKind;
+    if (branchKinds.has(kind) && stack.length) { stack.at(-1).branches.push(s); continue; }
+    if (closers.has(kind)) {
+      const at = stack.map(b => pairs[b.open.parserKind]).lastIndexOf(kind);
+      if (at < 0) continue;
+      const block = stack.splice(at)[0];
+      jumps.set(block.open.line, branches && block.branches[0] || s);
+      block.branches.forEach((branch, i) => jumps.set(branch.line, block.branches[i + 1] || s));
+      jumps.set(s.line, block.open);
+      continue;
+    }
+    if (pairs[kind]) stack.push({ open: s, branches: [] });
+  }
+  return jumps;
+}
+
 function register(vscode, context) {
-  const cache = new Map();
-  context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(document => cache.delete(document.uri.toString())));
+  const statements = require('./abap-statements');
+  context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(statements.forget));
   context.subscriptions.push(vscode.languages.registerFoldingRangeProvider({ language: 'abap' }, {
     async provideFoldingRanges(document) {
-      const key = document.uri.toString(), known = cache.get(key);
-      if (known && known.version === document.version) return known.ranges;
-      const parser = require('./value-origin-linter').createParser();
-      let parsed;
-      try {
-        parsed = await parser.parse({ id: key, name: document.fileName, objectName: '',
-          objectType: /\.clas\.|\/CLAS\//i.test(key) ? 'CLAS' : 'PROG', text: document.getText() });
-      } finally { await parser.close(); }
-      const ranges = foldingRanges(parsed.source.aceStatements).map(r => new vscode.FoldingRange(r.start - 1, r.end - 1));
-      cache.set(key, { version: document.version, ranges });
-      return ranges;
+      return foldingRanges(await statements.statementsOf(document)).map(r => new vscode.FoldingRange(r.start - 1, r.end - 1));
     }
   }));
 }
 
-module.exports = { foldingRanges, register };
+module.exports = { foldingRanges, blockJumps, register };

@@ -436,7 +436,11 @@ test("structural navigation walks IF and CASE sibling branches without entering 
     const first = { isEmpty: true, start: { line, character: from }, end: { line, character: from }, active: { line, character: from } };
     h.selectionListeners[0]({ kind: 2, selections: [first], textEditor: { document: h.documents[0], selection: first } });
     h.selectionListeners[0]({ kind: 2, selections: [selection], textEditor: editor });
-    await new Promise(resolve => setTimeout(resolve, 20));
+    // The jump waits for abaplint's parse of the document.
+    for (let waited = 0; !editor.selection.start || editor.selection.start.line === line; waited += 20) {
+      if (waited > 10000) break;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
     return editor.selection.start.line;
   };
   assert.equal(await click(1, 2, 4), 7);

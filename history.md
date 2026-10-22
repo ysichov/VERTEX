@@ -6,6 +6,8 @@
 
 ABAP blocks and their branches fold in the editor by the code's structure rather than its indentation, so unformatted code folds too; a multi-line condition stays visible when folded.
 
+Double-click, F12 and Ctrl+click between a block's opening and closing statements follow the code's structure: a call parameter named CLASS at the start of a line no longer breaks the matching of the blocks after it.
+
 ## Unreleased — individual AI tool disclosures
 
 Each AI tool call starts collapsed under its name. Its arguments, matching result and recording/object links open together. Repeated and concurrent calls remain separate and are matched to results by tool-call ID.
