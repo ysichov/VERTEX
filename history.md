@@ -4,6 +4,8 @@
 
 The Logic diagram has a **Depth** field, 3 by default, as Calls has: blocks nested deeper keep their opening and closing statement, and what is inside them is one node saying how many operations it hides (for example *(24 operations hidden)*); a click on it opens the block in place. Large methods no longer draw every level at once.
 
+Logic opens on a **Code | Diagram** toggle set to Code: the method's lines exactly as written, folded to the same Depth, a line number opening the line in the editor and the editor's cursor marking its line. In the path panel, a one-line `IF … ENDIF.` is no longer listed twice.
+
 ## 2026-10-22 — VS Code 0.9.23: path to a line
 
 **VERTEX: Path to This Line** in the ABAP editor's context menu shows the conditions under which the line at the cursor runs inside its METHOD or FORM: enclosing branches, earlier branches that must be false, CHECKs, and earlier branches that must not be taken because they leave the routine. Conditions appear as written in the code; a line after an unconditional exit is reported as not reachable. Works on local and SAP sources without a system call. The panel indents rows as the code is nested and shows the closing statements. In the Logic diagram, the **Reachability** toggle lights up the path to a clicked node and quiets the rest.

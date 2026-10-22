@@ -375,7 +375,9 @@ async function request(api, resource, progress, cancelled = () => false) {
     // The source the routine is written in: its include when a program keeps it in one - where a node click opens.
     const written = chosen[0].source.programInclude ? { name: chosen[0].source.programInclude, type: api.local ? 'PROG' : 'INCL' } : null;
     return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType, ...drawn, reach, ...(written ? { writtenIn: written } : {}),
-      logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true,logicDepth).mermaid };
+      logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true,logicDepth).mermaid,
+      // Logic's Code view: the routine's lines as written, folded to the same depth.
+      code:require('./ace-scheme').codeView(chosen[0], url.searchParams.get('expand') || '', logicDepth) };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }
 // The object an ADT source address belongs to, and the address of its source: what where-used names is a place in a

@@ -152,11 +152,15 @@ const words = { true: 'true', false: 'false', case: '', context: '', end: '', ta
 // lines: the source's lines; each row shows its statement's lines as they stand there - indentation, breaks and all.
 function page(result, nonce, cspSource, lines) {
   const code = item => '<pre>' + escape(lines.slice(item.line - 1, item.endLine).join('\n')) + '</pre>';
-  const row = (item, depth) => item.verdict === 'group' ? item.children.map(child => row(child, depth + (child.indent || 0))).join('') : '<li class="' + item.verdict + '"><a href="#" data-line="' + item.line + '">'
+  // A row shows its statement's lines; a closing statement on a line already shown - IF x. RETURN. ENDIF. on one line -
+  // adds nothing and is left out.
+  let shownTo = 0;
+  const row = (item, depth) => item.verdict === 'group' ? item.children.map(child => row(child, depth + (child.indent || 0))).join('')
+    : item.verdict === 'end' && item.line <= shownTo ? '' : (shownTo = Math.max(shownTo, item.endLine || item.line), '<li class="' + item.verdict + '"><a href="#" data-line="' + item.line + '">'
     + item.line + '</a>' + code(item)
     + (words[item.verdict] ? ' <span class="verdict ' + item.verdict + '">' + words[item.verdict] + '</span>' : '')
     + (item.reason ? ' <span class="reason">— leaves at <a href="#" data-line="' + item.reason.line + '">' + item.reason.line + '</a></span>' : '')
-    + '</li>' + (item.children || []).map(child => row(child, depth + 1 + (child.indent || 0))).join('');
+    + '</li>' + (item.children || []).map(child => row(child, depth + 1 + (child.indent || 0))).join(''));
   const body = result.unreachable
     ? '<p class="unreachable">Not reachable: <a href="#" data-line="' + result.unreachable.line + '">' + result.unreachable.line + '</a> ' + escape(result.unreachable.reason) + '.</p>' : '';
   return '<!DOCTYPE html><html><head><meta charset="utf-8">'

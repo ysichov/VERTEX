@@ -153,4 +153,30 @@ function scheme(p,expandedText='',logicOnly=false,maxDepth=0) {
   mm.forEach(line=>{const id=line.split('(')[0];if(/^[pj]\d+$/.test(id))toCode(id);});
   return {conditionCalls,clusterRanges,nodeRanges,nodeLines:Object.fromEntries(rows.flatMap(r=>['n','p','o','j'].map(prefix=>[prefix+r.line,r.source_line]))),mermaid:'flowchart LR\n'+[...mm,'classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000','classDef default color:#12369e','classDef callnode fill:#fbeeee,stroke:#800000,color:#800000','classDef dbnode fill:#e8f2f6,stroke:#1f6f8b,color:#0f5468','classDef foldnode stroke-dasharray:4 3',...styles,...edges,...clicks].join('\n'),steps:mm.length,line_from:rows[0]?.source_line||p.line,line_to:last?.source_line||p.line};
 }
-module.exports={scheme,analyze,label};
+/* Logic's Code view: the routine's source lines as they are written, with the same depth folding as the diagram - a block
+   nested deeper than maxDepth keeps its opening and closing statement, and the lines between are one fold that says how
+   many operations it hides, opened by its key (the opening's row, as EXPANDED names it). Items: { line, text } or
+   { fold, count, line } (the first hidden line). */
+function codeView(p,expandedText='',maxDepth=0){
+  const rows=analyze(p),opened=new Set(String(expandedText||'').split(',').filter(Boolean).map(Number));
+  const root=rows.some(r=>r.kind==='O'&&Object.hasOwn(procedureEnds,r.word));
+  const lastLine=r=>r.tokens.at(-1)?.line||r.source_line;
+  const folds=[];
+  if(maxDepth>0)for(const r of rows){
+    if(r.kind!=='O'||Object.hasOwn(procedureEnds,r.word)||r.depth-(root?1:0)+1<=maxDepth||opened.has(r.line))continue;
+    if(folds.some(f=>r.source_line>=f.from&&r.source_line<=f.to))continue;
+    const close=rows[r.all],from=lastLine(r)+1,to=(close?close.source_line:from)-1;
+    if(to<from)continue;
+    const count=rows.filter(x=>x.line>r.line&&x.line<=r.all&&!['C','B'].includes(x.kind)).length;
+    folds.push({from,to,fold:r.line,count});
+  }
+  const text=String(p.source.text||'').split(/\r?\n/),first=rows[0]?.source_line||1,last=rows.length?lastLine(rows.at(-1)):first;
+  const items=[];
+  for(let n=first;n<=last;n++){
+    const fold=folds.find(f=>f.from===n);
+    if(fold){items.push({fold:fold.fold,count:fold.count,line:n});n=fold.to;continue;}
+    items.push({line:n,text:text[n-1]??''});
+  }
+  return items;
+}
+module.exports={scheme,analyze,label,codeView};

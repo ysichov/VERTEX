@@ -104,3 +104,16 @@ test('Logic depth: a block nested deeper keeps its opening and closing statement
   assert.doesNotMatch(opened, /hidden/);
   assert.match(scheme(p, '', false, 0).mermaid, /x = 1/);
 });
+
+test('Logic Code view: the lines as written, a deeper block folded between its opening and closing lines', () => {
+  const { codeView } = require('../ace-scheme');
+  const text = ['REPORT z.', 'FORM f.', '  IF a = 1.', '    IF b = 1.', '      IF c = 1.', '        IF d = 1.', '          x = 1.', '          " note',
+    '          y = 2.', '        ENDIF.', '      ENDIF.', '    ENDIF.', '  ENDIF.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  const items = codeView(p, '', 3);
+  assert.deepEqual(items.map(i => i.fold ? 'fold ' + i.fold + ':' + i.count : i.line),
+    [2, 3, 4, 5, 6, 'fold 5:2', 10, 11, 12, 13, 14]);
+  assert.equal(items[1].text, '  IF a = 1.');
+  assert.deepEqual(codeView(p, '5', 3).map(i => i.line), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+});

@@ -191,6 +191,18 @@
   .bar .depth { display: none; color: var(--muted); gap: 3px; align-items: center; }
   body.calls .bar .depth { display: flex; }
   body.logic .bar #depthbox { display: flex; }
+  /* Logic's Code view: what only a drawing needs is not offered. */
+  body.logic-code .bar #dir, body.logic-code .bar #logic-only, body.logic-code .bar #reach, body.logic-code .bar .diagram-zoom,
+  body.logic-code .bar #fit, body.logic-code .bar #lens { display: none !important; }
+  .logic-code-view { font-family: var(--vscode-editor-font-family, monospace); font-size: var(--vscode-editor-font-size, 13px);
+    color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); padding: 6px 0; min-width: max-content; }
+  .logic-code-view .code-row { display: flex; white-space: pre; line-height: 1.45; }
+  .logic-code-view .code-row .no { min-width: 5ch; padding: 0 10px 0 6px; text-align: right; cursor: pointer;
+    color: var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground)); user-select: none; }
+  .logic-code-view .code-row .no:hover { color: var(--vscode-textLink-foreground); }
+  .logic-code-view .code-row.code-selected { background: var(--vscode-editor-lineHighlightBackground, var(--vscode-list-hoverBackground)); }
+  .logic-code-view .code-fold .text { color: var(--vscode-textLink-foreground); cursor: pointer; font-style: italic; }
+  .logic-code-view .code-fold .text:hover { text-decoration: underline; }
   .bar .depth input { width: 3.2rem; font: inherit; padding: 2px 4px; color: var(--fg);
                       background: var(--field-bg); border: 1px solid var(--field-border); }
   /* The diagram sizes itself; the pane scrolls in both directions rather
@@ -293,6 +305,7 @@ svg.reach-active g.node.reach-target rect,svg.reach-active g.node.reach-target p
     <label class="depth" id="depthbox" title="How far the calls are followed">Depth
       <input id="depth" type="number" min="1" max="99" step="1" value="2"></label>
     <span class="seg" id="dir"><button data-dir="TB" class="on" title="Lay the diagram out down the page">&#8595; Top-down</button><button data-dir="LR" title="Lay the diagram out across the page">&#8594; Left-right</button></span>
+    <span class="vertex-segment-toggle" id="logic-view" hidden role="group" aria-label="Logic view"><button data-view="code" class="active" title="The method's code as written, deeper blocks folded to Depth">Code</button><button data-view="diagram" title="The method as a flowchart">Diagram</button></span>
     <button id="logic-only" hidden class="vertex-toggle on" aria-pressed="true" title="Show branches, loops and procedure calls; hide ordinary operations">Logic only</button>
     <button id="reach" hidden class="vertex-toggle" aria-pressed="false" title="Click a node to light up the path that reaches it inside its METHOD or FORM">Reachability</button>
     <label class="diagram-zoom" title="Diagram scale"><input id="zoom" type="range" min="10" max="100" step="1" value="100" aria-label="Diagram scale"><output id="zoom-value">100%</output></label>
@@ -1090,6 +1103,8 @@ var diagramSeq = 0;
 var depth = 2;
 // Logic's depth: how many levels of nested blocks are drawn; inside a deeper block, its operations fold into one node, opened by a click.
 var logicDepth = 3;
+// Logic shows the code by default, the flowchart on Diagram; both fold to the same depth.
+var logicView = "code", schemeCode = null;
 
 var direction = "TB";
 // A method is drawn to fit the pane when it is opened: one fixed percentage
@@ -1157,6 +1172,8 @@ function setMode(next) {
   document.getElementById("logic-only").hidden=next!=="scheme";
   // One Depth field, two meanings: how far Calls follows calls, how deep Logic draws nested blocks.
   document.body.classList.toggle("logic", next === "scheme");
+  document.body.classList.toggle("logic-code", next === "scheme" && logicView === "code");
+  document.getElementById("logic-view").hidden = next !== "scheme";
   document.getElementById("depth").value = next === "scheme" ? logicDepth : depth;
   document.getElementById("depthbox").title = next === "scheme" ? "How many levels of nested blocks are drawn; a deeper block shows its opening and closing statement, and a click opens what is inside" : "How far the calls are followed";
   document.getElementById("reach").hidden=next!=="scheme"||!schemeReach;
@@ -1618,7 +1635,7 @@ function renderDiagram(data) {
     return;
   }
   lastMermaid = data.mermaid;
-  lastLogicMermaid=data.logicMermaid||null;
+  lastLogicMermaid=data.logicMermaid||null;schemeCode=data.code||null;
   schemeNodeLines=data.nodeLines||{};schemeNodeRanges=data.nodeRanges||{};schemeClusterRanges=data.clusterRanges||{};schemeConditionCalls=data.conditionCalls||{};schemeWritten=data.writtenIn||null;schemeReach=data.reach||null;reachLine=0;document.getElementById("reach").hidden=mode!=="scheme"||!schemeReach;
   lastCaption = data.mode === "calls"
     ? data.steps + (data.steps === 1 ? " step" : " steps")
@@ -1674,7 +1691,35 @@ function linkUmlMethods(svg) {
 function umlSourceOpener() {
   return typeof sdeOpenToolSource === "function" ? sdeOpenToolSource : typeof sdeOpenUmlSource === "function" ? sdeOpenUmlSource : null;
 }
+/* Logic's Code view: the method's lines as written, a deeper block's inside one line that opens it. A line number opens
+   the line in the editor; the editor's cursor marks its line here. */
+function drawCode() {
+  var pane = document.getElementById("diagram"), view = document.createElement("div"), prior = "";
+  view.className = "logic-code-view";
+  schemeCode.forEach(function (item) {
+    var row = document.createElement("div"), no = document.createElement("span"), text = document.createElement("span");
+    no.className = "no"; text.className = "text";
+    if (item.fold) {
+      row.className = "code-row code-fold";
+      text.textContent = (/^\s*/.exec(prior) || [""])[0] + "  … (" + item.count + (item.count === 1 ? " operation" : " operations") + " hidden)";
+      text.title = "Open this block";
+      text.addEventListener("click", function () { if (expanded.indexOf(String(item.fold)) < 0) { expanded.push(String(item.fold)); } requestDiagram(); });
+    } else {
+      row.className = "code-row"; row.dataset.line = item.line; no.textContent = item.line; text.textContent = item.text || " "; prior = item.text || "";
+      no.title = "Open line " + item.line;
+      no.addEventListener("click", function () {
+        if (typeof sdeOpenToolSource === "function") sdeOpenToolSource({ name: schemeWritten ? schemeWritten.name : loadedObject, type: schemeWritten ? schemeWritten.type : loadedType, line: item.line });
+      });
+    }
+    row.appendChild(no); row.appendChild(text); view.appendChild(row);
+  });
+  pane.textContent = ""; pane.appendChild(view);
+  status(lastCaption);
+  if (latestCodeCursor) sdeCodeCursor(Object.assign({}, latestCodeCursor, { replay: !positionAfterDraw })); positionAfterDraw = false;
+  endAnalysis();
+}
 function draw(preserveViewport) {
+  if (mode === "scheme" && logicView === "code" && schemeCode) { drawCode(); return; }
   var diagramText=mode==="scheme"&&logicOnly&&lastLogicMermaid?lastLogicMermaid:lastMermaid;
   var isClass = /^classDiagram\b/.test(diagramText);
   var text = isClass ? diagramText.replace(/^direction .+$/m, "direction " + direction) : turned(diagramText, direction);
@@ -2306,6 +2351,14 @@ function showReach(){
   pane.querySelectorAll('g.node[data-source-line]').forEach(function(node){node.classList.toggle('reach-target',!!lines&&Number(node.dataset.sourceLine)===reachLine);});
 }
 document.getElementById('reach').addEventListener('click',function(){reachOn=!reachOn;this.classList.toggle('on',reachOn);this.setAttribute('aria-pressed',String(reachOn));if(!reachOn)reachLine=0;showReach();});
+document.getElementById("logic-view").addEventListener("click", function (e) {
+  var button = e.target.closest && e.target.closest("button[data-view]");
+  if (!button || button.dataset.view === logicView) { return; }
+  logicView = button.dataset.view;
+  Array.prototype.forEach.call(this.querySelectorAll("button[data-view]"), function (b) { b.classList.toggle("active", b === button); });
+  document.body.classList.toggle("logic-code", mode === "scheme" && logicView === "code");
+  if (lastMermaid) { refit = true; draw(); }
+});
 document.getElementById('logic-only').addEventListener('click',function(){logicOnly=!logicOnly;this.classList.toggle('on',logicOnly);this.setAttribute('aria-pressed',String(logicOnly));if(lastMermaid){refit=true;draw();}});
 /* The code moves the diagram, never the other way round: a click, a key or a scroll in the editor positions it; scrolling
    the diagram is the reader's own and stays there, and the diagram reaches the code only by a click on a node. The host
@@ -2322,6 +2375,12 @@ function sdeCodeCursor(value){
  var targetUnit=units.find(function(unit){return fileOf(unit)===String(value.name).toUpperCase()&&value.line>=unit.line_from&&value.line<=unit.line_to;});
  if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){latestCodeCursor=value;positionAfterDraw=true;openUnit(targetUnit);return;}
  if(!value.replay)latestCodeCursor=value;
+ if(logicView==='code'&&document.querySelector('#diagram .logic-code-view')){
+  var codeRows=Array.from(document.querySelectorAll('#diagram .logic-code-view .code-row[data-line]')),hit=null;
+  codeRows.forEach(function(row){var n=Number(row.dataset.line),on=n>=value.line&&n<=(value.endLine||value.line);row.classList.toggle('code-selected',on&&!value.scrollOnly);if(on&&!hit)hit=row;});
+  if(hit&&!value.replay)hit.scrollIntoView({block:value.scrollOnly?'start':'center',inline:'nearest'});
+  return;
+ }
 
  var pane=document.getElementById('diagram'),clusters=Array.from(pane.querySelectorAll('g.cluster[data-source-line]')),selectedClusters=clusters.filter(function(cluster){return [Number(cluster.dataset.sourceLine),Number(cluster.dataset.sourceEnd)].some(function(line){return line>=value.line&&line<=value.endLine;});});
  if(!value.scrollOnly)clusters.forEach(function(cluster){var active=selectedClusters.includes(cluster),shape=cluster.querySelector('rect');if(!shape)return;if(active){if(!shape.hasAttribute('data-prior-style'))shape.setAttribute('data-prior-style',shape.getAttribute('style')||'');shape.style.setProperty('fill',toward(ground(),themeColour('--vscode-focusBorder','#0a66c2'),darkPage()?0.28:0.18),'important');shape.style.setProperty('stroke','var(--vscode-focusBorder,#0a66c2)','important');}else if(shape.hasAttribute('data-prior-style')){shape.setAttribute('style',shape.getAttribute('data-prior-style'));shape.removeAttribute('data-prior-style');}});
