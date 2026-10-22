@@ -1,5 +1,15 @@
 # Development history
 
+## 2026-10-22 — the test suite passes again after the 0.9.21 merge
+
+23 of 918 tests failed. None came from the merge: each already failed on one side or both. Three were code faults.
+
+- `local-trace.js` `abapFailure`: the drive-letter pattern took the `e:` of `file:///` on macOS and Linux, so a failed local run gave Node's stack instead of the ABAP place.
+- `pages/visual-debug.html` `stepFlow`: a block a statement stands in was keyed by the routine key (`m|…`), a statement by `stepKey`, so a CASE the run stopped on became two nodes and its WHEN hung from the second. Blocks are now keyed as statements.
+- `value-origin-model.js` `fullFlow`: since 0.8.7 the flow enters only routines with a statement of the slice, and that mark came only from ACE flow points. A local analysis has none, so BSE FLOW never left the event. Without ACE points a statement is marked where the backward slice reached a calculation on its line.
+
+The rest were tests: Windows paths built as strings (`local-analysis`, the `sapnwrfc.dll` lookup, now Windows-only), macOS's `/var` → `/private/var` temporary folder (`local-run`), and expectations that recorded decisions had changed: the SAP ADT extension route removed in 0.9.11, Logic-only folding and loop frames (0.8.1), parameter nodes dropped from FLOW (0.8.2), routine frames in Statements (0.8.1), END statements kept with their block (0.8.3), `open_sap_object` in the active group, and the page's current wording. The full suite passes: 917, one skipped off Windows.
+
 ## 2026-10-22 — individual tool calls collapsed in AI logs
 
 Retain each call ID in the parsed report and pair results by that ID. The Tools section lists independent native disclosures headed by tool name, initially closed; arguments, results and links are inside the corresponding call. Calls retain invocation order, and orphan results remain visible separately. Keep the package version at 0.9.22 as requested.

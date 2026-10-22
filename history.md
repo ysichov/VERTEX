@@ -1,5 +1,11 @@
 # Release history
 
+## Unreleased — flow diagrams after a run and in a local analysis
+
+- Visual Debug's diagram of a record draws a block the run stopped on once. A CASE or IF it stood on was drawn twice, and the branch it went through hung from the copy.
+- Value Origin on a local file (no ACE) follows the value into the routines that compute it. BSE FLOW stopped at the program's event, and the depth control reached only that far.
+- A local transpiler run that fails on macOS or Linux names the ABAP object and line where it stopped, as on Windows.
+
 ## Unreleased — individual AI tool disclosures
 
 Each AI tool call starts collapsed under its name. Its arguments, matching result and recording/object links open together. Repeated and concurrent calls remain separate and are matched to results by tool-call ID.
