@@ -1803,6 +1803,7 @@ function renderReview(data) {
       root.appendChild(save);
     }
     root.appendChild(section("Objects", objectTable(data.objects || [])));
+    if (data.missing && data.missing.length) { root.appendChild(missingSection(data.missing)); }
     var changed = (data.objects || []).reduce(function (n, o) { return n + o.hunks; }, 0);
     status(changed === 1 ? "1 changed block" : changed + " changed blocks");
     return;
@@ -1840,6 +1841,16 @@ function heading(text) {
   var h = document.createElement("h3");
   h.textContent = text;
   return h;
+}
+
+/* The objects of a request the review could not read - deleted since, or a type whose versions ADT does not keep here -
+   with the reason: the rest is reviewed. */
+function missingSection(missing) {
+  return section("Not reviewed", table(["Type", "Object", "Why"], missing, function (tr, m) {
+    [m.object, m.name, m.reason].forEach(function (text) {
+      var td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
+    });
+  }));
 }
 
 function section(title, body) {

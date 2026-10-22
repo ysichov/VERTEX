@@ -46,10 +46,26 @@ const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
 const CLASS_PART_TYPES = ["METH", "CPUB", "CPRO", "CPRI", "CINC"];
 
 // The parts a request names, each with the object it is read through (type, name) - a class's parts from the class.
+/* An object a request names may be gone from the system since: deleted, it has no parts to read. Whether it exists is
+   asked of TADIR (a function module of TFDIR), not read from SAP's message. Neither stops the review: each is listed
+   with its reason - deleted since, or SAP's own words - [{ object, name, reason }]. */
+async function exists(api, type, name) {
+  const sql = type === "FUNC" ? "SELECT funcname FROM tfdir WHERE funcname = " + sqlText(name)
+    : "SELECT obj_name FROM tadir WHERE pgmid = 'R3TR' AND object = " + sqlText(type) + " AND obj_name = " + sqlText(name);
+  return (await api.query(sql, 1)).values.length > 0;
+}
+
 async function partsOfRequest(api, keys) {
-  const parts = [], seen = new Set();
+  const parts = [], seen = new Set(), missing = [];
   const add = async (type, name, filter) => {
-    for (const p of await versions.partsOf(api, type, name)) {
+    let found;
+    try { found = await versions.partsOf(api, type, name); }
+    catch (error) {
+      const reason = await exists(api, type, name) ? String(error && error.message || error) : "deleted since";
+      if (!missing.some(m => m.object === type && m.name === name)) { missing.push({ object: type, name, reason }); }
+      return;
+    }
+    for (const p of found) {
       if (filter && !filter(p)) { continue; }
       const key = p.part_type + "|" + p.name;
       if (seen.has(key)) { continue; }
@@ -72,7 +88,7 @@ async function partsOfRequest(api, keys) {
       await add("CLAS", owner, p => p.part_type === object);
     }
   }
-  return parts;
+  return { parts, missing };
 }
 
 // The pair of versions the request's change is, read from the part's feed, by AVE's rule (ZCL_VX_VERSION_LIST=>LOAD
@@ -127,21 +143,33 @@ async function buildNow(api, request, progress) {
   const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
   const payload = { TRKORR: request, OBJ_STATS: [], HUNKS: [], DIFF_DATA: [], HUNK_ACTIONS: [], USER_STATES: [], THREADS: [], HISTORY: [] };
 
-  const parts = await partsOfRequest(api, keys);
+  const { parts, missing } = await partsOfRequest(api, keys);
+  // Kept beside the payload, not in it: a saved review is AVE's format, which has no place for them.
+  Object.defineProperty(payload, "MISSING", { value: missing, enumerable: false });
   for (const [at, p] of parts.entries()) {
     progress((at + 1) + " of " + parts.length + ": " + (p.ptype === "METH" ? p.object + " " + p.unit : p.part) + " - reading its versions ...");
-    const where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
-    if (!where) { continue; }
-    const feed = await api.revisions(where.url, where.include || undefined);
-    const pair = pairOf(feed, numbers);
-    if (!pair) { continue; }
-    const textOf = async entry => {
-      if (!entry) { return []; }
-      const text = await versions.sourceAt(api, entry.uri);
-      return (where.cut ? where.cut(text) : versions.lines(text)) || [];
-    };
-    const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
-    const ops = await versions.diff(oldLines, newLines, false, api);
+    /* One part that cannot be read - ADT keeps no versions of its type on this release ("Request version for DTEL is
+       not supported"), a version that will not open - does not end the review: it is listed with SAP's own words, and
+       the rest is reviewed. */
+    let where, pair, ops;
+    try {
+      where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
+      if (!where) { continue; }
+      const feed = await api.revisions(where.url, where.include || undefined);
+      pair = pairOf(feed, numbers);
+      if (!pair) { continue; }
+      const textOf = async entry => {
+        if (!entry) { return []; }
+        const text = await versions.sourceAt(api, entry.uri);
+        return (where.cut ? where.cut(text) : versions.lines(text)) || [];
+      };
+      const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
+      ops = await versions.diff(oldLines, newLines, false, api);
+    } catch (error) {
+      missing.push({ object: p.ptype === "METH" ? "METH" : p.type, name: p.ptype === "METH" ? p.object + "->" + p.unit : p.part,
+        reason: String(error && error.message || error) });
+      continue;
+    }
     if (!ops.some(o => o.op !== "=")) { continue; }
 
     const ranges = hunkRanges(ops);

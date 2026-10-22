@@ -162,6 +162,8 @@ async function request(api, resource, progress, io) {
   }
   return { request: trkorr.toLowerCase(), remote: remote.toLowerCase(), table, saved: Boolean(payload), live,
     saved_at: payload ? up(payload.LAST_SAVED_AT) : "", saved_by: payload ? up(payload.LAST_SAVED_BY) : "", objects, reviewers, history,
+    // Objects the request names that the system no longer has, found while building it from ADT.
+    missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
     storage: storage(io, stored) };
 }
 

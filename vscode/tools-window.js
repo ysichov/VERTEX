@@ -143,7 +143,8 @@ function open(vscode, context, deps, initial) {
       if(e.data.type==="progress"&&typeof sdeWorkspaceProgress==="function")sdeWorkspaceProgress(e.data.path,e.data.payload);
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
       if(e.data.type==="requestSearch"){
-        const child=document.getElementById("result").contentWindow;
+        // The page the finder mounted is the visible frame tools.html keeps as result; there is no element of that id.
+        const child=result&&result.contentWindow;
         if(child&&typeof child.sdeDeliver==="function")child.sdeDeliver(e.data.payload);
       }
       if(e.data.type==="localFolder"&&typeof sdeLocalFolderReady==="function")sdeLocalFolderReady(e.data.payload);

@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-23 — VS Code 0.9.26: no review code in assistant logs
+
+A review block given to the assistant as context is logged as a reference to its part - the object and the part's type - instead of its diff text, as the rest of a session log already omits code.
+
 ## 2026-10-22 — VS Code 0.9.25: Logic Code view opens a step at a time
 
 Opening a folded block in Logic's Code view no longer pours out everything inside it: a block with branches - a CASE's WHENs, an IF's ELSEIF and ELSE, a TRY's CATCH - first shows its branch lines, each with its own inside folded, and a click on a branch opens it one more level, with the blocks nested in it still folded.
@@ -9,6 +13,12 @@ A double-click on the line that opened a block or a branch folds it again. A blo
 *Logic diagram* is now called **Logic view** everywhere - the function list, the VERTEX Tools context menu, hints and help - as it shows a method's code as well as its flowchart.
 
 The **?** help of Logic view and Calls describes the Code and Diagram views, Depth and step-by-step opening, folding back on a double-click, line numbers, Reachability and how the view follows the code.
+
+**Find transport requests** in the Tools window lists the requests again; the found list was lost on its way to the page.
+
+A review built from a request that names an object since deleted no longer fails on it ("Class/Interface … does not exist"): the rest is reviewed.
+
+A review no longer fails on any one object it cannot read - one deleted since, or one whose versions ADT does not keep on that system ("Request version for DTEL is not supported"): the rest is reviewed, and such objects are listed under **Not reviewed** with the reason.
 
 ## 2026-10-22 — VS Code 0.9.24: Logic depth
 
