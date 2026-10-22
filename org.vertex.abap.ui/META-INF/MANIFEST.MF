@@ -23,6 +23,8 @@ Require-Bundle: org.eclipse.ui,
  com.sap.adt.sapgui.ui,
  org.eclipse.core.expressions,
  org.eclipse.ui.editors,
- org.eclipse.compare.core
+ org.eclipse.compare.core,
+ org.eclipse.e4.ui.model.workbench,
+ org.eclipse.e4.ui.workbench
 Import-Package: org.osgi.framework,
  com.google.gson

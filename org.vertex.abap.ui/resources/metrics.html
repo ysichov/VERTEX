@@ -191,6 +191,8 @@
   .bar .depth { display: none; color: var(--muted); gap: 3px; align-items: center; }
   body.calls .bar .depth { display: flex; }
   body.logic .bar #depthbox { display: flex; }
+  /* The shared segment toggle sets its own display, which outweighs the hidden attribute: Code/Diagram is Logic's only. */
+  #logic-view[hidden] { display: none; }
   /* Logic's Code view: what only a drawing needs is not offered. */
   body.logic-code .bar #dir, body.logic-code .bar #logic-only, body.logic-code .bar #reach, body.logic-code .bar .diagram-zoom,
   body.logic-code .bar #fit, body.logic-code .bar #lens { display: none !important; }

@@ -24,7 +24,7 @@ public class ToolsHandler extends AbstractHandler {
         try {
             IWorkbenchPage page = HandlerUtil.getActiveWorkbenchWindowChecked(event).getActivePage();
             String id = name == null || name.isBlank() ? null : MetricsView.encode(name, type == null ? "" : type, project == null ? "" : project, ++counter);
-            page.showView(viewId(), id, IWorkbenchPage.VIEW_ACTIVATE);
+            DetachedView.show(page, viewId(), id);
         } catch (Exception e) { throw new ExecutionException("Cannot open VERTEX Tools", e); }
         return null;
     }
