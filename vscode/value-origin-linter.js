@@ -3,6 +3,32 @@
 // Parse in a worker: loading the ABAP grammar must not block the extension host.
 // The ace* field names below are the existing model's input contract, not SAP
 // data. Every fact in this adapter is produced locally from ADT source text.
+/* What each token is, for Logic's Code view to colour: abaplint's own reading - a keyword is a token of the statement's
+   grammar (TokenNode), a name or a literal one the grammar matched (TokenNodeRegex), a comment its own statement.
+   [{ line, col (0-based), len, kind: keyword|string|number|comment|method|class (before =>) }]; other tokens are left plain. */
+function colours(lint, file) {
+  const out = [];
+  const put = (token, kind) => out.push({ line: token.getRow(), col: token.getCol() - 1, len: token.getStr().length, kind });
+  for (const statement of file.getStatements()) {
+    const tokens = [];
+    const walk = node => { for (const child of node.getChildren()) {
+      if (child instanceof lint.Nodes.TokenNodeRegex || child instanceof lint.Nodes.TokenNode) tokens.push(child); else walk(child);
+    } };
+    walk(statement);
+    tokens.forEach((node, at) => {
+      const token = node.getFirstToken(), text = token.getStr(), type = token.constructor.name, next = tokens[at + 1]?.getFirstToken();
+      if (type === 'Comment') put(token, 'comment');
+      else if (/^StringTemplate/.test(type) || /^['`]/.test(text)) put(token, 'string');
+      else if (/^\d+$/.test(text)) put(token, 'number');
+      // TokenNodeRegex is a TokenNode too: only a grammar token that is no regex match is a keyword.
+      else if (!(node instanceof lint.Nodes.TokenNodeRegex)) { if (/^[A-Za-z][\w-]*$/.test(text)) put(token, 'keyword'); }
+      else if (/^ParenLeft/.test(next?.constructor.name || '') && next.getStart().getCol() === token.getEnd().getCol()) put(token, 'method');
+      else if (next?.getStr() === '=>') put(token, 'class');
+    });
+  }
+  return out;
+}
+
 function parseSource(source) {
   const lint = require('@abaplint/core');
   const { assignment, variablePaths, buildIndex } = require('./value-origin-model');
@@ -52,7 +78,7 @@ function parseSource(source) {
       text: node.concatTokens(), aceIndex: statements.length + 1, localTargets: targets,
       localParameterOffsets: [...parameterOffsets], parserKind: statementKind });
   }
-  const indexed = { ...source, aceStatements: statements, aceFlowSteps: [] };
+  const indexed = { ...source, aceStatements: statements, aceFlowSteps: [], lexColors: colours(lint, file) };
   const index = buildIndex([indexed]);
   for (const statement of statements) {
     const a = assignment(statement.tokens);

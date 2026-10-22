@@ -203,6 +203,13 @@
   .logic-code-view .code-row.code-selected { background: var(--vscode-editor-lineHighlightBackground, var(--vscode-list-hoverBackground)); }
   .logic-code-view .code-fold .text { color: var(--vscode-textLink-foreground); cursor: pointer; font-style: italic; }
   .logic-code-view .code-fold .text:hover { text-decoration: underline; }
+  /* Code view colours: abaplint's reading of each token, in the theme's own colours for that kind of symbol. */
+  .logic-code-view .tk-keyword { color: var(--vscode-debugTokenExpression-boolean); }
+  .logic-code-view .tk-string { color: var(--vscode-debugTokenExpression-string); }
+  .logic-code-view .tk-number { color: var(--vscode-debugTokenExpression-number); }
+  .logic-code-view .tk-comment { color: var(--vscode-descriptionForeground); font-style: italic; }
+  .logic-code-view .tk-method { color: var(--vscode-symbolIcon-methodForeground); }
+  .logic-code-view .tk-class { color: var(--vscode-symbolIcon-classForeground); }
   .bar .depth input { width: 3.2rem; font: inherit; padding: 2px 4px; color: var(--fg);
                       background: var(--field-bg); border: 1px solid var(--field-border); }
   /* The diagram sizes itself; the pane scrolls in both directions rather
@@ -1175,7 +1182,7 @@ function setMode(next) {
   document.body.classList.toggle("logic-code", next === "scheme" && logicView === "code");
   document.getElementById("logic-view").hidden = next !== "scheme";
   document.getElementById("depth").value = next === "scheme" ? logicDepth : depth;
-  document.getElementById("depthbox").title = next === "scheme" ? "How many levels of nested blocks are drawn; a deeper block shows its opening and closing statement, and a click opens what is inside" : "How far the calls are followed";
+  document.getElementById("depthbox").title = next === "scheme" ? "How many levels inside the method are shown: 1 its own statements, 2 the inside of their blocks too, and so on; a deeper block shows its opening and closing statement, and a click opens what is inside" : "How far the calls are followed";
   document.getElementById("reach").hidden=next!=="scheme"||!schemeReach;
   document.getElementById("mode").value = next;
   document.body.classList.toggle("flow", flowMode());
@@ -1705,7 +1712,11 @@ function drawCode() {
       text.title = "Open this block";
       text.addEventListener("click", function () { if (expanded.indexOf(String(item.fold)) < 0) { expanded.push(String(item.fold)); } requestDiagram(); });
     } else {
-      row.className = "code-row"; row.dataset.line = item.line; no.textContent = item.line; text.textContent = item.text || " "; prior = item.text || "";
+      row.className = "code-row"; row.dataset.line = item.line; no.textContent = item.line; prior = item.text || "";
+      if (item.parts && item.parts.length) item.parts.forEach(function (part) {
+        var piece = document.createElement("span"); piece.textContent = part.t; if (part.k) piece.className = "tk-" + part.k; text.appendChild(piece);
+      });
+      else text.textContent = item.text || " ";
       no.title = "Open line " + item.line;
       no.addEventListener("click", function () {
         if (typeof sdeOpenToolSource === "function") sdeOpenToolSource({ name: schemeWritten ? schemeWritten.name : loadedObject, type: schemeWritten ? schemeWritten.type : loadedType, line: item.line });

@@ -53,22 +53,15 @@ function scheme(p,expandedText='',logicOnly=false,maxDepth=0) {
   /* Logic only: the operations it leaves out between two shown steps stand as one block saying how many, opened
      by a click (its first line goes into EXPANDED); the page sends a click on an opened operation to its source. */
   const opened=new Set(String(expandedText||'').split(',').filter(Boolean).map(Number));
-  /* Depth: a block nested deeper than maxDepth levels (1 = a block right in the routine) keeps its opening and its
-     closing statement, and what is inside is one node saying how many operations it hides, opened in place by a click
-     like a folded run of operations (the opening's line goes into EXPANDED). 0 draws every level. */
-  const collapsed=new Map();
-  if(maxDepth>0){
-    const base=root?1:0;
-    for(const r of rows){
-      if(r.kind!=='O'||r.hidden||Object.hasOwn(procedureEnds,r.word)||r.depth-base+1<=maxDepth||opened.has(r.line))continue;
-      const close=r.all+1,shown=x=>{x.kind='P';x.flow={...x.flow,logic:true,declaration:false};};
-      const inner=rows.filter(x=>x.line>r.line&&x.line<close);
-      const count=inner.filter(x=>!['C','B'].includes(x.kind)).length;
-      for(const x of inner){x.kind='X';x.hidden=true;}
-      shown(r);
-      if(inner.length){const fold=inner[0];fold.text='('+count+(count===1?' operation':' operations')+' hidden)';shown(fold);collapsed.set(fold.line,r.line);}
-      const end=rows[close-1];if(end&&end.line===close){end.hidden=true;shown(end);}
-    }
+  /* Depth (folds): a block whose inside lies deeper than maxDepth keeps its opening and its closing statement, and what is
+     inside is one node saying how many operations it hides, opened in place by a click like a folded run of operations
+     (the opening's line goes into EXPANDED). 0 draws every level. */
+  const collapsed=new Map(),shown=x=>{x.kind='P';x.flow={...x.flow,logic:true,declaration:false};};
+  for(const {open,inner,count} of folds(rows,maxDepth,opened)){
+    for(const x of inner){x.kind='X';x.hidden=true;}
+    // The block becomes three plain steps: its opening, the fold, its closing statement.
+    shown(open);const end=rows[open.all];if(end&&end.line===open.all+1){end.hidden=true;shown(end);}
+    if(inner.length){const fold=inner[0];fold.text='('+count+(count===1?' operation':' operations')+' hidden)';shown(fold);collapsed.set(fold.line,open.line);}
   }
   function folded(run,emit){
     if(!run.length)return;
@@ -153,29 +146,43 @@ function scheme(p,expandedText='',logicOnly=false,maxDepth=0) {
   mm.forEach(line=>{const id=line.split('(')[0];if(/^[pj]\d+$/.test(id))toCode(id);});
   return {conditionCalls,clusterRanges,nodeRanges,nodeLines:Object.fromEntries(rows.flatMap(r=>['n','p','o','j'].map(prefix=>[prefix+r.line,r.source_line]))),mermaid:'flowchart LR\n'+[...mm,'classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000','classDef default color:#12369e','classDef callnode fill:#fbeeee,stroke:#800000,color:#800000','classDef dbnode fill:#e8f2f6,stroke:#1f6f8b,color:#0f5468','classDef foldnode stroke-dasharray:4 3',...styles,...edges,...clicks].join('\n'),steps:mm.length,line_from:rows[0]?.source_line||p.line,line_to:last?.source_line||p.line};
 }
+/* The blocks Depth folds, outermost first, none inside another. Depth counts the levels inside the routine that are shown:
+   1 the statements right in it (an IF and its ENDIF, not its inside), 2 the inside of those blocks too, and so on - so a
+   block folds when its inside would be deeper than maxDepth. Each: { open, inner (rows up to its closing one), count }. */
+function folds(rows,maxDepth,opened){
+  if(!(maxDepth>0))return [];
+  const root=rows.some(r=>r.kind==='O'&&Object.hasOwn(procedureEnds,r.word));
+  const result=[],taken=new Set(),levelOf=r=>r.depth-(root?1:0)+1;
+  for(const r of rows){
+    if(r.kind!=='O'||Object.hasOwn(procedureEnds,r.word)||taken.has(r.line)||levelOf(r)<maxDepth||opened.has(r.line))continue;
+    const inner=rows.filter(x=>x.line>r.line&&x.line<=r.all);
+    inner.forEach(x=>taken.add(x.line));
+    result.push({open:r,inner,count:inner.filter(x=>!['C','B'].includes(x.kind)).length});
+  }
+  return result;
+}
 /* Logic's Code view: the routine's source lines as they are written, with the same depth folding as the diagram - a block
    nested deeper than maxDepth keeps its opening and closing statement, and the lines between are one fold that says how
    many operations it hides, opened by its key (the opening's row, as EXPANDED names it). Items: { line, text } or
    { fold, count, line } (the first hidden line). */
 function codeView(p,expandedText='',maxDepth=0){
   const rows=analyze(p),opened=new Set(String(expandedText||'').split(',').filter(Boolean).map(Number));
-  const root=rows.some(r=>r.kind==='O'&&Object.hasOwn(procedureEnds,r.word));
   const lastLine=r=>r.tokens.at(-1)?.line||r.source_line;
-  const folds=[];
-  if(maxDepth>0)for(const r of rows){
-    if(r.kind!=='O'||Object.hasOwn(procedureEnds,r.word)||r.depth-(root?1:0)+1<=maxDepth||opened.has(r.line))continue;
-    if(folds.some(f=>r.source_line>=f.from&&r.source_line<=f.to))continue;
-    const close=rows[r.all],from=lastLine(r)+1,to=(close?close.source_line:from)-1;
-    if(to<from)continue;
-    const count=rows.filter(x=>x.line>r.line&&x.line<=r.all&&!['C','B'].includes(x.kind)).length;
-    folds.push({from,to,fold:r.line,count});
-  }
   const text=String(p.source.text||'').split(/\r?\n/),first=rows[0]?.source_line||1,last=rows.length?lastLine(rows.at(-1)):first;
+  const ranges=folds(rows,maxDepth,opened).map(({open,inner,count})=>({from:lastLine(open)+1,
+    to:(inner.length?Math.max(...inner.map(lastLine)):lastLine(open)),fold:open.line,count})).filter(f=>f.to>=f.from);
+  // The parser's colouring of the tokens (value-origin-linter lexColors), by line: a line becomes its pieces, each a
+  // stretch of text and the kind of token it is, '' for what is left plain.
+  const painted=new Map();
+  for(const c of p.source.lexColors||[])if(c.line>=first&&c.line<=last){if(!painted.has(c.line))painted.set(c.line,[]);painted.get(c.line).push(c);}
+  const parts=(line,marks)=>{const out=[];let at=0;
+    for(const m of [...marks].sort((a,b)=>a.col-b.col)){if(m.col<at)continue;if(m.col>at)out.push({t:line.slice(at,m.col),k:''});out.push({t:line.slice(m.col,m.col+m.len),k:m.kind});at=m.col+m.len;}
+    if(at<line.length)out.push({t:line.slice(at),k:''});return out;};
   const items=[];
   for(let n=first;n<=last;n++){
-    const fold=folds.find(f=>f.from===n);
+    const fold=ranges.find(f=>f.from===n);
     if(fold){items.push({fold:fold.fold,count:fold.count,line:n});n=fold.to;continue;}
-    items.push({line:n,text:text[n-1]??''});
+    items.push({line:n,text:text[n-1]??'',...(painted.has(n)?{parts:parts(text[n-1]??'',painted.get(n))}:{})});
   }
   return items;
 }

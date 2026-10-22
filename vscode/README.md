@@ -361,12 +361,14 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
   part; switching the function keeps the list and the choice. Diff keeps its own Parts and
   Versions column, AVE's layout, and opens on the same part.
 
-  Logic opens on **Code**: the method's lines as written, with their line numbers - a click on a number opens the line
+  Logic opens on **Code**: the method's lines as written, coloured by token in the theme's colours (keywords,
+  strings, numbers, comments, method calls, classes), with their line numbers - a click on a number opens the line
   in the editor, and the editor's cursor marks its line here. **Diagram** shows the same method as a flowchart. Both
   fold to the same Depth, and a block opened in one is open in the other.
-  **Depth** in the Logic diagram (3 by default) is how many levels of nested blocks are drawn. A block nested deeper
-  shows its opening and closing statement, with what is inside folded into one node that says how many operations it
-  hides; a click on that node opens the block in place.
+  **Depth** in Logic (3 by default) is how many levels inside the method are shown: 1 its own statements - an IF with
+  its ENDIF, not what is inside -, 2 the inside of those blocks too, and so on. A block deeper than that shows its opening
+  and closing statement, with what is inside folded into one node that says how many operations it hides; a click on that
+  node opens the block in place.
   Every statement in the Logic diagram leads to its line in the source with a click - plain operations, CONTINUE and
   ENDIF included; a single left-out operation in *Logic only* is drawn as itself, and only two or more fold into one
   block. The code moves the diagram, not the other way round: a click, a key or a scroll in the editor positions the
