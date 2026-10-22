@@ -69,7 +69,7 @@ test('a line outside a METHOD or FORM fails loudly', () => {
   assert.throws(() => reachPath(statements, at(29), 29), /METHOD or FORM/);
 });
 
-test('reachLines gives each drawn line its path lines for the Logic diagram', () => {
+test('reachLines gives each drawn line its path lines for the Logic view', () => {
   const map = require('../reach-path').reachLines(statements, [19, 25]);
   assert.deepEqual(map[19], [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 22, 23, 24]);
   assert.deepEqual(map[25], [2, 3, 4, 5, 6, 7, 8, 9, 10, 25]);

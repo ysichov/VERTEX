@@ -305,7 +305,7 @@ svg.reach-active g.node.reach-target rect,svg.reach-active g.node.reach-target p
   <button id="load">Load</button>
   <select id="mode" title="What this window draws">
     <option value="calls" title="Which program, class or method calls which - ACE's Calls Flow">Calls diagram</option>
-    <option value="scheme" title="The flowchart of one method: its branches and statements - ACE's Flow Scheme">Logic diagram</option>
+    <option value="scheme" title="One method: its code folded to a depth, or its flowchart - ACE's Flow Scheme">Logic view</option>
     <option value="metrics">Metrics</option>
     <option value="class">UML diagram</option>
   </select>
@@ -1636,7 +1636,7 @@ function renderDiagram(data) {
   if (data.mode === "calls" && !data.steps) {
     hint("Nothing runs from " + data.program + " on its own."
          + String.fromCharCode(10)
-         + "A class is entered through its methods; pick Logic diagram to read one.");
+         + "A class is entered through its methods; pick Logic view to read one.");
     return;
   }
   if (!data.mermaid) {
@@ -2535,5 +2535,5 @@ if (INITIAL) {
 // system has is asked first; an object the window was opened on is read after.
 window.addEventListener("load", function () { askAbout(startWindow); });
 </script>
-<dialog id="diagramhelpdialog" style="max-width:560px;background:var(--vscode-editorWidget-background,var(--vscode-editor-background));color:var(--vscode-editor-foreground);border:1px solid var(--vscode-panel-border)"><strong>Code diagrams</strong><p>Logic diagram shows one source routine. Select a method in Parts or move the source cursor into it. In bound Tools, the source editor selects the routine automatically.</p><p>Logic only keeps branches, loops, calls and control transfers. Disable it for all operations; operations are not folded. RETURN leads to the procedure end.</p><p>Conditions keep AND / OR terms in one diamond. External calls carry ↗ and linked method names. Unresolved calls open their source location.</p><p>Click a linked label to open source; Alt+Left returns. Select source lines to highlight matching nodes, or LOOP / ENDLOOP to highlight the frame. The focused view drives scrolling.</p><p>Calls uses Classes / Methods and call depth. Each entered routine adds a level; a boundary target remains a leaf. Choose Top-down or Left-right for direction.</p><p>Zoom is 10–100%; Fit fits the diagram. The lens is available below 70% and magnifies up to that effective scale. Theme changes preserve zoom and scroll position.</p><form method="dialog"><button>Close</button></form></dialog></body>
+<dialog id="diagramhelpdialog" style="max-width:560px;background:var(--vscode-editorWidget-background,var(--vscode-editor-background));color:var(--vscode-editor-foreground);border:1px solid var(--vscode-panel-border)"><strong>Code diagrams</strong><p>Logic view shows one source routine. Select a method in Parts or move the source cursor into it. In bound Tools, the source editor selects the routine automatically.</p><p>Logic only keeps branches, loops, calls and control transfers. Disable it for all operations; operations are not folded. RETURN leads to the procedure end.</p><p>Conditions keep AND / OR terms in one diamond. External calls carry ↗ and linked method names. Unresolved calls open their source location.</p><p>Click a linked label to open source; Alt+Left returns. Select source lines to highlight matching nodes, or LOOP / ENDLOOP to highlight the frame. The focused view drives scrolling.</p><p>Calls uses Classes / Methods and call depth. Each entered routine adds a level; a boundary target remains a leaf. Choose Top-down or Left-right for direction.</p><p>Zoom is 10–100%; Fit fits the diagram. The lens is available below 70% and magnifies up to that effective scale. Theme changes preserve zoom and scroll position.</p><form method="dialog"><button>Close</button></form></dialog></body>
 </html>

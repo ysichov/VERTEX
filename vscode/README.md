@@ -38,7 +38,7 @@ what needs it.
 | **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW*, *Formula* or *Expression*, each as a tree or a diagram | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
 | **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | to save reviews in SAP |
-| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | not needed |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic view of one method; a method opened from Calls draws its Logic view in the same picture | not needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | not needed |
 
 **Grew out of** names where a tool's ideas were worked out first; those projects are not developed
@@ -341,7 +341,7 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
   enter its name (a name with `*` or `+`, such as `Z_VX*`, lists the objects of that type that
   match; pick one with the mouse or the arrow keys and Enter; a plain name that is not found
   lists the names starting with it), then choose the available function (for example Data,
-  UML diagram, Metrics, Calls diagram, Logic diagram, Diff or Versions). Only the functions that
+  UML diagram, Metrics, Calls diagram, Logic view, Diff or Versions). Only the functions that
   apply to the chosen type are offered: a transport has Versions and its review, a class or a
   program metrics, diagrams and diff, a package its package-level views. **Object Navigator**, first and the default for a
   package, a transport request, a program, an include (its program's tree), a function module (its group's tree), a class or an interface, is SE80's Repository Browser tree: a package's subpackages and its objects
@@ -352,7 +352,7 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
   its source in the editor beside the tree, a component at its line, and the tree keeps the focus. **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
   per class or per method, and picking an event or a form in Parts starts the calls there, as a
-  double-click in ACE's tree does (a click on the object's name at the top of the parts list goes back to the whole program). **Logic diagram** is the flowchart of one method (ACE's Flow Scheme). A magnifier follows the
+  double-click in ACE's tree does (a click on the object's name at the top of the parts list goes back to the whole program). **Logic view** is one method, as its code (Code) or as its flowchart (Diagram, ACE's Flow Scheme). A magnifier follows the
   pointer over every diagram; Shift and two fingers on the touchpad (or the wheel) change its strength; Ctrl and a pinch zoom
   the whole picture. The available functions depend
   on the selected object type; there are no separate SelecTor, Metrics or
@@ -371,7 +371,7 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
   node opens the block in place, a step at a time: a block with branches (WHEN, ELSEIF, ELSE, CATCH) first shows its
   branches, each with its own inside folded, and a branch opens to one more level on its own click. A double-click on the line that opened a block or a
   branch folds it again.
-  Every statement in the Logic diagram leads to its line in the source with a click - plain operations, CONTINUE and
+  Every statement in the Logic view leads to its line in the source with a click - plain operations, CONTINUE and
   ENDIF included; a single left-out operation in *Logic only* is drawn as itself, and only two or more fold into one
   block. The code moves the diagram, not the other way round: a click, a key or a scroll in the editor positions the
   diagram, and scrolling into another method opens that method's diagram; scrolling the diagram stays in the diagram, and
@@ -596,7 +596,7 @@ call matching within the workspace, so check ambiguous calls. Diagram links retu
 source lines. Diff/version history, SAP where-used, tests, ATC, debugger and activation
 require a configured SAP system.
 
-**VERTEX: Path to This Line** (editor context menu, ABAP sources) opens a panel with what the line under the cursor needs to run inside its METHOD or FORM: the enclosing IF, ELSEIF, CASE/WHEN, LOOP and CATCH branches with the earlier branches that must be false, the CHECKs before it, and the earlier branches that must not be taken because they leave the routine (RETURN, RAISE, LEAVE PROGRAM, EXIT) - with conditions nested inside them shown under the branch. A CHECK, CONTINUE or EXIT that only leaves one pass of a loop counts only for lines inside that loop. Conditions are shown exactly as written in the code; a click on a line number goes to it. A line after a statement that always leaves is reported as not reachable. The source is parsed locally, unsaved text included, so no SAP system is needed. The path stays inside the routine: callers, dynamic calls and values changed between a check and the line are not followed. In the Logic diagram (VERTEX Tools), the **Reachability** toggle does the same on the picture: with it on, a click on a node of a METHOD or FORM lights up the path that reaches it - the same branches, CHECKs and avoided exits - and quiets the rest.
+**VERTEX: Path to This Line** (editor context menu, ABAP sources) opens a panel with what the line under the cursor needs to run inside its METHOD or FORM: the enclosing IF, ELSEIF, CASE/WHEN, LOOP and CATCH branches with the earlier branches that must be false, the CHECKs before it, and the earlier branches that must not be taken because they leave the routine (RETURN, RAISE, LEAVE PROGRAM, EXIT) - with conditions nested inside them shown under the branch. A CHECK, CONTINUE or EXIT that only leaves one pass of a loop counts only for lines inside that loop. Conditions are shown exactly as written in the code; a click on a line number goes to it. A line after a statement that always leaves is reported as not reachable. The source is parsed locally, unsaved text included, so no SAP system is needed. The path stays inside the routine: callers, dynamic calls and values changed between a check and the line are not followed. In the Logic view (VERTEX Tools), the **Reachability** toggle does the same on the picture: with it on, a click on a node of a METHOD or FORM lights up the path that reaches it - the same branches, CHECKs and avoided exits - and quiets the rest.
 
 ABAP blocks fold in the editor by their structure, not by indentation, so unformatted code folds as well as formatted: IF, CASE, LOOP, DO, WHILE, SELECT loops, TRY, METHOD, FORM, FUNCTION, MODULE, CLASS and INTERFACE from the opening statement to the line before the closing one, and each ELSEIF, ELSE, WHEN, CATCH and CLEANUP up to the next branch. A condition written over several lines stays visible when its block is folded.
 
@@ -1054,7 +1054,7 @@ It opens by itself when a run dies, names the runtime error and what SAP said ab
 **Open ST22** takes you to SAP where that dump is the first entry. The header line above the
 source says the run did not finish and points at the section.
 
-The player shows the record as **Classes** or **Methods**. A separate **Logic** toggle opens the same Logic diagram as Tools, embedded in Visual Debug and linked to the active source editor. Turning it off restores the call graph, including its zoom and scroll position.
+The player shows the record as **Classes** or **Methods**. A separate **Logic** toggle opens the same Logic view as Tools, embedded in Visual Debug and linked to the active source editor. Turning it off restores the call graph, including its zoom and scroll position.
 
 The **Depth** slider governs how deep it is drawn: the program is 0,
 a class 1, a routine 2, a statement one below the block that holds it. The maximum is the deepest

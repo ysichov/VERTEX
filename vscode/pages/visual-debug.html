@@ -2086,7 +2086,7 @@ document.addEventListener("bse:reading",function(e){flowMode=e.detail;if(flowMod
 $("fclasses").onclick=function(){flowGrouping="classes";flowMode=flowDiagram==="logic"?"logic":flowGrouping;showFlow();};
 
 window.sdeLogicHtml=function(html){
-  var frame=$("logic-tools-frame");if(!frame){frame=document.createElement("iframe");frame.id="logic-tools-frame";frame.title="Logic diagram — Tools";frame.style.cssText="width:100%;flex:1;min-height:0;border:0;background:var(--vscode-editor-background)";$("flowpane").appendChild(frame);}
+  var frame=$("logic-tools-frame");if(!frame){frame=document.createElement("iframe");frame.id="logic-tools-frame";frame.title="Logic view — Tools";frame.style.cssText="width:100%;flex:1;min-height:0;border:0;background:var(--vscode-editor-background)";$("flowpane").appendChild(frame);}
   var computed=getComputedStyle(document.body),variables=[];for(var i=0;i<computed.length;i++){var key=computed[i];if(key.indexOf("--vscode-")===0)variables.push(key+":"+computed.getPropertyValue(key));}
   frame.srcdoc=html.replace("</head>","<style>:root{"+variables.join(";")+"}</style></head>").replace("<body>",'<body class="'+document.body.className+'">');frame.hidden=false;var workspace=$("bse-workspace");workspace.dataset.logicStyle=workspace.style.cssText;workspace.style.cssText="height:auto;min-height:0;flex:none";Array.from(workspace.children).forEach(function(child){if(!child.classList.contains("bse-view-toggle")){child.dataset.logicHidden=String(child.hidden);child.hidden=true;}});
 };

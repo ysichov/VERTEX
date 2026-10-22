@@ -132,7 +132,7 @@ function reachPath(statements, offset, line) {
       : blocked ? { line: blocked.line, text: blocked.text, reason: 'always leaves before this line' } : null };
 }
 
-// For the Logic diagram: each given line's path as the source lines it touches, the line itself included.
+// For the Logic view: each given line's path as the source lines it touches, the line itself included.
 function reachLines(statements, lines) {
   const touched = items => items.flatMap(item => [item.line, ...(item.reason ? [item.reason.line] : []), ...touched(item.children || [])]).filter(Boolean);
   const map = {};

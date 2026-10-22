@@ -275,7 +275,7 @@
       },
       {
         "command": "vertex.tools.scheme",
-        "title": "Logic diagram",
+        "title": "Logic view",
         "category": "VERTEX Tools"
       },
       {
