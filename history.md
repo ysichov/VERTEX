@@ -8,6 +8,8 @@ A double-click on the line that opened a block or a branch folds it again. A blo
 
 *Logic diagram* is now called **Logic view** everywhere - the function list, the VERTEX Tools context menu, hints and help - as it shows a method's code as well as its flowchart.
 
+The **?** help of Logic view and Calls describes the Code and Diagram views, Depth and step-by-step opening, folding back on a double-click, line numbers, Reachability and how the view follows the code.
+
 ## 2026-10-22 — VS Code 0.9.24: Logic depth
 
 The Logic diagram has a **Depth** field, 1 by default, as Calls has - the levels inside the method that are shown, 1 being the method's own statements: blocks whose inside is deeper keep their opening and closing statement, and what is inside them is one node saying how many operations it hides (for example *(24 operations hidden)*); a click on it opens the block in place. Large methods no longer draw every level at once.
