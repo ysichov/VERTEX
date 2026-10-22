@@ -171,6 +171,11 @@ function open(vscode, context, deps, initial) {
      from the diagram for the code. Only a real move counts; the place is remembered in the quiet time too, so the line a
      click in the diagram opened is not taken for a move afterwards. */
   let lastSelection='',lastRange='';
+  /* The editor the window was opened from, whatever shows it: a source of SAP's own ADT extension (abap:) is no VERTEX tab,
+     yet its cursor is this window's object, and a line a click opens is opened there. */
+  const sourceUri=initial?.boundObject&&initial.sourceUri||'';
+  const objectOf=document=>(local?local.documentObject(document):deps.documentObject(document))
+    ||(sourceUri&&document.uri.toString()===sourceUri?{object_name:initial.name,object_type:initial.type}:null);
   const cursorChanges=initial?.boundObject&&vscode.window.onDidChangeTextEditorSelection?vscode.window.onDidChangeTextEditorSelection(event=>{
     clearTimeout(cursorTimer);
     const at=event.textEditor.document.uri.toString()+'|'+event.selections.map(s=>s.start.line+':'+s.start.character+'-'+s.end.line+':'+s.end.character).join(',');
@@ -179,7 +184,7 @@ function open(vscode, context, deps, initial) {
     if(Date.now()<sourceNavigationUntil)return;
     cursorTimer=setTimeout(()=>{
       if(Date.now()<sourceNavigationUntil)return;
-      const object=local ? local.documentObject(event.textEditor.document) : deps.documentObject(event.textEditor.document),selection=event.selections[0];
+      const object=objectOf(event.textEditor.document),selection=event.selections[0];
       if(object&&selection)void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line:selection.start.line+1,endLine:selection.end.line+1}});
     },80);
   }):null;
@@ -191,7 +196,7 @@ function open(vscode, context, deps, initial) {
     if(Date.now()<sourceNavigationUntil)return;
     scrollTimer=setTimeout(()=>{
       if(Date.now()<sourceNavigationUntil)return;
-      const object=local ? local.documentObject(event.textEditor.document) : deps.documentObject(event.textEditor.document),ranges=event.visibleRanges;
+      const object=objectOf(event.textEditor.document),ranges=event.visibleRanges;
       if(!object||!ranges.length)return;
       const range=ranges[0],line=range.start.line+Math.floor((range.end.line-range.start.line)/3)+1;
       void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line,endLine:line,scrollOnly:true}});
@@ -227,6 +232,18 @@ function open(vscode, context, deps, initial) {
         sourceNavigationUntil=Date.now()+700;
         // Nothing waits for an answer to a click, so a failure is said here, not posted to a page that drops it.
         const asked=JSON.parse(String(args[0]||"{}")),open=local ? local.openSource : deps.openToolSource;
+        // A line of the window's own object, opened from a source VERTEX does not hold (SAP's extension): that editor.
+        if(sourceUri&&!local&&!/^vertex-/.test(vscode.Uri.parse(sourceUri).scheme)&&Number.isInteger(asked.line)&&!asked.method
+            &&String(asked.name).toUpperCase()===String(initial.name).toUpperCase()){
+          const document=await vscode.workspace.openTextDocument(vscode.Uri.parse(sourceUri));
+          const shown=(vscode.window.visibleTextEditors||[]).find(editor=>editor.document===document);
+          const editor=await vscode.window.showTextDocument(document,{viewColumn:shown?shown.viewColumn:vscode.ViewColumn.One,preserveFocus:asked.preserveFocus===true,preview:false});
+          const at=new vscode.Position(Math.max(0,Math.min(document.lineCount-1,asked.line-1)),0);
+          editor.selection=new vscode.Selection(at,at);
+          editor.revealRange(new vscode.Range(at,at),vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+          sourceNavigationUntil=Date.now()+700;
+          return;
+        }
         // The editor scrolls and moves its cursor while the line opens, and a SAP source can take long to open: the
         // quiet time counts from when it is open, so those moves are not taken for the reader's.
         try { await open(asked); sourceNavigationUntil=Date.now()+700; }

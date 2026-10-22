@@ -57,3 +57,12 @@ test('local package command can choose a folder from the command palette',async(
   assert.deepEqual(errors,[]);
  }finally{local.createPackage=original;}
 });
+test('a Tools window opened from an editor keeps that editor, a source of SAP\'s ADT extension included',async()=>{
+ const commands={},opened=[];
+ const uri={scheme:'abap',toString:()=>'abap:/repotree-v1/A4H/zcl_x.clas.abap'};
+ const document={uri,getText:()=>'CLASS zcl_x DEFINITION.\nENDCLASS.'};
+ const vscode={commands:{registerCommand:(name,fn)=>{commands[name]=fn;return {}; }},window:{activeTextEditor:{document},showErrorMessage:()=>{}},workspace:{openTextDocument:async()=>document}};
+ require('../tools-context').register(vscode,{subscriptions:[]},{documentObject:()=>null},value=>opened.push(value));
+ await commands['vertex.tools.scheme']();
+ assert.equal(opened.pop().sourceUri,'abap:/repotree-v1/A4H/zcl_x.clas.abap');
+});

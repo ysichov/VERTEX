@@ -164,13 +164,14 @@ function folds(rows,maxDepth,opened){
 /* Logic's Code view: the routine's source lines as they are written, with the same depth folding as the diagram - a block
    nested deeper than maxDepth keeps its opening and closing statement, and the lines between are one fold that says how
    many operations it hides, opened by its key (the opening's row, as EXPANDED names it). Items: { line, text } or
-   { fold, count, line } (the first hidden line). */
+   { fold, count, line, to } (the hidden lines). */
 function codeView(p,expandedText='',maxDepth=0){
   const rows=analyze(p),opened=new Set(String(expandedText||'').split(',').filter(Boolean).map(Number));
   const lastLine=r=>r.tokens.at(-1)?.line||r.source_line;
   const text=String(p.source.text||'').split(/\r?\n/),first=rows[0]?.source_line||1,last=rows.length?lastLine(rows.at(-1)):first;
-  const ranges=folds(rows,maxDepth,opened).map(({open,inner,count})=>({from:lastLine(open)+1,
-    to:(inner.length?Math.max(...inner.map(lastLine)):lastLine(open)),fold:open.line,count})).filter(f=>f.to>=f.from);
+  // A fold runs to the line before the block's closing statement: a comment there is inside the block and hidden with it.
+  const ranges=folds(rows,maxDepth,opened).map(({open,inner,count})=>{const close=rows[open.all];
+    return {from:lastLine(open)+1,to:close&&close.line===open.all+1?close.source_line-1:(inner.length?Math.max(...inner.map(lastLine)):lastLine(open)),fold:open.line,count};}).filter(f=>f.to>=f.from);
   // The parser's colouring of the tokens (value-origin-linter lexColors), by line: a line becomes its pieces, each a
   // stretch of text and the kind of token it is, '' for what is left plain.
   const painted=new Map();
@@ -181,7 +182,7 @@ function codeView(p,expandedText='',maxDepth=0){
   const items=[];
   for(let n=first;n<=last;n++){
     const fold=ranges.find(f=>f.from===n);
-    if(fold){items.push({fold:fold.fold,count:fold.count,line:n});n=fold.to;continue;}
+    if(fold){items.push({fold:fold.fold,count:fold.count,line:n,to:fold.to});n=fold.to;continue;}
     items.push({line:n,text:text[n-1]??'',...(painted.has(n)?{parts:parts(text[n-1]??'',painted.get(n))}:{})});
   }
   return items;

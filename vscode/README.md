@@ -365,7 +365,7 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
   strings, numbers, comments, method calls, classes), with their line numbers - a click on a number opens the line
   in the editor, and the editor's cursor marks its line here. **Diagram** shows the same method as a flowchart. Both
   fold to the same Depth, and a block opened in one is open in the other.
-  **Depth** in Logic (3 by default) is how many levels inside the method are shown: 1 its own statements - an IF with
+  **Depth** in Logic (1 by default) is how many levels inside the method are shown: 1 its own statements - an IF with
   its ENDIF, not what is inside -, 2 the inside of those blocks too, and so on. A block deeper than that shows its opening
   and closing statement, with what is inside folded into one node that says how many operations it hides; a click on that
   node opens the block in place.

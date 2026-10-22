@@ -197,9 +197,11 @@
   .logic-code-view { font-family: var(--vscode-editor-font-family, monospace); font-size: var(--vscode-editor-font-size, 13px);
     color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); padding: 6px 0; min-width: max-content; }
   .logic-code-view .code-row { display: flex; white-space: pre; line-height: 1.45; }
-  .logic-code-view .code-row .no { min-width: 5ch; padding: 0 10px 0 6px; text-align: right; cursor: pointer;
+  .logic-code-view .code-row .no { min-width: 5ch; padding: 0 10px 0 6px; text-align: right;
     color: var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground)); user-select: none; }
-  .logic-code-view .code-row .no:hover { color: var(--vscode-textLink-foreground); }
+  /* A number that opens its line looks like the links of the path panel. */
+  .logic-code-view .code-row .no.opens { cursor: pointer; color: var(--vscode-textLink-foreground); text-decoration: underline; }
+  .logic-code-view .code-row .no.opens:hover { color: var(--vscode-textLink-activeForeground); }
   .logic-code-view .code-row.code-selected { background: var(--vscode-editor-lineHighlightBackground, var(--vscode-list-hoverBackground)); }
   .logic-code-view .code-fold .text { color: var(--vscode-textLink-foreground); cursor: pointer; font-style: italic; }
   .logic-code-view .code-fold .text:hover { text-decoration: underline; }
@@ -1109,7 +1111,7 @@ var diagramSeq = 0;
    and the reader winds it out from there. */
 var depth = 2;
 // Logic's depth: how many levels of nested blocks are drawn; inside a deeper block, its operations fold into one node, opened by a click.
-var logicDepth = 3;
+var logicDepth = 1;
 // Logic shows the code by default, the flowchart on Diagram; both fold to the same depth.
 var logicView = "code", schemeCode = null;
 
@@ -1707,7 +1709,7 @@ function drawCode() {
     var row = document.createElement("div"), no = document.createElement("span"), text = document.createElement("span");
     no.className = "no"; text.className = "text";
     if (item.fold) {
-      row.className = "code-row code-fold";
+      row.className = "code-row code-fold"; row.dataset.from = item.line; row.dataset.to = item.to || item.line;
       text.textContent = (/^\s*/.exec(prior) || [""])[0] + "  … (" + item.count + (item.count === 1 ? " operation" : " operations") + " hidden)";
       text.title = "Open this block";
       text.addEventListener("click", function () { if (expanded.indexOf(String(item.fold)) < 0) { expanded.push(String(item.fold)); } requestDiagram(); });
@@ -1717,10 +1719,13 @@ function drawCode() {
         var piece = document.createElement("span"); piece.textContent = part.t; if (part.k) piece.className = "tk-" + part.k; text.appendChild(piece);
       });
       else text.textContent = item.text || " ";
-      no.title = "Open line " + item.line;
-      no.addEventListener("click", function () {
-        if (typeof sdeOpenToolSource === "function") sdeOpenToolSource({ name: schemeWritten ? schemeWritten.name : loadedObject, type: schemeWritten ? schemeWritten.type : loadedType, line: item.line });
-      });
+      // A line opens in the editor through the opener every Tools window has, as a UML method does: there is nothing to
+      // unfold in place. With none, the number is no link.
+      var opener = umlSourceOpener();
+      if (opener) {
+        no.classList.add("opens"); no.title = "Open line " + item.line;
+        no.addEventListener("click", function () { opener({ name: schemeWritten ? schemeWritten.name : loadedObject, type: schemeWritten ? schemeWritten.type : loadedType, line: item.line }); });
+      }
     }
     row.appendChild(no); row.appendChild(text); view.appendChild(row);
   });
@@ -1730,6 +1735,8 @@ function drawCode() {
   endAnalysis();
 }
 function draw(preserveViewport) {
+  // The theme this drawing is made in: themeChanged redraws only when it differs.
+  themeSeen = ground() + "|" + ink() + "|" + (darkPage() ? "dark" : "light");
   if (mode === "scheme" && logicView === "code" && schemeCode) { drawCode(); return; }
   var diagramText=mode==="scheme"&&logicOnly&&lastLogicMermaid?lastLogicMermaid:lastMermaid;
   var isClass = /^classDiagram\b/.test(diagramText);
@@ -2387,8 +2394,9 @@ function sdeCodeCursor(value){
  if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){latestCodeCursor=value;positionAfterDraw=true;openUnit(targetUnit);return;}
  if(!value.replay)latestCodeCursor=value;
  if(logicView==='code'&&document.querySelector('#diagram .logic-code-view')){
-  var codeRows=Array.from(document.querySelectorAll('#diagram .logic-code-view .code-row[data-line]')),hit=null;
-  codeRows.forEach(function(row){var n=Number(row.dataset.line),on=n>=value.line&&n<=(value.endLine||value.line);row.classList.toggle('code-selected',on&&!value.scrollOnly);if(on&&!hit)hit=row;});
+  // A line inside a folded block marks its fold, as the diagram marks the node nearest the line.
+  var codeRows=Array.from(document.querySelectorAll('#diagram .logic-code-view .code-row[data-line], #diagram .logic-code-view .code-fold')),hit=null;
+  codeRows.forEach(function(row){var from=Number(row.dataset.line||row.dataset.from),to=Number(row.dataset.line||row.dataset.to),on=to>=value.line&&from<=(value.endLine||value.line);row.classList.toggle('code-selected',on&&!value.scrollOnly);if(on&&!hit)hit=row;});
   if(hit&&!value.replay)hit.scrollIntoView({block:value.scrollOnly?'start':'center',inline:'nearest'});
   return;
  }
@@ -2449,13 +2457,19 @@ var paneWatchTimer = null;
    own colours. The diagram does not: its colours were written into the
    mermaid text when it was drawn, so it has to be drawn again. */
 var themeWatch = null;
-var themeWatchTimer = null;
+var themeWatchTimer = null, themeSeen = "";
 
 function themeChanged() {
   clearTimeout(themeWatchTimer);
   themeWatchTimer = setTimeout(function () {
     var pane = document.getElementById("diagram");
     if (pane.hidden) { return; }
+    /* Only a theme that really changed redraws. The page writes its own body classes too - endAnalysis removes one
+       after every drawing, which rewrites the attribute even when nothing was there - and each such write would redraw
+       the picture again, without end: a Code view rebuilt under the mouse, a large diagram drawn over and over. */
+    var now = ground() + "|" + ink() + "|" + (darkPage() ? "dark" : "light");
+    if (now === themeSeen) { return; }
+    themeSeen = now;
     pane.style.background = ground();
     pane.style.color = ink();
     if (lastMermaid) { refit = false; draw(true); }

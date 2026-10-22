@@ -366,8 +366,8 @@ async function request(api, resource, progress, cancelled = () => false) {
       return { ...base, mode, depth:callDepth, steps: ids.size, places, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
     }
     if (chosen.length !== 1) throw new Error('Pick one method to draw its logic diagram.');
-    // Logic's depth: the levels of nested blocks drawn, deeper ones folded; 3 when the page names none.
-    const logicDepth = Number.isFinite(requestedDepth) && requestedDepth > 0 ? Math.min(99, Math.floor(requestedDepth)) : 3;
+    // Logic's depth: the levels inside the routine shown, deeper blocks folded; 1 when the page names none.
+    const logicDepth = Number.isFinite(requestedDepth) && requestedDepth > 0 ? Math.min(99, Math.floor(requestedDepth)) : 1;
     const drawn = require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '', false, logicDepth);
     // Reachability: the path to each drawn line inside its METHOD or FORM (reach-path.js), for the page to light up on a click.
     const reach = ['METHOD', 'FORM'].includes(chosen[0].unitType)

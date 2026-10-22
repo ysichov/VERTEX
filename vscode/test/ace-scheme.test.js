@@ -133,3 +133,11 @@ test('Logic Code view colours each token by abaplint: keywords, strings, numbers
   assert.deepEqual(marked(5), ['keyword:IF', 'number:2']);
   assert.deepEqual(marked(6), ['method:run']);
 });
+
+test('Logic Code view: a comment before a folded block\'s closing statement is folded with it', () => {
+  const { codeView } = require('../ace-scheme');
+  const text = ['REPORT z.', 'FORM f.', '  TRY.', '      x = 1.', '    CATCH cx_root.', '      " leave it', '  ENDTRY.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  assert.deepEqual(codeView(p, '', 1).map(i => i.fold ? 'fold' : i.line), [2, 3, 'fold', 7, 8]);
+});

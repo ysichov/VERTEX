@@ -55,6 +55,8 @@ function register(vscode,context,sapCode,showTools){
    // error message, not abort its script and leave all controls blank.
    return showTools({...require('./resources/object-tools').normalize(initial),boundObject:true,
     ...(object.system_name?{systemName:object.system_name}:{}),
+    // The editor it was opened from: its cursor and the lines the window opens belong to it, VERTEX tab or not.
+    ...(document?.uri?{sourceUri:document.uri.toString()}:{}),
     ...(local?{localSession:local}:{}),
     ...(document&&editor?.document===document&&editor.selection?{cursorLine:editor.selection.active.line+1}:{})});
   }catch(error){vscode.window.showErrorMessage('VERTEX Tools: '+error.message);}

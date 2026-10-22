@@ -2,9 +2,11 @@
 
 ## 2026-10-22 — VS Code 0.9.24: Logic depth
 
-The Logic diagram has a **Depth** field, 3 by default, as Calls has - the levels inside the method that are shown, 1 being the method's own statements: blocks whose inside is deeper keep their opening and closing statement, and what is inside them is one node saying how many operations it hides (for example *(24 operations hidden)*); a click on it opens the block in place. Large methods no longer draw every level at once.
+The Logic diagram has a **Depth** field, 1 by default, as Calls has - the levels inside the method that are shown, 1 being the method's own statements: blocks whose inside is deeper keep their opening and closing statement, and what is inside them is one node saying how many operations it hides (for example *(24 operations hidden)*); a click on it opens the block in place. Large methods no longer draw every level at once.
 
 Logic opens on a **Code | Diagram** toggle set to Code: the method's lines exactly as written and coloured by token in the theme's colours, folded to the same Depth, a line number opening the line in the editor and the editor's cursor marking its line. In the path panel, a one-line `IF … ENDIF.` is no longer listed twice.
+
+A VERTEX Tools window opened from a source of SAP's ADT extension follows that editor's cursor and opens the lines its Code view, diagram and metrics link to in that editor; before, only VERTEX's own tabs were followed and opened.
 
 ## 2026-10-22 — VS Code 0.9.23: path to a line
 
