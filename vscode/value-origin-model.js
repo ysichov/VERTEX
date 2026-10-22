@@ -69,9 +69,11 @@ function callOf(ts) {
     if (['->', '=>'].includes(ts[p.end]?.value)) { receiver = p.name; arrow = ts[p.end].value; at = p.end + 1; if (arrow === '=>') owner = receiver; }
   }
   const method = pathAt(ts, at);
-  // After an arrow a name is a method, whatever statement it would be on its own: lo->add( ) is no ADD statement.
-  if (!method || (!arrow && words.has(method.name))) return null;
-  const open = method.end;
+  const open = method && method.end;
+  // After an arrow a name is a method, whatever statement it would be on its own: lo->add( ) is no ADD statement. So is a
+  // keyword with its parenthesis right at it and a blank inside - add( x ) -, which no statement writes so.
+  const called = method && ts[open]?.value === '(' && ts[open - 1].endOffset === ts[open].offset && callOpen(ts, open);
+  if (!method || (!arrow && words.has(method.name) && !called)) return null;
   if (ts[open]?.value === '(' && close(ts, open) === ts.length - 1) return { receiver, owner, arrow, method: method.name, args: ts.slice(open + 1, -1) };
   return null;
 }
@@ -91,6 +93,9 @@ function typeAfter(ts, at) {
 }
 // Every call in a token list, the ones inside the arguments of another included: lo->m( x = me->n( ) ) is two. A call is
 // a path, an optional ->/=> and a method name, then a balanced ( ... ); NEW x( )->m( ) is one call.
+/* A functional call has a blank after its parenthesis - m( ), m( x ) -; a parenthesis right at the word is offset/length
+   access (s370(4), name+2(3)) or an inline declaration (DATA(x), FIELD-SYMBOL(<fs>)), never a call. */
+const callOpen = (ts, at) => ts[at]?.value === '(' && ts[at + 1] && ts[at + 1].offset > ts[at].endOffset;
 function callsIn(ts, withTokens = false) {
   const found = [];
   for (let i = 0; i < ts.length; i++) {
@@ -104,7 +109,7 @@ function callsIn(ts, withTokens = false) {
       continue;
     }
     let end = -1;
-    if (val(ts, i) === 'NEW' && word(ts[i + 1]) && ts[i + 2]?.value === '(') {
+    if (val(ts, i) === 'NEW' && word(ts[i + 1]) && callOpen(ts, i + 2)) {
       const first = close(ts, i + 2);
       if(first>=0){
         found.push({owner:val(ts,i+1),receiver:'',arrow:'->',method:'CONSTRUCTOR',args:ts.slice(i+3,first),...(withTokens?{tokens:ts.slice(i,first+1)}:{})},...callsIn(ts.slice(i+3,first), withTokens));
@@ -112,13 +117,13 @@ function callsIn(ts, withTokens = false) {
       }
       if (first >= 0 && ts[first + 1]?.value === '->') {
         const method = pathAt(ts, first + 2);
-        if (method && ts[method.end]?.value === '(') end = close(ts, method.end);
+        if (method && callOpen(ts, method.end)) end = close(ts, method.end);
       }
     } else {
       const path = pathAt(ts, i); if (!path) continue;
       let open = path.end;
       if (['->', '=>'].includes(ts[path.end]?.value)) { const method = pathAt(ts, path.end + 1); if (!method) continue; open = method.end; }
-      if (ts[open]?.value === '(') end = close(ts, open);
+      if (callOpen(ts, open)) end = close(ts, open);
     }
     if (end < 0) continue;
     const call = callOf(ts.slice(i, end + 1));

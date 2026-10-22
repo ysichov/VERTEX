@@ -1,6 +1,6 @@
 "use strict";
 const localAnalysis = require('./local-analysis');
-const actions=[['uml','UML diagram'],['metrics','Metrics'],['scheme','Logic diagram'],['calls','Calls diagram'],['diff','Diff']];
+const actions=[['navigator','Object Navigator'],['uml','UML diagram'],['metrics','Metrics'],['scheme','Logic diagram'],['calls','Calls diagram'],['diff','Diff']];
 function register(vscode,context,sapCode,showTools){
  context.subscriptions.push(vscode.commands.registerCommand('vertex.tools.localPackage',async selected=>{
   try{

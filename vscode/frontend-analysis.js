@@ -121,7 +121,14 @@ function analysisUnits(index) {
     }
     if(!events.length&&!modules.length&&!index.procedures.some(q=>q.source===p.source&&q.name!=='GLOBAL')){
       const body=p.body.filter(s=>!['REPORT','PROGRAM'].includes(upper(s.tokens[0]?.value)));
-      if(body.length)result.push({...p,name:'START-OF-SELECTION',unitType:'EVENT',line:body[0].line,start:body[0].offset,body});
+      /* Statements outside every event belong to START-OF-SELECTION only when one of them runs: an include of
+         declarations - a local class's DEFINITION, DATA, TYPES - has no event of its own. */
+      const {classifyStatement}=require('./abap-control');let declaring=false;
+      const runs=body.some(s=>{const kind=s.parserKind;
+        if(kind==='ClassDefinition'||kind==='Interface'){declaring=true;return false;}
+        if(declaring){if(kind==='EndClass'||kind==='EndInterface')declaring=false;return false;}
+        const flow=classifyStatement(s);return !flow.declaration&&!flow.container;});
+      if(body.length&&runs)result.push({...p,name:'START-OF-SELECTION',unitType:'EVENT',line:body[0].line,start:body[0].offset,body});
     }
   }
   return result;
@@ -218,9 +225,31 @@ async function request(api, resource, progress, cancelled = () => false) {
       if(!parser)parser=createParser(cancelled);
       const result = await parser.parse({ id: data.source_url, name: data.object_name + (data.include && data.include !== 'main' ? '.' + data.include : ''), objectName: data.object_name,
         objectType: data.object_type, text: data.source });
+      // A program's include keeps its own name, so what is in it opens there.
+      if(data.object_type==='PROG'&&data.include)result.source.programInclude=data.include;
       loaded.sources.push(result.source);loaded.warnings.push(...result.warnings);
     }
     await part(data);
+    /* A program's INCLUDEs are part of it: its local classes and forms are often all in them. Each is read and parsed as
+       a part of the program, nested ones too, once each; one that cannot be read is said, not skipped silently. */
+    if (data.object_type === 'PROG') {
+      const done = new Set([upper(object_name)]);
+      for (let at = 0; at < loaded.sources.length; at++) {
+        for (const statement of loaded.sources[at].aceStatements.filter(s => s.parserKind === 'Include')) {
+          const include = upper(statement.tokens[1]?.value);
+          if (!include || done.has(include)) continue;
+          done.add(include);check();
+          stage('Reading '+object_name+' / '+include);
+          // In a local folder an include is a file of its own, as abapGit writes it (name.prog.abap).
+          let source_url = '/sap/bc/adt/programs/includes/' + encodeURIComponent(include.toLowerCase()) + '/source/main', source;
+          try {
+            if (api.local) { const file = await read({ object_name: include, object_type: 'PROG' }); source_url = file.source_url; source = file.source; }
+            else source = await api.sourceAt(source_url);
+          } catch (e) { loaded.warnings.push(include + ' (INCLUDE in ' + object_name + '): ' + (e && e.message || e)); continue; }
+          await part({ object_name, object_type: 'PROG', source_url, source, include });
+        }
+      }
+    }
     // Value origin may start in a test class, so its read takes the class's test classes too; diagrams and metrics do not.
     const classParts = ['definitions','implementations','macros', ...(url.searchParams.get('mode') === 'origin' ? ['testclasses'] : [])];
     if (data.object_type === 'CLAS') for (const include of data.includes.filter(i => classParts.includes(i)))
@@ -273,7 +302,8 @@ async function request(api, resource, progress, cancelled = () => false) {
     if (service === 'metrics') {
       stage('Calculating metrics');
       await new Promise(resolve=>setTimeout(resolve,0));
-      const rows = units.map(metric), totals = { units: rows.length };
+      // A unit a program keeps in an include opens there, at its line: its name alone would be looked for in the program.
+      const rows = units.map(p => p.source.programInclude ? { ...metric(p), writtenIn: { name: p.source.programInclude, type: api.local ? 'PROG' : 'INCL', line: p.line } } : metric(p)), totals = { units: rows.length };
       for (const key of ['cyclomatic','loc','lloc','cloc','volume','effort','time_t','bugs']) totals[key] = rows.reduce((sum, r) => sum + r[key], 0);
       totals.avg_cyclomatic = rows.length ? totals.cyclomatic / rows.length : 0;
       const definitions = declarations(sources);
@@ -311,7 +341,7 @@ async function request(api, resource, progress, cancelled = () => false) {
       const id = (label,kind='event') => { if (!ids.has(label)) { const value = 'c' + ids.size; ids.set(label, value); nodes.push(value + '("' + quoted(label) + '"):::'+kind); } return ids.get(label); };
       // Where each drawn routine is: a class local to a program is in the program's source, not a global class of that
       // name, so a click opens the object the routine was read from, at its line.
-      const places={},place=p=>{const key=routineLabel(p).replace(/\s+/g,'');if(!places[key])places[key]={name:p.source.objectName,type:p.source.objectType,line:p.line||0};};
+      const places={},place=p=>{const key=routineLabel(p).replace(/\s+/g,'');if(!places[key])places[key]=p.source.programInclude?{name:p.source.programInclude,type:api.local?'PROG':'INCL',line:p.line||0}:{name:p.source.objectName,type:p.source.objectType,line:p.line||0};};
       const link=(from,to,arrow,cost=1)=>{if(from!==to){links.push({from,to,cost,text:from+arrow+to});}};
       for (const c of walkedCalls) {
         check();const p=units.find(q=>q.id===c.caller);if(!p)continue;
@@ -340,7 +370,9 @@ async function request(api, resource, progress, cancelled = () => false) {
     // Reachability: the path to each drawn line inside its METHOD or FORM (reach-path.js), for the page to light up on a click.
     const reach = ['METHOD', 'FORM'].includes(chosen[0].unitType)
       ? require('./reach-path').reachLines(chosen[0].source.aceStatements, Object.values(drawn.nodeLines)) : null;
-    return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType, ...drawn, reach,
+    // The source the routine is written in: its include when a program keeps it in one - where a node click opens.
+    const written = chosen[0].source.programInclude ? { name: chosen[0].source.programInclude, type: api.local ? 'PROG' : 'INCL' } : null;
+    return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType, ...drawn, reach, ...(written ? { writtenIn: written } : {}),
       logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }

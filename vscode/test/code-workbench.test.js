@@ -24,8 +24,8 @@ function host(savedState = {}, authOverride, repositoryRead) {
         ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS."
         : include === "main" ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS.\nCLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\n  METHOD caller.\n    DATA lv_count TYPE i.\n    lv_count = 1.\n    run( ).\n    zcl_other=>do_it( ).\n    CALL FUNCTION 'Z_FOO'.\n  ENDMETHOD.\nENDCLASS."
           : "CLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\nENDCLASS.";
-      const object_url = klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : args.object_type === "FUNC" ? "/sap/bc/adt/functions/groups/z_grp/fmodules/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest";
-      return { object_name: args.object_name, object_type: args.object_type === "FUNC" || args.object_type === "INTF" ? args.object_type : klass ? "CLAS" : "PROG",
+      const object_url = klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : args.object_type === "FUNC" ? "/sap/bc/adt/functions/groups/z_grp/fmodules/" + args.object_name.toLowerCase() : args.object_type === "INCL" ? "/sap/bc/adt/programs/includes/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest";
+      return { object_name: args.object_name, object_type: ["FUNC", "INTF", "INCL"].includes(args.object_type) ? args.object_type : klass ? "CLAS" : "PROG",
         object_url, source_url: object_url + "/source/main", include, source, revision: "original-revision" };
     }
     return { change_id: "id1", object_name: args.object_name, operation: tool === "create_sap_object" ? "create" : "modify",
@@ -211,6 +211,15 @@ test("a breakpoint placed in the standard VERTEX editor gutter is synchronized t
   h.fireBreakpoints({ removed: [point] });
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual(cleared, ['sap-bp-1']);
+});
+// A program's include takes its points at its own source: they were dropped before.
+test("a breakpoint in an include's editor is synchronized to SAP at the include", async () => {
+  const h = host(), calls = [];
+  h.tools.attachDebugger({ async setBreakpointAt(args) { calls.push(args); return { id: 'sap-bp-2' }; }, async clearBreakpoints() {} });
+  await h.tools.execute('open_sap_object', { object_name: 'ZTEST_TOP', object_type: 'INCL' });
+  h.fireBreakpoints({ added: [{ id: 'vs-bp-2', location: { uri: h.documents[0].uri, range: { start: { line: 2 } } } }] });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(calls.map(c => [c.url, c.line]), [['/sap/bc/adt/programs/includes/ztest_top/source/main', 3]]);
 });
 test("an AI change is refused while the tab holds edits SAP does not have", async () => {
   const h = host();

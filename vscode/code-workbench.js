@@ -275,7 +275,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     await vscode.commands.executeCommand('vscode.open', document.uri, { viewColumn: home ? home.viewColumn : beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One,
       selection: new vscode.Range(at, at), preview: true, preserveFocus: preserveFocus === true });
   }
-  async function openToolSource(args) {
+  async function openToolSource(args, searched = new Set()) {
     const repo = await repository();
     const entry = [...opened.values()].find(item=>item.repo===repo&&item.document&&!item.document.isClosed&&String(item.data.object_name).toUpperCase()===String(args.name).toUpperCase())
       || await sourceDocument(repo, { object_name: args.name, object_type: args.type || 'CLAS' });
@@ -283,9 +283,28 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const routine = String(args.method || '').toUpperCase(), included = String(args.include || '').toUpperCase();
     // A local class's method is looked for in that class's IMPLEMENTATION only: many classes share a method's name.
     const owner = String(args.localClass || '').toUpperCase();
+    const implementedAt = text => { const hit = /^\s*CLASS\s+(\S+)\s+IMPLEMENTATION\b/i.exec(text); return hit && hit[1].replace(/\.$/, '').toUpperCase() === owner; };
     let from = 0, to = lines.length;
     if (owner) {
-      from = lines.findIndex(text => { const hit = /^\s*CLASS\s+(\S+)\s+IMPLEMENTATION\b/i.exec(text); return hit && hit[1].replace(/\.$/, '').toUpperCase() === owner; });
+      from = lines.findIndex(implementedAt);
+      /* A program often implements its local class in an include: its INCLUDE statements (abaplint's parse) are read in
+         turn, nested ones too, and the method opens in the one that has the IMPLEMENTATION. */
+      if (from < 0 && routine && ['PROG', 'INCL'].includes(String(args.type || '').toUpperCase())) {
+        searched.add(String(args.name).toUpperCase());
+        const statements = await require('./abap-statements').statementsOf(entry.document);
+        for (const statement of statements.filter(s => s.parserKind === 'Include')) {
+          const name = String(statement.tokens[1]?.value || '').toUpperCase();
+          if (!name || searched.has(name)) continue;
+          searched.add(name);
+          let include;
+          try { include = await sourceDocument(repo, { object_name: name, object_type: 'INCL' }); } catch { continue; }
+          const text = include.document.getText();
+          if (text.split(/\r?\n/).some(implementedAt) || /\bINCLUDE\b/i.test(text)) {
+            try { return await openToolSource({ ...args, name, type: 'INCL' }, searched); }
+            catch (error) { if (!/^No CLASS /.test(error.message)) throw error; }
+          }
+        }
+      }
       // Only a method needs the IMPLEMENTATION: the class and its other members are in the DEFINITION.
       if (from < 0 && routine) throw new Error('No CLASS ' + owner + ' IMPLEMENTATION in ' + args.name + '.');
       to = lines.findIndex((text, index) => index > from && /^\s*ENDCLASS\b/i.test(text));
@@ -1173,7 +1192,8 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     // so those existing points can be sent back to SAP without a manual
     // remove/add click.
     const entry = opened.get(location.uri.toString()) || await fileEntry(location.uri).catch(() => null);
-    if (!entry || !['PROG', 'CLAS', 'FUNC'].includes(entry.data.object_type)) return null;
+    // An include - a program's or a function group's - takes its points at its own source, as ADT sets them.
+    if (!entry || !['PROG', 'CLAS', 'FUNC', 'INCL'].includes(entry.data.object_type)) return null;
     const line = location.range.start.line + 1;
     if (entry.data.object_type !== 'CLAS' || entry.data.include === 'main') {
       return { url: entry.data.source_url, line };

@@ -894,7 +894,7 @@ function makeTable(columns, rows, total, isClass, ordering, sourceContext) {
       if(column.num){cell.className="num metric-"+metricGrade(column.key,row[column.key]);var limits=METRIC_LIMITS[column.key];if(limits)cell.title=column.key==='mi'?"Green ≥ "+limits[0]+"; yellow ≥ "+limits[1]+"; red below":"ACE risk: LOW ≤ 10; MEDIUM ≤ 20; HIGH ≤ 50; CRITICAL > 50";}
       if(column.key==='unit_name'&&typeof sdeOpenToolSource==='function'){
         var button=document.createElement("button");button.className="metric-source";button.textContent=cell.textContent;button.title="Open source";
-        button.addEventListener("click",function(){var name=String(row.unit_name||''),split=name.split('=>');sdeOpenToolSource({name:split.length>1?split[0]:(sourceContext?sourceContext.name:loadedObject),type:sourceContext?sourceContext.type:(isClass?'CLAS':loadedType),method:split.pop(),beside:true,preserveFocus:true});});cell.textContent='';cell.appendChild(button);
+        button.addEventListener("click",function(){if(row.writtenIn){sdeOpenToolSource({name:row.writtenIn.name,type:row.writtenIn.type,line:row.writtenIn.line,beside:true,preserveFocus:true});return;}var name=String(row.unit_name||''),split=name.split('=>');sdeOpenToolSource({name:split.length>1?split[0]:(sourceContext?sourceContext.name:loadedObject),type:sourceContext?sourceContext.type:(isClass?'CLAS':loadedType),method:split.pop(),beside:true,preserveFocus:true});});cell.textContent='';cell.appendChild(button);
       }
       line.appendChild(cell);
     });
@@ -1107,6 +1107,8 @@ var logicOnly=true,lastLogicMermaid=null,latestCodeCursor=null;
 var schemeNodeLines={},schemeNodeRanges={},schemeClusterRanges={},schemeConditionCalls={};
 /* Reachability: the host gives, for each drawn line of a METHOD or FORM, the lines of the path that reaches it; a click on a
    node lights them up and quiets the rest. reachLine is the node chosen, kept across redraws. */
+// The include the drawn routine is written in, when a program keeps it in one: node clicks open there, and its editor's cursor is followed.
+var schemeWritten=null;
 var schemeReach=null,reachOn=false,reachLine=0;
 var lastMermaid = null;  // the text ACE sent, kept so it can be redrawn
 var lastCaption = "";
@@ -1610,7 +1612,7 @@ function renderDiagram(data) {
   }
   lastMermaid = data.mermaid;
   lastLogicMermaid=data.logicMermaid||null;
-  schemeNodeLines=data.nodeLines||{};schemeNodeRanges=data.nodeRanges||{};schemeClusterRanges=data.clusterRanges||{};schemeConditionCalls=data.conditionCalls||{};schemeReach=data.reach||null;reachLine=0;document.getElementById("reach").hidden=mode!=="scheme"||!schemeReach;
+  schemeNodeLines=data.nodeLines||{};schemeNodeRanges=data.nodeRanges||{};schemeClusterRanges=data.clusterRanges||{};schemeConditionCalls=data.conditionCalls||{};schemeWritten=data.writtenIn||null;schemeReach=data.reach||null;reachLine=0;document.getElementById("reach").hidden=mode!=="scheme"||!schemeReach;
   lastCaption = data.mode === "calls"
     ? data.steps + (data.steps === 1 ? " step" : " steps")
     : data.unit_type + ", lines " + data.line_from + " to " + data.line_to;
@@ -1929,7 +1931,7 @@ function onDiagramClick(e) {
     // must reach the aceexp handler below so the block expands in place.
     var sourceNode=e.target.closest&&e.target.closest('g.node[data-source-line]:not(.foldnode)');
     if(sourceNode&&reachOn&&mode==='scheme'){reachLine=Number(sourceNode.dataset.sourceLine);showReach();}
-    if(sourceNode){e.preventDefault();e.stopPropagation();sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(sourceNode.dataset.sourceLine)});return;}
+    if(sourceNode){e.preventDefault();e.stopPropagation();sdeOpenToolSource({name:schemeWritten?schemeWritten.name:loadedObject,type:schemeWritten?schemeWritten.type:loadedType,line:Number(sourceNode.dataset.sourceLine)});return;}
   }
   if (mode === "calls") {
     var element = e.target;
@@ -2298,10 +2300,13 @@ document.getElementById('logic-only').addEventListener('click',function(){logicO
    marks the code's place again without scrolling; only a method just opened for the code is scrolled to it. */
 var positionAfterDraw=false;
 function sdeCodeCursor(value){
- if(mode!=='scheme'||String(value.name).toUpperCase()!==String(loadedObject).toUpperCase())return;
+ if(mode!=='scheme'||[loadedObject,schemeWritten&&schemeWritten.name].every(function(own){return String(value.name).toUpperCase()!==String(own||'').toUpperCase();}))return;
  // The cursor and scrolling alike: a line in another method (for scrolling, the line a third down the visible source)
  // opens that method's diagram.
- var targetUnit=units.find(function(unit){return value.line>=unit.line_from&&value.line<=unit.line_to;});
+ // A unit's lines count in the file it is written in: a program's include (PROG.INCLUDE) has lines of its own, which
+ // the program's lines would otherwise meet. A class's parts (ZCL.definitions) count as the class.
+ var fileOf=function(unit){var part=String(unit.include||'').split('.')[1];return part&&part===part.toUpperCase()?part:String(loadedObject).toUpperCase();};
+ var targetUnit=units.find(function(unit){return fileOf(unit)===String(value.name).toUpperCase()&&value.line>=unit.line_from&&value.line<=unit.line_to;});
  if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){latestCodeCursor=value;positionAfterDraw=true;openUnit(targetUnit);return;}
  if(!value.replay)latestCodeCursor=value;
 

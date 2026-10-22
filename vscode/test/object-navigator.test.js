@@ -144,3 +144,16 @@ test("a local class opens at its DEFINITION, its attributes and types at their d
   assert.deepEqual(parts.map(g => g.label), ["Types", "Attributes"]);
   assert.deepEqual(parts[1].children[0].open, { name: "ZPROG", type: "PROG", member: "MV_X", localClass: "LCL_A" });
 });
+
+test("a local program's tree comes from the parse of the program and its includes, each entry at its file and line", () => {
+  const { parseSource } = require("../value-origin-linter");
+  const part = (name, text) => ({ name, statements: parseSource({ id: name, name, objectName: name, objectType: "PROG", text }).source.aceStatements });
+  const tree = navigator.localTree([
+    part("ZP", "REPORT zp.\nINCLUDE zp_c01.\nSTART-OF-SELECTION.\n  PERFORM f.\nFORM f.\nENDFORM."),
+    part("ZP_C01", "CLASS lcl DEFINITION.\n  PUBLIC SECTION.\n    METHODS run.\nENDCLASS.\nCLASS lcl IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\nENDCLASS.")]);
+  assert.deepEqual(tree.map(g => g.label), ["Includes", "Events", "Local Classes", "Subroutines"]);
+  assert.deepEqual(tree[0].children[0].open, { name: "ZP_C01", type: "PROG" });
+  assert.deepEqual(tree[1].children[0].open, { name: "ZP", type: "PROG", line: 3 });
+  assert.deepEqual(tree[2].children[0].children[0].children[0].open, { name: "ZP_C01", type: "PROG", line: 6 });
+  assert.deepEqual(tree[3].children[0].open, { name: "ZP", type: "PROG", line: 5 });
+});

@@ -10,6 +10,14 @@ Double-click, F12 and Ctrl+click between a block's opening and closing statement
 
 In the Logic diagram every statement opens its source line, CONTINUE and ENDIF included, and a lone left-out operation is drawn as itself instead of a "1 operation" block. The code moves the diagram, not the other way round: a click or a scroll in the editor positions it, scrolling into another method opens that method's diagram, scrolling the diagram stays in it, and the diagram reaches the code only by a click on a node.
 
+The Calls and Logic diagrams no longer take offset/length access (`s370(4)`, `gt_name(10)`) or an inline `FIELD-SYMBOL(<fs>)` for a call; such nodes appeared as unresolved calls. A form of another program called as `PERFORM f(prog)` is followed into that program, as `PERFORM f IN PROGRAM prog` already was. ABAP's built-in functions (`lines( )`, `xsdbool( )`) are no longer drawn as unresolved calls.
+
+Object Navigator opens a method of a program's local class that is implemented in an include, in that include. A breakpoint set in an include's editor is now set in SAP; it used to be dropped silently.
+
+The Calls and Logic diagrams read a program's INCLUDEs as part of it, so local classes and forms kept in includes resolve. A method call whose name is also an ABAP keyword, such as `add( x )`, is recognised. **VERTEX Tools → Object Navigator** is in the editor's context menu; for a program in local files it shows the includes, events, local classes with their methods and subroutines, read from the program and its include files.
+
+In the Calls and Logic diagrams and in Metrics, a routine a program keeps in an include opens in that include at its line. An include of declarations only, such as a local class's DEFINITION, no longer shows up in Metrics as a START-OF-SELECTION of its own.
+
 ## Unreleased — individual AI tool disclosures
 
 Each AI tool call starts collapsed under its name. Its arguments, matching result and recording/object links open together. Repeated and concurrent calls remain separate and are matched to results by tool-call ID.

@@ -10,10 +10,10 @@ test('Tools context commands use selected object/URI before the active editor',a
  assert.deepEqual(opened.pop(),{name:'ZSELECTED',type:'CLAS',action:'scheme',boundObject:true});assert.equal(documents.length,1);
  await commands['vertex.tools.diff']();assert.equal(opened.pop().name,'ZWRONG');assert.equal(errors.length,0);
 });
-test('Tools submenu contains all five functions in each object context',()=>{
+test('Tools submenu contains Object Navigator and the five functions in each object context',()=>{
  const pkg=require('../package.json'),menus=pkg.contributes.menus;
  for(const place of ['editor/context','explorer/context','webview/context'])assert.ok(menus[place].some(m=>m.submenu==='vertex.tools.context'));
- assert.deepEqual(menus['vertex.tools.context'].map(m=>m.command),['vertex.tools.uml','vertex.tools.metrics','vertex.tools.scheme','vertex.tools.calls','vertex.tools.diff']);
+ assert.deepEqual(menus['vertex.tools.context'].map(m=>m.command),['vertex.tools.navigator','vertex.tools.uml','vertex.tools.metrics','vertex.tools.scheme','vertex.tools.calls','vertex.tools.diff']);
 });
 test('program Calls passes panel initialization and unsupported UML does not open an empty panel',async()=>{
  const commands={},opened=[],errors=[];

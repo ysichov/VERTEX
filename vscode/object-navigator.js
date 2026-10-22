@@ -67,27 +67,29 @@ function packageTree(data, source) {
   return tree;
 }
 
-/* Where a component stands in the main source, from its ADT links: a method by its implementation, else its definition. */
+/* Where a component stands, from its ADT links: a method by its implementation, else its definition - in the main
+   source, or in the include a program keeps it in (a local class implemented in an include). */
 function position(component) {
   const links = component.links || [];
   const find = rel => links.find(l => String(l.rel || "").endsWith("/" + rel));
   const link = find("implementationIdentifier") || find("definitionIdentifier");
   const match = link && /^(.*?)#start=(\d+),(\d+)/.exec(String(link.href || ""));
   if (!match || !/(^|\/)source\/main$/.test(match[1])) return null;
-  return Number(match[2]);
+  const include = /\/includes\/([^/]+)\/source\/main$/.exec(match[1]);
+  return { line: Number(match[2]), include: include ? decodeURIComponent(include[1]).toUpperCase() : "" };
 }
 
 /* A class or interface: its superclass, then its components grouped as SE80 groups them, each opening at its line. */
 function classTree(root, objectName, objectType, superClass, localClass) {
   const node = component => {
-    const line = position(component);
+    const at = position(component), line = at && at.line;
     const children = classGroups(component.components || []);
     // A local class's method that comes without a line opens at its METHOD in that class's IMPLEMENTATION.
     // Any other part of it - an attribute, a type - at its declaration in the class's DEFINITION.
     const method = !line && localClass && ["PROG/PLM", "CLAS/OM"].includes(component["adtcore:type"]);
     const member = String(component["adtcore:name"]).toUpperCase();
     return { label: component["adtcore:name"], visibility: component.visibility || "",
-      ...(line ? { open: { name: objectName, type: objectType, line } }
+      ...(line ? { open: at.include ? { name: at.include, type: "INCL", line } : { name: objectName, type: objectType, line } }
         : method ? { open: { name: objectName, type: objectType, method: member, localClass } }
         : localClass ? { open: { name: objectName, type: objectType, member, localClass } } : {}),
       ...(children.length ? { children } : {}) };
@@ -138,4 +140,37 @@ function programUnits(data) {
     .map(n => ({ unit_name: n.OBJECT_NAME, unit_type: UNIT_TYPES[n.OBJECT_TYPE] })) };
 }
 
-module.exports = { packageTree, programUnits, classTree, requestTree, position, OPENS };
+/* A program read from local files, as SE80 would show it: its includes, events, local classes with their methods and its
+   subroutines, from abaplint's parse of the program and its includes - parts: [{ name, statements }], the program
+   first. Each entry opens in the file it is written in, at its line. */
+const EVENTS = new Set(["LoadOfProgram", "Initialization", "AtSelectionScreen", "StartOfSelection", "EndOfSelection",
+  "TopOfPage", "EndOfPage", "AtLineSelection", "AtUserCommand", "AtPF", "TopOfPageDuringLineSelection"]);
+function localTree(parts) {
+  const at = (part, s) => ({ name: part.name, type: "PROG", line: s.line });
+  const label = s => String(s.text || "").replace(/\.\s*$/, "");
+  const includes = [], events = [], forms = [], classes = new Map();
+  for (const part of parts) {
+    let implementing = null;
+    for (const s of part.statements) {
+      const kind = s.parserKind, second = String(s.tokens[1]?.value || "").toUpperCase();
+      if (kind === "Include" && second) includes.push({ label: second, open: { name: second, type: "PROG" } });
+      else if (EVENTS.has(kind)) events.push({ label: label(s), open: at(part, s) });
+      else if (kind === "Form") forms.push({ label: second, open: at(part, s) });
+      else if (kind === "ClassDefinition" || kind === "ClassImplementation") {
+        if (!classes.has(second)) classes.set(second, { label: second, methods: [] });
+        if (kind === "ClassDefinition") classes.get(second).open = at(part, s);
+        implementing = kind === "ClassImplementation" ? classes.get(second) : null;
+      } else if (kind === "EndClass") implementing = null;
+      else if (kind === "MethodImplementation" && implementing) implementing.methods.push({ label: second, open: at(part, s) });
+    }
+  }
+  const tree = [];
+  if (includes.length) tree.push({ label: "Includes", children: includes });
+  if (events.length) tree.push({ label: "Events", children: events });
+  if (classes.size) tree.push({ label: "Local Classes", children: [...classes.values()].map(c => ({ label: c.label,
+    ...(c.open ? { open: c.open } : {}), ...(c.methods.length ? { children: [{ label: "Methods", children: c.methods }] } : {}) })) });
+  if (forms.length) tree.push({ label: "Subroutines", children: forms });
+  return tree;
+}
+
+module.exports = { packageTree, programUnits, classTree, requestTree, localTree, position, OPENS };

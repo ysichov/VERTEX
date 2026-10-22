@@ -345,7 +345,9 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
   apply to the chosen type are offered: a transport has Versions and its review, a class or a
   program metrics, diagrams and diff, a package its package-level views. **Object Navigator**, first and the default for a
   package, a transport request, a program, a function module (its group's tree), a class or an interface, is SE80's Repository Browser tree: a package's subpackages and its objects
-  by category and type, a request's objects, its tasks' included, by type, a program's includes, fields, events, subroutines (opening at their FORM), screens, GUI statuses, tables and local classes (unfolding to their methods and attributes), a class's superclass (Inherited from), types, attributes, methods, events with their visibility and friends (Friends of); an interface's types, attributes, methods and events.
+  by category and type (in an ABAP editor, **VERTEX Tools → Object Navigator** in the context menu opens it for that
+  object; for a program in local files the tree - includes, events, local classes with their methods, subroutines - is
+  read from the program and its include files, each entry opening in its own file), a request's objects, its tasks' included, by type, a program's includes, fields, events, subroutines (opening at their FORM), screens, GUI statuses, tables and local classes (unfolding to their methods and attributes), a class's superclass (Inherited from), types, attributes, methods, events with their visibility and friends (Friends of); an interface's types, attributes, methods and events.
   A subpackage, class, interface or function group unfolds where it stands; a click on the name of an object or component opens
   its source in the editor beside the tree, a component at its line, and the tree keeps the focus. **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block

@@ -239,6 +239,11 @@
         "category": "VERTEX"
       },
       {
+        "command": "vertex.tools.navigator",
+        "title": "Object Navigator",
+        "category": "VERTEX Tools"
+      },
+      {
         "command": "vertex.tools.uml",
         "title": "UML diagram",
         "category": "VERTEX Tools"
@@ -578,6 +583,11 @@
       ],
       "vertex.tools.context": [
         {
+          "command": "vertex.tools.navigator",
+          "when": "resourceScheme == vertex-sap || resourceScheme == vertex-source || resourceScheme == file || webviewSection == vertex-object",
+          "group": "navigation@0"
+        },
+        {
           "command": "vertex.tools.uml",
           "group": "navigation@1"
         },
@@ -645,6 +655,10 @@
         },
         {
           "command": "vertex.switchSystem",
+          "when": "false"
+        },
+        {
+          "command": "vertex.tools.navigator",
           "when": "false"
         },
         {

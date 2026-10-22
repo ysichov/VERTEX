@@ -7,7 +7,9 @@ function create(index,units=index.procedures){
  function calls(p,s){
   const found=model.callsIn(s.tokens),t=s.tokens.map(t=>upper(t.value));
   let classic;
-  if(t[0]==='PERFORM'&&/^[\w/]+$/.test(t[1]||'')){const at=t.indexOf('PROGRAM');classic={method:t[1],owner:at>=0?t[at+1]:'',receiver:'',kind:'FORM'};}
+  // PERFORM f IN PROGRAM prog and its short form PERFORM f(prog) - the program in parentheses right at the name - call a
+  // form of another program, which the walk then reads.
+  if(t[0]==='PERFORM'&&/^[\w/]+$/.test(t[1]||'')){const at=t.indexOf('PROGRAM'),tk=s.tokens,short=t[2]==='('&&t[4]===')'&&tk[2].offset===tk[1].endOffset&&/^[\w/]+$/.test(t[3]||'');classic={method:t[1],owner:at>=0?t[at+1]:short?t[3]:'',receiver:'',kind:'FORM'};}
   else if(t[0]==='CALL'&&t[1]==='FUNCTION'&&/^'[^']+'$/.test(t[2]||''))classic={method:t[2].slice(1,-1),owner:'',receiver:'',kind:'FUNCTION'};
   else if(t[0]==='CALL'&&t[1]==='METHOD'&&!found.length){const at=t.findIndex(v=>v==='->'||v==='=>');if(at>1)classic={method:t[at+1],owner:t[at]==='=>'?t[at-1]:'',receiver:t[at-1],arrow:t[at]};else if(/^[\w~]+$/.test(t[2]||''))classic={method:t[2],owner:'',receiver:''};}
   if(classic)found.unshift(classic);
@@ -16,7 +18,11 @@ function create(index,units=index.procedures){
    const owners=call.kind==='FORM'?[call.owner||p.source.objectName]:call.kind==='FUNCTION'?[call.method]:resolve.owners(call,p,s.offset).filter(Boolean);
    const targets=call.kind==='FORM'?units.filter(q=>kind(q)==='FORM'&&q.name===call.method&&q.source.objectName===owners[0]):call.kind==='FUNCTION'?units.filter(q=>kind(q)==='FUNCTION'&&q.name===call.method):resolve(call,p,s.offset,{}).map(q=>units.find(u=>u.id===q.id)||q);
    return {call,owners,targets};
-  });
+  }).filter(({call,targets})=>!builtin(call,targets));
+ }
+ // lines( ), xsdbool( ), condense( ): ABAP's built-in functions are no calls - unless the routine has a method of that name.
+ function builtin(call,targets){
+  return !call.kind&&!call.owner&&!call.receiver&&!targets.length&&!!require('@abaplint/core').BuiltIn.searchBuiltin(upper(call.method));
  }
  return {calls};
 }
