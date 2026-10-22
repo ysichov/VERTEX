@@ -153,20 +153,18 @@ test('BSE scope is what BSE found and the path that led to it', () => {
 });
 
 
-test('FLOW shows what a call passes, so nothing is lost with Code gone', () => {
+test('FLOW connects a call to the routine it calls, with no parameter node between', () => {
   const { html } = require('../value-origin-view');
   const { analyze } = require('./origin-view-fixture');
   const output = html(analyze(require('./fixtures/value-origin-demo.json'),
     { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' }), 'test');
   const flow = JSON.parse(output.match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]).bseFlow;
-  const passed = flow.nodes.filter(node => node.type === 'parameter');
-  assert(passed.length > 1, 'the demo passes values into the facade and on into the modifiers');
-  assert(passed.some(node => /lv_scenario → IV_SCENARIO/.test(node.text)));
-  // The node sits on the call edge: the caller's statement reaches it, and it
-  // reaches the procedure that was called.
-  const into = new Set(flow.edges.filter(edge => edge.from === passed[0].id).map(edge => edge.to));
-  assert(into.size > 0);
-  assert(flow.edges.some(edge => edge.to === passed[0].id));
+  // Since 0.8.2 parameter transfers stay in the analysis tree: as diagram nodes they stood apart from the call.
+  assert(!flow.nodes.some(node => node.type === 'parameter'), 'no parameter node in FLOW');
+  const facade = flow.nodes.find(node => node.key === 'm|ZCL_CALC_FACADE→RUN');
+  assert(facade, 'the demo goes into the facade');
+  assert(flow.edges.some(edge => edge.to === facade.id && edge.label === '15'), 'the call on line 15 reaches the facade');
+  assert(flow.edges.some(edge => edge.from === facade.id), 'and the facade goes on into its own calls');
 });
 
 test('the toolbar reads view, then Type, then what is shown', () => {

@@ -21,7 +21,8 @@ test('CASE WHEN paths join on ENDCASE',()=>{
 });
 test('plain loop folds and expands through existing aceexp action',()=>{
  const body=['DO 3 TIMES.','a = 1.','a = 2.','ENDDO.'];
- const folded=draw(body),open=draw(body,'7');assert.match(folded,/n2\[\/"DO/);assert.match(folded,/aceexp_7/);assert.match(open,/subgraph g2/);assert.match(open,/p3 --> p4/);assert.match(open,/click p3 "sapevent:aceexp_7/);
+ // Only Logic folds: the loop stays a frame, its operations one block opened by the first line's number.
+ const folded=draw(body,'',true),open=draw(body,'3',true);assert.match(folded,/subgraph g2/);assert.match(folded,/o3\("2 operations"\)/);assert.match(folded,/aceexp_3/);assert.match(open,/subgraph g2/);assert.match(open,/p3 --> p4/);assert.match(open,/click p3 "sapevent:aceexp_3/);
 });
 test('nested loop structure uses a frame; trailing work remains outside it',()=>{
  const mm=draw(['LOOP AT tab INTO row.','IF row = 1.','WRITE row.','ENDIF.','ENDLOOP.','WRITE x.']);
@@ -33,13 +34,13 @@ test('TRY CATCH does not capture the enclosing IF branch owner',()=>{
 });
 test('operations fold, expand and preserve side effects',()=>{
  const body=['DATA a TYPE i.','a = 1.','a = 2.','SELECT SINGLE field FROM tab INTO a.','a = 3.','a = 4.'];
- const mm=draw(body),open=draw(body,'all');assert.doesNotMatch(mm,/DATA a/);assert.equal((mm.match(/2 operations/g)||[]).length,2);assert.match(mm,/class p5 dbnode/);assert.doesNotMatch(open,/operations/);assert.match(open,/a = 4/);
+ const mm=draw(body,'',true),open=draw(body,'3,6',true);assert.doesNotMatch(mm,/DATA a/);assert.equal((mm.match(/2 operations/g)||[]).length,2);assert.match(mm,/class p5 dbnode/);assert.doesNotMatch(open,/operations/);assert.match(open,/a = 4/);
 });
 test('same-line statements keep separate nodes and balanced branch joins',()=>{
  const mm=draw(['IF x = 1. a = 1. ELSE. a = 2. ENDIF. WRITE a.']);assert.match(mm,/p3\("a = 1/);assert.match(mm,/p5\("a = 2/);assert.match(mm,/j6 --> p7/);
 });
-test('empty method draws only its method node',()=>{
- const mm=draw([]);assert.match(mm,/n1\[\[/);assert.doesNotMatch(mm,/operations| --> /);
+test('empty method draws only its method node and its end',()=>{
+ const mm=draw([],'',true);assert.match(mm,/n1\[\[/);assert.doesNotMatch(mm,/operations/);assert.match(mm,/n1 --> n2\n/);assert.equal((mm.match(/ --> /g)||[]).length,1);
 });
 
 test('nested IF false paths join their own ENDIF',()=>{

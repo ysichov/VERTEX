@@ -481,13 +481,17 @@ test("the flow of the analysis is drawn as program, classes, routines and statem
   const graph = mode => JSON.parse(JSON.stringify(vm.runInContext("staticFlowGraph(" + JSON.stringify(mode) + ")", context).bseFlow));
   const classes = graph("classes"), steps = graph("steps");
   assert.deepEqual(classes.nodes.map(n => n.type), ["program", "class", "class"]);
-  assert.deepEqual(steps.nodes.map(n => n.type).filter(t => t === "method").length, 1, "a called routine has no block of its own among statements");
+  // Since 0.8.1 Statements groups each routine's operators inside its routine frame.
+  assert.deepEqual(steps.nodes.filter(n => n.type === "method").map(n => n.location), ["ZREP→START-OF-SELECTION", "ZCL_X→RUN"], "one frame per routine");
   const byLine = line => steps.nodes.find(n => n.type === "operation" && n.line === line);
   const parentOf = node => steps.nodes.find(n => n.id === steps.edges.find(e => e.to === node.id).from);
   assert.equal(parentOf(byLine(6)).line, 5, "the body of IF is under the IF");
   assert.equal(parentOf(byLine(8)).line, 7, "the body of ELSE is under the ELSE");
-  assert.equal(parentOf(byLine(11)).line, 10, "after ENDIF the next statement is the routine's again: under the call that entered it");
-  assert.equal(byLine(9), undefined, "ENDIF is no node");
+  const frame = parentOf(byLine(11));
+  assert.deepEqual([frame.type, frame.location], ["method", "ZCL_X→RUN"], "after ENDIF the next statement is the routine's again: in its frame");
+  assert.equal(parentOf(frame).line, 10, "and the frame hangs under the call that entered it");
+  // Since 0.8.3 a block is drawn whole: its ENDIF names the block it closes.
+  assert.equal(byLine(9).closes, byLine(5).id, "ENDIF closes its IF");
   assert.deepEqual([byLine(6).bse, byLine(5).bse, byLine(11).bse], [true, true, false], "what leads to a statement of the slice is part of it");
   assert.deepEqual([byLine(6).source, byLine(6).line, byLine(6).aceLocation], ["origin:s:ZCL_X|ZCL_X->RUN", 6, "ZCL_X->RUN"], "a node opens by the analysis: its source, its line, its routine");
   assert.equal(byLine(10).source, "origin:s:ZREP|ZREP->START-OF-SELECTION", "a program statement the same");
@@ -516,9 +520,10 @@ test("a call draws the routine's statements under the calling statement, in the 
   const steps = graph("steps");
   const op = line => steps.nodes.find(n => n.type === "operation" && n.line === line);
   const parent = node => steps.nodes.find(n => n.id === steps.edges.find(e => e.to === node.id).from);
-  assert.equal(steps.nodes.filter(n => n.type === "method").length, 1, "only the entry has a block: the calling statement already names the routine");
-  assert.equal(parent(op(30)).line, 15, "RUN's first statement hangs under the statement that calls it");
-  assert.equal(parent(op(7)).line, 31, "M's under the call in RUN");
+  assert.equal(steps.nodes.filter(n => n.type === "method").length, 3, "each routine is a frame of its own: the event, RUN and M");
+  assert.equal(parent(parent(op(30))).line, 15, "RUN's frame hangs under the statement that calls it");
+  assert.equal(parent(op(30)).location, "ZCL_X→RUN", "and RUN's first statement is in it");
+  assert.equal(parent(parent(op(7))).line, 31, "M's under the call in RUN");
   assert.deepEqual([op(15).stack, op(30).stack, op(31).stack, op(7).stack], [1, 2, 2, 3], "the stack deepens with each call");
   const order = steps.nodes.filter(n => n.type === "operation").map(n => n.line);
   assert.deepEqual(order, [15, 30, 31, 7, 32, 16], "a routine is drawn where it is called: before the statements that follow the call");

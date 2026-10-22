@@ -1518,7 +1518,8 @@ function stepFlow(){
       while(up!=null&&up!==f.line&&chain.length<40){chain.unshift(up);up=shape.parent[up];}
       var above=unitKey;
       chain.forEach(function(blockLine){
-        var pk=unitKey+"|"+String(f.include||"")+":"+blockLine;
+        // Keyed as a statement is: a block the run also stopped on is that one node, not a second.
+        var pk=stepKey({cur:t.cur,stack:[{program:f.program,include:f.include,unit:f.unit,line:blockLine}]});
         if(!nodes[pk]){
           add(pk,{text:stepText({program:f.program,include:f.include,unit:f.unit,line:blockLine},t.at.url,0),type:"statement",
             owner:owner,unit:unit,url:t.at.url,line:blockLine,depth:level,branch:true});

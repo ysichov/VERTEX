@@ -39,7 +39,8 @@ test('execution flow enters resolved methods even when flow facts and event name
   }
   const runChildren = data.edges.filter(e => e.from === 'flow' + run);
   assert(runChildren.length > 1, 'RUN operators must be siblings under the call');
-  assert(!page.includes('subgraph '));
+  // The execution flow is a tree of data; only the shared flow script frames a routine, as a subgraph, when it draws.
+  assert(!JSON.stringify(data).includes('subgraph '));
   assert(page.includes('class="execution-node" data-flow='));
   assert(page.includes('class="execution-leaf" data-flow='));
   assert(page.includes('window.bseMermaidToggle'));
@@ -48,7 +49,8 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(page.includes('vertex-segment-toggle'));
   assert(flowView.includes('data-mermaid-direction="TD"'));
   assert(flowView.includes('data-mermaid-direction="LR"'));
-  assert(page.includes("flowchart '+direction"));
+  // ELK or the layered layout, in the direction chosen.
+  assert(page.includes("'flowchart ')+(direction"));
   assert(page.includes('installUmlLens'));
   assert(page.includes("window.vertexLens.install"), "the flow uses the one lens");
   assert(page.includes("state.zoom = Math.max(1.5, Math.min(6"), "and the lens is in the page, loaded before the flow");
@@ -60,7 +62,7 @@ test('execution flow enters resolved methods even when flow facts and event name
   assert(page.includes('bse-expandable'));
   assert(page.includes('bse-code-link'));
   assert(page.includes("element.classList.add('bse-navigable')"));
-  assert(page.includes("Click </> or double-click to open source"));
+  assert(page.includes("'Click the label to open source'"));
   assert(page.includes("g.node.bse-navigable rect"));
   assert(page.includes('dataset.bseNode'));
   assert(!page.includes('body.data-mode .flow-code,body.data-mode .code-location{display:none}'));
@@ -86,8 +88,8 @@ test('execution flow enters resolved methods even when flow facts and event name
   // Two Types, as a segment toggle: FLOW is what the program does, Formula is
   // how the value was computed.
   assert(page.includes('data-mode-toggle'));
-  assert(page.includes('<button class="active" data-mode-choice="flow">FLOW</button>'));
-  assert(page.includes('<button data-mode-choice="formula">Formula</button>'));
+  assert(/<button class="active" data-mode-choice="flow"[^>]*>FLOW<\/button>/.test(page));
+  assert(/<button data-mode-choice="formula"[^>]*>Formula<\/button>/.test(page));
   assert(page.includes("selectMode('flow');"));
   assert(flowView.includes('id="bse-formula-pane"'));
   assert(page.includes('Formula derivation — click a branch to expand its input formulas'));

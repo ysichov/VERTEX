@@ -34,7 +34,7 @@ function host(savedState = {}, authOverride, repositoryRead) {
     async whereUsed(url, line, column) { usedAsks.push([url, line, column]); return usedResult; },
     async documentation(url, source, line, column) { docAsks.push([url, line, column]); return "<h1>DATA</h1><script>alert(1)</script>"; }, discard() {}, async dispose() {}, async apply(id, payload) { writes.push({ id, ...payload }); return { activated: true, revision: require('../sap-code').revision(payload.source) }; } };
   const vscode = {
-    ViewColumn: { Active: -1, Beside: -2 },
+    ViewColumn: { One: 1, Active: -1, Beside: -2 },
     Uri: { parse: value => ({ scheme: value.split(':')[0], toString: () => value }) },
     EventEmitter: class { event = () => ({ dispose() {} }); fire() {} dispose() {} },
     FileType: { File: 1 }, FileChangeType: { Changed: 1 },
@@ -322,12 +322,13 @@ test("editing while the confirmation is open prevents applying unreviewed text",
   assert.match(h.errors[0], /changed during confirmation/);
 });
 
-test("open from chat opens editable source beside, preserves edits and supplies follow-up context", async () => {
+test("open from chat opens editable source in the active group, preserves edits and supplies follow-up context", async () => {
   const h = host();
   const result = await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "PROG" });
   assert.equal(result.opened, true);
   assert.equal(result.source, undefined);
-  assert.equal(h.diffs[0][1].viewColumn, -2);
+  // The active editor's group, or the first when none is active: no new group beside.
+  assert.equal(h.diffs[0][1].viewColumn, 1);
   h.documents[0].text = "REPORT ztest. WRITE 'edited'.";
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "PROG" });
   assert.equal(h.documents.length, 1);

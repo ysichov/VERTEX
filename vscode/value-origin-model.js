@@ -832,7 +832,10 @@ function analyze(sources, target, options = {}) {
       statement.offset >= item.start && (statement.offset < item.end ||
         (isProcedureEnd(first) && statement.offset === item.end)) && item.name !== 'GLOBAL') ||
       index.procedures.find(item => item.source.id === source.id && item.name === 'GLOBAL');
-    const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included);
+    // A statement is the slice's where ACE's flow says so, or - with no ACE flow, as in a local analysis - where the
+    // backward slice itself reached a calculation on its line.
+    const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included)
+      || (!(source.aceFlowSteps || []).length && nodes.some(node => node.source === source.id && node.line === statement.line && node.kind === 'calculation'));
     return [{ id: source.id + ':full:' + statement.offset, source: source.id, line: statement.line, statementIndex,
       control: classification, text: statement.text, changed: statement.text, scope: ((procedure && procedure.name !== 'GLOBAL' && procedure.owner) || source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
   });
