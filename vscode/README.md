@@ -344,7 +344,7 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
   UML diagram, Metrics, Calls diagram, Logic diagram, Diff or Versions). Only the functions that
   apply to the chosen type are offered: a transport has Versions and its review, a class or a
   program metrics, diagrams and diff, a package its package-level views. **Object Navigator**, first and the default for a
-  package, a transport request, a program, a function module (its group's tree), a class or an interface, is SE80's Repository Browser tree: a package's subpackages and its objects
+  package, a transport request, a program, an include (its program's tree), a function module (its group's tree), a class or an interface, is SE80's Repository Browser tree: a package's subpackages and its objects
   by category and type (in an ABAP editor, **VERTEX Tools → Object Navigator** in the context menu opens it for that
   object; for a program in local files the tree - includes, events, local classes with their methods, subroutines - is
   read from the program and its include files, each entry opening in its own file), a request's objects, its tasks' included, by type, a program's includes, fields, events, subroutines (opening at their FORM), screens, GUI statuses, tables and local classes (unfolding to their methods and attributes), a class's superclass (Inherited from), types, attributes, methods, events with their visibility and friends (Friends of); an interface's types, attributes, methods and events.

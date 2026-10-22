@@ -112,10 +112,11 @@ test("a program's Parts are its events, subroutines and local methods from the n
     [{ unit_name: "START-OF-SELECTION", unit_type: "EVENT" }, { unit_name: "RUN", unit_type: "FORM" }, { unit_name: "POPUP", unit_type: "METHOD" }]);
 });
 
-test("a function module opens on Object Navigator too; an include, which SAP gives no tree, does not have it", () => {
+test("a function module opens on Object Navigator too; an include has it (its program's tree) and still opens on Diff", () => {
   require("../tools-window");
   const model = require("../resources/object-tools");
-  assert.ok(!model.objects.find(o => o[0] === "INCL")[2].includes("navigator"));
+  assert.ok(model.objects.find(o => o[0] === "INCL")[2].includes("navigator"));
+  assert.equal(model.normalize({ type: "INCL", name: "Z_I" }).action, "diff");
   assert.equal(model.objects.find(o => o[0] === "FUNC")[2][0], "navigator");
   assert.equal(model.normalize({ type: "FUNC", name: "Z_F" }).action, "navigator");
 });

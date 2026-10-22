@@ -1512,15 +1512,16 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     return { document: target.document, target: location(target.document.uri, line,
       Math.max(0, column), anchor.name.length) };
   }
-  function ownDeclaration(document, at) {
-    const word = wordAt(document, at);
+  // FROM: the source the cursor stands in, when DOCUMENT - searched - is another one (an include of it).
+  function ownDeclaration(document, at, from = document) {
+    const word = wordAt(from, at);
     if (!word) return undefined;
     const lines = document.getText().split(/\r?\n/), name = String(word.name).toUpperCase();
     // A call of a method of a class this source declares - lcl=>m( ), or lo->m( ) with lo TYPE REF TO lcl - goes to
     // its METHOD in that class's IMPLEMENTATION here; SAP knows no such global class.
-    const call = externalCallAnchor(document, at);
+    const call = externalCallAnchor(from, at);
     if (call && call.method && name === call.method && ["method", "instance-method"].includes(call.kind)) {
-      const owner = call.kind === "method" ? call.object_name : String(instanceClass(document, at, call.instance) || "").toUpperCase();
+      const owner = call.kind === "method" ? call.object_name : String(instanceClass(from, at, call.instance) || "").toUpperCase();
       const start = owner ? lines.findIndex(text => { const hit = /^\s*CLASS\s+(\S+)\s+IMPLEMENTATION\b/i.exec(text); return hit && hit[1].replace(/\.$/, '').toUpperCase() === owner; }) : -1;
       if (start >= 0) {
         let end = start;
@@ -1540,12 +1541,30 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     // On a class's own DEFINITION line, its name goes to its IMPLEMENTATION; on the IMPLEMENTATION line the search
     // above already leads to the DEFINITION.
     let goal = line;
-    if (line === at.line) {
+    if (line === at.line && document === from) {
       goal = lines.findIndex(text => { const hit = /^\s*CLASS\s+(\S+)\s+IMPLEMENTATION\b/i.exec(text); return hit && hit[1].replace(/\.$/, '').toUpperCase() === name; });
       if (goal < 0) return undefined;
     }
     const column = lines[goal].toUpperCase().indexOf(name);
     return { document, target: location(document.uri, goal, Math.max(0, column), name.length) };
+  }
+  /* What ownDeclaration finds in this source, found in the program's INCLUDEs (abaplint's parse, nested ones too): a
+     program keeps its local classes and forms there, and SAP knows no global class of that name to ask. */
+  async function includedDeclaration(document, at, searched = new Set()) {
+    const entry = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document);
+    if (!entry || !entry.repo || !['PROG', 'INCL'].includes(entry.data.object_type)) return undefined;
+    searched.add(String(entry.data.object_name).toUpperCase());
+    const statements = await require('./abap-statements').statementsOf(document);
+    for (const statement of statements.filter(s => s.parserKind === 'Include')) {
+      const name = String(statement.tokens[1]?.value || '').toUpperCase();
+      if (!name || searched.has(name)) continue;
+      searched.add(name);
+      let include;
+      try { include = await sourceDocument(entry.repo, { object_name: name, object_type: 'INCL' }); } catch { continue; }
+      const found = ownDeclaration(include.document, at, document) || await includedDeclaration(include.document, at, searched);
+      if (found) return found;
+    }
+    return undefined;
   }
   /* The METHOD of a METHODS line, or the other way round, within the local class the cursor stands in: the
      declaration in CLASS x DEFINITION, the implementation in CLASS x IMPLEMENTATION, so a name two classes share
@@ -1715,7 +1734,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     if (structure) { await moveTo(editor, structure); return; }
     // A class, an interface or a form this source declares itself is found in it - no SAP request, so a source
     // too large to send to SAP still navigates to its own declarations.
-    const own = ownDeclaration(editor.document, at);
+    const own = ownDeclaration(editor.document, at) || await includedDeclaration(editor.document, at);
     if (own) { await moveTo(editor, own); return; }
     const method = await methodCounterpart(editor.document, at) || await interfaceImplementation(editor.document, at);
     // Resolve an ABAP call before asking ADT for a declaration.  ADT's

@@ -1,8 +1,8 @@
 "use strict";
 const fs = require("fs"), path = require("path");
 // Object Navigator is VS Code's: the page and the reading of ADT's trees are this host's. First in the picker and what a package, request, class or interface opens on.
-const NAVIGATOR = ["navigator", "Object Navigator", ["CLAS", "INTF", "DEVC", "TR", "PROG", "FUNC"],
-  "Object Navigator (action navigator) is the SE80 tree of a package, transport request, program, function module (its group), class or interface; each entry opens its source.", true];
+const NAVIGATOR = ["navigator", "Object Navigator", ["CLAS", "INTF", "DEVC", "TR", "PROG", "INCL", "FUNC"],
+  "Object Navigator (action navigator) is the SE80 tree of a package, transport request, program, include (its program's tree), function module (its group), class or interface; each entry opens its source.", ["CLAS", "INTF", "DEVC", "TR", "PROG", "FUNC"]];
 require("./resources/object-tools").enable(...NAVIGATOR);
 function html(pages, initial) {
   const read = name => fs.readFileSync(path.join(pages, name), "utf8");

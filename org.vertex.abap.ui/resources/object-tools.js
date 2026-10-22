@@ -65,8 +65,10 @@
     navigationSchema.anyOf[1].properties.action.enum.push(action);
     types.forEach(type => {
       const list = objects.find(o => o[0] === type)[2], view = list.indexOf("view"), diff = list.indexOf("diff");
-      if (first) defaults[type] = action;
-      list.splice(first ? 0 : view >= 0 ? view + 1 : diff >= 0 ? diff : list.length, 0, action);
+      // FIRST: true for every type, or the list of types the action leads and opens on; the others keep their default.
+      const lead = first === true || (Array.isArray(first) && first.includes(type));
+      if (lead) defaults[type] = action;
+      list.splice(lead ? 0 : view >= 0 ? view + 1 : diff >= 0 ? diff : list.length, 0, action);
     });
     hostNotes += " " + note;
   }

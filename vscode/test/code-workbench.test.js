@@ -18,7 +18,8 @@ function host(savedState = {}, authOverride, repositoryRead) {
   const api = { async execute(tool, args) {
     if (tool === "read_sap_object") {
       const klass = args.object_type === "CLAS", include = args.include || "main";
-      const source = args.object_type === "FUNC" ? "FUNCTION z_foo.\nENDFUNCTION."
+      const source = args.object_type === "INCL" && args.object_name === "ZP_C01" ? "CLASS lcl_app IMPLEMENTATION.\n  METHOD main.\n  ENDMETHOD.\nENDCLASS."
+        : args.object_type === "FUNC" ? "FUNCTION z_foo.\nENDFUNCTION."
         : klass && args.object_name === "ZCL_OTHER" ? "CLASS zcl_other DEFINITION.\n  PUBLIC SECTION.\n    METHODS do_it IMPORTING iv_name TYPE string.\nENDCLASS.\nCLASS zcl_other IMPLEMENTATION.\n  METHOD do_it.\n  ENDMETHOD.\nENDCLASS."
         : !klass ? "REPORT ztest." : include === "definitions"
         ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS."
@@ -419,6 +420,16 @@ test("a static call of a local class's method goes to its METHOD in this source"
   h.documents[0].selection = { active: { line: 7, character: 18 } };
   await h.commands.get("vertex.goToClassMethod")();
   assert.deepEqual([h.errors, h.documents[0].selection.start && h.documents[0].selection.start.line], [[], 3]);
+});
+// A program keeps its local class in an include: the call goes there, not to SAP as a global class.
+test("a static call of a local class implemented in an include goes to its METHOD in that include", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZPROG", object_type: "PROG" });
+  h.documents[0].text = ["REPORT zprog.", "INCLUDE zp_c01.", "START-OF-SELECTION.", "  lcl_app=>main( )."].join("\n");
+  h.documents[0].selection = { active: { line: 3, character: 13 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  const shown = h.documents.find(d => /zp_c01/i.test(String(d.uri)));
+  assert.deepEqual([h.errors, !!shown, shown && shown.selection && shown.selection.start.line], [[], true, 1]);
 });
 test("a local class's DEFINITION and IMPLEMENTATION lead to each other by its name", async () => {
   const text = ["CLASS lcl_page DEFINITION.", "ENDCLASS.", "CLASS lcl_page IMPLEMENTATION.", "ENDCLASS."].join("\n");

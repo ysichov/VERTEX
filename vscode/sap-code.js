@@ -501,6 +501,15 @@ function createRepository({ client, systemId, emit = () => {} }) {
   async function objectNavigator(objectName, objectType, node, parts) {
     const navigator = require("./object-navigator");
     if (objectType === "DEVC") return navigator.packageTree(await client.nodeContents("DEVC/K", name(objectName)));
+    // An include has no tree of its own; SE80 shows it under its program, which D010INC names. More than one program
+    // includes it: they are named, none is picked.
+    if (objectType === "INCL") {
+      const include = name(objectName), masters = [...new Set((await query("SELECT master FROM d010inc WHERE include = '"
+        + include.replace(/'/g, "''") + "'", 20)).values.map(row => String(row.MASTER)))];
+      if (!masters.length) throw new Error("No program includes " + include + ".");
+      if (masters.length > 1) throw new Error(include + " is included by " + masters.join(", ") + ": open Object Navigator on one of them.");
+      return objectNavigator(masters[0], "PROG", node, parts);
+    }
     // A program: its includes, forms, events and local classes, from the node structure. An include has no tree
     // there: asked as PROG/I and as PROG/PI, SAP answered nothing for one.
     const sourceParent = { PROG: "PROG/P" }[objectType];

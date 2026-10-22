@@ -18,6 +18,10 @@ The Calls and Logic diagrams read a program's INCLUDEs as part of it, so local c
 
 In the Calls and Logic diagrams and in Metrics, a routine a program keeps in an include opens in that include at its line. An include of declarations only, such as a local class's DEFINITION, no longer shows up in Metrics as a START-OF-SELECTION of its own.
 
+Double-click, F12 and Ctrl+click on a call of a local class kept in an include (`lcl_app=>main( )`) go to its METHOD in that include, and on a local class's or form's name to its declaration there, instead of looking for a global class in SAP.
+
+Object Navigator on an include shows the tree of the program that includes it, as SE80 does; an include used by several programs names them.
+
 ## Unreleased — individual AI tool disclosures
 
 Each AI tool call starts collapsed under its name. Its arguments, matching result and recording/object links open together. Repeated and concurrent calls remain separate and are matched to results by tool-call ID.

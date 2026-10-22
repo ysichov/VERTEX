@@ -32,7 +32,7 @@ function analyze(p) {
   }
   return rows;
 }
-function scheme(p,expandedText='',logicOnly=false) {
+function scheme(p,expandedText='',logicOnly=false,maxDepth=0) {
   const rows=analyze(p);
   const mm=[],edges=[],clicks=[],styles=[],subs=[],conds=[],nodeRanges={},clusterRanges={},conditionCalls={};
   let prev='',prevLine=0,pendingLabel='';
@@ -53,6 +53,20 @@ function scheme(p,expandedText='',logicOnly=false) {
   /* Logic only: the operations it leaves out between two shown steps stand as one block saying how many, opened
      by a click (its first line goes into EXPANDED); the page sends a click on an opened operation to its source. */
   const opened=new Set(String(expandedText||'').split(',').filter(Boolean).map(Number));
+  /* Depth: a block nested deeper than maxDepth levels (1 = a block right in the routine) is drawn as one node - its
+     opening and closing statement -, opened in place by a click like a folded run of operations (its first line goes
+     into EXPANDED). 0 draws every level. */
+  const collapsed=new Set();
+  if(maxDepth>0){
+    const base=root?1:0;
+    for(const r of rows){
+      if(r.kind!=='O'||r.hidden||Object.hasOwn(procedureEnds,r.word)||r.depth-base+1<=maxDepth||opened.has(r.line))continue;
+      const close=r.all+1;
+      for(const x of rows)if(x.line>r.line&&x.line<=close){x.kind='X';x.hidden=true;}
+      r.text=r.text.replace(/\.\s*$/,'')+' … '+String(rows[close-1]?.text||'');
+      r.kind='P';r.flow={...r.flow,logic:true,declaration:false};collapsed.add(r.line);
+    }
+  }
   function folded(run,emit){
     if(!run.length)return;
     const first=run[0].line;
@@ -131,6 +145,7 @@ function scheme(p,expandedText='',logicOnly=false) {
   while(subs.length){mm.push('end');subs.shift();}
   const last=rows.at(-1);if(last&&prev){const tail=ops(prevLine,endRow?last.line:last.line+1,prev,pendingLabel);if(endRow)connect(tail,endId);}
   if(endRow){mm.push(endId+'(["'+endRow.word+'"])');click(endId,'acego_'+endRow.source_line+'_'+endRow.source_line);}
+  collapsed.forEach(line=>{if(mm.some(m=>m.startsWith('p'+line+'('))){styles.push('class p'+line+' foldnode');click('p'+line,'aceexp_'+line);}});
   // Last, so a node's own click (an exit, an opened operation's aceexp) stays the one it has.
   mm.forEach(line=>{const id=line.split('(')[0];if(/^[pj]\d+$/.test(id))toCode(id);});
   return {conditionCalls,clusterRanges,nodeRanges,nodeLines:Object.fromEntries(rows.flatMap(r=>['n','p','o','j'].map(prefix=>[prefix+r.line,r.source_line]))),mermaid:'flowchart LR\n'+[...mm,'classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000','classDef default color:#12369e','classDef callnode fill:#fbeeee,stroke:#800000,color:#800000','classDef dbnode fill:#e8f2f6,stroke:#1f6f8b,color:#0f5468','classDef foldnode stroke-dasharray:4 3',...styles,...edges,...clicks].join('\n'),steps:mm.length,line_from:rows[0]?.source_line||p.line,line_to:last?.source_line||p.line};
