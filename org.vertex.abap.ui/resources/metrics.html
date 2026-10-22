@@ -267,7 +267,10 @@ g.node.code-selected rect,g.node.code-selected polygon,g.node.code-selected path
 .diagram-zoom input::-webkit-slider-runnable-track{height:4px;background:var(--vscode-input-background,var(--bg));border-radius:3px}
 .diagram-zoom input::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:50%;background:var(--vscode-focusBorder,#0a66c2);border:1px solid var(--vscode-editor-background,var(--bg))}
 .diagram-zoom output{min-width:3em;font-size:12px;color:var(--muted)}
-.diagram-info{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:3px 8px;font-size:12px;color:var(--muted)}.diagram-info .status{margin-left:auto}.diagram-info:empty{display:none}#logic-only{white-space:nowrap}.bar .tools{flex-wrap:nowrap}
+.diagram-info{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:3px 8px;font-size:12px;color:var(--muted)}.diagram-info .status{margin-left:auto}.diagram-info:empty{display:none}#logic-only,#reach{white-space:nowrap}
+svg.reach-active g.node:not(.reach-on),svg.reach-active g.cluster:not(.reach-on)>rect,svg.reach-active .edgePath,svg.reach-active .flowchart-link,svg.reach-active .edgeLabel{opacity:.25}
+svg.reach-active g.node.reach-on rect,svg.reach-active g.node.reach-on polygon,svg.reach-active g.node.reach-on path{stroke:var(--vscode-focusBorder)!important;stroke-width:2px!important}
+svg.reach-active g.node.reach-target rect,svg.reach-active g.node.reach-target polygon,svg.reach-active g.node.reach-target path{stroke-width:4px!important}.bar .tools{flex-wrap:nowrap}
 #diagram g.node.code-selected text,#diagram g.node.code-selected tspan{fill:var(--vscode-list-activeSelectionForeground,var(--vscode-editor-foreground,#fff))!important}
 </style>
 </head>
@@ -290,6 +293,7 @@ g.node.code-selected rect,g.node.code-selected polygon,g.node.code-selected path
       <input id="depth" type="number" min="1" max="99" step="1" value="2"></label>
     <span class="seg" id="dir"><button data-dir="TB" class="on" title="Lay the diagram out down the page">&#8595; Top-down</button><button data-dir="LR" title="Lay the diagram out across the page">&#8594; Left-right</button></span>
     <button id="logic-only" hidden class="vertex-toggle on" aria-pressed="true" title="Show branches, loops and procedure calls; hide ordinary operations">Logic only</button>
+    <button id="reach" hidden class="vertex-toggle" aria-pressed="false" title="Click a node to light up the path that reaches it inside its METHOD or FORM">Reachability</button>
     <label class="diagram-zoom" title="Diagram scale"><input id="zoom" type="range" min="10" max="100" step="1" value="100" aria-label="Diagram scale"><output id="zoom-value">100%</output></label>
     <button id="fit" title="Scale the whole diagram into the pane">Fit</button>
     <button id="lens" aria-pressed="false"></button>
@@ -1101,6 +1105,9 @@ var fittedFor = null;    // the pane size the current fit was worked out for
 var fitQueued = false;
 var followCode=true,logicOnly=true,lastLogicMermaid=null,latestCodeCursor=null;
 var schemeNodeLines={},schemeNodeRanges={},schemeClusterRanges={},schemeConditionCalls={};
+/* Reachability: the host gives, for each drawn line of a METHOD or FORM, the lines of the path that reaches it; a click on a
+   node lights them up and quiets the rest. reachLine is the node chosen, kept across redraws. */
+var schemeReach=null,reachOn=false,reachLine=0;
 var lastMermaid = null;  // the text ACE sent, kept so it can be redrawn
 var lastCaption = "";
 var pendingClass = null;
@@ -1143,6 +1150,7 @@ function shown(unit) {
 function setMode(next) {
   mode = next;
   document.getElementById("logic-only").hidden=next!=="scheme";
+  document.getElementById("reach").hidden=next!=="scheme"||!schemeReach;
   document.getElementById("mode").value = next;
   document.body.classList.toggle("flow", flowMode());
   document.body.classList.toggle("calls", next === "calls");
@@ -1602,7 +1610,7 @@ function renderDiagram(data) {
   }
   lastMermaid = data.mermaid;
   lastLogicMermaid=data.logicMermaid||null;
-  schemeNodeLines=data.nodeLines||{};schemeNodeRanges=data.nodeRanges||{};schemeClusterRanges=data.clusterRanges||{};schemeConditionCalls=data.conditionCalls||{};
+  schemeNodeLines=data.nodeLines||{};schemeNodeRanges=data.nodeRanges||{};schemeClusterRanges=data.clusterRanges||{};schemeConditionCalls=data.conditionCalls||{};schemeReach=data.reach||null;reachLine=0;document.getElementById("reach").hidden=mode!=="scheme"||!schemeReach;
   lastCaption = data.mode === "calls"
     ? data.steps + (data.steps === 1 ? " step" : " steps")
     : data.unit_type + ", lines " + data.line_from + " to " + data.line_to;
@@ -1741,6 +1749,7 @@ function draw(preserveViewport) {
     });
     if(mode==='scheme')pane.querySelectorAll('g.cluster').forEach(function(cluster){var range=schemeClusterRanges[cluster.id];if(range){cluster.dataset.sourceLine=range[0];cluster.dataset.sourceEnd=range[1];}});
     installUmlLens(pane, !isClass);
+    showReach();
     status(lastCaption);
     if(mode==="scheme"){if(latestCodeCursor)sdeCodeCursor(latestCodeCursor);else if(INITIAL&&INITIAL.cursorLine)sdeCodeCursor({name:loadedObject,line:INITIAL.cursorLine,endLine:INITIAL.cursorLine});}
     endAnalysis();
@@ -1919,6 +1928,7 @@ function onDiagramClick(e) {
     // A folded operations block has a source range too, but its first click
     // must reach the aceexp handler below so the block expands in place.
     var sourceNode=e.target.closest&&e.target.closest('g.node[data-source-line]:not(.foldnode)');
+    if(sourceNode&&reachOn&&mode==='scheme'){reachLine=Number(sourceNode.dataset.sourceLine);showReach();}
     if(sourceNode){e.preventDefault();e.stopPropagation();sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(sourceNode.dataset.sourceLine)});return;}
   }
   if (mode === "calls") {
@@ -2273,6 +2283,14 @@ document.getElementById("diagram").addEventListener("click", onDiagramClick);
 document.getElementById("diagram").addEventListener("keydown", function(e) {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches('[data-uml-method]')) onDiagramClick(e);
 });
+function showReach(){
+  var pane=document.getElementById('diagram'),svg=pane.querySelector('svg');if(!svg)return;
+  var lines=reachOn&&reachLine&&schemeReach?schemeReach[reachLine]:null;
+  svg.classList.toggle('reach-active',!!lines);
+  pane.querySelectorAll('g.node[data-source-line],g.cluster[data-source-line]').forEach(function(node){node.classList.toggle('reach-on',!!lines&&lines.indexOf(Number(node.dataset.sourceLine))>=0);});
+  pane.querySelectorAll('g.node[data-source-line]').forEach(function(node){node.classList.toggle('reach-target',!!lines&&Number(node.dataset.sourceLine)===reachLine);});
+}
+document.getElementById('reach').addEventListener('click',function(){reachOn=!reachOn;this.classList.toggle('on',reachOn);this.setAttribute('aria-pressed',String(reachOn));if(!reachOn)reachLine=0;showReach();});
 document.getElementById('logic-only').addEventListener('click',function(){logicOnly=!logicOnly;this.classList.toggle('on',logicOnly);this.setAttribute('aria-pressed',String(logicOnly));if(lastMermaid){refit=true;draw();}});
 var sourceScrollTimer,lastScrollLine,codeFollowingUntil=0;
 document.getElementById('diagram').addEventListener('pointerdown',function(){followCode=false;});

@@ -795,6 +795,7 @@ function activate(context) {
     pinned: () => pinnedSystem.getStore() || "", systems });
   require("./local-navigation").register(vscode, context);
   require("./reach-path").register(vscode, context);
+  require("./abap-folding").register(vscode, context);
   frontendAnalysisRequest = sapCode.frontendRequest;
   frontendTableRequest = sapCode.tableRequest;
   frontendTableWrite = sapCode.tableWrite;

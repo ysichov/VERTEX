@@ -2,7 +2,9 @@
 
 ## 2026-10-22 — VS Code 0.9.23: path to a line
 
-**VERTEX: Path to This Line** in the ABAP editor's context menu shows the conditions under which the line at the cursor runs inside its METHOD or FORM: enclosing branches, earlier branches that must be false, CHECKs, and earlier branches that must not be taken because they leave the routine. Conditions appear as written in the code; a line after an unconditional exit is reported as not reachable. Works on local and SAP sources without a system call.
+**VERTEX: Path to This Line** in the ABAP editor's context menu shows the conditions under which the line at the cursor runs inside its METHOD or FORM: enclosing branches, earlier branches that must be false, CHECKs, and earlier branches that must not be taken because they leave the routine. Conditions appear as written in the code; a line after an unconditional exit is reported as not reachable. Works on local and SAP sources without a system call. The panel indents rows as the code is nested and shows the closing statements. In the Logic diagram, the **Reachability** toggle lights up the path to a clicked node and quiets the rest.
+
+ABAP blocks and their branches fold in the editor by the code's structure rather than its indentation, so unformatted code folds too; a multi-line condition stays visible when folded.
 
 ## Unreleased — individual AI tool disclosures
 

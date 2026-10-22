@@ -33,6 +33,8 @@ const required = [
     "extension/frontend-analysis.js",
     "extension/call-graph.js",
     "extension/ace-scheme.js",
+    "extension/reach-path.js",
+    "extension/abap-folding.js",
     "extension/log-report.js",
     "extension/log-snapshot.js",
     "extension/resources/mermaid.min.js",

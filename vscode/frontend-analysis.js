@@ -336,8 +336,11 @@ async function request(api, resource, progress, cancelled = () => false) {
       return { ...base, mode, depth:callDepth, steps: ids.size, places, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
     }
     if (chosen.length !== 1) throw new Error('Pick one method to draw its logic diagram.');
-    return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType,
-      ...require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || ''),
+    const drawn = require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '');
+    // Reachability: the path to each drawn line inside its METHOD or FORM (reach-path.js), for the page to light up on a click.
+    const reach = ['METHOD', 'FORM'].includes(chosen[0].unitType)
+      ? require('./reach-path').reachLines(chosen[0].source.aceStatements, Object.values(drawn.nodeLines)) : null;
+    return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType, ...drawn, reach,
       logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }

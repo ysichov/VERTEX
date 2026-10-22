@@ -15,7 +15,7 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
     debug: { onDidChangeBreakpoints: () => ({ dispose() {} }), registerDebugAdapterTrackerFactory: () => ({ dispose() {} }), onDidTerminateDebugSession: () => ({ dispose() {} }) },
     ThemeColor: class { constructor(id) { this.id = id; } },
     EventEmitter: class { event = () => ({ dispose() {} }); dispose() {} },
-    TestRunProfileKind: { Run: 1 }, languages: { createDiagnosticCollection: () => ({ dispose() {} }) }, tests: { createTestController: () => ({ dispose() {}, createRunProfile() {} }) },
+    TestRunProfileKind: { Run: 1 }, languages: { createDiagnosticCollection: () => ({ dispose() {} }), registerFoldingRangeProvider: () => ({ dispose() {} }) }, tests: { createTestController: () => ({ dispose() {}, createRunProfile() {} }) },
     workspace: { getConfiguration: () => ({ get: key => key === "systems" ? [] : 37777 }),
       onDidCloseTextDocument: () => ({ dispose() {} }), onDidOpenTextDocument: () => ({ dispose() {} }), textDocuments: [],
       registerFileSystemProvider: () => ({ dispose() {} }),
