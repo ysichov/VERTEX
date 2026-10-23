@@ -121,6 +121,10 @@ test('value sources: each condition variable leads to its last write before the 
   const html = page(result, 'n', '', source.split('\n'), false, found, '.vertex-toggle{}');
   assert.match(html, /id="sources"/);
   assert.match(html, /Where the values come from/);
+  assert.deepEqual(found.before[12].map(v => v.source.line).sort(), [10, 11, 9]);
+  assert.deepEqual(found.before[13].map(v => v.name.toLowerCase()), ['lv_n']);
+  assert.match(html, /<li class="feed"><a href="#" class="v v[0-9]" data-line="9">/);
+  assert.ok(!found.variables.some(v => v.name.toLowerCase() === 'abap_true'));
 });
 
 test('the Path panel rebuilds for a mouse click on another line of its source, not for other selection changes', async () => {

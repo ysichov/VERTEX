@@ -576,6 +576,10 @@ function serveTools(context, server) {
   const shown = version && version.packageJSON ? version.packageJSON.version : "0";
 
   context.subscriptions.push(
+    // The gear in the VERTEX panel's title: every VERTEX setting in the Settings editor.
+    vscode.commands.registerCommand("vertex.openSettings", async function () {
+      await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:YuriiSychov.vertex-abap");
+    }),
     vscode.commands.registerCommand("vertex.getStarted", async function () {
       await vscode.commands.executeCommand("workbench.action.openWalkthrough",
         "YuriiSychov.vertex-abap#vertex.start", false);

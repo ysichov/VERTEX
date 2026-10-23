@@ -9,12 +9,15 @@ const ACTIONS = Object.freeze({
   versions: "vertex.versions",
   logs: "vertex.showLogs",
   executionLogs: "vertex.openSapDebugRuns",
-  system: "vertex.switchSystem",
-  settings: "workbench.action.openSettings"
+  system: "vertex.switchSystem"
 });
 
 function register(vscode, context, active, ask, systems, toolContext) {
   let currentView, pendingPrompt, ready = false, nextRequest = 0;
+  // Beside the gear in the panel's title: SAP systems and LLM providers.
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.openSystemSettings", () =>
+    vscode.commands.executeCommand("workbench.action.openSettings", "vertex.systems")));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async text => {
     pendingPrompt = text;
     await vscode.commands.executeCommand("vertex.launcher.focus");
@@ -71,11 +74,6 @@ function register(vscode, context, active, ask, systems, toolContext) {
           catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); await refresh(); }
           return;
         }
-        if (message.action === "configModels") {
-          try { ask.configModels(); }
-          catch (e) { vscode.window.showErrorMessage(e.message); }
-          return;
-        }
         if (message.action === "newConversation") {
           // A new conversation writes to a new log file.
           require("./session-log").reset();
@@ -126,8 +124,7 @@ function register(vscode, context, active, ask, systems, toolContext) {
         if (!Object.hasOwn(ACTIONS, message.action)) { return; }
         try {
           await vscode.commands.executeCommand(ACTIONS[message.action],
-            ...(message.action === "settings" ? ["vertex.systems"] :
-              message.action === "system" ? [message.name] : []));
+            ...(message.action === "system" ? [message.name] : []));
         } catch (error) {
           vscode.window.showErrorMessage("VERTEX: " + error.message);
         }
@@ -195,8 +192,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 .secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
 .link { color: var(--vscode-textLink-foreground); text-decoration: none; }
 .link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
-#llm-settings { margin-left: auto; }
-#logs { margin: 0; padding: 3px 6px; font-size: 17px; line-height: 1; background: transparent; color: var(--vscode-foreground); }
+#logs { margin: 0 0 0 auto; padding: 3px 6px; font-size: 17px; line-height: 1; background: transparent; color: var(--vscode-foreground); }
 #logs:hover { background: var(--vscode-list-hoverBackground); }
 #system-snc { display: inline-flex; align-items: center; gap: 4px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
 #system-snc input { accent-color: var(--vscode-focusBorder); }
@@ -208,10 +204,9 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 #tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 6px; font-size: 1.7em; font-weight: 600; }
 #tools img { width: 40px; height: 40px; }
 </style></head><body>
-<div class="line"><a href="#" class="link" id="system-settings" title="Configure SAP systems">SAP system</a>
+<div class="line"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <label id="system-snc" title="Use SNC single sign-on instead of a password"><input id="system-snc-checkbox" type="checkbox"> SNC</label>
-<a href="#" class="link" id="llm-settings" title="Providers and the models they offer">LLM Providers</a>
 <button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs">📜 AI</button>
 <button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs">📜 SAP</button></div>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
@@ -222,14 +217,6 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 </div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
-document.getElementById('system-settings').addEventListener('click', event => {
-  event.preventDefault();
-  api.postMessage({ action: 'settings' });
-});
-document.getElementById('llm-settings').addEventListener('click', event => {
-  event.preventDefault();
-  api.postMessage({ action: 'configModels' });
-});
 document.getElementById('provider-select').addEventListener('change', event => {
   api.postMessage({ action: 'setProvider', provider: event.target.value });
 });

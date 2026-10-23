@@ -4,6 +4,10 @@
 
 While the Path to This Line panel is open, a click on another line of its source builds that line's path in the same panel, with the Value sources toggle kept as it was set. A line outside a METHOD or FORM leaves the last path shown and says why.
 
+With Value sources on, the statement that gives a condition's variable its value - a CALL FUNCTION's IMPORTING, an assignment, a SELECT - stands in the path right above that condition, its line number in the variable's colour. Constants are no longer coloured.
+
+The VERTEX panel's title holds three icons: SAP systems, LLM Providers and a gear for all VERTEX settings. The SAP system and LLM Providers links are gone from the panel's top line.
+
 ## 2026-10-23 — VS Code 0.9.27: large sources over RFC, Path to line numbered by method
 
 On an RFC (SNC) system, SAP's `SADT_REST_RFC_ENDPOINT` dumps with `XML_FORMAT_ERROR` when hover or navigation sends it the source of a large object. The new setting `vertex.rfc.maxAnalysedLines` sets the longest source sent (`0`, the default, sets no limit), and an object whose source made SAP dump once is not sent again until the window is reloaded. Double-click and F12 in such a source find the name with abaplint inside it instead; hover says the source was not sent.

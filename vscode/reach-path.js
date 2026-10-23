@@ -169,10 +169,13 @@ function valueSources(text, fileName, statements, result) {
     if (item.children) collect(item.children);
   });
   collect(result.path);
-  const variables = new Map(), colours = new Map(), marks = {};
+  // A constant - CONSTANTS, abap_true - has no place where it gets its value, and is not marked. An IMPORTING
+  // parameter is read only too, but it is a value: it stays.
+  const readOnly = ref => { const meta = ref.resolved?.getMeta?.() || []; return meta.includes('read_only') && !meta.includes('importing'); };
+  const variables = new Map(), colours = new Map(), marks = {}, before = {};
   const mark = (ref, index) => (marks[row(ref)] = marks[row(ref)] || []).push({ column: ref.position.getStart().getCol() - 1, length: ref.position.getName().length, index });
   for (const condition of conditions) {
-    const reads = refs.filter(ref => ref.referenceType === 'Read From' && id(ref) && row(ref) >= condition.line && row(ref) <= condition.endLine);
+    const reads = refs.filter(ref => ref.referenceType === 'Read From' && id(ref) && !readOnly(ref) && row(ref) >= condition.line && row(ref) <= condition.endLine);
     for (const read of reads) {
       const key = id(read);
       const writes = refs.filter(ref => ref.referenceType === 'Write To' && id(ref) === key && row(ref) > from && row(ref) < condition.line);
@@ -187,9 +190,12 @@ function valueSources(text, fileName, statements, result) {
         if (write) mark(write, index);
       }
       mark(read, index);
+      // The source stands in the path right before the condition that reads it, once per condition.
+      const variable = variables.get(variableKey), own = before[condition.line] = before[condition.line] || [];
+      if (variable.source && !own.includes(variable)) own.push(variable);
     }
   }
-  return { variables: [...variables.values()], marks };
+  return { variables: [...variables.values()], marks, before };
 }
 
 const escape = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -221,8 +227,13 @@ function page(result, nonce, cspSource, lines, relative = false, sources = null,
   // A row shows its statement's lines; a closing statement on a line already shown - IF x. RETURN. ENDIF. on one line -
   // adds nothing and is left out.
   let shownTo = 0;
+  // Under the Value sources toggle: the statements that give a condition's variables their values, right above it,
+  // each with the variable's colour on its line number.
+  const feeds = item => (sources && sources.before && sources.before[item.line] || []).map(v => '<li class="feed"><a href="#" class="v v'
+    + (v.index % 6) + '" data-line="' + v.source.line + '">' + shown(v.source.line) + '</a>' + code(v.source)
+    + ' <span class="verdict feed">value of ' + escape(v.name) + '</span></li>').join('');
   const row = (item, depth) => item.verdict === 'group' ? item.children.map(child => row(child, depth + (child.indent || 0))).join('')
-    : item.verdict === 'end' && item.line <= shownTo ? '' : (shownTo = Math.max(shownTo, item.endLine || item.line), '<li class="' + item.verdict + '"><a href="#" data-line="' + item.line + '">'
+    : item.verdict === 'end' && item.line <= shownTo ? '' : (shownTo = Math.max(shownTo, item.endLine || item.line), feeds(item) + '<li class="' + item.verdict + '"><a href="#" data-line="' + item.line + '">'
     + shown(item.line) + '</a>' + code(item)
     + (words[item.verdict] ? ' <span class="verdict ' + item.verdict + '">' + words[item.verdict] + '</span>' : '')
     + (item.reason ? ' <span class="reason">— leaves at <a href="#" data-line="' + item.reason.line + '">' + shown(item.reason.line) + '</a></span>' : '')
@@ -242,6 +253,7 @@ function page(result, nonce, cspSource, lines, relative = false, sources = null,
     + '.verdict.false,.verdict.avoid,.verdict.skip{color:var(--vscode-testing-iconFailed)}'
     + '.reason{color:var(--vscode-descriptionForeground)}.unreachable{color:var(--vscode-errorForeground)}'
     // Value sources: one theme colour per variable, shown only while the toggle is on.
+    + 'li.feed{display:none}body.sources li.feed{display:flex}li.feed pre{opacity:.85;border-left:2px solid var(--vscode-focusBorder);padding-left:4px}'
     + '.origins{display:none;margin-top:12px}body.sources .origins{display:block}.origins .name{min-width:12ch;font-family:var(--vscode-editor-font-family)}'
     + 'body.sources .v{font-weight:bold;text-decoration:underline}'
     + ['red', 'blue', 'green', 'orange', 'purple', 'yellow'].map((c, i) => 'body.sources .v' + i + '{color:var(--vscode-charts-' + c + ')}').join('')

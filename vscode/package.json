@@ -287,6 +287,21 @@
         "command": "vertex.tools.diff",
         "title": "Diff",
         "category": "VERTEX Tools"
+      },
+      {
+        "command": "vertex.openSettings",
+        "title": "VERTEX: Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "vertex.openSystemSettings",
+        "title": "VERTEX: SAP Systems",
+        "icon": "$(server-environment)"
+      },
+      {
+        "command": "vertex.openModelSettings",
+        "title": "VERTEX: LLM Providers",
+        "icon": "$(sparkle)"
       }
     ],
     "configuration": {
@@ -751,6 +766,35 @@
         {
           "command": "vertex.runSelect",
           "when": "(resourceScheme == vertex-sap || resourceScheme == file) && editorLangId == abap"
+        },
+        {
+          "command": "vertex.openSettings",
+          "when": "false"
+        },
+        {
+          "command": "vertex.openSystemSettings",
+          "when": "false"
+        },
+        {
+          "command": "vertex.openModelSettings",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "vertex.openSystemSettings",
+          "when": "view == vertex.launcher",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vertex.openModelSettings",
+          "when": "view == vertex.launcher",
+          "group": "navigation@2"
+        },
+        {
+          "command": "vertex.openSettings",
+          "when": "view == vertex.launcher",
+          "group": "navigation@3"
         }
       ]
     },
