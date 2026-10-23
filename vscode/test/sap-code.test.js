@@ -398,3 +398,39 @@ test("write failure and lost lock report the object and cause without retry", as
   await assert.rejects(f.repo.apply(draft.change_id, { source: draft.source }), /^Error: The lock on ZTEST was lost: connection ended/);
   assert.equal(writes, 1);
 });
+
+test("over RFC a source above vertex.rfc.maxAnalysedLines is not sent, and one that dumped is not sent again", async () => {
+  const sent = [];
+  let dump = true;
+  const client = { async findDefinition(...args) {
+    sent.push(args);
+    if (dump) { dump = false; throw new Error('RFC call to SADT_REST_RFC_ENDPOINT failed: {"codeString":"RFC_ABAP_RUNTIME_FAILURE"}'); }
+    return { url: "/u", line: 1, column: 0 };
+  } };
+  let limit = 2;
+  const repo = createRepository({ client, systemId: "S", rfc: { maxLines: () => limit } });
+  const big = "/sap/bc/adt/oo/classes/zbig/source/main", small = "/sap/bc/adt/oo/classes/zsmall/source/main";
+  await assert.rejects(repo.definition(big, "a\nb\nc", 1, 0, 1), error => error.code === "VERTEX_SOURCE_NOT_SENT");
+  assert.equal(sent.length, 0);
+  limit = 0;
+  await assert.rejects(repo.definition(big, "a\nb\nc", 1, 0, 1), /RFC_ABAP_RUNTIME_FAILURE/);
+  await assert.rejects(repo.elementInfo(big + "#start=1,0", "a", 1, 0), error => error.code === "VERTEX_SOURCE_NOT_SENT");
+  assert.deepEqual(await repo.definition(small, "a", 1, 0, 1), { url: "/u", line: 1, column: 0 });
+  assert.equal(sent.length, 2);
+});
+
+test("over HTTP the RFC line limit does not apply", async () => {
+  const client = { async findDefinition() { return { url: "/u", line: 1, column: 0 }; } };
+  const repo = createRepository({ client, systemId: "S" });
+  assert.equal((await repo.definition("/x", "a\nb\nc", 1, 0, 1)).line, 1);
+});
+
+test("abaplint finds a definition inside one SAP source that is not sent", async () => {
+  const { resolveSource } = require("../local-navigation");
+  const text = "CLASS zcl_x DEFINITION PUBLIC.\n  PUBLIC SECTION.\n    METHODS run.\n    METHODS go.\nENDCLASS.\nCLASS zcl_x IMPLEMENTATION.\n  METHOD run.\n    go( ).\n  ENDMETHOD.\n  METHOD go.\n  ENDMETHOD.\nENDCLASS.";
+  const vscode = { Range: function (a, b, c, d) { this.start = { line: a, character: b }; this.end = { line: c, character: d }; },
+    Location: function (uri, range) { this.uri = uri; this.range = range; } };
+  const document = { uri: "u", getText: () => text };
+  const found = await resolveSource(vscode, document, { line: 7, character: 5 }, "CLAS", "ZCL_X");
+  assert.equal(found.target.range.start.line, 9);
+});

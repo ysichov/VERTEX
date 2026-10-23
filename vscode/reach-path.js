@@ -145,24 +145,90 @@ function reachLines(statements, lines) {
   return map;
 }
 
+/* Where the variables of the path's conditions get their values: abaplint's Read From references on each condition's
+   lines, and for each variable the last Write To of the same declaration before that condition, inside the routine.
+   Unknown types are taken as void, so a missing DDIC type does not stop the analysis. Returns the variables, each with
+   its source statement (null when the routine does not write it - a parameter, an attribute), and the marks to colour
+   on each line: { line: [{ column, length, index }] }. */
+function valueSources(text, fileName, statements, result) {
+  const abaplint = require('@abaplint/core');
+  const config = abaplint.Config.getDefault().get();
+  config.syntax.errorNamespace = '^(?!)';
+  const registry = new abaplint.Registry(new abaplint.Config(JSON.stringify(config)))
+    .addFile(new abaplint.MemoryFile(fileName, text)).parse();
+  const object = registry.getFirstObject();
+  if (!object) return { variables: [], marks: {} };
+  const refs = [];
+  const walk = node => { node.getData().references.forEach(ref => refs.push(ref)); node.getChildren().forEach(walk); };
+  walk(new abaplint.SyntaxLogic(registry, object).run().spaghetti.getTop());
+  const id = ref => ref.resolved ? ref.resolved.getFilename() + ':' + ref.resolved.getStart().getRow() + ':' + ref.resolved.getStart().getCol() : null;
+  const row = ref => ref.position.getStart().getRow();
+  const from = result.procedure.line, conditions = [];
+  const collect = items => items.forEach(item => {
+    if (item.line && !['end', 'context'].includes(item.verdict)) conditions.push(item);
+    if (item.children) collect(item.children);
+  });
+  collect(result.path);
+  const variables = new Map(), colours = new Map(), marks = {};
+  const mark = (ref, index) => (marks[row(ref)] = marks[row(ref)] || []).push({ column: ref.position.getStart().getCol() - 1, length: ref.position.getName().length, index });
+  for (const condition of conditions) {
+    const reads = refs.filter(ref => ref.referenceType === 'Read From' && id(ref) && row(ref) >= condition.line && row(ref) <= condition.endLine);
+    for (const read of reads) {
+      const key = id(read);
+      const writes = refs.filter(ref => ref.referenceType === 'Write To' && id(ref) === key && row(ref) > from && row(ref) < condition.line);
+      const write = writes.sort((a, b) => row(a) - row(b)).at(-1) || null;
+      // One colour per variable; a variable written in two places before two conditions lists both sources.
+      if (!colours.has(key)) colours.set(key, colours.size);
+      const index = colours.get(key), variableKey = key + '@' + (write ? row(write) : '-');
+      if (!variables.has(variableKey)) {
+        const statement = write && statements.filter(s => s.line <= row(write)).at(-1);
+        variables.set(variableKey, { name: read.position.getName(), index,
+          source: statement ? { line: statement.line, endLine: statement.tokens.at(-1)?.line || statement.line, text: statement.text } : null });
+        if (write) mark(write, index);
+      }
+      mark(read, index);
+    }
+  }
+  return { variables: [...variables.values()], marks };
+}
+
 const escape = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const words = { true: 'true', false: 'false', case: '', context: '', end: '', target: '', entered: 'entered', raises: 'raises an exception', catches: 'catches it',
   avoid: 'must not be taken', skip: 'must not be entered', when: 'if taken:' };
 
 // lines: the source's lines; each row shows its statement's lines as they stand there - indentation, breaks and all.
-function page(result, nonce, cspSource, lines) {
-  const code = item => '<pre>' + escape(lines.slice(item.line - 1, item.endLine).join('\n')) + '</pre>';
+// relative: numbers are shown from the routine's opening statement (line 1), as SAP GUI numbers a method; the links
+// still lead to the source line.
+// sources: valueSources' answer, shown under the Value sources toggle; controls: the shared vertex-controls.css.
+function page(result, nonce, cspSource, lines, relative = false, sources = null, controls = '') {
+  const shown = line => relative ? line - result.procedure.line + 1 : line;
+  const marked = (text, line) => {
+    const marks = (sources && sources.marks[line] || []).slice().sort((a, b) => a.column - b.column);
+    let out = '', at = 0;
+    for (const m of marks) {
+      if (m.column < at) continue;
+      out += escape(text.slice(at, m.column)) + '<span class="v v' + (m.index % 6) + '">' + escape(text.slice(m.column, m.column + m.length)) + '</span>';
+      at = m.column + m.length;
+    }
+    return out + escape(text.slice(at));
+  };
+  const code = item => '<pre>' + lines.slice(item.line - 1, item.endLine).map((text, i) => marked(text, item.line + i)).join('\n') + '</pre>';
+  const origin = sources && sources.variables.length ? '<div class="origins"><p>Where the values come from:</p><ul>'
+    + sources.variables.map(v => '<li><span class="name v v' + (v.index % 6) + '">' + escape(v.name) + '</span>'
+      + (v.source ? '<a href="#" data-line="' + v.source.line + '">' + shown(v.source.line) + '</a>' + code(v.source)
+        : '<span class="reason">not written in this routine - a parameter, an attribute or a global</span>') + '</li>').join('')
+    + '</ul></div>' : '';
   // A row shows its statement's lines; a closing statement on a line already shown - IF x. RETURN. ENDIF. on one line -
   // adds nothing and is left out.
   let shownTo = 0;
   const row = (item, depth) => item.verdict === 'group' ? item.children.map(child => row(child, depth + (child.indent || 0))).join('')
     : item.verdict === 'end' && item.line <= shownTo ? '' : (shownTo = Math.max(shownTo, item.endLine || item.line), '<li class="' + item.verdict + '"><a href="#" data-line="' + item.line + '">'
-    + item.line + '</a>' + code(item)
+    + shown(item.line) + '</a>' + code(item)
     + (words[item.verdict] ? ' <span class="verdict ' + item.verdict + '">' + words[item.verdict] + '</span>' : '')
-    + (item.reason ? ' <span class="reason">— leaves at <a href="#" data-line="' + item.reason.line + '">' + item.reason.line + '</a></span>' : '')
+    + (item.reason ? ' <span class="reason">— leaves at <a href="#" data-line="' + item.reason.line + '">' + shown(item.reason.line) + '</a></span>' : '')
     + '</li>' + (item.children || []).map(child => row(child, depth + 1 + (child.indent || 0))).join(''));
   const body = result.unreachable
-    ? '<p class="unreachable">Not reachable: <a href="#" data-line="' + result.unreachable.line + '">' + result.unreachable.line + '</a> ' + escape(result.unreachable.reason) + '.</p>' : '';
+    ? '<p class="unreachable">Not reachable: <a href="#" data-line="' + result.unreachable.line + '">' + shown(result.unreachable.line) + '</a> ' + escape(result.unreachable.reason) + '.</p>' : '';
   return '<!DOCTYPE html><html><head><meta charset="utf-8">'
     + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src ' + cspSource + ' \'nonce-' + nonce + '\'; script-src \'nonce-' + nonce + '\';">'
     + '<style nonce="' + nonce + '">body{background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size)}'
@@ -174,11 +240,20 @@ function page(result, nonce, cspSource, lines) {
     + '.verdict{display:inline-block;margin-left:6px;padding:0 6px;border:1px solid currentColor;border-radius:8px;font-size:.85em;line-height:1.4;color:var(--vscode-descriptionForeground)}'
     + '.verdict.true,.verdict.entered,.verdict.catches{color:var(--vscode-testing-iconPassed)}'
     + '.verdict.false,.verdict.avoid,.verdict.skip{color:var(--vscode-testing-iconFailed)}'
-    + '.reason{color:var(--vscode-descriptionForeground)}.unreachable{color:var(--vscode-errorForeground)}</style></head><body>'
-    + '<p>Path to line <a href="#" data-line="' + result.target.line + '">' + result.target.line + '</a> in <code>'
+    + '.reason{color:var(--vscode-descriptionForeground)}.unreachable{color:var(--vscode-errorForeground)}'
+    // Value sources: one theme colour per variable, shown only while the toggle is on.
+    + '.origins{display:none;margin-top:12px}body.sources .origins{display:block}.origins .name{min-width:12ch;font-family:var(--vscode-editor-font-family)}'
+    + 'body.sources .v{font-weight:bold;text-decoration:underline}'
+    + ['red', 'blue', 'green', 'orange', 'purple', 'yellow'].map((c, i) => 'body.sources .v' + i + '{color:var(--vscode-charts-' + c + ')}').join('')
+    + controls + '</style></head><body>'
+    + (sources ? '<p><button type="button" class="vertex-toggle" id="sources" title="Colour the variables of the conditions and show where each gets its value">Value sources</button></p>' : '')
+    + '<p>Path to line <a href="#" data-line="' + result.target.line + '">' + shown(result.target.line) + '</a> in <code>'
     + escape(result.procedure.text) + '</code></p>' + body
     + (result.path.length ? '<ul>' + result.path.map(item => row(item, item.depth)).join('') + '</ul>' : '<p>No condition: the line runs whenever the routine does.</p>')
-    + '<script nonce="' + nonce + '">const vscode=acquireVsCodeApi();document.addEventListener("click",e=>{const a=e.target.closest("a[data-line]");'
+    + origin
+    + '<script nonce="' + nonce + '">const vscode=acquireVsCodeApi();'
+    + 'const toggle=document.getElementById("sources");if(toggle)toggle.addEventListener("click",()=>{const on=document.body.classList.toggle("sources");toggle.classList.toggle("on",on);});'
+    + 'document.addEventListener("click",e=>{const a=e.target.closest("a[data-line]");'
     + 'if(a){e.preventDefault();vscode.postMessage({line:Number(a.dataset.line)});}});</script></body></html>';
 }
 
@@ -197,8 +272,18 @@ function register(vscode, context) {
     try { result = reachPath(parsed.source.aceStatements, document.offsetAt(editor.selection.active), editor.selection.active.line + 1); }
     catch (error) { vscode.window.showErrorMessage('VERTEX: ' + error.message); return; }
     if (parsed.warnings.length) vscode.window.showWarningMessage('VERTEX: the parser did not understand some statements; the path may miss conditions there: ' + parsed.warnings.join('; '));
-    const panel = vscode.window.createWebviewPanel('vertex.reachPath', 'Path to line ' + result.target.line, vscode.ViewColumn.Beside, { enableScripts: true });
-    panel.webview.html = page(result, require('crypto').randomBytes(18).toString('hex'), panel.webview.cspSource || '', document.getText().split(/\r?\n/));
+    let sources = null;
+    try {
+      const statements = parsed.source.aceStatements;
+      const owner = objectType === 'CLAS' && statements.find(s => s.parserKind === 'ClassDefinition');
+      const fileName = owner ? String(owner.tokens[1].value).toLowerCase().replace(/\//g, '#') + '.clas.abap' : 'zvertex_path.prog.abap';
+      sources = valueSources(document.getText(), fileName, statements, result);
+    } catch (error) { vscode.window.showWarningMessage('VERTEX: abaplint could not find where the condition values come from: ' + error.message); }
+    const controls = require('fs').readFileSync(require('path').join(__dirname, 'resources', 'vertex-controls.css'), 'utf8');
+    const relative = vscode.workspace.getConfiguration('vertex').get('pathToLine.methodRelativeLines', false);
+    const title = relative ? result.target.line - result.procedure.line + 1 : result.target.line;
+    const panel = vscode.window.createWebviewPanel('vertex.reachPath', 'Path to line ' + title, vscode.ViewColumn.Beside, { enableScripts: true });
+    panel.webview.html = page(result, require('crypto').randomBytes(18).toString('hex'), panel.webview.cspSource || '', document.getText().split(/\r?\n/), relative, sources, controls);
     panel.webview.onDidReceiveMessage(async message => {
       if (!message || !message.line) return;
       const shown = await vscode.window.showTextDocument(document, { viewColumn: editor.viewColumn });
@@ -209,4 +294,4 @@ function register(vscode, context) {
   }));
 }
 
-module.exports = { reachPath, reachLines, page, register };
+module.exports = { reachPath, reachLines, valueSources, page, register };

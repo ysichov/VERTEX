@@ -459,6 +459,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       const pending = (async () => {
         const client = await auth.makeClient(system, "repository");
         const api = createRepository({ client, systemId: key,
+          rfc: system.authType === "snc" ? { maxLines: () => vscode.workspace.getConfiguration("vertex").get("rfc.maxAnalysedLines", 0) } : null,
           emit: event => events.emit({ ...event, system: system.name }) });
         // Returned readers use the same error boundary as repository methods.
         const wrap = method => (...args) => {
@@ -1741,6 +1742,18 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     // definition of LO_STRATEGY->CALCULATE_BASE is the interface METHODS
     // line, whereas the useful destination of a call is its implementation.
     const external = method ? undefined : await externalCallTarget(editor.document, at);
+    try { await sapNavigation(editor, at, quiet, method, external); }
+    catch (error) {
+      // A source VERTEX does not send to SAP over RFC (too long, or it dumped before): abaplint finds the name in it.
+      if (!error || error.code !== "VERTEX_SOURCE_NOT_SENT") { throw error; }
+      const current = sourceOf(editor.document);
+      const found = current && await require("./local-navigation").resolveSource(vscode, editor.document, at,
+        current.entry.data.object_type, current.entry.data.object_name);
+      if (found) { await moveTo(editor, found); return; }
+      if (!quiet) { vscode.window.showInformationMessage("VERTEX: " + error.message + " abaplint finds no definition in this source."); }
+    }
+  }
+  async function sapNavigation(editor, at, quiet, method, external) {
     if (external?.interfaceDispatch) {
       // A call through an interface reference: SAP is asked where it is implemented.
       const implemented = await adtImplementation(editor.document, at);

@@ -74,3 +74,51 @@ test('reachLines gives each drawn line its path lines for the Logic view', () =>
   assert.deepEqual(map[19], [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 22, 23, 24]);
   assert.deepEqual(map[25], [2, 3, 4, 5, 6, 7, 8, 9, 10, 25]);
 });
+
+test('Path to line can number from the routine opening line, links still lead to the source line', () => {
+  const { page } = require('../reach-path');
+  const result = { procedure: { line: 10, text: 'METHOD m.' }, target: { line: 14 }, unreachable: null,
+    path: [{ verdict: 'true', line: 12, endLine: 12 }] };
+  const lines = Array.from({ length: 20 }, (_, i) => 'line' + (i + 1));
+  const html = page(result, 'n', '', lines, true);
+  assert.match(html, /data-line="14">5<\/a> in/);
+  assert.match(html, /data-line="12">3<\/a>/);
+  assert.match(page(result, 'n', '', lines), /data-line="14">14<\/a> in/);
+});
+
+test('value sources: each condition variable leads to its last write before the condition, one colour per variable', async () => {
+  const { reachPath, valueSources, page } = require('../reach-path');
+  const source = [
+    'CLASS zcl_v DEFINITION PUBLIC.',
+    '  PUBLIC SECTION.',
+    '    METHODS m IMPORTING is_par TYPE zs_unknown.',
+    'ENDCLASS.',
+    'CLASS zcl_v IMPLEMENTATION.',
+    '  METHOD m.',
+    '    DATA lv_valid TYPE abap_bool.',
+    '    lv_valid = abap_true.',
+    '    CALL METHOD zcl_other=>check IMPORTING ev_enable = lv_valid.',
+    '    SELECT SINGLE * FROM ztab INTO @DATA(ls_row).',
+    '    DATA(lv_n) = 1.',
+    '    IF lv_valid IS NOT INITIAL AND ls_row-a = lv_n.',
+    '      IF is_par-infty = lv_n.',
+    "        WRITE 'target'.",
+    '      ENDIF.',
+    '    ENDIF.',
+    '  ENDMETHOD.',
+    'ENDCLASS.'].join('\n');
+  const parsed = parseSource({ id: 'v', name: 'v', objectName: 'ZCL_V', objectType: 'CLAS', text: source });
+  const statements = (await parsed).aceStatements || (await parsed).source.aceStatements;
+  const result = reachPath(statements, source.indexOf("WRITE"), 14);
+  const found = valueSources(source, 'zcl_v.clas.abap', statements, result);
+  const byName = name => found.variables.filter(v => v.name.toLowerCase() === name);
+  assert.equal(byName('lv_valid')[0].source.line, 9);
+  assert.equal(byName('ls_row')[0].source.line, 10);
+  assert.equal(byName('lv_n')[0].source.line, 11);
+  assert.equal(byName('is_par')[0].source, null);
+  assert.equal(new Set(byName('lv_n').map(v => v.index)).size, 1);
+  assert.notEqual(byName('lv_valid')[0].index, byName('lv_n')[0].index);
+  const html = page(result, 'n', '', source.split('\n'), false, found, '.vertex-toggle{}');
+  assert.match(html, /id="sources"/);
+  assert.match(html, /Where the values come from/);
+});

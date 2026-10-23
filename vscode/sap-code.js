@@ -71,7 +71,8 @@ function dataPreviewLines(sql, width = 200) {
   }
   return lines.join("\r\n");
 }
-function createRepository({ client, systemId, emit = () => {} }) {
+// RFC: present on an RFC (SNC) system only - { maxLines() } from vertex.rfc.maxAnalysedLines, 0 for no limit.
+function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   const drafts = new Map();
   let applying = false;
   let executing = false;
@@ -375,12 +376,34 @@ function createRepository({ client, systemId, emit = () => {} }) {
     try { return await attempt; }
     finally { clearTimeout(timer); analysing = false; }
   }
+  // Over RFC, SADT_REST_RFC_ENDPOINT dumps (XML_FORMAT_ERROR) on a source too large for it, and where that starts is
+  // not known. A source over vertex.rfc.maxAnalysedLines is not sent, and an object whose source once dumped is not
+  // sent again until the window is reloaded. The refusal carries code VERTEX_SOURCE_NOT_SENT, so navigation can go on
+  // without SAP.
+  const dumped = new Set();
+  const notSent = message => Object.assign(new Error(message), { code: "VERTEX_SOURCE_NOT_SENT" });
+  async function sent(sourceUrl, source, call) {
+    if (!rfc) { return call(); }
+    const key = String(sourceUrl).split(/[?#]/)[0];
+    if (dumped.has(key)) {
+      throw notSent("SAP dumped on this source over RFC before; it is not sent again until the window is reloaded.");
+    }
+    const limit = Number(rfc.maxLines()) || 0, lines = String(source).split("\n").length;
+    if (limit > 0 && lines > limit) {
+      throw notSent("This source has " + lines + " lines, over vertex.rfc.maxAnalysedLines (" + limit + "); it is not sent to SAP over RFC.");
+    }
+    try { return await call(); }
+    catch (error) {
+      if (/RFC_ABAP_RUNTIME_FAILURE/.test(String(error && error.message))) { dumped.add(key); }
+      throw error;
+    }
+  }
   const elementInfo = (sourceUrl, source, line, column) =>
-    analyse("Element info", source, () => client.codeCompletionElement(sourceUrl, source, line, column));
+    sent(sourceUrl, source, () => analyse("Element info", source, () => client.codeCompletionElement(sourceUrl, source, line, column)));
   // The same element info, read whole: abap-adt-api keeps only the nested elements, and drops the element's own
   // properties - where SAP says the type of a name declared inline. Every property is kept as SAP wrote it.
   // A hover asks without waiting; Go to Type Definition, asked for, passes { wait: true }.
-  const elementDetails = (sourceUrl, source, line, column, how = {}) =>
+  const elementDetails = (sourceUrl, source, line, column, how = {}) => sent(sourceUrl, source, () =>
     analyse("Element info", source, async () => {
       const response = await client.httpClient.request("/sap/bc/adt/abapsource/codecompletion/elementinfo", { method: "POST",
         qs: { uri: sourceUrl + "#start=" + line + "," + column }, headers: { "Content-Type": "text/plain", Accept: "application/*" }, body: source });
@@ -390,12 +413,12 @@ function createRepository({ client, systemId, emit = () => {} }) {
         properties: xml.xmlArray(node, "abapsource:properties", "abapsource:entry").map(entry => ({ key: entry["@_abapsource:key"], value: entry["#text"] })),
         parts: xml.xmlArray(node, "abapsource:elementInfo").map(read) });
       return read(root);
-    }, how);
-  const definition = (sourceUrl, source, line, start, end) =>
-    analyse("Definition", source, () => client.findDefinition(sourceUrl, source, line, start, end, false), { wait: true });
+    }, how));
+  const definition = (sourceUrl, source, line, start, end) => sent(sourceUrl, source, () =>
+    analyse("Definition", source, () => client.findDefinition(sourceUrl, source, line, start, end, false), { wait: true }));
   // ADT's own "navigate to implementation": for an interface method, the METHOD of a class that implements it.
-  const implementation = (sourceUrl, source, line, start, end) =>
-    analyse("Implementation", source, () => client.findDefinition(sourceUrl, source, line, start, end, true), { wait: true });
+  const implementation = (sourceUrl, source, line, start, end) => sent(sourceUrl, source, () =>
+    analyse("Implementation", source, () => client.findDefinition(sourceUrl, source, line, start, end, true), { wait: true }));
   // The active source behind a URL that navigation pointed at - a type pool,
   // an interface, another class - whatever kind of object it is.
   // The address goes without its fragment and its query (a version SAP adds): the version read is the active one.

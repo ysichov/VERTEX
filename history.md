@@ -1,5 +1,13 @@
 # Release history
 
+## 2026-10-23 — VS Code 0.9.27: large sources over RFC, Path to line numbered by method
+
+On an RFC (SNC) system, SAP's `SADT_REST_RFC_ENDPOINT` dumps with `XML_FORMAT_ERROR` when hover or navigation sends it the source of a large object. The new setting `vertex.rfc.maxAnalysedLines` sets the longest source sent (`0`, the default, sets no limit), and an object whose source made SAP dump once is not sent again until the window is reloaded. Double-click and F12 in such a source find the name with abaplint inside it instead; hover says the source was not sent.
+
+`vertex.pathToLine.methodRelativeLines` numbers the lines in Path to This Line from the METHOD or FORM statement, as SAP GUI numbers a method.
+
+Path to This Line has a **Value sources** toggle: each variable read in the conditions gets a colour of its own, and a list shows where it gets its value - the last statement before the condition that writes it (assignment, IMPORTING/CHANGING, SELECT INTO, inline DATA), or that the routine does not write it.
+
 ## 2026-10-23 — Eclipse 0.8.25.20261023012033: rebuilt from the current sources
 
 The Eclipse plugin, now 0.8.25 and on the update site, is rebuilt with the shared pages and analysis of VS Code 0.9.26: Logic view with Code and Diagram, Depth and step-by-step opening, folding back on a double-click, token colours and Reachability; a program's includes read by Calls, Logic and Metrics; the call scanner's fixes; reviews that list an unreadable object instead of failing. What VS Code does on its own host - Object Navigator, Path to This Line, editor folding and jumps, the transpiler, assistant logs - is not part of it.

@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.26",
+  "version": "0.9.27",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -399,6 +399,17 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Which of `vertex.systems` to read from. Empty means the first one."
+        },
+        "vertex.rfc.maxAnalysedLines": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "RFC (SNC) systems only: the longest source, in lines, sent to SAP for hover and navigation. A longer source is not sent; double-click and F12 then find the name with abaplint inside that source. An object whose source made SAP dump is not sent again until the window is reloaded. `0` means no limit."
+        },
+        "vertex.pathToLine.methodRelativeLines": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Path to line numbers lines from the method's `METHOD` statement (line 1), as SAP GUI numbers a method, instead of from the start of the source."
         },
         "vertex.ai.provider": {
           "type": "string",
