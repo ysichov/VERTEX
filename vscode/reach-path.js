@@ -252,25 +252,25 @@ function page(result, nonce, cspSource, lines, relative = false, sources = null,
     + (result.path.length ? '<ul>' + result.path.map(item => row(item, item.depth)).join('') + '</ul>' : '<p>No condition: the line runs whenever the routine does.</p>')
     + origin
     + '<script nonce="' + nonce + '">const vscode=acquireVsCodeApi();'
-    + 'const toggle=document.getElementById("sources");if(toggle)toggle.addEventListener("click",()=>{const on=document.body.classList.toggle("sources");toggle.classList.toggle("on",on);});'
+    // The toggle stays as it was set when a click in the source rebuilds the page; a line the panel cannot show says why.
+    + 'const toggle=document.getElementById("sources"),set=on=>{document.body.classList.toggle("sources",on);toggle.classList.toggle("on",on);};'
+    + 'if(toggle){set(!!(vscode.getState()||{}).sources);toggle.addEventListener("click",()=>{const on=!document.body.classList.contains("sources");set(on);vscode.setState({sources:on});});}'
+    + 'window.addEventListener("message",e=>{if(e.data&&e.data.error){let p=document.getElementById("refused");if(!p){p=document.createElement("p");p.id="refused";p.className="unreachable";document.body.prepend(p);}p.textContent=e.data.error;}});'
     + 'document.addEventListener("click",e=>{const a=e.target.closest("a[data-line]");'
     + 'if(a){e.preventDefault();vscode.postMessage({line:Number(a.dataset.line)});}});</script></body></html>';
 }
 
 function register(vscode, context) {
-  context.subscriptions.push(vscode.commands.registerCommand('vertex.reachPath', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) { vscode.window.showErrorMessage('VERTEX: open an ABAP source first.'); return; }
-    const document = editor.document, uri = document.uri.toString();
+  // The panel follows the editor it was opened from: a click on another line there builds that line's path in it.
+  const build = async (document, position, panel) => {
+    const uri = document.uri.toString();
     const objectType = /\.clas\.|\/CLAS\//i.test(uri) ? 'CLAS' : 'PROG';
     const parser = require('./value-origin-linter').createParser();
     let parsed;
     try { parsed = await parser.parse({ id: uri, name: document.fileName, objectName: '', objectType, text: document.getText() }); }
-    catch (error) { vscode.window.showErrorMessage('VERTEX: the source could not be parsed: ' + error.message); return; }
+    catch (error) { throw new Error('the source could not be parsed: ' + error.message); }
     finally { await parser.close(); }
-    let result;
-    try { result = reachPath(parsed.source.aceStatements, document.offsetAt(editor.selection.active), editor.selection.active.line + 1); }
-    catch (error) { vscode.window.showErrorMessage('VERTEX: ' + error.message); return; }
+    const result = reachPath(parsed.source.aceStatements, document.offsetAt(position), position.line + 1);
     if (parsed.warnings.length) vscode.window.showWarningMessage('VERTEX: the parser did not understand some statements; the path may miss conditions there: ' + parsed.warnings.join('; '));
     let sources = null;
     try {
@@ -282,14 +282,37 @@ function register(vscode, context) {
     const controls = require('fs').readFileSync(require('path').join(__dirname, 'resources', 'vertex-controls.css'), 'utf8');
     const relative = vscode.workspace.getConfiguration('vertex').get('pathToLine.methodRelativeLines', false);
     const title = relative ? result.target.line - result.procedure.line + 1 : result.target.line;
-    const panel = vscode.window.createWebviewPanel('vertex.reachPath', 'Path to line ' + title, vscode.ViewColumn.Beside, { enableScripts: true });
-    panel.webview.html = page(result, require('crypto').randomBytes(18).toString('hex'), panel.webview.cspSource || '', document.getText().split(/\r?\n/), relative, sources, controls);
+    const nonce = require('crypto').randomBytes(18).toString('hex');
+    return { title: 'Path to line ' + title, html: page(result, nonce, panel.webview.cspSource || '', document.getText().split(/\r?\n/), relative, sources, controls) };
+  };
+  context.subscriptions.push(vscode.commands.registerCommand('vertex.reachPath', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) { vscode.window.showErrorMessage('VERTEX: open an ABAP source first.'); return; }
+    const document = editor.document;
+    const panel = vscode.window.createWebviewPanel('vertex.reachPath', 'Path to line', vscode.ViewColumn.Beside, { enableScripts: true });
+    let shown;
+    try { shown = await build(document, editor.selection.active, panel); }
+    catch (error) { panel.dispose(); vscode.window.showErrorMessage('VERTEX: ' + error.message); return; }
+    panel.title = shown.title; panel.webview.html = shown.html;
+    // A click in the source - a mouse selection - rebuilds the path; a line the panel itself opened does not.
+    let turn = 0;
+    const follow = vscode.window.onDidChangeTextEditorSelection(async event => {
+      if (event.textEditor.document !== document || event.kind !== vscode.TextEditorSelectionChangeKind.Mouse) return;
+      const mine = ++turn;
+      try {
+        const next = await build(document, event.selections[0].active, panel);
+        if (mine === turn) { panel.title = next.title; panel.webview.html = next.html; }
+      } catch (error) {
+        if (mine === turn) panel.webview.postMessage({ error: error.message });
+      }
+    });
+    panel.onDidDispose(() => follow.dispose());
     panel.webview.onDidReceiveMessage(async message => {
       if (!message || !message.line) return;
-      const shown = await vscode.window.showTextDocument(document, { viewColumn: editor.viewColumn });
+      const opened = await vscode.window.showTextDocument(document, { viewColumn: editor.viewColumn });
       const position = new vscode.Position(message.line - 1, 0);
-      shown.selection = new vscode.Selection(position, position);
-      shown.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+      opened.selection = new vscode.Selection(position, position);
+      opened.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
     });
   }));
 }

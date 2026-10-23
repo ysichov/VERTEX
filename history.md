@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-23 — VS Code 0.9.28: Path to This Line follows clicks
+
+While the Path to This Line panel is open, a click on another line of its source builds that line's path in the same panel, with the Value sources toggle kept as it was set. A line outside a METHOD or FORM leaves the last path shown and says why.
+
 ## 2026-10-23 — VS Code 0.9.27: large sources over RFC, Path to line numbered by method
 
 On an RFC (SNC) system, SAP's `SADT_REST_RFC_ENDPOINT` dumps with `XML_FORMAT_ERROR` when hover or navigation sends it the source of a large object. The new setting `vertex.rfc.maxAnalysedLines` sets the longest source sent (`0`, the default, sets no limit), and an object whose source made SAP dump once is not sent again until the window is reloaded. Double-click and F12 in such a source find the name with abaplint inside it instead; hover says the source was not sent.

@@ -122,3 +122,26 @@ test('value sources: each condition variable leads to its last write before the 
   assert.match(html, /id="sources"/);
   assert.match(html, /Where the values come from/);
 });
+
+test('the Path panel rebuilds for a mouse click on another line of its source, not for other selection changes', async () => {
+  const { register } = require('../reach-path');
+  const lines = text.split('\n'), listeners = [], commands = {};
+  const document = { uri: { toString: () => 'file:///z.prog.abap' }, fileName: 'z.prog.abap', getText: () => text,
+    offsetAt: p => lines.slice(0, p.line).join('\n').length + 1 + p.character };
+  const panel = { title: '', webview: { cspSource: '', html: '', onDidReceiveMessage() {}, postMessage() {} }, onDidDispose() {}, dispose() {} };
+  const vscode = {
+    window: { activeTextEditor: { document, selection: { active: { line: 18, character: 4 } } },
+      createWebviewPanel: () => panel, showErrorMessage() {}, showWarningMessage() {},
+      onDidChangeTextEditorSelection: fn => { listeners.push(fn); return { dispose() {} }; } },
+    workspace: { getConfiguration: () => ({ get: (k, d) => d }) },
+    commands: { registerCommand: (id, fn) => { commands[id] = fn; return {}; } },
+    TextEditorSelectionChangeKind: { Mouse: 2, Keyboard: 1 }, ViewColumn: { Beside: 2 }
+  };
+  register(vscode, { subscriptions: [] });
+  await commands['vertex.reachPath']();
+  assert.equal(panel.title, 'Path to line 19');
+  await listeners[0]({ textEditor: { document }, kind: 1, selections: [{ active: { line: 2, character: 2 } }] });
+  assert.equal(panel.title, 'Path to line 19');
+  await listeners[0]({ textEditor: { document }, kind: 2, selections: [{ active: { line: 3, character: 2 } }] });
+  assert.equal(panel.title, 'Path to line 4');
+});

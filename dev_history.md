@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-10-23 — VS Code 0.9.28: the Path panel follows the cursor
+
+The user, working through a long method with the panel beside it, asked for the path on the right to be rebuilt for each click on the left. register's parse-path-sources work moved into `build`; the panel listens to onDidChangeTextEditorSelection for its own document and rebuilds on kind Mouse only - a line opened from the panel (a selection set by code) or a keyboard move does not rebuild, so following a link does not replace the path being read. A turn counter drops a result overtaken by a later click. A refusal (a line outside any METHOD/FORM) is posted to the page and shown above the old path instead of an error popup per click. The toggle keeps its state through webview getState/setState, since each rebuild replaces the html.
+
 ## 2026-10-23 — VS Code 0.9.27: RFC dump on large sources, method-relative Path numbering
 
 The user double-clicked a static method call in a large class on an SNC system and got `RFC_ABAP_RUNTIME_FAILURE` / `XML_FORMAT_ERROR` from `SADT_REST_RFC_ENDPOINT`. Without a wire log the failing request could not be named, so the dump was read from screenshots of ST22: `CX_XSLT_FORMAT_ERROR` in SAPLSADT_REST, raised in `REMOTE_FUNCTION_CALL`, kernel `Xml2AbapRun`, `NODE_TYPE illegal` - the RFC parameters themselves were not accepted, before any ADT handler ran. The body travels as the XSTRING `MESSAGE_BODY` and the URI and headers of `navigation/target` are plain ASCII, so a stray character was unlikely; hover in the same class failed the same way, hover in a small object worked. It is the size of the source sent (hover and navigation send the whole editor text, as Eclipse does), with the threshold unknown. Where in sap-rfc-lite, the SDK or the kernel the large XSTRING breaks was not found.
