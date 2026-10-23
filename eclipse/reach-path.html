@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- Path to This Line in Eclipse. The path and its page are VS Code's (reach-path.js build), run in this window's
+     analysis worker on the editor's text; the page is drawn in the frame below. The plugin ships the copy
+     eclipse/prepare.js puts in org.vertex.abap.ui/assistant/; edit this one. -->
+<style id="theme">
+/* The VS Code theme names the page is written in, given values for Eclipse: light, and dark when the system is. */
+:root {
+  --vscode-font-family: "Segoe UI", system-ui, sans-serif;
+  --vscode-font-size: 13px;
+  --vscode-editor-font-family: Consolas, "Courier New", monospace;
+  --vscode-editor-font-size: 13px;
+  --vscode-editor-background: #ffffff;
+  --vscode-editor-foreground: #1f1f1f;
+  --vscode-foreground: #3b3b3b;
+  --vscode-descriptionForeground: #717171;
+  --vscode-editorWidget-background: #f8f8f8;
+  --vscode-editor-lineHighlightBackground: #f0f0f0;
+  --vscode-focusBorder: #005fb8;
+  --vscode-panel-border: #e5e5e5;
+  --vscode-input-background: #ffffff;
+  --vscode-input-border: #cecece;
+  --vscode-textLink-foreground: #005fb8;
+  --vscode-errorForeground: #e51400;
+  --vscode-editorWarning-foreground: #bf8803;
+  --vscode-testing-iconPassed: #388a34;
+  --vscode-testing-iconFailed: #e51400;
+  --vscode-charts-red: #e51400;
+  --vscode-charts-blue: #1a85ff;
+  --vscode-charts-green: #388a34;
+  --vscode-charts-orange: #d18616;
+  --vscode-charts-purple: #652d90;
+  --vscode-charts-yellow: #bf8803;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --vscode-editor-background: #1f1f1f;
+    --vscode-editor-foreground: #cccccc;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editor-lineHighlightBackground: #2a2a2a;
+    --vscode-focusBorder: #0078d4;
+    --vscode-panel-border: #3c3c3c;
+    --vscode-input-background: #313131;
+    --vscode-input-border: #3c3c3c;
+    --vscode-textLink-foreground: #4daafc;
+    --vscode-errorForeground: #f85149;
+    --vscode-editorWarning-foreground: #cca700;
+    --vscode-testing-iconPassed: #73c991;
+    --vscode-testing-iconFailed: #f14c4c;
+    --vscode-charts-red: #f14c4c;
+    --vscode-charts-blue: #3794ff;
+    --vscode-charts-green: #89d185;
+    --vscode-charts-orange: #d18616;
+    --vscode-charts-purple: #b180d7;
+    --vscode-charts-yellow: #cca700;
+    color-scheme: dark;
+  }
+}
+</style>
+<style>
+html, body { margin: 0; height: 100%; }
+body { display: flex; flex-direction: column; background: var(--vscode-editor-background); color: var(--vscode-foreground);
+  font: 13px var(--vscode-font-family); }
+#status { padding: 8px 12px; color: var(--vscode-descriptionForeground); white-space: pre-wrap; }
+#status.error { color: var(--vscode-foreground); border-left: 3px solid var(--vscode-editorWarning-foreground); }
+#view { flex: 1; width: 100%; border: 0; background: var(--vscode-editor-background); }
+</style>
+</head>
+<body>
+<div id="status">Path to line</div>
+<iframe id="view" title="Path to line" hidden></iframe>
+<script>/*ECLIPSE_FRONTEND*/</script>
+<script>
+"use strict";
+// The editor's text and cursor when the command ran (ReachPathHandler); a later click there comes in through vertexReachAt.
+var TARGET = /*INIT*/null/*INIT*/;
+var statusBox = document.getElementById("status"), frame = document.getElementById("view");
+// The Value sources toggle, kept while clicks in the source rebuild the page - VS Code's webview state.
+var state = null, shown = false, turn = 0;
+
+function say(text, error) {
+  statusBox.hidden = !text;
+  statusBox.textContent = text || "";
+  statusBox.className = error ? "error" : "";
+}
+
+// One request to Eclipse at a time: it answers through sdeReady, and sdeTake hands over the one answer it holds.
+var waiting = [], active = null;
+function call(name) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function (resolve, reject) {
+    waiting.push({ name: name, args: args, resolve: resolve, reject: reject });
+    pump();
+  });
+}
+function pump() {
+  if (active || !waiting.length) { return; }
+  active = waiting.shift();
+  window[active.name].apply(window, active.args);
+}
+window.sdeReady = function () {
+  var raw = sdeTake(), item = active;
+  active = null;
+  if (item) {
+    var text = raw === null || raw === undefined ? null : String(raw);
+    if (text === null) { item.reject(new Error("Eclipse gave no answer to " + item.name + ".")); }
+    else if (text.indexOf("ERROR:") === 0) { item.reject(new Error(text.slice(6))); }
+    else { item.resolve(text); }
+  }
+  pump();
+};
+
+var controls = null;
+async function build(at) {
+  if (!window.vertexEclipseRequest) { throw new Error("The ABAP analysis did not load into this window."); }
+  if (controls === null) { controls = await call("sdeReachAsset", "controls"); }
+  var bytes = new Uint8Array(18), nonce = "";
+  crypto.getRandomValues(bytes);
+  bytes.forEach(function (b) { nonce += (b < 16 ? "0" : "") + b.toString(16); });
+  var answer = await window.vertexEclipseRequest("/sap/bc/adt/vertex/reach", null, JSON.stringify({
+    text: at.text, offset: at.offset, line: at.line, objectType: TARGET.objectType, id: TARGET.name, name: TARGET.name,
+    relative: TARGET.relative === true, nonce: nonce, cspSource: "", controls: controls }));
+  // The page talks to VS Code through acquireVsCodeApi; here the same calls reach this window.
+  var html = answer.html.replace("const vscode=acquireVsCodeApi();",
+    "const vscode={postMessage:function(m){parent.vertexReachMessage(m);},getState:function(){return parent.vertexReachState();},"
+    + "setState:function(s){parent.vertexReachState(s);}};")
+    .replace("</head>", "<style nonce=\"" + nonce + "\">" + document.getElementById("theme").textContent + "</style></head>");
+  return { title: answer.title, html: html, notes: (answer.warnings && answer.warnings.length
+    ? "The parser did not understand some statements; the path may miss conditions there: " + answer.warnings.join("; ") : "")
+    + (answer.sourcesError ? (answer.warnings && answer.warnings.length ? "\n" : "") + "abaplint could not find where the condition values come from: " + answer.sourcesError : "") };
+}
+
+function draw(page) {
+  sdeTitle(page.title);
+  say(page.notes);
+  // A frame of its own for each page: a document written into the old one keeps that one's Content-Security-Policy,
+  // and the new page's nonce no longer matches it - its script and styles are blocked.
+  var fresh = frame.cloneNode(false);
+  frame.parentNode.replaceChild(fresh, frame);
+  frame = fresh;
+  frame.hidden = false;
+  var view = frame.contentDocument;
+  view.open();
+  view.write(page.html);
+  view.close();
+  shown = true;
+}
+
+window.vertexReachState = function (value) {
+  if (arguments.length) { state = value; }
+  return state;
+};
+
+// A link in the page: its line opens in the editor the command ran in, as VS Code shows its line.
+window.vertexReachMessage = function (message) {
+  if (message && message.line) { sdeReachReveal(String(message.line)); }
+};
+
+// A click in the source builds that line's path here; a line that has none leaves the last path standing and says why.
+window.vertexReachAt = function (json) {
+  var at = JSON.parse(json), mine = ++turn;
+  build(at).then(function (page) { if (mine === turn) { draw(page); } }, function (error) {
+    if (mine !== turn) { return; }
+    if (!shown) { say("VERTEX: " + error.message, true); return; }
+    frame.contentWindow.postMessage({ error: error.message }, "*");
+  });
+};
+
+if (!TARGET) { say("This window lost the editor it was opened from. Close it and run the command again.", true); }
+else {
+  build(TARGET).then(draw, function (error) { say("VERTEX: " + error.message, true); });
+}
+</script>
+</body>
+</html>

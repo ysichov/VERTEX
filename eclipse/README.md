@@ -31,6 +31,34 @@ In an ADT source editor's context menu, as in VS Code:
 
 Both read the active source over ADT and analyse it in the window; nothing of VERTEX's ABAP is
 needed.
+
+All VERTEX commands of a context menu stand in one **VERTEX** submenu, beside GitHub, Team and Run
+As: VERTEX Tools, Path to This Line, Forward and Backward Usage Analysis, Visual Flow Analysis, Open
+Visual Debug, Activate and Session Logs. The commands below are named as they appear there.
+
+## Path to This Line
+
+**VERTEX: Path to This Line** in an ADT source editor's context menu shows the conditions under which
+the line at the cursor runs inside its METHOD or FORM: enclosing branches, earlier branches that must
+be false, CHECKs, and earlier branches that must not be taken because they leave the routine. It reads
+the editor's text as it stands, saved or not, and asks nothing of SAP. While the window is open, a
+click on another line of that editor builds that line's path in it; a line outside a METHOD or FORM
+leaves the last path shown and says why. A line number in the window shows the line in the editor.
+
+**Value sources** colours each variable read in the conditions and puts the statement that gives it
+its value right above the condition, with a list of where each value comes from. **Window →
+Preferences → VERTEX Path to This Line** numbers the lines from the METHOD or FORM statement, as
+SAP GUI numbers a method.
+
+## Session Logs
+
+**VERTEX: Session Logs** (Quick Access, or **Window → Show View → VERTEX → Session Logs**) shows the
+assistant's conversations from the log folder set in **Window → Preferences → VERTEX Assistant**:
+each session with its prompts, answers, models and token usage, and the objects a prompt named, which
+open in ADT - on the system the log names when the workspace has a project of that name, otherwise
+on the one you pick. Recorded diagram and metrics context opens in the window. **Clear selected
+conversations** deletes their log files after asking. Recorded transpiler runs and SAP debug sessions
+open in VS Code only.
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
 Opening VERTEX Tools while an ADT class or program editor is active selects that object automatically. VERTEX Tools and the VERTEX functions open in a window of their own beside the workbench, so a click in the editor never hides them; a window already open is brought to the front.
 
@@ -47,7 +75,9 @@ code.
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - and the status
 line says which part is being read. **Save** keeps it; a saved review takes Approve, Decline,
 comments and taking a verdict back, made the way AVE makes them, so AVE and every VERTEX window read
-the same review. Where reviews are kept is set in **Window → Preferences → VERTEX Code Review**: the
+the same review. A saved review is checked against the request when it is opened, by each part's
+versions; when the request changed since, the page names what moved and offers **Rebuild from ADT**,
+which replaces the saved review and drops its verdicts. Where reviews are kept is set in **Window → Preferences → VERTEX Code Review**: the
 `ZAVE_REVIEW` table (needs VERTEX's ABAP on the system, `ZCL_VX_ADT_RES_STORE`), files - one
 `<project>/<request>.json` each, in the folder chosen there or in `.vertex/reviews` of the workspace -
 or both. A system without VERTEX's ABAP keeps reviews in files whatever is chosen, and the review page
@@ -107,7 +137,7 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.8.25.qualifier` (the VS Code extension is 0.9.26); the checked-in update site carries build `0.8.25.20261023012033`.
+then regenerate. The feature and bundle sources are at `0.8.29.qualifier` (the VS Code extension is 0.9.29); the checked-in update site carries build `0.8.29.20261023191934`.
 
 For a local installable archive without replacing the published `docs/` site:
 

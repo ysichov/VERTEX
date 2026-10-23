@@ -235,6 +235,8 @@
 
   /* Where a review is kept, under its heading. */
   p.muted { color: var(--muted); margin: 2px 0 8px; }
+  div.stale { border-left: 3px solid var(--vscode-editorWarning-foreground, currentColor); padding: 2px 8px; margin: 4px 0 8px; }
+  div.stale p { margin: 2px 0; }
   .diffbar { padding: 5px 10px; background: var(--surface-2);
              border-bottom: 1px solid var(--line); display: flex;
              align-items: center; gap: 12px; position: sticky; top: 0; z-index: 2; }
@@ -1802,6 +1804,16 @@ function renderReview(data) {
       };
       root.appendChild(save);
     }
+    // Nothing keeps a live review, so reading it again builds it from the request as it is now.
+    var rebuild = document.createElement("button");
+    rebuild.textContent = "Rebuild from ADT";
+    rebuild.onclick = function () {
+      rebuild.disabled = true;
+      review_part = null;
+      status("building the review of " + objectName() + " again ...");
+      sdeReview(objectName(), "", "", "", "1");
+    };
+    root.appendChild(rebuild);
     root.appendChild(section("Objects", objectTable(data.objects || [])));
     if (data.missing && data.missing.length) { root.appendChild(missingSection(data.missing)); }
     var changed = (data.objects || []).reduce(function (n, o) { return n + o.hunks; }, 0);
@@ -1827,6 +1839,8 @@ function renderReview(data) {
   root.appendChild(heading("Saved " + asStamp(data.saved_at) + " by " + data.saved_by));
   var kept = storageLine(data.storage);
   if (kept) { root.appendChild(kept); }
+  var stale = staleBlock(data.stale);
+  if (stale) { root.appendChild(stale); }
   root.appendChild(section("Objects", objectTable(data.objects || [])));
   root.appendChild(section("Reviewers", reviewerTable(data.reviewers || [])));
   if (data.history && data.history.length > 0) {
@@ -1835,6 +1849,40 @@ function renderReview(data) {
 
   var open = (data.objects || []).reduce(function (n, o) { return n + o.open; }, 0);
   status(open === 0 ? "nothing open" : open + (open === 1 ? " block open" : " blocks open"));
+}
+
+/* Whether the saved review is still the request's change, as the host checked it
+   by the versions: what moved, what could not be checked, and Rebuild from ADT,
+   which replaces the saved review - verdicts and comments go with it. Nothing
+   when the host did not check (Eclipse, a review against another system). */
+function staleBlock(stale) {
+  if (!stale) { return null; }
+  var box = document.createElement("div");
+  box.className = "stale";
+  var line = function (text) {
+    var p = document.createElement("p");
+    p.textContent = text;
+    box.appendChild(p);
+  };
+  if (stale.error) {
+    line("Could not check whether the request changed since this review was saved: " + stale.error);
+  }
+  (stale.changed || []).forEach(function (c) { line("Changed since this review was saved: " + c.name + " - " + c.reason + "."); });
+  (stale.unchecked || []).forEach(function (c) { line("Not checked: " + c.name + " - " + c.reason + "."); });
+  if (!box.childNodes.length) { return null; }
+  if ((stale.changed || []).length || stale.error) {
+    var rebuild = document.createElement("button");
+    rebuild.textContent = "Rebuild from ADT";
+    rebuild.title = "Replaces the saved review with one built from the request as it is now; its verdicts and comments are dropped.";
+    rebuild.onclick = function () {
+      rebuild.disabled = true;
+      status("building the review of " + objectName() + " again ...");
+      sdeAct(objectName(), "", "", "", JSON.stringify({ action: "R", saved_at: review_saved_at }));
+    };
+    box.appendChild(rebuild);
+    line("Rebuilding replaces the saved review; its verdicts and comments are dropped.");
+  }
+  return box;
 }
 
 function heading(text) {

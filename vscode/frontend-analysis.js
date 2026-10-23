@@ -440,8 +440,13 @@ async function backward(api, resource, progress = () => {}) {
 }
 
 // A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
-// bundle); null for any other write.
+// bundle); null for any other write. /sap/bc/adt/vertex/reach is no SAP resource: the path to a line of the editor's
+// text, which the body carries with the cursor and the page's options (reach-path.js build).
 async function write(api, resource, body) {
+  if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/reach') {
+    const command = JSON.parse(String(body));
+    return require('./reach-path').build(String(command.text), Number(command.offset), Number(command.line), command);
+  }
   if (!/^\/sap\/bc\/adt\/vertex\/review\//.test(new URL(resource, 'https://sap.invalid').pathname)) { return null; }
   return require('./review-front').write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined);
 }

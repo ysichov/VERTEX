@@ -1,8 +1,22 @@
 # Release history
 
+## 2026-10-23 — Eclipse 0.8.29.20261023191934: Path to This Line, Session Logs, stale reviews, VERTEX submenu
+
+**VERTEX: Path to This Line** is in the ADT editor's context menu, as in VS Code: the conditions under which the line at the cursor runs inside its METHOD or FORM, built from the editor's text. A click on another line of that editor builds that line's path in the same window; **Value sources** colours the variables of the conditions and puts the statements that give them their values in the path. **Window → Preferences → VERTEX Path to This Line** numbers the lines from the METHOD or FORM statement.
+
+**VERTEX: Session Logs** shows the assistant's conversation logs as VS Code does: sessions, prompts, answers, models and token usage, the objects a prompt named (opened in ADT), recorded diagram and metrics context, and clearing selected conversations. Recorded transpiler runs and SAP debug sessions open in VS Code only.
+
+A saved review is checked against the request by each part's versions when it is opened, and **Rebuild from ADT** builds it again, as in VS Code 0.9.29.
+
+Every VERTEX command of a context menu is in one **VERTEX** submenu beside GitHub and Team, instead of separate items filling the bottom of ADT's editor menu.
+
 ## 2026-10-23 — VS Code 0.9.29: SAP Systems buttons
 
 The SAP Systems table's buttons are rounded as elsewhere in VERTEX and glow in the theme's focus colour under the pointer. A row whose password is kept offers **Save new password**.
+
+A review built from ADT and not yet saved has **Rebuild from ADT** beside Save: it builds the review again from the request as it is now, without reopening the window.
+
+A saved review is checked against the request when it is opened, by each part's versions. A part changed since, newly changed by the request or no longer changed by it is named above the table, with **Rebuild from ADT**: it replaces the saved review with one built now, and its verdicts and comments are dropped. A part that cannot be checked is named as not checked.
 
 ## 2026-10-23 — VS Code 0.9.28: Path to This Line follows clicks
 

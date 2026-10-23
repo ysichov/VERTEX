@@ -78,3 +78,17 @@ test("a review built from ADT is saved to a file, then approved there", async ()
     JSON.stringify({ hunk_key: key, action: "U", saved_at: part.saved_at }), io), /saved this review while the page was open/);
   await assert.rejects(front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "S" }), io), /already saved/);
 });
+
+test("a saved review rebuilt from ADT holds the request as it is now, without the old verdicts", async () => {
+  const { api, io, files } = system();
+  await front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "S" }), io);
+  const part = await front.request(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS", undefined, io);
+  const approved = await front.write(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS",
+    JSON.stringify({ hunk_key: part.blocks[0].hunk_key, action: "A", saved_at: part.saved_at }), io);
+  await assert.rejects(front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "R", saved_at: part.saved_at }), io),
+    /saved this review while the page was open/);
+  const summary = await front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "R", saved_at: approved.saved_at }), io);
+  assert.strictEqual(summary.objects[0].approved, 0);
+  assert.deepStrictEqual(summary.stale, { changed: [], unchecked: [] });
+  assert.strictEqual(JSON.parse(files.get("K1")).HISTORY.length, 3, "earlier saves stay on record");
+});

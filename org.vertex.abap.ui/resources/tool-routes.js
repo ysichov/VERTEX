@@ -148,7 +148,10 @@ const SERVICES = {
       if (args[2]) {
         p += lead + "part=" + encodeURIComponent(args[2]);
         p += "&ptype=" + encodeURIComponent(args[3] || "");
+        lead = "&";
       }
+      // A fifth argument builds a review that is not saved again, rather than the one built a moment ago.
+      if (args[4]) { p += lead + "fresh=1"; }
       return p;
     },
     // request, remote, part, ptype, body - a write goes to the review's own

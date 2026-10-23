@@ -76,7 +76,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.8.25.20261023012033**; the VS Code extension is **0.9.26**.
+**0.8.29.20261023191934**; the VS Code extension is **0.9.29**.
 
 ³ In Eclipse, Visual Debug drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,
@@ -315,7 +315,8 @@ Everything, with its settings and commands: [vscode/README.md](vscode/README.md)
 ### Eclipse ADT
 
 - **VERTEX Tools** — the same pages as in VS Code, opened from **Window → Show View → VERTEX** or
-  the context menu of an object, on that object's own ADT project.
+  the **VERTEX** submenu of an object's context menu (beside GitHub and Team), on that object's own ADT project.
+  The editor's VERTEX commands, Path to This Line and Session Logs are in the same submenu.
 - **VERTEX Assistant** — the chat over the ABAP project's system, and the Assistant panels in
   SelecTor and Versions, run by Codex or Claude Code.
 - **VERTEX: Activate** — ADT's activation, optionally after the block review.
@@ -358,9 +359,12 @@ Status: **early**. All three answer, and each is a fraction of what it was cut f
 
 Building a review is here too, not only reading one. In VS Code a request with no saved review is
 built from ADT when it is opened - every part it changed, the pair of versions chosen by AVE's rule,
-diffed and cut into blocks by AVE's walk - with the status line saying which part is being read;
-**Save** keeps it, in `ZAVE_REVIEW` or in files as `vertex.review.storage` says, and approving,
-declining and commenting then change it the way AVE does. AVE's SAP GUI writes the same
+diffed and cut into blocks by AVE's walk - with the status line saying which part is being read; **Rebuild from ADT** builds it again from
+the request as it is now; **Save** keeps it, in `ZAVE_REVIEW` or in files as `vertex.review.storage` says, and approving,
+declining and commenting then change it the way AVE does. A saved review is checked against the
+request by each part's versions when it is opened; when the request changed since, the page names
+what moved and offers **Rebuild from ADT**, which replaces the saved review and drops its verdicts.
+The Eclipse plugin has the same check and Rebuild, and also **Path to This Line** and **Session Logs**. AVE's SAP GUI writes the same
 `ZAVE_REVIEW`, so a review saved either way is read by both. The Eclipse plugin builds and saves a
 review the same way; where it keeps reviews is set in Window → Preferences → VERTEX Code Review.
 

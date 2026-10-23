@@ -272,30 +272,43 @@ function page(result, nonce, cspSource, lines, relative = false, sources = null,
     + 'if(a){e.preventDefault();vscode.postMessage({line:Number(a.dataset.line)});}});</script></body></html>';
 }
 
+/* The path to a line of TEXT and its page, with no editor around it - VS Code's panel and Eclipse's window both build
+   it here. TEXT is the source as the editor holds it (saved or not); OFFSET and LINE are the cursor. OPTIONS: id and name
+   for the parser, objectType (CLAS or PROG), relative numbering, the nonce and cspSource of the page and the shared
+   controls stylesheet. The parser's warnings and a value-sources failure are answered, for the host to show. */
+async function build(text, offset, line, options) {
+  const objectType = options.objectType === 'CLAS' ? 'CLAS' : 'PROG';
+  const parser = require('./value-origin-linter').createParser();
+  let parsed;
+  try { parsed = await parser.parse({ id: options.id, name: options.name, objectName: '', objectType, text }); }
+  catch (error) { throw new Error('the source could not be parsed: ' + error.message); }
+  finally { await parser.close(); }
+  const result = reachPath(parsed.source.aceStatements, offset, line);
+  let sources = null, sourcesError = '';
+  try {
+    const statements = parsed.source.aceStatements;
+    const owner = objectType === 'CLAS' && statements.find(s => s.parserKind === 'ClassDefinition');
+    const fileName = owner ? String(owner.tokens[1].value).toLowerCase().replace(/\//g, '#') + '.clas.abap' : 'zvertex_path.prog.abap';
+    sources = valueSources(text, fileName, statements, result);
+  } catch (error) { sourcesError = error.message; }
+  const relative = options.relative === true;
+  const title = relative ? result.target.line - result.procedure.line + 1 : result.target.line;
+  return { title: 'Path to line ' + title, warnings: parsed.warnings, sourcesError,
+    html: page(result, options.nonce, options.cspSource || '', text.split(/\r?\n/), relative, sources, options.controls || '') };
+}
+
 function register(vscode, context) {
   // The panel follows the editor it was opened from: a click on another line there builds that line's path in it.
   const build = async (document, position, panel) => {
     const uri = document.uri.toString();
-    const objectType = /\.clas\.|\/CLAS\//i.test(uri) ? 'CLAS' : 'PROG';
-    const parser = require('./value-origin-linter').createParser();
-    let parsed;
-    try { parsed = await parser.parse({ id: uri, name: document.fileName, objectName: '', objectType, text: document.getText() }); }
-    catch (error) { throw new Error('the source could not be parsed: ' + error.message); }
-    finally { await parser.close(); }
-    const result = reachPath(parsed.source.aceStatements, document.offsetAt(position), position.line + 1);
-    if (parsed.warnings.length) vscode.window.showWarningMessage('VERTEX: the parser did not understand some statements; the path may miss conditions there: ' + parsed.warnings.join('; '));
-    let sources = null;
-    try {
-      const statements = parsed.source.aceStatements;
-      const owner = objectType === 'CLAS' && statements.find(s => s.parserKind === 'ClassDefinition');
-      const fileName = owner ? String(owner.tokens[1].value).toLowerCase().replace(/\//g, '#') + '.clas.abap' : 'zvertex_path.prog.abap';
-      sources = valueSources(document.getText(), fileName, statements, result);
-    } catch (error) { vscode.window.showWarningMessage('VERTEX: abaplint could not find where the condition values come from: ' + error.message); }
-    const controls = require('fs').readFileSync(require('path').join(__dirname, 'resources', 'vertex-controls.css'), 'utf8');
-    const relative = vscode.workspace.getConfiguration('vertex').get('pathToLine.methodRelativeLines', false);
-    const title = relative ? result.target.line - result.procedure.line + 1 : result.target.line;
-    const nonce = require('crypto').randomBytes(18).toString('hex');
-    return { title: 'Path to line ' + title, html: page(result, nonce, panel.webview.cspSource || '', document.getText().split(/\r?\n/), relative, sources, controls) };
+    const shown = await module.exports.build(document.getText(), document.offsetAt(position), position.line + 1, {
+      id: uri, name: document.fileName, objectType: /\.clas\.|\/CLAS\//i.test(uri) ? 'CLAS' : 'PROG',
+      relative: vscode.workspace.getConfiguration('vertex').get('pathToLine.methodRelativeLines', false),
+      nonce: require('crypto').randomBytes(18).toString('hex'), cspSource: panel.webview.cspSource || '',
+      controls: require('fs').readFileSync(require('path').join(__dirname, 'resources', 'vertex-controls.css'), 'utf8') });
+    if (shown.warnings.length) vscode.window.showWarningMessage('VERTEX: the parser did not understand some statements; the path may miss conditions there: ' + shown.warnings.join('; '));
+    if (shown.sourcesError) vscode.window.showWarningMessage('VERTEX: abaplint could not find where the condition values come from: ' + shown.sourcesError);
+    return shown;
   };
   context.subscriptions.push(vscode.commands.registerCommand('vertex.reachPath', async () => {
     const editor = vscode.window.activeTextEditor;
@@ -329,4 +342,4 @@ function register(vscode, context) {
   }));
 }
 
-module.exports = { reachPath, reachLines, valueSources, page, register };
+module.exports = { reachPath, reachLines, valueSources, page, build, register };

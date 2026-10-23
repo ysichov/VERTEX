@@ -86,7 +86,7 @@
   <img class="architecture" src="architecture2.png" alt="VERTEX architecture: VS Code and Eclipse ADT, AI assistants and LLM providers, a VERTEX MCP server, seven Web UI tools, client-side libraries, and SAP ADT">
 </p>
 
-<p class="build">Latest build <b>0.8.25.20261023012033</b>.</p>
+<p class="build">Latest build <b>0.8.29.20261023191934</b>.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -97,7 +97,9 @@
 
 <p>
   Then <strong>Window &rarr; Show View &rarr; Other… &rarr; VERTEX</strong>, or
-  right-click an object in the Project Explorer and pick <strong>VERTEX</strong>.
+  right-click an object in the Project Explorer or an ADT editor and open the <strong>VERTEX</strong>
+  submenu, beside GitHub and Team: VERTEX Tools, Path to This Line, Forward and Backward Usage
+  Analysis, Visual Flow Analysis, Open Visual Debug, Activate and Session Logs.
 </p>
 
 <div class="note">
@@ -109,6 +111,12 @@
 <h2>What it does</h2>
 
 <ul class="news">
+  <li><b>Path to This Line.</b> The conditions under which the line at the cursor runs inside its
+      METHOD or FORM, from the editor's text; a click on another line of the editor builds that
+      line's path, and <i>Value sources</i> shows where the values of the conditions come from.
+      <i>Window &rarr; Preferences &rarr; VERTEX Path to This Line</i> numbers lines from the METHOD or FORM.</li>
+  <li><b>Session Logs.</b> The assistant's conversations from the log folder: prompts, answers,
+      models, token usage and the objects they named, which open in ADT.</li>
   <li><b>SelecTor field labels.</b> A <i>Technical names / Text</i> toggle for the selection and the result headers, remembered between sessions.</li>
   <li><b>Value Origin.</b> Inspect FLOW, Formula and Expression analysis; the experimental BSE client
       uses ADT source and bundled abaplint.</li>
@@ -199,9 +207,11 @@
   Building a code review is part of it, not only reading one. In VS Code a request with no saved
   review is built from ADT when it is opened - every part it changed, the pair of versions chosen
   by AVE's rule, diffed and cut into blocks - and the status line says which part is being read.
-  <i>Save</i> keeps it, in <code>ZAVE_REVIEW</code> or in files as <code>vertex.review.storage</code>
+  <i>Rebuild from ADT</i> builds it again from the request as it is now; <i>Save</i> keeps it, in <code>ZAVE_REVIEW</code> or in files as <code>vertex.review.storage</code>
   says; approving, declining and commenting then change it the way AVE does, so AVE and VERTEX read
-  the same review. Eclipse does the same; where it keeps reviews is set in Window &rarr; Preferences
+  the same review. When the request changed after a review was saved, VS Code and Eclipse name what moved,
+  found by each part's versions, and offers <i>Rebuild from ADT</i>, which replaces the saved
+  review and drops its verdicts. Eclipse does the same; where it keeps reviews is set in Window &rarr; Preferences
   &rarr; VERTEX Code Review.
 </p>
 

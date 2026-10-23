@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: ABAP VERTEX Tools
 Bundle-SymbolicName: org.vertex.abap.ui;singleton:=true
-Bundle-Version: 0.8.25.qualifier
+Bundle-Version: 0.8.29.qualifier
 Bundle-Vendor: Yurii Sychov
 Automatic-Module-Name: org.vertex.abap.ui
 Bundle-RequiredExecutionEnvironment: JavaSE-21
@@ -25,6 +25,8 @@ Require-Bundle: org.eclipse.ui,
  org.eclipse.ui.editors,
  org.eclipse.compare.core,
  org.eclipse.e4.ui.model.workbench,
- org.eclipse.e4.ui.workbench
+ org.eclipse.e4.ui.workbench,
+ org.eclipse.ui.ide,
+ org.eclipse.core.filesystem
 Import-Package: org.osgi.framework,
  com.google.gson

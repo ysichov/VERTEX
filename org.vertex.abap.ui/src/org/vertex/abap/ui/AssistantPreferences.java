@@ -34,6 +34,12 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
         return STORE.get(key, key.equals("node") ? "node" : key.equals("review") ? "ask" : "");
     }
 
+    /** The log folder, chosen from Session Logs as VS Code's Choose Log Folder sets vertex.ai.logPath. */
+    static void setLogPath(String folder) throws java.util.prefs.BackingStoreException {
+        STORE.put("logPath", folder);
+        STORE.flush();
+    }
+
     @Override public void init(IWorkbench workbench) {}
 
     @Override protected Control createContents(Composite parent) {

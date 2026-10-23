@@ -467,8 +467,13 @@ async function backward(api, resource, progress = () => {}) {
 }
 
 // A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
-// bundle); null for any other write.
+// bundle); null for any other write. /sap/bc/adt/vertex/reach is no SAP resource: the path to a line of the editor's
+// text, which the body carries with the cursor and the page's options (reach-path.js build).
 async function write(api, resource, body) {
+  if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/reach') {
+    const command = JSON.parse(String(body));
+    return __vertexRequire(1555).build(String(command.text), Number(command.offset), Number(command.line), command);
+  }
   if (!/^\/sap\/bc\/adt\/vertex\/review\//.test(new URL(resource, 'https://sap.invalid').pathname)) { return null; }
   return __vertexRequire(1547).write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined);
 }
@@ -104929,7 +104934,14 @@ async function request(api, resource, progress, io) {
   if (stored) { try { payload = parsePayload(stored.text); } catch (error) { payload = null; } }
   // Nothing saved: the review is built from ADT, to look at - live, and not written anywhere.
   const live = !payload && !remote;
-  if (live) { payload = await __vertexRequire(1549).build(api, trkorr, progress); }
+  if (live) { payload = await __vertexRequire(1549).build(api, trkorr, progress, params.get("fresh") === "1"); }
+  /* A saved review is checked against the request as it is now; the page offers to build it again when it is not.
+     A check that fails says so - it is not taken for "up to date". */
+  let stale = null;
+  if (payload && !live && !remote && !part) {
+    try { stale = await __vertexRequire(1549).staleness(api, trkorr, payload); }
+    catch (error) { stale = { error: String(error && error.message || error) }; }
+  }
   if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored) }); }
 
   const objects = [], reviewers = [], history = [];
@@ -104956,11 +104968,12 @@ async function request(api, resource, progress, io) {
     saved_at: payload ? up(payload.LAST_SAVED_AT) : "", saved_by: payload ? up(payload.LAST_SAVED_BY) : "", objects, reviewers, history,
     // Objects the request names that the system no longer has, found while building it from ADT.
     missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
-    storage: storage(io, stored) };
+    storage: storage(io, stored), stale };
 }
 
 // A write to a review: a reviewer's action on one block - A approve, D decline, C comment, U take a verdict back - or
-// S, saving the review built from ADT when none is stored. The body is the page's command: hunk_key, action, note and
+// S, saving the review built from ADT when none is stored, or R, replacing a saved review with one built from ADT
+// again - its verdicts and comments go with the old blocks. The body is the page's command: hunk_key, action, note and
 // saved_at, the stamp the page read. The answer is what a read would answer now: the part, or the summary.
 async function write(api, resource, body, io) {
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
@@ -104973,10 +104986,10 @@ async function write(api, resource, body, io) {
   let cmd;
   try { cmd = JSON.parse(String(body || "{}")); } catch (error) { throw new Error("The command for " + trkorr + " is not JSON."); }
   const action = up(cmd.action).toUpperCase(), key = up(cmd.hunk_key), note = up(cmd.note);
-  if (!["A", "D", "C", "U", "S"].includes(action)) {
-    throw new Error('"' + action + '" is not a reviewer action. A approves, D declines, C comments, U takes a verdict back, S saves.');
+  if (!["A", "D", "C", "U", "S", "R"].includes(action)) {
+    throw new Error('"' + action + '" is not a reviewer action. A approves, D declines, C comments, U takes a verdict back, S saves, R rebuilds.');
   }
-  if (action !== "S" && !key) { throw new Error("A reviewer action has to name the block it is about."); }
+  if (action !== "S" && action !== "R" && !key) { throw new Error("A reviewer action has to name the block it is about."); }
   if ((action === "D" || action === "C") && !note) { throw new Error("A decline and a comment are the words that go with them."); }
 
   const table = await hasTable(api);
@@ -104993,6 +105006,16 @@ async function write(api, resource, body, io) {
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
     existing = {};
     current = state.applySaved(await __vertexRequire(1549).build(api, trkorr), who.user);
+  } else if (action === "R") {
+    if (!stored) { throw new Error("No review is saved for " + trkorr + "; there is nothing to rebuild."); }
+    if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
+    const old = state.parseForWrite(stored.text);
+    if (cmd.saved_at && state.plain(cmd.saved_at) !== state.plain(old.LAST_SAVED_AT)) {
+      throw new Error(up(old.LAST_SAVED_BY) + " saved this review while the page was open. Read it again, then rebuild.");
+    }
+    // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
+    existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
+    current = state.applySaved(await __vertexRequire(1549).build(api, trkorr, undefined, true), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
     existing = state.parseForWrite(stored.text);
@@ -105222,31 +105245,43 @@ function pairOf(feed, numbers) {
   return { fresh, old };
 }
 
+// A numbered version never changes, so its text is read once a session; the active state (00000) can change under the
+// same address at any time, and is read anew - kept, it would hide the very edit a rebuild or a check is for.
+const activeOrKept = (api, entry) => entry.id === "00000" ? Promise.resolve(api.revisionSource(entry.uri)) : versions.sourceAt(api, entry.uri);
+
 const cache = new WeakMap();
 
 // The review of a request, built; kept for a few minutes per session, since the page asks for the summary and then
 // for each part.
-// PROGRESS, when given, is told what the build is doing, a line at a time.
-async function build(api, request, progress) {
+// PROGRESS, when given, is told what the build is doing, a line at a time. FRESH builds it again whatever is kept.
+async function build(api, request, progress, fresh) {
   if (!cache.has(api)) { cache.set(api, new Map()); }
   const kept = cache.get(api).get(request);
-  if (kept && Date.now() - kept.at < 5 * 60 * 1000) { return kept.payload; }
+  if (!fresh && kept && Date.now() - kept.at < 5 * 60 * 1000) { return kept.payload; }
   const promise = buildNow(api, request, progress || (() => {}));
   cache.get(api).set(request, { at: Date.now(), payload: promise });
   promise.catch(() => cache.get(api).delete(request));
   return promise;
 }
 
-async function buildNow(api, request, progress) {
-  progress("reading what " + request + " holds ...");
+// The request with its tasks, and the parts they name.
+async function requestParts(api, request) {
   const head = (await api.query("SELECT trkorr FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
   if (!head) { throw new Error("Transport request " + request + " does not exist."); }
   const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(request), 1000)).values.map(r => r.TRKORR);
   const numbers = new Set([request, ...tasks]);
   const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
+  return Object.assign({ numbers }, await partsOfRequest(api, keys));
+}
+
+const labelOf = p => p.ptype === "METH" ? p.object + "->" + p.unit : p.part;
+const versnos = pair => ({ fresh: pair.fresh.id === "00000" ? "99998" : pair.fresh.id, old: pair.old ? pair.old.id : "00000" });
+
+async function buildNow(api, request, progress) {
+  progress("reading what " + request + " holds ...");
   const payload = { TRKORR: request, OBJ_STATS: [], HUNKS: [], DIFF_DATA: [], HUNK_ACTIONS: [], USER_STATES: [], THREADS: [], HISTORY: [] };
 
-  const { parts, missing } = await partsOfRequest(api, keys);
+  const { numbers, parts, missing } = await requestParts(api, request);
   // Kept beside the payload, not in it: a saved review is AVE's format, which has no place for them.
   Object.defineProperty(payload, "MISSING", { value: missing, enumerable: false });
   for (const [at, p] of parts.entries()) {
@@ -105263,7 +105298,7 @@ async function buildNow(api, request, progress) {
       if (!pair) { continue; }
       const textOf = async entry => {
         if (!entry) { return []; }
-        const text = await versions.sourceAt(api, entry.uri);
+        const text = await activeOrKept(api, entry);
         return (where.cut ? where.cut(text) : versions.lines(text)) || [];
       };
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
@@ -105276,7 +105311,7 @@ async function buildNow(api, request, progress) {
     if (!ops.some(o => o.op !== "=")) { continue; }
 
     const ranges = hunkRanges(ops);
-    const versnoNew = pair.fresh.id === "00000" ? "99998" : pair.fresh.id, versnoOld = pair.old ? pair.old.id : "00000";
+    const { fresh: versnoNew, old: versnoOld } = versnos(pair);
     const display = p.ptype === "METH" ? p.unit : p.part;
     const { ins, del, mod } = countChanges(ops);
     let hIns = 0, hMod = 0, hDel = 0;
@@ -105309,7 +105344,59 @@ async function buildNow(api, request, progress) {
   return payload;
 }
 
-module.exports = { build, pairOf, countChanges };
+/* Whether a saved review still is the request's change, without building it again: each part's pair of versions is
+   chosen as a build would choose it and compared with the pair the review was cut from. Only sources that numbers
+   cannot settle are read - a part whose new side is the active state (99998), whose text may move without a new
+   version, and a part the request names that the review does not hold, which counts only when it differs. Answers
+   { changed: [{ name, reason }], unchecked: [{ name, reason }] }; a part that cannot be read is unchecked, not fine. */
+async function staleness(api, request, saved) {
+  const { numbers, parts, missing } = await requestParts(api, request);
+  const list = value => Array.isArray(value) ? value : [];
+  const key = (type, name) => String(type) + "|" + String(name);
+  const held = new Map(list(saved.OBJ_STATS).map(s => [key(s.OBJTYPE, s.OBJ_NAME), s]));
+  const changed = [], unchecked = missing.map(m => ({ name: m.name, reason: m.reason }));
+  for (const p of parts) {
+    const name = labelOf(p), stats = held.get(key(p.ptype, p.part));
+    held.delete(key(p.ptype, p.part));
+    try {
+      const where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
+      if (!where) { continue; }
+      const pair = pairOf(await api.revisions(where.url, where.include || undefined), numbers);
+      if (!pair) { continue; }
+      const now = versnos(pair);
+      const textOf = async entry => {
+        if (!entry) { return []; }
+        const text = await activeOrKept(api, entry);
+        return (where.cut ? where.cut(text) : versions.lines(text)) || [];
+      };
+      if (!stats) {
+        const ops = await versions.diff(await textOf(pair.old), await textOf(pair.fresh), false, api);
+        if (ops.some(o => o.op !== "=")) { changed.push({ name, reason: "changed by the request, not in the review" }); }
+        continue;
+      }
+      if (Number(stats.VERSNO_NEW) !== Number(now.fresh) || Number(stats.VERSNO_OLD) !== Number(now.old)) {
+        changed.push({ name, reason: "versions " + stats.VERSNO_OLD + " : " + stats.VERSNO_NEW + " in the review, " + now.old + " : " + now.fresh + " now" });
+        continue;
+      }
+      if (now.fresh !== "99998") { continue; }
+      const diff = list(saved.DIFF_DATA).find(d => d.KEY && key(d.KEY.OBJTYPE, d.KEY.OBJNAME) === key(p.ptype, p.part)
+        && Number(d.KEY.VERSNO_N) === 99998 && !(d.RETROFIT === true || d.RETROFIT === "X"));
+      if (!diff || !list(diff.DIFF).length) { unchecked.push({ name, reason: "the review keeps no text of its active state" }); continue; }
+      const then = list(diff.DIFF).filter(l => l.OP !== "-").map(l => String(l.TEXT));
+      const current = await textOf(pair.fresh);
+      if (then.length !== current.length || then.some((line, i) => line !== String(current[i]))) {
+        changed.push({ name, reason: "its active state changed" });
+      }
+    } catch (error) {
+      unchecked.push({ name, reason: String(error && error.message || error) });
+    }
+  }
+  held.forEach(s => changed.push({ name: s.OBJTYPE === "METH" && s.CLASS_NAME ? s.CLASS_NAME + "->" + s.OBJ_NAME : String(s.OBJ_NAME),
+    reason: "no longer changed by the request" }));
+  return { changed, unchecked };
+}
+
+module.exports = { build, pairOf, countChanges, staleness };
 
 },
 function(module,exports,__vertexRequire){
@@ -106248,24 +106335,101 @@ function reachLines(statements, lines) {
   return map;
 }
 
+/* Where the variables of the path's conditions get their values: abaplint's Read From references on each condition's
+   lines, and for each variable the last Write To of the same declaration before that condition, inside the routine.
+   Unknown types are taken as void, so a missing DDIC type does not stop the analysis. Returns the variables, each with
+   its source statement (null when the routine does not write it - a parameter, an attribute), and the marks to colour
+   on each line: { line: [{ column, length, index }] }. */
+function valueSources(text, fileName, statements, result) {
+  const abaplint = __vertexRequire(24);
+  const config = abaplint.Config.getDefault().get();
+  config.syntax.errorNamespace = '^(?!)';
+  const registry = new abaplint.Registry(new abaplint.Config(JSON.stringify(config)))
+    .addFile(new abaplint.MemoryFile(fileName, text)).parse();
+  const object = registry.getFirstObject();
+  if (!object) return { variables: [], marks: {} };
+  const refs = [];
+  const walk = node => { node.getData().references.forEach(ref => refs.push(ref)); node.getChildren().forEach(walk); };
+  walk(new abaplint.SyntaxLogic(registry, object).run().spaghetti.getTop());
+  const id = ref => ref.resolved ? ref.resolved.getFilename() + ':' + ref.resolved.getStart().getRow() + ':' + ref.resolved.getStart().getCol() : null;
+  const row = ref => ref.position.getStart().getRow();
+  const from = result.procedure.line, conditions = [];
+  const collect = items => items.forEach(item => {
+    if (item.line && !['end', 'context'].includes(item.verdict)) conditions.push(item);
+    if (item.children) collect(item.children);
+  });
+  collect(result.path);
+  // A constant - CONSTANTS, abap_true - has no place where it gets its value, and is not marked. An IMPORTING
+  // parameter is read only too, but it is a value: it stays.
+  const readOnly = ref => { const meta = ref.resolved?.getMeta?.() || []; return meta.includes('read_only') && !meta.includes('importing'); };
+  const variables = new Map(), colours = new Map(), marks = {}, before = {};
+  const mark = (ref, index) => (marks[row(ref)] = marks[row(ref)] || []).push({ column: ref.position.getStart().getCol() - 1, length: ref.position.getName().length, index });
+  for (const condition of conditions) {
+    const reads = refs.filter(ref => ref.referenceType === 'Read From' && id(ref) && !readOnly(ref) && row(ref) >= condition.line && row(ref) <= condition.endLine);
+    for (const read of reads) {
+      const key = id(read);
+      const writes = refs.filter(ref => ref.referenceType === 'Write To' && id(ref) === key && row(ref) > from && row(ref) < condition.line);
+      const write = writes.sort((a, b) => row(a) - row(b)).at(-1) || null;
+      // One colour per variable; a variable written in two places before two conditions lists both sources.
+      if (!colours.has(key)) colours.set(key, colours.size);
+      const index = colours.get(key), variableKey = key + '@' + (write ? row(write) : '-');
+      if (!variables.has(variableKey)) {
+        const statement = write && statements.filter(s => s.line <= row(write)).at(-1);
+        variables.set(variableKey, { name: read.position.getName(), index,
+          source: statement ? { line: statement.line, endLine: statement.tokens.at(-1)?.line || statement.line, text: statement.text } : null });
+        if (write) mark(write, index);
+      }
+      mark(read, index);
+      // The source stands in the path right before the condition that reads it, once per condition.
+      const variable = variables.get(variableKey), own = before[condition.line] = before[condition.line] || [];
+      if (variable.source && !own.includes(variable)) own.push(variable);
+    }
+  }
+  return { variables: [...variables.values()], marks, before };
+}
+
 const escape = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const words = { true: 'true', false: 'false', case: '', context: '', end: '', target: '', entered: 'entered', raises: 'raises an exception', catches: 'catches it',
   avoid: 'must not be taken', skip: 'must not be entered', when: 'if taken:' };
 
 // lines: the source's lines; each row shows its statement's lines as they stand there - indentation, breaks and all.
-function page(result, nonce, cspSource, lines) {
-  const code = item => '<pre>' + escape(lines.slice(item.line - 1, item.endLine).join('\n')) + '</pre>';
+// relative: numbers are shown from the routine's opening statement (line 1), as SAP GUI numbers a method; the links
+// still lead to the source line.
+// sources: valueSources' answer, shown under the Value sources toggle; controls: the shared vertex-controls.css.
+function page(result, nonce, cspSource, lines, relative = false, sources = null, controls = '') {
+  const shown = line => relative ? line - result.procedure.line + 1 : line;
+  const marked = (text, line) => {
+    const marks = (sources && sources.marks[line] || []).slice().sort((a, b) => a.column - b.column);
+    let out = '', at = 0;
+    for (const m of marks) {
+      if (m.column < at) continue;
+      out += escape(text.slice(at, m.column)) + '<span class="v v' + (m.index % 6) + '">' + escape(text.slice(m.column, m.column + m.length)) + '</span>';
+      at = m.column + m.length;
+    }
+    return out + escape(text.slice(at));
+  };
+  const code = item => '<pre>' + lines.slice(item.line - 1, item.endLine).map((text, i) => marked(text, item.line + i)).join('\n') + '</pre>';
+  const origin = sources && sources.variables.length ? '<div class="origins"><p>Where the values come from:</p><ul>'
+    + sources.variables.map(v => '<li><span class="name v v' + (v.index % 6) + '">' + escape(v.name) + '</span>'
+      + (v.source ? '<a href="#" data-line="' + v.source.line + '">' + shown(v.source.line) + '</a>' + code(v.source)
+        : '<span class="reason">not written in this routine - a parameter, an attribute or a global</span>') + '</li>').join('')
+    + '</ul></div>' : '';
   // A row shows its statement's lines; a closing statement on a line already shown - IF x. RETURN. ENDIF. on one line -
   // adds nothing and is left out.
   let shownTo = 0;
+  // Under the Value sources toggle: the statements that give a condition's variables their values, right above it,
+  // each with the variable's colour on its line number.
+  const feeds = item => (sources && sources.before && sources.before[item.line] || []).map(v => '<li class="feed"><a href="#" class="v v'
+    + (v.index % 6) + '" data-line="' + v.source.line + '">' + shown(v.source.line) + '</a>' + code(v.source)
+    + ' <span class="verdict feed">value of ' + escape(v.name) + '</span></li>').join('');
   const row = (item, depth) => item.verdict === 'group' ? item.children.map(child => row(child, depth + (child.indent || 0))).join('')
-    : item.verdict === 'end' && item.line <= shownTo ? '' : (shownTo = Math.max(shownTo, item.endLine || item.line), '<li class="' + item.verdict + '"><a href="#" data-line="' + item.line + '">'
-    + item.line + '</a>' + code(item)
+    : item.verdict === 'end' && item.line <= shownTo ? '' : (shownTo = Math.max(shownTo, item.endLine || item.line), feeds(item) + '<li class="' + item.verdict + '"><a href="#" data-line="' + item.line + '">'
+    + shown(item.line) + '</a>' + code(item)
     + (words[item.verdict] ? ' <span class="verdict ' + item.verdict + '">' + words[item.verdict] + '</span>' : '')
-    + (item.reason ? ' <span class="reason">— leaves at <a href="#" data-line="' + item.reason.line + '">' + item.reason.line + '</a></span>' : '')
+    + (item.reason ? ' <span class="reason">— leaves at <a href="#" data-line="' + item.reason.line + '">' + shown(item.reason.line) + '</a></span>' : '')
     + '</li>' + (item.children || []).map(child => row(child, depth + 1 + (child.indent || 0))).join(''));
   const body = result.unreachable
-    ? '<p class="unreachable">Not reachable: <a href="#" data-line="' + result.unreachable.line + '">' + result.unreachable.line + '</a> ' + escape(result.unreachable.reason) + '.</p>' : '';
+    ? '<p class="unreachable">Not reachable: <a href="#" data-line="' + result.unreachable.line + '">' + shown(result.unreachable.line) + '</a> ' + escape(result.unreachable.reason) + '.</p>' : '';
   return '<!DOCTYPE html><html><head><meta charset="utf-8">'
     + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src ' + cspSource + ' \'nonce-' + nonce + '\'; script-src \'nonce-' + nonce + '\';">'
     + '<style nonce="' + nonce + '">body{background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size)}'
@@ -106277,42 +106441,98 @@ function page(result, nonce, cspSource, lines) {
     + '.verdict{display:inline-block;margin-left:6px;padding:0 6px;border:1px solid currentColor;border-radius:8px;font-size:.85em;line-height:1.4;color:var(--vscode-descriptionForeground)}'
     + '.verdict.true,.verdict.entered,.verdict.catches{color:var(--vscode-testing-iconPassed)}'
     + '.verdict.false,.verdict.avoid,.verdict.skip{color:var(--vscode-testing-iconFailed)}'
-    + '.reason{color:var(--vscode-descriptionForeground)}.unreachable{color:var(--vscode-errorForeground)}</style></head><body>'
-    + '<p>Path to line <a href="#" data-line="' + result.target.line + '">' + result.target.line + '</a> in <code>'
+    + '.reason{color:var(--vscode-descriptionForeground)}.unreachable{color:var(--vscode-errorForeground)}'
+    // Value sources: one theme colour per variable, shown only while the toggle is on.
+    + 'li.feed{display:none}body.sources li.feed{display:flex}li.feed pre{opacity:.85;border-left:2px solid var(--vscode-focusBorder);padding-left:4px}'
+    + '.origins{display:none;margin-top:12px}body.sources .origins{display:block}.origins .name{min-width:12ch;font-family:var(--vscode-editor-font-family)}'
+    + 'body.sources .v{font-weight:bold;text-decoration:underline}'
+    + ['red', 'blue', 'green', 'orange', 'purple', 'yellow'].map((c, i) => 'body.sources .v' + i + '{color:var(--vscode-charts-' + c + ')}').join('')
+    + controls + '</style></head><body>'
+    + (sources ? '<p><button type="button" class="vertex-toggle" id="sources" title="Colour the variables of the conditions and show where each gets its value">Value sources</button></p>' : '')
+    + '<p>Path to line <a href="#" data-line="' + result.target.line + '">' + shown(result.target.line) + '</a> in <code>'
     + escape(result.procedure.text) + '</code></p>' + body
     + (result.path.length ? '<ul>' + result.path.map(item => row(item, item.depth)).join('') + '</ul>' : '<p>No condition: the line runs whenever the routine does.</p>')
-    + '<script nonce="' + nonce + '">const vscode=acquireVsCodeApi();document.addEventListener("click",e=>{const a=e.target.closest("a[data-line]");'
+    + origin
+    + '<script nonce="' + nonce + '">const vscode=acquireVsCodeApi();'
+    // The toggle stays as it was set when a click in the source rebuilds the page; a line the panel cannot show says why.
+    + 'const toggle=document.getElementById("sources"),set=on=>{document.body.classList.toggle("sources",on);toggle.classList.toggle("on",on);};'
+    + 'if(toggle){set(!!(vscode.getState()||{}).sources);toggle.addEventListener("click",()=>{const on=!document.body.classList.contains("sources");set(on);vscode.setState({sources:on});});}'
+    + 'window.addEventListener("message",e=>{if(e.data&&e.data.error){let p=document.getElementById("refused");if(!p){p=document.createElement("p");p.id="refused";p.className="unreachable";document.body.prepend(p);}p.textContent=e.data.error;}});'
+    + 'document.addEventListener("click",e=>{const a=e.target.closest("a[data-line]");'
     + 'if(a){e.preventDefault();vscode.postMessage({line:Number(a.dataset.line)});}});</script></body></html>';
 }
 
+/* The path to a line of TEXT and its page, with no editor around it - VS Code's panel and Eclipse's window both build
+   it here. TEXT is the source as the editor holds it (saved or not); OFFSET and LINE are the cursor. OPTIONS: id and name
+   for the parser, objectType (CLAS or PROG), relative numbering, the nonce and cspSource of the page and the shared
+   controls stylesheet. The parser's warnings and a value-sources failure are answered, for the host to show. */
+async function build(text, offset, line, options) {
+  const objectType = options.objectType === 'CLAS' ? 'CLAS' : 'PROG';
+  const parser = __vertexRequire(1542).createParser();
+  let parsed;
+  try { parsed = await parser.parse({ id: options.id, name: options.name, objectName: '', objectType, text }); }
+  catch (error) { throw new Error('the source could not be parsed: ' + error.message); }
+  finally { await parser.close(); }
+  const result = reachPath(parsed.source.aceStatements, offset, line);
+  let sources = null, sourcesError = '';
+  try {
+    const statements = parsed.source.aceStatements;
+    const owner = objectType === 'CLAS' && statements.find(s => s.parserKind === 'ClassDefinition');
+    const fileName = owner ? String(owner.tokens[1].value).toLowerCase().replace(/\//g, '#') + '.clas.abap' : 'zvertex_path.prog.abap';
+    sources = valueSources(text, fileName, statements, result);
+  } catch (error) { sourcesError = error.message; }
+  const relative = options.relative === true;
+  const title = relative ? result.target.line - result.procedure.line + 1 : result.target.line;
+  return { title: 'Path to line ' + title, warnings: parsed.warnings, sourcesError,
+    html: page(result, options.nonce, options.cspSource || '', text.split(/\r?\n/), relative, sources, options.controls || '') };
+}
+
 function register(vscode, context) {
+  // The panel follows the editor it was opened from: a click on another line there builds that line's path in it.
+  const build = async (document, position, panel) => {
+    const uri = document.uri.toString();
+    const shown = await module.exports.build(document.getText(), document.offsetAt(position), position.line + 1, {
+      id: uri, name: document.fileName, objectType: /\.clas\.|\/CLAS\//i.test(uri) ? 'CLAS' : 'PROG',
+      relative: vscode.workspace.getConfiguration('vertex').get('pathToLine.methodRelativeLines', false),
+      nonce: (new Proxy({}, {get:()=>()=>{throw new Error("Node crypto is unavailable in browser analysis");}})).randomBytes(18).toString('hex'), cspSource: panel.webview.cspSource || '',
+      controls: (new Proxy({}, {get:()=>()=>{throw new Error("Node fs is unavailable in browser analysis");}})).readFileSync((new Proxy({}, {get:()=>()=>{throw new Error("Node path is unavailable in browser analysis");}})).join(__dirname, 'resources', 'vertex-controls.css'), 'utf8') });
+    if (shown.warnings.length) vscode.window.showWarningMessage('VERTEX: the parser did not understand some statements; the path may miss conditions there: ' + shown.warnings.join('; '));
+    if (shown.sourcesError) vscode.window.showWarningMessage('VERTEX: abaplint could not find where the condition values come from: ' + shown.sourcesError);
+    return shown;
+  };
   context.subscriptions.push(vscode.commands.registerCommand('vertex.reachPath', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) { vscode.window.showErrorMessage('VERTEX: open an ABAP source first.'); return; }
-    const document = editor.document, uri = document.uri.toString();
-    const objectType = /\.clas\.|\/CLAS\//i.test(uri) ? 'CLAS' : 'PROG';
-    const parser = __vertexRequire(1542).createParser();
-    let parsed;
-    try { parsed = await parser.parse({ id: uri, name: document.fileName, objectName: '', objectType, text: document.getText() }); }
-    catch (error) { vscode.window.showErrorMessage('VERTEX: the source could not be parsed: ' + error.message); return; }
-    finally { await parser.close(); }
-    let result;
-    try { result = reachPath(parsed.source.aceStatements, document.offsetAt(editor.selection.active), editor.selection.active.line + 1); }
-    catch (error) { vscode.window.showErrorMessage('VERTEX: ' + error.message); return; }
-    if (parsed.warnings.length) vscode.window.showWarningMessage('VERTEX: the parser did not understand some statements; the path may miss conditions there: ' + parsed.warnings.join('; '));
-    const panel = vscode.window.createWebviewPanel('vertex.reachPath', 'Path to line ' + result.target.line, vscode.ViewColumn.Beside, { enableScripts: true });
-    panel.webview.html = page(result, (new Proxy({}, {get:()=>()=>{throw new Error("Node crypto is unavailable in browser analysis");}})).randomBytes(18).toString('hex'), panel.webview.cspSource || '', document.getText().split(/\r?\n/));
+    const document = editor.document;
+    const panel = vscode.window.createWebviewPanel('vertex.reachPath', 'Path to line', vscode.ViewColumn.Beside, { enableScripts: true });
+    let shown;
+    try { shown = await build(document, editor.selection.active, panel); }
+    catch (error) { panel.dispose(); vscode.window.showErrorMessage('VERTEX: ' + error.message); return; }
+    panel.title = shown.title; panel.webview.html = shown.html;
+    // A click in the source - a mouse selection - rebuilds the path; a line the panel itself opened does not.
+    let turn = 0;
+    const follow = vscode.window.onDidChangeTextEditorSelection(async event => {
+      if (event.textEditor.document !== document || event.kind !== vscode.TextEditorSelectionChangeKind.Mouse) return;
+      const mine = ++turn;
+      try {
+        const next = await build(document, event.selections[0].active, panel);
+        if (mine === turn) { panel.title = next.title; panel.webview.html = next.html; }
+      } catch (error) {
+        if (mine === turn) panel.webview.postMessage({ error: error.message });
+      }
+    });
+    panel.onDidDispose(() => follow.dispose());
     panel.webview.onDidReceiveMessage(async message => {
       if (!message || !message.line) return;
-      const shown = await vscode.window.showTextDocument(document, { viewColumn: editor.viewColumn });
+      const opened = await vscode.window.showTextDocument(document, { viewColumn: editor.viewColumn });
       const position = new vscode.Position(message.line - 1, 0);
-      shown.selection = new vscode.Selection(position, position);
-      shown.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+      opened.selection = new vscode.Selection(position, position);
+      opened.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
     });
   }));
 }
 
-module.exports = { reachPath, reachLines, page, register };
+module.exports = { reachPath, reachLines, valueSources, page, build, register };
 
 },
 function(module,exports,__vertexRequire){

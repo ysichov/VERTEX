@@ -137,7 +137,14 @@ async function request(api, resource, progress, io) {
   if (stored) { try { payload = parsePayload(stored.text); } catch (error) { payload = null; } }
   // Nothing saved: the review is built from ADT, to look at - live, and not written anywhere.
   const live = !payload && !remote;
-  if (live) { payload = await require("./review-live").build(api, trkorr, progress); }
+  if (live) { payload = await require("./review-live").build(api, trkorr, progress, params.get("fresh") === "1"); }
+  /* A saved review is checked against the request as it is now; the page offers to build it again when it is not.
+     A check that fails says so - it is not taken for "up to date". */
+  let stale = null;
+  if (payload && !live && !remote && !part) {
+    try { stale = await require("./review-live").staleness(api, trkorr, payload); }
+    catch (error) { stale = { error: String(error && error.message || error) }; }
+  }
   if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored) }); }
 
   const objects = [], reviewers = [], history = [];
@@ -164,11 +171,12 @@ async function request(api, resource, progress, io) {
     saved_at: payload ? up(payload.LAST_SAVED_AT) : "", saved_by: payload ? up(payload.LAST_SAVED_BY) : "", objects, reviewers, history,
     // Objects the request names that the system no longer has, found while building it from ADT.
     missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
-    storage: storage(io, stored) };
+    storage: storage(io, stored), stale };
 }
 
 // A write to a review: a reviewer's action on one block - A approve, D decline, C comment, U take a verdict back - or
-// S, saving the review built from ADT when none is stored. The body is the page's command: hunk_key, action, note and
+// S, saving the review built from ADT when none is stored, or R, replacing a saved review with one built from ADT
+// again - its verdicts and comments go with the old blocks. The body is the page's command: hunk_key, action, note and
 // saved_at, the stamp the page read. The answer is what a read would answer now: the part, or the summary.
 async function write(api, resource, body, io) {
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
@@ -181,10 +189,10 @@ async function write(api, resource, body, io) {
   let cmd;
   try { cmd = JSON.parse(String(body || "{}")); } catch (error) { throw new Error("The command for " + trkorr + " is not JSON."); }
   const action = up(cmd.action).toUpperCase(), key = up(cmd.hunk_key), note = up(cmd.note);
-  if (!["A", "D", "C", "U", "S"].includes(action)) {
-    throw new Error('"' + action + '" is not a reviewer action. A approves, D declines, C comments, U takes a verdict back, S saves.');
+  if (!["A", "D", "C", "U", "S", "R"].includes(action)) {
+    throw new Error('"' + action + '" is not a reviewer action. A approves, D declines, C comments, U takes a verdict back, S saves, R rebuilds.');
   }
-  if (action !== "S" && !key) { throw new Error("A reviewer action has to name the block it is about."); }
+  if (action !== "S" && action !== "R" && !key) { throw new Error("A reviewer action has to name the block it is about."); }
   if ((action === "D" || action === "C") && !note) { throw new Error("A decline and a comment are the words that go with them."); }
 
   const table = await hasTable(api);
@@ -201,6 +209,16 @@ async function write(api, resource, body, io) {
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
     existing = {};
     current = state.applySaved(await require("./review-live").build(api, trkorr), who.user);
+  } else if (action === "R") {
+    if (!stored) { throw new Error("No review is saved for " + trkorr + "; there is nothing to rebuild."); }
+    if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
+    const old = state.parseForWrite(stored.text);
+    if (cmd.saved_at && state.plain(cmd.saved_at) !== state.plain(old.LAST_SAVED_AT)) {
+      throw new Error(up(old.LAST_SAVED_BY) + " saved this review while the page was open. Read it again, then rebuild.");
+    }
+    // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
+    existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
+    current = state.applySaved(await require("./review-live").build(api, trkorr, undefined, true), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
     existing = state.parseForWrite(stored.text);

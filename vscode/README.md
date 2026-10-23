@@ -411,10 +411,13 @@ Breakpoints set through Visual Debug or MCP appear as native VS Code points in t
   by AVE's rule: the request's newest version, or the active one when ADT records it under the
   request and no other request's version sits above it, against the first older version that is
   not the request's. A review that is not saved yet is built from ADT while you wait - the status
-  line says which part is being read - and **Save** keeps it. A saved review takes **Approve**,
+  line says which part is being read - **Rebuild from ADT** builds it again from the request as it is now, and **Save** keeps it. A saved review takes **Approve**,
   **Decline** and comments on each block, the way AVE records them, so AVE and every VERTEX window
   read the same review. Where reviews are kept is `vertex.review.storage`: the `ZAVE_REVIEW` table
-  (needs the ABAP backend), files, or both. Two people saving the same review at once do not
+  (needs the ABAP backend), files, or both. A saved review is checked against the request when it
+  is opened, by each part's versions: a part that changed since, joined the request or left it is
+  named above the table, with **Rebuild from ADT**, which replaces the saved review with one built
+  from the request as it is now - its verdicts and comments are dropped. Two people saving the same review at once do not
   overwrite each other: the second save is refused and asks to read the review again.
 - **VERTEX: Switch System**
 - **VERTEX: Forget Credentials**

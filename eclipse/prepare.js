@@ -19,6 +19,11 @@ fs.writeFileSync(path.join(target, "value-origin.js"), require("./value-origin-b
 fs.copyFileSync(path.join(root, "vscode", "value-origin.css"), path.join(target, "value-origin.css"));
 fs.copyFileSync(path.join(__dirname, "value-origin.html"), path.join(target, "value-origin.html"));
 console.log("Prepared Eclipse Value origin.");
+// Path to This Line: its page; the path itself is built in the analysis worker (vertex-frontend.js below).
+fs.copyFileSync(path.join(__dirname, "reach-path.html"), path.join(target, "reach-path.html"));
+// Session Logs: VS Code's log reading as one browser script, and the page that hosts the report.
+fs.writeFileSync(path.join(target, "logs.js"), require("./logs-bundle").bundle(root));
+fs.copyFileSync(path.join(__dirname, "session-logs.html"), path.join(target, "session-logs.html"));
 
 // The statement rules are org.vertex.abap.ui/resources/vertex-abap-control.js itself; vscode/abap-control.js only
 // finds that file. Copying it over the rules - as this script did - left a finder where the rules belong.

@@ -119,31 +119,43 @@ function pairOf(feed, numbers) {
   return { fresh, old };
 }
 
+// A numbered version never changes, so its text is read once a session; the active state (00000) can change under the
+// same address at any time, and is read anew - kept, it would hide the very edit a rebuild or a check is for.
+const activeOrKept = (api, entry) => entry.id === "00000" ? Promise.resolve(api.revisionSource(entry.uri)) : versions.sourceAt(api, entry.uri);
+
 const cache = new WeakMap();
 
 // The review of a request, built; kept for a few minutes per session, since the page asks for the summary and then
 // for each part.
-// PROGRESS, when given, is told what the build is doing, a line at a time.
-async function build(api, request, progress) {
+// PROGRESS, when given, is told what the build is doing, a line at a time. FRESH builds it again whatever is kept.
+async function build(api, request, progress, fresh) {
   if (!cache.has(api)) { cache.set(api, new Map()); }
   const kept = cache.get(api).get(request);
-  if (kept && Date.now() - kept.at < 5 * 60 * 1000) { return kept.payload; }
+  if (!fresh && kept && Date.now() - kept.at < 5 * 60 * 1000) { return kept.payload; }
   const promise = buildNow(api, request, progress || (() => {}));
   cache.get(api).set(request, { at: Date.now(), payload: promise });
   promise.catch(() => cache.get(api).delete(request));
   return promise;
 }
 
-async function buildNow(api, request, progress) {
-  progress("reading what " + request + " holds ...");
+// The request with its tasks, and the parts they name.
+async function requestParts(api, request) {
   const head = (await api.query("SELECT trkorr FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
   if (!head) { throw new Error("Transport request " + request + " does not exist."); }
   const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(request), 1000)).values.map(r => r.TRKORR);
   const numbers = new Set([request, ...tasks]);
   const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
+  return Object.assign({ numbers }, await partsOfRequest(api, keys));
+}
+
+const labelOf = p => p.ptype === "METH" ? p.object + "->" + p.unit : p.part;
+const versnos = pair => ({ fresh: pair.fresh.id === "00000" ? "99998" : pair.fresh.id, old: pair.old ? pair.old.id : "00000" });
+
+async function buildNow(api, request, progress) {
+  progress("reading what " + request + " holds ...");
   const payload = { TRKORR: request, OBJ_STATS: [], HUNKS: [], DIFF_DATA: [], HUNK_ACTIONS: [], USER_STATES: [], THREADS: [], HISTORY: [] };
 
-  const { parts, missing } = await partsOfRequest(api, keys);
+  const { numbers, parts, missing } = await requestParts(api, request);
   // Kept beside the payload, not in it: a saved review is AVE's format, which has no place for them.
   Object.defineProperty(payload, "MISSING", { value: missing, enumerable: false });
   for (const [at, p] of parts.entries()) {
@@ -160,7 +172,7 @@ async function buildNow(api, request, progress) {
       if (!pair) { continue; }
       const textOf = async entry => {
         if (!entry) { return []; }
-        const text = await versions.sourceAt(api, entry.uri);
+        const text = await activeOrKept(api, entry);
         return (where.cut ? where.cut(text) : versions.lines(text)) || [];
       };
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
@@ -173,7 +185,7 @@ async function buildNow(api, request, progress) {
     if (!ops.some(o => o.op !== "=")) { continue; }
 
     const ranges = hunkRanges(ops);
-    const versnoNew = pair.fresh.id === "00000" ? "99998" : pair.fresh.id, versnoOld = pair.old ? pair.old.id : "00000";
+    const { fresh: versnoNew, old: versnoOld } = versnos(pair);
     const display = p.ptype === "METH" ? p.unit : p.part;
     const { ins, del, mod } = countChanges(ops);
     let hIns = 0, hMod = 0, hDel = 0;
@@ -206,4 +218,56 @@ async function buildNow(api, request, progress) {
   return payload;
 }
 
-module.exports = { build, pairOf, countChanges };
+/* Whether a saved review still is the request's change, without building it again: each part's pair of versions is
+   chosen as a build would choose it and compared with the pair the review was cut from. Only sources that numbers
+   cannot settle are read - a part whose new side is the active state (99998), whose text may move without a new
+   version, and a part the request names that the review does not hold, which counts only when it differs. Answers
+   { changed: [{ name, reason }], unchecked: [{ name, reason }] }; a part that cannot be read is unchecked, not fine. */
+async function staleness(api, request, saved) {
+  const { numbers, parts, missing } = await requestParts(api, request);
+  const list = value => Array.isArray(value) ? value : [];
+  const key = (type, name) => String(type) + "|" + String(name);
+  const held = new Map(list(saved.OBJ_STATS).map(s => [key(s.OBJTYPE, s.OBJ_NAME), s]));
+  const changed = [], unchecked = missing.map(m => ({ name: m.name, reason: m.reason }));
+  for (const p of parts) {
+    const name = labelOf(p), stats = held.get(key(p.ptype, p.part));
+    held.delete(key(p.ptype, p.part));
+    try {
+      const where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
+      if (!where) { continue; }
+      const pair = pairOf(await api.revisions(where.url, where.include || undefined), numbers);
+      if (!pair) { continue; }
+      const now = versnos(pair);
+      const textOf = async entry => {
+        if (!entry) { return []; }
+        const text = await activeOrKept(api, entry);
+        return (where.cut ? where.cut(text) : versions.lines(text)) || [];
+      };
+      if (!stats) {
+        const ops = await versions.diff(await textOf(pair.old), await textOf(pair.fresh), false, api);
+        if (ops.some(o => o.op !== "=")) { changed.push({ name, reason: "changed by the request, not in the review" }); }
+        continue;
+      }
+      if (Number(stats.VERSNO_NEW) !== Number(now.fresh) || Number(stats.VERSNO_OLD) !== Number(now.old)) {
+        changed.push({ name, reason: "versions " + stats.VERSNO_OLD + " : " + stats.VERSNO_NEW + " in the review, " + now.old + " : " + now.fresh + " now" });
+        continue;
+      }
+      if (now.fresh !== "99998") { continue; }
+      const diff = list(saved.DIFF_DATA).find(d => d.KEY && key(d.KEY.OBJTYPE, d.KEY.OBJNAME) === key(p.ptype, p.part)
+        && Number(d.KEY.VERSNO_N) === 99998 && !(d.RETROFIT === true || d.RETROFIT === "X"));
+      if (!diff || !list(diff.DIFF).length) { unchecked.push({ name, reason: "the review keeps no text of its active state" }); continue; }
+      const then = list(diff.DIFF).filter(l => l.OP !== "-").map(l => String(l.TEXT));
+      const current = await textOf(pair.fresh);
+      if (then.length !== current.length || then.some((line, i) => line !== String(current[i]))) {
+        changed.push({ name, reason: "its active state changed" });
+      }
+    } catch (error) {
+      unchecked.push({ name, reason: String(error && error.message || error) });
+    }
+  }
+  held.forEach(s => changed.push({ name: s.OBJTYPE === "METH" && s.CLASS_NAME ? s.CLASS_NAME + "->" + s.OBJ_NAME : String(s.OBJ_NAME),
+    reason: "no longer changed by the request" }));
+  return { changed, unchecked };
+}
+
+module.exports = { build, pairOf, countChanges, staleness };
