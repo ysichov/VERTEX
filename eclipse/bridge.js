@@ -83,12 +83,14 @@ async function run(request, fetch, api = assistant, open = async () => { throw n
   const server = mcp.create(deps);
   try {
     const running = await server.start();
+    const prompt = brain.preparePrompt ? await brain.preparePrompt(deps, request.text, request.state)
+      : brain.prompt(request.text, request.state);
+    // What goes to the model, when the log is asked to keep it - VS Code's vertex.ai.log.request.
+    if (log) { log.request({ instructions: brain.INSTRUCTIONS, prompt, tools: brain.TOOLS, schema: brain.PLAN_SCHEMA }); }
     const answer = await api.ask({ ...options, model: request.model, personalInstructions: request.personalInstructions === true,
       url: running.url.replace(/\/mcp$/, "/assistant"), token: server.token,
       instructions: brain.INSTRUCTIONS, schema: brain.PLAN_SCHEMA,
-      tools: brain.TOOLS.map(t => t.name),
-      prompt: brain.preparePrompt ? await brain.preparePrompt(deps, request.text, request.state)
-        : brain.prompt(request.text, request.state) });
+      tools: brain.TOOLS.map(t => t.name), prompt });
     const plan = await brain.checkPlan(deps, answer.plan);
     if (log) { log.assistant({ model: answer.model, usage: answer.usage, text: plan.answer }); }
     return { call: "ask", model: answer.model, usage: answer.usage || null, plan };

@@ -2021,7 +2021,8 @@ function onDiagramClick(e) {
   var umlLink=e.target.closest&&e.target.closest('[data-uml-method]');
   if(mode==='class'&&umlLink&&umlSourceOpener()){
     e.preventDefault();e.stopPropagation();
-    umlSourceOpener()({name:umlLink.dataset.umlOwner,type:umlLink.dataset.umlType,method:umlLink.dataset.umlMethod,beside:true,preserveFocus:true});return;
+    // newTab: Ctrl (or Cmd) asks for a tab of its own; Eclipse otherwise reuses the editor it opened last.
+    umlSourceOpener()({name:umlLink.dataset.umlOwner,type:umlLink.dataset.umlType,method:umlLink.dataset.umlMethod,beside:true,preserveFocus:true,newTab:!!(e.ctrlKey||e.metaKey)});return;
   }
   var callLink=e.target.closest&&e.target.closest('a[data-call-method]');
   if(callLink&&typeof sdeOpenToolSource==='function'){e.preventDefault();e.stopPropagation();if(callLink.dataset.callOwner)sdeOpenToolSource({name:callLink.dataset.callOwner,type:'CLAS',method:callLink.dataset.callMethod});else sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(callLink.dataset.callLine)});return;}

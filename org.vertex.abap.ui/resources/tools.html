@@ -454,6 +454,11 @@ function connect(child,service,generation){
   if((initial?.boundObject||localFolderState)&&typeof sdeOpenToolSource==="function")child.sdeOpenToolSource=value=>sdeOpenToolSource(JSON.stringify(value));
   // A UML method opens its source in the editor in every window: unlike a Calls routine, it has nothing to unfold in place.
   if(typeof sdeOpenToolSource==="function")child.sdeOpenUmlSource=value=>sdeOpenToolSource(JSON.stringify(value));
+  // Eclipse's browser puts its host functions into every frame, where calling one fails ("Element not found",
+  // 0x80070490): only this window answers them. A frame keeps only what this page hands it - sdeOpenToolSource
+  // only in a window bound to an editor, as in VS Code - and the chat's Copy and found objects reach this window.
+  if(!(initial?.boundObject||localFolderState))child.sdeOpenToolSource=undefined;
+  ["sdeCopyText","sdeOpenObject"].forEach(name=>{if(typeof window[name]==="function")child[name]=(...args)=>window[name](...args);});
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
   child.sdeProject=()=>enqueue({path:"project"},reply,live);
   // In Eclipse the services read over ADT in this window are always there, whatever VERTEX's ABAP on the system

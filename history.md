@@ -1,5 +1,15 @@
 # Release history
 
+## 2026-10-23 — Eclipse 0.9.30: the chat in its own window
+
+**VERTEX Assistant** in the VERTEX submenu opens the VERTEX chat in a window of its own, on the system of the selected object, as an alternative to Ask AI inside VERTEX Tools.
+
+**Window → Preferences → VERTEX Assistant** has "Log what is sent to the model", as VS Code's `vertex.ai.log.request`: VERTEX's instructions, the prompt with its context and the tools go into the session log, and Session Logs shows them.
+
+## 2026-10-23 — Eclipse 0.9.30: UML links open their source
+
+A method in a UML diagram opens its class at that method in Eclipse also when VERTEX Tools was opened from Project Explorer, opening the class's editor when it is not open and bringing it to the front. A plain click reuses the editor the previous plain click opened; Ctrl+click opens the class in a tab of its own. In Ask AI inside VERTEX Tools, Copy and a found object's link work.
+
 ## 2026-10-23 — Eclipse 0.9.30: packages
 
 UML and Metrics of a package in Eclipse list the package's classes and interfaces; they found none. The object type, name and function fields in VERTEX Tools follow the light or dark system theme instead of staying black.

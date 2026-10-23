@@ -34,7 +34,7 @@ needed. While one runs, **Cancel** beside its status stops it.
 
 All VERTEX commands of a context menu stand in one **VERTEX** submenu, beside GitHub, Team and Run
 As: VERTEX Tools, Path to This Line, Forward and Backward Usage Analysis, Visual Flow Analysis, Open
-Visual Debug, Activate and Session Logs. The commands below are named as they appear there.
+Visual Debug, Activate, VERTEX Assistant and Session Logs. The commands below are named as they appear there.
 
 ## Path to This Line
 
@@ -51,6 +51,14 @@ its value right above the condition, with a list of where each value comes from.
 Preferences → VERTEX Path to This Line** numbers the lines from the METHOD or FORM statement, as
 SAP GUI numbers a method.
 
+## VERTEX Assistant
+
+**VERTEX Assistant** opens the chat in a window of its own, on the system of the object selected in Project
+Explorer or shown in the active editor; with neither, it asks which ABAP project. The same chat is **Ask AI**
+in VERTEX Tools. It runs Claude Code or Codex, set in **Window → Preferences → VERTEX Assistant**, where the
+log folder and what is logged - questions, answers, SAP tool calls, and what is sent to the model (VERTEX's
+instructions, the prompt with its context, the tools) - are chosen too; nothing is logged until a folder is set.
+
 ## Session Logs
 
 **VERTEX: Session Logs** (Quick Access, or **Window → Show View → VERTEX → Session Logs**) shows the
@@ -61,7 +69,7 @@ on the one you pick. Recorded diagram and metrics context opens in the window. *
 conversations** deletes their log files after asking. Recorded transpiler runs and SAP debug sessions
 open in VS Code only.
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
-Opening VERTEX Tools while an ADT class or program editor is active selects that object automatically and follows the editor's cursor. Opened from Project Explorer, Tools shows the object type and name fields - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Logic view takes its method. VERTEX Tools and the VERTEX functions open in a window of their own beside the workbench, so a click in the editor never hides them; a window already open is brought to the front.
+Opening VERTEX Tools while an ADT class or program editor is active selects that object automatically and follows the editor's cursor. A method in a UML diagram opens its class at that method; a plain click reuses the editor the previous plain click opened (closing it unless it holds unsaved changes, and never one you had open already), Ctrl+click opens the class in a tab of its own. Opened from Project Explorer, Tools shows the object type and name fields - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Logic view takes its method. VERTEX Tools and the VERTEX functions open in a window of their own beside the workbench, so a click in the editor never hides them; a window already open is brought to the front.
 
 ## Versions and code review
 

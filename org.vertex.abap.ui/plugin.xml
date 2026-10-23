@@ -28,6 +28,13 @@
             allowMultiple="true"
             restorable="false"/>
       <view
+            id="org.vertex.abap.ui.view.chat"
+            name="VERTEX Assistant"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.ChatView"
+            allowMultiple="true"
+            restorable="false"/>
+      <view
             id="org.vertex.abap.ui.view.logs"
             name="Session Logs"
             category="org.vertex.abap.ui.category"
@@ -72,6 +79,10 @@
             name="VERTEX: Backward Usage Analysis"
             description="Where the values of the routine at the cursor go in its callers, up through theirs, by SAP's where-used"/>
       <command
+            id="org.vertex.abap.ui.command.chat"
+            name="VERTEX Assistant"
+            description="The VERTEX chat in a window of its own, on the system of the selected object"/>
+      <command
             id="org.vertex.abap.ui.command.logs"
             name="VERTEX: Session Logs"
             description="The assistant's conversation logs, as VS Code shows them"/>
@@ -98,6 +109,9 @@
       <handler
             commandId="org.vertex.abap.ui.command.backwardUsage"
             class="org.vertex.abap.ui.BackwardUsageHandler"/>
+      <handler
+            commandId="org.vertex.abap.ui.command.chat"
+            class="org.vertex.abap.ui.ChatHandler"/>
       <handler
             commandId="org.vertex.abap.ui.command.logs"
             class="org.vertex.abap.ui.LogsHandler"/>
@@ -126,6 +140,7 @@
             <command commandId="org.vertex.abap.ui.command.debugMonitor" label="Open Visual Debug" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
             <command commandId="org.vertex.abap.ui.command.activate" label="Activate" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
             <separator name="vertex.logs" visible="true"/>
+            <command commandId="org.vertex.abap.ui.command.chat" label="VERTEX Assistant" style="push"></command>
             <command commandId="org.vertex.abap.ui.command.logs" label="Session Logs" style="push"></command>
          </menu>
       </menuContribution>

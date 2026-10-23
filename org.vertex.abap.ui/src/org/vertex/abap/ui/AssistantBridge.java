@@ -61,7 +61,8 @@ final class AssistantBridge implements AutoCloseable {
                 + ",\"project\":" + quote(view instanceof ChatView && call.equals("ask") ? view.abapProject().getName() : "")
                 + ",\"logInclude\":{\"questions\":" + AssistantPreferences.flag("logQuestions")
                 + ",\"answers\":" + AssistantPreferences.flag("logAnswers")
-                + ",\"tools\":" + AssistantPreferences.flag("logTools") + "}"
+                + ",\"tools\":" + AssistantPreferences.flag("logTools")
+                + ",\"request\":" + AssistantPreferences.flag("logRequest") + "}"
                 + ",\"personalInstructions\":" + AssistantPreferences.flag("personalInstructions")
                 + ",\"state\":" + state + "}";
         if (!closed) workers.submit(() -> run(call, assistant, service, request));
