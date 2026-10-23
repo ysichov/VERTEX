@@ -43,7 +43,8 @@ the line at the cursor runs inside its METHOD or FORM: enclosing branches, earli
 be false, CHECKs, and earlier branches that must not be taken because they leave the routine. It reads
 the editor's text as it stands, saved or not, and asks nothing of SAP. While the window is open, a
 click on another line of that editor builds that line's path in it; a line outside a METHOD or FORM
-leaves the last path shown and says why. A line number in the window shows the line in the editor.
+leaves the last path shown and says why. The code is coloured as in the Logic view's Code. A line number
+in the window shows the line in the editor.
 
 **Value sources** colours each variable read in the conditions and puts the statement that gives it
 its value right above the condition, with a list of where each value comes from. **Window →
@@ -137,7 +138,7 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.8.29.qualifier` (the VS Code extension is 0.9.29); the checked-in update site carries build `0.8.29.20261023191934`.
+then regenerate. The feature and bundle sources are at `0.9.30.qualifier`, the VS Code extension's number; the checked-in update site carries build `0.9.30.20261023195758`.
 
 For a local installable archive without replacing the published `docs/` site:
 

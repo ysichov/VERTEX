@@ -1,5 +1,19 @@
 # Development history
 
+## 2026-10-23 — Path to This Line in colour
+
+The user saw Path to line in Eclipse uncoloured and took it for an Eclipse gap; asked, they said it should look like the Logic view's Code. Neither host coloured it: the page marked only Value sources' variables. The parse it builds from already carries the parser's token colouring (value-origin-linter lexColors) that ace-scheme's codeView uses, so build passes it to page, which wraps each token in the same tk-* classes; a Value sources mark at the same column goes first and wins. The colours are VS Code's theme variables, and eclipse/reach-path.html gives them Light+/Dark+ values. Checked: the markup for keywords, numbers, strings, a class and a method; the Eclipse page in light and dark in a browser. Eclipse rebuilt as an install archive, 0.8.29 by the user's word.
+
+The user then set the number: VS Code 0.9.30, and Eclipse the same - the plugin follows the extension's number from here (MANIFEST.MF, feature.xml, package.json). Built vertex-abap-0.9.30.vsix and the Eclipse archive 0.9.30.20261023195758; put into docs/ the same way, with "Latest build" in docs/index.html, README and eclipse/README following.
+
+## 2026-10-23 — Eclipse: UML of a package
+
+UML on a package in Eclipse answered "Request could not be understood by the server due to malformed syntax: Accept header missing". The package's objects come from ADT's repository/nodestructure, a POST that PageView.assistantPost sent with no headers; abap-adt-api in VS Code always sends an Accept. assistantPost now asks for the type ADT's Project Explorer asks for, application/vnd.sap.as+xml with dataname com.sap.adt.RepositoryObjectTreeContent; the answer's vnd.sap +xml type is taken by the response filter addAdtTextHandlers already registers. Compiled; not run against SAP.
+
+## 2026-10-23 — Eclipse: Logic Code view in colour
+
+The user saw Logic's Code view in Eclipse without token colours. metrics.html coloured abaplint's tokens with VS Code theme variables alone (--vscode-debugTokenExpression-*, --vscode-symbolIcon-*), and Eclipse's browser defines none, so every token fell back to plain text - the page's own palette, which gives Eclipse light and dark values from :root and prefers-color-scheme, had been passed over. The token colours now live in that palette as --tk-*: VS Code's Light+/Dark+ editor colours in Eclipse, the theme's variables (with those as fallbacks) under body.vscode-*; comments take --muted. Checked in a browser in light and dark, and that a VS Code theme variable still wins under body.vscode-dark. Line-number links in the Code view still use --vscode-textLink-foreground with no Eclipse value; not changed.
+
 ## 2026-10-23 — Eclipse: Path to This Line and Session Logs
 
 The user asked for every VS Code function in Eclipse one to one, the SAP debugger aside, and named three gaps: Path to This Line (required), the transpiler (if possible), the logs (required). The audit found the rest either shared code that a rebuild carries (review, Versions, Logic, Calls, Metrics, SelecTor, Value Origin) or VS Code's own host (editor folding and jumps, local files, SAP Systems and RFC, Save & Activate, unit tests, ATC, documentation, which ADT has).

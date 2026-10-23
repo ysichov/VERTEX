@@ -26,6 +26,7 @@
     --th-sorted-bg: #dbe6f4;
     --row-alt: #fafafa;
     --danger: #a5292a;
+    --tk-keyword: #0000ff; --tk-string: #a31515; --tk-number: #098658; --tk-method: #795e26; --tk-class: #267f99;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -45,6 +46,7 @@
       --th-sorted-bg: #35506b;
       --row-alt: #232323;
       --danger: #f48771;
+      --tk-keyword: #569cd6; --tk-string: #ce9178; --tk-number: #b5cea8; --tk-method: #dcdcaa; --tk-class: #4ec9b0;
     }
   }
 
@@ -55,6 +57,8 @@
     --field-bg: var(--vscode-input-background, #ffffff); --field-border: var(--vscode-input-border, #b8b8b8); --hover: var(--vscode-list-hoverBackground, #eaf2fb);
     --th-bg: var(--vscode-keybindingTable-headerBackground, #eef2f7); --th-sorted-bg: var(--vscode-list-activeSelectionBackground, #dbe6f4); --row-alt: var(--vscode-tree-tableOddRowsBackground, #fafafa);
     --danger: var(--vscode-errorForeground, #a5292a);
+    --tk-keyword: var(--vscode-debugTokenExpression-boolean, #0000ff); --tk-string: var(--vscode-debugTokenExpression-string, #a31515); --tk-number: var(--vscode-debugTokenExpression-number, #098658);
+    --tk-method: var(--vscode-symbolIcon-methodForeground, #795e26); --tk-class: var(--vscode-symbolIcon-classForeground, #267f99);
   }
 
   body.vscode-dark, body.vscode-high-contrast {
@@ -64,6 +68,8 @@
     --field-bg: var(--vscode-input-background, #3c3c3c); --field-border: var(--vscode-input-border, #5a5a5a); --hover: var(--vscode-list-hoverBackground, #2a3d55);
     --th-bg: var(--vscode-keybindingTable-headerBackground, #2b3a4a); --th-sorted-bg: var(--vscode-list-activeSelectionBackground, #35506b); --row-alt: var(--vscode-tree-tableOddRowsBackground, #232323);
     --danger: var(--vscode-errorForeground, #f48771);
+    --tk-keyword: var(--vscode-debugTokenExpression-boolean, #569cd6); --tk-string: var(--vscode-debugTokenExpression-string, #ce9178); --tk-number: var(--vscode-debugTokenExpression-number, #b5cea8);
+    --tk-method: var(--vscode-symbolIcon-methodForeground, #dcdcaa); --tk-class: var(--vscode-symbolIcon-classForeground, #4ec9b0);
   }
 
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -207,13 +213,15 @@
   .logic-code-view .code-row.code-selected { background: var(--vscode-editor-lineHighlightBackground, var(--vscode-list-hoverBackground)); }
   .logic-code-view .code-fold .text { color: var(--vscode-textLink-foreground); cursor: pointer; font-style: italic; }
   .logic-code-view .code-fold .text:hover { text-decoration: underline; }
-  /* Code view colours: abaplint's reading of each token, in the theme's own colours for that kind of symbol. */
-  .logic-code-view .tk-keyword { color: var(--vscode-debugTokenExpression-boolean); }
-  .logic-code-view .tk-string { color: var(--vscode-debugTokenExpression-string); }
-  .logic-code-view .tk-number { color: var(--vscode-debugTokenExpression-number); }
-  .logic-code-view .tk-comment { color: var(--vscode-descriptionForeground); font-style: italic; }
-  .logic-code-view .tk-method { color: var(--vscode-symbolIcon-methodForeground); }
-  .logic-code-view .tk-class { color: var(--vscode-symbolIcon-classForeground); }
+  /* Code view colours: abaplint's reading of each token, in the theme's own colours for that kind of symbol - the
+     palette above: VS Code's theme in VS Code, light or dark editor defaults in Eclipse, which has no theme
+     variables (left without them, Eclipse showed every token in plain text). */
+  .logic-code-view .tk-keyword { color: var(--tk-keyword); }
+  .logic-code-view .tk-string { color: var(--tk-string); }
+  .logic-code-view .tk-number { color: var(--tk-number); }
+  .logic-code-view .tk-comment { color: var(--muted); font-style: italic; }
+  .logic-code-view .tk-method { color: var(--tk-method); }
+  .logic-code-view .tk-class { color: var(--tk-class); }
   .bar .depth input { width: 3.2rem; font: inherit; padding: 2px 4px; color: var(--fg);
                       background: var(--field-bg); border: 1px solid var(--field-border); }
   /* The diagram sizes itself; the pane scrolls in both directions rather

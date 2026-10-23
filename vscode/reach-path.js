@@ -206,14 +206,21 @@ const words = { true: 'true', false: 'false', case: '', context: '', end: '', ta
 // relative: numbers are shown from the routine's opening statement (line 1), as SAP GUI numbers a method; the links
 // still lead to the source line.
 // sources: valueSources' answer, shown under the Value sources toggle; controls: the shared vertex-controls.css.
-function page(result, nonce, cspSource, lines, relative = false, sources = null, controls = '') {
+// colours: the parser's token colouring (value-origin-linter lexColors: line, col, len, kind), as Logic's Code view
+// shows it; a variable that Value sources marks keeps that mark.
+function page(result, nonce, cspSource, lines, relative = false, sources = null, controls = '', colours = []) {
   const shown = line => relative ? line - result.procedure.line + 1 : line;
+  const tokens = new Map();
+  for (const c of colours || []) (tokens.get(c.line) || tokens.set(c.line, []).get(c.line)).push(c);
   const marked = (text, line) => {
-    const marks = (sources && sources.marks[line] || []).slice().sort((a, b) => a.column - b.column);
+    const marks = (sources && sources.marks[line] || []).map(m => ({ column: m.column, length: m.length, open: '<span class="v v' + (m.index % 6) + '">' }))
+      .concat((tokens.get(line) || []).map(c => ({ column: c.col, length: c.len, open: '<span class="tk-' + c.kind + '">', token: true })))
+      // At one column a Value sources mark goes first, so it wins over the token's colour.
+      .sort((a, b) => a.column - b.column || (a.token ? 1 : 0) - (b.token ? 1 : 0));
     let out = '', at = 0;
     for (const m of marks) {
       if (m.column < at) continue;
-      out += escape(text.slice(at, m.column)) + '<span class="v v' + (m.index % 6) + '">' + escape(text.slice(m.column, m.column + m.length)) + '</span>';
+      out += escape(text.slice(at, m.column)) + m.open + escape(text.slice(m.column, m.column + m.length)) + '</span>';
       at = m.column + m.length;
     }
     return out + escape(text.slice(at));
@@ -256,6 +263,10 @@ function page(result, nonce, cspSource, lines, relative = false, sources = null,
     + 'li.feed{display:none}body.sources li.feed{display:flex}li.feed pre{opacity:.85;border-left:2px solid var(--vscode-focusBorder);padding-left:4px}'
     + '.origins{display:none;margin-top:12px}body.sources .origins{display:block}.origins .name{min-width:12ch;font-family:var(--vscode-editor-font-family)}'
     + 'body.sources .v{font-weight:bold;text-decoration:underline}'
+    // Token colours, as Logic's Code view gives them.
+    + '.tk-keyword{color:var(--vscode-debugTokenExpression-boolean)}.tk-string{color:var(--vscode-debugTokenExpression-string)}'
+    + '.tk-number{color:var(--vscode-debugTokenExpression-number)}.tk-comment{color:var(--vscode-descriptionForeground);font-style:italic}'
+    + '.tk-method{color:var(--vscode-symbolIcon-methodForeground)}.tk-class{color:var(--vscode-symbolIcon-classForeground)}'
     + ['red', 'blue', 'green', 'orange', 'purple', 'yellow'].map((c, i) => 'body.sources .v' + i + '{color:var(--vscode-charts-' + c + ')}').join('')
     + controls + '</style></head><body>'
     + (sources ? '<p><button type="button" class="vertex-toggle" id="sources" title="Colour the variables of the conditions and show where each gets its value">Value sources</button></p>' : '')
@@ -294,7 +305,8 @@ async function build(text, offset, line, options) {
   const relative = options.relative === true;
   const title = relative ? result.target.line - result.procedure.line + 1 : result.target.line;
   return { title: 'Path to line ' + title, warnings: parsed.warnings, sourcesError,
-    html: page(result, options.nonce, options.cspSource || '', text.split(/\r?\n/), relative, sources, options.controls || '') };
+    html: page(result, options.nonce, options.cspSource || '', text.split(/\r?\n/), relative, sources, options.controls || '',
+      parsed.source.lexColors) };
 }
 
 function register(vscode, context) {

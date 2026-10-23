@@ -1,5 +1,13 @@
 # Release history
 
+## 2026-10-23 — VS Code 0.9.30, Eclipse 0.9.30.20261023195758: coloured paths, package UML in Eclipse
+
+Path to This Line colours its code as the Logic view's Code does - keywords, strings, numbers, comments, methods and classes - in VS Code and in Eclipse; Value sources still marks the variables of the conditions over it.
+
+The Eclipse plugin now carries the VS Code extension's version number.
+
+In Eclipse, Logic's Code view shows its token colours, light or dark as the system is; it showed plain text. UML of a package no longer fails with "Accept header missing".
+
 ## 2026-10-23 — Eclipse 0.8.29.20261023191934: Path to This Line, Session Logs, stale reviews, VERTEX submenu
 
 **VERTEX: Path to This Line** is in the ADT editor's context menu, as in VS Code: the conditions under which the line at the cursor runs inside its METHOD or FORM, built from the editor's text. A click on another line of that editor builds that line's path in the same window; **Value sources** colours the variables of the conditions and puts the statements that give them their values in the path. **Window → Preferences → VERTEX Path to This Line** numbers the lines from the METHOD or FORM statement.
