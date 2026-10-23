@@ -44,8 +44,14 @@ public class ToolsView extends ChatView {
         AdtEditor editor = part(0) == null ? activeObject() : null;
         String name = part(0) == null ? editor == null ? null : editor.ownerName() : part(0);
         String type = part(1) == null ? editor == null ? "CLAS" : editor.kind() : part(1);
-        return name == null || name.isBlank() ? "null" : "{\"name\":" + AssistantBridge.quote(name)
-            + ",\"type\":" + AssistantBridge.quote(type == null ? "CLAS" : type) + ",\"boundObject\":true,\"cursorLine\":" + editorLine() + "}";
+        if (name == null || name.isBlank()) return "null";
+        // Bound to an editor - fields hidden, Parts folded, the cursor choosing the routine - only when the active editor
+        // shows this object, as VS Code binds Tools opened from an editor. Opened from Project Explorer it is a free
+        // window: the object type and name fields stay, and Parts is open to pick a method, since no cursor picks one.
+        AdtEditor shown = activeObject();
+        boolean bound = shown != null && name.equalsIgnoreCase(shown.ownerName());
+        return "{\"name\":" + AssistantBridge.quote(name) + ",\"type\":" + AssistantBridge.quote(type == null ? "CLAS" : type)
+            + (bound ? ",\"boundObject\":true,\"cursorLine\":" + editorLine() : "") + "}";
     }
     @Override protected String readResource(String path) throws IOException {
         String value = super.readResource(path);

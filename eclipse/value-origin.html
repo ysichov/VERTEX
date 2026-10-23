@@ -62,11 +62,15 @@ body { display: flex; flex-direction: column; background: var(--vscode-editor-ba
   font: 13px var(--vscode-font-family); }
 #status { padding: 8px 12px; color: var(--vscode-descriptionForeground); }
 #status.error { color: var(--vscode-foreground); border-left: 3px solid var(--vscode-editorWarning-foreground); white-space: pre-wrap; }
+#bar { display: flex; align-items: center; }
+#bar #status { flex: 1; }
+#cancel { margin-right: 12px; font: inherit; padding: 2px 10px; cursor: pointer; color: var(--vscode-foreground);
+  background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 4px; }
 #view { flex: 1; width: 100%; border: 0; background: var(--vscode-editor-background); }
 </style>
 </head>
 <body>
-<div id="status">Value origin</div>
+<div id="bar"><div id="status">Value origin</div><button type="button" id="cancel" hidden>Cancel</button></div>
 <iframe id="view" title="Value origin" hidden></iframe>
 <script>/*FLOW_GRAPH*/</script>
 <script>/*ORIGIN_ENGINE*/</script>
@@ -149,15 +153,32 @@ async function runBackward(t) {
     throw new Error("This editor differs from active SAP source. Activate your changes or reopen the active source before analysis.");
   }
   window.vertexAskBreakpoint = ask;
-  var answer = await window.vertexEclipseRequest("/sap/bc/adt/vertex/backward/" + encodeURIComponent(t.name)
+  var answer = await request("/sap/bc/adt/vertex/backward/" + encodeURIComponent(t.name)
     + "?source=" + encodeURIComponent(t.sourcePath) + "&name=" + encodeURIComponent(t.name) + "&type=" + encodeURIComponent(t.type)
     + "&line=" + t.line + "&variable=" + encodeURIComponent(variable) + "&breakpoints=" + (t.breakpoints || []).join(","),
     function (text) { say("Backward usage - " + text); });
+  check();
   graph = answer.page;
   backwardSources = true;
   await draw(graph);
 }
 var backwardSources = false;
+
+// Cancel, as VS Code's progress offers it: the analysis stops at its next step and the worker's request is told to stop.
+var stopped = false, cancelButton = document.getElementById("cancel"), stopWaiting;
+var cancelling = new Promise(function (resolve, reject) { stopWaiting = reject; });
+cancelling.catch(function () {});
+function check() { if (stopped) { throw new Error("Analysis cancelled."); } }
+// A request to the analysis worker that the page stops waiting for once the reader cancels, even while an ADT read in
+// it has not answered; the worker is told to stop as well and does at its next step.
+function request(path, progress) { return Promise.race([window.vertexEclipseRequest(path, progress), cancelling]); }
+cancelButton.onclick = function () {
+  stopped = true;
+  cancelButton.disabled = true;
+  say("Cancelling ...");
+  stopWaiting(new Error("Analysis cancelled."));
+  if (window.vertexEclipseCancel) { window.vertexEclipseCancel(function (path) { return /\/vertex\/(flow|backward)\//.test(path); }); }
+};
 
 async function run() {
   if (!origin) { throw new Error("The Value origin analysis did not load into this window."); }
@@ -181,7 +202,8 @@ async function run() {
   }
   var parserWarnings=[];
   var load = async function (name, type) {
-    var data=await window.vertexEclipseRequest('/sap/bc/adt/vertex/flow/'+encodeURIComponent(name)+'?mode=origin&type='+type, function(text){say('Value origin - '+text);});
+    check();
+    var data=await request('/sap/bc/adt/vertex/flow/'+encodeURIComponent(name)+'?mode=origin&type='+type, function(text){say('Value origin - '+text);});
     parserWarnings.push(...(data.warnings||[]));
     return data.sources;
   };
@@ -216,6 +238,7 @@ async function run() {
   // nothing new is needed. Reading every customer object the source mentions took half the system for a local variable.
   // A class arrives with all its parts, so a part asked for again adds nothing.
   var result = await origin.collect(initial, mapped, { load: load, loadPart: async function () { return []; } });
+  check();
   sources = result.sources;
   // The source the cursor is in opens in the editor it came from, as VS Code opens its own document.
   sources.forEach(function (source) { if (source.id === mapped.source && flat(source.text) === flat(t.text)) { source.editor = true; } });
@@ -234,6 +257,7 @@ async function run() {
   });
   graph.codeFlow = { rows: origin.pathRows(graph, sources), sites: origin.siteRows(graph, sources) };
   var stops = breakpointLines(t, initial, mapped, warnings);
+  check();
   graph.flowScope = await origin.stopAtBreakpoints(origin.flowScope(graph), function (row) {
     return row.source === mapped.source && stops.indexOf(row.line) >= 0 ? { location: row.location, line: row.line } : null;
   }, ask);
@@ -272,8 +296,21 @@ window.vertexOriginMessage = function (message) {
 };
 async function follow(message) {
   // The screen is what VS Code tells its chat about the window; the Eclipse chat is not given it.
-  if (!message || message.kind === "screen" || !graph) { return; }
-  if (/^scenario:/i.test(message.node || "")) { throw new Error("Loading a scenario's pipeline (ZLOG_PIPELINE) is in VS Code only."); }
+  if (!message || message.kind === "screen") { return; }
+  // A failure of the page itself is said here, as VS Code says it in a message.
+  if (message.kind === "pageError") { say("VERTEX: the " + (backwardSources ? "Backward usage" : "Value origin") + " page failed: " + message.message, true); return; }
+  // The analysis log goes to Eclipse's clipboard; the page hears how it went, as from VS Code.
+  if (message.kind === "copyLog") {
+    var result = { kind: "copyLogResult", ok: true };
+    try { await call("sdeOriginCopy", String(message.text || "")); }
+    catch (error) { result = { kind: "copyLogResult", ok: false, error: error.message }; }
+    frame.contentWindow.postMessage(result, "*");
+    return;
+  }
+  if (!graph) { return; }
+  // VS Code reads a scenario's pipeline through a loader its analysis never sets, so a scenario there opens nothing
+  // either; here too, a scenario is not a place to open.
+  if (message.kind === "scenario" || /^scenario:/i.test(message.node || "")) { return; }
   // Backward names its places by their ADT source address: the object is opened in ADT and the line shown.
   if (backwardSources) {
     var at = /^origin:([^|]*)\|/.exec(message.source || ""), address = at ? at[1] : message.source;
@@ -313,7 +350,12 @@ async function follow(message) {
   sdeOriginReveal("opened", String(origin.sourceLineIn(source.text, node.line, opened)));
 }
 
-run().catch(function (error) { say("VERTEX: " + error.message, true); });
+cancelButton.hidden = false;
+run().then(function () { cancelButton.hidden = true; }, function (error) {
+  cancelButton.hidden = true;
+  // The worker words its own stop as a newer request replacing the analysis; here the reader stopped it.
+  say("VERTEX: " + (stopped ? "Analysis cancelled." : error.message), true);
+});
 </script>
 </body>
 </html>

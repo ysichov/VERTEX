@@ -1,5 +1,17 @@
 # Release history
 
+## 2026-10-23 — Eclipse 0.9.30: Forward and Backward
+
+Forward and Backward Usage Analysis in Eclipse have a **Cancel** button while they run, as VS Code's progress does. **Copy log** copies the analysis log to the clipboard, and a failure of the page is shown in its status line.
+
+## 2026-10-23 — Eclipse 0.9.30: Code view colours, Calls cancelled
+
+In Eclipse, Logic's Code view shows its line numbers as links, marks the editor's cursor line and the hidden-block lines, and Reachability lights up its path, in light and dark. The "ADT analysis help" note is gone from VERTEX Tools. A Calls diagram asked for while another is still being analysed stops the older analysis, as in VS Code.
+
+## 2026-10-23 — Eclipse 0.9.30: Tools from Project Explorer
+
+VERTEX Tools opened from Project Explorer shows the object type and name fields, where a name or a mask such as `ZV*LAB` finds any object, and its Parts list is open, so Logic view of a class starts from a method picked there. Opened from an editor, Tools still follows that editor's cursor.
+
 ## 2026-10-23 — VS Code 0.9.30, Eclipse 0.9.30.20261023195758: coloured paths, package UML in Eclipse
 
 Path to This Line colours its code as the Logic view's Code does - keywords, strings, numbers, comments, methods and classes - in VS Code and in Eclipse; Value sources still marks the variables of the conditions over it.

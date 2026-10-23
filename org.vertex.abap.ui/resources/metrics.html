@@ -27,6 +27,12 @@
     --row-alt: #fafafa;
     --danger: #a5292a;
     --tk-keyword: #0000ff; --tk-string: #a31515; --tk-number: #098658; --tk-method: #795e26; --tk-class: #267f99;
+    /* The VS Code theme names the Code view and Reachability are written in, given values for Eclipse, which defines
+       none. In VS Code the webview sets them on <html> itself, which wins over these. */
+    --vscode-editor-background: #ffffff; --vscode-editor-foreground: #1f1f1f; --vscode-descriptionForeground: #717171;
+    --vscode-editorLineNumber-foreground: #6e7681; --vscode-textLink-foreground: #005fb8; --vscode-textLink-activeForeground: #005fb8;
+    --vscode-editor-lineHighlightBackground: #e8f0fe; --vscode-list-hoverBackground: #f0f0f0; --vscode-focusBorder: #005fb8;
+    --vscode-panel-border: #e5e5e5; --vscode-editorWidget-background: #f8f8f8;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -47,6 +53,10 @@
       --row-alt: #232323;
       --danger: #f48771;
       --tk-keyword: #569cd6; --tk-string: #ce9178; --tk-number: #b5cea8; --tk-method: #dcdcaa; --tk-class: #4ec9b0;
+      --vscode-editor-background: #1f1f1f; --vscode-editor-foreground: #cccccc; --vscode-descriptionForeground: #9d9d9d;
+      --vscode-editorLineNumber-foreground: #6e7681; --vscode-textLink-foreground: #4daafc; --vscode-textLink-activeForeground: #4daafc;
+      --vscode-editor-lineHighlightBackground: #2a2d2e; --vscode-list-hoverBackground: #2a2d2e; --vscode-focusBorder: #0078d4;
+      --vscode-panel-border: #3c3c3c; --vscode-editorWidget-background: #252526;
     }
   }
 

@@ -174,7 +174,7 @@ async function request(api, resource, progress, cancelled = () => false) {
     if (/^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(url.pathname)) {
       return await __vertexRequire(1543).request(api, resource) ?? await __vertexRequire(1544).request(api, resource);
     }
-    if (/^\/sap\/bc\/adt\/vertex\/backward\//.test(url.pathname)) return backward(api, resource, progress);
+    if (/^\/sap\/bc\/adt\/vertex\/backward\//.test(url.pathname)) return backward(api, resource, progress, cancelled);
     const navigator = /^\/sap\/bc\/adt\/vertex\/navigator\/([^/]+)$/.exec(url.pathname);
     if (navigator) {
       if (typeof api.objectNavigator !== 'function') throw new Error('Object Navigator is not available for this system.');
@@ -428,7 +428,9 @@ function sourceAddress(uri) {
 // its callers, up through theirs - the walk VS Code's command runs (backward-usage.js), over the same parsed sources.
 // SAP's where-used comes from the host (api.whereUsed), the stop at a breakpoint is the host's question
 // (api.askBreakpoint). Sources are addressed by their ADT source URL, so a line is the line ADT shows.
-async function backward(api, resource, progress = () => {}) {
+// CANCELLED, when it answers true, stops the walk at its next read: a host whose reader cancels the analysis (Eclipse).
+async function backward(api, resource, progress = () => {}, cancelled = () => false) {
+  const check = () => { if (cancelled()) throw new Error('Analysis cancelled.'); };
   const params = new URL(resource, 'https://sap.invalid').searchParams;
   const start = { url: String(params.get('source') || ''), name: upper(params.get('name')), type: upper(params.get('type')) };
   if (!/^\/sap\/bc\/adt\//.test(start.url)) throw new Error('Backward Usage Analysis needs the ADT source of the object.');
@@ -438,6 +440,7 @@ async function backward(api, resource, progress = () => {}) {
   const sources = new Map();
   const sourceOf = (url, name, type) => {
     if (!sources.has(url)) {
+      check();
       sources.set(url, Promise.resolve(api.sourceAt(url)).then(text => {
         progress('reading ' + name);
         return parseSource({ id: url, name, text: String(text), objectName: name, objectType: type, include: 'main' }).source;
@@ -446,6 +449,7 @@ async function backward(api, resource, progress = () => {}) {
     return sources.get(url);
   };
   const whereUsed = async (source, line, column) => {
+    check();
     progress('where-used in ' + source.objectName + ', line ' + line);
     const places = [], skipped = [];
     for (const place of await api.whereUsed(source.id, line, column)) {

@@ -30,7 +30,7 @@ In an ADT source editor's context menu, as in VS Code:
   the same way.
 
 Both read the active source over ADT and analyse it in the window; nothing of VERTEX's ABAP is
-needed.
+needed. While one runs, **Cancel** beside its status stops it.
 
 All VERTEX commands of a context menu stand in one **VERTEX** submenu, beside GitHub, Team and Run
 As: VERTEX Tools, Path to This Line, Forward and Backward Usage Analysis, Visual Flow Analysis, Open
@@ -61,7 +61,7 @@ on the one you pick. Recorded diagram and metrics context opens in the window. *
 conversations** deletes their log files after asking. Recorded transpiler runs and SAP debug sessions
 open in VS Code only.
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
-Opening VERTEX Tools while an ADT class or program editor is active selects that object automatically. VERTEX Tools and the VERTEX functions open in a window of their own beside the workbench, so a click in the editor never hides them; a window already open is brought to the front.
+Opening VERTEX Tools while an ADT class or program editor is active selects that object automatically and follows the editor's cursor. Opened from Project Explorer, Tools shows the object type and name fields - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Logic view takes its method. VERTEX Tools and the VERTEX functions open in a window of their own beside the workbench, so a click in the editor never hides them; a window already open is brought to the front.
 
 ## Versions and code review
 
@@ -138,7 +138,7 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.30.qualifier`, the VS Code extension's number; the checked-in update site carries build `0.9.30.20261023195758`.
+then regenerate. The feature and bundle sources are at `0.9.30.qualifier`, the VS Code extension's number; the checked-in update site carries build `0.9.30.20261023203747`.
 
 For a local installable archive without replacing the published `docs/` site:
 

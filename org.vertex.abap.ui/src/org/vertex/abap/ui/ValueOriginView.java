@@ -233,6 +233,24 @@ public class ValueOriginView extends PageView {
 			}
 		};
 
+		// The page's Copy log: its analysis log onto Eclipse's clipboard, as VS Code puts it on its own.
+		new BrowserFunction(this.browser, "sdeOriginCopy") {
+			@Override
+			public Object function(Object[] arguments) {
+				String text = arguments.length > 0 && arguments[0] != null ? String.valueOf(arguments[0]) : "";
+				queue(() -> {
+					org.eclipse.swt.dnd.Clipboard clipboard = new org.eclipse.swt.dnd.Clipboard(browser.getDisplay());
+					try {
+						clipboard.setContents(new Object[] { text }, new org.eclipse.swt.dnd.Transfer[] { org.eclipse.swt.dnd.TextTransfer.getInstance() });
+					} finally {
+						clipboard.dispose();
+					}
+					return "";
+				});
+				return null;
+			}
+		};
+
 		// Shows a line: in the editor the command ran in ("origin"), or in the one the last link opened ("opened").
 		new BrowserFunction(this.browser, "sdeOriginReveal") {
 			@Override
