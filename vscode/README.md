@@ -223,7 +223,7 @@ the version history, its diff and building a review - reads SAP over ADT and nee
 
 ## Settings
 
-In the VERTEX panel's title, the server icon opens `vertex.systems`, the sparkle opens **LLM Providers**, and the gear opens every VERTEX setting in the Settings editor.
+In the VERTEX panel's title, the server icon opens the **SAP Systems** table, the sparkle opens **LLM Providers**, and the gear opens every VERTEX setting in the Settings editor.
 
 ### Connecting
 
@@ -234,8 +234,9 @@ password is discarded; the next operation asks again. Basic also works on remote
 extension hosts. **VERTEX: Forget Credentials** clears the active system's stored
 credentials.
 
-In the VERTEX panel, the **SNC** checkbox beside the SAP system selector switches
-the selected system between SNC single sign-on and password authentication.
+**SAP Systems** (the server icon in the VERTEX panel's title, or the link under `vertex.systems` in Settings) lists every configured system in a table. Per row: the radio button makes it the active system; **SNC** switches it between SNC single sign-on and password authentication; **On** switches it off or on - a system switched off stays in `vertex.systems` (`"disabled": true`) but is left out of every list, switch and test, and a tab opened from it says so; **Log in** asks for the password and keeps it in the OS credential store, then tests; **Test** asks ADT on that system alone and shows the answer in the row; **Delete** removes it from `vertex.systems` after a confirmation. **Import from SAP Logon and Eclipse** and **Edit in settings.json** stand above the table.
+
+In **SAP Systems**, the **SNC** checkbox switches a system between SNC single sign-on and password authentication.
 Turning SNC off keeps its connection details in settings; turning it back on
 requires `snc.partnerName` and `rfc.ashost`/`rfc.sysnr`. The checkbox changes only
 that system's `authType`, without deleting or re-importing it. Basic authentication
@@ -292,7 +293,7 @@ active. They live in VS Code's own settings file: **Ctrl+Shift+P →
 Preferences: Open User Settings (JSON)**, and the entries below go into it.
 Workspace settings (`.vscode/settings.json`) work too and override the user's.
 
-A first install opens **Get started with VERTEX** (VS Code's Get Started page; later Help > Get Started): import the systems, test them, choose the assistant, add the VERTEX MCP server - each step with its button. The quickest way is **VERTEX: Import SAP Systems** (also a link under `vertex.systems` in Settings). It takes each
+A first install opens **Get started with VERTEX** (VS Code's Get Started page; later Help > Get Started): import the systems, test them, choose the assistant, add the VERTEX MCP server - each step with its button. The quickest way is **VERTEX: Import SAP Systems** (also a button in **SAP Systems** and a link under `vertex.systems` in Settings); it offers only systems not yet configured. It takes each
 system's host and instance from SAP Logon or an Eclipse ADT project (so SAP Logon is optional on macOS), and the client and user from the ADT workspace. Recent workspaces from Eclipse installations, including macOS `.app` bundles, are offered; another folder can be chosen. It then
 looks for ADT on the usual ports - 443NN and 80NN for the instance, then 44300, 8000, 50001, 50000, 443, 80, 8443,
 8080 - offering only addresses that answer. **VERTEX: Test SAP Systems** then logs on to each configured system and
@@ -561,7 +562,7 @@ says what was read and where it stopped.
 ## VERTEX chat
 
 The **VERTEX** panel in the Activity Bar has a free-prompt chat. The panel's title holds
-three icons: SAP systems (`vertex.systems`), **LLM Providers**, and the gear for every VERTEX
+three icons: **SAP Systems**, **LLM Providers**, and the gear for every VERTEX
 setting. The top line holds the **SAP system** list. The question
 box, the provider and model lists and **New conversation** stay at the bottom of the panel; the
 answers scroll above them, questions and answers in different colours. Asking for a VERTEX

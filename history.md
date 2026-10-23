@@ -8,6 +8,8 @@ With Value sources on, the statement that gives a condition's variable its value
 
 The VERTEX panel's title holds three icons: SAP systems, LLM Providers and a gear for all VERTEX settings. The SAP system and LLM Providers links are gone from the panel's top line.
 
+The server icon opens **SAP Systems**, a table of the configured systems: per row the active choice, SNC, an on/off switch (a system switched off stays in `vertex.systems` but is left out of every list, switch and test), Log in for the password, its own Test and Delete. The SNC checkbox has left the VERTEX panel for it. Import offers only systems not yet configured.
+
 ## 2026-10-23 — VS Code 0.9.27: large sources over RFC, Path to line numbered by method
 
 On an RFC (SNC) system, SAP's `SADT_REST_RFC_ENDPOINT` dumps with `XML_FORMAT_ERROR` when hover or navigation sends it the source of a large object. The new setting `vertex.rfc.maxAnalysedLines` sets the longest source sent (`0`, the default, sets no limit), and an object whose source made SAP dump once is not sent again until the window is reloaded. Double-click and F12 in such a source find the name with abaplint inside it instead; hover says the source was not sent.

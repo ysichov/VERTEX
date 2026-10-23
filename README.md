@@ -123,8 +123,9 @@ password is discarded; the next operation asks again. Basic also works on remote
 extension hosts. **VERTEX: Forget Credentials** clears the active system's stored
 credentials.
 
-In the VERTEX panel, the **SNC** checkbox beside the SAP system selector switches
-the selected system between SNC single sign-on and password authentication.
+**SAP Systems** (the server icon in the VERTEX panel's title, or the link under `vertex.systems` in Settings) lists every configured system in a table. Per row: the radio button makes it the active system; **SNC** switches it between SNC single sign-on and password authentication; **On** switches it off or on - a system switched off stays in `vertex.systems` (`"disabled": true`) but is left out of every list, switch and test, and a tab opened from it says so; **Log in** asks for the password and keeps it in the OS credential store, then tests; **Test** asks ADT on that system alone and shows the answer in the row; **Delete** removes it from `vertex.systems` after a confirmation. **Import from SAP Logon and Eclipse** and **Edit in settings.json** stand above the table.
+
+In **SAP Systems**, the **SNC** checkbox switches a system between SNC single sign-on and password authentication.
 Turning SNC off keeps its connection details; turning it back on requires the
 system's SNC partner name and RFC application-server host/instance settings. The
 checkbox does not delete or re-import the system.
@@ -180,7 +181,7 @@ ABAP project. There is no project here, so the systems are a list and one of the
 They live in VS Code's settings: **Ctrl+Shift+P → Preferences: Open User Settings (JSON)**, and
 the entries go into that file.
 
-A first install opens **Get started with VERTEX** (VS Code's Get Started page; later Help > Get Started): import the systems, test them, choose the assistant, add the VERTEX MCP server - each step with its button. The quickest way is **VERTEX: Import SAP Systems** (also a link under `vertex.systems` in Settings). It takes each
+A first install opens **Get started with VERTEX** (VS Code's Get Started page; later Help > Get Started): import the systems, test them, choose the assistant, add the VERTEX MCP server - each step with its button. The quickest way is **VERTEX: Import SAP Systems** (also a button in **SAP Systems** and a link under `vertex.systems` in Settings); it offers only systems not yet configured. It takes each
 system's host and instance from SAP Logon or an Eclipse ADT project (so SAP Logon is optional on macOS), and the client and user from the ADT workspace. Recent workspaces from Eclipse installations, including macOS `.app` bundles, are offered; another folder can be chosen. It then
 looks for ADT on the usual ports - 443NN and 80NN for the instance, then 44300, 8000, 50001, 50000, 443, 80, 8443,
 8080 - offering only addresses that answer. **VERTEX: Test SAP Systems** then logs on to each configured system and

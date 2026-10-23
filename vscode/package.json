@@ -317,7 +317,7 @@
         "vertex.systems": {
           "type": "array",
           "default": [],
-          "markdownDescription": "The ABAP systems this extension can read. One of them is active at a time - see `vertex.active`, or the **VERTEX: Switch System** command.\n\n[Import from SAP Logon and Eclipse](command:vertex.importSystems) · [Remove configured systems](command:vertex.removeSystems) · [Test the connections](command:vertex.testSystems)\n\nImport reads each system's host and instance from SAP Logon, the client and user from an Eclipse ADT workspace, and looks for the ADT address on the usual ports. A direct SAP Logon SNC entry also supplies its SNC name, protection level and RFC server. The HTTP(S) port is also in SMICM > Goto > Services.\n\nFor SNC, use authType snc with snc and rfc.",
+          "markdownDescription": "The ABAP systems this extension can read. One of them is active at a time - see `vertex.active`, or the **VERTEX: Switch System** command.\n\n[SAP Systems table](command:vertex.openSystemSettings) · [Import from SAP Logon and Eclipse](command:vertex.importSystems) · [Remove configured systems](command:vertex.removeSystems) · [Test the connections](command:vertex.testSystems)\n\nImport reads each system's host and instance from SAP Logon, the client and user from an Eclipse ADT workspace, and looks for the ADT address on the usual ports. A direct SAP Logon SNC entry also supplies its SNC name, protection level and RFC server. The HTTP(S) port is also in SMICM > Goto > Services.\n\nFor SNC, use authType snc with snc and rfc.",
           "items": {
             "type": "object",
             "required": [
@@ -328,6 +328,11 @@
               "name": {
                 "type": "string",
                 "description": "How this system is called in the switch list."
+              },
+              "disabled": {
+                "type": "boolean",
+                "default": false,
+                "description": "Switched off: kept here, but left out of every system list, switch and test, and not connected to."
               },
               "url": {
                 "type": "string",

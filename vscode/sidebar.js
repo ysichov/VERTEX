@@ -14,9 +14,7 @@ const ACTIONS = Object.freeze({
 
 function register(vscode, context, active, ask, systems, toolContext) {
   let currentView, pendingPrompt, ready = false, nextRequest = 0;
-  // Beside the gear in the panel's title: SAP systems and LLM providers.
-  context.subscriptions.push(vscode.commands.registerCommand("vertex.openSystemSettings", () =>
-    vscode.commands.executeCommand("workbench.action.openSettings", "vertex.systems")));
+  // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async text => {
     pendingPrompt = text;
@@ -37,8 +35,6 @@ function register(vscode, context, active, ask, systems, toolContext) {
           systems: systems().map(item => item.name),
           // What the list shows: a system reached through SAP's extension says so beside its name.
           labels: systems().map(item => item.name),
-          systemAuth: (() => { const system = systems().find(item => item.name === (chosen.error ? "" : chosen.system.name));
-            return { name: system && system.name || "", snc: !!(system && system.authType === "snc") }; })(),
           ai: ask.state()
         }).then(async () => {
           // The model list comes after: it may have to ask the provider.
@@ -67,11 +63,6 @@ function register(vscode, context, active, ask, systems, toolContext) {
         if (message.action === "setModel") {
           try { await ask.setModel(message.model); }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
-          return;
-        }
-        if (message.action === "setSystemSNC") {
-          try { await require("./system-setup").setSystemAuthType(vscode, message.name, message.enabled === true); await refresh(); }
-          catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); await refresh(); }
           return;
         }
         if (message.action === "newConversation") {
@@ -194,8 +185,6 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 .link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
 #logs { margin: 0 0 0 auto; padding: 3px 6px; font-size: 17px; line-height: 1; background: transparent; color: var(--vscode-foreground); }
 #logs:hover { background: var(--vscode-list-hoverBackground); }
-#system-snc { display: inline-flex; align-items: center; gap: 4px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
-#system-snc input { accent-color: var(--vscode-focusBorder); }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .line button { margin: 4px 0; padding: 4px 10px; }
 .line select { padding: 3px 4px; }
@@ -206,7 +195,6 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 </style></head><body>
 <div class="line"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
-<label id="system-snc" title="Use SNC single sign-on instead of a password"><input id="system-snc-checkbox" type="checkbox"> SNC</label>
 <button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs">📜 AI</button>
 <button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs">📜 SAP</button></div>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
@@ -228,11 +216,6 @@ document.querySelectorAll('button[data-action]').forEach(button => {
 });
 document.getElementById('system-select').addEventListener('change', event => {
   api.postMessage({ action: 'system', name: event.target.value });
-});
-document.getElementById('system-snc-checkbox').addEventListener('change', event => {
-  const select = document.getElementById('system-select');
-  event.target.disabled = true;
-  api.postMessage({ action: 'setSystemSNC', name: select.value, enabled: event.target.checked });
 });
 document.getElementById('chat').addEventListener('submit', event => {
   event.preventDefault();
@@ -332,13 +315,6 @@ window.addEventListener('message', event => {
       return option;
     }));
     if (!event.data.systems.length) select.add(new Option('No SAP systems configured', ''));
-    const snc = document.getElementById('system-snc-checkbox');
-    const state = event.data.systemAuth || {};
-    snc.checked = state.snc === true;
-    snc.disabled = !state.name;
-    document.getElementById('system-snc').title = state.snc
-      ? 'SNC is on; turn off to use a password'
-      : 'SNC is off; turn on to use SNC single sign-on';
   }
   if (event.data && event.data.ai) {
     const select = document.getElementById('provider-select');

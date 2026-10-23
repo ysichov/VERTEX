@@ -9,7 +9,7 @@ const { refusalFor } = require("./hosts");
 
 function createAuth({ vscode, context, logger }) {
   const currentSystems = () => (vscode.workspace.getConfiguration("vertex").get("systems") || [])
-    .map(readSystem).filter(r => r.system).map(r => r.system);
+    .filter(s => !(s && s.disabled === true)).map(readSystem).filter(r => r.system).map(r => r.system);
   const secrets = context.secrets;
   const { serviceKeyStore, sessionStore, means } = createStores({ secrets, currentSystems });
   const broker = createBroker({ serviceKeyStore, sessionStore, logger });
@@ -39,6 +39,15 @@ function createAuth({ vscode, context, logger }) {
       await retireLegacy({ secrets, currentSystems, hasLogin: async other => !!(await means.password(other)) }, system.name);
     }
     return pw;
+  }
+  /* The SAP Systems table's Log in: a new password asked even when one is kept, kept when one is entered. */
+  async function login(system) {
+    if (system.authType !== "basic") throw new Error(system.name + " logs on with SNC; there is no password to enter.");
+    await migrated;
+    const pw = await vscode.window.showInputBox({ prompt: "SAP password for " + system.user + " on " + system.name, password: true, ignoreFocusOut: true });
+    if (!pw) return false;
+    await means.setPassword(loginIdentity(system), pw);
+    return true;
   }
   async function onRefusal(system, refusal, moment) {
     refusals.set(loginIdentity(system), refusal);
@@ -108,7 +117,7 @@ function createAuth({ vscode, context, logger }) {
     return is401 && r ? text + " — " + r.reason + (r.hint ? " " + r.hint : "") : text;
   }
   return {
-    systemOf: readSystem, currentSystems, makeClient, commandWire, password, hostRefusal, explain,
+    systemOf: readSystem, currentSystems, makeClient, commandWire, password, login, hostRefusal, explain,
     lastRefusal: system => refusals.get(loginIdentity(system)),
     async forget(system) { await migrated; await means.forget(loginIdentity(system)); },
     disposeAll() {

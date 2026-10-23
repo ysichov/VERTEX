@@ -444,7 +444,10 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       if (!system) {
         const matches = current.filter(system => system.name === name);
         if (matches.length > 1) { throw new Error("several systems are named " + name + "; this tab cannot tell which one it belongs to"); }
-        if (!matches.length) { throw new Error(name + " is no longer in vertex.systems"); }
+        if (!matches.length) {
+          const off = (vscode.workspace.getConfiguration?.("vertex").get("systems") || []).some(s => s && s.name === name && s.disabled === true);
+          throw new Error(name + (off ? " is switched off in VERTEX: SAP Systems" : " is no longer in vertex.systems"));
+        }
         system = matches[0];
       }
     } else {

@@ -144,7 +144,7 @@ function initialLiteral(initial) {
 
 function systems() {
   return (vscode.workspace.getConfiguration("vertex").get("systems") || [])
-    .filter(function (s) { return s && s.name; });
+    .filter(function (s) { return s && s.name && s.disabled !== true; });
 }
 
 /**
@@ -1733,7 +1733,25 @@ function activate(context) {
     });
   }
 
+  // One system asked with its own user and password, the way every read is made: the answer says which part of the
+  // setting is wrong. It starts with "OK - " when ADT answers.
+  async function testSystem(entry) {
+    const chosen = auth.systemOf(entry);
+    if (chosen.error) { return chosen.error; }
+    const system = chosen.system;
+    try {
+      const res = await request(system, "/sap/bc/adt/discovery");
+      return res.status === 200 ? "OK - ADT answers for " + system.user + (system.client ? " in client " + system.client : "")
+        : res.status === 401 ? "HTTP 401 - " + reasonAndHint(auth.lastRefusal(system))
+          + (system.authType === "basic" ? "; the stored password is dropped, the next test asks again" : "")
+        : describeFailure(res.status, res.body);
+    } catch (error) { return failureText(system, error); }
+  }
+
   context.subscriptions.push(
+    // The server icon in the VERTEX panel's title: the SAP Systems table.
+    vscode.commands.registerCommand("vertex.openSystemSettings", () => require("./system-table").open(vscode, { test: testSystem,
+      login: async entry => { const chosen = auth.systemOf(entry); if (chosen.error) throw new Error(chosen.error); return auth.login(chosen.system); } })),
     vscode.commands.registerCommand("vertex.ai.chooseLogFolder", () => require("./model-config").chooseLogFolder(vscode)),
     vscode.commands.registerCommand("vertex.open", function () {
       showTools({ type: "TABL" });
@@ -1761,18 +1779,7 @@ function activate(context) {
       const all = systems();
       if (!all.length) { vscode.window.showWarningMessage("VERTEX: vertex.systems is empty. VERTEX: Import SAP Systems fills it from SAP Logon."); return; }
       const results = [];
-      for (const entry of all) {
-        const chosen = auth.systemOf(entry);
-        if (chosen.error) { results.push(entry.name + ": " + chosen.error); continue; }
-        const system = chosen.system;
-        try {
-          const res = await request(system, "/sap/bc/adt/discovery");
-          results.push(system.name + ": " + (res.status === 200 ? "OK - ADT answers for " + system.user + (system.client ? " in client " + system.client : "")
-            : res.status === 401 ? "HTTP 401 - " + reasonAndHint(auth.lastRefusal(system))
-              + (system.authType === "basic" ? "; the stored password is dropped, the next test asks again" : "")
-            : describeFailure(res.status, res.body)));
-        } catch (error) { results.push(system.name + ": " + failureText(system, error)); }
-      }
+      for (const entry of all) { results.push(entry.name + ": " + await testSystem(entry)); }
       const failed = results.filter(r => !/: OK - /.test(r)).length;
       vscode.window[failed ? "showWarningMessage" : "showInformationMessage"]("VERTEX: " + results.join("  |  "), { modal: failed > 0 });
     }),
