@@ -49,6 +49,12 @@ function createAuth({ vscode, context, logger }) {
     await means.setPassword(loginIdentity(system), pw);
     return true;
   }
+  /* Whether a password is kept for the system's login - for the SAP Systems table; SAP is not asked. */
+  async function hasPassword(system) {
+    if (system.authType !== "basic") return false;
+    await migrated;
+    return !!(await means.password(loginIdentity(system)));
+  }
   async function onRefusal(system, refusal, moment) {
     refusals.set(loginIdentity(system), refusal);
     if (system.authType === "basic" && moment === "rejected") await means.forget(loginIdentity(system)).catch(() => {});
@@ -117,7 +123,7 @@ function createAuth({ vscode, context, logger }) {
     return is401 && r ? text + " — " + r.reason + (r.hint ? " " + r.hint : "") : text;
   }
   return {
-    systemOf: readSystem, currentSystems, makeClient, commandWire, password, login, hostRefusal, explain,
+    systemOf: readSystem, currentSystems, makeClient, commandWire, password, login, hasPassword, hostRefusal, explain,
     lastRefusal: system => refusals.get(loginIdentity(system)),
     async forget(system) { await migrated; await means.forget(loginIdentity(system)); },
     disposeAll() {

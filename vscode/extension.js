@@ -1751,6 +1751,7 @@ function activate(context) {
   context.subscriptions.push(
     // The server icon in the VERTEX panel's title: the SAP Systems table.
     vscode.commands.registerCommand("vertex.openSystemSettings", () => require("./system-table").open(vscode, { test: testSystem,
+      hasPassword: async entry => { const chosen = auth.systemOf(entry); return !chosen.error && auth.hasPassword(chosen.system); },
       login: async entry => { const chosen = auth.systemOf(entry); if (chosen.error) throw new Error(chosen.error); return auth.login(chosen.system); } })),
     vscode.commands.registerCommand("vertex.ai.chooseLogFolder", () => require("./model-config").chooseLogFolder(vscode)),
     vscode.commands.registerCommand("vertex.open", function () {

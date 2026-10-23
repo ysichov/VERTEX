@@ -30,12 +30,23 @@ async function change(vscode, index, name, edit) {
   await config.update("systems", next, target(vscode, config, "systems"));
 }
 
-function open(vscode, { test, login }) {
+// The last test result of each system, by name, until the window is reloaded - also when the table is closed.
+const lastResults = new Map();
+
+function open(vscode, { test, login, hasPassword = async () => false }) {
   const panel = vscode.window.createWebviewPanel("vertex.systemTable", "VERTEX: SAP Systems",
     vscode.ViewColumn.Active, { enableScripts: true, localResourceRoots: [] });
   const nonce = require("crypto").randomBytes(24).toString("hex");
   panel.webview.html = html(nonce);
-  const draw = () => panel.webview.postMessage({ rows: rows(vscode) });
+  // Each row says whether a password is kept for it; the kept password itself never reaches the page.
+  const draw = async () => {
+    const shown = rows(vscode), all = vscode.workspace.getConfiguration("vertex").get("systems") || [];
+    for (const row of shown) {
+      row.password = !row.snc && await hasPassword(all[row.index]).catch(() => false);
+      row.result = lastResults.get(row.name) || null;
+    }
+    return panel.webview.postMessage({ rows: shown });
+  };
   const changes = vscode.workspace.onDidChangeConfiguration(event => {
     if (event.affectsConfiguration("vertex.systems") || event.affectsConfiguration("vertex.active")) { draw(); }
   });
@@ -43,7 +54,7 @@ function open(vscode, { test, login }) {
   panel.webview.onDidReceiveMessage(async message => {
     if (!message || typeof message !== "object") { return; }
     try {
-      if (message.action === "ready") { draw(); return; }
+      if (message.action === "ready") { await draw(); return; }
       if (message.action === "import") { await vscode.commands.executeCommand("vertex.importSystems"); return; }
       if (message.action === "json") { await vscode.commands.executeCommand("workbench.action.openSettingsJson"); return; }
       const index = Number(message.index), name = String(message.name || "");
@@ -59,7 +70,7 @@ function open(vscode, { test, login }) {
         await config.update("active", name, target(vscode, config, "active"));
       } else if (message.action === "delete") {
         const answer = await vscode.window.showWarningMessage("Remove " + name + " from vertex.systems?", { modal: true }, "Remove");
-        if (answer !== "Remove") { draw(); return; }
+        if (answer !== "Remove") { await draw(); return; }
         await change(vscode, index, name, (all, i) => all.filter((_, at) => at !== i));
       } else if (message.action === "test" || message.action === "login") {
         const entry = (vscode.workspace.getConfiguration("vertex").get("systems") || [])[index];
@@ -68,13 +79,16 @@ function open(vscode, { test, login }) {
         if (message.action === "login" && !(await login(entry))) { panel.webview.postMessage({ tested: index, text: "No password entered; the kept one is unchanged." }); return; }
         panel.webview.postMessage({ tested: index, text: "Testing..." });
         const text = await test(entry);
+        lastResults.set(name, { text, ok: /^OK - /.test(text) });
         panel.webview.postMessage({ tested: index, text, ok: /^OK - /.test(text) });
+        // A 401 drops the kept password, an entered one is kept: the button says which.
+        await draw();
         return;
       }
-      draw();
+      await draw();
     } catch (error) {
       panel.webview.postMessage({ error: error.message });
-      draw();
+      await draw();
     }
   });
   return panel;
@@ -111,6 +125,10 @@ tr.off td:not(.keep) { opacity: .55; }
 const api = acquireVsCodeApi();
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 let shown = [];
+// A row's last test result, kept while the table is drawn again; keyed by name, as rows can move.
+const results = {};
+const showResult = (name, index) => { const cell = document.getElementById("result-" + index), r = results[name];
+  if (cell && r) { cell.textContent = r.text; cell.className = "result " + (r.ok === true ? "ok" : r.ok === false ? "bad" : "note"); } };
 function draw(rows) {
   shown = rows;
   const body = document.getElementById("rows");
@@ -120,10 +138,11 @@ function draw(rows) {
     + '<td>' + esc(r.name) + '</td><td class="url">' + esc(r.url) + '</td><td>' + esc(r.client) + '</td><td>' + esc(r.user) + '</td>'
     + '<td class="c"><input type="checkbox" data-act="snc"' + (r.snc ? ' checked' : '') + ' aria-label="SNC"></td>'
     + '<td class="c keep"><input type="checkbox" data-act="on"' + (r.on ? ' checked' : '') + ' aria-label="Switched on"></td>'
-    + '<td><button type="button" data-act="login" title="Enter the SAP password for ' + esc(r.user) + '; it is kept in the OS credential store"' + (r.on && !r.snc ? '' : ' disabled') + '>Log in</button></td>'
+    + '<td><button type="button" data-act="login" title="' + (r.password ? 'A password is kept for ' + esc(r.user) + '; enter a new one' : 'Enter the SAP password for ' + esc(r.user)) + ' - it is kept in the OS credential store"' + (r.on && !r.snc ? '' : ' disabled') + '>' + (r.snc ? 'SNC' : r.password ? 'Change password' : 'Log in') + '</button></td>'
     + '<td><button type="button" data-act="test"' + (r.on ? '' : ' disabled') + '>Test</button></td>'
     + '<td class="keep"><button type="button" data-act="delete">Delete</button></td>'
     + '<td class="result" id="result-' + r.index + '"></td></tr>').join("");
+  rows.forEach(r => { if (r.result && !results[r.name]) { results[r.name] = r.result; } showResult(r.name, r.index); });
 }
 document.getElementById("rows").addEventListener("click", event => {
   const control = event.target.closest("[data-act]");
@@ -142,8 +161,8 @@ window.addEventListener("message", event => {
   if (m.rows) { draw(m.rows); }
   if (m.error) { document.getElementById("said").textContent = m.error; }
   if (m.tested !== undefined) {
-    const cell = document.getElementById("result-" + m.tested);
-    if (cell) { cell.textContent = m.text; cell.className = "result " + (m.ok === true ? "ok" : m.ok === false ? "bad" : "note"); }
+    const row = shown.find(r => r.index === m.tested);
+    if (row) { results[row.name] = { text: m.text, ok: m.ok }; showResult(row.name, row.index); }
   }
 });
 api.postMessage({ action: "ready" });

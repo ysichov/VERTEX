@@ -8,7 +8,7 @@ With Value sources on, the statement that gives a condition's variable its value
 
 The VERTEX panel's title holds three icons: SAP systems, LLM Providers and a gear for all VERTEX settings. The SAP system and LLM Providers links are gone from the panel's top line.
 
-The server icon opens **SAP Systems**, a table of the configured systems: per row the active choice, SNC, an on/off switch (a system switched off stays in `vertex.systems` but is left out of every list, switch and test), Log in for the password, its own Test and Delete. The SNC checkbox has left the VERTEX panel for it. Import offers only systems not yet configured.
+The server icon opens **SAP Systems**, a table of the configured systems: per row the active choice, SNC, an on/off switch (a system switched off stays in `vertex.systems` but is left out of every list, switch and test), Log in for the password, its own Test and Delete. The SNC checkbox has left the VERTEX panel for it. Import offers only systems not yet configured. A row whose password is kept offers **Change password** instead of Log in, and each row keeps its last test result until the window is reloaded.
 
 ## 2026-10-23 — VS Code 0.9.27: large sources over RFC, Path to line numbered by method
 

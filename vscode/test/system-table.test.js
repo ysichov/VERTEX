@@ -36,9 +36,18 @@ test("SAP Systems: switching off, deleting and testing act on the row by index a
   assert.equal(f.updates.at(-1)[1][0].disabled, true);
   await f.send({ action: "test", index: 1, name: "B" });
   assert.deepEqual(tested, ["B"]);
-  assert.equal(f.posted.at(-1).ok, true);
+  assert.equal(f.posted.filter(m => m.tested !== undefined).at(-1).ok, true);
   await f.send({ action: "delete", index: 0, name: "A4H" });
   assert.deepEqual(f.updates.at(-1)[1].map(s => s.name), ["B"]);
   await f.send({ action: "test", index: 0, name: "A4H" });
   assert.match(f.posted.find(m => m.error).error, /no longer at this place/);
+});
+
+test("SAP Systems: a row with a kept password offers Change password, one without offers Log in", async () => {
+  const f = fakeVscode([{ name: "A4H", url: "https://a", user: "U" }, { name: "B", url: "https://b", user: "U" }]);
+  open(f.vscode, { test: async () => "OK - ", login: async () => true, hasPassword: async entry => entry.name === "A4H" });
+  await f.send({ action: "ready" });
+  const drawn = f.posted.find(m => m.rows).rows;
+  assert.deepEqual(drawn.map(r => r.password), [true, false]);
+  assert.match(f.page(), /'Change password' : 'Log in'/);
 });
