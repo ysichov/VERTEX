@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-23 — Eclipse 0.9.30: packages
+
+UML and Metrics of a package in Eclipse list the package's classes and interfaces; they found none. The object type, name and function fields in VERTEX Tools follow the light or dark system theme instead of staying black.
+
 ## 2026-10-23 — Eclipse 0.9.30: Forward and Backward
 
 Forward and Backward Usage Analysis in Eclipse have a **Cancel** button while they run, as VS Code's progress does. **Copy log** copies the analysis log to the clipboard, and a failure of the page is shown in its status line.

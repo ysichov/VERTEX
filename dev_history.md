@@ -1,5 +1,11 @@
 # Development history
 
+## 2026-10-23 — Eclipse: a package's UML and metrics
+
+With the Accept header in place the user saw package Z_RIG's metrics empty (Objects (0)), its UML still spinning, and the Tools fields black. The package's objects were read from elements named `item`; ADT's node structure names them TREE_CONTENT/SEU_ADT_REPOSITORY_OBJ_NODE, as abap-adt-api reads them, so every package was empty in Eclipse. The fields: tools.html fell back to #1e1e1e/#d4d4d4 where VS Code supplies --vscode-input-*; Eclipse supplies none, so they were dark on a light window. They fall back to Field/FieldText, which follow the page's color-scheme.
+
+To see the UML for once instead of guessing, the Tools page was built as ToolsView builds it (tools.html with the service pages, object model, routes and the Eclipse front end) and driven in a browser with Eclipse and ADT stubbed: package Z_RIG with two classes now draws both in UML and lists both in Metrics. A first run said "mermaid.min.js was read but defined no mermaid object" - an artefact of the harness, which had put a 3 MB script before the page's meta charset, so the file was decoded in the wrong encoding; Eclipse hands the page over as a string. What kept the user's window on "Loading the diagram library" is not reproduced; it was gone with this build when the user tried it. Published as 0.9.30.20261023215155 into docs/, "Latest build" in docs/index.html, README and eclipse/README following. The "1 analysis warnings" is the shared note that local metrics may differ from ACE, shown in VS Code too.
+
 ## 2026-10-23 — Eclipse: Forward and Backward against VS Code
 
 Compared with VS Code by the code, the analysis of both directions is the same shared code; the differences were in what the Eclipse page does with the messages of the page it draws. Copy log and a page's own failure went nowhere (Backward even answered Copy log with "This node names no source to open"); a running analysis could not be stopped, where VS Code's progress has Cancel; a scenario click said "is in VS Code only". The last turned out wrong on VS Code's side too: its handler calls loaded.loadPipeline, which no analysis sets, so a scenario there loads nothing - Eclipse now ignores it the same way instead of claiming VS Code does it, and the loader is left as it is.
