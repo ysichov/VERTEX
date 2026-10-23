@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-10-23 — VS Code 0.9.29: SAP Systems buttons
+
+The user found the table's buttons off-style - square, no hover - and Change password closer to saving a new one. system-table.js's buttons take VERTEX's 6px rounding (as vertex-toggle) with the theme focus colour glowing under the hovered one, disabled ones dimmed; the label reads Save new password. No shared action-button class exists in vertex-controls.css, so the style stays in the table's page.
+
 ## 2026-10-23 — VS Code 0.9.28: the Path panel follows the cursor
 
 The user, working through a long method with the panel beside it, asked for the path on the right to be rebuilt for each click on the left. register's parse-path-sources work moved into `build`; the panel listens to onDidChangeTextEditorSelection for its own document and rebuilds on kind Mouse only - a line opened from the panel (a selection set by code) or a keyboard move does not rebuild, so following a link does not replace the path being read. A turn counter drops a result overtaken by a later click. A refusal (a line outside any METHOD/FORM) is posted to the page and shown above the old path instead of an error popup per click. The toggle keeps its state through webview getState/setState, since each rebuild replaces the html.

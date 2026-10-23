@@ -100,8 +100,12 @@ function html(nonce) {
 <style>
 body { font: var(--vscode-font-size) var(--vscode-font-family); color: var(--vscode-foreground);
        background: var(--vscode-editor-background); padding: 10px 14px; }
-button { font: inherit; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground);
-       border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); padding: 3px 8px; cursor: pointer; }
+/* VERTEX's rounded buttons; the theme's focus colour glows under the one the pointer is on. */
+button { --accent: var(--vscode-focusBorder); font: inherit; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground);
+       border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 6px; padding: 3px 10px; cursor: pointer;
+       white-space: nowrap; transition: box-shadow .12s, border-color .12s; }
+button:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 0 6px -1px var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
 input[type=checkbox], input[type=radio] { accent-color: var(--vscode-focusBorder); }
 table { border-collapse: collapse; margin: 8px 0; }
 th, td { border-bottom: 1px solid var(--vscode-panel-border); padding: 4px 8px; text-align: left; vertical-align: top; }
@@ -138,7 +142,7 @@ function draw(rows) {
     + '<td>' + esc(r.name) + '</td><td class="url">' + esc(r.url) + '</td><td>' + esc(r.client) + '</td><td>' + esc(r.user) + '</td>'
     + '<td class="c"><input type="checkbox" data-act="snc"' + (r.snc ? ' checked' : '') + ' aria-label="SNC"></td>'
     + '<td class="c keep"><input type="checkbox" data-act="on"' + (r.on ? ' checked' : '') + ' aria-label="Switched on"></td>'
-    + '<td><button type="button" data-act="login" title="' + (r.password ? 'A password is kept for ' + esc(r.user) + '; enter a new one' : 'Enter the SAP password for ' + esc(r.user)) + ' - it is kept in the OS credential store"' + (r.on && !r.snc ? '' : ' disabled') + '>' + (r.snc ? 'SNC' : r.password ? 'Change password' : 'Log in') + '</button></td>'
+    + '<td><button type="button" data-act="login" title="' + (r.password ? 'A password is kept for ' + esc(r.user) + '; enter a new one' : 'Enter the SAP password for ' + esc(r.user)) + ' - it is kept in the OS credential store"' + (r.on && !r.snc ? '' : ' disabled') + '>' + (r.snc ? 'SNC' : r.password ? 'Save new password' : 'Log in') + '</button></td>'
     + '<td><button type="button" data-act="test"' + (r.on ? '' : ' disabled') + '>Test</button></td>'
     + '<td class="keep"><button type="button" data-act="delete">Delete</button></td>'
     + '<td class="result" id="result-' + r.index + '"></td></tr>').join("");

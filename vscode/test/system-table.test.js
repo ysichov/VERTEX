@@ -43,11 +43,11 @@ test("SAP Systems: switching off, deleting and testing act on the row by index a
   assert.match(f.posted.find(m => m.error).error, /no longer at this place/);
 });
 
-test("SAP Systems: a row with a kept password offers Change password, one without offers Log in", async () => {
+test("SAP Systems: a row with a kept password offers Save new password, one without offers Log in", async () => {
   const f = fakeVscode([{ name: "A4H", url: "https://a", user: "U" }, { name: "B", url: "https://b", user: "U" }]);
   open(f.vscode, { test: async () => "OK - ", login: async () => true, hasPassword: async entry => entry.name === "A4H" });
   await f.send({ action: "ready" });
   const drawn = f.posted.find(m => m.rows).rows;
   assert.deepEqual(drawn.map(r => r.password), [true, false]);
-  assert.match(f.page(), /'Change password' : 'Log in'/);
+  assert.match(f.page(), /'Save new password' : 'Log in'/);
 });

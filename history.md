@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-23 — VS Code 0.9.29: SAP Systems buttons
+
+The SAP Systems table's buttons are rounded as elsewhere in VERTEX and glow in the theme's focus colour under the pointer. A row whose password is kept offers **Save new password**.
+
 ## 2026-10-23 — VS Code 0.9.28: Path to This Line follows clicks
 
 While the Path to This Line panel is open, a click on another line of its source builds that line's path in the same panel, with the Value sources toggle kept as it was set. A line outside a METHOD or FORM leaves the last path shown and says why.
