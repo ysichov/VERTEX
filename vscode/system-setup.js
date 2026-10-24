@@ -27,28 +27,35 @@ function landscape(files) {
   for (const text of texts) {
     for (const tag of text.match(/<Service\b[^>]*>/g) || []) {
       const a = attributes(tag);
-      if (a.type !== "SAPGUI" || !a.systemid) { continue; }
-      const title = a.name || a.systemid;
+      if (a.type !== "SAPGUI") { continue; }
+      // SAP GUI for Java can keep the SID as the connection name without systemid.
+      const id = a.systemid || (/^[A-Z0-9]{3}$/.test(a.name || "") ? a.name : "");
+      if (!/^[A-Z0-9]{3}$/.test(id)) { skipped.push((a.name || "SAPGUI entry") + " (no SAP system ID)"); continue; }
+      const title = a.name || id;
       const sncDetails = a.sncname ? { partnerName: a.sncname, ...(a.sncop ? { qop: a.sncop } : {}) } : null;
       const snc = sncDetails && a.sncnosso !== "1";
       if (a.msid) {
         if (snc) { skipped.push(title + " (SNC logon group: no application server for RFC is specified)"); continue; }
         const ms = messageServers[a.msid], port = ms && /^36(\d\d)$/.exec(ms.port || "");
         if (!ms || !ms.host) { skipped.push(title + " (logon group, message server not described)"); continue; }
-        systems.push({ id: a.systemid, title, host: ms.host, instance: port ? port[1] : "", group: a.server || "" });
+        systems.push({ id, title, host: ms.host, instance: port ? port[1] : "", group: a.server || "" });
         continue;
       }
       const server = /^(.+):32(\d\d)$/.exec(a.server || "");
       if (!server) { skipped.push(title + " (server " + (a.server || "not given") + ")"); continue; }
-      systems.push({ id: a.systemid, title, host: server[1], instance: server[2],
+      systems.push({ id, title, host: server[1], instance: server[2],
         ...(sncDetails ? { snc: sncDetails } : {}), ...(snc ? { authType: "snc" } : {}) });
     }
   }
   return { systems, skipped };
 }
-function landscapeFiles() {
-  if (process.platform !== "win32") { return []; }
-  const common = path.join(process.env.APPDATA || "", "SAP", "Common");
+function landscapeFiles(platform = process.platform, env = process.env) {
+  if (platform === "darwin") {
+    const common = path.join(env.HOME || "", "Library", "Preferences", "SAP");
+    return ["SAPGUILandscape.xml", "SAPUILandscape.xml", "SAPUILandscapeGlobal.xml"].map(name => path.join(common, name));
+  }
+  if (platform !== "win32") { return []; }
+  const common = path.join(env.APPDATA || "", "SAP", "Common");
   return [path.join(common, "SAPUILandscape.xml"), path.join(common, "SAPUILandscapeGlobal.xml")];
 }
 
@@ -406,4 +413,4 @@ async function setSystemAuthType(vscode, name, useSNC) {
   await config.update("systems", updated, target);
 }
 
-module.exports = { importSystems, removeSystems, setSystemAuthType, findWebgui, webguiAt, landscape, eclipseLogons, eclipseProjects, eclipseWorkspaces, recentWorkspaces, probe, answers };
+module.exports = { importSystems, removeSystems, setSystemAuthType, findWebgui, webguiAt, landscape, landscapeFiles, eclipseLogons, eclipseProjects, eclipseWorkspaces, recentWorkspaces, probe, answers };

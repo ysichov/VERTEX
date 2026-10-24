@@ -130,3 +130,54 @@ test("an ADT workspace supplies systems without SAP Logon", () => {
       instance: "01", client: "100", user: "USER" }]);
   } finally { fs.rmSync(workspace, { recursive: true, force: true }); }
 });
+
+test("SAP GUI landscape paths cover macOS filenames and preserve Windows paths", () => {
+  const { landscapeFiles } = require("../system-setup");
+  const home = path.join(os.tmpdir(), "mac-user");
+  assert.deepEqual(landscapeFiles("darwin", { HOME: home }),
+    ["SAPGUILandscape.xml", "SAPUILandscape.xml", "SAPUILandscapeGlobal.xml"]
+      .map(name => path.join(home, "Library", "Preferences", "SAP", name)));
+  assert.deepEqual(landscapeFiles("win32", { APPDATA: home }),
+    ["SAPUILandscape.xml", "SAPUILandscapeGlobal.xml"].map(name => path.join(home, "SAP", "Common", name)));
+  assert.deepEqual(landscapeFiles("linux", { HOME: home }), []);
+});
+
+test("SAP GUI for Java uses an exact SID connection name when systemid is absent", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-java-landscape-"));
+  const file = path.join(dir, "SAPGUILandscape.xml");
+  fs.writeFileSync(file, '<Landscape><Services>'
+    + '<Service type="SAPGUI" name="E19" server="dev.example.com:3200" mode="1" expert="1"/>'
+    + '<Service type="SAPGUI" name="Development" server="other.example.com:3201"/>'
+    + '<Service type="SAPGUI" name="Named connection" systemid="QAS" server="qas.example.com:3202"/>'
+    + '</Services></Landscape>');
+  try {
+    const result = landscape([file]);
+    assert.deepEqual(result.systems.map(s => [s.id, s.host, s.instance]),
+      [["E19", "dev.example.com", "00"], ["QAS", "qas.example.com", "02"]]);
+    assert.deepEqual(result.skipped, ["Development (no SAP system ID)"]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("macOS import without an Eclipse workspace reads SAP GUI for Java", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-mac-import-"));
+  const dir = path.join(home, "Library", "Preferences", "SAP");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "SAPGUILandscape.xml"),
+    '<Landscape><Services><Service type="SAPGUI" name="E19" server="dev.example.com:3200"/></Services></Landscape>');
+  const loaded = { exports: {} }, messages = [];
+  require("node:vm").runInNewContext(fs.readFileSync(path.join(__dirname, "../system-setup.js"), "utf8"),
+    { module: loaded, require, process: { platform: "darwin", env: { HOME: home } }, URL });
+  const vscode = {
+    workspace: { getConfiguration: () => ({ get: () => [{ name: "E19" }] }) },
+    window: {
+      showQuickPick: async items => items.find(item => item.value === "none"),
+      showInformationMessage: message => messages.push(message),
+      withProgress: () => { throw new Error("Known systems must not be probed"); },
+    },
+  };
+  try {
+    await loaded.exports.importSystems(vscode, { globalState: { get: () => "" } });
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /every system found.*already in vertex.systems/);
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

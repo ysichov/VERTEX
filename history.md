@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-24 — VS Code 0.9.32: macOS SAP GUI import without Eclipse
+
+VS Code imports SAP GUI for Java landscape files from the macOS preferences folder when no Eclipse workspace is selected. Connections such as E19 that store their SAP system ID as the connection name are accepted without a separate systemid field. Entries with no identifiable system ID are reported as skipped.
+
 ## Unreleased — Eclipse windows in hidden layout areas
 
 Opening a VERTEX window reveals its containing sashes in the current perspective, including when an existing window is reopened or opened through Show View. A visible VERTEX tab group inside a hidden parent previously remained invisible. Other tab groups and perspectives keep their visibility.
