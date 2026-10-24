@@ -278,9 +278,15 @@ function typeAfter(ts, at) {
 }
 // Every call in a token list, the ones inside the arguments of another included: lo->m( x = me->n( ) ) is two. A call is
 // a path, an optional ->/=> and a method name, then a balanced ( ... ); NEW x( )->m( ) is one call.
-/* A functional call has a blank after its parenthesis - m( ), m( x ) -; a parenthesis right at the word is offset/length
-   access (s370(4), name+2(3)) or an inline declaration (DATA(x), FIELD-SYMBOL(<fs>)), never a call. */
-const callOpen = (ts, at) => ts[at]?.value === '(' && ts[at + 1] && ts[at + 1].offset > ts[at].endOffset;
+/* Whether the parenthesis at `at` opens a call is abaplint's to say, not the tokens' neighbours': value-origin-linter
+   marks each "(" with call - true where it opens a MethodCall's parameters or a NEW's. Guessed from blanks it took
+   IN ( ... ), AND ( ... ) for methods. A "(" with no mark comes from no parse and is refused. */
+const callOpen = (ts, at) => {
+  const t = ts[at];
+  if (t?.value !== '(') return false;
+  if (typeof t.call !== 'boolean') throw new Error('A call is read from the abaplint parse (value-origin-linter); this token list has no parse.');
+  return t.call;
+};
 function callsIn(ts, withTokens = false) {
   const found = [];
   for (let i = 0; i < ts.length; i++) {
@@ -417,22 +423,31 @@ function declaredIn(body) {
 function parse(source) {
   if (source.aceStatements) return { tokens: source.aceStatements.flatMap(s => s.tokens), statements: source.aceStatements };
   const old = cache.get(source.id); if (old?.text === source.text) return old;
-  const tokens = tokenize(source.text), statements = []; let part = [];
-  for (const t of tokens) { if (t.kind === 'symbol' && t.value === '.') { if (part.length) statements.push({ tokens: part, line: part[0].line, offset: part[0].offset, text: source.text.slice(part[0].offset, t.endOffset) }); part = []; } else part.push(t); }
+  // A source with no statements of its own is parsed by abaplint as every source is (value-origin-linter), not split
+  // from its text here: a call is the parser's to tell.
+  const statements = require('./value-origin-linter').parseSource({ objectType: 'PROG', name: source.id, objectName: source.id, ...source }).source.aceStatements;
+  const tokens = statements.flatMap(s => s.tokens);
   const parsed = { text: source.text, tokens, statements };
   cache.set(source.id, parsed); if (cache.size > 128) cache.delete(cache.keys().next().value);
   return parsed;
 }
+// A source's statements as abaplint parsed them (parse): FLOW reads its calls, conditions and writes from these.
 function localStatements(source) {
-  const tokens = tokenize(source.text), statements = []; let part = [];
-  for (const token of tokens) {
-    if (token.kind === 'symbol' && token.value === '.') {
-      if (part.length) statements.push({ tokens: part, line: part[0].line, offset: part[0].offset,
-        text: source.text.slice(part[0].offset, token.endOffset) });
-      part = [];
-    } else part.push(token);
-  }
-  return statements;
+  // The text a step shows is the source's own - WRITE: / a, b. as written -, not the parser's re-joined tokens. A later
+  // element of a chain is shown as its keyword with its own part: WRITE: b.
+  const text = String(source.text || '');
+  // Parsed from the source's text, whatever statement list came with it: an ACE scan can miss one (inline DATA).
+  const { aceStatements, ...own } = source;
+  return parse(own).statements.map(s => {
+    const first = s.tokens[0], second = s.tokens[1], last = s.tokens[s.tokens.length - 1];
+    if (!first || !last) return s;
+    let end = last.endOffset; while (text[end] === ' ') end++;
+    if (text[end] === '.' || text[end] === ',') end++;
+    const between = second ? text.slice(first.endOffset, second.offset) : '';
+    const shown = between.includes(':') && between.includes(',')
+      ? first.value + ': ' + text.slice(second.offset, end) : text.slice(first.offset, end);
+    return { ...s, text: shown };
+  });
 }
 function radioGroups(sources) {
   const groups = new Map();
@@ -1179,6 +1194,9 @@ function sourcesFromAce(payload, object, prefix) {
         return pieces.map(piece => ({ ...piece, line: t.row, offset: base + piece.offset, endOffset: base + piece.endOffset }));
       }).filter(t => !(t.kind === 'symbol' && t.value === '.'));
       const start = tokens[0]?.offset ?? starts[s.line - 1] ?? 0, end = tokens[tokens.length - 1]?.endOffset ?? start;
+      // ACE's scan says where tokens are, not which parenthesis opens a call: abaplint's parse of the statement does.
+      const parsed = require('./value-origin-linter').parsedTokens(source.slice(start, end) + '.');
+      for (const t of tokens) if (t.value === '(') t.call = parsed.some(p => p.value === '(' && p.offset === t.offset - start && p.call);
       return { tokens, line: s.line, offset: start, text: source.slice(start, end) + (source[end] === '.' ? '.' : ''), aceCalls: s.calls || [], aceIndex: s.idx };
     });
     const ownFlow = rows => rows.filter(row => String(row.include || '').toUpperCase() === inc.include.toUpperCase());
@@ -1470,7 +1488,8 @@ function conditionText(raw) {
 }
 
 function oneFormula(tree) {
-  const { tokenize } = require('./value-origin-tokens');
+  // A node holds its statement as text: abaplint parses it, so assignment and its calls read the parse, not the text.
+  const { parsedTokens } = require('./value-origin-linter');
   const { assignment, variablePaths } = require('./value-origin-model');
   const canonical = value => String(value || '').toUpperCase().split(' ').join('');
   const where = new Map(), steps = [], named = new Map(), counts = new Map();
@@ -1478,7 +1497,7 @@ function oneFormula(tree) {
   const origins = new Map();
   const shortName = of => String(of).split('-').pop();
   const collect = node => {
-    const all = tokenize(node.raw || ''), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    const all = parsedTokens(node.raw || ''), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
     if (!a || !a.expression.length) { const set = origins.get(shortName(node.of)) || new Set(); set.add(node.source + ':' + node.line); origins.set(shortName(node.of), set); }
     node.children.forEach(collect);
   };
@@ -1493,7 +1512,7 @@ function oneFormula(tree) {
   // be written out again at each reading, and the formula would grow with every step.
   const step = (node, context) => {
     if (named.has(node)) { return named.get(node); }
-    const all = tokenize(node.raw), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    const all = parsedTokens(node.raw), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
     const text = body(node, context), existing = steps.find(item => item.text === text && item.variable === (a ? canonical(a.name) : node.of));
     if (existing) { named.set(node, existing.name); return existing.name; }
     const key = a ? canonical(a.name) : node.of, number = (counts.get(key) || 0) + 1;
@@ -1516,7 +1535,7 @@ function oneFormula(tree) {
     return parts.length === 1 ? parts[0] : '{' + parts.join(' | ') + '}';
   };
   function body(node, context) {
-    const all = tokenize(node.raw), ts = all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all;
+    const all = parsedTokens(node.raw), ts = all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all;
     const a = assignment(ts);
     if (!a || !a.expression.length) { const name = label(node); where.set(name, { text: selectOf(node.raw, node.of) || node.text, id: node.id, source: node.source, line: node.line, location: node.location, full: node.of }); return name; }
     // A step that has the value before it as a child: its own statements all read that, wherever they stand under it.

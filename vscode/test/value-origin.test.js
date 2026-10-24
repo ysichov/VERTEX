@@ -6,6 +6,9 @@ const assert = require('node:assert/strict');
 const flowView = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'org.vertex.abap.ui', 'resources', 'vertex-flow.js'), 'utf8');
 const { analyze, statements } = require('../value-origin');
 const { tokenize } = require('../value-origin-tokens');
+// Statements as production has them: abaplint's, with the parentheses of its calls marked (value-origin-linter).
+const { parseSource, parsedTokens } = require('../value-origin-linter');
+const parsedStatements = source => parseSource({ objectType: 'PROG', name: source.id, objectName: source.id, ...source }).source.aceStatements;
 const { pathRows, siteRows } = require('../value-origin-points');
 // The page draws the code flow of rows it is given; the host derives them from the sources, a test from the ids the flow names.
 const view = require('../value-origin-view');
@@ -17,7 +20,7 @@ const html = (g, nonce, ...rest) => {
 function graph(text, variable, line) { return analyze([{ id: 'demo', text }], { source: 'demo', variable, line }); }
 test('execution flow enters resolved methods even when flow facts and event names are empty', () => {
   const sources = require('./fixtures/value-origin-demo.json').map(source => {
-    const aceStatements = statements(source.text).map((s, i) => ({ ...s, tokens: s.tokens.filter(t => t.value !== '.'), offset: s.tokens[0].offset, aceIndex: i + 1, aceCalls: [] }));
+    const aceStatements = parsedStatements(source).map((s, i) => ({ ...s, aceIndex: i + 1, aceCalls: [] }));
     return { ...source, aceStatements, aceFlowSteps: aceStatements.map(s => ({ statement_index: s.aceIndex, line: s.line, calculated: [], composed: [], eventname: '' })) };
   });
   const g = analyze(sources, { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' });
@@ -117,7 +120,7 @@ test('multiline statements retain source lines and ignore comments/literal perio
 });
 test('execution flow is limited by the enclosing editor breakpoints', () => {
   const text = 'a = 1.\nb = a + 1.\nc = b + 1.\nWRITE c.';
-  const source = { id: 'demo', text, aceStatements: statements(text).map((s, i) => ({ ...s, aceIndex: i + 1, aceCalls: [] })) };
+  const source = { id: 'demo', text, aceStatements: parsedStatements({ id: 'demo', text }).map((s, i) => ({ ...s, aceIndex: i + 1, aceCalls: [] })) };
   source.aceFlowSteps = source.aceStatements.map(step => ({ statement_index: step.aceIndex, line: step.line, calculated: [], composed: [] }));
   const bounded = analyze([source], { source: 'demo', line: 3, variable: 'c', flowBounds: { source: 'demo', from: 2, to: 3 } });
   assert.deepEqual(bounded.flowBounds, { source: 'demo', from: 2, to: 3 });
@@ -167,7 +170,7 @@ test('frontend unfolds a local DATA COND assignment omitted by ACE', () => {
     id: 'screen', objectName: 'ZSCREEN', objectType: 'PROG',
     text: "DATA(lv_scenario) = COND char12( WHEN p_prec = abap_true THEN 'PRECISION' ELSE 'CLEAN' ).\nresult = factory=>run( iv_scenario = lv_scenario ).\nWRITE result.",
     // Simulate an older ACE scanner which knows the call but not inline DATA.
-    aceStatements: [{ line: 2, offset: 93, text: 'result = factory=>run( iv_scenario = lv_scenario ).', tokens: tokenize('result = factory=>run( iv_scenario = lv_scenario )'), aceCalls: [] }]
+    aceStatements: [{ line: 2, offset: 93, text: 'result = factory=>run( iv_scenario = lv_scenario ).', tokens: parsedTokens('result = factory=>run( iv_scenario = lv_scenario ).').filter(t => t.value !== '.').map(t => ({ ...t, offset: t.offset + 93, endOffset: t.endOffset + 93 })), aceCalls: [] }]
   };
   const g = analyze([source], { source: 'screen', line: 3, variable: 'lv_scenario' });
   assert(g.nodes.some(n => n.text.startsWith('DATA(lv_scenario)')));

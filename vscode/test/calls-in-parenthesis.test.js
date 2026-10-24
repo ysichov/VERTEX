@@ -33,3 +33,11 @@ test('built-in functions are no calls unless the routine has a method of that na
   const calls = index.procedures.flatMap(p => (p.body || []).flatMap(s => graph.calls(p, s).map(r => p.name + ':' + r.call.method + ':' + r.targets.length)));
   assert.deepEqual(calls, ['RUN:LINES:1']);
 });
+
+// A Calls diagram drew ZCL_MOD_CUSTOMS->IN: WHERE country IN ( @a, @b ) read as a method IN called with arguments.
+test('IN ( ... ) of a WHERE is no call; a call has its parenthesis at its name', () => {
+  const text = ['REPORT z.', 'START-OF-SELECTION.', '  SELECT tax FROM zgeo WHERE country IN ( @lv_a, @lv_b ) INTO @DATA(ls).',
+    '  ENDSELECT.', '  lo->run( ).'].join('\n');
+  const statements = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source.aceStatements;
+  assert.deepEqual(statements.flatMap(s => callsIn(s.tokens).map(c => c.method)), ['RUN']);
+});

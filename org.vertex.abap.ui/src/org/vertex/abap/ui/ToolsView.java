@@ -52,8 +52,10 @@ public class ToolsView extends ChatView {
         // Bound to an editor - fields hidden, Parts folded, the cursor choosing the routine - only when the active editor
         // shows this object, as VS Code binds Tools opened from an editor. Opened from Project Explorer it is a free
         // window: the object type and name fields stay, and Parts is open to pick a method, since no cursor picks one.
+        // Opened by Window > Show View - no object named by a command - it is free too, on the editor's object: the
+        // fields let another type and object be chosen, as VS Code's Tools panel does.
         AdtEditor shown = activeObject();
-        boolean bound = shown != null && name.equalsIgnoreCase(shown.ownerName());
+        boolean bound = part(0) != null && shown != null && name.equalsIgnoreCase(shown.ownerName());
         return "{\"name\":" + AssistantBridge.quote(name) + ",\"type\":" + AssistantBridge.quote(type == null ? "CLAS" : type)
             + (bound ? ",\"boundObject\":true,\"cursorLine\":" + editorLine() : "") + "}";
     }

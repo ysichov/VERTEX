@@ -14,7 +14,8 @@ test('Calls uses Value Origin call enumeration for NEW receiver and nested assig
  assert.doesNotMatch(deeper.mermaid,/depth limit|->CONSTRUCTOR/);assert.match(deeper.mermaid,/ZCL_CALC_FACADE->DEEPER/);assert.deepEqual(reads,['ZTEST','ZCL_CALC_FACADE','ZCL_CONFIG']);
 });
 test('constructor expression types are not methods; NEW names the constructor',()=>{
- const {callsIn}=require('../value-origin-model'),{tokenize}=require('../value-origin-tokens');
+ // Tokens as production has them, parsed by abaplint: an expression on its own is parsed as x = expression.
+ const {callsIn}=require('../value-origin-model'),tokenize=text=>require('../value-origin-linter').parsedTokens(/\.\s*$/.test(text)?text:'x = '+text+'.').filter(t=>t.value!=='.');
  const result=callsIn(tokenize("DATA(x) = COND char12( WHEN flag = abap_true THEN zcl_config=>scenario( ) ELSE 'X' ). DATA(lo) = NEW zcl_log( )."));
  assert.deepEqual(result.map(c=>[c.owner,c.method]),[['ZCL_CONFIG','SCENARIO'],['ZCL_LOG','CONSTRUCTOR']]);
  for(const expression of ['CONV string( zcl_config=>scenario( ) )','CAST zif_config( zcl_config=>create( ) )','VALUE zif_config=>ty_config( )'])assert.ok(!callsIn(tokenize(expression)).some(c=>['STRING','ZIF_CONFIG','TY_CONFIG'].includes(c.method)));

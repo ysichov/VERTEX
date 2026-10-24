@@ -242,7 +242,8 @@ function conditionText(raw) {
 }
 
 function oneFormula(tree) {
-  const { tokenize } = require('./value-origin-tokens');
+  // A node holds its statement as text: abaplint parses it, so assignment and its calls read the parse, not the text.
+  const { parsedTokens } = require('./value-origin-linter');
   const { assignment, variablePaths } = require('./value-origin-model');
   const canonical = value => String(value || '').toUpperCase().split(' ').join('');
   const where = new Map(), steps = [], named = new Map(), counts = new Map();
@@ -250,7 +251,7 @@ function oneFormula(tree) {
   const origins = new Map();
   const shortName = of => String(of).split('-').pop();
   const collect = node => {
-    const all = tokenize(node.raw || ''), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    const all = parsedTokens(node.raw || ''), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
     if (!a || !a.expression.length) { const set = origins.get(shortName(node.of)) || new Set(); set.add(node.source + ':' + node.line); origins.set(shortName(node.of), set); }
     node.children.forEach(collect);
   };
@@ -265,7 +266,7 @@ function oneFormula(tree) {
   // be written out again at each reading, and the formula would grow with every step.
   const step = (node, context) => {
     if (named.has(node)) { return named.get(node); }
-    const all = tokenize(node.raw), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    const all = parsedTokens(node.raw), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
     const text = body(node, context), existing = steps.find(item => item.text === text && item.variable === (a ? canonical(a.name) : node.of));
     if (existing) { named.set(node, existing.name); return existing.name; }
     const key = a ? canonical(a.name) : node.of, number = (counts.get(key) || 0) + 1;
@@ -288,7 +289,7 @@ function oneFormula(tree) {
     return parts.length === 1 ? parts[0] : '{' + parts.join(' | ') + '}';
   };
   function body(node, context) {
-    const all = tokenize(node.raw), ts = all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all;
+    const all = parsedTokens(node.raw), ts = all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all;
     const a = assignment(ts);
     if (!a || !a.expression.length) { const name = label(node); where.set(name, { text: selectOf(node.raw, node.of) || node.text, id: node.id, source: node.source, line: node.line, location: node.location, full: node.of }); return name; }
     // A step that has the value before it as a child: its own statements all read that, wherever they stand under it.

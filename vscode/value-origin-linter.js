@@ -29,6 +29,42 @@ function colours(lint, file) {
   return out;
 }
 
+/* The parentheses that open a call, as abaplint parsed them - a MethodCall's parameters, a NEW's - marked on the tokens:
+   every "(" gets call true or false. callsIn reads a call only there (value-origin-model callOpen). */
+function markCalls(lint, node, tokens, offsetOf) {
+  // Recursive: a call in another's parameters - run( x = zcl_c=>scenario( ) ) - is a MethodCall inside a MethodCall.
+  const opens = new Set([
+    ...node.findAllExpressionsRecursive(lint.Expressions.MethodCall).map(n => n.findDirectExpression(lint.Expressions.MethodCallParam)?.getFirstToken()),
+    ...node.findAllExpressionsRecursive(lint.Expressions.NewObject).map(n => n.getChildren().find(c => c.getFirstToken().getStr() === '(')?.getFirstToken())
+  ].filter(Boolean).map(offsetOf));
+  for (const t of tokens) if (t.value === '(') t.call = opens.has(t.offset);
+}
+
+/* One statement's text as parsed tokens, offsets within the text: for code that holds a statement as text only, such as
+   Formula's nodes. abaplint parses it after a REPORT line; a statement it cannot place is still split into its tokens. */
+function parsedTokens(text) {
+  const lint = require('@abaplint/core');
+  const prefix = 'REPORT zvx_fragment.\n';
+  const registry = new lint.Registry().addFile(new lint.MemoryFile('zvx_fragment.prog.abap', prefix + String(text || '')));
+  registry.parse();
+  const file = registry.getFirstObject()?.getABAPFiles()[0];
+  if (!file) throw new Error('abaplint did not parse the statement ' + String(text).slice(0, 80));
+  const all = prefix + String(text || ''), starts = [0];
+  for (let i = 0; i < all.length; i++) if (all[i] === '\n') starts.push(i + 1);
+  const offsetOf = t => starts[t.getRow() - 1] + t.getCol() - 1 - prefix.length;
+  const out = [];
+  for (const node of file.getStatements().slice(1)) {
+    if (['Comment', 'Empty'].includes(node.get().constructor.name)) continue;
+    const tokens = node.getTokens().filter(t => !['Comment', 'Pragma'].includes(t.constructor.name)).flatMap(t => {
+      const offset = offsetOf(t), value = t.getStr();
+      return require('./value-origin-tokens').tokenize(value).map(p => ({ ...p, line: t.getRow() - 1, offset: offset + p.offset, endOffset: offset + p.endOffset }));
+    });
+    markCalls(lint, node, tokens, offsetOf);
+    out.push(...tokens);
+  }
+  return out;
+}
+
 function parseSource(source) {
   const lint = require('@abaplint/core');
   const { assignment, variablePaths, buildIndex } = require('./value-origin-model');
@@ -66,6 +102,7 @@ function parseSource(source) {
       warnings.push(source.name + ':' + expanded[0].line + ': unsupported ' + statementKind);
     }
     const targets = node.findAllExpressions(lint.Expressions.Target).map(n => tokensOf(n));
+    markCalls(lint, node, expanded, t => starts[t.getRow() - 1] + t.getCol() - 1);
     const parameterOffsets = new Set([lint.Expressions.ParameterS, lint.Expressions.ParameterT]
       .flatMap(type => node.findAllExpressions(type)).map(n => {
         const t = n.getFirstToken(); return starts[t.getRow() - 1] + t.getCol() - 1;
@@ -130,4 +167,4 @@ if (!isMainThread && parentPort) parentPort.on('message', ({ id, source }) => {
   try { parentPort.postMessage({ id, result: parseSource(source) }); }
   catch (error) { parentPort.postMessage({ id, error: error.message }); }
 });
-module.exports = { parseSource, createParser };
+module.exports = { parseSource, createParser, parsedTokens };

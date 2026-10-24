@@ -29,8 +29,8 @@ var require=__vertexRequire;
 // Tools transport adapter. Every analysis fact comes from standard ADT source
 // and the bundled parser; the /vertex paths are UI protocol names only.
 const { buildIndex, assignment, customerObject } = __vertexRequire(1);
-const callGraph = __vertexRequire(23);
-const { createParser } = __vertexRequire(1542);
+const callGraph = __vertexRequire(1542);
+const { createParser } = __vertexRequire(23);
 const upper = s => String(s || '').toUpperCase();
 // Mermaid quoted labels accept arrows literally. HTML entities survive as
 // visible text when htmlLabels is disabled; use Mermaid escapes if needed.
@@ -438,7 +438,7 @@ async function backward(api, resource, progress = () => {}, cancelled = () => fa
   const start = { url: String(params.get('source') || ''), name: upper(params.get('name')), type: upper(params.get('type')) };
   if (!/^\/sap\/bc\/adt\//.test(start.url)) throw new Error('Backward Usage Analysis needs the ADT source of the object.');
   const breakpoints = String(params.get('breakpoints') || '').split(',').filter(Boolean).map(Number);
-  const { parseSource } = __vertexRequire(1542);
+  const { parseSource } = __vertexRequire(23);
   const { customerObject } = __vertexRequire(1556);
   const sources = new Map();
   const sourceOf = (url, name, type) => {
@@ -590,9 +590,15 @@ function typeAfter(ts, at) {
 }
 // Every call in a token list, the ones inside the arguments of another included: lo->m( x = me->n( ) ) is two. A call is
 // a path, an optional ->/=> and a method name, then a balanced ( ... ); NEW x( )->m( ) is one call.
-/* A functional call has a blank after its parenthesis - m( ), m( x ) -; a parenthesis right at the word is offset/length
-   access (s370(4), name+2(3)) or an inline declaration (DATA(x), FIELD-SYMBOL(<fs>)), never a call. */
-const callOpen = (ts, at) => ts[at]?.value === '(' && ts[at + 1] && ts[at + 1].offset > ts[at].endOffset;
+/* Whether the parenthesis at `at` opens a call is abaplint's to say, not the tokens' neighbours': value-origin-linter
+   marks each "(" with call - true where it opens a MethodCall's parameters or a NEW's. Guessed from blanks it took
+   IN ( ... ), AND ( ... ) for methods. A "(" with no mark comes from no parse and is refused. */
+const callOpen = (ts, at) => {
+  const t = ts[at];
+  if (t?.value !== '(') return false;
+  if (typeof t.call !== 'boolean') throw new Error('A call is read from the abaplint parse (value-origin-linter); this token list has no parse.');
+  return t.call;
+};
 function callsIn(ts, withTokens = false) {
   const found = [];
   for (let i = 0; i < ts.length; i++) {
@@ -729,22 +735,31 @@ function declaredIn(body) {
 function parse(source) {
   if (source.aceStatements) return { tokens: source.aceStatements.flatMap(s => s.tokens), statements: source.aceStatements };
   const old = cache.get(source.id); if (old?.text === source.text) return old;
-  const tokens = tokenize(source.text), statements = []; let part = [];
-  for (const t of tokens) { if (t.kind === 'symbol' && t.value === '.') { if (part.length) statements.push({ tokens: part, line: part[0].line, offset: part[0].offset, text: source.text.slice(part[0].offset, t.endOffset) }); part = []; } else part.push(t); }
+  // A source with no statements of its own is parsed by abaplint as every source is (value-origin-linter), not split
+  // from its text here: a call is the parser's to tell.
+  const statements = __vertexRequire(23).parseSource({ objectType: 'PROG', name: source.id, objectName: source.id, ...source }).source.aceStatements;
+  const tokens = statements.flatMap(s => s.tokens);
   const parsed = { text: source.text, tokens, statements };
   cache.set(source.id, parsed); if (cache.size > 128) cache.delete(cache.keys().next().value);
   return parsed;
 }
+// A source's statements as abaplint parsed them (parse): FLOW reads its calls, conditions and writes from these.
 function localStatements(source) {
-  const tokens = tokenize(source.text), statements = []; let part = [];
-  for (const token of tokens) {
-    if (token.kind === 'symbol' && token.value === '.') {
-      if (part.length) statements.push({ tokens: part, line: part[0].line, offset: part[0].offset,
-        text: source.text.slice(part[0].offset, token.endOffset) });
-      part = [];
-    } else part.push(token);
-  }
-  return statements;
+  // The text a step shows is the source's own - WRITE: / a, b. as written -, not the parser's re-joined tokens. A later
+  // element of a chain is shown as its keyword with its own part: WRITE: b.
+  const text = String(source.text || '');
+  // Parsed from the source's text, whatever statement list came with it: an ACE scan can miss one (inline DATA).
+  const { aceStatements, ...own } = source;
+  return parse(own).statements.map(s => {
+    const first = s.tokens[0], second = s.tokens[1], last = s.tokens[s.tokens.length - 1];
+    if (!first || !last) return s;
+    let end = last.endOffset; while (text[end] === ' ') end++;
+    if (text[end] === '.' || text[end] === ',') end++;
+    const between = second ? text.slice(first.endOffset, second.offset) : '';
+    const shown = between.includes(':') && between.includes(',')
+      ? first.value + ': ' + text.slice(second.offset, end) : text.slice(first.offset, end);
+    return { ...s, text: shown };
+  });
 }
 function radioGroups(sources) {
   const groups = new Map();
@@ -1353,7 +1368,7 @@ function analyze(sources, target, options = {}) {
   // Every call that a statement makes, with the routines it can reach - not only those the slice walked through. A flow
   // between two breakpoints needs them to nest a call where it happens; the slice only marks what it reaches.
   const callSites = [];
-  const executionCalls = __vertexRequire(23).create(index);
+  const executionCalls = __vertexRequire(1542).create(index);
   for (const p of index.procedures) {
     for (const s of p.body) {
       for (const record of executionCalls.calls(p,s)) {
@@ -6678,55 +6693,144 @@ exports.highSurrogateTo = 0xdbff;
 function(module,exports,__vertexRequire){
 var require=__vertexRequire;
 "use strict";
-// Shared execution-call contract for Calls, Value Origin and VERTEX Smart Debugger.
-// Loading and rendering are host adapters; enumeration/resolution/walk are shared.
-const upper=s=>String(s||'').toUpperCase();
-function create(index,units=index.procedures){
- const model=__vertexRequire(1),resolve=model.resolver(index);
- function calls(p,s){
-  const found=model.callsIn(s.tokens),t=s.tokens.map(t=>upper(t.value));
-  let classic;
-  // PERFORM f IN PROGRAM prog and its short form PERFORM f(prog) - the program in parentheses right at the name - call a
-  // form of another program, which the walk then reads.
-  if(t[0]==='PERFORM'&&/^[\w/]+$/.test(t[1]||'')){const at=t.indexOf('PROGRAM'),tk=s.tokens,short=t[2]==='('&&t[4]===')'&&tk[2].offset===tk[1].endOffset&&/^[\w/]+$/.test(t[3]||'');classic={method:t[1],owner:at>=0?t[at+1]:short?t[3]:'',receiver:'',kind:'FORM'};}
-  else if(t[0]==='CALL'&&t[1]==='FUNCTION'&&/^'[^']+'$/.test(t[2]||''))classic={method:t[2].slice(1,-1),owner:'',receiver:'',kind:'FUNCTION'};
-  else if(t[0]==='CALL'&&t[1]==='METHOD'&&!found.length){const at=t.findIndex(v=>v==='->'||v==='=>');if(at>1)classic={method:t[at+1],owner:t[at]==='=>'?t[at-1]:'',receiver:t[at-1],arrow:t[at]};else if(/^[\w~]+$/.test(t[2]||''))classic={method:t[2],owner:'',receiver:''};}
-  if(classic)found.unshift(classic);
-  return found.map(call=>{
-   const kind=q=>q.unitType||upper(q.source.aceStatements?.find(s=>s.offset===q.start)?.tokens[0]?.value);
-   const owners=call.kind==='FORM'?[call.owner||p.source.objectName]:call.kind==='FUNCTION'?[call.method]:resolve.owners(call,p,s.offset).filter(Boolean);
-   const targets=call.kind==='FORM'?units.filter(q=>kind(q)==='FORM'&&q.name===call.method&&q.source.objectName===owners[0]):call.kind==='FUNCTION'?units.filter(q=>kind(q)==='FUNCTION'&&q.name===call.method):resolve(call,p,s.offset,{}).map(q=>units.find(u=>u.id===q.id)||q);
-   return {call,owners,targets};
-  }).filter(({call,targets})=>!builtin(call,targets));
- }
- // lines( ), xsdbool( ), condense( ): ABAP's built-in functions are no calls - unless the routine has a method of that name.
- function builtin(call,targets){
-  return !call.kind&&!call.owner&&!call.receiver&&!targets.length&&!!__vertexRequire(24).BuiltIn.searchBuiltin(upper(call.method));
- }
- return {calls};
-}
-async function walk(entries,options){
- const limit=options.maxDepth??Infinity,visited=new Set(),queue=entries.map(p=>({p,depth:1,entry:true}));
- for(let at=0;at<queue.length;at++){
-  if(options.cancelled?.())throw new Error('Analysis cancelled.');
-  const item=queue[at],{p,depth}=item;
-  if(visited.has(p.id)||depth>=limit)continue;
-  visited.add(p.id);options.onLevel?.(depth);
-  for(const s of p.body){
-   if(options.cancelled?.())throw new Error('Analysis cancelled.');
-   if(item.entry&&options.range&&(s.line<options.range.from||s.line>options.range.to))continue;
-   options.onStatement?.(p,s,item);
-   const records=await options.calls(p,s,depth);
-   for(const record of records){
-    options.onCall?.(p,s,record,item);
-    if(depth+1<limit)for(const target of record.targets)if(target.source.objectType!=='INTF')queue.push({p:target,depth:depth+1,entry:false});
-   }
-  }
- }
- return visited;
-}
-module.exports={create,walk};
 
+// Parse in a worker: loading the ABAP grammar must not block the extension host.
+// The ace* field names below are the existing model's input contract, not SAP
+// data. Every fact in this adapter is produced locally from ADT source text.
+/* What each token is, for Logic's Code view to colour: abaplint's own reading - a keyword is a token of the statement's
+   grammar (TokenNode), a name or a literal one the grammar matched (TokenNodeRegex), a comment its own statement.
+   [{ line, col (0-based), len, kind: keyword|string|number|comment|method|class (before =>) }]; other tokens are left plain. */
+function colours(lint, file) {
+  const out = [];
+  const put = (token, kind) => out.push({ line: token.getRow(), col: token.getCol() - 1, len: token.getStr().length, kind });
+  for (const statement of file.getStatements()) {
+    const tokens = [];
+    const walk = node => { for (const child of node.getChildren()) {
+      if (child instanceof lint.Nodes.TokenNodeRegex || child instanceof lint.Nodes.TokenNode) tokens.push(child); else walk(child);
+    } };
+    walk(statement);
+    tokens.forEach((node, at) => {
+      const token = node.getFirstToken(), text = token.getStr(), type = token.constructor.name, next = tokens[at + 1]?.getFirstToken();
+      if (type === 'Comment') put(token, 'comment');
+      else if (/^StringTemplate/.test(type) || /^['`]/.test(text)) put(token, 'string');
+      else if (/^\d+$/.test(text)) put(token, 'number');
+      // TokenNodeRegex is a TokenNode too: only a grammar token that is no regex match is a keyword.
+      else if (!(node instanceof lint.Nodes.TokenNodeRegex)) { if (/^[A-Za-z][\w-]*$/.test(text)) put(token, 'keyword'); }
+      else if (/^ParenLeft/.test(next?.constructor.name || '') && next.getStart().getCol() === token.getEnd().getCol()) put(token, 'method');
+      else if (next?.getStr() === '=>') put(token, 'class');
+    });
+  }
+  return out;
+}
+
+/* The parentheses that open a call, as abaplint parsed them - a MethodCall's parameters, a NEW's - marked on the tokens:
+   every "(" gets call true or false. callsIn reads a call only there (value-origin-model callOpen). */
+function markCalls(lint, node, tokens, offsetOf) {
+  // Recursive: a call in another's parameters - run( x = zcl_c=>scenario( ) ) - is a MethodCall inside a MethodCall.
+  const opens = new Set([
+    ...node.findAllExpressionsRecursive(lint.Expressions.MethodCall).map(n => n.findDirectExpression(lint.Expressions.MethodCallParam)?.getFirstToken()),
+    ...node.findAllExpressionsRecursive(lint.Expressions.NewObject).map(n => n.getChildren().find(c => c.getFirstToken().getStr() === '(')?.getFirstToken())
+  ].filter(Boolean).map(offsetOf));
+  for (const t of tokens) if (t.value === '(') t.call = opens.has(t.offset);
+}
+
+/* One statement's text as parsed tokens, offsets within the text: for code that holds a statement as text only, such as
+   Formula's nodes. abaplint parses it after a REPORT line; a statement it cannot place is still split into its tokens. */
+function parsedTokens(text) {
+  const lint = __vertexRequire(24);
+  const prefix = 'REPORT zvx_fragment.\n';
+  const registry = new lint.Registry().addFile(new lint.MemoryFile('zvx_fragment.prog.abap', prefix + String(text || '')));
+  registry.parse();
+  const file = registry.getFirstObject()?.getABAPFiles()[0];
+  if (!file) throw new Error('abaplint did not parse the statement ' + String(text).slice(0, 80));
+  const all = prefix + String(text || ''), starts = [0];
+  for (let i = 0; i < all.length; i++) if (all[i] === '\n') starts.push(i + 1);
+  const offsetOf = t => starts[t.getRow() - 1] + t.getCol() - 1 - prefix.length;
+  const out = [];
+  for (const node of file.getStatements().slice(1)) {
+    if (['Comment', 'Empty'].includes(node.get().constructor.name)) continue;
+    const tokens = node.getTokens().filter(t => !['Comment', 'Pragma'].includes(t.constructor.name)).flatMap(t => {
+      const offset = offsetOf(t), value = t.getStr();
+      return __vertexRequire(2).tokenize(value).map(p => ({ ...p, line: t.getRow() - 1, offset: offset + p.offset, endOffset: offset + p.endOffset }));
+    });
+    markCalls(lint, node, tokens, offsetOf);
+    out.push(...tokens);
+  }
+  return out;
+}
+
+function parseSource(source) {
+  const lint = __vertexRequire(24);
+  const { assignment, variablePaths, buildIndex } = __vertexRequire(1);
+  const kind = { CLAS: 'clas', INTF: 'intf' }[source.objectType] || 'prog';
+  const registry = new lint.Registry().addFile(new lint.MemoryFile('vertex.' + kind + '.abap', source.text));
+  registry.parse();
+  const file = registry.getFirstObject()?.getABAPFiles()[0];
+  if (!file) throw new Error('abaplint did not produce an ABAP source index.');
+  const starts = [0];
+  for (let i = 0; i < source.text.length; i++) if (source.text[i] === '\n') starts.push(i + 1);
+  const warnings = [];
+  const tokensOf = node => node.getTokens().filter(t => !['Comment', 'Pragma'].includes(t.constructor.name))
+    .map(t => {
+      const value = t.getStr(), offset = starts[t.getRow() - 1] + t.getCol() - 1;
+      const literal = /^(StringToken|StringTemplate)/.test(t.constructor.name);
+      return { value, kind: literal ? 'literal' : /^\d+(\.\d+)?$/.test(value) ? 'number'
+        : /^(?:[A-Za-z_][\w\/]*|\/[A-Za-z_][\w\/]*|<\w+>)$/.test(value) ? 'word' : 'symbol',
+        line: t.getRow(), offset, endOffset: offset + value.length };
+    });
+  const statements = [];
+  for (const node of file.getStatements()) {
+    const statementKind = node.get().constructor.name;
+    if (['Comment', 'Empty'].includes(statementKind)) continue;
+    const tokens = tokensOf(node).filter(t => !['.', ','].includes(t.value));
+    // ABAP keywords containing '-' are single lexer tokens; the shared model
+    // expects CLASS - METHODS / START - OF - SELECTION instead.
+    const expanded = tokens.flatMap(t => t.kind !== 'literal' && /^[\w/]+(?:[-~][\w/]+)+$/.test(t.value)
+      ? __vertexRequire(2).tokenize(t.value).map(p => ({ ...p, line: t.line,
+        offset: t.offset + p.offset, endOffset: t.offset + p.endOffset })) : [t]);
+    if (!expanded.length) continue;
+    // A FUNCTION statement carrying its interface (as ADT and SAP's ADT extension show a module) is no statement abaplint
+    // knows, but the analysis reads it itself (value-origin-model functionParameters): no gap to report.
+    const functionInterface = statementKind === 'Unknown' && String(expanded[0].value).toUpperCase() === 'FUNCTION';
+    if (['Unknown', 'MacroCall', 'MacroContent', 'NativeSQL'].includes(statementKind) && !functionInterface) {
+      warnings.push(source.name + ':' + expanded[0].line + ': unsupported ' + statementKind);
+    }
+    const targets = node.findAllExpressions(lint.Expressions.Target).map(n => tokensOf(n));
+    markCalls(lint, node, expanded, t => starts[t.getRow() - 1] + t.getCol() - 1);
+    const parameterOffsets = new Set([lint.Expressions.ParameterS, lint.Expressions.ParameterT]
+      .flatMap(type => node.findAllExpressions(type)).map(n => {
+        const t = n.getFirstToken(); return starts[t.getRow() - 1] + t.getCol() - 1;
+      }));
+    // A chain element (WRITE: / a, b.) begins with the chain's keyword, so its first token is on the keyword's
+    // line; the debugger stops on the line where the element's own part starts, after the colon.
+    const colon = node.getColon(), colonAt = colon && starts[colon.getRow() - 1] + colon.getCol() - 1;
+    const own = colon ? expanded.find(t => t.offset > colonAt) : null;
+    statements.push({ tokens: expanded, offset: expanded[0].offset, line: expanded[0].line, stepLine: own ? own.line : expanded[0].line,
+      text: node.concatTokens(), aceIndex: statements.length + 1, localTargets: targets,
+      localParameterOffsets: [...parameterOffsets], parserKind: statementKind });
+  }
+  const indexed = { ...source, aceStatements: statements, aceFlowSteps: [], lexColors: colours(lint, file) };
+  const index = buildIndex([indexed]);
+  for (const statement of statements) {
+    const a = assignment(statement.tokens);
+    const names = a ? [a.name] : statement.localTargets.map(ts => ts.map(t => t.value).join(''))
+      .filter(name => /^(?:[A-Za-z_][\w]*|<\w+>)(?:-[\w]+)*$/.test(name)).map(name => name.toUpperCase());
+    const operands = a ? a.expression : statement.tokens;
+    const dependencies = [...new Set(variablePaths(operands)
+      .filter(p => !statement.localParameterOffsets.includes(operands[p.from].offset)).map(p => p.name))];
+    const procedure = index.procedures.find(p => p.body.some(s => s.aceIndex === statement.aceIndex));
+    indexed.aceFlowSteps.push({ statement_index: statement.aceIndex, line: statement.line,
+      eventname: procedure?.name || 'GLOBAL',
+      calculated: [...new Set(names)].map(name => ({ name, class: procedure?.owner || source.objectName,
+        eventname: procedure?.name || 'GLOBAL', line: statement.line })),
+      composed: dependencies.map(name => ({ name })) });
+    delete statement.localTargets;
+    delete statement.localParameterOffsets;
+  }
+  return { source: indexed, warnings };
+}
+
+function createParser(){return {parse:async source=>parseSource(source),close:async()=>{}};} module.exports={parseSource,createParser};
 },
 function(module,exports,__vertexRequire){
 var require=__vertexRequire;
@@ -103671,107 +103775,55 @@ exports.DDLTable = DDLTable;
 function(module,exports,__vertexRequire){
 var require=__vertexRequire;
 "use strict";
-
-// Parse in a worker: loading the ABAP grammar must not block the extension host.
-// The ace* field names below are the existing model's input contract, not SAP
-// data. Every fact in this adapter is produced locally from ADT source text.
-/* What each token is, for Logic's Code view to colour: abaplint's own reading - a keyword is a token of the statement's
-   grammar (TokenNode), a name or a literal one the grammar matched (TokenNodeRegex), a comment its own statement.
-   [{ line, col (0-based), len, kind: keyword|string|number|comment|method|class (before =>) }]; other tokens are left plain. */
-function colours(lint, file) {
-  const out = [];
-  const put = (token, kind) => out.push({ line: token.getRow(), col: token.getCol() - 1, len: token.getStr().length, kind });
-  for (const statement of file.getStatements()) {
-    const tokens = [];
-    const walk = node => { for (const child of node.getChildren()) {
-      if (child instanceof lint.Nodes.TokenNodeRegex || child instanceof lint.Nodes.TokenNode) tokens.push(child); else walk(child);
-    } };
-    walk(statement);
-    tokens.forEach((node, at) => {
-      const token = node.getFirstToken(), text = token.getStr(), type = token.constructor.name, next = tokens[at + 1]?.getFirstToken();
-      if (type === 'Comment') put(token, 'comment');
-      else if (/^StringTemplate/.test(type) || /^['`]/.test(text)) put(token, 'string');
-      else if (/^\d+$/.test(text)) put(token, 'number');
-      // TokenNodeRegex is a TokenNode too: only a grammar token that is no regex match is a keyword.
-      else if (!(node instanceof lint.Nodes.TokenNodeRegex)) { if (/^[A-Za-z][\w-]*$/.test(text)) put(token, 'keyword'); }
-      else if (/^ParenLeft/.test(next?.constructor.name || '') && next.getStart().getCol() === token.getEnd().getCol()) put(token, 'method');
-      else if (next?.getStr() === '=>') put(token, 'class');
-    });
-  }
-  return out;
+// Shared execution-call contract for Calls, Value Origin and VERTEX Smart Debugger.
+// Loading and rendering are host adapters; enumeration/resolution/walk are shared.
+const upper=s=>String(s||'').toUpperCase();
+function create(index,units=index.procedures){
+ const model=__vertexRequire(1),resolve=model.resolver(index);
+ function calls(p,s){
+  const found=model.callsIn(s.tokens),t=s.tokens.map(t=>upper(t.value));
+  let classic;
+  // PERFORM f IN PROGRAM prog and its short form PERFORM f(prog) - the program in parentheses right at the name - call a
+  // form of another program, which the walk then reads.
+  if(t[0]==='PERFORM'&&/^[\w/]+$/.test(t[1]||'')){const at=t.indexOf('PROGRAM'),tk=s.tokens,short=t[2]==='('&&t[4]===')'&&tk[2].offset===tk[1].endOffset&&/^[\w/]+$/.test(t[3]||'');classic={method:t[1],owner:at>=0?t[at+1]:short?t[3]:'',receiver:'',kind:'FORM'};}
+  else if(t[0]==='CALL'&&t[1]==='FUNCTION'&&/^'[^']+'$/.test(t[2]||''))classic={method:t[2].slice(1,-1),owner:'',receiver:'',kind:'FUNCTION'};
+  else if(t[0]==='CALL'&&t[1]==='METHOD'&&!found.length){const at=t.findIndex(v=>v==='->'||v==='=>');if(at>1)classic={method:t[at+1],owner:t[at]==='=>'?t[at-1]:'',receiver:t[at-1],arrow:t[at]};else if(/^[\w~]+$/.test(t[2]||''))classic={method:t[2],owner:'',receiver:''};}
+  if(classic)found.unshift(classic);
+  return found.map(call=>{
+   const kind=q=>q.unitType||upper(q.source.aceStatements?.find(s=>s.offset===q.start)?.tokens[0]?.value);
+   const owners=call.kind==='FORM'?[call.owner||p.source.objectName]:call.kind==='FUNCTION'?[call.method]:resolve.owners(call,p,s.offset).filter(Boolean);
+   const targets=call.kind==='FORM'?units.filter(q=>kind(q)==='FORM'&&q.name===call.method&&q.source.objectName===owners[0]):call.kind==='FUNCTION'?units.filter(q=>kind(q)==='FUNCTION'&&q.name===call.method):resolve(call,p,s.offset,{}).map(q=>units.find(u=>u.id===q.id)||q);
+   return {call,owners,targets};
+  }).filter(({call,targets})=>!builtin(call,targets));
+ }
+ // lines( ), xsdbool( ), condense( ): ABAP's built-in functions are no calls - unless the routine has a method of that name.
+ function builtin(call,targets){
+  return !call.kind&&!call.owner&&!call.receiver&&!targets.length&&!!__vertexRequire(24).BuiltIn.searchBuiltin(upper(call.method));
+ }
+ return {calls};
 }
-
-function parseSource(source) {
-  const lint = __vertexRequire(24);
-  const { assignment, variablePaths, buildIndex } = __vertexRequire(1);
-  const kind = { CLAS: 'clas', INTF: 'intf' }[source.objectType] || 'prog';
-  const registry = new lint.Registry().addFile(new lint.MemoryFile('vertex.' + kind + '.abap', source.text));
-  registry.parse();
-  const file = registry.getFirstObject()?.getABAPFiles()[0];
-  if (!file) throw new Error('abaplint did not produce an ABAP source index.');
-  const starts = [0];
-  for (let i = 0; i < source.text.length; i++) if (source.text[i] === '\n') starts.push(i + 1);
-  const warnings = [];
-  const tokensOf = node => node.getTokens().filter(t => !['Comment', 'Pragma'].includes(t.constructor.name))
-    .map(t => {
-      const value = t.getStr(), offset = starts[t.getRow() - 1] + t.getCol() - 1;
-      const literal = /^(StringToken|StringTemplate)/.test(t.constructor.name);
-      return { value, kind: literal ? 'literal' : /^\d+(\.\d+)?$/.test(value) ? 'number'
-        : /^(?:[A-Za-z_][\w\/]*|\/[A-Za-z_][\w\/]*|<\w+>)$/.test(value) ? 'word' : 'symbol',
-        line: t.getRow(), offset, endOffset: offset + value.length };
-    });
-  const statements = [];
-  for (const node of file.getStatements()) {
-    const statementKind = node.get().constructor.name;
-    if (['Comment', 'Empty'].includes(statementKind)) continue;
-    const tokens = tokensOf(node).filter(t => !['.', ','].includes(t.value));
-    // ABAP keywords containing '-' are single lexer tokens; the shared model
-    // expects CLASS - METHODS / START - OF - SELECTION instead.
-    const expanded = tokens.flatMap(t => t.kind !== 'literal' && /^[\w/]+(?:[-~][\w/]+)+$/.test(t.value)
-      ? __vertexRequire(2).tokenize(t.value).map(p => ({ ...p, line: t.line,
-        offset: t.offset + p.offset, endOffset: t.offset + p.endOffset })) : [t]);
-    if (!expanded.length) continue;
-    // A FUNCTION statement carrying its interface (as ADT and SAP's ADT extension show a module) is no statement abaplint
-    // knows, but the analysis reads it itself (value-origin-model functionParameters): no gap to report.
-    const functionInterface = statementKind === 'Unknown' && String(expanded[0].value).toUpperCase() === 'FUNCTION';
-    if (['Unknown', 'MacroCall', 'MacroContent', 'NativeSQL'].includes(statementKind) && !functionInterface) {
-      warnings.push(source.name + ':' + expanded[0].line + ': unsupported ' + statementKind);
-    }
-    const targets = node.findAllExpressions(lint.Expressions.Target).map(n => tokensOf(n));
-    const parameterOffsets = new Set([lint.Expressions.ParameterS, lint.Expressions.ParameterT]
-      .flatMap(type => node.findAllExpressions(type)).map(n => {
-        const t = n.getFirstToken(); return starts[t.getRow() - 1] + t.getCol() - 1;
-      }));
-    // A chain element (WRITE: / a, b.) begins with the chain's keyword, so its first token is on the keyword's
-    // line; the debugger stops on the line where the element's own part starts, after the colon.
-    const colon = node.getColon(), colonAt = colon && starts[colon.getRow() - 1] + colon.getCol() - 1;
-    const own = colon ? expanded.find(t => t.offset > colonAt) : null;
-    statements.push({ tokens: expanded, offset: expanded[0].offset, line: expanded[0].line, stepLine: own ? own.line : expanded[0].line,
-      text: node.concatTokens(), aceIndex: statements.length + 1, localTargets: targets,
-      localParameterOffsets: [...parameterOffsets], parserKind: statementKind });
+async function walk(entries,options){
+ const limit=options.maxDepth??Infinity,visited=new Set(),queue=entries.map(p=>({p,depth:1,entry:true}));
+ for(let at=0;at<queue.length;at++){
+  if(options.cancelled?.())throw new Error('Analysis cancelled.');
+  const item=queue[at],{p,depth}=item;
+  if(visited.has(p.id)||depth>=limit)continue;
+  visited.add(p.id);options.onLevel?.(depth);
+  for(const s of p.body){
+   if(options.cancelled?.())throw new Error('Analysis cancelled.');
+   if(item.entry&&options.range&&(s.line<options.range.from||s.line>options.range.to))continue;
+   options.onStatement?.(p,s,item);
+   const records=await options.calls(p,s,depth);
+   for(const record of records){
+    options.onCall?.(p,s,record,item);
+    if(depth+1<limit)for(const target of record.targets)if(target.source.objectType!=='INTF')queue.push({p:target,depth:depth+1,entry:false});
+   }
   }
-  const indexed = { ...source, aceStatements: statements, aceFlowSteps: [], lexColors: colours(lint, file) };
-  const index = buildIndex([indexed]);
-  for (const statement of statements) {
-    const a = assignment(statement.tokens);
-    const names = a ? [a.name] : statement.localTargets.map(ts => ts.map(t => t.value).join(''))
-      .filter(name => /^(?:[A-Za-z_][\w]*|<\w+>)(?:-[\w]+)*$/.test(name)).map(name => name.toUpperCase());
-    const operands = a ? a.expression : statement.tokens;
-    const dependencies = [...new Set(variablePaths(operands)
-      .filter(p => !statement.localParameterOffsets.includes(operands[p.from].offset)).map(p => p.name))];
-    const procedure = index.procedures.find(p => p.body.some(s => s.aceIndex === statement.aceIndex));
-    indexed.aceFlowSteps.push({ statement_index: statement.aceIndex, line: statement.line,
-      eventname: procedure?.name || 'GLOBAL',
-      calculated: [...new Set(names)].map(name => ({ name, class: procedure?.owner || source.objectName,
-        eventname: procedure?.name || 'GLOBAL', line: statement.line })),
-      composed: dependencies.map(name => ({ name })) });
-    delete statement.localTargets;
-    delete statement.localParameterOffsets;
-  }
-  return { source: indexed, warnings };
+ }
+ return visited;
 }
+module.exports={create,walk};
 
-function createParser(){return {parse:async source=>parseSource(source),close:async()=>{}};} module.exports={parseSource,createParser};
 },
 function(module,exports,__vertexRequire){
 var require=__vertexRequire;
@@ -106493,7 +106545,7 @@ function page(result, nonce, cspSource, lines, relative = false, sources = null,
    controls stylesheet. The parser's warnings and a value-sources failure are answered, for the host to show. */
 async function build(text, offset, line, options) {
   const objectType = options.objectType === 'CLAS' ? 'CLAS' : 'PROG';
-  const parser = __vertexRequire(1542).createParser();
+  const parser = __vertexRequire(23).createParser();
   let parsed;
   try { parsed = await parser.parse({ id: options.id, name: options.name, objectName: '', objectType, text }); }
   catch (error) { throw new Error('the source could not be parsed: ' + error.message); }
@@ -107282,7 +107334,7 @@ function(module,exports,__vertexRequire){
 var require=__vertexRequire;
 'use strict';
 // Adapter only: parsing, source closure, BSE, FLOW and formulas are the VS Code modules.
-const {parseSource} = __vertexRequire(1542);
+const {parseSource} = __vertexRequire(23);
 const origin = __vertexRequire(1556);
 const points = __vertexRequire(1560);
 const {collect} = __vertexRequire(1561);
@@ -107562,7 +107614,7 @@ var require=__vertexRequire;
 "use strict";
 const { analyze, buildIndex, customerObject } = __vertexRequire(1);
 const { tokenize } = __vertexRequire(2);
-const callGraph = __vertexRequire(23);
+const callGraph = __vertexRequire(1542);
 const up = value => String(value || '').toUpperCase();
 
 function objectsIn(tokens) {
@@ -107931,7 +107983,8 @@ function conditionText(raw) {
 }
 
 function oneFormula(tree) {
-  const { tokenize } = __vertexRequire(2);
+  // A node holds its statement as text: abaplint parses it, so assignment and its calls read the parse, not the text.
+  const { parsedTokens } = __vertexRequire(23);
   const { assignment, variablePaths } = __vertexRequire(1);
   const canonical = value => String(value || '').toUpperCase().split(' ').join('');
   const where = new Map(), steps = [], named = new Map(), counts = new Map();
@@ -107939,7 +107992,7 @@ function oneFormula(tree) {
   const origins = new Map();
   const shortName = of => String(of).split('-').pop();
   const collect = node => {
-    const all = tokenize(node.raw || ''), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    const all = parsedTokens(node.raw || ''), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
     if (!a || !a.expression.length) { const set = origins.get(shortName(node.of)) || new Set(); set.add(node.source + ':' + node.line); origins.set(shortName(node.of), set); }
     node.children.forEach(collect);
   };
@@ -107954,7 +108007,7 @@ function oneFormula(tree) {
   // be written out again at each reading, and the formula would grow with every step.
   const step = (node, context) => {
     if (named.has(node)) { return named.get(node); }
-    const all = tokenize(node.raw), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    const all = parsedTokens(node.raw), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
     const text = body(node, context), existing = steps.find(item => item.text === text && item.variable === (a ? canonical(a.name) : node.of));
     if (existing) { named.set(node, existing.name); return existing.name; }
     const key = a ? canonical(a.name) : node.of, number = (counts.get(key) || 0) + 1;
@@ -107977,7 +108030,7 @@ function oneFormula(tree) {
     return parts.length === 1 ? parts[0] : '{' + parts.join(' | ') + '}';
   };
   function body(node, context) {
-    const all = tokenize(node.raw), ts = all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all;
+    const all = parsedTokens(node.raw), ts = all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all;
     const a = assignment(ts);
     if (!a || !a.expression.length) { const name = label(node); where.set(name, { text: selectOf(node.raw, node.of) || node.text, id: node.id, source: node.source, line: node.line, location: node.location, full: node.of }); return name; }
     // A step that has the value before it as a child: its own statements all read that, wherever they stand under it.
