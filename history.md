@@ -1,5 +1,17 @@
 # Release history
 
+## 2026-10-24 — VS Code 0.9.30, Eclipse 0.9.30: declared structures, recorded Continue
+
+A variable of a structure type declared as a chain (`TYPES: BEGIN OF ... END OF ...`), also in an interface, opens to its fields in Visual Analysis without a debug session. In Eclipse, Continue under Rec steps runs on to the next breakpoint instead of stopping after each step.
+
+## 2026-10-23 — Eclipse 0.9.30: Run Select, Visual Analysis / Debug
+
+**VERTEX: Run Select** is in Eclipse's VERTEX submenu, as in VS Code: the SELECT at the cursor opens in SelecTor when SelecTor can say it, otherwise its rows come from ADT's data preview. **Open Visual Debug** is now named **Visual Analysis / Debug**, as in VS Code. When it opens from an editor, Visual Debug starts at the editor's line, so its Variables show the routine at the cursor.
+
+## 2026-10-23 — Eclipse 0.9.30: Forward on calls
+
+Forward Usage Analysis in Eclipse no longer fails with "has no module @abaplint/core" when the flow meets a call, reads the interfaces it meets instead of reporting "Resource CLASS ... does not exist", and opens in a window of its own, as Backward does.
+
 ## 2026-10-23 — Eclipse 0.9.30: the chat in its own window
 
 **VERTEX Assistant** in the VERTEX submenu opens the VERTEX chat in a window of its own, on the system of the selected object, as an alternative to Ask AI inside VERTEX Tools.

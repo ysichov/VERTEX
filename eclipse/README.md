@@ -33,8 +33,8 @@ Both read the active source over ADT and analyse it in the window; nothing of VE
 needed. While one runs, **Cancel** beside its status stops it.
 
 All VERTEX commands of a context menu stand in one **VERTEX** submenu, beside GitHub, Team and Run
-As: VERTEX Tools, Path to This Line, Forward and Backward Usage Analysis, Visual Flow Analysis, Open
-Visual Debug, Activate, VERTEX Assistant and Session Logs. The commands below are named as they appear there.
+As: VERTEX Tools, Path to This Line, Run Select, Forward and Backward Usage Analysis, Visual Flow Analysis,
+Visual Analysis / Debug, Activate, VERTEX Assistant and Session Logs. The commands below are named as they appear there.
 
 ## Path to This Line
 
@@ -50,6 +50,14 @@ in the window shows the line in the editor.
 its value right above the condition, with a list of where each value comes from. **Window →
 Preferences → VERTEX Path to This Line** numbers the lines from the METHOD or FORM statement, as
 SAP GUI numbers a method.
+
+## Run Select
+
+**VERTEX: Run Select** runs the SELECT at the cursor, from the editor's text, saved or not, as VS Code
+does: a SELECT that SelecTor can say opens in VERTEX Tools on its table, its WHERE as selection lines (a join or
+a grouped SELECT in SelecTor's join or pivot); any other runs through ADT's data preview and its rows are shown
+with the statement as run. What only the running program knows - INTO, FOR ALL ENTRIES, conditions on program
+values - is left out and named above the rows.
 
 ## VERTEX Assistant
 

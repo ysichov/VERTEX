@@ -2399,47 +2399,13 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const local = document?.uri?.scheme === "file" && /\.abap$/i.test(document.uri.fsPath || "");
     if (!own && !local) { throw new Error("Open a SAP or local ABAP source tab first."); }
     const api = own ? own.entry.repo.api : (await repository()).api;
-    const prepared = require("./select-query").prepare(document.getText(), document.offsetAt(editor.selection.start));
-    // What SelecTor can say opens in SelecTor, its conditions as selection lines; SelecTor reads tables, not views.
-    // SelecTor's join takes any table with the ON it is given; what fails, fails there, where it can be seen.
-    // A grouped SELECT opens in its pivot.
-    if (prepared.selector && prepared.selector.join && (prepared.selector.join.length || prepared.selector.pivot)) {
-      return vscode.commands.executeCommand("vertex.tools", { type: "TABL", name: prepared.selector.table,
-        action: prepared.selector.pivot ? "pivot" : "join", selectorPlan: prepared.selector });
-    }
-    if (prepared.selector) {
-      const table = prepared.selector.table;
-      const kind = await api.query("SELECT tabclass FROM dd02l WHERE tabname = '" + table + "' AND as4local = 'A'", 1);
-      const tabclass = kind.values.length ? kind.values[0].TABCLASS : "";
-      if (["TRANSP", "CLUSTER"].includes(tabclass)) {
-        return vscode.commands.executeCommand("vertex.tools", { type: "TABL", name: table, selectorPlan: prepared.selector });
-      }
-      prepared.notSelector = table + " is " + (tabclass ? "a " + tabclass.toLowerCase() : "not a dictionary table") + ", and SelecTor reads tables.";
-      prepared.selector = null;
-    }
-    if (!prepared.sql) { throw new Error("The SELECT cannot run as written, and SelecTor cannot take it: " + prepared.notSelector); }
-    const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Run Select — data preview" },
-      () => api.query(prepared.sql, prepared.rows));
-    const panel = vscode.window.createWebviewPanel("vertex.runSelect", "Select · line " + prepared.line, vscode.ViewColumn.Beside, {});
-    panel.webview.html = selectHtml(prepared, result);
+    // Decided in select-query.run, which Eclipse runs too.
+    const answer = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Run Select - data preview" },
+      () => require("./select-query").run(api, document.getText(), document.offsetAt(editor.selection.start)));
+    if (answer.open) { return vscode.commands.executeCommand("vertex.tools", answer.open); }
+    const panel = vscode.window.createWebviewPanel("vertex.runSelect", "Select · line " + answer.line, vscode.ViewColumn.Beside, {});
+    panel.webview.html = answer.html;
   });
-  function selectHtml(prepared, result) {
-    const esc = value => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    const head = result.columns.map(column => "<th title=\"" + esc(column.description) + "\">" + esc(column.name) + "</th>").join("");
-    const body = result.values.map(row => "<tr>" + result.columns.map(column => "<td>" + esc(row[column.name]) + "</td>").join("") + "</tr>").join("");
-    const dropped = prepared.dropped.length ? "<div class=\"dropped\">Left out, not known without running the program: "
-      + prepared.dropped.map(text => "<code>" + esc(text) + "</code>").join(", ") + "</div>" : "";
-    const why = prepared.notSelector ? "<div class=\"count\">Not opened in SelecTor: " + esc(prepared.notSelector) + "</div>" : "";
-    return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
-      + "body{background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);padding:8px}"
-      + "pre{background:var(--vscode-textCodeBlock-background);padding:6px;white-space:pre-wrap;margin:0 0 6px}"
-      + ".dropped{color:var(--vscode-editorWarning-foreground);margin:0 0 6px}.count{color:var(--vscode-descriptionForeground);margin:0 0 6px}"
-      + "table{border-collapse:collapse}th,td{border:1px solid var(--vscode-panel-border);padding:2px 6px;text-align:left;white-space:nowrap}"
-      + "th{background:var(--vscode-editorWidget-background);position:sticky;top:0}"
-      + "</style></head><body>" + why + "<pre>" + esc(prepared.sql) + "</pre>" + dropped
-      + "<div class=\"count\">" + result.values.length + " rows" + (result.values.length >= prepared.rows ? " (limit " + prepared.rows + ")" : "") + "</div>"
-      + "<table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></body></html>";
-  }
   // Backward Usage Analysis: where the values of the routine at the cursor go in its callers, up through theirs. SAP's
   // where-used finds the calls in the saved sources; each customer object found is read as a tab, standard code is not.
   // Visual Debug's Where used names the value chosen in its Variables; from the editor it is the one under the cursor.

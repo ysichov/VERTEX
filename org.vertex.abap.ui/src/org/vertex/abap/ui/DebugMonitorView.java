@@ -32,6 +32,9 @@ public class DebugMonitorView extends ToolsView {
         var parsed = JsonParser.parseString(super.initialLiteral());
         JsonObject initial = parsed.isJsonNull() ? new JsonObject() : parsed.getAsJsonObject();
         initial.addProperty("type", VisualDebugSession.text(initial, "type").split("/")[0]);
+        // The page reads the editor's line as "line" (VS Code's docked panel passes it so); ToolsView names it cursorLine.
+        // Without it Variables said "line ? of ... is in no method".
+        if (initial.has("cursorLine") && !initial.has("line")) initial.add("line", initial.get("cursorLine"));
         return initial.toString();
     }
     @Override protected String readResource(String path) throws IOException {

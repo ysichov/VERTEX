@@ -40,7 +40,11 @@ public class ToolsView extends ChatView {
     private AdtEditor activeObject() {
         return AdtEditor.of(getSite().getPage().getActiveEditor());
     }
+    /** What a window opens on beyond its object - Run Select's SelecTor plan - by secondary id, taken once. */
+    static final java.util.Map<String, String> OPENS = new java.util.concurrent.ConcurrentHashMap<>();
     @Override protected String initialLiteral() {
+        String opens = OPENS.remove(String.valueOf(getViewSite().getSecondaryId()));
+        if (opens != null) return opens.replace("<", "\\u003c");
         AdtEditor editor = part(0) == null ? activeObject() : null;
         String name = part(0) == null ? editor == null ? null : editor.ownerName() : part(0);
         String type = part(1) == null ? editor == null ? "CLAS" : editor.kind() : part(1);

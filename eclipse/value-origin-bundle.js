@@ -23,6 +23,9 @@ function bundle(root = path.join(__dirname, "..")) {
     + "var modules = {\n" + parts.join(",\n") + "\n};\n"
     + "var cache = {};\n"
     + "function load(name) {\n"
+    // abaplint comes as a script of its own (assistant/abaplint.js, window.vertexAbaplint): call-graph asks it which
+    // calls are built-in functions.
+    + "  if (name === '@abaplint/core') { if (!root.vertexAbaplint) { throw new Error('abaplint did not load into this window.'); } return root.vertexAbaplint; }\n"
     + "  if (!Object.prototype.hasOwnProperty.call(modules, name)) { throw new Error('Value origin in Eclipse has no module ' + name + '.'); }\n"
     + "  if (!cache[name]) { var module = { exports: {} }; cache[name] = module; try { modules[name](module, module.exports, load); } catch (error) { delete cache[name]; throw error; } }\n"
     + "  return cache[name].exports;\n"

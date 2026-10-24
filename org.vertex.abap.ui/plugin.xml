@@ -28,6 +28,13 @@
             allowMultiple="true"
             restorable="false"/>
       <view
+            id="org.vertex.abap.ui.view.runSelect"
+            name="Run Select"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.RunSelectView"
+            allowMultiple="true"
+            restorable="false"/>
+      <view
             id="org.vertex.abap.ui.view.chat"
             name="VERTEX Assistant"
             category="org.vertex.abap.ui.category"
@@ -64,7 +71,7 @@
 
 
    <extension point="org.eclipse.ui.commands">
-      <command id="org.vertex.abap.ui.command.debugMonitor" name="VERTEX: Open Visual Debug" description="Open Visual Debug for the ADT debug session"/>
+      <command id="org.vertex.abap.ui.command.debugMonitor" name="VERTEX: Visual Analysis / Debug" description="Open Visual Debug for the ADT debug session"/>
       <command id="org.vertex.abap.ui.command.tools" name="VERTEX Tools"/>
       <command id="org.vertex.abap.ui.command.visualFlowAnalysis" name="VERTEX: Visual Flow Analysis" description="Static calls and method logic without running the program"/>
 
@@ -78,6 +85,10 @@
             id="org.vertex.abap.ui.command.backwardUsage"
             name="VERTEX: Backward Usage Analysis"
             description="Where the values of the routine at the cursor go in its callers, up through theirs, by SAP's where-used"/>
+      <command
+            id="org.vertex.abap.ui.command.runSelect"
+            name="VERTEX: Run Select"
+            description="The SELECT at the cursor: in SelecTor when it can say it, otherwise through ADT's data preview"/>
       <command
             id="org.vertex.abap.ui.command.chat"
             name="VERTEX Assistant"
@@ -110,6 +121,9 @@
             commandId="org.vertex.abap.ui.command.backwardUsage"
             class="org.vertex.abap.ui.BackwardUsageHandler"/>
       <handler
+            commandId="org.vertex.abap.ui.command.runSelect"
+            class="org.vertex.abap.ui.RunSelectHandler"/>
+      <handler
             commandId="org.vertex.abap.ui.command.chat"
             class="org.vertex.abap.ui.ChatHandler"/>
       <handler
@@ -134,10 +148,11 @@
             <visibleWhen checkEnabled="false"><or><with variable="selection"><count value="1"/><iterate><adapt type="com.sap.adt.tools.core.IAdtObjectReference"/></iterate></with><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></or></visibleWhen>
             <command commandId="org.vertex.abap.ui.command.tools" label="VERTEX Tools" style="push"><visibleWhen checkEnabled="false"><or><with variable="selection"><count value="1"/><iterate><adapt type="com.sap.adt.tools.core.IAdtObjectReference"/></iterate></with><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></or></visibleWhen></command>
             <command commandId="org.vertex.abap.ui.command.reachPath" label="Path to This Line" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
+            <command commandId="org.vertex.abap.ui.command.runSelect" label="Run Select" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
             <command commandId="org.vertex.abap.ui.command.valueOrigin" label="Forward Usage Analysis" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
             <command commandId="org.vertex.abap.ui.command.backwardUsage" label="Backward Usage Analysis" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
             <command commandId="org.vertex.abap.ui.command.visualFlowAnalysis" label="Visual Flow Analysis" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
-            <command commandId="org.vertex.abap.ui.command.debugMonitor" label="Open Visual Debug" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
+            <command commandId="org.vertex.abap.ui.command.debugMonitor" label="Visual Analysis / Debug" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
             <command commandId="org.vertex.abap.ui.command.activate" label="Activate" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
             <separator name="vertex.logs" visible="true"/>
             <command commandId="org.vertex.abap.ui.command.chat" label="VERTEX Assistant" style="push"></command>

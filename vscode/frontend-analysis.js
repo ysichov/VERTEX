@@ -447,6 +447,11 @@ async function backward(api, resource, progress = () => {}, cancelled = () => fa
 // bundle); null for any other write. /sap/bc/adt/vertex/reach is no SAP resource: the path to a line of the editor's
 // text, which the body carries with the cursor and the page's options (reach-path.js build).
 async function write(api, resource, body) {
+  // Run Select: the SELECT at the cursor of the editor's text, decided as VS Code decides it (select-query.run).
+  if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/runselect') {
+    const command = JSON.parse(String(body));
+    return require('./select-query').run(api, String(command.text), Number(command.offset));
+  }
   if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/reach') {
     const command = JSON.parse(String(body));
     return require('./reach-path').build(String(command.text), Number(command.offset), Number(command.line), command);

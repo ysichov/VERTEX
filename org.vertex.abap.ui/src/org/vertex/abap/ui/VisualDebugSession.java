@@ -117,8 +117,21 @@ final class VisualDebugSession {
                     "program", f.getProgramName(), "include", f.getIncludeName(), "system", f.isSystemProgram(),
                     "unit", f.getEventName(), "unitType", String.valueOf(f.getEventType())));
             }
+            // The breakpoint the thread stands on, not merely the one it last stopped at: ADT's thread can go on naming that
+            // one after F5 steps, and a recorded Continue - a series of F5s - then ended after every step. A line
+            // breakpoint counts only on the top frame's source and line, as VS Code reports a hit.
             String hit = "";
-            for (IAbapBreakpoint bp : t.getBreakpoints()) { hit = bp.getClientId(); break; }
+            IAbapStackFrame top = stack.length > 0 ? stack[0] : null;
+            for (IAbapBreakpoint bp : t.getBreakpoints()) {
+                if (bp instanceof IAbapLineBreakpoint line && top != null) {
+                    // ADT gives a frame two lines - absolute and within its include - and the addresses in either case;
+                    // a breakpoint on either line of the same source is the one stood on. (Only the absolute line, in exact
+                    // case, missed the last breakpoint of a run: the run went out of the program.)
+                    boolean onLine = line.getLineNumber() == top.getAbsoluteLineNumber() || line.getLineNumber() == top.getLineNumber();
+                    if (!onLine || !sourcePath(line.getURI()).equalsIgnoreCase(sourcePath(top.getUri()))) continue;
+                }
+                hit = bp.getClientId(); break;
+            }
             JsonObject stopped = object("at", "ADT stop " + stop.get(), "breakpoint", hit, "predicted", false);
             stopped.add("frames", frames); result.add("stopped", stopped);
         }

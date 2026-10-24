@@ -83,7 +83,9 @@ public class ValueOriginHandler extends AbstractHandler {
 				breakpoints(text, document), direction()));
 		try {
 			IWorkbenchPage page = HandlerUtil.getActiveWorkbenchWindowChecked(event).getActivePage();
-			page.showView(ValueOriginView.ID, id, IWorkbenchPage.VIEW_ACTIVATE);
+			// A window of its own, as VERTEX Tools and Path to This Line open: docked, it lands in whatever stack the
+			// perspective offers.
+			DetachedView.show(page, ValueOriginView.ID, id);
 		} catch (Exception e) {
 			ValueOriginView.TARGETS.remove(id);
 			throw new ExecutionException("Cannot open the VERTEX Value origin window", e);

@@ -73,6 +73,7 @@ body { display: flex; flex-direction: column; background: var(--vscode-editor-ba
 <div id="bar"><div id="status">Value origin</div><button type="button" id="cancel" hidden>Cancel</button></div>
 <iframe id="view" title="Value origin" hidden></iframe>
 <script>/*FLOW_GRAPH*/</script>
+<script>/*ABAPLINT*/</script>
 <script>/*ORIGIN_ENGINE*/</script>
 <script>/*ECLIPSE_FRONTEND*/</script>
 <script>
@@ -203,7 +204,15 @@ async function run() {
   var parserWarnings=[];
   var load = async function (name, type) {
     check();
-    var data=await request('/sap/bc/adt/vertex/flow/'+encodeURIComponent(name)+'?mode=origin&type='+type, function(text){say('Value origin - '+text);});
+    var read=function(kind){return request('/sap/bc/adt/vertex/flow/'+encodeURIComponent(name)+'?mode=origin&type='+kind, function(text){say('Value origin - '+text);});};
+    var data;
+    // A name the flow takes for a class may be an interface: SAP finds no class of that name, and it is read as one -
+    // as VS Code reads it (code-workbench load). ADT says "Resource CLASS ... does not exist" here.
+    try { data=await read(type); }
+    catch (error) {
+      if (type !== 'CLAS' || !/does not exist|was not found/i.test(error.message)) { throw error; }
+      data=await read('INTF');
+    }
     parserWarnings.push(...(data.warnings||[]));
     return data.sources;
   };

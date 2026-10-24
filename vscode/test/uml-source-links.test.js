@@ -32,8 +32,8 @@ test("UML method links navigate to their own class or interface in either source
     context.onDiagramClick({ target: { closest: () => entry }, preventDefault() {}, stopPropagation() {} });
   }
   assert.deepEqual(JSON.parse(JSON.stringify(opened)), [
-    { name: "ZCL_RUNNER", type: "CLAS", method: "RUN", beside: true, preserveFocus: true },
-    { name: "ZIF_TASK", type: "INTF", method: "APPLY", beside: true, preserveFocus: true }
+    { name: "ZCL_RUNNER", type: "CLAS", method: "RUN", beside: true, preserveFocus: true, newTab: false },
+    { name: "ZIF_TASK", type: "INTF", method: "APPLY", beside: true, preserveFocus: true, newTab: false }
   ]);
 });
 

@@ -16,11 +16,14 @@ fs.copyFileSync(path.join(root, "org.vertex.abap.ui", "resources", "object-tools
 // Value origin runs in the plugin's browser: the VS Code analysis and page as one script, its stylesheet, and the
 // Eclipse page that hosts them.
 fs.writeFileSync(path.join(target, "value-origin.js"), require("./value-origin-bundle").bundle(root));
+fs.writeFileSync(path.join(target, "abaplint.js"), require("./frontend-bundle").abaplint(root));
 fs.copyFileSync(path.join(root, "vscode", "value-origin.css"), path.join(target, "value-origin.css"));
 fs.copyFileSync(path.join(__dirname, "value-origin.html"), path.join(target, "value-origin.html"));
 console.log("Prepared Eclipse Value origin.");
 // Path to This Line: its page; the path itself is built in the analysis worker (vertex-frontend.js below).
 fs.copyFileSync(path.join(__dirname, "reach-path.html"), path.join(target, "reach-path.html"));
+// Run Select: its page; the SELECT is decided in the analysis worker (select-query.run in vertex-frontend.js).
+fs.copyFileSync(path.join(__dirname, "run-select.html"), path.join(target, "run-select.html"));
 // Session Logs: VS Code's log reading as one browser script, and the page that hosts the report.
 fs.writeFileSync(path.join(target, "logs.js"), require("./logs-bundle").bundle(root));
 fs.copyFileSync(path.join(__dirname, "session-logs.html"), path.join(target, "session-logs.html"));

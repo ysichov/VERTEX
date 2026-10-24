@@ -108,6 +108,7 @@ public class ValueOriginView extends PageView {
 			return value;
 		}
 		return value.replace("/*FLOW_GRAPH*/", inline(super.readResource("resources/vertex-abap-control.js")) + "\n" + inline(super.readResource("resources/vertex-flow-graph.js")))
+				.replace("/*ABAPLINT*/", inline(super.readResource("assistant/abaplint.js")))
 				.replace("/*ORIGIN_ENGINE*/", inline(super.readResource("assistant/value-origin.js")))
                 .replace("/*ECLIPSE_FRONTEND*/", inline(super.readResource("resources/eclipse-frontend.js").replace("/*FRONTEND_BUNDLE*/", AssistantBridge.quote(super.readResource("resources/vertex-frontend.js")).replace("<", "\\u003c"))));
 	}

@@ -187,11 +187,13 @@ function typeComponents(sources, typeText, depth = 0) {
   const joined = ts => ts.map(t => String(t.value)).reduce((all, one, at) => all + (at && !['-', '=>', '~'].includes(one) && !['-', '=>', '~'].includes(all.slice(-1)) && !all.endsWith('=>') ? ' ' : '') + one, '');
   for (const source of sources) {
     if (owner && U(source.objectName) !== owner && U(source.aceOwner) !== owner) continue;
+    // A chained TYPES: BEGIN OF ..., ... END OF ... is one statement of the model's own tokens but one statement per part
+    // in abaplint's (aceStatements); the open BEGIN OFs are therefore kept across the statements of a source.
+    const open = [], found = {};
     for (const statement of parse(source).statements) {
       const ts = statement.tokens || []; if (val(ts, 0) !== 'TYPES') continue;
       const items = [[]];
       for (let i = ts[1]?.value === ':' ? 2 : 1; i < ts.length; i++) { if (ts[i].value === ',') items.push([]); else items[items.length - 1].push(ts[i]); }
-      const open = [], found = {};
       for (const item of items) {
         if (val(item, 0) === 'BEGIN' && val(item, 1) === 'OF') { open.push({ name: U(item[2]?.value), components: [] }); continue; }
         if (val(item, 0) === 'END' && val(item, 1) === 'OF') {
