@@ -41,9 +41,11 @@ public class ValueOriginView extends PageView {
 		final List<Integer> breakpoints;
 		/** forward: how the value is computed, down from the line; backward: where values go in the callers. */
 		final String direction;
+		/** The variable to follow, named by the caller - Where used of VERTEX Smart Debugger; empty: the one at the cursor. */
+		final String variable;
 
 		Target(IEditorPart editor, AdtEditor object, String type, String sourcePath, String text, int offset, int line, int column,
-				List<Integer> breakpoints, String direction) {
+				List<Integer> breakpoints, String direction, String variable) {
 			this.editor = editor;
 			this.object = object;
 			this.type = type;
@@ -54,6 +56,7 @@ public class ValueOriginView extends PageView {
 			this.column = column;
 			this.breakpoints = breakpoints;
 			this.direction = direction;
+			this.variable = variable;
 		}
 	}
 
@@ -134,7 +137,8 @@ public class ValueOriginView extends PageView {
 				+ ",\"sourcePath\":" + AssistantBridge.quote(t.sourcePath)
 				+ ",\"text\":" + AssistantBridge.quote(t.text)
 				+ ",\"offset\":" + t.offset + ",\"line\":" + t.line + ",\"column\":" + t.column
-				+ ",\"breakpoints\":" + points + ",\"direction\":" + AssistantBridge.quote(t.direction) + "}";
+				+ ",\"breakpoints\":" + points + ",\"direction\":" + AssistantBridge.quote(t.direction)
+				+ ",\"variable\":" + AssistantBridge.quote(t.variable) + "}";
 		// The source is ABAP, and ABAP may hold "</script>" in a literal.
 		return json.replace("<", "\\u003c");
 	}

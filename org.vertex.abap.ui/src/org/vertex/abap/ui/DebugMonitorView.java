@@ -107,6 +107,40 @@ public class DebugMonitorView extends ToolsView implements org.eclipse.ui.ISavea
                 return null;
             }
         };
+        // Where used on a breakpoint, as VS Code's host answers it: the point's line in its editor, then Backward Usage
+        // Analysis from there - of the value chosen in Variables, else of the routine there.
+        new BrowserFunction(browser, "sdeNativeBackward") {
+            @Override public Object function(Object[] args) {
+                String raw = args.length > 0 ? String.valueOf(args[0]) : "{}";
+                browser.getDisplay().asyncExec(() -> {
+                    if (closed) return;
+                    try {
+                        var o = raw.trim().startsWith("{") ? JsonParser.parseString(raw).getAsJsonObject() : new JsonObject();
+                        String url = VisualDebugSession.text(o, "url"), program = VisualDebugSession.text(o, "program").toUpperCase(java.util.Locale.ROOT);
+                        String type = url.contains("/oo/classes/") ? "CLAS" : url.contains("/functions/") ? "FUNC" : "PROG";
+                        org.eclipse.ui.IEditorPart editor = navigate(program, type);
+                        org.eclipse.ui.texteditor.ITextEditor text = org.eclipse.core.runtime.Adapters.adapt(editor, org.eclipse.ui.texteditor.ITextEditor.class);
+                        if (text == null) throw new IllegalStateException("The editor of " + program + " does not offer its text.");
+                        org.eclipse.jface.text.IDocument document = text.getDocumentProvider().getDocument(text.getEditorInput());
+                        int line = Math.max(0, Math.min(document.getNumberOfLines() - 1, (o.has("line") ? o.get("line").getAsInt() : 1) - 1));
+                        text.selectAndReveal(document.getLineOffset(line), 0);
+                        ValueOriginHandler.open(getSite().getPage(), browser.getShell(), editor, "backward", VisualDebugSession.text(o, "variable"));
+                    } catch (Exception e) {
+                        String message = describe(e);
+                        if (!browser.isDisposed()) browser.execute("if(typeof notice==='function')notice(" + AssistantBridge.quote(message) + ");");
+                    }
+                });
+                return null;
+            }
+        };
+        // Clear, as VS Code's host answers it: the page starts again for its object, as a new open does; the breakpoints and
+        // the ADT session - this view's VisualDebugSession - stay.
+        new BrowserFunction(browser, "sdeClear") {
+            @Override public Object function(Object[] args) {
+                browser.getDisplay().asyncExec(() -> { if (!closed && !browser.isDisposed()) loadPage(); });
+                return null;
+            }
+        };
         new BrowserFunction(browser, "sdeDebugContext") {
             @Override public Object function(Object[] args) { if (args.length > 0) context = String.valueOf(args[0]); return null; }
         };

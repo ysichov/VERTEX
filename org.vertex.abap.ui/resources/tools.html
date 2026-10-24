@@ -90,11 +90,6 @@ const actionBox = document.getElementById("function"), results = document.getEle
 // Context commands bind this window to the selected object. The fields keep
 // their values for routing, while only the function picker stays visible.
 if(initial&&initial.boundObject){typeBox.hidden=true;nameBox.hidden=true;}
-if(initial&&initial.visualFlow){
- actionBox.hidden=true;
- const logic=document.createElement("button");logic.className="vertex-toggle";logic.textContent="Logic";logic.title="Switch between Calls and the standard Tools Logic view";logic.setAttribute("aria-pressed","false");actionBox.after(logic);
- logic.onclick=()=>{current.action=current.action==="scheme"?"flow":"scheme";logic.classList.toggle("on",current.action==="scheme");logic.setAttribute("aria-pressed",String(current.action==="scheme"));fields();run();};
-}
 let monitorPanel=null;
 if(initial&&initial.debugMonitor){
  monitorPanel=document.createElement("details");monitorPanel.open=true;monitorPanel.style.cssText="padding:6px;border-bottom:1px solid var(--vscode-panel-border);max-height:35vh;overflow:auto";monitorPanel.innerHTML='<summary>ADT debug session</summary><div data-debug-body></div>';document.querySelector("main").prepend(monitorPanel);

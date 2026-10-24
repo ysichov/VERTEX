@@ -191,102 +191,83 @@
       },
       {
         "command": "vertex.mcpAddress",
-        "title": "Add the VERTEX MCP server to Claude Code or Codex",
-        "category": "VERTEX"
+        "title": "VERTEX: Add the VERTEX MCP server to Claude Code or Codex"
       },
       {
         "command": "vertex.getStarted",
-        "title": "Get Started",
-        "category": "VERTEX"
+        "title": "VERTEX: Get Started"
       },
       {
         "command": "vertex.saveAndActivate",
-        "title": "Save & Activate",
-        "category": "VERTEX",
+        "title": "VERTEX: Save & Activate",
         "icon": "$(save)"
       },
       {
         "command": "vertex.reviewCodeChanges",
-        "title": "Review & Activate",
-        "category": "VERTEX",
+        "title": "VERTEX: Review & Activate",
         "icon": "$(diff)"
       },
       {
         "command": "vertex.runUnitTests",
-        "title": "Run ABAP Unit Tests",
-        "category": "VERTEX",
+        "title": "VERTEX: Run ABAP Unit Tests",
         "icon": "$(beaker)"
       },
       {
         "command": "vertex.abapDocumentation",
-        "title": "ABAP Documentation",
-        "category": "VERTEX"
+        "title": "VERTEX: ABAP Documentation"
       },
       {
         "command": "vertex.runAtc",
-        "title": "Run ATC Check",
-        "category": "VERTEX",
+        "title": "VERTEX: Run ATC Check",
         "icon": "$(checklist)"
       },
       {
         "command": "vertex.goToClassMethod",
-        "title": "VERTEX: Go to (by context)",
-        "category": "VERTEX"
+        "title": "VERTEX: Go to (by context)"
       },
       {
         "command": "vertex.navigateBack",
-        "title": "VERTEX: Back",
-        "category": "VERTEX"
+        "title": "VERTEX: Back"
       },
       {
         "command": "vertex.tools.navigator",
-        "title": "Object Navigator",
-        "category": "VERTEX Tools"
+        "title": "VERTEX: Object Navigator"
       },
       {
         "command": "vertex.tools.uml",
-        "title": "UML diagram",
-        "category": "VERTEX Tools"
+        "title": "VERTEX: UML diagram"
       },
       {
         "command": "vertex.tools.localPackage",
-        "title": "Analyze Local ABAP Package",
-        "category": "VERTEX Tools"
+        "title": "VERTEX: Analyze Local ABAP Package"
       },
       {
         "command": "vertex.localRun",
-        "title": "Run Local ABAP",
-        "category": "VERTEX"
+        "title": "VERTEX: Run Local ABAP"
       },
       {
         "command": "vertex.localDebug",
-        "title": "Debug Local ABAP",
-        "category": "VERTEX"
+        "title": "VERTEX: Debug Local ABAP"
       },
       {
         "command": "vertex.ai.chooseLogFolder",
-        "title": "Choose Log Folder",
-        "category": "VERTEX"
+        "title": "VERTEX: Choose Log Folder"
       },
       {
         "command": "vertex.tools.metrics",
-        "title": "Metrics",
-        "category": "VERTEX Tools"
+        "title": "VERTEX: Metrics"
       },
       {
         "command": "vertex.tools.scheme",
-        "title": "Logic view",
-        "category": "VERTEX Tools"
+        "title": "VERTEX: Logic view"
       },
       {
         "command": "vertex.tools.calls",
-        "title": "Calls diagram",
-        "category": "VERTEX Tools"
+        "title": "VERTEX: Calls diagram"
       },
       {
         "command": "vertex.tools.diff",
-        "title": "Diff",
-        "category": "VERTEX Tools"
+        "title": "VERTEX: Diff"
       },
       {
         "command": "vertex.openSettings",
@@ -532,7 +513,7 @@
         {
           "command": "vertex.reachPath",
           "when": "editorLangId == abap",
-          "group": "navigation@7"
+          "group": "navigation@10"
         },
         {
           "command": "vertex.openVisualDebug",
@@ -540,19 +521,14 @@
           "group": "navigation@8"
         },
         {
-          "command": "vertex.runTranspiler",
-          "when": "editorLangId == abap && (resourceScheme == file || resourceScheme == vertex-sap && resourcePath =~ /^/[^/]+/(PROG|CLAS|FUNC)//)",
-          "group": "navigation@8"
-        },
-        {
           "command": "vertex.runUnitTests",
           "when": "resourceScheme == vertex-sap && editorLangId == abap",
-          "group": "navigation@10"
+          "group": "navigation@11"
         },
         {
           "command": "vertex.runAtc",
           "when": "resourceScheme == vertex-sap && editorLangId == abap",
-          "group": "navigation@11"
+          "group": "navigation@12"
         },
         {
           "command": "vertex.runSelect",
@@ -586,7 +562,7 @@
         },
         {
           "submenu": "vertex.tools.context",
-          "group": "navigation@12",
+          "group": "navigation@7",
           "when": "editorLangId == abap"
         }
       ],

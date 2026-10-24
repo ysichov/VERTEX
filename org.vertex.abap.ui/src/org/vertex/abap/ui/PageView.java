@@ -144,6 +144,11 @@ public abstract class PageView extends ViewPart {
 			setPartName(title(opened));
 		}
 
+		loadPage();
+	}
+
+	/** The page from the start, for this view's object; the browser functions stay installed. */
+	protected void loadPage() {
 		try {
 			this.browser.setText(readPage().replace(PLACEHOLDER, initialLiteral()));
 		} catch (IOException e) {

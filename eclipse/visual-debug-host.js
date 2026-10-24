@@ -156,6 +156,8 @@
     if (name === 'picture') { sessions(value);lastPicture=value;withDumps(value);if(!window.series)sdeRevealStop(value); }
     return value;
   }
+  // Where used on a breakpoint: the page hands an object, a BrowserFunction takes text.
+  window.sdeBackward = point => sdeNativeBackward(JSON.stringify(point || {}));
   window.sdeDebug = (name, args) => answer(command(name, args || {}));
   window.sdeOrigin = async request => {
     try { const value = await vertexEclipseDebugAnalysis(request, progress => sdeOriginProgress({id:request.id,...progress})); if(value.reveal)sdeReveal(value.reveal);sdeOriginReady(JSON.stringify({id:request.id,answer:value})); }

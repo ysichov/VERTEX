@@ -14,8 +14,6 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
     private static final Preferences STORE = Preferences.userRoot().node("org/vertex/abap/assistant");
     private final String[] keys = { "node", "codex", "claude" };
     private final Text[] fields = new Text[3];
-    private static final String[] REVIEW = { "ask", "always", "never" };
-    private Combo review;
     private Text logPath;
 
     private static final String[][] FLAGS = {
@@ -32,7 +30,7 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
     }
 
     static String setting(String key) {
-        return STORE.get(key, key.equals("node") ? "node" : key.equals("review") ? "ask" : "");
+        return STORE.get(key, key.equals("node") ? "node" : "");
     }
 
     /** The log folder, chosen from Session Logs as VS Code's Choose Log Folder sets vertex.ai.logPath. */
@@ -63,11 +61,6 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
                 if (chosen != null) fields[n].setText(chosen);
             });
         }
-        new Label(box, SWT.NONE).setText("Review before VERTEX: Activate");
-        review = new Combo(box, SWT.READ_ONLY);
-        review.setItems("Ask each time", "Always review", "Activate without review");
-        review.select(Math.max(0, java.util.Arrays.asList(REVIEW).indexOf(setting("review"))));
-        review.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
         new Label(box, SWT.NONE).setText("Chat log folder");
         logPath = new Text(box, SWT.BORDER);
         logPath.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
@@ -93,7 +86,6 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
 
     @Override public boolean performOk() {
         for (int i = 0; i < keys.length; i++) STORE.put(keys[i], fields[i].getText().trim());
-        STORE.put("review", REVIEW[Math.max(0, review.getSelectionIndex())]);
         STORE.put("logPath", logPath.getText().trim());
         for (int i = 0; i < FLAGS.length; i++) STORE.putBoolean(FLAGS[i][0], flags[i].getSelection());
         try { STORE.flush(); return true; }
@@ -102,7 +94,6 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
 
     @Override protected void performDefaults() {
         for (int i = 0; i < keys.length; i++) fields[i].setText(i == 0 ? "node" : "");
-        review.select(0);
         logPath.setText("");
         for (Button b : flags) b.setSelection(false);
         super.performDefaults();

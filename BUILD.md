@@ -94,7 +94,8 @@ user operates lives in the page, which is what lets the same page run under the 
 Before exporting, run `node eclipse/prepare.js` to refresh the bundled Assistant
 runtime from the shared VS Code implementations. Include `assistant/` in the
 export (already listed in `build.properties`). Validate it with
-`node --test eclipse/bridge.test.js vscode/test/*.test.js`.
+`node --test eclipse/bridge.test.js eclipse/host-coverage.test.js vscode/test/*.test.js`;
+host-coverage compares what VERTEX Smart Debugger's page asks of a host with what each host gives.
 
 Eclipse installs **features**, not bare plugins, so `org.vertex.abap.feature/` wraps the one
 plugin and `category.xml` beside it gives the install dialog something to list.

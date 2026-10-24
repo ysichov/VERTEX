@@ -64,11 +64,11 @@ Open Welcome with **VERTEX: Get Started** in the Command Palette.
 
 For calculation code that can run without SAP services, use the transpiler and
 runtime bundled with VERTEX. Open a saved local `.abap` file and choose
-**VERTEX: Run with ABAP Transpiler**, which runs it at once - the selection screen first, then to the first
-breakpoint, or to the end with the output when there is none - or **VERTEX Smart Debugger**, which opens the
-panel without running. An SAP program, or the method of an SAP class the cursor stands in, runs the same way from **VERTEX: Run with ABAP
-Transpiler** in the editor's context menu of its tab, or
-from **Run with ABAP Transpiler** beside Run in SAP in its VERTEX Smart Debugger panel, which reads it, its includes and the classes and interfaces it uses from SAP first. The panel is shared with SAP runs;
+**VERTEX Smart Debugger** in the editor's context menu; its **Run with ABAP Transpiler** runs it - the selection
+screen first, then to the first breakpoint, or to the end with the output when there is none. From the Command
+Palette, **VERTEX: Run with ABAP Transpiler** runs a local file at once. An SAP program, or the method of an SAP
+class the cursor stands in, runs the same way from **Run with ABAP Transpiler** beside Run in SAP in its VERTEX
+Smart Debugger panel, which reads it, its includes and the classes and interfaces it uses from SAP first. The panel is shared with SAP runs;
 for local files its title is **VERTEX Smart Debugger (transpiler)** and its Run button is **Run with ABAP Transpiler**. Run
 asks the selection screen in a window of its own, laid out as SAP lays out screen 1000: blocks with their frame and
 title, lines of several elements, comments, SKIP and ULINE; radio buttons, checkboxes and value fields with their
@@ -431,14 +431,14 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   or program tab, as in Eclipse. SAP runs the object's test classes (risk level harmless, every
   duration) and VS Code's Test Explorer shows object, test class and test method with pass or
   fail, the time, the alert text, and a link to the line where the failure was raised. A tab with
-  unsaved changes is refused: the tests run the active source. The same run is **Run ABAP Unit Tests** in the command palette.
+  unsaved changes is refused: the tests run the active source. The same run is **VERTEX: Run ABAP Unit Tests** in the command palette.
 - **Where-used** — Shift+F12 (peek) or Shift+Alt+F12 (list) in a SAP tab: the places that use
   the name under the cursor, from SAP's where-used over the saved source. A place in a source
   VERTEX cannot open as a tab is named in a warning.
 - **VERTEX: ABAP Documentation** — F1 or the context menu in a SAP tab: SAP's keyword
   documentation for the statement under the cursor, beside the source. In these tabs F1 replaces
   the command palette key; Ctrl+Shift+P still opens it.
-- **VERTEX: Run ATC Check** — Ctrl+Shift+F2, the checklist in the editor title, or **Run ATC Check**
+- **VERTEX: Run ATC Check** — Ctrl+Shift+F2, the checklist in the editor title, or **VERTEX: Run ATC Check**
   in the command palette. Checks the object with the system's default ATC variant; the findings
   appear in the Problems view and underlined in the tab, priority 1 as errors, 2 as warnings,
   3 as information. A new run replaces the last one's findings for that object.
@@ -505,7 +505,7 @@ part: the Logic and Calls diagrams. Metrics and UML draw the whole object and ha
 The chat context follows the active function. UML sends the diagram's object, nodes, method names and relationships instead — not
 a method signature — so it can be analysed directly. Ask the chat explicitly to *open* or *edit*
 an object — for example, *Open ZCL_FOO please* — to open a normal, editable VS Code tab instead.
-Changes made there are still sent to SAP only through **Review & Activate** or **Save & Activate**.
+Changes made there are still sent to SAP only through **VERTEX: Review & Activate** or **VERTEX: Save & Activate**.
 
 ## Value Origin
 
@@ -705,13 +705,13 @@ or *add a check for an empty table here*. The chat searches and reads SAP
 source itself and opens the object in an editable tab on the right. Follow-up
 requests about "this code" use the active SAP editor tab as context. The chat
 never writes to SAP on its own: a change it makes goes into the object's tab, unsaved, and you
-save it with **Save & Activate** or **Review & Activate** - or undo it with Ctrl+Z. If the tab
+save it with **VERTEX: Save & Activate** or **VERTEX: Review & Activate** - or undo it with Ctrl+Z. If the tab
 already holds edits that SAP does not have, the chat's change is refused rather than written over
 them: save or undo yours first.
 
 ## Code reviewer
 
-Edit SAP source in a VERTEX editor tab, then choose **Review & Activate** in the
+Edit SAP source in a VERTEX editor tab, then choose **VERTEX: Review & Activate** in the
 editor title or context menu (or ask the chat to save your edits). The
 **Code Change** panel shows the edits against the current SAP source, cut into
 blocks with context lines:
@@ -719,7 +719,7 @@ blocks with context lines:
 - **Approve** / **Decline** each block, or approve all;
 - **ASK AI** sends one block to the chat with its method, line number and
   surrounding lines, and asks for a short explanation and real problems only;
-- **Save & Activate** writes only the approved blocks. SAP locks the object,
+- **VERTEX: Save & Activate** writes only the approved blocks. SAP locks the object,
   checks syntax, saves, activates and verifies the active source. If the active
   or inactive source changed since it was read, nothing is overwritten.
 
@@ -859,7 +859,7 @@ text comparisons; SAP evaluates the corresponding ABAP condition through ADT.
 5. Ask about a report of yours: *Z_MY_REPORT prints the wrong invoice total. Find out why with the debugger.*
 6. When the browser opens WebGUI, log on if asked. The assistant waits for the program.
 7. Read the verdict. Ask it to fix the code if you agree: the change lands in the program's
-   tab, unsaved; save it with **Save & Activate** or **Review & Activate**.
+   tab, unsaved; save it with **VERTEX: Save & Activate** or **VERTEX: Review & Activate**.
 
 ### Where it runs
 
@@ -1255,9 +1255,11 @@ Use **Save log** on the replay bar to keep a SAP recording and its available sou
   steps as Visual but draws nothing until the run ends. The player replays the record statement by
   statement. Each drawing fits the pane, never above 100 %, until the zoom is set
   by hand with −, + or Ctrl + wheel; Fit returns to fitting.
-- **Sections.** The right column holds Stack, Breakpoints, Variables, Diagram and Log. Each is
-  shown or hidden by its switch at the top of the column, and the line between two visible
-  sections drags to resize them. Diagram opens by itself when a run has recorded something.
+- **Sections.** The switches at the very top of the window show or hide Run (the run controls:
+  Run in SAP, the steps, Visual, Z only and the record) and the right column's Stack, Breakpoints,
+  Variables, Diagram and Log. The line between two visible sections drags to resize them. Diagram
+  opens by itself when a run has recorded something. Variables and Diagram each have a button
+  (&#10530;) that takes the whole window; Esc gives it back.
 - **Log.** A section of its own; it lists every step of the Visual runs:
   what was done (F5, F6, F7, F8 and to which points), from where, to where, and
   how long it took, SAP's share apart. A filter narrows it, **Copy** takes it as text. It is kept

@@ -67,9 +67,9 @@ test("the Eclipse page parses once ValueOriginView has put its scripts and targe
   scripts.forEach((script, index) => assert.doesNotThrow(() => new vm.Script(script), "page script " + index));
 });
 
-test("Value origin is offered in the context menu of an ABAP editor", () => {
+test("Forward and Backward Usage Analysis are not in the VERTEX submenu, their command and view stay", () => {
   const xml = fs.readFileSync(path.join(plugin, "plugin.xml"), "utf8");
-  assert.match(xml, /<command\s+commandId="org\.vertex\.abap\.ui\.command\.valueOrigin"\s+label="VERTEX: Analyze Variable Value Origin"/);
+  assert.doesNotMatch(xml, /<command\s+commandId="org\.vertex\.abap\.ui\.command\.(valueOrigin|backwardUsage)"\s+label=/);
   assert.match(xml, /commandId="org\.vertex\.abap\.ui\.command\.valueOrigin"\s+class="org\.vertex\.abap\.ui\.ValueOriginHandler"/);
   assert.match(xml, /id="org\.vertex\.abap\.ui\.view\.valueOrigin"[\s\S]*?class="org\.vertex\.abap\.ui\.ValueOriginView"/);
 });

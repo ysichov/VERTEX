@@ -39,12 +39,20 @@ public class ValueOriginHandler extends AbstractHandler {
 
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException {
-		Shell shell = HandlerUtil.getActiveShell(event);
-		IEditorPart editor = HandlerUtil.getActiveEditor(event);
+		open(HandlerUtil.getActiveWorkbenchWindowChecked(event).getActivePage(), HandlerUtil.getActiveShell(event),
+				HandlerUtil.getActiveEditor(event), direction(), "");
+		return null;
+	}
+
+	/**
+	 * A Value origin window for the cursor of EDITOR, in DIRECTION; VARIABLE, when given, is followed instead of the one
+	 * at the cursor - as VS Code's vertex.backwardUsage takes it from Where used of VERTEX Smart Debugger.
+	 */
+	static void open(IWorkbenchPage page, Shell shell, IEditorPart editor, String direction, String variable) throws ExecutionException {
 		AdtEditor object = editor == null ? null : AdtEditor.of(editor);
 		if (object == null || object.project == null) {
 			SelectionContext.report(shell, "Select a variable in an ABAP source editor of an ABAP project.");
-			return null;
+			return;
 		}
 		String type = originType(object.kind());
 		// An editor's object URI is the object's or, for an open source, already the source's own.
@@ -52,21 +60,21 @@ public class ValueOriginHandler extends AbstractHandler {
 		if (type == null || path == null) {
 			SelectionContext.report(shell, "Value origin runs on the source of a program, a class, an interface or a function module, not "
 					+ object.type + " (" + object.uri + "). A class is analysed from its Global Class tab.");
-			return null;
+			return;
 		}
 		ITextEditor text = Adapters.adapt(editor, ITextEditor.class);
 		if (text == null || text.getDocumentProvider() == null) {
 			SelectionContext.report(shell, "The editor of " + object.name + " does not offer its text.");
-			return null;
+			return;
 		}
 		if (editor.isDirty()) {
 			SelectionContext.report(shell, "Save and activate the source before ACE analysis. ACE reads active SAP code.");
-			return null;
+			return;
 		}
 		ISelection selection = text.getSelectionProvider().getSelection();
 		if (!(selection instanceof ITextSelection)) {
 			SelectionContext.report(shell, "Place the cursor on a variable.");
-			return null;
+			return;
 		}
 		IDocument document = text.getDocumentProvider().getDocument(text.getEditorInput());
 		int offset = ((ITextSelection) selection).getOffset();
@@ -80,17 +88,14 @@ public class ValueOriginHandler extends AbstractHandler {
 
 		String id = String.valueOf(++counter);
 		ValueOriginView.TARGETS.put(id, new ValueOriginView.Target(editor, object, type, path, document.get(), offset, line + 1, column,
-				breakpoints(text, document), direction()));
+				breakpoints(text, document), direction, variable));
 		try {
-			IWorkbenchPage page = HandlerUtil.getActiveWorkbenchWindowChecked(event).getActivePage();
-			// A window of its own, as VERTEX Tools and Path to This Line open: docked, it lands in whatever stack the
-			// perspective offers.
+			// Beside the editor, as VERTEX Tools and Path to This Line open.
 			DetachedView.show(page, ValueOriginView.ID, id);
 		} catch (Exception e) {
 			ValueOriginView.TARGETS.remove(id);
 			throw new ExecutionException("Cannot open the VERTEX Value origin window", e);
 		}
-		return null;
 	}
 
 	/** Forward Usage Analysis; BackwardUsageHandler is the other direction. */

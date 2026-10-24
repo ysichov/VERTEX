@@ -145,8 +145,9 @@ async function ask(points) {
 // Backward Usage Analysis: where the values of the routine at the cursor go in its callers, up through theirs - SAP's
 // where-used, followed by the analysis VS Code runs (backward-usage.js) in this window's worker.
 async function runBackward(t) {
+  // Where used of VERTEX Smart Debugger names the variable - the value chosen in Variables - as VS Code's does.
   var inside = origin.literalAt(t.text, t.offset);
-  var variable = inside ? "" : (origin.variableAt(t.text, t.offset) || "");
+  var variable = t.variable ? String(t.variable).toUpperCase() : inside ? "" : (origin.variableAt(t.text, t.offset) || "");
   sdeTitle(variable || t.name);
   say("Backward usage - reading the active source of " + t.name);
   var activeSource = await call("sdeOriginRead", t.sourcePath + "?version=active");

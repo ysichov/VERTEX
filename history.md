@@ -8,6 +8,16 @@ In Eclipse, VERTEX Smart Debugger opens the line the program stopped at in the e
 
 VERTEX Smart Debugger takes F5 (Single Step), F6 (Execute), F7 (Return) and F8 (Continue) while it has the focus, in VS Code and Eclipse. In Eclipse, closing it while the program stands stopped asks whether to end the program, leave it stopped or keep the window - its tab shows * while the program stands stopped; a reopened window shows the stop's line in the editor, and closing it during a run brings back Eclipse's debugger windows it had hidden.
 
+VERTEX Smart Debugger's section switches stand at the very top of the window, in VS Code and Eclipse, with a new **Run** switch that hides or shows the run controls; Variables can take the whole window as the diagram does (Esc leaves); its toolbar wraps in a narrow window. In VS Code the editor's context menu no longer offers VERTEX: Run with ABAP Transpiler - the run starts from VERTEX Smart Debugger; the command stays in the Command Palette for local files. The VERTEX items of that menu now come in the order VERTEX Tools, VERTEX Smart Debugger, VERTEX: Run Select, VERTEX: Path to This Line.
+
+In VS Code every VERTEX command's name starts with VERTEX, in the menus as in the Command Palette - Save & Activate, Review & Activate, Run ABAP Unit Tests, Run ATC Check, ABAP Documentation, the VERTEX Tools functions and the rest - so they stand apart from VS Code's and other extensions' commands.
+
+In Eclipse, VERTEX: Activate is now **Review & Activate**, as in VS Code: it always reviews the inactive changes block by block, then activates. Activation without a review is ADT's own Ctrl+F3; the preference Review before VERTEX: Activate is gone.
+
+In Eclipse, the VERTEX submenu no longer has Forward and Backward Usage Analysis: Forward is Analyze flow path in VERTEX Smart Debugger, as in VS Code, and Backward is Where used on a breakpoint there, now in Eclipse too. VERTEX Smart Debugger in Eclipse has Clear as well: the window starts again for its object, the breakpoints and the debug session staying.
+
+In Eclipse, the VERTEX submenu no longer has Visual Flow Analysis: Calls and Logic are in VERTEX Tools, as in VS Code.
+
 In Eclipse, Run in SAP starts the program as Run As > ABAP Application does, and Run with ABAP Transpiler is no longer offered there.
 
 In Eclipse, VERTEX Tools, the assistant and the VERTEX functions open docked right of the editors, half the width, in one shared stack, instead of a window of their own over the workbench.

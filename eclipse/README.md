@@ -16,25 +16,23 @@ written for.
 
 ## Forward and Backward Usage Analysis
 
-In an ADT source editor's context menu, as in VS Code:
+Neither has a menu item of its own; both work inside VERTEX Smart Debugger, as in VS Code:
 
-- **VERTEX: Forward Usage Analysis** - how the value under the cursor is computed, down from that
-  line across calls, as FLOW, Formula or Expression. With no variable under the cursor - or on a
-  method's name, a called method or a keyword - it draws the flow from that line on. A breakpoint
-  of the editor that the flow reaches stops it and asks: stop the analysis there, continue to the
-  next breakpoint, or ignore breakpoints; Escape is Stop, and what was found so far is shown.
-- **VERTEX: Backward Usage Analysis** - where the values of the routine at the cursor go in its
-  callers, up through theirs: the variable under the cursor, or with none the routine's
-  parameters and the attributes it uses, followed through SAP's where-used. Customer code is walked
-  with no depth limit; standard SAP code is where the walk stops. The editor's breakpoints stop it
-  the same way.
+- **Forward** - *Analyze flow path* on a breakpoint: how the value chosen in Variables is computed,
+  down from that line across calls, as FLOW, Formula or Expression. A breakpoint the flow reaches
+  stops it and asks: stop the analysis there, continue to the next breakpoint, or ignore
+  breakpoints; Escape is Stop, and what was found so far is shown.
+- **Backward** - *Where used* on a breakpoint: where the value chosen in Variables, or with none the
+  routine's parameters and the attributes it uses, goes in its callers, up through theirs, followed
+  through SAP's where-used. Customer code is walked with no depth limit; standard SAP code is where
+  the walk stops. The editor's breakpoints stop it the same way.
 
 Both read the active source over ADT and analyse it in the window; nothing of VERTEX's ABAP is
 needed. While one runs, **Cancel** beside its status stops it.
 
 All VERTEX commands of a context menu stand in one **VERTEX** submenu, beside GitHub, Team and Run
-As: VERTEX Tools, Path to This Line, Run Select, Forward and Backward Usage Analysis, Visual Flow Analysis,
-VERTEX Smart Debugger, Activate, VERTEX Assistant and Session Logs. The commands below are named as they appear there.
+As: VERTEX Tools, Path to This Line, Run Select,
+VERTEX Smart Debugger, Review & Activate, VERTEX Assistant and Session Logs. The commands below are named as they appear there.
 
 ## Path to This Line
 
@@ -173,13 +171,6 @@ Install via **Help > Install New Software > Add > Archive** and restart Eclipse.
 Tools pages include help for source links, Logic, procedure exits, range and
 loop highlighting, direction, zoom and the magnifier.
 
-## Visual Flow Analysis
-
-**VERTEX: Visual Flow Analysis** in the ADT editor context menu opens Calls with
-Classes / Methods and a Logic toggle. Logic follows the selected routine in the
-ADT editor. Source links open the requested object and reveal its line or method.
-Eclipse uses its own navigation Back command.
-
 For building and exporting the plugin, see [BUILD.md](../BUILD.md).
 Install an update-site archive with **Help > Install New Software > Add > Archive**.
 
@@ -202,6 +193,9 @@ run is one - and redraws it each time, whatever VERTEX hides.
 - Breakpoints set or cleared in the page are ADT breakpoints, and ADT's own appear in the page.
   Only your breakpoints stop a run: a stop ADT makes for itself (returning from SAP's code with
   **Z only**) does not.
+- The switches at the very top show or hide Run (the run controls) and the sections - Stack,
+  Breakpoints, Variables, Diagram, Dump. Variables and Diagram each have a button that takes the
+  whole window; Esc gives it back.
 - **Run in SAP** starts the program as **Run As → ABAP Application** does; for a class or a function
   module with the program field empty it opens SE24 or SE37 for its test. Run with ABAP Transpiler is
   VS Code only.
@@ -228,7 +222,8 @@ run is one - and redraws it each time, whatever VERTEX hides.
 - Several values can be followed - a structure as its components - and a list on the chip and at the
   left of the diagram toolbar switches between them. Analyze flow path works from a single point, to
   the end of the flow when no other checked point is met. Variable trees start closed.
-- Where used on a breakpoint and the Clear button are VS Code only for now. So are Save session,
+- **Clear** starts the window again for its object: the record, the analysed path, the values
+  followed and the output are dropped; the breakpoints and the ADT debug session stay. So are Save session,
   watchpoints, All BP, restoring a session and SAP / Transpiler Logs: the page offers them, Eclipse
   does not answer them yet.
 

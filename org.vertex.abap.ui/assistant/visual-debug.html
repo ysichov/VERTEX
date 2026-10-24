@@ -145,8 +145,11 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
 #tip .tipmore{margin-top:2px;color:var(--vscode-descriptionForeground,GrayText)}
 #flowpane{display:flex;flex-direction:column;min-height:0}
 #right [hidden]{display:none!important}
+/* Out of #right, the switches need their own: a button's style would show a hidden one again. */
+#panes [hidden]{display:none!important}
 #runsec{display:contents}
 #runsec[hidden]{display:none}
+#varsec h3{flex-wrap:wrap}
 #varsec.full{position:fixed;inset:0;z-index:300;background:var(--vscode-editor-background,Canvas)}
 #panes{flex:none;display:flex;gap:4px;flex-wrap:wrap;padding:4px 6px;border-bottom:1px solid var(--vscode-panel-border,GrayText);background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas))}
 .hsplit{flex:none;height:4px;cursor:row-resize;background:var(--vscode-panel-border,GrayText)}
