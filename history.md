@@ -1,6 +1,6 @@
 # Release history
 
-## 2026-10-24 — VERTEX Smart Debugger
+## 2026-10-24 — VS Code 0.9.31, Eclipse 0.9.31: VERTEX Smart Debugger, reviews like AVE
 
 Visual Debug is now named **VERTEX Smart Debugger** in VS Code and Eclipse: its command, window and menu item, its messages and the documentation.
 
