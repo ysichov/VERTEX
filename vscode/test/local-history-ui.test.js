@@ -42,13 +42,35 @@ test("local snapshot records every variable group at a stop", async () => {
   assert.deepEqual(Array.from(timeline[2].vars), []);
 });
 
+test("a run in SAP records only what changed since the last stop of the same routine", async () => {
+  const timeline = [{ cur: { owner: "ZCL_A", name: "RUN" }, stack: [1] }];
+  let locals = { a: "1", b: "2" };
+  const context = vm.createContext({ INITIAL: {}, flow: { timeline }, localVarCache: {}, picture: { stopped: { frames: [{ unitType: "METHOD" }] } },
+    groupKind: name => name.toLowerCase(),
+    debug: () => Promise.resolve({ groups: [{ id: "l", name: "Locals",
+      children: Object.entries(locals).map(([name, value]) => ({ name, type: "I", value, meta: "simple" })) }] }) });
+  vm.runInContext(section("function snapshot(captured,pre){", "/* The values the player shows"), context);
+  await vm.runInContext("snapshot()", context);
+  assert.deepEqual(Array.from(timeline[0].vars[0].children, v => v.name), ["a", "b"]);
+  // The next stop in the same routine: only b changed.
+  timeline.push({ cur: { owner: "ZCL_A", name: "RUN" }, stack: [1] });
+  locals = { a: "1", b: "5" };
+  await vm.runInContext("snapshot()", context);
+  assert.deepEqual(Array.from(timeline[1].vars[0].children, v => [v.name, v.value]), [["b", "5"]]);
+  // A called method compares with its own last stop, not with its caller's variables.
+  timeline.push({ cur: { owner: "ZCL_B", name: "GO" }, stack: [1, 2] });
+  locals = { x: "7" };
+  await vm.runInContext("snapshot()", context);
+  assert.deepEqual(Array.from(timeline[2].vars[0].children, v => [v.name, !!v.deleted]), [["x", false]]);
+});
+
 test("local playback reconstructs unchanged values from earlier stops", () => {
   const timeline = [
     { vars: [{ name: "Locals", children: [{ name: "a", value: "5" }, { name: "b", value: "3" }] }] },
     { vars: [{ name: "Locals", children: [{ name: "a", value: "8" }] }] },
     { vars: [] }
   ];
-  const body = section('  if(INITIAL.local){\n    var values={};', '}else while(k>=0') + '}';
+  const body = section('  if(INITIAL.local||tl[i]&&tl[i].varsDelta||tl.some(function(x){return x.varsDelta;})){\n    var values={};', '}else while(k>=0') + '}';
   const context = vm.createContext({ INITIAL: { local: true }, tl: timeline, t: {}, i: 2, k: 2, from: null });
   vm.runInContext(body, context);
   const variables = context.from.vars[0].children;

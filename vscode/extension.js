@@ -144,7 +144,7 @@ function initialLiteral(initial) {
 
 function systems() {
   return (vscode.workspace.getConfiguration("vertex").get("systems") || [])
-    .filter(function (s) { return s && s.name; });
+    .filter(function (s) { return s && s.name && s.disabled !== true; });
 }
 
 /**
@@ -576,6 +576,10 @@ function serveTools(context, server) {
   const shown = version && version.packageJSON ? version.packageJSON.version : "0";
 
   context.subscriptions.push(
+    // The gear in the VERTEX panel's title: every VERTEX setting in the Settings editor.
+    vscode.commands.registerCommand("vertex.openSettings", async function () {
+      await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:YuriiSychov.vertex-abap");
+    }),
     vscode.commands.registerCommand("vertex.getStarted", async function () {
       await vscode.commands.executeCommand("workbench.action.openWalkthrough",
         "YuriiSychov.vertex-abap#vertex.start", false);
@@ -765,7 +769,7 @@ function debuggerFor(context, auth) {
 /* The source tools with the debugger's added: the schemas and the method the
    chat is told, and a call that sends debug_* to the debugger. The Anthropic
    API path calls execute directly, so it gets the answer as text. */
-const TRANSPILER_AGENT_INSTRUCTIONS = "A request such as 'find the bug in the debugger' does not choose the SAP runtime. When execution or debugging is needed and the user has not specified a mode, use run_abap_transpiler first for a runnable report or method. It is a simulation, not proof of behavior in SAP. Use screen_only to inspect selection fields and ask for missing values. When the question concerns several scenarios or selections and no run of this request covers one of them, run it with run_abap_transpiler yourself instead of asking; a run shown in Visual Debug or in an earlier answer covers only the selection it ran with. The result's run_id permits paged read_abap_transpiler_history and virtual line breakpoints or variable watchpoints with find_abap_transpiler_stops. A SAP Visual Debug recording shown in the open window has a session_id from its first recorded step, whether or not it was saved; cite its recorded evidence as [session <first 8 characters of session_id> step <n>]. A session citation opens the live recording at the cited step, or its saved file later. Do not claim that a SAP recording lacks an ID when the open Visual Debug context supplies session_id. When Visual Debug context includes `transpiler_run`, cite that displayed run with [run <first 8 characters of run_id> step <n>]; the citation opens its saved trace. Do not reason from source code about what a run did. When the user asks to compare runs, explain a result or find a cause, call find_abap_transpiler_stops or read_abap_transpiler_history on the relevant run_ids before answering; finishing without those calls is not an answer to such a request. Every claim about values, control flow, a cause or a missing check must cite the run/session ID and the step, line and value that show it. If the history cannot be read, list what the available record shows, mark the rest as not verified and say why. Never reply with only a status line: report the results you have. Cite transpiler evidence as [run <first 8 characters of run_id> step <n>] and SAP recording evidence as [session <first 8 characters of session_id> step <n>], exactly in this form and in English whatever the reply language, one citation per run/session and step; VERTEX makes known citations clickable in its chat. For a local hypothesis, rerun with interventions at an executable ABAP line and occurrence; compare the original and modified runs using their histories. The history returns changes by default, and each applied intervention records its before and after values. Use include_state only when the full variable state is needed. Cite known runs by their run number in other text; the evidence citation remains clickable. Use transpiler output and history first; if a specific class method's source is needed, use read_sap_method before reading the whole object. If the transpiler cannot run the case, explain why and ask whether the user wants a SAP run; never silently switch modes. If the user explicitly requests a SAP run, use the SAP debugger tools.";
+const TRANSPILER_AGENT_INSTRUCTIONS = "A request such as 'find the bug in the debugger' does not choose the SAP runtime. When execution or debugging is needed and the user has not specified a mode, use run_abap_transpiler first for a runnable report or method. It is a simulation, not proof of behavior in SAP. Use screen_only to inspect selection fields and ask for missing values. When the question concerns several scenarios or selections and no run of this request covers one of them, run it with run_abap_transpiler yourself instead of asking; a run shown in VERTEX Smart Debugger or in an earlier answer covers only the selection it ran with. The result's run_id permits paged read_abap_transpiler_history and virtual line breakpoints or variable watchpoints with find_abap_transpiler_stops. A SAP VERTEX Smart Debugger recording shown in the open window has a session_id from its first recorded step, whether or not it was saved; cite its recorded evidence as [session <first 8 characters of session_id> step <n>]. A session citation opens the live recording at the cited step, or its saved file later. Do not claim that a SAP recording lacks an ID when the open VERTEX Smart Debugger context supplies session_id. When VERTEX Smart Debugger context includes `transpiler_run`, cite that displayed run with [run <first 8 characters of run_id> step <n>]; the citation opens its saved trace. Do not reason from source code about what a run did. When the user asks to compare runs, explain a result or find a cause, call find_abap_transpiler_stops or read_abap_transpiler_history on the relevant run_ids before answering; finishing without those calls is not an answer to such a request. Every claim about values, control flow, a cause or a missing check must cite the run/session ID and the step, line and value that show it. If the history cannot be read, list what the available record shows, mark the rest as not verified and say why. Never reply with only a status line: report the results you have. Cite transpiler evidence as [run <first 8 characters of run_id> step <n>] and SAP recording evidence as [session <first 8 characters of session_id> step <n>], exactly in this form and in English whatever the reply language, one citation per run/session and step; VERTEX makes known citations clickable in its chat. For a local hypothesis, rerun with interventions at an executable ABAP line and occurrence; compare the original and modified runs using their histories. The history returns changes by default, and each applied intervention records its before and after values. Use include_state only when the full variable state is needed. Cite known runs by their run number in other text; the evidence citation remains clickable. Use transpiler output and history first; if a specific class method's source is needed, use read_sap_method before reading the whole object. If the transpiler cannot run the case, explain why and ask whether the user wants a SAP run; never silently switch modes. If the user explicitly requests a SAP run, use the SAP debugger tools.";
 
 function withDebugger(sapCode, debugTools, runTranspiler, transpilerHistory) {
   // Getters, read when asked - as the source tools' own text is: it names the
@@ -794,6 +798,8 @@ function activate(context) {
   const sapCode = require("./code-workbench").register(vscode, context, { active, auth, pin: pinTo,
     pinned: () => pinnedSystem.getStore() || "", systems });
   require("./local-navigation").register(vscode, context);
+  require("./reach-path").register(vscode, context);
+  require("./abap-folding").register(vscode, context);
   frontendAnalysisRequest = sapCode.frontendRequest;
   frontendTableRequest = sapCode.tableRequest;
   frontendTableWrite = sapCode.tableWrite;
@@ -809,7 +815,7 @@ function activate(context) {
   }
   // The panel's chat debugs too: its assistant gets the debugger tools beside
   // the source tools, on the same /chat address, with nothing to register.
-  // Visual Debug in the Tools window draws this same debugger.
+  // VERTEX Smart Debugger in the Tools window draws this same debugger.
   const dbg = debuggerFor(context, auth);
   sapCode.attachDebugger(dbg);
   const debugTools = mcp.debugSet(dbg);
@@ -841,21 +847,21 @@ function activate(context) {
         selection: request.selection, interventions: request.interventions, history: transpilerHistory });
   }, transpilerHistory);
   const toolsContextState = require("./tools-context-state").create();
-  // What the Visual Debug panel shows - the record, and the flow of the analysis - for the chat to be given with a question.
+  // What the VERTEX Smart Debugger panel shows - the record, and the flow of the analysis - for the chat to be given with a question.
   let latestDebugContext = null;
-  // What Visual Debug shows, for the chat: a kept run says so, so it is not taken for a run of this request.
+  // What VERTEX Smart Debugger shows, for the chat: a kept run says so, so it is not taken for a run of this request.
   const debugContextForChat = () => {
     const kept = dockedDebugSource?.storedRun;
     const savedRecord = dockedDebugSource?.storedDebugRecord;
     let context = latestDebugContext;
     if (kept && context) context = { ...context, kept_run: { run_id: kept.run_id, run_number: transpilerHistory.number(kept.run_id),
-      note: "Visual Debug shows a kept transpiler run opened for viewing. It covers only the selection it ran with; run other cases with run_abap_transpiler." } };
+      note: "VERTEX Smart Debugger shows a kept transpiler run opened for viewing. It covers only the selection it ran with; run other cases with run_abap_transpiler." } };
     const liveRun = dockedDebugSource?.transpilerRun;
     if (liveRun && context) context = { ...context, transpiler_run: { run_id: liveRun.run_id,
       run_number: transpilerHistory.number(liveRun.run_id), recorded_steps: liveRun.recorded_steps,
-      note: "Visual Debug shows this transpiler run. Cite its recorded evidence as [run <first 8 characters of run_id> step <n>]." } };
+      note: "VERTEX Smart Debugger shows this transpiler run. Cite its recorded evidence as [run <first 8 characters of run_id> step <n>]." } };
     if (savedRecord && context) context = { ...context, saved_session: { session_id: savedRecord.session_id,
-      note: "Visual Debug shows this saved SAP debugger recording offline. Cite recorded steps with [session <first 8 characters of session_id> step <n>]." } };
+      note: "VERTEX Smart Debugger shows this saved SAP debugger recording offline. Cite recorded steps with [session <first 8 characters of session_id> step <n>]." } };
     return context;
   };
   const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
@@ -936,7 +942,7 @@ function activate(context) {
     runOnly: dockedDebugSource.local === true && dockedDebugSource.runOnly === true,
     // Opened by the Run command, not by Clear: the program runs at once.
     autoRun: dockedDebugSource.local === true && dockedDebugSource.autoRun === true && !localDebugAdapter?.hasTrace(),
-    // A run of the program window: Visual Debug offers the way back to it.
+    // A run of the program window: VERTEX Smart Debugger offers the way back to it.
     programWindow: dockedDebugSource.local === true && require("./program-window").isOpen(),
     // An SAP object's run: when its build was read, for Recompile.
     sapBuild: dockedDebugSource.sapCopies ? { name: dockedDebugSource.sapCopies.root?.object_name || "", builtAt: dockedDebugSource.sapCopies.builtAt || "" } : null,
@@ -1028,7 +1034,7 @@ function activate(context) {
             return;
           }
           if (message.call === "localRun") {
-            if (!dockedDebugSource?.local) throw new Error("Open a local ABAP file in Visual Debug first.");
+            if (!dockedDebugSource?.local) throw new Error("Open a local ABAP file in VERTEX Smart Debugger first.");
             clearLocalHistoryMark();
             latestLocalVariables = null;
             await require("./local-run").launch(vscode, true, {
@@ -1231,7 +1237,7 @@ function activate(context) {
           // Only a request the page waits on is answered: an answer to one it does not wait on (reveal, backward, clear...)
           // would be taken for the answer to its next request, and every answer after it would be one off.
           if (["debug", "source", "asset"].includes(message.call)) await replyTo("ERROR:" + error.message);
-          else vscode.window.showErrorMessage("VERTEX Visual Debug: " + error.message);
+          else vscode.window.showErrorMessage("VERTEX Smart Debugger: " + error.message);
         }
       });
       view.onDidDispose(() => {
@@ -1294,7 +1300,7 @@ function activate(context) {
       setTimeout(() => void dockedDebugView?.webview.postMessage({ type: "localVariables", state: latestLocalVariables }), 150);
     }
     // A program run to see what it does opens as SAP GUI shows a report: its own window, screen and list (program-window.js).
-    // Visual Debug stays behind it, with the record of each run, until See flow history or a breakpoint brings it up.
+    // VERTEX Smart Debugger stays behind it, with the record of each run, until See flow history or a breakpoint brings it up.
     // A method or a function module shows the screen of its parameters there.
     if (runOnly === true && source.local) {
       // The panel only follows the window's runs: no automatic run of its own, no run screen of its own.
@@ -1309,7 +1315,7 @@ function activate(context) {
           latestDebugContext = null;
           const result = await localDebugAdapter.command("run", { selection });
           rememberTranspilerRun(dockedDebugSource, result);
-          // Visual Debug follows every run of the window: the run just made, never an earlier one.
+          // VERTEX Smart Debugger follows every run of the window: the run just made, never an earlier one.
           if (!result.ended) await showFlow();
           else refreshFlow();
           return result;
@@ -1332,7 +1338,7 @@ function activate(context) {
         vscode.window.showErrorMessage("VERTEX: could not open Debug panel: " + error.message));
     }
   };
-  // Visual Debug on the record of the program window's runs: the whole panel - the debugger, not the plain run - taking the
+  // VERTEX Smart Debugger on the record of the program window's runs: the whole panel - the debugger, not the plain run - taking the
   // run as it stands.
   const refreshFlow = () => {
     if (!dockedDebugView || !localDebugAdapter?.hasTrace()) return false;
@@ -1358,7 +1364,7 @@ function activate(context) {
     await runSapTranspiler(sap.root, { recompile: true, entryLine: sap.root.object_type === "PROG" ? 0 : sap.entryLine });
     return {};
   };
-  // An SAP program run with the ABAP transpiler: its sources are read into a folder of their own, and Visual Debug turns
+  // An SAP program run with the ABAP transpiler: its sources are read into a folder of their own, and VERTEX Smart Debugger turns
   // to the transpiler's panel on the program written there, running at once.
   // options.recompile: read the object from SAP again and transpile it, rather than run its last build; options.entryLine:
   // the method's or module's line, as the last run had it, in place of the cursor's.
@@ -1529,7 +1535,7 @@ function activate(context) {
         root: { object_name: shown.object_name, object_type: kind, system_name: shown.system_name }, entryLine } });
   };
   // F5-F8 are deliberately scoped in package.json to a VERTEX ABAP editor.
-  // A stopped program is shared with Visual Debug, so stepping here redraws
+  // A stopped program is shared with VERTEX Smart Debugger, so stepping here redraws
   // the already open visual tab without a second debugger session.
   const stepFromSource = async kind => {
     // A step from a local file, or from the SAP tab of a source the transpiler run took a copy of.
@@ -1545,7 +1551,7 @@ function activate(context) {
       return;
     }
     if (!dbg.picture().stopped) {
-      vscode.window.showWarningMessage("VERTEX: no stopped ABAP program. Open Visual Analysis / Debug and run to a breakpoint first.");
+      vscode.window.showWarningMessage("VERTEX: no stopped ABAP program. Open VERTEX Smart Debugger and run to a breakpoint first.");
       return;
     }
     dbg.drivenBy("editor");
@@ -1665,7 +1671,7 @@ function activate(context) {
           const total = latestDebugContext.recorded.stops;
           if (!Number.isInteger(step) || step < 1 || step > total)
             throw new Error("SAP debug session " + liveId + " has " + total + " steps, not step " + step + ".");
-          if (!dockedDebugView) throw new Error("The live Visual Debug panel is closed.");
+          if (!dockedDebugView) throw new Error("The live VERTEX Smart Debugger panel is closed.");
           dockedDebugView.show(true);
           await dockedDebugView.webview.postMessage({ type: "replayStep", step });
           return;
@@ -1727,7 +1733,26 @@ function activate(context) {
     });
   }
 
+  // One system asked with its own user and password, the way every read is made: the answer says which part of the
+  // setting is wrong. It starts with "OK - " when ADT answers.
+  async function testSystem(entry) {
+    const chosen = auth.systemOf(entry);
+    if (chosen.error) { return chosen.error; }
+    const system = chosen.system;
+    try {
+      const res = await request(system, "/sap/bc/adt/discovery");
+      return res.status === 200 ? "OK - ADT answers for " + system.user + (system.client ? " in client " + system.client : "")
+        : res.status === 401 ? "HTTP 401 - " + reasonAndHint(auth.lastRefusal(system))
+          + (system.authType === "basic" ? "; the stored password is dropped, the next test asks again" : "")
+        : describeFailure(res.status, res.body);
+    } catch (error) { return failureText(system, error); }
+  }
+
   context.subscriptions.push(
+    // The server icon in the VERTEX panel's title: the SAP Systems table.
+    vscode.commands.registerCommand("vertex.openSystemSettings", () => require("./system-table").open(vscode, { test: testSystem,
+      hasPassword: async entry => { const chosen = auth.systemOf(entry); return !chosen.error && auth.hasPassword(chosen.system); },
+      login: async entry => { const chosen = auth.systemOf(entry); if (chosen.error) throw new Error(chosen.error); return auth.login(chosen.system); } })),
     vscode.commands.registerCommand("vertex.ai.chooseLogFolder", () => require("./model-config").chooseLogFolder(vscode)),
     vscode.commands.registerCommand("vertex.open", function () {
       showTools({ type: "TABL" });
@@ -1755,18 +1780,7 @@ function activate(context) {
       const all = systems();
       if (!all.length) { vscode.window.showWarningMessage("VERTEX: vertex.systems is empty. VERTEX: Import SAP Systems fills it from SAP Logon."); return; }
       const results = [];
-      for (const entry of all) {
-        const chosen = auth.systemOf(entry);
-        if (chosen.error) { results.push(entry.name + ": " + chosen.error); continue; }
-        const system = chosen.system;
-        try {
-          const res = await request(system, "/sap/bc/adt/discovery");
-          results.push(system.name + ": " + (res.status === 200 ? "OK - ADT answers for " + system.user + (system.client ? " in client " + system.client : "")
-            : res.status === 401 ? "HTTP 401 - " + reasonAndHint(auth.lastRefusal(system))
-              + (system.authType === "basic" ? "; the stored password is dropped, the next test asks again" : "")
-            : describeFailure(res.status, res.body)));
-        } catch (error) { results.push(system.name + ": " + failureText(system, error)); }
-      }
+      for (const entry of all) { results.push(entry.name + ": " + await testSystem(entry)); }
       const failed = results.filter(r => !/: OK - /.test(r)).length;
       vscode.window[failed ? "showWarningMessage" : "showInformationMessage"]("VERTEX: " + results.join("  |  "), { modal: failed > 0 });
     }),

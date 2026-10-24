@@ -4,7 +4,7 @@ const root=path.resolve(__dirname,'..');
 const page=fs.readFileSync(path.join(root,'vscode/pages/visual-debug.html'),'utf8');
 const host=fs.readFileSync(path.join(__dirname,'visual-debug-host.js'),'utf8');
 
-test('Eclipse packages the exact Visual Debug page, including history and player',()=>{
+test('Eclipse packages the exact VERTEX Smart Debugger page, including history and player',()=>{
   assert.equal(fs.readFileSync(path.join(root,'org.vertex.abap.ui/assistant/visual-debug.html'),'utf8'),page);
   assert.equal(fs.readFileSync(path.join(root,'org.vertex.abap.ui/assistant/visual-debug-host.js'),'utf8'),host);
 });
@@ -33,10 +33,14 @@ test('bridge reports native command failures through the shared page queue',asyn
   b.context.vertexNativeReply(b.requests[0].id,'Session ended',true);
   await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(b.answers,['ERROR:Session ended']);
 });
-test('a native stop reaches shared recording without reopening the ADT editor',()=>{
+test('a native stop reaches shared recording and opens its line once, not during a run',()=>{
   const b=bridge();const p={system:'A4H',ended:0,breakpoints:[],stopped:{at:'stop 1',frames:[{current:true,url:'/sap/bc/adt/oo/classes/zcl_calc/source/main',line:27}]}};
   b.context.vertexNativeEvent(JSON.stringify(p));
-  assert.deepEqual(b.events,[p]);assert.deepEqual(b.reveals,[]);
+  assert.deepEqual(b.events,[p]);assert.deepEqual(b.reveals,[{name:'ZCL_CALC',type:'CLAS',line:27}]);
+  // The same stop again opens nothing more; a stop inside a run of steps opens nothing.
+  b.context.vertexNativeEvent(JSON.stringify(p));
+  b.context.series=true;b.context.vertexNativeEvent(JSON.stringify({...p,stopped:{...p.stopped,at:'stop 2'}}));
+  assert.equal(b.reveals.length,1);
 });
 test('explicit analysis source links still open an ADT editor',async()=>{
   const b=bridge();await b.context.sdeOrigin({id:7,open:{source:'source',line:2}});

@@ -6,7 +6,7 @@ const { html } = require("../program-window");
 
 test("the program window carries the shared selection screen, its toolbar and no colour of its own", () => {
   const page = html({ name: "ZSEL", recompile: true, builtAt: "" });
-  assert.match(page, /function drawScreen\(/, "the screen code shared with Visual Debug is put in");
+  assert.match(page, /function drawScreen\(/, "the screen code shared with VERTEX Smart Debugger is put in");
   assert.doesNotMatch(page, /SELECTION-SCREEN-UI\*\//);
   for (const id of ["execute", "back", "flow", "recompile", "list", "statusbar"]) assert.match(page, new RegExp('id="' + id + '"'));
   const css = page.slice(page.indexOf("<style>"), page.indexOf("</style>"));

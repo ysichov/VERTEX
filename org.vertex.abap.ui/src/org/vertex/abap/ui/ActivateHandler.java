@@ -3,21 +3,18 @@ package org.vertex.abap.ui;
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
-import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.handlers.HandlerUtil;
-import org.eclipse.ui.handlers.IHandlerService;
 
 
 /**
- * VERTEX: Activate - ADT's activation, optionally preceded by a block review of
- * the inactive source. Whether to review is a preference: ask, always, never.
+ * VERTEX: Review & Activate - a block review of the inactive source, then ADT's activation, as VS Code's Review &
+ * Activate. Activation without a review is ADT's own (Ctrl+F3).
  */
 public class ActivateHandler extends AbstractHandler {
 
-	private static final String ADT_ACTIVATE = "com.sap.adt.activation.ui.command.singleActivation";
 	private static int counter;
 
 	@Override
@@ -31,31 +28,6 @@ public class ActivateHandler extends AbstractHandler {
 		AdtEditor object = AdtEditor.of(editor);
 		if (object == null || object.project == null) {
 			SelectionContext.report(shell, "The active editor is not an ABAP object of an ABAP project.");
-			return null;
-		}
-
-		String mode = AssistantPreferences.setting("review");
-		boolean review;
-		if (mode.equals("always")) {
-			review = true;
-		} else if (mode.equals("never")) {
-			review = false;
-		} else {
-			int answer = new MessageDialog(shell, "VERTEX Activate", null,
-					"Review the inactive changes of " + object.name + " block by block before activation?",
-					MessageDialog.QUESTION, new String[] { "Review", "Activate", "Cancel" }, 0).open();
-			if (answer != 0 && answer != 1) {
-				return null;
-			}
-			review = answer == 0;
-		}
-
-		if (!review) {
-			try {
-				editor.getSite().getService(IHandlerService.class).executeCommand(ADT_ACTIVATE, null);
-			} catch (Exception e) {
-				throw new ExecutionException("ADT activation could not be started", e);
-			}
 			return null;
 		}
 

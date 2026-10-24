@@ -69,9 +69,11 @@ function callOf(ts) {
     if (['->', '=>'].includes(ts[p.end]?.value)) { receiver = p.name; arrow = ts[p.end].value; at = p.end + 1; if (arrow === '=>') owner = receiver; }
   }
   const method = pathAt(ts, at);
-  // After an arrow a name is a method, whatever statement it would be on its own: lo->add( ) is no ADD statement.
-  if (!method || (!arrow && words.has(method.name))) return null;
-  const open = method.end;
+  const open = method && method.end;
+  // After an arrow a name is a method, whatever statement it would be on its own: lo->add( ) is no ADD statement. So is a
+  // keyword with its parenthesis right at it and a blank inside - add( x ) -, which no statement writes so.
+  const called = method && ts[open]?.value === '(' && ts[open - 1].endOffset === ts[open].offset && callOpen(ts, open);
+  if (!method || (!arrow && words.has(method.name) && !called)) return null;
   if (ts[open]?.value === '(' && close(ts, open) === ts.length - 1) return { receiver, owner, arrow, method: method.name, args: ts.slice(open + 1, -1) };
   return null;
 }
@@ -91,6 +93,15 @@ function typeAfter(ts, at) {
 }
 // Every call in a token list, the ones inside the arguments of another included: lo->m( x = me->n( ) ) is two. A call is
 // a path, an optional ->/=> and a method name, then a balanced ( ... ); NEW x( )->m( ) is one call.
+/* Whether the parenthesis at `at` opens a call is abaplint's to say, not the tokens' neighbours': value-origin-linter
+   marks each "(" with call - true where it opens a MethodCall's parameters or a NEW's. Guessed from blanks it took
+   IN ( ... ), AND ( ... ) for methods. A "(" with no mark comes from no parse and is refused. */
+const callOpen = (ts, at) => {
+  const t = ts[at];
+  if (t?.value !== '(') return false;
+  if (typeof t.call !== 'boolean') throw new Error('A call is read from the abaplint parse (value-origin-linter); this token list has no parse.');
+  return t.call;
+};
 function callsIn(ts, withTokens = false) {
   const found = [];
   for (let i = 0; i < ts.length; i++) {
@@ -104,7 +115,7 @@ function callsIn(ts, withTokens = false) {
       continue;
     }
     let end = -1;
-    if (val(ts, i) === 'NEW' && word(ts[i + 1]) && ts[i + 2]?.value === '(') {
+    if (val(ts, i) === 'NEW' && word(ts[i + 1]) && callOpen(ts, i + 2)) {
       const first = close(ts, i + 2);
       if(first>=0){
         found.push({owner:val(ts,i+1),receiver:'',arrow:'->',method:'CONSTRUCTOR',args:ts.slice(i+3,first),...(withTokens?{tokens:ts.slice(i,first+1)}:{})},...callsIn(ts.slice(i+3,first), withTokens));
@@ -112,13 +123,13 @@ function callsIn(ts, withTokens = false) {
       }
       if (first >= 0 && ts[first + 1]?.value === '->') {
         const method = pathAt(ts, first + 2);
-        if (method && ts[method.end]?.value === '(') end = close(ts, method.end);
+        if (method && callOpen(ts, method.end)) end = close(ts, method.end);
       }
     } else {
       const path = pathAt(ts, i); if (!path) continue;
       let open = path.end;
       if (['->', '=>'].includes(ts[path.end]?.value)) { const method = pathAt(ts, path.end + 1); if (!method) continue; open = method.end; }
-      if (ts[open]?.value === '(') end = close(ts, open);
+      if (callOpen(ts, open)) end = close(ts, open);
     }
     if (end < 0) continue;
     const call = callOf(ts.slice(i, end + 1));
@@ -182,11 +193,13 @@ function typeComponents(sources, typeText, depth = 0) {
   const joined = ts => ts.map(t => String(t.value)).reduce((all, one, at) => all + (at && !['-', '=>', '~'].includes(one) && !['-', '=>', '~'].includes(all.slice(-1)) && !all.endsWith('=>') ? ' ' : '') + one, '');
   for (const source of sources) {
     if (owner && U(source.objectName) !== owner && U(source.aceOwner) !== owner) continue;
+    // A chained TYPES: BEGIN OF ..., ... END OF ... is one statement of the model's own tokens but one statement per part
+    // in abaplint's (aceStatements); the open BEGIN OFs are therefore kept across the statements of a source.
+    const open = [], found = {};
     for (const statement of parse(source).statements) {
       const ts = statement.tokens || []; if (val(ts, 0) !== 'TYPES') continue;
       const items = [[]];
       for (let i = ts[1]?.value === ':' ? 2 : 1; i < ts.length; i++) { if (ts[i].value === ',') items.push([]); else items[items.length - 1].push(ts[i]); }
-      const open = [], found = {};
       for (const item of items) {
         if (val(item, 0) === 'BEGIN' && val(item, 1) === 'OF') { open.push({ name: U(item[2]?.value), components: [] }); continue; }
         if (val(item, 0) === 'END' && val(item, 1) === 'OF') {
@@ -225,22 +238,31 @@ function declaredIn(body) {
 function parse(source) {
   if (source.aceStatements) return { tokens: source.aceStatements.flatMap(s => s.tokens), statements: source.aceStatements };
   const old = cache.get(source.id); if (old?.text === source.text) return old;
-  const tokens = tokenize(source.text), statements = []; let part = [];
-  for (const t of tokens) { if (t.kind === 'symbol' && t.value === '.') { if (part.length) statements.push({ tokens: part, line: part[0].line, offset: part[0].offset, text: source.text.slice(part[0].offset, t.endOffset) }); part = []; } else part.push(t); }
+  // A source with no statements of its own is parsed by abaplint as every source is (value-origin-linter), not split
+  // from its text here: a call is the parser's to tell.
+  const statements = require('./value-origin-linter').parseSource({ objectType: 'PROG', name: source.id, objectName: source.id, ...source }).source.aceStatements;
+  const tokens = statements.flatMap(s => s.tokens);
   const parsed = { text: source.text, tokens, statements };
   cache.set(source.id, parsed); if (cache.size > 128) cache.delete(cache.keys().next().value);
   return parsed;
 }
+// A source's statements as abaplint parsed them (parse): FLOW reads its calls, conditions and writes from these.
 function localStatements(source) {
-  const tokens = tokenize(source.text), statements = []; let part = [];
-  for (const token of tokens) {
-    if (token.kind === 'symbol' && token.value === '.') {
-      if (part.length) statements.push({ tokens: part, line: part[0].line, offset: part[0].offset,
-        text: source.text.slice(part[0].offset, token.endOffset) });
-      part = [];
-    } else part.push(token);
-  }
-  return statements;
+  // The text a step shows is the source's own - WRITE: / a, b. as written -, not the parser's re-joined tokens. A later
+  // element of a chain is shown as its keyword with its own part: WRITE: b.
+  const text = String(source.text || '');
+  // Parsed from the source's text, whatever statement list came with it: an ACE scan can miss one (inline DATA).
+  const { aceStatements, ...own } = source;
+  return parse(own).statements.map(s => {
+    const first = s.tokens[0], second = s.tokens[1], last = s.tokens[s.tokens.length - 1];
+    if (!first || !last) return s;
+    let end = last.endOffset; while (text[end] === ' ') end++;
+    if (text[end] === '.' || text[end] === ',') end++;
+    const between = second ? text.slice(first.endOffset, second.offset) : '';
+    const shown = between.includes(':') && between.includes(',')
+      ? first.value + ': ' + text.slice(second.offset, end) : text.slice(first.offset, end);
+    return { ...s, text: shown };
+  });
 }
 function radioGroups(sources) {
   const groups = new Map();

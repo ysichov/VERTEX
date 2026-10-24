@@ -25,12 +25,9 @@ function objectRequest(text) {
   return found && isObjectName(found[1]) ? { query: found[1], openEditor: true } : null;
 }
 
-/* In VS Code a search names its system by the connection key - url, client,
-   user, name - and only the name belongs in an answer. */
+// Search results may carry a connection key or a plain system name.
 function systemName(value) {
-  const text = String(value || "");
-  try { const key = JSON.parse(text); if (Array.isArray(key) && key[3]) { return String(key[3]); } } catch (e) { /* a plain name */ }
-  return text;
+  return require("./auth/systems").keyInfo(value).name;
 }
 
 /**
@@ -40,7 +37,13 @@ function systemName(value) {
  */
 async function answer(text, { search, open, system, choices = () => {} }) {
   const query = String(text).trim().toUpperCase();
-  const found = await search({ query, limit: 50 });
+  let found = await search({ query, limit: 50 });
+  if (!(found?.objects || []).length && !/[*+]/.test(query)) {
+    for (const pattern of [query + "*", "*" + query + "*"]) {
+      const wider = await search({ query: pattern, limit: 50 });
+      if ((wider?.objects || []).length) { found = wider; break; }
+    }
+  }
   const label = system || systemName(found && found.system);
   const where = label ? " in system " + label : "";
   const objects = (found && found.objects) || [];
@@ -51,11 +54,13 @@ async function answer(text, { search, open, system, choices = () => {} }) {
   if (objects.length === 1 || exact.length === 1) {
     const object = exact[0] || objects[0];
     await open({ object_type: object.object_type, object_name: object.object_name });
+    choices([{ object_type: object.object_type, object_name: object.object_name },
+      ...(object.package ? [{ object_type: "DEVC", object_name: object.package }] : [])]);
     return "Opened " + object.object_type + " **" + object.object_name + "**"
-      + (object.package ? " (package " + object.package + ")" : "") + where + ".";
+      + (object.package ? " (package **" + object.package + "**)" : "") + where + ".";
   }
   if (!objects.length) {
-    return "No program, class or function module named **" + query + "**" + where + ".";
+    return "No program, class, function module or package named **" + query + "**" + where + ".";
   }
   const listed = exact.length > 1 ? exact : objects;
   choices(listed.map(o => ({ object_type: o.object_type, object_name: o.object_name,

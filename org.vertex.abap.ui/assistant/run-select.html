@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- Run Select in Eclipse. The SELECT at the cursor is decided by VS Code's select-query.run in this window's analysis
+     worker: what SelecTor can say opens in VERTEX Tools, anything else runs through ADT's data preview and its rows are
+     drawn in the frame below. The plugin ships the copy eclipse/prepare.js puts in org.vertex.abap.ui/assistant/. -->
+<style id="theme">
+:root {
+  --vscode-font-family: "Segoe UI", system-ui, sans-serif;
+  --vscode-font-size: 13px;
+  --vscode-editor-background: #ffffff;
+  --vscode-editor-foreground: #1f1f1f;
+  --vscode-descriptionForeground: #717171;
+  --vscode-editorWidget-background: #f8f8f8;
+  --vscode-textCodeBlock-background: #f3f3f3;
+  --vscode-panel-border: #e5e5e5;
+  --vscode-editorWarning-foreground: #bf8803;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --vscode-editor-background: #1f1f1f;
+    --vscode-editor-foreground: #cccccc;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-editorWidget-background: #252526;
+    --vscode-textCodeBlock-background: #2b2b2b;
+    --vscode-panel-border: #3c3c3c;
+    --vscode-editorWarning-foreground: #cca700;
+    color-scheme: dark;
+  }
+}
+</style>
+<style>
+html, body { margin: 0; height: 100%; }
+body { display: flex; flex-direction: column; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground);
+  font: 13px var(--vscode-font-family); }
+#status { padding: 8px 12px; color: var(--vscode-descriptionForeground); white-space: pre-wrap; }
+#status.error { color: var(--vscode-editor-foreground); border-left: 3px solid var(--vscode-editorWarning-foreground); }
+#view { flex: 1; width: 100%; border: 0; background: var(--vscode-editor-background); }
+</style>
+</head>
+<body>
+<div id="status">Run Select - data preview</div>
+<iframe id="view" title="Select" hidden></iframe>
+<script>/*ECLIPSE_FRONTEND*/</script>
+<script>
+"use strict";
+// The editor's text and cursor when the command ran (RunSelectHandler).
+var TARGET = /*INIT*/null/*INIT*/;
+var statusBox = document.getElementById("status"), frame = document.getElementById("view");
+function say(text, error) { statusBox.hidden = !text; statusBox.textContent = text || ""; statusBox.className = error ? "error" : ""; }
+
+async function run() {
+  if (!TARGET) { throw new Error("This window lost the editor it was opened from. Close it and run the command again."); }
+  if (!window.vertexEclipseRequest) { throw new Error("The ABAP analysis did not load into this window."); }
+  var answer = await window.vertexEclipseRequest("/sap/bc/adt/vertex/runselect", null, JSON.stringify({ text: TARGET.text, offset: TARGET.offset }));
+  // What SelecTor can say opens there, in VERTEX Tools, as in VS Code; this window then has nothing to show.
+  if (answer.open) { sdeRunSelectTools(JSON.stringify(answer.open)); return; }
+  sdeTitle("Select · line " + answer.line);
+  say("");
+  frame.hidden = false;
+  var view = frame.contentDocument;
+  view.open();
+  view.write(answer.html.replace("</head>", "<style>" + document.getElementById("theme").textContent + "</style></head>"));
+  view.close();
+}
+run().catch(function (error) { say("VERTEX: " + error.message, true); });
+</script>
+</body>
+</html>

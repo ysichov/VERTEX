@@ -37,7 +37,8 @@ function recordingReference(content) {
 }
 
 function parseSession(text, file) {
-  const name = path.basename(file, ".jsonl");
+  // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
+  const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
   const provider = name.replace(/_\d{8}_\d{6}(?:_\d+)?$/, "");
   const session = { id: name, provider, start: null, end: null, usage: emptyUsage(), prompts: [] };
   const seen = new Set();

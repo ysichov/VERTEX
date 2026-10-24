@@ -1,7 +1,7 @@
 /* Shared VERTEX controls.
  *
  * Two meanings only:
- * - .vertex-toggle / .on: an independent on/off switch (Visual Debug).
+ * - .vertex-toggle / .on: an independent on/off switch (VERTEX Smart Debugger).
  * - .vertex-segment-toggle / .active: one of mutually exclusive values
  *   (Diff-style Prev / Any, Tree / Diagram, Full / BSE).
  */

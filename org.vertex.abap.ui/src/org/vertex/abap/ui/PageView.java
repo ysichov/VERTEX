@@ -144,6 +144,11 @@ public abstract class PageView extends ViewPart {
 			setPartName(title(opened));
 		}
 
+		loadPage();
+	}
+
+	/** The page from the start, for this view's object; the browser functions stay installed. */
+	protected void loadPage() {
 		try {
 			this.browser.setText(readPage().replace(PLACEHOLDER, initialLiteral()));
 		} catch (IOException e) {
@@ -242,7 +247,12 @@ public abstract class PageView extends ViewPart {
     String assistantPost(String path, org.eclipse.swt.widgets.Display display) {
         final IRestResource[] target=new IRestResource[1];
         display.syncExec(()->target[0]=resource(path));
-        return target[0].post(new NullProgressMonitor(), String.class, "");
+        // The package tree (nodestructure) refuses a request without an Accept header ("Accept header missing");
+        // this is the type ADT's Project Explorer asks for.
+        com.sap.adt.communication.message.IHeaders headers = com.sap.adt.communication.message.HeadersFactory.newHeaders();
+        headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Accept",
+                "application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.RepositoryObjectTreeContent"));
+        return target[0].post(new NullProgressMonitor(), headers, String.class, "");
     }
 
     /**

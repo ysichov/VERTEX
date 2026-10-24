@@ -1,6 +1,6 @@
 "use strict";
 const localAnalysis = require('./local-analysis');
-const actions=[['uml','UML diagram'],['metrics','Metrics'],['scheme','Logic diagram'],['calls','Calls diagram'],['diff','Diff']];
+const actions=[['navigator','Object Navigator'],['uml','UML diagram'],['metrics','Metrics'],['scheme','Logic view'],['calls','Calls diagram'],['diff','Diff']];
 function register(vscode,context,sapCode,showTools){
  context.subscriptions.push(vscode.commands.registerCommand('vertex.tools.localPackage',async selected=>{
   try{
@@ -55,6 +55,8 @@ function register(vscode,context,sapCode,showTools){
    // error message, not abort its script and leave all controls blank.
    return showTools({...require('./resources/object-tools').normalize(initial),boundObject:true,
     ...(object.system_name?{systemName:object.system_name}:{}),
+    // The editor it was opened from: its cursor and the lines the window opens belong to it, VERTEX tab or not.
+    ...(document?.uri?{sourceUri:document.uri.toString()}:{}),
     ...(local?{localSession:local}:{}),
     ...(document&&editor?.document===document&&editor.selection?{cursorLine:editor.selection.active.line+1}:{})});
   }catch(error){vscode.window.showErrorMessage('VERTEX Tools: '+error.message);}

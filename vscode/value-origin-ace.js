@@ -16,6 +16,9 @@ function sourcesFromAce(payload, object, prefix) {
         return pieces.map(piece => ({ ...piece, line: t.row, offset: base + piece.offset, endOffset: base + piece.endOffset }));
       }).filter(t => !(t.kind === 'symbol' && t.value === '.'));
       const start = tokens[0]?.offset ?? starts[s.line - 1] ?? 0, end = tokens[tokens.length - 1]?.endOffset ?? start;
+      // ACE's scan says where tokens are, not which parenthesis opens a call: abaplint's parse of the statement does.
+      const parsed = require('./value-origin-linter').parsedTokens(source.slice(start, end) + '.');
+      for (const t of tokens) if (t.value === '(') t.call = parsed.some(p => p.value === '(' && p.offset === t.offset - start && p.call);
       return { tokens, line: s.line, offset: start, text: source.slice(start, end) + (source[end] === '.' ? '.' : ''), aceCalls: s.calls || [], aceIndex: s.idx };
     });
     const ownFlow = rows => rows.filter(row => String(row.include || '').toUpperCase() === inc.include.toUpperCase());

@@ -9,16 +9,21 @@ const ACTIONS = Object.freeze({
   versions: "vertex.versions",
   logs: "vertex.showLogs",
   executionLogs: "vertex.openSapDebugRuns",
-  system: "vertex.switchSystem",
-  settings: "workbench.action.openSettings"
+  system: "vertex.switchSystem"
 });
 
 function register(vscode, context, active, ask, systems, toolContext) {
-  let currentView, pendingPrompt, ready = false, nextRequest = 0;
-  context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async text => {
-    pendingPrompt = text;
+  let currentView, ready = false, nextRequest = 0;
+  // ASK AI of a review: the blocks on the chip above the input, attached to the next question only when it is sent.
+  let reviewAsk = null;
+  const review = require("./code-review");
+  const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "" }) : undefined;
+  // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async blocks => {
+    reviewAsk = review.mergeAsk(reviewAsk, blocks);
     await vscode.commands.executeCommand("vertex.launcher.focus");
-    if (currentView && ready && pendingPrompt) { await currentView.webview.postMessage({ prompt: pendingPrompt }); pendingPrompt = undefined; }
+    await showReview();
   }));
   const provider = {
     resolveWebviewView(view) {
@@ -34,8 +39,6 @@ function register(vscode, context, active, ask, systems, toolContext) {
           systems: systems().map(item => item.name),
           // What the list shows: a system reached through SAP's extension says so beside its name.
           labels: systems().map(item => item.name),
-          systemAuth: (() => { const system = systems().find(item => item.name === (chosen.error ? "" : chosen.system.name));
-            return { name: system && system.name || "", snc: !!(system && system.authType === "snc") }; })(),
           ai: ask.state()
         }).then(async () => {
           // The model list comes after: it may have to ask the provider.
@@ -48,7 +51,12 @@ function register(vscode, context, active, ask, systems, toolContext) {
         if (message.action === "ready") {
           ready = true;
           await refresh();
-          if (pendingPrompt) { await view.webview.postMessage({ prompt: pendingPrompt }); pendingPrompt = undefined; }
+          await showReview();
+          return;
+        }
+        if (message.action === "clearReview") {
+          reviewAsk = null;
+          await showReview();
           return;
         }
         if (message.action === "provider" || message.action === "model") {
@@ -66,22 +74,14 @@ function register(vscode, context, active, ask, systems, toolContext) {
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
         }
-        if (message.action === "setSystemSNC") {
-          try { await require("./system-setup").setSystemAuthType(vscode, message.name, message.enabled === true); await refresh(); }
-          catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); await refresh(); }
-          return;
-        }
-        if (message.action === "configModels") {
-          try { ask.configModels(); }
-          catch (e) { vscode.window.showErrorMessage(e.message); }
-          return;
-        }
         if (message.action === "newConversation") {
           // A new conversation writes to a new log file.
           require("./session-log").reset();
           await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
           ask.newConversation();
+          reviewAsk = null;
           await view.webview.postMessage({ cleared: true });
+          await showReview();
           return;
         }
         if (message.action === "copyAnswer") {
@@ -105,10 +105,15 @@ function register(vscode, context, active, ask, systems, toolContext) {
         }
         if (message.action === "chat") {
           const requestId = ++nextRequest;
-          await view.webview.postMessage({ chat: "You: " + message.text });
+          // The window shows the question as written; the review's blocks go to the model with it, unseen.
+          const asked = reviewAsk;
+          if (asked) { reviewAsk = null; await showReview(); }
+          const shown = String(message.text || "").trim() || (asked ? "What does this change do, and is there a real problem with it?" : "");
+          if (!shown) { return; }
+          await view.webview.postMessage({ chat: "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "") });
           await view.webview.postMessage({ progress: { id: requestId, status: "VERTEX is working…" } });
           try {
-            const reply = await ask(message.text, {model: message.model, state: (await toolContext()) || {},
+            const reply = await ask(asked ? review.askRequest(message.text, asked) : message.text, {model: message.model, state: (await toolContext()) || {},
               onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, ...update } })).catch(() => {}); } });
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId, answer: reply.answer,
@@ -126,8 +131,7 @@ function register(vscode, context, active, ask, systems, toolContext) {
         if (!Object.hasOwn(ACTIONS, message.action)) { return; }
         try {
           await vscode.commands.executeCommand(ACTIONS[message.action],
-            ...(message.action === "settings" ? ["vertex.systems"] :
-              message.action === "system" ? [message.name] : []));
+            ...(message.action === "system" ? [message.name] : []));
         } catch (error) {
           vscode.window.showErrorMessage("VERTEX: " + error.message);
         }
@@ -172,6 +176,11 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages { flex: 1 1 auto; min-height: 80px; overflow-y: auto; white-space: pre-wrap; }
 /* The question box and VERTEX Tools stay at the bottom; the answers scroll. */
 .dock { flex: none; }
+#review-chip { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 2px 4px 2px 8px; border-radius: 10px; max-width: 100%;
+  background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 12px; width: fit-content; }
+#review-chip[hidden] { display: none; }
+#review-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#review-chip button { padding: 0 6px; min-width: 0; line-height: 16px; }
 #messages .copy-answer { margin: -0.6em 0 1em; padding: 2px 8px; font-size: 11px; }
 #messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; }
 #messages p.tool-status { font-size: 11px; opacity: .8; }
@@ -195,11 +204,8 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 .secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
 .link { color: var(--vscode-textLink-foreground); text-decoration: none; }
 .link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
-#llm-settings { margin-left: auto; }
-#logs { margin: 0; padding: 3px 6px; font-size: 17px; line-height: 1; background: transparent; color: var(--vscode-foreground); }
+#logs { margin: 0 0 0 auto; padding: 3px 6px; font-size: 17px; line-height: 1; background: transparent; color: var(--vscode-foreground); }
 #logs:hover { background: var(--vscode-list-hoverBackground); }
-#system-snc { display: inline-flex; align-items: center; gap: 4px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
-#system-snc input { accent-color: var(--vscode-focusBorder); }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .line button { margin: 4px 0; padding: 4px 10px; }
 .line select { padding: 3px 4px; }
@@ -208,28 +214,18 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 #tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 6px; font-size: 1.7em; font-weight: 600; }
 #tools img { width: 40px; height: 40px; }
 </style></head><body>
-<div class="line"><a href="#" class="link" id="system-settings" title="Configure SAP systems">SAP system</a>
+<div class="line"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
-<label id="system-snc" title="Use SNC single sign-on instead of a password"><input id="system-snc-checkbox" type="checkbox"> SNC</label>
-<a href="#" class="link" id="llm-settings" title="Providers and the models they offer">LLM Providers</a>
 <button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs">📜 AI</button>
 <button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs">📜 SAP</button></div>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
-<form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
+<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
-document.getElementById('system-settings').addEventListener('click', event => {
-  event.preventDefault();
-  api.postMessage({ action: 'settings' });
-});
-document.getElementById('llm-settings').addEventListener('click', event => {
-  event.preventDefault();
-  api.postMessage({ action: 'configModels' });
-});
 document.getElementById('provider-select').addEventListener('change', event => {
   api.postMessage({ action: 'setProvider', provider: event.target.value });
 });
@@ -242,19 +238,16 @@ document.querySelectorAll('button[data-action]').forEach(button => {
 document.getElementById('system-select').addEventListener('change', event => {
   api.postMessage({ action: 'system', name: event.target.value });
 });
-document.getElementById('system-snc-checkbox').addEventListener('change', event => {
-  const select = document.getElementById('system-select');
-  event.target.disabled = true;
-  api.postMessage({ action: 'setSystemSNC', name: select.value, enabled: event.target.checked });
-});
 document.getElementById('chat').addEventListener('submit', event => {
   event.preventDefault();
   const field = document.getElementById('prompt');
   const text = field.value.trim();
-  if (!text) return;
+  // With a review's blocks on the chip an empty question asks the default one.
+  if (!text && document.getElementById('review-chip').hidden) return;
   api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value });
   field.value = '';
 });
+document.getElementById('review-clear').addEventListener('click', () => api.postMessage({ action: 'clearReview' }));
 document.getElementById('prompt').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.ctrlKey) {
     event.preventDefault();
@@ -268,9 +261,13 @@ window.addEventListener('message', event => {
     lastCopy.textContent = event.data.copied ? 'Copied' : 'Copy failed: ' + event.data.error;
     const button = lastCopy; setTimeout(() => { button.textContent = 'Copy'; }, 2000);
   }
-  if (event.data && typeof event.data.prompt === 'string') {
-    document.getElementById('prompt').value = event.data.prompt;
-    document.getElementById('prompt').focus();
+  if (event.data && typeof event.data.review === 'string') {
+    const chip = document.getElementById('review-chip');
+    chip.hidden = !event.data.review;
+    document.getElementById('review-label').textContent = event.data.review;
+    const field = document.getElementById('prompt');
+    field.placeholder = event.data.review ? 'Ask about this change… (Enter with nothing typed: what it does and any real problem)' : 'Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)';
+    if (event.data.review) field.focus();
   }
   if (event.data && event.data.cleared) {
     const box = document.getElementById('messages');
@@ -345,13 +342,6 @@ window.addEventListener('message', event => {
       return option;
     }));
     if (!event.data.systems.length) select.add(new Option('No SAP systems configured', ''));
-    const snc = document.getElementById('system-snc-checkbox');
-    const state = event.data.systemAuth || {};
-    snc.checked = state.snc === true;
-    snc.disabled = !state.name;
-    document.getElementById('system-snc').title = state.snc
-      ? 'SNC is on; turn off to use a password'
-      : 'SNC is off; turn on to use SNC single sign-on';
   }
   if (event.data && event.data.ai) {
     const select = document.getElementById('provider-select');
@@ -429,7 +419,7 @@ function runLinks(item, runs) {
       && (cite.dataset.kind !== 'run' || run.kind === 'transpiler'));
     if (matches.length !== 1) return;
     const run = matches[0], link = document.createElement('a');
-    link.href = '#'; link.className = 'link'; link.title = 'Open ' + run.kind + ' session ' + run.session_id + ' at step ' + cite.dataset.step + ' in Visual Debug';
+    link.href = '#'; link.className = 'link'; link.title = 'Open ' + run.kind + ' session ' + run.session_id + ' at step ' + cite.dataset.step + ' in VERTEX Smart Debugger';
     // A run of this conversation reads as its number; one from elsewhere keeps the cited id.
     link.textContent = run.kind === 'transpiler' && run.number ? 'run ' + run.number + ', step ' + cite.dataset.step : cite.textContent;
     link.addEventListener('click', event => { event.preventDefault();

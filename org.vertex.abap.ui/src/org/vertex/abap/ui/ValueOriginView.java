@@ -41,9 +41,11 @@ public class ValueOriginView extends PageView {
 		final List<Integer> breakpoints;
 		/** forward: how the value is computed, down from the line; backward: where values go in the callers. */
 		final String direction;
+		/** The variable to follow, named by the caller - Where used of VERTEX Smart Debugger; empty: the one at the cursor. */
+		final String variable;
 
 		Target(IEditorPart editor, AdtEditor object, String type, String sourcePath, String text, int offset, int line, int column,
-				List<Integer> breakpoints, String direction) {
+				List<Integer> breakpoints, String direction, String variable) {
 			this.editor = editor;
 			this.object = object;
 			this.type = type;
@@ -54,6 +56,7 @@ public class ValueOriginView extends PageView {
 			this.column = column;
 			this.breakpoints = breakpoints;
 			this.direction = direction;
+			this.variable = variable;
 		}
 	}
 
@@ -108,6 +111,7 @@ public class ValueOriginView extends PageView {
 			return value;
 		}
 		return value.replace("/*FLOW_GRAPH*/", inline(super.readResource("resources/vertex-abap-control.js")) + "\n" + inline(super.readResource("resources/vertex-flow-graph.js")))
+				.replace("/*ABAPLINT*/", inline(super.readResource("assistant/abaplint.js")))
 				.replace("/*ORIGIN_ENGINE*/", inline(super.readResource("assistant/value-origin.js")))
                 .replace("/*ECLIPSE_FRONTEND*/", inline(super.readResource("resources/eclipse-frontend.js").replace("/*FRONTEND_BUNDLE*/", AssistantBridge.quote(super.readResource("resources/vertex-frontend.js")).replace("<", "\\u003c"))));
 	}
@@ -133,7 +137,8 @@ public class ValueOriginView extends PageView {
 				+ ",\"sourcePath\":" + AssistantBridge.quote(t.sourcePath)
 				+ ",\"text\":" + AssistantBridge.quote(t.text)
 				+ ",\"offset\":" + t.offset + ",\"line\":" + t.line + ",\"column\":" + t.column
-				+ ",\"breakpoints\":" + points + ",\"direction\":" + AssistantBridge.quote(t.direction) + "}";
+				+ ",\"breakpoints\":" + points + ",\"direction\":" + AssistantBridge.quote(t.direction)
+				+ ",\"variable\":" + AssistantBridge.quote(t.variable) + "}";
 		// The source is ABAP, and ABAP may hold "</script>" in a literal.
 		return json.replace("<", "\\u003c");
 	}
@@ -228,6 +233,24 @@ public class ValueOriginView extends PageView {
 					}
 					opened = editor;
 					return document(editor, name).get();
+				});
+				return null;
+			}
+		};
+
+		// The page's Copy log: its analysis log onto Eclipse's clipboard, as VS Code puts it on its own.
+		new BrowserFunction(this.browser, "sdeOriginCopy") {
+			@Override
+			public Object function(Object[] arguments) {
+				String text = arguments.length > 0 && arguments[0] != null ? String.valueOf(arguments[0]) : "";
+				queue(() -> {
+					org.eclipse.swt.dnd.Clipboard clipboard = new org.eclipse.swt.dnd.Clipboard(browser.getDisplay());
+					try {
+						clipboard.setContents(new Object[] { text }, new org.eclipse.swt.dnd.Transfer[] { org.eclipse.swt.dnd.TextTransfer.getInstance() });
+					} finally {
+						clipboard.dispose();
+					}
+					return "";
 				});
 				return null;
 			}

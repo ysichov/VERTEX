@@ -82,6 +82,85 @@ test('Logic only folds the operations it leaves out into one block, opened by it
  const p=buildIndex([source]).procedures.find(p=>p.name==='RUN');
  const folded=scheme(p,'',true).mermaid,open=scheme(p,'2',true).mermaid;
  assert.match(folded,/o2\("2 operations"\)/);assert.match(folded,/class o2 foldnode/);assert.match(folded,/click o2 "sapevent:aceexp_2"/);
- assert.match(folded,/o5\("1 operation"\)/);assert.match(folded,/p4\(/);
+ // A single left-out operation is shown as itself, and leads to its line.
+ assert.doesNotMatch(folded,/o5\(/);assert.match(folded,/p5\("c = 3\."\)/);assert.match(folded,/click p5 "sapevent:acego_\d+_\d+"/);assert.match(folded,/p4\(/);
  assert.match(open,/p2\("a = 1\."\)/);assert.match(open,/p3\("b = 2\."\)/);assert.match(open,/click p2 "sapevent:aceexp_2"/);assert.doesNotMatch(open,/o2\(/);
+});
+
+test('Logic depth: a block nested deeper keeps its opening and closing statement and hides what is inside until opened', () => {
+  const text = ['REPORT z.', 'FORM f.', '  IF a = 1.', '    IF b = 1.', '      IF c = 1.', '        IF d = 1.', '          x = 1.', '          y = 2.',
+    '        ENDIF.', '      ENDIF.', '    ENDIF.', '  ENDIF.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  const folded = scheme(p, '', false, 4).mermaid;
+  assert.match(folded, /p5\("IF d = 1\."\)/);
+  assert.match(folded, /p6\("\(2 operations hidden\)"\)/);
+  assert.match(folded, /p8\("ENDIF\."\)/);
+  assert.match(folded, /class p6 foldnode/);
+  assert.match(folded, /click p6 "sapevent:aceexp_5"/);
+  assert.doesNotMatch(folded, /x = 1/);
+  const opened = scheme(p, '5', false, 4).mermaid;
+  assert.match(opened, /x = 1/);
+  assert.doesNotMatch(opened, /hidden/);
+  assert.match(scheme(p, '', false, 0).mermaid, /x = 1/);
+});
+
+test('Logic Code view: the lines as written, a deeper block folded between its opening and closing lines', () => {
+  const { codeView } = require('../ace-scheme');
+  const text = ['REPORT z.', 'FORM f.', '  IF a = 1.', '    IF b = 1.', '      IF c = 1.', '        IF d = 1.', '          x = 1.', '          " note',
+    '          y = 2.', '        ENDIF.', '      ENDIF.', '    ENDIF.', '  ENDIF.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  const items = codeView(p, '', 4);
+  assert.deepEqual(items.map(i => i.fold ? 'fold ' + i.fold + ':' + i.count : i.line),
+    [2, 3, 4, 5, 6, 'fold 5:2', 10, 11, 12, 13, 14]);
+  assert.equal(items[1].text, '  IF a = 1.');
+  assert.deepEqual(codeView(p, '5', 4).map(i => i.line), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+  // Depth counts the levels inside the routine: 1 shows the statements right in it, an IF with its inside folded.
+  assert.deepEqual(codeView(p, '', 1).map(i => i.fold ? 'fold ' + i.fold + ':' + i.count : i.line), [2, 3, 'fold 2:5', 13, 14]);
+  assert.deepEqual(codeView(p, '', 2).map(i => i.fold ? 'fold ' + i.fold : i.line), [2, 3, 4, 'fold 3', 12, 13, 14]);
+});
+
+test('Logic Code view colours each token by abaplint: keywords, strings, numbers, comments, calls', () => {
+  const { codeView } = require('../ace-scheme');
+  const text = ['REPORT z.', 'FORM f.', '  " note', "  DATA(lv) = lcl=>m( 'a' ) + lines( gt ).", '  IF lv > 2.', '    lo->run( ).', '  ENDIF.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  const items = codeView(p, '', 3), marked = line => items.find(i => i.line === line).parts.filter(x => x.k).map(x => x.k + ':' + x.t);
+  for (const item of items) assert.equal(item.parts.map(x => x.t).join(''), item.text);
+  assert.deepEqual(marked(3), ['comment:" note']);
+  assert.deepEqual(marked(4), ['keyword:DATA', 'class:lcl', 'method:m', "string:'a'", 'method:lines']);
+  assert.deepEqual(marked(5), ['keyword:IF', 'number:2']);
+  assert.deepEqual(marked(6), ['method:run']);
+});
+
+test('Logic Code view: a comment before a folded block\'s closing statement is folded with it', () => {
+  const { codeView } = require('../ace-scheme');
+  const text = ['REPORT z.', 'FORM f.', '  TRY.', '      x = 1.', '    CATCH cx_root.', '      " leave it', '  ENDTRY.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  assert.deepEqual(codeView(p, '', 1).map(i => i.fold ? 'fold' : i.line), [2, 3, 'fold', 7, 8]);
+});
+
+test('Logic Code view opens a block a step at a time: its branches first, each branch\'s inside on its own click', () => {
+  const { codeView } = require('../ace-scheme');
+  const text = ['REPORT z.', 'FORM f.', '  CASE a.', '    WHEN 1.', '      x = 1.', '      IF b = 1.', '        y = 2.', '      ENDIF.',
+    '    WHEN OTHERS.', '      z = 3.', '  ENDCASE.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  const view = expanded => codeView(p, expanded, 1).map(i => i.fold ? 'fold ' + i.fold + ':' + i.count : i.line);
+  assert.deepEqual(view(''), [2, 3, 'fold 2:4', 11, 12]);
+  assert.deepEqual(view('2'), [2, 3, 4, 'fold 3:3', 9, 'fold 8:1', 11, 12]);
+  assert.deepEqual(view('2,3'), [2, 3, 4, 5, 6, 'fold 5:1', 8, 9, 'fold 8:1', 11, 12]);
+  assert.deepEqual(view('2,3,5,8'), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+});
+
+test('Logic Code view: the line that opened a block or a branch carries the keys that fold it again; no fold hides only comments', () => {
+  const { codeView } = require('../ace-scheme');
+  const text = ['REPORT z.', 'FORM f.', '  CASE a.', '    WHEN 1.', '      x = 1.', '    WHEN OTHERS.', '      " nothing to do', '  ENDCASE.', 'ENDFORM.'].join('\n');
+  const source = parseSource({ id: 'z', name: 'Z', objectName: 'Z', objectType: 'PROG', text }).source;
+  const st = source.aceStatements, p = { source, start: st[1].offset, end: st.at(-1).offset, unitType: 'FORM', name: 'F', line: 2 };
+  const items = codeView(p, '2,3', 1);
+  assert.deepEqual(items.filter(i => i.closes).map(i => i.line + ':' + i.closes.join(',')), ['3:2,-2', '4:3']);
+  assert.deepEqual(items.map(i => i.fold ? 'fold' : i.line), [2, 3, 4, 5, 6, 7, 8, 9]);
 });

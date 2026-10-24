@@ -279,12 +279,17 @@ async function importSystems(vscode, context) {
       + (skipped.length ? " Skipped: " + skipped.join(", ") : ""));
   }
 
+  // Only systems not yet in vertex.systems (switched off ones included) are offered - and probed.
   const fresh = [], seen = new Set();
   for (const s of logon) {
     const key = s.id + "|" + s.host + "|" + s.instance;
-    if (seen.has(key)) { continue; }
+    if (seen.has(key) || known.has(String(s.id).toUpperCase())) { continue; }
     seen.add(key);
     fresh.push(s);
+  }
+  if (!fresh.length) {
+    vscode.window.showInformationMessage("VERTEX: every system found in SAP Logon and Eclipse is already in vertex.systems.");
+    return;
   }
   const candidates = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
     title: "VERTEX: looking for ADT on " + fresh.length + " systems" }, () => Promise.all(fresh.map(async s =>
@@ -294,9 +299,8 @@ async function importSystems(vscode, context) {
   const items = candidates.map(c => ({
     label: c.id + "  " + c.title + (c.group !== undefined ? "  (logon group " + c.group + ", message server " + c.host + ")" : ""),
     description: (c.authType === "snc" ? "SNC · " : "") + (c.found ? c.found.url + (c.found.insecure ? " (certificate not verified)" : "") : "ADT did not answer on any usual port"),
-    detail: [c.webgui ? "WebGUI at " + c.webgui : c.found && c.webgui === null ? "WebGUI not found" : "", c.logon.client ? "client " + c.logon.client : "client: asked", c.logon.user ? "user " + c.logon.user : "user: asked",
-      known.has(c.id) ? "a system named " + c.id + " is already configured" : ""].filter(Boolean).join(" · "),
-    picked: !!c.found && !known.has(c.id), candidate: c }));
+    detail: [c.webgui ? "WebGUI at " + c.webgui : c.found && c.webgui === null ? "WebGUI not found" : "", c.logon.client ? "client " + c.logon.client : "client: asked", c.logon.user ? "user " + c.logon.user : "user: asked"].filter(Boolean).join(" · "),
+    picked: !!c.found, candidate: c }));
   const chosen = await vscode.window.showQuickPick(items, { canPickMany: true, ignoreFocusOut: true,
     title: "VERTEX: systems to add to vertex.systems" + (skipped.length ? " (not offered: " + skipped.join(", ") + ")" : "") });
   if (!chosen || !chosen.length) { return; }

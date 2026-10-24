@@ -115,8 +115,26 @@ function create(vscode, primary, object) {
     const api = { local: true, analysisReader: () => async ({ object_name, object_type }) => {
       const document = await find(object_name, object_type);
       return { object_name, object_type, source_url: document.uri.toString(), source: document.getText(), includes: [] };
-    } };
+    }, objectNavigator };
     return analysis.request(api, resource, progress, cancelled);
+  }
+  /* Object Navigator of a local program: its tree from the parse of the program and its includes, each include a file of
+     its own as abapGit writes it. The Parts list keeps its own reading of the source. */
+  async function objectNavigator(name, type, node, parts) {
+    if (parts) throw new Error("Object Navigator is not available for this system.");
+    if (type !== "PROG") throw new Error("Object Navigator of local files shows a program; " + type + " needs a SAP system.");
+    const { parseSource } = require("./value-origin-linter");
+    const read = [], seen = new Set();
+    for (let queue = [String(name).toUpperCase()]; queue.length;) {
+      const next = queue.shift();
+      if (seen.has(next)) continue;
+      seen.add(next);
+      const document = await find(next, "PROG");
+      const statements = parseSource({ id: document.uri.toString(), name: next, objectName: next, objectType: "PROG", text: document.getText() }).source.aceStatements;
+      read.push({ name: next, statements });
+      for (const s of statements) if (s.parserKind === "Include" && s.tokens[1]) queue.push(String(s.tokens[1].value).toUpperCase());
+    }
+    return require("./object-navigator").localTree(read);
   }
   async function openSource(args) {
     const document = await find(args.name, args.type || object.object_type);

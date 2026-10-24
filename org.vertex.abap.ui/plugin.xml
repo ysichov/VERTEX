@@ -6,10 +6,11 @@
             name="VERTEX Assistant" class="org.vertex.abap.ui.AssistantPreferences"/>
       <page id="org.vertex.abap.ui.review.preferences"
             name="VERTEX Code Review" class="org.vertex.abap.ui.ReviewPreferences"/>
+      <page id="org.vertex.abap.ui.path.preferences"
+            name="VERTEX Path to This Line" class="org.vertex.abap.ui.PathPreferences"/>
    </extension>
    <extension point="org.eclipse.ui.views">
-      <view id="org.vertex.abap.ui.view.debugMonitor" name="Visual Debug" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.DebugMonitorView" allowMultiple="true" restorable="false"/>
-      <view id="org.vertex.abap.ui.view.visualFlowAnalysis" name="Visual Flow Analysis" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.VisualFlowAnalysisView" allowMultiple="true" restorable="false"/>
+      <view id="org.vertex.abap.ui.view.debugMonitor" name="VERTEX Smart Debugger" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.DebugMonitorView" allowMultiple="true" restorable="false"/>
       <view id="org.vertex.abap.ui.view.tools" name="VERTEX Tools" category="org.vertex.abap.ui.category" class="org.vertex.abap.ui.ToolsView" allowMultiple="true" restorable="false"/>
       <category
             id="org.vertex.abap.ui.category"
@@ -23,6 +24,34 @@
             name="Value origin"
             category="org.vertex.abap.ui.category"
             class="org.vertex.abap.ui.ValueOriginView"
+            allowMultiple="true"
+            restorable="false"/>
+      <view
+            id="org.vertex.abap.ui.view.runSelect"
+            name="Run Select"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.RunSelectView"
+            allowMultiple="true"
+            restorable="false"/>
+      <view
+            id="org.vertex.abap.ui.view.chat"
+            name="VERTEX Assistant"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.ChatView"
+            allowMultiple="true"
+            restorable="false"/>
+      <view
+            id="org.vertex.abap.ui.view.logs"
+            name="Session Logs"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.LogsView"
+            allowMultiple="false"
+            restorable="false"/>
+      <view
+            id="org.vertex.abap.ui.view.reachPath"
+            name="Path to line"
+            category="org.vertex.abap.ui.category"
+            class="org.vertex.abap.ui.ReachPathView"
             allowMultiple="true"
             restorable="false"/>
       <view
@@ -41,9 +70,8 @@
 
 
    <extension point="org.eclipse.ui.commands">
-      <command id="org.vertex.abap.ui.command.debugMonitor" name="VERTEX: Open Visual Debug" description="Open Visual Debug for the ADT debug session"/>
+      <command id="org.vertex.abap.ui.command.debugMonitor" name="VERTEX Smart Debugger" description="Open VERTEX Smart Debugger for the ADT debug session"/>
       <command id="org.vertex.abap.ui.command.tools" name="VERTEX Tools"/>
-      <command id="org.vertex.abap.ui.command.visualFlowAnalysis" name="VERTEX: Visual Flow Analysis" description="Static calls and method logic without running the program"/>
 
 
 
@@ -56,15 +84,30 @@
             name="VERTEX: Backward Usage Analysis"
             description="Where the values of the routine at the cursor go in its callers, up through theirs, by SAP's where-used"/>
       <command
+            id="org.vertex.abap.ui.command.runSelect"
+            name="VERTEX: Run Select"
+            description="The SELECT at the cursor: in SelecTor when it can say it, otherwise through ADT's data preview"/>
+      <command
+            id="org.vertex.abap.ui.command.chat"
+            name="VERTEX Assistant"
+            description="The VERTEX chat in a window of its own, on the system of the selected object"/>
+      <command
+            id="org.vertex.abap.ui.command.logs"
+            name="VERTEX: Session Logs"
+            description="The assistant's conversation logs, as VS Code shows them"/>
+      <command
+            id="org.vertex.abap.ui.command.reachPath"
+            name="VERTEX: Path to This Line"
+            description="The conditions under which the line at the cursor runs inside its METHOD or FORM"/>
+      <command
             id="org.vertex.abap.ui.command.activate"
-            name="VERTEX: Activate"
-            description="Activate the object in the editor, with a block review of its inactive changes first"/>
+            name="VERTEX: Review &amp; Activate"
+            description="A block review of the inactive changes of the object in the editor, then its activation"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
       <handler commandId="org.vertex.abap.ui.command.debugMonitor" class="org.vertex.abap.ui.DebugMonitorHandler"/>
       <handler commandId="org.vertex.abap.ui.command.tools" class="org.vertex.abap.ui.ToolsHandler"/>
-      <handler commandId="org.vertex.abap.ui.command.visualFlowAnalysis" class="org.vertex.abap.ui.VisualFlowAnalysisHandler"/>
 
 
 
@@ -75,42 +118,40 @@
             commandId="org.vertex.abap.ui.command.backwardUsage"
             class="org.vertex.abap.ui.BackwardUsageHandler"/>
       <handler
+            commandId="org.vertex.abap.ui.command.runSelect"
+            class="org.vertex.abap.ui.RunSelectHandler"/>
+      <handler
+            commandId="org.vertex.abap.ui.command.chat"
+            class="org.vertex.abap.ui.ChatHandler"/>
+      <handler
+            commandId="org.vertex.abap.ui.command.logs"
+            class="org.vertex.abap.ui.LogsHandler"/>
+      <handler
+            commandId="org.vertex.abap.ui.command.reachPath"
+            class="org.vertex.abap.ui.ReachPathHandler"/>
+      <handler
             commandId="org.vertex.abap.ui.command.activate"
             class="org.vertex.abap.ui.ActivateHandler"/>
    </extension>
 
-   <!-- One submenu holding every service, rather than one top-level entry each:
-        with several tools a flat list would crowd the context menu of every
-        object. The visibility test sits on the menu, so it is evaluated once
-        instead of once per command.
-
-        Services differ in what they apply to - metrics to code, SelecTor to
-        tables and views. Filtering that needs a PropertyTester, since plugin.xml
-        has no built-in test for ADT object types; worth adding once a service is
-        actually shown where it makes no sense. -->
+   <!-- Every VERTEX item in one VERTEX submenu, beside GitHub, Team and Run As: one by one they filled the bottom of
+        ADT's long editor menu. It stays in "additions", the group every popup has - a contribution whose group a
+        menu lacks is dropped (anchored at group.undo, then group.open, VERTEX vanished from ADT's editor menu). Not
+        #EditorContext: an ADT editor's menu is not always registered under that id. The submenu shows where VERTEX
+        Tools does; an editor item shows only when the active part is an editor the tester accepts - any ADT object. -->
    <extension point="org.eclipse.ui.menus">
-      <menuContribution
-            locationURI="popup:org.eclipse.ui.popup.any?after=additions">
-         <command commandId="org.vertex.abap.ui.command.tools" label="VERTEX Tools" style="push">
-            <visibleWhen checkEnabled="false"><or>
-               <with variable="selection"><count value="1"/><iterate><adapt type="com.sap.adt.tools.core.IAdtObjectReference"/></iterate></with>
-               <with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with>
-            </or></visibleWhen>
-         </command>
-      </menuContribution>
-      <!-- In the context menu of an editor showing an ADT object. -->
-      <menuContribution
-            locationURI="popup:org.eclipse.ui.popup.any?after=additions">
-         <command
-               commandId="org.vertex.abap.ui.command.activate"
-               label="VERTEX: Activate"
-               style="push">
-            <visibleWhen checkEnabled="false">
-               <with variable="activePart">
-                  <test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/>
-               </with>
-            </visibleWhen>
-         </command>
+      <menuContribution locationURI="popup:org.eclipse.ui.popup.any?after=additions">
+         <menu id="org.vertex.abap.ui.menu" label="VERTEX">
+            <visibleWhen checkEnabled="false"><or><with variable="selection"><count value="1"/><iterate><adapt type="com.sap.adt.tools.core.IAdtObjectReference"/></iterate></with><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></or></visibleWhen>
+            <command commandId="org.vertex.abap.ui.command.tools" label="VERTEX Tools" style="push"><visibleWhen checkEnabled="false"><or><with variable="selection"><count value="1"/><iterate><adapt type="com.sap.adt.tools.core.IAdtObjectReference"/></iterate></with><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></or></visibleWhen></command>
+            <command commandId="org.vertex.abap.ui.command.reachPath" label="Path to This Line" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
+            <command commandId="org.vertex.abap.ui.command.runSelect" label="Run Select" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
+            <command commandId="org.vertex.abap.ui.command.debugMonitor" label="VERTEX Smart Debugger" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
+            <command commandId="org.vertex.abap.ui.command.activate" label="Review &amp; Activate" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
+            <separator name="vertex.logs" visible="true"/>
+            <command commandId="org.vertex.abap.ui.command.chat" label="VERTEX Assistant" style="push"></command>
+            <command commandId="org.vertex.abap.ui.command.logs" label="Session Logs" style="push"></command>
+         </menu>
       </menuContribution>
    </extension>
    <extension point="org.eclipse.core.expressions.propertyTesters">
@@ -120,39 +161,5 @@
             namespace="org.vertex.abap.ui"
             properties="adtObject,valueOriginSource"
             class="org.vertex.abap.ui.EditorTester"/>
-   </extension>
-   <!-- The context menu of an ADT editor. Not #EditorContext: an ADT editor's menu is not always registered under that
-        id (ADT 3.60 in Eclipse 2025-03 showed none of these there), so the items go to every popup and show only when
-        the active part is an editor this tester accepts - any ADT object: a command that does not apply to the object
-        says so and names its type, rather than the item silently missing (as it did in ADT 3.60's class editor). The editor itself is tested, as ADT tests its own commands:
-        its input does not adapt to the object reference a plain plugin.xml test could name. -->
-   <extension point="org.eclipse.ui.menus">
-      <menuContribution
-            locationURI="popup:org.eclipse.ui.popup.any?after=additions">
-         <command commandId="org.vertex.abap.ui.command.debugMonitor" label="VERTEX: Open Visual Debug" style="push"><visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen></command>
-         <command commandId="org.vertex.abap.ui.command.visualFlowAnalysis" label="VERTEX: Visual Flow Analysis" style="push">
-            <visibleWhen checkEnabled="false"><with variable="activePart"><test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/></with></visibleWhen>
-         </command>
-         <command
-               commandId="org.vertex.abap.ui.command.valueOrigin"
-               label="VERTEX: Forward Usage Analysis"
-               style="push">
-            <visibleWhen checkEnabled="false">
-               <with variable="activePart">
-                  <test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/>
-               </with>
-            </visibleWhen>
-         </command>
-         <command
-               commandId="org.vertex.abap.ui.command.backwardUsage"
-               label="VERTEX: Backward Usage Analysis"
-               style="push">
-            <visibleWhen checkEnabled="false">
-               <with variable="activePart">
-                  <test property="org.vertex.abap.ui.adtObject" forcePluginActivation="true"/>
-               </with>
-            </visibleWhen>
-         </command>
-      </menuContribution>
    </extension>
 </plugin>

@@ -268,14 +268,84 @@ async function ask(options) {
       env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
     }
     const timeout = options.timeout || TIMEOUT;
+    const streaming = options.assistant === "claude" && typeof options.onProgress === "function";
+    let pending = "", resultEvent = null, generated = "", structured = "", thinking = "", lastAnswer = "", lastStatus = "";
+    const toolBlocks = new Map();
+    const emitAnswer = answer => {
+      if (answer && answer !== lastAnswer && !lastAnswer.startsWith(answer)) {
+        lastAnswer = answer;
+        options.onProgress({ answer });
+      }
+    };
+    const toolStatus = block => {
+      let args = block.input;
+      try { if (block.json) args = JSON.parse(block.json); } catch (_) { /* Wait for the complete arguments. */ }
+      const name = String(block.name || "").replace(/^mcp__vertex__/, "");
+      const object = args && typeof args === "object"
+        ? [args.object_type, args.object_name, args.method_name].filter(Boolean).join(" ") : "";
+      const status = "Using " + (name || "a SAP tool") + (object ? ": " + object : "") + "…";
+      if (status !== lastStatus) { lastStatus = status; options.onProgress({ status }); }
+    };
+    const onData = streaming ? function (chunk) {
+      pending += chunk;
+      let end;
+      while ((end = pending.indexOf("\n")) !== -1) {
+        const line = pending.slice(0, end).trim();
+        pending = pending.slice(end + 1);
+        let event;
+        try { event = JSON.parse(line); } catch (_) { continue; }
+        if (event.type === "result") { resultEvent = event; }
+        if (event.type !== "stream_event") { continue; }
+        const inner = event.event || {};
+        if (inner.type === "message_start" && inner.message?.role === "assistant") {
+          generated = ""; structured = "";
+        } else if (inner.type === "content_block_delta" && inner.delta?.type === "text_delta") {
+          generated += inner.delta.text || "";
+          // Claude Code 2.1 streams human-readable text before its structured
+          // JSON result. Older CLI builds may stream the JSON directly.
+          const answer = /^\s*\{\s*"answer"\s*:/.test(generated)
+            ? partialClaudeAnswer(generated) : generated;
+          emitAnswer(answer);
+        } else if (inner.type === "content_block_delta" && inner.delta?.type === "input_json_delta") {
+          const block = toolBlocks.get(inner.index);
+          if (block) {
+            block.json += inner.delta.partial_json || "";
+            toolStatus(block);
+          } else {
+            structured += inner.delta.partial_json || "";
+            emitAnswer(partialClaudeAnswer(structured));
+          }
+        } else if (inner.type === "content_block_delta" && inner.delta?.type === "thinking_delta") {
+          const fragment = inner.delta.thinking || "";
+          if (fragment) { thinking += fragment; options.onProgress({ thinking }); }
+          const status = fragment ? "Claude is thinking…" : "Claude is working…";
+          if (lastStatus !== status) { lastStatus = status; options.onProgress({ status }); }
+        } else if (inner.type === "content_block_start" && inner.content_block?.type === "tool_use"
+          && inner.content_block.name === "StructuredOutput") {
+          // Claude Code's final answer is this tool's input: it streams as the answer, not as a tool in use.
+          structured = "";
+        } else if (inner.type === "content_block_start" && inner.content_block?.type === "tool_use") {
+          const block = { name: inner.content_block.name, input: inner.content_block.input, json: "" };
+          toolBlocks.set(inner.index, block);
+          toolStatus(block);
+        } else if (inner.type === "content_block_stop" && toolBlocks.has(inner.index)) {
+          toolStatus(toolBlocks.get(inner.index));
+          toolBlocks.delete(inner.index);
+        }
+      }
+    } : null;
     const result = await collect(options.spawn, file, command.args,
-                                 { cwd: dir, env: env, input: command.input, timeout: timeout });
+                                 { cwd: dir, env: env, input: command.input, timeout: timeout, onData });
+    if (streaming && pending.trim()) {
+      try { const last = JSON.parse(pending.trim()); if (last.type === "result") resultEvent = last; }
+      catch (_) { /* An interrupted NDJSON line is not a completed result. */ }
+    }
     if (result.timedOut) {
       throw new Error(assistant.label + " did not answer within " + Math.round(timeout / 1000)
                       + " seconds and was stopped.");
     }
     return options.assistant === "claude"
-      ? readClaude(result)
+      ? readClaude(streaming ? { ...result, stdout: resultEvent ? JSON.stringify(resultEvent) : "" } : result)
       : readCodex(result, command.answerFile);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -293,7 +363,7 @@ function claudeCommand(options, dir) {
   fs.writeFileSync(config, JSON.stringify({ mcpServers: options.tools.length ? servers : {} }));
 
   const args = [
-    "-p", "--output-format", "json",
+    "-p", "--output-format", options.onProgress ? "stream-json" : "json",
     "--json-schema", JSON.stringify(options.schema),
     "--system-prompt", options.instructions,
     // No built-in tool. For a visible method explanation there are no MCP
@@ -303,6 +373,7 @@ function claudeCommand(options, dir) {
     "--strict-mcp-config", "--mcp-config", config,
     "--no-session-persistence"
   ];
+  if (options.onProgress) { args.push("--verbose", "--include-partial-messages"); }
   if (options.tools.length) {
     args.push("--allowedTools", options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }).join(","));
   }
@@ -355,6 +426,24 @@ function readClaude(result) {
                           + (answer.result ? ": " + answer.result : ".")), model);
   }
   return { plan: answer.structured_output, model: model, usage: totalUsage(answer) };
+}
+
+// Claude's structured output arrives as JSON text deltas. Only expose the
+// answer string; navigation and unfinished JSON stay inside the transport.
+function partialClaudeAnswer(text) {
+  const field = /"answer"\s*:\s*"/.exec(text);
+  if (!field) { return ""; }
+  const start = field.index + field[0].length;
+  let end = start, escaped = false;
+  for (; end < text.length; end++) {
+    const char = text[end];
+    if (!escaped && char === '"') { break; }
+    if (!escaped && char === "\\") { escaped = true; }
+    else { escaped = false; }
+  }
+  let raw = text.slice(start, end);
+  if (escaped) { raw = raw.slice(0, -1); }
+  try { return JSON.parse('"' + raw + '"'); } catch (_) { return ""; }
 }
 
 /* The whole run's tokens: modelUsage covers every model that took part, usage
@@ -446,7 +535,10 @@ function collect(spawn, file, args, options) {
       clearTimeout(timer);
       resolve({ code: code, stdout: stdout, stderr: error ? error.message : stderr, timedOut: timedOut });
     };
-    child.stdout.on("data", function (d) { stdout += d; });
+    child.stdout.on("data", function (d) {
+      stdout += d;
+      if (options.onData) { options.onData(String(d)); }
+    });
     child.stderr.on("data", function (d) { stderr += d; });
     child.on("error", function (e) { finish(-1, e); });
     child.on("close", function (code) { finish(code); });

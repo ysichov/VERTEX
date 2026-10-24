@@ -1,5 +1,179 @@
 # Release history
 
+## 2026-10-24 — VS Code 0.9.31, Eclipse 0.9.31: VERTEX Smart Debugger, reviews like AVE
+
+Visual Debug is now named **VERTEX Smart Debugger** in VS Code and Eclipse: its command, window and menu item, its messages and the documentation.
+
+In Eclipse, VERTEX Smart Debugger opens the line the program stopped at in the editor, also with Eclipse's own Debug view closed: at a stop, and where a run ends - not at every step. Showing a line of an object already open, ADT's debugger editor included, uses that editor instead of opening another tab.
+
+VERTEX Smart Debugger takes F5 (Single Step), F6 (Execute), F7 (Return) and F8 (Continue) while it has the focus, in VS Code and Eclipse. In Eclipse, closing it while the program stands stopped asks whether to end the program, leave it stopped or keep the window - its tab shows * while the program stands stopped; a reopened window shows the stop's line in the editor, and closing it during a run brings back Eclipse's debugger windows it had hidden.
+
+VERTEX Smart Debugger's section switches stand at the very top of the window, in VS Code and Eclipse, with a new **Run** switch that hides or shows the run controls; Variables can take the whole window as the diagram does (Esc leaves); its toolbar wraps in a narrow window. In VS Code the editor's context menu no longer offers VERTEX: Run with ABAP Transpiler - the run starts from VERTEX Smart Debugger; the command stays in the Command Palette for local files. The VERTEX items of that menu now come in the order VERTEX Tools, VERTEX Smart Debugger, VERTEX: Run Select, VERTEX: Path to This Line.
+
+ASK AI of a review no longer pastes its context into the chat's input: the blocks go on a chip above it, ASK AI on another block adds it, and ASK AI beside Approve All takes them all; the chat shows the question as written and hands the blocks to the model with it, unseen. With nothing typed, Enter asks what the change does and whether it has a real problem. The same in VS Code's VERTEX panel, in the Tools chat of VS Code and in Eclipse. The log icon of the chat shows only where Session Logs exists. A transport review in VERTEX Tools has ASK AI too, on each block and for all of an object's blocks, also while the review is only looked at; its buttons light up on hover as the rest of VERTEX's, Approve and Decline in the review's green and red. Asked about a transport review, the assistant reads the object's whole source when the answer needs code outside the shown blocks, rather than asking. The transport review opens on a summary as AVE's report draws it - developers with their rows and blocks, approved and declined and the share approved, the objects grouped by kind with totals, folding - and each block has Open, its code in the editor; Copy prompt: diff and Copy prompt: full put a ready prompt on the clipboard, as AVE's AI prompt diff and AI prompt full do, for a chat where no AI is set up. In VS Code, Copy under an answer of the Tools chat works again. Asked about a transport review's object, the assistant is given it as the reader sees it - in Full the whole source with the changes marked, in Compact the blocks with five lines around each - and answers from that.
+
+In Eclipse, VERTEX Tools opened by Window > Show View keeps the object type and name fields, filled with the active editor's object, so another object can be chosen; opened from the editor's VERTEX submenu it still follows the editor.
+
+The Calls diagram no longer shows a method IN for a WHERE ... IN ( ... ) of a SELECT.
+
+In VS Code every VERTEX command's name starts with VERTEX, in the menus as in the Command Palette - Save & Activate, Review & Activate, Run ABAP Unit Tests, Run ATC Check, ABAP Documentation, the VERTEX Tools functions and the rest - so they stand apart from VS Code's and other extensions' commands.
+
+In Eclipse, VERTEX: Activate is now **Review & Activate**, as in VS Code: it always reviews the inactive changes block by block, then activates. Activation without a review is ADT's own Ctrl+F3; the preference Review before VERTEX: Activate is gone.
+
+In Eclipse, the VERTEX submenu no longer has Forward and Backward Usage Analysis: Forward is Analyze flow path in VERTEX Smart Debugger, as in VS Code, and Backward is Where used on a breakpoint there, now in Eclipse too. VERTEX Smart Debugger in Eclipse has Clear as well: the window starts again for its object, the breakpoints and the debug session staying.
+
+In Eclipse, the VERTEX submenu no longer has Visual Flow Analysis: Calls and Logic are in VERTEX Tools, as in VS Code.
+
+In Eclipse, Run in SAP starts the program as Run As > ABAP Application does, and Run with ABAP Transpiler is no longer offered there.
+
+In Eclipse, VERTEX Tools, the assistant and the VERTEX functions open docked right of the editors, half the width, in one shared stack, instead of a window of their own over the workbench.
+
+The Eclipse assistant chat has a log icon in its header: it opens Session Logs, or, with no log folder set, says where to set one.
+
+With two programs stopped at once, each VERTEX Smart Debugger window in Eclipse steps its own program: a window never takes a thread another window shows.
+
+## 2026-10-24 — VS Code 0.9.30, Eclipse 0.9.30: the record keeps changes
+
+Steps & values keeps at each stop only the values that changed since the last stop of the same routine, in SAP as in local runs; the player shows a stop's values rebuilt from those changes and marks the ones that stop wrote. After a statement that writes no variable - WRITE without TO, SKIP, ULINE, NEW-LINE, NEW-PAGE, FORMAT - no values are read.
+
+## 2026-10-24 — VS Code 0.9.30, Eclipse 0.9.30: declared structures, recorded Continue
+
+A variable of a structure type declared as a chain (`TYPES: BEGIN OF ... END OF ...`), also in an interface, opens to its fields in Visual Analysis without a debug session. In Eclipse, Continue under Rec steps runs on to the next breakpoint instead of stopping after each step, and stops there. Visual Debug has a **Visual** switch beside Z only, in VS Code and Eclipse: on, a run draws where the program is at every step; off, the default, the window is drawn when the run stops. A structure opened in Variables shows all its fields, also those still initial; the Initials switch thins the top level of the list. In Eclipse, Steps & values records the values at every stop, and a run with Visual off hides Eclipse's own Debug, Variables and Expressions windows while it goes, bringing back those that were open when it stops. With an earlier debug session still alive beside a new one, Visual Debug takes the stopped one instead of waiting for a thread to be picked, also on a second run. A recorded run no longer stops where ADT stops by itself, such as on returning from SAP's code with Z only.
+
+## 2026-10-23 — Eclipse 0.9.30: Run Select, Visual Analysis / Debug
+
+**VERTEX: Run Select** is in Eclipse's VERTEX submenu, as in VS Code: the SELECT at the cursor opens in SelecTor when SelecTor can say it, otherwise its rows come from ADT's data preview. **Open Visual Debug** is now named **Visual Analysis / Debug**, as in VS Code. When it opens from an editor, Visual Debug starts at the editor's line, so its Variables show the routine at the cursor.
+
+## 2026-10-23 — Eclipse 0.9.30: Forward on calls
+
+Forward Usage Analysis in Eclipse no longer fails with "has no module @abaplint/core" when the flow meets a call, reads the interfaces it meets instead of reporting "Resource CLASS ... does not exist", and opens in a window of its own, as Backward does.
+
+## 2026-10-23 — Eclipse 0.9.30: the chat in its own window
+
+**VERTEX Assistant** in the VERTEX submenu opens the VERTEX chat in a window of its own, on the system of the selected object, as an alternative to Ask AI inside VERTEX Tools.
+
+**Window → Preferences → VERTEX Assistant** has "Log what is sent to the model", as VS Code's `vertex.ai.log.request`: VERTEX's instructions, the prompt with its context and the tools go into the session log, and Session Logs shows them.
+
+## 2026-10-23 — Eclipse 0.9.30: UML links open their source
+
+A method in a UML diagram opens its class at that method in Eclipse also when VERTEX Tools was opened from Project Explorer, opening the class's editor when it is not open and bringing it to the front. A plain click reuses the editor the previous plain click opened; Ctrl+click opens the class in a tab of its own. In Ask AI inside VERTEX Tools, Copy and a found object's link work.
+
+## 2026-10-23 — Eclipse 0.9.30: packages
+
+UML and Metrics of a package in Eclipse list the package's classes and interfaces; they found none. The object type, name and function fields in VERTEX Tools follow the light or dark system theme instead of staying black.
+
+## 2026-10-23 — Eclipse 0.9.30: Forward and Backward
+
+Forward and Backward Usage Analysis in Eclipse have a **Cancel** button while they run, as VS Code's progress does. **Copy log** copies the analysis log to the clipboard, and a failure of the page is shown in its status line.
+
+## 2026-10-23 — Eclipse 0.9.30: Code view colours, Calls cancelled
+
+In Eclipse, Logic's Code view shows its line numbers as links, marks the editor's cursor line and the hidden-block lines, and Reachability lights up its path, in light and dark. The "ADT analysis help" note is gone from VERTEX Tools. A Calls diagram asked for while another is still being analysed stops the older analysis, as in VS Code.
+
+## 2026-10-23 — Eclipse 0.9.30: Tools from Project Explorer
+
+VERTEX Tools opened from Project Explorer shows the object type and name fields, where a name or a mask such as `ZV*LAB` finds any object, and its Parts list is open, so Logic view of a class starts from a method picked there. Opened from an editor, Tools still follows that editor's cursor.
+
+## 2026-10-23 — VS Code 0.9.30, Eclipse 0.9.30.20261023195758: coloured paths, package UML in Eclipse
+
+Path to This Line colours its code as the Logic view's Code does - keywords, strings, numbers, comments, methods and classes - in VS Code and in Eclipse; Value sources still marks the variables of the conditions over it.
+
+The Eclipse plugin now carries the VS Code extension's version number.
+
+In Eclipse, Logic's Code view shows its token colours, light or dark as the system is; it showed plain text. UML of a package no longer fails with "Accept header missing".
+
+## 2026-10-23 — Eclipse 0.8.29.20261023191934: Path to This Line, Session Logs, stale reviews, VERTEX submenu
+
+**VERTEX: Path to This Line** is in the ADT editor's context menu, as in VS Code: the conditions under which the line at the cursor runs inside its METHOD or FORM, built from the editor's text. A click on another line of that editor builds that line's path in the same window; **Value sources** colours the variables of the conditions and puts the statements that give them their values in the path. **Window → Preferences → VERTEX Path to This Line** numbers the lines from the METHOD or FORM statement.
+
+**VERTEX: Session Logs** shows the assistant's conversation logs as VS Code does: sessions, prompts, answers, models and token usage, the objects a prompt named (opened in ADT), recorded diagram and metrics context, and clearing selected conversations. Recorded transpiler runs and SAP debug sessions open in VS Code only.
+
+A saved review is checked against the request by each part's versions when it is opened, and **Rebuild from ADT** builds it again, as in VS Code 0.9.29.
+
+Every VERTEX command of a context menu is in one **VERTEX** submenu beside GitHub and Team, instead of separate items filling the bottom of ADT's editor menu.
+
+## 2026-10-23 — VS Code 0.9.29: SAP Systems buttons
+
+The SAP Systems table's buttons are rounded as elsewhere in VERTEX and glow in the theme's focus colour under the pointer. A row whose password is kept offers **Save new password**.
+
+A review built from ADT and not yet saved has **Rebuild from ADT** beside Save: it builds the review again from the request as it is now, without reopening the window.
+
+A saved review is checked against the request when it is opened, by each part's versions. A part changed since, newly changed by the request or no longer changed by it is named above the table, with **Rebuild from ADT**: it replaces the saved review with one built now, and its verdicts and comments are dropped. A part that cannot be checked is named as not checked.
+
+## 2026-10-23 — VS Code 0.9.28: Path to This Line follows clicks
+
+While the Path to This Line panel is open, a click on another line of its source builds that line's path in the same panel, with the Value sources toggle kept as it was set. A line outside a METHOD or FORM leaves the last path shown and says why.
+
+With Value sources on, the statement that gives a condition's variable its value - a CALL FUNCTION's IMPORTING, an assignment, a SELECT - stands in the path right above that condition, its line number in the variable's colour. Constants are no longer coloured.
+
+The VERTEX panel's title holds three icons: SAP systems, LLM Providers and a gear for all VERTEX settings. The SAP system and LLM Providers links are gone from the panel's top line.
+
+The server icon opens **SAP Systems**, a table of the configured systems: per row the active choice, SNC, an on/off switch (a system switched off stays in `vertex.systems` but is left out of every list, switch and test), Log in for the password, its own Test and Delete. The SNC checkbox has left the VERTEX panel for it. Import offers only systems not yet configured. A row whose password is kept offers **Change password** instead of Log in, and each row keeps its last test result until the window is reloaded.
+
+## 2026-10-23 — VS Code 0.9.27: large sources over RFC, Path to line numbered by method
+
+On an RFC (SNC) system, SAP's `SADT_REST_RFC_ENDPOINT` dumps with `XML_FORMAT_ERROR` when hover or navigation sends it the source of a large object. The new setting `vertex.rfc.maxAnalysedLines` sets the longest source sent (`0`, the default, sets no limit), and an object whose source made SAP dump once is not sent again until the window is reloaded. Double-click and F12 in such a source find the name with abaplint inside it instead; hover says the source was not sent.
+
+`vertex.pathToLine.methodRelativeLines` numbers the lines in Path to This Line from the METHOD or FORM statement, as SAP GUI numbers a method.
+
+Path to This Line has a **Value sources** toggle: each variable read in the conditions gets a colour of its own, and a list shows where it gets its value - the last statement before the condition that writes it (assignment, IMPORTING/CHANGING, SELECT INTO, inline DATA), or that the routine does not write it.
+
+## 2026-10-23 — Eclipse 0.8.25.20261023012033: rebuilt from the current sources
+
+The Eclipse plugin, now 0.8.25 and on the update site, is rebuilt with the shared pages and analysis of VS Code 0.9.26: Logic view with Code and Diagram, Depth and step-by-step opening, folding back on a double-click, token colours and Reachability; a program's includes read by Calls, Logic and Metrics; the call scanner's fixes; reviews that list an unreadable object instead of failing. What VS Code does on its own host - Object Navigator, Path to This Line, editor folding and jumps, the transpiler, assistant logs - is not part of it.
+
+In Eclipse, VERTEX Tools and the VERTEX functions open in a window of their own beside the workbench: a view stack that was minimized no longer shows them as an overlay that the next click in the editor hides.
+
+## 2026-10-23 — VS Code 0.9.26: no review code in assistant logs
+
+A review block given to the assistant as context is logged as a reference to its part - the object and the part's type - instead of its diff text, as the rest of a session log already omits code.
+
+## 2026-10-22 — VS Code 0.9.25: Logic Code view opens a step at a time
+
+Opening a folded block in Logic's Code view no longer pours out everything inside it: a block with branches - a CASE's WHENs, an IF's ELSEIF and ELSE, a TRY's CATCH - first shows its branch lines, each with its own inside folded, and a click on a branch opens it one more level, with the blocks nested in it still folded.
+
+A double-click on the line that opened a block or a branch folds it again. A block or branch holding nothing but comments is shown as it is instead of as "(0 operations hidden)".
+
+*Logic diagram* is now called **Logic view** everywhere - the function list, the VERTEX Tools context menu, hints and help - as it shows a method's code as well as its flowchart.
+
+The **?** help of Logic view and Calls describes the Code and Diagram views, Depth and step-by-step opening, folding back on a double-click, line numbers, Reachability and how the view follows the code.
+
+**Find transport requests** in the Tools window lists the requests again; the found list was lost on its way to the page.
+
+A review built from a request that names an object since deleted no longer fails on it ("Class/Interface … does not exist"): the rest is reviewed.
+
+A review no longer fails on any one object it cannot read - one deleted since, or one whose versions ADT does not keep on that system ("Request version for DTEL is not supported"): the rest is reviewed, and such objects are listed under **Not reviewed** with the reason.
+
+## 2026-10-22 — VS Code 0.9.24: Logic depth
+
+The Logic diagram has a **Depth** field, 1 by default, as Calls has - the levels inside the method that are shown, 1 being the method's own statements: blocks whose inside is deeper keep their opening and closing statement, and what is inside them is one node saying how many operations it hides (for example *(24 operations hidden)*); a click on it opens the block in place. Large methods no longer draw every level at once.
+
+Logic opens on a **Code | Diagram** toggle set to Code: the method's lines exactly as written and coloured by token in the theme's colours, folded to the same Depth, a line number opening the line in the editor and the editor's cursor marking its line. In the path panel, a one-line `IF … ENDIF.` is no longer listed twice.
+
+A VERTEX Tools window opened from a source of SAP's ADT extension follows that editor's cursor and opens the lines its Code view, diagram and metrics link to in that editor; before, only VERTEX's own tabs were followed and opened.
+
+## 2026-10-22 — VS Code 0.9.23: path to a line
+
+**VERTEX: Path to This Line** in the ABAP editor's context menu shows the conditions under which the line at the cursor runs inside its METHOD or FORM: enclosing branches, earlier branches that must be false, CHECKs, and earlier branches that must not be taken because they leave the routine. Conditions appear as written in the code; a line after an unconditional exit is reported as not reachable. Works on local and SAP sources without a system call. The panel indents rows as the code is nested and shows the closing statements. In the Logic diagram, the **Reachability** toggle lights up the path to a clicked node and quiets the rest.
+
+ABAP blocks and their branches fold in the editor by the code's structure rather than its indentation, so unformatted code folds too; a multi-line condition stays visible when folded.
+
+Double-click, F12 and Ctrl+click between a block's opening and closing statements follow the code's structure: a call parameter named CLASS at the start of a line no longer breaks the matching of the blocks after it.
+
+In the Logic diagram every statement opens its source line, CONTINUE and ENDIF included, and a lone left-out operation is drawn as itself instead of a "1 operation" block. The code moves the diagram, not the other way round: a click or a scroll in the editor positions it, scrolling into another method opens that method's diagram, scrolling the diagram stays in it, and the diagram reaches the code only by a click on a node.
+
+The Calls and Logic diagrams no longer take offset/length access (`s370(4)`, `gt_name(10)`) or an inline `FIELD-SYMBOL(<fs>)` for a call; such nodes appeared as unresolved calls. A form of another program called as `PERFORM f(prog)` is followed into that program, as `PERFORM f IN PROGRAM prog` already was. ABAP's built-in functions (`lines( )`, `xsdbool( )`) are no longer drawn as unresolved calls.
+
+Object Navigator opens a method of a program's local class that is implemented in an include, in that include. A breakpoint set in an include's editor is now set in SAP; it used to be dropped silently.
+
+The Calls and Logic diagrams read a program's INCLUDEs as part of it, so local classes and forms kept in includes resolve. A method call whose name is also an ABAP keyword, such as `add( x )`, is recognised. **VERTEX Tools → Object Navigator** is in the editor's context menu; for a program in local files it shows the includes, events, local classes with their methods and subroutines, read from the program and its include files.
+
+In the Calls and Logic diagrams and in Metrics, a routine a program keeps in an include opens in that include at its line. An include of declarations only, such as a local class's DEFINITION, no longer shows up in Metrics as a START-OF-SELECTION of its own.
+
+Double-click, F12 and Ctrl+click on a call of a local class kept in an include (`lcl_app=>main( )`) go to its METHOD in that include, and on a local class's or form's name to its declaration there, instead of looking for a global class in SAP.
+
+Object Navigator on an include shows the tree of the program that includes it, as SE80 does; an include used by several programs names them.
+
 ## Unreleased — flow diagrams after a run and in a local analysis
 
 - Visual Debug's diagram of a record draws a block the run stopped on once. A CASE or IF it stood on was drawn twice, and the branch it went through hung from the copy.

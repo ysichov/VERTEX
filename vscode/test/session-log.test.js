@@ -142,3 +142,14 @@ test("SAP debug_run gains its saved-recording link when a later assistant tool s
     assert.ok(calls.every(c => c.recording.id === "sap-run-1" && c.recording.kind === "sap"));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('a review block in the context is logged as a reference to its part, not as its code', () => {
+  const log = require('../session-log');
+  const objects = [];
+  const text = 'Review context:\n' + JSON.stringify({ selected_fragment: { compared_with: '', review_object: 'Z_TR_TEXT_TRANSFER', review_type: 'REPS',
+    text: 'Review of Z_TR_TEXT_TRANSFER (REPS) in request ALCK900726:\n  TYPES: BEGIN OF ty_out,\n    sel TYPE abap_bool,\n  END OF ty_out.' } });
+  const safe = log.sanitizeText(text, objects);
+  assert.doesNotMatch(safe, /TYPES: BEGIN OF ty_out/);
+  assert.match(safe, /not logged; open the referenced object/);
+  assert.ok(objects.some(o => o.object_name === 'Z_TR_TEXT_TRANSFER' && o.object_type === 'PROG' && o.part && o.part.type === 'REPS'));
+});

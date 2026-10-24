@@ -94,6 +94,13 @@ function redactArgs(args) {
 
 function objectReference(value, inherited = {}) {
   if (!value || typeof value !== "object") return inherited;
+  // A review block is a part of an object: review_object names it, review_type is the part's type as a request has it.
+  if (typeof value.review_object === "string" && value.review_object) {
+    const part = String(value.review_type || "").toUpperCase(), name = value.review_object.toUpperCase();
+    const type = part === "FUNC" ? "FUNC" : ["METH", "CPUB", "CPRO", "CPRI", "CINC"].includes(part) ? "CLAS" : part === "REPS" ? "PROG" : "";
+    const object = type === "CLAS" ? name.slice(0, 30).replace(/=+.*$/, "").trim() : name;
+    if (type && /^[A-Z0-9_/$~]+$/.test(object)) return { object_name: object, object_type: type, part: { type: part, name } };
+  }
   const name = value.object_name || (value.type || value.kind ? value.name : "") || inherited.object_name;
   const type = value.object_type || ({ class: "CLAS", interface: "INTF" }[value.kind]) || value.type || inherited.object_type;
   const local = value.path || inherited.path;
@@ -121,7 +128,8 @@ function sanitize(value, objects, inherited = {}, parentKey = "", snapshots = []
   for (const [key, item] of Object.entries(value)) {
     const source = /^(?:source|sources|source_text|abap_source|code|old_source|new_source|old_text|new_text|replacement|patch|source_before|source_after)$/i.test(key)
       && !(key === "source" && "target" in value); // UML relationship endpoints are names, not code.
-    const fragment = key === "text" && /fragment|selected_code/i.test(parentKey);
+    // A text that is code: a selected fragment, or a review block - its diff with the lines of the object it names.
+    const fragment = key === "text" && (/fragment|selected_code|review/i.test(parentKey) || "review_object" in value);
     if ((source || fragment) && (typeof item === "string" || Array.isArray(item) || key === "sources")) {
       if (typeof item === "string") {
         const header = /\b(REPORT|PROGRAM|CLASS|INTERFACE|FUNCTION)\s+([A-Z0-9_/$~]+)/i.exec(item);

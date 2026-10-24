@@ -350,11 +350,11 @@ test("multiple search results are returned as openable choices", async () => {
   assert.deepEqual(choices.map(choice => choice.object_name), ["ZTEST_ONE", "ZTEST_TWO"]);
 });
 
-test("the chat is given Visual Debug's record and analysis, each said to be what it is, and nothing when the window has neither", () => {
+test("the chat is given VERTEX Smart Debugger's record and analysis, each said to be what it is, and nothing when the window has neither", () => {
   assert.equal(chat.debugFlowSection(null), "");
   assert.equal(chat.debugFlowSection({ recorded: null, analysis: null }), "", "a window with neither adds nothing to the question");
-  const section = chat.debugFlowSection({ view: "Visual Debug", recorded: { steps: [{ depth: 0, at: "ZREP:10" }] }, analysis: { statements: [{ at: "ZREP:10" }] } });
-  assert.match(section, /Visual Debug/);
+  const section = chat.debugFlowSection({ view: "VERTEX Smart Debugger", recorded: { steps: [{ depth: 0, at: "ZREP:10" }] }, analysis: { statements: [{ at: "ZREP:10" }] } });
+  assert.match(section, /VERTEX Smart Debugger/);
   assert.match(section, /`recorded` is what the program actually did/);
   assert.match(section, /never present the second as the first/);
   assert.ok(section.includes('"steps":[{"depth":0,"at":"ZREP:10"}]'), "the context itself follows");

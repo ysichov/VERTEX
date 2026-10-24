@@ -75,6 +75,21 @@ public class ChatView extends PageView {
 				}
 			}
 		};
+		// The log icon: Session Logs, or where to set the log folder when none is set. Empty means opened.
+		new BrowserFunction(this.browser, "sdeOpenLogs") {
+			@Override
+			public Object function(Object[] args) {
+				if (AssistantPreferences.setting("logPath").isBlank()) {
+					return "Nothing is logged yet: set a log folder in Window → Preferences → VERTEX Assistant.";
+				}
+				try {
+					DetachedView.show(getSite().getPage(), LogsView.ID, null);
+					return "";
+				} catch (Exception e) {
+					return "Cannot open VERTEX Session Logs: " + describe(e);
+				}
+			}
+		};
 		// The workbench owns Ctrl+C; without a handler of this view's own nothing is copied.
 		getViewSite().getActionBars().setGlobalActionHandler(org.eclipse.ui.actions.ActionFactory.COPY.getId(),
 				new org.eclipse.jface.action.Action() {
@@ -141,6 +156,13 @@ public class ChatView extends PageView {
 			}
 		}
 		return "{\"active\":" + active + ",\"open\":[" + open + "]}";
+	}
+
+	/** ASK AI of a review: its blocks, as JSON, on the chat's chip, for the question the user writes. */
+	void reviewAsk(String blocks) {
+		if (!browser.isDisposed()) {
+			browser.execute("sdeReviewAsk(" + AssistantBridge.quote(blocks) + ");");
+		}
 	}
 
 	/** Puts a prepared question into the input for the user to send or edit. */

@@ -39,7 +39,7 @@ public abstract class ServiceHandler extends AbstractHandler {
 		counter++;
 		try {
 			IWorkbenchPage page = HandlerUtil.getActiveWorkbenchWindowChecked(event).getActivePage();
-			page.showView(viewId(), secondaryId(context, counter), IWorkbenchPage.VIEW_ACTIVATE);
+			DetachedView.show(page, viewId(), secondaryId(context, counter));
 		} catch (Exception e) {
 			throw new ExecutionException("Cannot open " + description(), e);
 		}

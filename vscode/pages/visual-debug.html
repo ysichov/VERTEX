@@ -1,5 +1,5 @@
 <!doctype html><html><head><meta charset="utf-8"><style>
-/* Visual Debug: the source with its breakpoints, where the program stands,
+/* VERTEX Smart Debugger: the source with its breakpoints, where the program stands,
    and every variable at once - the picture of Smart Debugger, drawn from the
    ADT debugger the assistant drives. Every colour comes from the theme. */
 body{margin:0;background:var(--vscode-editor-background,Canvas);color:var(--vscode-editor-foreground,CanvasText);font:13px system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -145,6 +145,12 @@ table.grid th{position:sticky;top:0;background:var(--vscode-editorWidget-backgro
 #tip .tipmore{margin-top:2px;color:var(--vscode-descriptionForeground,GrayText)}
 #flowpane{display:flex;flex-direction:column;min-height:0}
 #right [hidden]{display:none!important}
+/* Out of #right, the switches need their own: a button's style would show a hidden one again. */
+#panes [hidden]{display:none!important}
+#runsec{display:contents}
+#runsec[hidden]{display:none}
+#varsec h3{flex-wrap:wrap}
+#varsec.full{position:fixed;inset:0;z-index:300;background:var(--vscode-editor-background,Canvas)}
 #panes{flex:none;display:flex;gap:4px;flex-wrap:wrap;padding:4px 6px;border-bottom:1px solid var(--vscode-panel-border,GrayText);background:var(--vscode-sideBar-background,var(--vscode-editor-background,Canvas))}
 .hsplit{flex:none;height:4px;cursor:row-resize;background:var(--vscode-panel-border,GrayText)}
 .hsplit:hover,.hsplit.drag{background:var(--vscode-sash-hoverBorder,Highlight)}
@@ -281,12 +287,18 @@ body.vertex-docked-debug #right{width:100%}
 ::-webkit-scrollbar-thumb:hover{background:var(--vscode-scrollbarSlider-hoverBackground,rgba(128,128,128,.6))}
 .debug-help{position:absolute;right:8px;top:6px;z-index:60}.debug-help>summary{cursor:pointer;list-style:none;padding:3px 9px;border:1px solid var(--vscode-panel-border);border-radius:5px;background:var(--vscode-button-secondaryBackground,var(--vscode-editorWidget-background))}.debug-help>div{position:absolute;right:0;width:min(440px,85vw);max-height:65vh;overflow:auto;padding:14px;border:1px solid var(--vscode-panel-border);background:var(--vscode-editorWidget-background,var(--vscode-editor-background));color:var(--vscode-editor-foreground);box-shadow:0 4px 18px var(--vscode-widget-shadow)}
 </style></head><body>
-<header><button id="clearpanel" title="Start this panel again: the record, the analysed path, the values followed and the output are dropped; the breakpoints and a SAP debug session stay">Clear</button><details class="debug-help"><summary aria-label="Visual Debug help" title="Visual Debug help">?</summary><div><strong>Visual Debug</strong><p><b>Run in SAP</b> starts the program in WebGUI and the breakpoints catch it there. <b>Run with ABAP Transpiler</b> runs it on this machine: a program opens in its own window - selection screen, Execute (F8), the list, Back (F3) - and Run here brings that window back; a method or a function module asks its parameters first.</p><p>An SAP object runs its last build, as SAP runs a load. <b>Recompile</b> reads it and what it uses from SAP again; its tooltip says when the build was read.</p><p>Single Step, Execute, Return and Continue (F5-F8, here or in the editor) step from a stop. A transpiler run records every step: the slider replays it, and Variables shows the routine's values, SY and the SELECTs of the statement before.</p><p>Output is what the program wrote; a call's results follow it, structures as trees and tables as columns. A failed run names the ABAP line it stopped on.</p><p>Exit program ends a stopped program; for an SAP run, Detach lets it go on and stops listening. The breakpoints stay for the next run. Clear starts this panel again.</p><p>Click a linked label or a breakpoint's place to open its source; Alt+Left returns. The bug button copies the full diagnostic log.</p><p>The zoom slider is 10-100%. The lens works below 70%, magnifying up to that effective scale. Changing the theme preserves zoom and position.</p></div></details><button id="debug-runs" title="Open SAP debug and transpiler recordings">SAP / Transpiler Logs</button><button id="analysis-copy" aria-label="Copy analysis log" title="Copy the latest path and value analysis, including FLOW, Formula and Expression">🐞</button>
+<!-- The section switches stand at the very top: the Run controls are one of them. -->
+<div id="panes" title="Show or hide a section; drag the line between two sections to resize them">
+      <button data-pane="runsec" class="on" title="The run controls: Run in SAP, the steps, Visual, Z only and the record">Run</button><button data-pane="stacksec" class="on">Stack</button><button data-pane="bpsec">Breakpoints</button><button data-pane="varsec" class="on">Variables</button><button data-pane="flowpane">Diagram</button><button data-pane="dumpsec">Dump</button><button data-pane="outsec" hidden title="What the program wrote (WRITE), up to where it stands">Output</button><button data-pane="logsec">Log</button>
+</div>
+<header><button id="clearpanel" title="Start this panel again: the record, the analysed path, the values followed and the output are dropped; the breakpoints and a SAP debug session stay">Clear</button><details class="debug-help"><summary aria-label="VERTEX Smart Debugger help" title="VERTEX Smart Debugger help">?</summary><div><strong>VERTEX Smart Debugger</strong><p><b>Run in SAP</b> starts the program in WebGUI and the breakpoints catch it there. <b>Run with ABAP Transpiler</b> runs it on this machine: a program opens in its own window - selection screen, Execute (F8), the list, Back (F3) - and Run here brings that window back; a method or a function module asks its parameters first.</p><p>An SAP object runs its last build, as SAP runs a load. <b>Recompile</b> reads it and what it uses from SAP again; its tooltip says when the build was read.</p><p>Single Step, Execute, Return and Continue (F5-F8, here or in the editor) step from a stop. A transpiler run records every step: the slider replays it, and Variables shows the routine's values, SY and the SELECTs of the statement before.</p><p>Output is what the program wrote; a call's results follow it, structures as trees and tables as columns. A failed run names the ABAP line it stopped on.</p><p>Exit program ends a stopped program; for an SAP run, Detach lets it go on and stops listening. The breakpoints stay for the next run. Clear starts this panel again.</p><p>Click a linked label or a breakpoint's place to open its source; Alt+Left returns. The bug button copies the full diagnostic log.</p><p>The zoom slider is 10-100%. The lens works below 70%, magnifying up to that effective scale. Changing the theme preserves zoom and position.</p></div></details><button id="debug-runs" title="Open SAP debug and transpiler recordings">SAP / Transpiler Logs</button><button id="analysis-copy" aria-label="Copy analysis log" title="Copy the latest path and value analysis, including FLOW, Formula and Expression">🐞</button>
   <!-- Three groups, because they answer three questions: what to do with the
        program, how to step, and how a run behaves. -->
-  <span class="grp"><button id="run" title="Start the program in SAP (WebGUI) - the breakpoints catch it there"><svg class="clock" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#fff" stroke="#3a3a3a" stroke-width="1.2"/><path d="M8 3.8V8l2.6 1.6" fill="none" stroke="#3a3a3a" stroke-width="1.3" stroke-linecap="round"/><path d="M9.2 12.2l1.8 1.8 3.6-4" fill="none" stroke="#2e9e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Run in SAP</button><button id="recompile" hidden>Recompile</button><button id="sapTranspile" hidden title="Read this program, the class of the method the cursor is in or this function module's group, and what it uses from SAP, and run it with the ABAP transpiler">Run with ABAP Transpiler</button><input id="program" placeholder="Program, or empty for a test" title="A class or a function module is not run by itself: name the program that calls it, started in WebGUI" spellcheck="false"><span id="title">Visual Debug</span><button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Exit program</button><button id="stop" title="Let the program go and stop listening; the breakpoints stay here for the next run" disabled>Detach</button></span>
+  <span id="runsec">
+  <span class="grp"><button id="run" title="Start the program in SAP (WebGUI) - the breakpoints catch it there"><svg class="clock" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#fff" stroke="#3a3a3a" stroke-width="1.2"/><path d="M8 3.8V8l2.6 1.6" fill="none" stroke="#3a3a3a" stroke-width="1.3" stroke-linecap="round"/><path d="M9.2 12.2l1.8 1.8 3.6-4" fill="none" stroke="#2e9e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Run in SAP</button><button id="recompile" hidden>Recompile</button><button id="sapTranspile" hidden title="Read this program, the class of the method the cursor is in or this function module's group, and what it uses from SAP, and run it with the ABAP transpiler">Run with ABAP Transpiler</button><input id="program" placeholder="Program, or empty for a test" title="A class or a function module is not run by itself: name the program that calls it, started in WebGUI" spellcheck="false"><span id="title">VERTEX Smart Debugger</span><button id="terminate" title="End the program here, as the debugger's Exit does; the breakpoints stay for the next run" disabled>Exit program</button><button id="stop" title="Let the program go and stop listening; the breakpoints stay here for the next run" disabled>Detach</button></span>
   <span class="grp"><button id="into" title="Single Step (F5)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v8h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 8l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Single Step</span></button><button id="over" title="Execute (F6)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M2 2v11h5" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 11l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Execute</span></button><button id="out" title="Return (F7)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M3 14V4h4" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 2l2 2-2 2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Return</span></button><button id="cont" title="Continue to the next breakpoint (F8)" disabled><svg class="dbg" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h6M9 6h6M9 9h6M9 12h6" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M4 1.5v12" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11.5l2 2 2-2" fill="none" stroke="#d93025" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl">Continue</span></button></span>
-  <span class="grp"><button id="zonly" class="on" title="In a run of F5 steps, a step that lands outside Z/Y code returns at once (F7): SAP's own code is passed in one go">Z only</button><span class="vertex-segment-toggle" id="recmode" role="group" aria-label="Record" title="Continue (F8) as a run of F5 steps, keeping every stop for the player. Values are the expensive half of a stop - with Steps &amp; values the parameters and locals are read at every stop, so Formula and Expression can say which statement changed a value"><button data-rec="off">No record</button><button class="active" data-rec="steps">Rec steps</button><button data-rec="values">Steps &amp; values</button></span></span>
+  <span class="grp"><button id="visual" title="Draw where the program is at every step of a run (F8 with recording); off, the window is drawn when the run stops">Visual</button><button id="zonly" class="on" title="In a run of F5 steps, a step that lands outside Z/Y code returns at once (F7): SAP's own code is passed in one go">Z only</button><span class="vertex-segment-toggle" id="recmode" role="group" aria-label="Record" title="Continue (F8) as a run of F5 steps, keeping every stop for the player. Values are the expensive half of a stop - with Steps &amp; values the parameters and locals are read at every stop, so Formula and Expression can say which statement changed a value"><button data-rec="off">No record</button><button class="active" data-rec="steps">Rec steps</button><button data-rec="values">Steps &amp; values</button></span></span>
+  </span>
   <span id="state">Click beside a line number to set a breakpoint; right-click for a condition.</span>
 </header>
 <div id="local-selection" hidden></div>
@@ -306,9 +318,6 @@ body.vertex-docked-debug #right{width:100%}
          player moves the stack, the variables and the source as well, and it
          is there whether a diagram is open or not. -->
     <div id="recbar" hidden><button id="ffirst" title="The first recorded stop">&#9198;</button><button id="fprev" title="One stop back in the recorded run">&#9664;</button><input type="range" id="fslide" min="1" max="1" value="1" title="Any recorded stop"><span id="fpos" class="dim"></span><button id="fnext" title="One stop forward; past the last one the chart goes live again">&#9654;</button><button id="flast" title="The last recorded stop">&#9197;</button><button id="fplay" title="Replay the recorded run as fast as the chart draws">&#9205;</button><select id="fspeed" title="Replay speed, stops per second"><option value="1">1/s</option><option value="2">2/s</option><option value="3" selected>3/s</option><option value="5">5/s</option><option value="10">10/s</option><option value="0">max</option></select><button id="saveRecord" hidden title="Save this SAP debug session and its source snapshots to a file">Save session</button></div>
-    <div id="panes" title="Show or hide a section; drag the line between two sections to resize them">
-      <button data-pane="stacksec" class="on">Stack</button><button data-pane="bpsec">Breakpoints</button><button data-pane="varsec" class="on">Variables</button><button data-pane="flowpane">Diagram</button><button data-pane="dumpsec">Dump</button><button data-pane="outsec" hidden title="What the program wrote (WRITE), up to where it stands">Output</button><button data-pane="logsec">Log</button>
-    </div>
     <section id="stacksec"><h3><span>Stack</span><span id="depth" class="dim"></span><span class="grow"></span><button id="callers" hidden></button></h3><div class="list" id="stack"></div></section>
     <section id="bpsec" hidden><h3><span>Breakpoints</span><span class="grow"></span><button id="bpscope" class="vertex-toggle" hidden title="Off: only the breakpoints in this object and the sources it uses. On: every ABAP breakpoint in VS Code - for a run that should stop in other objects too">All BP</button><button id="bpall" title="Turn every breakpoint off, or on again, keeping them">Deactivate all</button><button id="bpclear" title="Remove every breakpoint, here and in SAP">Clear all</button></h3><div class="list" id="bps"></div></section>
     <section id="varsec"><h3><span>Variables</span><span id="partial" class="dim"></span><span class="grow"></span>
@@ -319,7 +328,7 @@ body.vertex-docked-debug #right{width:100%}
       <button id="syst" title="Show the system fields SY">SYST</button>
       <button id="initials" title="Show variables with an initial value">Initials</button>
       <span id="chosenvalue" hidden></span>
-      <input id="filter" placeholder="Filter" spellcheck="false"></h3>
+      <input id="filter" placeholder="Filter" spellcheck="false"><button id="varfull" title="The whole window (Esc to leave)">&#10530;</button></h3>
       <div class="list" id="watchpoints"></div><div class="list" id="vars"></div></section>
     <section id="dumpsec" hidden><h3><span>Dump</span><span id="dumpwhen" class="dim"></span><span class="grow"></span>
       <button id="dumpcheck" title="Ask ST22 now whether this user has a new short dump since the run started">Check ST22</button>
@@ -398,7 +407,7 @@ function sdeOriginReady(raw){
   }
 }
 function ask(send,raw){return new Promise(function(ok,fail){queued.push({ok:ok,fail:fail,raw:raw===true,send:send});sdeNext();});}
-function debug(command,args){if(typeof sdeDebug!=="function")return Promise.reject(new Error("Visual Debug needs the VS Code host."));return ask(function(){sdeDebug(command,args||{});});}
+function debug(command,args){if(typeof sdeDebug!=="function")return Promise.reject(new Error("VERTEX Smart Debugger needs the VS Code host."));return ask(function(){sdeDebug(command,args||{});});}
 // A run that failed stays said: clearing the notice brings it back until another run starts.
 function notice(text){var n=$("notice");text=text||(typeof runFailure!=="undefined"?runFailure:"");n.textContent=text||"";n.classList.toggle("on",!!text);}
 /* How the run ended. SAP ends a program the same way whether it finished or
@@ -487,7 +496,7 @@ window.sdeRunFailed=function(message){runFailure=String(message||"The run failed
 var object={url:"",lines:[],name:INITIAL&&INITIAL.name||"",type:INITIAL&&INITIAL.type||""};
 // Opened with no source - restored by VS Code after a reload, or from a tab VERTEX did not know: said, not left blank.
 if(!object.name)document.addEventListener("DOMContentLoaded",function(){
-  var said="No ABAP source: open a program, class or function module and start Visual Debug from its editor (right-click > Visual Debug, or Run with ABAP Transpiler).";
+  var said="No ABAP source: open a program, class or function module and start VERTEX Smart Debugger from its editor (right-click > VERTEX Smart Debugger, or Run with ABAP Transpiler).";
   var state=document.getElementById("state");if(state)state.textContent=said;
   var vars=document.getElementById("vars");if(vars&&!vars.textContent.trim()){var p=document.createElement("div");p.className="empty";p.textContent=said;vars.appendChild(p);}
 });
@@ -919,6 +928,17 @@ Object.keys(STEP).forEach(function(id){$(id).onclick=function(){
   manualStep={key:{into:"F5",over:"F6",out:"F7",cont:"F8"}[id],t:Date.now()};
   debug("step",{kind:STEP[id]}).catch(failed);};});
 $("zonly").onclick=function(){$("zonly").classList.toggle("on");};
+/* F5 Single Step, F6 Execute, F7 Return, F8 Continue while this window has the focus, as its buttons are titled. VS Code's
+   editor binds them too; in Eclipse they reach Eclipse's own debugger only while its Debug view has the session. Not
+   while a field is typed in or a dialog stands open - the selection screen takes its own F8. */
+document.addEventListener("keydown",function(e){
+  var id={F5:"into",F6:"over",F7:"out",F8:"cont"}[e.key];
+  if(!id||e.ctrlKey||e.altKey||e.metaKey||e.shiftKey)return;
+  if(document.querySelector("dialog[open]")||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target&&e.target.tagName||""))return;
+  var button=$(id);if(!button||button.disabled)return;
+  e.preventDefault();button.click();
+});
+$("visual").onclick=function(){$("visual").classList.toggle("on");};
 /* No record, the steps, or the steps with the values read where each routine
    starts and ends: one state, so one control. */
 function recMode(){var on=$("recmode").querySelector(".active");return on?on.getAttribute("data-rec"):"off";}
@@ -1118,10 +1138,11 @@ function runVisual(){
   $("cont").querySelector(".lbl").textContent="Pause";$("cont").title="Pause the run (F8)";drawButtons();
   var s=series;s.home={};spots=[];fresh();logStart();
   picture.stopped.frames.forEach(function(f){if(f.program&&!f.system)s.home[f.program]=true;});
-  // A run always shows where the program is - there is no reason to watch a
-  // window that stays still. What the record keeps is the other question, and
-  // the record control answers it.
-  s.rec=recording();s.draw=true;
+  // What the record keeps is the record control's question; Visual draws the window at every step of the run; off - the default - it is drawn when the run stops, and the run is
+  // measured without the drawing.
+  s.rec=recording();s.draw=$("visual").classList.contains("on");
+  // A host whose own debugger windows redraw at every step (Eclipse) hides them for a run with Visual off.
+  s.quiet=!s.draw&&typeof sdeQuietDebugViews==="function";if(s.quiet)sdeQuietDebugViews(true);
   if(s.rec){
     if(!flow.order.length||flow.ended!==picture.ended||flow.closed){flow={edges:{},nodes:{},order:[],ended:picture.ended};flowPath=[];}
     record(picture.stopped.frames);s.valueDue=!!chosenValue;s.snapDue=!INITIAL.local;$("cont").title="Pause the recording (F8)";
@@ -1131,7 +1152,7 @@ function runVisual(){
   function wantValues(){return recordingValues();}
   function seen(p){
     picture=p;
-    if(s.rec&&p.stopped){record(p.stopped.frames);s.snapDue=wantValues();s.valueDue=!!chosenValue||!!slicePoints;}
+    if(s.rec&&p.stopped){record(p.stopped.frames);s.snapDue=wantValues()&&!s.quietStep;s.valueDue=!!chosenValue||!!slicePoints;}
     if(s.draw){var td=Date.now();apply(p);spent(s,"draw",td);}
   }
   function next(){
@@ -1142,7 +1163,7 @@ function runVisual(){
     // Still in SAP's own code above ours: back out before anything else.
     if($("zonly").classList.contains("on")&&strayed(picture.stopped.frames)){
       var t0=Date.now();
-      return backToOurs(picture.stopped.frames).then(function(o){
+      s.quietStep=false;return backToOurs(picture.stopped.frames).then(function(o){
         if(lastMove){lastMove.ms=Date.now()-t0;lastMove.sap=o.sap||0;}
         stepShare(s,o,t0);s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t0;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
         if(o.ended)return stepEnded(o);
@@ -1153,11 +1174,13 @@ function runVisual(){
     }
     // F5, and SAP says where the program now is: the stack comes back in the same request as the step, and with a
     // value followed, that value too.
+    // A statement that writes no variable (WRITE, SKIP, ULINE ... - the map marks it quiet): the stop after it is not read.
+    var place=f&&maps[f.program]?placeOf(f,maps[f.program]):null;s.quietStep=!!(place&&place.here&&place.here.quiet);
     var t=Date.now(),reads=s.rec&&chosenValue&&chosenValue.name?[chosenValue.name]:null;
     explain(f,false,null,"F5");
     lastMove={action:"F5",from:String(f.label),detail:""};
     // Steps & values: every scope is read with the step too; the record keeps the ones it wants.
-    return debug("step",{kind:"into",quick:true,read:reads,scopes:wantValues()?["params","locals","globals"]:null}).then(function(r){
+    return debug("step",{kind:"into",quick:true,read:reads,scopes:wantValues()&&!s.quietStep?["params","locals","globals"]:null}).then(function(r){
         if(lastMove){lastMove.ms=Date.now()-t;lastMove.sap=r.sap||0;}
         s.preread=r.values||null;s.prescopes=r.scopes||null;
         stepShare(s,r,t);s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
@@ -1184,6 +1207,9 @@ function runVisual(){
       });
   }
   s.done=next().catch(failed).then(function(){
+    if(s.quiet)sdeQuietDebugViews(false);
+    // Where the run ended, shown in the editor by a host that does so (Eclipse); VS Code marks the line itself.
+    if(typeof sdeRevealStop==="function")sdeRevealStop(picture);
     if(s.left)notice("The run stopped: the program left "+object.name+" - it is now at "+s.left+".");
     series=null;$("cont").querySelector(".lbl").textContent="Continue";$("cont").title="Continue to the next breakpoint (F8)";
     drawStats(s);stopKey="";lastStep=null;
@@ -1250,25 +1276,28 @@ function snapshot(captured,pre){
     return Promise.resolve()
       .then(function(){
         var values=groups.map(function(g){return {name:g.name,children:(g.children||[]).map(function(v){return {name:v.name,type:v.type,value:v.value,meta:v.meta};})};});
-        if(!INITIAL.local){at.vars=values;return;}
+        // Each stop keeps only what changed since the last stop of the same routine - in a run in SAP as in a local one -
+        // so the record says what an operation wrote; the player rebuilds a stop's values from the changes.
+        var routine=at&&at.cur?String(at.cur.owner||"")+"|"+String(at.cur.name||"")+"|"+(at.stack||[]).length:"";
+        var cache=localVarCache[routine]||{};
         var next={},deltas=[];
         values.forEach(function(g){var changed=[];
           g.children.forEach(function(v){var key=g.name+"\u0000"+v.name,sig=JSON.stringify([v.type,v.value,v.meta]);
             next[key]={signature:sig,group:g.name,name:v.name};
-            if(!localVarCache[key]||localVarCache[key].signature!==sig)changed.push(v);});
+            if(!cache[key]||cache[key].signature!==sig)changed.push(v);});
           if(changed.length)deltas.push({name:g.name,children:changed});});
-        Object.keys(localVarCache).forEach(function(key){if(next[key])return;
-          var old=localVarCache[key],group=deltas.filter(function(g){return g.name===old.group;})[0];
+        Object.keys(cache).forEach(function(key){if(next[key])return;
+          var old=cache[key],group=deltas.filter(function(g){return g.name===old.group;})[0];
           if(!group){group={name:old.group,children:[]};deltas.push(group);}
           group.children.push({name:old.name,deleted:true});});
-        localVarCache=next;at.vars=deltas;at.varsDelta=true;
+        localVarCache[routine]=next;at.vars=deltas;at.varsDelta=true;
       });
   }).catch(function(e){at.vars={error:e.message};});
 }
 /* The values the player shows at a recorded stop: those read there, or the
    last ones read in the same routine before it. */
 var recordedOpen={},recordedPages={};
-function drawRecordedTree(table,name,value,depth,key){
+function drawRecordedTree(table,name,value,depth,key,changed){
   var complex=value!==null&&typeof value==="object",list=Array.isArray(value);
   // Show the components of a local run's top-level structures immediately;
   // an explicit collapse is kept when the player moves to another stop.
@@ -1281,6 +1310,8 @@ function drawRecordedTree(table,name,value,depth,key){
   type.textContent=list?"TABLE":complex?"STRUCTURE":"";
   val.textContent=list?value.length+" rows":complex?Object.keys(value).length+" fields":value==null?"":String(value);
   val.title=val.textContent;tr.appendChild(n);tr.appendChild(type);tr.appendChild(val);table.appendChild(tr);
+  // What this stop's operation wrote, among the values carried from earlier stops.
+  if(changed){val.classList.add("changed");val.title="Written at this stop: "+val.textContent;}
   // key is group/name/component...: the path to follow is name-component, as SAP names it.
   var parts=String(key).split("/").slice(1);
   if(parts.length&&!parts.some(function(x){return /^\d+$/.test(x);})){var path=parts.join("-").toUpperCase();
@@ -1308,7 +1339,9 @@ function drawRecordedVars(i){
     box.appendChild(recorded);return;
   }
 
-  if(INITIAL.local){
+  var changedHere={};
+  if(tl[i]&&Array.isArray(tl[i].vars))tl[i].vars.forEach(function(g){(g.children||[]).forEach(function(v){if(!v.deleted)changedHere[g.name+"/"+v.name]=true;});});
+  if(INITIAL.local||tl[i]&&tl[i].varsDelta||tl.some(function(x){return x.varsDelta;})){
     var values={};
     // The routine this stop stands in: only its own stops' values, not those of the methods it called.
     var here=function(x){return !t||!t.cur||!x.cur||x.cur.owner===t.cur.owner&&x.cur.name===t.cur.name;};
@@ -1326,7 +1359,7 @@ function drawRecordedVars(i){
     if(!groupOn(g)||/^SY(?:ST)?$/i.test(String(g.name))&&!$("syst").classList.contains("on"))return;
     var tr=document.createElement("tr");tr.className="grp";var td=document.createElement("td");td.colSpan=3;
     td.textContent=g.name+" · "+(k+1===i?"read at this stop":"as read at stop "+(k+2));tr.appendChild(td);table.appendChild(tr);
-    g.children.forEach(function(v){drawRecordedTree(table,v.name,v.value,0,g.name+"/"+v.name);});
+    g.children.forEach(function(v){drawRecordedTree(table,v.name,v.value,0,g.name+"/"+v.name,!!changedHere[g.name+"/"+v.name]);});
   });
   box.appendChild(table);
 }
@@ -2072,6 +2105,9 @@ valueObserver.observe($("bse-workspace"),{childList:true,subtree:true});
 /* The zoom, the fit and the magnifier belong to the view now; the window
    keeps only the pane around it. */
 $("ffull").onclick=function(){$("flowpane").classList.toggle("full");};
+// Variables take the whole window as the diagram does; Esc gives the place back.
+$("varfull").onclick=function(){$("varsec").classList.toggle("full");};
+document.addEventListener("keydown",function(e){if(e.key==="Escape"&&$("varsec").classList.contains("full"))$("varsec").classList.remove("full");});
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&$("flowpane").classList.contains("full")){$("flowpane").classList.remove("full");fitFlow();}});
 // With no flow recorded - a run of plain steps - there is nothing to draw: the log opens.
 /* The shared view switched its reading: the window follows it, so the current step is marked in the reading shown. */
@@ -2086,7 +2122,7 @@ document.addEventListener("bse:reading",function(e){flowMode=e.detail;if(flowMod
 $("fclasses").onclick=function(){flowGrouping="classes";flowMode=flowDiagram==="logic"?"logic":flowGrouping;showFlow();};
 
 window.sdeLogicHtml=function(html){
-  var frame=$("logic-tools-frame");if(!frame){frame=document.createElement("iframe");frame.id="logic-tools-frame";frame.title="Logic diagram — Tools";frame.style.cssText="width:100%;flex:1;min-height:0;border:0;background:var(--vscode-editor-background)";$("flowpane").appendChild(frame);}
+  var frame=$("logic-tools-frame");if(!frame){frame=document.createElement("iframe");frame.id="logic-tools-frame";frame.title="Logic view — Tools";frame.style.cssText="width:100%;flex:1;min-height:0;border:0;background:var(--vscode-editor-background)";$("flowpane").appendChild(frame);}
   var computed=getComputedStyle(document.body),variables=[];for(var i=0;i<computed.length;i++){var key=computed[i];if(key.indexOf("--vscode-")===0)variables.push(key+":"+computed.getPropertyValue(key));}
   frame.srcdoc=html.replace("</head>","<style>:root{"+variables.join(";")+"}</style></head>").replace("<body>",'<body class="'+document.body.className+'">');frame.hidden=false;var workspace=$("bse-workspace");workspace.dataset.logicStyle=workspace.style.cssText;workspace.style.cssText="height:auto;min-height:0;flex:none";Array.from(workspace.children).forEach(function(child){if(!child.classList.contains("bse-view-toggle")){child.dataset.logicHidden=String(child.hidden);child.hidden=true;}});
 };
@@ -2398,7 +2434,7 @@ function sapRun(){
   // SE24 or SE37 with the name filled in; the test is started there with F8.
   if(!p){notice("");debug("run",{program:INITIAL.name,test:INITIAL.type}).then(function(){
     $("state").textContent="Opened "+(String(INITIAL.type).toUpperCase()==="FUNC"?"SE37":"SE24")+" in the browser - log on if asked, then start the test with F8.";}).catch(failed);return;}
-  notice("");debug("run",{program:p}).then(function(){$("state").textContent="Opened in the browser - log on if asked, the program starts after that.";}).catch(failed);
+  notice("");debug("run",{program:p}).then(function(){$("state").textContent=window.vertexDebugHost?"Started "+p+" as ABAP Application - the breakpoints catch it.":"Opened in the browser - log on if asked, the program starts after that.";}).catch(failed);
 };
 
 /* ---------- variables ---------- */
@@ -2846,7 +2882,7 @@ function debugContext(){
       statements:shown.map(function(w){var r={at:w.name+":"+w.line,text:String(w.text).slice(0,90)};if(w.included)r.slice=true;return r;}),truncated:seq.length>shown.length};
   }
   if(!recorded&&!analysis)return null;
-  return {view:"Visual Debug",session_id:!INITIAL.local&&recorded?sessionId:null,object:typeof object!=="undefined"&&object?{name:object.name,type:object.type}:null,
+  return {view:"VERTEX Smart Debugger",session_id:!INITIAL.local&&recorded?sessionId:null,object:typeof object!=="undefined"&&object?{name:object.name,type:object.type}:null,
     state:picture.stopped?"stopped at "+picture.stopped.at:"no stopped program",
     chosen_value:chosenValue?{name:chosenValue.name,slice_places:slicePoints?Object.keys(slicePoints).length:null}:null,
     recorded:recorded,analysis:analysis};
@@ -2872,7 +2908,9 @@ function drawVars(){
   var table=document.createElement("table");table.className="vars";
   function row(v,depth,owner,parent){
     var key=v.id;current[key]=v.value;
-    if(!showInitials&&initial(v))return;
+    // Initials thins the list of variables; a structure opened by hand shows all its fields, as the declared view does -
+    // filled or not yet: one not yet filled opened to nothing.
+    if(!showInitials&&initial(v)&&depth===0)return;
     if(depth===0&&filter&&String(v.name).toUpperCase().indexOf(filter)<0)return;
     var tr=document.createElement("tr"),n=document.createElement("td"),t=document.createElement("td"),val=document.createElement("td");
     n.className="n";t.className="t";n.style.paddingLeft=(6+depth*14)+"px";
@@ -3111,7 +3149,7 @@ function sdeSelectPart(part){
   }).catch(failed);
 }
 /* What the assistant is told this window shows. */
-function sdeContext(){var s=picture.stopped;return {type:object.type,name:object.name,view:"visual debug",part:null,stopped_at:s?s.at:null,source_shown:shown.name||null};}
+function sdeContext(){var s=picture.stopped;return {type:object.type,name:object.name,view:"smart debugger",part:null,stopped_at:s?s.at:null,source_shown:shown.name||null};}
 function sdeSelection(){var s=window.getSelection&&window.getSelection(),t=s?String(s.toString()):"";return t?{text:t.slice(0,12000),view:sdeContext()}:null;}
 
 /* ---------- the resize line ---------- */
@@ -3138,7 +3176,7 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
     replayAt=Number.isInteger(INITIAL.replayStep)?Math.max(0,Math.min(timeline.length-1,INITIAL.replayStep-1)):0;
     drawPos();showStop(replayAt).catch(failed);publishDebugContext();return;
   }
-  $("title").textContent=INITIAL.name+(INITIAL.local?" · Visual Transpiler Debug":" · Visual Debug");
+  $("title").textContent=INITIAL.name+(INITIAL.local?" · VERTEX Smart Debugger (transpiler)":" · VERTEX Smart Debugger");
   if(INITIAL.local){
     $("run").lastChild.textContent="Run with ABAP Transpiler";
     document.querySelectorAll('#panes button[data-pane="outsec"]').forEach(function(b){b.hidden=false;});
@@ -3183,7 +3221,8 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
   if(String(INITIAL.type).toUpperCase()==="PROG"||INITIAL.local&&INITIAL.entry)$("program").hidden=true;
   // An SAP program, or the method of an SAP class the cursor is in, can also be run with the transpiler: its sources are read
   // from SAP, and the panel turns to the transpiler's.
-  if(!INITIAL.local&&["PROG","CLAS","FUNC"].indexOf(String(INITIAL.type).toUpperCase())>=0&&document.body.classList.contains("vertex-docked-debug")){
+  // Not in Eclipse yet: its host has no transpiler run.
+  if(!window.vertexDebugHost&&!INITIAL.local&&["PROG","CLAS","FUNC"].indexOf(String(INITIAL.type).toUpperCase())>=0&&document.body.classList.contains("vertex-docked-debug")){
     $("sapTranspile").hidden=false;
     $("sapTranspile").onclick=function(){runFailure="";notice("");$("state").textContent="Reading the program and what it uses from SAP.";debug("sapTranspile").catch(function(error){$("state").textContent="Transpiler run failed.";failed(error);});};
   }

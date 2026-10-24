@@ -71,7 +71,8 @@ function dataPreviewLines(sql, width = 200) {
   }
   return lines.join("\r\n");
 }
-function createRepository({ client, systemId, emit = () => {} }) {
+// RFC: present on an RFC (SNC) system only - { maxLines() } from vertex.rfc.maxAnalysedLines, 0 for no limit.
+function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   const drafts = new Map();
   let applying = false;
   let executing = false;
@@ -375,12 +376,34 @@ function createRepository({ client, systemId, emit = () => {} }) {
     try { return await attempt; }
     finally { clearTimeout(timer); analysing = false; }
   }
+  // Over RFC, SADT_REST_RFC_ENDPOINT dumps (XML_FORMAT_ERROR) on a source too large for it, and where that starts is
+  // not known. A source over vertex.rfc.maxAnalysedLines is not sent, and an object whose source once dumped is not
+  // sent again until the window is reloaded. The refusal carries code VERTEX_SOURCE_NOT_SENT, so navigation can go on
+  // without SAP.
+  const dumped = new Set();
+  const notSent = message => Object.assign(new Error(message), { code: "VERTEX_SOURCE_NOT_SENT" });
+  async function sent(sourceUrl, source, call) {
+    if (!rfc) { return call(); }
+    const key = String(sourceUrl).split(/[?#]/)[0];
+    if (dumped.has(key)) {
+      throw notSent("SAP dumped on this source over RFC before; it is not sent again until the window is reloaded.");
+    }
+    const limit = Number(rfc.maxLines()) || 0, lines = String(source).split("\n").length;
+    if (limit > 0 && lines > limit) {
+      throw notSent("This source has " + lines + " lines, over vertex.rfc.maxAnalysedLines (" + limit + "); it is not sent to SAP over RFC.");
+    }
+    try { return await call(); }
+    catch (error) {
+      if (/RFC_ABAP_RUNTIME_FAILURE/.test(String(error && error.message))) { dumped.add(key); }
+      throw error;
+    }
+  }
   const elementInfo = (sourceUrl, source, line, column) =>
-    analyse("Element info", source, () => client.codeCompletionElement(sourceUrl, source, line, column));
+    sent(sourceUrl, source, () => analyse("Element info", source, () => client.codeCompletionElement(sourceUrl, source, line, column)));
   // The same element info, read whole: abap-adt-api keeps only the nested elements, and drops the element's own
   // properties - where SAP says the type of a name declared inline. Every property is kept as SAP wrote it.
   // A hover asks without waiting; Go to Type Definition, asked for, passes { wait: true }.
-  const elementDetails = (sourceUrl, source, line, column, how = {}) =>
+  const elementDetails = (sourceUrl, source, line, column, how = {}) => sent(sourceUrl, source, () =>
     analyse("Element info", source, async () => {
       const response = await client.httpClient.request("/sap/bc/adt/abapsource/codecompletion/elementinfo", { method: "POST",
         qs: { uri: sourceUrl + "#start=" + line + "," + column }, headers: { "Content-Type": "text/plain", Accept: "application/*" }, body: source });
@@ -390,12 +413,12 @@ function createRepository({ client, systemId, emit = () => {} }) {
         properties: xml.xmlArray(node, "abapsource:properties", "abapsource:entry").map(entry => ({ key: entry["@_abapsource:key"], value: entry["#text"] })),
         parts: xml.xmlArray(node, "abapsource:elementInfo").map(read) });
       return read(root);
-    }, how);
-  const definition = (sourceUrl, source, line, start, end) =>
-    analyse("Definition", source, () => client.findDefinition(sourceUrl, source, line, start, end, false), { wait: true });
+    }, how));
+  const definition = (sourceUrl, source, line, start, end) => sent(sourceUrl, source, () =>
+    analyse("Definition", source, () => client.findDefinition(sourceUrl, source, line, start, end, false), { wait: true }));
   // ADT's own "navigate to implementation": for an interface method, the METHOD of a class that implements it.
-  const implementation = (sourceUrl, source, line, start, end) =>
-    analyse("Implementation", source, () => client.findDefinition(sourceUrl, source, line, start, end, true), { wait: true });
+  const implementation = (sourceUrl, source, line, start, end) => sent(sourceUrl, source, () =>
+    analyse("Implementation", source, () => client.findDefinition(sourceUrl, source, line, start, end, true), { wait: true }));
   // The active source behind a URL that navigation pointed at - a type pool,
   // an interface, another class - whatever kind of object it is.
   // The address goes without its fragment and its query (a version SAP adds): the version read is the active one.
@@ -501,6 +524,15 @@ function createRepository({ client, systemId, emit = () => {} }) {
   async function objectNavigator(objectName, objectType, node, parts) {
     const navigator = require("./object-navigator");
     if (objectType === "DEVC") return navigator.packageTree(await client.nodeContents("DEVC/K", name(objectName)));
+    // An include has no tree of its own; SE80 shows it under its program, which D010INC names. More than one program
+    // includes it: they are named, none is picked.
+    if (objectType === "INCL") {
+      const include = name(objectName), masters = [...new Set((await query("SELECT master FROM d010inc WHERE include = '"
+        + include.replace(/'/g, "''") + "'", 20)).values.map(row => String(row.MASTER)))];
+      if (!masters.length) throw new Error("No program includes " + include + ".");
+      if (masters.length > 1) throw new Error(include + " is included by " + masters.join(", ") + ": open Object Navigator on one of them.");
+      return objectNavigator(masters[0], "PROG", node, parts);
+    }
     // A program: its includes, forms, events and local classes, from the node structure. An include has no tree
     // there: asked as PROG/I and as PROG/PI, SAP answered nothing for one.
     const sourceParent = { PROG: "PROG/P" }[objectType];

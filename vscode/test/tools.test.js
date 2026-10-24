@@ -43,21 +43,21 @@ test("workspace transport permits only VERTEX resources and existing review writ
   }
   assert.equal(workspace.allowed("/sap/bc/adt/vertex/class/ZCL_APP","{}"),false);
 });
-test("Visual Debug is the docked panel beside the editor, not a view of the Tools window",()=>{
+test("VERTEX Smart Debugger is the docked panel beside the editor, not a view of the Tools window",()=>{
   assert.deepEqual(model.objects.find(o=>o[0]==="PROG")[2],["metrics","scheme","flow","diff"]);
   assert.throws(()=>model.normalize({type:"FUNC",name:"Z_FM",action:"vdebug"}));
   assert.doesNotMatch(model.instructions,/vdebug/);
   assert.ok(!model.navigationSchema.anyOf[1].properties.action.enum.includes("vdebug"));
   const page=workspace.html(path.resolve(__dirname,"../../org.vertex.abap.ui/resources"),null);
   assert.doesNotMatch(page,/enable\.apply\(null,\["vdebug"/);
-  assert.doesNotMatch(page,/Click beside a line number to set a breakpoint/,"the Tools page carries no Visual Debug page");
+  assert.doesNotMatch(page,/Click beside a line number to set a breakpoint/,"the Tools page carries no VERTEX Smart Debugger page");
   const docked=workspace.debugHtml({name:"Z_TEST",type:"PROG"});
   assert.match(docked,/Z_TEST/);
   assert.match(docked,/window\.sdeDebug=/);
   assert.match(docked,/window\.sdeAsset=/);
   assert.doesNotMatch(docked,/sdeOpenEditor/);
 });
-test("the Visual Debug page asks the debugger for nothing it has no command for",async()=>{
+test("the VERTEX Smart Debugger page asks the debugger for nothing it has no command for",async()=>{
   const seen=[];
   const dbg={picture:()=>({ok:1}),async setBreakpointAt(a){seen.push(a);return {id:"bp1"};},async advance(k){seen.push(k);}};
   assert.deepEqual(await workspace.debugCommand(dbg,"picture",{}),{ok:1});

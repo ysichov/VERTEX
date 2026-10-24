@@ -1,8 +1,8 @@
 "use strict";
 const fs = require("fs"), path = require("path");
 // Object Navigator is VS Code's: the page and the reading of ADT's trees are this host's. First in the picker and what a package, request, class or interface opens on.
-const NAVIGATOR = ["navigator", "Object Navigator", ["CLAS", "INTF", "DEVC", "TR", "PROG", "FUNC"],
-  "Object Navigator (action navigator) is the SE80 tree of a package, transport request, program, function module (its group), class or interface; each entry opens its source.", true];
+const NAVIGATOR = ["navigator", "Object Navigator", ["CLAS", "INTF", "DEVC", "TR", "PROG", "INCL", "FUNC"],
+  "Object Navigator (action navigator) is the SE80 tree of a package, transport request, program, include (its program's tree), function module (its group), class or interface; each entry opens its source.", ["CLAS", "INTF", "DEVC", "TR", "PROG", "FUNC"]];
 require("./resources/object-tools").enable(...NAVIGATOR);
 function html(pages, initial) {
   const read = name => fs.readFileSync(path.join(pages, name), "utf8");
@@ -66,7 +66,7 @@ function allowed(resource, body) {
       // The object field's mask search: ADT's quick search, read only.
       || /^\/sap\/bc\/adt\/repository\/informationsystem\/search\?operation=quickSearch&maxResults=\d{1,3}&objectType=[A-Z]{4}%2F[A-Z]{1,2}&query=[A-Z0-9_%*+$]{1,80}$/.test(resource);
 }
-/* What the Visual Debug page may ask of the debugger - no more: it reads,
+/* What the VERTEX Smart Debugger page may ask of the debugger - no more: it reads,
    sets breakpoints, steps and starts a run, as the debug_* tools do. */
 async function debugCommand(dbg, command, a, fetchVertex) {
   switch (command) {
@@ -102,7 +102,7 @@ async function debugCommand(dbg, command, a, fetchVertex) {
     case "detach": await dbg.detach(); return {};
     case "terminate": await dbg.terminate(); return {};
   }
-  throw new Error("Visual Debug has no command " + command + ".");
+  throw new Error("VERTEX Smart Debugger has no command " + command + ".");
 }
 function open(vscode, context, deps, initial) {
   let local = initial?.localSession;
@@ -124,6 +124,8 @@ function open(vscode, context, deps, initial) {
     window.sdeCancelWorkspace=()=>host.postMessage({call:"cancelWorkspace",args:[]});
     window.sdeLocalFolder=clear=>host.postMessage({call:"localFolder",args:[clear===true]});
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
+    // The clipboard is the host's: a webview's own may be refused. Copy under a chat answer and the review's prompts.
+    window.sdeCopyText=text=>{host.postMessage({call:"copyText",args:[String(text||"")]});return "";};
     for(const call of ["workspace","asset","models","ask","browse","openToolSource","requestSearch","vertexContext","aiProvider","aiModel","aiConfig"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>{
         if(call==="vertexContext")try{
@@ -139,12 +141,12 @@ function open(vscode, context, deps, initial) {
     }
     window.addEventListener("message",e=>{
       if(e.data.type==="result"){pending=e.data.payload;sdeReady();}
-      if(e.data.type==="codeFocus"&&typeof sdeCodeFocus==="function")sdeCodeFocus();
       if(e.data.type==="codeCursor"&&typeof sdeCodeCursor==="function")sdeCodeCursor(e.data.payload);
       if(e.data.type==="progress"&&typeof sdeWorkspaceProgress==="function")sdeWorkspaceProgress(e.data.path,e.data.payload);
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
       if(e.data.type==="requestSearch"){
-        const child=document.getElementById("result").contentWindow;
+        // The page the finder mounted is the visible frame tools.html keeps as result; there is no element of that id.
+        const child=result&&result.contentWindow;
         if(child&&typeof child.sdeDeliver==="function")child.sdeDeliver(e.data.payload);
       }
       if(e.data.type==="localFolder"&&typeof sdeLocalFolderReady==="function")sdeLocalFolderReady(e.data.payload);
@@ -168,34 +170,46 @@ function open(vscode, context, deps, initial) {
   });
   // What the assistant is told about the open Tools window ends with the window: a closed class is not in the context.
   let cursorTimer,scrollTimer,sourceNavigationUntil=0;
+  /* VS Code repeats these events with nothing moved - on a change of focus, among others -, and each would take the lead
+     from the diagram for the code. Only a real move counts; the place is remembered in the quiet time too, so the line a
+     click in the diagram opened is not taken for a move afterwards. */
+  let lastSelection='',lastRange='';
+  /* The editor the window was opened from, whatever shows it: a source of SAP's own ADT extension (abap:) is no VERTEX tab,
+     yet its cursor is this window's object, and a line a click opens is opened there. */
+  const sourceUri=initial?.boundObject&&initial.sourceUri||'';
+  const objectOf=document=>(local?local.documentObject(document):deps.documentObject(document))
+    ||(sourceUri&&document.uri.toString()===sourceUri?{object_name:initial.name,object_type:initial.type}:null);
   const cursorChanges=initial?.boundObject&&vscode.window.onDidChangeTextEditorSelection?vscode.window.onDidChangeTextEditorSelection(event=>{
     clearTimeout(cursorTimer);
+    const at=event.textEditor.document.uri.toString()+'|'+event.selections.map(s=>s.start.line+':'+s.start.character+'-'+s.end.line+':'+s.end.character).join(',');
+    if(at===lastSelection)return;
+    lastSelection=at;
     if(Date.now()<sourceNavigationUntil)return;
     cursorTimer=setTimeout(()=>{
       if(Date.now()<sourceNavigationUntil)return;
-      const object=local ? local.documentObject(event.textEditor.document) : deps.documentObject(event.textEditor.document),selection=event.selections[0];
-      if(object&&selection)void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line:selection.start.line+1,endLine:selection.end.line+1,userFocus:event.kind!=null}});
+      const object=objectOf(event.textEditor.document),selection=event.selections[0];
+      if(object&&selection)void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line:selection.start.line+1,endLine:selection.end.line+1}});
     },80);
   }):null;
   const scrollChanges=initial?.boundObject&&vscode.window.onDidChangeTextEditorVisibleRanges?vscode.window.onDidChangeTextEditorVisibleRanges(event=>{
     clearTimeout(scrollTimer);
+    const at=event.textEditor.document.uri.toString()+'|'+event.visibleRanges.map(r=>r.start.line+'-'+r.end.line).join(',');
+    if(at===lastRange)return;
+    lastRange=at;
     if(Date.now()<sourceNavigationUntil)return;
     scrollTimer=setTimeout(()=>{
       if(Date.now()<sourceNavigationUntil)return;
-      const object=local ? local.documentObject(event.textEditor.document) : deps.documentObject(event.textEditor.document),ranges=event.visibleRanges;
+      const object=objectOf(event.textEditor.document),ranges=event.visibleRanges;
       if(!object||!ranges.length)return;
       const range=ranges[0],line=range.start.line+Math.floor((range.end.line-range.start.line)/3)+1;
-      void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line,endLine:line,scrollOnly:true,userFocus:event.textEditor===vscode.window.activeTextEditor}});
+      void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line,endLine:line,scrollOnly:true}});
     },100);
-  }):null;
-  const focusChanges=initial?.boundObject&&vscode.window.onDidChangeActiveTextEditor?vscode.window.onDidChangeActiveTextEditor(editor=>{
-   if(editor&&Date.now()>=sourceNavigationUntil)void panel.webview.postMessage({type:'codeFocus'});
   }):null;
   let reported = false, analysisJob;
   const viewStateChanges = panel.onDidChangeViewState && panel.onDidChangeViewState(event => {
     if (event.webviewPanel.active && reported) deps.setContext(panel, undefined);
   });
-  panel.onDidDispose(() => { if(analysisJob)analysisJob.cancelled=true;clearTimeout(cursorTimer);clearTimeout(scrollTimer);if(viewStateChanges)viewStateChanges.dispose();if(scrollChanges)scrollChanges.dispose();if(focusChanges)focusChanges.dispose();if(cursorChanges)cursorChanges.dispose();changes.dispose(); if (reported) { deps.setContext(panel, null); } });
+  panel.onDidDispose(() => { if(analysisJob)analysisJob.cancelled=true;clearTimeout(cursorTimer);clearTimeout(scrollTimer);if(viewStateChanges)viewStateChanges.dispose();if(scrollChanges)scrollChanges.dispose();if(cursorChanges)cursorChanges.dispose();changes.dispose(); if (reported) { deps.setContext(panel, null); } });
   panel.webview.onDidReceiveMessage(message => pin(async () => {
     const args = message.args || [];
     try {
@@ -217,11 +231,26 @@ function open(vscode, context, deps, initial) {
         await vscode.commands.executeCommand("vertex.tools",{...selected,action:"scheme",boundObject:true});
         await panel.webview.postMessage({type:"result",payload:"{}"});return;
       }
+      if(message.call === "copyText") { await vscode.env.clipboard.writeText(String(args[0] || "")); return; }
       if(message.call === "openToolSource") {
         sourceNavigationUntil=Date.now()+700;
         // Nothing waits for an answer to a click, so a failure is said here, not posted to a page that drops it.
         const asked=JSON.parse(String(args[0]||"{}")),open=local ? local.openSource : deps.openToolSource;
-        try { await open(asked); }
+        // A line of the window's own object, opened from a source VERTEX does not hold (SAP's extension): that editor.
+        if(sourceUri&&!local&&!/^vertex-/.test(vscode.Uri.parse(sourceUri).scheme)&&Number.isInteger(asked.line)&&!asked.method
+            &&String(asked.name).toUpperCase()===String(initial.name).toUpperCase()){
+          const document=await vscode.workspace.openTextDocument(vscode.Uri.parse(sourceUri));
+          const shown=(vscode.window.visibleTextEditors||[]).find(editor=>editor.document===document);
+          const editor=await vscode.window.showTextDocument(document,{viewColumn:shown?shown.viewColumn:vscode.ViewColumn.One,preserveFocus:asked.preserveFocus===true,preview:false});
+          const at=new vscode.Position(Math.max(0,Math.min(document.lineCount-1,asked.line-1)),0);
+          editor.selection=new vscode.Selection(at,at);
+          editor.revealRange(new vscode.Range(at,at),vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+          sourceNavigationUntil=Date.now()+700;
+          return;
+        }
+        // The editor scrolls and moves its cursor while the line opens, and a SAP source can take long to open: the
+        // quiet time counts from when it is open, so those moves are not taken for the reader's.
+        try { await open(asked); sourceNavigationUntil=Date.now()+700; }
         catch(error) {
           // An include that is not there opens where it is named, and says so.
           if(asked.declaredIn&&/not found/i.test(error.message)){

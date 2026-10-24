@@ -18,14 +18,15 @@ function host(savedState = {}, authOverride, repositoryRead) {
   const api = { async execute(tool, args) {
     if (tool === "read_sap_object") {
       const klass = args.object_type === "CLAS", include = args.include || "main";
-      const source = args.object_type === "FUNC" ? "FUNCTION z_foo.\nENDFUNCTION."
+      const source = args.object_type === "INCL" && args.object_name === "ZP_C01" ? "CLASS lcl_app IMPLEMENTATION.\n  METHOD main.\n  ENDMETHOD.\nENDCLASS."
+        : args.object_type === "FUNC" ? "FUNCTION z_foo.\nENDFUNCTION."
         : klass && args.object_name === "ZCL_OTHER" ? "CLASS zcl_other DEFINITION.\n  PUBLIC SECTION.\n    METHODS do_it IMPORTING iv_name TYPE string.\nENDCLASS.\nCLASS zcl_other IMPLEMENTATION.\n  METHOD do_it.\n  ENDMETHOD.\nENDCLASS."
         : !klass ? "REPORT ztest." : include === "definitions"
         ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS."
         : include === "main" ? "CLASS ztest DEFINITION.\n  PUBLIC SECTION.\n    METHODS run IMPORTING iv_text TYPE string.\nENDCLASS.\nCLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\n  METHOD caller.\n    DATA lv_count TYPE i.\n    lv_count = 1.\n    run( ).\n    zcl_other=>do_it( ).\n    CALL FUNCTION 'Z_FOO'.\n  ENDMETHOD.\nENDCLASS."
           : "CLASS ztest IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\nENDCLASS.";
-      const object_url = klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : args.object_type === "FUNC" ? "/sap/bc/adt/functions/groups/z_grp/fmodules/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest";
-      return { object_name: args.object_name, object_type: args.object_type === "FUNC" || args.object_type === "INTF" ? args.object_type : klass ? "CLAS" : "PROG",
+      const object_url = klass ? "/sap/bc/adt/oo/classes/" + args.object_name.toLowerCase() : args.object_type === "FUNC" ? "/sap/bc/adt/functions/groups/z_grp/fmodules/" + args.object_name.toLowerCase() : args.object_type === "INCL" ? "/sap/bc/adt/programs/includes/" + args.object_name.toLowerCase() : "/sap/bc/adt/programs/programs/ztest";
+      return { object_name: args.object_name, object_type: ["FUNC", "INTF", "INCL"].includes(args.object_type) ? args.object_type : klass ? "CLAS" : "PROG",
         object_url, source_url: object_url + "/source/main", include, source, revision: "original-revision" };
     }
     return { change_id: "id1", object_name: args.object_name, operation: tool === "create_sap_object" ? "create" : "modify",
@@ -212,6 +213,15 @@ test("a breakpoint placed in the standard VERTEX editor gutter is synchronized t
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual(cleared, ['sap-bp-1']);
 });
+// A program's include takes its points at its own source: they were dropped before.
+test("a breakpoint in an include's editor is synchronized to SAP at the include", async () => {
+  const h = host(), calls = [];
+  h.tools.attachDebugger({ async setBreakpointAt(args) { calls.push(args); return { id: 'sap-bp-2' }; }, async clearBreakpoints() {} });
+  await h.tools.execute('open_sap_object', { object_name: 'ZTEST_TOP', object_type: 'INCL' });
+  h.fireBreakpoints({ added: [{ id: 'vs-bp-2', location: { uri: h.documents[0].uri, range: { start: { line: 2 } } } }] });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(calls.map(c => [c.url, c.line]), [['/sap/bc/adt/programs/includes/ztest_top/source/main', 3]]);
+});
 test("an AI change is refused while the tab holds edits SAP does not have", async () => {
   const h = host();
   await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "PROG" });
@@ -271,15 +281,32 @@ test("AI drafts use the same review and apply only from its save action", async 
   await h.panels[0].receive({ action: 'apply', approved: [0] });
   assert.equal(h.writes.length, 1);
 });
-test("ASK AI opens a prompt with the chosen block without saving", async () => {
+test("ASK AI hands the chat the chosen block, or all of them, without saving", async () => {
   const h = host();
   await h.tools.execute('open_sap_object', { object_name: 'ZTEST', object_type: 'PROG' });
   h.documents[0].text = 'REPORT changed.';
   await h.tools.execute('review_sap_changes', {});
   await h.panels[0].receive({ action: 'ask', hunk: 0 });
   const action = h.diffs.find(d => d[0] === 'vertex.askReviewBlock');
-  assert.match(action[1], /REPORT changed/);
+  assert.equal(action[1].object, 'ZTEST');
+  assert.equal(action[1].blocks.map(b => b.block).join(), '1');
+  assert.match(JSON.stringify(action[1].blocks[0].after), /REPORT changed/);
+  await h.panels[0].receive({ action: 'ask', all: true });
+  assert.equal(h.diffs.filter(d => d[0] === 'vertex.askReviewBlock')[1][1].all, true);
   assert.equal(h.writes.length, 0);
+});
+test("the chip adds a block of the same review and the request carries the blocks after the question", () => {
+  const review = require('../code-review');
+  const after = 'A\nX\nC\nD\nE\nF\nG\nY';
+  const parts = review.hunks('A\nB\nC\nD\nE\nF\nG\nH', after);
+  let chip = review.mergeAsk(null, review.askContext(parts, [0], after, 'A4H', 'ZT'));
+  assert.equal(review.askLabel(chip), 'Review · ZT · block 1');
+  chip = review.mergeAsk(chip, review.askContext(parts, [1], after, 'A4H', 'ZT'));
+  assert.equal(review.askLabel(chip), 'Review · ZT · all 2 blocks');
+  const other = review.mergeAsk(chip, review.askContext(parts, [1], after, 'A4H', 'ZOTHER'));
+  assert.equal(review.askLabel(other), 'Review · ZOTHER · block 2');
+  assert.match(review.askRequest('why?', chip), /^why\?\n\nReview context/);
+  assert.match(review.askRequest('', chip), /^Answer briefly/);
 });
 for (const partial of [false, true]) {
   test((partial ? 'partial' : 'full') + " review updates editor saved state without another SAP write", async () => {
@@ -411,6 +438,16 @@ test("a static call of a local class's method goes to its METHOD in this source"
   await h.commands.get("vertex.goToClassMethod")();
   assert.deepEqual([h.errors, h.documents[0].selection.start && h.documents[0].selection.start.line], [[], 3]);
 });
+// A program keeps its local class in an include: the call goes there, not to SAP as a global class.
+test("a static call of a local class implemented in an include goes to its METHOD in that include", async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZPROG", object_type: "PROG" });
+  h.documents[0].text = ["REPORT zprog.", "INCLUDE zp_c01.", "START-OF-SELECTION.", "  lcl_app=>main( )."].join("\n");
+  h.documents[0].selection = { active: { line: 3, character: 13 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  const shown = h.documents.find(d => /zp_c01/i.test(String(d.uri)));
+  assert.deepEqual([h.errors, !!shown, shown && shown.selection && shown.selection.start.line], [[], true, 1]);
+});
 test("a local class's DEFINITION and IMPLEMENTATION lead to each other by its name", async () => {
   const text = ["CLASS lcl_page DEFINITION.", "ENDCLASS.", "CLASS lcl_page IMPLEMENTATION.", "ENDCLASS."].join("\n");
   for (const [from, to] of [[0, 2], [2, 0]]) {
@@ -436,7 +473,11 @@ test("structural navigation walks IF and CASE sibling branches without entering 
     const first = { isEmpty: true, start: { line, character: from }, end: { line, character: from }, active: { line, character: from } };
     h.selectionListeners[0]({ kind: 2, selections: [first], textEditor: { document: h.documents[0], selection: first } });
     h.selectionListeners[0]({ kind: 2, selections: [selection], textEditor: editor });
-    await new Promise(resolve => setTimeout(resolve, 20));
+    // The jump waits for abaplint's parse of the document.
+    for (let waited = 0; !editor.selection.start || editor.selection.start.line === line; waited += 20) {
+      if (waited > 10000) break;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
     return editor.selection.start.line;
   };
   assert.equal(await click(1, 2, 4), 7);

@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { create } = require("../local-debug-adapter");
 
-test("local debug adapter supplies the Visual Debug picture and variables", async () => {
+test("local debug adapter supplies the VERTEX Smart Debugger picture and variables", async () => {
   const commands = [], published = [];
   const vscode = { debug: { breakpoints: [] }, commands: { async executeCommand(command) { commands.push(command); } } };
   const document = { uri: { fsPath: "C:/work/src/ztest.prog.abap" } };
@@ -130,7 +130,7 @@ test("a kept transpiler run opens at its cited step with its output", async () =
   await assert.rejects(adapter.command("run"), /kept/);
 });
 
-test("local Visual Debug watchpoint stops replay on a changed structure component", async () => {
+test("local VERTEX Smart Debugger watchpoint stops replay on a changed structure component", async () => {
   const vscode = { debug: { breakpoints: [] }, commands: { async executeCommand() {} } };
   const document = { uri: { fsPath: "C:/runs/zlab.prog.abap" } };
   const records = [

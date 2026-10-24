@@ -27,14 +27,15 @@ VERTEX is a set of plugins for VS Code and Eclipse ADT. Each window reads over t
 - AI assistant over any SAP system, and an MCP server for Claude Code, Codex and Copilot
 - enhanced ABAP editor: ABAP Unit, ATC, block-by-block review before activation
 - AI-driven ADT debugger: conditions SAP evaluates, a verdict naming the line
-- visual debugger with recording and replay
+- VERTEX Smart Debugger with recording and replay
 - forward and backward usage analysis, down to the formula of a value (BSE)
+- the path to a line: the conditions inside its METHOD or FORM under which it runs
 - version history, diff and transport review
 - code explorer: metrics, UML, Logic and Calls diagrams
 - data explorer (SelecTor): tables, joins, pivots
 
-Visual Debug gives each recorded SAP session an ID from its first step; the chat can cite and open those steps before or after **Save session**.
-Runs started in Visual Debug with the ABAP Transpiler are registered in transpiler history and included in chat context, so the assistant can cite and open their recorded steps.
+VERTEX Smart Debugger gives each recorded SAP session an ID from its first step; the chat can cite and open those steps before or after **Save session**.
+Runs started in VERTEX Smart Debugger with the ABAP Transpiler are registered in transpiler history and included in chat context, so the assistant can cite and open their recorded steps.
 Ordinary diagram nodes have transparent backgrounds, and their clickable labels follow the editor text color in every theme.
 
 
@@ -54,7 +55,7 @@ Start chat by naming the package or program to inspect; a single match opens in 
 For a plain name without an exact match, VERTEX tries prefix and contained-name searches; explicit
 wildcards are used as written.
 The VS Code chat can explain an active local `.abap` file using its current editor text, even without a SAP connection.
-Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **Visual Analysis / Debug** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **VERTEX: Run with ABAP Transpiler** in its editor's context menu or beside Run in SAP: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. SAP program selection screens use the selection texts and text symbols maintained in SAP. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
+Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **VERTEX Smart Debugger** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **Run with ABAP Transpiler** beside Run in SAP in VERTEX Smart Debugger: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. SAP program selection screens use the selection texts and text symbols maintained in SAP. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
 
 From a SAP source tab's context menu, **VERTEX: Run SAP in web GUI** opens the program in WebGUI or a class/function module's test screen. It works without a breakpoint.
 
@@ -63,11 +64,11 @@ From a SAP source tab's context menu, **VERTEX: Run SAP in web GUI** opens the p
 |---|---|---|---|---|---|
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | ✓ | — | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values; the VERTEX chat has it built in, Claude Code and Codex reach it over MCP as `vertex-debug` | ✓ | — | not needed |
-| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player. The first recorded SAP stop includes Globals such as selection-screen values. In VS Code, SAP & Transpiler Logs opens SAP recordings and transpiler runs for replay or deletion; SAP recordings can be renamed. | ✓ | ✓ ³ | not needed |
+| **VERTEX Smart Debugger** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player. The first recorded SAP stop includes Globals such as selection-screen values. In VS Code, SAP & Transpiler Logs opens SAP recordings and transpiler runs for replay or deletion; SAP recordings can be renamed. | ✓ | ✓ ³ | not needed |
 | **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Forward Usage Analysis - how a value is computed, down from a line across calls: the static call stack, the derivation as *FLOW* or *Formula*, each as a tree or a diagram; Backward Usage Analysis - where the values of a routine go in its callers, by SAP's where-used | ✓ | ✓ | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | ✓ | ✓ ¹ | not needed |
 | **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | ✓ | ✓ ² | to save reviews in SAP |
-| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | ✓ | ✓ ² | not needed |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic view of one method; a method opened from Calls draws its Logic view in the same picture | ✓ | ✓ ² | not needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | ✓ | ✓ ² | not needed |
 
 ¹ In Eclipse the assistant is run by the Codex or Claude Code CLI on your own subscription, and
@@ -75,18 +76,18 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.8.15.202610141238**; the VS Code extension is **0.9.22**.
+**0.9.31.20261024182823**; the VS Code extension is **0.9.31**.
 
-³ In Eclipse, Visual Debug drives ADT's own debug session instead of a second debugger, and Run
+³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,
 not yet on the update site, and has not been checked on a live ADT session.
-On a live stop, Eclipse opens and positions the source editor; Visual Debug no longer opens another class tab for each step.
+On a live stop, Eclipse opens and positions the source editor; VERTEX Smart Debugger no longer opens another class tab for each step.
 
-**Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; in VS Code the version history and its diff come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is built from them in the window, with AVE's rules for choosing the versions and cutting blocks. Saving it to SAP goes through one resource of VERTEX's own ABAP, `ZCL_VX_ADT_RES_STORE`, into the `ZAVE_REVIEW` table AVE uses too - ADT's data preview can read a table but not write it; reviews can also be kept in files. The AVE repository itself is not needed. The Eclipse plugin reads them the same way.
+**Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and VERTEX Smart Debugger read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; in VS Code the version history and its diff come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is built from them in the window, with AVE's rules for choosing the versions and cutting blocks. Saving it to SAP goes through one resource of VERTEX's own ABAP, `ZCL_VX_ADT_RES_STORE`, into the `ZAVE_REVIEW` table AVE uses too - ADT's data preview can read a table but not write it; reviews can also be kept in files. The AVE repository itself is not needed. The Eclipse plugin reads them the same way.
 
 **Where the two hosts stand apart.** The editor and the AI-driven debugger are VS Code
 only by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace them -
-Visual Debug in Eclipse puts ADT's debugger session on screen rather than running its own. Eclipse
+VERTEX Smart Debugger in Eclipse puts ADT's debugger session on screen rather than running its own. Eclipse
 also has its own built-in assistant and standalone MCP setup. Shared Tools pages are updated in the
 repository, but the published update site can lag behind the source until it is rebuilt.
 
@@ -122,8 +123,9 @@ password is discarded; the next operation asks again. Basic also works on remote
 extension hosts. **VERTEX: Forget Credentials** clears the active system's stored
 credentials.
 
-In the VERTEX panel, the **SNC** checkbox beside the SAP system selector switches
-the selected system between SNC single sign-on and password authentication.
+**SAP Systems** (the server icon in the VERTEX panel's title, or the link under `vertex.systems` in Settings) lists every configured system in a table. Per row: the radio button makes it the active system; **SNC** switches it between SNC single sign-on and password authentication; **On** switches it off or on - a system switched off stays in `vertex.systems` (`"disabled": true`) but is left out of every list, switch and test, and a tab opened from it says so; **Log in** asks for the password and keeps it in the OS credential store, then tests - where a password is already kept, the button reads **Save new password** (SAP is not asked to tell); **Test** asks ADT on that system alone and shows the answer in the row, kept there until the window is reloaded, also when the table is closed; **Delete** removes it from `vertex.systems` after a confirmation. **Import from SAP Logon and Eclipse** and **Edit in settings.json** stand above the table.
+
+In **SAP Systems**, the **SNC** checkbox switches a system between SNC single sign-on and password authentication.
 Turning SNC off keeps its connection details; turning it back on requires the
 system's SNC partner name and RFC application-server host/instance settings. The
 checkbox does not delete or re-import the system.
@@ -134,6 +136,8 @@ RFC library installed on your computer. On Windows, VERTEX looks for
 `sapnwrfc.dll` in `SAPNWRFC_HOME`, Windows System32, SAP GUI and `PATH`. On macOS,
 put the SDK's `lib` directory on `DYLD_LIBRARY_PATH` before starting VS Code.
 Your SAP account needs RFC authorization for `SADT_REST_RFC_ENDPOINT`.
+
+Over RFC, hover and navigation send the whole source of the open object to SAP, and `SADT_REST_RFC_ENDPOINT` can dump (`XML_FORMAT_ERROR`) on a large one. `vertex.rfc.maxAnalysedLines` (default `0`, no limit) sets the longest source sent; an object whose source once made SAP dump is not sent again until the window is reloaded. For such a source, hover reports that it was not sent, and double-click and F12 find the name with abaplint inside that source - a name declared in another object is reached only through the static and instance calls VERTEX resolves itself.
 
 VERTEX's direct SNC connection builds on [fr0ster-forks' auth-broker PR #1](https://github.com/ysichov/VERTEX/pull/1): it carries ADT requests over RFC through `sap-rfc-lite` and `SADT_REST_RFC_ENDPOINT`, without using the SAP ADT for VS Code extension. The 0.9.11 VSIX includes Windows and macOS native bindings, searches for an installed `sapnwrfc.dll` on Windows, and imports SNC/RFC settings from SAP Logon. The SAP RFC library itself is not bundled. A separate SDK installation may be unnecessary when a compatible library is already present, but that library is still required at runtime.
 
@@ -177,7 +181,7 @@ ABAP project. There is no project here, so the systems are a list and one of the
 They live in VS Code's settings: **Ctrl+Shift+P → Preferences: Open User Settings (JSON)**, and
 the entries go into that file.
 
-A first install opens **Get started with VERTEX** (VS Code's Get Started page; later Help > Get Started): import the systems, test them, choose the assistant, add the VERTEX MCP server - each step with its button. The quickest way is **VERTEX: Import SAP Systems** (also a link under `vertex.systems` in Settings). It takes each
+A first install opens **Get started with VERTEX** (VS Code's Get Started page; later Help > Get Started): import the systems, test them, choose the assistant, add the VERTEX MCP server - each step with its button. The quickest way is **VERTEX: Import SAP Systems** (also a button in **SAP Systems** and a link under `vertex.systems` in Settings); it offers only systems not yet configured. It takes each
 system's host and instance from SAP Logon or an Eclipse ADT project (so SAP Logon is optional on macOS), and the client and user from the ADT workspace. Recent workspaces from Eclipse installations, including macOS `.app` bundles, are offered; another folder can be chosen. It then
 looks for ADT on the usual ports - 443NN and 80NN for the instance, then 44300, 8000, 50001, 50000, 443, 80, 8443,
 8080 - offering only addresses that answer. **VERTEX: Test SAP Systems** then logs on to each configured system and
@@ -229,7 +233,7 @@ Both Value Origin windows expose **Analysis log** directly above the flow. **Cop
 **Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Forward Usage Analysis**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
 
 
-In VS Code both directions are reached through **VERTEX: Visual Analysis / Debug** - a breakpoint's *Analyze flow path* (forward) and *Where used* (backward) - not from the editor menu or the palette.
+In VS Code both directions are reached through **VERTEX Smart Debugger** - a breakpoint's *Analyze flow path* (forward) and *Where used* (backward) - not from the editor menu or the palette.
 
 **VERTEX: Forward Usage Analysis** (formerly *Analyze Variable Value Origin*), on the cursor in a VERTEX ABAP source tab, answers
 where that value came from - backwards across calls, without running the program. ACE indexes
@@ -248,6 +252,10 @@ derivation in Formula — and one button beside it, offering *Collapse all* and 
 
 Branches and polymorphic targets are alternatives, database-dependent loop order is a boundary.
 Breakpoints in the editor stop the flow where a run would stop: VERTEX names the breakpoint reached and asks whether to stop the analysis there, continue to the next breakpoint or ignore the breakpoints. **VERTEX: Backward Usage Analysis** goes the other way: from the routine at the cursor up into the code that calls it - a where-used that follows the value. SAP's where-used finds the calls in the saved sources; in each caller the value is followed on from the call - what it is assigned to, tested in, passed to, written with - and, where it leaves the caller through a parameter of the caller's own, up again. A value passed in is followed to where each caller took it from. With a variable under the cursor that variable is followed (a local through the parameters and attributes it reaches); with none, every parameter of the routine and every attribute it uses; with neither, the calls themselves, as SAP's where-used gives them. Standard SAP code is not followed and is named. Breakpoints stop the walk as in Forward Usage Analysis, a level of callers at a time. The tab must be saved: where-used searches the saved source.
+
+**VERTEX: Path to This Line** (editor context menu, ABAP sources) opens a panel with what the line under the cursor needs to run inside its METHOD or FORM: the enclosing IF, ELSEIF, CASE/WHEN, LOOP and CATCH branches with the earlier branches that must be false, the CHECKs before it, and the earlier branches that must not be taken because they leave the routine (RETURN, RAISE, LEAVE PROGRAM, EXIT) - with conditions nested inside them shown under the branch. A CHECK, CONTINUE or EXIT that only leaves one pass of a loop counts only for lines inside that loop. Conditions are shown exactly as written in the code, their keywords, strings, numbers, comments, methods and classes coloured as in the Logic view's Code; a click on a line number goes to it. While the panel is open, a click on another line of the same source builds that line's path in it; the Value sources toggle stays as it was set. A line after a statement that always leaves is reported as not reachable. The source is parsed locally, unsaved text included, so no SAP system is needed. The path stays inside the routine: callers, dynamic calls and values changed between a check and the line are not followed. In the Logic view (VERTEX Tools), the **Reachability** toggle does the same on the picture: with it on, a click on a node of a METHOD or FORM lights up the path that reaches it - the same branches, CHECKs and avoided exits - and quiets the rest. With `vertex.pathToLine.methodRelativeLines` on, the panel numbers lines from the routine's METHOD or FORM statement (line 1), as SAP GUI numbers a method; a click still goes to the source line. The **Value sources** toggle colours each variable read in the path's conditions, one colour per variable, and shows where it gets its value: the statement that last writes it before that condition stands in the path right above the condition, its line number in the variable's colour, and a list under the path repeats them, inside the routine, that writes it - an assignment, an IMPORTING or CHANGING parameter of a call or a function module, SELECT INTO, an inline DATA( ). Constants are not marked; a variable the routine does not write is listed as a parameter, an attribute or a global. abaplint finds the reads and writes, unknown types included.
+
+ABAP blocks fold in the editor by their structure, not by indentation, so unformatted code folds as well as formatted: IF, CASE, LOOP, DO, WHILE, SELECT loops, TRY, METHOD, FORM, FUNCTION, MODULE, CLASS and INTERFACE from the opening statement to the line before the closing one, and each ELSEIF, ELSE, WHEN, CATCH and CLEANUP up to the next branch. A condition written over several lines stays visible when its block is folded.
 
 **Run Select.** **VERTEX: Run Select** (editor context menu of a VERTEX ABAP tab): the SELECT at the cursor runs through ADT's data preview, read only, as Eclipse's SQL console runs a query, and the rows open beside the code. What only the running program would supply is left out: INTO and FOR ALL ENTRIES go, UP TO n ROWS is the row limit (otherwise 100; SELECT SINGLE reads one), and a WHERE condition that reads a program value - a variable, a parameter, a select-option - is dropped, an OR holding one dropped whole. What was dropped is listed above the rows. A program value under NOT or outside WHERE, or a dynamic table, list or condition, refuses the SELECT and says why. The statement is parsed with abaplint, saved or not. A SELECT on one table whose WHERE select-options can say opens in SelecTor instead, its conditions filled in as selection lines and each program value as an empty line to fill in; any other SELECT runs in the plain window, which says why it did not open in SelecTor. A SELECT with INNER or LEFT OUTER joins opens in SelecTor's Join, its tables in order, their ON conditions and the SELECT list carried over, when SelecTor's join takes them - it joins only the tables the dictionary offers; the selection starts folded. In a table the selection panel is a list of fields, as SAP GUI's selection screen is, each with a Shown checkbox. From Run Select only the SELECT's fields are read at first; Show hidden reads every field of the table and leaves the ones the SELECT did not ask for unticked, still there to select on.
 
@@ -283,10 +291,10 @@ through MCP.
 When the VERTEX chat resolves a single SAP object name, its answer links both the object and its package to their SAP tabs.
 
 - **VERTEX Tools** — pick an object type and a name; the functions offered depend on the type
-  (Object Navigator, Data, UML, Metrics, Calls and Logic diagrams, Diff, Versions). Object Navigator is the SE80
+  (Object Navigator, Data, UML, Metrics, the Calls diagram and the Logic view, Diff, Versions). Object Navigator is the SE80
   tree of a package, transport request, program, class or interface, each entry a link to its source. There is no View source: the source is the
-  editor tab, and its parts are VS Code's Outline. Visual Debug is the panel beside the editor.
-  Clicking a method in the Calls diagram opens its Logic diagram inside the same canvas, joined
+  editor tab, and its parts are VS Code's Outline. VERTEX Smart Debugger is the panel beside the editor.
+  Clicking a method in the Calls diagram opens its Logic view inside the same canvas, joined
   to the block it came from; the magnifier icon magnifies the diagram under the pointer, the same lens in every diagram.
 - **The ABAP editor** — hover, Go to, outline, Save & Activate and the block-by-block
   Review & Activate; Ctrl+Shift+F10 runs ABAP Unit into the Test Explorer, Ctrl+Shift+F2 runs ATC
@@ -297,7 +305,7 @@ When the VERTEX chat resolves a single SAP object name, its answer links both th
   the result in the chat, the same run in the Test Explorer and the Problems view.
 - **The debugger for an assistant** — *Z_CALC computes the wrong discount, find out why*: the
   assistant sets conditional breakpoints, runs the program in WebGUI and ends with the line and the
-  values that prove it. Visual Debug shows the same session on screen, with a flow chart of the
+  values that prove it. VERTEX Smart Debugger shows the same session on screen, with a flow chart of the
   calls and a player for the recorded run.
 - **Assistant in SelecTor and Versions** — a sentence instead of the clicks: *SFLIGHT for carrier
   AA, joined with SCARR*.
@@ -307,7 +315,8 @@ Everything, with its settings and commands: [vscode/README.md](vscode/README.md)
 ### Eclipse ADT
 
 - **VERTEX Tools** — the same pages as in VS Code, opened from **Window → Show View → VERTEX** or
-  the context menu of an object, on that object's own ADT project.
+  the **VERTEX** submenu of an object's context menu (beside GitHub and Team), on that object's own ADT project.
+  The editor's VERTEX commands, Path to This Line and Session Logs are in the same submenu.
 - **VERTEX Assistant** — the chat over the ABAP project's system, and the Assistant panels in
   SelecTor and Versions, run by Codex or Claude Code.
 - **VERTEX: Activate** — ADT's activation, optionally after the block review.
@@ -330,7 +339,7 @@ Copilot in VS Code, Claude Code and Codex; others are not supported yet.
 extension, `/debug`, registered as `vertex-debug`: `debug_set_breakpoint` (with a condition SAP
 evaluates, or mode `log` for a continuing line trace), `debug_watchpoint` (a SAP variable-change stop), `debug_run`, `debug_wait`, `debug_read`, `debug_step`,
 `debug_status`, `debug_log`, `debug_clear_breakpoints` and `debug_stop`. Nothing there changes a
-variable or the code. It is the same session the VERTEX chat and Visual Debug drive, so a step
+variable or the code. It is the same session the VERTEX chat and VERTEX Smart Debugger drive, so a step
 made in one is seen by the others. It runs on the active system, needs a VS Code window with
 VERTEX open — the run is started in WebGUI and the listener has to outlive a single call — and
 for that reason the standalone server in [mcp/](mcp/README.md) does not have it. Setup and the
@@ -350,9 +359,12 @@ Status: **early**. All three answer, and each is a fraction of what it was cut f
 
 Building a review is here too, not only reading one. In VS Code a request with no saved review is
 built from ADT when it is opened - every part it changed, the pair of versions chosen by AVE's rule,
-diffed and cut into blocks by AVE's walk - with the status line saying which part is being read;
-**Save** keeps it, in `ZAVE_REVIEW` or in files as `vertex.review.storage` says, and approving,
-declining and commenting then change it the way AVE does. AVE's SAP GUI writes the same
+diffed and cut into blocks by AVE's walk - with the status line saying which part is being read; **Rebuild from ADT** builds it again from
+the request as it is now; **Save** keeps it, in `ZAVE_REVIEW` or in files as `vertex.review.storage` says, and approving,
+declining and commenting then change it the way AVE does. A saved review is checked against the
+request by each part's versions when it is opened; when the request changed since, the page names
+what moved and offers **Rebuild from ADT**, which replaces the saved review and drops its verdicts.
+The Eclipse plugin has the same check and Rebuild, and also **Path to This Line** and **Session Logs**. AVE's SAP GUI writes the same
 `ZAVE_REVIEW`, so a review saved either way is read by both. The Eclipse plugin builds and saves a
 review the same way; where it keeps reviews is set in Window → Preferences → VERTEX Code Review.
 

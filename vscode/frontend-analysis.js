@@ -121,7 +121,14 @@ function analysisUnits(index) {
     }
     if(!events.length&&!modules.length&&!index.procedures.some(q=>q.source===p.source&&q.name!=='GLOBAL')){
       const body=p.body.filter(s=>!['REPORT','PROGRAM'].includes(upper(s.tokens[0]?.value)));
-      if(body.length)result.push({...p,name:'START-OF-SELECTION',unitType:'EVENT',line:body[0].line,start:body[0].offset,body});
+      /* Statements outside every event belong to START-OF-SELECTION only when one of them runs: an include of
+         declarations - a local class's DEFINITION, DATA, TYPES - has no event of its own. */
+      const {classifyStatement}=require('./abap-control');let declaring=false;
+      const runs=body.some(s=>{const kind=s.parserKind;
+        if(kind==='ClassDefinition'||kind==='Interface'){declaring=true;return false;}
+        if(declaring){if(kind==='EndClass'||kind==='EndInterface')declaring=false;return false;}
+        const flow=classifyStatement(s);return !flow.declaration&&!flow.container;});
+      if(body.length&&runs)result.push({...p,name:'START-OF-SELECTION',unitType:'EVENT',line:body[0].line,start:body[0].offset,body});
     }
   }
   return result;
@@ -140,7 +147,7 @@ async function request(api, resource, progress, cancelled = () => false) {
     if (/^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(url.pathname)) {
       return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource);
     }
-    if (/^\/sap\/bc\/adt\/vertex\/backward\//.test(url.pathname)) return backward(api, resource, progress);
+    if (/^\/sap\/bc\/adt\/vertex\/backward\//.test(url.pathname)) return backward(api, resource, progress, cancelled);
     const navigator = /^\/sap\/bc\/adt\/vertex\/navigator\/([^/]+)$/.exec(url.pathname);
     if (navigator) {
       if (typeof api.objectNavigator !== 'function') throw new Error('Object Navigator is not available for this system.');
@@ -218,9 +225,31 @@ async function request(api, resource, progress, cancelled = () => false) {
       if(!parser)parser=createParser(cancelled);
       const result = await parser.parse({ id: data.source_url, name: data.object_name + (data.include && data.include !== 'main' ? '.' + data.include : ''), objectName: data.object_name,
         objectType: data.object_type, text: data.source });
+      // A program's include keeps its own name, so what is in it opens there.
+      if(data.object_type==='PROG'&&data.include)result.source.programInclude=data.include;
       loaded.sources.push(result.source);loaded.warnings.push(...result.warnings);
     }
     await part(data);
+    /* A program's INCLUDEs are part of it: its local classes and forms are often all in them. Each is read and parsed as
+       a part of the program, nested ones too, once each; one that cannot be read is said, not skipped silently. */
+    if (data.object_type === 'PROG') {
+      const done = new Set([upper(object_name)]);
+      for (let at = 0; at < loaded.sources.length; at++) {
+        for (const statement of loaded.sources[at].aceStatements.filter(s => s.parserKind === 'Include')) {
+          const include = upper(statement.tokens[1]?.value);
+          if (!include || done.has(include)) continue;
+          done.add(include);check();
+          stage('Reading '+object_name+' / '+include);
+          // In a local folder an include is a file of its own, as abapGit writes it (name.prog.abap).
+          let source_url = '/sap/bc/adt/programs/includes/' + encodeURIComponent(include.toLowerCase()) + '/source/main', source;
+          try {
+            if (api.local) { const file = await read({ object_name: include, object_type: 'PROG' }); source_url = file.source_url; source = file.source; }
+            else source = await api.sourceAt(source_url);
+          } catch (e) { loaded.warnings.push(include + ' (INCLUDE in ' + object_name + '): ' + (e && e.message || e)); continue; }
+          await part({ object_name, object_type: 'PROG', source_url, source, include });
+        }
+      }
+    }
     // Value origin may start in a test class, so its read takes the class's test classes too; diagrams and metrics do not.
     const classParts = ['definitions','implementations','macros', ...(url.searchParams.get('mode') === 'origin' ? ['testclasses'] : [])];
     if (data.object_type === 'CLAS') for (const include of data.includes.filter(i => classParts.includes(i)))
@@ -273,7 +302,8 @@ async function request(api, resource, progress, cancelled = () => false) {
     if (service === 'metrics') {
       stage('Calculating metrics');
       await new Promise(resolve=>setTimeout(resolve,0));
-      const rows = units.map(metric), totals = { units: rows.length };
+      // A unit a program keeps in an include opens there, at its line: its name alone would be looked for in the program.
+      const rows = units.map(p => p.source.programInclude ? { ...metric(p), writtenIn: { name: p.source.programInclude, type: api.local ? 'PROG' : 'INCL', line: p.line } } : metric(p)), totals = { units: rows.length };
       for (const key of ['cyclomatic','loc','lloc','cloc','volume','effort','time_t','bugs']) totals[key] = rows.reduce((sum, r) => sum + r[key], 0);
       totals.avg_cyclomatic = rows.length ? totals.cyclomatic / rows.length : 0;
       const definitions = declarations(sources);
@@ -297,7 +327,10 @@ async function request(api, resource, progress, cancelled = () => false) {
       const calls = !!st.tokens.find(t => ['->','=>'].includes(t.value)) || /^(CALL|PERFORM|SUBMIT)$/.test(kw) || st.parserKind === 'CreateObject';
       const unsafe = ['Unknown','MacroCall','MacroContent','NativeSQL'].includes(st.parserKind);
       const target = /^(FORM|PERFORM)$/.test(kw) && !/[()]/.test(st.tokens[1]?.value || '') ? upper(st.tokens[1]?.value) : '';
-      return { line: st.stepLine || st.line, to: st.tokens.at(-1)?.line || st.line, kw, calls, coordinate: 'adt-source', source_url: s.id,
+      // quiet: a statement that writes no variable - list output and its layout - so a recorded stop after it has no
+      // value to read. WRITE ... TO writes one, and is not quiet.
+      const quiet = /^(WRITE|SKIP|ULINE|NEW-LINE|NEW-PAGE|FORMAT)$/.test(kw) && !(kw === 'WRITE' && st.tokens.some(t => upper(t.value) === 'TO'));
+      return { line: st.stepLine || st.line, to: st.tokens.at(-1)?.line || st.line, kw, calls, quiet, coordinate: 'adt-source', source_url: s.id,
         kind: calls ? 'call' : unsafe || /^(IF|ELSE|ELSEIF|ENDIF|CASE|WHEN|ENDCASE|LOOP|ENDLOOP|DO|ENDDO|WHILE|ENDWHILE|CHECK|RETURN|TRY|CATCH|ENDTRY|SELECT|ENDSELECT|EXIT|CONTINUE|RAISE|LEAVE|STOP|AT|ENDAT|ON)$/.test(kw) ? 'flow' : !assignment(st.tokens) && /^(DATA|TYPES|CLASS|METHOD|METHODS|INTERFACE|PARAMETERS|PUBLIC|PRIVATE|PROTECTED|CONSTANTS|STATICS|FIELD-SYMBOLS)$/.test(kw) ? 'decl' : 'plain', target, owners: '', callees: '' };
     }) })) };
     const wanted = upper(url.searchParams.get('unit') || url.searchParams.get('start'));
@@ -311,7 +344,7 @@ async function request(api, resource, progress, cancelled = () => false) {
       const id = (label,kind='event') => { if (!ids.has(label)) { const value = 'c' + ids.size; ids.set(label, value); nodes.push(value + '("' + quoted(label) + '"):::'+kind); } return ids.get(label); };
       // Where each drawn routine is: a class local to a program is in the program's source, not a global class of that
       // name, so a click opens the object the routine was read from, at its line.
-      const places={},place=p=>{const key=routineLabel(p).replace(/\s+/g,'');if(!places[key])places[key]={name:p.source.objectName,type:p.source.objectType,line:p.line||0};};
+      const places={},place=p=>{const key=routineLabel(p).replace(/\s+/g,'');if(!places[key])places[key]=p.source.programInclude?{name:p.source.programInclude,type:api.local?'PROG':'INCL',line:p.line||0}:{name:p.source.objectName,type:p.source.objectType,line:p.line||0};};
       const link=(from,to,arrow,cost=1)=>{if(from!==to){links.push({from,to,cost,text:from+arrow+to});}};
       for (const c of walkedCalls) {
         check();const p=units.find(q=>q.id===c.caller);if(!p)continue;
@@ -336,9 +369,18 @@ async function request(api, resource, progress, cancelled = () => false) {
       return { ...base, mode, depth:callDepth, steps: ids.size, places, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
     }
     if (chosen.length !== 1) throw new Error('Pick one method to draw its logic diagram.');
-    return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType,
-      ...require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || ''),
-      logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true).mermaid };
+    // Logic's depth: the levels inside the routine shown, deeper blocks folded; 1 when the page names none.
+    const logicDepth = Number.isFinite(requestedDepth) && requestedDepth > 0 ? Math.min(99, Math.floor(requestedDepth)) : 1;
+    const drawn = require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '', false, logicDepth);
+    // Reachability: the path to each drawn line inside its METHOD or FORM (reach-path.js), for the page to light up on a click.
+    const reach = ['METHOD', 'FORM'].includes(chosen[0].unitType)
+      ? require('./reach-path').reachLines(chosen[0].source.aceStatements, Object.values(drawn.nodeLines)) : null;
+    // The source the routine is written in: its include when a program keeps it in one - where a node click opens.
+    const written = chosen[0].source.programInclude ? { name: chosen[0].source.programInclude, type: api.local ? 'PROG' : 'INCL' } : null;
+    return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType, ...drawn, reach, ...(written ? { writtenIn: written } : {}),
+      logicMermaid:require('./ace-scheme').scheme(chosen[0], url.searchParams.get('expand') || '',true,logicDepth).mermaid,
+      // Logic's Code view: the routine's lines as written, folded to the same depth.
+      code:require('./ace-scheme').codeView(chosen[0], url.searchParams.get('expand') || '', logicDepth) };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }
 // The object an ADT source address belongs to, and the address of its source: what where-used names is a place in a
@@ -362,7 +404,9 @@ function sourceAddress(uri) {
 // its callers, up through theirs - the walk VS Code's command runs (backward-usage.js), over the same parsed sources.
 // SAP's where-used comes from the host (api.whereUsed), the stop at a breakpoint is the host's question
 // (api.askBreakpoint). Sources are addressed by their ADT source URL, so a line is the line ADT shows.
-async function backward(api, resource, progress = () => {}) {
+// CANCELLED, when it answers true, stops the walk at its next read: a host whose reader cancels the analysis (Eclipse).
+async function backward(api, resource, progress = () => {}, cancelled = () => false) {
+  const check = () => { if (cancelled()) throw new Error('Analysis cancelled.'); };
   const params = new URL(resource, 'https://sap.invalid').searchParams;
   const start = { url: String(params.get('source') || ''), name: upper(params.get('name')), type: upper(params.get('type')) };
   if (!/^\/sap\/bc\/adt\//.test(start.url)) throw new Error('Backward Usage Analysis needs the ADT source of the object.');
@@ -372,6 +416,7 @@ async function backward(api, resource, progress = () => {}) {
   const sources = new Map();
   const sourceOf = (url, name, type) => {
     if (!sources.has(url)) {
+      check();
       sources.set(url, Promise.resolve(api.sourceAt(url)).then(text => {
         progress('reading ' + name);
         return parseSource({ id: url, name, text: String(text), objectName: name, objectType: type, include: 'main' }).source;
@@ -380,6 +425,7 @@ async function backward(api, resource, progress = () => {}) {
     return sources.get(url);
   };
   const whereUsed = async (source, line, column) => {
+    check();
     progress('where-used in ' + source.objectName + ', line ' + line);
     const places = [], skipped = [];
     for (const place of await api.whereUsed(source.id, line, column)) {
@@ -401,8 +447,18 @@ async function backward(api, resource, progress = () => {}) {
 }
 
 // A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
-// bundle); null for any other write.
+// bundle); null for any other write. /sap/bc/adt/vertex/reach is no SAP resource: the path to a line of the editor's
+// text, which the body carries with the cursor and the page's options (reach-path.js build).
 async function write(api, resource, body) {
+  // Run Select: the SELECT at the cursor of the editor's text, decided as VS Code decides it (select-query.run).
+  if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/runselect') {
+    const command = JSON.parse(String(body));
+    return require('./select-query').run(api, String(command.text), Number(command.offset));
+  }
+  if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/reach') {
+    const command = JSON.parse(String(body));
+    return require('./reach-path').build(String(command.text), Number(command.offset), Number(command.line), command);
+  }
   if (!/^\/sap\/bc\/adt\/vertex\/review\//.test(new URL(resource, 'https://sap.invalid').pathname)) { return null; }
   return require('./review-front').write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined);
 }

@@ -15,7 +15,7 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
     debug: { onDidChangeBreakpoints: () => ({ dispose() {} }), registerDebugAdapterTrackerFactory: () => ({ dispose() {} }), onDidTerminateDebugSession: () => ({ dispose() {} }) },
     ThemeColor: class { constructor(id) { this.id = id; } },
     EventEmitter: class { event = () => ({ dispose() {} }); dispose() {} },
-    TestRunProfileKind: { Run: 1 }, languages: { createDiagnosticCollection: () => ({ dispose() {} }) }, tests: { createTestController: () => ({ dispose() {}, createRunProfile() {} }) },
+    TestRunProfileKind: { Run: 1 }, languages: { createDiagnosticCollection: () => ({ dispose() {} }), registerFoldingRangeProvider: () => ({ dispose() {} }) }, tests: { createTestController: () => ({ dispose() {}, createRunProfile() {} }) },
     workspace: { getConfiguration: () => ({ get: key => key === "systems" ? [] : 37777 }),
       onDidCloseTextDocument: () => ({ dispose() {} }), onDidOpenTextDocument: () => ({ dispose() {} }), textDocuments: [],
       registerFileSystemProvider: () => ({ dispose() {} }),
@@ -62,7 +62,7 @@ test("Codex and Claude setup work without the Copilot MCP API", async () => {
     await commands.get("vertex." + step + "Info")();
     assert.equal(previews.at(-1), path.join(__dirname, "..", "walkthrough", step + ".md"));
   }
-  // The regular VERTEX editor can open the same Visual Debug session and
+  // The regular VERTEX editor can open the same VERTEX Smart Debugger session and
   // route F5-F8 to it; the commands themselves stay inactive until invoked.
   for (const name of ["vertex.openVisualDebug", "vertex.debugInto", "vertex.debugOver",
     "vertex.debugOut", "vertex.debugContinue"]) assert.ok(commands.has(name), name);

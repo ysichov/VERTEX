@@ -76,7 +76,7 @@ hr{border:none;border-top:1px solid var(--vscode-widget-border,var(--vscode-pane
   <button id="execute" class="primary" title="Run the program with the values of the screen (F8)">Execute (F8)</button>
   <button id="back" hidden title="Back to the selection screen, to run again (F3)">Back (F3)</button>
   <span class="grow"></span>
-  <button id="flow" disabled title="Open the recorded run in Visual Debug: its steps, values and flow">See flow history</button>
+  <button id="flow" disabled title="Open the recorded run in VERTEX Smart Debugger: its steps, values and flow">See flow history</button>
   <button id="recompile" hidden>Recompile</button>
 </div>
 <main><div id="screen"><div id="local-selection"></div></div><div id="listview" hidden><pre id="list"></pre><div id="results"></div></div></main>
@@ -124,7 +124,7 @@ function executeWith(values){if(running)return;if(entryBlocked){status(entryBloc
     if(result&&result.deferred)return;
     showList(result.output);$("flow").disabled=!(result.trace&&result.trace.length);
     var steps=(result.trace||[]).length,seconds=(result.durationMs||0)/1000;
-    status(result.ended?"Program finished: "+steps+" recorded steps, "+seconds.toFixed(3)+" s.":"Stopped at a breakpoint: Visual Debug shows where.");
+    status(result.ended?"Program finished: "+steps+" recorded steps, "+seconds.toFixed(3)+" s.":"Stopped at a breakpoint: VERTEX Smart Debugger shows where.");
   }).catch(function(error){status(error.message,true);}).then(function(){running=false;$("execute").disabled=false;});}
 function execute(){executeWith(null);}
 $("name").textContent=INITIAL.name;

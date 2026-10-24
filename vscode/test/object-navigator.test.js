@@ -112,10 +112,11 @@ test("a program's Parts are its events, subroutines and local methods from the n
     [{ unit_name: "START-OF-SELECTION", unit_type: "EVENT" }, { unit_name: "RUN", unit_type: "FORM" }, { unit_name: "POPUP", unit_type: "METHOD" }]);
 });
 
-test("a function module opens on Object Navigator too; an include, which SAP gives no tree, does not have it", () => {
+test("a function module opens on Object Navigator too; an include has it (its program's tree) and still opens on Diff", () => {
   require("../tools-window");
   const model = require("../resources/object-tools");
-  assert.ok(!model.objects.find(o => o[0] === "INCL")[2].includes("navigator"));
+  assert.ok(model.objects.find(o => o[0] === "INCL")[2].includes("navigator"));
+  assert.equal(model.normalize({ type: "INCL", name: "Z_I" }).action, "diff");
   assert.equal(model.objects.find(o => o[0] === "FUNC")[2][0], "navigator");
   assert.equal(model.normalize({ type: "FUNC", name: "Z_F" }).action, "navigator");
 });
@@ -143,4 +144,17 @@ test("a local class opens at its DEFINITION, its attributes and types at their d
     { "adtcore:name": "TY_KEY", "adtcore:type": "PROG/PLY", links: [] }] }, "ZPROG", "PROG", "", "LCL_A");
   assert.deepEqual(parts.map(g => g.label), ["Types", "Attributes"]);
   assert.deepEqual(parts[1].children[0].open, { name: "ZPROG", type: "PROG", member: "MV_X", localClass: "LCL_A" });
+});
+
+test("a local program's tree comes from the parse of the program and its includes, each entry at its file and line", () => {
+  const { parseSource } = require("../value-origin-linter");
+  const part = (name, text) => ({ name, statements: parseSource({ id: name, name, objectName: name, objectType: "PROG", text }).source.aceStatements });
+  const tree = navigator.localTree([
+    part("ZP", "REPORT zp.\nINCLUDE zp_c01.\nSTART-OF-SELECTION.\n  PERFORM f.\nFORM f.\nENDFORM."),
+    part("ZP_C01", "CLASS lcl DEFINITION.\n  PUBLIC SECTION.\n    METHODS run.\nENDCLASS.\nCLASS lcl IMPLEMENTATION.\n  METHOD run.\n  ENDMETHOD.\nENDCLASS.")]);
+  assert.deepEqual(tree.map(g => g.label), ["Includes", "Events", "Local Classes", "Subroutines"]);
+  assert.deepEqual(tree[0].children[0].open, { name: "ZP_C01", type: "PROG" });
+  assert.deepEqual(tree[1].children[0].open, { name: "ZP", type: "PROG", line: 3 });
+  assert.deepEqual(tree[2].children[0].children[0].children[0].open, { name: "ZP_C01", type: "PROG", line: 6 });
+  assert.deepEqual(tree[3].children[0].open, { name: "ZP", type: "PROG", line: 5 });
 });

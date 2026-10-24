@@ -32,7 +32,7 @@ function analyze(p) {
   }
   return rows;
 }
-function scheme(p,expandedText='',logicOnly=false) {
+function scheme(p,expandedText='',logicOnly=false,maxDepth=0) {
   const rows=analyze(p);
   const mm=[],edges=[],clicks=[],styles=[],subs=[],conds=[],nodeRanges={},clusterRanges={},conditionCalls={};
   let prev='',prevLine=0,pendingLabel='';
@@ -47,14 +47,29 @@ function scheme(p,expandedText='',logicOnly=false) {
   const arrow=l=>l?' -->|"'+l+'"| ':' --> ';
   const connect=(a,b,l='')=>{if(a&&typeof a==='object'){connect(a.id,b,a.label);return;}if(a&&b)edges.push(a+arrow(l)+b);};
   const click=(id,action)=>clicks.push('click '+id+' "sapevent:'+action+'" _self');
+  /* Every node standing for one line of code leads to it - a plain operation, CONTINUE, ENDIF - unless it already has its own click. */
+  const lineOf=id=>rows[Number(id.slice(1))-1]?.source_line;
+  const toCode=id=>{if(!clicks.some(c=>c.startsWith('click '+id+' '))&&lineOf(id))click(id,'acego_'+lineOf(id)+'_'+lineOf(id));};
   /* Logic only: the operations it leaves out between two shown steps stand as one block saying how many, opened
      by a click (its first line goes into EXPANDED); the page sends a click on an opened operation to its source. */
   const opened=new Set(String(expandedText||'').split(',').filter(Boolean).map(Number));
+  /* Depth (folds): a block whose inside lies deeper than maxDepth keeps its opening and its closing statement, and what is
+     inside is one node saying how many operations it hides, opened in place by a click like a folded run of operations
+     (the opening's line goes into EXPANDED). 0 draws every level. */
+  const collapsed=new Map(),shown=x=>{x.kind='P';x.flow={...x.flow,logic:true,declaration:false};};
+  for(const {open,inner,count} of folds(rows,maxDepth,opened)){
+    for(const x of inner){x.kind='X';x.hidden=true;}
+    // The block becomes three plain steps: its opening, the fold, its closing statement.
+    shown(open);const end=rows[open.all];if(end&&end.line===open.all+1){end.hidden=true;shown(end);}
+    if(inner.length){const fold=inner[0];fold.text='('+count+(count===1?' operation':' operations')+' hidden)';shown(fold);collapsed.set(fold.line,open.line);}
+  }
   function folded(run,emit){
     if(!run.length)return;
     const first=run[0].line;
     if(opened.has(first)){run.forEach(x=>{emit('p'+x.line,x.text,x.call?'callnode':x.flow.sideEffect?'dbnode':'');click('p'+x.line,'aceexp_'+first);});return;}
-    emit('o'+first,run.length+(run.length===1?' operation':' operations'),'foldnode');click('o'+first,'aceexp_'+first);
+    // One operation folded would take a box anyway: it is shown as itself, and only two or more fold.
+    if(run.length===1){const x=run[0];emit('p'+x.line,x.text,x.call?'callnode':x.flow.sideEffect?'dbnode':'');return;}
+    emit('o'+first,run.length+' operations','foldnode');click('o'+first,'aceexp_'+first);
   }
   function ops(from,to,prior,edgeLabel){
     lastExit='';
@@ -126,6 +141,74 @@ function scheme(p,expandedText='',logicOnly=false) {
   while(subs.length){mm.push('end');subs.shift();}
   const last=rows.at(-1);if(last&&prev){const tail=ops(prevLine,endRow?last.line:last.line+1,prev,pendingLabel);if(endRow)connect(tail,endId);}
   if(endRow){mm.push(endId+'(["'+endRow.word+'"])');click(endId,'acego_'+endRow.source_line+'_'+endRow.source_line);}
-  return {conditionCalls,clusterRanges,nodeRanges,nodeLines:Object.fromEntries(rows.flatMap(r=>['n','p','o'].map(prefix=>[prefix+r.line,r.source_line]))),mermaid:'flowchart LR\n'+[...mm,'classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000','classDef default color:#12369e','classDef callnode fill:#fbeeee,stroke:#800000,color:#800000','classDef dbnode fill:#e8f2f6,stroke:#1f6f8b,color:#0f5468','classDef foldnode stroke-dasharray:4 3',...styles,...edges,...clicks].join('\n'),steps:mm.length,line_from:rows[0]?.source_line||p.line,line_to:last?.source_line||p.line};
+  collapsed.forEach((block,line)=>{if(mm.some(m=>m.startsWith('p'+line+'('))){styles.push('class p'+line+' foldnode');click('p'+line,'aceexp_'+block);}});
+  // Last, so a node's own click (an exit, an opened operation's aceexp) stays the one it has.
+  mm.forEach(line=>{const id=line.split('(')[0];if(/^[pj]\d+$/.test(id))toCode(id);});
+  return {conditionCalls,clusterRanges,nodeRanges,nodeLines:Object.fromEntries(rows.flatMap(r=>['n','p','o','j'].map(prefix=>[prefix+r.line,r.source_line]))),mermaid:'flowchart LR\n'+[...mm,'classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000','classDef default color:#12369e','classDef callnode fill:#fbeeee,stroke:#800000,color:#800000','classDef dbnode fill:#e8f2f6,stroke:#1f6f8b,color:#0f5468','classDef foldnode stroke-dasharray:4 3',...styles,...edges,...clicks].join('\n'),steps:mm.length,line_from:rows[0]?.source_line||p.line,line_to:last?.source_line||p.line};
 }
-module.exports={scheme,analyze,label};
+/* The blocks Depth folds, outermost first, none inside another. Depth counts the levels inside the routine that are shown:
+   1 the statements right in it (an IF and its ENDIF, not its inside), 2 the inside of those blocks too, and so on - so a
+   block folds when its inside would be deeper than maxDepth. Each: { open, inner (rows up to its closing one), count }. */
+function folds(rows,maxDepth,opened){
+  if(!(maxDepth>0))return [];
+  const root=rows.some(r=>r.kind==='O'&&Object.hasOwn(procedureEnds,r.word));
+  const result=[],taken=new Set(),levelOf=r=>r.depth-(root?1:0)+1;
+  for(const r of rows){
+    if(r.kind!=='O'||Object.hasOwn(procedureEnds,r.word)||taken.has(r.line)||levelOf(r)<maxDepth||opened.has(r.line))continue;
+    const inner=rows.filter(x=>x.line>r.line&&x.line<=r.all);
+    inner.forEach(x=>taken.add(x.line));
+    result.push({open:r,inner,count:inner.filter(x=>!['C','B'].includes(x.kind)).length});
+  }
+  return result;
+}
+/* Logic's Code view: the routine's source lines as they are written, with the same depth folding as the diagram - a block
+   nested deeper than maxDepth keeps its opening and closing statement, and the lines between are one fold that says how
+   many operations it hides, opened by its key (the opening's row, as EXPANDED names it). Items: { line, text } or
+   { fold, count, line, to } (the hidden lines). */
+function codeView(p,expandedText='',maxDepth=0){
+  const rows=analyze(p),opened=new Set(String(expandedText||'').split(',').filter(Boolean).map(Number));
+  const lastLine=r=>r.tokens.at(-1)?.line||r.source_line;
+  const text=String(p.source.text||'').split(/\r?\n/),first=rows[0]?.source_line||1,last=rows.length?lastLine(rows.at(-1)):first;
+  // A fold runs to the line before the block's closing statement: a comment there is inside the block and hidden with it.
+  const ranges=folds(rows,maxDepth,opened).map(({open,inner,count})=>{const close=rows[open.all];
+    return {from:lastLine(open)+1,to:close&&close.line===open.all+1?close.source_line-1:(inner.length?Math.max(...inner.map(lastLine)):lastLine(open)),fold:open.line,count};}).filter(f=>f.to>=f.from&&f.count>0);
+  /* Opened a step at a time: a block that Depth folds and the reader opened shows its branches - WHEN, ELSEIF, ELSE,
+     CATCH, CLEANUP - each with its own inside folded, opened in turn. The inside before the first branch is keyed by
+     the opening's row negated, a branch's by its row. A block without branches opens to its inside at once. */
+  // closes: the line that opened a block or a branch, and the keys that fold it again (a double-click on it).
+  const closes=new Map();
+  if(maxDepth>0){
+    const routine=rows.some(r=>r.kind==='O'&&Object.hasOwn(procedureEnds,r.word)),levelOf=r=>r.depth-(routine?1:0)+1;
+    for(const r of rows){
+      if(r.kind!=='O'||Object.hasOwn(procedureEnds,r.word)||levelOf(r)<maxDepth||!opened.has(r.line))continue;
+      closes.set(r.source_line,[r.line,-r.line]);
+      const heads=[r,...rows.filter(x=>x.kind==='B'&&x.depth===r.depth&&x.line>r.line&&x.line<=r.all)];
+      heads.slice(1).forEach(head=>{if(opened.has(head.line))closes.set(head.source_line,[head.line]);});
+      if(heads.length<2)continue;
+      const close=rows[r.all];
+      heads.forEach((head,at)=>{
+        const key=at?head.line:-r.line,next=heads[at+1];
+        if(opened.has(key))return;
+        const from=lastLine(head)+1,to=(next?next.source_line:close&&close.line===r.all+1?close.source_line:last+1)-1;
+        const end=next?next.line:r.all+1,count=rows.filter(x=>x.line>head.line&&x.line<end&&!['C','B'].includes(x.kind)).length;
+        // Nothing but comments inside: shown as they are, a fold of no operations would only hide them.
+        if(to>=from&&count>0)ranges.push({from,to,fold:key,count});
+      });
+    }
+  }
+  // The parser's colouring of the tokens (value-origin-linter lexColors), by line: a line becomes its pieces, each a
+  // stretch of text and the kind of token it is, '' for what is left plain.
+  const painted=new Map();
+  for(const c of p.source.lexColors||[])if(c.line>=first&&c.line<=last){if(!painted.has(c.line))painted.set(c.line,[]);painted.get(c.line).push(c);}
+  const parts=(line,marks)=>{const out=[];let at=0;
+    for(const m of [...marks].sort((a,b)=>a.col-b.col)){if(m.col<at)continue;if(m.col>at)out.push({t:line.slice(at,m.col),k:''});out.push({t:line.slice(m.col,m.col+m.len),k:m.kind});at=m.col+m.len;}
+    if(at<line.length)out.push({t:line.slice(at),k:''});return out;};
+  const items=[];
+  for(let n=first;n<=last;n++){
+    const fold=ranges.find(f=>f.from===n);
+    if(fold){items.push({fold:fold.fold,count:fold.count,line:n,to:fold.to});n=fold.to;continue;}
+    items.push({line:n,text:text[n-1]??'',...(painted.has(n)?{parts:parts(text[n-1]??'',painted.get(n))}:{}),...(closes.has(n)?{closes:closes.get(n)}:{})});
+  }
+  return items;
+}
+module.exports={scheme,analyze,label,codeView};

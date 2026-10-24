@@ -40,12 +40,24 @@ public class ToolsView extends ChatView {
     private AdtEditor activeObject() {
         return AdtEditor.of(getSite().getPage().getActiveEditor());
     }
+    /** What a window opens on beyond its object - Run Select's SelecTor plan - by secondary id, taken once. */
+    static final java.util.Map<String, String> OPENS = new java.util.concurrent.ConcurrentHashMap<>();
     @Override protected String initialLiteral() {
+        String opens = OPENS.remove(String.valueOf(getViewSite().getSecondaryId()));
+        if (opens != null) return opens.replace("<", "\\u003c");
         AdtEditor editor = part(0) == null ? activeObject() : null;
         String name = part(0) == null ? editor == null ? null : editor.ownerName() : part(0);
         String type = part(1) == null ? editor == null ? "CLAS" : editor.kind() : part(1);
-        return name == null || name.isBlank() ? "null" : "{\"name\":" + AssistantBridge.quote(name)
-            + ",\"type\":" + AssistantBridge.quote(type == null ? "CLAS" : type) + ",\"boundObject\":true,\"cursorLine\":" + editorLine() + "}";
+        if (name == null || name.isBlank()) return "null";
+        // Bound to an editor - fields hidden, Parts folded, the cursor choosing the routine - only when the active editor
+        // shows this object, as VS Code binds Tools opened from an editor. Opened from Project Explorer it is a free
+        // window: the object type and name fields stay, and Parts is open to pick a method, since no cursor picks one.
+        // Opened by Window > Show View - no object named by a command - it is free too, on the editor's object: the
+        // fields let another type and object be chosen, as VS Code's Tools panel does.
+        AdtEditor shown = activeObject();
+        boolean bound = part(0) != null && shown != null && name.equalsIgnoreCase(shown.ownerName());
+        return "{\"name\":" + AssistantBridge.quote(name) + ",\"type\":" + AssistantBridge.quote(type == null ? "CLAS" : type)
+            + (bound ? ",\"boundObject\":true,\"cursorLine\":" + editorLine() : "") + "}";
     }
     @Override protected String readResource(String path) throws IOException {
         String value = super.readResource(path);
@@ -125,15 +137,27 @@ public class ToolsView extends ChatView {
                 String name=jsonText(request,"name").toUpperCase(),type=jsonText(request,"type").toUpperCase(),method=jsonText(request,"method");
                 Matcher line=Pattern.compile("\"line\"\\s*:\\s*(\\d+)").matcher(request);
                 int requested=line.find()?Integer.parseInt(line.group(1)):0;
+                boolean newTab=Pattern.compile("\"newTab\"\\s*:\\s*true").matcher(request).find();
                 browser.getDisplay().asyncExec(()->{
                     if(browser.isDisposed())return;
                     sourceNavigationUntil=System.currentTimeMillis()+700;
-                    String answer=openEditor(name,type.isEmpty()?"CLAS":type);
-                    if(answer.startsWith("ERROR:")){
-                        navigationDiagnostic("open " + type + " " + name + " requested=" + requested + " failed: " + answer.substring(6));
-                        MessageDialog.openError(browser.getShell(),"VERTEX",answer.substring(6));return;
+                    java.util.Set<IEditorPart> before=openEditors();
+                    // The editor ADT opens for the object, not the page's active one: from a Tools window opened in
+                    // Project Explorer the focus stays in that window, and the active editor is another object's.
+                    IEditorPart editor;
+                    try{editor=navigate(name,type.isEmpty()?"CLAS":type);}
+                    catch(RuntimeException e){
+                        navigationDiagnostic("open " + type + " " + name + " requested=" + requested + " failed: " + describe(e));
+                        MessageDialog.openError(browser.getShell(),"VERTEX",describe(e));return;
                     }
-                    IEditorPart editor=getSite().getPage().getActiveEditor();ITextEditor text=Adapters.adapt(editor,ITextEditor.class);
+                    reuse(editor,before.contains(editor),newTab);
+                    editor.getSite().getPage().activate(editor);
+                    // The editor opens in the workbench window, which a detached Tools window may cover: that window
+                    // comes to the front, or the opened source stays out of sight and the click seems to do nothing.
+                    org.eclipse.swt.widgets.Shell workbench=editor.getSite().getWorkbenchWindow().getShell();
+                    if(workbench.getMinimized())workbench.setMinimized(false);
+                    workbench.forceActive();
+                    ITextEditor text=Adapters.adapt(editor,ITextEditor.class);
                     if(text==null||text.getDocumentProvider()==null){
                         navigationDiagnostic("open " + type + " " + name + " requested=" + requested + " has no active text editor");return;
                     }
@@ -193,6 +217,65 @@ public class ToolsView extends ChatView {
         catch (IllegalStateException e) { return "ERROR:" + describe(e); }
         return open("{\"uri\":" + AssistantBridge.quote(object[0]) + ",\"name\":" + AssistantBridge.quote(name)
             + ",\"type\":" + AssistantBridge.quote(object[1]) + "}", browser.getDisplay());
+    }
+    /** The editor this window opened last for a plain click, which the next plain click replaces. */
+    private IEditorPart reusable;
+    private java.util.Set<IEditorPart> openEditors() {
+        java.util.Set<IEditorPart> editors = new java.util.HashSet<>();
+        for (org.eclipse.ui.IEditorReference reference : getSite().getPage().getEditorReferences()) {
+            IEditorPart part = reference.getEditor(false);
+            if (part != null) editors.add(part);
+        }
+        return editors;
+    }
+    /**
+     * One editor for plain clicks, a tab of its own for Ctrl+click. A plain click that opened a new editor closes the
+     * one the previous plain click opened - only one this window opened itself, and only when it holds no unsaved
+     * change; a source the reader had open already is never closed, nor one opened with Ctrl.
+     */
+    private void reuse(IEditorPart opened, boolean wasOpen, boolean newTab) {
+        if (newTab || wasOpen) return;
+        IEditorPart previous = reusable;
+        reusable = opened;
+        if (previous == null || previous == opened || !openEditors().contains(previous) || previous.isDirty()) return;
+        previous.getSite().getPage().closeEditor(previous, false);
+    }
+    /**
+     * An open editor of NAME, a visible one before a hidden one; null when none. An editor ADT's model does not describe -
+     * the debugger's own - is known by its title, "[SID] NAME" as ADT writes it.
+     */
+    private IEditorPart openEditorOf(String name) {
+        IEditorPart hidden = null;
+        for (org.eclipse.ui.IEditorReference reference : getSite().getPage().getEditorReferences()) {
+            IEditorPart part = reference.getEditor(false);
+            if (part == null) continue;
+            AdtEditor object = AdtEditor.of(part);
+            String shown = object != null ? object.ownerName() : part.getTitle().replaceFirst("^\\[[^\\]]*\\]\\s*", "").trim();
+            if (shown == null || !shown.equalsIgnoreCase(name)) continue;
+            if (getSite().getPage().isPartVisible(part)) return part;
+            if (hidden == null) hidden = part;
+        }
+        return hidden;
+    }
+    /** Opens NAME in ADT's editor and answers that editor; a failure is thrown with its reason. */
+    protected IEditorPart navigate(String name, String type) {
+        if (!name.matches("[A-Z0-9_/]{1,40}")) throw new IllegalArgumentException("Invalid object name.");
+        if (!type.equals("PROG") && !type.equals("CLAS") && !type.equals("FUNC"))
+            throw new IllegalArgumentException("Only programs, classes and function modules open from here.");
+        // An editor of the object already open - ADT's debugger editor among them - is used, a visible one first: ADT's
+        // navigation opened its ordinary editor beside the debugger's, a new tab at every stop and every step of history.
+        IEditorPart open = openEditorOf(name);
+        if (open != null) return open;
+        String[] object = adtObject(name, type);
+        com.sap.adt.tools.core.model.adtcore.IAdtObjectReference reference =
+            com.sap.adt.tools.core.model.adtcore.IAdtCoreFactory.eINSTANCE.createAdtObjectReference();
+        reference.setUri(object[0]);
+        reference.setName(name);
+        reference.setType(object[1]);
+        IEditorPart editor = com.sap.adt.tools.core.ui.navigation.AdtNavigationServiceFactory.createNavigationService()
+            .navigate(abapProject(), reference, true);
+        if (editor == null) throw new IllegalStateException("ADT did not open " + name + ".");
+        return editor;
     }
     private static String jsonText(String request,String key){
         Matcher match=Pattern.compile("\""+Pattern.quote(key)+"\"\\s*:\\s*\"([^\"]*)\"").matcher(request);

@@ -102,6 +102,27 @@ async function resolve(vscode, document, position) {
   return { document: target, target: new vscode.Location(target.uri, range) };
 }
 
+/* Go to definition inside one SAP source that is not sent to SAP: abaplint over that text alone, in a registry of its
+   own. A name declared in another object is not found here. */
+async function resolveSource(vscode, document, position, objectType, objectName) {
+  const abaplint = require("@abaplint/core");
+  const kind = { CLAS: "clas", INTF: "intf" }[objectType] || "prog";
+  const name = String(objectName).toLowerCase().replace(/\//g, "#") + "." + kind + ".abap";
+  const registry = new abaplint.Registry().addFile(new abaplint.MemoryFile(name, document.getText())).parse();
+  const found = new abaplint.LanguageServer(registry).gotoDefinition({ textDocument: { uri: name }, position: { line: position.line, character: position.character } });
+  if (!found || String(found.uri).toLowerCase() !== name) return null;
+  let line = found.range.start.line, character = found.range.start.character;
+  const declared = document.getText().split(/\r?\n/)[line] || "";
+  const word = declared.slice(character).match(/^[\w~/]+/)?.[0] || "";
+  if (word && /^\s*(?:CLASS-)?METHODS\b/i.test(declared)) {
+    const implemented = implementationLine(registry, name, word);
+    if (implemented) { line = implemented.line; character = (document.getText().split(/\r?\n/)[line] || "").toUpperCase().indexOf(word.toUpperCase()); }
+  }
+  if (line === position.line) return null;
+  const range = new vscode.Range(line, Math.max(0, character), line, Math.max(0, character) + word.length);
+  return { document, target: new vscode.Location(document.uri, range) };
+}
+
 function register(vscode, context) {
   if (!vscode.languages?.registerDefinitionProvider) { return; }
   context.subscriptions.push(vscode.languages.registerDefinitionProvider(
@@ -109,4 +130,4 @@ function register(vscode, context) {
     { provideDefinition: async (document, position) => (await resolve(vscode, document, position))?.target }));
 }
 
-module.exports = { resolve, register };
+module.exports = { resolve, resolveSource, register };

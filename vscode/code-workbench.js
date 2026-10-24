@@ -1,7 +1,7 @@
 "use strict";
 
 const { createRepository, revision } = require("./sap-code");
-const { hunks, reviewedSource, askPrompt } = require("./code-review");
+const { hunks, reviewedSource, askContext } = require("./code-review");
 // Every tool that reaches SAP takes the system by name: the main chat can read
 // in one and prepare a change for another. review_sap_changes works on the
 // open editor tab, which already knows its system.
@@ -275,7 +275,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     await vscode.commands.executeCommand('vscode.open', document.uri, { viewColumn: home ? home.viewColumn : beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One,
       selection: new vscode.Range(at, at), preview: true, preserveFocus: preserveFocus === true });
   }
-  async function openToolSource(args) {
+  async function openToolSource(args, searched = new Set()) {
     const repo = await repository();
     const entry = [...opened.values()].find(item=>item.repo===repo&&item.document&&!item.document.isClosed&&String(item.data.object_name).toUpperCase()===String(args.name).toUpperCase())
       || await sourceDocument(repo, { object_name: args.name, object_type: args.type || 'CLAS' });
@@ -283,9 +283,28 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const routine = String(args.method || '').toUpperCase(), included = String(args.include || '').toUpperCase();
     // A local class's method is looked for in that class's IMPLEMENTATION only: many classes share a method's name.
     const owner = String(args.localClass || '').toUpperCase();
+    const implementedAt = text => { const hit = /^\s*CLASS\s+(\S+)\s+IMPLEMENTATION\b/i.exec(text); return hit && hit[1].replace(/\.$/, '').toUpperCase() === owner; };
     let from = 0, to = lines.length;
     if (owner) {
-      from = lines.findIndex(text => { const hit = /^\s*CLASS\s+(\S+)\s+IMPLEMENTATION\b/i.exec(text); return hit && hit[1].replace(/\.$/, '').toUpperCase() === owner; });
+      from = lines.findIndex(implementedAt);
+      /* A program often implements its local class in an include: its INCLUDE statements (abaplint's parse) are read in
+         turn, nested ones too, and the method opens in the one that has the IMPLEMENTATION. */
+      if (from < 0 && routine && ['PROG', 'INCL'].includes(String(args.type || '').toUpperCase())) {
+        searched.add(String(args.name).toUpperCase());
+        const statements = await require('./abap-statements').statementsOf(entry.document);
+        for (const statement of statements.filter(s => s.parserKind === 'Include')) {
+          const name = String(statement.tokens[1]?.value || '').toUpperCase();
+          if (!name || searched.has(name)) continue;
+          searched.add(name);
+          let include;
+          try { include = await sourceDocument(repo, { object_name: name, object_type: 'INCL' }); } catch { continue; }
+          const text = include.document.getText();
+          if (text.split(/\r?\n/).some(implementedAt) || /\bINCLUDE\b/i.test(text)) {
+            try { return await openToolSource({ ...args, name, type: 'INCL' }, searched); }
+            catch (error) { if (!/^No CLASS /.test(error.message)) throw error; }
+          }
+        }
+      }
       // Only a method needs the IMPLEMENTATION: the class and its other members are in the DEFINITION.
       if (from < 0 && routine) throw new Error('No CLASS ' + owner + ' IMPLEMENTATION in ' + args.name + '.');
       to = lines.findIndex((text, index) => index > from && /^\s*ENDCLASS\b/i.test(text));
@@ -425,7 +444,10 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       if (!system) {
         const matches = current.filter(system => system.name === name);
         if (matches.length > 1) { throw new Error("several systems are named " + name + "; this tab cannot tell which one it belongs to"); }
-        if (!matches.length) { throw new Error(name + " is no longer in vertex.systems"); }
+        if (!matches.length) {
+          const off = (vscode.workspace.getConfiguration?.("vertex").get("systems") || []).some(s => s && s.name === name && s.disabled === true);
+          throw new Error(name + (off ? " is switched off in VERTEX: SAP Systems" : " is no longer in vertex.systems"));
+        }
         system = matches[0];
       }
     } else {
@@ -440,6 +462,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       const pending = (async () => {
         const client = await auth.makeClient(system, "repository");
         const api = createRepository({ client, systemId: key,
+          rfc: system.authType === "snc" ? { maxLines: () => vscode.workspace.getConfiguration("vertex").get("rfc.maxAnalysedLines", 0) } : null,
           emit: event => events.emit({ ...event, system: system.name }) });
         // Returned readers use the same error boundary as repository methods.
         const wrap = method => (...args) => {
@@ -629,11 +652,8 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     }
     return null;
   }
-  const blockOpen = { DO: "ENDDO", LOOP: "ENDLOOP", METHOD: "ENDMETHOD", FORM: "ENDFORM", IF: "ENDIF", CASE: "ENDCASE",
-    CLASS: "ENDCLASS", INTERFACE: "ENDINTERFACE" };
   // CLASS ... DEFINITION DEFERRED / LOAD / LOCAL FRIENDS and INTERFACE ... DEFERRED / LOAD have no end of their own.
   const noBlock = /^\s*(?:CLASS|INTERFACE)\s+\S+\s+(?:DEFINITION\s+)?(?:DEFERRED|LOAD|LOCAL\s+FRIENDS)\b/i;
-  const blockClose = Object.fromEntries(Object.entries(blockOpen).map(([open, close]) => [close, open]));
   function structuralAnchor(document, at) {
     const line = document.getText().split(/\r?\n/)[at.line] || "";
     const match = /^\s*(DO|ENDDO|LOOP|ENDLOOP|METHOD|ENDMETHOD|FORM|ENDFORM|IF|ELSEIF|ELSE|ENDIF|CASE|WHEN|ENDCASE|CLASS|ENDCLASS|INTERFACE|ENDINTERFACE)\b/i.exec(line);
@@ -644,32 +664,20 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
   }
   /* Double-click jumps from a block's opening to its end and back; with
      BRANCHES - Ctrl+click and F12 - IF and CASE step through ELSEIF, ELSE
-     and WHEN on the way. */
-  function structuralTarget(document, at, branches) {
+     and WHEN on the way. The blocks come from abaplint's parse (abap-folding
+     blockJumps), shared with folding: a line that only starts with a keyword -
+     a parameter named CLASS in a call - is no block. */
+  async function structuralTarget(document, at, branches) {
     const anchor = structuralAnchor(document, at);
     if (!anchor) return undefined;
-    const lines = document.getText().split(/\r?\n/), frames = [], targets = new Map();
-    lines.forEach((line, index) => {
-      const hit = /^\s*(DO|ENDDO|LOOP|ENDLOOP|METHOD|ENDMETHOD|FORM|ENDFORM|IF|ELSEIF|ELSE|ENDIF|CASE|WHEN|ENDCASE|CLASS|ENDCLASS|INTERFACE|ENDINTERFACE)\b/i.exec(line);
-      if (!hit || noBlock.test(line)) return;
-      const word = hit[1].toUpperCase(), column = hit.index + hit[0].indexOf(hit[1]);
-      if (blockOpen[word]) { frames.push({ kind: word, start: { index, column, word }, branches: [] }); return; }
-      if (word === "ELSEIF" || word === "ELSE" || word === "WHEN") {
-        const expected = word === "WHEN" ? "CASE" : "IF";
-        const frame = [...frames].reverse().find(item => item.kind === expected);
-        if (frame) frame.branches.push({ index, column, word });
-        return;
-      }
-      const expected = blockClose[word], frame = frames.length && frames[frames.length - 1];
-      if (!expected || !frame || frame.kind !== expected) return;
-      frames.pop();
-      const end = { index, column, word }, next = pos => ({ document, target: location(document.uri, pos.index, pos.column, pos.word.length) });
-      targets.set(frame.start.index, branches && frame.branches[0] || end);
-      frame.branches.forEach((branch, item) => targets.set(branch.index, frame.branches[item + 1] || end));
-      targets.set(end.index, frame.start);
-    });
-    const target = targets.get(anchor.line);
-    return target && { document, target: location(document.uri, target.index, target.column, target.word.length) };
+    const statements = await require("./abap-statements").statementsOf(document);
+    const own = statements.find(statement => statement.line === anchor.line + 1);
+    if (!own) return undefined;
+    const target = require("./abap-folding").blockJumps(statements, branches).get(own.line);
+    if (!target) return undefined;
+    // abaplint counts offsets from the start after each \n, so a \r stays part of its line here too.
+    const keyword = target.tokens[0], column = document.getText().split("\n").slice(0, keyword.line - 1).reduce((sum, line) => sum + line.length + 1, 0);
+    return { document, target: location(document.uri, keyword.line - 1, keyword.offset - column, String(keyword.value).length) };
   }
   function methodSignature(source, name) {
     const wanted = new RegExp("^\\s*" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
@@ -1188,7 +1196,8 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     // so those existing points can be sent back to SAP without a manual
     // remove/add click.
     const entry = opened.get(location.uri.toString()) || await fileEntry(location.uri).catch(() => null);
-    if (!entry || !['PROG', 'CLAS', 'FUNC'].includes(entry.data.object_type)) return null;
+    // An include - a program's or a function group's - takes its points at its own source, as ADT sets them.
+    if (!entry || !['PROG', 'CLAS', 'FUNC', 'INCL'].includes(entry.data.object_type)) return null;
     const line = location.range.start.line + 1;
     if (entry.data.object_type !== 'CLAS' || entry.data.include === 'main') {
       return { url: entry.data.source_url, line };
@@ -1507,15 +1516,16 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     return { document: target.document, target: location(target.document.uri, line,
       Math.max(0, column), anchor.name.length) };
   }
-  function ownDeclaration(document, at) {
-    const word = wordAt(document, at);
+  // FROM: the source the cursor stands in, when DOCUMENT - searched - is another one (an include of it).
+  function ownDeclaration(document, at, from = document) {
+    const word = wordAt(from, at);
     if (!word) return undefined;
     const lines = document.getText().split(/\r?\n/), name = String(word.name).toUpperCase();
     // A call of a method of a class this source declares - lcl=>m( ), or lo->m( ) with lo TYPE REF TO lcl - goes to
     // its METHOD in that class's IMPLEMENTATION here; SAP knows no such global class.
-    const call = externalCallAnchor(document, at);
+    const call = externalCallAnchor(from, at);
     if (call && call.method && name === call.method && ["method", "instance-method"].includes(call.kind)) {
-      const owner = call.kind === "method" ? call.object_name : String(instanceClass(document, at, call.instance) || "").toUpperCase();
+      const owner = call.kind === "method" ? call.object_name : String(instanceClass(from, at, call.instance) || "").toUpperCase();
       const start = owner ? lines.findIndex(text => { const hit = /^\s*CLASS\s+(\S+)\s+IMPLEMENTATION\b/i.exec(text); return hit && hit[1].replace(/\.$/, '').toUpperCase() === owner; }) : -1;
       if (start >= 0) {
         let end = start;
@@ -1535,12 +1545,30 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     // On a class's own DEFINITION line, its name goes to its IMPLEMENTATION; on the IMPLEMENTATION line the search
     // above already leads to the DEFINITION.
     let goal = line;
-    if (line === at.line) {
+    if (line === at.line && document === from) {
       goal = lines.findIndex(text => { const hit = /^\s*CLASS\s+(\S+)\s+IMPLEMENTATION\b/i.exec(text); return hit && hit[1].replace(/\.$/, '').toUpperCase() === name; });
       if (goal < 0) return undefined;
     }
     const column = lines[goal].toUpperCase().indexOf(name);
     return { document, target: location(document.uri, goal, Math.max(0, column), name.length) };
+  }
+  /* What ownDeclaration finds in this source, found in the program's INCLUDEs (abaplint's parse, nested ones too): a
+     program keeps its local classes and forms there, and SAP knows no global class of that name to ask. */
+  async function includedDeclaration(document, at, searched = new Set()) {
+    const entry = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document);
+    if (!entry || !entry.repo || !['PROG', 'INCL'].includes(entry.data.object_type)) return undefined;
+    searched.add(String(entry.data.object_name).toUpperCase());
+    const statements = await require('./abap-statements').statementsOf(document);
+    for (const statement of statements.filter(s => s.parserKind === 'Include')) {
+      const name = String(statement.tokens[1]?.value || '').toUpperCase();
+      if (!name || searched.has(name)) continue;
+      searched.add(name);
+      let include;
+      try { include = await sourceDocument(entry.repo, { object_name: name, object_type: 'INCL' }); } catch { continue; }
+      const found = ownDeclaration(include.document, at, document) || await includedDeclaration(include.document, at, searched);
+      if (found) return found;
+    }
+    return undefined;
   }
   /* The METHOD of a METHODS line, or the other way round, within the local class the cursor stands in: the
      declaration in CLASS x DEFINITION, the implementation in CLASS x IMPLEMENTATION, so a name two classes share
@@ -1706,17 +1734,29 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       return;
     }
     // F12 walks the branches; the double-click (QUIET) jumps to the end.
-    const structure = structuralTarget(editor.document, at, !quiet);
+    const structure = await structuralTarget(editor.document, at, !quiet);
     if (structure) { await moveTo(editor, structure); return; }
     // A class, an interface or a form this source declares itself is found in it - no SAP request, so a source
     // too large to send to SAP still navigates to its own declarations.
-    const own = ownDeclaration(editor.document, at);
+    const own = ownDeclaration(editor.document, at) || await includedDeclaration(editor.document, at);
     if (own) { await moveTo(editor, own); return; }
     const method = await methodCounterpart(editor.document, at) || await interfaceImplementation(editor.document, at);
     // Resolve an ABAP call before asking ADT for a declaration.  ADT's
     // definition of LO_STRATEGY->CALCULATE_BASE is the interface METHODS
     // line, whereas the useful destination of a call is its implementation.
     const external = method ? undefined : await externalCallTarget(editor.document, at);
+    try { await sapNavigation(editor, at, quiet, method, external); }
+    catch (error) {
+      // A source VERTEX does not send to SAP over RFC (too long, or it dumped before): abaplint finds the name in it.
+      if (!error || error.code !== "VERTEX_SOURCE_NOT_SENT") { throw error; }
+      const current = sourceOf(editor.document);
+      const found = current && await require("./local-navigation").resolveSource(vscode, editor.document, at,
+        current.entry.data.object_type, current.entry.data.object_name);
+      if (found) { await moveTo(editor, found); return; }
+      if (!quiet) { vscode.window.showInformationMessage("VERTEX: " + error.message + " abaplint finds no definition in this source."); }
+    }
+  }
+  async function sapNavigation(editor, at, quiet, method, external) {
     if (external?.interfaceDispatch) {
       // A call through an interface reference: SAP is asked where it is implemented.
       const implemented = await adtImplementation(editor.document, at);
@@ -1877,7 +1917,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     context.subscriptions.push(vscode.languages.registerDefinitionProvider(
       [{ scheme: "vertex-sap", language: "abap" }, { scheme: "vertex-source", language: "abap" }], {
         async provideDefinition(document, at) {
-          const result = structuralTarget(document, at, true) || await methodCounterpart(document, at)
+          const result = await structuralTarget(document, at, true) || await methodCounterpart(document, at)
             || await externalCallTarget(document, at);
           return result && !result.interfaceDispatch && result.target;
         }
@@ -2024,9 +2064,10 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const base = entry.data.source, baseRevision = entry.data.revision;
     let applying = false, finished = false;
     panel.webview.onDidReceiveMessage(async message => {
-      if (message && message.action === "ask" && Number.isInteger(message.hunk) && parts[message.hunk]) {
+      // ASK AI: a block, or with all every block, handed to the chat as context of the reader's question.
+      if (message && message.action === "ask" && (message.all === true || Number.isInteger(message.hunk) && parts[message.hunk])) {
         await vscode.commands.executeCommand("vertex.askReviewBlock",
-          askPrompt(parts[message.hunk], after, entry.repo.label, entry.data.object_name));
+          askContext(parts, message.all === true ? null : [message.hunk], after, entry.repo.label, entry.data.object_name));
         return;
       }
       if (!message || message.action !== "apply") { return; }
@@ -2359,50 +2400,16 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const local = document?.uri?.scheme === "file" && /\.abap$/i.test(document.uri.fsPath || "");
     if (!own && !local) { throw new Error("Open a SAP or local ABAP source tab first."); }
     const api = own ? own.entry.repo.api : (await repository()).api;
-    const prepared = require("./select-query").prepare(document.getText(), document.offsetAt(editor.selection.start));
-    // What SelecTor can say opens in SelecTor, its conditions as selection lines; SelecTor reads tables, not views.
-    // SelecTor's join takes any table with the ON it is given; what fails, fails there, where it can be seen.
-    // A grouped SELECT opens in its pivot.
-    if (prepared.selector && prepared.selector.join && (prepared.selector.join.length || prepared.selector.pivot)) {
-      return vscode.commands.executeCommand("vertex.tools", { type: "TABL", name: prepared.selector.table,
-        action: prepared.selector.pivot ? "pivot" : "join", selectorPlan: prepared.selector });
-    }
-    if (prepared.selector) {
-      const table = prepared.selector.table;
-      const kind = await api.query("SELECT tabclass FROM dd02l WHERE tabname = '" + table + "' AND as4local = 'A'", 1);
-      const tabclass = kind.values.length ? kind.values[0].TABCLASS : "";
-      if (["TRANSP", "CLUSTER"].includes(tabclass)) {
-        return vscode.commands.executeCommand("vertex.tools", { type: "TABL", name: table, selectorPlan: prepared.selector });
-      }
-      prepared.notSelector = table + " is " + (tabclass ? "a " + tabclass.toLowerCase() : "not a dictionary table") + ", and SelecTor reads tables.";
-      prepared.selector = null;
-    }
-    if (!prepared.sql) { throw new Error("The SELECT cannot run as written, and SelecTor cannot take it: " + prepared.notSelector); }
-    const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Run Select — data preview" },
-      () => api.query(prepared.sql, prepared.rows));
-    const panel = vscode.window.createWebviewPanel("vertex.runSelect", "Select · line " + prepared.line, vscode.ViewColumn.Beside, {});
-    panel.webview.html = selectHtml(prepared, result);
+    // Decided in select-query.run, which Eclipse runs too.
+    const answer = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Run Select - data preview" },
+      () => require("./select-query").run(api, document.getText(), document.offsetAt(editor.selection.start)));
+    if (answer.open) { return vscode.commands.executeCommand("vertex.tools", answer.open); }
+    const panel = vscode.window.createWebviewPanel("vertex.runSelect", "Select · line " + answer.line, vscode.ViewColumn.Beside, {});
+    panel.webview.html = answer.html;
   });
-  function selectHtml(prepared, result) {
-    const esc = value => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    const head = result.columns.map(column => "<th title=\"" + esc(column.description) + "\">" + esc(column.name) + "</th>").join("");
-    const body = result.values.map(row => "<tr>" + result.columns.map(column => "<td>" + esc(row[column.name]) + "</td>").join("") + "</tr>").join("");
-    const dropped = prepared.dropped.length ? "<div class=\"dropped\">Left out, not known without running the program: "
-      + prepared.dropped.map(text => "<code>" + esc(text) + "</code>").join(", ") + "</div>" : "";
-    const why = prepared.notSelector ? "<div class=\"count\">Not opened in SelecTor: " + esc(prepared.notSelector) + "</div>" : "";
-    return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
-      + "body{background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);padding:8px}"
-      + "pre{background:var(--vscode-textCodeBlock-background);padding:6px;white-space:pre-wrap;margin:0 0 6px}"
-      + ".dropped{color:var(--vscode-editorWarning-foreground);margin:0 0 6px}.count{color:var(--vscode-descriptionForeground);margin:0 0 6px}"
-      + "table{border-collapse:collapse}th,td{border:1px solid var(--vscode-panel-border);padding:2px 6px;text-align:left;white-space:nowrap}"
-      + "th{background:var(--vscode-editorWidget-background);position:sticky;top:0}"
-      + "</style></head><body>" + why + "<pre>" + esc(prepared.sql) + "</pre>" + dropped
-      + "<div class=\"count\">" + result.values.length + " rows" + (result.values.length >= prepared.rows ? " (limit " + prepared.rows + ")" : "") + "</div>"
-      + "<table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></body></html>";
-  }
   // Backward Usage Analysis: where the values of the routine at the cursor go in its callers, up through theirs. SAP's
   // where-used finds the calls in the saved sources; each customer object found is read as a tab, standard code is not.
-  // Visual Debug's Where used names the value chosen in its Variables; from the editor it is the one under the cursor.
+  // VERTEX Smart Debugger's Where used names the value chosen in its Variables; from the editor it is the one under the cursor.
   command("vertex.backwardUsage", async (options = {}) => {
     const editor = vscode.window.activeTextEditor, document = editor && editor.document;
     const local = document && require("./local-analysis").isLocalAbap(document);

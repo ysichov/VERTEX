@@ -14,7 +14,7 @@
     ["DDLS", "CDS", ["diff"]], ["DOMA", "Domain", ["diff"]], ["DTEL", "Data element", ["diff"]]
   ];
   const labels = { data: "Data", join: "Join", pivot: "Pivot", diff: "Diff", review: "Review",
-    uml: "UML diagram", metrics: "Metrics", scheme: "Logic diagram", flow: "Calls diagram" };
+    uml: "UML diagram", metrics: "Metrics", scheme: "Logic view", flow: "Calls diagram" };
   // Visual order is not the default action: Diff belongs at the end of the
   // picker, while a class/package opened from a version-oriented command must
   // still start on Diff unless the caller selected a view explicitly.
@@ -44,7 +44,7 @@
       action: { type: "string", enum: Object.keys(labels) },  // enable() adds to it
       part: { type: ["string", "null"], description: "The method, form or event within the object, when the request names one; otherwise null." }
     } }] };
-  // What only one host has: VS Code adds Visual Debug, which Eclipse does not
+  // What only one host has: VS Code adds VERTEX Smart Debugger, which Eclipse does not
   // offer. Read when asked, so an action enabled after loading is in the text.
   let hostNotes = "";
   const instructions = () => "When asked to run a VERTEX function, return navigation with the exact object type, name and action. "
@@ -54,7 +54,7 @@
     + "about what is on screen keeps the view: navigation null. "
     + "Use the current workspace object when requested. Ask if the object is ambiguous. Do not claim execution: the UI runs the function after your reply. "
     + "Use null navigation for other answers. Available types and actions: " + JSON.stringify(objects)
-    + ". Source code opens in an ordinary editor tab, never in a Tools window: show, view, open, read or look at the code of a PROG, CLAS, FUNC or INTF is answered with open_sap_object and navigation null. The reader opens it in VERTEX themselves if they want it there. A Tools window is for what an editor tab cannot show: UML, the Logic and Calls diagrams, Diff and version history, table data and a transport review. Action view stays available for a package (DEVC) and for a reader who asks for the VERTEX source window by name. A request to fix or change the code is done with modify_sap_object alone: it puts the change into the object's tab, unsaved, for the user to save. Do not also call open_sap_object for it, and return navigation null - no Tools window. Default to View source for packages, review for TR and data for tables. Logic diagram (action scheme) is the flowchart of one method; Calls diagram (action flow) is which unit calls which in the whole object. Diff is the version history: versions, history, what changed, compare versions or who changed it all mean action diff, never view. Package UML uses DEVC/uml. When the request names a method, form or event of the object - CLASS->METHOD, CLASS=>METHOD, 'method X of class Y' - put the object in name and that unit alone in part; otherwise part is null." + hostNotes;
+    + ". Source code opens in an ordinary editor tab, never in a Tools window: show, view, open, read or look at the code of a PROG, CLAS, FUNC or INTF is answered with open_sap_object and navigation null. The reader opens it in VERTEX themselves if they want it there. A Tools window is for what an editor tab cannot show: UML, the Logic and Calls diagrams, Diff and version history, table data and a transport review. Action view stays available for a package (DEVC) and for a reader who asks for the VERTEX source window by name. A request to fix or change the code is done with modify_sap_object alone: it puts the change into the object's tab, unsaved, for the user to save. Do not also call open_sap_object for it, and return navigation null - no Tools window. Default to View source for packages, review for TR and data for tables. Logic view (action scheme) is the flowchart of one method; Calls diagram (action flow) is which unit calls which in the whole object. Diff is the version history: versions, history, what changed, compare versions or who changed it all mean action diff, never view. Package UML uses DEVC/uml. When the request names a method, form or event of the object - CLASS->METHOD, CLASS=>METHOD, 'method X of class Y' - put the object in name and that unit alone in part; otherwise part is null." + hostNotes;
   /* A function one host adds for some types: placed after View source, or
      else before Diff, which stays last in the picker - or first, when the host
      asks, and then also the function these types open on; and named in the
@@ -65,8 +65,10 @@
     navigationSchema.anyOf[1].properties.action.enum.push(action);
     types.forEach(type => {
       const list = objects.find(o => o[0] === type)[2], view = list.indexOf("view"), diff = list.indexOf("diff");
-      if (first) defaults[type] = action;
-      list.splice(first ? 0 : view >= 0 ? view + 1 : diff >= 0 ? diff : list.length, 0, action);
+      // FIRST: true for every type, or the list of types the action leads and opens on; the others keep their default.
+      const lead = first === true || (Array.isArray(first) && first.includes(type));
+      if (lead) defaults[type] = action;
+      list.splice(lead ? 0 : view >= 0 ? view + 1 : diff >= 0 ? diff : list.length, 0, action);
     });
     hostNotes += " " + note;
   }

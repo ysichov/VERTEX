@@ -298,4 +298,45 @@ function toSelector(lint, select, condition) {
   }
 }
 
-module.exports = { prepare, DEFAULT_ROWS };
+/* Run Select for a host: the SELECT at OFFSET in TEXT, decided as both editors decide it. What SelecTor can say opens in
+   SelecTor - answered as { open: what VERTEX Tools opens on }, its conditions as selection lines; SelecTor reads tables,
+   not views, and a grouped SELECT opens in its pivot. Anything else runs through ADT's data preview and is answered as
+   { line, html }, the page of its rows. API is the host's ADT reader (query). */
+async function run(api, text, offset) {
+  const prepared = prepare(text, offset);
+  // SelecTor's join takes any table with the ON it is given; what fails, fails there, where it can be seen.
+  if (prepared.selector && prepared.selector.join && (prepared.selector.join.length || prepared.selector.pivot)) {
+    return { open: { type: "TABL", name: prepared.selector.table, action: prepared.selector.pivot ? "pivot" : "join", selectorPlan: prepared.selector } };
+  }
+  if (prepared.selector) {
+    const table = prepared.selector.table;
+    const kind = await api.query("SELECT tabclass FROM dd02l WHERE tabname = '" + table + "' AND as4local = 'A'", 1);
+    const tabclass = kind.values.length ? kind.values[0].TABCLASS : "";
+    if (["TRANSP", "CLUSTER"].includes(tabclass)) { return { open: { type: "TABL", name: table, selectorPlan: prepared.selector } }; }
+    prepared.notSelector = table + " is " + (tabclass ? "a " + tabclass.toLowerCase() : "not a dictionary table") + ", and SelecTor reads tables.";
+    prepared.selector = null;
+  }
+  if (!prepared.sql) { throw new Error("The SELECT cannot run as written, and SelecTor cannot take it: " + prepared.notSelector); }
+  return { line: prepared.line, html: page(prepared, await api.query(prepared.sql, prepared.rows)) };
+}
+
+// The rows of a SELECT run through the data preview, with the statement as run and what was left out of it.
+function page(prepared, result) {
+  const esc = value => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const head = result.columns.map(column => "<th title=\"" + esc(column.description) + "\">" + esc(column.name) + "</th>").join("");
+  const body = result.values.map(row => "<tr>" + result.columns.map(column => "<td>" + esc(row[column.name]) + "</td>").join("") + "</tr>").join("");
+  const dropped = prepared.dropped.length ? "<div class=\"dropped\">Left out, not known without running the program: "
+    + prepared.dropped.map(text => "<code>" + esc(text) + "</code>").join(", ") + "</div>" : "";
+  const why = prepared.notSelector ? "<div class=\"count\">Not opened in SelecTor: " + esc(prepared.notSelector) + "</div>" : "";
+  return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
+    + "body{background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);padding:8px}"
+    + "pre{background:var(--vscode-textCodeBlock-background);padding:6px;white-space:pre-wrap;margin:0 0 6px}"
+    + ".dropped{color:var(--vscode-editorWarning-foreground);margin:0 0 6px}.count{color:var(--vscode-descriptionForeground);margin:0 0 6px}"
+    + "table{border-collapse:collapse}th,td{border:1px solid var(--vscode-panel-border);padding:2px 6px;text-align:left;white-space:nowrap}"
+    + "th{background:var(--vscode-editorWidget-background);position:sticky;top:0}"
+    + "</style></head><body>" + why + "<pre>" + esc(prepared.sql) + "</pre>" + dropped
+    + "<div class=\"count\">" + result.values.length + " rows" + (result.values.length >= prepared.rows ? " (limit " + prepared.rows + ")" : "") + "</div>"
+    + "<table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></body></html>";
+}
+
+module.exports = { prepare, run, page, DEFAULT_ROWS };

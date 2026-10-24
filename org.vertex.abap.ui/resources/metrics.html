@@ -26,6 +26,13 @@
     --th-sorted-bg: #dbe6f4;
     --row-alt: #fafafa;
     --danger: #a5292a;
+    --tk-keyword: #0000ff; --tk-string: #a31515; --tk-number: #098658; --tk-method: #795e26; --tk-class: #267f99;
+    /* The VS Code theme names the Code view and Reachability are written in, given values for Eclipse, which defines
+       none. In VS Code the webview sets them on <html> itself, which wins over these. */
+    --vscode-editor-background: #ffffff; --vscode-editor-foreground: #1f1f1f; --vscode-descriptionForeground: #717171;
+    --vscode-editorLineNumber-foreground: #6e7681; --vscode-textLink-foreground: #005fb8; --vscode-textLink-activeForeground: #005fb8;
+    --vscode-editor-lineHighlightBackground: #e8f0fe; --vscode-list-hoverBackground: #f0f0f0; --vscode-focusBorder: #005fb8;
+    --vscode-panel-border: #e5e5e5; --vscode-editorWidget-background: #f8f8f8;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -45,6 +52,11 @@
       --th-sorted-bg: #35506b;
       --row-alt: #232323;
       --danger: #f48771;
+      --tk-keyword: #569cd6; --tk-string: #ce9178; --tk-number: #b5cea8; --tk-method: #dcdcaa; --tk-class: #4ec9b0;
+      --vscode-editor-background: #1f1f1f; --vscode-editor-foreground: #cccccc; --vscode-descriptionForeground: #9d9d9d;
+      --vscode-editorLineNumber-foreground: #6e7681; --vscode-textLink-foreground: #4daafc; --vscode-textLink-activeForeground: #4daafc;
+      --vscode-editor-lineHighlightBackground: #2a2d2e; --vscode-list-hoverBackground: #2a2d2e; --vscode-focusBorder: #0078d4;
+      --vscode-panel-border: #3c3c3c; --vscode-editorWidget-background: #252526;
     }
   }
 
@@ -55,6 +67,8 @@
     --field-bg: var(--vscode-input-background, #ffffff); --field-border: var(--vscode-input-border, #b8b8b8); --hover: var(--vscode-list-hoverBackground, #eaf2fb);
     --th-bg: var(--vscode-keybindingTable-headerBackground, #eef2f7); --th-sorted-bg: var(--vscode-list-activeSelectionBackground, #dbe6f4); --row-alt: var(--vscode-tree-tableOddRowsBackground, #fafafa);
     --danger: var(--vscode-errorForeground, #a5292a);
+    --tk-keyword: var(--vscode-debugTokenExpression-boolean, #0000ff); --tk-string: var(--vscode-debugTokenExpression-string, #a31515); --tk-number: var(--vscode-debugTokenExpression-number, #098658);
+    --tk-method: var(--vscode-symbolIcon-methodForeground, #795e26); --tk-class: var(--vscode-symbolIcon-classForeground, #267f99);
   }
 
   body.vscode-dark, body.vscode-high-contrast {
@@ -64,6 +78,8 @@
     --field-bg: var(--vscode-input-background, #3c3c3c); --field-border: var(--vscode-input-border, #5a5a5a); --hover: var(--vscode-list-hoverBackground, #2a3d55);
     --th-bg: var(--vscode-keybindingTable-headerBackground, #2b3a4a); --th-sorted-bg: var(--vscode-list-activeSelectionBackground, #35506b); --row-alt: var(--vscode-tree-tableOddRowsBackground, #232323);
     --danger: var(--vscode-errorForeground, #f48771);
+    --tk-keyword: var(--vscode-debugTokenExpression-boolean, #569cd6); --tk-string: var(--vscode-debugTokenExpression-string, #ce9178); --tk-number: var(--vscode-debugTokenExpression-number, #b5cea8);
+    --tk-method: var(--vscode-symbolIcon-methodForeground, #dcdcaa); --tk-class: var(--vscode-symbolIcon-classForeground, #4ec9b0);
   }
 
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -190,6 +206,32 @@
   /* Depth is a question about following calls, so only the flow asks it. */
   .bar .depth { display: none; color: var(--muted); gap: 3px; align-items: center; }
   body.calls .bar .depth { display: flex; }
+  body.logic .bar #depthbox { display: flex; }
+  /* The shared segment toggle sets its own display, which outweighs the hidden attribute: Code/Diagram is Logic's only. */
+  #logic-view[hidden] { display: none; }
+  /* Logic's Code view: what only a drawing needs is not offered. */
+  body.logic-code .bar #dir, body.logic-code .bar #logic-only, body.logic-code .bar #reach, body.logic-code .bar .diagram-zoom,
+  body.logic-code .bar #fit, body.logic-code .bar #lens { display: none !important; }
+  .logic-code-view { font-family: var(--vscode-editor-font-family, monospace); font-size: var(--vscode-editor-font-size, 13px);
+    color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); padding: 6px 0; min-width: max-content; }
+  .logic-code-view .code-row { display: flex; white-space: pre; line-height: 1.45; }
+  .logic-code-view .code-row .no { min-width: 5ch; padding: 0 10px 0 6px; text-align: right;
+    color: var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground)); user-select: none; }
+  /* A number that opens its line looks like the links of the path panel. */
+  .logic-code-view .code-row .no.opens { cursor: pointer; color: var(--vscode-textLink-foreground); text-decoration: underline; }
+  .logic-code-view .code-row .no.opens:hover { color: var(--vscode-textLink-activeForeground); }
+  .logic-code-view .code-row.code-selected { background: var(--vscode-editor-lineHighlightBackground, var(--vscode-list-hoverBackground)); }
+  .logic-code-view .code-fold .text { color: var(--vscode-textLink-foreground); cursor: pointer; font-style: italic; }
+  .logic-code-view .code-fold .text:hover { text-decoration: underline; }
+  /* Code view colours: abaplint's reading of each token, in the theme's own colours for that kind of symbol - the
+     palette above: VS Code's theme in VS Code, light or dark editor defaults in Eclipse, which has no theme
+     variables (left without them, Eclipse showed every token in plain text). */
+  .logic-code-view .tk-keyword { color: var(--tk-keyword); }
+  .logic-code-view .tk-string { color: var(--tk-string); }
+  .logic-code-view .tk-number { color: var(--tk-number); }
+  .logic-code-view .tk-comment { color: var(--muted); font-style: italic; }
+  .logic-code-view .tk-method { color: var(--tk-method); }
+  .logic-code-view .tk-class { color: var(--tk-class); }
   .bar .depth input { width: 3.2rem; font: inherit; padding: 2px 4px; color: var(--fg);
                       background: var(--field-bg); border: 1px solid var(--field-border); }
   /* The diagram sizes itself; the pane scrolls in both directions rather
@@ -267,7 +309,10 @@ g.node.code-selected rect,g.node.code-selected polygon,g.node.code-selected path
 .diagram-zoom input::-webkit-slider-runnable-track{height:4px;background:var(--vscode-input-background,var(--bg));border-radius:3px}
 .diagram-zoom input::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:50%;background:var(--vscode-focusBorder,#0a66c2);border:1px solid var(--vscode-editor-background,var(--bg))}
 .diagram-zoom output{min-width:3em;font-size:12px;color:var(--muted)}
-.diagram-info{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:3px 8px;font-size:12px;color:var(--muted)}.diagram-info .status{margin-left:auto}.diagram-info:empty{display:none}#logic-only{white-space:nowrap}.bar .tools{flex-wrap:nowrap}
+.diagram-info{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;padding:3px 8px;font-size:12px;color:var(--muted)}.diagram-info .status{margin-left:auto}.diagram-info:empty{display:none}#logic-only,#reach{white-space:nowrap}
+svg.reach-active g.node:not(.reach-on),svg.reach-active g.cluster:not(.reach-on)>rect,svg.reach-active .edgePath,svg.reach-active .flowchart-link,svg.reach-active .edgeLabel{opacity:.25}
+svg.reach-active g.node.reach-on rect,svg.reach-active g.node.reach-on polygon,svg.reach-active g.node.reach-on path{stroke:var(--vscode-focusBorder)!important;stroke-width:2px!important}
+svg.reach-active g.node.reach-target rect,svg.reach-active g.node.reach-target polygon,svg.reach-active g.node.reach-target path{stroke-width:4px!important}.bar .tools{flex-wrap:nowrap}
 #diagram g.node.code-selected text,#diagram g.node.code-selected tspan{fill:var(--vscode-list-activeSelectionForeground,var(--vscode-editor-foreground,#fff))!important}
 </style>
 </head>
@@ -280,7 +325,7 @@ g.node.code-selected rect,g.node.code-selected polygon,g.node.code-selected path
   <button id="load">Load</button>
   <select id="mode" title="What this window draws">
     <option value="calls" title="Which program, class or method calls which - ACE's Calls Flow">Calls diagram</option>
-    <option value="scheme" title="The flowchart of one method: its branches and statements - ACE's Flow Scheme">Logic diagram</option>
+    <option value="scheme" title="One method: its code folded to a depth, or its flowchart - ACE's Flow Scheme">Logic view</option>
     <option value="metrics">Metrics</option>
     <option value="class">UML diagram</option>
   </select>
@@ -289,7 +334,9 @@ g.node.code-selected rect,g.node.code-selected polygon,g.node.code-selected path
     <label class="depth" id="depthbox" title="How far the calls are followed">Depth
       <input id="depth" type="number" min="1" max="99" step="1" value="2"></label>
     <span class="seg" id="dir"><button data-dir="TB" class="on" title="Lay the diagram out down the page">&#8595; Top-down</button><button data-dir="LR" title="Lay the diagram out across the page">&#8594; Left-right</button></span>
+    <span class="vertex-segment-toggle" id="logic-view" hidden role="group" aria-label="Logic view"><button data-view="code" class="active" title="The method's code as written, deeper blocks folded to Depth">Code</button><button data-view="diagram" title="The method as a flowchart">Diagram</button></span>
     <button id="logic-only" hidden class="vertex-toggle on" aria-pressed="true" title="Show branches, loops and procedure calls; hide ordinary operations">Logic only</button>
+    <button id="reach" hidden class="vertex-toggle" aria-pressed="false" title="Click a node to light up the path that reaches it inside its METHOD or FORM">Reachability</button>
     <label class="diagram-zoom" title="Diagram scale"><input id="zoom" type="range" min="10" max="100" step="1" value="100" aria-label="Diagram scale"><output id="zoom-value">100%</output></label>
     <button id="fit" title="Scale the whole diagram into the pane">Fit</button>
     <button id="lens" aria-pressed="false"></button>
@@ -890,7 +937,7 @@ function makeTable(columns, rows, total, isClass, ordering, sourceContext) {
       if(column.num){cell.className="num metric-"+metricGrade(column.key,row[column.key]);var limits=METRIC_LIMITS[column.key];if(limits)cell.title=column.key==='mi'?"Green ≥ "+limits[0]+"; yellow ≥ "+limits[1]+"; red below":"ACE risk: LOW ≤ 10; MEDIUM ≤ 20; HIGH ≤ 50; CRITICAL > 50";}
       if(column.key==='unit_name'&&typeof sdeOpenToolSource==='function'){
         var button=document.createElement("button");button.className="metric-source";button.textContent=cell.textContent;button.title="Open source";
-        button.addEventListener("click",function(){var name=String(row.unit_name||''),split=name.split('=>');sdeOpenToolSource({name:split.length>1?split[0]:(sourceContext?sourceContext.name:loadedObject),type:sourceContext?sourceContext.type:(isClass?'CLAS':loadedType),method:split.pop(),beside:true,preserveFocus:true});});cell.textContent='';cell.appendChild(button);
+        button.addEventListener("click",function(){if(row.writtenIn){sdeOpenToolSource({name:row.writtenIn.name,type:row.writtenIn.type,line:row.writtenIn.line,beside:true,preserveFocus:true});return;}var name=String(row.unit_name||''),split=name.split('=>');sdeOpenToolSource({name:split.length>1?split[0]:(sourceContext?sourceContext.name:loadedObject),type:sourceContext?sourceContext.type:(isClass?'CLAS':loadedType),method:split.pop(),beside:true,preserveFocus:true});});cell.textContent='';cell.appendChild(button);
       }
       line.appendChild(cell);
     });
@@ -1083,6 +1130,10 @@ var diagramSeq = 0;
    a picture too big to read the first time; three is enough to see the shape
    and the reader winds it out from there. */
 var depth = 2;
+// Logic's depth: how many levels of nested blocks are drawn; inside a deeper block, its operations fold into one node, opened by a click.
+var logicDepth = 1;
+// Logic shows the code by default, the flowchart on Diagram; both fold to the same depth.
+var logicView = "code", schemeCode = null;
 
 var direction = "TB";
 // A method is drawn to fit the pane when it is opened: one fixed percentage
@@ -1099,8 +1150,13 @@ var natural = null;      // the size mermaid drew, before any scaling
 var fitted = true;
 var fittedFor = null;    // the pane size the current fit was worked out for
 var fitQueued = false;
-var followCode=true,logicOnly=true,lastLogicMermaid=null,latestCodeCursor=null;
+var logicOnly=true,lastLogicMermaid=null,latestCodeCursor=null;
 var schemeNodeLines={},schemeNodeRanges={},schemeClusterRanges={},schemeConditionCalls={};
+/* Reachability: the host gives, for each drawn line of a METHOD or FORM, the lines of the path that reaches it; a click on a
+   node lights them up and quiets the rest. reachLine is the node chosen, kept across redraws. */
+// The include the drawn routine is written in, when a program keeps it in one: node clicks open there, and its editor's cursor is followed.
+var schemeWritten=null;
+var schemeReach=null,reachOn=false,reachLine=0;
 var lastMermaid = null;  // the text ACE sent, kept so it can be redrawn
 var lastCaption = "";
 var pendingClass = null;
@@ -1143,6 +1199,13 @@ function shown(unit) {
 function setMode(next) {
   mode = next;
   document.getElementById("logic-only").hidden=next!=="scheme";
+  // One Depth field, two meanings: how far Calls follows calls, how deep Logic draws nested blocks.
+  document.body.classList.toggle("logic", next === "scheme");
+  document.body.classList.toggle("logic-code", next === "scheme" && logicView === "code");
+  document.getElementById("logic-view").hidden = next !== "scheme";
+  document.getElementById("depth").value = next === "scheme" ? logicDepth : depth;
+  document.getElementById("depthbox").title = next === "scheme" ? "How many levels inside the method are shown: 1 its own statements, 2 the inside of their blocks too, and so on; a deeper block shows its opening and closing statement, and a click opens what is inside" : "How far the calls are followed";
+  document.getElementById("reach").hidden=next!=="scheme"||!schemeReach;
   document.getElementById("mode").value = next;
   document.body.classList.toggle("flow", flowMode());
   document.body.classList.toggle("calls", next === "calls");
@@ -1297,7 +1360,7 @@ function requestDiagram() {
             callStart ? callStart.name : "", callStart ? callStart.type : "");
   } else {
     sdeFlow(loadedObject, loadedType, "scheme", shownUnit.include,
-            shownUnit.name, expanded.join(","), "");
+            shownUnit.name, expanded.join(","), String(logicDepth));
   }
 }
 
@@ -1593,7 +1656,7 @@ function renderDiagram(data) {
   if (data.mode === "calls" && !data.steps) {
     hint("Nothing runs from " + data.program + " on its own."
          + String.fromCharCode(10)
-         + "A class is entered through its methods; pick Logic diagram to read one.");
+         + "A class is entered through its methods; pick Logic view to read one.");
     return;
   }
   if (!data.mermaid) {
@@ -1601,8 +1664,8 @@ function renderDiagram(data) {
     return;
   }
   lastMermaid = data.mermaid;
-  lastLogicMermaid=data.logicMermaid||null;
-  schemeNodeLines=data.nodeLines||{};schemeNodeRanges=data.nodeRanges||{};schemeClusterRanges=data.clusterRanges||{};schemeConditionCalls=data.conditionCalls||{};
+  lastLogicMermaid=data.logicMermaid||null;schemeCode=data.code||null;
+  schemeNodeLines=data.nodeLines||{};schemeNodeRanges=data.nodeRanges||{};schemeClusterRanges=data.clusterRanges||{};schemeConditionCalls=data.conditionCalls||{};schemeWritten=data.writtenIn||null;schemeReach=data.reach||null;reachLine=0;document.getElementById("reach").hidden=mode!=="scheme"||!schemeReach;
   lastCaption = data.mode === "calls"
     ? data.steps + (data.steps === 1 ? " step" : " steps")
     : data.unit_type + ", lines " + data.line_from + " to " + data.line_to;
@@ -1657,7 +1720,53 @@ function linkUmlMethods(svg) {
 function umlSourceOpener() {
   return typeof sdeOpenToolSource === "function" ? sdeOpenToolSource : typeof sdeOpenUmlSource === "function" ? sdeOpenUmlSource : null;
 }
+/* Logic's Code view: the method's lines as written, a deeper block's inside one line that opens it. A line number opens
+   the line in the editor; the editor's cursor marks its line here. */
+function drawCode() {
+  var pane = document.getElementById("diagram"), view = document.createElement("div"), prior = "";
+  view.className = "logic-code-view";
+  schemeCode.forEach(function (item) {
+    var row = document.createElement("div"), no = document.createElement("span"), text = document.createElement("span");
+    no.className = "no"; text.className = "text";
+    if (item.fold) {
+      row.className = "code-row code-fold"; row.dataset.from = item.line; row.dataset.to = item.to || item.line;
+      text.textContent = (/^\s*/.exec(prior) || [""])[0] + "  … (" + item.count + (item.count === 1 ? " operation" : " operations") + " hidden)";
+      text.title = "Open this block";
+      text.addEventListener("click", function () { if (expanded.indexOf(String(item.fold)) < 0) { expanded.push(String(item.fold)); } requestDiagram(); });
+    } else {
+      row.className = "code-row"; row.dataset.line = item.line; no.textContent = item.line; prior = item.text || "";
+      if (item.parts && item.parts.length) item.parts.forEach(function (part) {
+        var piece = document.createElement("span"); piece.textContent = part.t; if (part.k) piece.className = "tk-" + part.k; text.appendChild(piece);
+      });
+      else text.textContent = item.text || " ";
+      // The line that opened a block or a branch folds it again on a double-click.
+      if (item.closes) {
+        text.title = "Double-click to fold";
+        text.addEventListener("dblclick", function (e) {
+          e.preventDefault();
+          expanded = expanded.filter(function (key) { return item.closes.indexOf(Number(key)) < 0; });
+          requestDiagram();
+        });
+      }
+      // A line opens in the editor through the opener every Tools window has, as a UML method does: there is nothing to
+      // unfold in place. With none, the number is no link.
+      var opener = umlSourceOpener();
+      if (opener) {
+        no.classList.add("opens"); no.title = "Open line " + item.line;
+        no.addEventListener("click", function () { opener({ name: schemeWritten ? schemeWritten.name : loadedObject, type: schemeWritten ? schemeWritten.type : loadedType, line: item.line }); });
+      }
+    }
+    row.appendChild(no); row.appendChild(text); view.appendChild(row);
+  });
+  pane.textContent = ""; pane.appendChild(view);
+  status(lastCaption);
+  if (latestCodeCursor) sdeCodeCursor(Object.assign({}, latestCodeCursor, { replay: !positionAfterDraw })); positionAfterDraw = false;
+  endAnalysis();
+}
 function draw(preserveViewport) {
+  // The theme this drawing is made in: themeChanged redraws only when it differs.
+  themeSeen = ground() + "|" + ink() + "|" + (darkPage() ? "dark" : "light");
+  if (mode === "scheme" && logicView === "code" && schemeCode) { drawCode(); return; }
   var diagramText=mode==="scheme"&&logicOnly&&lastLogicMermaid?lastLogicMermaid:lastMermaid;
   var isClass = /^classDiagram\b/.test(diagramText);
   var text = isClass ? diagramText.replace(/^direction .+$/m, "direction " + direction) : turned(diagramText, direction);
@@ -1741,8 +1850,9 @@ function draw(preserveViewport) {
     });
     if(mode==='scheme')pane.querySelectorAll('g.cluster').forEach(function(cluster){var range=schemeClusterRanges[cluster.id];if(range){cluster.dataset.sourceLine=range[0];cluster.dataset.sourceEnd=range[1];}});
     installUmlLens(pane, !isClass);
+    showReach();
     status(lastCaption);
-    if(mode==="scheme"){if(latestCodeCursor)sdeCodeCursor(latestCodeCursor);else if(INITIAL&&INITIAL.cursorLine)sdeCodeCursor({name:loadedObject,line:INITIAL.cursorLine,endLine:INITIAL.cursorLine});}
+    if(mode==="scheme"){if(latestCodeCursor){sdeCodeCursor(Object.assign({},latestCodeCursor,{replay:!positionAfterDraw}));positionAfterDraw=false;}else if(INITIAL&&INITIAL.cursorLine)sdeCodeCursor({name:loadedObject,line:INITIAL.cursorLine,endLine:INITIAL.cursorLine});}
     endAnalysis();
   }, function (e) {
     endAnalysis();
@@ -1911,7 +2021,8 @@ function onDiagramClick(e) {
   var umlLink=e.target.closest&&e.target.closest('[data-uml-method]');
   if(mode==='class'&&umlLink&&umlSourceOpener()){
     e.preventDefault();e.stopPropagation();
-    umlSourceOpener()({name:umlLink.dataset.umlOwner,type:umlLink.dataset.umlType,method:umlLink.dataset.umlMethod,beside:true,preserveFocus:true});return;
+    // newTab: Ctrl (or Cmd) asks for a tab of its own; Eclipse otherwise reuses the editor it opened last.
+    umlSourceOpener()({name:umlLink.dataset.umlOwner,type:umlLink.dataset.umlType,method:umlLink.dataset.umlMethod,beside:true,preserveFocus:true,newTab:!!(e.ctrlKey||e.metaKey)});return;
   }
   var callLink=e.target.closest&&e.target.closest('a[data-call-method]');
   if(callLink&&typeof sdeOpenToolSource==='function'){e.preventDefault();e.stopPropagation();if(callLink.dataset.callOwner)sdeOpenToolSource({name:callLink.dataset.callOwner,type:'CLAS',method:callLink.dataset.callMethod});else sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(callLink.dataset.callLine)});return;}
@@ -1919,7 +2030,8 @@ function onDiagramClick(e) {
     // A folded operations block has a source range too, but its first click
     // must reach the aceexp handler below so the block expands in place.
     var sourceNode=e.target.closest&&e.target.closest('g.node[data-source-line]:not(.foldnode)');
-    if(sourceNode){e.preventDefault();e.stopPropagation();sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(sourceNode.dataset.sourceLine)});return;}
+    if(sourceNode&&reachOn&&mode==='scheme'){reachLine=Number(sourceNode.dataset.sourceLine);showReach();}
+    if(sourceNode){e.preventDefault();e.stopPropagation();sdeOpenToolSource({name:schemeWritten?schemeWritten.name:loadedObject,type:schemeWritten?schemeWritten.type:loadedType,line:Number(sourceNode.dataset.sourceLine)});return;}
   }
   if (mode === "calls") {
     var element = e.target;
@@ -2259,6 +2371,12 @@ function applyDepth() {
   if (!asked || asked < 1) { asked = 1; }
   if (asked > 99) { asked = 99; }
   document.getElementById("depth").value = asked;
+  if (mode === "scheme") {
+    if (asked === logicDepth) { return; }
+    logicDepth = asked; refit = true;
+    if (shownUnit) { requestDiagram(); }
+    return;
+  }
   if (asked === depth) { return; }
   depth = asked;
   // A different depth is a different picture, so it is fitted again.
@@ -2273,21 +2391,45 @@ document.getElementById("diagram").addEventListener("click", onDiagramClick);
 document.getElementById("diagram").addEventListener("keydown", function(e) {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches('[data-uml-method]')) onDiagramClick(e);
 });
+function showReach(){
+  var pane=document.getElementById('diagram'),svg=pane.querySelector('svg');if(!svg)return;
+  var lines=reachOn&&reachLine&&schemeReach?schemeReach[reachLine]:null;
+  svg.classList.toggle('reach-active',!!lines);
+  pane.querySelectorAll('g.node[data-source-line],g.cluster[data-source-line]').forEach(function(node){node.classList.toggle('reach-on',!!lines&&lines.indexOf(Number(node.dataset.sourceLine))>=0);});
+  pane.querySelectorAll('g.node[data-source-line]').forEach(function(node){node.classList.toggle('reach-target',!!lines&&Number(node.dataset.sourceLine)===reachLine);});
+}
+document.getElementById('reach').addEventListener('click',function(){reachOn=!reachOn;this.classList.toggle('on',reachOn);this.setAttribute('aria-pressed',String(reachOn));if(!reachOn)reachLine=0;showReach();});
+document.getElementById("logic-view").addEventListener("click", function (e) {
+  var button = e.target.closest && e.target.closest("button[data-view]");
+  if (!button || button.dataset.view === logicView) { return; }
+  logicView = button.dataset.view;
+  Array.prototype.forEach.call(this.querySelectorAll("button[data-view]"), function (b) { b.classList.toggle("active", b === button); });
+  document.body.classList.toggle("logic-code", mode === "scheme" && logicView === "code");
+  if (lastMermaid) { refit = true; draw(); }
+});
 document.getElementById('logic-only').addEventListener('click',function(){logicOnly=!logicOnly;this.classList.toggle('on',logicOnly);this.setAttribute('aria-pressed',String(logicOnly));if(lastMermaid){refit=true;draw();}});
-var sourceScrollTimer,lastScrollLine,codeFollowingUntil=0;
-document.getElementById('diagram').addEventListener('pointerdown',function(){followCode=false;});
-document.getElementById('diagram').addEventListener('wheel',function(){followCode=false;},{passive:true});
-function sdeCodeFocus(){followCode=true;}
-
+/* The code moves the diagram, never the other way round: a click, a key or a scroll in the editor positions it; scrolling
+   the diagram is the reader's own and stays there, and the diagram reaches the code only by a click on a node. The host
+   passes on only real moves of the editor, not the ones a click in the diagram caused. A redraw (Logic only, a fold)
+   marks the code's place again without scrolling; only a method just opened for the code is scrolled to it. */
+var positionAfterDraw=false;
 function sdeCodeCursor(value){
- if(value.userFocus)followCode=true;
- if(!followCode)return;
- if(mode!=='scheme'||String(value.name).toUpperCase()!==String(loadedObject).toUpperCase())return;
- latestCodeCursor=value;
+ if(mode!=='scheme'||[loadedObject,schemeWritten&&schemeWritten.name].every(function(own){return String(value.name).toUpperCase()!==String(own||'').toUpperCase();}))return;
  // The cursor and scrolling alike: a line in another method (for scrolling, the line a third down the visible source)
  // opens that method's diagram.
- var targetUnit=units.find(function(unit){return value.line>=unit.line_from&&value.line<=unit.line_to;});
- if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){openUnit(targetUnit);return;}
+ // A unit's lines count in the file it is written in: a program's include (PROG.INCLUDE) has lines of its own, which
+ // the program's lines would otherwise meet. A class's parts (ZCL.definitions) count as the class.
+ var fileOf=function(unit){var part=String(unit.include||'').split('.')[1];return part&&part===part.toUpperCase()?part:String(loadedObject).toUpperCase();};
+ var targetUnit=units.find(function(unit){return fileOf(unit)===String(value.name).toUpperCase()&&value.line>=unit.line_from&&value.line<=unit.line_to;});
+ if(targetUnit&&(!shownUnit||targetUnit.unit_name!==shownUnit.name)){latestCodeCursor=value;positionAfterDraw=true;openUnit(targetUnit);return;}
+ if(!value.replay)latestCodeCursor=value;
+ if(logicView==='code'&&document.querySelector('#diagram .logic-code-view')){
+  // A line inside a folded block marks its fold, as the diagram marks the node nearest the line.
+  var codeRows=Array.from(document.querySelectorAll('#diagram .logic-code-view .code-row[data-line], #diagram .logic-code-view .code-fold')),hit=null;
+  codeRows.forEach(function(row){var from=Number(row.dataset.line||row.dataset.from),to=Number(row.dataset.line||row.dataset.to),on=to>=value.line&&from<=(value.endLine||value.line);row.classList.toggle('code-selected',on&&!value.scrollOnly);if(on&&!hit)hit=row;});
+  if(hit&&!value.replay)hit.scrollIntoView({block:value.scrollOnly?'start':'center',inline:'nearest'});
+  return;
+ }
 
  var pane=document.getElementById('diagram'),clusters=Array.from(pane.querySelectorAll('g.cluster[data-source-line]')),selectedClusters=clusters.filter(function(cluster){return [Number(cluster.dataset.sourceLine),Number(cluster.dataset.sourceEnd)].some(function(line){return line>=value.line&&line<=value.endLine;});});
  if(!value.scrollOnly)clusters.forEach(function(cluster){var active=selectedClusters.includes(cluster),shape=cluster.querySelector('rect');if(!shape)return;if(active){if(!shape.hasAttribute('data-prior-style'))shape.setAttribute('data-prior-style',shape.getAttribute('style')||'');shape.style.setProperty('fill',toward(ground(),themeColour('--vscode-focusBorder','#0a66c2'),darkPage()?0.28:0.18),'important');shape.style.setProperty('stroke','var(--vscode-focusBorder,#0a66c2)','important');}else if(shape.hasAttribute('data-prior-style')){shape.setAttribute('style',shape.getAttribute('data-prior-style'));shape.removeAttribute('data-prior-style');}});
@@ -2308,17 +2450,9 @@ function sdeCodeCursor(value){
    else if(shape.hasAttribute('data-prior-style')){shape.setAttribute('style',shape.getAttribute('data-prior-style'));shape.removeAttribute('data-prior-style');}
   });
  });
- var focusTarget=selectedClusters[0]||selected[0];if(focusTarget){codeFollowingUntil=Date.now()+500;clearTimeout(sourceScrollTimer);focusTarget.scrollIntoView({block:selectedClusters.length?'start':'center',inline:'nearest'});}
+ var focusTarget=selectedClusters[0]||selected[0];if(focusTarget&&!value.replay){focusTarget.scrollIntoView({block:selectedClusters.length?'start':'center',inline:'nearest'});}
 }
 
-document.getElementById("diagram").addEventListener("scroll",function(){
- clearTimeout(sourceScrollTimer);sourceScrollTimer=setTimeout(function(){
-  if(followCode||Date.now()<codeFollowingUntil||mode!=='scheme'||typeof sdeOpenToolSource!=='function')return;
-  var pane=document.getElementById('diagram'),area=pane.getBoundingClientRect(),best=null,distance=Infinity;
-  pane.querySelectorAll('g.node[data-source-line]').forEach(function(node){var box=node.getBoundingClientRect();if(box.bottom<area.top||box.top>area.bottom)return;var d=Math.abs(box.top-(area.top+area.height/3));if(d<distance){distance=d;best=node;}});
-  if(best&&lastScrollLine!==best.dataset.sourceLine){lastScrollLine=best.dataset.sourceLine;sdeOpenToolSource({name:loadedObject,type:loadedType,line:Number(lastScrollLine),preserveFocus:true});}
- },180);
-});
 
 Array.prototype.forEach.call(document.querySelectorAll("#blockmode button"), function (button) {
   button.addEventListener("click", function () {
@@ -2353,13 +2487,19 @@ var paneWatchTimer = null;
    own colours. The diagram does not: its colours were written into the
    mermaid text when it was drawn, so it has to be drawn again. */
 var themeWatch = null;
-var themeWatchTimer = null;
+var themeWatchTimer = null, themeSeen = "";
 
 function themeChanged() {
   clearTimeout(themeWatchTimer);
   themeWatchTimer = setTimeout(function () {
     var pane = document.getElementById("diagram");
     if (pane.hidden) { return; }
+    /* Only a theme that really changed redraws. The page writes its own body classes too - endAnalysis removes one
+       after every drawing, which rewrites the attribute even when nothing was there - and each such write would redraw
+       the picture again, without end: a Code view rebuilt under the mouse, a large diagram drawn over and over. */
+    var now = ground() + "|" + ink() + "|" + (darkPage() ? "dark" : "light");
+    if (now === themeSeen) { return; }
+    themeSeen = now;
     pane.style.background = ground();
     pane.style.color = ink();
     if (lastMermaid) { refit = false; draw(true); }
@@ -2416,5 +2556,5 @@ if (INITIAL) {
 // system has is asked first; an object the window was opened on is read after.
 window.addEventListener("load", function () { askAbout(startWindow); });
 </script>
-<dialog id="diagramhelpdialog" style="max-width:560px;background:var(--vscode-editorWidget-background,var(--vscode-editor-background));color:var(--vscode-editor-foreground);border:1px solid var(--vscode-panel-border)"><strong>Code diagrams</strong><p>Logic diagram shows one source routine. Select a method in Parts or move the source cursor into it. In bound Tools, the source editor selects the routine automatically.</p><p>Logic only keeps branches, loops, calls and control transfers. Disable it for all operations; operations are not folded. RETURN leads to the procedure end.</p><p>Conditions keep AND / OR terms in one diamond. External calls carry ↗ and linked method names. Unresolved calls open their source location.</p><p>Click a linked label to open source; Alt+Left returns. Select source lines to highlight matching nodes, or LOOP / ENDLOOP to highlight the frame. The focused view drives scrolling.</p><p>Calls uses Classes / Methods and call depth. Each entered routine adds a level; a boundary target remains a leaf. Choose Top-down or Left-right for direction.</p><p>Zoom is 10–100%; Fit fits the diagram. The lens is available below 70% and magnifies up to that effective scale. Theme changes preserve zoom and scroll position.</p><form method="dialog"><button>Close</button></form></dialog></body>
+<dialog id="diagramhelpdialog" style="max-width:560px;background:var(--vscode-editorWidget-background,var(--vscode-editor-background));color:var(--vscode-editor-foreground);border:1px solid var(--vscode-panel-border)"><strong>Logic view and Calls</strong><p>Logic view shows one routine. Pick a method in Parts or move the source cursor into it; a Tools window opened from an editor follows that editor.</p><p><b>Code</b> (the default) shows the routine's lines as written, coloured by token. <b>Diagram</b> shows it as a flowchart. Both fold to the same Depth, and a block opened in one is open in the other.</p><p><b>Depth</b> is how many levels inside the routine are shown: 1 its own statements, 2 the inside of their blocks too, and so on. A deeper block keeps its opening and closing statement; what is inside is one line or node saying how many operations it hides. A click opens it a step at a time - a block with branches (WHEN, ELSEIF, ELSE, CATCH) first shows its branches, each opened on its own click. In Code, a double-click on the line that opened a block or a branch folds it again.</p><p>In Code, a line number opens the line in the editor; in Diagram, a click on a node does; Alt+Left returns. Logic only keeps branches, loops, calls and control transfers and folds the operations between them into one node. Conditions keep AND / OR terms in one diamond; external calls carry ↗ and linked method names.</p><p>The code moves the view, not the other way round: a click or a scroll in the editor marks its line here (a line inside a fold marks the fold), and moving into another routine opens its view. <b>Reachability</b> (Diagram): with it on, a click on a node lights up the path that reaches it.</p><p>Calls uses Classes / Methods and call depth. Each entered routine adds a level; a boundary target remains a leaf. Choose Top-down or Left-right for direction.</p><p>Zoom is 10–100%; Fit fits the diagram. The lens is available below 70% and magnifies up to that effective scale. Theme changes preserve zoom and scroll position.</p><form method="dialog"><button>Close</button></form></dialog></body>
 </html>

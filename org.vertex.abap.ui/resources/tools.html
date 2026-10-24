@@ -17,8 +17,8 @@ body.dragging{cursor:col-resize;user-select:none}body.dragging iframe{pointer-ev
 #chat-toggle.on{color:var(--vscode-button-foreground,HighlightText);background:var(--vscode-button-background,Highlight)}
 main{flex:1;min-width:0;display:flex;flex-direction:column}
 header{display:flex;gap:8px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #8886;align-items:center}
-input,select,button{font:inherit;padding:5px;color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e));border:1px solid #8888;border-radius:4px}
-select option{color:var(--vscode-input-foreground,var(--vscode-editor-foreground,#d4d4d4));background:var(--vscode-input-background,var(--vscode-editor-background,#1e1e1e))}
+input,select,button{font:inherit;padding:5px;color:var(--vscode-input-foreground,var(--vscode-editor-foreground,FieldText));background:var(--vscode-input-background,var(--vscode-editor-background,Field));border:1px solid #8888;border-radius:4px}
+select option{color:var(--vscode-input-foreground,var(--vscode-editor-foreground,FieldText));background:var(--vscode-input-background,var(--vscode-editor-background,Field))}
 #object-field{position:relative;flex:0 1 380px;min-width:150px}
 #object-matches{display:none;position:absolute;left:0;right:0;top:100%;z-index:20;max-height:320px;overflow:auto;background:var(--vscode-editorSuggestWidget-background,var(--vscode-input-background,Canvas));border:1px solid var(--vscode-editorSuggestWidget-border,#8888);border-radius:4px}
 #object-matches.on{display:block}
@@ -90,11 +90,6 @@ const actionBox = document.getElementById("function"), results = document.getEle
 // Context commands bind this window to the selected object. The fields keep
 // their values for routing, while only the function picker stays visible.
 if(initial&&initial.boundObject){typeBox.hidden=true;nameBox.hidden=true;}
-if(initial&&initial.visualFlow){
- actionBox.hidden=true;
- const logic=document.createElement("button");logic.className="vertex-toggle";logic.textContent="Logic";logic.title="Switch between Calls and the standard Tools Logic diagram";logic.setAttribute("aria-pressed","false");actionBox.after(logic);
- logic.onclick=()=>{current.action=current.action==="scheme"?"flow":"scheme";logic.classList.toggle("on",current.action==="scheme");logic.setAttribute("aria-pressed",String(current.action==="scheme"));fields();run();};
-}
 let monitorPanel=null;
 if(initial&&initial.debugMonitor){
  monitorPanel=document.createElement("details");monitorPanel.open=true;monitorPanel.style.cssText="padding:6px;border-bottom:1px solid var(--vscode-panel-border);max-height:35vh;overflow:auto";monitorPanel.innerHTML='<summary>ADT debug session</summary><div data-debug-body></div>';document.querySelector("main").prepend(monitorPanel);
@@ -108,7 +103,7 @@ function sdeMonitorState(state){
  if(state.variables&&state.variables.length){const list=document.createElement('pre');list.textContent=state.variables.map(value=>value.name+' = '+value.value).join('\n');body.append(list);}
  // Use ADT's absolute source coordinate when available; include-local positions are not guessed.
  const top=state.frames&&state.frames[0],match=top&&String(top.uri).match(/\/classes\/([^/]+)/i);
- if(match&&top.absoluteLine>0)sdeCodeCursor({name:decodeURIComponent(match[1]).toUpperCase(),type:'CLAS',line:top.absoluteLine,endLine:top.absoluteLine,userFocus:true});
+ if(match&&top.absoluteLine>0)sdeCodeCursor({name:decodeURIComponent(match[1]).toUpperCase(),type:'CLAS',line:top.absoluteLine,endLine:top.absoluteLine});
 }
 let result = null;
 const resultFrames = new Map();
@@ -400,7 +395,6 @@ function mountChat(){
 }
 // iframe documents do not inherit the host's CSS variables or theme updates.
 // Copy the complete VS Code theme onto their body, where existing palettes live.
-function sdeCodeFocus(){if(result&&result.contentWindow&&typeof result.contentWindow.sdeCodeFocus==='function')result.contentWindow.sdeCodeFocus();}
 let latestEditorCursor=null;
 function sdeCodeCursor(value){
  latestEditorCursor=value;
@@ -455,6 +449,15 @@ function connect(child,service,generation){
   if((initial?.boundObject||localFolderState)&&typeof sdeOpenToolSource==="function")child.sdeOpenToolSource=value=>sdeOpenToolSource(JSON.stringify(value));
   // A UML method opens its source in the editor in every window: unlike a Calls routine, it has nothing to unfold in place.
   if(typeof sdeOpenToolSource==="function")child.sdeOpenUmlSource=value=>sdeOpenToolSource(JSON.stringify(value));
+  // Eclipse's browser puts its host functions into every frame, where calling one fails ("Element not found",
+  // 0x80070490): only this window answers them. A frame keeps only what this page hands it - sdeOpenToolSource
+  // only in a window bound to an editor, as in VS Code - and the chat's Copy and found objects reach this window.
+  if(!(initial?.boundObject||localFolderState))child.sdeOpenToolSource=undefined;
+  // A result page's ASK AI (a transport review) reaches the chat frame; the chat frame keeps its own sdeReviewAsk.
+  // A transport review's Open: the block's code in the editor, in any window - not only one bound to an editor.
+  if(service!=="chat"&&typeof sdeOpenToolSource==="function")child.sdeOpenReviewSource=value=>sdeOpenToolSource(JSON.stringify(value));
+  if(service!=="chat")child.sdeReviewAsk=json=>{if(live()&&typeof window.sdeReviewAsk==="function")window.sdeReviewAsk(json);};
+  ["sdeCopyText","sdeOpenObject","sdeOpenLogs"].forEach(name=>{if(typeof window[name]==="function")child[name]=(...args)=>window[name](...args);});
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
   child.sdeProject=()=>enqueue({path:"project"},reply,live);
   // In Eclipse the services read over ADT in this window are always there, whatever VERTEX's ABAP on the system
@@ -496,6 +499,8 @@ function connect(child,service,generation){
     // its SAP tools when it needs it.
     const page=result.contentWindow;
     if(page&&typeof page.sdeContext==="function")state.vertex_view=page.sdeContext();
+    // A transport review's object as it is on screen - Full or Compact - not only its name.
+    if(page&&typeof page.sdeReviewSource==="function"){const shown=page.sdeReviewSource();if(shown)state.review_source=shown;}
     if(!state.selected_fragment&&page&&typeof page.sdeSelection==="function")state.selected_fragment=page.sdeSelection();
     // A selection in a rendered Diff is an intentional, small piece of code
     // context. Keep it separate from the question and cap it, so ordinary
@@ -508,6 +513,8 @@ function connect(child,service,generation){
     }catch(e){/* an unloaded result frame simply has no selection */}
     args[3]=JSON.stringify(state);assistantTarget={child,live};sdeAsk(...args);
   };
+  // ASK AI of a review (ChatView.reviewAsk): the chat opens with the blocks on its chip.
+  window.sdeReviewAsk=json=>{const target=document.getElementById("conversation").contentWindow;if(target&&typeof target.sdeReviewAsk==="function"){showChat(true);target.sdeReviewAsk(json);}};
   if(service!=="chat")child.sdeAskSelection=(question,fragment,view)=>{
     if(!live())return;
     const target=document.getElementById("conversation").contentWindow;

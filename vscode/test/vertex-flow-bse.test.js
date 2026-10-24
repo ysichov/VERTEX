@@ -114,7 +114,7 @@ test("a click on a FLOW diagram label sends the node's source and line, which th
   assert.ok(page.includes("api.postMessage(node&&node.source?{node:id,source:node.source,line:Number(node.line)||0}:{node:id})"));
 });
 
-test("Visual Debug gives the shared view the same four readings as Value origin, and no separate Logic button", () => {
+test("VERTEX Smart Debugger gives the shared view the same four readings as Value origin, and no separate Logic button", () => {
   const page = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../pages/visual-debug.html"), "utf8");
   assert.ok(page.includes('data.flowReadings={active:flowMode,baseStack:0,items:["classes","methods","logic","steps"]'), "four readings of one record");
   const join = page.slice(page.indexOf("function joinToolbars(){"), page.indexOf("function openRecordFlow(){"));
