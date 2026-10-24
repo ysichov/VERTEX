@@ -97,6 +97,15 @@ export (already listed in `build.properties`). Validate it with
 `node --test eclipse/bridge.test.js eclipse/host-coverage.test.js vscode/test/*.test.js`;
 host-coverage compares what VERTEX Smart Debugger's page asks of a host with what each host gives.
 
+The Java layout regression test uses the installed Eclipse/ADT bundle pool and needs no running
+workbench or SAP session. On macOS, from the repository root:
+
+```bash
+mkdir -p /tmp/vertex-eclipse-classes
+javac --release 21 -proc:none -encoding UTF-8 -cp "$HOME/.p2/pool/plugins/*" -d /tmp/vertex-eclipse-classes org.vertex.abap.ui/src/org/vertex/abap/ui/*.java eclipse/test/DetachedViewTest.java
+java -cp "/tmp/vertex-eclipse-classes:$HOME/.p2/pool/plugins/*" org.vertex.abap.ui.DetachedViewTest
+```
+
 Eclipse installs **features**, not bare plugins, so `org.vertex.abap.feature/` wraps the one
 plugin and `category.xml` beside it gives the install dialog something to list.
 

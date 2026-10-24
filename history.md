@@ -1,5 +1,9 @@
 # Release history
 
+## Unreleased — Eclipse windows in hidden layout areas
+
+Opening a VERTEX window reveals its containing sashes in the current perspective, including when an existing window is reopened or opened through Show View. A visible VERTEX tab group inside a hidden parent previously remained invisible. Other tab groups and perspectives keep their visibility.
+
 ## 2026-10-24 — VS Code 0.9.31, Eclipse 0.9.31: VERTEX Smart Debugger, reviews like AVE
 
 Visual Debug is now named **VERTEX Smart Debugger** in VS Code and Eclipse: its command, window and menu item, its messages and the documentation.

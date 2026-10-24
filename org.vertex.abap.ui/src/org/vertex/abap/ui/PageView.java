@@ -639,6 +639,7 @@ public abstract class PageView extends ViewPart {
 
 	@Override
 	public void setFocus() {
+		DetachedView.reveal(this);
 		this.browser.setFocus();
 	}
 }

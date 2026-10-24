@@ -30,6 +30,7 @@ final class DetachedView {
 		boolean open = page.findViewReference(viewId, secondaryId) != null;
 		IViewPart view = page.showView(viewId, secondaryId, IWorkbenchPage.VIEW_ACTIVATE);
 		if (!open) dock(page, view, viewId);
+		reveal(view);
 		page.activate(view);
 		return view;
 	}
@@ -58,5 +59,20 @@ final class DetachedView {
 		stack.setSelectedElement(shown);
 		stack.setToBeRendered(true);
 		stack.setVisible(true);
+	}
+
+	/** A restored stack can be visible inside hidden sashes. Activation alone does not reveal those parents. */
+	static void reveal(IViewPart view) {
+		MPart part = view.getSite().getService(MPart.class);
+		if (part != null) revealPath(part.getCurSharedRef() != null ? part.getCurSharedRef() : part);
+	}
+
+	static void revealPath(MUIElement element) {
+		// Stop at the perspective/window: opening a view must not switch perspectives or reveal sibling stacks.
+		for (MUIElement current = element; current != null && !(current instanceof MPerspective)
+				&& !(current instanceof MWindow); current = current.getParent()) {
+			current.setToBeRendered(true);
+			current.setVisible(true);
+		}
 	}
 }

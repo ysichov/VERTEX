@@ -13,7 +13,7 @@ For VS Code, the recommended companion is
 
 
 
-VERTEX is a set of plugins for VS Code and Eclipse ADT. Each window reads over the developer's existing ADT connection and renders as HTML.
+VERTEX is a set of plugins for VS Code and Eclipse ADT. Each window reads over the developer's existing ADT connection and renders as HTML. In Eclipse, opening a VERTEX window reveals its containing layout even when that area was hidden in the saved perspective.
 
 **Serverless, in VS Code** - the ABAP transpiler runs ABAP on your machine:
 
