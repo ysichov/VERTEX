@@ -1,7 +1,7 @@
 "use strict";
 
 const { createRepository, revision } = require("./sap-code");
-const { hunks, reviewedSource, askPrompt } = require("./code-review");
+const { hunks, reviewedSource, askContext } = require("./code-review");
 // Every tool that reaches SAP takes the system by name: the main chat can read
 // in one and prepare a change for another. review_sap_changes works on the
 // open editor tab, which already knows its system.
@@ -2064,9 +2064,10 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const base = entry.data.source, baseRevision = entry.data.revision;
     let applying = false, finished = false;
     panel.webview.onDidReceiveMessage(async message => {
-      if (message && message.action === "ask" && Number.isInteger(message.hunk) && parts[message.hunk]) {
+      // ASK AI: a block, or with all every block, handed to the chat as context of the reader's question.
+      if (message && message.action === "ask" && (message.all === true || Number.isInteger(message.hunk) && parts[message.hunk])) {
         await vscode.commands.executeCommand("vertex.askReviewBlock",
-          askPrompt(parts[message.hunk], after, entry.repo.label, entry.data.object_name));
+          askContext(parts, message.all === true ? null : [message.hunk], after, entry.repo.label, entry.data.object_name));
         return;
       }
       if (!message || message.action !== "apply") { return; }

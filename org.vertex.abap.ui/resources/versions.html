@@ -76,9 +76,16 @@
   body { font: 12px "Segoe UI", system-ui, sans-serif; color: var(--fg);
          background: var(--bg); }
 
-  button { padding: 2px 8px; font: inherit; cursor: pointer; color: var(--fg);
-           background: var(--field-bg); border: 1px solid var(--field-border); border-radius: 4px; }
-  button:hover { background: var(--hover); }
+  /* Buttons as VERTEX Smart Debugger's: the theme's secondary button, its hover colour lit. */
+  button { padding: 2px 8px; font: inherit; cursor: pointer; color: var(--vscode-button-secondaryForeground, var(--fg));
+           background: var(--vscode-button-secondaryBackground, var(--field-bg)); border: 1px solid var(--field-border); border-radius: 4px; }
+  button:hover { background: var(--vscode-button-secondaryHoverBackground, var(--hover)); }
+  /* A review block's verdicts in the colours of the editor's review (code-review.js). */
+  table.diff tr.block button[data-act="A"], table.diff tr.block button[data-act="D"], button.ask { color: #fff; border-color: transparent; }
+  table.diff tr.block button[data-act="A"] { background: #307345; }
+  table.diff tr.block button[data-act="D"] { background: #963e33; }
+  button.ask { background: #7940a0; }
+  table.diff tr.block button[data-act="A"]:hover, table.diff tr.block button[data-act="D"]:hover, button.ask:hover { filter: brightness(1.15); }
 
   .app { display: flex; flex-direction: column; height: 100%; }
   .bar { padding: 6px 10px; background: var(--surface);
@@ -225,6 +232,24 @@
   .review .ok { color: var(--ins-mark); }
   .review .no { color: var(--del-mark); }
   .review .open { color: var(--muted); }
+  /* The summary as AVE's report draws it in SAP GUI - coloured column heads, developers first, a group per kind of
+     object with its total - in the theme's colours. */
+  .review table.ave { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  .review table.ave th { background: var(--vscode-button-background, #3498db); color: var(--vscode-button-foreground, #fff);
+                         padding: 5px 10px; text-align: left; white-space: nowrap; font-weight: 600; }
+  .review table.ave th.num, .review table.ave td.num { text-align: right; }
+  .review table.ave td { padding: 4px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--field-border)); white-space: nowrap; }
+  .review table.ave tbody tr:hover td { background: var(--hover); }
+  .review table.ave tr.total td { font-weight: 600; border-top: 2px solid var(--vscode-button-background, #3498db);
+                                  background: var(--vscode-editorWidget-background, transparent); }
+  .review .gi { color: var(--vscode-charts-green, #27ae60); }
+  .review .gm { color: var(--vscode-charts-orange, #e67e22); }
+  .review .gd { color: var(--vscode-charts-red, #e74c3c); }
+  .review h3.grp { font-size: 13px; margin: 16px 0 6px; user-select: none; }
+  .review .caret { display: inline-block; width: 1.1em; color: var(--vscode-focusBorder, #3498db); cursor: pointer; }
+  .review .grpcnt { color: var(--muted); font-weight: normal; }
+  .review .lnk { color: var(--vscode-textLink-foreground, #3498db); cursor: pointer; text-decoration: underline; }
+  .review a.objlink { color: var(--vscode-textLink-foreground, #3498db); cursor: pointer; text-decoration: underline; }
 
   /* The band that starts a group. The colour sits on the cell, because the row
      underneath it is striped and hovered like any other. */
@@ -239,7 +264,8 @@
   div.stale p { margin: 2px 0; }
   .diffbar { padding: 5px 10px; background: var(--surface-2);
              border-bottom: 1px solid var(--line); display: flex;
-             align-items: center; gap: 12px; position: sticky; top: 0; z-index: 2; }
+             align-items: center; gap: 12px; position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+  .diffbar button { white-space: nowrap; }
   .diffbar .back { cursor: pointer; color: var(--muted); }
   .diffbar .back:hover { color: var(--fg); text-decoration: underline; }
   .diffbar .counts { color: var(--muted); }
@@ -1522,9 +1548,97 @@ function blockRow(b) {
     }
     td.appendChild(acts);
   }
+  if (typeof sdeOpenReviewSource === "function") {
+    var openSpan = document.createElement("span");
+    openSpan.className = "acts";
+    var open = document.createElement("button");
+    open.textContent = "Open";
+    open.title = "Open this block's code in the editor";
+    open.addEventListener("click", function () { openBlock(b); });
+    openSpan.appendChild(open);
+    td.appendChild(openSpan);
+  }
+  // ASK AI writes nothing, so a review only looked at - built live - offers it too.
+  if (typeof sdeReviewAsk === "function") {
+    var askSpan = document.createElement("span");
+    askSpan.className = "acts";
+    var askOne = document.createElement("button");
+    askOne.className = "ask";
+    askOne.textContent = "ASK AI";
+    askOne.title = "Put this block on the chat's chip, for the question you write there";
+    askOne.addEventListener("click", function () { askReview([b]); });
+    askSpan.appendChild(askOne);
+    td.appendChild(askSpan);
+  }
 
   tr.appendChild(td);
   return tr;
+}
+
+/* ASK AI of a transport review: the blocks, each with its lines and five around it, to the chat's chip - the same
+   context a review of the editor's changes gives (code-review.js askContext). */
+var review_ops = [], review_blocks = [];
+function askReview(chosen) {
+  var all = chosen === null;
+  var placed = review_blocks.filter(function (b) { return b.op_from > 0; })
+    .sort(function (a, c) { return a.op_from - c.op_from; });
+  var text = function (from, to) { return review_ops.slice(Math.max(0, from), Math.max(0, to)).filter(function (o) { return o.op !== "-"; }).map(function (o) { return o.text; }); };
+  var blocks = (all ? placed : chosen).map(function (b) {
+    var start = b.op_from - 1, end = start;
+    while (end < review_ops.length && review_ops[end].op !== " " && review_ops[end].op !== "") { end++; }
+    var lines = review_ops.slice(start, end);
+    return { block: b.hunk_no, unit: "", line: b.start_line,
+      context_before: text(start - 5, start),
+      before: lines.filter(function (o) { return o.op === "-"; }).map(function (o) { return o.text; }),
+      after: lines.filter(function (o) { return o.op === "+"; }).map(function (o) { return o.text; }),
+      context_after: text(end, end + 5) };
+  });
+  sdeReviewAsk(JSON.stringify({ system: "", object: review_part ? (review_part.display_name || review_part.obj_name) : "",
+    total: placed.length, all: all, blocks: blocks }));
+}
+
+/* AVE's AI prompt diff / AI prompt full: a prompt to paste into any chat, where no AI is set up here. Diff is the
+   changed blocks with five lines around each; full is the whole source with the changes marked. */
+var REVIEW_PROMPT = "Review this ABAP change: what it does and any real problem with it - correctness, data, performance,"
+  + " security. No headings, no list of minor remarks.";
+function reviewPrompt(full) {
+  var name = review_part ? (review_part.display_name || review_part.obj_name) : "";
+  if (!full) {
+    var placed = review_blocks.filter(function (b) { return b.op_from > 0; }).sort(function (a, c) { return a.op_from - c.op_from; });
+    var text = REVIEW_PROMPT + "\n\nThe changed blocks of " + name + ", each with five lines around it (+ added, - deleted):\n";
+    placed.forEach(function (b) {
+      var start = b.op_from - 1, end = start;
+      while (end < review_ops.length && review_ops[end].op !== " " && review_ops[end].op !== "") { end++; }
+      text += "\n--- block " + b.hunk_no + ", line " + b.start_line + "\n";
+      review_ops.slice(Math.max(0, start - 5), Math.min(review_ops.length, end + 5)).forEach(function (o) {
+        text += (o.op === "+" || o.op === "-" ? o.op : " ") + " " + o.text + "\n";
+      });
+    });
+    return text;
+  }
+  return REVIEW_PROMPT + "\n\nThe whole source of " + name + ", the changes marked (+ added, - deleted, the rest unchanged):\n\n"
+    + review_ops.map(function (o) { return (o.op === "+" || o.op === "-" ? o.op : " ") + " " + o.text; }).join("\n");
+}
+function copyText(text, button) {
+  var said = function (failure) {
+    var was = button.textContent;
+    button.textContent = failure ? "Copy failed" : "Copied";
+    button.title = failure || button.title;
+    setTimeout(function () { button.textContent = was; }, 1500);
+  };
+  if (typeof sdeCopyText === "function") { said(sdeCopyText(text)); return; }
+  if (navigator.clipboard) { navigator.clipboard.writeText(text).then(function () { said(""); }, function (e) { said(String(e && e.message || e)); }); return; }
+  said("This window has no clipboard.");
+}
+
+/* The block in the editor, at its line: a program at the line, a method of a class in its class. */
+function openBlock(b) {
+  var p = review_part || {};
+  var type = String(p.objtype || "").toUpperCase();
+  var target = type === "METH" ? { name: p.class_name, type: "CLAS", method: p.obj_name }
+    : p.class_name ? { name: p.class_name, type: "CLAS" }
+    : { name: p.obj_name, type: type === "FUNC" ? "FUNC" : "PROG", line: b.start_line };
+  sdeOpenReviewSource(target);
 }
 
 /* What was said about a block: one row per message, each naming who and when,
@@ -1555,6 +1669,7 @@ function saidRows(block) {
 function actButton(block, action, label) {
   var button = document.createElement("button");
   button.textContent = label;
+  button.dataset.act = action;
   button.addEventListener("click", function () {
     // A decline and a comment are the words that go with them, so they ask.
     if (action === "D" || action === "C") { askWords(button, block, action); }
@@ -1639,6 +1754,7 @@ function act(block, action, note) {
 function renderReviewPart(data) {
   var ops = data.ops || [];
   var blocks = data.blocks || [];
+  review_ops = ops; review_blocks = blocks;
   review_saved_at = data.saved_at || "";
   review_live = data.live === true;
   var label = review_part ? (review_part.display_name || review_part.obj_name)
@@ -1673,6 +1789,22 @@ function renderReviewPart(data) {
   what.textContent = label + "   " + (sideBySide ? asVersion(data.versno_new) + " ↔ " + older
                                                  : older + " → " + asVersion(data.versno_new));
   bar.appendChild(what);
+  if (typeof sdeReviewAsk === "function") {
+    var askAll = document.createElement("button");
+    askAll.className = "ask";
+    askAll.textContent = "ASK AI";
+    askAll.title = "Put every block of this object on the chat's chip";
+    askAll.addEventListener("click", function () { askReview(null); });
+    bar.appendChild(askAll);
+  }
+  [["Copy prompt: diff", false, "The changed blocks with five lines around each, as a prompt to paste into any chat"],
+   ["Copy prompt: full", true, "The whole source with the changes marked, as a prompt to paste into any chat"]].forEach(function (c) {
+    var copy = document.createElement("button");
+    copy.textContent = c[0];
+    copy.title = c[2];
+    copy.addEventListener("click", function () { copyText(reviewPrompt(c[1]), copy); });
+    bar.appendChild(copy);
+  });
 
   var counts = document.createElement("span");
   counts.className = "counts";
@@ -1814,7 +1946,8 @@ function renderReview(data) {
       sdeReview(objectName(), "", "", "", "1");
     };
     root.appendChild(rebuild);
-    root.appendChild(section("Objects", objectTable(data.objects || [])));
+    root.appendChild(section("Developers", developerTable(data.objects || [])));
+    root.appendChild(objectGroups(data.objects || []));
     if (data.missing && data.missing.length) { root.appendChild(missingSection(data.missing)); }
     var changed = (data.objects || []).reduce(function (n, o) { return n + o.hunks; }, 0);
     status(changed === 1 ? "1 changed block" : changed + " changed blocks");
@@ -1841,7 +1974,8 @@ function renderReview(data) {
   if (kept) { root.appendChild(kept); }
   var stale = staleBlock(data.stale);
   if (stale) { root.appendChild(stale); }
-  root.appendChild(section("Objects", objectTable(data.objects || [])));
+  root.appendChild(section("Developers", developerTable(data.objects || [])));
+  root.appendChild(objectGroups(data.objects || []));
   root.appendChild(section("Reviewers", reviewerTable(data.reviewers || [])));
   if (data.history && data.history.length > 0) {
     root.appendChild(section("Saves", historyTable(data.history)));
@@ -1961,29 +2095,114 @@ function count(tr, value, cls) {
   return td;
 }
 
-function objectTable(objects) {
-  return table(["Object", "Type", "Author", "Blocks", "+", "-", "~", "Approved", "Declined", "Open"],
-    objects, function (tr, o) {
-      tr.className = "pick";
-      tr.title = "Show the changed blocks of " + (o.display_name || o.obj_name);
-      tr.addEventListener("click", function () { loadReviewPart(o); });
-      cell(tr, o.display_name || o.obj_name);
-      cell(tr, o.objtype, "mono");
-      cell(tr, o.author_name || o.author);
-      count(tr, o.hunks);
-      count(tr, o.inserted);
-      count(tr, o.deleted);
-      count(tr, o.modified);
-      count(tr, o.approved, "ok");
-      count(tr, o.declined, "no");
-      count(tr, o.open, "open");
-    },
-    // A method's name is only a name inside its class, and a section is called
-    // "Public section" in every one of them. Ungrouped, the column reads as a
-    // heap of repeats.
-    function (o) {
-      return o.class_name ? "Class: " + o.class_name : o.group;
-    });
+/* Rows +/~/- as AVE writes them: added green, changed orange, deleted red. */
+function rowsCell(tr, ins, mod, del) {
+  var td = document.createElement("td");
+  td.className = "num";
+  [[ins, "gi"], [mod, "gm"], [del, "gd"]].forEach(function (part, i) {
+    if (i) { td.appendChild(document.createTextNode(" / ")); }
+    var span = document.createElement("span");
+    span.className = part[1];
+    span.textContent = String(part[0] || 0);
+    td.appendChild(span);
+  });
+  tr.appendChild(td);
+}
+function shareCell(tr, part, of) {
+  var td = document.createElement("td"); td.className = "num"; td.textContent = (part || 0) + "/" + (of || 0); tr.appendChild(td);
+}
+function percentCell(tr, part, of) {
+  var td = document.createElement("td"); td.className = "num"; td.textContent = (of ? Math.round(100 * (part || 0) / of) : 0) + "%"; tr.appendChild(td);
+}
+function aveTable(columns, numeric, fill, rows, total) {
+  var t = document.createElement("table");
+  t.className = "ave";
+  var head = document.createElement("tr");
+  columns.forEach(function (c, i) {
+    var th = document.createElement("th"); th.textContent = c; if (numeric[i]) { th.className = "num"; } head.appendChild(th);
+  });
+  var thead = document.createElement("thead"); thead.appendChild(head); t.appendChild(thead);
+  var tbody = document.createElement("tbody");
+  rows.forEach(function (r) { var tr = document.createElement("tr"); fill(tr, r); tbody.appendChild(tr); });
+  if (total) { var tr = document.createElement("tr"); tr.className = "total"; total(tr); tbody.appendChild(tr); }
+  t.appendChild(tbody);
+  return t;
+}
+function sum(rows, key) { return rows.reduce(function (n, r) { return n + (r[key] || 0); }, 0); }
+
+/* Developers: what each author changed in the request and how far its review has come. */
+function developerTable(objects) {
+  var by = {}, order = [];
+  objects.forEach(function (o) {
+    var key = o.author || o.author_name || "";
+    if (!by[key]) { by[key] = { author: o.author, author_name: o.author_name, objects: [] }; order.push(key); }
+    by[key].objects.push(o);
+  });
+  return aveTable(["Developer", "Name", "Rows +/~/-", "Blocks", "Approved", "Declined", "%"], [0, 0, 1, 1, 1, 1, 1],
+    function (tr, d) {
+      cell(tr, d.author || "");
+      cell(tr, d.author_name || "");
+      rowsCell(tr, sum(d.objects, "inserted"), sum(d.objects, "modified"), sum(d.objects, "deleted"));
+      count(tr, sum(d.objects, "hunks"));
+      shareCell(tr, sum(d.objects, "approved"), sum(d.objects, "hunks"));
+      shareCell(tr, sum(d.objects, "declined"), sum(d.objects, "hunks"));
+      percentCell(tr, sum(d.objects, "approved"), sum(d.objects, "hunks"));
+    }, order.map(function (k) { return by[k]; }));
+}
+
+/* The objects, a group per kind - programs, a class with its parts - each folding under its caret, with its total.
+   A row opens the object's blocks. */
+function objectGroups(objects) {
+  var box = document.createElement("div");
+  var groups = [], byName = {};
+  objects.forEach(function (o) {
+    var name = o.class_name ? "Class: " + o.class_name : (o.group || "Objects");
+    if (!byName[name]) { byName[name] = []; groups.push(name); }
+    byName[name].push(o);
+  });
+  var tables = [];
+  var links = document.createElement("div");
+  [["Expand all", true], ["Collapse all", false]].forEach(function (l, i) {
+    if (i) { links.appendChild(document.createTextNode("  \u00b7  ")); }
+    var a = document.createElement("span"); a.className = "lnk"; a.textContent = l[0];
+    a.addEventListener("click", function () { tables.forEach(function (t) { t.fold(!l[1]); }); });
+    links.appendChild(a);
+  });
+  if (groups.length > 1) { box.appendChild(links); }
+  groups.forEach(function (name) {
+    var rows = byName[name];
+    var h = document.createElement("h3"); h.className = "grp";
+    var caret = document.createElement("span"); caret.className = "caret"; caret.textContent = "\u25be";
+    h.appendChild(caret); h.appendChild(document.createTextNode(" " + name + " "));
+    var n = document.createElement("span"); n.className = "grpcnt"; n.textContent = "(" + rows.length + ")"; h.appendChild(n);
+    var t = aveTable(["Type", "Object", "Owner", "Rows +/~/-", "Blocks", "Approved", "Declined", "%"], [0, 0, 0, 1, 1, 1, 1, 1],
+      function (tr, o) {
+        tr.className = "pick";
+        tr.title = "Show the changed blocks of " + (o.display_name || o.obj_name);
+        tr.addEventListener("click", function () { loadReviewPart(o); });
+        cell(tr, o.objtype, "mono");
+        var td = document.createElement("td"); var a = document.createElement("a"); a.className = "objlink";
+        a.textContent = o.display_name || o.obj_name; td.appendChild(a); tr.appendChild(td);
+        cell(tr, o.author_name || o.author);
+        rowsCell(tr, o.inserted, o.modified, o.deleted);
+        count(tr, o.hunks);
+        shareCell(tr, o.approved, o.hunks);
+        shareCell(tr, o.declined, o.hunks);
+        percentCell(tr, o.approved, o.hunks);
+      }, rows, function (tr) {
+        var td = document.createElement("td"); td.colSpan = 3; td.textContent = "Total"; tr.appendChild(td);
+        rowsCell(tr, sum(rows, "inserted"), sum(rows, "modified"), sum(rows, "deleted"));
+        count(tr, sum(rows, "hunks"));
+        shareCell(tr, sum(rows, "approved"), sum(rows, "hunks"));
+        shareCell(tr, sum(rows, "declined"), sum(rows, "hunks"));
+        percentCell(tr, sum(rows, "approved"), sum(rows, "hunks"));
+      });
+    t.fold = function (closed) { t.style.display = closed ? "none" : ""; caret.textContent = closed ? "\u25b8" : "\u25be"; };
+    caret.addEventListener("click", function () { t.fold(t.style.display !== "none"); });
+    tables.push(t);
+    box.appendChild(h); box.appendChild(t);
+  });
+  return box;
 }
 
 function reviewerTable(reviewers) {
@@ -2511,6 +2730,16 @@ function pageState() {
 // selection directly, so the parent asks for this small, source-free context
 // when composing a chat request.
 function sdeContext() { return pageState(); }
+/* A transport review's object as the reader sees it, for the chat: Full the whole source with the changes marked,
+   Compact the blocks with five lines around each - the Copy prompt texts without their instruction. The page tells the
+   chat names only (pageState); the model then saw the blocks its diff tool gives and no more, whatever the reader had
+   on screen. Null outside a review's object. */
+function sdeReviewSource() {
+  if (showing.view !== "review_object" || !review_part || !review_ops.length) { return null; }
+  var body = reviewPrompt(!compact);
+  return { object: review_part.display_name || review_part.obj_name, type: review_part.objtype,
+    shown: compact ? "compact" : "full", text: body.substring(REVIEW_PROMPT.length).replace(/^\s+/, "") };
+}
 
 var selectedFragment = "";
 function selectedDiffText() {

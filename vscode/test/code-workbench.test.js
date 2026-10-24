@@ -281,15 +281,32 @@ test("AI drafts use the same review and apply only from its save action", async 
   await h.panels[0].receive({ action: 'apply', approved: [0] });
   assert.equal(h.writes.length, 1);
 });
-test("ASK AI opens a prompt with the chosen block without saving", async () => {
+test("ASK AI hands the chat the chosen block, or all of them, without saving", async () => {
   const h = host();
   await h.tools.execute('open_sap_object', { object_name: 'ZTEST', object_type: 'PROG' });
   h.documents[0].text = 'REPORT changed.';
   await h.tools.execute('review_sap_changes', {});
   await h.panels[0].receive({ action: 'ask', hunk: 0 });
   const action = h.diffs.find(d => d[0] === 'vertex.askReviewBlock');
-  assert.match(action[1], /REPORT changed/);
+  assert.equal(action[1].object, 'ZTEST');
+  assert.equal(action[1].blocks.map(b => b.block).join(), '1');
+  assert.match(JSON.stringify(action[1].blocks[0].after), /REPORT changed/);
+  await h.panels[0].receive({ action: 'ask', all: true });
+  assert.equal(h.diffs.filter(d => d[0] === 'vertex.askReviewBlock')[1][1].all, true);
   assert.equal(h.writes.length, 0);
+});
+test("the chip adds a block of the same review and the request carries the blocks after the question", () => {
+  const review = require('../code-review');
+  const after = 'A\nX\nC\nD\nE\nF\nG\nY';
+  const parts = review.hunks('A\nB\nC\nD\nE\nF\nG\nH', after);
+  let chip = review.mergeAsk(null, review.askContext(parts, [0], after, 'A4H', 'ZT'));
+  assert.equal(review.askLabel(chip), 'Review · ZT · block 1');
+  chip = review.mergeAsk(chip, review.askContext(parts, [1], after, 'A4H', 'ZT'));
+  assert.equal(review.askLabel(chip), 'Review · ZT · all 2 blocks');
+  const other = review.mergeAsk(chip, review.askContext(parts, [1], after, 'A4H', 'ZOTHER'));
+  assert.equal(review.askLabel(other), 'Review · ZOTHER · block 2');
+  assert.match(review.askRequest('why?', chip), /^why\?\n\nReview context/);
+  assert.match(review.askRequest('', chip), /^Answer briefly/);
 });
 for (const partial of [false, true]) {
   test((partial ? 'partial' : 'full') + " review updates editor saved state without another SAP write", async () => {

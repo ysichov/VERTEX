@@ -158,6 +158,13 @@ public class ChatView extends PageView {
 		return "{\"active\":" + active + ",\"open\":[" + open + "]}";
 	}
 
+	/** ASK AI of a review: its blocks, as JSON, on the chat's chip, for the question the user writes. */
+	void reviewAsk(String blocks) {
+		if (!browser.isDisposed()) {
+			browser.execute("sdeReviewAsk(" + AssistantBridge.quote(blocks) + ");");
+		}
+	}
+
 	/** Puts a prepared question into the input for the user to send or edit. */
 	void prompt(String text) {
 		if (!browser.isDisposed()) {

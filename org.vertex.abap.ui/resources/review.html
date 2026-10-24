@@ -43,8 +43,9 @@ window.acquireVsCodeApi = function () {
     setState: function (state) { pageState = state; },
     postMessage: function (message) {
       if (!message) { return; }
-      if (message.action === "ask" && parts[message.hunk]) {
-        sdeAskBlock(review.askPrompt(parts[message.hunk], loaded.after, loaded.system, loaded.objectName));
+      // ASK AI: the block - or with all every block - goes to the chat as context of the reader's question.
+      if (message.action === "ask" && (message.all === true || parts[message.hunk])) {
+        sdeAskBlock(JSON.stringify(review.askContext(parts, message.all === true ? null : [message.hunk], loaded.after, loaded.system, loaded.objectName)));
       } else if (message.action === "apply") {
         var approved = (message.approved || []).filter(function (i) { return parts[i]; });
         sdeApply(JSON.stringify({ approved: approved,

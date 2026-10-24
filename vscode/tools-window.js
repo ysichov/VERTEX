@@ -124,6 +124,8 @@ function open(vscode, context, deps, initial) {
     window.sdeCancelWorkspace=()=>host.postMessage({call:"cancelWorkspace",args:[]});
     window.sdeLocalFolder=clear=>host.postMessage({call:"localFolder",args:[clear===true]});
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
+    // The clipboard is the host's: a webview's own may be refused. Copy under a chat answer and the review's prompts.
+    window.sdeCopyText=text=>{host.postMessage({call:"copyText",args:[String(text||"")]});return "";};
     for(const call of ["workspace","asset","models","ask","browse","openToolSource","requestSearch","vertexContext","aiProvider","aiModel","aiConfig"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>{
         if(call==="vertexContext")try{
@@ -229,6 +231,7 @@ function open(vscode, context, deps, initial) {
         await vscode.commands.executeCommand("vertex.tools",{...selected,action:"scheme",boundObject:true});
         await panel.webview.postMessage({type:"result",payload:"{}"});return;
       }
+      if(message.call === "copyText") { await vscode.env.clipboard.writeText(String(args[0] || "")); return; }
       if(message.call === "openToolSource") {
         sourceNavigationUntil=Date.now()+700;
         // Nothing waits for an answer to a click, so a failure is said here, not posted to a page that drops it.

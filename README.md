@@ -76,7 +76,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.30.20261023215155**; the VS Code extension is **0.9.30**.
+**0.9.30.20261024162505**; the VS Code extension is **0.9.30**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,

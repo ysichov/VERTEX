@@ -419,6 +419,14 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   named above the table, with **Rebuild from ADT**, which replaces the saved review with one built
   from the request as it is now - its verdicts and comments are dropped. Two people saving the same review at once do not
   overwrite each other: the second save is refused and asks to read the review again.
+  The review opens on a summary as AVE draws it: **Developers** - each author's rows added, changed
+  and deleted, blocks, approved, declined and the share approved - then the objects, a group per
+  kind (programs, each class with its parts) under a caret, each with its total; **Expand all** and
+  **Collapse all** fold them. A row opens the object's blocks. There each block has **Open** (its code
+  in the editor), **ASK AI** (the block on the chat's chip) and, on a saved review, **Approve**,
+  **Decline** and **Comment**; beside the object's name **ASK AI** takes all its blocks, and **Copy
+  prompt: diff** / **Copy prompt: full** put a ready prompt on the clipboard - the blocks with five
+  lines around each, or the whole source with the changes marked - for a chat where no AI is set up here.
 - **VERTEX: Switch System**
 - **VERTEX: Forget Credentials**
 - **Add the VERTEX MCP server to Claude Code or Codex** — the link under `vertex.mcp.port` in
@@ -717,8 +725,11 @@ editor title or context menu (or ask the chat to save your edits). The
 blocks with context lines:
 
 - **Approve** / **Decline** each block, or approve all;
-- **ASK AI** sends one block to the chat with its method, line number and
-  surrounding lines, and asks for a short explanation and real problems only;
+- **ASK AI** on a block puts it on a chip above the chat's input - *Review · object · block 2*; ASK AI
+  on another block of the same review adds it, and **ASK AI** beside Approve All takes every block.
+  Type your question and press Enter: the chat shows the question, and the blocks - each with its
+  method, line and surrounding lines - go to the model with it. Enter with nothing typed asks what the
+  change does and whether it has a real problem. The chip's × asks without the blocks;
 - **VERTEX: Save & Activate** writes only the approved blocks. SAP locks the object,
   checks syntax, saves, activates and verifies the active source. If the active
   or inactive source changed since it was read, nothing is overwritten.

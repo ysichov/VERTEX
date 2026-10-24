@@ -453,7 +453,11 @@ function connect(child,service,generation){
   // 0x80070490): only this window answers them. A frame keeps only what this page hands it - sdeOpenToolSource
   // only in a window bound to an editor, as in VS Code - and the chat's Copy and found objects reach this window.
   if(!(initial?.boundObject||localFolderState))child.sdeOpenToolSource=undefined;
-  ["sdeCopyText","sdeOpenObject"].forEach(name=>{if(typeof window[name]==="function")child[name]=(...args)=>window[name](...args);});
+  // A result page's ASK AI (a transport review) reaches the chat frame; the chat frame keeps its own sdeReviewAsk.
+  // A transport review's Open: the block's code in the editor, in any window - not only one bound to an editor.
+  if(service!=="chat"&&typeof sdeOpenToolSource==="function")child.sdeOpenReviewSource=value=>sdeOpenToolSource(JSON.stringify(value));
+  if(service!=="chat")child.sdeReviewAsk=json=>{if(live()&&typeof window.sdeReviewAsk==="function")window.sdeReviewAsk(json);};
+  ["sdeCopyText","sdeOpenObject","sdeOpenLogs"].forEach(name=>{if(typeof window[name]==="function")child[name]=(...args)=>window[name](...args);});
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
   child.sdeProject=()=>enqueue({path:"project"},reply,live);
   // In Eclipse the services read over ADT in this window are always there, whatever VERTEX's ABAP on the system
@@ -495,6 +499,8 @@ function connect(child,service,generation){
     // its SAP tools when it needs it.
     const page=result.contentWindow;
     if(page&&typeof page.sdeContext==="function")state.vertex_view=page.sdeContext();
+    // A transport review's object as it is on screen - Full or Compact - not only its name.
+    if(page&&typeof page.sdeReviewSource==="function"){const shown=page.sdeReviewSource();if(shown)state.review_source=shown;}
     if(!state.selected_fragment&&page&&typeof page.sdeSelection==="function")state.selected_fragment=page.sdeSelection();
     // A selection in a rendered Diff is an intentional, small piece of code
     // context. Keep it separate from the question and cap it, so ordinary
@@ -507,6 +513,8 @@ function connect(child,service,generation){
     }catch(e){/* an unloaded result frame simply has no selection */}
     args[3]=JSON.stringify(state);assistantTarget={child,live};sdeAsk(...args);
   };
+  // ASK AI of a review (ChatView.reviewAsk): the chat opens with the blocks on its chip.
+  window.sdeReviewAsk=json=>{const target=document.getElementById("conversation").contentWindow;if(target&&typeof target.sdeReviewAsk==="function"){showChat(true);target.sdeReviewAsk(json);}};
   if(service!=="chat")child.sdeAskSelection=(question,fragment,view)=>{
     if(!live())return;
     const target=document.getElementById("conversation").contentWindow;

@@ -13,13 +13,17 @@ const ACTIONS = Object.freeze({
 });
 
 function register(vscode, context, active, ask, systems, toolContext) {
-  let currentView, pendingPrompt, ready = false, nextRequest = 0;
+  let currentView, ready = false, nextRequest = 0;
+  // ASK AI of a review: the blocks on the chip above the input, attached to the next question only when it is sent.
+  let reviewAsk = null;
+  const review = require("./code-review");
+  const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "" }) : undefined;
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
-  context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async text => {
-    pendingPrompt = text;
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async blocks => {
+    reviewAsk = review.mergeAsk(reviewAsk, blocks);
     await vscode.commands.executeCommand("vertex.launcher.focus");
-    if (currentView && ready && pendingPrompt) { await currentView.webview.postMessage({ prompt: pendingPrompt }); pendingPrompt = undefined; }
+    await showReview();
   }));
   const provider = {
     resolveWebviewView(view) {
@@ -47,7 +51,12 @@ function register(vscode, context, active, ask, systems, toolContext) {
         if (message.action === "ready") {
           ready = true;
           await refresh();
-          if (pendingPrompt) { await view.webview.postMessage({ prompt: pendingPrompt }); pendingPrompt = undefined; }
+          await showReview();
+          return;
+        }
+        if (message.action === "clearReview") {
+          reviewAsk = null;
+          await showReview();
           return;
         }
         if (message.action === "provider" || message.action === "model") {
@@ -70,7 +79,9 @@ function register(vscode, context, active, ask, systems, toolContext) {
           require("./session-log").reset();
           await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
           ask.newConversation();
+          reviewAsk = null;
           await view.webview.postMessage({ cleared: true });
+          await showReview();
           return;
         }
         if (message.action === "copyAnswer") {
@@ -94,10 +105,15 @@ function register(vscode, context, active, ask, systems, toolContext) {
         }
         if (message.action === "chat") {
           const requestId = ++nextRequest;
-          await view.webview.postMessage({ chat: "You: " + message.text });
+          // The window shows the question as written; the review's blocks go to the model with it, unseen.
+          const asked = reviewAsk;
+          if (asked) { reviewAsk = null; await showReview(); }
+          const shown = String(message.text || "").trim() || (asked ? "What does this change do, and is there a real problem with it?" : "");
+          if (!shown) { return; }
+          await view.webview.postMessage({ chat: "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "") });
           await view.webview.postMessage({ progress: { id: requestId, status: "VERTEX is working…" } });
           try {
-            const reply = await ask(message.text, {model: message.model, state: (await toolContext()) || {},
+            const reply = await ask(asked ? review.askRequest(message.text, asked) : message.text, {model: message.model, state: (await toolContext()) || {},
               onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, ...update } })).catch(() => {}); } });
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId, answer: reply.answer,
@@ -160,6 +176,11 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages { flex: 1 1 auto; min-height: 80px; overflow-y: auto; white-space: pre-wrap; }
 /* The question box and VERTEX Tools stay at the bottom; the answers scroll. */
 .dock { flex: none; }
+#review-chip { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 2px 4px 2px 8px; border-radius: 10px; max-width: 100%;
+  background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 12px; width: fit-content; }
+#review-chip[hidden] { display: none; }
+#review-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#review-chip button { padding: 0 6px; min-width: 0; line-height: 16px; }
 #messages .copy-answer { margin: -0.6em 0 1em; padding: 2px 8px; font-size: 11px; }
 #messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; }
 #messages p.tool-status { font-size: 11px; opacity: .8; }
@@ -200,7 +221,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
-<form id="chat"><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
+<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
 <script nonce="${nonce}">
@@ -221,10 +242,12 @@ document.getElementById('chat').addEventListener('submit', event => {
   event.preventDefault();
   const field = document.getElementById('prompt');
   const text = field.value.trim();
-  if (!text) return;
+  // With a review's blocks on the chip an empty question asks the default one.
+  if (!text && document.getElementById('review-chip').hidden) return;
   api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value });
   field.value = '';
 });
+document.getElementById('review-clear').addEventListener('click', () => api.postMessage({ action: 'clearReview' }));
 document.getElementById('prompt').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.ctrlKey) {
     event.preventDefault();
@@ -238,9 +261,13 @@ window.addEventListener('message', event => {
     lastCopy.textContent = event.data.copied ? 'Copied' : 'Copy failed: ' + event.data.error;
     const button = lastCopy; setTimeout(() => { button.textContent = 'Copy'; }, 2000);
   }
-  if (event.data && typeof event.data.prompt === 'string') {
-    document.getElementById('prompt').value = event.data.prompt;
-    document.getElementById('prompt').focus();
+  if (event.data && typeof event.data.review === 'string') {
+    const chip = document.getElementById('review-chip');
+    chip.hidden = !event.data.review;
+    document.getElementById('review-label').textContent = event.data.review;
+    const field = document.getElementById('prompt');
+    field.placeholder = event.data.review ? 'Ask about this change… (Enter with nothing typed: what it does and any real problem)' : 'Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)';
+    if (event.data.review) field.focus();
   }
   if (event.data && event.data.cleared) {
     const box = document.getElementById('messages');
