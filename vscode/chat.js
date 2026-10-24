@@ -108,11 +108,11 @@ async function enrichSelectedMethodContext(codeTools, state) {
   return state;
 }
 
-/* What Visual Debug shows, for the question: the record (what the program did) and the analysis's flow (what can happen),
+/* What VERTEX Smart Debugger shows, for the question: the record (what the program did) and the analysis's flow (what can happen),
    each said to be what it is. Nothing where the window has neither. */
 function debugFlowSection(context) {
   if (!context || (!context.recorded && !context.analysis)) { return ""; }
-  return "\n\nVisual Debug (the debugger window's record and analysis; `recorded` is what the program actually did, `analysis` is what static analysis says can happen - never present the second as the first):\n"
+  return "\n\nVERTEX Smart Debugger (the debugger window's record and analysis; `recorded` is what the program actually did, `analysis` is what static analysis says can happen - never present the second as the first):\n"
     + JSON.stringify(context);
 }
 

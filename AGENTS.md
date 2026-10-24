@@ -12,6 +12,6 @@
   "what was done" notes. Update instructions when behavior changes, but keep the
   change narrative in the histories.
 - In the VS Code extension, every interface element must use a theme-aware background color. Do not hard-code a light or dark background that breaks with the active VS Code theme; use VS Code theme variables or inherited colors.
-- Diagram and Lens mode controls use the shared compact toggle style already used by Visual Debug: adjacent modes form a group; an active mode uses the theme focus colour, while inactive modes remain quiet. Do not introduce a separate toggle appearance for a diagram or Lens.
+- Diagram and Lens mode controls use the shared compact toggle style already used by VERTEX Smart Debugger: adjacent modes form a group; an active mode uses the theme focus colour, while inactive modes remain quiet. Do not introduce a separate toggle appearance for a diagram or Lens.
 - Two shared toggle types are canonical: independent on/off controls use `vertex-toggle` / `.on`; mutually exclusive choices use `vertex-segment-toggle` / `.active`. Both live in `org.vertex.abap.ui/resources/vertex-controls.css` and are copied to `vscode/resources/` at packaging. Do not redefine either style in a view; use the class unchanged.
 - Every diagram and its controls (including Mermaid SVGs, range tracks and thumbs) must follow the active VS Code theme through VS Code CSS variables. Never hard-code a light/dark Mermaid theme or fixed surface colours; verify both light and dark rendering before packaging.

@@ -2408,7 +2408,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
   });
   // Backward Usage Analysis: where the values of the routine at the cursor go in its callers, up through theirs. SAP's
   // where-used finds the calls in the saved sources; each customer object found is read as a tab, standard code is not.
-  // Visual Debug's Where used names the value chosen in its Variables; from the editor it is the one under the cursor.
+  // VERTEX Smart Debugger's Where used names the value chosen in its Variables; from the editor it is the one under the cursor.
   command("vertex.backwardUsage", async (options = {}) => {
     const editor = vscode.window.activeTextEditor, document = editor && editor.document;
     const local = document && require("./local-analysis").isLocalAbap(document);

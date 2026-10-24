@@ -59,11 +59,23 @@
     if (dumps.size) picture.ending = {program:'',note:'',dumped:Array.from(dumps.values()).map(d => ({...d,page:undefined,hasPage:!!d.page}))};
     return picture;
   }
+  // A stop of the program - one outside a run of steps, or where a run ends - opens its line in the editor. Eclipse's own
+  // Debug view does that while it is open; closed, or hidden during a run, nothing showed the stop in the code. Each stop
+  // once, and never every step of a run: an editor of another object replaces the one opened before (ToolsView reuse).
+  let revealedStop = '';
+  window.sdeRevealStop = picture => {
+    const top = picture && picture.stopped && picture.stopped.frames && picture.stopped.frames[0];
+    if (!top || !top.url) return;
+    const key = (picture.stopped.at || '') + '|' + top.url + '|' + top.line;
+    if (key === revealedStop) return;
+    revealedStop = key;
+    sdeReveal({url:top.url, line:top.line});
+  };
   window.vertexNativeEvent = raw => {
     const picture = JSON.parse(raw); sessions(picture); sdeDebugEvent(raw);
     lastPicture = picture;
-    // ADT owns editor navigation for a live debug stop. Reopening the class
-    // here creates another editor tab on every step.
+    if (!window.series) sdeRevealStop(picture);
+    // A log point records its stop and goes on at once.
     const point = picture.stopped && picture.breakpoints.find(b => b.id === picture.stopped.breakpoint && b.mode === 'log');
     if (point && !series && loggedStop !== picture.stopped.at) {
       loggedStop = picture.stopped.at;
@@ -140,7 +152,8 @@
     }
     if (name === 'dumppage') { const dump=dumps.get(args.id) || Array.from(dumps.values()).at(-1); return {id:dump?.id||'',page:dump?.page||''}; }
     const value = JSON.parse(await native(name, args));
-    if (name === 'picture') { sessions(value);lastPicture=value;withDumps(value); }
+    // Opened (or reopened) on a program that stands stopped: its line in the editor too, as a new stop would show it.
+    if (name === 'picture') { sessions(value);lastPicture=value;withDumps(value);if(!window.series)sdeRevealStop(value); }
     return value;
   }
   window.sdeDebug = (name, args) => answer(command(name, args || {}));

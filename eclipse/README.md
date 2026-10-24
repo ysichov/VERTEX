@@ -34,7 +34,7 @@ needed. While one runs, **Cancel** beside its status stops it.
 
 All VERTEX commands of a context menu stand in one **VERTEX** submenu, beside GitHub, Team and Run
 As: VERTEX Tools, Path to This Line, Run Select, Forward and Backward Usage Analysis, Visual Flow Analysis,
-Visual Analysis / Debug, Activate, VERTEX Assistant and Session Logs. The commands below are named as they appear there.
+VERTEX Smart Debugger, Activate, VERTEX Assistant and Session Logs. The commands below are named as they appear there.
 
 ## Path to This Line
 
@@ -61,11 +61,12 @@ values - is left out and named above the rows.
 
 ## VERTEX Assistant
 
-**VERTEX Assistant** opens the chat in a window of its own, on the system of the object selected in Project
+**VERTEX Assistant** opens the chat beside the editor, on the system of the object selected in Project
 Explorer or shown in the active editor; with neither, it asks which ABAP project. The same chat is **Ask AI**
 in VERTEX Tools. It runs Claude Code or Codex, set in **Window → Preferences → VERTEX Assistant**, where the
 log folder and what is logged - questions, answers, SAP tool calls, and what is sent to the model (VERTEX's
-instructions, the prompt with its context, the tools) - are chosen too; nothing is logged until a folder is set.
+instructions, the prompt with its context, the tools) - are chosen too; nothing is logged until a folder is set. The log icon in the chat's header opens Session Logs, or says
+where to set the folder when none is set.
 
 ## Session Logs
 
@@ -77,7 +78,7 @@ on the one you pick. Recorded diagram and metrics context opens in the window. *
 conversations** deletes their log files after asking. Recorded transpiler runs and SAP debug sessions
 open in VS Code only.
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
-Opening VERTEX Tools while an ADT class or program editor is active selects that object automatically and follows the editor's cursor. A method in a UML diagram opens its class at that method; a plain click reuses the editor the previous plain click opened (closing it unless it holds unsaved changes, and never one you had open already), Ctrl+click opens the class in a tab of its own. Opened from Project Explorer, Tools shows the object type and name fields - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Logic view takes its method. VERTEX Tools and the VERTEX functions open in a window of their own beside the workbench, so a click in the editor never hides them; a window already open is brought to the front.
+Opening VERTEX Tools while an ADT class or program editor is active selects that object automatically and follows the editor's cursor. A method in a UML diagram opens its class at that method; a plain click reuses the editor the previous plain click opened (closing it unless it holds unsaved changes, and never one you had open already), Ctrl+click opens the class in a tab of its own. Opened from Project Explorer, Tools shows the object type and name fields - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Logic view takes its method. VERTEX Tools, the assistant and the VERTEX functions open docked right of the editors, half the width, all in one stack - the editor and VERTEX side by side, nothing covering the screen. A window already open is only brought to the front, wherever you moved or dragged it.
 
 ## Versions and code review
 
@@ -107,8 +108,8 @@ The shared diagram pages changed too. Their source is shared, but the published 
 currently contains the older 0.8.0 build; rebuild and publish the plugin to deliver the current
 pages to Eclipse users.
 
-The VS Code-only right-hand Visual Debug panel, its stopped-line highlight and
-its F5-F8 source-editor shortcuts are also not available in Eclipse.
+The VS Code-only right-hand VERTEX Smart Debugger panel and its F5-F8 shortcuts in the source editor are not
+available in Eclipse; in Eclipse the keys work in the VERTEX Smart Debugger window itself.
 The VERTEX Tools window no longer has a View source function in Eclipse either: the source is the
 ADT editor. That change to the plugin was not built for Eclipse.
 
@@ -182,33 +183,54 @@ Eclipse uses its own navigation Back command.
 For building and exporting the plugin, see [BUILD.md](../BUILD.md).
 Install an update-site archive with **Help > Install New Software > Add > Archive**.
 
-## Visual Debug
+## VERTEX Smart Debugger
 
-**VERTEX: Open Visual Debug** in an ADT editor's context menu opens the VS Code Visual Debug page
-in Eclipse. It does not open a debugger of its own: it drives the ADT debug session Eclipse
-already has, through SAP's `IAbapThread` / `IAbapStackFrame` / `IAbapVariable` and Eclipse debug
-events, so there is still one listener per user. The view keeps Debug Monitor's ID, so existing
-shortcuts open it.
+**VERTEX → VERTEX Smart Debugger** in an ADT editor's context menu opens the same VERTEX Smart Debugger page
+as VS Code. It does not open a debugger of its own: it drives the ADT debug session Eclipse already
+has, through SAP's `IAbapThread` / `IAbapStackFrame` / `IAbapVariable` and Eclipse debug events, so
+there is still one listener per user.
 
-- Stack, frame switching, scopes, variables and table rows come from the stopped ADT thread.
-- Step Into / Over / Return / Continue and run-to-line call ADT's own stepping; Detach and
-  Terminate go to the same thread.
+For a fast recorded run, turn off **Window → Preferences → Run/Debug → Activate the debug view when a
+breakpoint is hit**. With it on, Eclipse brings its Debug view back at every stop - every step of a
+run is one - and redraws it each time, whatever VERTEX hides.
+
+- Stack, frame switching, scopes, variables and table rows come from the stopped ADT thread. Opened
+  with no debug session, it reads the declared variables of the source at the editor's line, a
+  structure opened to its type's fields.
+- Single Step, Execute, Return and Continue call ADT's own stepping - also with **F5**, **F6**,
+  **F7** and **F8** while the window has the focus; Detach and Exit program go to the same thread.
 - Breakpoints set or cleared in the page are ADT breakpoints, and ADT's own appear in the page.
-- The flow chart, recording and player run on the page as in VS Code; the stopped line opens in
-  the ADT editor and the Logic view follows it.
-- Eclipse handles source-editor navigation on each live stop; Visual Debug does not open another
-  class tab on every step. Explicit source links still open their requested object.
-- With several ADT debug threads, a thread selector appears in the page header.
+  Only your breakpoints stop a run: a stop ADT makes for itself (returning from SAP's code with
+  **Z only**) does not.
+- **Run in SAP** starts the program as **Run As → ABAP Application** does; for a class or a function
+  module with the program field empty it opens SE24 or SE37 for its test. Run with ABAP Transpiler is
+  VS Code only.
+- With several ADT debug sessions at once, the stopped one is shown; a thread selector appears in
+  the page header when it is not clear which.
+- Each stop opens its line in the editor - when it stops, and where a run ends, not at every step.
+  An editor of the object already open, ADT's debugger editor included, is used rather than a new tab.
+- **Rec steps** and **Steps & values** record a run of steps (Continue under recording). Steps &
+  values keeps at each stop only the values that changed since the last stop of the same routine,
+  a structure's fields one level down; after a statement that writes no variable - WRITE without TO,
+  SKIP, ULINE, NEW-LINE, NEW-PAGE, FORMAT - nothing is read. The player rebuilds a stop's values and
+  marks the ones that stop wrote.
+- **Visual** (off by default) draws the window at every step of a run. Off, the window is drawn when
+  the run stops, and Eclipse's own Debug, Variables and Expressions windows, if open, are hidden for
+  the run and come back after it - they would otherwise answer every step too. The run's speed shows
+  above the player.
+- Closing the window while the program stands stopped asks whether to end the program, leave it
+  stopped in ADT, or keep the window; meanwhile its tab shows a `*`.
 - Right-click a node or a routine frame of the diagram for *Show from here*, *Expand this branch*
   and *Collapse this branch*.
-- Steps & values reads the values at every stop, a structure's components one level down. With a
-  value chosen in Variables, Formula and Expression after a run keep only the path the run took, with
-  the recorded values in brackets (With values switches them); with no path analysed they are written
-  out from the record. Every name in them links to its statement.
+- With a value chosen in Variables, Formula and Expression after a run keep only the path the run
+  took, with the recorded values in brackets (With values switches them); with no path analysed they
+  are written out from the record. Every name in them links to its statement.
 - Several values can be followed - a structure as its components - and a list on the chip and at the
   left of the diagram toolbar switches between them. Analyze flow path works from a single point, to
   the end of the flow when no other checked point is met. Variable trees start closed.
-- Where used on a breakpoint and the Clear button are VS Code only for now.
+- Where used on a breakpoint and the Clear button are VS Code only for now. So are Save session,
+  watchpoints, All BP, restoring a session and SAP / Transpiler Logs: the page offers them, Eclipse
+  does not answer them yet.
 
 Differences from VS Code: no step prediction (Eclipse reads the stack at every suspend, so a step
 is not shortened). **Run** needs an active breakpoint: it switches on ADT debugging, sends the

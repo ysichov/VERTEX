@@ -392,7 +392,7 @@ function runLinks(item, runs) {
       && (cite.dataset.kind !== 'run' || run.kind === 'transpiler'));
     if (matches.length !== 1) return;
     const run = matches[0], link = document.createElement('a');
-    link.href = '#'; link.className = 'link'; link.title = 'Open ' + run.kind + ' session ' + run.session_id + ' at step ' + cite.dataset.step + ' in Visual Debug';
+    link.href = '#'; link.className = 'link'; link.title = 'Open ' + run.kind + ' session ' + run.session_id + ' at step ' + cite.dataset.step + ' in VERTEX Smart Debugger';
     // A run of this conversation reads as its number; one from elsewhere keeps the cited id.
     link.textContent = run.kind === 'transpiler' && run.number ? 'run ' + run.number + ', step ' + cite.dataset.step : cite.textContent;
     link.addEventListener('click', event => { event.preventDefault();

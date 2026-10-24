@@ -50,7 +50,7 @@ eclipse/                    the Eclipse side's own scripts and assistant parts
 ├── prepare.js              fills org.vertex.abap.ui/assistant/ before a PDE export
 ├── package.ps1             builds an update-site candidate in target/, with docs/ as its template
 ├── bridge.js, chat.js      the Eclipse assistant's pipe to the host, and its chat
-└── object-tools.js         the object tools as Eclipse offers them (no Visual Debug)
+└── object-tools.js         the object tools as Eclipse offers them (no VERTEX Smart Debugger)
 vscode/                     the VS Code extension
 ├── extension.js            the host: webviews, the SAP connection, commands, the MCP provider
 ├── sap-http.js             the ADT transport, with a per-system TLS policy and keep-alive
@@ -62,7 +62,7 @@ vscode/                     the VS Code extension
 ├── tools-window.js         the VERTEX Tools window and what its pages may ask of the host
 ├── object-tools.js         the object tools as VS Code offers them (the same model as Eclipse)
 ├── debugger.js             the ABAP debugger: breakpoints, listener, stack, variables, steps
-├── pages/visual-debug.html Visual Debug: source, stack, variables, flow chart, player
+├── pages/visual-debug.html VERTEX Smart Debugger: source, stack, variables, flow chart, player
 ├── sidebar.js, chat.js     the VERTEX panel's chat and its context
 ├── anthropic.js            the Anthropic API, with the key from SecretStorage
 ├── model-config.js         which models each provider offers

@@ -5,7 +5,7 @@ const path = require("path");
 const { randomUUID } = require("crypto");
 
 // Record observed stops of an assistant-started SAP run, without driving SAP
-// or requiring the Visual Debug webview to be open.
+// or requiring the VERTEX Smart Debugger webview to be open.
 function create({ folder, enabled = () => true }) {
   let record = null, active = false, savedSteps = 0;
   function begin(program, system) {

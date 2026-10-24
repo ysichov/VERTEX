@@ -73,7 +73,7 @@ if(typeof module!=='undefined'&&module.exports)module.exports=api;else window.ve
 },
 "./call-graph": function (module, exports, require) {
 "use strict";
-// Shared execution-call contract for Calls, Value Origin and Visual Debug.
+// Shared execution-call contract for Calls, Value Origin and VERTEX Smart Debugger.
 // Loading and rendering are host adapters; enumeration/resolution/walk are shared.
 const upper=s=>String(s||'').toUpperCase();
 function create(index,units=index.procedures){
@@ -2198,7 +2198,7 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
 }
 /* The statements the flow draws and the calls between them: { rows, sites }. */
 function flowScope(graph) {
-  // One source, four readings of it, as Visual Debug reads its record: classes, routines, the logic, every statement.
+  // One source, four readings of it, as VERTEX Smart Debugger reads its record: classes, routines, the logic, every statement.
   // Only the reading shown first is built here; the page builds another from the same input when it is asked for.
   // With a value chosen and no breakpoints bounding the flow, it goes into a call only where the value is computed:
   // a callee with a statement of the slice, or one that calls such a callee. Every statement of the object is still

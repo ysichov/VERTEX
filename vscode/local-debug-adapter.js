@@ -219,9 +219,9 @@ function create(vscode, document, launch, publish, scope, more = {}) {
       case "checkdumps": return { dumped: [] };
       case "opendump": return {};
     }
-    throw new Error("Local Visual Debug does not support " + action + " yet.");
+    throw new Error("Local VERTEX Smart Debugger does not support " + action + " yet.");
   }
-  // A new Visual Debug window starts clean: the paused transpiler process of this one ends with it.
+  // A new VERTEX Smart Debugger window starts clean: the paused transpiler process of this one ends with it.
   // A kept run: its record, its output, and the step it opens at.
   if (more.trace) { trace = more.trace.records || []; traceEnded = true; storedOutput = more.trace.output || "";
     if (trace.length) atTrace(Math.min(trace.length - 1, Math.max(0, more.trace.at ?? trace.length - 1))); }

@@ -238,11 +238,32 @@ public class ToolsView extends ChatView {
         if (previous == null || previous == opened || !openEditors().contains(previous) || previous.isDirty()) return;
         previous.getSite().getPage().closeEditor(previous, false);
     }
+    /**
+     * An open editor of NAME, a visible one before a hidden one; null when none. An editor ADT's model does not describe -
+     * the debugger's own - is known by its title, "[SID] NAME" as ADT writes it.
+     */
+    private IEditorPart openEditorOf(String name) {
+        IEditorPart hidden = null;
+        for (org.eclipse.ui.IEditorReference reference : getSite().getPage().getEditorReferences()) {
+            IEditorPart part = reference.getEditor(false);
+            if (part == null) continue;
+            AdtEditor object = AdtEditor.of(part);
+            String shown = object != null ? object.ownerName() : part.getTitle().replaceFirst("^\\[[^\\]]*\\]\\s*", "").trim();
+            if (shown == null || !shown.equalsIgnoreCase(name)) continue;
+            if (getSite().getPage().isPartVisible(part)) return part;
+            if (hidden == null) hidden = part;
+        }
+        return hidden;
+    }
     /** Opens NAME in ADT's editor and answers that editor; a failure is thrown with its reason. */
-    private IEditorPart navigate(String name, String type) {
+    protected IEditorPart navigate(String name, String type) {
         if (!name.matches("[A-Z0-9_/]{1,40}")) throw new IllegalArgumentException("Invalid object name.");
         if (!type.equals("PROG") && !type.equals("CLAS") && !type.equals("FUNC"))
             throw new IllegalArgumentException("Only programs, classes and function modules open from here.");
+        // An editor of the object already open - ADT's debugger editor among them - is used, a visible one first: ADT's
+        // navigation opened its ordinary editor beside the debugger's, a new tab at every stop and every step of history.
+        IEditorPart open = openEditorOf(name);
+        if (open != null) return open;
         String[] object = adtObject(name, type);
         com.sap.adt.tools.core.model.adtcore.IAdtObjectReference reference =
             com.sap.adt.tools.core.model.adtcore.IAdtCoreFactory.eINSTANCE.createAdtObjectReference();

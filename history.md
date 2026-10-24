@@ -1,8 +1,28 @@
 # Release history
 
+## 2026-10-24 — VERTEX Smart Debugger
+
+Visual Debug is now named **VERTEX Smart Debugger** in VS Code and Eclipse: its command, window and menu item, its messages and the documentation.
+
+In Eclipse, VERTEX Smart Debugger opens the line the program stopped at in the editor, also with Eclipse's own Debug view closed: at a stop, and where a run ends - not at every step. Showing a line of an object already open, ADT's debugger editor included, uses that editor instead of opening another tab.
+
+VERTEX Smart Debugger takes F5 (Single Step), F6 (Execute), F7 (Return) and F8 (Continue) while it has the focus, in VS Code and Eclipse. In Eclipse, closing it while the program stands stopped asks whether to end the program, leave it stopped or keep the window - its tab shows * while the program stands stopped; a reopened window shows the stop's line in the editor, and closing it during a run brings back Eclipse's debugger windows it had hidden.
+
+In Eclipse, Run in SAP starts the program as Run As > ABAP Application does, and Run with ABAP Transpiler is no longer offered there.
+
+In Eclipse, VERTEX Tools, the assistant and the VERTEX functions open docked right of the editors, half the width, in one shared stack, instead of a window of their own over the workbench.
+
+The Eclipse assistant chat has a log icon in its header: it opens Session Logs, or, with no log folder set, says where to set one.
+
+With two programs stopped at once, each VERTEX Smart Debugger window in Eclipse steps its own program: a window never takes a thread another window shows.
+
+## 2026-10-24 — VS Code 0.9.30, Eclipse 0.9.30: the record keeps changes
+
+Steps & values keeps at each stop only the values that changed since the last stop of the same routine, in SAP as in local runs; the player shows a stop's values rebuilt from those changes and marks the ones that stop wrote. After a statement that writes no variable - WRITE without TO, SKIP, ULINE, NEW-LINE, NEW-PAGE, FORMAT - no values are read.
+
 ## 2026-10-24 — VS Code 0.9.30, Eclipse 0.9.30: declared structures, recorded Continue
 
-A variable of a structure type declared as a chain (`TYPES: BEGIN OF ... END OF ...`), also in an interface, opens to its fields in Visual Analysis without a debug session. In Eclipse, Continue under Rec steps runs on to the next breakpoint instead of stopping after each step.
+A variable of a structure type declared as a chain (`TYPES: BEGIN OF ... END OF ...`), also in an interface, opens to its fields in Visual Analysis without a debug session. In Eclipse, Continue under Rec steps runs on to the next breakpoint instead of stopping after each step, and stops there. Visual Debug has a **Visual** switch beside Z only, in VS Code and Eclipse: on, a run draws where the program is at every step; off, the default, the window is drawn when the run stops. A structure opened in Variables shows all its fields, also those still initial; the Initials switch thins the top level of the list. In Eclipse, Steps & values records the values at every stop, and a run with Visual off hides Eclipse's own Debug, Variables and Expressions windows while it goes, bringing back those that were open when it stops. With an earlier debug session still alive beside a new one, Visual Debug takes the stopped one instead of waiting for a thread to be picked, also on a second run. A recorded run no longer stops where ADT stops by itself, such as on returning from SAP's code with Z only.
 
 ## 2026-10-23 — Eclipse 0.9.30: Run Select, Visual Analysis / Debug
 

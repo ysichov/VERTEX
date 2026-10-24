@@ -127,7 +127,7 @@
       },
       {
         "command": "vertex.openVisualDebug",
-        "title": "VERTEX: Visual Analysis / Debug"
+        "title": "VERTEX Smart Debugger"
       },
       {
         "command": "vertex.runTranspiler",

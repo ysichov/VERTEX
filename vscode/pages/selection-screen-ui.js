@@ -1,4 +1,4 @@
-/* The selection screen drawn as SAP lays it out, shared by Visual Debug and the program window: each page has this
+/* The selection screen drawn as SAP lays it out, shared by VERTEX Smart Debugger and the program window: each page has this
    file put in at its SELECTION-SCREEN-UI mark, by tools-window.js and program-window.js. */
 /* The selection screen as SAP lays it out: blocks with their frame and title, lines of several elements, comments,
    SKIP and ULINE, parameters, radio buttons, checkboxes and SELECT-OPTIONS, each named by its selection text when the

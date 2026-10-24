@@ -27,15 +27,15 @@ VERTEX is a set of plugins for VS Code and Eclipse ADT. Each window reads over t
 - AI assistant over any SAP system, and an MCP server for Claude Code, Codex and Copilot
 - enhanced ABAP editor: ABAP Unit, ATC, block-by-block review before activation
 - AI-driven ADT debugger: conditions SAP evaluates, a verdict naming the line
-- visual debugger with recording and replay
+- VERTEX Smart Debugger with recording and replay
 - forward and backward usage analysis, down to the formula of a value (BSE)
 - the path to a line: the conditions inside its METHOD or FORM under which it runs
 - version history, diff and transport review
 - code explorer: metrics, UML, Logic and Calls diagrams
 - data explorer (SelecTor): tables, joins, pivots
 
-Visual Debug gives each recorded SAP session an ID from its first step; the chat can cite and open those steps before or after **Save session**.
-Runs started in Visual Debug with the ABAP Transpiler are registered in transpiler history and included in chat context, so the assistant can cite and open their recorded steps.
+VERTEX Smart Debugger gives each recorded SAP session an ID from its first step; the chat can cite and open those steps before or after **Save session**.
+Runs started in VERTEX Smart Debugger with the ABAP Transpiler are registered in transpiler history and included in chat context, so the assistant can cite and open their recorded steps.
 Ordinary diagram nodes have transparent backgrounds, and their clickable labels follow the editor text color in every theme.
 
 
@@ -55,7 +55,7 @@ Start chat by naming the package or program to inspect; a single match opens in 
 For a plain name without an exact match, VERTEX tries prefix and contained-name searches; explicit
 wildcards are used as written.
 The VS Code chat can explain an active local `.abap` file using its current editor text, even without a SAP connection.
-Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **Visual Analysis / Debug** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **VERTEX: Run with ABAP Transpiler** in its editor's context menu or beside Run in SAP: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. SAP program selection screens use the selection texts and text symbols maintained in SAP. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
+Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **VERTEX Smart Debugger** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **VERTEX: Run with ABAP Transpiler** in its editor's context menu or beside Run in SAP: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. SAP program selection screens use the selection texts and text symbols maintained in SAP. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
 
 From a SAP source tab's context menu, **VERTEX: Run SAP in web GUI** opens the program in WebGUI or a class/function module's test screen. It works without a breakpoint.
 
@@ -64,7 +64,7 @@ From a SAP source tab's context menu, **VERTEX: Run SAP in web GUI** opens the p
 |---|---|---|---|---|---|
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | ✓ | — | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values; the VERTEX chat has it built in, Claude Code and Codex reach it over MCP as `vertex-debug` | ✓ | — | not needed |
-| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player. The first recorded SAP stop includes Globals such as selection-screen values. In VS Code, SAP & Transpiler Logs opens SAP recordings and transpiler runs for replay or deletion; SAP recordings can be renamed. | ✓ | ✓ ³ | not needed |
+| **VERTEX Smart Debugger** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player. The first recorded SAP stop includes Globals such as selection-screen values. In VS Code, SAP & Transpiler Logs opens SAP recordings and transpiler runs for replay or deletion; SAP recordings can be renamed. | ✓ | ✓ ³ | not needed |
 | **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Forward Usage Analysis - how a value is computed, down from a line across calls: the static call stack, the derivation as *FLOW* or *Formula*, each as a tree or a diagram; Backward Usage Analysis - where the values of a routine go in its callers, by SAP's where-used | ✓ | ✓ | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | ✓ | ✓ ¹ | not needed |
 | **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | ✓ | ✓ ² | to save reviews in SAP |
@@ -78,16 +78,16 @@ See [eclipse/README.md](eclipse/README.md).
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
 **0.9.30.20261023215155**; the VS Code extension is **0.9.30**.
 
-³ In Eclipse, Visual Debug drives ADT's own debug session instead of a second debugger, and Run
+³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,
 not yet on the update site, and has not been checked on a live ADT session.
-On a live stop, Eclipse opens and positions the source editor; Visual Debug no longer opens another class tab for each step.
+On a live stop, Eclipse opens and positions the source editor; VERTEX Smart Debugger no longer opens another class tab for each step.
 
-**Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; in VS Code the version history and its diff come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is built from them in the window, with AVE's rules for choosing the versions and cutting blocks. Saving it to SAP goes through one resource of VERTEX's own ABAP, `ZCL_VX_ADT_RES_STORE`, into the `ZAVE_REVIEW` table AVE uses too - ADT's data preview can read a table but not write it; reviews can also be kept in files. The AVE repository itself is not needed. The Eclipse plugin reads them the same way.
+**Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and VERTEX Smart Debugger read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; in VS Code the version history and its diff come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is built from them in the window, with AVE's rules for choosing the versions and cutting blocks. Saving it to SAP goes through one resource of VERTEX's own ABAP, `ZCL_VX_ADT_RES_STORE`, into the `ZAVE_REVIEW` table AVE uses too - ADT's data preview can read a table but not write it; reviews can also be kept in files. The AVE repository itself is not needed. The Eclipse plugin reads them the same way.
 
 **Where the two hosts stand apart.** The editor and the AI-driven debugger are VS Code
 only by design: Eclipse has ADT's own editor and debugger, and VERTEX does not replace them -
-Visual Debug in Eclipse puts ADT's debugger session on screen rather than running its own. Eclipse
+VERTEX Smart Debugger in Eclipse puts ADT's debugger session on screen rather than running its own. Eclipse
 also has its own built-in assistant and standalone MCP setup. Shared Tools pages are updated in the
 repository, but the published update site can lag behind the source until it is rebuilt.
 
@@ -233,7 +233,7 @@ Both Value Origin windows expose **Analysis log** directly above the flow. **Cop
 **Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Forward Usage Analysis**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
 
 
-In VS Code both directions are reached through **VERTEX: Visual Analysis / Debug** - a breakpoint's *Analyze flow path* (forward) and *Where used* (backward) - not from the editor menu or the palette.
+In VS Code both directions are reached through **VERTEX Smart Debugger** - a breakpoint's *Analyze flow path* (forward) and *Where used* (backward) - not from the editor menu or the palette.
 
 **VERTEX: Forward Usage Analysis** (formerly *Analyze Variable Value Origin*), on the cursor in a VERTEX ABAP source tab, answers
 where that value came from - backwards across calls, without running the program. ACE indexes
@@ -293,7 +293,7 @@ When the VERTEX chat resolves a single SAP object name, its answer links both th
 - **VERTEX Tools** — pick an object type and a name; the functions offered depend on the type
   (Object Navigator, Data, UML, Metrics, the Calls diagram and the Logic view, Diff, Versions). Object Navigator is the SE80
   tree of a package, transport request, program, class or interface, each entry a link to its source. There is no View source: the source is the
-  editor tab, and its parts are VS Code's Outline. Visual Debug is the panel beside the editor.
+  editor tab, and its parts are VS Code's Outline. VERTEX Smart Debugger is the panel beside the editor.
   Clicking a method in the Calls diagram opens its Logic view inside the same canvas, joined
   to the block it came from; the magnifier icon magnifies the diagram under the pointer, the same lens in every diagram.
 - **The ABAP editor** — hover, Go to, outline, Save & Activate and the block-by-block
@@ -305,7 +305,7 @@ When the VERTEX chat resolves a single SAP object name, its answer links both th
   the result in the chat, the same run in the Test Explorer and the Problems view.
 - **The debugger for an assistant** — *Z_CALC computes the wrong discount, find out why*: the
   assistant sets conditional breakpoints, runs the program in WebGUI and ends with the line and the
-  values that prove it. Visual Debug shows the same session on screen, with a flow chart of the
+  values that prove it. VERTEX Smart Debugger shows the same session on screen, with a flow chart of the
   calls and a player for the recorded run.
 - **Assistant in SelecTor and Versions** — a sentence instead of the clicks: *SFLIGHT for carrier
   AA, joined with SCARR*.
@@ -339,7 +339,7 @@ Copilot in VS Code, Claude Code and Codex; others are not supported yet.
 extension, `/debug`, registered as `vertex-debug`: `debug_set_breakpoint` (with a condition SAP
 evaluates, or mode `log` for a continuing line trace), `debug_watchpoint` (a SAP variable-change stop), `debug_run`, `debug_wait`, `debug_read`, `debug_step`,
 `debug_status`, `debug_log`, `debug_clear_breakpoints` and `debug_stop`. Nothing there changes a
-variable or the code. It is the same session the VERTEX chat and Visual Debug drive, so a step
+variable or the code. It is the same session the VERTEX chat and VERTEX Smart Debugger drive, so a step
 made in one is seen by the others. It runs on the active system, needs a VS Code window with
 VERTEX open — the run is started in WebGUI and the listener has to outlive a single call — and
 for that reason the standalone server in [mcp/](mcp/README.md) does not have it. Setup and the

@@ -21,7 +21,7 @@ import org.eclipse.debug.core.model.IBreakpoint;
 import org.eclipse.debug.core.model.IDebugTarget;
 import org.eclipse.debug.core.model.IThread;
 
-/** The Visual Debug wire contract over the existing Eclipse ADT debug model.
+/** The VERTEX Smart Debugger wire contract over the existing Eclipse ADT debug model.
  * Commands are serialized by the view. Events only wake a pending step; no SAP
  * requests are made from an Eclipse debug-event callback. */
 final class VisualDebugSession {
@@ -29,6 +29,11 @@ final class VisualDebugSession {
     private final AtomicLong stop = new AtomicLong();
     private final Object changed = new Object();
     private volatile IAbapThread selected;
+    /** Which window shows which ADT thread. Two programs stopped at once open two windows; each picking "the one stopped
+     * last" on its own, both took the same thread, and F5 in one stepped the other's program while its own stood. */
+    private static final Map<IAbapThread, VisualDebugSession> HELD = new java.util.concurrent.ConcurrentHashMap<>();
+    /** The thread of this project that Eclipse reported stopping last. */
+    private volatile IAbapThread lastStopped;
     private int ended;
     private final Map<String, IAbapVariable> variables = new HashMap<>();
     private final Map<String, String> modes = new HashMap<>();
@@ -39,6 +44,12 @@ final class VisualDebugSession {
 
     boolean event(DebugEvent event) {
         if (!(event.getSource() instanceof IAbapDebugElement element) || !project.equals(element.getProject())) return false;
+        // A new session stopping while the shown one is not: the window goes to the new one. Kept to the selected thread
+        // otherwise, a second run beside a still living first showed the first, its buttons dead.
+        if (event.getKind() == DebugEvent.SUSPEND && element instanceof IAbapThread stopped) {
+            lastStopped = stopped;
+            if (selected != null && stopped != selected && !selected.isSuspended() && free(stopped)) { hold(stopped); variables.clear(); }
+        }
         if (selected != null && element instanceof IAbapThread t && t != selected) return false;
         if (event.getSource() instanceof IAbapThread && (event.getKind() == DebugEvent.SUSPEND || event.getKind() == DebugEvent.TERMINATE)) {
             stop.incrementAndGet();
@@ -47,7 +58,27 @@ final class VisualDebugSession {
         return true;
     }
 
-    void close() { closed = true; synchronized (changed) { changed.notifyAll(); } }
+    private boolean free(IAbapThread t) { VisualDebugSession holder = HELD.get(t); return holder == null || holder == this; }
+    private void hold(IAbapThread t) {
+        if (selected != null) HELD.remove(selected, this);
+        // Taken only if no other window took it in the meantime: their commands run on threads of their own.
+        selected = t != null && HELD.putIfAbsent(t, this) != null && HELD.get(t) != this ? null : t;
+    }
+
+    void close() { closed = true; hold(null); synchronized (changed) { changed.notifyAll(); } }
+
+    /** Where the shown program stands stopped - "PROGRAM:line" - or null when none does; asked when the window closes. */
+    String stoppedAt() {
+        try {
+            IAbapThread t = thread(false);
+            if (t == null || !t.isSuspended()) return null;
+            IAbapStackFrame top = t.getTopStackFrame();
+            return top == null ? t.getName() : top.getProgramName() + ":" + (top.getAbsoluteLineNumber() > 0 ? top.getAbsoluteLineNumber() : top.getLineNumber());
+        } catch (Exception e) { return null; }
+    }
+
+    /** Ends the shown program, as Exit program does. */
+    void terminate() throws Exception { command("terminate", new JsonObject()); }
 
     private IAbapDebuggerServices services() throws Exception {
         return AbapDebuggerPlugin.getDefault().getOrCreateDebuggerServices(project);
@@ -67,16 +98,27 @@ final class VisualDebugSession {
             }
         }
         if (mine.isEmpty() && !others.isEmpty()) throw new IllegalStateException("The ADT debug session belongs to project "
-            + String.join(", ", others) + "; Visual Debug was opened for " + project.getName() + ". Open it from an editor of that project.");
+            + String.join(", ", others) + "; VERTEX Smart Debugger was opened for " + project.getName() + ". Open it from an editor of that project.");
         return mine;
     }
 
     private IAbapThread thread(boolean required) throws Exception {
         List<IAbapThread> found = threads();
-        if (selected != null && !found.contains(selected)) { selected = null; ended++; variables.clear(); }
-        if (selected == null && found.size() == 1) selected = found.get(0);
+        if (selected != null && !found.contains(selected)) { hold(null); ended++; variables.clear(); }
+        // A thread another window shows is not this window's to take.
+        found.removeIf(item -> !free(item));
+        if (selected == null && found.size() == 1) hold(found.get(0));
+        // Several sessions - an earlier one still alive beside the new one - but one stopped: that is the one to show and
+        // step. Without it the window waited for a thread to be picked, its buttons dead.
+        if (selected == null && found.size() > 1) {
+            List<IAbapThread> stopped = new ArrayList<>();
+            for (IAbapThread item : found) if (item.isSuspended()) stopped.add(item);
+            if (stopped.size() == 1) hold(stopped.get(0));
+            // Both stopped: the one Eclipse reported stopping last.
+            else if (lastStopped != null && stopped.contains(lastStopped)) hold(lastStopped);
+        }
         if (selected == null && required) throw new IllegalStateException(found.isEmpty()
-            ? "Start an ADT debug session first." : "Select the ADT debug thread in Visual Debug.");
+            ? "Start an ADT debug session first." : "Select the ADT debug thread in VERTEX Smart Debugger.");
         return selected;
     }
 
@@ -122,7 +164,11 @@ final class VisualDebugSession {
             // breakpoint counts only on the top frame's source and line, as VS Code reports a hit.
             String hit = "";
             IAbapStackFrame top = stack.length > 0 ? stack[0] : null;
+            List<IAbapLineBreakpoint> mine = breakpoints();
             for (IAbapBreakpoint bp : t.getBreakpoints()) {
+                // Only a breakpoint of Eclipse's list - the reader's. ADT's own, such as the one it stops a step out of
+                // SAP's code with, stood in a run on line 16 where the reader had none, and ended the run there.
+                if (!(bp instanceof IAbapLineBreakpoint known) || !mine.contains(known)) continue;
                 if (bp instanceof IAbapLineBreakpoint line && top != null) {
                     // ADT gives a frame two lines - absolute and within its include - and the addresses in either case;
                     // a breakpoint on either line of the same source is the one stood on. (Only the absolute line, in exact
@@ -147,9 +193,11 @@ final class VisualDebugSession {
             check(services().synchronizeBreakpointsFull(DebugPlugin.getDefault().getBreakpointManager(), new NullProgressMonitor()));
             return object();
         case "session":
-            selected = threads().stream()
+            IAbapThread chosen = threads().stream()
                 .filter(t -> t.getId().equals(text(args, "id"))).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("That ADT thread has ended."));
+            if (!free(chosen)) throw new IllegalStateException("Another VERTEX Smart Debugger window shows that thread.");
+            hold(chosen);
             variables.clear(); stop.incrementAndGet(); return picture();
         case "frame": {
             IAbapThread t = thread(true); IAbapStackFrame[] frames = t.getStackFrames(); int n = number(args, "n", 0);
@@ -175,6 +223,34 @@ final class VisualDebugSession {
                 IAbapVariable sy = frame().findVariable("SY"); out.add("sy", sy == null ? null : shown(sy));
             }
             return out;
+        }
+        case "snapshot": {
+            // The values a recorded stop keeps, as VS Code's host gives them (debugger.js stopValues): the scopes of the
+            // kinds asked for - params, locals, globals - each with its variables, a structure's fields one level down as
+            // an object of name and value, so Formula and Expression can name LS_RESULT-AMOUNT.
+            java.util.Set<String> kinds = new java.util.HashSet<>();
+            if (args.has("kinds")) for (JsonElement k : args.getAsJsonArray("kinds")) kinds.add(k.getAsString());
+            JsonArray groups = new JsonArray(), direct = new JsonArray();
+            boolean globalsGroup = false;
+            for (IAbapVariable scope : frame().getVariables()) {
+                if (scope.getName().equals("<Enter variable>")) continue;
+                if (!(scope instanceof IAbapStandardVariablesContainer) || !scope.getId().startsWith("@")) {
+                    // In an event ADT lists the program's variables on the frame itself, as the Variables view shows them.
+                    if (!scope.getName().equalsIgnoreCase("SY") && !scope.getName().startsWith("SY-")) direct.add(kept(scope));
+                    continue;
+                }
+                String kind = switch (scope.getId()) { case "@GLOBALS" -> "globals"; case "@LOCALS" -> "locals"; case "@PARAMETERS" -> "params"; default -> ""; };
+                if (!kinds.contains(kind)) continue;
+                globalsGroup |= kind.equals("globals");
+                JsonArray children = new JsonArray();
+                for (IAbapVariable v : scope.getValue().getVariables()) children.add(kept(v));
+                JsonObject group = object("id", scope.getId(), "name", kind.equals("params") ? "Parameters" : kind.equals("locals") ? "Locals" : "Globals");
+                group.add("children", children); groups.add(group);
+            }
+            if (kinds.contains("globals") && !globalsGroup && !direct.isEmpty()) {
+                JsonObject group = object("id", "vertex:globals", "name", "Globals"); group.add("children", direct); groups.add(group);
+            }
+            JsonObject out = object(); out.add("groups", groups); return out;
         }
         case "children": {
             String id = text(args, "id");
@@ -251,7 +327,7 @@ final class VisualDebugSession {
                 changed.wait(200);
             }
         }
-        if (closed) throw new InterruptedException("Visual Debug closed.");
+        if (closed) throw new InterruptedException("VERTEX Smart Debugger closed.");
         return object("ended", t.isTerminated() || t.isDisconnected(), "sap", (System.nanoTime() - started) / 1000000);
     }
 
@@ -274,6 +350,17 @@ final class VisualDebugSession {
         if (value == null || value.isOutdated() || value.getStackFrame() != f) value = f.findVariable(id);
         if (value == null) throw new IllegalArgumentException("Variable is unavailable: " + id);
         return value;
+    }
+
+    /** A variable as a recorded stop keeps it: a structure's value is its fields, by name. */
+    private JsonObject kept(IAbapVariable v) throws Exception {
+        JsonObject row = shown(v);
+        if ("structure".equals(row.get("meta").getAsString())) {
+            JsonObject fields = new JsonObject();
+            for (IAbapVariable field : v.getValue().getVariables()) fields.addProperty(field.getName(), field.getValue().getValueString());
+            row.add("value", fields);
+        }
+        return row;
     }
 
     private JsonObject shown(IAbapVariable v) throws Exception {

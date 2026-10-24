@@ -15,6 +15,7 @@ body { margin: 0; display: flex; flex-direction: column; background: var(--bg); 
 header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px;
          border-bottom: 1px solid var(--border); }
 #system { font-weight: 600; margin-right: auto; }
+#logs { display: inline-flex; align-items: center; padding: 4px 6px; }
 select, button, textarea { font: inherit; color: var(--fg); background: var(--input);
                            border: 1px solid var(--border); border-radius: 4px; }
 select, button { padding: 3px 6px; }
@@ -56,6 +57,7 @@ textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertic
   <span id="system">Resolving ABAP project ...</span>
   <select id="who" aria-label="Assistant"><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="anthropic-api">Anthropic API</option></select>
   <select id="model" aria-label="Model" disabled><option>loading ...</option></select>
+  <button id="logs" type="button" title="Session Logs" aria-label="Session Logs"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3"/></svg></button>
 </header>
 <main id="messages" aria-live="polite">
   <p class="message hint">Ask about ABAP code on this system: <i>show Z_CALC</i>, <i>explain this method</i>. "This code" is the object in the active ADT editor.</p>
@@ -393,6 +395,11 @@ if (anthropicOption && !(typeof sdeAnthropicApi === "function" && sdeAnthropicAp
 if (Array.prototype.some.call(assistantBox.options, function (option) { return option.value === savedAssistant; })) {
   assistantBox.value = savedAssistant;
 }
+// Session Logs, or - with no log folder set - where to set one; nothing is logged until then.
+document.getElementById("logs").addEventListener("click", function () {
+  var problem = sdeOpenLogs();
+  if (problem) { say("error", "VERTEX", problem); }
+});
 sdeProject();
 askModels();
 document.getElementById("prompt").focus();

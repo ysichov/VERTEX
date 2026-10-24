@@ -1,5 +1,5 @@
 "use strict";
-// Shared execution-call contract for Calls, Value Origin and Visual Debug.
+// Shared execution-call contract for Calls, Value Origin and VERTEX Smart Debugger.
 // Loading and rendering are host adapters; enumeration/resolution/walk are shared.
 const upper=s=>String(s||'').toUpperCase();
 function create(index,units=index.procedures){

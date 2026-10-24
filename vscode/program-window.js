@@ -1,7 +1,7 @@
 "use strict";
 /* The program window: a program run with the ABAP transpiler as SAP GUI shows a report - its selection screen, Execute
    (F8), the list it writes, Back (F3) to the screen - in an editor tab, in the colours of the VS Code theme. Each run is
-   recorded; See flow history opens Visual Debug on that record, and a run that stops at a breakpoint opens it at once.
+   recorded; See flow history opens VERTEX Smart Debugger on that record, and a run that stops at a breakpoint opens it at once.
    host: { selection(), run(selection), flow(), recompile() | null, builtAt }. */
 const fs = require("fs");
 const path = require("path");
@@ -40,7 +40,7 @@ function open(vscode, { name, host }) {
   return self;
 }
 
-/* The window in front again, when it is still open: Visual Debug's way back to the program. */
+/* The window in front again, when it is still open: VERTEX Smart Debugger's way back to the program. */
 function reveal() { if (!current) return false; current.panel.reveal(); return true; }
 const isOpen = () => !!current;
 /* The editor column the window stands in, while it is open and in sight. */

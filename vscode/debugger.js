@@ -207,7 +207,7 @@ function create({ connect, current, openUrl, ideId, terminalId, assistantRecordi
   const breakpoints = [];      // { id, objectType, name, url, line, condition, mode, adt }
   let numbered = 0, answers = { calls: 0, chars: 0 };
   let sap = null;              // { system, user, listener, open }
-  let frames = [];             // the stack of the stop, for the Visual Debug window
+  let frames = [];             // the stack of the stop, for the VERTEX Smart Debugger window
   let watchpoints = [];        // true ADT watchpoints, owned by the attached session
   let ended = 0;               // runs that ended, counted for the window
   // Where the reader is debugging from, so a stop is followed there and
@@ -296,7 +296,7 @@ function create({ connect, current, openUrl, ideId, terminalId, assistantRecordi
       watchers.delete(fn);
       if (watchers.size || !session) { return; }
       const held = session.program || "a program";
-      void release("The last Visual Debug window was closed while " + held
+      void release("The last VERTEX Smart Debugger window was closed while " + held
         + " was stopped, so it was let go: a stopped program holds the listener and no breakpoint would be reached."
         + " The breakpoints are still set.").catch(() => {});
     };
@@ -817,7 +817,7 @@ function create({ connect, current, openUrl, ideId, terminalId, assistantRecordi
       }
       stopped = { breakpoint: bp && !logs ? bp.id : null, at: where(top), stack: state.stack, source: state.source,
         changed: state.changed, tables: state.tables, watchpoints: reachedWatchpoints,
-        note: quick ? "Reached by the Visual Debug window stepping without reading variables; what changed shows at the next ordinary stop." : undefined,
+        note: quick ? "Reached by the VERTEX Smart Debugger window stepping without reading variables; what changed shows at the next ordinary stop." : undefined,
         problem: unresolved ? "SAP could not evaluate the condition: " + unresolved.unresolvableCondition : (unplaced || undefined) };
       wake();
       return;
@@ -998,7 +998,7 @@ function create({ connect, current, openUrl, ideId, terminalId, assistantRecordi
       mustBeStopped();
       stopped = null;
       await session.client.debuggerStep("terminateDebuggee").catch(() => {});
-      await end({ message: "Terminated from the Visual Debug window." });
+      await end({ message: "Terminated from the VERTEX Smart Debugger window." });
     });
   }
 
@@ -1173,7 +1173,7 @@ function create({ connect, current, openUrl, ideId, terminalId, assistantRecordi
     });
   }
 
-  /* ---------- what the Visual Debug window reads ---------- */
+  /* ---------- what the VERTEX Smart Debugger window reads ---------- */
 
   /* Everything the window draws, read without taking the assistant's news. */
   function picture() {

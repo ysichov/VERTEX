@@ -14,7 +14,7 @@
 - AI assistant over any SAP system, and an MCP server for Claude Code, Codex and Copilot
 - enhanced ABAP editor: ABAP Unit, ATC, block-by-block review before activation
 - AI-driven ADT debugger: conditions SAP evaluates, a verdict naming the line
-- visual debugger with recording and replay
+- VERTEX Smart Debugger with recording and replay
 - forward and backward usage analysis, down to the formula of a value (BSE)
 - the path to a line: the conditions inside its METHOD or FORM under which it runs
 - version history, diff and transport review
@@ -34,7 +34,7 @@ what needs it.
 |---|---|---|---|
 | **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | not needed |
 | **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values | not needed |
-| **Visual Debug** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, and the flow chart and player for a recorded run. SAP & Transpiler Logs lists SAP recordings and available transpiler runs for replay or deletion; SAP recordings can also be renamed. | not needed |
+| **VERTEX Smart Debugger** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, and the flow chart and player for a recorded run. SAP & Transpiler Logs lists SAP recordings and available transpiler runs for replay or deletion; SAP recordings can also be renamed. | not needed |
 | **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW*, *Formula* or *Expression*, each as a tree or a diagram | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
 | **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | to save reviews in SAP |
@@ -44,7 +44,7 @@ what needs it.
 **Grew out of** names where a tool's ideas were worked out first; those projects are not developed
 further. VERTEX does not depend on them: nothing from Simple Data Explorer, ACE, AVE, Smart
 Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer,
-Value Origin and Visual Debug read ADT source and analyse it with abaplint in the editor; SelecTor
+Value Origin and VERTEX Smart Debugger read ADT source and analyse it with abaplint in the editor; SelecTor
 builds its statements and reads them through ADT's standard data preview; the version history and its diff
 come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is
 built from them in the window. Saving a review to SAP needs one resource of VERTEX's own ABAP,
@@ -65,11 +65,11 @@ Open Welcome with **VERTEX: Get Started** in the Command Palette.
 For calculation code that can run without SAP services, use the transpiler and
 runtime bundled with VERTEX. Open a saved local `.abap` file and choose
 **VERTEX: Run with ABAP Transpiler**, which runs it at once - the selection screen first, then to the first
-breakpoint, or to the end with the output when there is none - or **VERTEX: Visual Analysis / Debug**, which opens the
+breakpoint, or to the end with the output when there is none - or **VERTEX Smart Debugger**, which opens the
 panel without running. An SAP program, or the method of an SAP class the cursor stands in, runs the same way from **VERTEX: Run with ABAP
 Transpiler** in the editor's context menu of its tab, or
-from **Run with ABAP Transpiler** beside Run in SAP in its Visual Debug panel, which reads it, its includes and the classes and interfaces it uses from SAP first. The panel is shared with SAP runs;
-for local files its title is **Visual Transpiler Debug** and its Run button is **Run with ABAP Transpiler**. Run
+from **Run with ABAP Transpiler** beside Run in SAP in its VERTEX Smart Debugger panel, which reads it, its includes and the classes and interfaces it uses from SAP first. The panel is shared with SAP runs;
+for local files its title is **VERTEX Smart Debugger (transpiler)** and its Run button is **Run with ABAP Transpiler**. Run
 asks the selection screen in a window of its own, laid out as SAP lays out screen 1000: blocks with their frame and
 title, lines of several elements, comments, SKIP and ULINE; radio buttons, checkboxes and value fields with their
 DEFAULT (a value is upper-cased as SAP does unless LOWER CASE, and its LENGTH holds); SELECT-OPTIONS as rows of sign,
@@ -83,14 +83,14 @@ runs. A pushbutton, a tabbed block or a function key is named in the window as n
 opens it in an editor tab, in the colours of the VS Code theme: a title bar, a toolbar, the selection screen, and a
 status bar. **Execute (F8)** runs it and shows the list it wrote; **Back (F3)** returns to the screen with the values
 given, to run again. A program without a selection screen runs at once. A local file is transpiled again only when a
-source of its folder changed - an edit, a new file, a removed one; otherwise the last build runs at once. Each run is recorded, and Visual Debug always shows the latest one -
+source of its folder changed - an edit, a new file, a removed one; otherwise the last build runs at once. Each run is recorded, and VERTEX Smart Debugger always shows the latest one -
 without an Output of its own, as the list is in the window: **See flow history**
 brings it to the front - its steps, values and flow - and a run that reaches a breakpoint opens it there by
-itself, to step on - the source it follows opens beside the window, which stays in sight; Run in that Visual Debug
+itself, to step on - the source it follows opens beside the window, which stays in sight; Run in that VERTEX Smart Debugger
 brings the window to the front again. A transpiler run has no session
 to leave, so its panel has no Detach: Exit program ends a stopped run. For an SAP program the toolbar has **Recompile** too. A method or a function module opens the same window on the
 screen of its parameters, with its variants; its results follow the list - a value as a line, a structure as a tree
-and a table as a grid, both opening and closing (in Visual Debug's Output, as indented text). The panel counts the breakpoints of its own object and the sources it uses - a point in another object's file
+and a table as a grid, both opening and closing (in VERTEX Smart Debugger's Output, as indented text). The panel counts the breakpoints of its own object and the sources it uses - a point in another object's file
 neither shows nor stops it, and Clear all leaves it; **All BP** in the Breakpoints header counts every ABAP breakpoint
 in VS Code instead. Opened by Run with ABAP Transpiler and with none of those set, the panel is a run: the Run button and the
 Output, nothing else; set a breakpoint and it is the debugger, and back when the last one is removed. A transpiler run
@@ -151,7 +151,7 @@ can look like this:
 Put report sources under `src/`, for example `zcalc.prog.abap`. For ABAP Unit,
 the project must have test classes that the transpiler can discover. The separate
 **VERTEX: Run Local ABAP** and **VERTEX: Debug Local ABAP** Command Palette entries
-also work; the Debug command opens Visual Transpiler Debug. Both use a temporary
+also work; the Debug command opens VERTEX Smart Debugger (transpiler). Both use a temporary
 configuration when the project has none.
 The VERTEX Local ABAP output channel shows transpiler diagnostics. Automatic projects
 send Open SQL SELECT to the configured SAP system through the same ADT data preview
@@ -337,7 +337,7 @@ each; empty means `.vertex/reviews` in the first workspace folder.
 
 SelecTor's **Technical names / Text** toggle changes field labels in Selection and table headers. The choice is remembered; fields without a description keep their technical name.
 
-Breakpoints set through Visual Debug or MCP appear as native VS Code points in the VERTEX source editor gutter. Click a point to remove it from SAP and Visual Debug too. Conditions, disabled state and logpoint mode are synchronized; opening a source tab refreshes its points.
+Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code points in the VERTEX source editor gutter. Click a point to remove it from SAP and VERTEX Smart Debugger too. Conditions, disabled state and logpoint mode are synchronized; opening a source tab refreshes its points.
 
 - **VERTEX: Open Panel** — also available from the VERTEX icon in the Activity Bar.
   The panel holds the VERTEX chat, the active SAP-system selector, provider and
@@ -509,7 +509,7 @@ Changes made there are still sent to SAP only through **Review & Activate** or *
 
 ## Value Origin
 
-In VS Code the analysis is reached through **VERTEX: Visual Analysis / Debug**: a breakpoint's *Analyze flow path* is
+In VS Code the analysis is reached through **VERTEX Smart Debugger**: a breakpoint's *Analyze flow path* is
 Forward Usage Analysis from that point - to the next checked point the flow meets, else to the end - for the value
 chosen in Variables, and its *Where used* is Backward Usage
 Analysis. Neither has an editor menu or palette entry of its own. What follows describes the analysis itself.
@@ -521,7 +521,7 @@ Both Value Origin windows expose **Analysis log** directly above the flow. **Cop
 **Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Forward Usage Analysis**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
 
 
-Choose a value in Variables of **VERTEX: Visual Analysis / Debug** and click *Analyze flow path* on a breakpoint
+Choose a value in Variables of **VERTEX Smart Debugger** and click *Analyze flow path* on a breakpoint
 (Forward Usage Analysis, formerly *Analyze Variable Value Origin*). It answers where that value came from, backwards across calls, without running
 the program: ACE indexes and the customer sources they reference (`Z*`, `Y*`, `/namespace/`)
 are read from the same system, and standard ABAP objects stay analysis boundaries.
@@ -821,7 +821,7 @@ The debugger sets breakpoints and holds a listener. It never changes a variable,
 over code and never writes source or data.
 At a stopped SAP session, `debug_watchpoint` adds a real ADT watchpoint for a variable;
 Continue stops when SAP reports a change. The agent can list and remove watchpoints.
-In Visual Debug 0.9.15, enter a name beside Variables or right-click a variable and choose Watch.
+In VERTEX Smart Debugger 0.9.15, enter a name beside Variables or right-click a variable and choose Watch.
 Without a condition, the same control stops SAP or a live transpiler run on any change;
 a recorded transpiler run can also continue to its next recorded change. The optional
 **When** field accepts a comparison of the new value such as `>= 10` or `= 'DONE'`.
@@ -906,7 +906,7 @@ structure field such as `LS_RESULT-AMOUNT`. These are virtual watchpoints over t
 run. To compare runs, explain a result or find a cause, the agent must query that history
 before answering and back every statement about values, control flow or a cause with a
 `run_id` and the step, line and value; if the history cannot be read, it reports the run
-outputs and marks the rest as not verified. When a question covers several scenarios and a run of one of them is missing, the agent runs it rather than asking; a kept run open in Visual Debug is reported to the agent as such and counts only for the selection it ran with. If the transpiler cannot run the code, the agent asks before switching to a SAP run.
+outputs and marks the rest as not verified. When a question covers several scenarios and a run of one of them is missing, the agent runs it rather than asking; a kept run open in VERTEX Smart Debugger is reported to the agent as such and counts only for the selection it ran with. If the transpiler cannot run the code, the agent asks before switching to a SAP run.
 
 You can ask for the full comparison in one request, for example: *Run all scenarios for Z_PRICING,
 compare their results, and explain the differences.* The assistant runs the available scenarios,
@@ -916,10 +916,10 @@ Debug counts only for the selection it used.
 Runs are numbered within a chat conversation from 1, and **New conversation** starts again at 1.
 The agent cites its evidence as `[run d6c436b8 step 13]`; the chat shows such a citation as
 **run 2, step 13**, a link when it names exactly one known run (a run from another conversation
-keeps its id). The link opens that run in Visual Debug at the cited step, with its record, variables, SQL and output, without running the program again. A kept
+keeps its id). The link opens that run in VERTEX Smart Debugger at the cited step, with its record, variables, SQL and output, without running the program again. A kept
 run is looked at, not executed; Run in that panel says so.
 
-A run started with **Run with ABAP Transpiler** in Visual Debug is also registered in this history. Its `run_id` is included in the debug context sent to chat, so the assistant can cite its steps as `[run <first 8 characters of run_id> step <n>]`; the link opens that run's recorded trace.
+A run started with **Run with ABAP Transpiler** in VERTEX Smart Debugger is also registered in this history. Its `run_id` is included in the debug context sent to chat, so the assistant can cite its steps as `[run <first 8 characters of run_id> step <n>]`; the link opens that run's recorded trace.
 
 The chat’s transpiler runs are kept on disk in VERTEX extension storage. Set
 `vertex.transpiler.runPath` to use another folder. Each run has its own folder
@@ -981,7 +981,7 @@ session, or tell the assistant it may take over.
 
 A breakpoint goes on a line of a program (`PROG`), an include (`INCL`) or a class (`CLAS`,
 counted in its main source, as the VERTEX class tab shows it). The assistant cannot yet set one
-in a function module; [Visual Debug](#visual-debug-the-debugger-on-screen-pilot) can. The line
+in a function module; [VERTEX Smart Debugger](#visual-debug-the-debugger-on-screen-pilot) can. The line
 has to hold an executable statement; SAP refuses anything else, and the refusal is reported.
 
 A **condition** is checked by SAP each time the line is reached; the program stops only when
@@ -1058,12 +1058,12 @@ ended. It takes one look at ST22 a moment after letting go, and **Check ST22** i
 section asks again whenever you want; the chat asks the same question with `debug_dumps`.
 Nothing polls in the background for a program that is no longer being debugged.
 
-In Visual Debug the dump has a section of its own, beside Stack, Breakpoints and Variables.
+In VERTEX Smart Debugger the dump has a section of its own, beside Stack, Breakpoints and Variables.
 It opens by itself when a run dies, names the runtime error and what SAP said about it, and
 **Open ST22** takes you to SAP where that dump is the first entry. The header line above the
 source says the run did not finish and points at the section.
 
-The player shows the record as **Classes** or **Methods**. A separate **Logic** toggle opens the same Logic view as Tools, embedded in Visual Debug and linked to the active source editor. Turning it off restores the call graph, including its zoom and scroll position.
+The player shows the record as **Classes** or **Methods**. A separate **Logic** toggle opens the same Logic view as Tools, embedded in VERTEX Smart Debugger and linked to the active source editor. Turning it off restores the call graph, including its zoom and scroll position.
 
 The **Depth** slider governs how deep it is drawn: the program is 0,
 a class 1, a routine 2, a statement one below the block that holds it. The maximum is the deepest
@@ -1139,7 +1139,7 @@ instead, the same way. Values come from Steps & values (a transpiler run always 
 tree comes from the statements that ran - the last one that wrote each value - without values. In a SAP record a
 structure's components are read one level down for this.
 
-**A new window starts clean.** Opening Visual Debug again, or **Clear** in its title bar, drops the record, a paused transpiler run, the analysed
+**A new window starts clean.** Opening VERTEX Smart Debugger again, or **Clear** in its title bar, drops the record, a paused transpiler run, the analysed
 path and the values of an earlier local debug session; a live SAP debug session and the breakpoints stay.
 
 **Show from here.** Right-click a node or a routine frame of the diagram for *Show from here*, *Expand this
@@ -1175,12 +1175,12 @@ That is deliberately little. Everything else is read on purpose with `debug_read
 structure's fields, or rows *from*..*to* of a table (up to 200 at once), by name as ABAP writes
 it - `LS_ORDER`, `GS_INVOICE-ITEMS`, `ME->MV_RATE`.
 
-### Visual Debug: the debugger on screen (pilot)
+### VERTEX Smart Debugger: the debugger on screen (pilot)
 
-**Visual Debug** is the right-hand panel beside the source tab (programs, classes and function modules); it shows the same
+**VERTEX Smart Debugger** is the right-hand panel beside the source tab (programs, classes and function modules); it shows the same
 debugger the assistant drives - one session, not a second one:
 
-Use **Save log** on the replay bar to keep a SAP recording and its available source snapshots as a local file. Each saved SAP recording has a GUID `session_id`; evidence citations such as `[session a1b2c3d4 step 4]` open that recording at the cited step. The **📜 SAP** sidebar button and **SAP / Transpiler Logs** in Visual Debug open **SAP & Transpiler Logs**, which lists SAP recordings and available transpiler runs with date/time, type, program and step count. Click a row to open an offline replay. SAP recordings have a rename action; either type can be deleted individually or selected with checkboxes for **Delete selected recordings**. Deleting a persisted transpiler run removes its recording folder and private source copies, leaving the original source file intact. Transpiler entries marked **this session** are held in memory and disappear after restarting VS Code. With a recording open, the VERTEX assistant can use its recorded steps as evidence and link to cited steps. The default folder is VERTEX's extension storage; `vertex.debug.runPath` selects another folder. Existing recordings receive a stable ID the first time VERTEX reads them.
+Use **Save log** on the replay bar to keep a SAP recording and its available source snapshots as a local file. Each saved SAP recording has a GUID `session_id`; evidence citations such as `[session a1b2c3d4 step 4]` open that recording at the cited step. The **📜 SAP** sidebar button and **SAP / Transpiler Logs** in VERTEX Smart Debugger open **SAP & Transpiler Logs**, which lists SAP recordings and available transpiler runs with date/time, type, program and step count. Click a row to open an offline replay. SAP recordings have a rename action; either type can be deleted individually or selected with checkboxes for **Delete selected recordings**. Deleting a persisted transpiler run removes its recording folder and private source copies, leaving the original source file intact. Transpiler entries marked **this session** are held in memory and disappear after restarting VS Code. With a recording open, the VERTEX assistant can use its recorded steps as evidence and link to cited steps. The default folder is VERTEX's extension storage; `vertex.debug.runPath` selects another folder. Existing recordings receive a stable ID the first time VERTEX reads them.
 
 - **The source stays in the editor.** The panel opens beside the source tab and draws no copy
   of it; the lines are those of the active version, which is what the program runs. Breakpoints the assistant set appear
@@ -1285,7 +1285,7 @@ Use **Save log** on the replay bar to keep a SAP recording and its available sou
   method nothing reaches keeps its lines but not its body: its first line fails if the run gets there after all (a
   dynamic call, say), naming it as not transpiled. Through SAP's ADT extension only the system's own namespaces - those
   with a root package - are customer code; the rest, like standard SAP, is left to the transpiler. The panel then turns
-  to Visual Transpiler Debug on them (see [Local ABAP execution](#local-abap-execution)); SELECTs still read SAP. The dictionary types the code
+  to VERTEX Smart Debugger (transpiler) on them (see [Local ABAP execution](#local-abap-execution)); SELECTs still read SAP. The dictionary types the code
   uses - tables and structures, data elements, domains and table types, and what they are built of - are read from
   SAP's DD tables too. A step into an include stands in the include, as in SAP, and a breakpoint can be set there. An
   open tab of the program with changes not activated stops it. So does anything that cannot be read, a dictionary type

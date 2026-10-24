@@ -66,7 +66,7 @@ function allowed(resource, body) {
       // The object field's mask search: ADT's quick search, read only.
       || /^\/sap\/bc\/adt\/repository\/informationsystem\/search\?operation=quickSearch&maxResults=\d{1,3}&objectType=[A-Z]{4}%2F[A-Z]{1,2}&query=[A-Z0-9_%*+$]{1,80}$/.test(resource);
 }
-/* What the Visual Debug page may ask of the debugger - no more: it reads,
+/* What the VERTEX Smart Debugger page may ask of the debugger - no more: it reads,
    sets breakpoints, steps and starts a run, as the debug_* tools do. */
 async function debugCommand(dbg, command, a, fetchVertex) {
   switch (command) {
@@ -102,7 +102,7 @@ async function debugCommand(dbg, command, a, fetchVertex) {
     case "detach": await dbg.detach(); return {};
     case "terminate": await dbg.terminate(); return {};
   }
-  throw new Error("Visual Debug has no command " + command + ".");
+  throw new Error("VERTEX Smart Debugger has no command " + command + ".");
 }
 function open(vscode, context, deps, initial) {
   let local = initial?.localSession;

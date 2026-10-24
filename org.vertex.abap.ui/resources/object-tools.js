@@ -44,7 +44,7 @@
       action: { type: "string", enum: Object.keys(labels) },  // enable() adds to it
       part: { type: ["string", "null"], description: "The method, form or event within the object, when the request names one; otherwise null." }
     } }] };
-  // What only one host has: VS Code adds Visual Debug, which Eclipse does not
+  // What only one host has: VS Code adds VERTEX Smart Debugger, which Eclipse does not
   // offer. Read when asked, so an action enabled after loading is in the text.
   let hostNotes = "";
   const instructions = () => "When asked to run a VERTEX function, return navigation with the exact object type, name and action. "
