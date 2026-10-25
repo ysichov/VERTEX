@@ -238,7 +238,10 @@ dump opens the same way.
 UML, metrics, Calls, Logic, Parts and Value Origin use standard ADT source reads
 and the shared abaplint analysis engine. The SAP connection belongs to the
 selected Eclipse project. See Versions and code review above for review storage.
-Package Metrics has an **Expand all / Collapse all** button above Objects for the method tables.
+Package Metrics has an **Expand all / Collapse all** button above Objects for the unit tables.
+Package Metrics includes classes, interfaces and programs. **Visual** sizes each object by the selected metric and subdivides it into methods, forms and events. Double-click a unit or press Enter to open its source; click the object header to open its unit table. A program's forms and events, including those in its INCLUDEs, count toward its program. Indicators without fixed risk thresholds use one relative colour scale for all visible units in the package. The Visual Objects filter can hide classes, programs, interfaces or individual objects without rerunning analysis. The map heading shows the sum of the selected indicator for visible objects, such as total LOC.
+For a class or program, Metrics switches between **Table** and **Visual**. In Visual, tile area scales with the selected indicator and each tile shows its unit name and value. CC and MI colours follow the table's risk grades; other indicators use a relative ranking within the object. Single-click a tile to select it; double-click or press Enter to open its ADT source.
+Visual has a 2–300% scale control and a Fit button that fits the whole map into the pane. Fit and the ± buttons animate scale changes; Ctrl+wheel changes scale immediately, as in UML, while ordinary scrolling moves around the map. Zoom changes tile space and reveals more labels without enlarging text.
 UML and Metrics show the current analysis stage, object count and elapsed time while a package is processed.
 UML and Metrics show the current analysis stage, object count and elapsed time while a package is processed.
 Click a method in UML to open its ADT source.

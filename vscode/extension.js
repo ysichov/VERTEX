@@ -362,7 +362,7 @@ async function fetch(context, requestPath, body, progress, cancelled) {
 // The shared controls stylesheet is an asset like the diagram library: a page
 // given to a webview as a string has no address to load one from, so it asks
 // for what it needs by name. Both files live beside the pages.
-const ASSETS = { mermaid: "mermaid.min.js", controls: "vertex-controls.css", flow: "vertex-flow.js", lens: "vertex-lens.js", flowGraph: "vertex-flow-graph.js", abapControl: "vertex-abap-control.js" };
+const ASSETS = { mermaid: "mermaid.min.js", three: "three.min.js", controls: "vertex-controls.css", flow: "vertex-flow.js", lens: "vertex-lens.js", flowGraph: "vertex-flow-graph.js", abapControl: "vertex-abap-control.js" };
 function asset(name) {
   if (!ASSETS[name]) {
     return "ERROR:This host ships no asset called " + name + ".";

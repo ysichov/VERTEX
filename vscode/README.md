@@ -374,6 +374,9 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   part; switching the function keeps the list and the choice. Diff keeps its own Parts and
   Versions column, AVE's layout, and opens on the same part.
 
+  Metrics for a class or program has a **Table / Visual** switch. In Visual, tile area scales with the selected indicator and every tile shows its method or unit name and value. CC and MI colours follow the table's risk grades; other indicators use a relative ranking within the object. Single-click a tile to select it; double-click or press Enter to open its source beside the view.
+  Visual has a 2–300% scale control and a Fit button that fits the whole map into the pane. Fit and the ± buttons animate scale changes; Ctrl+wheel changes scale immediately, as in UML, while ordinary scrolling moves around the map. Zoom changes tile space and reveals more labels without enlarging text.
+
   Logic opens on **Code**: the method's lines as written, coloured by token in the theme's colours (keywords,
   strings, numbers, comments, method calls, classes), with their line numbers - a click on a number opens the line
   in the editor, and the editor's cursor marks its line here. **Diagram** shows the same method as a flowchart. Both
@@ -637,7 +640,8 @@ to pick a folder directly. The selected folder stays visible beside a **Browse..
 switch between UML diagram and Metrics in the function list.
 Both views show analysis progress, the object count and elapsed time. Switching views reuses parsed local source until a file changes.
 Both views show analysis progress, the object count and elapsed time. Switching views reuses parsed local source until a file changes.
-In package Metrics, **Expand all / Collapse all** above Objects opens or closes every object's method table.
+In package Metrics, **Expand all / Collapse all** above Objects opens or closes every object's unit table.
+Package Metrics includes classes, interfaces and programs. **Visual** sizes each object by the selected metric and subdivides it into methods, forms and events. Double-click a unit or press Enter to open its source; click the object header to open its unit table. A program's forms and events, including those in its INCLUDEs, count toward its program. Indicators without fixed risk thresholds use one relative colour scale for all visible units in the package. The Visual Objects filter can hide classes, programs, interfaces or individual objects without rerunning analysis. The map heading shows the sum of the selected indicator for visible objects, such as total LOC.
 Click a method in UML to open its source, whether the object is in SAP or a local ABAP folder.
 The source opens beside UML while focus stays on the diagram.
 Metrics method links also open source beside the table and keep focus on Metrics.

@@ -202,6 +202,7 @@
   .vis.private { background:#d33a2c; border-radius:50%; }
   /* The diagram's own controls, next to the button that brings it up. */
   .bar .tools { display: flex; gap: 4px; align-items: center; }
+  .bar .tools[hidden] { display: none; }
   .bar .tools button { min-width: 1.9rem; }
   /* Depth is a question about following calls, so only the flow asks it. */
   .bar .depth { display: none; color: var(--muted); gap: 3px; align-items: center; }
@@ -298,11 +299,21 @@ tbody tr.sel td { background: var(--hover); font-weight: 600; }
 #metricsdialog code { font-family: Consolas, monospace; }
 #metricsdialog .note { color: var(--muted); margin: 8px 0 0; }
 #metricsdialog .row { display: flex; justify-content: flex-end; margin-top: 10px; }
-#metricshelp[hidden]{display:none}
+#metricshelp[hidden],#diagramhelp[hidden]{display:none}
 td.metric-good{background:color-mix(in srgb,var(--vscode-testing-iconPassed,var(--vscode-terminal-ansiGreen,#388a34)) 18%,var(--bg))}
 td.metric-warning{background:color-mix(in srgb,var(--vscode-editorWarning-foreground,#bf8803) 20%,var(--bg))}
 td.metric-high{color:var(--vscode-terminal-ansiRed,#e55320);font-weight:bold;background:color-mix(in srgb,var(--vscode-terminal-ansiRed,#e55320) 12%,var(--bg))}
 td.metric-bad{background:color-mix(in srgb,var(--vscode-errorForeground,#c72e0f) 20%,var(--bg))}
+.metric-map-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--border);background:var(--surface);color:var(--fg)}
+.metric-map-controls[hidden]{display:none}.metric-map-controls select,.metric-map-controls button{font:inherit;color:var(--fg);background:var(--field-bg);border:1px solid var(--field-border);border-radius:4px;padding:2px 7px}.metric-map-controls button{cursor:pointer}.metric-map-controls button:hover{background:var(--hover)}.metric-map-controls button.active{border-color:var(--vscode-focusBorder,#0a66c2);font-weight:bold}
+.metric-map-zoom{display:inline-flex;align-items:center;gap:5px;margin-left:4px}.metric-map-zoom[hidden]{display:none}.metric-map-zoom input{appearance:none;width:94px;height:4px;padding:0;border:1px solid var(--vscode-input-border,var(--line));border-radius:3px;background:var(--vscode-input-background,var(--bg));cursor:pointer}.metric-map-zoom input::-webkit-slider-runnable-track{height:4px;background:var(--vscode-input-background,var(--bg));border-radius:3px}.metric-map-zoom input::-webkit-slider-thumb{appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:50%;background:var(--vscode-focusBorder,#0a66c2);border:1px solid var(--vscode-editor-background,var(--bg))}.metric-map-zoom input::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--vscode-focusBorder,#0a66c2);border:1px solid var(--vscode-editor-background,var(--bg))}.metric-map-zoom output{min-width:3em;text-align:right;font-size:12px;color:var(--muted)}
+.metric-map-filter{position:relative}.metric-map-filter[hidden]{display:none}.metric-map-filter>summary{list-style:none;cursor:pointer;border:1px solid var(--field-border);border-radius:4px;padding:3px 7px;white-space:nowrap;background:var(--field-bg);color:var(--fg)}.metric-map-filter>summary:hover{background:var(--hover)}.metric-map-filter>summary::-webkit-details-marker{display:none}.metric-map-filter-panel{position:absolute;z-index:5;top:calc(100% + 3px);left:0;width:280px;max-width:min(320px,90vw);padding:9px;background:var(--vscode-editorWidget-background,var(--bg));border:1px solid var(--line);box-shadow:0 5px 16px #0003}.metric-map-filter-types{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:7px}.metric-map-filter label{display:flex;gap:5px;align-items:center;cursor:pointer}.metric-map-filter input[type=checkbox]{accent-color:var(--vscode-focusBorder,#0a66c2)}.metric-map-filter-search{box-sizing:border-box;width:100%;margin-bottom:5px;padding:4px;color:var(--fg);background:var(--vscode-input-background,var(--bg));border:1px solid var(--line)}.metric-map-filter-objects{max-height:220px;overflow:auto}.metric-map-filter-objects label{padding:2px 0;overflow-wrap:anywhere}.metric-map-filter-actions{display:flex;justify-content:flex-end;margin-top:7px}
+.metric-map-legend{display:flex;align-items:center;gap:5px;margin-left:auto;font-size:12px;color:var(--muted)}.metric-map-ramp{width:100px;height:9px;border-radius:3px;background:linear-gradient(90deg,var(--vscode-testing-iconPassed,var(--vscode-terminal-ansiGreen,#388a34)) 0 25%,var(--vscode-editorWarning-foreground,#bf8803) 25% 50%,var(--vscode-terminal-ansiRed,#e55320) 50% 75%,var(--vscode-errorForeground,#c72e0f) 75%)}
+.metric-map{position:relative;min-height:100%;background:var(--bg);font-size:12px}.metric-map canvas{position:absolute;inset:0;pointer-events:none}.metric-map-tile{position:absolute;z-index:1;display:flex;flex-direction:column;justify-content:space-between;gap:8px;padding:var(--map-tile-pad,8px);text-align:left;cursor:pointer;border:var(--map-line-width,1px) solid var(--line);border-radius:5px;color:var(--fg);font:inherit;overflow:hidden}.metric-map-tile:hover,.metric-map-tile:focus-visible{outline:var(--map-focus-width,2px) solid var(--vscode-focusBorder,#0a66c2);outline-offset:-2px}.metric-map-tile.sel{border:var(--map-focus-width,2px) solid var(--vscode-focusBorder,#0a66c2)}.metric-map-name{font-weight:600;overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3}.metric-map-number{font:700 1.4167em Consolas,monospace;align-self:flex-end}
+.metric-map-tile.compact{gap:2px;padding:var(--map-compact-pad,3px)}.metric-map-tile.compact .metric-map-name{display:block;white-space:nowrap;text-overflow:ellipsis}.metric-map-tile.micro .metric-map-name,.metric-map-tile.micro .metric-map-number{display:none}
+.metric-map-object{position:absolute;z-index:1;border:var(--map-line-width,1px) solid var(--line);border-radius:5px;overflow:hidden}.metric-map-object-head{position:absolute;z-index:2;inset:0 0 auto 0;height:24px;display:flex;justify-content:space-between;gap:5px;align-items:center;padding:var(--map-head-pad-y,2px) var(--map-head-pad-x,6px);box-sizing:border-box;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;background:var(--bg);color:var(--fg);border:0;border-bottom:var(--map-line-width,1px) solid var(--line);font:inherit;text-align:left;cursor:pointer}.metric-map-object-head span:first-child{overflow:hidden;text-overflow:ellipsis}.metric-map-object-head:hover,.metric-map-object-head:focus-visible{outline:var(--map-focus-width,2px) solid var(--vscode-focusBorder,#0a66c2);outline-offset:-2px}.metric-map-object .metric-map-tile{border-radius:0}
+.metric-map-object[data-type="CLAS"]::after{content:"";position:absolute;z-index:3;inset:0;box-sizing:border-box;border:var(--map-frame-width,2px) solid color-mix(in srgb,var(--fg) 48%,var(--bg));border-radius:5px;pointer-events:none}.metric-map-object[data-type="CLAS"] .metric-map-object-head{border-bottom:var(--map-head-rule,1.5px) solid color-mix(in srgb,var(--fg) 48%,var(--bg))}.metric-map-object[data-type="CLAS"] .metric-map-object-head span:first-child{color:var(--vscode-textLink-foreground,#1765b3);font-weight:700}
+.metric-map-package-head{position:absolute;z-index:2;inset:0 0 auto 0;height:30px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:var(--map-package-pad-y,4px) var(--map-package-pad-x,10px);border:var(--map-line-width,1px) solid var(--line);border-radius:5px 5px 0 0;background:var(--vscode-editorWidget-background,var(--bg));color:var(--fg);font-weight:600}.metric-map-package-head strong{font:700 1.3333em Consolas,monospace}
 button.metric-source{border:0;background:transparent;color:var(--vscode-textLink-foreground,var(--fg));padding:0;text-decoration:underline;cursor:pointer;font:inherit}
 g.node.code-selected rect,g.node.code-selected polygon,g.node.code-selected path{fill:color-mix(in srgb,var(--vscode-focusBorder,#0a66c2) 55%,var(--bg))!important;stroke:var(--vscode-focusBorder,#0a66c2)!important;stroke-width:3px!important;filter:drop-shadow(0 0 3px var(--vscode-focusBorder,#0a66c2))}
 .diagram-zoom{display:inline-flex;align-items:center;gap:5px;flex:none}.diagram-zoom input{appearance:none;-webkit-appearance:none;width:76px;height:4px;padding:0;border:1px solid var(--vscode-input-border,var(--line));border-radius:3px;background:var(--vscode-input-background,var(--bg));cursor:pointer}
@@ -341,7 +352,7 @@ svg.reach-active g.node.reach-target rect,svg.reach-active g.node.reach-target p
     <button id="fit" title="Scale the whole diagram into the pane">Fit</button>
     <button id="lens" aria-pressed="false"></button>
   </span>
-  <button id="metricshelp" title="What each metric means and how it is counted">?</button>
+  <button id="diagramhelp" title="Diagram help">?</button>
 
 </div>
 
@@ -349,6 +360,7 @@ svg.reach-active g.node.reach-target rect,svg.reach-active g.node.reach-target p
 
 <div class="missing" id="missing" hidden></div>
 <div class="totals hidden" id="totals"></div>
+<div class="metric-map-controls" id="metric-map-controls" hidden><span class="vertex-segment-toggle"><button id="metric-table" class="active" type="button">Table</button><button id="metric-map-button" type="button" title="Tile area follows the selected indicator">Visual</button></span><button id="metricshelp" type="button" title="What each metric means and how it is counted">?</button><label for="metric-map-select">Indicator</label><select id="metric-map-select" aria-label="Metric map indicator"></select><details id="metric-map-filter" class="metric-map-filter" hidden><summary id="metric-map-filter-summary">Objects</summary><div class="metric-map-filter-panel"><div class="metric-map-filter-types"><label><input type="checkbox" data-metric-type="CLAS" checked>Classes</label><label><input type="checkbox" data-metric-type="PROG" checked>Programs</label><label><input type="checkbox" data-metric-type="INTF" checked>Interfaces</label></div><input id="metric-map-filter-search" class="metric-map-filter-search" type="search" placeholder="Find object" aria-label="Find object"><div id="metric-map-filter-objects" class="metric-map-filter-objects"></div><div class="metric-map-filter-actions"><button id="metric-map-filter-all" type="button">Show all</button></div></div></details><span id="metric-map-zoom" class="metric-map-zoom" hidden><button id="metric-map-zoom-out" type="button" title="Zoom out">−</button><input id="metric-map-zoom-input" type="range" min="2" max="300" step="1" value="100" aria-label="Visual scale"><button id="metric-map-zoom-in" type="button" title="Zoom in">+</button><button id="metric-map-fit" type="button" title="Fit the Visual map into the pane">Fit</button><output id="metric-map-zoom-value">100%</output></span><span id="metric-map-legend" class="metric-map-legend" title="Colour shows the risk grade or relative rank; zero and negative values retain a minimum visible area" hidden></span></div>
 
 <dialog id="metricsdialog" aria-labelledby="metricstitle">
   <h3 id="metricstitle">Metrics</h3>
@@ -424,9 +436,7 @@ var CLASS_COLUMNS = [
 var OBJECT_COLUMNS = [
   { key: "object", text: "Object", num: false },
   { key: "object_type", text: "Type", num: false },
-  { key: "units", text: "Units", num: true },
   { key: "cyclomatic", text: "CC", num: true },
-  { key: "avg_cyclomatic", text: "Avg CC", num: true },
   { key: "loc", text: "LOC", num: true },
   { key: "lloc", text: "LLOC", num: true },
   { key: "cloc", text: "CLOC", num: true },
@@ -511,6 +521,7 @@ function endAnalysis() {
 
 function message(text) {
   var root = document.getElementById("root");
+  root.style.height="";root.style.width="";root.style.zoom="";
   root.className = "message";
   root.textContent = text;
   document.getElementById("totals").className = "totals hidden";
@@ -610,6 +621,7 @@ function sdeReady() {
 }
 
 function answered(kind, raw) {
+  if (kind === "three-asset") { startThree(raw); return; }
   if (kind === "scheme-parts") {
     try {
       if (String(raw).indexOf("ERROR:") === 0) { throw new Error(String(raw).substring(6)); }
@@ -802,8 +814,7 @@ function renderTotals(totals) {
   var box = document.getElementById("totals");
   box.className = mode === "metrics" ? "totals" : "totals hidden";
   box.innerHTML = "";
-  [["units", totals.units], ["cyclomatic", totals.cyclomatic],
-   ["avg CC", totals.avg_cyclomatic], ["LOC", totals.loc],
+  [["cyclomatic", totals.cyclomatic], ["LOC", totals.loc],
    ["LLOC", totals.lloc], ["CLOC", totals.cloc],
    ["volume", totals.volume], ["effort", totals.effort], ["time", totals.time_t],
    ["bugs", totals.bugs]].forEach(function (pair) {
@@ -918,6 +929,195 @@ function metricGrade(key,value){
  var limit=METRIC_LIMITS[key];if(!limit||value===''||!Number.isFinite(Number(value)))return '';
  var n=Number(value);return key==='mi'?(n===0?'':n>=85?'good':n>=65?'warning':'bad'):(n<=10?'good':n<=20?'warning':n<=50?'high':'bad');
 }
+var metricView="table",metricMapKey="cyclomatic",metricMapZoom=1,metricMapZoomFrame=0,threeRequested=false,threeRenderer=null,packageMetrics=null;
+var metricMapTypes={CLAS:true,PROG:true,INTF:true},metricMapExcluded=new Set();
+function zoomFactorForWheel(deltaY){return deltaY<0?1.1:1/1.1;}
+function visiblePackageMetricRows(){
+ return packageMetricRows().filter(function(row){return metricMapTypes[String(row.object_type||"").toUpperCase()]!==false&&!metricMapExcluded.has(String(row.object||""));});
+}
+function visiblePackageMetricTotals(){
+ var rows=visiblePackageMetricRows(),all=(packageMetrics?.objects||[]).length;
+ if(rows.length===all)return totals;
+ var result={};["cyclomatic","loc","lloc","cloc","volume","effort","time_t","bugs"].forEach(function(key){
+  result[key]=rows.reduce(function(sum,row){return sum+Number(row[key]||0);},0);
+ });
+ return result;
+}
+function updateMetricMapFilter(){
+ var objects=packageMetrics?.objects||[],visible=visiblePackageMetricRows().length;
+ document.getElementById("metric-map-filter-summary").textContent="Objects "+visible+"/"+objects.length;
+ document.querySelectorAll("#metric-map-filter [data-metric-type]").forEach(function(input){input.checked=metricMapTypes[input.dataset.metricType]!==false;});
+ var search=document.getElementById("metric-map-filter-search").value.trim().toUpperCase(),list=document.getElementById("metric-map-filter-objects");list.replaceChildren();
+ objects.filter(function(object){return String(object.object||"").toUpperCase().includes(search);}).forEach(function(object){
+  var name=String(object.object||""),label=document.createElement("label"),input=document.createElement("input"),title=document.createElement("span");
+  input.type="checkbox";input.checked=!metricMapExcluded.has(name);input.setAttribute("aria-label","Show "+name);title.textContent=name+" · "+String(object.object_type||"").toUpperCase();
+  input.addEventListener("change",function(){if(input.checked)metricMapExcluded.delete(name);else metricMapExcluded.add(name);updateMetricMapFilter();if(metricView==="map")renderMetricMap();});
+  label.append(input,title);list.appendChild(label);
+ });
+}
+function setMetricMapZoom(value){
+ metricMapZoom=Math.max(.02,Math.min(3,Number(value)||1));
+ var root=document.getElementById("root");if(root.className==="metric-map")applyMetricMapScale(root);
+ document.getElementById("metric-map-zoom-input").value=String(Math.round(metricMapZoom*100));
+ document.getElementById("metric-map-zoom-value").textContent=Math.round(metricMapZoom*100)+"%";
+}
+function smoothMetricMapZoom(value){
+ if(metricMapZoomFrame)cancelAnimationFrame(metricMapZoomFrame);
+ var from=metricMapZoom,to=Math.max(.02,Math.min(3,Number(value)||1)),start=performance.now(),duration=220;
+ if(Math.abs(to-from)<.002){metricMapZoomFrame=0;setMetricMapZoom(to);return;}
+ function step(now){
+  var progress=Math.min(1,(now-start)/duration),ease=1-Math.pow(1-progress,3);
+  setMetricMapZoom(from+(to-from)*ease);
+  metricMapZoomFrame=progress<1?requestAnimationFrame(step):0;
+ }
+ metricMapZoomFrame=requestAnimationFrame(step);
+}
+function fitMetricMap(){
+ var root=document.getElementById("root"),list=document.getElementById("list");
+ var width=parseFloat(root.style.width),height=parseFloat(root.style.height);
+ if(root.className!=="metric-map"||!width||!height||!list.clientWidth||!list.clientHeight)return;
+ smoothMetricMapZoom(Math.min(1,(list.clientWidth-16)/width,(list.clientHeight-16)/height));
+ list.scrollTop=0;list.scrollLeft=0;
+}
+function requestThree(){
+ if(window.THREE||threeRequested||typeof sdeAsset!=="function")return;
+ threeRequested=true;waiting="three-asset";sdeAsset("three");
+}
+function startThree(source){
+ threeRequested=false;
+ if(String(source).indexOf("ERROR:")===0){status(String(source).substring(6));return;}
+ var script=document.createElement("script");script.textContent=source;document.head.appendChild(script);
+ if(!window.THREE){status("Three.js could not be loaded.");return;}
+ if(mode==="metrics"&&metricView==="map")renderMetricMap();
+}
+function openMetricSource(row,sourceContext,focusSource){
+ if(typeof sdeOpenToolSource!=="function")return;
+ if(row.writtenIn){sdeOpenToolSource({name:row.writtenIn.name,type:row.writtenIn.type,line:row.writtenIn.line,beside:true,preserveFocus:focusSource!==true});return;}
+ if(sourceContext&&sourceContext.type==="PROG"&&Number(row.line_from)>0){sdeOpenToolSource({name:sourceContext.name,type:"PROG",line:Number(row.line_from),beside:true,preserveFocus:focusSource!==true});return;}
+ var name=String(row.unit_name||""),split=name.split("=>");
+ sdeOpenToolSource({name:split.length>1?split[0]:(sourceContext?sourceContext.name:loadedObject),type:sourceContext?sourceContext.type:loadedType,method:split.pop(),beside:true,preserveFocus:focusSource!==true});
+}
+function metricMapRisk(key,value,values){
+ if(key==="cyclomatic"&&!packageMetrics)return value<=10?0:value<=20?1:value<=50?2:3;
+ if(key==="mi"&&!packageMetrics)return value===0?null:value>=85?0:value>=65?1:3;
+ var below=values.filter(function(other){return other<value;}).length,rank=values.length>1?below/(values.length-1):0;
+ return rank<.25?0:rank<.5?1:rank<.75?2:3;
+}
+function applyMetricMapScale(root){
+ var scale=metricMapZoom;
+ root.style.zoom=String(scale);
+ root.style.fontSize=12/scale+"px";
+ if(root.style.setProperty){
+  [["--map-tile-pad",8],["--map-compact-pad",3],["--map-head-pad-y",2],["--map-head-pad-x",6],["--map-package-pad-y",4],["--map-package-pad-x",10],["--map-line-width",1],["--map-focus-width",2],["--map-frame-width",2],["--map-head-rule",1.5]].forEach(function(item){root.style.setProperty(item[0],item[1]/scale+"px");});
+ }
+ if(root.querySelectorAll)root.querySelectorAll(".metric-map-tile").forEach(function(tile){
+  var width=Number(tile.dataset.baseWidth)*scale,height=Number(tile.dataset.baseHeight)*scale;
+  tile.classList.toggle("compact",width<110||height<52);
+  tile.classList.toggle("micro",width<36||height<22);
+ });
+}
+function metricUnitRisk(key,value,values){
+ if(key==="cyclomatic")return value<=10?0:value<=20?1:value<=50?2:3;
+ if(key==="mi")return value===0?null:value>=85?0:value>=65?1:3;
+ return metricMapRisk(key,value,values);
+}
+function metricMapColor(risk){
+ return ["var(--vscode-testing-iconPassed,var(--vscode-terminal-ansiGreen,#388a34))","var(--vscode-editorWarning-foreground,#bf8803)","var(--vscode-terminal-ansiRed,#e55320)","var(--vscode-errorForeground,#c72e0f)"][risk]||"var(--vscode-descriptionForeground,#808080)";
+}
+function metricTreemap(rows,key,width,height){
+ var positive=rows.map(function(row){return Number(row[key]);}).filter(function(value){return value>0;});
+ var floor=positive.length?Math.min.apply(null,positive)*.03:1;
+ var items=rows.map(function(row){return {row:row,weight:Math.max(Number(row[key]),floor)};}).sort(function(a,b){return b.weight-a.weight;});
+ var total=items.reduce(function(sum,item){return sum+item.weight;},0),unit=width*height/total;
+ items.forEach(function(item){item.area=item.weight*unit;});
+ var box={x:0,y:0,w:width,h:height},rectangles=new Map();
+ function worst(row,side){var sum=row.reduce(function(n,item){return n+item.area;},0),largest=Math.max.apply(null,row.map(function(item){return item.area;})),smallest=Math.min.apply(null,row.map(function(item){return item.area;}));return Math.max(side*side*largest/(sum*sum),sum*sum/(side*side*smallest));}
+ function place(row){var sum=row.reduce(function(n,item){return n+item.area;},0);if(box.w>=box.h){var rw=sum/box.h,y=box.y;row.forEach(function(item){var rh=item.area/rw;rectangles.set(item.row,{x:box.x,y:y,w:rw,h:rh});y+=rh;});box.x+=rw;box.w-=rw;}else{var rh=sum/box.w,x=box.x;row.forEach(function(item){var rw=item.area/rh;rectangles.set(item.row,{x:x,y:box.y,w:rw,h:rh});x+=rw;});box.y+=rh;box.h-=rh;}}
+ var row=[];while(items.length){var next=items[0],side=Math.min(box.w,box.h);if(!row.length||worst(row.concat(next),side)<=worst(row,side)){row.push(items.shift());}else{place(row);row=[];}}if(row.length)place(row);
+ return rectangles;
+}
+function packageMetricRows(){
+ return (packageMetrics?.objects||[]).map(function(object){
+  var rows=object.unit_rows||[],sum=unitTotal(rows);
+  return {...sum,...object,units:object.units??rows.length,time_t:rows.reduce(function(total,row){return total+Number(row.time_t||0);},0)};
+ });
+}
+function openPackageMethods(name){
+ metricView="table";updateMetricView();
+ var blocks=document.querySelectorAll("#root details[data-object]");
+ for(var block of blocks)if(block.dataset.object===name){block.open=true;block.scrollIntoView({block:"center"});break;}
+}
+function renderMetricMap(){
+ if(threeRenderer){threeRenderer.dispose();threeRenderer.forceContextLoss();threeRenderer=null;}
+ if(packageMetrics)renderTotals(visiblePackageMetricTotals());
+ var root=document.getElementById("root");root.className="metric-map";root.replaceChildren();
+ var packageMode=!!packageMetrics,rows=(packageMode?visiblePackageMetricRows():units).filter(function(unit){return Number.isFinite(Number(unit[metricMapKey]));});
+ if(!rows.length){root.style.width="";root.style.height="";root.textContent=packageMode?"No objects selected.":"No values for this indicator.";return;}
+ var width=Math.max(180,document.getElementById("list").clientWidth||root.clientWidth),gap=1,pad=9,packageHeadHeight=packageMode?30:0,height=Math.max(700,Math.min(6000,Math.ceil(rows.length/8)*100)),rectangles=metricTreemap(rows,metricMapKey,width-2*pad,height-2*pad-packageHeadHeight);
+ root.style.width=width+"px";root.style.height=height+"px";root.style.zoom=String(metricMapZoom);
+ if(packageMode){
+  var packageHead=document.createElement("div"),packageName=document.createElement("span"),packageValue=document.createElement("strong"),filtered=rows.length<(packageMetrics.objects||[]).length;
+  packageHead.className="metric-map-package-head";packageHead.title="Sum of the selected indicator across visible objects";
+  var indicator={cyclomatic:"CC",time_t:"Time"}[metricMapKey]||metricMapKey.toUpperCase();
+  packageName.textContent=(filtered?"Visible · ":"")+String(packageMetrics.object||loadedObject)+" · "+indicator;
+  packageValue.textContent=String(rounded(rows.reduce(function(sum,row){return sum+Number(row[metricMapKey]);},0)));
+  packageHead.append(packageName,packageValue);root.appendChild(packageHead);
+ }
+ var values=rows.map(function(unit){return Number(unit[metricMapKey]);});
+ var packageUnitValues=packageMode?rows.flatMap(function(object){return (object.unit_rows||[]).map(function(row){return Number(row[metricMapKey]);}).filter(Number.isFinite);}):[];
+ var legend=document.getElementById("metric-map-legend");legend.replaceChildren();
+ var graded=!packageMode&&(metricMapKey==="cyclomatic"||metricMapKey==="mi");
+ var low=document.createElement("span");low.textContent=graded?"OK":"Low (relative)";var ramp=document.createElement("span");ramp.className="metric-map-ramp";var high=document.createElement("span");high.textContent=graded?"Needs attention":"High (relative)";legend.append(low,ramp,high);
+ legend.title=metricMapKey==="cyclomatic"&&!packageMode?"CC per unit: OK ≤ 10; warning 11–20; high 21–50; critical > 50":metricMapKey==="mi"&&!packageMode?"MI: OK ≥ 85; warning 65–84; poor < 65; zero is ungraded":"Relative rank within the loaded "+(packageMode?"package":"object")+"; this indicator has no absolute risk threshold";
+ var scene=window.THREE?new THREE.Scene():null,geometry=scene?new THREE.PlaneGeometry(1,1):null,base=scene?new THREE.Color(ground()):null;
+ function themeColor(css){var probe=document.createElement("span");probe.style.color=css;root.appendChild(probe);var color=getComputedStyle(probe).color;probe.remove();return new THREE.Color(color);}
+ var riskColors=scene?[0,1,2,3].map(function(risk){return themeColor(metricMapColor(risk));}):null;
+ function paint(x,y,w,h,risk){if(!scene)return;var shade=base.clone().lerp(risk===null?themeColor(metricMapColor(null)):riskColors[risk],.32);var mesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color:shade}));mesh.scale.set(w,h,1);mesh.position.set(x+w/2,height-y-h/2,0);scene.add(mesh);}
+ function addTile(row,key,value,risk,x,y,w,h,area,parent,sourceContext){
+  var tile=document.createElement("button");tile.type="button";tile.className="metric-map-tile"+(chosenKey===partKeyOf(row.unit_name)?" sel":"")+(w*metricMapZoom<110||h*metricMapZoom<52?" compact":"")+(w*metricMapZoom<36||h*metricMapZoom<22?" micro":"");tile.dataset.key=partKeyOf(row.unit_name);tile.dataset.area=String(area);tile.dataset.baseWidth=String(w);tile.dataset.baseHeight=String(h);tile.dataset.risk=String(risk);tile.dataset.fallbackFill="color-mix(in srgb,"+metricMapColor(risk)+" 28%,var(--bg))";tile.style.cssText="left:"+x+"px;top:"+y+"px;width:"+w+"px;height:"+h+"px;background:"+(scene?"transparent":tile.dataset.fallbackFill);
+  tile.title=String(row.unit_name)+" · "+key+" "+rounded(value)+" · Double-click to open source";
+  var name=document.createElement("span");name.className="metric-map-name";name.textContent=cellValue(row,"unit_name",sourceContext?sourceContext.type==="CLAS":classMetrics());
+  var number=document.createElement("span");number.className="metric-map-number";number.textContent=String(rounded(value));tile.append(name,number);
+  tile.addEventListener("click",function(){chosenKey=partKeyOf(row.unit_name);if(!packageMode){markMetricRow();if(typeof sdePartShown==="function")sdePartShown(chosenKey);}});
+  tile.addEventListener("dblclick",function(){openMetricSource(row,sourceContext,true);});
+  tile.addEventListener("keydown",function(event){if(event.key==="Enter"){event.preventDefault();openMetricSource(row,sourceContext,true);}});parent.appendChild(tile);
+  paint(parent===root?x:Number(parent.dataset.mapX)+x,parent===root?y:Number(parent.dataset.mapY)+y,w,h,risk);
+ }
+ rows.forEach(function(unit){
+  var value=Number(unit[metricMapKey]),rect=rectangles.get(unit),x=pad+rect.x+gap/2,y=pad+packageHeadHeight+rect.y+gap/2,w=Math.max(1,rect.w-gap),h=Math.max(1,rect.h-gap);
+  if(!packageMode){addTile(unit,metricMapKey,value,metricMapRisk(metricMapKey,value,values),x,y,w,h,rect.w*rect.h,root,null);return;}
+  var object=document.createElement("div");object.className="metric-map-object";object.dataset.key=unit.object;object.dataset.type=String(unit.object_type||"").toUpperCase();object.dataset.area=String(rect.w*rect.h);object.dataset.mapX=String(x);object.dataset.mapY=String(y);object.style.cssText="left:"+x+"px;top:"+y+"px;width:"+w+"px;height:"+h+"px";root.appendChild(object);
+  var head=document.createElement("button");head.type="button";head.className="metric-map-object-head";head.title=unit.object+" · "+metricMapKey+" "+rounded(value)+" · Show unit table";var label=document.createElement("span");label.textContent=unit.object;var total=document.createElement("span");total.textContent=String(rounded(value));head.append(label,total);head.addEventListener("click",function(){openPackageMethods(unit.object);});object.appendChild(head);
+  var children=unit.unit_rows||[],innerKey=metricMapKey,innerRows=children.filter(function(row){return Number.isFinite(Number(row[innerKey]));});
+  if(!innerRows.length||h<=26)return;
+  var inner=metricTreemap(innerRows,innerKey,Math.max(1,w),Math.max(1,h-24));
+  innerRows.forEach(function(row){var box=inner.get(row),ix=box.x+gap/2,iy=24+box.y+gap/2,iw=Math.max(1,box.w-gap),ih=Math.max(1,box.h-gap),risk=metricUnitRisk(innerKey,Number(row[innerKey]),packageUnitValues);addTile(row,innerKey,Number(row[innerKey]),risk,ix,iy,iw,ih,box.w*box.h,object,{name:unit.object,type:unit.object_type});});
+ });
+ if(scene){try{threeRenderer=new THREE.WebGLRenderer({alpha:true,antialias:true});threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));threeRenderer.setSize(width,height);var camera=new THREE.OrthographicCamera(0,width,height,0,.1,10);camera.position.z=5;threeRenderer.render(scene,camera);root.prepend(threeRenderer.domElement);}catch(error){status("Three.js renderer unavailable: "+error.message);root.querySelectorAll(".metric-map-tile").forEach(function(tile){tile.style.background=tile.dataset.fallbackFill;});}finally{scene.traverse(function(node){if(node.material)node.material.dispose();});geometry.dispose();}}
+ applyMetricMapScale(root);
+ if(root.animate&&!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches))root.animate([{opacity:.65},{opacity:1}],{duration:180,easing:"ease-out"});
+ publishContext();
+}
+function refreshMetricMapChoices(){
+ var select=document.getElementById("metric-map-select"),columns=(packageMetrics?OBJECT_COLUMNS:COLUMNS).filter(function(column){return column.num;});
+ if(!columns.some(function(column){return column.key===metricMapKey;}))metricMapKey="cyclomatic";
+ select.replaceChildren();columns.forEach(function(column){var option=document.createElement("option");option.value=column.key;option.textContent=column.text;select.appendChild(option);});select.value=metricMapKey;
+}
+function updateMetricView(){
+ var showing=mode==="metrics"&&(units.length>0||!!packageMetrics);
+ if(packageMetrics&&metricView==="table")renderTotals(totals);
+ if((!showing||metricView!=="map")&&threeRenderer){threeRenderer.dispose();threeRenderer.forceContextLoss();threeRenderer=null;}
+ document.getElementById("metric-map-controls").hidden=!showing;
+ document.getElementById("metric-table").classList.toggle("active",metricView==="table");
+ document.getElementById("metric-map-button").classList.toggle("active",metricView==="map");
+ document.getElementById("metric-map-select").hidden=metricView!=="map";
+ document.querySelector('label[for="metric-map-select"]').hidden=metricView!=="map";
+ document.getElementById("metric-map-filter").hidden=metricView!=="map"||!packageMetrics;
+ document.getElementById("metric-map-zoom").hidden=metricView!=="map";
+ if(metricView!=="map"&&metricMapZoomFrame){cancelAnimationFrame(metricMapZoomFrame);metricMapZoomFrame=0;}
+ document.getElementById("metric-map-legend").hidden=metricView!=="map";
+ if(showing){if(metricView==="map"){renderMetricMap();requestThree();}else if(packageMetrics)renderPackageTable(packageMetrics);else renderMetricSections();}
+}
 function makeTable(columns, rows, total, isClass, ordering, sourceContext) {
   var table = document.createElement("table"), thead = document.createElement("thead"), tr = document.createElement("tr");
   columns.forEach(function (column) {
@@ -937,7 +1137,7 @@ function makeTable(columns, rows, total, isClass, ordering, sourceContext) {
       if(column.num){cell.className="num metric-"+metricGrade(column.key,row[column.key]);var limits=METRIC_LIMITS[column.key];if(limits)cell.title=column.key==='mi'?"Green ≥ "+limits[0]+"; yellow ≥ "+limits[1]+"; red below":"ACE risk: LOW ≤ 10; MEDIUM ≤ 20; HIGH ≤ 50; CRITICAL > 50";}
       if(column.key==='unit_name'&&typeof sdeOpenToolSource==='function'){
         var button=document.createElement("button");button.className="metric-source";button.textContent=cell.textContent;button.title="Open source";
-        button.addEventListener("click",function(){if(row.writtenIn){sdeOpenToolSource({name:row.writtenIn.name,type:row.writtenIn.type,line:row.writtenIn.line,beside:true,preserveFocus:true});return;}var name=String(row.unit_name||''),split=name.split('=>');sdeOpenToolSource({name:split.length>1?split[0]:(sourceContext?sourceContext.name:loadedObject),type:sourceContext?sourceContext.type:(isClass?'CLAS':loadedType),method:split.pop(),beside:true,preserveFocus:true});});cell.textContent='';cell.appendChild(button);
+        button.addEventListener("click",function(){openMetricSource(row,sourceContext);});cell.textContent='';cell.appendChild(button);
       }
       line.appendChild(cell);
     });
@@ -969,6 +1169,7 @@ function cellValue(row, key, isClass) {
 }
 
 function renderMetricSections() {
+  var mapRoot=document.getElementById("root");mapRoot.style.height="";mapRoot.style.width="";mapRoot.style.zoom="";
   if (mode === "scheme" && classMetrics()) { renderUmlParts(); return; }
   if (flowMode()) { renderUmlParts(); return; }
   var root = document.getElementById("root"); root.className = ""; root.innerHTML = "";
@@ -1011,12 +1212,17 @@ function renderMetricSections() {
 }
 
 function renderPackage(data) {
-  units = []; totals = data.totals || {}; loadedObject = data.object; loadedType = data.type;
-  umlObjectCount = (data.objects || []).length;
-  umlDiagram = null;
-  document.getElementById("object").textContent = "package " + data.object;
-  if (typeof sdeTitle === "function") { sdeTitle(data.object.toUpperCase()); }
+  packageMetrics=data;units=[];totals=data.totals||{};loadedObject=data.object;loadedType=data.type;
+  metricMapTypes={CLAS:true,PROG:true,INTF:true};metricMapExcluded.clear();document.getElementById("metric-map-filter-search").value="";updateMetricMapFilter();
+  umlObjectCount=(data.objects||[]).length;umlDiagram=null;
+  document.getElementById("object").textContent="package "+data.object;
+  if(typeof sdeTitle==="function")sdeTitle(data.object.toUpperCase());
   renderTotals(totals);
+  refreshMetricMapChoices();setMode("metrics");
+  status((data.objects||[]).length+" objects");
+}
+function renderPackageTable(data) {
+  var mapRoot=document.getElementById("root");mapRoot.style.height="";mapRoot.style.width="";mapRoot.style.zoom="";
   var root = document.getElementById("root"); root.className = ""; root.innerHTML = "";
   var section = document.createElement("section"); section.className = "section";
   var heading = document.createElement("h3"); heading.className = "package-heading";
@@ -1039,12 +1245,12 @@ function renderPackage(data) {
   };
   (data.objects || []).forEach(function (object) {
     var block = document.createElement("details"); block.className = "class-group";
+    block.dataset.object=String(object.object||"");
     blocks.push(block); block.addEventListener("toggle", updateToggle);
     var summary = document.createElement("summary");
     summary.textContent = String(object.object || "") + " · " + String(object.object_type || "").toUpperCase();
     var caption = document.createElement("span"); caption.className = "class-caption";
-    caption.textContent = "units " + object.units + " · CC " + object.cyclomatic
-      + " · Avg CC " + object.avg_cyclomatic + " · LOC " + object.loc;
+    caption.textContent = "CC " + object.cyclomatic + " · LOC " + object.loc;
     summary.appendChild(caption); block.appendChild(summary);
     var rows = object.unit_rows || [];
     var objectIsClass = String(object.object_type || "").toUpperCase() === "CLAS";
@@ -1060,9 +1266,11 @@ function renderPackage(data) {
 
 function render(data) {
   if (data.objects !== undefined) { renderPackage(data); return; }
+  packageMetrics=null;
   umlObjectCount = null;
   umlDiagram = null;
   units = data.units || [];
+  refreshMetricMapChoices();
   // The window's Parts list is these units when nothing cheaper gave it one: no second parse for it.
   if (typeof sdePartsFound === "function") { sdePartsFound(JSON.stringify({ units: units })); }
   totals = data.totals;
@@ -1198,6 +1406,7 @@ function shown(unit) {
 
 function setMode(next) {
   mode = next;
+  if(next!=="metrics"){var mapRoot=document.getElementById("root");mapRoot.style.height="";mapRoot.style.width="";mapRoot.style.zoom="";}
   document.getElementById("logic-only").hidden=next!=="scheme";
   // One Depth field, two meanings: how far Calls follows calls, how deep Logic draws nested blocks.
   document.body.classList.toggle("logic", next === "scheme");
@@ -1207,6 +1416,7 @@ function setMode(next) {
   document.getElementById("depthbox").title = next === "scheme" ? "How many levels inside the method are shown: 1 its own statements, 2 the inside of their blocks too, and so on; a deeper block shows its opening and closing statement, and a click opens what is inside" : "How far the calls are followed";
   document.getElementById("reach").hidden=next!=="scheme"||!schemeReach;
   document.getElementById("mode").value = next;
+  document.getElementById("metric-map-controls").hidden=next!=="metrics"||!units.length;
   document.body.classList.toggle("flow", flowMode());
   document.body.classList.toggle("calls", next === "calls");
   document.getElementById("list").hidden = next === "class";
@@ -1215,7 +1425,8 @@ function setMode(next) {
   // to a diagram of one method or of the calls.
   document.getElementById("totals").classList.toggle("hidden", next !== "metrics");
   // The help explains the metrics; a diagram has nothing of it to explain.
-  document.getElementById("metricshelp").hidden=false;document.getElementById("metricshelp").title=next==="metrics"?"Metrics help":"Diagram help";
+  document.getElementById("metricshelp").hidden=next!=="metrics";
+  document.getElementById("diagramhelp").hidden=!flowMode();
   document.getElementById("diagram").hidden = !flowMode();
   document.getElementById("tools").hidden = !flowMode();
   shownUnit = null;
@@ -1231,12 +1442,13 @@ function setMode(next) {
     var root = document.getElementById("root");
     root.className = "uml-parts";
     root.textContent = "Reading method sections ...";
-  } else if (units.length > 0) { renderMetricSections(); }
+  } else if (units.length > 0 && next!=="metrics") { renderMetricSections(); }
 
   if (next === "class") {
     loadClassDiagram();
   } else if (next === "metrics") {
-    status(units.length ? units.length + (units.length === 1 ? " unit" : " units") : "");
+    status(packageMetrics?(packageMetrics.objects||[]).length+" objects":units.length ? units.length + (units.length === 1 ? " unit" : " units") : "");
+    updateMetricView();
   } else if (next === "scheme") {
     if (needsSections) {
       hint("Reading method sections ...");
@@ -1297,7 +1509,7 @@ function sdeSelectPart(chosen) {
 }
 
 function markMetricRow() {
-  Array.prototype.forEach.call(document.querySelectorAll("#root tr[data-key]"), function (tr) {
+  Array.prototype.forEach.call(document.querySelectorAll("#root [data-key]"), function (tr) {
     tr.classList.toggle("sel", tr.getAttribute("data-key") === chosenKey);
   });
 }
@@ -2324,9 +2536,8 @@ function setupPage(detail) {
 
 /* ---------- wiring ---------- */
 
-document.getElementById("metricshelp").addEventListener("click", function () {
-  document.getElementById(mode==="metrics"?"metricsdialog":"diagramhelpdialog").showModal();
-});
+document.getElementById("metricshelp").addEventListener("click", function () {document.getElementById("metricsdialog").showModal();});
+document.getElementById("diagramhelp").addEventListener("click", function () {document.getElementById("diagramhelpdialog").showModal();});
 document.getElementById("metricsclose").addEventListener("click", function () {
   document.getElementById("metricsdialog").close();
 });
@@ -2492,14 +2703,15 @@ var themeWatchTimer = null, themeSeen = "";
 function themeChanged() {
   clearTimeout(themeWatchTimer);
   themeWatchTimer = setTimeout(function () {
+    var now = ground() + "|" + ink() + "|" + (darkPage() ? "dark" : "light");
+    if (now === themeSeen) { return; }
+    themeSeen = now;
+    if(mode==="metrics"&&metricView==="map")renderMetricMap();
     var pane = document.getElementById("diagram");
     if (pane.hidden) { return; }
     /* Only a theme that really changed redraws. The page writes its own body classes too - endAnalysis removes one
        after every drawing, which rewrites the attribute even when nothing was there - and each such write would redraw
        the picture again, without end: a Code view rebuilt under the mouse, a large diagram drawn over and over. */
-    var now = ground() + "|" + ink() + "|" + (darkPage() ? "dark" : "light");
-    if (now === themeSeen) { return; }
-    themeSeen = now;
     pane.style.background = ground();
     pane.style.color = ink();
     if (lastMermaid) { refit = false; draw(true); }
@@ -2534,6 +2746,9 @@ if (typeof ResizeObserver === "function") {
      taller, which is not a viewport resize. Watch its fixed flex parent and
      then compare #diagram's client size in paneResized(). */
   paneWatch.observe(document.querySelector(".panes"));
+  var metricMapResizeTimer=null;
+  var metricMapResizeWatch=new ResizeObserver(function(){if(mode!=="metrics"||metricView!=="map")return;clearTimeout(metricMapResizeTimer);metricMapResizeTimer=setTimeout(renderMetricMap,120);});
+  metricMapResizeWatch.observe(document.getElementById("list"));
 }
 
 // Ctrl and the wheel, the way every other drawing in this editor behaves.
@@ -2541,9 +2756,22 @@ document.getElementById("diagram").addEventListener("wheel", function (e) {
   if (!e.ctrlKey) { return; }
   e.preventDefault();
   fitted = false;
-  setZoom(e.deltaY < 0 ? zoom * 1.1 : zoom / 1.1);
+  setZoom(zoom*zoomFactorForWheel(e.deltaY));
 }, { passive: false });
 
+var metricSelect=document.getElementById("metric-map-select");
+refreshMetricMapChoices();
+metricSelect.addEventListener("change",function(){metricMapKey=this.value;if(metricView==="map")renderMetricMap();});
+document.getElementById("metric-table").addEventListener("click",function(){metricView="table";updateMetricView();});
+document.getElementById("metric-map-button").addEventListener("click",function(){metricView="map";updateMetricView();});
+document.querySelectorAll("#metric-map-filter [data-metric-type]").forEach(function(input){input.addEventListener("change",function(){metricMapTypes[input.dataset.metricType]=input.checked;updateMetricMapFilter();if(metricView==="map")renderMetricMap();});});
+document.getElementById("metric-map-filter-search").addEventListener("input",updateMetricMapFilter);
+document.getElementById("metric-map-filter-all").addEventListener("click",function(){metricMapTypes={CLAS:true,PROG:true,INTF:true};metricMapExcluded.clear();document.getElementById("metric-map-filter-search").value="";updateMetricMapFilter();if(metricView==="map")renderMetricMap();});
+document.getElementById("metric-map-zoom-input").addEventListener("input",function(){if(metricMapZoomFrame)cancelAnimationFrame(metricMapZoomFrame);metricMapZoomFrame=0;setMetricMapZoom(Number(this.value)/100);});
+document.getElementById("metric-map-zoom-out").addEventListener("click",function(){smoothMetricMapZoom(metricMapZoom/1.25);});
+document.getElementById("metric-map-zoom-in").addEventListener("click",function(){smoothMetricMapZoom(metricMapZoom*1.25);});
+document.getElementById("metric-map-fit").addEventListener("click",fitMetricMap);
+document.getElementById("list").addEventListener("wheel",function(event){if(mode!=="metrics"||metricView!=="map"||!event.ctrlKey)return;event.preventDefault();if(metricMapZoomFrame)cancelAnimationFrame(metricMapZoomFrame);metricMapZoomFrame=0;setMetricMapZoom(metricMapZoom*zoomFactorForWheel(event.deltaY));},{passive:false});
 var INITIAL = /*INIT*/null/*INIT*/;
 fillTypes(INITIAL ? INITIAL.type : null);
 if (INITIAL) {

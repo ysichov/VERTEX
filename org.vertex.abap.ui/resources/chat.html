@@ -329,10 +329,13 @@ function sdeAssistant(raw) {
 
 // Each found object is a link: a click opens it, as a single match is opened.
 function links(item, choices) {
-  Array.prototype.forEach.call(item.querySelectorAll("li"), function (li) {
-    var name = li.querySelector("strong"), first = li.firstChild;
-    var type = first && first.nodeType === 3 ? first.textContent.trim() : "";
-    var object = name && choices.filter(function (c) { return c.object_name === name.textContent && c.object_type === type; })[0];
+  Array.prototype.forEach.call(item.querySelectorAll("li"), function (li, index) {
+    var name=li.querySelector("strong"),label=String(li.textContent||"");
+    var found=/^\s*(PROG|DEVC|CLAS|INTF|FUNC)\b/i.exec(label),type=found&&found[1].toUpperCase();
+    var object=name&&choices.filter(function(c){return c.object_name===name.textContent&&c.object_type===type;})[0];
+    // Direct search lists choices in the same order, even when an embedded
+    // browser does not expose the type as a separate leading text node.
+    if(!object&&name&&choices[index]&&choices[index].object_name===name.textContent&&(!type||choices[index].object_type===type))object=choices[index];
     if (!object) { return; }
     var link = document.createElement("a");
     link.href = "#"; link.className = "object-link"; link.title = "Open " + object.object_type + " " + object.object_name;

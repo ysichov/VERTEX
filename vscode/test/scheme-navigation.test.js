@@ -5,7 +5,7 @@ const vm = require('node:vm');
 test('Scheme loads sections, opens no method until one is picked, and retains Parts after another click', () => {
   const html = fs.readFileSync(process.env.VERTEX_METRICS_HTML || require('node:path').join(__dirname, '../../org.vertex.abap.ui/resources/metrics.html'), 'utf8');
   const elements = {};
-  const node = () => ({children: [], classList: {toggle() {}}, appendChild(n) {this.children.push(n);}, addEventListener() {}, set innerHTML(v) {this.children=[];}});
+  const node = () => ({children: [], style: {}, classList: {toggle() {}}, appendChild(n) {this.children.push(n);}, replaceChildren(...items) {this.children=items;}, addEventListener() {}, set innerHTML(v) {this.children=[];}});
   const ctx = vm.createContext({document: {getElementById(id) {return elements[id] ||= node();}, createTextNode(text) {return {...node(), textContent:text};}, createElement: node, body: node()}, window: {}, console});
   vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1].split('/* ---------- wiring ---------- */')[0], ctx);
   vm.runInContext(`var INITIAL = null; loadedObject='ZCL_TEST'; loadedType='CLAS';

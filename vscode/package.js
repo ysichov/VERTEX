@@ -39,6 +39,8 @@ const required = [
     "extension/log-report.js",
     "extension/log-snapshot.js",
     "extension/resources/mermaid.min.js",
+    "extension/resources/three.min.js",
+    "extension/resources/three-LICENSE.txt",
     "extension/pages/sap-debug-runs.html",
     "extension/assistant-debug-recording.js",
     "extension/resources/log-report.html",

@@ -274,13 +274,16 @@ In VS Code, choose **Analyze Local ABAP Package** on a folder in Explorer to see
 Click a method in UML to open its source in VS Code or Eclipse; this also works for local ABAP files in VS Code.
 In VS Code, UML method links open code beside the diagram and keep focus on UML.
 Metrics method links use the same side-by-side opening in VS Code, including package tables.
+For a class or program, Metrics switches between **Table** and **Visual**. In Visual, each unit's area scales with the selected indicator; the tile shows its name and value. CC and MI colours follow the table's risk grades; other indicators use a relative ranking within the object. Single-click a tile to select it; double-click or press Enter to open its source.
+Visual has a 2–300% scale control and a Fit button that fits the whole map into the pane. Fit and the ± buttons animate scale changes; Ctrl+wheel changes scale immediately, as in UML, while ordinary scrolling moves around the map. Zoom changes tile space and reveals more labels without enlarging text.
 UML includes methods implemented through interfaces as well as methods declared directly by a class.
 An abapGit folder tree may contain subpackages; VERTEX combines them for this view. Source lookup prefers the opened file's folder and reports duplicate names in a selected tree.
 The same command is available from the VS Code Command Palette and opens a folder picker.
 The main VERTEX Tools type list also has **Local Folder**, which opens the picker and shows UML or Metrics in the same window.
 UML and Metrics show the current analysis stage, object count and elapsed time. Switching between them for a local folder reuses parsed source until a file changes.
 UML and Metrics show the current analysis stage, object count and elapsed time. Switching between them for a local folder reuses parsed source until a file changes.
-Package Metrics has **Expand all / Collapse all** above Objects to open or close every object's method table.
+Package Metrics has **Expand all / Collapse all** above Objects to open or close every object's unit table.
+Package Metrics includes classes, interfaces and programs. **Visual** sizes each object by the selected metric and subdivides it into methods, forms and events. Double-click a unit or press Enter to open its source; click the object header to open its unit table. A program's forms and events, including those in its INCLUDEs, count toward its program. Indicators without fixed risk thresholds use one relative colour scale for all visible units in the package. The Visual Objects filter can hide classes, programs, interfaces or individual objects without rerunning analysis. The map heading shows the sum of the selected indicator for visible objects, such as total LOC.
 FLOW and Value Origin diagrams support graphs with more than 500 edges in both hosts.
 Eclipse Tools selects the active ADT class or program when opened from its editor.
 Each API provider can have several named keys, with one selected manually.

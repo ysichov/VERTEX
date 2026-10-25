@@ -52,6 +52,21 @@ test('function and dialog module remain distinct kinds',()=>{
 test('class methods remain qualified METHOD units',()=>{
  assert.deepEqual(units('CLASS ztest DEFINITION. PUBLIC SECTION. METHODS run. ENDCLASS. CLASS ztest IMPLEMENTATION. METHOD run. WRITE 1. ENDMETHOD. ENDCLASS.','CLAS').map(r=>[r.unit_type,r.unit_name]),[['METHOD','ZTEST=>RUN']]);
 });
+
+test('package Metrics includes program units from the program and its includes',async()=>{
+ const api={packageObjects:async()=>[{object_name:'ZCL_A',object_type:'CLAS'},{object_name:'ZREP',object_type:'PROG'}],
+  analysisReader:()=>async({object_name,object_type})=>object_type==='CLAS'
+   ?{object_name,object_type,source_url:'class',source:'CLASS zcl_a DEFINITION. PUBLIC SECTION. METHODS run. ENDCLASS. CLASS zcl_a IMPLEMENTATION. METHOD run. ENDMETHOD. ENDCLASS.',includes:[]}
+   :{object_name,object_type,source_url:'program',source:'REPORT zrep. INCLUDE zinc. START-OF-SELECTION. PERFORM calc.',includes:[]},
+  sourceAt:async()=> 'FORM calc. WRITE 1. ENDFORM.'};
+ const result=await require('../frontend-analysis').request(api,'/sap/bc/adt/vertex/metrics/ZPACK?type=DEVC');
+ const program=result.objects.find(object=>object.object==='ZREP');
+ assert.ok(program,'Program must be listed as a package object');
+ assert.equal(program.object_type,'PROG');
+ assert.ok(program.unit_rows.some(row=>row.unit_name==='CALC'&&row.unit_type==='FORM'),'FORM in an include must count toward its program');
+ assert.equal('avg_cyclomatic' in program,false,'Avg CC is not a source metric');
+ assert.equal('avg_cyclomatic' in result.totals,false);
+});
 test('each element of a chain is placed on the line where SAP stops for it, not on the keyword line',async()=>{
  const api={analysisReader:()=>async()=>({object_name:'ZTEST',object_type:'PROG',source_url:'test',source:'REPORT ztest.\nSTART-OF-SELECTION.\n  WRITE: / sy-vline,\n    3 sy-uname,\n    14 sy-vline.\n  WRITE sy-datum.',includes:[]})};
  const result=await require('../frontend-analysis').request(api,'/sap/bc/adt/vertex/flow/ZTEST?mode=statements&type=PROG');

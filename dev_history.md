@@ -1,5 +1,72 @@
 # Development history
 
+## 2026-10-26 — Visual borders, names and filtered totals
+
+At large scale the map enlarged its gaps and every one-pixel border, making object and method boundaries too heavy. Reduced the geometry gap and inversely scaled the normal, focus and class borders so their screen width stays stable. Compact tiles now retain a one-line truncated name; only genuinely tiny tiles omit text. The package summary above Visual now sums the visible objects after a type or object exclusion and restores the full package total in Table. Focused tests cover border width and filtered, empty and individual-object totals.
+
+## 2026-10-26 — Visual detail scale
+
+The former map zoom scaled the entire DOM, enlarging labels and borders rather than revealing useful content. The map now applies the inverse font and spacing scale while retaining tile geometry zoom. Each tile stores its base dimensions; the `compact` and `micro` states are recalculated from on-screen dimensions on every zoom change, so names and values appear only when they fit. A focused test checks constant screen font and frame thickness and the change in detail state.
+
+## 2026-10-26 — Class frame in package Visual
+
+The previous inset outline on class containers was barely visible beside method borders. A three-pixel pointer-transparent `::after` frame now draws above the method tiles and follows the object's rounded outer edge. It uses a neutral mix of theme foreground and background; the class name keeps the theme link colour. The overlay leaves treemap geometry and click targets unchanged.
+
+## 2026-10-26 — Metrics controls
+
+The diagram toolbar was assigned `hidden` in Metrics, but `.bar .tools { display:flex }` overrode the browser's hidden rule. Added an explicit hidden selector. Its help button also stayed in the top bar, so the diagram and Metrics help buttons are now separate and Metrics help is inside its own control row. That row uses the shared segmented Table / Visual toggle, the page's theme surface and field colours, and a themed range track/thumb instead of the browser's native dark slider.
+
+## 2026-10-26 — Package total and chat search links
+
+Metrics Visual now frames a package's object treemap with a header containing the selected indicator and the sum of the visible object values. The layout reserves header height, preserving the object and method area ratios. A focused test checks the full LOC total and its filtered total.
+Class object containers carry their object type in a data attribute. A thicker neutral inset outline, a heavier header rule and blue class names distinguish them without changing treemap dimensions or method areas.
+
+Chat's direct-search answers used the leading text node of each rendered list item to match a choice. That node is not reliable in embedded browsers, which could leave the first same-name program plain text while the package was linked. Link matching now reads the full list text for its type and matches both type and name against the choices; list order is only a checked fallback. A focused test covers both `PROG Z_AVE` and `DEVC Z_AVE` links even when the choices arrive in another order.
+
+## 2026-10-26 — Visual Fit and smooth scale
+
+Metrics Visual kept a static Three.js scene under HTML tile labels and changed CSS `zoom` immediately. Added a separate Visual Fit control that computes the scale from the map's base dimensions and the list pane, without changing area ratios. Scale changes from Fit and ± now tween over 220 ms; slider dragging remains direct. Ctrl+wheel uses UML's immediate scale change and direction. Map redraws fade in for 180 ms unless reduced motion is requested. The slider extends to 2% so a large package can fit in one pane. The focused Fit test checks an intermediate animation frame, final scale and unchanged base layout.
+
+## 2026-10-26 — Metrics indicator cleanup
+
+`Avg CC` was a frontend-derived average (`cyclomatic / units`), not a source metric. Removed its calculation from both frontend adapters and removed it, along with the Units count, from the Metrics totals, package object captions and Visual selector. Package Visual defaults to CC. Internal unit arrays and counts remain for grouping and navigation. Focused tests cover the visible choices and totals.
+
+## 2026-10-26 — Package Visual filters
+
+Added type checkboxes and a searchable object checkbox list to the package Metrics Visual controls. The filter stays client-side and does not change the package Table. `visiblePackageMetricRows` feeds both the treemap layout and the package unit values used for relative colour ranking. The list reports the number of visible objects and has a Show all reset. The focused map test covers type and object exclusions and an empty selection.
+
+## 2026-10-26 — Metrics Visual double-click
+
+Visual tile clicks previously called source navigation with `preserveFocus:true` and had no double-click handler. A single click now selects, while double-click and Enter open source with editor focus. Program units use their `line_from`, which also handles events such as START-OF-SELECTION; units in INCLUDEs continue to use their `writtenIn` source and line. Focused tests cover map interaction and source arguments. The universal VSIX 0.9.32 was rebuilt and verified.
+The remaining package failure came from `tools.html`: it passed `sdeOpenToolSource` into a result frame only when the Tools window was bound to an editor. Package Metrics commonly runs unbound, so every click returned before reaching the host. Metrics result frames now receive the source bridge regardless of that binding. An integration test connects an unbound Metrics frame and verifies that an object and method reach the host bridge.
+
+## 2026-10-25 — Package Metrics: Visual and programs
+
+Both SAP package discovery adapters now include `PROG/P` while excluding standalone `PROG/I` entries, which are read as part of their program. Frontend aggregation groups unit rows by the parsed source's `objectName`, so units from INCLUDEs count toward the parent program. The Metrics page presents package object totals through the Visual treemap and subdivides each object by its unit rows. Clicking a method, form or event opens source; clicking its object header opens the rows in Table. Package selectors use object-level indicators and default to Avg CC; aggregate CC is coloured by relative rank, while inner unit CC uses method risk thresholds.
+Focused package discovery, include aggregation, Visual, source-link and Scheme tests passed. The universal VS Code 0.9.32 VSIX was rebuilt and passed archive verification; no Eclipse build was made.
+Corrected package Visual's relative colour scale: it previously restarted inside each object, making a single high-LOC unit green while a smaller unit elsewhere was red. The rank now uses every unit in the package; CC still uses the fixed table thresholds. A regression test covers the single-unit object case.
+
+## 2026-10-25 — Metrics notice
+
+Removed the unconditional ACE-comparison warning from both frontend Metrics implementations. Their existing source and parser warnings remain in the response.
+The universal VS Code 0.9.32 VSIX was rebuilt and passed archive verification.
+
+## 2026-10-25 — Metrics Table / Visual view
+
+Added a Table / Visual switch to the shared Metrics page. The map uses the existing unit rows and numeric columns, sizes each tile in a squarified treemap by the selected metric, draws coloured tiles with a locally bundled Three.js renderer, and keeps names and values as clickable HTML labels for keyboard access and source navigation. The asset route serves Three.js in VS Code and Eclipse. The library is loaded only when the map is opened and its MIT licence is bundled.
+
+The focused map and source-link tests pass, as do JavaScript syntax and diff checks. The full VS Code suite was started but stopped after its unrelated ABAP analysis cases continued for several minutes; it did not reach a final result.
+
+The universal VS Code 0.9.32 VSIX was built with the checked packaging wrapper. Archive validation read every entry, confirmed the Metrics page, Three.js and its licence, and passed the packaged Scheme navigation test. No Eclipse build was made.
+
+The user clarified that Visual must encode the selected metric in tile area. The initial equal-size grid was replaced by a squarified treemap, with a small visible floor for zero or negative values. The focused test checks a 4:2 area ratio and verifies that changing from CC to LOC changes which tile is larger. VSIX 0.9.32 was rebuilt and verified again.
+
+Colour now follows risk rather than just the minimum-to-maximum range: CC and MI use the table's fixed green, warning, high and poor thresholds. Indicators without fixed quality thresholds use a labelled relative rank within the loaded object, so a large LOC is not presented as an absolute defect. The focused test includes CC and MI values from the Metrics example.
+The universal VS Code 0.9.32 VSIX was rebuilt and passed archive verification with this colour change.
+
+Visual now has a 50–300% scale control with buttons and Ctrl+wheel. The map's fixed base layout is scaled as one surface, so changing zoom preserves tile-area ratios and label placement without rerunning analysis or rebuilding the WebGL scene. Ordinary wheel input scrolls the map.
+The universal VS Code 0.9.32 VSIX was rebuilt and passed archive verification with the scale control.
+
 ## 2026-10-25 — VS Code 0.9.32: Claude Code installation choice
 
 Added a shared Claude executable resolver for the VERTEX chat, model list, model probe and assisted tools. It detects the extension executable and a standalone CLI independently, prompts once when both exist, and saves the selected source globally as `vertex.ai.claudeSource`. A test covers the one-time prompt and changing the source in Settings. Claude Desktop is a separate app and does not supply this CLI interface. All 46 focused assistant, chat and provider tests pass. Built and verified the universal `vscode/vertex-abap-0.9.32.vsix`; no Eclipse build was made.

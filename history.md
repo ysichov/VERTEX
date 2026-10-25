@@ -1,5 +1,57 @@
 # Release history
 
+## 2026-10-26 — Visual borders and package totals
+
+At higher zoom, Visual keeps borders thin and shows the start of method names in small tiles. Excluding programs, classes or individual objects also updates the package statistics above the map. Table continues to show the full package statistics.
+
+## 2026-10-26 — Visual detail scale
+
+Metrics Visual zoom changes tile space and the detail visible inside tiles while keeping label text at a constant screen size. Small tiles show only their colour; names and values appear as the tiles gain room.
+
+## 2026-10-26 — Class frame in package Visual
+
+Class tiles have a clearer neutral frame around the whole class, while their names remain blue. The frame does not alter the area assigned to objects or methods.
+
+## 2026-10-26 — Metrics controls
+
+Metrics no longer shows the diagram's direction, zoom, Fit and help controls. Metrics help sits with its own Table / Visual controls, which use the shared theme styling; the Visual scale slider matches the diagram slider.
+
+## 2026-10-26 — Package total and program links
+
+Package Visual shows the sum of the selected indicator above its object treemap. When objects are filtered, the heading shows the visible sum. Chat search now makes both a program and a package with the same name openable.
+Class tiles have a stronger neutral outline and blue class names, making their boundaries easier to distinguish from programs and interfaces.
+
+## 2026-10-26 — Visual Fit and smooth scale
+
+Added Fit to the Metrics Visual controls. It scales the whole map into the pane; Fit and the ± buttons animate the scale change. Ctrl+wheel follows the UML gesture with an immediate scale change. Indicator and filter redraws fade in briefly.
+
+## 2026-10-26 — Metrics indicators
+
+Removed Units and the derived Avg CC from Metrics totals and the package Visual indicator list. Package Visual now starts with CC; object colours use relative package ranking and method colours use the CC thresholds.
+
+## 2026-10-26 — Package Visual filters
+
+Package Visual can show or hide classes, programs and interfaces, and exclude individual objects through a searchable list. The layout and relative colour ranking update for the visible objects without a new analysis.
+
+## 2026-10-26 — Visual source navigation
+
+Single-click selects a Metrics Visual tile; double-click or Enter opens its source and focuses the editor. Program events open at their measured source line, including START-OF-SELECTION.
+Source navigation now also works when Metrics is opened for a package without a bound source editor.
+
+## 2026-10-25 — Package Metrics: Visual and programs
+
+Package Metrics now includes programs as well as classes and interfaces. Program units in INCLUDEs count toward their parent program. The Table / Visual switch also works for a package: Visual sizes objects by the selected metric and subdivides each object into its methods, forms and events. Double-click a unit to open source, or click the object header to open its unit table.
+For indicators without fixed risk thresholds, unit colours are ranked across the whole package, so equal values receive the same colour in different objects.
+
+## 2026-10-25 — Metrics notice
+
+Metrics no longer shows the generic experimental comparison notice on every result. Specific analysis warnings still appear when they apply.
+
+## 2026-10-25 — Metrics indicator map
+
+Metrics for a class or program now switches between Table and Visual. The Visual map sizes each unit by the selected indicator, shows its name and value, colours CC and MI by the same risk grades as the table, and opens source on click. Other indicators use a relative colour ranking within the object. The map uses the same analysis result as the table.
+Visual can be scaled from 50% to 300% with the slider, buttons or Ctrl+wheel.
+
 ## 2026-10-25 — VS Code 0.9.32: Claude Code installation choice
 
 VERTEX uses either the Claude Code VS Code extension or a standalone CLI. When both are available, it asks once which installation to use; the choice can be changed in Settings.

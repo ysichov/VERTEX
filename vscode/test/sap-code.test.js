@@ -35,6 +35,17 @@ function fixture(kind = "PROG") {
   return { client, calls, events, repo, url, setActive: v => { active = v; working = v; },
     setWorking: v => { working = v; }, localLock: value => { localLock = value; }, absent: () => { exists = false; }, present: () => { exists = true; } };
 }
+
+test('package Metrics discovery includes programs but not standalone includes',async()=>{
+  const {repo,client}=fixture();
+  client.nodeContents=async()=>({nodes:[
+    {OBJECT_TYPE:'CLAS/OC',OBJECT_NAME:'ZCL_A'},
+    {OBJECT_TYPE:'PROG/P',OBJECT_NAME:'ZREP'},
+    {OBJECT_TYPE:'PROG/I',OBJECT_NAME:'ZINC'}]});
+  assert.deepEqual(await repo.packageObjects('ZPACK'),[
+    {object_name:'ZCL_A',object_type:'CLAS'},
+    {object_name:'ZREP',object_type:'PROG'}]);
+});
 async function change(f) {
   const read = await f.repo.execute("read_sap_object", { object_type: "PROG", object_name: "ZTEST" });
   return f.repo.execute("modify_sap_object", { object_type: "PROG", object_name: "ZTEST",

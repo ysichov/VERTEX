@@ -114,11 +114,11 @@ public class MetricsView extends PageView {
 	 * plugin did not mean to ship.
 	 */
 	private String asset(String name) {
-		if (!"mermaid".equals(name)) {
+		if (!"mermaid".equals(name) && !"three".equals(name)) {
 			throw new IllegalStateException("This window ships no asset called " + name + ".");
 		}
 		try {
-			return readResource("resources/mermaid.min.js");
+			return readResource("resources/" + ("three".equals(name) ? "three.min.js" : "mermaid.min.js"));
 		} catch (IOException e) {
 			throw new IllegalStateException(describe(e), e);
 		}

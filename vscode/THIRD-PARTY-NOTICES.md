@@ -5,6 +5,12 @@ Versions and licence identifiers below are from the installed packages. Paths ar
 to the VSIX `extension/` directory. Separate sections identify distinct installed versions.
 
 The SAP NW RFC library is not shipped. SNC needs a compatible installed library.
+
+## Three.js 0.160.1
+
+- Licence: `MIT`.
+- Used for the Metrics indicator map.
+- Licence text: `resources/three-LICENSE.txt`.
 `@mcp-abap-adt/sap-rfc-lite` and its exclusive dependencies (`node-addon-api` and
 `node-gyp-build`) ship with Windows x64 and macOS Apple silicon bindings in the universal package.
 LGPL-3.0-only packages ship as separate, replaceable modules in `node_modules`;

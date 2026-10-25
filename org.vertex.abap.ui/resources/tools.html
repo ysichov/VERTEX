@@ -446,13 +446,16 @@ function connect(child,service,generation){
   child.sdeAnthropicApi=()=>typeof sdeAnthropicApi==="function"&&sdeAnthropicApi();
   child.sdeSelectObject=value=>navigate(value);
   child.sdeBrowse=url=>sdeBrowse(url);
-  if((initial?.boundObject||localFolderState)&&typeof sdeOpenToolSource==="function")child.sdeOpenToolSource=value=>sdeOpenToolSource(JSON.stringify(value));
+  // Metrics can show methods of many package objects without a bound editor.
+  // Their source links still need the host bridge, using the selected object's name and type.
+  const metricSourceLink=service==="metrics";
+  if((initial?.boundObject||localFolderState||metricSourceLink)&&typeof sdeOpenToolSource==="function")child.sdeOpenToolSource=value=>sdeOpenToolSource(JSON.stringify(value));
   // A UML method opens its source in the editor in every window: unlike a Calls routine, it has nothing to unfold in place.
   if(typeof sdeOpenToolSource==="function")child.sdeOpenUmlSource=value=>sdeOpenToolSource(JSON.stringify(value));
   // Eclipse's browser puts its host functions into every frame, where calling one fails ("Element not found",
   // 0x80070490): only this window answers them. A frame keeps only what this page hands it - sdeOpenToolSource
-  // only in a window bound to an editor, as in VS Code - and the chat's Copy and found objects reach this window.
-  if(!(initial?.boundObject||localFolderState))child.sdeOpenToolSource=undefined;
+  // in a window bound to an editor or showing Metrics - and the chat's Copy and found objects reach this window.
+  if(!(initial?.boundObject||localFolderState||metricSourceLink))child.sdeOpenToolSource=undefined;
   // A result page's ASK AI (a transport review) reaches the chat frame; the chat frame keeps its own sdeReviewAsk.
   // A transport review's Open: the block's code in the editor, in any window - not only one bound to an editor.
   if(service!=="chat"&&typeof sdeOpenToolSource==="function")child.sdeOpenReviewSource=value=>sdeOpenToolSource(JSON.stringify(value));

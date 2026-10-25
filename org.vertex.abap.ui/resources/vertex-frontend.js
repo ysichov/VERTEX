@@ -332,7 +332,6 @@ async function request(api, resource, progress, cancelled = () => false) {
       // A unit a program keeps in an include opens there, at its line: its name alone would be looked for in the program.
       const rows = units.map(p => p.source.programInclude ? { ...metric(p), writtenIn: { name: p.source.programInclude, type: api.local ? 'PROG' : 'INCL', line: p.line } } : metric(p)), totals = { units: rows.length };
       for (const key of ['cyclomatic','loc','lloc','cloc','volume','effort','time_t','bugs']) totals[key] = rows.reduce((sum, r) => sum + r[key], 0);
-      totals.avg_cyclomatic = rows.length ? totals.cyclomatic / rows.length : 0;
       const definitions = declarations(sources);
       for (const row of rows) {
         const [owner, method] = row.unit_name.split('=>');
@@ -341,12 +340,12 @@ async function request(api, resource, progress, cancelled = () => false) {
         else if (method?.includes('~')) row.visibility = definitions.edges.find(e => e.kind === 'implementation' && e.source === owner && e.target === method.split('~')[0])?.visibility || 'public';
       }
       const objects = type === 'DEVC' ? [...new Set(sources.map(s => s.objectName))].map(object => {
-        const unit_rows = rows.filter(r => r.unit_name.startsWith(object + '=>') || r.include === object);
+        const unit_rows = rows.filter((r, i) => units[i].source.objectName === object);
         const cyclomatic = unit_rows.reduce((sum,r) => sum + r.cyclomatic, 0);
         return { object, object_type: sources.find(s => s.objectName === object).objectType, unit_rows, units: unit_rows.length,
-          cyclomatic, avg_cyclomatic: unit_rows.length ? cyclomatic / unit_rows.length : 0, loc: unit_rows.reduce((sum,r) => sum + r.loc,0) };
+          cyclomatic, loc: unit_rows.reduce((sum,r) => sum + r.loc,0) };
       }) : undefined;
-      return { ...base, units: rows, totals, ...(objects ? { objects } : {}), warnings: [...warnings, 'Experimental local metrics: lexical Halstead classification and unit boundaries may differ from ACE.'] };
+      return { ...base, units: rows, totals, ...(objects ? { objects } : {}) };
     }
     const mode = url.searchParams.get('mode') || 'scheme';
     if (mode === 'statements') return { ...base, includes: sources.map(s => ({ include: s.objectType === 'CLAS' && s.name === s.objectName ? '$ADT_MAIN' : s.name, statements: s.aceStatements.map(st => {

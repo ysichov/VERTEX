@@ -352,6 +352,17 @@ test("multiple search results are returned as openable choices", async () => {
   assert.deepEqual(choices.map(choice => choice.object_name), ["ZTEST_ONE", "ZTEST_TWO"]);
 });
 
+test("same-name program and package remain separate direct-search choices", async () => {
+  const direct = require("../direct-search");
+  let choices = [];
+  const answer = await direct.answer("Z_AVE", { search: async () => ({ objects: [
+    { object_type: "PROG", object_name: "Z_AVE" }, { object_type: "DEVC", object_name: "Z_AVE" }
+  ] }), open: async () => { throw new Error("ambiguous name must not open automatically"); }, choices: found => { choices = found; } });
+  assert.match(answer, /PROG \*\*Z_AVE\*\*/);
+  assert.match(answer, /DEVC \*\*Z_AVE\*\*/);
+  assert.deepEqual(choices.map(choice => choice.object_type), ["PROG", "DEVC"]);
+});
+
 test("the chat is given VERTEX Smart Debugger's record and analysis, each said to be what it is, and nothing when the window has neither", () => {
   assert.equal(chat.debugFlowSection(null), "");
   assert.equal(chat.debugFlowSection({ recorded: null, analysis: null }), "", "a window with neither adds nothing to the question");

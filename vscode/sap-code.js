@@ -515,9 +515,9 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   };
   async function packageObjects(packageName) {
     const data = await client.nodeContents('DEVC/K', name(packageName));
-    const objects = data.nodes.filter(n => /^(CLAS|INTF)\//.test(n.OBJECT_TYPE))
+    const objects = data.nodes.filter(n => /^(CLAS|INTF)\//.test(n.OBJECT_TYPE) || n.OBJECT_TYPE === 'PROG/P')
       .map(n => ({ object_name: n.OBJECT_NAME, object_type: n.OBJECT_TYPE.split('/')[0] }));
-    if (objects.length > 100) throw new Error('Package contains more than 100 classes/interfaces; select a smaller package.');
+    if (objects.length > 100) throw new Error('Package contains more than 100 classes, interfaces or programs; select a smaller package.');
     return objects;
   }
   // Object Navigator: a package's tree from ADT's node structure, a class's or interface's from its object structure.
