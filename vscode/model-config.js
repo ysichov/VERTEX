@@ -96,7 +96,7 @@ async function chooseLogFolder(vscode) {
  * is where its assistant lives, for checking a Claude version; secrets keeps
  * the Anthropic API key.
  */
-function open(vscode, full, extensionPath, forget, secrets) {
+function open(vscode, full, extensionPath, forget, secrets, executable) {
   const panel = vscode.window.createWebviewPanel("vertex.modelConfig", "VERTEX: LLM Providers",
     vscode.ViewColumn.Active, { enableScripts: true, localResourceRoots: [] });
   const nonce = require("crypto").randomBytes(24).toString("hex");
@@ -108,10 +108,21 @@ function open(vscode, full, extensionPath, forget, secrets) {
   async function load(id) {
     const profiles = (id === "anthropic-api" || compatible.PROVIDERS[id]) && secrets
       ? await keyProfiles.list(secrets, id) : null;
+    let source = null;
+    if (id === "claude" || id === "codex") {
+      const found = assistant.sources(id, extensionPath(id));
+      const choice = vscode.workspace.getConfiguration("vertex.ai").get(id + "Source", "ask");
+      source = { extension: found.extension, cli: found.cli,
+        selected: found.extension && found.cli ? choice : found.extension ? "extension" : found.cli ? "cli" : "" };
+      if (found.extension && found.cli && choice === "ask") {
+        post({ provider: id, source, profiles });
+        return;
+      }
+    }
     try {
-      post({ provider: id, rows: rows(await full(id), read(vscode, id), id), profiles });
+      post({ provider: id, rows: rows(await full(id), read(vscode, id), id), profiles, source });
     } catch (e) {
-      post({ provider: id, error: e.message, profiles });
+      post({ provider: id, error: e.message, profiles, source });
     }
   }
 
@@ -129,6 +140,20 @@ function open(vscode, full, extensionPath, forget, secrets) {
     const id = String(message.provider || "");
     if (!PROVIDERS.some(p => p.id === id)) { return; }
     if (message.action === "load") { await load(id); return; }
+    if (message.action === "source") {
+      if (id !== "claude" && id !== "codex") { return; }
+      const choice = String(message.source || "");
+      const found = assistant.sources(id, extensionPath(id));
+      if ((choice !== "extension" || !found.extension) && (choice !== "cli" || !found.cli)) {
+        post({ provider: id, saveError: "That installation is no longer available." }); return;
+      }
+      try {
+        await vscode.workspace.getConfiguration("vertex.ai").update(id + "Source", choice, vscode.ConfigurationTarget.Global);
+        forget(id);
+        await load(id);
+      } catch (e) { post({ provider: id, saveError: e.message }); }
+      return;
+    }
     if (message.action === "key") {
       if ((id !== "anthropic-api" && !compatible.PROVIDERS[id]) || !secrets) { return; }
       const provider = PROVIDERS.find(item => item.id === id);
@@ -158,6 +183,7 @@ function open(vscode, full, extensionPath, forget, secrets) {
       if (id !== "claude") { return; }
       try {
         const probed = await assistant.probe({ assistant: "claude", extensionPath: extensionPath("claude"),
+                                               executable: executable ? await executable("claude") : undefined,
                                                model: message.model });
         post({ provider: id, probed: probed });
       } catch (e) {
@@ -219,7 +245,7 @@ function html(nonce, selected, providers) {
 <style>
 body { font: var(--vscode-font-size) var(--vscode-font-family); color: var(--vscode-foreground);
        background: var(--vscode-editor-background); padding: 10px 14px; }
-input, button { font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+input, button, select { font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background);
        border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); padding: 3px 6px; }
 input[type=checkbox], input[type=radio] { padding: 0; }
 button { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); cursor: pointer; }
@@ -249,7 +275,8 @@ const INIT = ${init};
 let use = INIT.use;
 // Per provider: on, and its rows once read (null while loading or when it could not be read).
 const state = {};
-INIT.providers.forEach(p => { state[p.id] = { label: p.label, on: p.on, rows: null, profiles: null, expanded: p.id === INIT.use }; });
+INIT.providers.forEach(p => { state[p.id] = { label: p.label, on: p.on, rows: null, profiles: null,
+  source: null, expanded: p.id === INIT.use }; });
 const $ = id => document.getElementById(id);
 function say(text, kind) { $("said").textContent = text || ""; $("said").className = kind || "note"; }
 function el(tag, props) { return Object.assign(document.createElement(tag), props || {}); }
@@ -285,6 +312,36 @@ function build() {
 }
 function fill(id) {
   const s = state[id], body = $("body-" + id); body.innerHTML = "";
+  if (s.source && (s.source.extension || s.source.cli)) {
+    const source = s.source;
+    const both = source.extension && source.cli;
+    const row = el("div", { className: "row" });
+    row.appendChild(el("span", { textContent: "Run via" }));
+    if (both) {
+      const picker = el("select", { title: "Installation used by VERTEX" });
+      picker.appendChild(el("option", { value: "ask", textContent: "Choose installation..." }));
+      picker.appendChild(el("option", { value: "extension", textContent: "VS Code extension" }));
+      picker.appendChild(el("option", { value: "cli", textContent: "CLI" }));
+      picker.value = source.selected || "ask";
+      picker.addEventListener("change", () => {
+        if (picker.value === "ask") { return; }
+        picker.disabled = true;
+        say("Saving " + id + " installation...", "note");
+        api.postMessage({ action: "source", provider: id, source: picker.value });
+      });
+      row.appendChild(picker);
+    } else {
+      row.appendChild(el("span", { textContent: source.cli ? "CLI" : "VS Code extension" }));
+    }
+    const activePath = source.selected === "cli" ? source.cli
+      : source.selected === "extension" ? source.extension : "";
+    if (activePath) { row.appendChild(el("span", { className: "note", textContent: activePath })); }
+    body.appendChild(row);
+    if (both && source.selected === "ask") {
+      body.appendChild(el("div", { className: "note", textContent: "Choose an installation to load its models." }));
+      return;
+    }
+  }
   if (id === "anthropic-api" || id.endsWith("-api")) {
     const row = el("div", { className: "row" });
     const profiles = s.profiles || { names: [], active: "" };
@@ -374,8 +431,10 @@ window.addEventListener("message", event => {
   if (!m || !state[m.provider]) { return; }
   const s = state[m.provider];
   if (m.profiles) { s.profiles = m.profiles; }
+  if (m.source) { s.source = m.source; }
   if (m.error) { s.error = m.error; fill(m.provider); return; }
   if (m.rows) { s.error = null; s.rows = m.rows; fill(m.provider); return; }
+  if (m.source) { s.error = null; s.rows = null; fill(m.provider); return; }
   if (m.probed) {
     s.rows.push({ id: m.probed.id, label: m.probed.label, version: true, on: true }); fill(m.provider);
     say(m.probed.label + " answered - Save to keep it.", "ok"); return;

@@ -88,7 +88,7 @@
 
 <p>Opening a VERTEX window in Eclipse reveals its containing layout in the current perspective, including areas hidden in a saved layout.</p>
 
-<p>In VS Code, importing SAP systems on macOS reads SAP GUI for Java connections from <code>~/Library/Preferences/SAP/SAPGUILandscape.xml</code> (also <code>SAPUILandscape.xml</code> and <code>SAPUILandscapeGlobal.xml</code>). Choose <b>No Eclipse workspace</b> to import from SAP GUI alone; client and user are requested. If a connection has no system ID field, its name must be an exact three-character SAP system ID.</p>
+<p>In VS Code, importing SAP systems offers Eclipse workspaces that still contain ABAP projects or logon settings; a remembered path to a removed workspace is not offered. On macOS it also reads SAP GUI for Java connections from <code>~/Library/Preferences/SAP/SAPGUILandscape.xml</code> (also <code>SAPUILandscape.xml</code> and <code>SAPUILandscapeGlobal.xml</code>). Choose <b>No Eclipse workspace</b> to import from SAP GUI alone; client and user are requested. If a connection has no system ID field, its name must be an exact three-character SAP system ID.</p>
 
 <p class="build">Latest build <b>0.9.31.20261024182823</b>.</p>
 
@@ -276,12 +276,19 @@ In VS Code, the <b>SNC</b> checkbox beside the SAP system selector switches betw
   With vertex.ai.logPath set, the VS Code assistant writes an Anthropic-compatible JSONL log for any provider. Direct API and Copilot model calls are recorded individually; CLI subscriptions are recorded per VERTEX invocation. LLM Providers has a folder picker and a gear for log settings.
   The <b>📜 AI</b> button on the VERTEX panel opens a session report with filters for date, provider, model and prompt text, plus token totals and saved answer or tool details. Sessions and content sections start collapsed; user questions, plain model answers and technical details use three theme-aware accent colours. Tools, instructions and context open independently. Each tool call starts collapsed under its name; expand it to inspect its arguments, matching result and links. Program bodies are omitted from assistant logs and replaced by links to current objects. Assistant execution calls link to transpiler or SAP debug recordings. UML and metrics snapshots render from the logged JSON context, without rereading SAP. Select conversations and use <b>Clear selected conversations</b> to remove their JSONL logs while keeping execution recordings. The <b>📜 SAP</b> button opens the separate execution list with replay and deletion for SAP and transpiler recordings.
   VERTEX registers ABAP itself; opening SAP source does not require another ABAP extension.
-  Claude Code detection also accepts its native CLI in PATH or ~/.local/bin when
-  the Claude Code VS Code extension is absent; restart VS Code after installation.
+  Claude Code works through its VS Code extension or a native CLI in PATH or
+  ~/.local/bin. When both are found, VERTEX asks which to use and saves the
+  choice in vertex.ai.claudeSource; change it in Settings to switch.
+  LLM Providers shows the active installation and offers a selector when both
+  are available.
+  Restart VS Code after installing the CLI.
   LLM Providers checks Claude availability before offering models and reports a
   missing executable when settings are opened.
-  Codex also detects a standalone native CLI or its global npm native executable
-  through PATH without the openai.chatgpt extension. Restart VS Code after installation.
+  Codex also detects a standalone native CLI, the executable in ChatGPT.app on
+  macOS or its global npm native executable through PATH. When the extension
+  and CLI are both present, VERTEX asks which to use and saves the choice in
+  vertex.ai.codexSource. Restart VS Code after installing a CLI.
+  The choice is also shown and changeable in LLM Providers.
   Windows detection also checks %APPDATA%/npm.
   MCP setup offers Codex or Claude Code and copies both review and debugger
   registrations together. Every Welcome step includes an Info button explaining

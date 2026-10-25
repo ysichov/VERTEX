@@ -517,7 +517,9 @@ async function assistantModels(context, args) {
     // added there too, so the page offers no field of its own for them.
     return { assistant: id, models: require("./model-config").apply(vscode, id, id === "anthropic-api"
       ? await anthropic.models((await require("./key-profiles").getActiveKey(context.secrets, id)).key)
-      : await assistant.models({ assistant: id, extensionPath: assistantExtension(id) })) };
+      : await assistant.models({ assistant: id, extensionPath: assistantExtension(id),
+        executable: id === "claude" || id === "codex"
+          ? await assistant.resolveAssistant(vscode, id, assistantExtension(id)) : undefined })) };
   } catch (e) {
     return { assistant: id, error: e.message };
   }
@@ -549,6 +551,8 @@ async function assistantAsk(context, service, args) {
       model: String(args[1] || ""),
       personalInstructions: vscode.workspace.getConfiguration("vertex.ai").get("personalInstructions", false),
       extensionPath: assistantExtension(id),
+      executable: id === "claude" || id === "codex"
+        ? await assistant.resolveAssistant(vscode, id, assistantExtension(id)) : undefined,
       url: running.url.replace(/\/mcp$/, ASSISTED[service].route),
       token: tools.token,
       instructions: brain.INSTRUCTIONS,

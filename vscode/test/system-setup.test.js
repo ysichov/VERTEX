@@ -164,19 +164,28 @@ test("macOS import without an Eclipse workspace reads SAP GUI for Java", async (
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "SAPGUILandscape.xml"),
     '<Landscape><Services><Service type="SAPGUI" name="E19" server="dev.example.com:3200"/></Services></Landscape>');
+  const workspace = path.join(home, "eclipse-workspace");
+  const prefs = path.join(workspace, ".metadata", ".plugins", "org.eclipse.core.runtime", ".settings");
+  fs.mkdirSync(prefs, { recursive: true });
+  fs.writeFileSync(path.join(prefs, "com.sap.adt.destinations.ui.prefs"),
+    "E19.com.sap.adt.destinations.ui.internal.logon.LogonDataComposite.CLIENT=100\n");
   const loaded = { exports: {} }, messages = [];
+  let choices;
   require("node:vm").runInNewContext(fs.readFileSync(path.join(__dirname, "../system-setup.js"), "utf8"),
     { module: loaded, require, process: { platform: "darwin", env: { HOME: home } }, URL });
   const vscode = {
     workspace: { getConfiguration: () => ({ get: () => [{ name: "E19" }] }) },
     window: {
-      showQuickPick: async items => items.find(item => item.value === "none"),
+      showQuickPick: async items => { choices = items; return items.find(item => item.value === "none"); },
       showInformationMessage: message => messages.push(message),
       withProgress: () => { throw new Error("Known systems must not be probed"); },
     },
   };
   try {
-    await loaded.exports.importSystems(vscode, { globalState: { get: () => "" } });
+    await loaded.exports.importSystems(vscode, { globalState: { get: () => path.join(home, "removed-eclipse-workspace") } });
+    assert.ok(choices.every(item => item.value !== "kept"));
+    assert.ok(choices.some(item => item.workspace === workspace));
+    assert.ok(choices.every(item => !/used last time/i.test(item.description || "")));
     assert.equal(messages.length, 1);
     assert.match(messages[0], /every system found.*already in vertex.systems/);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }

@@ -3,6 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const api = require("../openai-compatible");
 const modelConfig = require("../model-config");
+const assistant = require("../assistant");
 
 test("API provider catalog matches the ABAP-AI-Code key providers", () => {
   assert.deepEqual(Object.keys(api.PROVIDERS), ["openai-api", "mistral-api", "gemini-api", "groq-api",
@@ -39,6 +40,31 @@ test("LLM Providers gear opens the logging settings", async () => {
   modelConfig.open(vscode, async () => [], () => "", () => {}, null);
   await receive({ action: "log-settings" });
   assert.deepEqual(command, ["workbench.action.openSettings", "vertex.ai.log"]);
+});
+
+test("LLM Providers selects the Codex installation before loading its models", async t => {
+  t.mock.method(assistant, "sources", id => id === "codex"
+    ? { extension: "/extension/codex", cli: "/app/codex" } : { extension: "", cli: "" });
+  let receive, calls = 0, forgotten = "";
+  const posted = [], values = { codexSource: "ask", provider: "codex-subscription" };
+  const panel = { webview: { onDidReceiveMessage: callback => { receive = callback; },
+    postMessage: message => posted.push(message) } };
+  const vscode = { ViewColumn: { Active: 1 }, ConfigurationTarget: { Global: 1 },
+    window: { createWebviewPanel: () => panel },
+    workspace: { getConfiguration: () => ({ get: (key, fallback) => key in values ? values[key] : fallback,
+      update: async (key, value) => { values[key] = value; } }) } };
+  modelConfig.open(vscode, async () => { calls++; return [{ id: "codex-model", label: "Codex" }]; },
+    () => "/extension", id => { forgotten = id; }, null);
+  assert.match(panel.webview.html, /Run via/);
+  assert.match(panel.webview.html, /Choose installation/);
+  await receive({ action: "load", provider: "codex" });
+  assert.equal(calls, 0);
+  assert.equal(posted.at(-1).source.selected, "ask");
+  await receive({ action: "source", provider: "codex", source: "cli" });
+  assert.equal(values.codexSource, "cli");
+  assert.equal(forgotten, "codex");
+  assert.equal(calls, 1);
+  assert.equal(posted.at(-1).source.selected, "cli");
 });
 
 test("log folder button picks a directory and saves its path", async () => {

@@ -7,6 +7,8 @@ const copilot = require("../copilot");
 const compatible = require("../openai-compatible");
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 
+test.beforeEach(t => { t.mock.method(assistant, "resolveAssistant", async (vscode, id) => "/ext/" + id); });
+
 function fakeVscode(settings) {
   return {
     workspace: { getConfiguration: () => ({ get: (key, fallback) => (key in settings ? settings[key] : fallback) }) },

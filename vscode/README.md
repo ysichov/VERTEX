@@ -186,14 +186,22 @@ Chat's MCP setup.
 Every Get Started step has an **ⓘ Info** button opening its explanation: SAP
 system import, connection testing, assistant choice and MCP capabilities.
 
-Claude Code uses the executable bundled with its installed VS Code extension,
-or, when that extension is absent, the native CLI from `PATH` or `~/.local/bin`.
+Claude Code uses the executable bundled with its installed VS Code extension
+or the native CLI from `PATH` or `~/.local/bin`. When both are found, VERTEX
+asks which to use once. Change `vertex.ai.claudeSource` in Settings to switch
+between them or set it to `ask` to choose again.
+**LLM Providers** shows the installation in use and offers a selector when
+both are available.
 Restart VS Code after installing the CLI so it inherits the updated environment.
 LLM Providers checks Claude availability before showing its model list, so a
 missing executable is reported on opening settings, as it is for Codex.
-Codex also accepts a standalone native CLI or the native executable in its global
-npm package through PATH when `openai.chatgpt` is absent. Restart VS Code after
-installing the CLI; npm command wrappers are resolved to the native executable.
+Codex also accepts a standalone native CLI, the executable inside ChatGPT.app
+on macOS, or the native executable in its global npm package through PATH.
+When the CLI and `openai.chatgpt` extension are both present, VERTEX asks
+which to use once. Change `vertex.ai.codexSource` in Settings to switch or
+set it to `ask` to choose again. Restart VS Code after installing a CLI;
+the selected installation is also shown and changeable in **LLM Providers**;
+npm command wrappers are resolved to the native executable.
 Windows detection also checks `%APPDATA%/npm` independently of PATH.
 
 ## The ABAP backend
@@ -294,7 +302,7 @@ Preferences: Open User Settings (JSON)**, and the entries below go into it.
 Workspace settings (`.vscode/settings.json`) work too and override the user's.
 
 A first install opens **Get started with VERTEX** (VS Code's Get Started page; later Help > Get Started): import the systems, test them, choose the assistant, add the VERTEX MCP server - each step with its button. The quickest way is **VERTEX: Import SAP Systems** (also a button in **SAP Systems** and a link under `vertex.systems` in Settings); it offers only systems not yet configured. It takes each
-system's host and instance from SAP Logon or an Eclipse ADT project (so SAP Logon is optional on macOS), and the client and user from the ADT workspace. Recent workspaces from Eclipse installations, including macOS `.app` bundles, are offered; another folder can be chosen. On macOS, SAP GUI for Java connections are read automatically from `~/Library/Preferences/SAP/SAPGUILandscape.xml` (also `SAPUILandscape.xml` and `SAPUILandscapeGlobal.xml`). Choose **No Eclipse workspace** to import from SAP GUI alone; client and user are then requested. A connection without `systemid` is accepted when its name is an exact three-character SAP system ID, such as `E19`. It then
+system's host and instance from SAP Logon or an Eclipse ADT project (so SAP Logon is optional on macOS), and the client and user from the ADT workspace. Recent workspaces from Eclipse installations, including macOS `.app` bundles, are offered when they still contain ADT projects or logon settings; an old remembered workspace is not offered separately. Another folder can be chosen. On macOS, SAP GUI for Java connections are read automatically from `~/Library/Preferences/SAP/SAPGUILandscape.xml` (also `SAPUILandscape.xml` and `SAPUILandscapeGlobal.xml`). Choose **No Eclipse workspace** to import from SAP GUI alone; client and user are then requested. A connection without `systemid` is accepted when its name is an exact three-character SAP system ID, such as `E19`. It then
 looks for ADT on the usual ports - 443NN and 80NN for the instance, then 44300, 8000, 50001, 50000, 443, 80, 8443,
 8080 - offering only addresses that answer. **VERTEX: Test SAP Systems** then logs on to each configured system and
 says what is wrong, if anything; for basic, the password it asks for is kept in the OS credential store, never in settings. **VERTEX: Remove SAP Systems** lets you select entries to delete from `vertex.systems`; it switches to a remaining system if the active one was removed. The original SAP Logon or ADT entries stay available for a later import. The import also checks where the debugger can open WebGUI (`/sap/bc/gui/sap/its/webgui`): on the system's `url` it needs nothing; served on another address that answered - say `url` on HTTP 8000, WebGUI on HTTPS 44300 - or behind a redirect to a host this computer resolves, it writes that as `webgui`; found nowhere, it says so, and `webgui` is set by hand.

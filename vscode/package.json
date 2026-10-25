@@ -435,6 +435,18 @@
           "default": "",
           "markdownDescription": "Model passed to the selected provider. Empty uses the first enabled model."
         },
+        "vertex.ai.claudeSource": {
+          "type": "string",
+          "enum": ["ask", "extension", "cli"],
+          "default": "ask",
+          "markdownDescription": "Claude Code installation used by VERTEX. `ask` prompts once when both the VS Code extension and standalone CLI are available. Change this setting to switch installations."
+        },
+        "vertex.ai.codexSource": {
+          "type": "string",
+          "enum": ["ask", "extension", "cli"],
+          "default": "ask",
+          "markdownDescription": "Codex installation used by VERTEX. `ask` prompts once when both the VS Code extension and a CLI are available, including the CLI inside ChatGPT.app on macOS. Change this setting to switch installations."
+        },
         "vertex.ai.modelConfig": {
           "type": "object",
           "default": {},

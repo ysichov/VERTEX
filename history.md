@@ -1,5 +1,16 @@
 # Release history
 
+## 2026-10-25 — VS Code 0.9.32: Claude Code installation choice
+
+VERTEX uses either the Claude Code VS Code extension or a standalone CLI. When both are available, it asks once which installation to use; the choice can be changed in Settings.
+
+Codex can also use the CLI included in ChatGPT.app on macOS. When Codex's VS Code extension and a CLI are both found, VERTEX asks which installation to use and remembers the choice.
+The LLM Providers panel shows the selected installation for Claude Code and Codex and lets users switch it when both are available.
+
+## 2026-10-25 — VS Code 0.9.32: SAP system import workspace choice
+
+The import picker no longer offers a separately remembered Eclipse workspace or labels a discovered workspace “used last time”. It still offers discovered workspaces with ADT projects or logon settings, manual folder selection, and SAP GUI-only import.
+
 ## 2026-10-24 — VS Code 0.9.32: macOS SAP GUI import without Eclipse
 
 VS Code imports SAP GUI for Java landscape files from the macOS preferences folder when no Eclipse workspace is selected. Connections such as E19 that store their SAP system ID as the connection name are accepted without a separate systemid field. Entries with no identifiable system ID are reported as skipped.

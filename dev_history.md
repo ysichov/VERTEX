@@ -1,5 +1,17 @@
 # Development history
 
+## 2026-10-25 — VS Code 0.9.32: Claude Code installation choice
+
+Added a shared Claude executable resolver for the VERTEX chat, model list, model probe and assisted tools. It detects the extension executable and a standalone CLI independently, prompts once when both exist, and saves the selected source globally as `vertex.ai.claudeSource`. A test covers the one-time prompt and changing the source in Settings. Claude Desktop is a separate app and does not supply this CLI interface. All 46 focused assistant, chat and provider tests pass. Built and verified the universal `vscode/vertex-abap-0.9.32.vsix`; no Eclipse build was made.
+
+The same resolver now handles Codex. On this Mac it discovers the executable inside ChatGPT.app as a CLI candidate while the `openai.chatgpt` extension is also installed; `vertex.ai.codexSource` stores the one-time choice. A test covers selection and switching. The VSIX was rebuilt at 0.9.32.
+
+LLM Providers now shows the resolved Claude Code or Codex installation and provides a selector when both are present. With no choice yet it waits for selection before loading that provider's models; changing the choice writes the setting, clears the model cache and reloads the list. Also removed the stale “used last time” label and the unused saved Eclipse workspace path from SAP system import. Added focused tests for both UI routes.
+
+## 2026-10-25 — VS Code 0.9.32: SAP system import workspace choice
+
+On this Mac, the current source finds E19 both in SAP GUI for Java's landscape and in `~/eclipse-workspace`. The stale `globalState` workspace fallback could still appear as a separate “Use ...” choice after Eclipse was reinstalled. Removed that choice; the remembered path is marked “used last time” only if current discovery validates it. The import test supplies a removed remembered path and checks that it is not offered while SAP GUI-only import still succeeds. The 12 system-setup tests pass. Included in the updated 0.9.32 VSIX; no Eclipse build was made.
+
 ## 2026-10-24 — VS Code 0.9.32: SAP GUI for Java import without an Eclipse workspace
 
 Reproduced the reported error in the installed VS Code extension by choosing No Eclipse workspace. The earlier check selected the automatically detected workspace and did not exercise this route. landscapeFiles returned nothing outside Windows, and the local macOS SAPGUILandscape.xml held E19 as the connection name without systemid, so the parser dropped it too. Add the macOS SAP preferences paths and accept an exact three-character SID as the name when systemid is absent; report entries with no usable SID. Preserve Windows paths and explicit IDs. The 12 system-setup tests pass, including an import with a synthetic Mac home, no Eclipse workspace and no network probing of an already configured system. At the user's request, built the universal vscode/vertex-abap-0.9.32.vsix with the standard packaging wrapper and installed it locally. All 21 system-setup, packaging and system-table tests pass; archive integrity, packaged version, Scheme navigation and both RFC platform bindings pass the wrapper checks. The packaged system-setup module contains the macOS paths and SID fallback. After a full VS Code window reload, the same Import → No Eclipse workspace UI route reads E19 from SAP GUI and reports that all found systems are already configured, with no error. Restarting only the extension host had kept the previously selected extension version. Eclipse was not rebuilt for this change.

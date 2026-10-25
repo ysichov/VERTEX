@@ -254,12 +254,11 @@ async function importSystems(vscode, context) {
   const { systems: sapLogon, skipped } = landscape(landscapeFiles());
   // Client and user from an Eclipse workspace: the ones Eclipse lists as recent are found and offered with the systems
   // they know; another folder can still be chosen.
-  let workspace = context.globalState.get("vertex.eclipseWorkspace") || "";
+  let workspace = "";
   const found = eclipseWorkspaces();
   const said = f => [...new Set([...Object.keys(f.logons), ...f.projects.map(p => p.id)])].join(", ");
   const choice = await vscode.window.showQuickPick([
-    ...found.map(f => ({ label: f.workspace, description: f.workspace === workspace ? "used last time" : "", detail: said(f), value: "found", workspace: f.workspace })),
-    ...(workspace && !found.some(f => f.workspace === workspace) ? [{ label: "Use " + workspace, value: "kept" }] : []),
+    ...found.map(f => ({ label: f.workspace, detail: said(f), value: "found", workspace: f.workspace })),
     { label: "Choose an Eclipse workspace folder…", description: "client and user of each system, from ADT", value: "choose" },
     { label: "No Eclipse workspace", description: "client and user are asked", value: "none" }],
     { title: "VERTEX: client and user from which Eclipse ADT workspace?", ignoreFocusOut: true });
@@ -276,7 +275,6 @@ async function importSystems(vscode, context) {
     logons = eclipseLogons(workspace) || {};
     projects = eclipseProjects(workspace);
     if (!Object.keys(logons).length && !projects.length) { throw new Error(workspace + " has no ADT projects or logon settings."); }
-    await context.globalState.update("vertex.eclipseWorkspace", workspace);
   }
 
   const logon = [...sapLogon, ...projects.filter(p => !sapLogon.some(s =>

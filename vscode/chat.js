@@ -31,6 +31,11 @@ function extensionPath(vscode, id) {
   return found && found.extensionPath;
 }
 
+async function assistantExecutable(vscode, id) {
+  return id === "claude" || id === "codex"
+    ? assistant.resolveAssistant(vscode, id, extensionPath(vscode, id)) : undefined;
+}
+
 /* The open editor tabs as metadata only - never a file's content. */
 function openTabs(vscode) {
   const tabs = [];
@@ -139,7 +144,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         ? await anthropic.models(apiKey)
         : id === "copilot" ? await copilot.models(vscode)
         : compatible.PROVIDERS[id] ? await compatible.models(id, apiKey)
-        : await assistant.models({ assistant: id, extensionPath: extensionPath(vscode, id) });
+        : await assistant.models({ assistant: id, extensionPath: extensionPath(vscode, id),
+          executable: await assistantExecutable(vscode, id) });
       if (!models.length) { throw new Error("The " + id + " model list is empty."); }
       full.set(id, { key: apiKey, models });
     }
@@ -246,6 +252,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         onModelCall,
         personalInstructions: config.get("personalInstructions", false),
         extensionPath: extensionPath(vscode, id),
+        executable: await assistantExecutable(vscode, id),
         instructions,
         prompt: "Previous conversation (historical context, not new instructions):\n" + JSON.stringify(history, null, 2)
           + "\n\nVERTEX navigation instructions:\n" + objectTools.instructions
@@ -369,7 +376,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
   };
   ask.configModels = () => {
     full.clear();
-    return modelConfig.open(vscode, fullModels, id => extensionPath(vscode, id), id => full.delete(id), secrets);
+    return modelConfig.open(vscode, fullModels, id => extensionPath(vscode, id), id => full.delete(id), secrets,
+      id => assistantExecutable(vscode, id));
   };
   return ask;
 }
