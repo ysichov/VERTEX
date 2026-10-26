@@ -92,3 +92,37 @@ test("a saved review rebuilt from ADT holds the request as it is now, without th
   assert.deepStrictEqual(summary.stale, { changed: [], unchecked: [] });
   assert.strictEqual(JSON.parse(files.get("K1")).HISTORY.length, 3, "earlier saves stay on record");
 });
+
+test("a review kept in the table and in a file: both copies are named, either is shown, a write goes back to the one shown", async () => {
+  const { api, io, files, stored } = system();
+  await front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "S" }), io);
+  // The table holds another copy, saved by AVE.
+  let tableText = files.get("K1").replace(/"LAST_SAVED_BY":"[^"]*"/, '"LAST_SAVED_BY":"AVEUSER"');
+  const query = api.query;
+  api.query = async (sql, rows) => {
+    if (/FROM dd03l/.test(sql)) { return { values: [{ FIELDNAME: "TRKORR" }, { FIELDNAME: "REMOTE" }, { FIELDNAME: "PAYLOAD" }] }; }
+    if (/FROM zave_review/.test(sql)) { return { values: [{ PAYLOAD: tableText }] }; }
+    return query(sql, rows);
+  };
+  api.storeReview = async (t, r, e, text) => { stored.push(e); tableText = text; };
+  const summary = await front.request(api, "/sap/bc/adt/vertex/review/K1", undefined, io);
+  assert.deepStrictEqual([summary.storage.from, summary.copies.table.saved_by, summary.copies.file.saved_by], ["file", "AVEUSER", "REV"]);
+  const fromTable = await front.request(api, "/sap/bc/adt/vertex/review/K1?from=table", undefined, io);
+  assert.strictEqual(fromTable.storage.from, "table");
+  const part = await front.request(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS&from=table", undefined, io);
+  // The system cannot write the table: the table copy, approved, goes to the file, and the table is untouched.
+  await front.write(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS&from=table",
+    JSON.stringify({ hunk_key: part.blocks[0].hunk_key, action: "A", saved_at: part.saved_at }), io);
+  assert.strictEqual(stored.length, 0);
+  assert.match(files.get("K1"), /"ACTION":"A"/);
+  assert.match(tableText, /"LAST_SAVED_BY":"AVEUSER"/);
+  // Where it can: the table copy goes back to the table, and the file is left as it is.
+  io.canStore = true; io.mode = "table";
+  const before = files.get("K1");
+  const again = await front.request(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS&from=table", undefined, io);
+  await front.write(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS&from=table",
+    JSON.stringify({ hunk_key: again.blocks[0].hunk_key, action: "D", note: "no", saved_at: again.saved_at }), io);
+  assert.strictEqual(stored.length, 1);
+  assert.strictEqual(files.get("K1"), before);
+  await assert.rejects(front.request(api, "/sap/bc/adt/vertex/review/K2?from=file", undefined, io), /No copy/);
+});

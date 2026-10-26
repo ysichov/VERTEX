@@ -1,5 +1,17 @@
 # Release history
 
+## 2026-10-26 — Blame in the review
+
+The request review has a Blame toggle, off by default: on, it names the developer who wrote each changed line, as AVE's "Who is Blame" does. A version is credited to the owner of the task it came from, so lines that reached the system through a transport of copies are credited to the developer of the copied request, not to whoever made the copy. Blocks and the Developers table follow the line authors. Reviews saved by AVE with Blame show their line authors too when the toggle is on. The toggle stands beside Versions | Review, so it can be set before the review is read. Opening a saved review shows in the status line which part is being checked against the request while it checks whether the review is still current. A released request is not checked at all: its versions no longer change, and later work of other requests does not concern its review. Rebuild from ADT is on every saved review, not only on one found changed. A review kept both in ZAVE_REVIEW and in a file names both copies, with who saved each and when, and a Table | File switch shows either; a change goes back to the copy shown, and to the file where the table cannot be written (VS Code 0.9.35).
+
+## 2026-10-26 — SAP-generated code left out of the review
+
+A request review built from ADT leaves out parts whose new version is authored by `SAP*` - function group framework includes and other code SAP generated - as AVE does (VS Code 0.9.34).
+
+## 2026-10-26 — Review base after transports of copies
+
+A request review built from ADT no longer takes the request's own transport of copies as the old side. The change is compared with the last version from before the request, as in AVE. A released request is reviewed only from its own versions: the current active state, which may hold later work of other requests, is no longer taken for it (VS Code 0.9.33).
+
 ## 2026-10-26 — Visual borders and package totals
 
 At higher zoom, Visual keeps borders thin and shows the start of method names in small tiles. Excluding programs, classes or individual objects also updates the package statistics above the map. Table continues to show the full package statistics.

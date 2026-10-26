@@ -73,3 +73,20 @@ test("a class part with no class name is placed under its class", () => {
     { OBJTYPE: "REPS", CLASS_NAME: "", OBJ_NAME: "ZPROG", INS_COUNT: 1 }]);
   assert.deepStrictEqual(sorted.map(s => [s.OBJTYPE, s.CLASS_NAME]), [["REPS", ""], ["CPUB", "ZCL_B"]]);
 });
+
+test("a review with blame names who wrote each changed line, and counts developers by it", async () => {
+  const stored = JSON.parse(PAYLOAD.replace(/(\d{14}\.\d{7})/g, '"$1"'));
+  stored.DIFF_DATA[0].BLAME_MAP = [{ TEXT: "call( y", AUTHOR: "DEVA", AUTHOR_NAME: "Dev A", VERSNO_TEXT: "2", DATUM: "2026-10-02", TASK: "A4HK900002" },
+    { TEXT: "c.", AUTHOR: "DEVB", AUTHOR_NAME: "Dev B", VERSNO_TEXT: "2" }];
+  stored.DIFF_DATA[0].BLAME_DELETED = [{ TEXT: "call( x", AUTHOR: "DEVA", AUTHOR_NAME: "Dev A" }];
+  stored.OBJ_STATS[0].BT_AUTHORS = [{ AUTHOR: "DEVA", AUTHOR_NAME: "Dev A", INS_COUNT: 0, MOD_COUNT: 1, DEL_COUNT: 0 },
+    { AUTHOR: "DEVB", AUTHOR_NAME: "Dev B", INS_COUNT: 1, MOD_COUNT: 0, DEL_COUNT: 0 }];
+  stored.HUNKS[0].AUTHOR = "DEVA"; stored.HUNKS[1].AUTHOR = "DEVB";
+  const part = encodeURIComponent("ZCL_X                         RUN");
+  const answer = await request(session(JSON.stringify(stored)).api, "/sap/bc/adt/vertex/review/A4HK900001?part=" + part + "&ptype=METH");
+  assert.deepStrictEqual(answer.ops.filter(o => o.who).map(o => [o.op, o.text, o.who.author]),
+    [["-", "call( x", "DEVA"], ["+", "call( y", "DEVA"], ["+", "c.", "DEVB"]]);
+  const summary = await request(session(JSON.stringify(stored)).api, "/sap/bc/adt/vertex/review/A4HK900001");
+  assert.deepStrictEqual(summary.developers.map(d => [d.author, d.inserted, d.modified, d.hunks, d.approved, d.declined]),
+    [["DEVA", 0, 1, 1, 1, 0], ["DEVB", 1, 0, 1, 0, 1]]);
+});

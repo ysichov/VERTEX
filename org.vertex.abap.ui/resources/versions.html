@@ -322,6 +322,8 @@
   table.diff tr.said td { background: var(--surface); white-space: normal;
                           padding: 3px 8px 3px 24px; }
   table.diff tr.said .who { color: var(--muted); }
+  /* Blame: who wrote a changed line, in the review. */
+  table.diff .blame { float: right; margin-left: 1.5em; color: var(--muted); font-size: 11px; }
   /* A comment is written in a box and has to come back out of it the same
      shape: line breaks and the indentation of a pasted snippet are part of
      what was said, and NORMAL on the cell would fold the lot onto one line. */
@@ -560,6 +562,12 @@ var mode = "V";
    the part by its padded key, and a reader wants the name they clicked. */
 var review = null;
 var review_part = null;
+// Blame - who wrote each changed line, AVE's "Who is Blame". Off by default: built
+// from ADT it reads every version between the pair.
+var review_blame = false;
+// Which copy of a saved review is shown and written back - "table" or "file" -
+// when there are two; empty lets the host pick by its storage setting.
+var review_from = "", review_from_of = "";
 
 /* The stamp of the review this page is looking at. It goes back with every
    write, so that a write onto a review somebody else has saved in the meantime
@@ -606,9 +614,11 @@ function loadReview() {
     return;
   }
   review_part = null;
+  // The copy picked belongs to the request it was picked for.
+  if (review_from_of !== objectName()) { review_from = ""; review_from_of = objectName(); }
   status("reading the review of " + objectName() + " ...");
   note("Reading ...");
-  sdeReview(objectName(), "", "", "");
+  sdeReview(objectName(), "", "", "", "", review_blame ? "1" : "", review_from);
 }
 
 /* One object of the review: its blocks and the lines they were cut from, both
@@ -618,7 +628,7 @@ function loadReviewPart(object) {
   review_part = object;
   status("reading " + (object.display_name || object.obj_name) + " ...");
   note("Reading ...");
-  sdeReview(objectName(), "", object.obj_name, object.objtype);
+  sdeReview(objectName(), "", object.obj_name, object.objtype, "", review_blame ? "1" : "", review_from);
 }
 
 /* ---------- the parts panel: shown, folded, resized ---------- */
@@ -659,6 +669,9 @@ function renderCards() {
     renderCards();
     if (mode === "R") { loadReview(); } else { loadParts(true); }
   }));
+  // Beside the mode, so it can be set before a review is read - building one
+  // with Blame is the slow part.
+  if (mode === "R") { box.appendChild(blameToggle()); }
 }
 
 var autoDiff = false;
@@ -1292,6 +1305,7 @@ function diffTable(ops, blocks) {
 
     var cd = document.createElement("td");
     cd.textContent = o.text;
+    blameMark(cd, o.who);
 
     tr.appendChild(ln);
     tr.appendChild(mk);
@@ -1336,12 +1350,12 @@ function sideTable(ops, swap, blocks) {
       var row = { idx: [] };
       if (k < dels.length) {
         oldLine++;
-        row.left = { n: oldLine, text: ops[dels[k]].text, cls: "del" };
+        row.left = { n: oldLine, text: ops[dels[k]].text, cls: "del", who: ops[dels[k]].who };
         row.idx.push(dels[k]);
       }
       if (k < adds.length) {
         newLine++;
-        row.right = { n: newLine, text: ops[adds[k]].text, cls: "ins" };
+        row.right = { n: newLine, text: ops[adds[k]].text, cls: "ins", who: ops[adds[k]].who };
         row.idx.push(adds[k]);
       }
       rows.push(row);
@@ -1381,6 +1395,7 @@ function sideTable(ops, swap, blocks) {
       var code = document.createElement("td");
       code.className = "code " + side[1] + " " + (cell ? cell.cls : "none");
       code.textContent = cell ? cell.text : "";
+      if (cell) { blameMark(code, cell.who); }
       tr.appendChild(ln);
       tr.appendChild(code);
     });
@@ -1400,6 +1415,34 @@ function sideTable(ops, swap, blocks) {
   table.appendChild(cols);
   table.appendChild(tbody);
   return table;
+}
+
+/* The Blame switch of a review. Turning it on or off asks for the view again:
+   a review built from ADT is built with or without Blame, a saved one only
+   shows or hides the line authors it keeps. */
+function blameToggle() {
+  var b = document.createElement("button");
+  b.className = "vertex-toggle" + (review_blame ? " on" : "");
+  b.textContent = "Blame";
+  b.title = "Who wrote each changed line. Built from ADT, it reads every version between the pair.";
+  b.addEventListener("click", function () {
+    review_blame = !review_blame;
+    renderCards();
+    if (review_part) { loadReviewPart(review_part); } else { loadReview(); }
+  });
+  return b;
+}
+
+/* Who wrote a changed line, when the review keeps blame: the developer's name at
+   the right of the line, and the version, date and request on hover. */
+function blameMark(td, who) {
+  if (!who || !review_blame) { return; }
+  var mark = document.createElement("span");
+  mark.className = "blame";
+  mark.textContent = who.author_name || who.author;
+  mark.title = [who.author, who.version ? "version " + who.version : "", who.date, who.request]
+    .filter(function (x) { return x; }).join("  ·  ");
+  td.insertBefore(mark, td.firstChild);
 }
 
 /* Two named modes in one control. CHOICES are [label, title] pairs; the
@@ -1746,7 +1789,7 @@ function act(block, action, note) {
   status("writing ...");
   sdeAct(objectName(), "", review_part.obj_name, review_part.objtype,
          JSON.stringify({ hunk_key: block.hunk_key, action: action,
-                          note: note, saved_at: review_saved_at }));
+                          note: note, saved_at: review_saved_at }), review_blame ? "1" : "", review_from);
 }
 
 /* ---------- one object of the review ---------- */
@@ -1932,7 +1975,7 @@ function renderReview(data) {
       save.onclick = function () {
         save.disabled = true;
         status("saving ...");
-        sdeAct(objectName(), "", "", "", JSON.stringify({ action: "S", saved_at: "" }));
+        sdeAct(objectName(), "", "", "", JSON.stringify({ action: "S", saved_at: "" }), review_blame ? "1" : "", review_from);
       };
       root.appendChild(save);
     }
@@ -1943,10 +1986,10 @@ function renderReview(data) {
       rebuild.disabled = true;
       review_part = null;
       status("building the review of " + objectName() + " again ...");
-      sdeReview(objectName(), "", "", "", "1");
+      sdeReview(objectName(), "", "", "", "1", review_blame ? "1" : "", review_from);
     };
     root.appendChild(rebuild);
-    root.appendChild(section("Developers", developerTable(data.objects || [])));
+    root.appendChild(section("Developers", developerTable(data.objects || [], data.developers)));
     root.appendChild(objectGroups(data.objects || []));
     if (data.missing && data.missing.length) { root.appendChild(missingSection(data.missing)); }
     var changed = (data.objects || []).reduce(function (n, o) { return n + o.hunks; }, 0);
@@ -1969,12 +2012,18 @@ function renderReview(data) {
     return;
   }
 
+  var two = copiesBlock(data);
+  if (two) { root.appendChild(two); }
   root.appendChild(heading("Saved " + asStamp(data.saved_at) + " by " + data.saved_by));
   var kept = storageLine(data.storage);
   if (kept) { root.appendChild(kept); }
+  // Rebuilding is wanted not only when the request moved: VERTEX's rules may
+  // have, or a review saved by AVE is to be built again by VERTEX's. A review
+  // against another system is AVE's to build.
+  if (!data.remote) { root.appendChild(rebuildBlock()); }
   var stale = staleBlock(data.stale);
   if (stale) { root.appendChild(stale); }
-  root.appendChild(section("Developers", developerTable(data.objects || [])));
+  root.appendChild(section("Developers", developerTable(data.objects || [], data.developers)));
   root.appendChild(objectGroups(data.objects || []));
   root.appendChild(section("Reviewers", reviewerTable(data.reviewers || [])));
   if (data.history && data.history.length > 0) {
@@ -1986,9 +2035,9 @@ function renderReview(data) {
 }
 
 /* Whether the saved review is still the request's change, as the host checked it
-   by the versions: what moved, what could not be checked, and Rebuild from ADT,
-   which replaces the saved review - verdicts and comments go with it. Nothing
-   when the host did not check (Eclipse, a review against another system). */
+   by the versions: what moved and what could not be checked; Rebuild from ADT
+   stands above it for every saved review. Nothing when the host did not check
+   (a released request, a review against another system). */
 function staleBlock(stale) {
   if (!stale) { return null; }
   var box = document.createElement("div");
@@ -2004,18 +2053,66 @@ function staleBlock(stale) {
   (stale.changed || []).forEach(function (c) { line("Changed since this review was saved: " + c.name + " - " + c.reason + "."); });
   (stale.unchecked || []).forEach(function (c) { line("Not checked: " + c.name + " - " + c.reason + "."); });
   if (!box.childNodes.length) { return null; }
-  if ((stale.changed || []).length || stale.error) {
-    var rebuild = document.createElement("button");
-    rebuild.textContent = "Rebuild from ADT";
-    rebuild.title = "Replaces the saved review with one built from the request as it is now; its verdicts and comments are dropped.";
-    rebuild.onclick = function () {
-      rebuild.disabled = true;
-      status("building the review of " + objectName() + " again ...");
-      sdeAct(objectName(), "", "", "", JSON.stringify({ action: "R", saved_at: review_saved_at }));
-    };
-    box.appendChild(rebuild);
-    line("Rebuilding replaces the saved review; its verdicts and comments are dropped.");
+  if ((stale.changed || []).length || stale.error) { line("Rebuild from ADT above builds it from the request as it is now."); }
+  return box;
+}
+
+/* A review kept both in ZAVE_REVIEW and in a file: the two copies are named,
+   with who saved each and when, and a switch shows either. Nothing is merged;
+   a write goes back to the copy shown. A table copy on a system where VERTEX
+   cannot write the table is written to the file, and the page says so first. */
+function copiesBlock(data) {
+  var c = data.copies || {};
+  var from = data.storage ? data.storage.from : "";
+  var note = null;
+  if (from === "table" && data.storage && data.storage.can_store === false) {
+    note = "Changes made here are saved to a file: VERTEX's ABAP is not on this system, so it cannot write ZAVE_REVIEW.";
   }
+  if (!(c.table && c.file)) {
+    if (!note) { return null; }
+    var only = document.createElement("p"); only.className = "muted"; only.textContent = note; return only;
+  }
+  var box = document.createElement("div");
+  box.className = "stale";
+  var said = function (name, copy) {
+    return name + " - saved " + (copy.saved_at ? asStamp(copy.saved_at) : "at an unknown time")
+      + (copy.saved_by ? " by " + copy.saved_by : "") + (copy.file ? " (" + copy.file + ")" : "");
+  };
+  var p = document.createElement("p");
+  p.textContent = "This review is kept twice, and the copies may differ. " + said("Table", c.table) + ". " + said("File", c.file) + ".";
+  box.appendChild(p);
+  var seg = document.createElement("span");
+  seg.className = "vertex-segment-toggle";
+  [["table", "Table"], ["file", "File"]].forEach(function (k) {
+    var b = document.createElement("button");
+    b.textContent = k[1];
+    b.title = k[0] === "table" ? "Show the copy in ZAVE_REVIEW; changes go back to it" : "Show the copy in the file; changes go back to it";
+    if (from === k[0]) { b.className = "active"; }
+    b.addEventListener("click", function () { if (from !== k[0]) { review_from = k[0]; review_from_of = objectName(); loadReview(); } });
+    seg.appendChild(b);
+  });
+  box.appendChild(seg);
+  if (note) { var n = document.createElement("p"); n.textContent = note; box.appendChild(n); }
+  return box;
+}
+
+/* Rebuild from ADT for a saved review: it replaces the saved review with one
+   built from the request as it is now, and its verdicts and comments go. */
+function rebuildBlock() {
+  var box = document.createElement("p");
+  var rebuild = document.createElement("button");
+  rebuild.textContent = "Rebuild from ADT";
+  rebuild.title = "Replaces the saved review with one built from the request as it is now; its verdicts and comments are dropped.";
+  rebuild.onclick = function () {
+    rebuild.disabled = true;
+    status("building the review of " + objectName() + " again ...");
+    sdeAct(objectName(), "", "", "", JSON.stringify({ action: "R", saved_at: review_saved_at }), review_blame ? "1" : "", review_from);
+  };
+  box.appendChild(rebuild);
+  var warn = document.createElement("span");
+  warn.className = "muted";
+  warn.textContent = "  Replaces the saved review; its verdicts and comments are dropped.";
+  box.appendChild(warn);
   return box;
 }
 
@@ -2131,7 +2228,20 @@ function aveTable(columns, numeric, fill, rows, total) {
 function sum(rows, key) { return rows.reduce(function (n, r) { return n + (r[key] || 0); }, 0); }
 
 /* Developers: what each author changed in the request and how far its review has come. */
-function developerTable(objects) {
+function developerTable(objects, developers) {
+  // A host that counts developers by blame hands them over ready; otherwise each object goes to its author.
+  if (review_blame && developers && developers.length) {
+    return aveTable(["Developer", "Name", "Rows +/~/-", "Blocks", "Approved", "Declined", "%"], [0, 0, 1, 1, 1, 1, 1],
+      function (tr, d) {
+        cell(tr, d.author || "");
+        cell(tr, d.author_name || "");
+        rowsCell(tr, d.inserted, d.modified, d.deleted);
+        count(tr, d.hunks);
+        shareCell(tr, d.approved, d.hunks);
+        shareCell(tr, d.declined, d.hunks);
+        percentCell(tr, d.approved, d.hunks);
+      }, developers);
+  }
   var by = {}, order = [];
   objects.forEach(function (o) {
     var key = o.author || o.author_name || "";

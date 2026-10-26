@@ -87,7 +87,7 @@ script, nothing on top. The VS Code extension computes the same kind of diff wit
 implementation, because Eclipse's comparer is under the EPL and cannot be carried into VERTEX's MIT
 code.
 
-**The review of a transport** is built from ADT when none is saved - every part the request changed,
+**The review of a transport** is built from ADT when none is saved - every part the request changed except code SAP generated,
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - and the status
 line says which part is being read. **Save** keeps it; a saved review takes Approve, Decline,
 comments and taking a verdict back, made the way AVE makes them, so AVE and every VERTEX window read

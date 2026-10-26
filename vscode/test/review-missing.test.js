@@ -49,6 +49,8 @@ test('a part whose versions ADT will not give is listed in the words of SAP, and
       return { values: [] };
     }, revisions: async url => { if (url === '/x/ZDE') throw new Error('Request version for DTEL is not supported'); return []; } };
     const payload = await require('../review-live').build(api, 'A4HK900003', () => {});
-    assert.deepEqual(payload.MISSING, [{ object: 'DTEL', name: 'ZDE', reason: 'Request version for DTEL is not supported' }]);
+    // ZP has no version at all: it is listed too, not dropped without a word.
+    assert.deepEqual(payload.MISSING, [{ object: 'DTEL', name: 'ZDE', reason: 'Request version for DTEL is not supported' },
+      { object: 'PROG', name: 'ZP', reason: 'no version of this part, and no active state' }]);
   } finally { Object.assign(versions, saved); }
 });

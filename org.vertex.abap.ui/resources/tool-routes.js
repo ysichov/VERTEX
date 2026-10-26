@@ -151,7 +151,11 @@ const SERVICES = {
         lead = "&";
       }
       // A fifth argument builds a review that is not saved again, rather than the one built a moment ago.
-      if (args[4]) { p += lead + "fresh=1"; }
+      if (args[4]) { p += lead + "fresh=1"; lead = "&"; }
+      // A sixth argument asks for Blame - who wrote each changed line - the way AVE's "Who is Blame" does.
+      if (args[5]) { p += lead + "blame=1"; lead = "&"; }
+      // A seventh names the copy of the review to read and write back: table or file.
+      if (args[6]) { p += lead + "from=" + encodeURIComponent(args[6]); }
       return p;
     },
     // request, remote, part, ptype, body - a write goes to the review's own

@@ -58,3 +58,12 @@ test('a part the review holds that the request no longer changes makes it stale'
     assert.deepEqual((await staleness(f.api, 'A4HK900001', review)).changed, [{ name: 'ZGONE', reason: 'no longer changed by the request' }]);
   } finally { f.restore(); }
 });
+
+test('a released request is history: its saved review is not checked, and no version feed is read', async () => {
+  const { staleness } = require('../review-live');
+  let feeds = 0;
+  const api = { query: async sql => /FROM e070 WHERE trkorr/.test(sql) ? { values: [{ TRKORR: 'A4HK900001', TRSTATUS: 'R' }] } : { values: [] },
+    revisions: async () => { feeds++; return []; } };
+  assert.deepEqual(await staleness(api, 'A4HK900001', saved('00002', '00001')), { changed: [], unchecked: [] });
+  assert.equal(feeds, 0);
+});

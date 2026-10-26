@@ -82,7 +82,18 @@ function partBody(payload, request, part, ptype, table) {
     }
     if (pick) {
       if (!blocks.length) { old = up(pick.KEY.VERSNO_O); fresh = up(pick.KEY.VERSNO_N); }
-      const diff = list(pick.DIFF).map(l => ({ op: up(l.OP), text: up(l.TEXT) }));
+      // Who wrote each changed line, when the review keeps a blame map (AVE's "Who is Blame"): an added line is looked
+      // up in BLAME_MAP, a deleted one in BLAME_DELETED, by its text, as AVE looks them up.
+      const whoOf = (map, text) => {
+        const b = list(map).find(m => up(m.TEXT) === text);
+        return b ? { author: up(b.AUTHOR), author_name: up(b.AUTHOR_NAME), date: up(b.DATUM), version: up(b.VERSNO_TEXT),
+          request: up(b.TASK) || up(b.KORRNUM) } : null;
+      };
+      const diff = list(pick.DIFF).map(l => {
+        const op = up(l.OP), text = up(l.TEXT);
+        const who = op === "+" ? whoOf(pick.BLAME_MAP, text) : op === "-" ? whoOf(pick.BLAME_DELETED, text) : null;
+        return who ? { op, text, who } : { op, text };
+      });
       ops = diff;
       added = diff.filter(l => l.op === "+").length;
       deleted = diff.filter(l => l.op === "-").length;
@@ -101,8 +112,10 @@ function partBody(payload, request, part, ptype, table) {
 }
 
 // The stored review's text and where it came from. IO is the host's storage (code-workbench reviewIo); without it only
-// the table is read. Files first when files are what is written, the table first otherwise.
-async function loadStored(api, trkorr, remote, io, table) {
+// the table is read. Both places are read: a review can be kept in both, and the two copies can differ. FROM names the
+// copy to show (table, file); without it, files first when files are what is written, the table first otherwise.
+// Answers { pick, copies: { table, file } }; a copy asked for by name that is not there is an error, not the other one.
+async function loadStored(api, trkorr, remote, io, table, from) {
   const fromTable = async () => {
     if (!table) { return null; }
     const row = (await api.query("SELECT payload FROM zave_review WHERE trkorr = " + sqlText(trkorr)
@@ -114,7 +127,20 @@ async function loadStored(api, trkorr, remote, io, table) {
     const text = await io.read(trkorr, remote);
     return text ? { text, from: "file", file: io.where(trkorr, remote) } : null;
   };
-  return io && io.mode === "file" ? (await fromFile()) || (await fromTable()) : (await fromTable()) || (await fromFile());
+  const copies = { table: await fromTable(), file: await fromFile() };
+  if (from === "table" || from === "file") {
+    if (!copies[from]) { throw new Error("No copy of the review of " + trkorr + " is kept in the " + from + "."); }
+    return { pick: copies[from], copies };
+  }
+  return { pick: io && io.mode === "file" ? copies.file || copies.table : copies.table || copies.file, copies };
+}
+
+// Who saved a copy and when, for the page to name both when there are two.
+function copyInfo(copy) {
+  if (!copy) { return null; }
+  let saved = {};
+  try { saved = parsePayload(copy.text); } catch (error) { return { saved_at: "", saved_by: "", file: copy.file || "", unreadable: true }; }
+  return { saved_at: up(saved.LAST_SAVED_AT), saved_by: up(saved.LAST_SAVED_BY), file: copy.file || "" };
 }
 
 const storage = (io, stored) => io ? { mode: io.mode, wanted: io.wanted, can_store: io.canStore, from: stored ? stored.from : "",
@@ -131,23 +157,25 @@ async function request(api, resource, progress, io) {
   if (part && !ptype) { throw new Error("Reading the blocks of " + part + " needs its type in ptype."); }
 
   const table = await hasTable(api);
-  const stored = await loadStored(api, trkorr, remote, io, table);
+  const loaded = await loadStored(api, trkorr, remote, io, table, String(params.get("from") || ""));
+  const stored = loaded.pick;
+  const copies = { table: copyInfo(loaded.copies.table), file: copyInfo(loaded.copies.file) };
   // A payload that does not parse is no review, as /ui2/cl_json's failure is in ZCL_VX_REVIEW_STORE.
   let payload = null;
   if (stored) { try { payload = parsePayload(stored.text); } catch (error) { payload = null; } }
   // Nothing saved: the review is built from ADT, to look at - live, and not written anywhere.
   const live = !payload && !remote;
-  if (live) { payload = await require("./review-live").build(api, trkorr, progress, params.get("fresh") === "1"); }
+  if (live) { payload = await require("./review-live").build(api, trkorr, progress, params.get("fresh") === "1", params.get("blame") === "1"); }
   /* A saved review is checked against the request as it is now; the page offers to build it again when it is not.
      A check that fails says so - it is not taken for "up to date". */
   let stale = null;
   if (payload && !live && !remote && !part) {
-    try { stale = await require("./review-live").staleness(api, trkorr, payload); }
+    try { stale = await require("./review-live").staleness(api, trkorr, payload, progress); }
     catch (error) { stale = { error: String(error && error.message || error) }; }
   }
-  if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored) }); }
+  if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored), copies }); }
 
-  const objects = [], reviewers = [], history = [];
+  const objects = [], reviewers = [], history = [], developers = [];
   if (payload) {
     reportObjects(payload.OBJ_STATS).forEach(s => {
       let approved = 0, declined = 0;
@@ -162,6 +190,35 @@ async function request(api, resource, progress, io) {
         inserted: Number(s.INS_COUNT), deleted: Number(s.DEL_COUNT), modified: Number(s.MOD_COUNT), approved, declined,
         open: Number(s.HUNK_COUNT) - approved - declined });
     });
+    /* Developers, as AVE counts them: from each object's blame breakdown (BT_AUTHORS) when the review has one - an
+       object written by two developers is under both, each with their own rows and blocks - and from the object's
+       author when it has none. A developer's blocks are the blocks whose author they are. */
+    const devs = new Map();
+    const dev = (author, name) => {
+      if (!devs.has(author)) { devs.set(author, { author, author_name: name, inserted: 0, modified: 0, deleted: 0, hunks: 0, approved: 0, declined: 0 }); }
+      const d = devs.get(author);
+      if (!d.author_name && name) { d.author_name = name; }
+      return d;
+    };
+    reportObjects(payload.OBJ_STATS).forEach(s => {
+      const hunks = list(payload.HUNKS).filter(h => up(h.OBJTYPE) === up(s.OBJTYPE) && up(h.OBJ_NAME) === up(s.OBJ_NAME));
+      const verdict = h => (list(payload.HUNK_ACTIONS).find(a => up(a.HUNK_KEY) === up(h.HUNK_KEY)) || {}).ACTION;
+      const authors = list(s.BT_AUTHORS);
+      if (authors.length) {
+        authors.forEach(a => { const d = dev(up(a.AUTHOR), up(a.AUTHOR_NAME));
+          d.inserted += Number(a.INS_COUNT) || 0; d.modified += Number(a.MOD_COUNT) || 0; d.deleted += Number(a.DEL_COUNT) || 0; });
+      } else {
+        const d = dev(up(s.AUTHOR), up(s.AUTHOR_NAME));
+        d.inserted += Number(s.INS_COUNT) || 0; d.modified += Number(s.MOD_COUNT) || 0; d.deleted += Number(s.DEL_COUNT) || 0;
+      }
+      hunks.forEach(h => {
+        const d = dev(up(h.AUTHOR) || up(s.AUTHOR), up(h.AUTHOR_NAME));
+        d.hunks++;
+        const v = up(verdict(h));
+        if (v === "A") { d.approved++; } else if (v === "D") { d.declined++; }
+      });
+    });
+    devs.forEach(d => developers.push(d));
     list(payload.USER_STATES).forEach(u => reviewers.push({ reviewer: up(u.REVIEWER), reviewer_name: up(u.REVIEWER_NAME),
       saved_at: up(u.SAVED_AT), approved: list(u.APPROVED).length, declined: list(u.DECLINED).length, notes: list(u.NOTES).length }));
     list(payload.HISTORY).forEach(h => history.push({ saved_at: up(h.SAVED_AT), saved_by: up(h.SAVED_BY), saved_by_name: up(h.SAVED_BY_NAME),
@@ -169,9 +226,10 @@ async function request(api, resource, progress, io) {
   }
   return { request: trkorr.toLowerCase(), remote: remote.toLowerCase(), table, saved: Boolean(payload), live,
     saved_at: payload ? up(payload.LAST_SAVED_AT) : "", saved_by: payload ? up(payload.LAST_SAVED_BY) : "", objects, reviewers, history,
+    developers,
     // Objects the request names that the system no longer has, found while building it from ADT.
     missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
-    storage: storage(io, stored), stale };
+    storage: storage(io, stored), copies, stale };
 }
 
 // A write to a review: a reviewer's action on one block - A approve, D decline, C comment, U take a verdict back - or
@@ -196,7 +254,8 @@ async function write(api, resource, body, io) {
   if ((action === "D" || action === "C") && !note) { throw new Error("A decline and a comment are the words that go with them."); }
 
   const table = await hasTable(api);
-  const stored = await loadStored(api, trkorr, remote, io, table);
+  const from = String(params.get("from") || "");
+  const stored = (await loadStored(api, trkorr, remote, io, table, from)).pick;
   // A host may know the user at once (VS Code) or ask its project for it (Eclipse).
   const user = String(await api.user()).toUpperCase();
   const nameRow = (await api.query("SELECT a~name_text FROM usr21 AS u INNER JOIN adrp AS a ON a~persnumber = u~persnumber"
@@ -208,7 +267,7 @@ async function write(api, resource, body, io) {
     if (stored) { throw new Error("A review of " + trkorr + " is already saved (" + stored.from + "). Read it again."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
     existing = {};
-    current = state.applySaved(await require("./review-live").build(api, trkorr), who.user);
+    current = state.applySaved(await require("./review-live").build(api, trkorr, undefined, false, params.get("blame") === "1"), who.user);
   } else if (action === "R") {
     if (!stored) { throw new Error("No review is saved for " + trkorr + "; there is nothing to rebuild."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
@@ -218,7 +277,7 @@ async function write(api, resource, body, io) {
     }
     // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
     existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
-    current = state.applySaved(await require("./review-live").build(api, trkorr, undefined, true), who.user);
+    current = state.applySaved(await require("./review-live").build(api, trkorr, undefined, true, params.get("blame") === "1"), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
     existing = state.parseForWrite(stored.text);
@@ -236,16 +295,22 @@ async function write(api, resource, body, io) {
   const text = state.stringify(next);
   const expect = stored ? state.plain(existing.LAST_SAVED_AT) : "";
 
-  // The table when it is to be written - and when it cannot be, the write fails rather than landing elsewhere.
-  if (!io || io.mode !== "file") {
+  /* A copy is written back where it was read from. A copy read from the table on a system VERTEX cannot write it on
+     goes to a file - the page said so before the write. A new review (S) goes where the storage setting says. The
+     table, when it is to be written and cannot be, fails the write rather than landing elsewhere. */
+  const target = stored ? stored.from : "";
+  const toTable = target ? target === "table" && (!io || io.canStore) : !io || io.mode !== "file";
+  const toFile = Boolean(io) && (target ? target === "file" || !toTable || io.mode === "both" : io.mode !== "table");
+  if (toTable) {
     if (!table) { throw new Error("This system has no ZAVE_REVIEW table with REMOTE and PAYLOAD; the review cannot be saved there."); }
-    await api.storeReview(trkorr, remote, expect, text);
+    await api.storeReview(trkorr, remote, target === "table" || !target ? expect : "", text);
   }
-  if (io && io.mode !== "table") { await io.write(trkorr, remote, text); }
+  if (toFile) { await io.write(trkorr, remote, text); }
 
   const part = up(params.get("part")), ptype = up(params.get("ptype"));
   const again = "/sap/bc/adt/vertex/review/" + encodeURIComponent(trkorr) + "?remote=" + encodeURIComponent(remote)
-    + (part ? "&part=" + encodeURIComponent(part) + "&ptype=" + encodeURIComponent(ptype) : "");
+    + (part ? "&part=" + encodeURIComponent(part) + "&ptype=" + encodeURIComponent(ptype) : "")
+    + (params.get("blame") === "1" ? "&blame=1" : "") + (from ? "&from=" + encodeURIComponent(from) : "");
   return request(api, again, undefined, io);
 }
 

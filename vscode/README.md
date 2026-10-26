@@ -421,14 +421,30 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   it changed, the diff of that part and the diff cut into blocks. The pair of versions is chosen
   by AVE's rule: the request's newest version, or the active one when ADT records it under the
   request and no other request's version sits above it, against the first older version that is
-  not the request's. A review that is not saved yet is built from ADT while you wait - the status
+  not the request's. The request's own transports of copies count as the request. A released
+  request is reviewed only from its own versions; a part it holds no version of is listed with the
+  reason instead. Code SAP generated (a new version authored by `SAP*`) is not reviewed. The
+  **Blame** toggle beside Versions | Review, off by default, names the developer who wrote each changed line: the versions
+  between the pair are replayed (one more read per version, so a long history takes longer),
+  and a version is credited to the owner of the task it came from - a transport of copies to the
+  task of the request it copies - not to whoever released or copied it. A block belongs to whoever
+  wrote most of its lines, and **Developers** counts each developer's own lines and blocks. Hover
+  the name for the version, date and request. With Blame off, a block is the author's of the new
+  version. A review saved by AVE with Blame shows its line authors when the toggle is on. A review that is not saved yet is built from ADT while you wait - the status
   line says which part is being read - **Rebuild from ADT** builds it again from the request as it is now, and **Save** keeps it. A saved review takes **Approve**,
   **Decline** and comments on each block, the way AVE records them, so AVE and every VERTEX window
   read the same review. Where reviews are kept is `vertex.review.storage`: the `ZAVE_REVIEW` table
-  (needs the ABAP backend), files, or both. A saved review is checked against the request when it
+  (needs the ABAP backend), files, or both. A review kept both in the table and in a file is
+  shown with both copies named - who saved each and when - and a **Table | File** switch opens
+  either; nothing is merged, and a change goes back to the copy shown. On a system without the ABAP
+  backend the table can be read but not written, so a change to the table copy goes to the file,
+  and the page says so. A saved review is checked against the request when it
   is opened, by each part's versions: a part that changed since, joined the request or left it is
-  named above the table, with **Rebuild from ADT**, which replaces the saved review with one built
-  from the request as it is now - its verdicts and comments are dropped. Two people saving the same review at once do not
+  named above the table. **Rebuild from ADT**, under the line that says when and by whom the review
+  was saved, replaces the saved review with one built from the request as it is now - its verdicts
+  and comments are dropped. A released request is not
+  checked: its versions no longer change, and later work of other requests is not its review's
+  concern. Two people saving the same review at once do not
   overwrite each other: the second save is refused and asks to read the review again.
   The review opens on a summary as AVE draws it: **Developers** - each author's rows added, changed
   and deleted, blocks, approved, declined and the share approved - then the objects, a group per
