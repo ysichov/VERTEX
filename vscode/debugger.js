@@ -1046,7 +1046,6 @@ function create({ connect, current, openUrl, ideId, terminalId, assistantRecordi
   async function runNow(program, test, options) {
     const { system: target } = await systemNow();
     const url = webGuiUrl(target, program, test);
-    if (!breakpoints.some(b => b.active !== false)) { throw new Error("Set or activate a breakpoint before running: without one nothing will stop."); }
     // After Detach the breakpoints are kept here but not in SAP, and nothing
     // listens: both come back before the run starts.
     if (!listening) { await sync(); await listen(false); }

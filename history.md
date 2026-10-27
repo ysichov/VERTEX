@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-27 — Run without a breakpoint
+
+Run in SAP in VERTEX Smart Debugger starts the program even when no breakpoint is set or active; the program then runs through unless it reaches a breakpoint set later (VS Code 0.9.36).
+
 ## 2026-10-26 — Blame in the review
 
 The request review has a Blame toggle, off by default: on, it names the developer who wrote each changed line, as AVE's "Who is Blame" does. A version is credited to the owner of the task it came from, so lines that reached the system through a transport of copies are credited to the developer of the copied request, not to whoever made the copy. Blocks and the Developers table follow the line authors. Reviews saved by AVE with Blame show their line authors too when the toggle is on. The toggle stands beside Versions | Review, so it can be set before the review is read. Opening a saved review shows in the status line which part is being checked against the request while it checks whether the review is still current. A released request is not checked at all: its versions no longer change, and later work of other requests does not concern its review. Rebuild from ADT is on every saved review, not only on one found changed. A review kept both in ZAVE_REVIEW and in a file names both copies, with who saved each and when, and a Table | File switch shows either; a change goes back to the copy shown, and to the file where the table cannot be written (VS Code 0.9.35).
