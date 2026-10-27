@@ -969,8 +969,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const found = await source.entry.repo.api.implementation(source.url, document.getText(), at.line + 1, word.from, word.to);
     if (!found || !found.url || !found.line) { return undefined; }
     const url = String(found.url).split("#")[0];
-    if (url === source.url) { return undefined; }
-    return openForeign(document, at, { url, repo: source.entry.repo, line: found.line - 1, column: found.column || 0 });
+    return openForeign(document, at, { url, repo: source.entry.repo, line: found.line - 1, column: found.column || 0, implementation: true });
   }
   async function adtForeignDefinition(document, at) {
     const foreign = await adtForeign(document, at);
@@ -983,14 +982,25 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const face = /^\/sap\/bc\/adt\/oo\/interfaces\/([^/]+)\/source\/main$/i.exec(foreign.url);
     const word = wordAt(document, at);
     const sourceLine = document.getText().split(/\r?\n/)[at.line] || "";
-    const methodCall = klass && word && /(?:->|=>)\s*$/.test(sourceLine.slice(0, word.from))
+    const invocation = word && /(?:->|=>)\s*(?:[\w/]+~)?$/.test(sourceLine.slice(0, word.from))
       && /^\s*\(/.test(sourceLine.slice(word.to));
+    // Inline factory results and inferred references may have no textual TYPE REF TO.
+    // ADT still identifies the interface: resolve its implementation instead of opening METHODS.
+    if (face && invocation) {
+      return foreign.implementation ? undefined : adtImplementation(document, at);
+    }
+    const methodCall = klass && invocation;
     const target = klass || program || face
       ? (await sourceDocument(foreign.repo, { object_type: klass ? "CLAS" : program ? "PROG" : "INTF",
         object_name: decodeURIComponent((klass || program || face)[1]).toUpperCase(), ...(klass && klass[2] && !methodCall ? { include: klass[2] } : {}) })).document
       : await readOnlyView(foreign.source !== undefined ? foreign : { ...foreign, source: await foreign.repo.api.sourceAt(foreign.url) });
     if (methodCall) {
-      const implementation = methodLine(target.getText(), word.name, true);
+      const lines = target.getText().split(/\r?\n/);
+      const method = new RegExp("^\\s*METHOD\\s+(?:[\\w/]+~)?" + word.name + "\\s*\\.", "i");
+      // SAP's location distinguishes implementations of equally named interface methods.
+      const candidates = lines.map((line, index) => method.test(line) ? index : -1).filter(index => index >= 0);
+      const implementation = foreign.implementation && candidates.includes(foreign.line) ? foreign.line
+        : candidates.length === 1 ? candidates[0] : -1;
       if (implementation < 0) { return undefined; }
       const line = target.getText().split(/\r?\n/)[implementation];
       return { document: target, target: location(target.uri, implementation,
@@ -1919,7 +1929,9 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
         async provideDefinition(document, at) {
           const result = await structuralTarget(document, at, true) || await methodCounterpart(document, at)
             || await externalCallTarget(document, at);
-          return result && !result.interfaceDispatch && result.target;
+          const resolved = result?.interfaceDispatch ? await adtImplementation(document, at)
+            : result || (externalCallAnchor(document, at) ? await adtForeignDefinition(document, at) : undefined);
+          return resolved && resolved.target;
         }
       }));
   }

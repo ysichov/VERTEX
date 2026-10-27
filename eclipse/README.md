@@ -55,7 +55,7 @@ SAP GUI numbers a method.
 does: a SELECT that SelecTor can say opens in VERTEX Tools on its table, its WHERE as selection lines (a join or
 a grouped SELECT in SelecTor's join or pivot); any other runs through ADT's data preview and its rows are shown
 with the statement as run. What only the running program knows - INTO, FOR ALL ENTRIES, conditions on program
-values - is left out and named above the rows.
+values - is left out and named above the rows. SelecTor results show the SELECT fields plus fields used by WHERE, JOIN ON and ORDER BY, without duplicates. ABAP structure components on the value side of WHERE are not result columns. The selection panel starts folded; grouped queries retain their pivot shape.
 
 ## VERTEX Assistant
 
@@ -153,7 +153,10 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.31.qualifier`, the VS Code extension's number; the checked-in update site carries build `0.9.31.20261024182823`.
+then regenerate. The feature and bundle sources are at `0.9.36.qualifier`; the checked-in update site carries build `0.9.31.20261024182823`.
+
+The local install archive is version `0.9.36.20261027090001`. Install its ZIP through
+Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:
 
@@ -193,7 +196,8 @@ run is one - and redraws it each time, whatever VERTEX hides.
 - Breakpoints set or cleared in the page are ADT breakpoints, and ADT's own appear in the page.
   Only your breakpoints stop a run: a stop ADT makes for itself (returning from SAP's code with
   **Z only**) does not.
-- The switches at the very top show or hide Run (the run controls) and the sections - Stack,
+- Switching a diagram between Top-down and Left-right automatically fits the new drawing after rendering.
+- The switches at the very top show or hide Main (Clear, help, diagnostics and the run controls) and the sections - Stack,
   Breakpoints, Variables, Diagram, Dump. Variables and Diagram each have a button that takes the
   whole window; Esc gives it back.
 - **Run in SAP** starts the program as **Run As → ABAP Application** does; for a class or a function
@@ -224,7 +228,7 @@ run is one - and redraws it each time, whatever VERTEX hides.
   the end of the flow when no other checked point is met. Variable trees start closed.
 - **Clear** starts the window again for its object: the record, the analysed path, the values
   followed and the output are dropped; the breakpoints and the ADT debug session stay. So are Save session,
-  watchpoints, All BP, restoring a session and SAP / Transpiler Logs: the page offers them, Eclipse
+  watchpoints, All BP, restoring a session: the page offers them, Eclipse
   does not answer them yet.
 
 Differences from VS Code: no step prediction (Eclipse reads the stack at every suspend, so a step

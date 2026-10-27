@@ -146,11 +146,10 @@ async function request(api, resource) {
   if (url.searchParams.get("pick") === "X") {
     const wanted = [];
     for (let i = 1; i <= 200 && url.searchParams.get("sf" + i); i++) { wanted.push(String(url.searchParams.get("sf" + i)).toUpperCase()); }
-    shown = wanted.map(name => {
-      const field = catalog.find(f => f.FIELDNAME === name);
-      if (!field) { throw new Error("Table " + table + " has no field " + name + "."); }
-      return field;
-    });
+    // Only dictionary fields can become result columns. Inferred query fields
+    // must not turn a host structure component into a database column.
+    shown = wanted.map(name => catalog.find(f => f.FIELDNAME === name)).filter(Boolean);
+    if (!shown.length) { throw new Error("Table " + table + " has no field " + (wanted[0] || "in the requested list") + "."); }
   }
   const keys = catalog.filter(f => f.KEYFLAG === "X").map(f => f.FIELDNAME.toLowerCase());
   const list = shown === catalog ? "*" : shown.map(f => f.FIELDNAME.toLowerCase()).join(", ");

@@ -1,5 +1,7 @@
 # Project rules
 
+- After fixes or changes to the VS Code extension, always rebuild and verify the VSIX before handing off. Keep the current version unless the user requests a version change.
+
 - Documentation lives in several places, and a change that users can see is written into each
   one it concerns, in the same landing: `README.md` (the repository on GitHub),
   `vscode/README.md` (the VS Code Marketplace page), `docs/index.html` and `eclipse/README.md`

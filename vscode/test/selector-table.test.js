@@ -82,3 +82,10 @@ test("pick=X reads and answers only the columns asked for, in their order, the r
   assert.strictEqual(asked.at(-1).sql, "SELECT price, carrid FROM SFLIGHT ORDER BY mandt, carrid, fldate");
   await assert.rejects(request(api, "/sap/bc/adt/vertex/table/SFLIGHT?pick=X&sf1=nosuch"), /has no field NOSUCH/);
 });
+
+test("requested columns are intersected with the dictionary catalog", async () => {
+  const { api, asked } = session([]);
+  const result = await request(api, "/sap/bc/adt/vertex/table/SFLIGHT?pick=X&sf1=price&sf2=pricing_date&sf3=carrid");
+  assert.deepStrictEqual(result.fields.map(f => f.name), ["price", "carrid"]);
+  assert.ok(!asked.at(-1).sql.toLowerCase().includes("pricing_date"));
+});

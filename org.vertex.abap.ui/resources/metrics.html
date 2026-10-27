@@ -1840,7 +1840,7 @@ function setDirection(value) {
   Array.prototype.forEach.call(document.querySelectorAll("#dir button"), function (button) {
     button.className = button.getAttribute("data-dir") === direction ? "on" : "";
   });
-  if (lastMermaid) { refit = false; draw(true); }
+  if (lastMermaid) { refit = true; draw(true); }
 }
 
 /* The library arrives as text, so it is run here rather than fetched. */

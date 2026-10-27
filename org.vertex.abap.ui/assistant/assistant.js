@@ -79,6 +79,10 @@ function locate(id, extensionPath) {
       if (id === "codex" && process.platform === "win32" && process.env.APPDATA) {
         folders.push(path.join(process.env.APPDATA, "npm"));
       }
+      if (id === "codex" && process.platform === "darwin") {
+        folders.push(path.join("/Applications", "ChatGPT.app", "Contents", "Resources",
+          "codex-cli", "CodexCLI.app", "Contents", "MacOS"));
+      }
       for (const folder of folders) {
         if (!folder) { continue; }
         const root = folder.replace(/^"|"$/g, "");
@@ -119,6 +123,38 @@ function locate(id, extensionPath) {
                     + ". Its layout may have changed in this version.");
   }
   return file;
+}
+
+function sources(id, extensionPath) {
+  let bundled = "", cli = "";
+  try { if (extensionPath) { bundled = locate(id, extensionPath); } } catch (_) { /* Try CLI. */ }
+  try { cli = locate(id, ""); } catch (_) { /* Try extension. */ }
+  return { extension: bundled, cli };
+}
+
+/** Pick an assistant executable once when both installations are available. */
+async function resolveAssistant(vscode, id, extensionPath) {
+  const { extension: bundled, cli } = sources(id, extensionPath);
+  if (!bundled && !cli) { return locate(id, extensionPath); }
+  if (!bundled || !cli || bundled === cli) { return bundled || cli; }
+  const settings = vscode.workspace.getConfiguration("vertex.ai");
+  const sourceSetting = id + "Source";
+  const label = describe(id).label;
+  let source = settings.get(sourceSetting, "ask");
+  if (source !== "extension" && source !== "cli") {
+    const picked = await vscode.window.showQuickPick([
+      { label: label + " VS Code extension", description: bundled, source: "extension" },
+      { label: label + " CLI", description: cli, source: "cli" }
+    ], { title: "Which " + label + " should VERTEX use?", placeHolder: "Choose an installation for the VERTEX assistant" });
+    if (!picked) { throw new Error(label + " installation was not selected."); }
+    source = picked.source;
+    await settings.update(sourceSetting, source, vscode.ConfigurationTarget.Global);
+  }
+  return source === "extension" ? bundled : cli;
+}
+
+async function resolveClaude(vscode, extensionPath) {
+  return resolveAssistant(vscode, "claude", extensionPath);
 }
 
 function claudeBinary(root) {
@@ -561,6 +597,9 @@ exports.ASSISTANTS = ASSISTANTS;
 exports.TRIPLES = TRIPLES;
 exports.TIMEOUT = TIMEOUT;
 exports.locate = locate;
+exports.sources = sources;
+exports.resolveClaude = resolveClaude;
+exports.resolveAssistant = resolveAssistant;
 exports.models = models;
 exports.probe = probe;
 exports.CLAUDE_VERSIONS = CLAUDE_VERSIONS;

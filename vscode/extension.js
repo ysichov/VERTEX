@@ -938,6 +938,7 @@ function activate(context) {
   };
   const dockedDebugInitial = () => !dockedDebugSource ? null : {
     name: dockedDebugSource.object_name,
+    program: dockedDebugSource.program || "",
     type: dockedDebugSource.object_type,
     // A system reached through SAP's ADT extension has no ADT debugger here: the panel offers no SAP run, steps or session.
     line: dockedDebugSource.cursorLine || null,
@@ -1002,7 +1003,20 @@ function activate(context) {
   let dockedGeneration = 0;
   const setDockedHtml = html => { dockedGeneration++; dockedDebugView.webview.html = html; };
   context.subscriptions.push(vscode.window.registerWebviewViewProvider("vertex.visualDebug", {
-    resolveWebviewView(view) {
+    async resolveWebviewView(view) {
+      // VS Code restores the view, but extension-host objects do not survive Reload Window.
+      // Rebuild the adapter before giving the page its initial state; never execute on restore.
+      if (!dockedDebugSource) {
+        try {
+          const source = await require("./debug-panel-state").restore(
+            context.workspaceState.get("vertex.debug.panelSource"), vscode.workspace, vscode.Uri);
+          if (source) await openVisualDebug(false, source, true);
+        } catch (error) {
+          void context.workspaceState.update("vertex.debug.panelSource", undefined);
+          vscode.window.showWarningMessage("VERTEX: could not restore the debugger source: " + error.message
+            + ". Open an ABAP source and choose VERTEX Smart Debugger to reconnect this panel.");
+        }
+      }
       dockedDebugView = view;
       view.webview.options = { enableScripts: true };
       dockedGeneration++;
@@ -1093,6 +1107,17 @@ function activate(context) {
               : request.open ? await sapCode.originOpen(request.open) : request.variables ? await sapCode.originVariables(request.variables) : await sapCode.originPoints(request,progress=>view.webview.postMessage({type:"originProgress",payload:{id:request.id,...progress}}),dockedDebugSource?.local?dockedDebugSource.document:null) }; }
             catch (error) { reply = { id: request.id, error: error.message }; }
             await view.webview.postMessage({ type: "origin", payload: JSON.stringify(reply) });
+            return;
+          }
+          if (message.call === "debugProgram") {
+            const program = String(message.program || "").trim();
+            if (!dockedDebugSource && program) dockedDebugSource = {
+              object_name: program, object_type: "PROG", system_name: active().system?.name
+            };
+            if (dockedDebugSource) {
+              dockedDebugSource.program = program;
+              void context.workspaceState.update("vertex.debug.panelSource", require("./debug-panel-state").capture(dockedDebugSource));
+            }
             return;
           }
           if (message.call === "debugContext") {
@@ -1268,7 +1293,7 @@ function activate(context) {
   }));
   // In the transpiler panel the breakpoints are VS Code's own: a point set or removed in the editor is shown at once.
   context.subscriptions.push(vscode.debug.onDidChangeBreakpoints(() => { if (dockedDebugSource?.local && localDebugAdapter) postDockedPicture(); }));
-  const openVisualDebug = async (runOnly = false, again = null) => {
+  const openVisualDebug = async (runOnly = false, again = null, restoring = false) => {
     void vscode.commands.executeCommand("setContext", "vertex.localHistory", false);
     const editor = vscode.window.activeTextEditor;
     const local = require("./local-analysis");
@@ -1290,6 +1315,7 @@ function activate(context) {
     sapCode.forgetOrigin?.();
     dockedDebugSource = { ...source, runOnly: runOnly === true, autoRun: runOnly === true && (!again || again.autoRun === true) };
     delete dockedDebugSource.transpilerRun;
+    void context.workspaceState.update("vertex.debug.panelSource", require("./debug-panel-state").capture(dockedDebugSource));
     latestDebugContext = null;
     // A kept transpiler run opens on its record: it is looked at, not run again.
     const stored = source.storedRun;
@@ -1337,7 +1363,7 @@ function activate(context) {
       setDockedHtml(require("./tools-window").debugHtml(dockedDebugInitial()) + "<!-- " + Date.now() + " -->");
       dockedDebugView.show(true);
       postDockedPicture();
-    } else {
+    } else if (!restoring) {
       vscode.commands.executeCommand("workbench.view.extension.vertex-debug").catch(error =>
         vscode.window.showErrorMessage("VERTEX: could not open Debug panel: " + error.message));
     }

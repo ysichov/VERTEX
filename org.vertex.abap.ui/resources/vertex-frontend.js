@@ -103974,11 +103974,10 @@ async function request(api, resource) {
   if (url.searchParams.get("pick") === "X") {
     const wanted = [];
     for (let i = 1; i <= 200 && url.searchParams.get("sf" + i); i++) { wanted.push(String(url.searchParams.get("sf" + i)).toUpperCase()); }
-    shown = wanted.map(name => {
-      const field = catalog.find(f => f.FIELDNAME === name);
-      if (!field) { throw new Error("Table " + table + " has no field " + name + "."); }
-      return field;
-    });
+    // Only dictionary fields can become result columns. Inferred query fields
+    // must not turn a host structure component into a database column.
+    shown = wanted.map(name => catalog.find(f => f.FIELDNAME === name)).filter(Boolean);
+    if (!shown.length) { throw new Error("Table " + table + " has no field " + (wanted[0] || "in the requested list") + "."); }
   }
   const keys = catalog.filter(f => f.KEYFLAG === "X").map(f => f.FIELDNAME.toLowerCase());
   const list = shown === catalog ? "*" : shown.map(f => f.FIELDNAME.toLowerCase()).join(", ");
@@ -104944,7 +104943,18 @@ function partBody(payload, request, part, ptype, table) {
     }
     if (pick) {
       if (!blocks.length) { old = up(pick.KEY.VERSNO_O); fresh = up(pick.KEY.VERSNO_N); }
-      const diff = list(pick.DIFF).map(l => ({ op: up(l.OP), text: up(l.TEXT) }));
+      // Who wrote each changed line, when the review keeps a blame map (AVE's "Who is Blame"): an added line is looked
+      // up in BLAME_MAP, a deleted one in BLAME_DELETED, by its text, as AVE looks them up.
+      const whoOf = (map, text) => {
+        const b = list(map).find(m => up(m.TEXT) === text);
+        return b ? { author: up(b.AUTHOR), author_name: up(b.AUTHOR_NAME), date: up(b.DATUM), version: up(b.VERSNO_TEXT),
+          request: up(b.TASK) || up(b.KORRNUM) } : null;
+      };
+      const diff = list(pick.DIFF).map(l => {
+        const op = up(l.OP), text = up(l.TEXT);
+        const who = op === "+" ? whoOf(pick.BLAME_MAP, text) : op === "-" ? whoOf(pick.BLAME_DELETED, text) : null;
+        return who ? { op, text, who } : { op, text };
+      });
       ops = diff;
       added = diff.filter(l => l.op === "+").length;
       deleted = diff.filter(l => l.op === "-").length;
@@ -104963,8 +104973,10 @@ function partBody(payload, request, part, ptype, table) {
 }
 
 // The stored review's text and where it came from. IO is the host's storage (code-workbench reviewIo); without it only
-// the table is read. Files first when files are what is written, the table first otherwise.
-async function loadStored(api, trkorr, remote, io, table) {
+// the table is read. Both places are read: a review can be kept in both, and the two copies can differ. FROM names the
+// copy to show (table, file); without it, files first when files are what is written, the table first otherwise.
+// Answers { pick, copies: { table, file } }; a copy asked for by name that is not there is an error, not the other one.
+async function loadStored(api, trkorr, remote, io, table, from) {
   const fromTable = async () => {
     if (!table) { return null; }
     const row = (await api.query("SELECT payload FROM zave_review WHERE trkorr = " + sqlText(trkorr)
@@ -104976,7 +104988,20 @@ async function loadStored(api, trkorr, remote, io, table) {
     const text = await io.read(trkorr, remote);
     return text ? { text, from: "file", file: io.where(trkorr, remote) } : null;
   };
-  return io && io.mode === "file" ? (await fromFile()) || (await fromTable()) : (await fromTable()) || (await fromFile());
+  const copies = { table: await fromTable(), file: await fromFile() };
+  if (from === "table" || from === "file") {
+    if (!copies[from]) { throw new Error("No copy of the review of " + trkorr + " is kept in the " + from + "."); }
+    return { pick: copies[from], copies };
+  }
+  return { pick: io && io.mode === "file" ? copies.file || copies.table : copies.table || copies.file, copies };
+}
+
+// Who saved a copy and when, for the page to name both when there are two.
+function copyInfo(copy) {
+  if (!copy) { return null; }
+  let saved = {};
+  try { saved = parsePayload(copy.text); } catch (error) { return { saved_at: "", saved_by: "", file: copy.file || "", unreadable: true }; }
+  return { saved_at: up(saved.LAST_SAVED_AT), saved_by: up(saved.LAST_SAVED_BY), file: copy.file || "" };
 }
 
 const storage = (io, stored) => io ? { mode: io.mode, wanted: io.wanted, can_store: io.canStore, from: stored ? stored.from : "",
@@ -104993,23 +105018,25 @@ async function request(api, resource, progress, io) {
   if (part && !ptype) { throw new Error("Reading the blocks of " + part + " needs its type in ptype."); }
 
   const table = await hasTable(api);
-  const stored = await loadStored(api, trkorr, remote, io, table);
+  const loaded = await loadStored(api, trkorr, remote, io, table, String(params.get("from") || ""));
+  const stored = loaded.pick;
+  const copies = { table: copyInfo(loaded.copies.table), file: copyInfo(loaded.copies.file) };
   // A payload that does not parse is no review, as /ui2/cl_json's failure is in ZCL_VX_REVIEW_STORE.
   let payload = null;
   if (stored) { try { payload = parsePayload(stored.text); } catch (error) { payload = null; } }
   // Nothing saved: the review is built from ADT, to look at - live, and not written anywhere.
   const live = !payload && !remote;
-  if (live) { payload = await __vertexRequire(1549).build(api, trkorr, progress, params.get("fresh") === "1"); }
+  if (live) { payload = await __vertexRequire(1549).build(api, trkorr, progress, params.get("fresh") === "1", params.get("blame") === "1"); }
   /* A saved review is checked against the request as it is now; the page offers to build it again when it is not.
      A check that fails says so - it is not taken for "up to date". */
   let stale = null;
   if (payload && !live && !remote && !part) {
-    try { stale = await __vertexRequire(1549).staleness(api, trkorr, payload); }
+    try { stale = await __vertexRequire(1549).staleness(api, trkorr, payload, progress); }
     catch (error) { stale = { error: String(error && error.message || error) }; }
   }
-  if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored) }); }
+  if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored), copies }); }
 
-  const objects = [], reviewers = [], history = [];
+  const objects = [], reviewers = [], history = [], developers = [];
   if (payload) {
     reportObjects(payload.OBJ_STATS).forEach(s => {
       let approved = 0, declined = 0;
@@ -105024,6 +105051,35 @@ async function request(api, resource, progress, io) {
         inserted: Number(s.INS_COUNT), deleted: Number(s.DEL_COUNT), modified: Number(s.MOD_COUNT), approved, declined,
         open: Number(s.HUNK_COUNT) - approved - declined });
     });
+    /* Developers, as AVE counts them: from each object's blame breakdown (BT_AUTHORS) when the review has one - an
+       object written by two developers is under both, each with their own rows and blocks - and from the object's
+       author when it has none. A developer's blocks are the blocks whose author they are. */
+    const devs = new Map();
+    const dev = (author, name) => {
+      if (!devs.has(author)) { devs.set(author, { author, author_name: name, inserted: 0, modified: 0, deleted: 0, hunks: 0, approved: 0, declined: 0 }); }
+      const d = devs.get(author);
+      if (!d.author_name && name) { d.author_name = name; }
+      return d;
+    };
+    reportObjects(payload.OBJ_STATS).forEach(s => {
+      const hunks = list(payload.HUNKS).filter(h => up(h.OBJTYPE) === up(s.OBJTYPE) && up(h.OBJ_NAME) === up(s.OBJ_NAME));
+      const verdict = h => (list(payload.HUNK_ACTIONS).find(a => up(a.HUNK_KEY) === up(h.HUNK_KEY)) || {}).ACTION;
+      const authors = list(s.BT_AUTHORS);
+      if (authors.length) {
+        authors.forEach(a => { const d = dev(up(a.AUTHOR), up(a.AUTHOR_NAME));
+          d.inserted += Number(a.INS_COUNT) || 0; d.modified += Number(a.MOD_COUNT) || 0; d.deleted += Number(a.DEL_COUNT) || 0; });
+      } else {
+        const d = dev(up(s.AUTHOR), up(s.AUTHOR_NAME));
+        d.inserted += Number(s.INS_COUNT) || 0; d.modified += Number(s.MOD_COUNT) || 0; d.deleted += Number(s.DEL_COUNT) || 0;
+      }
+      hunks.forEach(h => {
+        const d = dev(up(h.AUTHOR) || up(s.AUTHOR), up(h.AUTHOR_NAME));
+        d.hunks++;
+        const v = up(verdict(h));
+        if (v === "A") { d.approved++; } else if (v === "D") { d.declined++; }
+      });
+    });
+    devs.forEach(d => developers.push(d));
     list(payload.USER_STATES).forEach(u => reviewers.push({ reviewer: up(u.REVIEWER), reviewer_name: up(u.REVIEWER_NAME),
       saved_at: up(u.SAVED_AT), approved: list(u.APPROVED).length, declined: list(u.DECLINED).length, notes: list(u.NOTES).length }));
     list(payload.HISTORY).forEach(h => history.push({ saved_at: up(h.SAVED_AT), saved_by: up(h.SAVED_BY), saved_by_name: up(h.SAVED_BY_NAME),
@@ -105031,9 +105087,10 @@ async function request(api, resource, progress, io) {
   }
   return { request: trkorr.toLowerCase(), remote: remote.toLowerCase(), table, saved: Boolean(payload), live,
     saved_at: payload ? up(payload.LAST_SAVED_AT) : "", saved_by: payload ? up(payload.LAST_SAVED_BY) : "", objects, reviewers, history,
+    developers,
     // Objects the request names that the system no longer has, found while building it from ADT.
     missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
-    storage: storage(io, stored), stale };
+    storage: storage(io, stored), copies, stale };
 }
 
 // A write to a review: a reviewer's action on one block - A approve, D decline, C comment, U take a verdict back - or
@@ -105058,7 +105115,8 @@ async function write(api, resource, body, io) {
   if ((action === "D" || action === "C") && !note) { throw new Error("A decline and a comment are the words that go with them."); }
 
   const table = await hasTable(api);
-  const stored = await loadStored(api, trkorr, remote, io, table);
+  const from = String(params.get("from") || "");
+  const stored = (await loadStored(api, trkorr, remote, io, table, from)).pick;
   // A host may know the user at once (VS Code) or ask its project for it (Eclipse).
   const user = String(await api.user()).toUpperCase();
   const nameRow = (await api.query("SELECT a~name_text FROM usr21 AS u INNER JOIN adrp AS a ON a~persnumber = u~persnumber"
@@ -105070,7 +105128,7 @@ async function write(api, resource, body, io) {
     if (stored) { throw new Error("A review of " + trkorr + " is already saved (" + stored.from + "). Read it again."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
     existing = {};
-    current = state.applySaved(await __vertexRequire(1549).build(api, trkorr), who.user);
+    current = state.applySaved(await __vertexRequire(1549).build(api, trkorr, undefined, false, params.get("blame") === "1"), who.user);
   } else if (action === "R") {
     if (!stored) { throw new Error("No review is saved for " + trkorr + "; there is nothing to rebuild."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
@@ -105080,7 +105138,7 @@ async function write(api, resource, body, io) {
     }
     // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
     existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
-    current = state.applySaved(await __vertexRequire(1549).build(api, trkorr, undefined, true), who.user);
+    current = state.applySaved(await __vertexRequire(1549).build(api, trkorr, undefined, true, params.get("blame") === "1"), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
     existing = state.parseForWrite(stored.text);
@@ -105098,16 +105156,22 @@ async function write(api, resource, body, io) {
   const text = state.stringify(next);
   const expect = stored ? state.plain(existing.LAST_SAVED_AT) : "";
 
-  // The table when it is to be written - and when it cannot be, the write fails rather than landing elsewhere.
-  if (!io || io.mode !== "file") {
+  /* A copy is written back where it was read from. A copy read from the table on a system VERTEX cannot write it on
+     goes to a file - the page said so before the write. A new review (S) goes where the storage setting says. The
+     table, when it is to be written and cannot be, fails the write rather than landing elsewhere. */
+  const target = stored ? stored.from : "";
+  const toTable = target ? target === "table" && (!io || io.canStore) : !io || io.mode !== "file";
+  const toFile = Boolean(io) && (target ? target === "file" || !toTable || io.mode === "both" : io.mode !== "table");
+  if (toTable) {
     if (!table) { throw new Error("This system has no ZAVE_REVIEW table with REMOTE and PAYLOAD; the review cannot be saved there."); }
-    await api.storeReview(trkorr, remote, expect, text);
+    await api.storeReview(trkorr, remote, target === "table" || !target ? expect : "", text);
   }
-  if (io && io.mode !== "table") { await io.write(trkorr, remote, text); }
+  if (toFile) { await io.write(trkorr, remote, text); }
 
   const part = up(params.get("part")), ptype = up(params.get("ptype"));
   const again = "/sap/bc/adt/vertex/review/" + encodeURIComponent(trkorr) + "?remote=" + encodeURIComponent(remote)
-    + (part ? "&part=" + encodeURIComponent(part) + "&ptype=" + encodeURIComponent(ptype) : "");
+    + (part ? "&part=" + encodeURIComponent(part) + "&ptype=" + encodeURIComponent(ptype) : "")
+    + (params.get("blame") === "1" ? "&blame=1" : "") + (from ? "&from=" + encodeURIComponent(from) : "");
   return request(api, again, undefined, io);
 }
 
@@ -105230,6 +105294,132 @@ function classify(adds, dels) {
   if (dels.some(d => adds.some(a => aveDiff.hasCommonChars(d, a)))) { return "changed"; }
   return adds.length >= dels.length ? "added" : "deleted";
 }
+// Who wrote which line - AVE's "Who is Blame" (ZCL_VX_POPUP_DIFF=>BUILD_BLAME_MAP). The versions from OLD to NEW are
+// replayed in order: a line takes the author of the version that added it, a removed line the author of the version
+// that removed it. A line is known by its text, as in AVE. When one author wrote every version of the range the replay
+// is skipped (SINGLE_RANGE_AUTHOR): every changed line is theirs. A created part's first version is its author's.
+// A line is credited to the version's OWNER, as AVE credits OBJ_OWNER, not to whoever released or copied the version.
+const num = e => e.id === "00000" ? 99999 : Number(e.id);
+const blameEntry = (e, text) => ({ TEXT: text, AUTHOR: e.owner || e.author, AUTHOR_NAME: "", DATUM: String(e.time || "").slice(0, 10),
+  ZEIT: String(e.time || "").slice(11, 19), VERSNO_TEXT: e.id === "00000" ? "Active" : String(Number(e.id)),
+  KORRNUM: e.transport || "", TASK: e.transport || "", TASK_TEXT: "" });
+const drop = (map, text) => { for (let i = map.length - 1; i >= 0; i--) { if (map[i].TEXT === text) { map.splice(i, 1); } } };
+// ZCL_VX_VERSION_LIST=>LOAD, OBJ_OWNER: a version is the work of the developer whose task it came from. A task's
+// version (S, R) is its owner's. A request's version (K), or a transport of copies (T, read back to its K through its
+// CORR/MERG entry), is the owner's of the K's S/R task that carries the object and is the nearest before the version,
+// or the newest such task when none is before it (an R task carries a date past its own versions). A version no task
+// answers for stays its author's. OBJECT is the name the part is read through; a task carries it when an E071 entry
+// of the task starts with it (a class, its methods, its includes). Times are compared as the feed and E070 give them.
+function ownerResolver(api, object) {
+  const heads = new Map(), tasksOfK = new Map(), owners = new Map();
+  const digits = value => String(value || "").replace(/\D/g, "");
+  const head = async t => {
+    if (!heads.has(t)) {
+      heads.set(t, (await api.query("SELECT trkorr, trfunction, strkorr, as4user FROM e070 WHERE trkorr = " + sqlText(t), 1)).values[0] || null);
+    }
+    return heads.get(t);
+  };
+  const tasks = async k => {
+    if (!tasksOfK.has(k)) {
+      const rows = (await api.query("SELECT e070~trkorr, e070~as4user, e070~as4date, e070~as4time FROM e070"
+        + " INNER JOIN e071 ON e071~trkorr = e070~trkorr WHERE e070~strkorr = " + sqlText(k)
+        + " AND e070~trfunction IN ('S', 'R') AND e071~obj_name LIKE " + sqlText(object + "%"), 1000)).values;
+      const seen = new Set();
+      tasksOfK.set(k, rows.filter(r => !seen.has(r.TRKORR) && seen.add(r.TRKORR))
+        .map(r => ({ user: r.AS4USER, at: digits(r.AS4DATE) + digits(r.AS4TIME) })).sort((a, b) => b.at.localeCompare(a.at)));
+    }
+    return tasksOfK.get(k);
+  };
+  return async entry => {
+    const t = entry.transport;
+    if (!t) { return entry.author; }
+    const key = t + "|" + entry.time;
+    if (!owners.has(key)) {
+      let owner = entry.author;
+      const h = await head(t);
+      if (h && (h.TRFUNCTION === "S" || h.TRFUNCTION === "R") && h.AS4USER) { owner = h.AS4USER; }
+      else if (h && (h.TRFUNCTION === "K" || h.TRFUNCTION === "T")) {
+        let k = t;
+        if (h.TRFUNCTION === "T") {
+          const merg = (await api.query("SELECT obj_name FROM e071 WHERE trkorr = " + sqlText(t)
+            + " AND pgmid = 'CORR' AND object = 'MERG'", 1)).values[0];
+          k = merg ? String(merg.OBJ_NAME).slice(0, 10) : "";
+        }
+        if (k) {
+          const list = await tasks(k), at = digits(entry.time).slice(0, 14);
+          const pick = list.find(c => c.at <= at) || list[0];
+          if (pick && pick.user) { owner = pick.user; }
+        }
+      }
+      owners.set(key, owner);
+    }
+    return owners.get(key);
+  };
+}
+
+async function blameOf(api, feed, pair, ops, textOf, ownerOf) {
+  const lo = pair.old ? num(pair.old) : 0, hi = num(pair.fresh);
+  const range = feed.filter(e => num(e) >= lo && num(e) <= hi).sort((a, b) => num(a) - num(b));
+  const map = [], deleted = [];
+  for (const e of range) { e.owner = await ownerOf(e); }
+  if (new Set(range.slice(pair.old ? 1 : 0).map(e => e.owner)).size <= 1) {
+    ops.forEach(o => { if (o.op === "+") { map.push(blameEntry(pair.fresh, o.text)); } else if (o.op === "-") { deleted.push(blameEntry(pair.fresh, o.text)); } });
+    return { map, deleted };
+  }
+  let prev = await textOf(range[0]);
+  if (!pair.old) { prev.forEach(text => map.push(blameEntry(range[0], text))); }
+  for (const e of range.slice(1)) {
+    const cur = await textOf(e);
+    for (const d of await versions.diff(prev, cur, false, api)) {
+      if (d.op === "+") { drop(map, d.text); map.push(blameEntry(e, d.text)); }
+      else if (d.op === "-") { drop(deleted, d.text); deleted.push(blameEntry(e, d.text)); drop(map, d.text); }
+    }
+    prev = cur;
+  }
+  return { map, deleted };
+}
+const blamed = (map, text) => { const b = map.find(m => m.TEXT === text); return b && b.AUTHOR ? b.AUTHOR : ""; };
+
+// ZCL_VX_REVIEW_STATS=>FROM_DIFF with a blame map: per author, inserted and modified lines (a modified line is its new
+// text's), a line the map does not know booked on DEF. Deleted lines are not booked on anyone, as in AVE. Blocks are
+// counted from the review's own blocks, so an author's blocks are the blocks the page lists under them.
+function blameAuthors(ops, map, def, hunks) {
+  const by = new Map();
+  const at = author => {
+    if (!by.has(author)) { by.set(author, { AUTHOR: author, AUTHOR_NAME: "", INS_COUNT: 0, DEL_COUNT: 0, MOD_COUNT: 0,
+      HUNK_COUNT: 0, HUNK_INS: 0, HUNK_MOD: 0, HUNK_DEL: 0 }); }
+    return by.get(author);
+  };
+  let dels = [], adds = [];
+  const flush = () => {
+    if ((dels.length || adds.length) && !blank(dels.concat(adds))) {
+      const used = adds.map(() => false);
+      dels.forEach(d => {
+        const i = adds.findIndex((a, k) => !used[k] && aveDiff.hasCommonChars(d, a));
+        if (i >= 0) { used[i] = true; at(blamed(map, adds[i]) || def).MOD_COUNT++; }
+      });
+      adds.forEach((a, k) => { if (!used[k]) { at(blamed(map, a) || def).INS_COUNT++; } });
+    }
+    dels = []; adds = [];
+  };
+  ops.forEach(o => { if (o.op === "-") { dels.push(o.text); } else if (o.op === "+") { adds.push(o.text); } else { flush(); } });
+  flush();
+  hunks.forEach(h => {
+    const a = at(h.AUTHOR);
+    a.HUNK_COUNT++;
+    if (h.CHANGE_KIND === "added") { a.HUNK_INS++; } else if (h.CHANGE_KIND === "changed") { a.HUNK_MOD++; } else { a.HUNK_DEL++; }
+  });
+  return [...by.values()].filter(a => a.AUTHOR);
+}
+// ZCL_VX_ACR_HUNK_INFO: whoever wrote most of a block's inserted lines owns it; DEF when the map knows none of them.
+function blockAuthor(adds, map, def) {
+  const count = new Map();
+  adds.forEach(text => { const a = blamed(map, text); if (a) { count.set(a, (count.get(a) || 0) + 1); } });
+  let top = "", most = 0;
+  count.forEach((n, a) => { if (n > most) { most = n; top = a; } });
+  return top || def;
+}
+
 const { inLists } = __vertexRequire(1543);
 const { hunkRanges } = __vertexRequire(1548);
 
@@ -105289,8 +105479,11 @@ async function partsOfRequest(api, keys) {
 // that is not the request's; none, and the oldest version unless that is NEW or the request's own (then the request
 // created the part). Whose the active state is comes from ADT's feed, not from VRSD: VRSD keeps naming the request
 // that last released it while later, unreleased work of another request already sits in it.
-// Not carried: AVE skips the request's own transports of copies when looking for OLD, by resolving each to its parent.
-function pairOf(feed, numbers) {
+// NUMBERS holds the request, its tasks and its own transports of copies (see requestParts).
+// OPEN: the active state stands in for a missing version of the request only while the request is not released. A
+// released request is history - every part it changed has a version of its own - and the active state of a part it has
+// none of holds another request's work (AVE: IS_RELEASED_KORR); such a part has no pair.
+function pairOf(feed, numbers, open) {
   const ordered = feed.filter(e => e.id !== "00000").sort((a, b) => Number(b.id) - Number(a.id));
   const active = feed.find(e => e.id === "00000") || null;
   const at = ordered.findIndex(e => numbers.has(e.transport));
@@ -105299,7 +105492,7 @@ function pairOf(feed, numbers) {
   let fresh;
   if (own && foreignAbove) { fresh = own; }
   else if (active && numbers.has(active.transport)) { fresh = active; }
-  else { fresh = own || active; }
+  else { fresh = own || (open ? active : null); }
   if (!fresh) { return null; }
   const below = fresh === active ? ordered : ordered.slice(ordered.indexOf(fresh) + 1);
   let old = below.find(e => e.transport && !numbers.has(e.transport)) || null;
@@ -105314,39 +105507,59 @@ function pairOf(feed, numbers) {
 // same address at any time, and is read anew - kept, it would hide the very edit a rebuild or a check is for.
 const activeOrKept = (api, entry) => entry.id === "00000" ? Promise.resolve(api.revisionSource(entry.uri)) : versions.sourceAt(api, entry.uri);
 
+// Code SAP wrote, not a developer - function group framework includes and the like, whose new version is authored by
+// SAP* - is not a change to review (ZCL_VX_ACR_PREPARE=>IS_SAP_GENERATED_AUTHOR, AVE's "Ignore SAP generated").
+const generated = pair => /^SAP/i.test(String(pair.fresh.author || ""));
+
+// A part without a pair is listed, never dropped without a word.
+const noPair = open => open ? "no version of this part, and no active state"
+  : "the request is released and holds no version of this part; the active state belongs to later work";
+
 const cache = new WeakMap();
 
 // The review of a request, built; kept for a few minutes per session, since the page asks for the summary and then
 // for each part.
 // PROGRESS, when given, is told what the build is doing, a line at a time. FRESH builds it again whatever is kept.
-async function build(api, request, progress, fresh) {
+// BLAME adds who wrote each changed line (AVE's "Who is Blame"); off, every block is the NEW version's author's.
+async function build(api, request, progress, fresh, blame) {
+  const key = request + (blame ? "|blame" : "");
   if (!cache.has(api)) { cache.set(api, new Map()); }
-  const kept = cache.get(api).get(request);
+  const kept = cache.get(api).get(key);
   if (!fresh && kept && Date.now() - kept.at < 5 * 60 * 1000) { return kept.payload; }
-  const promise = buildNow(api, request, progress || (() => {}));
-  cache.get(api).set(request, { at: Date.now(), payload: promise });
-  promise.catch(() => cache.get(api).delete(request));
+  const promise = buildNow(api, request, progress || (() => {}), Boolean(blame));
+  cache.get(api).set(key, { at: Date.now(), payload: promise });
+  promise.catch(() => cache.get(api).delete(key));
   return promise;
 }
 
 // The request with its tasks, and the parts they name.
 async function requestParts(api, request) {
-  const head = (await api.query("SELECT trkorr FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
+  const head = (await api.query("SELECT trkorr, trstatus FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
   if (!head) { throw new Error("Transport request " + request + " does not exist."); }
   const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(request), 1000)).values.map(r => r.TRKORR);
-  const numbers = new Set([request, ...tasks]);
+  // The request's own transports of copies are the request too (ZCL_VX_REQUEST=>RESOLVE_PARENT_K): a ToC names the
+  // request it copies in its CORR/MERG entry. Without them the newest ToC of the request became the old side, and the
+  // review showed only what changed since the last copy.
+  const copies = (await api.query("SELECT trkorr, obj_name FROM e071 WHERE pgmid = 'CORR' AND object = 'MERG'"
+    + " AND obj_name LIKE " + sqlText(request + "%"), 10000)).values
+    .filter(r => String(r.OBJ_NAME || "").slice(0, 10) === request).map(r => r.TRKORR);
+  const numbers = new Set([request, ...tasks, ...copies]);
   const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
-  return Object.assign({ numbers }, await partsOfRequest(api, keys));
+  const open = head.TRSTATUS !== "R" && head.TRSTATUS !== "N";
+  return Object.assign({ numbers, open }, await partsOfRequest(api, keys));
 }
 
 const labelOf = p => p.ptype === "METH" ? p.object + "->" + p.unit : p.part;
 const versnos = pair => ({ fresh: pair.fresh.id === "00000" ? "99998" : pair.fresh.id, old: pair.old ? pair.old.id : "00000" });
 
-async function buildNow(api, request, progress) {
+async function buildNow(api, request, progress, withBlame) {
   progress("reading what " + request + " holds ...");
   const payload = { TRKORR: request, OBJ_STATS: [], HUNKS: [], DIFF_DATA: [], HUNK_ACTIONS: [], USER_STATES: [], THREADS: [], HISTORY: [] };
 
-  const { numbers, parts, missing } = await requestParts(api, request);
+  const { numbers, open, parts, missing } = await requestParts(api, request);
+  // One resolver per object read through, so its tasks and requests are asked once for all its parts.
+  const resolvers = new Map();
+  const ownerOf = object => { if (!resolvers.has(object)) { resolvers.set(object, ownerResolver(api, object)); } return resolvers.get(object); };
   // Kept beside the payload, not in it: a saved review is AVE's format, which has no place for them.
   Object.defineProperty(payload, "MISSING", { value: missing, enumerable: false });
   for (const [at, p] of parts.entries()) {
@@ -105354,13 +105567,14 @@ async function buildNow(api, request, progress) {
     /* One part that cannot be read - ADT keeps no versions of its type on this release ("Request version for DTEL is
        not supported"), a version that will not open - does not end the review: it is listed with SAP's own words, and
        the rest is reviewed. */
-    let where, pair, ops;
+    let where, pair, ops, blame;
     try {
       where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
       if (!where) { continue; }
       const feed = await api.revisions(where.url, where.include || undefined);
-      pair = pairOf(feed, numbers);
-      if (!pair) { continue; }
+      pair = pairOf(feed, numbers, open);
+      if (!pair) { throw new Error(noPair(open)); }
+      if (generated(pair)) { continue; }
       const textOf = async entry => {
         if (!entry) { return []; }
         const text = await activeOrKept(api, entry);
@@ -105368,6 +105582,11 @@ async function buildNow(api, request, progress) {
       };
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
       ops = await versions.diff(oldLines, newLines, false, api);
+      blame = { map: [], deleted: [] };
+      if (withBlame && ops.some(o => o.op !== "=")) {
+        progress((at + 1) + " of " + parts.length + ": " + labelOf(p) + " - who wrote which line ...");
+        blame = await blameOf(api, feed, pair, ops, textOf, ownerOf(p.object));
+      }
     } catch (error) {
       missing.push({ object: p.ptype === "METH" ? "METH" : p.type, name: p.ptype === "METH" ? p.object + "->" + p.unit : p.part,
         reason: String(error && error.message || error) });
@@ -105385,26 +105604,33 @@ async function buildNow(api, request, progress) {
       const adds = block.filter(o => o.op === "+").map(o => o.text), dels = block.filter(o => o.op === "-").map(o => o.text);
       const plus = adds.length, minus = dels.length;
       const kind = classify(adds, dels);
+      const hunkAuthor = blockAuthor(adds, blame.map, pair.fresh.owner || pair.fresh.author);
       if (kind === "changed") { hMod++; } else if (kind === "added") { hIns++; } else { hDel++; }
       payload.HUNKS.push({ HUNK_KEY: p.ptype + "~" + p.part + "~" + (i + 1), OBJTYPE: p.ptype, OBJ_NAME: p.part, CLASS_NAME: p.className,
         DISPLAY_NAME: display, HUNK_NO: i + 1, START_LINE: r.start_line, CHANGE_COUNT: plus + minus, CHANGE_KIND: kind,
-        AUTHOR: pair.fresh.author, AUTHOR_NAME: "", VERSNO_NEW: versnoNew, VERSNO_OLD: versnoOld });
+        AUTHOR: hunkAuthor, AUTHOR_NAME: "", VERSNO_NEW: versnoNew, VERSNO_OLD: versnoOld });
     });
-    payload.DIFF_DATA.push({ KEY: { OBJTYPE: p.ptype, OBJNAME: p.part, VERSNO_O: versnoOld, VERSNO_N: versnoNew }, RETROFIT: false,
-      DIFF: ops.map(o => ({ OP: o.op, TEXT: o.text })) });
+    const partHunks = payload.HUNKS.filter(h => h.OBJTYPE === p.ptype && h.OBJ_NAME === p.part);
+    payload.DIFF_DATA.push({ KEY: { OBJTYPE: p.ptype, OBJNAME: p.part, VERSNO_O: versnoOld, VERSNO_N: versnoNew, BLAME: withBlame },
+      RETROFIT: false, DIFF: ops.map(o => ({ OP: o.op, TEXT: o.text })), BLAME_MAP: blame.map, BLAME_DELETED: blame.deleted });
     payload.OBJ_STATS.push({ OBJTYPE: p.ptype, CLASS_NAME: p.className, OBJ_NAME: p.part, VERSNO_NEW: versnoNew, VERSNO_OLD: versnoOld,
       AUTHOR: pair.fresh.author, AUTHOR_NAME: "", INS_COUNT: ins, DEL_COUNT: del, MOD_COUNT: mod, HUNK_COUNT: ranges.length,
-      HUNK_INS: hIns, HUNK_MOD: hMod, HUNK_DEL: hDel, DISPLAY_NAME: display, IS_CREATED: !pair.old });
+      HUNK_INS: hIns, HUNK_MOD: hMod, HUNK_DEL: hDel, DISPLAY_NAME: display, IS_CREATED: !pair.old,
+      BT_AUTHORS: withBlame ? blameAuthors(ops, blame.map, pair.fresh.owner || pair.fresh.author, partHunks) : [] });
   }
 
   // Names to the authors, as the saved review carries them.
   progress("reading the authors' names ...");
-  const authors = [...new Set(payload.OBJ_STATS.map(s => s.AUTHOR).filter(Boolean))];
+  const blames = payload.DIFF_DATA.flatMap(d => d.BLAME_MAP.concat(d.BLAME_DELETED));
+  const authors = [...new Set(payload.OBJ_STATS.map(s => s.AUTHOR).concat(payload.HUNKS.map(h => h.AUTHOR), blames.map(b => b.AUTHOR))
+    .filter(Boolean))];
   if (authors.length) {
     const names = new Map((await inLists(api, "SELECT u~bname, a~name_text FROM usr21 AS u INNER JOIN adrp AS a"
       + " ON a~persnumber = u~persnumber WHERE u~bname", authors, 1000)).map(r => [r.BNAME, r.NAME_TEXT]));
     payload.OBJ_STATS.forEach(s => { s.AUTHOR_NAME = names.get(s.AUTHOR) || ""; });
     payload.HUNKS.forEach(h => { h.AUTHOR_NAME = names.get(h.AUTHOR) || ""; });
+    payload.OBJ_STATS.forEach(s => s.BT_AUTHORS.forEach(a => { a.AUTHOR_NAME = names.get(a.AUTHOR) || ""; }));
+    blames.forEach(b => { b.AUTHOR_NAME = names.get(b.AUTHOR) || ""; });
   }
   return payload;
 }
@@ -105414,20 +105640,28 @@ async function buildNow(api, request, progress) {
    cannot settle are read - a part whose new side is the active state (99998), whose text may move without a new
    version, and a part the request names that the review does not hold, which counts only when it differs. Answers
    { changed: [{ name, reason }], unchecked: [{ name, reason }] }; a part that cannot be read is unchecked, not fine. */
-async function staleness(api, request, saved) {
-  const { numbers, parts, missing } = await requestParts(api, request);
+async function staleness(api, request, saved, progress) {
+  const say = progress || (() => {});
+  /* A released request is history: its versions no longer change, and its pair is taken from its own versions only, so
+     later work of other requests cannot move it. Nothing to check - and checking cost a read of every part's feed. */
+  const head = (await api.query("SELECT trstatus FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
+  if (head && (head.TRSTATUS === "R" || head.TRSTATUS === "N")) { return { changed: [], unchecked: [] }; }
+  say("checking whether " + request + " changed since its review was saved: reading what it holds ...");
+  const { numbers, open, parts, missing } = await requestParts(api, request);
   const list = value => Array.isArray(value) ? value : [];
   const key = (type, name) => String(type) + "|" + String(name);
   const held = new Map(list(saved.OBJ_STATS).map(s => [key(s.OBJTYPE, s.OBJ_NAME), s]));
   const changed = [], unchecked = missing.map(m => ({ name: m.name, reason: m.reason }));
-  for (const p of parts) {
+  for (const [at, p] of parts.entries()) {
     const name = labelOf(p), stats = held.get(key(p.ptype, p.part));
+    say("checking whether " + request + " changed since its review was saved: " + (at + 1) + " of " + parts.length + ", " + name + " ...");
     held.delete(key(p.ptype, p.part));
     try {
       const where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
       if (!where) { continue; }
-      const pair = pairOf(await api.revisions(where.url, where.include || undefined), numbers);
-      if (!pair) { continue; }
+      const pair = pairOf(await api.revisions(where.url, where.include || undefined), numbers, open);
+      if (!pair) { throw new Error(noPair(open)); }
+      if (generated(pair)) { continue; }
       const now = versnos(pair);
       const textOf = async entry => {
         if (!entry) { return []; }
@@ -105461,7 +105695,7 @@ async function staleness(api, request, saved) {
   return { changed, unchecked };
 }
 
-module.exports = { build, pairOf, countChanges, staleness };
+module.exports = { build, pairOf, generated, countChanges, staleness };
 
 },
 function(module,exports,__vertexRequire){
@@ -107241,6 +107475,36 @@ function toSelector(lint, select, condition) {
       const at = fieldOf(name);
       return typeof at === "string" ? at : at.alias + "~" + at.field;
     });
+  // The result is an inspection of every field the query uses, not just its projection.
+  // Keep the SELECT order, then append condition, join and ordering fields once.
+  // A star already requests every field; pivots returned above retain their grouping.
+  if (fields.length) {
+    const selectedAliases = new Map();
+    for (const field of list.findAllExpressions(E.SQLField)) {
+      const alias = field.findDirectExpression(E.SQLAsName);
+      const name = field.findFirstExpression(E.SQLAliasField) || field.findFirstExpression(E.SQLFieldName);
+      if (alias && name) selectedAliases.set(alias.concatTokens().toLowerCase(), name);
+    }
+    const addFields = (node, resolveAliases = false, conditionLeftOnly = false) => {
+      if (!node || node instanceof lint.Nodes.TokenNode) return;
+      // abaplint can split @structure-component into SQLSource(@structure),
+      // a dash, and SQLFieldName(component). That right operand is not a column.
+      if (conditionLeftOnly && kind(node) === "SQLCompare") {
+        addFields(node.getChildren()[0]);
+        return;
+      }
+      if (["SQLFieldName", "SQLAliasField"].includes(kind(node))) {
+        const original = (resolveAliases && selectedAliases.get(node.concatTokens().toLowerCase())) || node;
+        const at = fieldOf(original), key = typeof at === "string" ? at : at.alias + "~" + at.field;
+        if (!fields.includes(key)) fields.push(key);
+        return;
+      }
+      node.getChildren().forEach(child => addFields(child, resolveAliases, conditionLeftOnly));
+    };
+    if (where >= 0) addFields(select.getChildren()[where + 1], false, true);
+    joins.forEach(join => addFields(join.cond));
+    addFields(select.findDirectExpression(E.SQLOrderBy), true);
+  }
   if (!joins.length) { return { table: base.table, filters: lines, columns: fields }; }
   return { table: base.table, join: joins.map(join => join.table), jtypes, on, fields, filters: lines };
 

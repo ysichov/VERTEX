@@ -1,5 +1,77 @@
 # Development history
 
+## 2026-10-27 — Final video narration and total
+
+Added the closing English narration for финал.mov: reopening execution recordings, reviewing available state and output, and inspecting AI Session Logs. The 65.80-second final clip brings the complete scenario, including the initial two-minute opening, to 1127.14 seconds (18:47.14, 18.79 minutes). No extension code changed.
+
+## 2026-10-27 — Experimental transpiler narration
+
+Updated the part 8 voiceover to state that the transpiler is experimental, cannot reproduce workflows dependent on SAP screens or database writes, and can be an order of magnitude faster than SAP stepping for supported calculation logic. Timing remains 17:41.34 overall. No extension code changed.
+
+## 2026-10-27 — Transpiler scenario comparison video narration
+
+Added English narration for transpiler8.mov: requesting all five scenarios through local simulation, comparing CLEAN/PIPELINE/MULTI, the assistant-reported missing data for PRECISION/STATE, and opening a run citation in the debugger. The 100.05-second clip brings cumulative duration to 1061.34 seconds (17:41.34, 17.69 minutes). No extension code changed.
+
+## 2026-10-27 — Shortened part 7 narration and timing
+
+Replaced debug_ai7.mov with debugger_ai7_fix.mov in the active video scenario. The replacement is 260.30 seconds, 45.50 seconds shorter. Retimed and shortened the English narration, including the recording/replay passage. Cumulative duration is now 961.29 seconds (16:01.29, 16.02 minutes). Prior part 7 is superseded, not added. No extension code changed.
+
+## 2026-10-27 — SAP recording and AI diagnosis video narration
+
+Added English narration for debug_ai7.mov to docs/video/scenario.md: PIPELINE in SAP, Steps & values recording, replay, an AI request, the displayed tax/discount diagnosis and navigation through evidence citations. Assistant-calculated totals are distinguished from directly recorded values. The 305.80-second clip brings cumulative duration to 1006.79 seconds (16:46.79, 16.78 minutes). No extension code changed.
+
+## 2026-10-27 — BSE video explanation
+
+Added the first explicit narration of Backward Symbolic Execution, green highlighting for code relevant to the selected value, and Full versus BSE scope. The 21.71-second bse6.mov brings cumulative duration to 700.99 seconds (11:40.99, 11.68 minutes). No extension code changed.
+
+## 2026-10-27 — Variables and formula video narration
+
+Added the English narration for vars and formula5.mov to docs/video/scenario.md, covering declared variables, candidate change points, FLOW levels, tree/diagram navigation, the lens, Formula and Expression. Applied the author’s revised Calls-diagram opening. The 229.63-second clip brings cumulative duration, including the initial two-minute opening, to 679.28 seconds (11:19.28, 11.32 minutes). No extension code changed.
+
+## 2026-10-27 — Video scenario and cumulative timing
+
+Recorded the English narration for the test-program introduction and Calls diagram / Run Select episode in docs/video/scenario.md. Included the author’s preceding two-minute opening. Supplied clip durations are 159.04 and 170.61 seconds; cumulative duration is 449.65 seconds (7:29.65, 7.49 minutes). Static call relationships and standalone table inspection are distinguished from recorded runtime evidence. No extension code changed.
+
+## 2026-10-27 — Host structure components in Run Select
+
+Run Select takes only the left operand of WHERE comparisons when adding result columns: @cs_context-pricing_date remains a host value, not a database column. The table reader intersects requested columns with its dictionary catalog; unknown extras are omitted, while an entirely invalid list still fails. JOIN ON retains both table operands. The reported tariff query and dictionary-intersection regressions pass; all 38 query/table tests pass. Regenerated the shared frontend bundle. Rebuilt and verified universal VSIX 0.9.36 at the existing version, including archive and packaged Scheme navigation checks; the three changed runtime assets match source. No Eclipse package built.
+
+## 2026-10-27 — Query-used fields in Run Select results
+
+Run Select opens SelecTor results with all query-used fields: SELECT columns first, then unique WHERE, JOIN ON and ORDER BY fields. ABAP host variables remain selection inputs, not columns. ORDER BY projection aliases resolve to their source field. Stars still request all columns; grouped/pivot queries retain their grouping. The selection panel remains folded. The shared frontend bundle was regenerated. All 30 Select/SelecTor tests pass. Rebuilt universal VSIX 0.9.36 at the same version; archive verification and packaged Scheme navigation passed. Packaged query/parser, shared frontend and table page match source. No Eclipse package built.
+
+## 2026-10-27 — Fit diagrams after direction changes
+
+Metrics requests Fit on orientation redraw. The shared FLOW/BSE view requests Fit when the replacement Mermaid SVG finishes rendering, avoiding a premature fit of the old orientation. Top-down, Left-right and Auto use the new drawing’s dimensions; node expansion retains its viewport. All 47 focused diagram and analysis-progress tests passed. Browser checks confirmed auto-fit after TD/LR rendering in light and dark themes. Rebuilt and verified universal VSIX 0.9.36 at the existing version; archive and packaged Scheme navigation checks passed, and both packaged diagram assets match source. No Eclipse package built.
+
+## 2026-10-27 — Interface invocation navigation
+
+Interface method invocations navigate to the SAP-reported implementation for both explicitly typed references and factory-inferred references. The standard VS Code definition provider also resolves interface dispatch. Interface-qualified METHOD bodies are selected using SAP’s location when method names overlap. The earlier fix only guarded explicitly declared ZIF/YIF references; inferred calls could still follow ADT’s interface declaration. Regression coverage exercises command navigation and the definition provider for both reference types. All 89 code-workbench tests pass. Rebuilt the universal VSIX 0.9.36 at the existing version; archive validation and the packaged Scheme navigation test passed. The packaged navigation source matches the working source. The project rules now require a verified VSIX rebuild after VS Code changes, retaining the current version unless requested otherwise.
+
+## 2026-10-27 — Program field after reload
+
+The manually entered Program field is saved on input and restored after Reload Window, separately from the source object (for example, a class and its calling report). A program entered into an unbound panel also supplies its source binding. No automatic execution on restoration. All 48 focused debugger tests pass. Rebuilt the universal VSIX 0.9.36 at the same version; archive validation and packaged Scheme navigation passed, and all four changed runtime files match the packaged sources.
+
+## 2026-10-27 — VS Code 0.9.36 debugger rebuild
+
+Rebuilt the universal VSIX 0.9.36 without changing the version, including Main header controls and debugger source restoration after Reload Window. The checked packaging wrapper validated the archive and packaged Scheme navigation; 46 focused debugger tests passed. Packaged sources were checked against the requested changes. Interactive Reload Window verification remains outstanding.
+
+## 2026-10-27 — VS Code debugger source after reload
+
+Persist a source descriptor in workspaceState when opening Smart Debugger. The restored WebviewView reads the document and rebuilds its adapter before generating the page; restoration skips view activation and automatic execution. Replay records and live traces are excluded. Missing documents produce a recovery message. Four focused restoration tests and 42 debugger UI tests pass. No package built; interactive Reload Window verification remains outstanding.
+
+## 2026-10-27 — Debugger Main header
+
+Renamed the Run section toggle to Main in both debugger pages and moved its target to the whole header. Removed the duplicate recordings button and its event handler. Updated the relevant user documentation; no host version or package was built for this change.
+
+## 2026-10-27 — Eclipse 0.9.36 packaging
+
+Advanced the bundle and feature sources to `0.9.36.qualifier`, ran `eclipse/prepare.js`, and compiled with `javac --release 21` against the installed ADT bundle pool. Packaged `0.9.36.20261027090001` under `target/` using the existing p2 repository as the metadata template and the same assembly steps as `eclipse/package.ps1` (PowerShell is unavailable). Refreshed manifest dependencies, artifact sizes and SHA-256 checksums. Verified every ZIP/JAR, forward-slash paths, required pages and 90 Java 21 classes; excluded the layout-test class. DetachedViewTest passed. The Eclipse bridge, host coverage, debugger, Value Origin and ACE palette tests passed 18/20 with localhost access: Value Origin still lacks `./value-origin-linter` in its browser bundle, and its page test expects three scripts where there are five. No repair of those existing issues is included. The checked-in/published `docs/` repository was not replaced.
+
+## 2026-10-27 — VS Code 0.9.36 packaging
+
+Built `vscode/vertex-abap-0.9.36.vsix` through `vscode/package.js`, using the locally installed npm and cached VSCE. The wrapper verified archive integrity, required runtime dependencies, platform bindings, shared pages and the embedded version; the packaged Scheme navigation test passed, and npm ci restored the developer dependencies. The full MCP/VS Code suite reported 952 passed, 39 failed and one skipped, including sandbox-denied localhost listeners and assertions inconsistent with current behaviour (the breakpoint requirement, review arguments and authentication/refusal handling). No source fixes were included in this packaging stage. Eclipse was not rebuilt.
+
 ## 2026-10-27 — Run in SAP no longer demands a breakpoint
 
 `runNow` in `debugger.js` refused to start with no active breakpoint ("Set or activate a breakpoint before running"), added with the debugger release on the reasoning that nothing would stop. That blocked a plain run, and a breakpoint can still be set while the program is starting in WebGUI. The check is removed; listening and dump marking are unchanged.

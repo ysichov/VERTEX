@@ -44,7 +44,7 @@ test("one table opens in SelecTor: known conditions filled, program values as em
     { field: "name", sign: "I", option: "CP", low: "ZCL+*", high: "" },
     { field: "kind", sign: "I", option: "EQ", low: "A", high: "" },
     { field: "kind", sign: "I", option: "EQ", low: "B", high: "" },
-    { field: "flag", sign: "E", option: "EQ", low: "X", high: "" }], columns: ["step_no", "modifier_class"] });
+    { field: "flag", sign: "E", option: "EQ", low: "X", high: "" }], columns: ["step_no", "modifier_class", "scenario_id", "name", "kind", "flag"] });
   assert.ok(result.sql, "it still runs as written");
 });
 
@@ -81,7 +81,7 @@ test("a join becomes SelecTor's: tables in order as t1, t2, their type and ON re
   assert.deepStrictEqual(result.selector, { table: "E070", join: ["E070", "E07T"],
     jtypes: { T1: "INNER", T2: "LEFT OUTER" },
     on: { T1: "t1~trkorr = t0~strkorr", T2: "t2~trkorr = t1~trkorr AND t2~langu = 'E'" },
-    fields: ["t1~trkorr", "t2~as4text"],
+    fields: ["t1~trkorr", "t2~as4text", "t0~as4user", "t1~trstatus", "t0~strkorr", "t2~trkorr", "t2~langu"],
     filters: [{ field: "as4user", sign: "I", option: "EQ", low: "", high: "" },
       { field: "t1_trstatus", sign: "I", option: "EQ", low: "D", high: "" },
       { field: "t1_trstatus", sign: "I", option: "EQ", low: "L", high: "" }] });
@@ -106,4 +106,30 @@ test("GROUP BY with aggregates becomes SelecTor's pivot: the grouped fields its 
   assert.deepStrictEqual(result.selector, { table: "E070", join: [], jtypes: {}, on: {}, fields: [],
     filters: [{ field: "as4user", sign: "I", option: "EQ", low: "", high: "" }],
     pivot: { rows: ["t0~trfunction"], cols: [], vals: [{ key: "*", agg: "COUNT" }, { key: "t0~as4date", agg: "MAX" }] } });
+});
+
+test("result columns include all used fields, once, without treating program variables as columns", () => {
+  const result = run("SELECT matnr FROM mara WHERE mtart = @p_type AND matkl IN ('A','B') ORDER BY ersda INTO TABLE @DATA(lt).");
+  assert.deepStrictEqual(result.selector.columns, ["matnr", "mtart", "matkl", "ersda"]);
+  assert.deepStrictEqual(run("SELECT * FROM mara WHERE mtart = @p INTO TABLE @DATA(lt).").selector.columns, []);
+});
+test("ORDER BY output aliases use the selected source column rather than inventing a column", () => {
+  const result = run("SELECT matnr AS material FROM mara WHERE mtart = @p ORDER BY material INTO TABLE @DATA(lt).");
+  assert.deepStrictEqual(result.selector.columns, ["matnr", "mtart"]);
+});
+
+test("WHERE host structure components are values, never result columns", () => {
+  const result = run(`SELECT price_per_unit, currency
+    FROM zlog_base_tariff
+    WHERE transport_type = @cs_context-transport_type
+      AND country_from = @cs_context-country_from
+      AND country_to = @cs_context-country_to
+      AND valid_from <= @cs_context-pricing_date
+      AND valid_to >= @cs_context-pricing_date
+    ORDER BY valid_from DESCENDING
+    INTO @DATA(ls_tariff) UP TO 1 ROWS.`);
+  assert.deepStrictEqual(result.selector.columns, ["price_per_unit", "currency", "transport_type", "country_from", "country_to", "valid_from", "valid_to"]);
+  assert.deepStrictEqual(result.selector.filters.map(f => f.field), ["transport_type", "country_from", "country_to", "valid_from", "valid_to"]);
+  assert.ok(result.selector.filters.every(f => f.low === ""));
+  assert.equal(result.rows, 1);
 });

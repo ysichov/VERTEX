@@ -254,6 +254,36 @@ function toSelector(lint, select, condition) {
       const at = fieldOf(name);
       return typeof at === "string" ? at : at.alias + "~" + at.field;
     });
+  // The result is an inspection of every field the query uses, not just its projection.
+  // Keep the SELECT order, then append condition, join and ordering fields once.
+  // A star already requests every field; pivots returned above retain their grouping.
+  if (fields.length) {
+    const selectedAliases = new Map();
+    for (const field of list.findAllExpressions(E.SQLField)) {
+      const alias = field.findDirectExpression(E.SQLAsName);
+      const name = field.findFirstExpression(E.SQLAliasField) || field.findFirstExpression(E.SQLFieldName);
+      if (alias && name) selectedAliases.set(alias.concatTokens().toLowerCase(), name);
+    }
+    const addFields = (node, resolveAliases = false, conditionLeftOnly = false) => {
+      if (!node || node instanceof lint.Nodes.TokenNode) return;
+      // abaplint can split @structure-component into SQLSource(@structure),
+      // a dash, and SQLFieldName(component). That right operand is not a column.
+      if (conditionLeftOnly && kind(node) === "SQLCompare") {
+        addFields(node.getChildren()[0]);
+        return;
+      }
+      if (["SQLFieldName", "SQLAliasField"].includes(kind(node))) {
+        const original = (resolveAliases && selectedAliases.get(node.concatTokens().toLowerCase())) || node;
+        const at = fieldOf(original), key = typeof at === "string" ? at : at.alias + "~" + at.field;
+        if (!fields.includes(key)) fields.push(key);
+        return;
+      }
+      node.getChildren().forEach(child => addFields(child, resolveAliases, conditionLeftOnly));
+    };
+    if (where >= 0) addFields(select.getChildren()[where + 1], false, true);
+    joins.forEach(join => addFields(join.cond));
+    addFields(select.findDirectExpression(E.SQLOrderBy), true);
+  }
   if (!joins.length) { return { table: base.table, filters: lines, columns: fields }; }
   return { table: base.table, join: joins.map(join => join.table), jtypes, on, fields, filters: lines };
 

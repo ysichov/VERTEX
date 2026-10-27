@@ -1279,3 +1279,34 @@ test("variable analysis selects the named system repository among open repositor
   assert.ok(read);
   assert.equal(require("../auth/systems").keyInfo(read.key).name, "DEV");
 });
+
+for (const inferred of [false, true]) test(`interface invocation opens its qualified implementation (${inferred ? "factory-inferred" : "explicit"} reference)`, async () => {
+  const h = host();
+  await h.tools.execute("open_sap_object", { object_name: "ZTEST", object_type: "CLAS" });
+  const doc = h.documents[0];
+  doc.text = "METHOD run.\n  " + (inferred ? "DATA(lo_strategy) = zcl_factory=>create( )." : "DATA lo_strategy TYPE REF TO zif_pricing_strategy.")
+    + "\n  lo_strategy->calculate_base( ).\nENDMETHOD.";
+  doc.saved = doc.text;
+  h.api.elementInfo = async () => null;
+  h.api.definition = async () => ({ url: "/sap/bc/adt/oo/interfaces/zif_pricing_strategy/source/main", line: 2, column: 10 });
+  h.api.sourceAt = async () => "INTERFACE zif_pricing_strategy PUBLIC.\n  METHODS calculate_base.\nENDINTERFACE.";
+  const requests = [];
+  h.api.implementation = async (...args) => { requests.push(args); return { url: "/sap/bc/adt/oo/classes/zcl_price_road/source/main", line: 6, column: 9 }; };
+  const execute = h.api.execute;
+  h.api.execute = async (tool, args) => {
+    const result = await execute(tool, args);
+    return args.object_name === "ZCL_PRICE_ROAD" ? { ...result, source: "CLASS zcl_price_road DEFINITION.\n  PUBLIC SECTION.\n  INTERFACES zif_pricing_strategy.\nENDCLASS.\nCLASS zcl_price_road IMPLEMENTATION.\n  METHOD zif_pricing_strategy~calculate_base.\n  ENDMETHOD.\nENDCLASS." } : result;
+  };
+  doc.selection = { active: { line: 2, character: 19 } };
+  await h.commands.get("vertex.goToClassMethod")();
+  assert.equal(h.errors.length, 0, h.errors.join("\n"));
+  assert.equal(requests.length, 1);
+  assert.match(h.documents.at(-1).uri.toString(), /ZCL_PRICE_ROAD/);
+  assert.equal(h.documents.at(-1).selection.start.line, 5);
+  assert.ok(!h.documents.some(d => /\/INTF\//.test(d.uri.toString())));
+  {
+    const target = await h.definitions[0].provider.provideDefinition(doc, { line: 2, character: 19 });
+    assert.match(target.uri.toString(), /ZCL_PRICE_ROAD/);
+    assert.equal(target.range.start.line, 5);
+  }
+});
