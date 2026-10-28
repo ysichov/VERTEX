@@ -108569,10 +108569,19 @@ function pieces(expression, lint) {
   const out = [];
   const visit = item => {
     if (item instanceof lint.Nodes.ExpressionNode && item.get() instanceof lint.Expressions.FieldChain) { out.push({ chain: upper(item.concatTokens()) }); return; }
-    // CONV changes a type, not what the value is computed from: as in the analysis's formula, only what it converts.
+    // CONV changes a type, not what the value is computed from: as in the analysis's formula, only what it converts -
+    // bracketed when it is more than one operand - and then the rest of the source after it (CONV t( a ) / b).
     if (item instanceof lint.Nodes.ExpressionNode && item.get() instanceof lint.Expressions.Source && upper(item.getFirstToken().getStr()) === "CONV") {
-      const inner = item.findDirectExpression(lint.Expressions.ConvBody)?.findDirectExpression(lint.Expressions.Source);
-      if (inner) { visit(inner); return; }
+      const children = item.getChildren(), body = children.findIndex(child => child.get && child.get() instanceof lint.Expressions.ConvBody);
+      const inner = body >= 0 ? children[body].findDirectExpression(lint.Expressions.Source) : null;
+      if (inner) {
+        const single = inner.getChildren().length === 1;
+        if (!single) out.push({ text: "(" });
+        visit(inner);
+        if (!single) out.push({ text: ")" });
+        children.slice(body + 2).forEach(visit);
+        return;
+      }
     }
     if (item instanceof lint.Nodes.TokenNode || item instanceof lint.Nodes.TokenNodeRegex) { out.push({ text: item.getFirstToken().getStr() }); return; }
     item.getChildren().forEach(visit);

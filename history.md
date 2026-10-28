@@ -2,7 +2,7 @@
 
 ## 2026-10-28 — Formula and Expression follow an SAP call into the routine
 
-In an SAP recording, Formula and Expression of a value a method call returned (`ls_result = NEW zcl_calc_facade( )->run( ... )`) stopped at the call. They now follow the value into the routine's recorded statements, as they already did for a transpiler run, with each name's recorded value beside it; a stop recorded without values no longer takes the change. Decimal values drop their trailing zeros (`1200.000` is shown as `1200`). Moving the replay slider now rebuilds them for the stop shown, once the slider settles: the formula stays the one the whole record gives, an assignment that has run by that stop has a green `=` and its value, one still to run a red `=` and no value.
+In an SAP recording, Formula and Expression of a value a method call returned (`ls_result = NEW zcl_calc_facade( )->run( ... )`) stopped at the call. They now follow the value into the routine's recorded statements, as they already did for a transpiler run, with each name's recorded value beside it; a stop recorded without values no longer takes the change. A source that starts with `CONV` is now read to its end (`CONV decfloat34( a ) * b / 1000` lost `* b / 1000` before), so the written-out formula gives the recorded value. Decimal values drop their trailing zeros (`1200.000` is shown as `1200`). Moving the replay slider now rebuilds them for the stop shown, once the slider settles: the formula stays the one the whole record gives, an assignment that has run by that stop has a green `=` and its value, one still to run a red `=` and no value.
 
 ## 2026-10-27 — Transpiler run of an SAP object after Reload Window
 

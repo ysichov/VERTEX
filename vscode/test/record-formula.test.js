@@ -72,6 +72,12 @@ test("SAP stops on the calling line again after the call: the value is followed 
   assert.match(result.panes.expression.replace(/<[^>]+>/g, ""), /= 7/);
 });
 
+test("a source that starts with CONV is read to its end, not only inside the CONV", () => {
+  const { parsedSource, statementAt } = require("../record-formula");
+  const statements = parsedSource("REPORT x.\nDATA(a) = CONV decfloat34( b - c ) / CONV decfloat34( c ) * d.\n", "x.prog.abap");
+  assert.equal(statementAt(statements, 2).rhs.map(piece => piece.chain || piece.text).join(" "), "( B - C ) / C * D");
+});
+
 test("a statement over several lines is read whole", () => {
   const result = build({ variable: "LV_SCENARIO", steps: steps(), sources: { "zlab.prog.abap": source } });
   assert.equal(result.tree.line, 6);
