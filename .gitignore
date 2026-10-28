@@ -21,3 +21,4 @@ vscode/node_modules/
 # Video and presentation material: kept locally, not in git
 /docs/video/
 /outputs/manual-20260913-vertex/presentations/
+/source-montage.png
