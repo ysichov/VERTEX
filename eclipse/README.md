@@ -233,7 +233,9 @@ run is one - and redraws it each time, whatever VERTEX hides.
   and *Collapse this branch*.
 - With a value chosen in Variables, Formula and Expression after a run keep only the path the run
   took, with the recorded values in brackets (With values switches them); with no path analysed they
-  are written out from the record. Every name in them links to its statement.
+  are written out from the record. Every name in them links to its statement. A formula from the
+  record follows the player: an assignment that has run by the stop shown has a green `=` and its
+  value, one still to run a red `=`; decimal values are shown without trailing zeros.
 - Several values can be followed - a structure as its components - and a list on the chip and at the
   left of the diagram toolbar switches between them. Analyze flow path works from a single point, to
   the end of the flow when no other checked point is met. Variable trees start closed.
