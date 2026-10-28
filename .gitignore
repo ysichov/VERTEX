@@ -18,5 +18,6 @@ vscode/node_modules/
 # Local Three.js call visualization pilot.
 /three-call-pilot/
 
-# Slide renders for the video: kept locally, not in git
-/docs/video/slides/
+# Video and presentation material: kept locally, not in git
+/docs/video/
+/outputs/manual-20260913-vertex/presentations/
