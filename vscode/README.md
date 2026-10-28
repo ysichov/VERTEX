@@ -1176,7 +1176,9 @@ line and the value before, and what that statement read, back through the record
 same code as the node under it or above it, such as the parameter a call passed, is left out. Every name of the
 formula and of the tree, and each formula of the analysis's tree, is itself the link to the statement that set it; a value the record never saw
 change is a leaf, *not changed in the record*. With no path analysed, Expression is written out from the record
-instead, the same way. Values come from Steps & values (a transpiler run always has them); from Rec steps alone the
+instead, the same way. That formula is the one the whole record gives, and it follows the player: an assignment
+that has run by the stop shown has a green `=` and its value, one still to run has a red `=` and no value; decimal
+values are shown without trailing zeros. Values come from Steps & values (a transpiler run always has them); from Rec steps alone the
 tree comes from the statements that ran - the last one that wrote each value - without values. In a SAP record a
 structure's components are read one level down for this.
 

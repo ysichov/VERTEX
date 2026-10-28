@@ -1,5 +1,17 @@
 # Release history
 
+## 2026-10-28 — Formula and Expression follow an SAP call into the routine
+
+In an SAP recording, Formula and Expression of a value a method call returned (`ls_result = NEW zcl_calc_facade( )->run( ... )`) stopped at the call. They now follow the value into the routine's recorded statements, as they already did for a transpiler run, with each name's recorded value beside it; a stop recorded without values no longer takes the change. Decimal values drop their trailing zeros (`1200.000` is shown as `1200`). Moving the replay slider now rebuilds them for the stop shown, once the slider settles: the formula stays the one the whole record gives, an assignment that has run by that stop has a green `=` and its value, one still to run a red `=` and no value.
+
+## 2026-10-27 — Transpiler run of an SAP object after Reload Window
+
+After Reload Window, Run in VERTEX Smart Debugger on an SAP object's transpiler build showed the old selection-screen dialog instead of the program window. It now opens the program window again on the last build, without reading SAP; the same happens when that window was closed.
+
+## 2026-10-27 — Eclipse 0.9.36 with the review's Blame and copies
+
+Eclipse 0.9.36 (`0.9.36.20261027212324`) and the rebuilt VS Code 0.9.36 carry the current shared pages: the review's **Blame** toggle, **Table | File** for a review kept in both places, **Rebuild from ADT** under every saved review, released requests no longer checked for changes, Run Select's query-used fields and diagram Fit after a direction change. The Eclipse guide and the project page now describe the review this way; the Version row of the README no longer says "No blame".
+
 ## 2026-10-27 — Final video narration and total
 
 Added the closing English narration for финал.mov: reopening execution recordings, reviewing available state and output, and inspecting AI Session Logs. The 65.80-second final clip brings the complete scenario, including the initial two-minute opening, to 1127.14 seconds (18:47.14, 18.79 minutes). No extension code changed.

@@ -13,7 +13,8 @@ const signature = value => value === undefined ? undefined : JSON.stringify(valu
 // formula is about the numbers, and a whole instance would not fit a diagram.
 const shown = value => {
   if (value === undefined) return "";
-  if (value === null || typeof value !== "object") return String(value);
+  // A packed number keeps its decimals as zeros (1200.000): the formula writes it without them.
+  if (value === null || typeof value !== "object") return /^\s*-?\d+\.\d*\s*$/.test(String(value)) ? String(value).trim().replace(/\.?0+$/, "") : String(value);
   if (Array.isArray(value)) return value.length + " rows";
   if ("INTERNAL_ID" in value || "me" in value) return "object";
   const text = JSON.stringify(value);
@@ -144,8 +145,25 @@ function build(request) {
       }
       if (signature(valueAt(name, index)) === signature(valueAt(name, index - 1))) continue;
       let made = index - 1;
+      // Stops the record read no values at only carry the value from before: the change was made after the last stop
+      // that was read, by the last statement since then that writes the name, else by that stop's own statement.
+      if (steps[made].read === false) {
+        let last = made;
+        while (last > 0 && steps[last].read === false) last--;
+        made = last;
+        for (let between = index - 1; between > last; between--) if (depthOf(between) === depthOf(index) && writes(between, name)) { made = between; break; }
+      }
       if (depthOf(made) > depthOf(index)) while (made > 0 && depthOf(made) > depthOf(index)) made--;
-      return { made, seen: index };
+      // The value is there from the stop after the statement that made it, though the record may first read it later.
+      const after = made + 1;
+      // SAP stops on the calling line again when the call returns, before the assignment: that stop is no statement of
+      // its own, the call is the stop before the routine was entered. The value is the same at both - in a loop, an
+      // earlier pass of the same line has the value of that pass.
+      let entry = made - 1;
+      while (entry > 0 && depthOf(entry) > depthOf(made)) entry--;
+      if (entry < made - 1 && depthOf(entry) === depthOf(made) && steps[entry].url === steps[made].url && steps[entry].line === steps[made].line
+        && signature(valueAt(name, entry)) === signature(valueAt(name, made))) made = entry;
+      return { made, seen: index, after };
     }
     return null;
   };
@@ -155,9 +173,11 @@ function build(request) {
      is matched by value at the routine's last stop. */
   const returnedBy = (name, seen, made) => {
     const component = upper(name).split("-").slice(1).join("-");
+    // The routine's stops: from the call to the first stop back at its depth (SAP's return stop on the calling line).
+    let end = made + 1;
+    while (end < steps.length && depthOf(end) > depthOf(made)) end++;
+    const inside = end - 1;
     if (component) {
-      let end = made + 1;
-      while (end < steps.length && depthOf(end) > depthOf(made)) end++;
       for (let index = end - 1; index > made; index--) {
         if (depthOf(index) !== depthOf(made) + 1) continue;
         // The component itself, or the whole structure that holds it (rs_result = ls_context, CHANGING cs_context = ...).
@@ -167,7 +187,7 @@ function build(request) {
       }
     }
     if (!hasValues) return null;
-    const inside = seen - 1, wanted = signature(valueAt(name, seen)), parts = upper(name).split("-");
+    const wanted = signature(valueAt(name, seen)), parts = upper(name).split("-");
     if (wanted === undefined) return null;
     const names = Object.keys(steps[inside]?.values || {}).filter(key => key !== parts[0]);
     const same = names.map(key => component ? key + "-" + component : key)
@@ -193,7 +213,7 @@ function build(request) {
     if (!statements && !said.includes(step.url)) said.push(step.url);
     const node = { id, level, of: name, value: forced ? forced.value : shown(valueAt(name, change.seen)), before: shown(valueAt(name, change.made)),
       text: statement ? statement.text : "line " + step.line, rhs: statement ? statement.rhs : null, source: step.url, line: step.line, location: step.location || "",
-      stop: made, children: [] };
+      stop: made, seen: forced ? made + 1 : change.after || change.seen, children: [] };
     // Set on entering a call: a parameter, given by the call's arguments. In the expression it stays a name.
     if (hasValues && !forced && depthOf(change.seen) > depthOf(made)) { node.parameter = true; node.rhs = null; node.text = "parameter of " + node.text; }
     const path = new Set(walked).add(name + "@" + made);
@@ -218,7 +238,12 @@ function build(request) {
     }
     return node;
   };
-  const tree = derive(variable, at, 0, new Set());
+  // The formula is the one the whole record gives; at an earlier stop the part computed by then has its values, a
+  // statement still to run has none.
+  const tree = derive(variable, steps.length - 1, 0, new Set());
+  // A value is there from the stop it is seen at - a call's result only once the call returns.
+  const mark = node => { if (node.seen !== undefined && node.seen > at) node.pending = true; node.children.forEach(mark); };
+  mark(tree);
   // What the tree shows: a node that leads to the same code as its only child says nothing the child does not - the
   // parameter a call passed, over that call - and gives way to it. Expression is written from the whole tree.
   const sameCode = (a, b) => !!a.source && a.source === b.source && a.line === b.line;
@@ -235,7 +260,7 @@ function build(request) {
     maxLevel = Math.max(maxLevel, node.level);
     // A diagram node says it briefly; the whole statement is in the tree and behind the link.
     const brief = text => String(text).length > 100 ? String(text).slice(0, 97) + "…" : String(text);
-    nodes.push({ id: node.id, level: node.level, text: brief(node.text), label: hasValues ? node.of + " = " + (node.value === "" ? "(empty)" : node.value) + (node.outside ? "" : "  ·  " + brief(node.text)) : brief(node.text),
+    nodes.push({ id: node.id, level: node.level, text: brief(node.text), label: hasValues ? node.of + " = " + (node.pending ? "not computed yet" : node.value === "" ? "(empty)" : node.value) + (node.outside ? "" : "  ·  " + brief(node.text)) : brief(node.text),
       dataText: brief(node.text), location: node.location || node.source, source: node.source, line: node.line, stack: 0, variables: [] });
     node.children.forEach(child => { edges.push({ from: node.id, to: child.id, label: child.of }); walk(child); });
   };
@@ -250,7 +275,7 @@ const link = (node, label) => node && node.source ? `<button class="data-compose
 
 function formulaPane(tree, said, hasValues = true) {
   const html = (node, root) => {
-    const caption = `<span class="formula-expression">${link(node, "<b>" + escape(node.of) + "</b>")}${hasValues ? " = " + escape(node.value) : ""}</span>`
+    const caption = `<span class="formula-expression">${link(node, "<b>" + escape(node.of) + "</b>")}${hasValues ? " " + equals(node) + " " + (node.pending ? "not computed yet" : escape(node.value)) : ""}</span>`
       + (node.outside ? ` <span class="edge">${escape(hasValues ? where(node) : "not written in the record")}</span>` : ` <code>${escape(node.text)}</code> <span class="edge">${escape(where(node))}${hasValues && node.before !== undefined ? " · before this assignment: " + (node.before === "" ? "empty" : escape(node.before)) : ""}</span>`);
     const children = node.children.map(child => html(child, false)).join("");
     return children ? `<details class="formula-node" data-formula-node="${escape(node.id)}" data-level="${node.level}"${root ? " open" : ""}><summary>${caption}</summary><div class="formula-children">${children}</div></details>`
@@ -265,7 +290,9 @@ function formulaPane(tree, said, hasValues = true) {
 // statements in the order they ran, and the values it started from.
 // A name of the formula with the value the record holds for it, in brackets; the view hides the values with
 // With values off.
-const named = (name, value, hasValues, node) => link(node, escape(name.toLowerCase())) + (hasValues && value !== undefined ? `<span class="rf-value"> (${escape(value === "" ? "empty" : value)})</span>` : "");
+// The = of an assignment: green once it has run at the stop shown, red while it is still to run.
+const equals = node => `<span class="${node && node.pending ? "rf-pending" : "rf-assigned"}">=</span>`;
+const named = (name, value, hasValues, node) => link(node, escape(name.toLowerCase())) + (hasValues && value !== undefined && !(node && node.pending) ? `<span class="rf-value"> (${escape(value === "" ? "empty" : value)})</span>` : "");
 const tail = name => upper(name).split("-").slice(1).join("-");
 /* The derivation written out as one expression, the one way the run went: the right-hand side of the statement that
    made the value, each value it read replaced by its own right-hand side, as far as the record goes. A value a call
@@ -298,10 +325,10 @@ function expressionPane(tree, hasValues = true) {
   const leaves = node => { if (node.outside && !inputs.some(item => item.of === node.of)) inputs.push(node); node.children.forEach(leaves); };
   leaves(tree);
   if (tree.outside) return `<p class="edge">${escape(tree.of)} was not ${hasValues ? "changed" : "written"} in the record.</p>`;
-  const steps = changes.map(node => `<li><code>${link(node, escape(node.of.toLowerCase()))} = ${node.rhs ? expressionText({ ...node, children: [] }, false) : escape(node.text)}</code> <span class="edge">${hasValues ? "= " + escape(node.value) + " · " : ""}${escape(where(node))}</span></li>`).join("");
+  const steps = changes.map(node => `<li><code>${named(node.of, node.value, hasValues, node)} ${equals(node)} ${node.rhs ? expressionText({ ...node, children: [] }, false) : escape(node.text)}</code> <span class="edge">${escape(where(node))}</span></li>`).join("");
   const given = inputs.map(node => hasValues ? `<li><code>${escape(node.of.toLowerCase())} = ${escape(node.value === "" ? "(empty)" : node.value)}</code> <span class="edge">${escape(where(node))}</span></li>`
     : `<li><code>${escape(node.of.toLowerCase())}</code> <span class="edge">not written in the record</span></li>`).join("");
-  return `<p><code>${named(tree.of, tree.value, hasValues, tree)} = ${expressionText(tree, hasValues)}</code></p>${hasValues ? `<p class="edge">= ${escape(tree.value)}</p>` : ""}`
+  return `<p><code>${named(tree.of, tree.value, hasValues, tree)} ${equals(tree)} ${expressionText(tree, hasValues)}</code></p>${hasValues ? `<p class="edge">${tree.pending ? "Not computed yet at this stop" : "= " + escape(tree.value)}</p>` : ""}`
     + (given ? `<p class="edge">Where the values come from</p><ul class="expression-where">${given}</ul>` : "")
     + (steps ? `<p class="edge">The statements, in the order they ran</p><ol class="expression-steps">${steps}</ol>` : "");
 }

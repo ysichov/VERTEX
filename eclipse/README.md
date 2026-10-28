@@ -89,11 +89,22 @@ code.
 
 **The review of a transport** is built from ADT when none is saved - every part the request changed except code SAP generated,
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - and the status
-line says which part is being read. **Save** keeps it; a saved review takes Approve, Decline,
+line says which part is being read. The **Blame** toggle beside Versions | Review, off by default,
+names the developer who wrote each changed line: the versions between the pair are replayed (one
+more read per version, so a long history takes longer), and a version is credited to the owner of
+the task it came from - a transport of copies to the task of the request it copies. A block belongs
+to whoever wrote most of its lines, and **Developers** counts each developer's own lines and blocks;
+hover the name for the version, date and request. With Blame off, a block is the author's of the new
+version. A review saved by AVE with Blame shows its line authors when the toggle is on.
+**Save** keeps it; a saved review takes Approve, Decline,
 comments and taking a verdict back, made the way AVE makes them, so AVE and every VERTEX window read
-the same review. A saved review is checked against the request when it is opened, by each part's
-versions; when the request changed since, the page names what moved and offers **Rebuild from ADT**,
-which replaces the saved review and drops its verdicts. Where reviews are kept is set in **Window → Preferences → VERTEX Code Review**: the
+the same review. A saved review of an open request is checked against the request when it is opened,
+by each part's versions, and a part that changed since, joined the request or left it is named above
+the table; a released request is not checked. **Rebuild from ADT**, under the line that says when and
+by whom the review was saved, replaces the saved review with one built from the request as it is
+now and drops its verdicts. A review kept both in the table and in a file is shown with both copies
+named - who saved each and when - and a **Table | File** switch opens either; nothing is merged, and
+a change goes back to the copy shown. Where reviews are kept is set in **Window → Preferences → VERTEX Code Review**: the
 `ZAVE_REVIEW` table (needs VERTEX's ABAP on the system, `ZCL_VX_ADT_RES_STORE`), files - one
 `<project>/<request>.json` each, in the folder chosen there or in `.vertex/reviews` of the workspace -
 or both. A system without VERTEX's ABAP keeps reviews in files whatever is chosen, and the review page

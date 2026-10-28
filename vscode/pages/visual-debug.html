@@ -110,6 +110,7 @@ button.x{background:transparent;border:0}
 #dumppagebody h1,#dumppagebody h2,#dumppagebody h3{font-size:13px;margin:10px 0 4px}
 body:not(.vx-with-values) .rf-value{display:none}
 .rf-value,.vx-value{color:var(--vscode-debugTokenExpression-number,var(--vscode-descriptionForeground));font-family:var(--vscode-editor-font-family,monospace)}
+.rf-assigned{color:var(--vscode-testing-iconPassed,var(--vscode-charts-green))}.rf-pending{color:var(--vscode-testing-iconFailed,var(--vscode-errorForeground))}
 .empty{padding:4px 8px;color:var(--vscode-descriptionForeground,GrayText);font-family:system-ui,sans-serif}
 .empty.loading{display:flex;align-items:center;gap:8px}
 .empty.loading:before{content:"";width:12px;height:12px;border:2px solid var(--vscode-panel-border,GrayText);border-top-color:var(--vscode-focusBorder,#0a66c2);border-radius:50%;animation:vertex-spin .8s linear infinite}
@@ -2013,7 +2014,8 @@ function recordSteps(){
       t.vars.forEach(function(g){(g.children||[]).forEach(function(v){var key=String(v.name).toUpperCase();if(v.deleted)delete values[key];else values[key]=v.value;});});
     }
     var f=t.stack&&t.stack[0];
-    steps.push({url:t.at&&t.at.url||"",line:t.at&&t.at.line||0,depth:(t.stack||[]).length,location:t.cur?String(t.cur.name).indexOf("=>")>0?t.cur.name:t.cur.owner+"=>"+t.cur.name:String(f&&f.program||""),values:values});
+    // A stop the record read no values at: what it holds is carried from before, not seen there.
+    steps.push({url:t.at&&t.at.url||"",line:t.at&&t.at.line||0,depth:(t.stack||[]).length,location:t.cur?String(t.cur.name).indexOf("=>")>0?t.cur.name:t.cur.owner+"=>"+t.cur.name:String(f&&f.program||""),values:values,read:Array.isArray(t.vars)||!!t.watch});
   });
   return steps;
 }
@@ -2216,7 +2218,10 @@ $("saveRecord").onclick=function(){var sources={};Object.keys(texts).forEach(fun
   debug("saveRecord",{format:1,session_id:sessionId,meta:{name:object.name,type:object.type,created:new Date().toISOString(),recording:$('[data-rec].active')&&$('[data-rec].active').getAttribute('data-rec')||"steps"},timeline:flow.timeline||[],flow:{nodes:flow.nodes||{},edges:flow.edges||{},order:flow.order||[]},sources:sources})
     .then(function(result){notice("SAP debug recording saved: "+result.path);}).catch(failed);};
 function replay(i){var n=stops();if(!n)return;if(typeof annotateSoon==="function")annotateSoon();replayAt=INITIAL.local||INITIAL.savedRecord?Math.min(n-1,Math.max(0,i)):(i>=n-1?null:Math.max(0,i));drawPos();
-  if(replayAt==null){markNow(liveCur());drawStack();drawVars();var f=currentFrame();if(f)show(f.url,null,f.line).catch(failed);}else showStop(replayAt).catch(failed);}
+  if(replayAt==null){markNow(liveCur());drawStack();drawVars();var f=currentFrame();if(f)show(f.url,null,f.line).catch(failed);}else showStop(replayAt).catch(failed);
+  // Formula and Expression are of the value at the stop shown: built again once the slider settles.
+  clearTimeout(formulaAtStop);if(chosenValue&&paneOn("flowpane"))formulaAtStop=setTimeout(function(){if(!playing)showFlow();},300);}
+var formulaAtStop=null;
 window.sdeReplayStep=function(step){if(Number.isInteger(step)&&step>=1&&step<=stops())replay(step-1);};
 $("fprev").onclick=function(){if(playing)return;replay((replayAt==null?stops()-1:replayAt)-1);};
 $("fnext").onclick=function(){if(playing||replayAt==null)return;replay(replayAt+1);};
@@ -3181,8 +3186,8 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
     // Run from the program window: Run here brings that window back - its screen and list - rather than a second way of
     // running; a run there that reaches a breakpoint opens this panel by itself.
     // The list stands in the program window: no second Output here.
-    if(INITIAL.programWindow){$("outsec").hidden=true;$("outsec").setAttribute("data-off","");document.querySelectorAll('#panes button[data-pane="outsec"]').forEach(function(b){b.hidden=true;});}
-    if(INITIAL.programWindow){$("run").title="Back to the program window: run it there - a breakpoint it reaches opens this panel";
+    if(INITIAL.programWindow||INITIAL.sapBuild){$("outsec").hidden=true;$("outsec").setAttribute("data-off","");document.querySelectorAll('#panes button[data-pane="outsec"]').forEach(function(b){b.hidden=true;});}
+    if(INITIAL.programWindow||INITIAL.sapBuild){$("run").title="Back to the program window: run it there - a breakpoint it reaches opens this panel";
       $("run").onclick=function(){debug("toProgram").catch(failed);};}
     // Detach lets a SAP program go on and stops listening; a transpiler run has no session to leave: Exit program ends it.
     $("stop").hidden=true;

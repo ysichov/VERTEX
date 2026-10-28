@@ -1214,7 +1214,12 @@ function activate(context) {
           // Recompile: the SAP object of this run read and transpiled again, and the panel opened on that build.
           if (command === "sapRecompile") { await recompileSap(); return; }
           if (command === "toProgram") {
-            if (!require("./program-window").reveal()) throw new Error("The program window is closed: Run with ABAP Transpiler opens it again.");
+            // An SAP object's build whose window is gone (closed, or a Reload Window) gets it again on that build: nothing is read from SAP.
+            const sap = dockedDebugSource?.sapCopies;
+            if (!require("./program-window").reveal()) {
+              if (!sap?.root) throw new Error("The program window is closed: Run with ABAP Transpiler opens it again.");
+              await runSapTranspiler(sap.root, { entryLine: sap.root.object_type === "PROG" ? 0 : sap.entryLine });
+            }
             await replyTo("{}");
             return;
           }

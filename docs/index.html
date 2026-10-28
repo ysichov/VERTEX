@@ -209,15 +209,17 @@
 </p>
 
 <p>
-  Building a code review is part of it, not only reading one. In VS Code a request with no saved
+  Building a code review is part of it, not only reading one. In VS Code and Eclipse a request with no saved
   review is built from ADT when it is opened - every part it changed except code SAP generated, with the <i>Blame</i> toggle each changed line with the developer who wrote it, the pair of versions chosen
   by AVE's rule, diffed and cut into blocks - and the status line says which part is being read.
   <i>Rebuild from ADT</i> builds it again from the request as it is now; <i>Save</i> keeps it, in <code>ZAVE_REVIEW</code> or in files as <code>vertex.review.storage</code>
   says; approving, declining and commenting then change it the way AVE does, so AVE and VERTEX read
-  the same review. When the request changed after a review was saved, VS Code and Eclipse name what moved,
-  found by each part's versions, and offers <i>Rebuild from ADT</i>, which replaces the saved
-  review and drops its verdicts. Eclipse does the same; where it keeps reviews is set in Window &rarr; Preferences
-  &rarr; VERTEX Code Review.
+  the same review. When an open request changed after its review was saved, the page names what moved,
+  found by each part's versions; a released request is not checked. <i>Rebuild from ADT</i>, under
+  the line that says who saved the review and when, replaces it with one built from the request as
+  it is now and drops its verdicts. A review kept both in <code>ZAVE_REVIEW</code> and in a file
+  shows both copies with a <i>Table | File</i> switch; a change goes back to the copy shown. In
+  Eclipse, where reviews are kept is set in Window &rarr; Preferences &rarr; VERTEX Code Review.
 </p>
 
 <p>

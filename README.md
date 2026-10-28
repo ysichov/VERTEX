@@ -362,7 +362,7 @@ SelecTor offers **Technical names / Text** for Selection field labels and table 
 | Word | Comes from | What it does | In VERTEX | Status |
 |---|---|---|---|---|
 | Data | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, joins, pivot | SelecTor | A table with filters, a join built from the dictionary's own foreign keys, and a pivot over either |
-| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review of a request — built, saved, approved, declined and commented on block by block. No blame |
+| Version | [AVE](https://github.com/ysichov/AVE) | History, diff, blame, code review of a whole transport | Versions | A transport — by its number, or picked from the open or released requests of a user, yours by default — a package or one object; its parts, their versions, the diff between two of them, and the review of a request — built, saved, approved, declined and commented on block by block. |
 | Code | [ACE](https://github.com/ysichov/ACE) | Metrics, call maps, backward slicing, skeletons | Metrics | Three modes: the flow of a program, the branch scheme of one method, and McCabe, Halstead and the maintainability index per unit. A method opened from the Calls diagram draws its branch scheme in the same picture |
 
 Status: **early**. All three answer, and each is a fraction of what it was cut from.

@@ -32,6 +32,16 @@ test("the record gives each stop the whole set of values, built from the changes
   assert.equal(all[2].location, "ZLAB=>START-OF-SELECTION");
 });
 
+test("a stop read without values does not make the change: the statement after the last stop read does", () => {
+  const unread = line => ({ at: { url: "zx.prog.abap", line }, cur: { owner: "ZX", name: "START-OF-SELECTION" }, stack: [{ program: "ZX" }] });
+  const context = vm.createContext({ flow: { timeline: [stop(5, { ls_result: { AMOUNT: 0 } }), stop(6, {}), unread(7), stop(7, { ls_result: { AMOUNT: 7 } })] } });
+  vm.runInContext(part("function recordSteps(){", "function withRecordFormula(data){"), context);
+  const all = vm.runInContext("recordSteps()", context);
+  const source = ["REPORT zx.", "", "", "", "WRITE 1.", "ls_result-amount = 7.", "WRITE 2."].join("\n");
+  const result = build({ variable: "LS_RESULT-AMOUNT", steps: all, sources: { "zx.prog.abap": source } });
+  assert.equal(result.tree.line, 6);
+});
+
 test("a value is derived from the statement that changed it and what that statement read", () => {
   const result = build({ variable: "LV_TOTAL", steps: steps(), sources: { "zlab.prog.abap": source } });
   assert.equal(result.tree.of, "LV_TOTAL");
@@ -44,8 +54,22 @@ test("a value is derived from the statement that changed it and what that statem
   assert.equal(rate.line, 5);
   assert.match(result.panes.formula, /From the run/);
   assert.match(result.panes.formula, /before this assignment: 0/);
-  assert.match(result.panes.expression.replace(/<[^>]+>/g, ""), /lv_rate = 3/);
+  assert.match(result.panes.expression.replace(/<[^>]+>/g, ""), /lv_rate \(3\) = 3/);
   assert.equal(result.formula.edges.length, result.formula.nodes.length - 1);
+});
+
+test("SAP stops on the calling line again after the call: the value is followed into the routine", () => {
+  const main = ["REPORT zx.", "DATA(ls_result) = NEW zcl_f( )->run( ).", "WRITE ls_result-amount."].join("\n");
+  const run = ["CLASS zcl_f IMPLEMENTATION.", "METHOD run.", "DATA(ls_context) = VALUE ty( amount = 7 ).", "rs_result = ls_context.", "ENDMETHOD.", "ENDCLASS."].join("\n");
+  const at = (url, line, depth, values) => ({ url, line, depth, location: url, values });
+  const steps = [at("zx.prog.abap", 2, 1, { LS_RESULT: { AMOUNT: 0 } }), at("zcl_f.clas.abap", 3, 2, {}),
+    at("zcl_f.clas.abap", 4, 2, { LS_CONTEXT: { AMOUNT: 7 } }), at("zx.prog.abap", 2, 1, { LS_RESULT: { AMOUNT: 0 } }),
+    at("zx.prog.abap", 3, 1, { LS_RESULT: { AMOUNT: 7 } })];
+  const result = build({ variable: "LS_RESULT-AMOUNT", steps, sources: { "zx.prog.abap": main, "zcl_f.clas.abap": run } });
+  const returned = result.tree.children.find(child => child.returned);
+  assert.ok(returned, "the routine's result");
+  assert.equal(returned.of, "RS_RESULT-AMOUNT");
+  assert.match(result.panes.expression.replace(/<[^>]+>/g, ""), /= 7/);
 });
 
 test("a statement over several lines is read whole", () => {
