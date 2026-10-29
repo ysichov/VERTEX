@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-29 — Quieter review context chip
+
+The review context above the VS Code chat input is now a small tag in the editor's colours with a focus-coloured edge; a long name ends with an ellipsis and shows in full on hover, and × is a small icon button. The ⤢ button no longer covers the question's text. VS Code 0.9.42 rebuilt.
+
 ## 2026-10-29 — Short answers to review questions
 
 ASK AI on review blocks now answers without headings and names at most three real problems, even when you type your own question; asking for a brief review gives a few sentences. Asking for detail still gets a full answer. VS Code 0.9.42 rebuilt.

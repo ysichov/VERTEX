@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-10-29 — Review chip redesign
+
+The user's screenshot showed the chip as a badge-blue block with × stretched into a wide white bar (the form's button width:100% applied to it) and the label cut short; ⤢ also overlapped the placeholder. The chip is now a fit-content tag on editorWidget background with input border and a focusBorder left edge, label with ellipsis and a title tooltip, × transparent and auto-width; the prompt reserves 30px on the right for ⤢. Only VS Code theme variables are used. Not rendered here: the static preview config calls `python`, which is not on this machine. VS Code 0.9.42 VSIX rebuilt.
+
 ## 2026-10-29 — Short review answers
 
 The user asked for "краткое ревью" and got headings, a five-item remark list and a verdict. A typed question replaced DEFAULT_QUESTION, which carried the only "briefly, no headings, no minor remarks" rule, and the system prompt said only "concise". askRequest (VS Code and Eclipse assistant) and chat.html now always add a format rule — no headings, at most three real problems, two to four sentences when asked briefly, the user's request for detail wins — and both system prompts say to keep brief requests to a few sentences. code-workbench test updated; suite unchanged at 1036 of 1041 with the same 4 pre-existing failures. VS Code 0.9.42 VSIX rebuilt; Eclipse not rebuilt.

@@ -183,11 +183,14 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages { flex: 1 1 auto; min-height: 80px; overflow-y: auto; white-space: pre-wrap; }
 /* The question box and VERTEX Tools stay at the bottom; the answers scroll. */
 .dock { flex: none; }
-#review-chip { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 2px 4px 2px 8px; border-radius: 10px; max-width: 100%;
-  background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 12px; width: fit-content; }
+/* The attached review context: a quiet tag above the input, its name cut with an ellipsis, × to drop it. */
+#review-chip { display: flex; align-items: center; gap: 6px; box-sizing: border-box; max-width: 100%; width: fit-content; margin-bottom: 6px;
+  padding: 2px 2px 2px 8px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-left: 3px solid var(--vscode-focusBorder);
+  border-radius: 4px; background: var(--vscode-editorWidget-background, var(--vscode-input-background)); color: var(--vscode-foreground); font-size: 12px; }
 #review-chip[hidden] { display: none; }
-#review-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#review-chip button { padding: 0 6px; min-width: 0; line-height: 16px; }
+#review-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#chat #review-chip button { flex: none; width: auto; margin: 0; padding: 0 6px; line-height: 18px; border-radius: 3px; background: transparent; color: var(--vscode-foreground); opacity: .7; }
+#chat #review-chip button:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); box-shadow: none; }
 #messages .copy-answer { margin: -0.6em 0 1em; padding: 2px 8px; font-size: 11px; }
 #messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; }
 #messages p.tool-status { font-size: 11px; opacity: .8; }
@@ -204,7 +207,7 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages .reasoning pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20em; overflow-y: auto; }
 textarea, select { box-sizing: border-box; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 4px; font: inherit; }
 textarea { width: 100%; resize: vertical; padding: 8px; }
-#prompt { min-height: 5.5em; max-height: 14em; overflow-y: auto; }
+#prompt { min-height: 5.5em; max-height: 14em; overflow-y: auto; padding-right: 30px; }
 #prompt.expanded { max-height: 70vh; }
 .prompt-box { position: relative; }
 #chat #expand-prompt { position: absolute; top: 4px; right: 4px; width: auto; margin: 0; padding: 0 6px; font-size: 14px; line-height: 20px; opacity: .75; }
@@ -304,6 +307,7 @@ window.addEventListener('message', event => {
     const chip = document.getElementById('review-chip');
     chip.hidden = !event.data.review;
     document.getElementById('review-label').textContent = event.data.review;
+    chip.title = event.data.review;
     const field = document.getElementById('prompt');
     field.placeholder = event.data.review ? 'Ask about this change… (Enter with nothing typed: what it does and any real problem)' : 'Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)';
     if (event.data.review) field.focus();
