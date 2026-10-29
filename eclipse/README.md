@@ -166,7 +166,7 @@ Build: run `node eclipse/prepare.js` before PDE export. The generated
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
 then regenerate. The feature and bundle sources are at `0.9.39.qualifier`; the checked-in update site carries build `0.9.31.20261024182823`.
 
-The local install archive is version `0.9.39.20261029153142`. Install its ZIP through
+The local install archive is version `0.9.39.20261029161154`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

@@ -255,6 +255,13 @@ async function request(api, resource, progress, io) {
     try { stale = await require("./review-live").staleness(api, trkorr, payload, progress, keep); }
     catch (error) { stale = { error: String(error && error.message || error) }; }
   }
+  /* Nothing saved and nothing built: the request's overview stands under Build review, as AVE's report shows its objects
+     before the review is prepared. */
+  let overview = null;
+  if (!payload && !remote && !part && !check) {
+    const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(trkorr), 1000)).values.map(r => r.TRKORR);
+    overview = await require("./versions-front").requestOverview(api, trkorr, tasks);
+  }
   if (check === "only") { return { stale_check: true, request: trkorr.toLowerCase(), saved_at: payload ? up(payload.LAST_SAVED_AT) : "", stale }; }
   if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored), copies }); }
 
@@ -265,7 +272,7 @@ async function request(api, resource, progress, io) {
     developers,
     // Objects the request names that the system no longer has, found while building it from ADT.
     missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
-    storage: storage(io, stored), copies, stale };
+    storage: storage(io, stored), copies, stale, overview, overview_kinds_error: overview && overview.kinds_error || "" };
 }
 
 // A write to a review: a reviewer's action on one block - A approve, D decline, C comment, U take a verdict back - or

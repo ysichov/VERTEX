@@ -232,6 +232,8 @@
   .review h3:first-child { margin-top: 0; }
   .review .ok { color: var(--ins-mark); }
   .review .no { color: var(--del-mark); }
+  /* An object deleted since, as AVE marks it: red on the theme's removed-line background. */
+  .review tr.deleted td { color: var(--del-mark); background: var(--del-bg); }
   .review .open { color: var(--muted); }
   /* The summary as AVE's report draws it in SAP GUI - coloured column heads, developers first, a group per kind of
      object with its total - in the theme's colours. */
@@ -918,35 +920,28 @@ function renderPartList(data) {
     return;
   }
   status(parts.length + (parts.length === 1 ? " part" : " parts"));
-  if (data.overview && data.overview.length) { renderOverview(data.overview); } else { note("Pick a part to see its versions."); }
+  note("Pick a part to see its versions.");
   if (typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff" && !pending && !scope && parts.length && firstPart()) { loadVersions(firstPart()); }
 }
 
-/* A request's overview, as AVE's report opens it: each object with its class, the kind of object, who worked on it,
-   in how many tasks and from when to when. A part picked on the left replaces it with its versions. */
-function renderOverview(rows) {
-  var root = document.getElementById("root");
-  root.className = "review";
-  root.innerHTML = "";
+/* A request's overview, as AVE's report shows it before the review is prepared: each object with its class, the kind
+   of object, who worked on it, in how many tasks and from when to when. */
+function overviewTable(rows) {
   var day = function (d) { return d ? d.slice(6, 8) + "." + d.slice(4, 6) + "." + d.slice(2, 4) : ""; };
   var sorted = rows.slice().sort(function (a, b) { return (a.type + a.class + a.name).localeCompare(b.type + b.class + b.name); });
-  root.appendChild(aveTable(["Type", "Object", "Class", "Type Description", "Author", "TRs/Tasks", "Start", "Finish", "Days"],
+  return aveTable(["Type", "Object", "Class", "Type Description", "Author", "TRs/Tasks", "Start", "Finish", "Days"],
     [0, 0, 0, 0, 0, 1, 0, 0, 1], function (tr, o) {
-      if (o.generated) { tr.className = "muted"; }
+      if (o.deleted) { tr.className = "deleted"; } else if (o.generated) { tr.className = "muted"; }
       cell(tr, o.type, "mono");
       cell(tr, o.type === "METH" ? String(o.name).toLowerCase() : o.name);
       cell(tr, o.class || "");
-      cell(tr, o.type_text + (o.generated ? " (generated, not reviewed)" : ""));
+      cell(tr, o.type_text + (o.deleted ? " (deleted)" : o.generated ? " (generated, not reviewed)" : ""));
       cell(tr, o.authors.join(", "));
       count(tr, o.trs + "/" + o.tasks);
       cell(tr, day(o.start), "mono");
       cell(tr, day(o.finish), "mono");
       count(tr, o.days || "");
-    }, sorted));
-  var hint = document.createElement("p");
-  hint.className = "muted";
-  hint.textContent = "Pick a part to see its versions.";
-  root.appendChild(hint);
+    }, sorted);
 }
 
 var partRows = [];
@@ -2206,6 +2201,10 @@ function renderReview(data) {
     build.onclick = function () { build.disabled = true; buildReview(false); };
     root.appendChild(build);
     root.appendChild(buildOptions());
+    if (data.overview && data.overview.length) {
+      root.appendChild(section("Objects", overviewTable(data.overview)));
+      if (data.overview_kinds_error) { root.appendChild(heading("Type Description could not be read: " + data.overview_kinds_error)); }
+    }
     status("");
     return;
   }
@@ -2350,11 +2349,12 @@ function rebuildBlock() {
       reviewFlags(false));
   };
   box.appendChild(rebuild);
-  box.appendChild(buildOptions());
   var warn = document.createElement("span");
   warn.className = "muted";
-  warn.textContent = "  Replaces the saved review; its verdicts and comments are dropped.";
+  warn.textContent = "  Replaces the saved review; its verdicts and comments are dropped.  ";
   box.appendChild(warn);
+  // The build option goes after what the button does, so the two read apart.
+  box.appendChild(buildOptions());
   return box;
 }
 
@@ -2368,6 +2368,7 @@ function heading(text) {
    with the reason: the rest is reviewed. */
 function missingSection(missing) {
   return section("Not reviewed", table(["Type", "Object", "Why"], missing, function (tr, m) {
+    if (m.reason === "deleted since") { tr.className = "deleted"; }
     [m.object, m.name, m.reason].forEach(function (text) {
       var td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
     });

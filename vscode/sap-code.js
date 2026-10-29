@@ -614,7 +614,9 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
     { method: "POST", qs: { remote: remote || "", expect: expect || "" }, headers: { "Content-Type": "application/json", Accept: "application/json" }, body });
   // ADT's object structure of a class: its components with their kinds and visibility, read without parsing.
   const classComponents = url => client.classComponents(adtPath(url));
-  return { classComponents, execute, apply, query, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, textElements, dataElement, discard: id => drafts.delete(id),
+  // ADT's object types with their descriptions, as the New Object wizard lists them: [{ name: "CLAS/OC", description }].
+  const objectTypes = () => client.objectTypes();
+  return { classComponents, objectTypes, execute, apply, query, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, textElements, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath, dataPreviewLines };

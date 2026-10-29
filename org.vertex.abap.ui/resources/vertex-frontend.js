@@ -104688,11 +104688,9 @@ async function requestOverview(api, name, tasks) {
     ? keys.concat(await inLists(api, "SELECT trkorr, pgmid, object, obj_name FROM e071 WHERE trkorr", released, 10000)) : keys;
   const heads = new Map((await inLists(api, "SELECT trkorr, trfunction, as4user, as4date FROM e070 WHERE trkorr",
     [...own, ...released], 10000)).map(h => [h.TRKORR, h]));
-  let texts = new Map();
-  try {
-    texts = new Map((await api.query("SELECT pgmid, object, text FROM ko100 WHERE spras = 'E'", 10000)).values
-      .map(r => [r.PGMID + "|" + r.OBJECT, String(r.TEXT || "")]));
-  } catch (error) { texts = new Map(); }
+  // The kind of each object as ADT names it; a host or a system that cannot say leaves the column empty and says why.
+  let kinds = null, kindsError = "";
+  try { kinds = await objectKinds(api); } catch (error) { kindsError = String(error && error.message || error); }
   const objects = new Map();
   rows.forEach(k => {
     if (k.PGMID === "CORR") { return; }
@@ -104701,7 +104699,7 @@ async function requestOverview(api, name, tasks) {
     if (object === "METH") { const m = methodOf(objName); owner = m.owner; label = m.method || m.owner; }
     const key = k.PGMID + "|" + object + "|" + objName.trim();
     if (!objects.has(key)) {
-      objects.set(key, { pgmid: k.PGMID, type: object, name: label, class: owner, type_text: texts.get(k.PGMID + "|" + object) || "",
+      objects.set(key, { pgmid: k.PGMID, type: object, name: label, class: owner, type_text: kinds ? kindOf(kinds, object) : "",
         authors: new Set(), tasks: new Set(), start: "", finish: "" });
     }
     const o = objects.get(key), head = heads.get(k.TRKORR);
@@ -104716,14 +104714,52 @@ async function requestOverview(api, name, tasks) {
   const users = [...new Set([...objects.values()].flatMap(o => [...o.authors]))];
   const names = new Map(users.length ? (await inLists(api, "SELECT u~bname, a~name_text FROM usr21 AS u INNER JOIN adrp AS a"
     + " ON a~persnumber = u~persnumber WHERE u~bname", users, 1000)).map(r => [r.BNAME, r.NAME_TEXT]) : []);
+  /* Deleted since: the object's TADIR entry is marked for deletion (DELFLAG X), as AVE's overview reads it - a method
+     or a class part by its class, a program include by its program. */
+  const tadirOf = o => o.type === "METH" ? ["CLAS", o.class] : o.type === "REPS" ? ["PROG", o.name]
+    : o.pgmid === "R3TR" ? [o.type, o.name] : null;
+  const asked = [...new Set([...objects.values()].map(tadirOf).filter(Boolean).map(k => k[1]))];
+  const gone = new Set(asked.length ? (await inLists(api, "SELECT object, obj_name FROM tadir WHERE pgmid = 'R3TR' AND delflag = 'X' AND obj_name",
+    asked, 10000)).map(r => r.OBJECT + "|" + r.OBJ_NAME) : []);
   const asDay = d => d ? new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8))) : null;
-  return [...objects.values()].map(o => ({
+  const rowsOut = [...objects.values()].map(o => ({
     pgmid: o.pgmid, type: o.type, name: o.name, class: o.class, type_text: o.type_text,
     authors: [...o.authors].map(u => names.get(u) || u), tasks: o.tasks.size, trs: o.tasks.size ? 1 : 0,
     start: o.start, finish: o.finish,
     days: o.start && o.finish ? Math.round((asDay(o.finish) - asDay(o.start)) / 86400000) + 1 : 0,
+    deleted: Boolean(tadirOf(o) && gone.has(tadirOf(o).join("|"))),
     generated: __vertexRequire(1547).generatedObject({ object: o.class || o.name, part: o.name, className: o.class })
   }));
+  if (kindsError) { rowsOut.kinds_error = kindsError; }
+  return rowsOut;
+}
+
+/* ADT's object types (the list ADT's New Object wizard reads): name - "CLAS/OC" - to description. A host that reads them
+   through its ADT client answers objectTypes(); otherwise the list is read from ADT as XML. */
+async function objectKinds(api) {
+  if (typeof api.objectTypes === "function") {
+    return new Map((await api.objectTypes()).map(t => [String(t.name).toUpperCase(), String(t.description || "")]));
+  }
+  const xml = String(await api.sourceAt("/sap/bc/adt/repository/informationsystem/objecttypes?maxItemCount=999&name=*&data=usedByProvider"));
+  const kinds = new Map();
+  for (const item of xml.split("<nameditem:namedItem>").slice(1)) {
+    const name = (/<nameditem:name>([^<]*)</.exec(item) || [])[1], description = (/<nameditem:description>([^<]*)</.exec(item) || [])[1];
+    if (name) { kinds.set(name.toUpperCase(), (description || "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); }
+  }
+  if (!kinds.size) { throw new Error("ADT listed no object types."); }
+  return kinds;
+}
+
+/* An E071 object type to ADT's: a request names parts (LIMU METH, REPS, FUNC) and objects (R3TR CLAS, PROG, ...), ADT
+   a type and its subtype. The subtype of each kind's main object is named here; any other type takes the first of its
+   subtypes ADT lists. */
+const MAIN_KIND = { METH: "CLAS/OM", REPS: "PROG/I", FUNC: "FUGR/FF", CLAS: "CLAS/OC", INTF: "INTF/OI", PROG: "PROG/P",
+  FUGR: "FUGR/F", TABL: "TABL/DT", DTEL: "DTEL/DE", DOMA: "DOMA/DD", DEVC: "DEVC/K", TRAN: "TRAN/T", DDLS: "DDLS/DF" };
+function kindOf(kinds, type) {
+  if (MAIN_KIND[type] && kinds.has(MAIN_KIND[type])) { return kinds.get(MAIN_KIND[type]); }
+  if (kinds.has(type)) { return kinds.get(type); }
+  const first = [...kinds.keys()].sort().find(name => name.startsWith(type + "/"));
+  return first ? kinds.get(first) : "";
 }
 
 async function request(api, resource) {
@@ -104742,14 +104778,7 @@ async function request(api, resource) {
   // A program or an include is one part, itself; a class is its sections, its methods and its local includes.
   if (!part) {
     // A transport request and a package are scopes: the objects in them, each opened rather than read here.
-    if (type === "TR" || type === "DEVC") {
-      const answer = Object.assign(head, { scope: true, parts: await scopeParts(api, type, name) });
-      if (type === "TR") {
-        const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(name), 1000)).values.map(r => r.TRKORR);
-        answer.overview = await requestOverview(api, name, tasks);
-      }
-      return answer;
-    }
+    if (type === "TR" || type === "DEVC") { return Object.assign(head, { scope: true, parts: await scopeParts(api, type, name) }); }
     return Object.assign(head, { scope: false, parts: await partsOf(api, type, name) });
   }
   const where = await partOf(api, type, name, part, ptype);
@@ -104808,7 +104837,7 @@ async function request(api, resource) {
     versions: rows.map(({ uri, ...r }) => Object.assign(r, { author_name: names.get(r.author) || "" })) });
 }
 
-module.exports = { methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
+module.exports = { requestOverview, methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
 
 },
 function(module,exports,__vertexRequire){
@@ -105107,7 +105136,9 @@ const CLASS_PART_TYPES = ["METH", "CPUB", "CPRO", "CPRI", "CINC"];
    with its reason - deleted since, or SAP's own words - [{ object, name, reason }]. */
 async function exists(api, type, name) {
   const sql = type === "FUNC" ? "SELECT funcname FROM tfdir WHERE funcname = " + sqlText(name)
-    : "SELECT obj_name FROM tadir WHERE pgmid = 'R3TR' AND object = " + sqlText(type) + " AND obj_name = " + sqlText(name);
+    // A deleted object keeps its TADIR entry, marked for deletion (DELFLAG X), as AVE's overview reads it.
+    : "SELECT obj_name FROM tadir WHERE pgmid = 'R3TR' AND object = " + sqlText(type) + " AND obj_name = " + sqlText(name)
+      + " AND delflag <> 'X'";
   return (await api.query(sql, 1)).values.length > 0;
 }
 
@@ -106015,6 +106046,13 @@ async function request(api, resource, progress, io) {
     try { stale = await __vertexRequire(1547).staleness(api, trkorr, payload, progress, keep); }
     catch (error) { stale = { error: String(error && error.message || error) }; }
   }
+  /* Nothing saved and nothing built: the request's overview stands under Build review, as AVE's report shows its objects
+     before the review is prepared. */
+  let overview = null;
+  if (!payload && !remote && !part && !check) {
+    const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(trkorr), 1000)).values.map(r => r.TRKORR);
+    overview = await __vertexRequire(1545).requestOverview(api, trkorr, tasks);
+  }
   if (check === "only") { return { stale_check: true, request: trkorr.toLowerCase(), saved_at: payload ? up(payload.LAST_SAVED_AT) : "", stale }; }
   if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored), copies }); }
 
@@ -106025,7 +106063,7 @@ async function request(api, resource, progress, io) {
     developers,
     // Objects the request names that the system no longer has, found while building it from ADT.
     missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
-    storage: storage(io, stored), copies, stale };
+    storage: storage(io, stored), copies, stale, overview, overview_kinds_error: overview && overview.kinds_error || "" };
 }
 
 // A write to a review: a reviewer's action on one block - A approve, D decline, C comment, U take a verdict back - or

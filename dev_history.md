@@ -1,8 +1,16 @@
 # Development history
 
+## 2026-10-29 — Type Description from ADT's object types
+
+The user chose ADT's object types for the overview's Type Description. `versions-front.js` `objectKinds` reads them: in VS Code through the ADT client's `objectTypes()` (abap-adt-api, `/sap/bc/adt/repository/informationsystem/objecttypes?maxItemCount=999&name=*&data=usedByProvider`), exposed as `api.objectTypes` in `sap-code.js`; elsewhere (Eclipse's worker) by reading that address with `api.sourceAt` and taking `nameditem:name` / `nameditem:description` from the XML. `kindOf` maps an E071 type to ADT's type/subtype: METH CLAS/OM, REPS PROG/I, FUNC FUGR/FF and the main subtype of each R3TR kind; any other type takes its first listed subtype. When the list cannot be read the column stays empty and the page says why, under the table. The KO100 query is gone. Test updated; not run against a system, in either host.
+
+## 2026-10-29 — Request overview moved to Review
+
+The overview first stood in Versions' right pane, where it kept "Pick a part" out of view; the user preferred Versions as it was. AVE shows that table in its Code Review report before Prepare, so it now stands in Review: `review-front.js` adds `overview` (`versions-front.js` `requestOverview`, now exported) to the answer when no review is saved and none is built, and `versions.html` draws it as "Objects" under Build review (`overviewTable`). Versions is back to "Pick a part to see its versions." The overview test calls `requestOverview` directly. Also fixed: Rebuild from ADT's explanation stood after the Ignore SAP generated checkbox and read as its label. Type Description stays empty - KO100 is a structure (INTTAB) on the system, not a table; where its texts should come from is with the user.
+
 ## 2026-10-29 — Deleted objects: TADIR DELFLAG
 
-ALCK900491 (the ZORK_00 objects, all deleted) listed every object with ADT's own "does not exist": `review-live.js` `exists` found their TADIR rows, which a deletion leaves with DELFLAG X. It now asks for `delflag <> 'X'`; checked on the system, the query answers no row for ZCL_ORK_00_STACK. Review tests pass (29).
+ALCK900491 (the ZORK_00 objects, all deleted) listed every object with ADT's own "does not exist": `review-live.js` `exists` found their TADIR rows, which a deletion leaves with DELFLAG X. It now asks for `delflag <> 'X'`; checked on the system, the query answers no row for ZCL_ORK_00_STACK. Review tests pass (29). Then, as AVE paints deleted rows red (`tr.deleted`), `versions.html` marks a "deleted since" row under Not reviewed and an overview row with `deleted` - `requestOverview` asks TADIR for DELFLAG X by the object, a method by its class, an include by its program - in the theme's `--del-mark` on `--del-bg`; checked in the browser, light and dark.
 
 ## 2026-10-29 — Partial review while it is built
 

@@ -419,9 +419,10 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   same as the one before it (on), **Case/ind** compares without case and indentation
   (on).
 
-  **A transport's overview.** Opening a request shows, until a part is picked, each object it holds: type, object,
-  class, the kind of object as SAP names it, who worked on it, in how many tasks, and from the first task to the
-  last - tasks released into the request included. Code SAP generates is marked as not reviewed.
+  **A transport's overview.** Review of a request with no saved review shows, under **Build review**, each object it holds: type, object,
+  class, the kind of object as ADT names it, who worked on it, in how many tasks, and from the first task to the
+  last - tasks released into the request included. Code SAP generates is marked as not reviewed, and an object deleted since is shown in red, as
+  it is under Not reviewed in the review.
 
   **Code review of a transport.** A transport request in Versions shows its review: every part
   it changed, the diff of that part and the diff cut into blocks. The pair of versions is chosen

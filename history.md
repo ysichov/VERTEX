@@ -2,7 +2,7 @@
 
 ## 2026-10-29 — Deleted objects named as deleted in a review
 
-An object of a request that has been deleted since - its TADIR entry kept, marked for deletion - is listed under Not reviewed as "deleted since" instead of the system's "does not exist".
+An object of a request that has been deleted since - its TADIR entry kept, marked for deletion - is listed under Not reviewed as "deleted since" instead of the system's "does not exist", and shown in red as AVE marks it - under Not reviewed and in the request's overview.
 
 ## 2026-10-29 — A review shows its parts as they are built
 
@@ -10,11 +10,11 @@ Build review and Rebuild from ADT draw the review as it is read: each object joi
 
 ## 2026-10-29 — A request's overview; Find keeps Review
 
-Opening a transport request shows its overview, as AVE's report does: each object with its class, the kind of object, its authors, TRs/Tasks, start, finish and days, tasks released into the request included. A request found with Find opens in Review unless Diff was chosen.
+A request's Review, while no review is saved, shows its overview under Build review, as AVE's report does before Prepare: each object with its class, the kind of object, its authors, TRs/Tasks, start, finish and days, tasks released into the request included. A request found with Find opens in Review unless Diff was chosen.
 
 ## 2026-10-29 — 0.9.39: methods of a request reviewed; no RELE in Parts
 
-A method a request changes on its own (LIMU METH) is in the request's review again: it was left out when the class wrote its name in another case than the request. In a request's Parts a method is named with its class (`ZCL_X->get_tfc`), and the request's own records - released tasks (RELE) and other CORR entries - are no longer listed as parts. Changed lines show what changed inside them, the block's row stands above the lines leading into it, Blame has the shared toggle look, and Find no longer flashes "Type an object name". A request's parts follow AVE's rules further: a method entry in the short form (`CLASS=>METHOD`, `CLASS\METHOD`, or the class alone - then the methods the request holds versions of) is read, a class whose methods the request names one by one is reviewed by those methods only, and a whole class is reviewed without its local includes. VS Code 0.9.39 and Eclipse 0.9.39 (`0.9.39.20261029153142`).
+A method a request changes on its own (LIMU METH) is in the request's review again: it was left out when the class wrote its name in another case than the request. In a request's Parts a method is named with its class (`ZCL_X->get_tfc`), and the request's own records - released tasks (RELE) and other CORR entries - are no longer listed as parts. Changed lines show what changed inside them, the block's row stands above the lines leading into it, Blame has the shared toggle look, and Find no longer flashes "Type an object name". A request's parts follow AVE's rules further: a method entry in the short form (`CLASS=>METHOD`, `CLASS\METHOD`, or the class alone - then the methods the request holds versions of) is read, a class whose methods the request names one by one is reviewed by those methods only, and a whole class is reviewed without its local includes. VS Code 0.9.39 and Eclipse 0.9.39 (`0.9.39.20261029161154`).
 
 ## 2026-10-29 — Find no longer flashes "Type an object name"
 
