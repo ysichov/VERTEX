@@ -115,7 +115,7 @@ async function blameOf(api, feed, pair, ops, textOf, ownerOf) {
   if (!pair.old) { prev.forEach(text => map.push(blameEntry(range[0], text))); }
   for (const e of range.slice(1)) {
     const cur = await textOf(e);
-    for (const d of await versions.diff(prev, cur, false, api)) {
+    for (const d of await versions.diff(prev, cur, "indentation", api)) {
       if (d.op === "+") { drop(map, d.text); map.push(blameEntry(e, d.text)); }
       else if (d.op === "-") { drop(deleted, d.text); deleted.push(blameEntry(e, d.text)); drop(map, d.text); }
     }
@@ -192,12 +192,16 @@ async function exists(api, type, name) {
 
 const methodOf = versions.methodOf;
 
-async function partsOfRequest(api, keys, numbers, log) {
+async function partsOfRequest(api, keys, numbers, log, progress) {
   const say = log || (() => {});
-  const parts = [], seen = new Set(), missing = [];
+  const parts = [], seen = new Set(), missing = [], layouts = new Map();
   const add = async (type, name, filter) => {
     let found;
-    try { found = await versions.partsOf(api, type, name); }
+    try {
+      const key = type + "|" + name;
+      if (!layouts.has(key)) layouts.set(key, versions.partsOf(api, type, name));
+      found = await layouts.get(key);
+    }
     catch (error) {
       const reason = await exists(api, type, name) ? String(error && error.message || error) : "deleted since";
       if (!missing.some(m => m.object === type && m.name === name)) { missing.push({ object: type, name, reason }); }
@@ -218,7 +222,8 @@ async function partsOfRequest(api, keys, numbers, log) {
   /* A class whose methods the request names one by one is not opened whole: the METH entries say what changed, and
      the class entry beside them would add every method of it (GET_PARTS_EXPANDED). */
   const listed = new Set(keys.filter(k => String(k.OBJECT) === "METH").map(k => methodOf(k.OBJ_NAME).owner.toUpperCase()));
-  for (const k of keys) {
+  for (const [index, k] of keys.entries()) {
+    if (progress) progress("Reading request objects " + (index + 1) + " of " + keys.length + ": " + k.OBJECT + " " + String(k.OBJ_NAME).trim());
     const object = String(k.OBJECT), name = String(k.OBJ_NAME).trim();
     if (k.PGMID === "R3TR" && object === "CLAS" && listed.has(name.toUpperCase())) { continue; }
     /* A whole class is opened without its technical includes - local types, test classes, macros - as AVE expands it
@@ -398,7 +403,7 @@ async function build(api, request, progress, fresh, blame, keepGenerated, onPart
 }
 
 // The request with its tasks, and the parts they name.
-async function requestParts(api, request, log) {
+async function requestParts(api, request, log, progress) {
   const head = (await api.query("SELECT trkorr, trstatus FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
   if (!head) { throw new Error("Transport request " + request + " does not exist."); }
   const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(request), 1000)).values.map(r => r.TRKORR);
@@ -411,7 +416,7 @@ async function requestParts(api, request, log) {
   const numbers = new Set([request, ...tasks, ...copies]);
   const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
   const open = head.TRSTATUS !== "R" && head.TRSTATUS !== "N";
-  return Object.assign({ numbers, open }, await partsOfRequest(api, keys, numbers, log));
+  return Object.assign({ numbers, open }, await partsOfRequest(api, keys, numbers, log, progress));
 }
 
 const labelOf = p => p.ptype === "METH" ? p.object + "->" + p.unit : p.part;
@@ -425,7 +430,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
   const diag = [], log = text => diag.push(text);
   lastLogs.set(String(request).toUpperCase(), diag);
   Object.defineProperty(payload, "DIAG", { value: diag, enumerable: false });
-  const { numbers, open, parts, missing } = await requestParts(api, request, log);
+  const { numbers, open, parts, missing } = await requestParts(api, request, log, progress);
   log("REQUEST " + request + ": " + [...numbers].join(", ") + (open ? ", open" : ", released") + "; " + parts.length + " part(s)");
   // One resolver per object read through, so its tasks and requests are asked once for all its parts.
   const resolvers = new Map();
@@ -465,7 +470,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
       log("  TEXT old=" + oldLines.length + " line(s), new=" + newLines.length + " line(s)");
       if (skip.text(p, pair, oldLines, newLines)) { log("SKIP " + label + ": new object of comments only, or an empty class section"); continue; }
-      ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
+      ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
       blame = { map: [], deleted: [] };
       if (withBlame && ops.some(o => o.op !== "=")) {
         progress((at + 1) + " of " + parts.length + ": " + labelOf(p) + " - who wrote which line ...");
@@ -477,7 +482,11 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       log("SKIP " + label + ": " + String(error && error.message || error));
       continue;
     }
-    if (!ops.some(o => o.op !== "=")) { log("SKIP " + label + ": no difference between the two versions"); continue; }
+    if (!ops.some(o => o.op !== "=")) {
+      log("SKIP " + label + ": no difference between the two versions; OLD=" + (pair.old ? pair.old.id + " " + (pair.old.transport || "-") : "none")
+        + "; NEW=" + pair.fresh.id + " " + (pair.fresh.transport || "-") + "; compared " + ops.length + " line(s)");
+      continue;
+    }
 
     const ranges = hunkRanges(ops);
     if (!ranges.length) { log("SKIP " + label + ": only blank lines changed"); }
@@ -520,6 +529,8 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
     payload.OBJ_STATS.forEach(s => s.BT_AUTHORS.forEach(a => { a.AUTHOR_NAME = names.get(a.AUTHOR) || ""; }));
     blames.forEach(b => { b.AUTHOR_NAME = names.get(b.AUTHOR) || ""; });
   }
+  log("RESULT " + request + ": " + parts.length + " part(s) examined, " + payload.OBJ_STATS.length
+    + " included, " + missing.length + " unread or missing");
   return payload;
 }
 
@@ -586,7 +597,7 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
       if (!stats) {
         const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
         if (skip.text(p, pair, oldLines, newLines)) { continue; }
-        const ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
+        const ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
         if (ops.some(o => o.op !== "=")) { changed.push({ name, reason: "changed by the request, not in the review" }); }
         continue;
       }

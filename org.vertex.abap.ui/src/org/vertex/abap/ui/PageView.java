@@ -387,6 +387,16 @@ public abstract class PageView extends ViewPart {
                             } else if(path.equals("reviewio:")) {
                                 // Where reviews are kept: the setting and this system's folder of review files.
                                 result="{\"wanted\":"+AssistantBridge.quote(ReviewPreferences.storage())+",\"dir\":"+AssistantBridge.quote(reviewDir(browser.getDisplay()).toString())+"}";
+                            } else if(path.equals("reviewfiles:")) {
+                                java.nio.file.Path dir = reviewDir(browser.getDisplay());
+                                if (!java.nio.file.Files.isDirectory(dir)) result = "[]";
+                                else try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(dir)) {
+                                    result = files.filter(java.nio.file.Files::isRegularFile)
+                                        .map(file -> file.getFileName().toString())
+                                        .filter(name -> name.endsWith(".json") && !name.contains("__"))
+                                        .map(name -> AssistantBridge.quote(name.substring(0, name.length() - 5)))
+                                        .collect(java.util.stream.Collectors.joining(",", "[", "]"));
+                                }
                             } else if(path.startsWith("reviewfile:")) {
                                 java.nio.file.Path file=reviewFile(path.substring(11), browser.getDisplay());
                                 result=java.nio.file.Files.exists(file)?java.nio.file.Files.readString(file, StandardCharsets.UTF_8):"";

@@ -8,6 +8,54 @@ Data elements, domains and tables a request created and that were never versione
 
 A class's heading in the review opens the changes of the whole class - each of its parts under its own heading, with its blocks, verdicts and comments - as AVE's "Class:" link does. Going back from a part, a class or a person to the summary keeps where it was scrolled. The summary's object groups share their column widths, so their columns line up. Also in this release: Rebuild from ADT draws the review part by part, a system with VERTEX's ABAP is recognised as one (reviews saved to the table again), and dictionary objects of AVE's reviews are shown as a diff through it. VS Code 0.9.42 and Eclipse 0.9.42 (`0.9.42.20261029213732`).
 
+## 2026-10-29 — Versions open on the newest change; working ⤢
+
+Versions now opens a part on its latest version compared with the previous one instead of asking you to pick a version. ⤢ beside the VS Code chat question box now actually enlarges it to most of the panel. VS Code 0.9.42 rebuilt.
+
+## 2026-10-29 — Quieter review context chip
+
+The review context above the VS Code chat input is now a small tag in the editor's colours with a focus-coloured edge; a long name ends with an ellipsis and shows in full on hover, and × is a small icon button. The ⤢ button no longer covers the question's text. VS Code 0.9.42 rebuilt.
+
+## 2026-10-29 — Short answers to review questions
+
+ASK AI on review blocks now answers without headings and names at most three real problems, even when you type your own question; asking for a brief review gives a few sentences. Asking for detail still gets a full answer. VS Code 0.9.42 rebuilt.
+
+## 2026-10-29 — One chat in VS Code, expandable question box
+
+In VS Code the VERTEX Tools window no longer has its own chat or Ask AI header button; the chat is only in the VERTEX panel. ASK AI inside a review (block, object, developer or reviewer) opens the panel with the selection on the chip, and the question stays yours to write and send. The question box grows with typed or pasted text, and ⤢ expands it to most of the panel. The Eclipse chat box grows the same way. VS Code 0.9.42 rebuilt.
+
+## 2026-10-29 — Expand all includes source code
+
+Expand all in a saved request review opens all objects’ changed blocks and code on one page, rather than only unfolding object tables. It is available for a single class too. The expanded view retains status/comment filters, AI prompts and Collapse all. Both hosts rebuilt at 0.9.42.
+
+## 2026-10-29 — Review person view and Ask AI scope
+
+Opening a developer or reviewer shows their changed blocks together on one page, grouped by class and object. The toolbar offers All, Approved, Declined, Not processed and Comments only filters, Expand all / Collapse all, and AI prompt diff/full for the filtered view. Object and block actions keep their own source/verdict scope. Ask AI beside a block sends only that block; the object-level button sends its blocks. Selecting a block no longer adds the rest of the diff or merges with another request having the same method name. Both 0.9.42 packages were rebuilt.
+
+## 2026-10-29 — Review ignores indentation-only changes
+
+Review building and its staleness check ignore indentation and trailing whitespace. Reindenting CASE/WHEN/ENDCASE no longer creates changed lines. Text inside literals and actual code changes remain differences. Existing saved reviews retain their original blocks until explicitly rebuilt. Both 0.9.42 packages were rebuilt.
+
+## 2026-10-29 — Saved review links in request numbers
+
+A request number in the request list is a link when its review is saved in SAP or in the current system/project’s review files. Clicking that number opens the saved review; other row clicks retain their usual navigation. No extra column is added, and listing requests does not build or check reviews. Added selection copying through the VS Code clipboard to the sidebar chat as well as Tools pages. Both hosts rebuilt at 0.9.42.
+
+## 2026-10-29 — Review context in chat and copying from Tools
+
+In VS Code, a question about the open request review receives its object list and the saved changed lines from all reviewed objects, including from the summary screen. Reading this context does not rebuild the review; large diffs are capped with explicit truncation markers. Text selected in Tools pages is copied through the host clipboard with ⌘C/Ctrl+C or Copy; editing shortcuts remain in the selected frame. Removed the introductory Z_CALC hint from the Tools assistant. Rebuilt both hosts at 0.9.42.
+
+## 2026-10-29 — Review build controls and diagnostics
+
+Build review builds and saves in one operation. In VS Code, Stop cancels the build before saving, allowing an in-flight SAP read to finish. Initial discovery reports each object and reuses a class layout across its methods. New objects use green text with the normal table background. Copy log copies the complete diagnostics; unread-part reasons and the build log survive saving and reopening. Empty results explicitly point to skipped-part reasons.
+
+## 2026-10-29 — New objects in the review
+
+Newly created objects in the review are highlighted in green, including their names, as in AVE. The highlight follows the active editor theme and remains visible on hover and while the review is being built.
+
+## 2026-10-29 — VERTEX 0.9.42
+
+Packaged the current sources as VS Code 0.9.42 and Eclipse `0.9.42.20261029215630`. The Eclipse update site in `docs/` and its installable ZIP carry the same build. Both archives passed packaging validation. The combined test run passed 1029 tests, failed eight and skipped one; this release does not have a clean full-suite result.
+
 ## 2026-10-29 — Dictionary objects of AVE's reviews shown as a diff
 
 A data element, domain or table in a review AVE prepared is shown as a line diff with its block, verdicts and comments, read again through VERTEX's ABAP, instead of "VERTEX does not render that page yet". Without VERTEX's ABAP on the system the page says that it is needed.
@@ -484,6 +532,7 @@ The repository and VS Code guides now explain starting chat with a package or pr
 ## Unreleased — assistant session log panel placement
 
 The VS Code assistant session log report opens beside the active editor and returns to that column when reopened, so it is easier to locate from the VERTEX sidebar.
+
 ## 2026-10-20 — VS Code 0.9.19: citations for Visual Debug transpiler runs
 
 ABAP Transpiler runs started in Visual Debug are registered in transpiler history and included in chat context. The assistant can cite recorded steps with clickable run links.
@@ -628,6 +677,7 @@ VERTEX checks the `abap:` repository when the VS Code extension list does not ex
 Systems support `authType` basic or snc. SNC carries ADT over RFC in the Windows x64 package with its prebuilt binding; the universal package has no SNC support. The macOS Apple silicon target was prepared but no 0.9.7 package was handed over. Basic passwords are migrated once from the old storage to the auth broker's VS Code SecretStorage. **VERTEX: Forget Credentials** (formerly **VERTEX: Forget Password**) clears the active system's stored credentials; refused basic passwords are discarded and asked for again. Refusals explain unsupported platforms, remote hosts, a package without SNC support, or a missing SAP NW RFC SDK. SNC on macOS (Apple silicon) is not yet verified.
 
 The VS Code 0.9.5 features also support broker-based basic and SNC connections. SAP ADT extension destinations retain their separate repository connection and local breakpoints.
+
 ## 2026-10-17 — VS Code 0.9.6: Object Navigator
 
 VERTEX Tools opens on **Object Navigator**, first in its list, for a package, a transport request, a program, a function module (its group's tree), a class or an interface: the tree SE80's Repository Browser shows. A package lists its subpackages and its objects by category and type; a program its includes, fields, events, subroutines, screens, GUI statuses, tables and local classes, which unfold to their methods and attributes - a subroutine or a method opens the program at its FORM, an include that does not exist at its INCLUDE; a transport request its objects and its tasks' objects by type, read at once, what is inside a class only when it is unfolded - a method opens in its class at the method; a class its superclass under Inherited from, its types, attributes, methods and events with their visibility and its friends under Friends of; an interface its types, attributes, methods and events. Subpackages, classes, interfaces and function groups (to their function modules) unfold in place; a click on an object or component opens its source in the editor beside the tree, a component at its line, and the tree keeps the focus. A program's Parts beside Calls, Logic and Metrics come from SAP's tree of the program, at once; for an include, a function module and a class they come from the source the diagram or Metrics parses anyway, instead of from a parse of their own first. With Logic only, the operations it leaves out show as one block with their count, opened and folded by a click. In the editor, a double-click on a class, an interface or a form the source declares itself goes to it without asking SAP, and so does a call of a method of such a class; hover and Go to Definition work in sources of any size, the whole source sent to SAP as Eclipse sends it, one request at a time. An object's Parts are read once: switching to another function of the same object keeps them. A variable made by a chain such as NEW factory( )->get_instance( ) has the type the last method returns, so the Calls diagram names the right class for the calls made on it. Keyboard shortcuts such as Ctrl+Shift+P work while a VERTEX Tools page has the focus. The Eclipse update site was not rebuilt.
@@ -1038,6 +1088,7 @@ Source only; the plugin has not been built at this number yet.
   is stepped over (F6) and the record keeps the line it stood on; a call that is a place of the slice is
   entered, so the calculations inside it stay in the record and in BSE. The stack is not read after an F6
   (the depth is the one it was); a breakpoint SAP reports on the way still makes it read.
+
 ## 2026-10-03 — VS Code 0.7.14: the source is the editor
 
 - **View source is gone; the source is the editor.** Opening a 147,000-line program (zabapgit) in

@@ -375,7 +375,8 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   Versions commands any more. For a class or a program the window keeps one **Parts** list at
   the left: pick a method, a section, a form or an event there, and every function shows that
   part; switching the function keeps the list and the choice. Diff keeps its own Parts and
-  Versions column, AVE's layout, and opens on the same part.
+  Versions column, AVE's layout, and opens on the same part. A part opens on its newest change: the
+  latest version compared with the one before it; pick another version or pin a base with ◇ to change that.
 
   Metrics for a class or program has a **Table / Visual** switch. In Visual, tile area scales with the selected indicator and every tile shows its method or unit name and value. CC and MI colours follow the table's risk grades; other indicators use a relative ranking within the object. Single-click a tile to select it; double-click or press Enter to open its source beside the view.
   Visual has a 2–300% scale control and a Fit button that fits the whole map into the pane. Fit and the ± buttons animate scale changes; Ctrl+wheel changes scale immediately, as in UML, while ordinary scrolling moves around the map. Zoom changes tile space and reveals more labels without enlarging text.
@@ -424,7 +425,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
 
   **A transport's overview.** Review of a request with no saved review shows, under **Build review**, each object it holds: type, object,
   class, the kind of object as ADT names it, who worked on it, in how many tasks, and from the first task to the
-  last - tasks released into the request included. Code SAP generates is marked as not reviewed, and an object deleted since is shown in red, as
+  last - tasks released into the request included. **Stop** cancels a build before saving; a SAP call already in progress may finish. In the request list, request numbers link to reviews saved in SAP or in this system’s review files. Review ignores indentation and trailing-space changes while preserving changes inside literals. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies build diagnostics and skipped-part reasons. Chat receives the open review's objects and saved changed lines, including when the request summary is shown. Select text in Tools or the sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. Code SAP generates is marked as not reviewed, and newly created objects are shown in green and an object deleted since is shown in red, as
   it is under Not reviewed in the review.
 
   **Code review of a transport.** A transport request in Versions shows its review: every part
@@ -755,12 +756,15 @@ no tab yet: it opens as a draft in the **Code Change** reviewer, with the target
 title.
 
 A **VERTEX Tools** window keeps the system that was active when it opened, and its tab is named
-after it — *VERTEX E19*. Everything started from the window, its **Ask AI** chat included, works
-against that system; choosing another system in the panel affects only windows opened later. The
-window's chat uses the panel's provider and model.
+after it — *VERTEX E19*. Everything started from the window works against that system; choosing
+another system in the panel affects only windows opened later. The window has no chat of its own:
+the chat is the one in the VERTEX panel. **ASK AI** inside a review — on a block, an object or a
+developer's or reviewer's blocks — opens that panel with the selection on the chip above the input;
+you write the question and send it yourself.
 
-In both the Activity Bar panel and the Tools chat, **Enter** sends a question and
-**Ctrl+Enter** inserts a new line.
+**Enter** sends a question and **Ctrl+Enter** inserts a new line. The question box grows with
+what you type or paste and then scrolls; **⤢** in its corner expands it to most of the panel, and
+**⤡** shrinks it back.
 
 Ask in any language, for example *show ZCL_TR_TEXT_DATA*, *explain this method*
 or *add a check for an empty table here*. The chat searches and reads SAP
@@ -783,7 +787,8 @@ blocks with context lines:
   on another block of the same review adds it, and **ASK AI** beside Approve All takes every block.
   Type your question and press Enter: the chat shows the question, and the blocks - each with its
   method, line and surrounding lines - go to the model with it. Enter with nothing typed asks what the
-  change does and whether it has a real problem. The chip's × asks without the blocks;
+  change does and whether it has a real problem. Answers about the blocks have no headings and name at most
+  three real problems; ask for detail to get more. The chip's × asks without the blocks;
 - **VERTEX: Save & Activate** writes only the approved blocks. SAP locks the object,
   checks syntax, saves, activates and verifies the active source. If the active
   or inactive source changed since it was read, nothing is overwritten.

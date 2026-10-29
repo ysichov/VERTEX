@@ -183,7 +183,7 @@ async function request(api, resource, progress, cancelled = () => false) {
     // Versions, the review of a request and the finding of requests, for the same host: read over ADT here too.
     if (/^\/sap\/bc\/adt\/vertex\/(versions|review)\//.test(url.pathname) || url.pathname === '/sap/bc/adt/vertex/requests') {
       return await __vertexRequire(1545).request(api, resource)
-        ?? await __vertexRequire(1550).request(api, resource, progress, api.reviewIo ? await api.reviewIo() : undefined);
+        ?? await __vertexRequire(1551).request(api, resource, progress, api.reviewIo ? await api.reviewIo() : undefined);
     }
     return null;
   }
@@ -390,23 +390,23 @@ async function request(api, resource, progress, cancelled = () => false) {
       // Depth was enforced before reading targets. Recomputing it on the
       // aggregated Classes graph loses routine levels and can drop real calls.
       for(const e of links)edges.push(e.text);
-      const palette=__vertexRequire(1552).palette;
+      const palette=__vertexRequire(1554).palette;
       const colors=Object.entries(palette).map(([kind,[fill,stroke]])=>'classDef '+kind+' fill:'+fill+',stroke:'+stroke);
       return { ...base, mode, depth:callDepth, steps: ids.size, places, mermaid: 'flowchart TD\n' + [...nodes, ...new Set(edges),...colors].join('\n') };
     }
     if (chosen.length !== 1) throw new Error('Pick one method to draw its logic diagram.');
     // Logic's depth: the levels inside the routine shown, deeper blocks folded; 1 when the page names none.
     const logicDepth = Number.isFinite(requestedDepth) && requestedDepth > 0 ? Math.min(99, Math.floor(requestedDepth)) : 1;
-    const drawn = __vertexRequire(1553).scheme(chosen[0], url.searchParams.get('expand') || '', false, logicDepth);
+    const drawn = __vertexRequire(1555).scheme(chosen[0], url.searchParams.get('expand') || '', false, logicDepth);
     // Reachability: the path to each drawn line inside its METHOD or FORM (reach-path.js), for the page to light up on a click.
     const reach = ['METHOD', 'FORM'].includes(chosen[0].unitType)
-      ? __vertexRequire(1555).reachLines(chosen[0].source.aceStatements, Object.values(drawn.nodeLines)) : null;
+      ? __vertexRequire(1557).reachLines(chosen[0].source.aceStatements, Object.values(drawn.nodeLines)) : null;
     // The source the routine is written in: its include when a program keeps it in one - where a node click opens.
     const written = chosen[0].source.programInclude ? { name: chosen[0].source.programInclude, type: api.local ? 'PROG' : 'INCL' } : null;
     return { ...base, mode, unit: wanted || name, unit_type: chosen[0].unitType, ...drawn, reach, ...(written ? { writtenIn: written } : {}),
-      logicMermaid:__vertexRequire(1553).scheme(chosen[0], url.searchParams.get('expand') || '',true,logicDepth).mermaid,
+      logicMermaid:__vertexRequire(1555).scheme(chosen[0], url.searchParams.get('expand') || '',true,logicDepth).mermaid,
       // Logic's Code view: the routine's lines as written, folded to the same depth.
-      code:__vertexRequire(1553).codeView(chosen[0], url.searchParams.get('expand') || '', logicDepth) };
+      code:__vertexRequire(1555).codeView(chosen[0], url.searchParams.get('expand') || '', logicDepth) };
   } finally { clearInterval(pulse);if(parser)await parser.close(); }
 }
 // The object an ADT source address belongs to, and the address of its source: what where-used names is a place in a
@@ -438,7 +438,7 @@ async function backward(api, resource, progress = () => {}, cancelled = () => fa
   if (!/^\/sap\/bc\/adt\//.test(start.url)) throw new Error('Backward Usage Analysis needs the ADT source of the object.');
   const breakpoints = String(params.get('breakpoints') || '').split(',').filter(Boolean).map(Number);
   const { parseSource } = __vertexRequire(23);
-  const { customerObject } = __vertexRequire(1556);
+  const { customerObject } = __vertexRequire(1558);
   const sources = new Map();
   const sourceOf = (url, name, type) => {
     if (!sources.has(url)) {
@@ -463,13 +463,13 @@ async function backward(api, resource, progress = () => {}, cancelled = () => fa
     return { places, skipped };
   };
   const first = await sourceOf(start.url, start.name, start.type);
-  const result = await __vertexRequire(1557).analyze({ source: first, line: Number(params.get('line')) || 1, variable: upper(params.get('variable')) }, {
+  const result = await __vertexRequire(1559).analyze({ source: first, line: Number(params.get('line')) || 1, variable: upper(params.get('variable')) }, {
     callers: routine => whereUsed(routine.source, routine.line, routine.column),
     uses: attribute => whereUsed(attribute.source, attribute.line, attribute.column),
     breakpointAt: (id, line) => id === start.url && breakpoints.includes(line),
     ask: points => api.askBreakpoint(points)
   });
-  return { backward: result, page: __vertexRequire(1557).page(result) };
+  return { backward: result, page: __vertexRequire(1559).page(result) };
 }
 
 // A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
@@ -479,14 +479,14 @@ async function write(api, resource, body, progress) {
   // Run Select: the SELECT at the cursor of the editor's text, decided as VS Code decides it (select-query.run).
   if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/runselect') {
     const command = JSON.parse(String(body));
-    return __vertexRequire(1558).run(api, String(command.text), Number(command.offset));
+    return __vertexRequire(1560).run(api, String(command.text), Number(command.offset));
   }
   if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/reach') {
     const command = JSON.parse(String(body));
-    return __vertexRequire(1555).build(String(command.text), Number(command.offset), Number(command.line), command);
+    return __vertexRequire(1557).build(String(command.text), Number(command.offset), Number(command.line), command);
   }
   if (!/^\/sap\/bc\/adt\/vertex\/review\//.test(new URL(resource, 'https://sap.invalid').pathname)) { return null; }
-  return __vertexRequire(1550).write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined, progress);
+  return __vertexRequire(1551).write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined, progress);
 }
 
 module.exports = { request, write, backward, sourceAddress, declarations, metric, analysisUnits, invalidate };
@@ -104359,6 +104359,8 @@ const normal = (line, ignore) => ignore ? line.trim().toUpperCase() : line;
 // A host with a comparer of its own passes it as api.diffLines - Eclipse hands the lines to its own Text Compare
 // (RangeDifferencer); otherwise VERTEX's line-diff.js (Myers) computes it.
 async function diff(oldLines, newLines, ignore, api) {
+  // Review ignores indentation/trailing whitespace without hiding changed case or literal contents.
+  if (ignore === "indentation") return __vertexRequire(1546).diffLines(oldLines, newLines, line => line.trim());
   if (api && api.diffLines) { return api.diffLines(oldLines, newLines, Boolean(ignore)); }
   return __vertexRequire(1546).diffLines(oldLines, newLines, ignore ? line => normal(line, true) : undefined);
 }
@@ -104679,8 +104681,8 @@ async function partsOf(api, type, name) {
 // relocations; newest first.
 const KINDS = { K: "workbench", W: "customizing", T: "transport of copies", C: "relocation", O: "relocation", E: "relocation" };
 const STATES = { D: "modifiable", L: "modifiable, protected", O: "release started", R: "released", N: "released, import protected" };
-async function requestsOf(api, params) {
-  const user = String(params.get("user") || api.user() || "").trim().toUpperCase();
+async function requestsOf(api, params, io) {
+  const user = String(params.get("user") || await api.user() || "").trim().toUpperCase();
   if (user.length > 12) { throw new Error(user + " is not a user name: an SAP user name has at most 12 characters."); }
   if (/[ *+%]/.test(user)) { throw new Error("Name one user, not a pattern: " + user + "."); }
   const released = params.get("released") || "";
@@ -104708,7 +104710,8 @@ async function requestsOf(api, params) {
     owner_name: names.get(h.AS4USER) || "", type: KINDS[h.TRFUNCTION] || h.TRFUNCTION, status: STATES[h.TRSTATUS] || h.TRSTATUS,
     date: String(h.AS4DATE), time: String(h.AS4TIME) }));
   requests.sort((x, y) => (y.date + y.time + y.request).localeCompare(x.date + x.time + x.request));
-  return { user, released: released === "true", requests };
+  const review_status_error = await __vertexRequire(1547).mark(api, requests, io);
+  return { user, released: released === "true", requests, review_status_error };
 }
 
 /* A request's overview, as AVE's report opens it (ZCL_AVE_ACR_OVERVIEW): each object it holds, with the kind of
@@ -104764,7 +104767,7 @@ async function requestOverview(api, name, tasks) {
     start: o.start, finish: o.finish,
     days: o.start && o.finish ? Math.round((asDay(o.finish) - asDay(o.start)) / 86400000) + 1 : 0,
     deleted: Boolean(tadirOf(o) && gone.has(tadirOf(o).join("|"))),
-    generated: __vertexRequire(1547).generatedObject({ object: o.class || o.name, part: o.name, className: o.class })
+    generated: __vertexRequire(1548).generatedObject({ object: o.class || o.name, part: o.name, className: o.class })
   }));
   if (kindsError) { rowsOut.kinds_error = kindsError; }
   return rowsOut;
@@ -104798,9 +104801,9 @@ function kindOf(kinds, type) {
   return first ? kinds.get(first) : "";
 }
 
-async function request(api, resource) {
+async function request(api, resource, io) {
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
-  if (url.pathname === "/sap/bc/adt/vertex/requests") { return requestsOf(api, params); }
+  if (url.pathname === "/sap/bc/adt/vertex/requests") { return requestsOf(api, params, io || (api.reviewIo ? await api.reviewIo() : undefined)); }
   const match = /^\/sap\/bc\/adt\/vertex\/versions\/([^/]+)$/.exec(url.pathname);
   if (!match) { return null; }
   const type = String(params.get("type") || "PROG").toUpperCase().split("/")[0];
@@ -104997,6 +105000,34 @@ module.exports = { diffLines };
 function(module,exports,__vertexRequire){
 var require=__vertexRequire;
 "use strict";
+const { inLists } = __vertexRequire(1543);
+
+// Presence only: do not read payloads or build/check reviews when finding requests.
+async function mark(api, requests, io) {
+  const numbers = requests.map(row => row.request), table = new Set(), files = new Set(), errors = [];
+  if (!numbers.length) return "";
+  try {
+    const fields = (await api.query("SELECT fieldname FROM dd03l WHERE tabname = 'ZAVE_REVIEW' AND as4local = 'A'", 100)).values;
+    if (["REMOTE", "PAYLOAD"].every(name => fields.some(row => row.FIELDNAME === name))) {
+      for (const row of await inLists(api, "SELECT trkorr FROM zave_review WHERE remote = ' ' AND trkorr", numbers, 10000)) table.add(row.TRKORR);
+    }
+  } catch (error) { errors.push("SAP review status: " + String(error.message || error)); }
+  if (io && io.list) {
+    try { for (const name of await io.list()) files.add(name); }
+    catch (error) { errors.push("File review status: " + String(error.message || error)); }
+  }
+  for (const row of requests) {
+    row.review_sources = [table.has(row.request) ? "table" : "", files.has(row.request) ? "file" : ""].filter(Boolean);
+    row.review_saved = row.review_sources.length > 0;
+  }
+  return errors.join("; ");
+}
+module.exports = { mark };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
 
 // A review built from ADT, when none is saved: what a transport request changed, part by part, in the shape of the
 // payload AVE stores (OBJ_STATS, HUNKS, DIFF_DATA), so the same reading code shows it. Nothing here writes: a review
@@ -105006,7 +105037,7 @@ var require=__vertexRequire;
 // its class. The diff is the line diff of the Versions window; blocks are cut by AVE's own walk.
 
 const versions = __vertexRequire(1545);
-const aveDiff = __vertexRequire(1548);
+const aveDiff = __vertexRequire(1549);
 
 // ZCL_VX_REVIEW_STATS=>FROM_DIFF: in each run of changes a deleted line pairs with the first unpaired inserted one it
 // has common characters with - a modified line; the rest are inserted or deleted; a run of blank lines counts for nothing.
@@ -105113,7 +105144,7 @@ async function blameOf(api, feed, pair, ops, textOf, ownerOf) {
   if (!pair.old) { prev.forEach(text => map.push(blameEntry(range[0], text))); }
   for (const e of range.slice(1)) {
     const cur = await textOf(e);
-    for (const d of await versions.diff(prev, cur, false, api)) {
+    for (const d of await versions.diff(prev, cur, "indentation", api)) {
       if (d.op === "+") { drop(map, d.text); map.push(blameEntry(e, d.text)); }
       else if (d.op === "-") { drop(deleted, d.text); deleted.push(blameEntry(e, d.text)); drop(map, d.text); }
     }
@@ -105164,7 +105195,7 @@ function blockAuthor(adds, map, def) {
 }
 
 const { inLists } = __vertexRequire(1543);
-const { hunkRanges } = __vertexRequire(1549);
+const { hunkRanges } = __vertexRequire(1550);
 
 const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
 const CLASS_PART_TYPES = ["METH", "CPUB", "CPRO", "CPRI", "CINC"];
@@ -105190,12 +105221,16 @@ async function exists(api, type, name) {
 
 const methodOf = versions.methodOf;
 
-async function partsOfRequest(api, keys, numbers, log) {
+async function partsOfRequest(api, keys, numbers, log, progress) {
   const say = log || (() => {});
-  const parts = [], seen = new Set(), missing = [];
+  const parts = [], seen = new Set(), missing = [], layouts = new Map();
   const add = async (type, name, filter) => {
     let found;
-    try { found = await versions.partsOf(api, type, name); }
+    try {
+      const key = type + "|" + name;
+      if (!layouts.has(key)) layouts.set(key, versions.partsOf(api, type, name));
+      found = await layouts.get(key);
+    }
     catch (error) {
       const reason = await exists(api, type, name) ? String(error && error.message || error) : "deleted since";
       if (!missing.some(m => m.object === type && m.name === name)) { missing.push({ object: type, name, reason }); }
@@ -105216,7 +105251,8 @@ async function partsOfRequest(api, keys, numbers, log) {
   /* A class whose methods the request names one by one is not opened whole: the METH entries say what changed, and
      the class entry beside them would add every method of it (GET_PARTS_EXPANDED). */
   const listed = new Set(keys.filter(k => String(k.OBJECT) === "METH").map(k => methodOf(k.OBJ_NAME).owner.toUpperCase()));
-  for (const k of keys) {
+  for (const [index, k] of keys.entries()) {
+    if (progress) progress("Reading request objects " + (index + 1) + " of " + keys.length + ": " + k.OBJECT + " " + String(k.OBJ_NAME).trim());
     const object = String(k.OBJECT), name = String(k.OBJ_NAME).trim();
     if (k.PGMID === "R3TR" && object === "CLAS" && listed.has(name.toUpperCase())) { continue; }
     /* A whole class is opened without its technical includes - local types, test classes, macros - as AVE expands it
@@ -105396,7 +105432,7 @@ async function build(api, request, progress, fresh, blame, keepGenerated, onPart
 }
 
 // The request with its tasks, and the parts they name.
-async function requestParts(api, request, log) {
+async function requestParts(api, request, log, progress) {
   const head = (await api.query("SELECT trkorr, trstatus FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
   if (!head) { throw new Error("Transport request " + request + " does not exist."); }
   const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(request), 1000)).values.map(r => r.TRKORR);
@@ -105409,7 +105445,7 @@ async function requestParts(api, request, log) {
   const numbers = new Set([request, ...tasks, ...copies]);
   const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
   const open = head.TRSTATUS !== "R" && head.TRSTATUS !== "N";
-  return Object.assign({ numbers, open }, await partsOfRequest(api, keys, numbers, log));
+  return Object.assign({ numbers, open }, await partsOfRequest(api, keys, numbers, log, progress));
 }
 
 const labelOf = p => p.ptype === "METH" ? p.object + "->" + p.unit : p.part;
@@ -105423,7 +105459,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
   const diag = [], log = text => diag.push(text);
   lastLogs.set(String(request).toUpperCase(), diag);
   Object.defineProperty(payload, "DIAG", { value: diag, enumerable: false });
-  const { numbers, open, parts, missing } = await requestParts(api, request, log);
+  const { numbers, open, parts, missing } = await requestParts(api, request, log, progress);
   log("REQUEST " + request + ": " + [...numbers].join(", ") + (open ? ", open" : ", released") + "; " + parts.length + " part(s)");
   // One resolver per object read through, so its tasks and requests are asked once for all its parts.
   const resolvers = new Map();
@@ -105463,7 +105499,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
       log("  TEXT old=" + oldLines.length + " line(s), new=" + newLines.length + " line(s)");
       if (skip.text(p, pair, oldLines, newLines)) { log("SKIP " + label + ": new object of comments only, or an empty class section"); continue; }
-      ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
+      ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
       blame = { map: [], deleted: [] };
       if (withBlame && ops.some(o => o.op !== "=")) {
         progress((at + 1) + " of " + parts.length + ": " + labelOf(p) + " - who wrote which line ...");
@@ -105475,7 +105511,11 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       log("SKIP " + label + ": " + String(error && error.message || error));
       continue;
     }
-    if (!ops.some(o => o.op !== "=")) { log("SKIP " + label + ": no difference between the two versions"); continue; }
+    if (!ops.some(o => o.op !== "=")) {
+      log("SKIP " + label + ": no difference between the two versions; OLD=" + (pair.old ? pair.old.id + " " + (pair.old.transport || "-") : "none")
+        + "; NEW=" + pair.fresh.id + " " + (pair.fresh.transport || "-") + "; compared " + ops.length + " line(s)");
+      continue;
+    }
 
     const ranges = hunkRanges(ops);
     if (!ranges.length) { log("SKIP " + label + ": only blank lines changed"); }
@@ -105518,6 +105558,8 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
     payload.OBJ_STATS.forEach(s => s.BT_AUTHORS.forEach(a => { a.AUTHOR_NAME = names.get(a.AUTHOR) || ""; }));
     blames.forEach(b => { b.AUTHOR_NAME = names.get(b.AUTHOR) || ""; });
   }
+  log("RESULT " + request + ": " + parts.length + " part(s) examined, " + payload.OBJ_STATS.length
+    + " included, " + missing.length + " unread or missing");
   return payload;
 }
 
@@ -105584,7 +105626,7 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
       if (!stats) {
         const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
         if (skip.text(p, pair, oldLines, newLines)) { continue; }
-        const ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
+        const ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
         if (ops.some(o => o.op !== "=")) { changed.push({ name, reason: "changed by the request, not in the review" }); }
         continue;
       }
@@ -105965,7 +106007,7 @@ function reportObjects(stats) {
   return keyed.map(k => k.s).filter(s => Number(s.INS_COUNT) || Number(s.DEL_COUNT) || Number(s.MOD_COUNT));
 }
 
-const { hunkRanges, stmtOpen } = __vertexRequire(1549);
+const { hunkRanges, stmtOpen } = __vertexRequire(1550);
 
 // Whether the system has the table, and REMOTE in it - AVE's has_review_table / has_remote_field.
 async function hasTable(api) {
@@ -106196,7 +106238,7 @@ async function request(api, resource, progress, io, cancelled) {
      read. A line that starts with PARTIAL_MARK carries it; any other line is what the build is doing. */
   const partial = progress && !part ? payloadSoFar => progress(PARTIAL_MARK + JSON.stringify(Object.assign(
     { request: trkorr.toLowerCase(), live: true, partial: true, saved: true, table }, summarize(payloadSoFar)))) : undefined;
-  if (live) { payload = await __vertexRequire(1547).build(api, trkorr, progress, params.get("fresh") === "1", params.get("blame") === "1", keep, partial); }
+  if (live) { payload = await __vertexRequire(1548).build(api, trkorr, progress, params.get("fresh") === "1", params.get("blame") === "1", keep, partial); }
   /* A saved review is checked against the request as it is now; the page offers to build it again when it is not.
      A check that fails says so - it is not taken for "up to date". It reads every part's versions, so it runs only when
      asked: check=1 adds it to the summary, check=only answers with it alone - the page shows the saved review at once
@@ -106204,7 +106246,7 @@ async function request(api, resource, progress, io, cancelled) {
   const check = params.get("check");
   let stale = null;
   if (payload && !live && !remote && !part && check) {
-    try { stale = await __vertexRequire(1547).staleness(api, trkorr, payload, progress, keep, cancelled); }
+    try { stale = await __vertexRequire(1548).staleness(api, trkorr, payload, progress, keep, cancelled); }
     catch (error) { stale = { error: String(error && error.message || error) }; }
   }
   /* Nothing saved and nothing built: the request's overview stands under Build review, as AVE's report shows its objects
@@ -106233,15 +106275,42 @@ async function request(api, resource, progress, io, cancelled) {
     return Object.assign(body, { live, storage: storage(io, stored), copies });
   }
 
+  if (params.has("person")) {
+    if (!payload) throw new Error("No saved review is available for " + trkorr + ".");
+    const selector = params.get("person"), role = selector.slice(0, 2), person = selector.slice(2);
+    if (!["D:", "R:", "A:"].includes(role)) throw new Error("Unknown review person selector.");
+    const summary = summarize(payload);
+    const reviewer = summary.reviewers.find(r => r.reviewer === person);
+    const objects = summary.objects.filter(o => role === "A:" || (role === "D:" ? o.authors.includes(person)
+      : reviewer && reviewer.objects.includes(o.objtype + "~" + o.obj_name)));
+    const reviewerState = list(payload.USER_STATES).find(s => up(s.REVIEWER) === person) || {};
+    const reviewerKeys = new Set(list(reviewerState.APPROVED).concat(list(reviewerState.DECLINED), list(reviewerState.NOTES)).map(h => up(h.HUNK_KEY)));
+    const parts = [];
+    for (const object of objects) {
+      const body = partBody(payload, trkorr, object.obj_name, object.objtype, table);
+      if (body.ddic) await dictionaryDiff(api, body, object.obj_name, object.objtype);
+      body.blocks = body.blocks.filter(b => role === "A:" || (role === "D:" ? (b.author || object.author) === person
+        : b.reviewer === person || b.messages.some(m => m.author === person) || reviewerKeys.has(b.hunk_key)));
+      if (body.blocks.length) parts.push({ object, body });
+    }
+    return { person_view: true, request: trkorr.toLowerCase(), selector, saved_at: up(payload.LAST_SAVED_AT), parts };
+  }
+  if (params.get("context") === "1") {
+    if (!payload) throw new Error("No saved review is available for " + trkorr + ".");
+    if (params.get("saved_at") && params.get("saved_at") !== up(payload.LAST_SAVED_AT))
+      throw new Error("The saved review changed since it was shown. Read it again before asking about it.");
+    return { review_context: __vertexRequire(1552).format(payload, summarize(payload)) };
+  }
   const { objects, reviewers, history, developers } = summarize(payload);
   return { request: trkorr.toLowerCase(), remote: remote.toLowerCase(), table, saved: Boolean(payload), live,
     can_build: !payload && !remote,
     saved_at: payload ? up(payload.LAST_SAVED_AT) : "", saved_by: payload ? up(payload.LAST_SAVED_BY) : "", objects, reviewers, history,
     developers,
     // Objects the request names that the system no longer has, found while building it from ADT.
-    missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
+    missing: payload ? list(payload.MISSING || (payload.VERTEX_BUILD || {}).MISSING) : [],
     // AVE's Code Review diagnostics: the build's own when built now, else this session's last build of the request.
-    build_log: payload && Array.isArray(payload.DIAG) ? payload.DIAG : __vertexRequire(1547).lastLog(trkorr),
+    build_log: payload && Array.isArray(payload.DIAG) ? payload.DIAG
+      : payload && payload.VERTEX_BUILD ? list(payload.VERTEX_BUILD.LOG) : __vertexRequire(1548).lastLog(trkorr),
     storage: storage(io, stored), copies, stale, overview, overview_kinds_error: overview && overview.kinds_error || "" };
 }
 
@@ -106250,14 +106319,28 @@ async function request(api, resource, progress, io, cancelled) {
 // again - its verdicts and comments go with the old blocks. The body is the page's command: hunk_key, action, note and
 // saved_at, the stamp the page read. The answer is what a read would answer now: the part, or the summary.
 // PROGRESS, when given, hears what a save or a rebuild that builds the review is doing, and the review so far.
-async function write(api, resource, body, io, progress) {
+async function write(api, resource, body, io, progress, cancelled) {
+  let committing = false;
+  const checkStopped = () => { if (!committing && cancelled && cancelled()) throw new Error("Review build stopped; nothing was saved."); };
+  // Stop before the next SAP/file operation, including before committing the built review.
+  if (cancelled) api = new Proxy(api, { get(target, key) {
+    const value = target[key];
+    return typeof value === "function" ? async (...args) => {
+      checkStopped();
+      const result = await value.apply(target, args);
+      checkStopped();
+      return result;
+    } : value;
+  } });
+  checkStopped();
+  if (progress) progress("Preparing review: checking the saved copy and storage ...");
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
   const match = /^\/sap\/bc\/adt\/vertex\/review\/([^/]+)$/.exec(url.pathname);
   if (!match) { return null; }
   const trkorr = decodeURIComponent(match[1]).toUpperCase();
   if (!NAME.test(trkorr)) { throw new Error(trkorr + " is not a transport request."); }
   const remote = String(params.get("remote") || "").toUpperCase();
-  const state = __vertexRequire(1551);
+  const state = __vertexRequire(1553);
   let cmd;
   try { cmd = JSON.parse(String(body || "{}")); } catch (error) { throw new Error("The command for " + trkorr + " is not JSON."); }
   const action = up(cmd.action).toUpperCase(), key = up(cmd.hunk_key), note = up(cmd.note);
@@ -106276,13 +106359,14 @@ async function write(api, resource, body, io, progress) {
     + " WHERE u~bname = " + sqlText(user), 1)).values[0];
   const who = { user, name: nameRow ? up(nameRow.NAME_TEXT) : user };
 
-  let existing, current;
+  let existing, current, built;
   if (action === "S") {
     if (stored) { throw new Error("A review of " + trkorr + " is already saved (" + stored.from + "). Read it again."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
     existing = {};
-    current = state.applySaved(await __vertexRequire(1547).build(api, trkorr, progress, false, params.get("blame") === "1",
-      params.get("generated") === "1", partialTo(progress, trkorr)), who.user);
+    built = await __vertexRequire(1548).build(api, trkorr, progress, false, params.get("blame") === "1",
+      params.get("generated") === "1", partialTo(progress, trkorr));
+    current = state.applySaved(built, who.user);
   } else if (action === "R") {
     if (!stored) { throw new Error("No review is saved for " + trkorr + "; there is nothing to rebuild."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
@@ -106292,9 +106376,10 @@ async function write(api, resource, body, io, progress) {
     }
     // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
     existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
-    const live = __vertexRequire(1547);
-    current = state.applySaved(live.carryUnread(await live.build(api, trkorr, progress, true, params.get("blame") === "1",
-      params.get("generated") === "1", partialTo(progress, trkorr)), old), who.user);
+    const live = __vertexRequire(1548);
+    built = await live.build(api, trkorr, progress, true, params.get("blame") === "1",
+      params.get("generated") === "1", partialTo(progress, trkorr));
+    current = state.applySaved(live.carryUnread(built, old), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
     existing = state.parseForWrite(stored.text);
@@ -106309,6 +106394,8 @@ async function write(api, resource, body, io, progress) {
     state.applyAction(current, key, action, hunk, note, who);
   }
   const next = state.buildSave(existing, trkorr, current, who);
+  // AVE ignores this optional diagnostic field; retaining it keeps unread parts visible after saving/reopening.
+  if (built) next.VERTEX_BUILD = { MISSING: list(built.MISSING), LOG: list(built.DIAG) };
   const text = state.stringify(next);
   const expect = stored ? state.plain(existing.LAST_SAVED_AT) : "";
 
@@ -106318,6 +106405,9 @@ async function write(api, resource, body, io, progress) {
   const target = stored ? stored.from : "";
   const toTable = target ? target === "table" && (!io || io.canStore) : !io || io.mode !== "file";
   const toFile = Boolean(io) && (target ? target === "file" || !toTable || io.mode === "both" : io.mode !== "table");
+  checkStopped();
+  committing = true;
+  if (progress) progress("VERTEX-REVIEW-SAVING");
   if (toTable) {
     if (!table) { throw new Error("This system has no ZAVE_REVIEW table with REMOTE and PAYLOAD; the review cannot be saved there."); }
     await api.storeReview(trkorr, remote, target === "table" || !target ? expect : "", text);
@@ -106332,6 +106422,42 @@ async function write(api, resource, body, io, progress) {
 }
 
 module.exports = { PARTIAL_MARK, summarize, request, write, hunkRanges, reportObjects, parsePayload, stmtOpen };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// A saved request's evidence for chat, read once with the payload, never by rebuilding the review.
+function format(payload, summary, limit = 180000) {
+  const objects = summary.objects || [];
+  const perObject = Math.max(200, Math.floor((limit - 1000) / Math.max(1, objects.length)));
+  const sections = objects.map(object => {
+    const name = object.class_name ? object.class_name + " / " + (object.display_name || object.obj_name).trim()
+      : (object.display_name || object.obj_name).trim();
+    const header = object.objtype + " " + name + ": +" + object.inserted + " / ~" + object.modified + " / -" + object.deleted
+      + "; " + object.hunks + " blocks; " + (object.is_created ? "new object; " : "") + (object.author_name || object.author || "");
+    const diffs = (payload.DIFF_DATA || []).filter(d => d.KEY && d.KEY.OBJTYPE === object.objtype && d.KEY.OBJNAME === object.obj_name
+      && d.RETROFIT !== true && d.RETROFIT !== "X");
+    const diff = diffs.find(d => (payload.HUNKS || []).some(h => h.OBJTYPE === object.objtype && h.OBJ_NAME === object.obj_name
+      && h.VERSNO_OLD === d.KEY.VERSNO_O && h.VERSNO_NEW === d.KEY.VERSNO_N)) || diffs[0];
+    if (!diff || !Array.isArray(diff.DIFF)) return header + "\nNo stored line diff is available for this object.";
+    const ops = diff.DIFF, keep = new Set();
+    ops.forEach((op, i) => { if (op.OP !== "=") for (let k = Math.max(0, i - 3); k <= Math.min(ops.length - 1, i + 3); k++) keep.add(k); });
+    const lines = []; let gap = false;
+    ops.forEach((op, i) => {
+      if (keep.has(i)) { lines.push((op.OP === "=" ? " " : op.OP) + " " + op.TEXT); gap = false; }
+      else if (!gap) { lines.push("..."); gap = true; }
+    });
+    const text = header + "\nVersions " + (diff.KEY.VERSNO_O || "none") + " → " + diff.KEY.VERSNO_N + "\n" + lines.join("\n");
+    return text.length > perObject ? text.slice(0, Math.max(0, perObject - 40)) + "\n[Object diff truncated]" : text;
+  });
+  let text = "Saved review of " + payload.TRKORR + ": " + objects.length + " objects.\n'-' removed, '+' added, other lines unchanged.\n\n" + sections.join("\n\n");
+  const truncated = text.length > limit || sections.some(s => s.includes("[Object diff truncated]"));
+  if (text.length > limit) text = text.slice(0, limit - 40) + "\n[Review context truncated]";
+  return { object: payload.TRKORR, shown: "summary", text, truncated, object_count: objects.length };
+}
+module.exports = { format };
 
 },
 function(module,exports,__vertexRequire){
@@ -106643,7 +106769,7 @@ var require=__vertexRequire;
 "use strict";
 // Port of zcl_vx_ace_code_html=>analyze/build_scheme/ops_node/flush_pending.
 // The parser supplies statements and calls; diagram rules remain those of ACE.
-const {conditionLabel}=__vertexRequire(1554);
+const {conditionLabel}=__vertexRequire(1556);
 const {procedureEnds,isProcedureEnd,blockEnds:closers,classifyStatement}=__vertexRequire(3);
 const {callsIn}=__vertexRequire(1);
 function label(value,limit=80) {
@@ -108003,18 +108129,18 @@ var require=__vertexRequire;
 'use strict';
 // Adapter only: parsing, source closure, BSE, FLOW and formulas are the VS Code modules.
 const {parseSource} = __vertexRequire(23);
-const origin = __vertexRequire(1556);
-const points = __vertexRequire(1560);
-const {collect} = __vertexRequire(1561);
-const {formula} = __vertexRequire(1563);
-const panes = __vertexRequire(1564);
+const origin = __vertexRequire(1558);
+const points = __vertexRequire(1562);
+const {collect} = __vertexRequire(1563);
+const {formula} = __vertexRequire(1565);
+const panes = __vertexRequire(1566);
 let lastSources = [], lastGraph = null;
 const upper = value => String(value || '').toUpperCase();
 
 async function request(api, request, progress = () => {}) {
   // Formula and Expression of a recorded run, and the analysed path as that run took it: the same readings VS Code uses.
-  if (request.recordFormula) return __vertexRequire(1565).build(request.recordFormula);
-  if (request.pathFormula) return __vertexRequire(1566).pathFormula(lastGraph, request.pathFormula.executed);
+  if (request.recordFormula) return __vertexRequire(1567).build(request.recordFormula);
+  if (request.pathFormula) return __vertexRequire(1568).pathFormula(lastGraph, request.pathFormula.executed);
   if (request.open) {
     const source = lastSources.find(s => s.id === request.open.source);
     if (!source) throw new Error('Run the analysis again: this source is no longer in its result.');
@@ -108261,7 +108387,7 @@ var require=__vertexRequire;
    own way - VS Code through its ADT client, Eclipse through the ABAP project's session - so each hands in only how to
    read an object (load) and a part of a class (loadPart). How much is read is not theirs to choose: the two once
    diverged, Eclipse reading every customer object the source named while VS Code read only what the slice needed. */
-const { collectDemandSources } = __vertexRequire(1562);
+const { collectDemandSources } = __vertexRequire(1564);
 
 const MAX_SOURCES = 240;
 
@@ -108908,7 +109034,7 @@ var require=__vertexRequire;
    field chains of its sources, and each of those is derived the same way, back through the record. The result has the
    shape of the analysis's formula - nodes and edges for the diagram, a tree for the panes - so the view draws either. */
 
-const { escape } = __vertexRequire(1564);
+const { escape } = __vertexRequire(1566);
 
 const upper = value => String(value || "").toUpperCase();
 const signature = value => value === undefined ? undefined : JSON.stringify(value);
@@ -109255,8 +109381,8 @@ var require=__vertexRequire;
    executed take part, so the variants the analysis keeps for other paths fall away; definitions of one value that all
    ran - every modifier of a pipeline - are steps in the order the run made them, given to the formula as its pipeline.
    executed: [{ object, line }] in the order the record holds them. */
-const { formula } = __vertexRequire(1563);
-const paneHtml = __vertexRequire(1564);
+const { formula } = __vertexRequire(1565);
+const paneHtml = __vertexRequire(1566);
 
 function pathFormula(graph, executed, sourceOf = node => "origin:" + node.source + "|" + (node.location || "")) {
   if (!graph) throw new Error("No path was analysed: use Analyze flow path first.");
@@ -109273,4 +109399,4 @@ function pathFormula(graph, executed, sourceOf = node => "origin:" + node.source
 
 module.exports = { pathFormula };
 
-}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(0);window.vertexDebugAnalysis=load(1559);})();
+}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(0);window.vertexDebugAnalysis=load(1561);})();

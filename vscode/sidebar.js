@@ -17,7 +17,7 @@ function register(vscode, context, active, ask, systems, toolContext) {
   // ASK AI of a review: the blocks on the chip above the input, attached to the next question only when it is sent.
   let reviewAsk = null;
   const review = require("./code-review");
-  const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "" }) : undefined;
+  const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", draft: reviewAsk && reviewAsk.question || "" }) : undefined;
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async blocks => {
@@ -113,7 +113,14 @@ function register(vscode, context, active, ask, systems, toolContext) {
           await view.webview.postMessage({ chat: "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "") });
           await view.webview.postMessage({ progress: { id: requestId, status: "VERTEX is working…" } });
           try {
-            const reply = await ask(asked ? review.askRequest(message.text, asked) : message.text, {model: message.model, state: (await toolContext()) || {},
+            const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
+            const state = (await toolContext(scope)) || {};
+            if (asked) {
+              state.review_ask = { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) };
+              delete state.review_source;
+              delete state.selected_fragment;
+            }
+            const reply = await ask(asked ? review.askRequest(message.text, asked) : message.text, {model: message.model, state,
               onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, ...update } })).catch(() => {}); } });
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId, answer: reply.answer,
@@ -176,11 +183,14 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages { flex: 1 1 auto; min-height: 80px; overflow-y: auto; white-space: pre-wrap; }
 /* The question box and VERTEX Tools stay at the bottom; the answers scroll. */
 .dock { flex: none; }
-#review-chip { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; padding: 2px 4px 2px 8px; border-radius: 10px; max-width: 100%;
-  background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 12px; width: fit-content; }
+/* The attached review context: a quiet tag above the input, its name cut with an ellipsis, × to drop it. */
+#review-chip { display: flex; align-items: center; gap: 6px; box-sizing: border-box; max-width: 100%; width: fit-content; margin-bottom: 6px;
+  padding: 2px 2px 2px 8px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-left: 3px solid var(--vscode-focusBorder);
+  border-radius: 4px; background: var(--vscode-editorWidget-background, var(--vscode-input-background)); color: var(--vscode-foreground); font-size: 12px; }
 #review-chip[hidden] { display: none; }
-#review-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#review-chip button { padding: 0 6px; min-width: 0; line-height: 16px; }
+#review-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#chat #review-chip button { flex: none; width: auto; margin: 0; padding: 0 6px; line-height: 18px; border-radius: 3px; background: transparent; color: var(--vscode-foreground); opacity: .7; }
+#chat #review-chip button:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); box-shadow: none; }
 #messages .copy-answer { margin: -0.6em 0 1em; padding: 2px 8px; font-size: 11px; }
 #messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; }
 #messages p.tool-status { font-size: 11px; opacity: .8; }
@@ -197,6 +207,11 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages .reasoning pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20em; overflow-y: auto; }
 textarea, select { box-sizing: border-box; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 4px; font: inherit; }
 textarea { width: 100%; resize: vertical; padding: 8px; }
+#prompt { min-height: 5.5em; max-height: 14em; overflow-y: auto; padding-right: 30px; }
+#prompt.expanded { min-height: 60vh; max-height: 70vh; }
+.prompt-box { position: relative; }
+#chat #expand-prompt { position: absolute; top: 4px; right: 4px; width: auto; margin: 0; padding: 0 6px; font-size: 14px; line-height: 20px; opacity: .75; }
+#chat #expand-prompt:hover { opacity: 1; }
 button { margin: 8px 0; padding: 8px 12px; border: 0; border-radius: 4px; cursor: pointer; font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
 button:hover { background: var(--vscode-button-hoverBackground); }
 #chat button { width: 100%; }
@@ -221,7 +236,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
-<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></form>
+<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
 <script nonce="${nonce}">
@@ -246,6 +261,18 @@ document.getElementById('chat').addEventListener('submit', event => {
   if (!text && document.getElementById('review-chip').hidden) return;
   api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value });
   field.value = '';
+  fitPrompt();
+});
+// The message field grows with what is typed or pasted, up to a few lines; ⤢ lets it take most of the panel.
+const promptField = document.getElementById('prompt'), expandPrompt = document.getElementById('expand-prompt');
+function fitPrompt() { promptField.style.height = 'auto'; promptField.style.height = promptField.scrollHeight + 2 + 'px'; }
+promptField.addEventListener('input', fitPrompt);
+expandPrompt.addEventListener('click', () => {
+  const open = promptField.classList.toggle('expanded');
+  expandPrompt.setAttribute('aria-pressed', String(open));
+  expandPrompt.textContent = open ? '⤡' : '⤢';
+  expandPrompt.title = expandPrompt.ariaLabel = open ? 'Shrink the message field' : 'Expand the message field';
+  fitPrompt(); promptField.focus();
 });
 document.getElementById('review-clear').addEventListener('click', () => api.postMessage({ action: 'clearReview' }));
 document.getElementById('prompt').addEventListener('keydown', event => {
@@ -255,8 +282,23 @@ document.getElementById('prompt').addEventListener('keydown', event => {
   }
 });
 let lastCopy = null;
+function copySelectedText(event) {
+  const field = document.activeElement;
+  const text = field && typeof field.selectionStart === 'number' && field.selectionEnd > field.selectionStart
+    ? String(field.value).slice(field.selectionStart, field.selectionEnd)
+    : String(window.getSelection ? window.getSelection() || '' : '');
+  if (!text) return;
+  event.preventDefault(); event.stopPropagation();
+  lastCopy = null;
+  api.postMessage({ action: 'copyAnswer', text });
+}
+document.addEventListener('copy', copySelectedText);
+document.addEventListener('keydown', event => {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') copySelectedText(event);
+});
 const progressItems = new Map();
 window.addEventListener('message', event => {
+  if (event.data && event.data.draft && !document.getElementById('prompt').value) { document.getElementById('prompt').value = event.data.draft; fitPrompt(); }
   if (event.data && typeof event.data.copied === 'boolean' && lastCopy) {
     lastCopy.textContent = event.data.copied ? 'Copied' : 'Copy failed: ' + event.data.error;
     const button = lastCopy; setTimeout(() => { button.textContent = 'Copy'; }, 2000);
@@ -265,6 +307,7 @@ window.addEventListener('message', event => {
     const chip = document.getElementById('review-chip');
     chip.hidden = !event.data.review;
     document.getElementById('review-label').textContent = event.data.review;
+    chip.title = event.data.review;
     const field = document.getElementById('prompt');
     field.placeholder = event.data.review ? 'Ask about this change… (Enter with nothing typed: what it does and any real problem)' : 'Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)';
     if (event.data.review) field.focus();

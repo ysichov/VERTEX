@@ -109,6 +109,7 @@ let result = null;
 const resultFrames = new Map();
 const findButton = document.getElementById("find-requests"), requestDialog = document.getElementById("request-dialog");
 const chat = document.getElementById("chat"), chatToggle = document.getElementById("chat-toggle");
+const sidebarChat=typeof sdeSidebarChat==="function"&&sdeSidebarChat();
 const backButton=document.getElementById("back");
 function showChat(open){chat.classList.toggle("open",open);chatToggle.classList.toggle("on",open);chatToggle.setAttribute("aria-expanded",String(open));}
 chatToggle.onclick=()=>showChat(!chat.classList.contains("open"));
@@ -427,10 +428,30 @@ new MutationObserver(records=>{
   if(!records.some(record=>record.target===document.body||record.target===document.documentElement))return;
   document.querySelectorAll("iframe").forEach(frame=>{if(frame.contentDocument)syncTheme(frame.contentWindow);});
 }).observe(document.documentElement,{attributes:true,subtree:true,attributeFilter:["class","style"]});
+function wireClipboard(child) {
+  const selectedText=()=>{
+    const field=child.document.activeElement;
+    if(field&&typeof field.selectionStart==="number"&&field.selectionEnd>field.selectionStart)
+      return String(field.value).slice(field.selectionStart,field.selectionEnd);
+    return String(child.getSelection ? child.getSelection() || "" : "");
+  };
+  const copy=event=>{
+    const text=selectedText();
+    if(!text||typeof child.sdeCopyText!=="function")return;
+    event.preventDefault();
+    event.stopPropagation();
+    child.sdeCopyText(text);
+  };
+  child.addEventListener("keydown",event=>{
+    if((event.metaKey||event.ctrlKey)&&!event.altKey&&!event.shiftKey&&String(event.key).toLowerCase()==="c")copy(event);
+  });
+  child.document.addEventListener("copy",copy);
+}
 function connect(child,service,generation){
   syncTheme(child);
   // The host sees the keys of this document only: a shortcut pressed in a page - Ctrl+Shift+P, F1 - is passed up.
   child.addEventListener("keydown",e=>{
+    if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[acvxyz]$/i.test(e.key))return;
     if(!(e.ctrlKey||e.altKey||e.metaKey||/^F\d+$/.test(e.key)))return;
     window.dispatchEvent(new KeyboardEvent("keydown",{key:e.key,code:e.code,keyCode:e.keyCode,which:e.which,ctrlKey:e.ctrlKey,shiftKey:e.shiftKey,altKey:e.altKey,metaKey:e.metaKey,repeat:e.repeat,bubbles:true}));
   });
@@ -466,6 +487,7 @@ function connect(child,service,generation){
   if(service!=="chat"&&typeof sdeOpenToolSource==="function")child.sdeOpenReviewSource=value=>sdeOpenToolSource(JSON.stringify(value));
   if(service!=="chat")child.sdeReviewAsk=json=>{if(live()&&typeof window.sdeReviewAsk==="function")window.sdeReviewAsk(json);};
   ["sdeCopyText","sdeOpenObject","sdeOpenLogs"].forEach(name=>{if(typeof window[name]==="function")child[name]=(...args)=>window[name](...args);});
+  wireClipboard(child);
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
   child.sdeProject=()=>enqueue({path:"project"},reply,live);
   // In Eclipse the services read over ADT in this window are always there, whatever VERTEX's ABAP on the system
@@ -493,6 +515,11 @@ function connect(child,service,generation){
       });
     };
   });
+  if(typeof sdeCancelWorkspace==="function")child.sdeStopReview=()=>{
+    const lane=lanes.review;
+    lane.queue=lane.queue.filter(item=>item.live!==live);
+    if(lane.active&&lane.active.live===live){lane.active.superseded=true;cancelLane("review");}
+  };
   child.sdeModels=(...args)=>{assistantTarget={child,live};sdeModels(...args);};
   // VS Code shares the VERTEX panel's provider and model; Eclipse has neither.
   ["sdeAiProvider","sdeAiModel","sdeAiConfig"].forEach(name=>{
@@ -508,8 +535,8 @@ function connect(child,service,generation){
     const page=result.contentWindow;
     if(page&&typeof page.sdeContext==="function")state.vertex_view=page.sdeContext();
     // A transport review's object as it is on screen - Full or Compact - not only its name.
-    if(page&&typeof page.sdeReviewSource==="function"){const shown=page.sdeReviewSource();if(shown)state.review_source=shown;}
-    if(!state.selected_fragment&&page&&typeof page.sdeSelection==="function")state.selected_fragment=page.sdeSelection();
+    if(!state.review_ask&&page&&typeof page.sdeReviewSource==="function"){const shown=page.sdeReviewSource();if(shown)state.review_source=shown;}
+    if(!state.review_ask&&!state.selected_fragment&&page&&typeof page.sdeSelection==="function")state.selected_fragment=page.sdeSelection();
     // A selection in a rendered Diff is an intentional, small piece of code
     // context. Keep it separate from the question and cap it, so ordinary
     // selection elsewhere in the window is never silently sent.
@@ -517,14 +544,15 @@ function connect(child,service,generation){
       const selection=page&&page.getSelection&&page.getSelection();
       const text=selection&&String(selection.toString()).trim();
       const node=selection&&selection.anchorNode&&(selection.anchorNode.nodeType===1?selection.anchorNode:selection.anchorNode.parentElement);
-      if(text&&node&&node.closest&&node.closest("table.diff"))state.selected_fragment={text:text.slice(0,12000),view:state.vertex_view||null};
+      if(!state.review_ask&&text&&node&&node.closest&&node.closest("table.diff"))state.selected_fragment={text:text.slice(0,12000),view:state.vertex_view||null};
     }catch(e){/* an unloaded result frame simply has no selection */}
     args[3]=JSON.stringify(state);assistantTarget={child,live};sdeAsk(...args);
   };
   // ASK AI of a review (ChatView.reviewAsk): the chat opens with the blocks on its chip.
-  window.sdeReviewAsk=json=>{const target=document.getElementById("conversation").contentWindow;if(target&&typeof target.sdeReviewAsk==="function"){showChat(true);target.sdeReviewAsk(json);}};
+  if(!sidebarChat)window.sdeReviewAsk=json=>{const target=document.getElementById("conversation").contentWindow;if(target&&typeof target.sdeReviewAsk==="function"){showChat(true);target.sdeReviewAsk(json);}};
   if(service!=="chat")child.sdeAskSelection=(question,fragment,view)=>{
     if(!live())return;
+    if(sidebarChat&&typeof sdeSidebarSelection==="function"){sdeSidebarSelection(question,fragment,view);return;}
     const target=document.getElementById("conversation").contentWindow;
     if(target&&typeof target.sdeAskSelection==="function"){
       showChat(true);
@@ -652,7 +680,9 @@ nameBox.onkeydown=e=>{
 };
 nameBox.onblur=()=>setTimeout(closeMatches,150);
 actionBox.onchange=()=>{if(nameBox.value.trim())run();};
-fields();mountChat();
+fields();
+if(sidebarChat){chat.remove();document.getElementById("chat-split").remove();chatToggle.remove();}
+else mountChat();
 if(current.part)pendingPart=partKey(current.part);
 if(current.name)run();
 </script></body></html>

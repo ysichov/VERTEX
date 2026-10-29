@@ -91,6 +91,7 @@ const SHIM = [
   "  window.sdeOpen = send('open');",
   "  window.sdeReview = send('review');",
   "  window.sdeAct = send('act');",
+  "  window.sdeStopReview = send('stopReview');",
   "  window.sdeRequests = send('requests');",
   "  window.sdeAbout = send('about');",
   "  window.sdeTitle = send('title');",
@@ -283,7 +284,7 @@ async function fetch(context, requestPath, body, progress, cancelled) {
   // A reviewer's action and the save of a review built from ADT are made on this side and stored in the table
   // (through VERTEX's store resource) or in a file, as vertex.review.storage says.
   if (body != null && frontendTableWrite && /^\/sap\/bc\/adt\/vertex\/review\//.test(requestPath)) {
-    try { return JSON.stringify(await frontendTableWrite(requestPath, body, progress)); }
+    try { return JSON.stringify(await frontendTableWrite(requestPath, body, progress, cancelled)); }
     catch (error) { return 'ERROR:' + error.message; }
   }
   if (body == null && requestPath === ABOUT) {
@@ -386,6 +387,8 @@ function open(context, service, initial, beside) {
     { enableScripts: true, retainContextWhenHidden: true }
   );
 
+  let reviewJob = null;
+  panel.onDidDispose(() => { if (reviewJob) reviewJob.cancelled = true; });
   panel.webview.html = pageHtml(service, initial);
 
   panel.webview.onDidReceiveMessage(
@@ -394,6 +397,7 @@ function open(context, service, initial, beside) {
         return;
       }
       const args = message.args || [];
+      if (message.call === "stopReview") { if (reviewJob) reviewJob.cancelled = true; return; }
 
       if (message.call === "open") {
         // What needed surgery on the E4 model in Eclipse is one argument here.
@@ -466,11 +470,14 @@ function open(context, service, initial, beside) {
       const bodyAt = WRITES[message.call];
       const body = bodyAt === undefined ? undefined : String(args[bodyAt] || "");
       // What a long read is doing goes to the page's status line as it happens.
-      const progress = text => { panel.webview.postMessage({ type: "progress", payload: String(text) }).then(undefined, () => {}); };
-      panel.webview.postMessage({
-        type: "result",
-        payload: await fetch(context, build(args), body, progress)
-      });
+      const job = { cancelled: false };
+      const resource = build(args);
+      const isReview = /\/vertex\/review\//.test(resource);
+      if (isReview) reviewJob = job;
+      const progress = text => { if (!job.cancelled) panel.webview.postMessage({ type: "progress", payload: String(text) }).then(undefined, () => {}); };
+      const payload = await fetch(context, resource, body, progress, () => job.cancelled);
+      if (reviewJob === job) reviewJob = null;
+      if (!job.cancelled) panel.webview.postMessage({ type: "result", payload });
     },
     undefined,
     context.subscriptions
@@ -669,7 +676,17 @@ let tools = null;
    around each, capped like any fragment. */
 async function withShownDiff(context, state) {
   const view = state && state.vertex_view;
-  if (!view || (state.selected_fragment && state.selected_fragment.text)) { return state; }
+  if (!view || state.review_ask || (state.selected_fragment && state.selected_fragment.text)) { return state; }
+  if (view.view === "review" && view.review_summary && view.review_summary.saved && !view.review_summary.partial) {
+    const summary = view.review_summary;
+    const params = new URLSearchParams({ context: "1", remote: summary.remote || "", from: summary.from || "", saved_at: summary.saved_at || "" });
+    const route = "/sap/bc/adt/vertex/review/" + encodeURIComponent(summary.request || view.name) + "?" + params;
+    const raw = await pinTo(state.system, () => fetch(context, route));
+    if (typeof raw !== "string" || raw.startsWith("ERROR:")) throw new Error("Could not read the saved review for chat: " + String(raw));
+    const data = JSON.parse(raw);
+    if (!data.review_context) throw new Error("The saved review returned no chat context.");
+    return { ...state, review_source: data.review_context };
+  }
   // A review's object is read the same way: the saved review of that object in the request, its blocks marked.
   const reviewing = view.view === "review_object" && !!view.review_object;
   if (!reviewing && (view.view !== "diff" || !view.part || !view.version)) { return state; }
@@ -911,6 +928,7 @@ function activate(context) {
       openToolSource: args => sapCode.openToolSource(args),
       documentObject: document => sapCode.documentObject(document),
       setContext: (panel, value) => toolsContextState.update(panel, value),
+      enrichContext: state => withShownDiff(context, state),
       debugger: dbg,
       chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext()) }, initial);
   // The normal source tab remains the sole code editor.  The debugger is a
@@ -1757,7 +1775,7 @@ function activate(context) {
   );
   require("./sidebar").register(vscode, context, active,
     require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext()), systems,
-    () => withShownDiff(context, toolsContextState.current()));
+    extra => withShownDiff(context, extra ? { ...(toolsContextState.current() || {}), ...extra } : toolsContextState.current()));
   require("./log-report").register(vscode, context, { openObject: object => chatTools.execute("open_sap_object", object) });
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation

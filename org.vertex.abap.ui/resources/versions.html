@@ -238,6 +238,9 @@
   h3.class-part { margin: 14px 10px 4px; font-size: 12px; font-family: Consolas, monospace; }
   .review pre.build-log { font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; color: var(--muted);
                           background: var(--surface); border: 1px solid var(--line); padding: 6px 8px; max-height: 400px; overflow: auto; }
+  .person-section { margin: 10px 0; padding: 6px 8px; border: 1px solid var(--line); background: var(--surface); }
+  .person-section > summary { cursor: pointer; font-weight: 600; color: var(--fg); }
+  .person-block { margin-top: 10px; }
   .review .open { color: var(--muted); }
   /* The summary as AVE's report draws it in SAP GUI - coloured column heads, developers first, a group per kind of
      object with its total - in the theme's colours. */
@@ -259,7 +262,12 @@
   .review .caret { display: inline-block; width: 1.1em; color: var(--vscode-focusBorder, #3498db); cursor: pointer; }
   .review .grpcnt { color: var(--muted); font-weight: normal; }
   .review .lnk { color: var(--vscode-textLink-foreground, #3498db); cursor: pointer; text-decoration: underline; }
+  a.request-review-link { color: var(--vscode-textLink-foreground, var(--fg)); text-decoration: underline; cursor: pointer; }
   .review a.objlink { color: var(--vscode-textLink-foreground, #3498db); cursor: pointer; text-decoration: underline; }
+  .review table.ave tr.created td,
+  .review table.ave tr.created a.objlink {
+    color: var(--vscode-gitDecoration-addedResourceForeground, var(--ins-mark));
+  }
 
   /* The band that starts a group. The colour sits on the cell, because the row
      underneath it is striped and hovered like any other. */
@@ -434,6 +442,7 @@
       <button id="find">Find</button>
     </span>
     <button id="assist" title="Say what to open, and let an assistant find it">Assistant</button>
+    <button id="review-stop" type="button" hidden>Stop</button>
     <span class="status" id="status"></span>
   </div>
   <div class="missing" id="missing" hidden></div>
@@ -531,12 +540,35 @@ function placePanels() {
    drawn instead, while that build is the one this page asked for. */
 var PARTIAL_MARK = "VERTEX-REVIEW-PARTIAL ";
 var review_building = "";
-// The request whose review the page asked to build: once built, it is saved where vertex.review.storage says.
-var review_autosave = "";
 // The request whose review was just built and saved: it is the request as it is now, and needs no check.
 var review_fresh = "";
+function reviewStopControl() {
+  var button = document.getElementById("review-stop");
+  button.hidden = !review_building || typeof sdeStopReview !== "function";
+}
+function stopReviewBuild() {
+  if (!review_building || typeof sdeStopReview !== "function") { return; }
+  sdeStopReview();
+  review_building = "";
+  review_fresh = "";
+  review = null;
+  review_part = null;
+  reviewStopControl();
+  note("Review build stopped. A SAP request already in progress may still finish.");
+  status("Stopped");
+  var read = document.createElement("button");
+  read.textContent = "Read review";
+  read.onclick = loadReview;
+  document.getElementById("root").appendChild(read);
+}
 function vertexProgress(text) {
   text = String(text);
+  if (text === "VERTEX-REVIEW-SAVING") {
+    review_building = "";
+    reviewStopControl();
+    status("Saving review ...");
+    return;
+  }
   if (text.indexOf(PARTIAL_MARK) === 0) {
     var data;
     try { data = JSON.parse(text.slice(PARTIAL_MARK.length)); } catch (e) { return; }
@@ -657,13 +689,15 @@ function loadReview() {
 }
 
 /* Build the review from ADT, as the button asks: opening a review only reads a saved one. */
-function buildReview(fresh) {
+function buildReview() {
   review_part = null;
   review_building = objectName().toLowerCase();
-  review_autosave = review_building;
+  review_fresh = review_building;
+  reviewStopControl();
   status("building the review of " + objectName() + " ...");
   note("Building ...");
-  sdeReview(objectName(), "", "", "", fresh ? "1" : "", review_blame ? "1" : "", review_from, reviewFlags(true));
+  sdeAct(objectName(), "", "", "", JSON.stringify({ action: "S", saved_at: "" }), review_blame ? "1" : "", review_from,
+    reviewFlags(false));
 }
 
 /* The build options, as checkboxes beside the button that builds. */
@@ -687,6 +721,7 @@ function buildOptions() {
 function loadReviewPart(object) {
   rememberScroll();
   review_class = "";
+  personView = null;
   review_part = object;
   status("reading " + (object.display_name || object.obj_name) + " ...");
   note("Reading ...");
@@ -794,7 +829,8 @@ function versionNote(text) {
 }
 
 function loadVersions(part, showList) {
-  autoDiff = !showList && typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff";
+  // A part opens on its newest change against the version before it; a list read again (TOCs, Dups) keeps the choice.
+  autoDiff = !showList;
   current = part;
   versions = [];
   base = ""; diffPrev = true; picked = -1;
@@ -880,7 +916,7 @@ function sdeReady() {
     stopPlan();
     // A build that failed draws nothing more of itself, and saves nothing.
     review_building = "";
-    review_autosave = "";
+    reviewStopControl();
     // The host marks the one failure that can be a setup state.
     if (said.indexOf("NOBACKEND:") === 0) { notFound(said.substring(10)); }
     else { message(said); }
@@ -900,18 +936,20 @@ function sdeReady() {
   // blocks that make it one.
   // The check of a saved review comes after the review itself and leaves the view as it is.
   if (data.stale_check) { showStale(data); return; }
-  if (data.requests) { showing = { view: "requests" }; renderRequests(data); }
+  if (data.person_view) { renderPersonParts(data); }
+  else if (data.requests) { showing = { view: "requests" }; renderRequests(data); }
   else if (data.parts) { showing = { view: "parts" }; renderPartList(data); }
   else if (data.sections) { showing = { view: "review_class" }; renderReviewClass(data); }
+  else if (data.blocks && personView && personView.awaiting) { updatePersonPart(data); }
   // A verdict given in a class answers with its part: the class is read again, so it stays on screen.
   else if (data.blocks && review_class) { loadReviewClass(review_class); }
-  else if (data.blocks) { showing = { view: "review_object" }; renderReviewPart(data); }
+  else if (data.blocks) { personView = null; showing = { view: "review_object" }; renderReviewPart(data); }
   else if (data.ops) { showing = { view: "diff", version: data.to, from: data.from || "" }; renderDiff(data); }
   else if (data.reviewers) { showing = { view: "review" }; renderReview(data); }
   else { showing = { view: "versions" }; renderVersions(data); }
   // The window tells its host where it is now, so a chat outside it - the
   // VERTEX panel's - knows which part and which versions are on screen.
-  if (typeof sdeContextUpdate === "function") { sdeContextUpdate({ vertex_view: sdeContext() }); }
+  if (typeof sdeContextUpdate === "function") { sdeContextUpdate({ vertex_view: sdeContext(), review_source: sdeReviewSource() }); }
   // A plan from the assistant goes on from here, when this was the step it
   // was waiting for.
   if (pending) { continuePlan(data); }
@@ -1179,12 +1217,26 @@ function renderRequests(data) {
   var root = document.getElementById("root");
   root.className = "";
   root.innerHTML = "";
+  if (data.review_status_error) root.appendChild(heading("Some review links could not be checked: " + data.review_status_error));
   root.appendChild(table(["Request", "Description", "Owner", "Name", "Type", "Status", "Date", "Time"],
     rows, function (tr, r) {
       tr.className = "pick";
       tr.title = "Open " + r.request;
       tr.addEventListener("click", function () { openRequest(r.request); });
-      cell(tr, r.request, "mono");
+      var reviewCell = document.createElement("td");
+      reviewCell.className = "mono";
+      if (r.review_saved) {
+        var link = document.createElement("a");
+        link.className = "request-review-link";
+        link.href = "#";
+        link.textContent = r.request;
+        link.title = "Open saved review in " + (r.review_sources || []).join(" and ");
+        link.addEventListener("click", function (event) {
+          event.preventDefault(); event.stopPropagation(); openRequest(r.request, true);
+        });
+        reviewCell.appendChild(link);
+      } else { reviewCell.textContent = r.request; }
+      tr.appendChild(reviewCell);
       cell(tr, r.text);
       cell(tr, r.owner, "mono");
       cell(tr, r.owner_name);
@@ -1197,18 +1249,19 @@ function renderRequests(data) {
 }
 
 /* A request picked from the list opens exactly as its typed number would. */
-function openRequest(number) {
+function openRequest(number, openReview) {
   // The unified Tools window owns the object selector in its header. Let it
   // take the selection too, so the request that was picked is visible there.
   if (typeof sdeSelectObject === "function") {
     // Opening a found request is a Versions operation. Review is explicitly
     // chosen afterwards; it must not be requested merely by selecting a row.
-    sdeSelectObject({ type: "TR", name: number, action: "diff" });
+    sdeSelectObject({ type: "TR", name: number, action: openReview ? "review" : "diff" });
     return;
   }
   document.getElementById("type").value = "TR";
   document.getElementById("name").value = number;
-  loadParts(false);
+  if (openReview) { mode = "R"; renderCards(); loadReview(); }
+  else { loadParts(false); }
 }
 
 /* ---------- versions ---------- */
@@ -1440,10 +1493,10 @@ function showMask(ops) {
    BLOCKS is the review's, and optional: a plain diff has none. Where one
    begins, its row goes in ahead of the line. The diff is drawn by this one
    function either way, so a block and its lines cannot drift apart. */
-function diffTable(ops, blocks) {
+function diffTable(ops, blocks, offset) {
   var show = compact ? showMask(ops) : null;
   var tbody = document.createElement("tbody");
-  var line = 0;
+  var line = offset || 0;
   var folded = false;
 
   // OP_FROM counts from one, and a block the payload could not be placed
@@ -1653,14 +1706,14 @@ function blameMark(td, who) {
 
 /* Two named modes in one control. CHOICES are [label, title] pairs; the
    picked index is handed to ONPICK, which redraws. */
-function segmented(choices, selected, onPick) {
+function segmented(choices, selected, onPick, canonical) {
   var box = document.createElement("span");
-  box.className = "seg";
+  box.className = canonical ? "vertex-segment-toggle" : "seg";
   choices.forEach(function (choice, index) {
     var button = document.createElement("button");
     button.textContent = choice[0];
     button.title = choice[1];
-    button.className = index === selected ? "on" : "";
+    button.className = index === selected ? (canonical ? "active" : "on") : "";
     button.addEventListener("click", function () { if (index !== selected) { onPick(index); } });
     box.appendChild(button);
   });
@@ -1751,7 +1804,7 @@ function renderDiff(data) {
 /* What stands above the lines of a block: which block it is, how much it
    changes, who wrote it, and the verdict it already carries. Read-only - the
    review is written in AVE, and this page shows what was written. */
-function blockRow(b) {
+function blockRow(b, scope) {
   var tr = document.createElement("tr");
   tr.className = "block";
   var td = document.createElement("td");
@@ -1789,11 +1842,11 @@ function blockRow(b) {
   if (typeof sdeAct === "function" && !review_live) {
     var acts = document.createElement("span");
     acts.className = "acts";
-    if (b.action !== "A") { acts.appendChild(actButton(b, "A", "Approve")); }
-    if (b.action !== "D") { acts.appendChild(actButton(b, "D", "Decline")); }
-    acts.appendChild(actButton(b, "C", "Comment"));
+    if (b.action !== "A") { acts.appendChild(actButton(b, "A", "Approve", scope)); }
+    if (b.action !== "D") { acts.appendChild(actButton(b, "D", "Decline", scope)); }
+    acts.appendChild(actButton(b, "C", "Comment", scope));
     if (b.action === "A" || b.action === "D") {
-      acts.appendChild(actButton(b, "U", "Undo"));
+      acts.appendChild(actButton(b, "U", "Undo", scope));
     }
     td.appendChild(acts);
   }
@@ -1803,7 +1856,7 @@ function blockRow(b) {
     var open = document.createElement("button");
     open.textContent = "Open";
     open.title = "Open this block's code in the editor";
-    open.addEventListener("click", function () { openBlock(b); });
+    open.addEventListener("click", function () { openBlock(b, scope && scope.object); });
     openSpan.appendChild(open);
     td.appendChild(openSpan);
   }
@@ -1815,7 +1868,7 @@ function blockRow(b) {
     askOne.className = "ask";
     askOne.textContent = "ASK AI";
     askOne.title = "Put this block on the chat's chip, for the question you write there";
-    askOne.addEventListener("click", function () { askReview([b]); });
+    askOne.addEventListener("click", function () { askReview([b], scope); });
     askSpan.appendChild(askOne);
     td.appendChild(askSpan);
   }
@@ -1827,14 +1880,17 @@ function blockRow(b) {
 /* ASK AI of a transport review: the blocks, each with its lines and five around it, to the chat's chip - the same
    context a review of the editor's changes gives (code-review.js askContext). */
 var review_ops = [], review_blocks = [];
-function askReview(chosen) {
+function reviewAskContext(chosen, scope) {
+  var review_part = scope ? scope.object : globalThis.review_part;
+  var review_ops = scope ? scope.body.ops : globalThis.review_ops;
+  var review_blocks = scope ? scope.body.blocks : globalThis.review_blocks;
   var all = chosen === null;
   var placed = review_blocks.filter(function (b) { return b.op_from > 0; })
     .sort(function (a, c) { return a.op_from - c.op_from; });
-  var text = function (from, to) { return review_ops.slice(Math.max(0, from), Math.max(0, to)).filter(function (o) { return o.op !== "-"; }).map(function (o) { return o.text; }); };
+  var text = function (from, to) { return review_ops.slice(Math.max(0, from), Math.max(0, to)).filter(function (o) { return o.op === "=" || o.op === " " || o.op === ""; }).map(function (o) { return o.text; }); };
   var blocks = (all ? placed : chosen).map(function (b) {
-    var start = b.op_from - 1, end = start;
-    while (end < review_ops.length && review_ops[end].op !== " " && review_ops[end].op !== "") { end++; }
+    var start = b.op_from - 1;
+    var end = Math.max(start, Math.min(review_ops.length, b.op_to || b.op_from));
     var lines = review_ops.slice(start, end);
     return { block: b.hunk_no, unit: "", line: b.start_line,
       context_before: text(start - 5, start),
@@ -1842,24 +1898,31 @@ function askReview(chosen) {
       after: lines.filter(function (o) { return o.op === "+"; }).map(function (o) { return o.text; }),
       context_after: text(end, end + 5) };
   });
-  sdeReviewAsk(JSON.stringify({ system: "", object: review_part ? (review_part.display_name || review_part.obj_name) : "",
-    total: placed.length, all: all, blocks: blocks }));
+  return { system: "", request: objectName(), object_key: review_part ? review_part.obj_name : "",
+    object_type: review_part ? review_part.objtype : "", object: review_part ? (review_part.display_name || review_part.obj_name) : "",
+    total: placed.length, all: all, blocks: blocks };
 }
+function askReview(chosen, scope) { sdeReviewAsk(JSON.stringify(reviewAskContext(chosen, scope))); }
 
 /* AVE's AI prompt diff / AI prompt full: a prompt to paste into any chat, where no AI is set up here. Diff is the
    changed blocks with five lines around each; full is the whole source with the changes marked. */
 var REVIEW_PROMPT = "Review this ABAP change: what it does and any real problem with it - correctness, data, performance,"
   + " security. No headings, no list of minor remarks.";
-function reviewPrompt(full) {
+function reviewPrompt(full, scope) {
+  var review_part = scope ? scope.object : globalThis.review_part;
+  var review_ops = scope ? scope.body.ops : globalThis.review_ops;
+  var review_blocks = scope ? scope.body.blocks : globalThis.review_blocks;
   var name = review_part ? (review_part.display_name || review_part.obj_name) : "";
   if (!full) {
     var placed = review_blocks.filter(function (b) { return b.op_from > 0; }).sort(function (a, c) { return a.op_from - c.op_from; });
     var text = REVIEW_PROMPT + "\n\nThe changed blocks of " + name + ", each with five lines around it (+ added, - deleted):\n";
     placed.forEach(function (b) {
-      var start = b.op_from - 1, end = start;
-      while (end < review_ops.length && review_ops[end].op !== " " && review_ops[end].op !== "") { end++; }
+      var start = b.op_from - 1, end = Math.min(review_ops.length, b.op_to || b.op_from);
       text += "\n--- block " + b.hunk_no + ", line " + b.start_line + "\n";
-      review_ops.slice(Math.max(0, start - 5), Math.min(review_ops.length, end + 5)).forEach(function (o) {
+      var from = start, to = end;
+      while (from > 0 && start - from < 5 && review_ops[from - 1].op === "=") from--;
+      while (to < review_ops.length && to - end < 5 && review_ops[to].op === "=") to++;
+      review_ops.slice(from, to).forEach(function (o) {
         text += (o.op === "+" || o.op === "-" ? o.op : " ") + " " + o.text + "\n";
       });
     });
@@ -1881,8 +1944,8 @@ function copyText(text, button) {
 }
 
 /* The block in the editor, at its line: a program at the line, a method of a class in its class. */
-function openBlock(b) {
-  var p = review_part || {};
+function openBlock(b, object) {
+  var p = object || review_part || {};
   var type = String(p.objtype || "").toUpperCase();
   var target = type === "METH" ? { name: p.class_name, type: "CLAS", method: p.obj_name }
     : p.class_name ? { name: p.class_name, type: "CLAS" }
@@ -1915,14 +1978,14 @@ function saidRows(block) {
   });
 }
 
-function actButton(block, action, label) {
+function actButton(block, action, label, scope) {
   var button = document.createElement("button");
   button.textContent = label;
   button.dataset.act = action;
   button.addEventListener("click", function () {
     // A decline and a comment are the words that go with them, so they ask.
-    if (action === "D" || action === "C") { askWords(button, block, action); }
-    else { act(block, action, ""); }
+    if (action === "D" || action === "C") { askWords(button, block, action, scope); }
+    else { act(block, action, "", scope); }
   });
   return button;
 }
@@ -1931,7 +1994,7 @@ function actButton(block, action, label) {
    it is about has to stay on screen while they are written, and a box rather
    than a line, because a review comment is a paragraph as often as not - which
    is what the GUI opens an editor window for. */
-function askWords(button, block, action) {
+function askWords(button, block, action, scope) {
   var head = button.parentNode.parentNode.parentNode;
   var open = head.parentNode.querySelector("tr.words");
   if (open) {
@@ -1960,7 +2023,7 @@ function askWords(button, block, action) {
 
   function send() {
     if (!input.value.trim()) { return; }
-    act(block, action, input.value.trim());
+    act(block, action, input.value.trim(), scope);
   }
   function close() {
     if (tr.parentNode) { tr.parentNode.removeChild(tr); }
@@ -1991,11 +2054,16 @@ function askWords(button, block, action) {
    on a state that has since moved, and it is refused rather than merged: a save
    writes the whole review, and a merge nobody asked for is how approvals get
    lost. */
-function act(block, action, note) {
+function act(block, action, note, scope) {
+  // A person's view names the block's object; in a class shown whole a block names its own part; else the part on screen.
+  var object = scope ? scope.object : (block.part || review_part);
+  if (scope && personView && personView.awaiting) return;
+  if (scope && personView) {
+    personView.awaiting = object.objtype + "~" + object.obj_name;
+    document.getElementById("root").querySelectorAll("button[data-act]").forEach(function (button) { button.disabled = true; });
+  }
   status("writing ...");
-  // In a class shown whole a block names its own part; otherwise it is the part on screen.
-  var part = block.part || review_part;
-  sdeAct(objectName(), "", part.obj_name, part.objtype,
+  sdeAct(objectName(), "", object.obj_name, object.objtype,
          JSON.stringify({ hunk_key: block.hunk_key, action: action,
                           note: note, saved_at: review_saved_at }), review_blame ? "1" : "", review_from);
 }
@@ -2021,6 +2089,7 @@ var review_class = "";
 function loadReviewClass(name) {
   rememberScroll();
   review_class = name;
+  personView = null;
   review_part = null;
   status("reading the changes of " + name + " ...");
   note("Reading ...");
@@ -2247,8 +2316,24 @@ function storageLine(storage) {
 }
 
 function renderReview(data) {
+  try {
+    showing = { view: "review" };
+    renderReviewData(data);
+    if (typeof sdeContextUpdate === "function" && !data.partial)
+      sdeContextUpdate({ vertex_view: sdeContext(), review_source: null });
+  }
+  catch (error) {
+    review_building = "";
+    reviewStopControl();
+    message("Could not display the review: " + String(error && error.message || error));
+    status("Review display failed");
+  }
+}
+function renderReviewData(data) {
+  personView = null;
   // The finished review ends the build; a part of it drawn on the way does not.
   if (!data.partial) { review_building = ""; }
+  reviewStopControl();
   review = data;
   review_part = null;
   review_class = "";
@@ -2283,14 +2368,11 @@ function renderReview(data) {
           reviewFlags(false));
       };
       root.appendChild(save);
-      // A review built at the page's asking is saved at once, as Save would; one read for the assistant or left from
-      // before is not. A save that fails says so and leaves Save to try again.
-      if (review_autosave && review_autosave === data.request) { review_autosave = ""; review_fresh = data.request; save.onclick(); }
     }
     // Nothing keeps a live review, so reading it again builds it from the request as it is now.
     var rebuild = document.createElement("button");
     rebuild.textContent = "Rebuild from ADT";
-    rebuild.onclick = function () { rebuild.disabled = true; buildReview(true); };
+    rebuild.onclick = function () { rebuild.disabled = true; buildReview(); };
     root.appendChild(rebuild);
     root.appendChild(buildOptions());
     root.appendChild(section("Developers", developerTable(data.objects || [], data.developers)));
@@ -2306,7 +2388,7 @@ function renderReview(data) {
     root.appendChild(heading("No review is saved for " + data.request.toUpperCase()));
     var build = document.createElement("button");
     build.textContent = "Build review";
-    build.onclick = function () { build.disabled = true; buildReview(false); };
+    build.onclick = function () { build.disabled = true; buildReview(); };
     root.appendChild(build);
     root.appendChild(buildOptions());
     if (data.overview && data.overview.length) {
@@ -2332,6 +2414,11 @@ function renderReview(data) {
     return;
   }
 
+  if (!(data.objects || []).length) {
+    var empty = document.createElement("p");
+    empty.textContent = "No changed objects are included in this review. See Not reviewed and the Build log for skipped parts and their reasons.";
+    root.appendChild(empty);
+  }
   var two = copiesBlock(data);
   if (two) { root.appendChild(two); }
   root.appendChild(heading("Saved " + asStamp(data.saved_at) + " by " + data.saved_by));
@@ -2460,6 +2547,7 @@ function rebuildBlock() {
     review_part = null;
     review_building = objectName().toLowerCase();
     review_fresh = review_building;
+    reviewStopControl();
     sdeAct(objectName(), "", "", "", JSON.stringify({ action: "R", saved_at: review_saved_at }), review_blame ? "1" : "", review_from,
       reviewFlags(false));
   };
@@ -2497,6 +2585,10 @@ function buildLog(lines) {
   var head = document.createElement("summary");
   head.textContent = "Build log (" + lines.length + " lines)";
   box.appendChild(head);
+  var copy = document.createElement("button");
+  copy.textContent = "Copy log";
+  copy.addEventListener("click", function () { copyText(lines.join("\n"), copy); });
+  box.appendChild(copy);
   var pre = document.createElement("pre");
   pre.className = "build-log";
   pre.textContent = lines.join("\n");
@@ -2599,13 +2691,133 @@ function aveTable(columns, numeric, fill, rows, total) {
 }
 function sum(rows, key) { return rows.reduce(function (n, r) { return n + (r[key] || 0); }, 0); }
 
+var personView = null;
+function personBlockMatches(block, filter) {
+  if (filter === "approved") return block.action === "A";
+  if (filter === "declined") return block.action === "D";
+  if (filter === "open") return block.action !== "A" && block.action !== "D";
+  if (filter === "comments") return Boolean(block.note || (block.messages || []).length);
+  return true;
+}
+function personPrompt(full) {
+  var text = REVIEW_PROMPT + "\n\n" + personView.title + "; filter: " + personView.filter + "\n";
+  personView.parts.forEach(function (entry) {
+    var body = Object.assign({}, entry.body, { blocks: entry.body.blocks.filter(function (b) { return personBlockMatches(b, personView.filter); }) });
+    if (body.blocks.length) text += reviewPrompt(full, { object: entry.object, body: body }).substring(REVIEW_PROMPT.length) + "\n";
+  });
+  return text;
+}
+function askPersonReview() {
+  var blocks = [];
+  personView.parts.forEach(function (entry) {
+    var chosen = entry.body.blocks.filter(function (b) { return personBlockMatches(b, personView.filter); });
+    var context = reviewAskContext(chosen, entry);
+    context.blocks.forEach(function (block) { blocks.push(Object.assign({}, block, {
+      object: context.object, object_key: context.object_key, object_type: context.object_type })); });
+  });
+  if (!blocks.length) return;
+  sdeReviewAsk(JSON.stringify({ system: "", request: objectName(), scope: "person", filter: personView.filter,
+    object: personView.title.replace(/^Review: |^Reviewed by /, "") + " · " + personView.filter,
+    object_key: personView.selector + "|" + personView.filter, total: blocks.length, all: true, blocks: blocks }));
+}
+function renderPersonParts(data) {
+  if (!personView || data.selector !== personView.selector || data.request !== objectName().toLowerCase()) return;
+  personView.parts = data.parts || [];
+  review_saved_at = data.saved_at || "";
+  review_part = null;
+  review_live = false;
+  drawPersonView();
+}
+function updatePersonPart(data) {
+  var key = personView.awaiting;
+  var entry = personView.parts.find(function (p) { return p.object.objtype + "~" + p.object.obj_name === key; });
+  if (entry) {
+    // Keep this person's block set; the write answers the full object.
+    var keys = entry.body.blocks.map(function (b) { return b.hunk_key; });
+    entry.body = Object.assign({}, data, { blocks: data.blocks.filter(function (b) { return keys.indexOf(b.hunk_key) >= 0; }) });
+  }
+  personView.awaiting = null;
+  review_saved_at = data.saved_at;
+  drawPersonView();
+}
+function drawPersonView() {
+  showing = { view: "review_person" };
+  var root = document.getElementById("root");
+  root.className = "review person-review";
+  root.innerHTML = "";
+  var bar = document.createElement("div"); bar.className = "diffbar";
+  var back = document.createElement("button"); back.textContent = "← Review"; back.onclick = loadReview; bar.appendChild(back);
+  if (typeof sdeReviewAsk === "function") {
+    var askPerson = document.createElement("button"); askPerson.className = "ask"; askPerson.textContent = "ASK AI";
+    askPerson.title = "Put the blocks matching this person's current filter on the sidebar chat chip";
+    askPerson.onclick = askPersonReview; bar.appendChild(askPerson);
+  }
+  var filters = [["all", "All"], ["approved", "Approved"], ["declined", "Declined"], ["open", "Not processed"], ["comments", "Comments only"]];
+  bar.appendChild(segmented(filters.map(function (f) { return [f[1], "Show " + f[1].toLowerCase() + " blocks"]; }),
+    filters.findIndex(function (f) { return f[0] === personView.filter; }), function (index) { personView.filter = filters[index][0]; drawPersonView(); }, true));
+  [["Expand all", true], ["Collapse all", false]].forEach(function (choice) {
+    var button = document.createElement("button"); button.textContent = choice[0]; button.onclick = function () {
+      personView.expanded = choice[1];
+      root.querySelectorAll("details.person-section").forEach(function (section) { section.open = choice[1]; });
+    }; bar.appendChild(button);
+  });
+  [["AI prompt diff", false], ["AI prompt full", true]].forEach(function (choice) {
+    var button = document.createElement("button"); button.textContent = choice[0];
+    button.onclick = function () { copyText(personPrompt(choice[1]), button); }; bar.appendChild(button);
+  });
+  root.appendChild(bar); root.appendChild(heading(personView.title));
+  var groups = {}, visible = 0, total = 0;
+  personView.parts.forEach(function (entry) {
+    var object = entry.object, body = entry.body;
+    total += body.blocks.length;
+    var blocks = body.blocks.filter(function (b) { return personBlockMatches(b, personView.filter); });
+    if (!blocks.length) return;
+    visible += blocks.length;
+    var groupName = object.class_name ? "Class: " + object.class_name : object.group || "Objects";
+    if (!groups[groupName]) {
+      var group = document.createElement("details"); group.className = "person-section"; group.open = personView.expanded !== false;
+      var title = document.createElement("summary"); title.textContent = groupName; group.appendChild(title); root.appendChild(group); groups[groupName] = group;
+    }
+    var section = document.createElement("details"); section.className = "person-section"; section.open = personView.expanded !== false;
+    var title = document.createElement("summary");
+    title.textContent = (object.kind || object.objtype) + ": " + (object.display_name || object.obj_name) + " · " + blocks.length + " blocks";
+    section.appendChild(title); groups[groupName].appendChild(section);
+    var scope = { object: object, body: body };
+    if (typeof sdeReviewAsk === "function") {
+      var ask = document.createElement("button"); ask.className = "ask"; ask.textContent = "ASK AI";
+      ask.title = "Ask about this person's blocks in this object";
+      ask.onclick = function () { askReview(blocks, scope); }; section.appendChild(ask);
+    }
+    blocks.forEach(function (block) {
+      var card = document.createElement("section"); card.className = "person-block";
+      var header = document.createElement("table"); header.className = "diff"; var tbody = document.createElement("tbody");
+      tbody.appendChild(blockRow(block, scope)); saidRows(block).forEach(function (row) { tbody.appendChild(row); }); header.appendChild(tbody); card.appendChild(header);
+      if (block.op_from > 0) {
+        var from = block.op_from - 1, to = block.op_to;
+        // Adjacent blocks stay separate: only unchanged lines become context.
+        while (from > 0 && block.op_from - 1 - from < 3 && body.ops[from - 1].op === "=") from--;
+        while (to < body.ops.length && to - block.op_to < 3 && body.ops[to].op === "=") to++;
+        var offset = body.ops.slice(0, from).filter(function (op) { return op.op !== "-"; }).length;
+        card.appendChild(diffTable(body.ops.slice(from, to), null, offset));
+      } else {
+        var note = document.createElement("p"); note.textContent = body.ddic_needs || "This block cannot be located in the saved line diff."; card.appendChild(note);
+      }
+      section.appendChild(card);
+    });
+  });
+  if (!visible) { var empty = document.createElement("p"); empty.textContent = "No blocks match this filter."; root.appendChild(empty); }
+  root.querySelectorAll("button[data-act]").forEach(function (button) { button.disabled = Boolean(personView.awaiting); });
+  status(visible + " of " + total + " blocks");
+  if (typeof sdeContextUpdate === "function") sdeContextUpdate({ vertex_view: sdeContext(), review_source: sdeReviewSource() });
+}
+
 /* One developer's part of the review, as AVE's per-developer view: the objects they wrote blocks in, grouped as in
    the review, each opening its blocks; "← Review" goes back. */
 function renderDeveloper(d) {
-  renderPerson("Review: " + (d.author_name || d.author || ""), function (o) { return (o.authors || [o.author]).indexOf(d.author) >= 0; });
+  renderPerson("Review: " + (d.author_name || d.author || ""), function (o) { return (o.authors || [o.author]).indexOf(d.author) >= 0; }, "D:" + d.author);
 }
 /* A person's part of the review - a developer's or a reviewer's: the objects that pass PICK, grouped as in the review. */
-function renderPerson(title, pick) {
+function renderPerson(title, pick, selector) {
   rememberScroll();
   showing = { view: "review_person" };
   var root = document.getElementById("root");
@@ -2615,9 +2827,9 @@ function renderPerson(title, pick) {
   back.onclick = function () { backToReview(); };
   root.appendChild(back);
   root.appendChild(heading(title));
-  var mine = (review.objects || []).filter(pick);
-  root.appendChild(objectGroups(mine));
-  status(mine.length === 1 ? "1 object" : mine.length + " objects");
+  personView = { title: title, selector: selector, parts: [], filter: "all" };
+  note("Reading the review blocks ...");
+  sdeReview(objectName(), "", "", "", "", review_blame ? "1" : "", review_from, reviewFlags(false), selector);
 }
 /* The developer's cell: a link to their part of the review. */
 function developerCell(tr, d) {
@@ -2675,10 +2887,14 @@ function objectGroups(objects) {
   [["Expand all", true], ["Collapse all", false]].forEach(function (l, i) {
     if (i) { links.appendChild(document.createTextNode("  \u00b7  ")); }
     var a = document.createElement("span"); a.className = "lnk"; a.textContent = l[0];
-    a.addEventListener("click", function () { tables.forEach(function (t) { t.fold(!l[1]); }); });
+    a.addEventListener("click", function () {
+      if (l[1] && review && review.saved === true && !review_live && !review_building) {
+        renderPerson("Review: " + objectName(), null, "A:");
+      } else { tables.forEach(function (t) { t.fold(!l[1]); }); }
+    });
     links.appendChild(a);
   });
-  if (groups.length > 1) { box.appendChild(links); }
+  if (groups.length > 1 || objects.length && review && review.saved === true && !review_live && !review_building) { box.appendChild(links); }
   groups.forEach(function (name) {
     var rows = byName[name];
     var h = document.createElement("h3"); h.className = "grp";
@@ -2704,6 +2920,7 @@ function objectGroups(objects) {
           tr.title = "Show the changed blocks of " + (o.display_name || o.obj_name);
           tr.addEventListener("click", function () { loadReviewPart(o); });
         }
+        if (o.is_created) { tr.classList.add("created"); }
         cell(tr, o.kind || o.objtype, "mono");
         var td = document.createElement("td"); var a = document.createElement("a"); a.className = "objlink";
         a.textContent = o.display_name || o.obj_name; td.appendChild(a); tr.appendChild(td);
@@ -2750,7 +2967,7 @@ function reviewerTable(reviewers) {
         var td = document.createElement("td"); var a = document.createElement("a"); a.className = "objlink";
         a.textContent = r.reviewer; a.title = "Show the objects " + (r.reviewer_name || r.reviewer) + " reviewed";
         a.addEventListener("click", function () {
-          renderPerson("Reviewed by " + (r.reviewer_name || r.reviewer), function (o) { return (r.objects || []).indexOf(o.objtype + "~" + o.obj_name) >= 0; });
+          renderPerson("Reviewed by " + (r.reviewer_name || r.reviewer), function (o) { return (r.objects || []).indexOf(o.objtype + "~" + o.obj_name) >= 0; }, "R:" + r.reviewer);
         });
         td.appendChild(a); tr.appendChild(td);
         cell(tr, r.reviewer_name || "");
@@ -3256,7 +3473,13 @@ function pageState() {
     // pinned base or the active version. Empty is the oldest, against nothing.
     compared_with: showing.view === "diff" ? showing.from : "",
     review_object: review_part ? review_part.obj_name : "",
-    review_type: review_part ? review_part.objtype : ""
+    review_type: review_part ? review_part.objtype : "",
+    review_summary: showing.view === "review" && review ? {
+      request: review.request, remote: review.remote || "", saved_at: review.saved_at || "",
+      saved: review.saved === true, partial: review.partial === true,
+      from: review.storage ? review.storage.from : "", objects: review.objects || [],
+      missing: review.missing || []
+    } : null
   };
 }
 
@@ -3269,6 +3492,7 @@ function sdeContext() { return pageState(); }
    chat names only (pageState); the model then saw the blocks its diff tool gives and no more, whatever the reader had
    on screen. Null outside a review's object. */
 function sdeReviewSource() {
+  if (showing.view === "review_person" && personView) return { object: personView.title, shown: "summary", text: personPrompt(false).substring(REVIEW_PROMPT.length) };
   if (showing.view !== "review_object" || !review_part || !review_ops.length) { return null; }
   var body = reviewPrompt(!compact);
   return { object: review_part.display_name || review_part.obj_name, type: review_part.objtype,
@@ -3579,6 +3803,7 @@ document.getElementById("model").addEventListener("change", function (e) {
 document.getElementById("root").addEventListener("contextmenu", function (event) {
   if (selectedDiffText()) { event.preventDefault(); askSelection(); }
 });
+document.getElementById("review-stop").addEventListener("click", stopReviewBuild);
 document.getElementById("selection-cancel").addEventListener("click", function () { document.getElementById("selection-ask").close(); });
 document.getElementById("selection-question").addEventListener("keydown", function (event) {
   // A placeholder is intentionally not submitted text. Tab accepts the
