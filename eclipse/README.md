@@ -105,7 +105,8 @@ version. A review saved by AVE with Blame shows its line authors when the toggle
 comments and taking a verdict back, made the way AVE makes them, so AVE and every VERTEX window read
 the same review. A saved review opens at once; for an open request it is checked meanwhile against the request,
 by each part's versions, and a part that changed since, joined the request or left it is named above
-the table; **Developers** and **Reviewers** are listed as in AVE, and each opens the objects they wrote or reviewed; a released request is not checked. **Rebuild from ADT**, under the line that says when and
+the table; **Developers** and **Reviewers** are listed as in AVE, and each opens the objects they wrote or reviewed; a class's
+heading opens the whole class's changes; a released request is not checked. **Rebuild from ADT**, under the line that says when and
 by whom the review was saved, replaces the saved review with one built from the request as it is
 now and drops its verdicts. A review kept both in the table and in a file is shown with both copies
 named - who saved each and when - and a **Table | File** switch opens either; nothing is merged, and
@@ -169,9 +170,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.41.qualifier`; the checked-in update site carries build `0.9.31.20261024182823`.
+then regenerate. The feature and bundle sources are at `0.9.42.qualifier`; the checked-in update site carries build `0.9.31.20261024182823`.
 
-The local install archive is version `0.9.41.20261029210726`. Install its ZIP through
+The local install archive is version `0.9.42.20261029213732`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

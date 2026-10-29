@@ -235,6 +235,7 @@
   .review .no { color: var(--del-mark); }
   /* An object deleted since, as AVE marks it: red on the theme's removed-line background. */
   .review tr.deleted td { color: var(--del-mark); background: var(--del-bg); }
+  h3.class-part { margin: 14px 10px 4px; font-size: 12px; font-family: Consolas, monospace; }
   .review pre.build-log { font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; color: var(--muted);
                           background: var(--surface); border: 1px solid var(--line); padding: 6px 8px; max-height: 400px; overflow: auto; }
   .review .open { color: var(--muted); }
@@ -246,6 +247,9 @@
   .review table.ave th.num, .review table.ave td.num { text-align: right; }
   .review table.ave td { padding: 4px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--field-border)); white-space: nowrap; }
   .review table.ave tbody tr:hover td { background: var(--hover); }
+  /* Fixed layout for the object groups, so each group's columns line up with the others'; a long name is cut with an ellipsis. */
+  .review table.ave.groups { table-layout: fixed; }
+  .review table.ave.groups td { overflow: hidden; text-overflow: ellipsis; }
   .review table.ave tr.total td { font-weight: 600; border-top: 2px solid var(--vscode-button-background, #3498db);
                                   background: var(--vscode-editorWidget-background, transparent); }
   .review .gi { color: var(--vscode-charts-green, #27ae60); }
@@ -681,6 +685,8 @@ function buildOptions() {
    as they were saved. Nothing is computed - a prepared review already holds
    the diff, and it stores the operations rather than the rendering. */
 function loadReviewPart(object) {
+  rememberScroll();
+  review_class = "";
   review_part = object;
   status("reading " + (object.display_name || object.obj_name) + " ...");
   note("Reading ...");
@@ -896,6 +902,9 @@ function sdeReady() {
   if (data.stale_check) { showStale(data); return; }
   if (data.requests) { showing = { view: "requests" }; renderRequests(data); }
   else if (data.parts) { showing = { view: "parts" }; renderPartList(data); }
+  else if (data.sections) { showing = { view: "review_class" }; renderReviewClass(data); }
+  // A verdict given in a class answers with its part: the class is read again, so it stays on screen.
+  else if (data.blocks && review_class) { loadReviewClass(review_class); }
   else if (data.blocks) { showing = { view: "review_object" }; renderReviewPart(data); }
   else if (data.ops) { showing = { view: "diff", version: data.to, from: data.from || "" }; renderDiff(data); }
   else if (data.reviewers) { showing = { view: "review" }; renderReview(data); }
@@ -1984,9 +1993,93 @@ function askWords(button, block, action) {
    lost. */
 function act(block, action, note) {
   status("writing ...");
-  sdeAct(objectName(), "", review_part.obj_name, review_part.objtype,
+  // In a class shown whole a block names its own part; otherwise it is the part on screen.
+  var part = block.part || review_part;
+  sdeAct(objectName(), "", part.obj_name, part.objtype,
          JSON.stringify({ hunk_key: block.hunk_key, action: action,
                           note: note, saved_at: review_saved_at }), review_blame ? "1" : "", review_from);
+}
+
+/* ---------- a whole class of the review ---------- */
+
+/* Where the summary was scrolled to when a part, a class or a person was opened from it: going back puts it there
+   again, rather than at the top - AVE lost it for a long time. */
+var review_scroll = null;
+function rememberScroll() {
+  if (showing && showing.view === "review") { review_scroll = document.getElementById("root").parentNode.scrollTop; }
+}
+function backToReview() {
+  if (!review) { loadReview(); return; }
+  var at = review_scroll;
+  showing = { view: "review" };
+  renderReview(review);
+  if (at !== null) { requestAnimationFrame(function () { document.getElementById("root").parentNode.scrollTop = at; }); }
+}
+
+// The class shown whole, or "" when a single part or the summary is on screen.
+var review_class = "";
+function loadReviewClass(name) {
+  rememberScroll();
+  review_class = name;
+  review_part = null;
+  status("reading the changes of " + name + " ...");
+  note("Reading ...");
+  sdeReview(objectName(), "", name, "CLASS", "", review_blame ? "1" : "", review_from, reviewFlags(review_live));
+}
+
+/* Each part of the class under its own heading, with its own blocks, one after another - the way AVE shows a class's
+   changes. A block remembers its part, so a verdict goes there. */
+function renderReviewClass(data) {
+  review_saved_at = data.saved_at || "";
+  review_live = data.live === true;
+  var root = document.getElementById("root");
+  root.className = "";
+  root.innerHTML = "";
+  var bar = document.createElement("div");
+  bar.className = "diffbar";
+  var back = document.createElement("span");
+  back.className = "back";
+  back.textContent = "\u2190 Review";
+  back.addEventListener("click", function () {
+    review_class = "";
+    backToReview();
+  });
+  bar.appendChild(back);
+  var what = document.createElement("span");
+  what.textContent = "Class " + data.class_name;
+  bar.appendChild(what);
+  var added = 0, deleted = 0;
+  (data.sections || []).forEach(function (s) { added += s.added || 0; deleted += s.deleted || 0; });
+  var counts = document.createElement("span");
+  counts.className = "counts";
+  counts.innerHTML = "";
+  var ins = document.createElement("span"); ins.className = "ins"; ins.textContent = "+" + added;
+  var del = document.createElement("span"); del.className = "del"; del.textContent = "\u2212" + deleted;
+  counts.appendChild(ins); counts.appendChild(document.createTextNode(" ")); counts.appendChild(del);
+  bar.appendChild(counts);
+  bar.appendChild(segmented(COMPACT_CHOICES, compact ? 0 : 1, function (index) { compact = index === 0; renderReviewClass(data); }));
+  bar.appendChild(segmented(SIDE_CHOICES, sideBySide ? 1 : 0, function (index) {
+    sideBySide = index === 1; placePanels(); renderReviewClass(data);
+  }));
+  root.appendChild(bar);
+  (data.sections || []).forEach(function (s) {
+    var part = { obj_name: s.obj_name, objtype: s.objtype, display_name: s.display_name };
+    (s.blocks || []).forEach(function (b) { b.part = part; });
+    var title = document.createElement("h3");
+    title.className = "class-part";
+    title.textContent = s.objtype + "  " + (s.objtype === "METH" ? String(s.display_name || s.obj_name).toLowerCase() : (s.display_name || s.obj_name));
+    root.appendChild(title);
+    if (s.ddic) {
+      var why = document.createElement("div"); why.className = "note"; why.textContent = s.ddic_needs || "This part cannot be shown here.";
+      root.appendChild(why);
+      return;
+    }
+    review_ops = s.ops || []; review_blocks = s.blocks || [];
+    root.appendChild(sideBySide ? sideTable(s.ops || [], true, s.blocks || []) : diffTable(s.ops || [], s.blocks || []));
+  });
+  var open = 0;
+  (data.sections || []).forEach(function (s) { (s.blocks || []).forEach(function (b) { if (!b.action) { open++; } }); });
+  status(open === 0 ? "nothing open" : open + (open === 1 ? " block open" : " blocks open"));
 }
 
 /* ---------- one object of the review ---------- */
@@ -2020,7 +2113,7 @@ function renderReviewPart(data) {
     review_part = null;
     // The summary is already in hand; asking for it again would only cost a
     // round trip to be told the same thing.
-    if (review) { renderReview(review); } else { loadReview(); }
+    backToReview();
   });
   bar.appendChild(back);
 
@@ -2158,6 +2251,7 @@ function renderReview(data) {
   if (!data.partial) { review_building = ""; }
   review = data;
   review_part = null;
+  review_class = "";
   review_saved_at = data.saved_at || "";
   review_live = data.live === true;
   var root = document.getElementById("root");
@@ -2512,11 +2606,13 @@ function renderDeveloper(d) {
 }
 /* A person's part of the review - a developer's or a reviewer's: the objects that pass PICK, grouped as in the review. */
 function renderPerson(title, pick) {
+  rememberScroll();
+  showing = { view: "review_person" };
   var root = document.getElementById("root");
   root.innerHTML = "";
   var back = document.createElement("button");
   back.textContent = "← Review";
-  back.onclick = function () { renderReview(review); };
+  back.onclick = function () { backToReview(); };
   root.appendChild(back);
   root.appendChild(heading(title));
   var mine = (review.objects || []).filter(pick);
@@ -2587,7 +2683,18 @@ function objectGroups(objects) {
     var rows = byName[name];
     var h = document.createElement("h3"); h.className = "grp";
     var caret = document.createElement("span"); caret.className = "caret"; caret.textContent = "\u25be";
-    h.appendChild(caret); h.appendChild(document.createTextNode(" " + name + " "));
+    h.appendChild(caret);
+    // A class's heading opens all its changes at once, as AVE's "Class:" link does.
+    if (rows[0] && rows[0].class_name && name === "Class: " + rows[0].class_name) {
+      h.appendChild(document.createTextNode(" Class: "));
+      var cls = document.createElement("a");
+      cls.className = "objlink";
+      cls.textContent = rows[0].class_name;
+      cls.title = "Show the changes of the whole class";
+      cls.addEventListener("click", function (e) { e.stopPropagation(); if (!review_building) { loadReviewClass(rows[0].class_name); } });
+      h.appendChild(cls);
+      h.appendChild(document.createTextNode(" "));
+    } else { h.appendChild(document.createTextNode(" " + name + " ")); }
     var n = document.createElement("span"); n.className = "grpcnt"; n.textContent = "(" + rows.length + ")"; h.appendChild(n);
     var t = aveTable(["Type", "Object", "Owner", "Rows +/~/-", "Blocks", "Approved", "Declined", "%"], [0, 0, 0, 1, 1, 1, 1, 1],
       function (tr, o) {
@@ -2614,6 +2721,13 @@ function objectGroups(objects) {
         shareCell(tr, sum(rows, "declined"), sum(rows, "hunks"));
         percentCell(tr, sum(rows, "approved"), sum(rows, "hunks"));
       });
+    // Every group is its own table: the same column widths in each keep their columns under one another.
+    t.className += " groups";
+    var cols = document.createElement("colgroup");
+    ["7%", "31%", "18%", "12%", "7%", "9%", "9%", "7%"].forEach(function (w) {
+      var col = document.createElement("col"); col.style.width = w; cols.appendChild(col);
+    });
+    t.insertBefore(cols, t.firstChild);
     t.fold = function (closed) { t.style.display = closed ? "none" : ""; caret.textContent = closed ? "\u25b8" : "\u25be"; };
     caret.addEventListener("click", function () { t.fold(t.style.display !== "none"); });
     tables.push(t);

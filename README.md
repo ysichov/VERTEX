@@ -77,7 +77,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.31.20261024182823**; the VS Code extension is **0.9.41**.
+**0.9.31.20261024182823**; the VS Code extension is **0.9.42**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,
@@ -378,7 +378,7 @@ and a folded **Build log** tells why a part gave no block; approving,
 declining and commenting then change it the way AVE does. A saved review opens at once and is checked against the
 request by each part's versions meanwhile; when the request changed since, the page names
 what moved. **Developers** and **Reviewers** are listed as in AVE, and each opens the objects they wrote or reviewed;
-an interface is listed as the interface, not its section include. Where ADT keeps no versions of data elements, domains
+an interface is listed as the interface, not its section include, and a class's heading opens the whole class's changes. Where ADT keeps no versions of data elements, domains
 and tables, VERTEX's ABAP (`src/`) reads them; a system without it says so for those parts. **Rebuild from ADT**, on every saved review, replaces it with one built from the request
 as it is now and drops its verdicts. In VS Code a released request is not checked: its versions no longer change. A review kept both in
 `ZAVE_REVIEW` and in a file shows both copies with a **Table | File** switch; a change goes back to the copy shown.

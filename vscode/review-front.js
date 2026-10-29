@@ -294,6 +294,18 @@ async function request(api, resource, progress, io, cancelled) {
     overview = await require("./versions-front").requestOverview(api, trkorr, tasks);
   }
   if (check === "only") { return { stale_check: true, request: trkorr.toLowerCase(), saved_at: payload ? up(payload.LAST_SAVED_AT) : "", stale }; }
+  /* A whole class, as AVE's "Class:" link opens it: each of its parts in the review's order, with its own blocks - a
+     section a part - so a verdict still goes to the part its block belongs to. */
+  if (part && ptype === "CLASS") {
+    const sections = [];
+    for (const s of reportObjects(payload ? payload.OBJ_STATS : []).filter(s => up(s.CLASS_NAME) === part)) {
+      const body = partBody(payload, trkorr, up(s.OBJ_NAME), up(s.OBJTYPE), table);
+      if (body.ddic) { await dictionaryDiff(api, body, up(s.OBJ_NAME), up(s.OBJTYPE)); }
+      sections.push(Object.assign(body, { obj_name: up(s.OBJ_NAME), objtype: up(s.OBJTYPE), display_name: up(s.DISPLAY_NAME) }));
+    }
+    return { request: trkorr.toLowerCase(), class_name: part, sections, saved: Boolean(payload), live, table,
+      saved_at: payload ? up(payload.LAST_SAVED_AT) : "", storage: storage(io, stored), copies };
+  }
   if (part) {
     const body = partBody(payload, trkorr, part, ptype, table);
     if (body.ddic) { await dictionaryDiff(api, body, part, ptype); }

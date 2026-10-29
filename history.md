@@ -1,5 +1,13 @@
 # Release history
 
+## 2026-10-29 — New dictionary objects no longer reported as changed
+
+Data elements, domains and tables a request created and that were never versioned are no longer reported as "Changed since this review was saved - no version of this part"; they are the request's new objects, as AVE reviewed them, and are built that way too.
+
+## 2026-10-29 — 0.9.42: a whole class's changes; the summary keeps its place
+
+A class's heading in the review opens the changes of the whole class - each of its parts under its own heading, with its blocks, verdicts and comments - as AVE's "Class:" link does. Going back from a part, a class or a person to the summary keeps where it was scrolled. The summary's object groups share their column widths, so their columns line up. Also in this release: Rebuild from ADT draws the review part by part, a system with VERTEX's ABAP is recognised as one (reviews saved to the table again), and dictionary objects of AVE's reviews are shown as a diff through it. VS Code 0.9.42 and Eclipse 0.9.42 (`0.9.42.20261029213732`).
+
 ## 2026-10-29 — Dictionary objects of AVE's reviews shown as a diff
 
 A data element, domain or table in a review AVE prepared is shown as a line diff with its block, verdicts and comments, read again through VERTEX's ABAP, instead of "VERTEX does not render that page yet". Without VERTEX's ABAP on the system the page says that it is needed.

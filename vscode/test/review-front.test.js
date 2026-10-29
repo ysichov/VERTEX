@@ -127,3 +127,13 @@ test("a dictionary object AVE reviewed is diffed again through VERTEX's ABAP, it
   assert.deepStrictEqual(read.ops.map(o => o.op + o.text), ["-Length            : 000030", "+Length            : 000040"]);
   assert.deepStrictEqual(read.blocks.map(b => [b.hunk_key, b.action, b.op_from, b.op_to]), [["DTED~ZDE~1", "A", 1, 2]]);
 });
+
+test("a class asked for whole answers each of its parts as a section with its own blocks", async () => {
+  const answer = await request(session().api, "/sap/bc/adt/vertex/review/A4HK900001?part=ZCL_X&ptype=CLASS");
+  assert.strictEqual(answer.class_name, "ZCL_X");
+  assert.ok(answer.sections.length >= 1);
+  answer.sections.forEach(s => {
+    assert.ok(s.objtype && s.obj_name, "a section names its part");
+    s.blocks.forEach(b => assert.ok(b.hunk_key.startsWith(s.objtype + "~"), "a section's blocks are its part's"));
+  });
+});

@@ -471,8 +471,9 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   and deleted, blocks, approved, declined and the share approved; a developer opens the objects they
   changed, and **← Review** goes back - then the objects, a group per
   kind (programs, each class with its parts) under a caret, each with its total; **Expand all** and
-  **Collapse all** fold them, and **Reviewers** - each reviewer with a verdict or a comment, their
-  approved, declined and total; a reviewer opens the objects they reviewed. A row opens the object's blocks. There each block has **Open** (its code
+  **Collapse all** fold them - a class's heading opens the changes of the whole class, part after part,
+  each with its blocks - and **Reviewers** - each reviewer with a verdict or a comment, their
+  approved, declined and total; a reviewer opens the objects they reviewed. A row opens the object's blocks; going back to the summary keeps where it was scrolled. There each block has **Open** (its code
   in the editor), **ASK AI** (the block on the chat's chip) and, on a saved review, **Approve**,
   **Decline** and **Comment**; beside the object's name **ASK AI** takes all its blocks, and **Copy
   prompt: diff** / **Copy prompt: full** put a ready prompt on the clipboard - the blocks with five

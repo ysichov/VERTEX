@@ -448,7 +448,10 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       const history = await versions.historyOf(api, p.ptype, p.part, where);
       const dictionary = history.textOf ? history : null;
       if (dictionary) { log("  VRSD: ADT keeps no versions of " + p.ptype + " here; VERTEX's ABAP gives their text"); }
-      const feed = history.feed;
+      /* A dictionary object VRSD holds no version of was never versioned: it exists only as its active state, and the
+         request names it, so that state is the request's - a new object, as AVE reviews it (99998 against nothing). */
+      const feed = dictionary && !history.feed.length ? [{ id: "00000", transport: request, author: "", uri: "ddic:00000", time: "" }]
+        : history.feed;
       feed.forEach(e => log("  VER " + e.id + " " + (e.transport || "-") + " " + (e.author || "")));
       pair = pairOf(feed, numbers, open);
       if (!pair) { throw new Error(noPair(open)); }
@@ -552,8 +555,9 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
       if (Object.values(DDIC_PART).includes(p.ptype)) {
         const rows = (await api.query("SELECT versno, korrnum, author, datum FROM vrsd WHERE objtype = " + sqlText(p.ptype)
           + " AND objname = " + sqlText(p.part), 1000)).values;
-        const pair = pairOf(rows.map(r => ({ id: String(r.VERSNO), transport: String(r.KORRNUM || ""), author: String(r.AUTHOR || "") })),
-          numbers, open);
+        // Never versioned: the object exists only as its active state, which the request created - AVE's 99998 : 0.
+        const pair = rows.length ? pairOf(rows.map(r => ({ id: String(r.VERSNO), transport: String(r.KORRNUM || ""), author: String(r.AUTHOR || "") })),
+          numbers, open) : { fresh: { id: "00000", transport: request }, old: null };
         // Not in the saved review: AVE found nothing to review in it, and nothing here can say otherwise.
         if (!stats) { continue; }
         if (!pair) { changed.push({ name, reason: noPair(open) }); continue; }

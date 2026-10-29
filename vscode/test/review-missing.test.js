@@ -78,3 +78,21 @@ test("a data element ADT keeps no versions of is reviewed from VRSD and the text
       ['-Length            : 000030', '+Length            : 000040']);
   } finally { Object.assign(versions, saved); }
 });
+
+test("a data element never versioned is the request's new object, reviewed from its active state", async () => {
+  const versions = require('../versions-front');
+  const saved = { partsOf: versions.partsOf, partOf: versions.partOf };
+  versions.partsOf = async (api, type, name) => [{ name, part_type: 'DTED', unit: '' }];
+  versions.partOf = async (api, type, name) => ({ url: '/x/' + name, include: '' });
+  try {
+    const api = { query: async sql => {
+      if (/FROM e070 WHERE trkorr/.test(sql)) return { values: [{ TRKORR: 'A4HK900005', TRSTATUS: 'R' }] };
+      if (/FROM e071/.test(sql)) return { values: [{ PGMID: 'R3TR', OBJECT: 'DTEL', OBJ_NAME: 'ZNEW' }] };
+      return { values: [] };
+    }, revisions: async () => { throw new Error('Request version for DTEL is not supported'); },
+    ddicVersions: async () => true, ddicVersion: async (type, name, versno) => versno ? [] : ['Data type         : CHAR'] };
+    const payload = await require('../review-live').build(api, 'A4HK900005', () => {});
+    assert.deepEqual(payload.MISSING, []);
+    assert.deepEqual(payload.HUNKS.map(h => [h.OBJ_NAME, h.CHANGE_KIND, h.VERSNO_NEW, h.VERSNO_OLD]), [['ZNEW', 'added', '99998', '00000']]);
+  } finally { Object.assign(versions, saved); }
+});

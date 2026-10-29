@@ -1,5 +1,17 @@
 # Development history
 
+## 2026-10-29 — Object groups line up
+
+Each object group of the review summary is its own table, sized to its own content, so a class with long method names (ZIF_CALC_MODIFIER~APPLY) had its columns elsewhere than the next class's. The group tables now share fixed column widths (`colgroup`, `table-layout: fixed`, a long name cut with an ellipsis). Checked in the page: the headers of two groups start at the same pixels.
+
+## 2026-10-29 — Never-versioned DDIC objects
+
+ALCK900744's saved review listed every ZVX_*/ZLOG_* data element and table as "Changed since this review was saved: ... no version of this part, and no active state". They have no VRSD row at all (checked earlier on ALC): created by the request and never versioned, they exist only as their active state, which AVE saved as 99998 against nothing. The VRSD check found no pair and called that a change, and a build through the backend would have dropped them the same way. `staleness` now takes no VRSD row as the pair active-of-the-request against nothing, and `buildNow` gives such a dictionary part a feed of its active state alone, on the request. New test: a never-versioned DTED of a released request is reviewed as added, 99998 : 00000. 35 review tests pass.
+
+## 2026-10-29 — Whole class view, scroll kept; 0.9.42
+
+AVE's group heading "Class: X" links to all the class's changes (`openclass`). `review-front.js` answers `part=<class>&ptype=CLASS` with `sections`: each part of the class (by `reportObjects`' CLASS_NAME, in the review's order) as its own `partBody`, dictionary parts diffed again as elsewhere. `versions.html` `renderReviewClass` draws them one after another, each with its blocks; a block carries its `part`, and `act` writes to it, so verdicts reach the right part; the write answers with that part, and the page reads the class again. Then the user found the summary forgot its scroll position on the way back, a problem AVE had for long. The page now remembers `main.versions`' scrollTop when a part, a class or a person is opened from the summary and restores it in `backToReview`, which all three back controls use. Checked in the page: 900 before, 900 after; the class heading is a link and the class view draws its sections. A host test for the class answer; 56 + page tests pass, the review-plan test fails as before. Released as 0.9.42: the version files, `target/eclipse-0.9.42.20261029212935`, the VSIX (not installed).
+
 ## 2026-10-29 — AVE's dictionary blocks diffed again
 
 A DTED part of an AVE-prepared review still said "VERTEX does not render that page yet": AVE stores no DIFF for dictionary objects, only its HTML. `review-front.js` `dictionaryDiff` now, for such a part, reads the review's own pair (VERSNO_OLD/NEW from the hunks) through `ddicVersion`, diffs it, and lays the saved blocks on the diff's ranges in order, the last block taking the rest, so their verdicts and comments stay; without the backend it sets `ddic_needs`, which the page shows. New test with and without the backend; review-front tests pass (10).
