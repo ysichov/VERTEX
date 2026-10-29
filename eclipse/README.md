@@ -89,8 +89,12 @@ implementation, because Eclipse's comparer is under the EPL and cannot be carrie
 code.
 
 **The review of a transport** is built from ADT with **Build review** when none is saved - opening only reads a saved one - every part the request changed except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections and generator stamp lines) unless **Ignore SAP generated** is cleared,
-the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - and the status
-line says which part is being read. The **Blame** toggle beside Versions | Review, off by default,
+the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - each part appears as soon as
+it is read, the status line says which, and a changed line shows what changed inside it. Before it is built, Review
+lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's report does - with objects deleted
+since in red. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
+gave no block. Data elements, domains and tables ADT keeps no versions of are read through VERTEX's ABAP; without it
+they say so. The **Blame** toggle beside Versions | Review, off by default,
 names the developer who wrote each changed line: the versions between the pair are replayed (one
 more read per version, so a long history takes longer), and a version is credited to the owner of
 the task it came from - a transport of copies to the task of the request it copies. A block belongs
@@ -101,7 +105,7 @@ version. A review saved by AVE with Blame shows its line authors when the toggle
 comments and taking a verdict back, made the way AVE makes them, so AVE and every VERTEX window read
 the same review. A saved review opens at once; for an open request it is checked meanwhile against the request,
 by each part's versions, and a part that changed since, joined the request or left it is named above
-the table; a developer or a reviewer in the summary opens the objects they wrote or reviewed; a released request is not checked. **Rebuild from ADT**, under the line that says when and
+the table; **Developers** and **Reviewers** are listed as in AVE, and each opens the objects they wrote or reviewed; a released request is not checked. **Rebuild from ADT**, under the line that says when and
 by whom the review was saved, replaces the saved review with one built from the request as it is
 now and drops its verdicts. A review kept both in the table and in a file is shown with both copies
 named - who saved each and when - and a **Table | File** switch opens either; nothing is merged, and

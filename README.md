@@ -370,11 +370,16 @@ Status: **early**. All three answer, and each is a fraction of what it was cut f
 
 Building a review is here too, not only reading one. In VS Code a request with no saved review is
 built from ADT with **Build review** - opening only reads a saved one - every part it changed except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections and generator stamp lines) unless **Ignore SAP generated** is cleared, with the **Blame** toggle each changed line with the developer who wrote it, the pair of versions chosen by AVE's rule,
-diffed and cut into blocks by AVE's walk - with the status line saying which part is being read; **Rebuild from ADT** builds it again from
-the request as it is now; **Save** keeps it, in `ZAVE_REVIEW` or in files as `vertex.review.storage` says, and approving,
+diffed and cut into blocks by AVE's walk - each part appears as soon as it is read, and a changed line shows what changed
+inside it. Before it is built, Review lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's
+report does - with objects deleted since in red. **Rebuild from ADT** builds it again from
+the request as it is now. A built review is saved at once, in `ZAVE_REVIEW` or in files as `vertex.review.storage` says,
+and a folded **Build log** tells why a part gave no block; approving,
 declining and commenting then change it the way AVE does. A saved review opens at once and is checked against the
 request by each part's versions meanwhile; when the request changed since, the page names
-what moved. A developer or a reviewer in the summary opens the objects they wrote or reviewed. **Rebuild from ADT**, on every saved review, replaces it with one built from the request
+what moved. **Developers** and **Reviewers** are listed as in AVE, and each opens the objects they wrote or reviewed;
+an interface is listed as the interface, not its section include. Where ADT keeps no versions of data elements, domains
+and tables, VERTEX's ABAP (`src/`) reads them; a system without it says so for those parts. **Rebuild from ADT**, on every saved review, replaces it with one built from the request
 as it is now and drops its verdicts. In VS Code a released request is not checked: its versions no longer change. A review kept both in
 `ZAVE_REVIEW` and in a file shows both copies with a **Table | File** switch; a change goes back to the copy shown.
 The Eclipse plugin has the same check and Rebuild, and also **Path to This Line** and **Session Logs**. AVE's SAP GUI writes the same
