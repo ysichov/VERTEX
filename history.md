@@ -1,5 +1,41 @@
 # Release history
 
+## 2026-10-29 — A review shows its parts as they are built
+
+Build review and Rebuild from ADT draw the review as it is read: each object joins the summary, with Developers counted so far, as soon as its part is done. An object opens, and the review can be saved, once the whole review is built.
+
+## 2026-10-29 — A request's overview; Find keeps Review
+
+Opening a transport request shows its overview, as AVE's report does: each object with its class, the kind of object, its authors, TRs/Tasks, start, finish and days, tasks released into the request included. A request found with Find opens in Review unless Diff was chosen.
+
+## 2026-10-29 — 0.9.39: methods of a request reviewed; no RELE in Parts
+
+A method a request changes on its own (LIMU METH) is in the request's review again: it was left out when the class wrote its name in another case than the request. In a request's Parts a method is named with its class (`ZCL_X->get_tfc`), and the request's own records - released tasks (RELE) and other CORR entries - are no longer listed as parts. Changed lines show what changed inside them, the block's row stands above the lines leading into it, Blame has the shared toggle look, and Find no longer flashes "Type an object name". A request's parts follow AVE's rules further: a method entry in the short form (`CLASS=>METHOD`, `CLASS\METHOD`, or the class alone - then the methods the request holds versions of) is read, a class whose methods the request names one by one is reviewed by those methods only, and a whole class is reviewed without its local includes. VS Code 0.9.39 and Eclipse 0.9.39 (`0.9.39.20261029153142`).
+
+## 2026-10-29 — Find no longer flashes "Type an object name"
+
+Finding transport requests in the Tools window no longer shows "Type an object name and press Load." for a moment before the list.
+
+## 2026-10-29 — What changed inside a line
+
+In Versions and in a review's blocks, a changed line shows what changed inside it, as AVE does. Inline draws it once, in the new version's place, marked `~`: the removed words struck through, the added ones marked. 2 pane sets it beside the old line, each side marking its own words. A line counts as changed when at least half of it is the same as the line it replaced; other lines stay a removed and an added line.
+
+## 2026-10-29 — 0.9.38: Reviewers as in AVE
+
+The review's **Reviewers** table lists, as AVE does, each reviewer with a verdict or a comment: Reviewer, Name, Approved, Declined and Total, with a Total row when there are several. A reviewer is a link to the objects they reviewed, and **← Review** goes back. The **Saves** table is gone from the page; the record of saves stays in the saved review. VS Code 0.9.38 and Eclipse 0.9.38 (`0.9.38.20261029135358`) carry this and the review changes of 29.10: Build review, Ignore SAP generated, the saved review opening at once, and developers opening their objects.
+
+## 2026-10-29 — A saved review opens at once
+
+A saved review is shown as soon as it is read; whether it is still the request's change is checked meanwhile, and the answer appears above the tables when the check is done - what changed, or "Up to date with the request".
+
+## 2026-10-29 — A review is built on request
+
+Opening a request's review only reads a saved one. When none is saved, the page says so and offers **Build review**; the review is no longer built from ADT on its own. **Build review** and **Rebuild from ADT** have an **Ignore SAP generated** checkbox, on by default: cleared, the code SAP generates is reviewed like any other.
+
+## 2026-10-29 — Review leaves out generated code; developers open their objects
+
+A review built from ADT now leaves out what SAP generates, as AVE does: the Gateway classes `*_MPC`, `*_MPC_EXT` and `*_DPC` (`*_DPC_EXT` stays), a function group's main program `SAPL*`, a new object of comment lines only and a class section with nothing but its header. A generator's stamp line rewritten in place - `generation date:` and the maintenance generator version of a table maintenance dialog, `regenerated at`, SEGW's `has been generated on` - is no longer a change, so a regenerated TABLEFRAME no longer shows a block. A developer in the review's **Developers** table is a link: it opens the objects that developer changed, and **← Review** goes back.
+
 ## 2026-10-29 — SAP* left out of the review's Developers
 
 The Developers table of a request review no longer lists SAP*: lines and blocks credited to it are SAP's own code, not a developer's change, and are not counted for anyone.

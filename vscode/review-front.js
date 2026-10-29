@@ -146,35 +146,12 @@ function copyInfo(copy) {
 const storage = (io, stored) => io ? { mode: io.mode, wanted: io.wanted, can_store: io.canStore, from: stored ? stored.from : "",
   file: stored && stored.file ? stored.file : "" } : null;
 
-async function request(api, resource, progress, io) {
-  const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
-  const match = /^\/sap\/bc\/adt\/vertex\/review\/([^/]+)$/.exec(url.pathname);
-  if (!match) { return null; }
-  const trkorr = decodeURIComponent(match[1]).toUpperCase();
-  if (!NAME.test(trkorr)) { throw new Error(trkorr + " is not a transport request."); }
-  const remote = String(params.get("remote") || "").toUpperCase();
-  const part = String(params.get("part") || "").toUpperCase(), ptype = String(params.get("ptype") || "").toUpperCase();
-  if (part && !ptype) { throw new Error("Reading the blocks of " + part + " needs its type in ptype."); }
+// The line of progress that carries a review built so far, as a summary.
+const PARTIAL_MARK = "VERTEX-REVIEW-PARTIAL ";
 
-  const table = await hasTable(api);
-  const loaded = await loadStored(api, trkorr, remote, io, table, String(params.get("from") || ""));
-  const stored = loaded.pick;
-  const copies = { table: copyInfo(loaded.copies.table), file: copyInfo(loaded.copies.file) };
-  // A payload that does not parse is no review, as /ui2/cl_json's failure is in ZCL_VX_REVIEW_STORE.
-  let payload = null;
-  if (stored) { try { payload = parsePayload(stored.text); } catch (error) { payload = null; } }
-  // Nothing saved: the review is built from ADT, to look at - live, and not written anywhere.
-  const live = !payload && !remote;
-  if (live) { payload = await require("./review-live").build(api, trkorr, progress, params.get("fresh") === "1", params.get("blame") === "1"); }
-  /* A saved review is checked against the request as it is now; the page offers to build it again when it is not.
-     A check that fails says so - it is not taken for "up to date". */
-  let stale = null;
-  if (payload && !live && !remote && !part) {
-    try { stale = await require("./review-live").staleness(api, trkorr, payload, progress); }
-    catch (error) { stale = { error: String(error && error.message || error) }; }
-  }
-  if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored), copies }); }
-
+/* The summary of a review - its objects, developers, reviewers and saves - from its payload; also what a review being
+   built shows of the parts done so far. */
+function summarize(payload) {
   const objects = [], reviewers = [], history = [], developers = [];
   if (payload) {
     reportObjects(payload.OBJ_STATS).forEach(s => {
@@ -184,7 +161,10 @@ async function request(api, resource, progress, io) {
           if (up(a.ACTION) === "A") { approved++; } else if (up(a.ACTION) === "D") { declined++; }
         });
       });
-      objects.push({ objtype: up(s.OBJTYPE), obj_name: up(s.OBJ_NAME), class_name: up(s.CLASS_NAME),
+      // Who wrote the object's blocks, and its blame breakdown's authors: a developer's own view lists it.
+      const writers = [...new Set(list(payload.HUNKS).filter(h => up(h.OBJTYPE) === up(s.OBJTYPE) && up(h.OBJ_NAME) === up(s.OBJ_NAME))
+        .map(h => up(h.AUTHOR) || up(s.AUTHOR)).concat(list(s.BT_AUTHORS).map(a => up(a.AUTHOR)), [up(s.AUTHOR)]))];
+      objects.push({ authors: writers, objtype: up(s.OBJTYPE), obj_name: up(s.OBJ_NAME), class_name: up(s.CLASS_NAME),
         group: up(s.CLASS_NAME) ? "" : catLabel(up(s.OBJTYPE)), display_name: up(s.DISPLAY_NAME), author: up(s.AUTHOR),
         author_name: up(s.AUTHOR_NAME), is_created: s.IS_CREATED === true || s.IS_CREATED === "X", hunks: Number(s.HUNK_COUNT),
         inserted: Number(s.INS_COUNT), deleted: Number(s.DEL_COUNT), modified: Number(s.MOD_COUNT), approved, declined,
@@ -222,12 +202,65 @@ async function request(api, resource, progress, io) {
       });
     });
     devs.forEach(d => developers.push(d));
-    list(payload.USER_STATES).forEach(u => reviewers.push({ reviewer: up(u.REVIEWER), reviewer_name: up(u.REVIEWER_NAME),
-      saved_at: up(u.SAVED_AT), approved: list(u.APPROVED).length, declined: list(u.DECLINED).length, notes: list(u.NOTES).length }));
+    /* Reviewers as AVE lists them: approved, declined and their total - a reviewer who only commented counts one - and
+       only those with something to show. OBJECTS are the objects of the blocks they acted on, for their own view. */
+    list(payload.USER_STATES).forEach(u => {
+      const approved = list(u.APPROVED).length, declined = list(u.DECLINED).length, notes = list(u.NOTES).length;
+      const total = approved + declined || (notes ? 1 : 0);
+      if (!total) { return; }
+      const keys = list(u.APPROVED).concat(list(u.DECLINED), list(u.NOTES)).map(k => up(k.HUNK_KEY)).filter(Boolean)
+        .map(k => k.split("~").slice(0, 2).join("~"));
+      reviewers.push({ reviewer: up(u.REVIEWER), reviewer_name: up(u.REVIEWER_NAME), approved, declined, total,
+        objects: [...new Set(keys)] });
+    });
     list(payload.HISTORY).forEach(h => history.push({ saved_at: up(h.SAVED_AT), saved_by: up(h.SAVED_BY), saved_by_name: up(h.SAVED_BY_NAME),
       approved: Number(h.APPROVED_COUNT), declined: Number(h.DECLINED_COUNT), notes: Number(h.NOTE_COUNT) }));
   }
+  return { objects, reviewers, history, developers };
+}
+
+async function request(api, resource, progress, io) {
+  const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
+  const match = /^\/sap\/bc\/adt\/vertex\/review\/([^/]+)$/.exec(url.pathname);
+  if (!match) { return null; }
+  const trkorr = decodeURIComponent(match[1]).toUpperCase();
+  if (!NAME.test(trkorr)) { throw new Error(trkorr + " is not a transport request."); }
+  const remote = String(params.get("remote") || "").toUpperCase();
+  const part = String(params.get("part") || "").toUpperCase(), ptype = String(params.get("ptype") || "").toUpperCase();
+  if (part && !ptype) { throw new Error("Reading the blocks of " + part + " needs its type in ptype."); }
+
+  const table = await hasTable(api);
+  const loaded = await loadStored(api, trkorr, remote, io, table, String(params.get("from") || ""));
+  const stored = loaded.pick;
+  const copies = { table: copyInfo(loaded.copies.table), file: copyInfo(loaded.copies.file) };
+  // A payload that does not parse is no review, as /ui2/cl_json's failure is in ZCL_VX_REVIEW_STORE.
+  let payload = null;
+  if (stored) { try { payload = parsePayload(stored.text); } catch (error) { payload = null; } }
+  // Nothing saved: the review is built from ADT, to look at - live, and not written anywhere.
+  // Opening a review only reads it; it is built from ADT when the page asks (build=1).
+  const keep = params.get("generated") === "1";
+  const live = !payload && !remote && params.get("build") === "1";
+  /* Each part done is sent on with the progress, as a summary of the review so far: the page draws it while the rest is
+     read. A line that starts with PARTIAL_MARK carries it; any other line is what the build is doing. */
+  const partial = progress && !part ? payloadSoFar => progress(PARTIAL_MARK + JSON.stringify(Object.assign(
+    { request: trkorr.toLowerCase(), live: true, partial: true, saved: true, table }, summarize(payloadSoFar)))) : undefined;
+  if (live) { payload = await require("./review-live").build(api, trkorr, progress, params.get("fresh") === "1", params.get("blame") === "1", keep, partial); }
+  /* A saved review is checked against the request as it is now; the page offers to build it again when it is not.
+     A check that fails says so - it is not taken for "up to date". It reads every part's versions, so it runs only when
+     asked: check=1 adds it to the summary, check=only answers with it alone - the page shows the saved review at once
+     and asks for the check beside it. */
+  const check = params.get("check");
+  let stale = null;
+  if (payload && !live && !remote && !part && check) {
+    try { stale = await require("./review-live").staleness(api, trkorr, payload, progress, keep); }
+    catch (error) { stale = { error: String(error && error.message || error) }; }
+  }
+  if (check === "only") { return { stale_check: true, request: trkorr.toLowerCase(), saved_at: payload ? up(payload.LAST_SAVED_AT) : "", stale }; }
+  if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored), copies }); }
+
+  const { objects, reviewers, history, developers } = summarize(payload);
   return { request: trkorr.toLowerCase(), remote: remote.toLowerCase(), table, saved: Boolean(payload), live,
+    can_build: !payload && !remote,
     saved_at: payload ? up(payload.LAST_SAVED_AT) : "", saved_by: payload ? up(payload.LAST_SAVED_BY) : "", objects, reviewers, history,
     developers,
     // Objects the request names that the system no longer has, found while building it from ADT.
@@ -270,7 +303,8 @@ async function write(api, resource, body, io) {
     if (stored) { throw new Error("A review of " + trkorr + " is already saved (" + stored.from + "). Read it again."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
     existing = {};
-    current = state.applySaved(await require("./review-live").build(api, trkorr, undefined, false, params.get("blame") === "1"), who.user);
+    current = state.applySaved(await require("./review-live").build(api, trkorr, undefined, false, params.get("blame") === "1",
+      params.get("generated") === "1"), who.user);
   } else if (action === "R") {
     if (!stored) { throw new Error("No review is saved for " + trkorr + "; there is nothing to rebuild."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
@@ -280,7 +314,8 @@ async function write(api, resource, body, io) {
     }
     // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
     existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
-    current = state.applySaved(await require("./review-live").build(api, trkorr, undefined, true, params.get("blame") === "1"), who.user);
+    current = state.applySaved(await require("./review-live").build(api, trkorr, undefined, true, params.get("blame") === "1",
+      params.get("generated") === "1"), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
     existing = state.parseForWrite(stored.text);
@@ -317,4 +352,4 @@ async function write(api, resource, body, io) {
   return request(api, again, undefined, io);
 }
 
-module.exports = { request, write, hunkRanges, reportObjects, parsePayload, stmtOpen };
+module.exports = { PARTIAL_MARK, summarize, request, write, hunkRanges, reportObjects, parsePayload, stmtOpen };

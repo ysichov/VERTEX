@@ -49,7 +49,8 @@ test("the summary lists changed objects in AVE's order, with the verdicts on the
   assert.strictEqual(answer.saved, true);
   assert.strictEqual(answer.saved_at, "20261009123456.1234567");
   assert.deepStrictEqual(answer.objects.map(o => [o.objtype, o.class_name, o.hunks, o.approved, o.declined, o.open]), [["METH", "ZCL_X", 2, 1, 1, 0]]);
-  assert.deepStrictEqual(answer.reviewers[0], { reviewer: "REVIEWER", reviewer_name: "Re Viewer", saved_at: "20261009123456.1234567", approved: 1, declined: 1, notes: 1 });
+  assert.deepStrictEqual(answer.reviewers[0], { reviewer: "REVIEWER", reviewer_name: "Re Viewer", approved: 1, declined: 1, total: 2,
+    objects: ["x", "y", "METH~ZCL_X                         RUN"] });
   assert.strictEqual(answer.history.length, 1);
 });
 
@@ -62,9 +63,11 @@ test("a part's blocks carry their verdicts, notes and threads, and where they si
   assert.deepStrictEqual([answer.versno_old, answer.versno_new, answer.added, answer.deleted, answer.ops.length], ["00001", "00002", 2, 1, 6]);
 });
 
-test("with nothing saved - or no table at all - the review is built from ADT, live", async () => {
+test("with nothing saved - or no table at all - opening builds nothing; build=1 builds the review from ADT, live", async () => {
   const empty = { query: async sql => /FROM e070 WHERE trkorr/.test(sql) ? { values: [{ TRKORR: "A4HK900001", TRSTATUS: "R" }] } : { values: [] } };
-  const answer = await request(empty, "/sap/bc/adt/vertex/review/A4HK900001");
+  const opened = await request(empty, "/sap/bc/adt/vertex/review/A4HK900001");
+  assert.deepStrictEqual([opened.table, opened.live, opened.saved, opened.can_build], [false, false, false, true]);
+  const answer = await request(empty, "/sap/bc/adt/vertex/review/A4HK900001?build=1");
   assert.deepStrictEqual([answer.table, answer.live, answer.saved, answer.objects.length], [false, true, true, 0]);
 });
 
@@ -89,4 +92,13 @@ test("a review with blame names who wrote each changed line, and counts develope
   const summary = await request(session(JSON.stringify(stored)).api, "/sap/bc/adt/vertex/review/A4HK900001");
   assert.deepStrictEqual(summary.developers.map(d => [d.author, d.inserted, d.modified, d.hunks, d.approved, d.declined]),
     [["DEVA", 0, 1, 1, 1, 0], ["DEVB", 1, 0, 1, 0, 1]]);
+});
+
+test("a review built from ADT sends each part done, as a summary, on the progress line", async () => {
+  const { PARTIAL_MARK, summarize } = require("../review-front");
+  const so = summarize({ OBJ_STATS: [{ OBJTYPE: "REPS", OBJ_NAME: "ZPROG", AUTHOR: "DEV", INS_COUNT: 2, DEL_COUNT: 0, MOD_COUNT: 1, HUNK_COUNT: 1 }],
+    HUNKS: [{ HUNK_KEY: "REPS~ZPROG~1", OBJTYPE: "REPS", OBJ_NAME: "ZPROG", AUTHOR: "DEV" }] });
+  assert.deepStrictEqual(so.objects.map(o => [o.obj_name, o.hunks, o.inserted]), [["ZPROG", 1, 2]]);
+  assert.deepStrictEqual(so.developers.map(d => [d.author, d.hunks]), [["DEV", 1]]);
+  assert.ok(PARTIAL_MARK.endsWith(" "));
 });

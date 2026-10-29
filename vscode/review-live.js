@@ -181,7 +181,9 @@ async function exists(api, type, name) {
   return (await api.query(sql, 1)).values.length > 0;
 }
 
-async function partsOfRequest(api, keys) {
+const methodOf = versions.methodOf;
+
+async function partsOfRequest(api, keys, numbers) {
   const parts = [], seen = new Set(), missing = [];
   const add = async (type, name, filter) => {
     let found;
@@ -199,14 +201,31 @@ async function partsOfRequest(api, keys) {
       parts.push({ type, object: name, part: p.name, ptype: p.part_type, unit: p.unit, className: type === "CLAS" ? name : "" });
     }
   };
+  /* A class whose methods the request names one by one is not opened whole: the METH entries say what changed, and
+     the class entry beside them would add every method of it (GET_PARTS_EXPANDED). */
+  const listed = new Set(keys.filter(k => String(k.OBJECT) === "METH").map(k => methodOf(k.OBJ_NAME).owner.toUpperCase()));
   for (const k of keys) {
     const object = String(k.OBJECT), name = String(k.OBJ_NAME).trim();
+    if (k.PGMID === "R3TR" && object === "CLAS" && listed.has(name.toUpperCase())) { continue; }
+    /* A whole class is opened without its technical includes - local types, test classes, macros - as AVE expands it
+       for review; a request that names such an include (LIMU CINC) still has it. */
+    if (k.PGMID === "R3TR" && object === "CLAS") { await add(object, name, p => p.part_type !== "CINC"); continue; }
     if (k.PGMID === "R3TR" && ["CLAS", "INTF", "FUGR", "PROG", "DDLS", "TABL", "DOMA", "DTEL"].includes(object)) { await add(object, name); continue; }
     if (object === "REPS") { await add("PROG", name); continue; }
     if (object === "FUNC") { await add("FUNC", name); continue; }
     if (object === "METH") {
-      const owner = String(k.OBJ_NAME).slice(0, 30).trim(), method = String(k.OBJ_NAME).slice(30).trim();
-      await add("CLAS", owner, p => p.part_type === "METH" && p.unit === method);
+      const { owner, method } = methodOf(k.OBJ_NAME);
+      if (!owner) { continue; }
+      // The class alone: its methods are the ones the request and its tasks hold versions of (VRSD).
+      let methods = method ? [method] : [];
+      if (!method && numbers && numbers.size) {
+        const rows = await inLists(api, "SELECT objname FROM vrsd WHERE objtype = 'METH' AND objname LIKE "
+          + sqlText(owner.padEnd(30, " ") + "%") + " AND korrnum", [...numbers], 10000);
+        methods = rows.map(r => String(r.OBJNAME).slice(30).trim()).filter(Boolean);
+      }
+      const wanted = new Set(methods.map(m => m.toUpperCase()));
+      // E071 names the method in capitals; the class layout as it is written in the source.
+      if (wanted.size) { await add("CLAS", owner, p => p.part_type === "METH" && wanted.has(String(p.unit).toUpperCase())); }
       continue;
     }
     if (CLASS_PART_TYPES.includes(object)) {
@@ -256,6 +275,56 @@ const activeOrKept = (api, entry) => entry.id === "00000" ? Promise.resolve(api.
 // SAP* - is not a change to review (ZCL_VX_ACR_PREPARE=>IS_SAP_GENERATED_AUTHOR, AVE's "Ignore SAP generated").
 const generated = pair => /^SAP/i.test(String(pair.fresh.author || ""));
 
+// Objects SAP generates (ZCL_AVE_ACR_PREPARE=>IS_GENERATED_CLASS): the Gateway classes <name>_MPC, <name>_MPC_EXT and
+// <name>_DPC, regenerated from the OData model - <name>_DPC_EXT is written by hand and stays - and the function group
+// main program SAPL<area>, whose include list SAP rewrites under the name of whoever added a function module.
+const generatedObject = p => [p.className, p.object, p.part].some(name => {
+  const n = String(name || "").toUpperCase().split(/[= ]/)[0];
+  return /_MPC$|_MPC_EXT$|_DPC$/.test(n) || /^SAPL/.test(n);
+});
+
+// A header line a generator rewrites on every run (ZCL_AVE_ACR_PREPARE=>IS_GENERATED_TS_LINE): the SEGW stamp, a
+// function group's regeneration stamp, the table maintenance generator's date and version.
+const stampLine = text => {
+  const t = String(text || "").toUpperCase().replace(/\s+/g, " ");
+  return (t.includes("HAS BEEN GENERATED ON") && t.includes("IN CLIENT")) || t.includes("REGENERATED AT")
+    || t.includes("GENERATION DATE:") || t.includes("MAINTENANCE GENERATOR VERSION");
+};
+
+// In each run of changes a removed stamp line and an inserted one make an unchanged line with the new text
+// (STRIP_GENERATED_TS_DIFF); a stamp line only added or only removed stays a change.
+function stripStamps(ops) {
+  const out = [];
+  let run = [];
+  const flush = () => {
+    let removed = run.filter(o => o.op === "-" && stampLine(o.text)).length;
+    let paired = Math.min(removed, run.filter(o => o.op === "+" && stampLine(o.text)).length);
+    let drop = paired;
+    run.forEach(o => {
+      if (o.op === "-" && drop && stampLine(o.text)) { drop--; return; }
+      if (o.op === "+" && paired && stampLine(o.text)) { paired--; out.push({ op: "=", text: o.text }); return; }
+      out.push(o);
+    });
+    run = [];
+  };
+  ops.forEach(o => { if (o.op === "=") { flush(); out.push(o); } else { run.push(o); } });
+  flush();
+  return out;
+}
+
+// A created object of comment lines only (IS_COMMENTS_ONLY), and a class section that holds nothing but its own header
+// on both sides (IS_EMPTY_SECTION) - a new class gets all three, used or not - are not changes to review.
+const commentsOnly = lines => lines.every(l => { const t = String(l).trim(); return !t || t[0] === "*"; });
+const emptySection = lines => lines.every(l => {
+  const t = String(l).trim().toUpperCase().replace(/\s+/g, " ");
+  return !t || t[0] === "*" || t[0] === '"' || /^(PUBLIC|PROTECTED|PRIVATE) SECTION\.$/.test(t);
+});
+
+// The rules together, as the build applies them while "Ignore SAP generated" is on.
+const ignored = { object: generatedObject, pair: generated, ops: stripStamps,
+  text: (p, pair, oldLines, newLines) => (!pair.old && commentsOnly(newLines))
+    || (["CPUB", "CPRO", "CPRI"].includes(p.ptype) && emptySection(newLines) && emptySection(oldLines)) };
+
 // A part without a pair is listed, never dropped without a word.
 const noPair = open => open ? "no version of this part, and no active state"
   : "the request is released and holds no version of this part; the active state belongs to later work";
@@ -266,12 +335,14 @@ const cache = new WeakMap();
 // for each part.
 // PROGRESS, when given, is told what the build is doing, a line at a time. FRESH builds it again whatever is kept.
 // BLAME adds who wrote each changed line (AVE's "Who is Blame"); off, every block is the NEW version's author's.
-async function build(api, request, progress, fresh, blame) {
-  const key = request + (blame ? "|blame" : "");
+// KEEP_GENERATED keeps the code SAP generated (AVE's "Ignore SAP generated" off). ON_PART, when given, is handed the
+// payload as it stands after each part is done - the review so far - while the rest is read.
+async function build(api, request, progress, fresh, blame, keepGenerated, onPart) {
+  const key = request + (blame ? "|blame" : "") + (keepGenerated ? "|generated" : "");
   if (!cache.has(api)) { cache.set(api, new Map()); }
   const kept = cache.get(api).get(key);
   if (!fresh && kept && Date.now() - kept.at < 5 * 60 * 1000) { return kept.payload; }
-  const promise = buildNow(api, request, progress || (() => {}), Boolean(blame));
+  const promise = buildNow(api, request, progress || (() => {}), Boolean(blame), Boolean(keepGenerated), onPart || (() => {}));
   cache.get(api).set(key, { at: Date.now(), payload: promise });
   promise.catch(() => cache.get(api).delete(key));
   return promise;
@@ -291,13 +362,14 @@ async function requestParts(api, request) {
   const numbers = new Set([request, ...tasks, ...copies]);
   const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
   const open = head.TRSTATUS !== "R" && head.TRSTATUS !== "N";
-  return Object.assign({ numbers, open }, await partsOfRequest(api, keys));
+  return Object.assign({ numbers, open }, await partsOfRequest(api, keys, numbers));
 }
 
 const labelOf = p => p.ptype === "METH" ? p.object + "->" + p.unit : p.part;
 const versnos = pair => ({ fresh: pair.fresh.id === "00000" ? "99998" : pair.fresh.id, old: pair.old ? pair.old.id : "00000" });
 
-async function buildNow(api, request, progress, withBlame) {
+async function buildNow(api, request, progress, withBlame, keepGenerated, onPart) {
+  const skip = keepGenerated ? { object: () => false, pair: () => false, text: () => false, ops: ops => ops } : ignored;
   progress("reading what " + request + " holds ...");
   const payload = { TRKORR: request, OBJ_STATS: [], HUNKS: [], DIFF_DATA: [], HUNK_ACTIONS: [], USER_STATES: [], THREADS: [], HISTORY: [] };
 
@@ -312,6 +384,7 @@ async function buildNow(api, request, progress, withBlame) {
     /* One part that cannot be read - ADT keeps no versions of its type on this release ("Request version for DTEL is
        not supported"), a version that will not open - does not end the review: it is listed with SAP's own words, and
        the rest is reviewed. */
+    if (skip.object(p)) { continue; }
     let where, pair, ops, blame;
     try {
       where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
@@ -319,14 +392,15 @@ async function buildNow(api, request, progress, withBlame) {
       const feed = await api.revisions(where.url, where.include || undefined);
       pair = pairOf(feed, numbers, open);
       if (!pair) { throw new Error(noPair(open)); }
-      if (generated(pair)) { continue; }
+      if (skip.pair(pair)) { continue; }
       const textOf = async entry => {
         if (!entry) { return []; }
         const text = await activeOrKept(api, entry);
         return (where.cut ? where.cut(text) : versions.lines(text)) || [];
       };
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
-      ops = await versions.diff(oldLines, newLines, false, api);
+      if (skip.text(p, pair, oldLines, newLines)) { continue; }
+      ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
       blame = { map: [], deleted: [] };
       if (withBlame && ops.some(o => o.op !== "=")) {
         progress((at + 1) + " of " + parts.length + ": " + labelOf(p) + " - who wrote which line ...");
@@ -362,6 +436,7 @@ async function buildNow(api, request, progress, withBlame) {
       AUTHOR: pair.fresh.author, AUTHOR_NAME: "", INS_COUNT: ins, DEL_COUNT: del, MOD_COUNT: mod, HUNK_COUNT: ranges.length,
       HUNK_INS: hIns, HUNK_MOD: hMod, HUNK_DEL: hDel, DISPLAY_NAME: display, IS_CREATED: !pair.old,
       BT_AUTHORS: withBlame ? blameAuthors(ops, blame.map, pair.fresh.owner || pair.fresh.author, partHunks) : [] });
+    onPart(payload);
   }
 
   // Names to the authors, as the saved review carries them.
@@ -385,7 +460,8 @@ async function buildNow(api, request, progress, withBlame) {
    cannot settle are read - a part whose new side is the active state (99998), whose text may move without a new
    version, and a part the request names that the review does not hold, which counts only when it differs. Answers
    { changed: [{ name, reason }], unchecked: [{ name, reason }] }; a part that cannot be read is unchecked, not fine. */
-async function staleness(api, request, saved, progress) {
+async function staleness(api, request, saved, progress, keepGenerated) {
+  const skip = keepGenerated ? { object: () => false, pair: () => false, text: () => false, ops: ops => ops } : ignored;
   const say = progress || (() => {});
   /* A released request is history: its versions no longer change, and its pair is taken from its own versions only, so
      later work of other requests cannot move it. Nothing to check - and checking cost a read of every part's feed. */
@@ -401,12 +477,13 @@ async function staleness(api, request, saved, progress) {
     const name = labelOf(p), stats = held.get(key(p.ptype, p.part));
     say("checking whether " + request + " changed since its review was saved: " + (at + 1) + " of " + parts.length + ", " + name + " ...");
     held.delete(key(p.ptype, p.part));
+    if (skip.object(p)) { continue; }
     try {
       const where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
       if (!where) { continue; }
       const pair = pairOf(await api.revisions(where.url, where.include || undefined), numbers, open);
       if (!pair) { throw new Error(noPair(open)); }
-      if (generated(pair)) { continue; }
+      if (skip.pair(pair)) { continue; }
       const now = versnos(pair);
       const textOf = async entry => {
         if (!entry) { return []; }
@@ -414,7 +491,9 @@ async function staleness(api, request, saved, progress) {
         return (where.cut ? where.cut(text) : versions.lines(text)) || [];
       };
       if (!stats) {
-        const ops = await versions.diff(await textOf(pair.old), await textOf(pair.fresh), false, api);
+        const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
+        if (skip.text(p, pair, oldLines, newLines)) { continue; }
+        const ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
         if (ops.some(o => o.op !== "=")) { changed.push({ name, reason: "changed by the request, not in the review" }); }
         continue;
       }
@@ -440,4 +519,4 @@ async function staleness(api, request, saved, progress) {
   return { changed, unchecked };
 }
 
-module.exports = { build, pairOf, generated, countChanges, staleness };
+module.exports = { methodOf, build, pairOf, generated, generatedObject, stampLine, stripStamps, commentsOnly, emptySection, countChanges, staleness };

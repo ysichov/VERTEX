@@ -121,6 +121,15 @@ async function partInScope(api, part, ptype) {
   return ddic ? partOf(api, ddic, part, part, ptype) : null;
 }
 
+/* A LIMU METH entry's class and method (ZCL_AVE_OBJECT_TR=>GET_PARTS): the class in the first 30 characters and the
+   method after; a shorter name is CLASS=>METHOD, CLASS\METHOD or CLASS METHOD, or the class alone. */
+function methodOf(objName) {
+  const raw = String(objName);
+  if (raw.length > 30) { return { owner: raw.slice(0, 30).trim(), method: raw.slice(30).trim() }; }
+  const [owner, method] = raw.replace(/=>|\\/g, " ").trim().split(/\s+/);
+  return { owner: owner || "", method: method || "" };
+}
+
 // What a request (with its tasks, E071) or a package (TADIR) holds, as AVE lists it: a class, an interface or a
 // function group as one object to open; anything else as the part it versions as.
 async function scopeParts(api, type, name) {
@@ -143,11 +152,13 @@ async function scopeParts(api, type, name) {
   };
   keys.sort((x, y) => (x.PGMID + x.OBJECT + x.OBJ_NAME).localeCompare(y.PGMID + y.OBJECT + y.OBJ_NAME)).forEach(k => {
     const object = String(k.OBJECT), objName = String(k.OBJ_NAME);
+    // CORR entries are the request's own records (a task released into it, a merge, a comment), not objects.
+    if (k.PGMID === "CORR") { return; }
     if (k.PGMID === "R3TR" && ["CLAS", "INTF", "FUGR"].includes(object)) { add(objName, objName, object); return; }
     if (object === "PROG" || object === "REPS") { add(objName, objName, "REPS"); return; }
     if (object === "METH") {
-      const owner = objName.slice(0, 30).trim(), method = objName.slice(30).trim();
-      add(method, padded(owner, " ") + method, "METH", owner);
+      const { owner, method } = methodOf(objName);
+      if (method) { add(method, padded(owner, " ") + method, "METH", owner); } else if (owner) { add(owner, owner, "CLAS"); }
       return;
     }
     if (DDIC[object]) { add(objName, objName, DDIC[object]); return; }
@@ -342,6 +353,57 @@ async function requestsOf(api, params) {
   return { user, released: released === "true", requests };
 }
 
+/* A request's overview, as AVE's report opens it (ZCL_AVE_ACR_OVERVIEW): each object it holds, with the kind of
+   object as the system names it (KO100), who worked on it - the owners of the tasks that hold it - in how many
+   tasks, and from the first of those tasks to the last. Tasks are the request's own and the ones released into it
+   (its CORR RELE entries: task, date, time, owner). */
+async function requestOverview(api, name, tasks) {
+  const own = [name, ...tasks];
+  const keys = await inLists(api, "SELECT trkorr, pgmid, object, obj_name FROM e071 WHERE trkorr", own, 10000);
+  const released = keys.filter(k => k.PGMID === "CORR" && k.OBJECT === "RELE")
+    .map(k => String(k.OBJ_NAME).trim().split(/\s+/)[0]).filter(t => t && !own.includes(t));
+  const rows = released.length
+    ? keys.concat(await inLists(api, "SELECT trkorr, pgmid, object, obj_name FROM e071 WHERE trkorr", released, 10000)) : keys;
+  const heads = new Map((await inLists(api, "SELECT trkorr, trfunction, as4user, as4date FROM e070 WHERE trkorr",
+    [...own, ...released], 10000)).map(h => [h.TRKORR, h]));
+  let texts = new Map();
+  try {
+    texts = new Map((await api.query("SELECT pgmid, object, text FROM ko100 WHERE spras = 'E'", 10000)).values
+      .map(r => [r.PGMID + "|" + r.OBJECT, String(r.TEXT || "")]));
+  } catch (error) { texts = new Map(); }
+  const objects = new Map();
+  rows.forEach(k => {
+    if (k.PGMID === "CORR") { return; }
+    const object = String(k.OBJECT), objName = String(k.OBJ_NAME);
+    let label = objName.trim(), owner = "";
+    if (object === "METH") { const m = methodOf(objName); owner = m.owner; label = m.method || m.owner; }
+    const key = k.PGMID + "|" + object + "|" + objName.trim();
+    if (!objects.has(key)) {
+      objects.set(key, { pgmid: k.PGMID, type: object, name: label, class: owner, type_text: texts.get(k.PGMID + "|" + object) || "",
+        authors: new Set(), tasks: new Set(), start: "", finish: "" });
+    }
+    const o = objects.get(key), head = heads.get(k.TRKORR);
+    // Work is done in tasks (S, R); an entry on the request itself names no one.
+    if (!head || !["S", "R"].includes(String(head.TRFUNCTION))) { return; }
+    o.tasks.add(k.TRKORR);
+    if (head.AS4USER) { o.authors.add(String(head.AS4USER)); }
+    const day = String(head.AS4DATE || "").replace(/-/g, "");
+    if (day && (!o.start || day < o.start)) { o.start = day; }
+    if (day && (!o.finish || day > o.finish)) { o.finish = day; }
+  });
+  const users = [...new Set([...objects.values()].flatMap(o => [...o.authors]))];
+  const names = new Map(users.length ? (await inLists(api, "SELECT u~bname, a~name_text FROM usr21 AS u INNER JOIN adrp AS a"
+    + " ON a~persnumber = u~persnumber WHERE u~bname", users, 1000)).map(r => [r.BNAME, r.NAME_TEXT]) : []);
+  const asDay = d => d ? new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8))) : null;
+  return [...objects.values()].map(o => ({
+    pgmid: o.pgmid, type: o.type, name: o.name, class: o.class, type_text: o.type_text,
+    authors: [...o.authors].map(u => names.get(u) || u), tasks: o.tasks.size, trs: o.tasks.size ? 1 : 0,
+    start: o.start, finish: o.finish,
+    days: o.start && o.finish ? Math.round((asDay(o.finish) - asDay(o.start)) / 86400000) + 1 : 0,
+    generated: require("./review-live").generatedObject({ object: o.class || o.name, part: o.name, className: o.class })
+  }));
+}
+
 async function request(api, resource) {
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
   if (url.pathname === "/sap/bc/adt/vertex/requests") { return requestsOf(api, params); }
@@ -358,7 +420,14 @@ async function request(api, resource) {
   // A program or an include is one part, itself; a class is its sections, its methods and its local includes.
   if (!part) {
     // A transport request and a package are scopes: the objects in them, each opened rather than read here.
-    if (type === "TR" || type === "DEVC") { return Object.assign(head, { scope: true, parts: await scopeParts(api, type, name) }); }
+    if (type === "TR" || type === "DEVC") {
+      const answer = Object.assign(head, { scope: true, parts: await scopeParts(api, type, name) });
+      if (type === "TR") {
+        const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(name), 1000)).values.map(r => r.TRKORR);
+        answer.overview = await requestOverview(api, name, tasks);
+      }
+      return answer;
+    }
     return Object.assign(head, { scope: false, parts: await partsOf(api, type, name) });
   }
   const where = await partOf(api, type, name, part, ptype);
@@ -417,4 +486,4 @@ async function request(api, resource) {
     versions: rows.map(({ uri, ...r }) => Object.assign(r, { author_name: names.get(r.author) || "" })) });
 }
 
-module.exports = { componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
+module.exports = { methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };

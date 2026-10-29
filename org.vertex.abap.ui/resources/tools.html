@@ -343,11 +343,15 @@ document.getElementById("tsplit").addEventListener("mousedown",e=>{
   const up=()=>{split.classList.remove("dragging");document.body.classList.remove("dragging");document.removeEventListener("mousemove",move);document.removeEventListener("mouseup",up);};
   document.addEventListener("mousemove",move);document.addEventListener("mouseup",up);
 });
+let findAction="review";
 function findRequests(){
   const user=document.getElementById("request-user").value.trim();
   const released=document.getElementById("request-released").checked ? "true" : "";
   // A finder has no selected request yet. Start Versions, not Review: Review
   // would otherwise ask the host for /review/ with an empty request number.
+  // The request picked from the list opens in Diff only when Diff was chosen when Find was pressed; from Review, the
+  // Object Navigator or anything else it opens in Review, a request's own default.
+  findAction=actionBox.value==="diff"?"diff":"review";
   current={type:"TR",name:"",action:"diff"}; fields();
   mount("versions",current,()=>sdeRequestSearch(user,released));
 }
@@ -444,7 +448,7 @@ function connect(child,service,generation){
   // `chat.html` is shared with Eclipse.  Only VS Code supplies this host
   // capability, where the API key lives in VS Code SecretStorage.
   child.sdeAnthropicApi=()=>typeof sdeAnthropicApi==="function"&&sdeAnthropicApi();
-  child.sdeSelectObject=value=>navigate(value);
+  child.sdeSelectObject=value=>navigate(value&&value.type==="TR"&&value.action==="diff"&&!current.name?Object.assign({},value,{action:findAction}):value);
   child.sdeBrowse=url=>sdeBrowse(url);
   // Metrics can show methods of many package objects without a bound editor.
   // Their source links still need the host bridge, using the selected object's name and type.

@@ -89,3 +89,28 @@ test("blame credits each line to the developer whose task it came from, a transp
   assert.deepStrictEqual(map, [["b.", "DEVA"], ["c.", "DEVB"]]);
   assert.deepStrictEqual(payload.OBJ_STATS[0].BT_AUTHORS.map(a => [a.AUTHOR, a.INS_COUNT, a.HUNK_COUNT]), [["DEVA", 1, 1], ["DEVB", 1, 0]]);
 });
+
+test("AVE's ignore rules: generator stamps, generated objects, comment-only objects, empty sections", () => {
+  const { stripStamps, generatedObject, commentsOnly, emptySection } = require("../review-live");
+  const ops = stripStamps([{ op: "=", text: "*" }, { op: "-", text: "*   generation date: 12.02.2020 at 13:28:20" },
+    { op: "+", text: "*   generation date: 28.09.2026 at 16:31:07" }, { op: "=", text: "FUNCTION X." }]);
+  assert.deepStrictEqual(ops.map(o => o.op), ["=", "=", "="]);
+  assert.strictEqual(ops[1].text, "*   generation date: 28.09.2026 at 16:31:07");
+  assert.deepStrictEqual(stripStamps([{ op: "+", text: "* regenerated at 30.06.2026 16:56:30" }]).map(o => o.op), ["+"]);
+  assert.strictEqual(generatedObject({ part: "ZCL_X_MPC_EXT=================CP" }), true);
+  assert.strictEqual(generatedObject({ className: "ZCL_X_DPC" }), true);
+  assert.strictEqual(generatedObject({ className: "ZCL_X_DPC_EXT", object: "ZCL_X_DPC_EXT" }), false);
+  assert.strictEqual(generatedObject({ part: "SAPLZHR_X" }), true);
+  assert.strictEqual(commentsOnly(["* header", ""]), true);
+  assert.strictEqual(commentsOnly(["* header", "REPORT x."]), false);
+  assert.strictEqual(emptySection(["  protected section.", ""]), true);
+  assert.strictEqual(emptySection(["public section.", "  data a type i."]), false);
+});
+
+test("a LIMU METH entry names its class and method in the long form and in AVE's short ones", () => {
+  const { methodOf } = require("../review-live");
+  assert.deepStrictEqual(methodOf("ZCL_HR_EMP_ADJ_PROM_COMM      GET_TFC"), { owner: "ZCL_HR_EMP_ADJ_PROM_COMM", method: "GET_TFC" });
+  assert.deepStrictEqual(methodOf("ZCL_A=>RUN"), { owner: "ZCL_A", method: "RUN" });
+  assert.deepStrictEqual(methodOf("ZCL_A\\RUN"), { owner: "ZCL_A", method: "RUN" });
+  assert.deepStrictEqual(methodOf("ZCL_A"), { owner: "ZCL_A", method: "" });
+});

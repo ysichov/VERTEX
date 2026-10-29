@@ -405,7 +405,9 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   is pinned. **Inline | 2 pane**
   in the diff's bar shows the change in one column or the two versions side by side; in
   2 pane the parts and versions move to a band above the diff so the code gets the full
-  width. The versions list folds on its own with the arrow at the right of its bar. The parts column can be folded away and resized.
+  width. A changed line - one at least half the same as the line it replaced - shows what changed
+  inside it: Inline draws it once, as the new line marked `~` with the removed words struck through
+  and the added ones marked; 2 pane puts it beside the old line, each side marking its own words. The versions list folds on its own with the arrow at the right of its bar. The parts column can be folded away and resized.
 
   The diff compares whole lines and finds the shortest edit script (Myers' algorithm), as
   Eclipse's Text Compare does, with nothing on top: no pairing of a line with its commented-out
@@ -417,39 +419,52 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   same as the one before it (on), **Case/ind** compares without case and indentation
   (on).
 
+  **A transport's overview.** Opening a request shows, until a part is picked, each object it holds: type, object,
+  class, the kind of object as SAP names it, who worked on it, in how many tasks, and from the first task to the
+  last - tasks released into the request included. Code SAP generates is marked as not reviewed.
+
   **Code review of a transport.** A transport request in Versions shows its review: every part
   it changed, the diff of that part and the diff cut into blocks. The pair of versions is chosen
   by AVE's rule: the request's newest version, or the active one when ADT records it under the
   request and no other request's version sits above it, against the first older version that is
   not the request's. The request's own transports of copies count as the request. A released
   request is reviewed only from its own versions; a part it holds no version of is listed with the
-  reason instead. Code SAP generated (a new version authored by `SAP*`) is not reviewed. The
+  reason instead. With **Ignore SAP generated**, code SAP generated is not reviewed: a part whose new version is authored by `SAP*`,
+  the Gateway classes `*_MPC`, `*_MPC_EXT` and `*_DPC` (not `*_DPC_EXT`), a function group's main
+  program `SAPL*`, a new object of comment lines only and a class section holding nothing but its
+  header. A generator's stamp line rewritten in place (`generation date:`, `regenerated at`, the
+  maintenance generator version, SEGW's `has been generated on`) is not a change. The
   **Blame** toggle beside Versions | Review, off by default, names the developer who wrote each changed line: the versions
   between the pair are replayed (one more read per version, so a long history takes longer),
   and a version is credited to the owner of the task it came from - a transport of copies to the
   task of the request it copies - not to whoever released or copied it. A block belongs to whoever
   wrote most of its lines, and **Developers** counts each developer's own lines and blocks. Hover
   the name for the version, date and request. With Blame off, a block is the author's of the new
-  version. A review saved by AVE with Blame shows its line authors when the toggle is on. A review that is not saved yet is built from ADT while you wait - the status
-  line says which part is being read - **Rebuild from ADT** builds it again from the request as it is now, and **Save** keeps it. A saved review takes **Approve**,
+  version. A review saved by AVE with Blame shows its line authors when the toggle is on. Opening a review only reads a saved one. A review that is not saved yet is built from ADT
+  with **Build review**: each part appears in the summary as soon as it is read, and the status line
+  says which part is being read; an object opens once the whole review is built. The
+  **Ignore SAP generated** checkbox beside **Build review** and **Rebuild from ADT**, on by default,
+  leaves out the generated code listed above; cleared, it is reviewed like any other. **Rebuild from ADT** builds it again from the request as it is now, and **Save** keeps it. A saved review takes **Approve**,
   **Decline** and comments on each block, the way AVE records them, so AVE and every VERTEX window
   read the same review. Where reviews are kept is `vertex.review.storage`: the `ZAVE_REVIEW` table
   (needs the ABAP backend), files, or both. A review kept both in the table and in a file is
   shown with both copies named - who saved each and when - and a **Table | File** switch opens
   either; nothing is merged, and a change goes back to the copy shown. On a system without the ABAP
   backend the table can be read but not written, so a change to the table copy goes to the file,
-  and the page says so. A saved review is checked against the request when it
-  is opened, by each part's versions: a part that changed since, joined the request or left it is
-  named above the table. **Rebuild from ADT**, under the line that says when and by whom the review
+  and the page says so. A saved review is shown at once and checked against the request beside it, by each part's
+  versions; when the check is done, a part that changed since, joined the request or left it is
+  named above the table, or the review is marked up to date. **Rebuild from ADT**, under the line that says when and by whom the review
   was saved, replaces the saved review with one built from the request as it is now - its verdicts
   and comments are dropped. A released request is not
   checked: its versions no longer change, and later work of other requests is not its review's
   concern. Two people saving the same review at once do not
   overwrite each other: the second save is refused and asks to read the review again.
   The review opens on a summary as AVE draws it: **Developers** - each author's rows added, changed
-  and deleted, blocks, approved, declined and the share approved - then the objects, a group per
+  and deleted, blocks, approved, declined and the share approved; a developer opens the objects they
+  changed, and **← Review** goes back - then the objects, a group per
   kind (programs, each class with its parts) under a caret, each with its total; **Expand all** and
-  **Collapse all** fold them. A row opens the object's blocks. There each block has **Open** (its code
+  **Collapse all** fold them, and **Reviewers** - each reviewer with a verdict or a comment, their
+  approved, declined and total; a reviewer opens the objects they reviewed. A row opens the object's blocks. There each block has **Open** (its code
   in the editor), **ASK AI** (the block on the chat's chip) and, on a saved review, **Approve**,
   **Decline** and **Comment**; beside the object's name **ASK AI** takes all its blocks, and **Copy
   prompt: diff** / **Copy prompt: full** put a ready prompt on the clipboard - the blocks with five

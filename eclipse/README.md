@@ -87,7 +87,7 @@ script, nothing on top. The VS Code extension computes the same kind of diff wit
 implementation, because Eclipse's comparer is under the EPL and cannot be carried into VERTEX's MIT
 code.
 
-**The review of a transport** is built from ADT when none is saved - every part the request changed except code SAP generated,
+**The review of a transport** is built from ADT with **Build review** when none is saved - opening only reads a saved one - every part the request changed except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections and generator stamp lines) unless **Ignore SAP generated** is cleared,
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - and the status
 line says which part is being read. The **Blame** toggle beside Versions | Review, off by default,
 names the developer who wrote each changed line: the versions between the pair are replayed (one
@@ -98,9 +98,9 @@ hover the name for the version, date and request. With Blame off, a block is the
 version. A review saved by AVE with Blame shows its line authors when the toggle is on.
 **Save** keeps it; a saved review takes Approve, Decline,
 comments and taking a verdict back, made the way AVE makes them, so AVE and every VERTEX window read
-the same review. A saved review of an open request is checked against the request when it is opened,
+the same review. A saved review opens at once; for an open request it is checked meanwhile against the request,
 by each part's versions, and a part that changed since, joined the request or left it is named above
-the table; a released request is not checked. **Rebuild from ADT**, under the line that says when and
+the table; a developer or a reviewer in the summary opens the objects they wrote or reviewed; a released request is not checked. **Rebuild from ADT**, under the line that says when and
 by whom the review was saved, replaces the saved review with one built from the request as it is
 now and drops its verdicts. A review kept both in the table and in a file is shown with both copies
 named - who saved each and when - and a **Table | File** switch opens either; nothing is merged, and
@@ -164,9 +164,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.36.qualifier`; the checked-in update site carries build `0.9.31.20261024182823`.
+then regenerate. The feature and bundle sources are at `0.9.39.qualifier`; the checked-in update site carries build `0.9.31.20261024182823`.
 
-The local install archive is version `0.9.36.20261027090001`. Install its ZIP through
+The local install archive is version `0.9.39.20261029153142`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:
