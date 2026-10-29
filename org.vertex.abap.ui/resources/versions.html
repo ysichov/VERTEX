@@ -823,7 +823,8 @@ function versionNote(text) {
 }
 
 function loadVersions(part, showList) {
-  autoDiff = !showList && typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff";
+  // A part opens on its newest change against the version before it; a list read again (TOCs, Dups) keeps the choice.
+  autoDiff = !showList;
   current = part;
   versions = [];
   base = ""; diffPrev = true; picked = -1;

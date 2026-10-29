@@ -375,7 +375,8 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   Versions commands any more. For a class or a program the window keeps one **Parts** list at
   the left: pick a method, a section, a form or an event there, and every function shows that
   part; switching the function keeps the list and the choice. Diff keeps its own Parts and
-  Versions column, AVE's layout, and opens on the same part.
+  Versions column, AVE's layout, and opens on the same part. A part opens on its newest change: the
+  latest version compared with the one before it; pick another version or pin a base with ◇ to change that.
 
   Metrics for a class or program has a **Table / Visual** switch. In Visual, tile area scales with the selected indicator and every tile shows its method or unit name and value. CC and MI colours follow the table's risk grades; other indicators use a relative ranking within the object. Single-click a tile to select it; double-click or press Enter to open its source beside the view.
   Visual has a 2–300% scale control and a Fit button that fits the whole map into the pane. Fit and the ± buttons animate scale changes; Ctrl+wheel changes scale immediately, as in UML, while ordinary scrolling moves around the map. Zoom changes tile space and reveals more labels without enlarging text.

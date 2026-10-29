@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-29 — Versions open on the newest change; working ⤢
+
+Versions now opens a part on its latest version compared with the previous one instead of asking you to pick a version. ⤢ beside the VS Code chat question box now actually enlarges it to most of the panel. VS Code 0.9.42 rebuilt.
+
 ## 2026-10-29 — Quieter review context chip
 
 The review context above the VS Code chat input is now a small tag in the editor's colours with a focus-coloured edge; a long name ends with an ellipsis and shows in full on hover, and × is a small icon button. The ⤢ button no longer covers the question's text. VS Code 0.9.42 rebuilt.

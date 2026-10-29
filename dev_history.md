@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-10-29 — Default newest diff in Versions, ⤢ fix
+
+The user saw "Pick a version…" on opening Versions and asked for the latest-vs-previous comparison by default. loadVersions now sets autoDiff whenever the list is not just re-read (TOCs/Dups keep showList), so the existing autoDiff path loads index 0 and skips identical pairs; before, only INITIAL.action === "diff" did. The user also reported ⤢ doing nothing: .expanded raised only max-height, so short text kept its height; it now has min-height 60vh. Suite 1036/1041 with the same 4 pre-existing failures. VS Code 0.9.42 VSIX rebuilt; Eclipse not rebuilt.
+
 ## 2026-10-29 — Review chip redesign
 
 The user's screenshot showed the chip as a badge-blue block with × stretched into a wide white bar (the form's button width:100% applied to it) and the label cut short; ⤢ also overlapped the placeholder. The chip is now a fit-content tag on editorWidget background with input border and a focusBorder left edge, label with ellipsis and a title tooltip, × transparent and auto-width; the prompt reserves 30px on the right for ⤢. Only VS Code theme variables are used. Not rendered here: the static preview config calls `python`, which is not on this machine. VS Code 0.9.42 VSIX rebuilt.

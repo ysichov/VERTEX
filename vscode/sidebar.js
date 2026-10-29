@@ -208,7 +208,7 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 textarea, select { box-sizing: border-box; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 4px; font: inherit; }
 textarea { width: 100%; resize: vertical; padding: 8px; }
 #prompt { min-height: 5.5em; max-height: 14em; overflow-y: auto; padding-right: 30px; }
-#prompt.expanded { max-height: 70vh; }
+#prompt.expanded { min-height: 60vh; max-height: 70vh; }
 .prompt-box { position: relative; }
 #chat #expand-prompt { position: absolute; top: 4px; right: 4px; width: auto; margin: 0; padding: 0 6px; font-size: 14px; line-height: 20px; opacity: .75; }
 #chat #expand-prompt:hover { opacity: 1; }

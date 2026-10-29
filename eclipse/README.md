@@ -82,7 +82,8 @@ Opening VERTEX Tools from the VERTEX submenu of an ADT class or program editor s
 ## Versions and code review
 
 **Versions** in VERTEX Tools lists an object's parts and their versions from ADT's revision feed and
-shows the change a version made. The diff is Eclipse's own Text Compare (`RangeDifferencer` of
+shows the change a version made; a part opens on its newest change, the latest version against the one
+before it. The diff is Eclipse's own Text Compare (`RangeDifferencer` of
 `org.eclipse.compare.core`, the comparison ADT's *Compare With* shows): whole lines, a shortest edit
 script, nothing on top. The VS Code extension computes the same kind of diff with VERTEX's own
 implementation, because Eclipse's comparer is under the EPL and cannot be carried into VERTEX's MIT
