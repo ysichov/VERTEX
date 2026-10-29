@@ -90,7 +90,7 @@
 
 <p>In VS Code, importing SAP systems offers Eclipse workspaces that still contain ABAP projects or logon settings; a remembered path to a removed workspace is not offered. On macOS it also reads SAP GUI for Java connections from <code>~/Library/Preferences/SAP/SAPGUILandscape.xml</code> (also <code>SAPUILandscape.xml</code> and <code>SAPUILandscapeGlobal.xml</code>). Choose <b>No Eclipse workspace</b> to import from SAP GUI alone; client and user are requested. If a connection has no system ID field, its name must be an exact three-character SAP system ID.</p>
 
-<p class="build">Latest build <b>0.9.42.20261029223152</b>.</p>
+<p class="build">Latest build <b>0.9.42.20261029231959</b>.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -213,7 +213,7 @@
   review is built from ADT with <i>Build review</i> - opening only reads a saved one - every part it changed except code SAP generated (unless <i>Ignore SAP generated</i> is cleared), with the <i>Blame</i> toggle each changed line with the developer who wrote it, the pair of versions chosen
   by AVE's rule, diffed and cut into blocks - each part appears as soon as it is read, and a changed line shows what
   changed inside it. Before it is built, Review lists the request's objects as AVE's report does, objects deleted since
-  in red and newly created objects in green. In VS Code, <b>Stop</b> cancels a build before saving; a SAP call already in progress may finish. In the request list, request numbers link to reviews saved in SAP or in the current system’s review files. <b>Copy log</b> copies the build diagnostics. In VS Code, chat receives the open request review’s object list and saved changed lines. Selected text in Tools pages and the VS Code sidebar chat can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. <i>Rebuild from ADT</i> builds it again from the request as it is now; a built review is saved at once, in
+  in red and newly created objects in green. In VS Code, <b>Stop</b> cancels a build before saving; a SAP call already in progress may finish. In the request list, request numbers link to reviews saved in SAP or in the current system’s review files. Review ignores indentation and trailing-space changes while preserving changes inside literals. <b>Expand all</b> in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together with status/comment filters, Expand all / Collapse all and AI prompt diff/full controls. <b>Ask AI</b> beside a review block asks about that block only; the button above the object asks about all its changed blocks. <b>Copy log</b> copies the build diagnostics. In VS Code, chat receives the open request review’s object list and saved changed lines. Selected text in Tools pages and the VS Code sidebar chat can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. <i>Rebuild from ADT</i> builds it again from the request as it is now; a built review is saved at once, in
   <code>ZAVE_REVIEW</code> or in files as <code>vertex.review.storage</code> says, and a folded <i>Build log</i> tells why
   a part gave no block. Data elements, domains and tables that ADT keeps no versions of are read through VERTEX's ABAP; approving, declining and commenting then change it the way AVE does, so AVE and VERTEX read
   the same review. A saved review opens at once; when an open request changed after it was saved, the page names what moved,
@@ -232,6 +232,7 @@
 <h2>VS Code</h2>
 
 <p>When VERTEX chat finds one SAP object by name, its answer links the object and its package to their SAP tabs.</p>
+<p>The chat's question box grows with what you type or paste and then scrolls. In VS Code the chat is only in the VERTEX panel; <b>ASK AI</b> inside a review opens it with the selection on a chip.</p>
 
 <p>
   The same three pages run under a VS Code extension, from the same files:

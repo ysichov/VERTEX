@@ -300,6 +300,26 @@ async function request(api, resource, progress, io, cancelled) {
     return Object.assign(body, { live, storage: storage(io, stored), copies });
   }
 
+  if (params.has("person")) {
+    if (!payload) throw new Error("No saved review is available for " + trkorr + ".");
+    const selector = params.get("person"), role = selector.slice(0, 2), person = selector.slice(2);
+    if (!["D:", "R:", "A:"].includes(role)) throw new Error("Unknown review person selector.");
+    const summary = summarize(payload);
+    const reviewer = summary.reviewers.find(r => r.reviewer === person);
+    const objects = summary.objects.filter(o => role === "A:" || (role === "D:" ? o.authors.includes(person)
+      : reviewer && reviewer.objects.includes(o.objtype + "~" + o.obj_name)));
+    const reviewerState = list(payload.USER_STATES).find(s => up(s.REVIEWER) === person) || {};
+    const reviewerKeys = new Set(list(reviewerState.APPROVED).concat(list(reviewerState.DECLINED), list(reviewerState.NOTES)).map(h => up(h.HUNK_KEY)));
+    const parts = [];
+    for (const object of objects) {
+      const body = partBody(payload, trkorr, object.obj_name, object.objtype, table);
+      if (body.ddic) await dictionaryDiff(api, body, object.obj_name, object.objtype);
+      body.blocks = body.blocks.filter(b => role === "A:" || (role === "D:" ? (b.author || object.author) === person
+        : b.reviewer === person || b.messages.some(m => m.author === person) || reviewerKeys.has(b.hunk_key)));
+      if (body.blocks.length) parts.push({ object, body });
+    }
+    return { person_view: true, request: trkorr.toLowerCase(), selector, saved_at: up(payload.LAST_SAVED_AT), parts };
+  }
   if (params.get("context") === "1") {
     if (!payload) throw new Error("No saved review is available for " + trkorr + ".");
     if (params.get("saved_at") && params.get("saved_at") !== up(payload.LAST_SAVED_AT))

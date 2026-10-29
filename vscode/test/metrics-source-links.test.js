@@ -13,7 +13,7 @@ test("unbound package Metrics frame receives the source-opening bridge", () => {
   const toolsPage = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/tools.html"), "utf8");
   const opened = [], child = { addEventListener() {}, document: { addEventListener() {} } }, frame = { contentWindow: child, dataset: { generation: "1" } };
   const context = vm.createContext({ syncTheme() {}, current: { action: "metrics" }, initial: null, localFolderState: null,
-    document: {}, window: {}, resultFrames: new Map([["metrics", frame]]), result: frame,
+    document: {}, window: {}, sidebarChat: false, resultFrames: new Map([["metrics", frame]]), result: frame,
     sdeOpenToolSource: value => opened.push(JSON.parse(value)), VertexRoutes: { SERVICES: { metrics: {} } } });
   vm.runInContext(toolsPage.slice(toolsPage.indexOf("function wireClipboard("), toolsPage.indexOf("function enqueue(")), context);
   context.connect(child, "metrics", 1);

@@ -62,7 +62,7 @@ values - is left out and named above the rows. SelecTor results show the SELECT 
 
 **VERTEX Assistant** opens the chat beside the editor, on the system of the object selected in Project
 Explorer or shown in the active editor; with neither, it asks which ABAP project. The same chat is **Ask AI**
-in VERTEX Tools. It runs Claude Code or Codex, set in **Window → Preferences → VERTEX Assistant**, where the
+in VERTEX Tools; its question box grows with what you type or paste and then scrolls. It runs Claude Code or Codex, set in **Window → Preferences → VERTEX Assistant**, where the
 log folder and what is logged - questions, answers, SAP tool calls, and what is sent to the model (VERTEX's
 instructions, the prompt with its context, the tools) - are chosen too; nothing is logged until a folder is set. The log icon in the chat's header opens Session Logs, or says
 where to set the folder when none is set.
@@ -92,7 +92,7 @@ code.
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - each part appears as soon as
 it is read, the status line says which, and a changed line shows what changed inside it. Before it is built, Review
 lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's report does - with objects deleted
-since in red; newly created objects are green. In the request list, request numbers link to reviews saved in SAP or in this project’s review files. **Copy log** copies the build diagnostics, including reasons for skipped parts. Selected text in Tools pages can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
+since in red; newly created objects are green. In the request list, request numbers link to reviews saved in SAP or in this project’s review files. Review ignores indentation and trailing-space changes while preserving changes inside literals. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies the build diagnostics, including reasons for skipped parts. Selected text in Tools pages can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
 gave no block. Data elements, domains and tables ADT keeps no versions of are read through VERTEX's ABAP; without it
 they say so. The **Blame** toggle beside Versions | Review, off by default,
 names the developer who wrote each changed line: the versions between the pair are replayed (one
@@ -169,9 +169,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.42.qualifier`; the checked-in update site carries build `0.9.42.20261029223152`.
+then regenerate. The feature and bundle sources are at `0.9.42.qualifier`; the checked-in update site carries build `0.9.42.20261029231959`.
 
-The local install archive is version `0.9.42.20261029223152`. Install its ZIP through
+The local install archive is version `0.9.42.20261029231959`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

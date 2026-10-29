@@ -37,6 +37,8 @@ const normal = (line, ignore) => ignore ? line.trim().toUpperCase() : line;
 // A host with a comparer of its own passes it as api.diffLines - Eclipse hands the lines to its own Text Compare
 // (RangeDifferencer); otherwise VERTEX's line-diff.js (Myers) computes it.
 async function diff(oldLines, newLines, ignore, api) {
+  // Review ignores indentation/trailing whitespace without hiding changed case or literal contents.
+  if (ignore === "indentation") return require("./line-diff").diffLines(oldLines, newLines, line => line.trim());
   if (api && api.diffLines) { return api.diffLines(oldLines, newLines, Boolean(ignore)); }
   return require("./line-diff").diffLines(oldLines, newLines, ignore ? line => normal(line, true) : undefined);
 }

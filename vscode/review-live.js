@@ -115,7 +115,7 @@ async function blameOf(api, feed, pair, ops, textOf, ownerOf) {
   if (!pair.old) { prev.forEach(text => map.push(blameEntry(range[0], text))); }
   for (const e of range.slice(1)) {
     const cur = await textOf(e);
-    for (const d of await versions.diff(prev, cur, false, api)) {
+    for (const d of await versions.diff(prev, cur, "indentation", api)) {
       if (d.op === "+") { drop(map, d.text); map.push(blameEntry(e, d.text)); }
       else if (d.op === "-") { drop(deleted, d.text); deleted.push(blameEntry(e, d.text)); drop(map, d.text); }
     }
@@ -467,7 +467,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
       log("  TEXT old=" + oldLines.length + " line(s), new=" + newLines.length + " line(s)");
       if (skip.text(p, pair, oldLines, newLines)) { log("SKIP " + label + ": new object of comments only, or an empty class section"); continue; }
-      ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
+      ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
       blame = { map: [], deleted: [] };
       if (withBlame && ops.some(o => o.op !== "=")) {
         progress((at + 1) + " of " + parts.length + ": " + labelOf(p) + " - who wrote which line ...");
@@ -593,7 +593,7 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
       if (!stats) {
         const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
         if (skip.text(p, pair, oldLines, newLines)) { continue; }
-        const ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
+        const ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
         if (ops.some(o => o.op !== "=")) { changed.push({ name, reason: "changed by the request, not in the review" }); }
         continue;
       }

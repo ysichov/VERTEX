@@ -391,3 +391,19 @@ test("the Expression screen reaches the question as the steps and where they com
   assert.match(section, /expression, tree/);
   assert.match(section, /"steps":\[\{"name"/);
 });
+
+test("an explicit review-block question is not widened by the visible object's full diff", async t => {
+  let prompt = "";
+  t.mock.method(assistant, "ask", async options => { prompt = options.prompt; return { plan: { answer: "Block one" } }; });
+  const ask = chat.create(fakeVscode({ provider: "claude-subscription", model: "haiku" }),
+    { schemas: [], instructions: "", editorContext: () => null },
+    { start: async () => ({ url: "http://127.0.0.1:1/mcp" }), token: "t" });
+  await ask("Explain selected block 1: ONLY_BLOCK_ONE", { state: {
+    review_ask: { object: "RUN", all: false, blocks: [1] },
+    vertex_view: { view: "review_object", name: "K1", review_object: "RUN" },
+    review_source: { object: "RUN", text: "OTHER_BLOCKS_FULL_DIFF" },
+    selected_fragment: { text: "UNRELATED_SELECTION" }
+  } });
+  assert.match(prompt, /ONLY_BLOCK_ONE/);
+  assert.doesNotMatch(prompt, /OTHER_BLOCKS_FULL_DIFF|UNRELATED_SELECTION/);
+});

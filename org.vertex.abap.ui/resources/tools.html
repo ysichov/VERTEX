@@ -109,6 +109,7 @@ let result = null;
 const resultFrames = new Map();
 const findButton = document.getElementById("find-requests"), requestDialog = document.getElementById("request-dialog");
 const chat = document.getElementById("chat"), chatToggle = document.getElementById("chat-toggle");
+const sidebarChat=typeof sdeSidebarChat==="function"&&sdeSidebarChat();
 const backButton=document.getElementById("back");
 function showChat(open){chat.classList.toggle("open",open);chatToggle.classList.toggle("on",open);chatToggle.setAttribute("aria-expanded",String(open));}
 chatToggle.onclick=()=>showChat(!chat.classList.contains("open"));
@@ -534,8 +535,8 @@ function connect(child,service,generation){
     const page=result.contentWindow;
     if(page&&typeof page.sdeContext==="function")state.vertex_view=page.sdeContext();
     // A transport review's object as it is on screen - Full or Compact - not only its name.
-    if(page&&typeof page.sdeReviewSource==="function"){const shown=page.sdeReviewSource();if(shown)state.review_source=shown;}
-    if(!state.selected_fragment&&page&&typeof page.sdeSelection==="function")state.selected_fragment=page.sdeSelection();
+    if(!state.review_ask&&page&&typeof page.sdeReviewSource==="function"){const shown=page.sdeReviewSource();if(shown)state.review_source=shown;}
+    if(!state.review_ask&&!state.selected_fragment&&page&&typeof page.sdeSelection==="function")state.selected_fragment=page.sdeSelection();
     // A selection in a rendered Diff is an intentional, small piece of code
     // context. Keep it separate from the question and cap it, so ordinary
     // selection elsewhere in the window is never silently sent.
@@ -543,14 +544,15 @@ function connect(child,service,generation){
       const selection=page&&page.getSelection&&page.getSelection();
       const text=selection&&String(selection.toString()).trim();
       const node=selection&&selection.anchorNode&&(selection.anchorNode.nodeType===1?selection.anchorNode:selection.anchorNode.parentElement);
-      if(text&&node&&node.closest&&node.closest("table.diff"))state.selected_fragment={text:text.slice(0,12000),view:state.vertex_view||null};
+      if(!state.review_ask&&text&&node&&node.closest&&node.closest("table.diff"))state.selected_fragment={text:text.slice(0,12000),view:state.vertex_view||null};
     }catch(e){/* an unloaded result frame simply has no selection */}
     args[3]=JSON.stringify(state);assistantTarget={child,live};sdeAsk(...args);
   };
   // ASK AI of a review (ChatView.reviewAsk): the chat opens with the blocks on its chip.
-  window.sdeReviewAsk=json=>{const target=document.getElementById("conversation").contentWindow;if(target&&typeof target.sdeReviewAsk==="function"){showChat(true);target.sdeReviewAsk(json);}};
+  if(!sidebarChat)window.sdeReviewAsk=json=>{const target=document.getElementById("conversation").contentWindow;if(target&&typeof target.sdeReviewAsk==="function"){showChat(true);target.sdeReviewAsk(json);}};
   if(service!=="chat")child.sdeAskSelection=(question,fragment,view)=>{
     if(!live())return;
+    if(sidebarChat&&typeof sdeSidebarSelection==="function"){sdeSidebarSelection(question,fragment,view);return;}
     const target=document.getElementById("conversation").contentWindow;
     if(target&&typeof target.sdeAskSelection==="function"){
       showChat(true);
@@ -678,7 +680,9 @@ nameBox.onkeydown=e=>{
 };
 nameBox.onblur=()=>setTimeout(closeMatches,150);
 actionBox.onchange=()=>{if(nameBox.value.trim())run();};
-fields();mountChat();
+fields();
+if(sidebarChat){chat.remove();document.getElementById("chat-split").remove();chatToggle.remove();}
+else mountChat();
 if(current.part)pendingPart=partKey(current.part);
 if(current.name)run();
 </script></body></html>

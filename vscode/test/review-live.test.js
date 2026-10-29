@@ -136,3 +136,21 @@ test("request discovery reads a class once for all named methods and reports pro
   assert.equal(includes, 4, "the four optional includes are checked once per class");
   assert.ok(messages.some(text => /Reading request objects 3 of 3/.test(text)));
 });
+
+test("indentation-only edits create no review object or changed blocks", async () => {
+  const api = {
+    query: async sql => {
+      if (/FROM e070 WHERE trkorr/.test(sql)) return { values: [{ TRKORR: "K1", TRSTATUS: "R" }] };
+      if (/SELECT pgmid, object, obj_name FROM e071/.test(sql)) return { values: [{ PGMID: "R3TR", OBJECT: "PROG", OBJ_NAME: "ZINDENT" }] };
+      return { values: [] };
+    },
+    revisions: async () => [
+      { id: "00002", uri: "/indent/2", transport: "K1", author: "DEV" },
+      { id: "00001", uri: "/indent/1", transport: "K0", author: "DEV" }],
+    revisionSource: async uri => uri.endsWith("2") ? "    CASE kind.  \n      WHEN 'A'.\n    ENDCASE.\n"
+      : "  CASE kind.\n    WHEN 'A'.\n  ENDCASE.\n"
+  };
+  const payload = await build(api, "K1");
+  assert.equal(payload.OBJ_STATS.length, 0);
+  assert.equal(payload.HUNKS.length, 0);
+});

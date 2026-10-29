@@ -676,7 +676,7 @@ let tools = null;
    around each, capped like any fragment. */
 async function withShownDiff(context, state) {
   const view = state && state.vertex_view;
-  if (!view || (state.selected_fragment && state.selected_fragment.text)) { return state; }
+  if (!view || state.review_ask || (state.selected_fragment && state.selected_fragment.text)) { return state; }
   if (view.view === "review" && view.review_summary && view.review_summary.saved && !view.review_summary.partial) {
     const summary = view.review_summary;
     const params = new URLSearchParams({ context: "1", remote: summary.remote || "", from: summary.from || "", saved_at: summary.saved_at || "" });
@@ -1775,7 +1775,7 @@ function activate(context) {
   );
   require("./sidebar").register(vscode, context, active,
     require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext()), systems,
-    () => withShownDiff(context, toolsContextState.current()));
+    extra => withShownDiff(context, extra ? { ...(toolsContextState.current() || {}), ...extra } : toolsContextState.current()));
   require("./log-report").register(vscode, context, { openObject: object => chatTools.execute("open_sap_object", object) });
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation

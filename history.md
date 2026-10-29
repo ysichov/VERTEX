@@ -1,5 +1,21 @@
 # Release history
 
+## 2026-10-29 — One chat in VS Code, expandable question box
+
+In VS Code the VERTEX Tools window no longer has its own chat or Ask AI header button; the chat is only in the VERTEX panel. ASK AI inside a review (block, object, developer or reviewer) opens the panel with the selection on the chip, and the question stays yours to write and send. The question box grows with typed or pasted text, and ⤢ expands it to most of the panel. The Eclipse chat box grows the same way. VS Code 0.9.42 rebuilt.
+
+## 2026-10-29 — Expand all includes source code
+
+Expand all in a saved request review opens all objects’ changed blocks and code on one page, rather than only unfolding object tables. It is available for a single class too. The expanded view retains status/comment filters, AI prompts and Collapse all. Both hosts rebuilt at 0.9.42.
+
+## 2026-10-29 — Review person view and Ask AI scope
+
+Opening a developer or reviewer shows their changed blocks together on one page, grouped by class and object. The toolbar offers All, Approved, Declined, Not processed and Comments only filters, Expand all / Collapse all, and AI prompt diff/full for the filtered view. Object and block actions keep their own source/verdict scope. Ask AI beside a block sends only that block; the object-level button sends its blocks. Selecting a block no longer adds the rest of the diff or merges with another request having the same method name. Both 0.9.42 packages were rebuilt.
+
+## 2026-10-29 — Review ignores indentation-only changes
+
+Review building and its staleness check ignore indentation and trailing whitespace. Reindenting CASE/WHEN/ENDCASE no longer creates changed lines. Text inside literals and actual code changes remain differences. Existing saved reviews retain their original blocks until explicitly rebuilt. Both 0.9.42 packages were rebuilt.
+
 ## 2026-10-29 — Saved review links in request numbers
 
 A request number in the request list is a link when its review is saved in SAP or in the current system/project’s review files. Clicking that number opens the saved review; other row clicks retain their usual navigation. No extra column is added, and listing requests does not build or check reviews. Added selection copying through the VS Code clipboard to the sidebar chat as well as Tools pages. Both hosts rebuilt at 0.9.42.

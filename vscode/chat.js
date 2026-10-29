@@ -193,18 +193,22 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
       const model = options.model || vscode.workspace.getConfiguration("vertex.ai").get("model", "") || await defaultModel(id);
       const config = vscode.workspace.getConfiguration("vertex.ai");
       const log = sessionLog.current(config.get("logPath", ""), id, sessionLog.fromConfig(config));
-      const editor = codeTools.editorContext && codeTools.editorContext();
+      const editor = options.state && options.state.review_ask ? null : codeTools.editorContext && codeTools.editorContext();
       const sapSource = editor && typeof editor.source === "string" && visibleSourceQuestion(prompt)
         ? { system: editor.system_name, object_type: editor.object_type, object_name: editor.object_name,
           include: editor.include, source: editor.source.slice(0, 24000),
           truncated: editor.source.length > 24000, totalCharacters: editor.source.length } : null;
-      const suppliedState = options.state || {};
+      const suppliedState = { ...(options.state || {}) };
+      if (suppliedState.review_ask) {
+        delete suppliedState.review_source;
+        delete suppliedState.selected_fragment;
+      }
       // What is on the screen - selected code, a diff, a UML diagram or a
       // metrics table - comes with the question, so a question about it can
       // be answered from it. It does not take the SAP tools away: which window
       // supplied it is not something the user sees, and with the tools gone
       // the chat could not read, change or debug anything.
-      const focused = !!(local || sapSource || (suppliedState.selected_fragment && suppliedState.selected_fragment.text)
+      const focused = !!(local || sapSource || suppliedState.review_ask || (suppliedState.selected_fragment && suppliedState.selected_fragment.text)
         || (suppliedState.vertex_view && (suppliedState.vertex_view.view === "uml" || suppliedState.vertex_view.view === "navigator"
           || suppliedState.vertex_view.uml || suppliedState.vertex_view.metrics))
         || (editor && editor.selected_fragment)

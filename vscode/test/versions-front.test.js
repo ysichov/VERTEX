@@ -215,3 +215,14 @@ test("a user's requests: owned and held through a task, open by default, newest 
   assert.ok(asked.some(sql => /trstatus IN \( 'D', 'L', 'O', 'R', 'N' \)/.test(sql)));
   await assert.rejects(request(api, "/sap/bc/adt/vertex/requests?user=SY*"), /not a pattern/);
 });
+
+test("review comparison ignores indentation and trailing whitespace but keeps literal and code changes", async () => {
+  const { diff } = require("../versions-front");
+  const ops = await diff(["  CASE kind.", "    WHEN 'A'.", "  ENDCASE."],
+    ["    CASE kind.  ", "      WHEN 'A'.", "    ENDCASE."], "indentation");
+  assert.ok(ops.every(op => op.op === "="));
+  assert.strictEqual(ops[0].text, "    CASE kind.  ", "unchanged lines keep the new source text");
+  const changed = await diff(["  value = 'A B'."], ["    value = 'A  B'."], "indentation");
+  assert.ok(changed.some(op => op.op === "+"));
+  assert.ok(changed.some(op => op.op === "-"));
+});

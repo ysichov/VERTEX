@@ -424,7 +424,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
 
   **A transport's overview.** Review of a request with no saved review shows, under **Build review**, each object it holds: type, object,
   class, the kind of object as ADT names it, who worked on it, in how many tasks, and from the first task to the
-  last - tasks released into the request included. **Stop** cancels a build before saving; a SAP call already in progress may finish. In the request list, request numbers link to reviews saved in SAP or in this system’s review files. **Copy log** copies build diagnostics and skipped-part reasons. Chat receives the open review's objects and saved changed lines, including when the request summary is shown. Select text in Tools or the sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. Code SAP generates is marked as not reviewed, and newly created objects are shown in green and an object deleted since is shown in red, as
+  last - tasks released into the request included. **Stop** cancels a build before saving; a SAP call already in progress may finish. In the request list, request numbers link to reviews saved in SAP or in this system’s review files. Review ignores indentation and trailing-space changes while preserving changes inside literals. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies build diagnostics and skipped-part reasons. Chat receives the open review's objects and saved changed lines, including when the request summary is shown. Select text in Tools or the sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. Code SAP generates is marked as not reviewed, and newly created objects are shown in green and an object deleted since is shown in red, as
   it is under Not reviewed in the review.
 
   **Code review of a transport.** A transport request in Versions shows its review: every part
@@ -754,12 +754,15 @@ no tab yet: it opens as a draft in the **Code Change** reviewer, with the target
 title.
 
 A **VERTEX Tools** window keeps the system that was active when it opened, and its tab is named
-after it — *VERTEX E19*. Everything started from the window, its **Ask AI** chat included, works
-against that system; choosing another system in the panel affects only windows opened later. The
-window's chat uses the panel's provider and model.
+after it — *VERTEX E19*. Everything started from the window works against that system; choosing
+another system in the panel affects only windows opened later. The window has no chat of its own:
+the chat is the one in the VERTEX panel. **ASK AI** inside a review — on a block, an object or a
+developer's or reviewer's blocks — opens that panel with the selection on the chip above the input;
+you write the question and send it yourself.
 
-In both the Activity Bar panel and the Tools chat, **Enter** sends a question and
-**Ctrl+Enter** inserts a new line.
+**Enter** sends a question and **Ctrl+Enter** inserts a new line. The question box grows with
+what you type or paste and then scrolls; **⤢** in its corner expands it to most of the panel, and
+**⤡** shrinks it back.
 
 Ask in any language, for example *show ZCL_TR_TEXT_DATA*, *explain this method*
 or *add a check for an empty table here*. The chat searches and reads SAP

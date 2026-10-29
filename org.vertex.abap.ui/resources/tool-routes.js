@@ -161,7 +161,8 @@ const SERVICES = {
       if (args[7] && String(args[7]).indexOf("B") >= 0) { p += lead + "build=1"; lead = "&"; }
       if (args[7] && String(args[7]).indexOf("G") >= 0) { p += lead + "generated=1"; lead = "&"; }
       // C asks only whether the saved review is still the request's change.
-      if (args[7] && String(args[7]).indexOf("C") >= 0) { p += lead + "check=only"; }
+      if (args[7] && String(args[7]).indexOf("C") >= 0) { p += lead + "check=only"; lead = "&"; }
+      if (args[8]) { p += lead + "person=" + encodeURIComponent(args[8]); }
       return p;
     },
     // request, remote, part, ptype, body - a write goes to the review's own

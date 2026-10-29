@@ -104359,6 +104359,8 @@ const normal = (line, ignore) => ignore ? line.trim().toUpperCase() : line;
 // A host with a comparer of its own passes it as api.diffLines - Eclipse hands the lines to its own Text Compare
 // (RangeDifferencer); otherwise VERTEX's line-diff.js (Myers) computes it.
 async function diff(oldLines, newLines, ignore, api) {
+  // Review ignores indentation/trailing whitespace without hiding changed case or literal contents.
+  if (ignore === "indentation") return __vertexRequire(1546).diffLines(oldLines, newLines, line => line.trim());
   if (api && api.diffLines) { return api.diffLines(oldLines, newLines, Boolean(ignore)); }
   return __vertexRequire(1546).diffLines(oldLines, newLines, ignore ? line => normal(line, true) : undefined);
 }
@@ -105142,7 +105144,7 @@ async function blameOf(api, feed, pair, ops, textOf, ownerOf) {
   if (!pair.old) { prev.forEach(text => map.push(blameEntry(range[0], text))); }
   for (const e of range.slice(1)) {
     const cur = await textOf(e);
-    for (const d of await versions.diff(prev, cur, false, api)) {
+    for (const d of await versions.diff(prev, cur, "indentation", api)) {
       if (d.op === "+") { drop(map, d.text); map.push(blameEntry(e, d.text)); }
       else if (d.op === "-") { drop(deleted, d.text); deleted.push(blameEntry(e, d.text)); drop(map, d.text); }
     }
@@ -105494,7 +105496,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
       log("  TEXT old=" + oldLines.length + " line(s), new=" + newLines.length + " line(s)");
       if (skip.text(p, pair, oldLines, newLines)) { log("SKIP " + label + ": new object of comments only, or an empty class section"); continue; }
-      ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
+      ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
       blame = { map: [], deleted: [] };
       if (withBlame && ops.some(o => o.op !== "=")) {
         progress((at + 1) + " of " + parts.length + ": " + labelOf(p) + " - who wrote which line ...");
@@ -105620,7 +105622,7 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
       if (!stats) {
         const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
         if (skip.text(p, pair, oldLines, newLines)) { continue; }
-        const ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
+        const ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
         if (ops.some(o => o.op !== "=")) { changed.push({ name, reason: "changed by the request, not in the review" }); }
         continue;
       }
@@ -106257,6 +106259,26 @@ async function request(api, resource, progress, io, cancelled) {
     return Object.assign(body, { live, storage: storage(io, stored), copies });
   }
 
+  if (params.has("person")) {
+    if (!payload) throw new Error("No saved review is available for " + trkorr + ".");
+    const selector = params.get("person"), role = selector.slice(0, 2), person = selector.slice(2);
+    if (!["D:", "R:", "A:"].includes(role)) throw new Error("Unknown review person selector.");
+    const summary = summarize(payload);
+    const reviewer = summary.reviewers.find(r => r.reviewer === person);
+    const objects = summary.objects.filter(o => role === "A:" || (role === "D:" ? o.authors.includes(person)
+      : reviewer && reviewer.objects.includes(o.objtype + "~" + o.obj_name)));
+    const reviewerState = list(payload.USER_STATES).find(s => up(s.REVIEWER) === person) || {};
+    const reviewerKeys = new Set(list(reviewerState.APPROVED).concat(list(reviewerState.DECLINED), list(reviewerState.NOTES)).map(h => up(h.HUNK_KEY)));
+    const parts = [];
+    for (const object of objects) {
+      const body = partBody(payload, trkorr, object.obj_name, object.objtype, table);
+      if (body.ddic) await dictionaryDiff(api, body, object.obj_name, object.objtype);
+      body.blocks = body.blocks.filter(b => role === "A:" || (role === "D:" ? (b.author || object.author) === person
+        : b.reviewer === person || b.messages.some(m => m.author === person) || reviewerKeys.has(b.hunk_key)));
+      if (body.blocks.length) parts.push({ object, body });
+    }
+    return { person_view: true, request: trkorr.toLowerCase(), selector, saved_at: up(payload.LAST_SAVED_AT), parts };
+  }
   if (params.get("context") === "1") {
     if (!payload) throw new Error("No saved review is available for " + trkorr + ".");
     if (params.get("saved_at") && params.get("saved_at") !== up(payload.LAST_SAVED_AT))

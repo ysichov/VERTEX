@@ -168,3 +168,20 @@ test("chat reads the displayed saved review as one context request without rebui
   assert.match(context.review_context.text, /\+ x\./);
   await assert.rejects(front.request(api, "/sap/bc/adt/vertex/review/K1?context=1&saved_at=older", undefined, io), /changed since it was shown/);
 });
+
+test("a person's review returns saved blocks in one read and filters developer/reviewer scope", async () => {
+  const { api, io } = system();
+  await front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "S" }), io);
+  api.revisions = async () => { throw new Error("Do not rebuild a person's review"); };
+  const dev = await front.request(api, "/sap/bc/adt/vertex/review/K1?person=D%3ADEV", undefined, io);
+  assert.equal(dev.person_view, true); assert.equal(dev.parts.length, 1);
+  assert.equal(dev.parts[0].object.obj_name, "ZPROG"); assert.ok(dev.parts[0].body.blocks.length);
+  const other = await front.request(api, "/sap/bc/adt/vertex/review/K1?person=D%3AOTHER", undefined, io);
+  assert.equal(other.parts.length, 0);
+  const all = await front.request(api, "/sap/bc/adt/vertex/review/K1?person=A%3A", undefined, io);
+  assert.equal(all.parts.length, 1); assert.equal(all.parts[0].body.blocks.length, dev.parts[0].body.blocks.length);
+  const block = dev.parts[0].body.blocks[0];
+  await front.write(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS", JSON.stringify({ action: "A", hunk_key: block.hunk_key, saved_at: dev.saved_at }), io);
+  const reviewer = await front.request(api, "/sap/bc/adt/vertex/review/K1?person=R%3AREV", undefined, io);
+  assert.equal(reviewer.parts.length, 1); assert.equal(reviewer.parts[0].body.blocks[0].action, "A");
+});

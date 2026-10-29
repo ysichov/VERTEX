@@ -118,13 +118,17 @@ function open(vscode, context, deps, initial) {
   const panel = deps.panel || vscode.window.createWebviewPanel("vertex.tools", initial?.boundObject ? initial.name + " · VERTEX Tools" : system ? "VERTEX " + system : "VERTEX Tools", // Run Select opens SelecTor beside the code it came from.
     initial?.boundObject || initial?.selectorPlan ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
-  const ask = deps.chat();
+  let ask;
+  const legacyChat = () => ask || (ask = deps.chat());
   const bridge = `<script>
     const host = ${deps.panel ? '({postMessage:message=>parent.postMessage({vertexLogicRequest:message},"*")})' : 'acquireVsCodeApi()'}; let pending;
     // The embedded chat may offer the direct Anthropic provider in VS Code.
     // Eclipse hosts the same HTML but deliberately does not define this flag.
     window.sdeAnthropicApi=()=>true;
     window.sdeFrontendAnalysis=()=>true;
+    window.sdeSidebarChat=()=>true;
+    window.sdeReviewAsk=json=>host.postMessage({call:"reviewAsk",args:[json]});
+    window.sdeSidebarSelection=(question,fragment,view)=>host.postMessage({call:"reviewSelection",args:[question,fragment,view]});
     window.sdeCancelWorkspace=lane=>host.postMessage({call:"cancelWorkspace",args:[lane||"main"]});
     window.sdeLocalFolder=clear=>host.postMessage({call:"localFolder",args:[clear===true]});
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
@@ -163,9 +167,9 @@ function open(vscode, context, deps, initial) {
   const postModels = async () => {
     let answer;
     try {
-      const list = await ask.listModels();
+      const list = await legacyChat().listModels();
       answer = { call: "models", assistant: chatWho, models: list.models,
-                 shared: { provider: ask.state().provider, providers: ask.state().providers, model: list.model } };
+                 shared: { provider: legacyChat().state().provider, providers: legacyChat().state().providers, model: list.model } };
     } catch (e) { answer = { call: "models", assistant: chatWho, error: e.message }; }
     await panel.webview.postMessage({ type: "assistant", payload: JSON.stringify(answer) });
   };
@@ -299,15 +303,26 @@ function open(vscode, context, deps, initial) {
           selected_fragment:state.selected_fragment||null,review_source:state.review_source||null});
         return;
       }
+      if(message.call === "reviewAsk") {
+        const selection=JSON.parse(String(args[0]||"{}"));
+        if(!Array.isArray(selection.blocks))throw new Error("Review context has no blocks.");
+        await vscode.commands.executeCommand("vertex.askReviewBlock",{...selection,system});return;
+      }
+      if(message.call === "reviewSelection") {
+        const fragment=args[1]||{},view=args[2]||{};
+        await vscode.commands.executeCommand("vertex.askReviewBlock",{system,request:view.name||"",object:view.review_object||view.part||view.name||"Selection",
+          object_key:view.review_object||view.part||view.name||"",scope:"selection",question:String(args[0]||""),all:true,total:1,
+          blocks:[{block:1,line:fragment.start_line||0,before:[],after:String(fragment.text||"").split("\n"),context_before:[],context_after:[]}]});return;
+      }
       if(message.call === "models") { chatWho=String(args[0]||""); await postModels(); return; }
-      if(message.call === "aiProvider") { await ask.setProvider(args[0]); await postModels(); return; }
-      if(message.call === "aiModel") { await ask.setModel(args[0]); return; }
-      if(message.call === "aiConfig") { ask.configModels(); return; }
+      if(message.call === "aiProvider") { await legacyChat().setProvider(args[0]); await postModels(); return; }
+      if(message.call === "aiModel") { await legacyChat().setModel(args[0]); return; }
+      if(message.call === "aiConfig") { legacyChat().configModels(); return; }
       if(message.call === "ask") {
         // The provider and model are the VERTEX panel's, shared by every window.
         let state = { ...JSON.parse(args[3]||"{}"), system };
         if (deps.enrichContext) state = await deps.enrichContext(state);
-        const result = await ask(args[2], {model:args[1],state});
+        const result = await legacyChat()(args[2], {model:args[1],state});
         await panel.webview.postMessage({type:"assistant",payload:JSON.stringify({call:"ask",
           plan:{answer:result.answer,navigation:result.navigation||null},model:result.model,usage:result.usage,
           direct:result.direct,choices:result.choices||[]})}); return;
