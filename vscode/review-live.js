@@ -177,7 +177,9 @@ const CLASS_PART_TYPES = ["METH", "CPUB", "CPRO", "CPRI", "CINC"];
    with its reason - deleted since, or SAP's own words - [{ object, name, reason }]. */
 async function exists(api, type, name) {
   const sql = type === "FUNC" ? "SELECT funcname FROM tfdir WHERE funcname = " + sqlText(name)
-    : "SELECT obj_name FROM tadir WHERE pgmid = 'R3TR' AND object = " + sqlText(type) + " AND obj_name = " + sqlText(name);
+    // A deleted object keeps its TADIR entry, marked for deletion (DELFLAG X), as AVE's overview reads it.
+    : "SELECT obj_name FROM tadir WHERE pgmid = 'R3TR' AND object = " + sqlText(type) + " AND obj_name = " + sqlText(name)
+      + " AND delflag <> 'X'";
   return (await api.query(sql, 1)).values.length > 0;
 }
 

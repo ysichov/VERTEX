@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-10-29 — Deleted objects: TADIR DELFLAG
+
+ALCK900491 (the ZORK_00 objects, all deleted) listed every object with ADT's own "does not exist": `review-live.js` `exists` found their TADIR rows, which a deletion leaves with DELFLAG X. It now asks for `delflag <> 'X'`; checked on the system, the query answers no row for ZCL_ORK_00_STACK. Review tests pass (29).
+
 ## 2026-10-29 — Partial review while it is built
 
 A review built from ADT showed "Building ..." until every part was read; AVE draws its report as it prepares. `review-live.js` `build` takes `onPart`, called with the payload after each part. `review-front.js` moves the summary into `summarize(payload)` and, for a live summary request with progress, sends `PARTIAL_MARK + JSON` of the summary so far on the progress channel - the one channel both hosts already carry to the page as text (VS Code's `progress` message, Eclipse's `vertexEclipseRequest` callback, both ending in `vertexProgress`). `versions.html` `vertexProgress` draws such a line through `renderReview` while `review_building` names this request and no part is open; the partial view has no Save or Rebuild, and its rows do not open, because the Tools window answers one request at a time and an object's request would wait behind the build. The final answer, or an error, ends `review_building`. Names of authors come only with the final answer. New test for `summarize`; 76 pass, the review-plan test fails as before. Checked in the browser by feeding a partial and then a final summary. Not run against a system.

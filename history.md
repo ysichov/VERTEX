@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-29 — Deleted objects named as deleted in a review
+
+An object of a request that has been deleted since - its TADIR entry kept, marked for deletion - is listed under Not reviewed as "deleted since" instead of the system's "does not exist".
+
 ## 2026-10-29 — A review shows its parts as they are built
 
 Build review and Rebuild from ADT draw the review as it is read: each object joins the summary, with Developers counted so far, as soon as its part is done. An object opens, and the review can be saved, once the whole review is built.
