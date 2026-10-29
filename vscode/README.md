@@ -424,7 +424,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
 
   **A transport's overview.** Review of a request with no saved review shows, under **Build review**, each object it holds: type, object,
   class, the kind of object as ADT names it, who worked on it, in how many tasks, and from the first task to the
-  last - tasks released into the request included. Code SAP generates is marked as not reviewed, and an object deleted since is shown in red, as
+  last - tasks released into the request included. **Stop** cancels a build before saving; a SAP call already in progress may finish. In the request list, request numbers link to reviews saved in SAP or in this system’s review files. **Copy log** copies build diagnostics and skipped-part reasons. Chat receives the open review's objects and saved changed lines, including when the request summary is shown. Select text in Tools or the sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. Code SAP generates is marked as not reviewed, and newly created objects are shown in green and an object deleted since is shown in red, as
   it is under Not reviewed in the review.
 
   **Code review of a transport.** A transport request in Versions shows its review: every part

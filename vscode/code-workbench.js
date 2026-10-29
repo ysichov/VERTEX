@@ -2621,6 +2621,12 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     };
     const file = (trkorr, remote) => path.join(folder(), trkorr + (remote ? '__' + remote : '') + '.json');
     return { mode, wanted, canStore,
+      list: async () => {
+        try { return (await fs.promises.readdir(folder(), { withFileTypes: true }))
+          .filter(entry => entry.isFile() && entry.name.endsWith('.json') && !entry.name.includes('__'))
+          .map(entry => entry.name.slice(0, -5)); }
+        catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+      },
       where: (trkorr, remote) => file(trkorr, remote),
       read: async (trkorr, remote) => { try { return await fs.promises.readFile(file(trkorr, remote), 'utf8'); } catch (error) { if (error.code === 'ENOENT') { return null; } throw error; } },
       write: async (trkorr, remote, text) => { const at = file(trkorr, remote); await fs.promises.mkdir(path.dirname(at), { recursive: true }); await fs.promises.writeFile(at, text, 'utf8'); return at; } };
@@ -2697,11 +2703,11 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     // SelecTor's table and join (the pivot not yet) answered over ADT's data preview; null for what is not theirs.
     tableRequest: async (resource, progress, cancelled) => { const api = (await repository()).api;
       return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource)
-        ?? await require('./versions-front').request(api, resource)
+        ?? await require('./versions-front').request(api, resource, /\/vertex\/requests(?:\?|$)/.test(resource) ? await reviewIo(api) : undefined)
         ?? await require('./review-front').request(api, resource, progress, /\/vertex\/review\//.test(resource) ? await reviewIo(api) : undefined, cancelled); },
     // A reviewer's action or the save of a review built from ADT, answered on this side; null for any other write.
-    tableWrite: async (resource, body, progress) => { const api = (await repository()).api;
-      return require('./review-front').write(api, resource, body, await reviewIo(api), progress); },
+    tableWrite: async (resource, body, progress, cancelled) => { const api = (await repository()).api;
+      return require('./review-front').write(api, resource, body, await reviewIo(api), progress, cancelled); },
     // The sources of a transpiler run of an SAP program: its active version and what it names. An open tab that is not
     // the active version stops it, as the run would not be of the code the reader sees.
     // As SAP runs a program's load, not its text, a run takes what the last build of this object read (sap-cache.js);

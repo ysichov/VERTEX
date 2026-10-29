@@ -114,3 +114,25 @@ test("a LIMU METH entry names its class and method in the long form and in AVE's
   assert.deepStrictEqual(methodOf("ZCL_A\\RUN"), { owner: "ZCL_A", method: "RUN" });
   assert.deepStrictEqual(methodOf("ZCL_A"), { owner: "ZCL_A", method: "" });
 });
+
+test("request discovery reads a class once for all named methods and reports progress", async () => {
+  let structures = 0, includes = 0;
+  const messages = [];
+  const name = "ZCL_DISCOVERY";
+  const api = {
+    query: async sql => {
+      if (/FROM e070 WHERE trkorr/.test(sql)) return { values: [{ TRKORR: "K1", TRSTATUS: "D" }] };
+      if (/SELECT pgmid, object, obj_name FROM e071/.test(sql)) return { values: ["ONE", "TWO", "ONE"].map(method =>
+        ({ PGMID: "LIMU", OBJECT: "METH", OBJ_NAME: name.padEnd(30, " ") + method })) };
+      return { values: [] };
+    },
+    classComponents: async () => { structures++; return { components: ["ONE", "TWO"].map(method =>
+      ({ "adtcore:type": "CLAS/OM", "adtcore:name": method, visibility: "public" })) }; },
+    currentSource: async () => { includes++; return ""; },
+    revisions: async () => []
+  };
+  await build(api, "K1", text => messages.push(text));
+  assert.equal(structures, 1);
+  assert.equal(includes, 4, "the four optional includes are checked once per class");
+  assert.ok(messages.some(text => /Reading request objects 3 of 3/.test(text)));
+});

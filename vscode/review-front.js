@@ -300,15 +300,22 @@ async function request(api, resource, progress, io, cancelled) {
     return Object.assign(body, { live, storage: storage(io, stored), copies });
   }
 
+  if (params.get("context") === "1") {
+    if (!payload) throw new Error("No saved review is available for " + trkorr + ".");
+    if (params.get("saved_at") && params.get("saved_at") !== up(payload.LAST_SAVED_AT))
+      throw new Error("The saved review changed since it was shown. Read it again before asking about it.");
+    return { review_context: require("./review-chat-context").format(payload, summarize(payload)) };
+  }
   const { objects, reviewers, history, developers } = summarize(payload);
   return { request: trkorr.toLowerCase(), remote: remote.toLowerCase(), table, saved: Boolean(payload), live,
     can_build: !payload && !remote,
     saved_at: payload ? up(payload.LAST_SAVED_AT) : "", saved_by: payload ? up(payload.LAST_SAVED_BY) : "", objects, reviewers, history,
     developers,
     // Objects the request names that the system no longer has, found while building it from ADT.
-    missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
+    missing: payload ? list(payload.MISSING || (payload.VERTEX_BUILD || {}).MISSING) : [],
     // AVE's Code Review diagnostics: the build's own when built now, else this session's last build of the request.
-    build_log: payload && Array.isArray(payload.DIAG) ? payload.DIAG : require("./review-live").lastLog(trkorr),
+    build_log: payload && Array.isArray(payload.DIAG) ? payload.DIAG
+      : payload && payload.VERTEX_BUILD ? list(payload.VERTEX_BUILD.LOG) : require("./review-live").lastLog(trkorr),
     storage: storage(io, stored), copies, stale, overview, overview_kinds_error: overview && overview.kinds_error || "" };
 }
 
@@ -317,7 +324,21 @@ async function request(api, resource, progress, io, cancelled) {
 // again - its verdicts and comments go with the old blocks. The body is the page's command: hunk_key, action, note and
 // saved_at, the stamp the page read. The answer is what a read would answer now: the part, or the summary.
 // PROGRESS, when given, hears what a save or a rebuild that builds the review is doing, and the review so far.
-async function write(api, resource, body, io, progress) {
+async function write(api, resource, body, io, progress, cancelled) {
+  let committing = false;
+  const checkStopped = () => { if (!committing && cancelled && cancelled()) throw new Error("Review build stopped; nothing was saved."); };
+  // Stop before the next SAP/file operation, including before committing the built review.
+  if (cancelled) api = new Proxy(api, { get(target, key) {
+    const value = target[key];
+    return typeof value === "function" ? async (...args) => {
+      checkStopped();
+      const result = await value.apply(target, args);
+      checkStopped();
+      return result;
+    } : value;
+  } });
+  checkStopped();
+  if (progress) progress("Preparing review: checking the saved copy and storage ...");
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
   const match = /^\/sap\/bc\/adt\/vertex\/review\/([^/]+)$/.exec(url.pathname);
   if (!match) { return null; }
@@ -343,13 +364,14 @@ async function write(api, resource, body, io, progress) {
     + " WHERE u~bname = " + sqlText(user), 1)).values[0];
   const who = { user, name: nameRow ? up(nameRow.NAME_TEXT) : user };
 
-  let existing, current;
+  let existing, current, built;
   if (action === "S") {
     if (stored) { throw new Error("A review of " + trkorr + " is already saved (" + stored.from + "). Read it again."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
     existing = {};
-    current = state.applySaved(await require("./review-live").build(api, trkorr, progress, false, params.get("blame") === "1",
-      params.get("generated") === "1", partialTo(progress, trkorr)), who.user);
+    built = await require("./review-live").build(api, trkorr, progress, false, params.get("blame") === "1",
+      params.get("generated") === "1", partialTo(progress, trkorr));
+    current = state.applySaved(built, who.user);
   } else if (action === "R") {
     if (!stored) { throw new Error("No review is saved for " + trkorr + "; there is nothing to rebuild."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
@@ -360,8 +382,9 @@ async function write(api, resource, body, io, progress) {
     // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
     existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
     const live = require("./review-live");
-    current = state.applySaved(live.carryUnread(await live.build(api, trkorr, progress, true, params.get("blame") === "1",
-      params.get("generated") === "1", partialTo(progress, trkorr)), old), who.user);
+    built = await live.build(api, trkorr, progress, true, params.get("blame") === "1",
+      params.get("generated") === "1", partialTo(progress, trkorr));
+    current = state.applySaved(live.carryUnread(built, old), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
     existing = state.parseForWrite(stored.text);
@@ -376,6 +399,8 @@ async function write(api, resource, body, io, progress) {
     state.applyAction(current, key, action, hunk, note, who);
   }
   const next = state.buildSave(existing, trkorr, current, who);
+  // AVE ignores this optional diagnostic field; retaining it keeps unread parts visible after saving/reopening.
+  if (built) next.VERTEX_BUILD = { MISSING: list(built.MISSING), LOG: list(built.DIAG) };
   const text = state.stringify(next);
   const expect = stored ? state.plain(existing.LAST_SAVED_AT) : "";
 
@@ -385,6 +410,9 @@ async function write(api, resource, body, io, progress) {
   const target = stored ? stored.from : "";
   const toTable = target ? target === "table" && (!io || io.canStore) : !io || io.mode !== "file";
   const toFile = Boolean(io) && (target ? target === "file" || !toTable || io.mode === "both" : io.mode !== "table");
+  checkStopped();
+  committing = true;
+  if (progress) progress("VERTEX-REVIEW-SAVING");
   if (toTable) {
     if (!table) { throw new Error("This system has no ZAVE_REVIEW table with REMOTE and PAYLOAD; the review cannot be saved there."); }
     await api.storeReview(trkorr, remote, target === "table" || !target ? expect : "", text);

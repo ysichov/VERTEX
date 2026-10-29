@@ -296,7 +296,7 @@ function open(vscode, context, deps, initial) {
         if(initial?.boundObject&&state.workspace?.name)panel.title=state.workspace.name+" · VERTEX Tools";
         reported=true;
         deps.setContext(panel, {system,workspace:state.workspace||initial||null,vertex_view:state.vertex_view||null,
-          selected_fragment:state.selected_fragment||null});
+          selected_fragment:state.selected_fragment||null,review_source:state.review_source||null});
         return;
       }
       if(message.call === "models") { chatWho=String(args[0]||""); await postModels(); return; }
@@ -305,7 +305,9 @@ function open(vscode, context, deps, initial) {
       if(message.call === "aiConfig") { ask.configModels(); return; }
       if(message.call === "ask") {
         // The provider and model are the VERTEX panel's, shared by every window.
-        const result = await ask(args[2], {model:args[1],state:JSON.parse(args[3]||"{}")});
+        let state = { ...JSON.parse(args[3]||"{}"), system };
+        if (deps.enrichContext) state = await deps.enrichContext(state);
+        const result = await ask(args[2], {model:args[1],state});
         await panel.webview.postMessage({type:"assistant",payload:JSON.stringify({call:"ask",
           plan:{answer:result.answer,navigation:result.navigation||null},model:result.model,usage:result.usage,
           direct:result.direct,choices:result.choices||[]})}); return;

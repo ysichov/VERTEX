@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.41",
+  "version": "0.9.42",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -437,13 +437,21 @@
         },
         "vertex.ai.claudeSource": {
           "type": "string",
-          "enum": ["ask", "extension", "cli"],
+          "enum": [
+            "ask",
+            "extension",
+            "cli"
+          ],
           "default": "ask",
           "markdownDescription": "Claude Code installation used by VERTEX. `ask` prompts once when both the VS Code extension and standalone CLI are available. Change this setting to switch installations."
         },
         "vertex.ai.codexSource": {
           "type": "string",
-          "enum": ["ask", "extension", "cli"],
+          "enum": [
+            "ask",
+            "extension",
+            "cli"
+          ],
           "default": "ask",
           "markdownDescription": "Codex installation used by VERTEX. `ask` prompts once when both the VS Code extension and a CLI are available, including the CLI inside ChatGPT.app on macOS. Change this setting to switch installations."
         },

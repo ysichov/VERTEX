@@ -70,6 +70,8 @@ test("a review built from ADT is saved to a file, then approved there", async ()
   assert.match(text, /"LAST_SAVED_AT":\d{14}\.\d{7}[,}]/, "the stamp is written as a number");
   const part = await front.request(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS", undefined, io);
   const key = part.blocks[0].hunk_key;
+  // The concurrency check needs a later write stamp than the one read above.
+  await new Promise(resolve => setTimeout(resolve, 2));
   const after = await front.write(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS",
     JSON.stringify({ hunk_key: key, action: "A", saved_at: part.saved_at }), io);
   assert.strictEqual(after.blocks[0].action, "A");
@@ -83,6 +85,7 @@ test("a saved review rebuilt from ADT holds the request as it is now, without th
   const { api, io, files } = system();
   await front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "S" }), io);
   const part = await front.request(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS", undefined, io);
+  await new Promise(resolve => setTimeout(resolve, 2));
   const approved = await front.write(api, "/sap/bc/adt/vertex/review/K1?part=ZPROG&ptype=REPS",
     JSON.stringify({ hunk_key: part.blocks[0].hunk_key, action: "A", saved_at: part.saved_at }), io);
   await assert.rejects(front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "R", saved_at: part.saved_at }), io),
@@ -125,4 +128,43 @@ test("a review kept in the table and in a file: both copies are named, either is
   assert.strictEqual(stored.length, 1);
   assert.strictEqual(files.get("K1"), before);
   await assert.rejects(front.request(api, "/sap/bc/adt/vertex/review/K2?from=file", undefined, io), /No copy/);
+});
+
+test("stopping a build after a SAP request prevents saving to table or file", async () => {
+  const { api, io, files, stored } = system();
+  const query = api.query;
+  let stopped = false;
+  api.query = async (...args) => {
+    const result = await query(...args);
+    if (/FROM e070 WHERE trkorr/.test(args[0])) stopped = true;
+    return result;
+  };
+  await assert.rejects(front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "S" }), io,
+    undefined, () => stopped), /Review build stopped/);
+  assert.equal(files.size, 0);
+  assert.equal(stored.length, 0);
+});
+
+test("unread parts and build diagnostics survive saving and reopening a review", async () => {
+  const { api, io } = system();
+  api.revisions = async () => { throw new Error("Version feed unavailable"); };
+  const first = await front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "S" }), io);
+  assert.equal(first.objects.length, 0);
+  assert.equal(first.missing.length, 1);
+  assert.match(first.missing[0].reason, /Version feed unavailable/);
+  const reopened = await front.request(api, "/sap/bc/adt/vertex/review/K1", undefined, io);
+  assert.deepEqual(reopened.missing, first.missing);
+  assert.deepEqual(reopened.build_log, first.build_log);
+  assert.ok(reopened.build_log.some(line => /SKIP.*Version feed unavailable/.test(line)));
+});
+
+test("chat reads the displayed saved review as one context request without rebuilding", async () => {
+  const { api, io } = system();
+  const saved = await front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "S" }), io);
+  api.revisions = async () => { throw new Error("Chat must not rebuild or read version feeds"); };
+  const context = await front.request(api, "/sap/bc/adt/vertex/review/K1?context=1&saved_at=" + encodeURIComponent(saved.saved_at), undefined, io);
+  assert.equal(context.review_context.object_count, 1);
+  assert.match(context.review_context.text, /ZPROG/);
+  assert.match(context.review_context.text, /\+ x\./);
+  await assert.rejects(front.request(api, "/sap/bc/adt/vertex/review/K1?context=1&saved_at=older", undefined, io), /changed since it was shown/);
 });

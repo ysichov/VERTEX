@@ -72,3 +72,17 @@ test("direct search answer links both the program and its package", () => {
     { action: "openObject", object_type: "DEVC", object_name: "Z_RIG" }
   ]);
 });
+
+test("sidebar selection uses the VS Code clipboard for macOS Copy", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../sidebar.js"), "utf8");
+  const sent = [], handlers = {};
+  const context = vm.createContext({ api: { postMessage: value => sent.push(value) }, window: { getSelection: () => "Selected answer" },
+    document: { activeElement: null, addEventListener: (name, fn) => { handlers[name] = fn; } } });
+  vm.runInContext(source.slice(source.indexOf("let lastCopy = null;"), source.indexOf("const progressItems")), context);
+  let prevented = false;
+  handlers.keydown({ key: "c", metaKey: true, preventDefault() { prevented = true; }, stopPropagation() {} });
+  assert.ok(prevented);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].action, "copyAnswer");
+  assert.equal(sent[0].text, "Selected answer");
+});

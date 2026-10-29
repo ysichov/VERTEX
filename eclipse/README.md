@@ -92,7 +92,7 @@ code.
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - each part appears as soon as
 it is read, the status line says which, and a changed line shows what changed inside it. Before it is built, Review
 lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's report does - with objects deleted
-since in red. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
+since in red; newly created objects are green. In the request list, request numbers link to reviews saved in SAP or in this project’s review files. **Copy log** copies the build diagnostics, including reasons for skipped parts. Selected text in Tools pages can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
 gave no block. Data elements, domains and tables ADT keeps no versions of are read through VERTEX's ABAP; without it
 they say so. The **Blame** toggle beside Versions | Review, off by default,
 names the developer who wrote each changed line: the versions between the pair are replayed (one
@@ -169,9 +169,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.41.qualifier`; the checked-in update site carries build `0.9.31.20261024182823`.
+then regenerate. The feature and bundle sources are at `0.9.42.qualifier`; the checked-in update site carries build `0.9.42.20261029223152`.
 
-The local install archive is version `0.9.41.20261029210726`. Install its ZIP through
+The local install archive is version `0.9.42.20261029223152`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

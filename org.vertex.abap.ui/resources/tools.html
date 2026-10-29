@@ -427,10 +427,30 @@ new MutationObserver(records=>{
   if(!records.some(record=>record.target===document.body||record.target===document.documentElement))return;
   document.querySelectorAll("iframe").forEach(frame=>{if(frame.contentDocument)syncTheme(frame.contentWindow);});
 }).observe(document.documentElement,{attributes:true,subtree:true,attributeFilter:["class","style"]});
+function wireClipboard(child) {
+  const selectedText=()=>{
+    const field=child.document.activeElement;
+    if(field&&typeof field.selectionStart==="number"&&field.selectionEnd>field.selectionStart)
+      return String(field.value).slice(field.selectionStart,field.selectionEnd);
+    return String(child.getSelection ? child.getSelection() || "" : "");
+  };
+  const copy=event=>{
+    const text=selectedText();
+    if(!text||typeof child.sdeCopyText!=="function")return;
+    event.preventDefault();
+    event.stopPropagation();
+    child.sdeCopyText(text);
+  };
+  child.addEventListener("keydown",event=>{
+    if((event.metaKey||event.ctrlKey)&&!event.altKey&&!event.shiftKey&&String(event.key).toLowerCase()==="c")copy(event);
+  });
+  child.document.addEventListener("copy",copy);
+}
 function connect(child,service,generation){
   syncTheme(child);
   // The host sees the keys of this document only: a shortcut pressed in a page - Ctrl+Shift+P, F1 - is passed up.
   child.addEventListener("keydown",e=>{
+    if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&/^[acvxyz]$/i.test(e.key))return;
     if(!(e.ctrlKey||e.altKey||e.metaKey||/^F\d+$/.test(e.key)))return;
     window.dispatchEvent(new KeyboardEvent("keydown",{key:e.key,code:e.code,keyCode:e.keyCode,which:e.which,ctrlKey:e.ctrlKey,shiftKey:e.shiftKey,altKey:e.altKey,metaKey:e.metaKey,repeat:e.repeat,bubbles:true}));
   });
@@ -466,6 +486,7 @@ function connect(child,service,generation){
   if(service!=="chat"&&typeof sdeOpenToolSource==="function")child.sdeOpenReviewSource=value=>sdeOpenToolSource(JSON.stringify(value));
   if(service!=="chat")child.sdeReviewAsk=json=>{if(live()&&typeof window.sdeReviewAsk==="function")window.sdeReviewAsk(json);};
   ["sdeCopyText","sdeOpenObject","sdeOpenLogs"].forEach(name=>{if(typeof window[name]==="function")child[name]=(...args)=>window[name](...args);});
+  wireClipboard(child);
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});
   child.sdeProject=()=>enqueue({path:"project"},reply,live);
   // In Eclipse the services read over ADT in this window are always there, whatever VERTEX's ABAP on the system
@@ -493,6 +514,11 @@ function connect(child,service,generation){
       });
     };
   });
+  if(typeof sdeCancelWorkspace==="function")child.sdeStopReview=()=>{
+    const lane=lanes.review;
+    lane.queue=lane.queue.filter(item=>item.live!==live);
+    if(lane.active&&lane.active.live===live){lane.active.superseded=true;cancelLane("review");}
+  };
   child.sdeModels=(...args)=>{assistantTarget={child,live};sdeModels(...args);};
   // VS Code shares the VERTEX panel's provider and model; Eclipse has neither.
   ["sdeAiProvider","sdeAiModel","sdeAiConfig"].forEach(name=>{

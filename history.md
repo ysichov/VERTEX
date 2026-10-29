@@ -1,5 +1,25 @@
 # Release history
 
+## 2026-10-29 — Saved review links in request numbers
+
+A request number in the request list is a link when its review is saved in SAP or in the current system/project’s review files. Clicking that number opens the saved review; other row clicks retain their usual navigation. No extra column is added, and listing requests does not build or check reviews. Added selection copying through the VS Code clipboard to the sidebar chat as well as Tools pages. Both hosts rebuilt at 0.9.42.
+
+## 2026-10-29 — Review context in chat and copying from Tools
+
+In VS Code, a question about the open request review receives its object list and the saved changed lines from all reviewed objects, including from the summary screen. Reading this context does not rebuild the review; large diffs are capped with explicit truncation markers. Text selected in Tools pages is copied through the host clipboard with ⌘C/Ctrl+C or Copy; editing shortcuts remain in the selected frame. Removed the introductory Z_CALC hint from the Tools assistant. Rebuilt both hosts at 0.9.42.
+
+## 2026-10-29 — Review build controls and diagnostics
+
+Build review builds and saves in one operation. In VS Code, Stop cancels the build before saving, allowing an in-flight SAP read to finish. Initial discovery reports each object and reuses a class layout across its methods. New objects use green text with the normal table background. Copy log copies the complete diagnostics; unread-part reasons and the build log survive saving and reopening. Empty results explicitly point to skipped-part reasons.
+
+## 2026-10-29 — New objects in the review
+
+Newly created objects in the review are highlighted in green, including their names, as in AVE. The highlight follows the active editor theme and remains visible on hover and while the review is being built.
+
+## 2026-10-29 — VERTEX 0.9.42
+
+Packaged the current sources as VS Code 0.9.42 and Eclipse `0.9.42.20261029215630`. The Eclipse update site in `docs/` and its installable ZIP carry the same build. Both archives passed packaging validation. The combined test run passed 1029 tests, failed eight and skipped one; this release does not have a clean full-suite result.
+
 ## 2026-10-29 — Dictionary objects of AVE's reviews shown as a diff
 
 A data element, domain or table in a review AVE prepared is shown as a line diff with its block, verdicts and comments, read again through VERTEX's ABAP, instead of "VERTEX does not render that page yet". Without VERTEX's ABAP on the system the page says that it is needed.

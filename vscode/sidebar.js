@@ -255,6 +255,20 @@ document.getElementById('prompt').addEventListener('keydown', event => {
   }
 });
 let lastCopy = null;
+function copySelectedText(event) {
+  const field = document.activeElement;
+  const text = field && typeof field.selectionStart === 'number' && field.selectionEnd > field.selectionStart
+    ? String(field.value).slice(field.selectionStart, field.selectionEnd)
+    : String(window.getSelection ? window.getSelection() || '' : '');
+  if (!text) return;
+  event.preventDefault(); event.stopPropagation();
+  lastCopy = null;
+  api.postMessage({ action: 'copyAnswer', text });
+}
+document.addEventListener('copy', copySelectedText);
+document.addEventListener('keydown', event => {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') copySelectedText(event);
+});
 const progressItems = new Map();
 window.addEventListener('message', event => {
   if (event.data && typeof event.data.copied === 'boolean' && lastCopy) {

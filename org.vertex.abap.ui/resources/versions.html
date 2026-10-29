@@ -255,7 +255,12 @@
   .review .caret { display: inline-block; width: 1.1em; color: var(--vscode-focusBorder, #3498db); cursor: pointer; }
   .review .grpcnt { color: var(--muted); font-weight: normal; }
   .review .lnk { color: var(--vscode-textLink-foreground, #3498db); cursor: pointer; text-decoration: underline; }
+  a.request-review-link { color: var(--vscode-textLink-foreground, var(--fg)); text-decoration: underline; cursor: pointer; }
   .review a.objlink { color: var(--vscode-textLink-foreground, #3498db); cursor: pointer; text-decoration: underline; }
+  .review table.ave tr.created td,
+  .review table.ave tr.created a.objlink {
+    color: var(--vscode-gitDecoration-addedResourceForeground, var(--ins-mark));
+  }
 
   /* The band that starts a group. The colour sits on the cell, because the row
      underneath it is striped and hovered like any other. */
@@ -430,6 +435,7 @@
       <button id="find">Find</button>
     </span>
     <button id="assist" title="Say what to open, and let an assistant find it">Assistant</button>
+    <button id="review-stop" type="button" hidden>Stop</button>
     <span class="status" id="status"></span>
   </div>
   <div class="missing" id="missing" hidden></div>
@@ -527,12 +533,35 @@ function placePanels() {
    drawn instead, while that build is the one this page asked for. */
 var PARTIAL_MARK = "VERTEX-REVIEW-PARTIAL ";
 var review_building = "";
-// The request whose review the page asked to build: once built, it is saved where vertex.review.storage says.
-var review_autosave = "";
 // The request whose review was just built and saved: it is the request as it is now, and needs no check.
 var review_fresh = "";
+function reviewStopControl() {
+  var button = document.getElementById("review-stop");
+  button.hidden = !review_building || typeof sdeStopReview !== "function";
+}
+function stopReviewBuild() {
+  if (!review_building || typeof sdeStopReview !== "function") { return; }
+  sdeStopReview();
+  review_building = "";
+  review_fresh = "";
+  review = null;
+  review_part = null;
+  reviewStopControl();
+  note("Review build stopped. A SAP request already in progress may still finish.");
+  status("Stopped");
+  var read = document.createElement("button");
+  read.textContent = "Read review";
+  read.onclick = loadReview;
+  document.getElementById("root").appendChild(read);
+}
 function vertexProgress(text) {
   text = String(text);
+  if (text === "VERTEX-REVIEW-SAVING") {
+    review_building = "";
+    reviewStopControl();
+    status("Saving review ...");
+    return;
+  }
   if (text.indexOf(PARTIAL_MARK) === 0) {
     var data;
     try { data = JSON.parse(text.slice(PARTIAL_MARK.length)); } catch (e) { return; }
@@ -653,13 +682,15 @@ function loadReview() {
 }
 
 /* Build the review from ADT, as the button asks: opening a review only reads a saved one. */
-function buildReview(fresh) {
+function buildReview() {
   review_part = null;
   review_building = objectName().toLowerCase();
-  review_autosave = review_building;
+  review_fresh = review_building;
+  reviewStopControl();
   status("building the review of " + objectName() + " ...");
   note("Building ...");
-  sdeReview(objectName(), "", "", "", fresh ? "1" : "", review_blame ? "1" : "", review_from, reviewFlags(true));
+  sdeAct(objectName(), "", "", "", JSON.stringify({ action: "S", saved_at: "" }), review_blame ? "1" : "", review_from,
+    reviewFlags(false));
 }
 
 /* The build options, as checkboxes beside the button that builds. */
@@ -874,7 +905,7 @@ function sdeReady() {
     stopPlan();
     // A build that failed draws nothing more of itself, and saves nothing.
     review_building = "";
-    review_autosave = "";
+    reviewStopControl();
     // The host marks the one failure that can be a setup state.
     if (said.indexOf("NOBACKEND:") === 0) { notFound(said.substring(10)); }
     else { message(said); }
@@ -902,7 +933,7 @@ function sdeReady() {
   else { showing = { view: "versions" }; renderVersions(data); }
   // The window tells its host where it is now, so a chat outside it - the
   // VERTEX panel's - knows which part and which versions are on screen.
-  if (typeof sdeContextUpdate === "function") { sdeContextUpdate({ vertex_view: sdeContext() }); }
+  if (typeof sdeContextUpdate === "function") { sdeContextUpdate({ vertex_view: sdeContext(), review_source: sdeReviewSource() }); }
   // A plan from the assistant goes on from here, when this was the step it
   // was waiting for.
   if (pending) { continuePlan(data); }
@@ -1170,12 +1201,26 @@ function renderRequests(data) {
   var root = document.getElementById("root");
   root.className = "";
   root.innerHTML = "";
+  if (data.review_status_error) root.appendChild(heading("Some review links could not be checked: " + data.review_status_error));
   root.appendChild(table(["Request", "Description", "Owner", "Name", "Type", "Status", "Date", "Time"],
     rows, function (tr, r) {
       tr.className = "pick";
       tr.title = "Open " + r.request;
       tr.addEventListener("click", function () { openRequest(r.request); });
-      cell(tr, r.request, "mono");
+      var reviewCell = document.createElement("td");
+      reviewCell.className = "mono";
+      if (r.review_saved) {
+        var link = document.createElement("a");
+        link.className = "request-review-link";
+        link.href = "#";
+        link.textContent = r.request;
+        link.title = "Open saved review in " + (r.review_sources || []).join(" and ");
+        link.addEventListener("click", function (event) {
+          event.preventDefault(); event.stopPropagation(); openRequest(r.request, true);
+        });
+        reviewCell.appendChild(link);
+      } else { reviewCell.textContent = r.request; }
+      tr.appendChild(reviewCell);
       cell(tr, r.text);
       cell(tr, r.owner, "mono");
       cell(tr, r.owner_name);
@@ -1188,18 +1233,19 @@ function renderRequests(data) {
 }
 
 /* A request picked from the list opens exactly as its typed number would. */
-function openRequest(number) {
+function openRequest(number, openReview) {
   // The unified Tools window owns the object selector in its header. Let it
   // take the selection too, so the request that was picked is visible there.
   if (typeof sdeSelectObject === "function") {
     // Opening a found request is a Versions operation. Review is explicitly
     // chosen afterwards; it must not be requested merely by selecting a row.
-    sdeSelectObject({ type: "TR", name: number, action: "diff" });
+    sdeSelectObject({ type: "TR", name: number, action: openReview ? "review" : "diff" });
     return;
   }
   document.getElementById("type").value = "TR";
   document.getElementById("name").value = number;
-  loadParts(false);
+  if (openReview) { mode = "R"; renderCards(); loadReview(); }
+  else { loadParts(false); }
 }
 
 /* ---------- versions ---------- */
@@ -2154,8 +2200,23 @@ function storageLine(storage) {
 }
 
 function renderReview(data) {
+  try {
+    showing = { view: "review" };
+    renderReviewData(data);
+    if (typeof sdeContextUpdate === "function" && !data.partial)
+      sdeContextUpdate({ vertex_view: sdeContext(), review_source: null });
+  }
+  catch (error) {
+    review_building = "";
+    reviewStopControl();
+    message("Could not display the review: " + String(error && error.message || error));
+    status("Review display failed");
+  }
+}
+function renderReviewData(data) {
   // The finished review ends the build; a part of it drawn on the way does not.
   if (!data.partial) { review_building = ""; }
+  reviewStopControl();
   review = data;
   review_part = null;
   review_saved_at = data.saved_at || "";
@@ -2189,14 +2250,11 @@ function renderReview(data) {
           reviewFlags(false));
       };
       root.appendChild(save);
-      // A review built at the page's asking is saved at once, as Save would; one read for the assistant or left from
-      // before is not. A save that fails says so and leaves Save to try again.
-      if (review_autosave && review_autosave === data.request) { review_autosave = ""; review_fresh = data.request; save.onclick(); }
     }
     // Nothing keeps a live review, so reading it again builds it from the request as it is now.
     var rebuild = document.createElement("button");
     rebuild.textContent = "Rebuild from ADT";
-    rebuild.onclick = function () { rebuild.disabled = true; buildReview(true); };
+    rebuild.onclick = function () { rebuild.disabled = true; buildReview(); };
     root.appendChild(rebuild);
     root.appendChild(buildOptions());
     root.appendChild(section("Developers", developerTable(data.objects || [], data.developers)));
@@ -2212,7 +2270,7 @@ function renderReview(data) {
     root.appendChild(heading("No review is saved for " + data.request.toUpperCase()));
     var build = document.createElement("button");
     build.textContent = "Build review";
-    build.onclick = function () { build.disabled = true; buildReview(false); };
+    build.onclick = function () { build.disabled = true; buildReview(); };
     root.appendChild(build);
     root.appendChild(buildOptions());
     if (data.overview && data.overview.length) {
@@ -2238,6 +2296,11 @@ function renderReview(data) {
     return;
   }
 
+  if (!(data.objects || []).length) {
+    var empty = document.createElement("p");
+    empty.textContent = "No changed objects are included in this review. See Not reviewed and the Build log for skipped parts and their reasons.";
+    root.appendChild(empty);
+  }
   var two = copiesBlock(data);
   if (two) { root.appendChild(two); }
   root.appendChild(heading("Saved " + asStamp(data.saved_at) + " by " + data.saved_by));
@@ -2366,6 +2429,7 @@ function rebuildBlock() {
     review_part = null;
     review_building = objectName().toLowerCase();
     review_fresh = review_building;
+    reviewStopControl();
     sdeAct(objectName(), "", "", "", JSON.stringify({ action: "R", saved_at: review_saved_at }), review_blame ? "1" : "", review_from,
       reviewFlags(false));
   };
@@ -2403,6 +2467,10 @@ function buildLog(lines) {
   var head = document.createElement("summary");
   head.textContent = "Build log (" + lines.length + " lines)";
   box.appendChild(head);
+  var copy = document.createElement("button");
+  copy.textContent = "Copy log";
+  copy.addEventListener("click", function () { copyText(lines.join("\n"), copy); });
+  box.appendChild(copy);
   var pre = document.createElement("pre");
   pre.className = "build-log";
   pre.textContent = lines.join("\n");
@@ -2597,6 +2665,7 @@ function objectGroups(objects) {
           tr.title = "Show the changed blocks of " + (o.display_name || o.obj_name);
           tr.addEventListener("click", function () { loadReviewPart(o); });
         }
+        if (o.is_created) { tr.classList.add("created"); }
         cell(tr, o.kind || o.objtype, "mono");
         var td = document.createElement("td"); var a = document.createElement("a"); a.className = "objlink";
         a.textContent = o.display_name || o.obj_name; td.appendChild(a); tr.appendChild(td);
@@ -3142,7 +3211,13 @@ function pageState() {
     // pinned base or the active version. Empty is the oldest, against nothing.
     compared_with: showing.view === "diff" ? showing.from : "",
     review_object: review_part ? review_part.obj_name : "",
-    review_type: review_part ? review_part.objtype : ""
+    review_type: review_part ? review_part.objtype : "",
+    review_summary: showing.view === "review" && review ? {
+      request: review.request, remote: review.remote || "", saved_at: review.saved_at || "",
+      saved: review.saved === true, partial: review.partial === true,
+      from: review.storage ? review.storage.from : "", objects: review.objects || [],
+      missing: review.missing || []
+    } : null
   };
 }
 
@@ -3465,6 +3540,7 @@ document.getElementById("model").addEventListener("change", function (e) {
 document.getElementById("root").addEventListener("contextmenu", function (event) {
   if (selectedDiffText()) { event.preventDefault(); askSelection(); }
 });
+document.getElementById("review-stop").addEventListener("click", stopReviewBuild);
 document.getElementById("selection-cancel").addEventListener("click", function () { document.getElementById("selection-ask").close(); });
 document.getElementById("selection-question").addEventListener("keydown", function (event) {
   // A placeholder is intentionally not submitted text. Tab accepts the

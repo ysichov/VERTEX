@@ -77,7 +77,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.31.20261024182823**; the VS Code extension is **0.9.41**.
+**0.9.42.20261029223152**; the VS Code extension is **0.9.42**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,
@@ -372,7 +372,7 @@ Building a review is here too, not only reading one. In VS Code a request with n
 built from ADT with **Build review** - opening only reads a saved one - every part it changed except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections and generator stamp lines) unless **Ignore SAP generated** is cleared, with the **Blame** toggle each changed line with the developer who wrote it, the pair of versions chosen by AVE's rule,
 diffed and cut into blocks by AVE's walk - each part appears as soon as it is read, and a changed line shows what changed
 inside it. Before it is built, Review lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's
-report does - with objects deleted since in red. **Rebuild from ADT** builds it again from
+report does - with newly created objects in green and objects deleted since in red. In VS Code, **Stop** cancels a build before saving; a SAP call already in progress may finish. In the request list, a request number is a link to its review when one is saved in SAP or in files for the current system. **Copy log** copies the build diagnostics. In VS Code, the chat receives the open request review's object list and saved changed lines; it can explain the request without opening every object. Select text in a Tools page or the VS Code sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. **Rebuild from ADT** builds it again from
 the request as it is now. A built review is saved at once, in `ZAVE_REVIEW` or in files as `vertex.review.storage` says,
 and a folded **Build log** tells why a part gave no block; approving,
 declining and commenting then change it the way AVE does. A saved review opens at once and is checked against the

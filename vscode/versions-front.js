@@ -357,8 +357,8 @@ async function partsOf(api, type, name) {
 // relocations; newest first.
 const KINDS = { K: "workbench", W: "customizing", T: "transport of copies", C: "relocation", O: "relocation", E: "relocation" };
 const STATES = { D: "modifiable", L: "modifiable, protected", O: "release started", R: "released", N: "released, import protected" };
-async function requestsOf(api, params) {
-  const user = String(params.get("user") || api.user() || "").trim().toUpperCase();
+async function requestsOf(api, params, io) {
+  const user = String(params.get("user") || await api.user() || "").trim().toUpperCase();
   if (user.length > 12) { throw new Error(user + " is not a user name: an SAP user name has at most 12 characters."); }
   if (/[ *+%]/.test(user)) { throw new Error("Name one user, not a pattern: " + user + "."); }
   const released = params.get("released") || "";
@@ -386,7 +386,8 @@ async function requestsOf(api, params) {
     owner_name: names.get(h.AS4USER) || "", type: KINDS[h.TRFUNCTION] || h.TRFUNCTION, status: STATES[h.TRSTATUS] || h.TRSTATUS,
     date: String(h.AS4DATE), time: String(h.AS4TIME) }));
   requests.sort((x, y) => (y.date + y.time + y.request).localeCompare(x.date + x.time + x.request));
-  return { user, released: released === "true", requests };
+  const review_status_error = await require("./saved-review-list").mark(api, requests, io);
+  return { user, released: released === "true", requests, review_status_error };
 }
 
 /* A request's overview, as AVE's report opens it (ZCL_AVE_ACR_OVERVIEW): each object it holds, with the kind of
@@ -476,9 +477,9 @@ function kindOf(kinds, type) {
   return first ? kinds.get(first) : "";
 }
 
-async function request(api, resource) {
+async function request(api, resource, io) {
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
-  if (url.pathname === "/sap/bc/adt/vertex/requests") { return requestsOf(api, params); }
+  if (url.pathname === "/sap/bc/adt/vertex/requests") { return requestsOf(api, params, io || (api.reviewIo ? await api.reviewIo() : undefined)); }
   const match = /^\/sap\/bc\/adt\/vertex\/versions\/([^/]+)$/.exec(url.pathname);
   if (!match) { return null; }
   const type = String(params.get("type") || "PROG").toUpperCase().split("/")[0];
