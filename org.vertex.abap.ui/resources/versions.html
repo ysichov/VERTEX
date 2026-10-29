@@ -2079,9 +2079,9 @@ function renderReviewPart(data) {
     // rebuild it from. VERTEX does not render it, and says so.
     var ddic = document.createElement("div");
     ddic.className = "note";
-    ddic.textContent = "This is a dictionary object. Its review is a table of"
-                     + " fields rather than a line diff, and VERTEX does not"
-                     + " render that page yet.";
+    // AVE keeps no line diff of a dictionary object; VERTEX's ABAP lets the host read it again, and without it the page says so.
+    ddic.textContent = "This dictionary object was reviewed by AVE, which keeps no line diff of it: "
+                     + (data.ddic_needs || "it could not be read again here.");
     root.appendChild(ddic);
     status("");
     return;
@@ -2362,6 +2362,10 @@ function rebuildBlock() {
   rebuild.onclick = function () {
     rebuild.disabled = true;
     status("building the review of " + objectName() + " again ...");
+    // Drawn part by part as it is rebuilt, and saved by the rebuild itself: no check of it afterwards.
+    review_part = null;
+    review_building = objectName().toLowerCase();
+    review_fresh = review_building;
     sdeAct(objectName(), "", "", "", JSON.stringify({ action: "R", saved_at: review_saved_at }), review_blame ? "1" : "", review_from,
       reviewFlags(false));
   };

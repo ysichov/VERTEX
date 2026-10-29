@@ -1,5 +1,17 @@
 # Release history
 
+## 2026-10-29 — Dictionary objects of AVE's reviews shown as a diff
+
+A data element, domain or table in a review AVE prepared is shown as a line diff with its block, verdicts and comments, read again through VERTEX's ABAP, instead of "VERTEX does not render that page yet". Without VERTEX's ABAP on the system the page says that it is needed.
+
+## 2026-10-29 — Rebuild from ADT draws the review as it goes
+
+Rebuild from ADT on a saved review draws the review part by part and says which part it reads, as Build review does, instead of showing nothing until it is done.
+
+## 2026-10-29 — Reviews saved to SAP where VERTEX's ABAP is installed
+
+A system with VERTEX's ABAP was taken for one without it, and reviews went to files only ("VERTEX's ABAP is not on this system"). Reviews are saved to `ZAVE_REVIEW` again where `vertex.review.storage` asks for it, and data elements, domains and tables are read through the backend.
+
 ## 2026-10-29 — Data elements, domains and tables through VERTEX's ABAP
 
 Where ADT keeps no versions of data elements, domains and tables, Versions and the review read their history from the version directory and their text from VERTEX's ABAP (`src/`, new `ZCL_VX_ADT_RES_DDIC`), and diff them like source: an attribute, a fixed value or a table field per line. On a system without it, such a part says that it needs VERTEX's ABAP backend. The ABAP is in the repository for abapGit; it was not deployed by this change.
@@ -30,7 +42,7 @@ A review built from ADT has a folded **Build log**, as AVE's Code Review diagnos
 
 ## 2026-10-29 — 0.9.41: Versions | Review in the shared style
 
-The Versions | Review switch is back in the shared segmented style, as Table | File has it, instead of a filled blue button. VS Code 0.9.41 and Eclipse 0.9.41 (`0.9.41.20261029201523`).
+The Versions | Review switch is back in the shared segmented style, as Table | File has it, instead of a filled blue button. VS Code 0.9.41 and Eclipse 0.9.41 (`0.9.41.20261029210726`).
 
 ## 2026-10-29 — 0.9.40
 

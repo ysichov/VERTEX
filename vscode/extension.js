@@ -283,7 +283,7 @@ async function fetch(context, requestPath, body, progress, cancelled) {
   // A reviewer's action and the save of a review built from ADT are made on this side and stored in the table
   // (through VERTEX's store resource) or in a file, as vertex.review.storage says.
   if (body != null && frontendTableWrite && /^\/sap\/bc\/adt\/vertex\/review\//.test(requestPath)) {
-    try { return JSON.stringify(await frontendTableWrite(requestPath, body)); }
+    try { return JSON.stringify(await frontendTableWrite(requestPath, body, progress)); }
     catch (error) { return 'ERROR:' + error.message; }
   }
   if (body == null && requestPath === ABOUT) {

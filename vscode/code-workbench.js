@@ -2700,8 +2700,8 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
         ?? await require('./versions-front').request(api, resource)
         ?? await require('./review-front').request(api, resource, progress, /\/vertex\/review\//.test(resource) ? await reviewIo(api) : undefined, cancelled); },
     // A reviewer's action or the save of a review built from ADT, answered on this side; null for any other write.
-    tableWrite: async (resource, body) => { const api = (await repository()).api;
-      return require('./review-front').write(api, resource, body, await reviewIo(api)); },
+    tableWrite: async (resource, body, progress) => { const api = (await repository()).api;
+      return require('./review-front').write(api, resource, body, await reviewIo(api), progress); },
     // The sources of a transpiler run of an SAP program: its active version and what it names. An open tab that is not
     // the active version stops it, as the run would not be of the code the reader sees.
     // As SAP runs a program's load, not its text, a run takes what the last build of this object read (sap-cache.js);

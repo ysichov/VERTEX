@@ -109,3 +109,21 @@ test("an interface's section include is shown as the interface, among Interfaces
     AUTHOR: "DEV", INS_COUNT: 1, HUNK_COUNT: 1 }], HUNKS: [] });
   assert.deepStrictEqual(so.objects.map(o => [o.kind, o.display_name, o.group, o.objtype]), [["INTF", "ZIF_CALC_TYPES", "Interfaces", "REPS"]]);
 });
+
+test("a dictionary object AVE reviewed is diffed again through VERTEX's ABAP, its blocks kept; without it the page says why", async () => {
+  const payload = JSON.stringify({ SCHEMA_VERSION: 1, TRKORR: "A4HK900001", LAST_SAVED_AT: "20261009123456.1234567", LAST_SAVED_BY: "R",
+    OBJ_STATS: [{ OBJTYPE: "DTED", OBJ_NAME: "ZDE", INS_COUNT: 1, HUNK_COUNT: 1 }],
+    HUNKS: [{ HUNK_KEY: "DTED~ZDE~1", OBJTYPE: "DTED", OBJ_NAME: "ZDE", HUNK_NO: 1, START_LINE: 1, VERSNO_NEW: 99998, VERSNO_OLD: 1 }],
+    HUNK_ACTIONS: [{ HUNK_KEY: "DTED~ZDE~1", ACTION: "A", REVIEWER: "R" }],
+    DIFF_DATA: [{ KEY: { OBJTYPE: "DTED", OBJNAME: "ZDE", VERSNO_O: 1, VERSNO_N: 99998 }, DIFF: [], HTML: "<html>AVE</html>" }] });
+  const without = session(payload).api;
+  const said = await request(without, "/sap/bc/adt/vertex/review/A4HK900001?part=ZDE&ptype=DTED");
+  assert.strictEqual(said.ddic, true);
+  assert.match(said.ddic_needs, /ABAP backend/);
+  const withIt = Object.assign(session(payload).api, { ddicVersions: async () => true,
+    ddicVersion: async (type, name, versno) => versno ? ["Length            : 000030"] : ["Length            : 000040"] });
+  const read = await request(withIt, "/sap/bc/adt/vertex/review/A4HK900001?part=ZDE&ptype=DTED");
+  assert.strictEqual(read.ddic, false);
+  assert.deepStrictEqual(read.ops.map(o => o.op + o.text), ["-Length            : 000030", "+Length            : 000040"]);
+  assert.deepStrictEqual(read.blocks.map(b => [b.hunk_key, b.action, b.op_from, b.op_to]), [["DTED~ZDE~1", "A", 1, 2]]);
+});

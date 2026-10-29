@@ -1,5 +1,17 @@
 # Development history
 
+## 2026-10-29 — AVE's dictionary blocks diffed again
+
+A DTED part of an AVE-prepared review still said "VERTEX does not render that page yet": AVE stores no DIFF for dictionary objects, only its HTML. `review-front.js` `dictionaryDiff` now, for such a part, reads the review's own pair (VERSNO_OLD/NEW from the hunks) through `ddicVersion`, diffs it, and lays the saved blocks on the diff's ranges in order, the last block taking the rest, so their verdicts and comments stay; without the backend it sets `ddic_needs`, which the page shows. New test with and without the backend; review-front tests pass (10).
+
+## 2026-10-29 — Progress and parts on a rebuild
+
+The user saw the review no longer drawn part by part after a rebuild. A rebuild of a saved review (and Save of a built one) is the write `R`/`S`, and writes never carried progress: `extension.js` called `frontendTableWrite(path, body)`, `review-front.write` built with no progress and no `onPart`. Since a built review is now saved at once, every rebuild goes that way. Progress now reaches the write in VS Code (`fetch` → `tableWrite` → `write(api, resource, body, io, progress)`) and Eclipse (the worker passes it to `frontend-analysis.write`), and the build sends the review so far (`partialTo`, the same summary as Build review). The page marks the request building and fresh when Rebuild is pressed, so the parts are drawn and no check follows the rebuild. Review and page tests pass (33 + page); not seen in the UI.
+
+## 2026-10-29 — /vertex/about's active flag
+
+On ALC, where ZCL_VX_ADT_RES_STORE, ZCL_VX_ADT_RES_ABOUT and ZCL_VX_ADT_RES_APP are active (TADIR checked), the review said "VERTEX's ABAP is not on this system". `canStore` in `sap-code.js` and in Eclipse's `eclipse-frontend.js`, and the new `ddicVersions`, looked for `active === "X"`; ZCL_VX_ADT_RES_ABOUT serialises the ABAP_BOOL through /ui2/cl_json, which writes `true`. They now take `true` or `"X"`. Read from the code - the about answer itself was not fetched. The pages' `usable` tests truthiness and was not affected.
+
 ## 2026-10-29 — Documentation caught up
 
 The user asked for the documentation to be brought up to date. vscode/README.md described today's review already; README.md, eclipse/README.md and docs/index.html now describe the parts drawn as they are read, the changes inside a line, the request's objects in Review before a build with deleted objects in red, the save right after a build, the Build log, Developers and Reviewers as in AVE, interfaces listed as interfaces, and data elements, domains and tables read through VERTEX's ABAP where ADT keeps no versions of them. No code changed.

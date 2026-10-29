@@ -606,13 +606,15 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
     + (include && include !== "main" ? "/includes/" + include : "/source/main"), { version: "active" });
   // Whether VERTEX's ABAP on this system can store a review (ZCL_VX_ADT_RES_STORE): its about answer lists the
   // service as active. Asked once a session; a system without VERTEX's ABAP answers 404, which is a plain no.
+  // /ui2/cl_json writes ZCL_VX_ADT_RES_ABOUT's ABAP_BOOL as true; an older one as "X".
+  const serviceActive = service => service.active === true || service.active === "X";
   let storing;
   const canStore = () => storing || (storing = client.httpClient.request("/sap/bc/adt/vertex/about", { method: "GET", headers: { Accept: "application/json" } })
-    .then(response => (JSON.parse(response.body).services || []).some(s => s.name === "store" && s.active === "X"), () => false));
+    .then(response => (JSON.parse(response.body).services || []).some(s => s.name === "store" && serviceActive(s)), () => false));
   // Whether VERTEX's ABAP reads dictionary versions here (ZCL_VX_ADT_RES_DDIC), as /vertex/about reports it.
   let dictionary;
   const ddicVersions = () => dictionary || (dictionary = client.httpClient.request("/sap/bc/adt/vertex/about", { method: "GET", headers: { Accept: "application/json" } })
-    .then(response => (JSON.parse(response.body).services || []).some(s => s.name === "ddic" && s.active === "X"), () => false));
+    .then(response => (JSON.parse(response.body).services || []).some(s => s.name === "ddic" && serviceActive(s)), () => false));
   // The text of a version of a data element, domain or table (DTED, DOMD, TABD), as lines; VERSNO empty is the active state.
   const ddicVersion = (type, objectName, versno) => client.httpClient.request("/sap/bc/adt/vertex/ddic/" + encodeURIComponent(type),
     { method: "GET", qs: { name: objectName, versno: versno || "" }, headers: { Accept: "application/json" } })

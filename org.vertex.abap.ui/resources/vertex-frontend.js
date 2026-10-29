@@ -475,7 +475,7 @@ async function backward(api, resource, progress = () => {}, cancelled = () => fa
 // A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
 // bundle); null for any other write. /sap/bc/adt/vertex/reach is no SAP resource: the path to a line of the editor's
 // text, which the body carries with the cursor and the page's options (reach-path.js build).
-async function write(api, resource, body) {
+async function write(api, resource, body, progress) {
   // Run Select: the SELECT at the cursor of the editor's text, decided as VS Code decides it (select-query.run).
   if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/runselect') {
     const command = JSON.parse(String(body));
@@ -486,7 +486,7 @@ async function write(api, resource, body) {
     return __vertexRequire(1555).build(String(command.text), Number(command.offset), Number(command.line), command);
   }
   if (!/^\/sap\/bc\/adt\/vertex\/review\//.test(new URL(resource, 'https://sap.invalid').pathname)) { return null; }
-  return __vertexRequire(1550).write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined);
+  return __vertexRequire(1550).write(api, resource, body, api.reviewIo ? await api.reviewIo() : undefined, progress);
 }
 
 module.exports = { request, write, backward, sourceAddress, declarations, metric, analysisUnits, invalidate };
@@ -105969,6 +105969,27 @@ async function hasTable(api) {
   return rows.some(r => r.FIELDNAME === "REMOTE") && rows.some(r => r.FIELDNAME === "PAYLOAD");
 }
 
+/* A dictionary object AVE reviewed keeps no line diff in the payload, only AVE's own html. Where VERTEX's ABAP is on the
+   system, the pair the review was cut from is read again as text (ZCL_VX_ADT_RES_DDIC) and diffed, and the saved blocks -
+   their verdicts and comments - are laid on it in order. Without it the body says what is missing. */
+async function dictionaryDiff(api, body, part, ptype) {
+  const versions = __vertexRequire(1545);
+  if (typeof api.ddicVersions !== "function" || !await api.ddicVersions()) { body.ddic_needs = versions.NEEDS_BACKEND; return; }
+  const textOf = number => /^0*$/.test(number) ? [] : api.ddicVersion(ptype, part, number === "99998" ? "" : number);
+  const ops = await versions.diff(await textOf(body.versno_old || ""), await textOf(body.versno_new || "99998"), false, api);
+  body.ops = ops;
+  body.added = ops.filter(o => o.op === "+").length;
+  body.deleted = ops.filter(o => o.op === "-").length;
+  const ranges = hunkRanges(ops);
+  body.blocks.forEach((b, i) => {
+    // AVE cut a dictionary object into its own blocks; the line diff's are laid on them in order, the last taking the rest.
+    const range = ranges[i] && (i < body.blocks.length - 1 ? ranges[i]
+      : { op_from: ranges[i].op_from, op_to: ranges[ranges.length - 1].op_to });
+    if (range) { b.op_from = range.op_from; b.op_to = range.op_to; }
+  });
+  body.ddic = false;
+}
+
 function partBody(payload, request, part, ptype, table) {
   const saved = Boolean(payload);
   let blocks = [], ops = [], old = "", fresh = "", added = 0, deleted = 0, ddic = false;
@@ -106062,6 +106083,10 @@ function copyInfo(copy) {
 
 const storage = (io, stored) => io ? { mode: io.mode, wanted: io.wanted, can_store: io.canStore, from: stored ? stored.from : "",
   file: stored && stored.file ? stored.file : "" } : null;
+
+// What a build sends on after each part, when there is a progress line to send it on: the review so far.
+const partialTo = (progress, trkorr) => progress ? payloadSoFar => progress(PARTIAL_MARK + JSON.stringify(Object.assign(
+  { request: trkorr.toLowerCase(), live: true, partial: true, saved: true, table: true }, summarize(payloadSoFar)))) : undefined;
 
 // The line of progress that carries a review built so far, as a summary.
 const PARTIAL_MARK = "VERTEX-REVIEW-PARTIAL ";
@@ -106186,7 +106211,11 @@ async function request(api, resource, progress, io, cancelled) {
     overview = await __vertexRequire(1545).requestOverview(api, trkorr, tasks);
   }
   if (check === "only") { return { stale_check: true, request: trkorr.toLowerCase(), saved_at: payload ? up(payload.LAST_SAVED_AT) : "", stale }; }
-  if (part) { return Object.assign(partBody(payload, trkorr, part, ptype, table), { live, storage: storage(io, stored), copies }); }
+  if (part) {
+    const body = partBody(payload, trkorr, part, ptype, table);
+    if (body.ddic) { await dictionaryDiff(api, body, part, ptype); }
+    return Object.assign(body, { live, storage: storage(io, stored), copies });
+  }
 
   const { objects, reviewers, history, developers } = summarize(payload);
   return { request: trkorr.toLowerCase(), remote: remote.toLowerCase(), table, saved: Boolean(payload), live,
@@ -106204,7 +106233,8 @@ async function request(api, resource, progress, io, cancelled) {
 // S, saving the review built from ADT when none is stored, or R, replacing a saved review with one built from ADT
 // again - its verdicts and comments go with the old blocks. The body is the page's command: hunk_key, action, note and
 // saved_at, the stamp the page read. The answer is what a read would answer now: the part, or the summary.
-async function write(api, resource, body, io) {
+// PROGRESS, when given, hears what a save or a rebuild that builds the review is doing, and the review so far.
+async function write(api, resource, body, io, progress) {
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
   const match = /^\/sap\/bc\/adt\/vertex\/review\/([^/]+)$/.exec(url.pathname);
   if (!match) { return null; }
@@ -106235,8 +106265,8 @@ async function write(api, resource, body, io) {
     if (stored) { throw new Error("A review of " + trkorr + " is already saved (" + stored.from + "). Read it again."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
     existing = {};
-    current = state.applySaved(await __vertexRequire(1547).build(api, trkorr, undefined, false, params.get("blame") === "1",
-      params.get("generated") === "1"), who.user);
+    current = state.applySaved(await __vertexRequire(1547).build(api, trkorr, progress, false, params.get("blame") === "1",
+      params.get("generated") === "1", partialTo(progress, trkorr)), who.user);
   } else if (action === "R") {
     if (!stored) { throw new Error("No review is saved for " + trkorr + "; there is nothing to rebuild."); }
     if (remote) { throw new Error("A review against another system is built by AVE; only the plain review is built from ADT."); }
@@ -106247,8 +106277,8 @@ async function write(api, resource, body, io) {
     // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
     existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
     const live = __vertexRequire(1547);
-    current = state.applySaved(live.carryUnread(await live.build(api, trkorr, undefined, true, params.get("blame") === "1",
-      params.get("generated") === "1"), old), who.user);
+    current = state.applySaved(live.carryUnread(await live.build(api, trkorr, progress, true, params.get("blame") === "1",
+      params.get("generated") === "1", partialTo(progress, trkorr)), old), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
     existing = state.parseForWrite(stored.text);
