@@ -89,7 +89,7 @@ test("a saved review rebuilt from ADT holds the request as it is now, without th
     /saved this review while the page was open/);
   const summary = await front.write(api, "/sap/bc/adt/vertex/review/K1", JSON.stringify({ action: "R", saved_at: approved.saved_at }), io);
   assert.strictEqual(summary.objects[0].approved, 0);
-  assert.deepStrictEqual(summary.stale, { changed: [], unchecked: [] });
+  assert.strictEqual(summary.stale, null, "the check is asked for apart, after the review is shown");
   assert.strictEqual(JSON.parse(files.get("K1")).HISTORY.length, 3, "earlier saves stay on record");
 });
 

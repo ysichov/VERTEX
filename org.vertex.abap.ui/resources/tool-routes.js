@@ -155,7 +155,13 @@ const SERVICES = {
       // A sixth argument asks for Blame - who wrote each changed line - the way AVE's "Who is Blame" does.
       if (args[5]) { p += lead + "blame=1"; lead = "&"; }
       // A seventh names the copy of the review to read and write back: table or file.
-      if (args[6]) { p += lead + "from=" + encodeURIComponent(args[6]); }
+      if (args[6]) { p += lead + "from=" + encodeURIComponent(args[6]); lead = "&"; }
+      // An eighth carries the build options: B builds the review from ADT when none is saved (opening only reads one),
+      // G keeps the code SAP generated in it.
+      if (args[7] && String(args[7]).indexOf("B") >= 0) { p += lead + "build=1"; lead = "&"; }
+      if (args[7] && String(args[7]).indexOf("G") >= 0) { p += lead + "generated=1"; lead = "&"; }
+      // C asks only whether the saved review is still the request's change.
+      if (args[7] && String(args[7]).indexOf("C") >= 0) { p += lead + "check=only"; }
       return p;
     },
     // request, remote, part, ptype, body - a write goes to the review's own

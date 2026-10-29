@@ -125,7 +125,7 @@ function open(vscode, context, deps, initial) {
     // Eclipse hosts the same HTML but deliberately does not define this flag.
     window.sdeAnthropicApi=()=>true;
     window.sdeFrontendAnalysis=()=>true;
-    window.sdeCancelWorkspace=()=>host.postMessage({call:"cancelWorkspace",args:[]});
+    window.sdeCancelWorkspace=lane=>host.postMessage({call:"cancelWorkspace",args:[lane||"main"]});
     window.sdeLocalFolder=clear=>host.postMessage({call:"localFolder",args:[clear===true]});
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
     // The clipboard is the host's: a webview's own may be refused. Copy under a chat answer and the review's prompts.
@@ -144,7 +144,7 @@ function open(vscode, context, deps, initial) {
       };
     }
     window.addEventListener("message",e=>{
-      if(e.data.type==="result"){pending=e.data.payload;sdeReady();}
+      if(e.data.type==="result"){if(e.data.lane&&typeof sdeResult==="function")sdeResult(e.data.lane,e.data.payload);else{pending=e.data.payload;sdeReady();}}
       if(e.data.type==="codeCursor"&&typeof sdeCodeCursor==="function")sdeCodeCursor(e.data.payload);
       if(e.data.type==="progress"&&typeof sdeWorkspaceProgress==="function")sdeWorkspaceProgress(e.data.path,e.data.payload);
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
@@ -209,11 +209,13 @@ function open(vscode, context, deps, initial) {
       void panel.webview.postMessage({type:'codeCursor',payload:{name:object.object_name,type:object.object_type,line,endLine:line,scrollOnly:true}});
     },100);
   }):null;
-  let reported = false, analysisJob;
+  let reported = false;
+  // One analysis job per lane of the window (tools.html): a cancel names its lane.
+  const analysisJobs = new Map();
   const viewStateChanges = panel.onDidChangeViewState && panel.onDidChangeViewState(event => {
     if (event.webviewPanel.active && reported) deps.setContext(panel, undefined);
   });
-  panel.onDidDispose(() => { if(analysisJob)analysisJob.cancelled=true;clearTimeout(cursorTimer);clearTimeout(scrollTimer);if(viewStateChanges)viewStateChanges.dispose();if(scrollChanges)scrollChanges.dispose();if(cursorChanges)cursorChanges.dispose();changes.dispose(); if (reported) { deps.setContext(panel, null); } });
+  panel.onDidDispose(() => { analysisJobs.forEach(job=>{job.cancelled=true;});clearTimeout(cursorTimer);clearTimeout(scrollTimer);if(viewStateChanges)viewStateChanges.dispose();if(scrollChanges)scrollChanges.dispose();if(cursorChanges)cursorChanges.dispose();changes.dispose(); if (reported) { deps.setContext(panel, null); } });
   panel.webview.onDidReceiveMessage(message => pin(async () => {
     const args = message.args || [];
     try {
@@ -309,13 +311,13 @@ function open(vscode, context, deps, initial) {
           direct:result.direct,choices:result.choices||[]})}); return;
       }
       let payload;
-      if(message.call === "cancelWorkspace") {if(analysisJob)analysisJob.cancelled=true;return;}
+      if(message.call === "cancelWorkspace") {const job=analysisJobs.get(String(args[0]||"main"));if(job)job.cancelled=true;return;}
       if(message.call === "asset") payload=deps.asset(args[0]);
       else if(message.call === "workspace" && args[0] === "project") {
         if(local)payload="Local ABAP";
         else {const selected=deps.active();payload=selected.error?"ERROR:"+selected.error:selected.system.name;}
       } else if(message.call === "workspace" && allowed(args[0],args[1])) {
-        const job={cancelled:false};analysisJob=job;
+        const job={cancelled:false},laneName=String(args[2]||"main");analysisJobs.set(laneName,job);
         const resource=String(args[0]);
         const supported=/^\/sap\/bc\/adt\/vertex\/(metrics|class|package|flow)\//.test(resource);
         payload=local ? resource==="/sap/bc/adt/vertex/about" ? JSON.stringify({user:"Local ABAP",backends:[],services:["metrics","class","package","flow"].map(name=>({name,active:"X",backend:"Local source + abaplint"}))}) : !supported||args[1]!=null ? "ERROR:This analysis requires a SAP system." : JSON.stringify(await local.request(resource,text=>{
@@ -323,16 +325,18 @@ function open(vscode, context, deps, initial) {
         },()=>job.cancelled)) : await deps.fetch(context,args[0],args[1]==null?undefined:String(args[1]),text=>{
           if(!job.cancelled)void panel.webview.postMessage({type:"progress",path:args[0],payload:text});
         },()=>job.cancelled);
-        if(analysisJob===job)analysisJob=null;
+        if(analysisJobs.get(laneName)===job)analysisJobs.delete(laneName);
       } else throw new Error("Unsupported VERTEX request.");
-      await panel.webview.postMessage({type:"result",payload});
+      await panel.webview.postMessage({type:"result",payload,lane:message.call==="workspace"&&args[2]?String(args[2]):undefined});
     } catch(error) {
       if(message.call==='localFolder'){
         await panel.webview.postMessage({type:'localFolder',payload:{error:error.message}});return;
       }
       const ai=message.call==="ask"||message.call==="models";
       await panel.webview.postMessage({type:ai?"assistant":"result",payload:ai?
-        JSON.stringify({call:message.call,assistant:args[0],error:error.message}):"ERROR:"+error.message});
+        JSON.stringify({call:message.call,assistant:args[0],error:error.message}):"ERROR:"+error.message,
+        // A failed request answers in its own lane, or that lane would wait for ever and another take its answer.
+        lane:!ai&&message.call==="workspace"&&args&&args[2]?String(args[2]):undefined});
     }
   }), undefined, context.subscriptions);
   return panel;

@@ -1,5 +1,97 @@
 # Release history
 
+## 2026-10-29 — Dictionary objects of AVE's reviews shown as a diff
+
+A data element, domain or table in a review AVE prepared is shown as a line diff with its block, verdicts and comments, read again through VERTEX's ABAP, instead of "VERTEX does not render that page yet". Without VERTEX's ABAP on the system the page says that it is needed.
+
+## 2026-10-29 — Rebuild from ADT draws the review as it goes
+
+Rebuild from ADT on a saved review draws the review part by part and says which part it reads, as Build review does, instead of showing nothing until it is done.
+
+## 2026-10-29 — Reviews saved to SAP where VERTEX's ABAP is installed
+
+A system with VERTEX's ABAP was taken for one without it, and reviews went to files only ("VERTEX's ABAP is not on this system"). Reviews are saved to `ZAVE_REVIEW` again where `vertex.review.storage` asks for it, and data elements, domains and tables are read through the backend.
+
+## 2026-10-29 — Data elements, domains and tables through VERTEX's ABAP
+
+Where ADT keeps no versions of data elements, domains and tables, Versions and the review read their history from the version directory and their text from VERTEX's ABAP (`src/`, new `ZCL_VX_ADT_RES_DDIC`), and diff them like source: an attribute, a fixed value or a table field per line. On a system without it, such a part says that it needs VERTEX's ABAP backend. The ABAP is in the repository for abapGit; it was not deployed by this change.
+
+## 2026-10-29 — A lighter selection in Versions
+
+The selected part and version in Versions are marked with the theme's lighter (inactive) selection colour, so their dark text stays readable in a light theme.
+
+## 2026-10-29 — Data elements and domains kept from AVE's review
+
+Where ADT keeps no versions of data elements, domains or tables, Rebuild from ADT keeps their blocks from the saved review as AVE built them instead of listing them under Not reviewed, and checking a saved review compares them with the request by their versions instead of saying "not supported".
+
+## 2026-10-29 — The Tools window keeps answering while a review is built
+
+While a review is built or checked against its request, Versions, diffs and the rest of the Tools window keep answering instead of waiting for it.
+
+## 2026-10-29 — A built review is saved at once
+
+Build review and Rebuild from ADT save the review as soon as it is built, where `vertex.review.storage` says - the table, files or both - as Save did. Save stays for a save that failed.
+
+## 2026-10-29 — Interfaces among Interfaces in a review
+
+An interface a request changes is listed in its review as the interface - INTF ZIF_X under Interfaces - not as its section include ZIF_X=====IU among Programs. Versions' list of an interface's parts names it INTF too.
+
+## 2026-10-29 — Build log; the review check no longer holds the window
+
+A review built from ADT has a folded **Build log**, as AVE's Code Review diagnostics: the parts found, each part's versions and pair, and why a part gave no block (only blank lines changed, no difference, not among the class's methods, generated). While a saved review is being checked against the request, clicking in Versions or opening anything else no longer waits for the check to finish (VS Code).
+
+## 2026-10-29 — 0.9.41: Versions | Review in the shared style
+
+The Versions | Review switch is back in the shared segmented style, as Table | File has it, instead of a filled blue button. VS Code 0.9.41 and Eclipse 0.9.41 (`0.9.41.20261029210726`).
+
+## 2026-10-29 — 0.9.40
+
+VS Code 0.9.40 and Eclipse 0.9.40 (`0.9.40.20261029170908`), after the published 0.9.39. They carry: a request's parts by more of AVE's rules (short method entries, a class reviewed by its listed methods only, no local includes in a whole class); includes of a request (LIMU REPS) reviewed again; the request's overview in Review under Build review, its type descriptions from ADT; deleted objects in red; the review drawn part by part while it is built; Find keeping the chosen function; Rebuild from ADT's explanation set apart from the Ignore SAP generated checkbox.
+
+## 2026-10-29 — Includes in a request's review
+
+An include a request changes (a user exit's ZX..., a program's _F01) is reviewed again; it was listed as "Resource PROGRAM ... does not exist".
+
+## 2026-10-29 — Deleted objects named as deleted in a review
+
+An object of a request that has been deleted since - its TADIR entry kept, marked for deletion - is listed under Not reviewed as "deleted since" instead of the system's "does not exist", and shown in red as AVE marks it - under Not reviewed and in the request's overview.
+
+## 2026-10-29 — A review shows its parts as they are built
+
+Build review and Rebuild from ADT draw the review as it is read: each object joins the summary, with Developers counted so far, as soon as its part is done. An object opens, and the review can be saved, once the whole review is built.
+
+## 2026-10-29 — A request's overview; Find keeps Review
+
+A request's Review, while no review is saved, shows its overview under Build review, as AVE's report does before Prepare: each object with its class, the kind of object, its authors, TRs/Tasks, start, finish and days, tasks released into the request included. A request found with Find opens in the function chosen when Find was pressed - Object Navigator, Diff or Review.
+
+## 2026-10-29 — 0.9.39: methods of a request reviewed; no RELE in Parts
+
+A method a request changes on its own (LIMU METH) is in the request's review again: it was left out when the class wrote its name in another case than the request. In a request's Parts a method is named with its class (`ZCL_X->get_tfc`), and the request's own records - released tasks (RELE) and other CORR entries - are no longer listed as parts. Changed lines show what changed inside them, the block's row stands above the lines leading into it, Blame has the shared toggle look, and Find no longer flashes "Type an object name". A request's parts follow AVE's rules further: a method entry in the short form (`CLASS=>METHOD`, `CLASS\METHOD`, or the class alone - then the methods the request holds versions of) is read, a class whose methods the request names one by one is reviewed by those methods only, and a whole class is reviewed without its local includes. VS Code 0.9.39 and Eclipse 0.9.39 (`0.9.39.20261029170042`).
+
+## 2026-10-29 — Find no longer flashes "Type an object name"
+
+Finding transport requests in the Tools window no longer shows "Type an object name and press Load." for a moment before the list.
+
+## 2026-10-29 — What changed inside a line
+
+In Versions and in a review's blocks, a changed line shows what changed inside it, as AVE does. Inline draws it once, in the new version's place, marked `~`: the removed words struck through, the added ones marked. 2 pane sets it beside the old line, each side marking its own words. A line counts as changed when at least half of it is the same as the line it replaced; other lines stay a removed and an added line.
+
+## 2026-10-29 — 0.9.38: Reviewers as in AVE
+
+The review's **Reviewers** table lists, as AVE does, each reviewer with a verdict or a comment: Reviewer, Name, Approved, Declined and Total, with a Total row when there are several. A reviewer is a link to the objects they reviewed, and **← Review** goes back. The **Saves** table is gone from the page; the record of saves stays in the saved review. VS Code 0.9.38 and Eclipse 0.9.38 (`0.9.38.20261029135358`) carry this and the review changes of 29.10: Build review, Ignore SAP generated, the saved review opening at once, and developers opening their objects.
+
+## 2026-10-29 — A saved review opens at once
+
+A saved review is shown as soon as it is read; whether it is still the request's change is checked meanwhile, and the answer appears above the tables when the check is done - what changed, or "Up to date with the request".
+
+## 2026-10-29 — A review is built on request
+
+Opening a request's review only reads a saved one. When none is saved, the page says so and offers **Build review**; the review is no longer built from ADT on its own. **Build review** and **Rebuild from ADT** have an **Ignore SAP generated** checkbox, on by default: cleared, the code SAP generates is reviewed like any other.
+
+## 2026-10-29 — Review leaves out generated code; developers open their objects
+
+A review built from ADT now leaves out what SAP generates, as AVE does: the Gateway classes `*_MPC`, `*_MPC_EXT` and `*_DPC` (`*_DPC_EXT` stays), a function group's main program `SAPL*`, a new object of comment lines only and a class section with nothing but its header. A generator's stamp line rewritten in place - `generation date:` and the maintenance generator version of a table maintenance dialog, `regenerated at`, SEGW's `has been generated on` - is no longer a change, so a regenerated TABLEFRAME no longer shows a block. A developer in the review's **Developers** table is a link: it opens the objects that developer changed, and **← Review** goes back.
+
 ## 2026-10-29 — SAP* left out of the review's Developers
 
 The Developers table of a request review no longer lists SAP*: lines and blocks credited to it are SAP's own code, not a developer's change, and are not counted for anyone.

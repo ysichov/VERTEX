@@ -50,7 +50,31 @@ test('a part whose versions ADT will not give is listed in the words of SAP, and
     }, revisions: async url => { if (url === '/x/ZDE') throw new Error('Request version for DTEL is not supported'); return []; } };
     const payload = await require('../review-live').build(api, 'A4HK900003', () => {});
     // ZP has no version at all: it is listed too, not dropped without a word.
-    assert.deepEqual(payload.MISSING, [{ object: 'DTEL', name: 'ZDE', reason: 'Request version for DTEL is not supported' },
+    // Without VERTEX's ABAP on the system the data element says what it needs.
+    assert.deepEqual(payload.MISSING, [{ object: 'DTEL', name: 'ZDE', reason: versions.NEEDS_BACKEND },
       { object: 'PROG', name: 'ZP', reason: 'no version of this part, and no active state' }]);
+  } finally { Object.assign(versions, saved); }
+});
+
+test("a data element ADT keeps no versions of is reviewed from VRSD and the text VERTEX's ABAP gives", async () => {
+  const versions = require('../versions-front');
+  const saved = { partsOf: versions.partsOf, partOf: versions.partOf };
+  versions.partsOf = async (api, type, name) => [{ name, part_type: 'DTED', unit: '' }];
+  versions.partOf = async (api, type, name) => ({ url: '/x/' + name, include: '' });
+  try {
+    const texts = { '': ['Data type         : CHAR', 'Length            : 000040'], '00001': ['Data type         : CHAR', 'Length            : 000030'] };
+    const api = { query: async sql => {
+      if (/FROM e070 WHERE trkorr/.test(sql)) return { values: [{ TRKORR: 'A4HK900004', TRSTATUS: 'D' }] };
+      if (/FROM e071/.test(sql)) return { values: [{ PGMID: 'R3TR', OBJECT: 'DTEL', OBJ_NAME: 'ZDE2' }] };
+      if (/FROM vrsd/.test(sql)) return { values: [{ VERSNO: '00000', KORRNUM: 'A4HK900004', AUTHOR: 'DEV', DATUM: '20261029', ZEIT: '120000' },
+        { VERSNO: '00001', KORRNUM: 'A4HK900001', AUTHOR: 'OLD', DATUM: '20261001', ZEIT: '100000' }] };
+      return { values: [] };
+    }, revisions: async () => { throw new Error('Request version for DTEL is not supported'); },
+    ddicVersions: async () => true, ddicVersion: async (type, name, versno) => texts[versno] };
+    const payload = await require('../review-live').build(api, 'A4HK900004', () => {});
+    assert.deepEqual(payload.MISSING, []);
+    assert.deepEqual(payload.HUNKS.map(h => [h.OBJTYPE, h.OBJ_NAME, h.CHANGE_KIND]), [['DTED', 'ZDE2', 'changed']]);
+    assert.deepEqual(payload.DIFF_DATA[0].DIFF.filter(o => o.OP !== '=').map(o => o.OP + o.TEXT),
+      ['-Length            : 000030', '+Length            : 000040']);
   } finally { Object.assign(versions, saved); }
 });

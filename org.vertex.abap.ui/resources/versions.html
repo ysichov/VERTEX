@@ -59,7 +59,7 @@
     --bg: var(--vscode-editor-background, #ffffff); --fg: var(--vscode-editor-foreground, #1c1c1c); --muted: var(--vscode-descriptionForeground, #666666); --faint: var(--vscode-disabledForeground, #b0b0b0);
     --border: var(--vscode-panel-border, #d6d6d6); --line: var(--vscode-editorWidget-border, #e2e2e2); --surface: var(--vscode-editorWidget-background, #fbfbfb); --surface-2: var(--vscode-sideBar-background, #f0f0f0);
     --field-bg: var(--vscode-input-background, #ffffff); --field-border: var(--vscode-input-border, #b8b8b8); --hover: var(--vscode-list-hoverBackground, #eaf2fb);
-    --th-bg: var(--vscode-keybindingTable-headerBackground, #eef2f7); --selected: var(--vscode-list-activeSelectionBackground, #dbe6f4); --row-alt: var(--vscode-tree-tableOddRowsBackground, #fafafa); --danger: var(--vscode-errorForeground, #a5292a);
+    --th-bg: var(--vscode-keybindingTable-headerBackground, #eef2f7); --selected: var(--vscode-list-inactiveSelectionBackground, #dbe6f4); --row-alt: var(--vscode-tree-tableOddRowsBackground, #fafafa); --danger: var(--vscode-errorForeground, #a5292a);
     --ins-bg: #e8f6ea; --ins-mark: #2c7a39; --del-bg: #fdecec; --del-mark: #a5292a;
   }
 
@@ -68,7 +68,7 @@
     --bg: var(--vscode-editor-background, #1f1f1f); --fg: var(--vscode-editor-foreground, #d4d4d4); --muted: var(--vscode-descriptionForeground, #9d9d9d); --faint: var(--vscode-disabledForeground, #5a5a5a);
     --border: var(--vscode-panel-border, #3c3c3c); --line: var(--vscode-editorWidget-border, #333333); --surface: var(--vscode-editorWidget-background, #252526); --surface-2: var(--vscode-sideBar-background, #2d2d30);
     --field-bg: var(--vscode-input-background, #3c3c3c); --field-border: var(--vscode-input-border, #5a5a5a); --hover: var(--vscode-list-hoverBackground, #2a3d55);
-    --th-bg: var(--vscode-keybindingTable-headerBackground, #2b3a4a); --selected: var(--vscode-list-activeSelectionBackground, #35506b); --row-alt: var(--vscode-tree-tableOddRowsBackground, #232323); --danger: var(--vscode-errorForeground, #f48771);
+    --th-bg: var(--vscode-keybindingTable-headerBackground, #2b3a4a); --selected: var(--vscode-list-inactiveSelectionBackground, #35506b); --row-alt: var(--vscode-tree-tableOddRowsBackground, #232323); --danger: var(--vscode-errorForeground, #f48771);
     --ins-bg: #17301c; --ins-mark: #6cc07a; --del-bg: #3a1f1f; --del-mark: #f48771;
   }
 
@@ -224,13 +224,19 @@
 
   .cards { padding: 6px 10px; background: var(--surface-2);
            border-bottom: 1px solid var(--line); display: flex; gap: 6px; }
-  .cards button.on { background: var(--selected); font-weight: 600; }
+  /* Only the bar's own buttons: the shared toggle (Blame) keeps its look from vertex-controls.css, and the buttons of
+     a segmented choice (Versions | Review) theirs from .seg - a wider rule here outranked both. */
+  .cards > button.on:not(.vertex-toggle) { background: var(--selected); font-weight: 600; }
 
   .review { padding: 10px; }
   .review h3 { margin: 14px 0 4px; font-size: 12px; }
   .review h3:first-child { margin-top: 0; }
   .review .ok { color: var(--ins-mark); }
   .review .no { color: var(--del-mark); }
+  /* An object deleted since, as AVE marks it: red on the theme's removed-line background. */
+  .review tr.deleted td { color: var(--del-mark); background: var(--del-bg); }
+  .review pre.build-log { font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; color: var(--muted);
+                          background: var(--surface); border: 1px solid var(--line); padding: 6px 8px; max-height: 400px; overflow: auto; }
   .review .open { color: var(--muted); }
   /* The summary as AVE's report draws it in SAP GUI - coloured column heads, developers first, a group per kind of
      object with its total - in the theme's colours. */
@@ -295,6 +301,10 @@
   table.diff tr.ins td.mk { color: var(--ins-mark); }
   table.diff tr.del { background: var(--del-bg); }
   table.diff tr.del td.mk { color: var(--del-mark); }
+  /* A changed line drawn once: its new text, the removed pieces struck in, the added ones marked. */
+  table.diff tr.mod td.mk { color: var(--ins-mark); }
+  table.diff span.wdel { background: color-mix(in srgb, var(--del-mark) 28%, transparent); text-decoration: line-through; }
+  table.diff span.wins { background: color-mix(in srgb, var(--ins-mark) 28%, transparent); }
   table.diff tr.gap td { color: var(--faint); }
 
   /* Side by side: the new version on the left, the old one on the right, a
@@ -513,7 +523,24 @@ function placePanels() {
 }
 
 // What a long read is doing, as the host reports it - building a review from ADT reads every part's versions.
-function vertexProgress(text) { status(text); }
+/* What the host is doing, a line at a time. A line with the review built so far (review-front.js PARTIAL_MARK) is
+   drawn instead, while that build is the one this page asked for. */
+var PARTIAL_MARK = "VERTEX-REVIEW-PARTIAL ";
+var review_building = "";
+// The request whose review the page asked to build: once built, it is saved where vertex.review.storage says.
+var review_autosave = "";
+// The request whose review was just built and saved: it is the request as it is now, and needs no check.
+var review_fresh = "";
+function vertexProgress(text) {
+  text = String(text);
+  if (text.indexOf(PARTIAL_MARK) === 0) {
+    var data;
+    try { data = JSON.parse(text.slice(PARTIAL_MARK.length)); } catch (e) { return; }
+    if (review_building && data.request === review_building && !review_part) { renderReview(data); }
+    return;
+  }
+  status(text);
+}
 
 function status(text) {
   document.getElementById("status").textContent = text || "";
@@ -562,6 +589,10 @@ var mode = "V";
    the part by its padded key, and a reader wants the name they clicked. */
 var review = null;
 var review_part = null;
+// The build option "Ignore SAP generated", on as in AVE; it holds for this window.
+var review_ignore_generated = true;
+/* What a review is built with: B lets the host build it from ADT, G keeps the code SAP generated. */
+function reviewFlags(build) { return (build ? "B" : "") + (review_ignore_generated ? "" : "G"); }
 // Blame - who wrote each changed line, AVE's "Who is Blame". Off by default: built
 // from ADT it reads every version between the pair.
 var review_blame = false;
@@ -618,7 +649,32 @@ function loadReview() {
   if (review_from_of !== objectName()) { review_from = ""; review_from_of = objectName(); }
   status("reading the review of " + objectName() + " ...");
   note("Reading ...");
-  sdeReview(objectName(), "", "", "", "", review_blame ? "1" : "", review_from);
+  sdeReview(objectName(), "", "", "", "", review_blame ? "1" : "", review_from, reviewFlags(false));
+}
+
+/* Build the review from ADT, as the button asks: opening a review only reads a saved one. */
+function buildReview(fresh) {
+  review_part = null;
+  review_building = objectName().toLowerCase();
+  review_autosave = review_building;
+  status("building the review of " + objectName() + " ...");
+  note("Building ...");
+  sdeReview(objectName(), "", "", "", fresh ? "1" : "", review_blame ? "1" : "", review_from, reviewFlags(true));
+}
+
+/* The build options, as checkboxes beside the button that builds. */
+function buildOptions() {
+  var box = document.createElement("label");
+  box.className = "build-option";
+  var check = document.createElement("input");
+  check.type = "checkbox";
+  check.checked = review_ignore_generated;
+  check.addEventListener("change", function () { review_ignore_generated = check.checked; });
+  box.appendChild(check);
+  box.appendChild(document.createTextNode(" Ignore SAP generated"));
+  box.title = "Leave out SAP*'s versions, *_MPC / *_MPC_EXT / *_DPC, SAPL*, comment-only new objects,"
+    + " empty class sections and generator stamp lines";
+  return box;
 }
 
 /* One object of the review: its blocks and the lines they were cut from, both
@@ -628,7 +684,7 @@ function loadReviewPart(object) {
   review_part = object;
   status("reading " + (object.display_name || object.obj_name) + " ...");
   note("Reading ...");
-  sdeReview(objectName(), "", object.obj_name, object.objtype, "", review_blame ? "1" : "", review_from);
+  sdeReview(objectName(), "", object.obj_name, object.objtype, "", review_blame ? "1" : "", review_from, reviewFlags(review_live));
 }
 
 /* ---------- the parts panel: shown, folded, resized ---------- */
@@ -816,6 +872,9 @@ function sdeReady() {
   if (raw.indexOf("ERROR:") === 0) {
     var said = raw.substring(6);
     stopPlan();
+    // A build that failed draws nothing more of itself, and saves nothing.
+    review_building = "";
+    review_autosave = "";
     // The host marks the one failure that can be a setup state.
     if (said.indexOf("NOBACKEND:") === 0) { notFound(said.substring(10)); }
     else { message(said); }
@@ -833,6 +892,8 @@ function sdeReady() {
   // One page, six answers, each named by what it carries. The blocks come
   // before the operations: an object of a review carries both, and it is the
   // blocks that make it one.
+  // The check of a saved review comes after the review itself and leaves the view as it is.
+  if (data.stale_check) { showStale(data); return; }
   if (data.requests) { showing = { view: "requests" }; renderRequests(data); }
   else if (data.parts) { showing = { view: "parts" }; renderPartList(data); }
   else if (data.blocks) { showing = { view: "review_object" }; renderReviewPart(data); }
@@ -870,6 +931,26 @@ function renderPartList(data) {
   status(parts.length + (parts.length === 1 ? " part" : " parts"));
   note("Pick a part to see its versions.");
   if (typeof INITIAL !== "undefined" && INITIAL && INITIAL.action === "diff" && !pending && !scope && parts.length && firstPart()) { loadVersions(firstPart()); }
+}
+
+/* A request's overview, as AVE's report shows it before the review is prepared: each object with its class, the kind
+   of object, who worked on it, in how many tasks and from when to when. */
+function overviewTable(rows) {
+  var day = function (d) { return d ? d.slice(6, 8) + "." + d.slice(4, 6) + "." + d.slice(2, 4) : ""; };
+  var sorted = rows.slice().sort(function (a, b) { return (a.type + a.class + a.name).localeCompare(b.type + b.class + b.name); });
+  return aveTable(["Type", "Object", "Class", "Type Description", "Author", "TRs/Tasks", "Start", "Finish", "Days"],
+    [0, 0, 0, 0, 0, 1, 0, 0, 1], function (tr, o) {
+      if (o.deleted) { tr.className = "deleted"; } else if (o.generated) { tr.className = "muted"; }
+      cell(tr, o.type, "mono");
+      cell(tr, o.type === "METH" ? String(o.name).toLowerCase() : o.name);
+      cell(tr, o.class || "");
+      cell(tr, o.type_text + (o.deleted ? " (deleted)" : o.generated ? " (generated, not reviewed)" : ""));
+      cell(tr, o.authors.join(", "));
+      count(tr, o.trs + "/" + o.tasks);
+      cell(tr, day(o.start), "mono");
+      cell(tr, day(o.finish), "mono");
+      count(tr, o.days || "");
+    }, sorted);
 }
 
 var partRows = [];
@@ -931,8 +1012,11 @@ function renderParts() {
       tr.appendChild(only);
       return;
     }
-    cell(tr, p.part_type, "mono");
-    cell(tr, row.band ? row.label : (p.part_type === "METH" ? String(p.unit || "").toLowerCase() : p.unit));
+    // An interface's part is its section include, versioned as REPS (ZIF_X=====...IU): it is shown as the interface.
+    cell(tr, p.part_type === "REPS" && /=+IU$/.test(String(p.name || "").trim()) ? "INTF" : p.part_type, "mono");
+    // A method of a request or a package is named with its class; inside a class the class goes without saying.
+    cell(tr, row.band ? row.label : (p.part_type === "METH"
+      ? (scope && p.class ? p.class + "->" : "") + String(p.unit || "").toLowerCase() : p.unit));
   });
   if (sectioned) { list.className = "sectioned"; }
   box.appendChild(list);
@@ -1235,6 +1319,99 @@ function renderVersions(data) {
    mode. Three is what a reader needs to place a change; more is scrolling. */
 var CONTEXT = 3;
 
+/* ---------- what changed inside a line ---------- */
+
+/* A line in words, blanks and single signs - the units a change inside a line is shown in. */
+function tokens(text) { return String(text).match(/[A-Za-z0-9_]+|\s+|[^A-Za-z0-9_\s]/g) || []; }
+
+/* The two lines token by token (longest common subsequence): [{ op: "=" | "-" | "+", text }]. Lines are short, so the
+   table is small; a pair too long for it is shown as a whole line out and a whole line in. */
+function wordDiff(a, b) {
+  var x = tokens(a), y = tokens(b), n = x.length, m = y.length;
+  if (n * m > 40000) { return [{ op: "-", text: String(a) }, { op: "+", text: String(b) }]; }
+  var t = [], i, j;
+  for (i = 0; i <= n; i++) { t.push(new Int32Array(m + 1)); }
+  for (i = n - 1; i >= 0; i--) {
+    for (j = m - 1; j >= 0; j--) { t[i][j] = x[i] === y[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]); }
+  }
+  var out = [];
+  var push = function (op, text) {
+    var last = out[out.length - 1];
+    if (last && last.op === op) { last.text += text; } else { out.push({ op: op, text: text }); }
+  };
+  i = 0; j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && x[i] === y[j]) { push("=", x[i]); i++; j++; }
+    else if (i < n && (j === m || t[i + 1][j] >= t[i][j + 1])) { push("-", x[i]); i++; }
+    else { push("+", y[j]); j++; }
+  }
+  return out;
+}
+
+/* How much of two lines is the same, 0 to 1: kept characters, blanks not counted, against the longer line. */
+function likeness(a, b) {
+  var same = 0, all = Math.max(String(a).replace(/\s+/g, "").length, String(b).replace(/\s+/g, "").length);
+  if (!all) { return 0; }
+  wordDiff(a, b).forEach(function (w) { if (w.op === "=") { same += w.text.replace(/\s+/g, "").length; } });
+  return same / all;
+}
+
+/* In one run of changes, which removed line became which added one: each removed line takes the most alike added
+   line after the one taken before - order kept on both sides - when at least half of it is the same. Answers a map
+   from the index of an added line to the index of its removed one. */
+function pairRun(ops, dels, adds) {
+  var pairs = {}, from = 0;
+  dels.forEach(function (d) {
+    var best = -1, score = 0.5;
+    for (var k = from; k < adds.length; k++) {
+      var l = likeness(ops[d].text, ops[adds[k]].text);
+      if (l >= score && (best < 0 || l > score)) { score = l; best = k; }
+    }
+    if (best >= 0) { pairs[adds[best]] = d; from = best + 1; }
+  });
+  return pairs;
+}
+
+/* Every run of changes paired at once: added index to removed index, over the whole diff. */
+function pairAll(ops) {
+  var pairs = {}, i = 0;
+  while (i < ops.length) {
+    if (ops[i].op === "=") { i++; continue; }
+    var dels = [], adds = [];
+    while (i < ops.length && ops[i].op === "-") { dels.push(i); i++; }
+    while (i < ops.length && ops[i].op === "+") { adds.push(i); i++; }
+    var run = pairRun(ops, dels, adds);
+    for (var k in run) { pairs[k] = run[k]; }
+  }
+  return pairs;
+}
+
+/* A cell's text with the pieces of WORDS it should show marked: SIDE "-" shows the old line, "+" the new one, "~"
+   the new line with what was removed struck in. */
+function markWords(td, words, side) {
+  td.textContent = "";
+  words.forEach(function (w) {
+    if (w.op === "=") { td.appendChild(document.createTextNode(w.text)); return; }
+    if ((side === "-" && w.op === "+") || (side === "+" && w.op === "-")) { return; }
+    var span = document.createElement("span");
+    span.className = w.op === "-" ? "wdel" : "wins";
+    span.textContent = w.text;
+    td.appendChild(span);
+  });
+}
+
+/* Where a block's row goes: above the unchanged lines that lead into its first change, as AVE draws it, so they read
+   as the block's and not as the end of the one before. A block takes at most CONTEXT of them, and none of the
+   CONTEXT lines that follow the change before it - those are the earlier block's. */
+function blockStart(ops, first) {
+  var before = first - 1;
+  while (before >= 0 && ops[before].op === "=") { before--; }
+  var limit = before < 0 ? 0 : before + 1 + CONTEXT;
+  var start = first;
+  while (start - 1 >= limit && first - (start - 1) <= CONTEXT && ops[start - 1].op === "=") { start--; }
+  return start;
+}
+
 function showMask(ops) {
   var show = [];
   var i, k;
@@ -1264,11 +1441,25 @@ function diffTable(ops, blocks) {
   // against carries a zero - its row is drawn above the diff instead.
   var opens = {};
   (blocks || []).forEach(function (b) {
-    if (b.op_from > 0) { opens[b.op_from - 1] = b; }
+    if (b.op_from > 0) { opens[blockStart(ops, b.op_from - 1)] = b; }
   });
 
+  // A removed line that became an added one is drawn in it, once: the new text with the removed pieces struck in.
+  var pairs = pairAll(ops), merged = {};
+  for (var k in pairs) { merged[pairs[k]] = Number(k); }
   ops.forEach(function (o, index) {
     if (o.op !== "-") { line++; }
+
+    // A block that opens on a removed line drawn in a later one opens on the next line that is drawn - the block's
+    // first row, wherever its removed line went.
+    if (merged[index] !== undefined) {
+      if (opens[index]) {
+        var next = index + 1;
+        while (merged[next] !== undefined) { next++; }
+        if (!opens[next]) { opens[next] = opens[index]; }
+      }
+      return;
+    }
 
     if (opens[index]) {
       tbody.appendChild(blockRow(opens[index]));
@@ -1291,8 +1482,9 @@ function diffTable(ops, blocks) {
     }
     folded = false;
 
+    var old = pairs[index] !== undefined ? ops[pairs[index]] : null;
     var tr = document.createElement("tr");
-    if (o.op === "+") { tr.className = "ins"; }
+    if (o.op === "+") { tr.className = old ? "mod" : "ins"; }
     if (o.op === "-") { tr.className = "del"; }
 
     var ln = document.createElement("td");
@@ -1301,10 +1493,10 @@ function diffTable(ops, blocks) {
 
     var mk = document.createElement("td");
     mk.className = "mk";
-    mk.textContent = o.op === "=" ? " " : o.op;
+    mk.textContent = o.op === "=" ? " " : old ? "~" : o.op;
 
     var cd = document.createElement("td");
-    cd.textContent = o.text;
+    if (old) { markWords(cd, wordDiff(old.text, o.text), "~"); } else { cd.textContent = o.text; }
     blameMark(cd, o.who);
 
     tr.appendChild(ln);
@@ -1330,7 +1522,7 @@ function sideTable(ops, swap, blocks) {
   // A review's blocks stand above the row their first operation is in, across both columns.
   var opens = {};
   (blocks || []).forEach(function (b) {
-    if (b.op_from > 0) { opens[b.op_from - 1] = b; }
+    if (b.op_from > 0) { opens[blockStart(ops, b.op_from - 1)] = b; }
   });
   var wide = function (row) { row.firstChild.colSpan = 4; return row; };
   var rows = [];
@@ -1346,17 +1538,21 @@ function sideTable(ops, swap, blocks) {
     var dels = [], adds = [];
     while (i < ops.length && ops[i].op === "-") { dels.push(i); i++; }
     while (i < ops.length && ops[i].op === "+") { adds.push(i); i++; }
-    for (var k = 0; k < Math.max(dels.length, adds.length); k++) {
+    /* Alike lines face each other with what changed in them marked; the lines between them stand alone, a removed
+       one before an added one. */
+    var run = pairRun(ops, dels, adds), facing = {};
+    for (var key in run) { facing[run[key]] = Number(key); }
+    var d = 0, a = 0;
+    var oldCell = function (index) { oldLine++; return { n: oldLine, text: ops[index].text, cls: "del", who: ops[index].who }; };
+    var newCell = function (index) { newLine++; return { n: newLine, text: ops[index].text, cls: "ins", who: ops[index].who }; };
+    while (d < dels.length || a < adds.length) {
       var row = { idx: [] };
-      if (k < dels.length) {
-        oldLine++;
-        row.left = { n: oldLine, text: ops[dels[k]].text, cls: "del", who: ops[dels[k]].who };
-        row.idx.push(dels[k]);
-      }
-      if (k < adds.length) {
-        newLine++;
-        row.right = { n: newLine, text: ops[adds[k]].text, cls: "ins", who: ops[adds[k]].who };
-        row.idx.push(adds[k]);
+      if (d < dels.length && facing[dels[d]] === undefined) { row.left = oldCell(dels[d]); row.idx.push(dels[d]); d++; }
+      else if (a < adds.length && run[adds[a]] === undefined) { row.right = newCell(adds[a]); row.idx.push(adds[a]); a++; }
+      else {
+        row.left = oldCell(dels[d]); row.right = newCell(adds[a]);
+        row.words = wordDiff(ops[dels[d]].text, ops[adds[a]].text);
+        row.idx.push(dels[d], adds[a]); d++; a++;
       }
       rows.push(row);
     }
@@ -1394,7 +1590,8 @@ function sideTable(ops, swap, blocks) {
       ln.textContent = cell ? String(cell.n) : "";
       var code = document.createElement("td");
       code.className = "code " + side[1] + " " + (cell ? cell.cls : "none");
-      code.textContent = cell ? cell.text : "";
+      if (cell && row.words) { markWords(code, row.words, cell.cls === "del" ? "-" : "+"); }
+      else { code.textContent = cell ? cell.text : ""; }
       if (cell) { blameMark(code, cell.who); }
       tr.appendChild(ln);
       tr.appendChild(code);
@@ -1882,9 +2079,9 @@ function renderReviewPart(data) {
     // rebuild it from. VERTEX does not render it, and says so.
     var ddic = document.createElement("div");
     ddic.className = "note";
-    ddic.textContent = "This is a dictionary object. Its review is a table of"
-                     + " fields rather than a line diff, and VERTEX does not"
-                     + " render that page yet.";
+    // AVE keeps no line diff of a dictionary object; VERTEX's ABAP lets the host read it again, and without it the page says so.
+    ddic.textContent = "This dictionary object was reviewed by AVE, which keeps no line diff of it: "
+                     + (data.ddic_needs || "it could not be read again here.");
     root.appendChild(ddic);
     status("");
     return;
@@ -1957,6 +2154,8 @@ function storageLine(storage) {
 }
 
 function renderReview(data) {
+  // The finished review ends the build; a part of it drawn on the way does not.
+  if (!data.partial) { review_building = ""; }
   review = data;
   review_part = null;
   review_saved_at = data.saved_at || "";
@@ -1965,6 +2164,17 @@ function renderReview(data) {
   root.className = "review";
   root.innerHTML = "";
 
+  if (review_live && data.partial) {
+    // The parts read so far; the rest come as they are read, and the review can be saved once all of it is there.
+    root.appendChild(heading("Building from ADT - the parts read so far"));
+    var wait = document.createElement("p");
+    wait.className = "muted";
+    wait.textContent = "An object opens once the whole review is built.";
+    root.appendChild(wait);
+    root.appendChild(section("Developers", developerTable(data.objects || [], data.developers)));
+    root.appendChild(objectGroups(data.objects || []));
+    return;
+  }
   if (review_live) {
     root.appendChild(heading("Built from ADT now - not saved"));
     var where = storageLine(data.storage);
@@ -1975,25 +2185,41 @@ function renderReview(data) {
       save.onclick = function () {
         save.disabled = true;
         status("saving ...");
-        sdeAct(objectName(), "", "", "", JSON.stringify({ action: "S", saved_at: "" }), review_blame ? "1" : "", review_from);
+        sdeAct(objectName(), "", "", "", JSON.stringify({ action: "S", saved_at: "" }), review_blame ? "1" : "", review_from,
+          reviewFlags(false));
       };
       root.appendChild(save);
+      // A review built at the page's asking is saved at once, as Save would; one read for the assistant or left from
+      // before is not. A save that fails says so and leaves Save to try again.
+      if (review_autosave && review_autosave === data.request) { review_autosave = ""; review_fresh = data.request; save.onclick(); }
     }
     // Nothing keeps a live review, so reading it again builds it from the request as it is now.
     var rebuild = document.createElement("button");
     rebuild.textContent = "Rebuild from ADT";
-    rebuild.onclick = function () {
-      rebuild.disabled = true;
-      review_part = null;
-      status("building the review of " + objectName() + " again ...");
-      sdeReview(objectName(), "", "", "", "1", review_blame ? "1" : "", review_from);
-    };
+    rebuild.onclick = function () { rebuild.disabled = true; buildReview(true); };
     root.appendChild(rebuild);
+    root.appendChild(buildOptions());
     root.appendChild(section("Developers", developerTable(data.objects || [], data.developers)));
     root.appendChild(objectGroups(data.objects || []));
     if (data.missing && data.missing.length) { root.appendChild(missingSection(data.missing)); }
+    if (data.build_log && data.build_log.length) { root.appendChild(buildLog(data.build_log)); }
     var changed = (data.objects || []).reduce(function (n, o) { return n + o.hunks; }, 0);
     status(changed === 1 ? "1 changed block" : changed + " changed blocks");
+    return;
+  }
+  if (data.saved !== true && data.can_build === true) {
+    // Nothing saved: the review is built only when asked - it reads every part's versions.
+    root.appendChild(heading("No review is saved for " + data.request.toUpperCase()));
+    var build = document.createElement("button");
+    build.textContent = "Build review";
+    build.onclick = function () { build.disabled = true; buildReview(false); };
+    root.appendChild(build);
+    root.appendChild(buildOptions());
+    if (data.overview && data.overview.length) {
+      root.appendChild(section("Objects", overviewTable(data.overview)));
+      if (data.overview_kinds_error) { root.appendChild(heading("Type Description could not be read: " + data.overview_kinds_error)); }
+    }
+    status("");
     return;
   }
   if (data.table !== true && data.saved !== true) {
@@ -2021,23 +2247,53 @@ function renderReview(data) {
   // have, or a review saved by AVE is to be built again by VERTEX's. A review
   // against another system is AVE's to build.
   if (!data.remote) { root.appendChild(rebuildBlock()); }
-  var stale = staleBlock(data.stale);
-  if (stale) { root.appendChild(stale); }
+  // Checked after the review is shown (checkStale); a released request and a review against another system are not.
+  var checking = document.createElement("div");
+  checking.id = "stale-check";
+  root.appendChild(checking);
   root.appendChild(section("Developers", developerTable(data.objects || [], data.developers)));
   root.appendChild(objectGroups(data.objects || []));
-  root.appendChild(section("Reviewers", reviewerTable(data.reviewers || [])));
-  if (data.history && data.history.length > 0) {
-    root.appendChild(section("Saves", historyTable(data.history)));
-  }
+  if (data.reviewers && data.reviewers.length) { root.appendChild(section("Reviewers", reviewerTable(data.reviewers))); }
+  if (data.build_log && data.build_log.length) { root.appendChild(buildLog(data.build_log)); }
 
   var open = (data.objects || []).reduce(function (n, o) { return n + o.open; }, 0);
   status(open === 0 ? "nothing open" : open + (open === 1 ? " block open" : " blocks open"));
+  // Shown again (back from a part or a developer), the review keeps the answer it already has.
+  if (data.stale_answer) { showStale(data.stale_answer); }
+  // A check cut short when the page asked for something else is asked again when the review is shown again.
+  else if (review_fresh && review_fresh === data.request) { review_fresh = ""; }
+  else if (!data.remote) { checkStale(); }
 }
 
 /* Whether the saved review is still the request's change, as the host checked it
    by the versions: what moved and what could not be checked; Rebuild from ADT
    stands above it for every saved review. Nothing when the host did not check
    (a released request, a review against another system). */
+/* The saved review is shown at once; whether it is still the request's change is asked beside it, and the answer
+   goes above the tables when it comes - unless the page has moved to another review since. */
+function checkStale() {
+  if (typeof sdeReview !== "function") { return; }
+  var line = document.getElementById("stale-check");
+  if (line) { line.textContent = "Checking whether the request changed since this review was saved ..."; }
+  sdeReview(objectName(), "", "", "", "", review_blame ? "1" : "", review_from, reviewFlags(false) + "C");
+}
+function showStale(data) {
+  var line = document.getElementById("stale-check");
+  if (!review || data.request !== review.request || data.saved_at !== review_saved_at) { return; }
+  review.stale_answer = data;
+  if (!line) { return; }
+  var box = staleBlock(data.stale);
+  if (box) {
+    line.textContent = "";
+    line.appendChild(box);
+    status("the review differs from the request as it is now");
+  } else {
+    line.textContent = data.stale ? "Up to date with the request." : "";
+    line.className = "muted";
+    status("the review is up to date");
+  }
+}
+
 function staleBlock(stale) {
   if (!stale) { return null; }
   var box = document.createElement("div");
@@ -2106,13 +2362,20 @@ function rebuildBlock() {
   rebuild.onclick = function () {
     rebuild.disabled = true;
     status("building the review of " + objectName() + " again ...");
-    sdeAct(objectName(), "", "", "", JSON.stringify({ action: "R", saved_at: review_saved_at }), review_blame ? "1" : "", review_from);
+    // Drawn part by part as it is rebuilt, and saved by the rebuild itself: no check of it afterwards.
+    review_part = null;
+    review_building = objectName().toLowerCase();
+    review_fresh = review_building;
+    sdeAct(objectName(), "", "", "", JSON.stringify({ action: "R", saved_at: review_saved_at }), review_blame ? "1" : "", review_from,
+      reviewFlags(false));
   };
   box.appendChild(rebuild);
   var warn = document.createElement("span");
   warn.className = "muted";
-  warn.textContent = "  Replaces the saved review; its verdicts and comments are dropped.";
+  warn.textContent = "  Replaces the saved review; its verdicts and comments are dropped.  ";
   box.appendChild(warn);
+  // The build option goes after what the button does, so the two read apart.
+  box.appendChild(buildOptions());
   return box;
 }
 
@@ -2126,10 +2389,25 @@ function heading(text) {
    with the reason: the rest is reviewed. */
 function missingSection(missing) {
   return section("Not reviewed", table(["Type", "Object", "Why"], missing, function (tr, m) {
+    if (m.reason === "deleted since") { tr.className = "deleted"; }
     [m.object, m.name, m.reason].forEach(function (text) {
       var td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
     });
   }));
+}
+
+/* How the review was built, a line per step and a SKIP line with the reason for each part that gave no block - AVE's
+   Code Review diagnostics. Folded; there to answer "why is this part not in the review". */
+function buildLog(lines) {
+  var box = document.createElement("details");
+  var head = document.createElement("summary");
+  head.textContent = "Build log (" + lines.length + " lines)";
+  box.appendChild(head);
+  var pre = document.createElement("pre");
+  pre.className = "build-log";
+  pre.textContent = lines.join("\n");
+  box.appendChild(pre);
+  return box;
 }
 
 function section(title, body) {
@@ -2227,13 +2505,39 @@ function aveTable(columns, numeric, fill, rows, total) {
 }
 function sum(rows, key) { return rows.reduce(function (n, r) { return n + (r[key] || 0); }, 0); }
 
+/* One developer's part of the review, as AVE's per-developer view: the objects they wrote blocks in, grouped as in
+   the review, each opening its blocks; "← Review" goes back. */
+function renderDeveloper(d) {
+  renderPerson("Review: " + (d.author_name || d.author || ""), function (o) { return (o.authors || [o.author]).indexOf(d.author) >= 0; });
+}
+/* A person's part of the review - a developer's or a reviewer's: the objects that pass PICK, grouped as in the review. */
+function renderPerson(title, pick) {
+  var root = document.getElementById("root");
+  root.innerHTML = "";
+  var back = document.createElement("button");
+  back.textContent = "← Review";
+  back.onclick = function () { renderReview(review); };
+  root.appendChild(back);
+  root.appendChild(heading(title));
+  var mine = (review.objects || []).filter(pick);
+  root.appendChild(objectGroups(mine));
+  status(mine.length === 1 ? "1 object" : mine.length + " objects");
+}
+/* The developer's cell: a link to their part of the review. */
+function developerCell(tr, d) {
+  var td = document.createElement("td"); var a = document.createElement("a"); a.className = "objlink";
+  a.textContent = d.author || ""; a.title = "Show the objects " + (d.author_name || d.author || "") + " changed";
+  a.addEventListener("click", function () { renderDeveloper(d); });
+  td.appendChild(a); tr.appendChild(td);
+}
+
 /* Developers: what each author changed in the request and how far its review has come. */
 function developerTable(objects, developers) {
   // A host that counts developers by blame hands them over ready; otherwise each object goes to its author.
   if (review_blame && developers && developers.length) {
     return aveTable(["Developer", "Name", "Rows +/~/-", "Blocks", "Approved", "Declined", "%"], [0, 0, 1, 1, 1, 1, 1],
       function (tr, d) {
-        cell(tr, d.author || "");
+        developerCell(tr, d);
         cell(tr, d.author_name || "");
         rowsCell(tr, d.inserted, d.modified, d.deleted);
         count(tr, d.hunks);
@@ -2250,7 +2554,7 @@ function developerTable(objects, developers) {
   });
   return aveTable(["Developer", "Name", "Rows +/~/-", "Blocks", "Approved", "Declined", "%"], [0, 0, 1, 1, 1, 1, 1],
     function (tr, d) {
-      cell(tr, d.author || "");
+      developerCell(tr, d);
       cell(tr, d.author_name || "");
       rowsCell(tr, sum(d.objects, "inserted"), sum(d.objects, "modified"), sum(d.objects, "deleted"));
       count(tr, sum(d.objects, "hunks"));
@@ -2287,10 +2591,13 @@ function objectGroups(objects) {
     var n = document.createElement("span"); n.className = "grpcnt"; n.textContent = "(" + rows.length + ")"; h.appendChild(n);
     var t = aveTable(["Type", "Object", "Owner", "Rows +/~/-", "Blocks", "Approved", "Declined", "%"], [0, 0, 0, 1, 1, 1, 1, 1],
       function (tr, o) {
-        tr.className = "pick";
-        tr.title = "Show the changed blocks of " + (o.display_name || o.obj_name);
-        tr.addEventListener("click", function () { loadReviewPart(o); });
-        cell(tr, o.objtype, "mono");
+        // While the review is still being built a row cannot open: the host answers one request at a time.
+        if (!review_building) {
+          tr.className = "pick";
+          tr.title = "Show the changed blocks of " + (o.display_name || o.obj_name);
+          tr.addEventListener("click", function () { loadReviewPart(o); });
+        }
+        cell(tr, o.kind || o.objtype, "mono");
         var td = document.createElement("td"); var a = document.createElement("a"); a.className = "objlink";
         a.textContent = o.display_name || o.obj_name; td.appendChild(a); tr.appendChild(td);
         cell(tr, o.author_name || o.author);
@@ -2315,28 +2622,30 @@ function objectGroups(objects) {
   return box;
 }
 
+/* Reviewers as AVE's report lists them, with a Total row when there are several; a reviewer opens the objects of the
+   blocks they approved, declined or commented. */
 function reviewerTable(reviewers) {
-  return table(["Reviewer", "Approved", "Declined", "Notes", "Last saved"],
-    reviewers, function (tr, r) {
-      cell(tr, r.reviewer_name || r.reviewer);
+  var rows = reviewers.slice();
+  if (rows.length > 1) {
+    rows.push({ total_row: true, approved: sum(reviewers, "approved"), declined: sum(reviewers, "declined"), total: sum(reviewers, "total") });
+  }
+  return table(["Reviewer", "Name", "Approved", "Declined", "Total"],
+    rows, function (tr, r) {
+      if (r.total_row) { cell(tr, "Total"); cell(tr, ""); }
+      else {
+        var td = document.createElement("td"); var a = document.createElement("a"); a.className = "objlink";
+        a.textContent = r.reviewer; a.title = "Show the objects " + (r.reviewer_name || r.reviewer) + " reviewed";
+        a.addEventListener("click", function () {
+          renderPerson("Reviewed by " + (r.reviewer_name || r.reviewer), function (o) { return (r.objects || []).indexOf(o.objtype + "~" + o.obj_name) >= 0; });
+        });
+        td.appendChild(a); tr.appendChild(td);
+        cell(tr, r.reviewer_name || "");
+      }
       count(tr, r.approved, "ok");
       count(tr, r.declined, "no");
-      count(tr, r.notes);
-      cell(tr, asStamp(r.saved_at), "mono");
+      count(tr, r.total);
     });
 }
-
-function historyTable(history) {
-  return table(["When", "Who", "Approved", "Declined", "Notes"],
-    history, function (tr, h) {
-      cell(tr, asStamp(h.saved_at), "mono");
-      cell(tr, h.saved_by_name || h.saved_by);
-      count(tr, h.approved, "ok");
-      count(tr, h.declined, "no");
-      count(tr, h.notes);
-    });
-}
-
 
 /* ---------- what this system has ----------
 
@@ -2429,7 +2738,8 @@ function applyAbout() {
    resource this window is for, there is nothing to start. */
 function startWindow() {
   if (!usable("versions")) { setupPage(""); return; }
-  if (INITIAL) {
+  // No name: the window was opened to find requests, and the list is on its way - nothing to load or say meanwhile.
+  if (INITIAL && INITIAL.name) {
     if (INITIAL.action === "review") {
       mode = "R"; scope = true; renderCards(); loadReview();
     } else { loadParts(false); }

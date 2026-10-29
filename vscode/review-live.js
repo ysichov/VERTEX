@@ -175,13 +175,25 @@ const CLASS_PART_TYPES = ["METH", "CPUB", "CPRO", "CPRI", "CINC"];
 /* An object a request names may be gone from the system since: deleted, it has no parts to read. Whether it exists is
    asked of TADIR (a function module of TFDIR), not read from SAP's message. Neither stops the review: each is listed
    with its reason - deleted since, or SAP's own words - [{ object, name, reason }]. */
+// PROG for a program, INCL for an include (TRDIR SUBC I), as versions-front's partInScope tells them apart.
+async function programKind(api, name) {
+  const row = (await api.query("SELECT subc FROM trdir WHERE name = " + sqlText(name), 1)).values[0];
+  return row && row.SUBC === "I" ? "INCL" : "PROG";
+}
+
 async function exists(api, type, name) {
+  if (type === "INCL") { type = "PROG"; }
   const sql = type === "FUNC" ? "SELECT funcname FROM tfdir WHERE funcname = " + sqlText(name)
-    : "SELECT obj_name FROM tadir WHERE pgmid = 'R3TR' AND object = " + sqlText(type) + " AND obj_name = " + sqlText(name);
+    // A deleted object keeps its TADIR entry, marked for deletion (DELFLAG X), as AVE's overview reads it.
+    : "SELECT obj_name FROM tadir WHERE pgmid = 'R3TR' AND object = " + sqlText(type) + " AND obj_name = " + sqlText(name)
+      + " AND delflag <> 'X'";
   return (await api.query(sql, 1)).values.length > 0;
 }
 
-async function partsOfRequest(api, keys) {
+const methodOf = versions.methodOf;
+
+async function partsOfRequest(api, keys, numbers, log) {
+  const say = log || (() => {});
   const parts = [], seen = new Set(), missing = [];
   const add = async (type, name, filter) => {
     let found;
@@ -189,8 +201,11 @@ async function partsOfRequest(api, keys) {
     catch (error) {
       const reason = await exists(api, type, name) ? String(error && error.message || error) : "deleted since";
       if (!missing.some(m => m.object === type && m.name === name)) { missing.push({ object: type, name, reason }); }
+      say("SKIP " + type + " " + name + ": " + reason);
       return;
     }
+    say(type + " " + name + ": " + found.length + " part(s) " + found.map(p => p.part_type + " " + (p.unit || p.name)).join(", "));
+    const before = parts.length;
     for (const p of found) {
       if (filter && !filter(p)) { continue; }
       const key = p.part_type + "|" + p.name;
@@ -198,15 +213,37 @@ async function partsOfRequest(api, keys) {
       seen.add(key);
       parts.push({ type, object: name, part: p.name, ptype: p.part_type, unit: p.unit, className: type === "CLAS" ? name : "" });
     }
+    return parts.length - before;
   };
+  /* A class whose methods the request names one by one is not opened whole: the METH entries say what changed, and
+     the class entry beside them would add every method of it (GET_PARTS_EXPANDED). */
+  const listed = new Set(keys.filter(k => String(k.OBJECT) === "METH").map(k => methodOf(k.OBJ_NAME).owner.toUpperCase()));
   for (const k of keys) {
     const object = String(k.OBJECT), name = String(k.OBJ_NAME).trim();
-    if (k.PGMID === "R3TR" && ["CLAS", "INTF", "FUGR", "PROG", "DDLS", "TABL", "DOMA", "DTEL"].includes(object)) { await add(object, name); continue; }
-    if (object === "REPS") { await add("PROG", name); continue; }
+    if (k.PGMID === "R3TR" && object === "CLAS" && listed.has(name.toUpperCase())) { continue; }
+    /* A whole class is opened without its technical includes - local types, test classes, macros - as AVE expands it
+       for review; a request that names such an include (LIMU CINC) still has it. */
+    if (k.PGMID === "R3TR" && object === "CLAS") { await add(object, name, p => p.part_type !== "CINC"); continue; }
+    // A program's source may be an include - a user exit's ZX..., a program's _F01 - which ADT keeps under its own address.
+    if (object === "REPS" || (k.PGMID === "R3TR" && object === "PROG")) { await add(await programKind(api, name), name); continue; }
+    if (k.PGMID === "R3TR" && ["CLAS", "INTF", "FUGR", "DDLS", "TABL", "DOMA", "DTEL"].includes(object)) { await add(object, name); continue; }
     if (object === "FUNC") { await add("FUNC", name); continue; }
     if (object === "METH") {
-      const owner = String(k.OBJ_NAME).slice(0, 30).trim(), method = String(k.OBJ_NAME).slice(30).trim();
-      await add("CLAS", owner, p => p.part_type === "METH" && p.unit === method);
+      const { owner, method } = methodOf(k.OBJ_NAME);
+      if (!owner) { continue; }
+      // The class alone: its methods are the ones the request and its tasks hold versions of (VRSD).
+      let methods = method ? [method] : [];
+      if (!method && numbers && numbers.size) {
+        const rows = await inLists(api, "SELECT objname FROM vrsd WHERE objtype = 'METH' AND objname LIKE "
+          + sqlText(owner.padEnd(30, " ") + "%") + " AND korrnum", [...numbers], 10000);
+        methods = rows.map(r => String(r.OBJNAME).slice(30).trim()).filter(Boolean);
+      }
+      const wanted = new Set(methods.map(m => m.toUpperCase()));
+      // E071 names the method in capitals; the class layout as it is written in the source.
+      say("METH " + owner + " " + (method || "(class alone)") + ": wanted " + ([...wanted].join(", ") || "nothing"));
+      if (wanted.size && !await add("CLAS", owner, p => p.part_type === "METH" && wanted.has(String(p.unit).toUpperCase()))) {
+        say("SKIP METH " + owner + "->" + [...wanted].join(", ") + ": not among the methods ADT lists for the class (or already taken)");
+      }
       continue;
     }
     if (CLASS_PART_TYPES.includes(object)) {
@@ -216,6 +253,37 @@ async function partsOfRequest(api, keys) {
   }
   return { parts, missing };
 }
+
+/* A dictionary object ADT keeps no versions of on this release (DTEL, DOMA, TABL: "Request version ... is not supported")
+   cannot be built here; AVE builds it on the SAP side (SVRS_GET_VERSION_DTED_40 and the like). A rebuild takes such a part
+   from the saved review as AVE left it - its blocks and diff, not its verdicts, which a rebuild drops - so it is not lost
+   to "Not reviewed". BUILT is not changed: it may be the session's kept build. */
+const DDIC_PART = { TABL: "TABD", DOMA: "DOMD", DTEL: "DTED" };
+function carryUnread(built, saved) {
+  const list = value => Array.isArray(value) ? value : [];
+  const missing = list(built.MISSING);
+  const unread = new Set(missing.filter(m => DDIC_PART[m.object]).map(m => DDIC_PART[m.object] + "|" + String(m.name).toUpperCase()));
+  const key = (type, name) => String(type).toUpperCase() + "|" + String(name).trim().toUpperCase();
+  const stats = list(saved.OBJ_STATS).filter(s => unread.has(key(s.OBJTYPE, s.OBJ_NAME)));
+  const taken = new Set(stats.map(s => key(s.OBJTYPE, s.OBJ_NAME)));
+  const payload = Object.assign({}, built, {
+    OBJ_STATS: list(built.OBJ_STATS).concat(stats),
+    HUNKS: list(built.HUNKS).concat(list(saved.HUNKS).filter(h => taken.has(key(h.OBJTYPE, h.OBJ_NAME)))),
+    DIFF_DATA: list(built.DIFF_DATA).concat(list(saved.DIFF_DATA).filter(d => d.KEY && taken.has(key(d.KEY.OBJTYPE, d.KEY.OBJNAME))))
+  });
+  Object.defineProperty(payload, "MISSING", { value: missing.filter(m => !(DDIC_PART[m.object] && taken.has(DDIC_PART[m.object] + "|" + String(m.name).toUpperCase()))),
+    enumerable: false });
+  if (built.DIAG) {
+    const diag = built.DIAG.concat([...taken].map(k => "CARRIED " + k.replace("|", " ") + ": from the saved review, as AVE built it"));
+    Object.defineProperty(payload, "DIAG", { value: diag, enumerable: false });
+  }
+  return payload;
+}
+
+// The log of the last build of each request (AVE's Code Review diagnostics), kept for the session: a review built and
+// then saved keeps no place for it in its payload.
+const lastLogs = new Map();
+const lastLog = request => lastLogs.get(String(request).toUpperCase()) || null;
 
 // The pair of versions the request's change is, read from the part's feed, by AVE's rule (ZCL_VX_VERSION_LIST=>LOAD
 // with a request scope). NEW: the newest numbered version of the request; if a version of another request sits above
@@ -256,6 +324,56 @@ const activeOrKept = (api, entry) => entry.id === "00000" ? Promise.resolve(api.
 // SAP* - is not a change to review (ZCL_VX_ACR_PREPARE=>IS_SAP_GENERATED_AUTHOR, AVE's "Ignore SAP generated").
 const generated = pair => /^SAP/i.test(String(pair.fresh.author || ""));
 
+// Objects SAP generates (ZCL_AVE_ACR_PREPARE=>IS_GENERATED_CLASS): the Gateway classes <name>_MPC, <name>_MPC_EXT and
+// <name>_DPC, regenerated from the OData model - <name>_DPC_EXT is written by hand and stays - and the function group
+// main program SAPL<area>, whose include list SAP rewrites under the name of whoever added a function module.
+const generatedObject = p => [p.className, p.object, p.part].some(name => {
+  const n = String(name || "").toUpperCase().split(/[= ]/)[0];
+  return /_MPC$|_MPC_EXT$|_DPC$/.test(n) || /^SAPL/.test(n);
+});
+
+// A header line a generator rewrites on every run (ZCL_AVE_ACR_PREPARE=>IS_GENERATED_TS_LINE): the SEGW stamp, a
+// function group's regeneration stamp, the table maintenance generator's date and version.
+const stampLine = text => {
+  const t = String(text || "").toUpperCase().replace(/\s+/g, " ");
+  return (t.includes("HAS BEEN GENERATED ON") && t.includes("IN CLIENT")) || t.includes("REGENERATED AT")
+    || t.includes("GENERATION DATE:") || t.includes("MAINTENANCE GENERATOR VERSION");
+};
+
+// In each run of changes a removed stamp line and an inserted one make an unchanged line with the new text
+// (STRIP_GENERATED_TS_DIFF); a stamp line only added or only removed stays a change.
+function stripStamps(ops) {
+  const out = [];
+  let run = [];
+  const flush = () => {
+    let removed = run.filter(o => o.op === "-" && stampLine(o.text)).length;
+    let paired = Math.min(removed, run.filter(o => o.op === "+" && stampLine(o.text)).length);
+    let drop = paired;
+    run.forEach(o => {
+      if (o.op === "-" && drop && stampLine(o.text)) { drop--; return; }
+      if (o.op === "+" && paired && stampLine(o.text)) { paired--; out.push({ op: "=", text: o.text }); return; }
+      out.push(o);
+    });
+    run = [];
+  };
+  ops.forEach(o => { if (o.op === "=") { flush(); out.push(o); } else { run.push(o); } });
+  flush();
+  return out;
+}
+
+// A created object of comment lines only (IS_COMMENTS_ONLY), and a class section that holds nothing but its own header
+// on both sides (IS_EMPTY_SECTION) - a new class gets all three, used or not - are not changes to review.
+const commentsOnly = lines => lines.every(l => { const t = String(l).trim(); return !t || t[0] === "*"; });
+const emptySection = lines => lines.every(l => {
+  const t = String(l).trim().toUpperCase().replace(/\s+/g, " ");
+  return !t || t[0] === "*" || t[0] === '"' || /^(PUBLIC|PROTECTED|PRIVATE) SECTION\.$/.test(t);
+});
+
+// The rules together, as the build applies them while "Ignore SAP generated" is on.
+const ignored = { object: generatedObject, pair: generated, ops: stripStamps,
+  text: (p, pair, oldLines, newLines) => (!pair.old && commentsOnly(newLines))
+    || (["CPUB", "CPRO", "CPRI"].includes(p.ptype) && emptySection(newLines) && emptySection(oldLines)) };
+
 // A part without a pair is listed, never dropped without a word.
 const noPair = open => open ? "no version of this part, and no active state"
   : "the request is released and holds no version of this part; the active state belongs to later work";
@@ -266,19 +384,21 @@ const cache = new WeakMap();
 // for each part.
 // PROGRESS, when given, is told what the build is doing, a line at a time. FRESH builds it again whatever is kept.
 // BLAME adds who wrote each changed line (AVE's "Who is Blame"); off, every block is the NEW version's author's.
-async function build(api, request, progress, fresh, blame) {
-  const key = request + (blame ? "|blame" : "");
+// KEEP_GENERATED keeps the code SAP generated (AVE's "Ignore SAP generated" off). ON_PART, when given, is handed the
+// payload as it stands after each part is done - the review so far - while the rest is read.
+async function build(api, request, progress, fresh, blame, keepGenerated, onPart) {
+  const key = request + (blame ? "|blame" : "") + (keepGenerated ? "|generated" : "");
   if (!cache.has(api)) { cache.set(api, new Map()); }
   const kept = cache.get(api).get(key);
   if (!fresh && kept && Date.now() - kept.at < 5 * 60 * 1000) { return kept.payload; }
-  const promise = buildNow(api, request, progress || (() => {}), Boolean(blame));
+  const promise = buildNow(api, request, progress || (() => {}), Boolean(blame), Boolean(keepGenerated), onPart || (() => {}));
   cache.get(api).set(key, { at: Date.now(), payload: promise });
   promise.catch(() => cache.get(api).delete(key));
   return promise;
 }
 
 // The request with its tasks, and the parts they name.
-async function requestParts(api, request) {
+async function requestParts(api, request, log) {
   const head = (await api.query("SELECT trkorr, trstatus FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
   if (!head) { throw new Error("Transport request " + request + " does not exist."); }
   const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(request), 1000)).values.map(r => r.TRKORR);
@@ -291,17 +411,22 @@ async function requestParts(api, request) {
   const numbers = new Set([request, ...tasks, ...copies]);
   const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
   const open = head.TRSTATUS !== "R" && head.TRSTATUS !== "N";
-  return Object.assign({ numbers, open }, await partsOfRequest(api, keys));
+  return Object.assign({ numbers, open }, await partsOfRequest(api, keys, numbers, log));
 }
 
 const labelOf = p => p.ptype === "METH" ? p.object + "->" + p.unit : p.part;
 const versnos = pair => ({ fresh: pair.fresh.id === "00000" ? "99998" : pair.fresh.id, old: pair.old ? pair.old.id : "00000" });
 
-async function buildNow(api, request, progress, withBlame) {
+async function buildNow(api, request, progress, withBlame, keepGenerated, onPart) {
+  const skip = keepGenerated ? { object: () => false, pair: () => false, text: () => false, ops: ops => ops } : ignored;
   progress("reading what " + request + " holds ...");
   const payload = { TRKORR: request, OBJ_STATS: [], HUNKS: [], DIFF_DATA: [], HUNK_ACTIONS: [], USER_STATES: [], THREADS: [], HISTORY: [] };
 
-  const { numbers, open, parts, missing } = await requestParts(api, request);
+  const diag = [], log = text => diag.push(text);
+  lastLogs.set(String(request).toUpperCase(), diag);
+  Object.defineProperty(payload, "DIAG", { value: diag, enumerable: false });
+  const { numbers, open, parts, missing } = await requestParts(api, request, log);
+  log("REQUEST " + request + ": " + [...numbers].join(", ") + (open ? ", open" : ", released") + "; " + parts.length + " part(s)");
   // One resolver per object read through, so its tasks and requests are asked once for all its parts.
   const resolvers = new Map();
   const ownerOf = object => { if (!resolvers.has(object)) { resolvers.set(object, ownerResolver(api, object)); } return resolvers.get(object); };
@@ -312,21 +437,32 @@ async function buildNow(api, request, progress, withBlame) {
     /* One part that cannot be read - ADT keeps no versions of its type on this release ("Request version for DTEL is
        not supported"), a version that will not open - does not end the review: it is listed with SAP's own words, and
        the rest is reviewed. */
+    const label = labelOf(p);
+    log("PART " + p.ptype + " " + label);
+    if (skip.object(p)) { log("SKIP " + label + ": generated class or function group main program"); continue; }
     let where, pair, ops, blame;
     try {
+      // A data element, domain or table: VRSD's history and VERTEX's ABAP for the text, where ADT keeps none.
       where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
-      if (!where) { continue; }
-      const feed = await api.revisions(where.url, where.include || undefined);
+      if (!where) { log("SKIP " + label + ": no version history for this kind of part"); continue; }
+      const history = await versions.historyOf(api, p.ptype, p.part, where);
+      const dictionary = history.textOf ? history : null;
+      if (dictionary) { log("  VRSD: ADT keeps no versions of " + p.ptype + " here; VERTEX's ABAP gives their text"); }
+      const feed = history.feed;
+      feed.forEach(e => log("  VER " + e.id + " " + (e.transport || "-") + " " + (e.author || "")));
       pair = pairOf(feed, numbers, open);
       if (!pair) { throw new Error(noPair(open)); }
-      if (generated(pair)) { continue; }
-      const textOf = async entry => {
+      log("  PAIR new=" + pair.fresh.id + " (" + (pair.fresh.transport || "-") + ") old=" + (pair.old ? pair.old.id + " (" + (pair.old.transport || "-") + ")" : "none"));
+      if (skip.pair(pair)) { log("SKIP " + label + ": SAP auto-generated code (author " + pair.fresh.author + ")"); continue; }
+      const textOf = dictionary ? dictionary.textOf : async entry => {
         if (!entry) { return []; }
         const text = await activeOrKept(api, entry);
         return (where.cut ? where.cut(text) : versions.lines(text)) || [];
       };
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
-      ops = await versions.diff(oldLines, newLines, false, api);
+      log("  TEXT old=" + oldLines.length + " line(s), new=" + newLines.length + " line(s)");
+      if (skip.text(p, pair, oldLines, newLines)) { log("SKIP " + label + ": new object of comments only, or an empty class section"); continue; }
+      ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
       blame = { map: [], deleted: [] };
       if (withBlame && ops.some(o => o.op !== "=")) {
         progress((at + 1) + " of " + parts.length + ": " + labelOf(p) + " - who wrote which line ...");
@@ -335,11 +471,14 @@ async function buildNow(api, request, progress, withBlame) {
     } catch (error) {
       missing.push({ object: p.ptype === "METH" ? "METH" : p.type, name: p.ptype === "METH" ? p.object + "->" + p.unit : p.part,
         reason: String(error && error.message || error) });
+      log("SKIP " + label + ": " + String(error && error.message || error));
       continue;
     }
-    if (!ops.some(o => o.op !== "=")) { continue; }
+    if (!ops.some(o => o.op !== "=")) { log("SKIP " + label + ": no difference between the two versions"); continue; }
 
     const ranges = hunkRanges(ops);
+    if (!ranges.length) { log("SKIP " + label + ": only blank lines changed"); }
+    else { log("  BLOCKS " + ranges.length); }
     const { fresh: versnoNew, old: versnoOld } = versnos(pair);
     const display = p.ptype === "METH" ? p.unit : p.part;
     const { ins, del, mod } = countChanges(ops);
@@ -362,6 +501,7 @@ async function buildNow(api, request, progress, withBlame) {
       AUTHOR: pair.fresh.author, AUTHOR_NAME: "", INS_COUNT: ins, DEL_COUNT: del, MOD_COUNT: mod, HUNK_COUNT: ranges.length,
       HUNK_INS: hIns, HUNK_MOD: hMod, HUNK_DEL: hDel, DISPLAY_NAME: display, IS_CREATED: !pair.old,
       BT_AUTHORS: withBlame ? blameAuthors(ops, blame.map, pair.fresh.owner || pair.fresh.author, partHunks) : [] });
+    onPart(payload);
   }
 
   // Names to the authors, as the saved review carries them.
@@ -385,7 +525,8 @@ async function buildNow(api, request, progress, withBlame) {
    cannot settle are read - a part whose new side is the active state (99998), whose text may move without a new
    version, and a part the request names that the review does not hold, which counts only when it differs. Answers
    { changed: [{ name, reason }], unchecked: [{ name, reason }] }; a part that cannot be read is unchecked, not fine. */
-async function staleness(api, request, saved, progress) {
+async function staleness(api, request, saved, progress, keepGenerated, cancelled) {
+  const skip = keepGenerated ? { object: () => false, pair: () => false, text: () => false, ops: ops => ops } : ignored;
   const say = progress || (() => {});
   /* A released request is history: its versions no longer change, and its pair is taken from its own versions only, so
      later work of other requests cannot move it. Nothing to check - and checking cost a read of every part's feed. */
@@ -399,14 +540,39 @@ async function staleness(api, request, saved, progress) {
   const changed = [], unchecked = missing.map(m => ({ name: m.name, reason: m.reason }));
   for (const [at, p] of parts.entries()) {
     const name = labelOf(p), stats = held.get(key(p.ptype, p.part));
+    // The window answers one request at a time: a check the page left must not hold up what it asks next.
+    if (cancelled && cancelled()) { throw new Error("The check was cancelled."); }
     say("checking whether " + request + " changed since its review was saved: " + (at + 1) + " of " + parts.length + ", " + name + " ...");
     held.delete(key(p.ptype, p.part));
+    if (skip.object(p)) { continue; }
     try {
+      /* A dictionary object ADT keeps no versions of (DTEL, DOMA, TABL) is checked by VRSD, which the data preview
+         reads: the pair is chosen from its version directory by the same rule, and compared with the review's. Its
+         text cannot be read here, so an active state is judged by the day VRSD says it was last activated. */
+      if (Object.values(DDIC_PART).includes(p.ptype)) {
+        const rows = (await api.query("SELECT versno, korrnum, author, datum FROM vrsd WHERE objtype = " + sqlText(p.ptype)
+          + " AND objname = " + sqlText(p.part), 1000)).values;
+        const pair = pairOf(rows.map(r => ({ id: String(r.VERSNO), transport: String(r.KORRNUM || ""), author: String(r.AUTHOR || "") })),
+          numbers, open);
+        // Not in the saved review: AVE found nothing to review in it, and nothing here can say otherwise.
+        if (!stats) { continue; }
+        if (!pair) { changed.push({ name, reason: noPair(open) }); continue; }
+        const now = versnos(pair);
+        if (Number(stats.VERSNO_NEW) !== Number(now.fresh) || Number(stats.VERSNO_OLD) !== Number(now.old)) {
+          changed.push({ name, reason: "versions " + stats.VERSNO_OLD + " : " + stats.VERSNO_NEW + " in the review, " + now.old + " : " + now.fresh + " now" });
+          continue;
+        }
+        const active = rows.find(r => String(r.VERSNO) === "00000");
+        if (now.fresh === "99998" && active && String(active.DATUM).replace(/-/g, "") > String(saved.LAST_SAVED_AT || "").slice(0, 8)) {
+          changed.push({ name, reason: "activated again after the review was saved" });
+        }
+        continue;
+      }
       const where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
       if (!where) { continue; }
       const pair = pairOf(await api.revisions(where.url, where.include || undefined), numbers, open);
       if (!pair) { throw new Error(noPair(open)); }
-      if (generated(pair)) { continue; }
+      if (skip.pair(pair)) { continue; }
       const now = versnos(pair);
       const textOf = async entry => {
         if (!entry) { return []; }
@@ -414,7 +580,9 @@ async function staleness(api, request, saved, progress) {
         return (where.cut ? where.cut(text) : versions.lines(text)) || [];
       };
       if (!stats) {
-        const ops = await versions.diff(await textOf(pair.old), await textOf(pair.fresh), false, api);
+        const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
+        if (skip.text(p, pair, oldLines, newLines)) { continue; }
+        const ops = skip.ops(await versions.diff(oldLines, newLines, false, api));
         if (ops.some(o => o.op !== "=")) { changed.push({ name, reason: "changed by the request, not in the review" }); }
         continue;
       }
@@ -440,4 +608,4 @@ async function staleness(api, request, saved, progress) {
   return { changed, unchecked };
 }
 
-module.exports = { build, pairOf, generated, countChanges, staleness };
+module.exports = { carryUnread, methodOf, lastLog, build, pairOf, generated, generatedObject, stampLine, stripStamps, commentsOnly, emptySection, countChanges, staleness };

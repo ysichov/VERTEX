@@ -121,6 +121,51 @@ async function partInScope(api, part, ptype) {
   return ddic ? partOf(api, ddic, part, part, ptype) : null;
 }
 
+/* A LIMU METH entry's class and method (ZCL_AVE_OBJECT_TR=>GET_PARTS): the class in the first 30 characters and the
+   method after; a shorter name is CLASS=>METHOD, CLASS\METHOD or CLASS METHOD, or the class alone. */
+function methodOf(objName) {
+  const raw = String(objName);
+  if (raw.length > 30) { return { owner: raw.slice(0, 30).trim(), method: raw.slice(30).trim() }; }
+  const [owner, method] = raw.replace(/=>|\\/g, " ").trim().split(/\s+/);
+  return { owner: owner || "", method: method || "" };
+}
+
+/* Data elements, domains and tables (DTED, DOMD, TABD): ADT keeps no version history of them on older releases
+   ("Request version for DTEL is not supported"). Their history is VRSD, read here; the text of a version comes from
+   VERTEX's ABAP (ZCL_VX_ADT_RES_DDIC). Without it they cannot be compared, and say what is missing. */
+const DICTIONARY = new Set(["DTED", "DOMD", "TABD"]);
+const NEEDS_BACKEND = "data elements, domains and tables need VERTEX's ABAP backend on the system (src/, pulled with abapGit) - ADT keeps no versions of them here";
+const readyKept = new WeakMap();
+async function dictionaryReady(api) {
+  if (typeof api.ddicVersions !== "function") { return false; }
+  if (!readyKept.has(api)) { readyKept.set(api, Promise.resolve(api.ddicVersions()).catch(() => false)); }
+  return readyKept.get(api);
+}
+/* A part's history: ADT's feed where ADT keeps one; for a dictionary part ADT refuses ("Request version for DTEL is
+   not supported", older releases), VRSD's and VERTEX's ABAP. Answers { feed, textOf } for the fallback, null for ADT's. */
+async function historyOf(api, ptype, part, where) {
+  if (!DICTIONARY.has(ptype)) { return { feed: await api.revisions(where.url, where.include || undefined), textOf: null }; }
+  try { return { feed: await api.revisions(where.url, where.include || undefined), textOf: null }; }
+  catch (error) {
+    if (!/not supported/i.test(String(error && error.message || error))) { throw error; }
+    return dictionaryHistory(api, ptype, part);
+  }
+}
+
+// The history of a dictionary part as a feed like ADT's - id, transport, author, time - with its versions' text.
+async function dictionaryHistory(api, ptype, part) {
+  if (!await dictionaryReady(api)) { throw new Error(NEEDS_BACKEND); }
+  const rows = (await api.query("SELECT versno, korrnum, author, datum, zeit FROM vrsd WHERE objtype = " + sqlText(ptype)
+    + " AND objname = " + sqlText(part), 1000)).values;
+  const feed = rows.map(r => {
+    const d = String(r.DATUM || "").replace(/-/g, ""), t = String(r.ZEIT || "").replace(/:/g, "");
+    return { id: String(r.VERSNO), transport: String(r.KORRNUM || ""), author: String(r.AUTHOR || ""), uri: "ddic:" + String(r.VERSNO),
+      time: d.length === 8 ? d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6, 8) + "T" + (t.padEnd(6, "0").replace(/(..)(..)(..)/, "$1:$2:$3")) : "" };
+  });
+  const textOf = async entry => entry ? api.ddicVersion(ptype, part, entry.id === "00000" ? "" : entry.id) : [];
+  return { feed, textOf };
+}
+
 // What a request (with its tasks, E071) or a package (TADIR) holds, as AVE lists it: a class, an interface or a
 // function group as one object to open; anything else as the part it versions as.
 async function scopeParts(api, type, name) {
@@ -143,11 +188,13 @@ async function scopeParts(api, type, name) {
   };
   keys.sort((x, y) => (x.PGMID + x.OBJECT + x.OBJ_NAME).localeCompare(y.PGMID + y.OBJECT + y.OBJ_NAME)).forEach(k => {
     const object = String(k.OBJECT), objName = String(k.OBJ_NAME);
+    // CORR entries are the request's own records (a task released into it, a merge, a comment), not objects.
+    if (k.PGMID === "CORR") { return; }
     if (k.PGMID === "R3TR" && ["CLAS", "INTF", "FUGR"].includes(object)) { add(objName, objName, object); return; }
     if (object === "PROG" || object === "REPS") { add(objName, objName, "REPS"); return; }
     if (object === "METH") {
-      const owner = objName.slice(0, 30).trim(), method = objName.slice(30).trim();
-      add(method, padded(owner, " ") + method, "METH", owner);
+      const { owner, method } = methodOf(objName);
+      if (method) { add(method, padded(owner, " ") + method, "METH", owner); } else if (owner) { add(owner, owner, "CLAS"); }
       return;
     }
     if (DDIC[object]) { add(objName, objName, DDIC[object]); return; }
@@ -342,6 +389,93 @@ async function requestsOf(api, params) {
   return { user, released: released === "true", requests };
 }
 
+/* A request's overview, as AVE's report opens it (ZCL_AVE_ACR_OVERVIEW): each object it holds, with the kind of
+   object as the system names it (KO100), who worked on it - the owners of the tasks that hold it - in how many
+   tasks, and from the first of those tasks to the last. Tasks are the request's own and the ones released into it
+   (its CORR RELE entries: task, date, time, owner). */
+async function requestOverview(api, name, tasks) {
+  const own = [name, ...tasks];
+  const keys = await inLists(api, "SELECT trkorr, pgmid, object, obj_name FROM e071 WHERE trkorr", own, 10000);
+  const released = keys.filter(k => k.PGMID === "CORR" && k.OBJECT === "RELE")
+    .map(k => String(k.OBJ_NAME).trim().split(/\s+/)[0]).filter(t => t && !own.includes(t));
+  const rows = released.length
+    ? keys.concat(await inLists(api, "SELECT trkorr, pgmid, object, obj_name FROM e071 WHERE trkorr", released, 10000)) : keys;
+  const heads = new Map((await inLists(api, "SELECT trkorr, trfunction, as4user, as4date FROM e070 WHERE trkorr",
+    [...own, ...released], 10000)).map(h => [h.TRKORR, h]));
+  // The kind of each object as ADT names it; a host or a system that cannot say leaves the column empty and says why.
+  let kinds = null, kindsError = "";
+  try { kinds = await objectKinds(api); } catch (error) { kindsError = String(error && error.message || error); }
+  const objects = new Map();
+  rows.forEach(k => {
+    if (k.PGMID === "CORR") { return; }
+    const object = String(k.OBJECT), objName = String(k.OBJ_NAME);
+    let label = objName.trim(), owner = "";
+    if (object === "METH") { const m = methodOf(objName); owner = m.owner; label = m.method || m.owner; }
+    const key = k.PGMID + "|" + object + "|" + objName.trim();
+    if (!objects.has(key)) {
+      objects.set(key, { pgmid: k.PGMID, type: object, name: label, class: owner, type_text: kinds ? kindOf(kinds, object) : "",
+        authors: new Set(), tasks: new Set(), start: "", finish: "" });
+    }
+    const o = objects.get(key), head = heads.get(k.TRKORR);
+    // Work is done in tasks (S, R); an entry on the request itself names no one.
+    if (!head || !["S", "R"].includes(String(head.TRFUNCTION))) { return; }
+    o.tasks.add(k.TRKORR);
+    if (head.AS4USER) { o.authors.add(String(head.AS4USER)); }
+    const day = String(head.AS4DATE || "").replace(/-/g, "");
+    if (day && (!o.start || day < o.start)) { o.start = day; }
+    if (day && (!o.finish || day > o.finish)) { o.finish = day; }
+  });
+  const users = [...new Set([...objects.values()].flatMap(o => [...o.authors]))];
+  const names = new Map(users.length ? (await inLists(api, "SELECT u~bname, a~name_text FROM usr21 AS u INNER JOIN adrp AS a"
+    + " ON a~persnumber = u~persnumber WHERE u~bname", users, 1000)).map(r => [r.BNAME, r.NAME_TEXT]) : []);
+  /* Deleted since: the object's TADIR entry is marked for deletion (DELFLAG X), as AVE's overview reads it - a method
+     or a class part by its class, a program include by its program. */
+  const tadirOf = o => o.type === "METH" ? ["CLAS", o.class] : o.type === "REPS" ? ["PROG", o.name]
+    : o.pgmid === "R3TR" ? [o.type, o.name] : null;
+  const asked = [...new Set([...objects.values()].map(tadirOf).filter(Boolean).map(k => k[1]))];
+  const gone = new Set(asked.length ? (await inLists(api, "SELECT object, obj_name FROM tadir WHERE pgmid = 'R3TR' AND delflag = 'X' AND obj_name",
+    asked, 10000)).map(r => r.OBJECT + "|" + r.OBJ_NAME) : []);
+  const asDay = d => d ? new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8))) : null;
+  const rowsOut = [...objects.values()].map(o => ({
+    pgmid: o.pgmid, type: o.type, name: o.name, class: o.class, type_text: o.type_text,
+    authors: [...o.authors].map(u => names.get(u) || u), tasks: o.tasks.size, trs: o.tasks.size ? 1 : 0,
+    start: o.start, finish: o.finish,
+    days: o.start && o.finish ? Math.round((asDay(o.finish) - asDay(o.start)) / 86400000) + 1 : 0,
+    deleted: Boolean(tadirOf(o) && gone.has(tadirOf(o).join("|"))),
+    generated: require("./review-live").generatedObject({ object: o.class || o.name, part: o.name, className: o.class })
+  }));
+  if (kindsError) { rowsOut.kinds_error = kindsError; }
+  return rowsOut;
+}
+
+/* ADT's object types (the list ADT's New Object wizard reads): name - "CLAS/OC" - to description. A host that reads them
+   through its ADT client answers objectTypes(); otherwise the list is read from ADT as XML. */
+async function objectKinds(api) {
+  if (typeof api.objectTypes === "function") {
+    return new Map((await api.objectTypes()).map(t => [String(t.name).toUpperCase(), String(t.description || "")]));
+  }
+  const xml = String(await api.sourceAt("/sap/bc/adt/repository/informationsystem/objecttypes?maxItemCount=999&name=*&data=usedByProvider"));
+  const kinds = new Map();
+  for (const item of xml.split("<nameditem:namedItem>").slice(1)) {
+    const name = (/<nameditem:name>([^<]*)</.exec(item) || [])[1], description = (/<nameditem:description>([^<]*)</.exec(item) || [])[1];
+    if (name) { kinds.set(name.toUpperCase(), (description || "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")); }
+  }
+  if (!kinds.size) { throw new Error("ADT listed no object types."); }
+  return kinds;
+}
+
+/* An E071 object type to ADT's: a request names parts (LIMU METH, REPS, FUNC) and objects (R3TR CLAS, PROG, ...), ADT
+   a type and its subtype. The subtype of each kind's main object is named here; any other type takes the first of its
+   subtypes ADT lists. */
+const MAIN_KIND = { METH: "CLAS/OM", REPS: "PROG/I", FUNC: "FUGR/FF", CLAS: "CLAS/OC", INTF: "INTF/OI", PROG: "PROG/P",
+  FUGR: "FUGR/F", TABL: "TABL/DT", DTEL: "DTEL/DE", DOMA: "DOMA/DD", DEVC: "DEVC/K", TRAN: "TRAN/T", DDLS: "DDLS/DF" };
+function kindOf(kinds, type) {
+  if (MAIN_KIND[type] && kinds.has(MAIN_KIND[type])) { return kinds.get(MAIN_KIND[type]); }
+  if (kinds.has(type)) { return kinds.get(type); }
+  const first = [...kinds.keys()].sort().find(name => name.startsWith(type + "/"));
+  return first ? kinds.get(first) : "";
+}
+
 async function request(api, resource) {
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
   if (url.pathname === "/sap/bc/adt/vertex/requests") { return requestsOf(api, params); }
@@ -363,7 +497,10 @@ async function request(api, resource) {
   }
   const where = await partOf(api, type, name, part, ptype);
   if (!where) { throw new Error(part + " of type " + ptype + " is not a part of " + name + ". Ask for the parts list first."); }
+  const history = await historyOf(api, ptype, part, where);
+  const dictionary = history.textOf ? history : null;
   const textOf = async uri => {
+    if (dictionary) { return dictionary.textOf(dictionary.feed.find(e => e.uri === uri)); }
     const text = await sourceAt(api, uri);
     return where.cut ? where.cut(text) : lines(text);
   };
@@ -373,7 +510,7 @@ async function request(api, resource) {
     return { part, part_type: ptype, include: where.include || name, source: (cut || []).join("\n") };
   }
 
-  const feed = await api.revisions(where.url, where.include || undefined);
+  const feed = history.feed;
   const numberOf = entry => entry.id === "00000" ? ACTIVE : entry.id;
   const from = params.get("from") || "", to = params.get("to") || "";
   const partHead = { part: part.toLowerCase(), part_type: ptype.toLowerCase() };
@@ -417,4 +554,4 @@ async function request(api, resource) {
     versions: rows.map(({ uri, ...r }) => Object.assign(r, { author_name: names.get(r.author) || "" })) });
 }
 
-module.exports = { componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
+module.exports = { DICTIONARY, NEEDS_BACKEND, dictionaryHistory, historyOf, requestOverview, methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };

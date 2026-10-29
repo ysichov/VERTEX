@@ -114,9 +114,10 @@ async function read(deps, path) {
 }
 
 function reviewPath(request, part, ptype) {
-  let path = "/sap/bc/adt/vertex/review/" + encodeURIComponent(String(request).toUpperCase());
+  // The assistant asks for the review on purpose, so one that is not saved is built from ADT (build=1).
+  let path = "/sap/bc/adt/vertex/review/" + encodeURIComponent(String(request).toUpperCase()) + "?build=1&check=1";
   if (part) {
-    path += "?part=" + encodeURIComponent(part)
+    path += "&part=" + encodeURIComponent(part)
           + "&ptype=" + encodeURIComponent(ptype || "");
   }
   return path;

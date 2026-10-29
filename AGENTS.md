@@ -2,6 +2,11 @@
 
 - After fixes or changes to the VS Code extension, always rebuild and verify the VSIX before handing off. Keep the current version unless the user requests a version change.
 
+- When the user names a new version, bump it on both hosts together: `vscode/package.json`,
+  `org.vertex.abap.feature/feature.xml` and `org.vertex.abap.ui/META-INF/MANIFEST.MF`. Build
+  both the VSIX and the Eclipse update site, and in the same landing write the release into
+  the docs listed below (`history.md`, `dev_history.md`, and every page that states the version).
+
 - Documentation lives in several places, and a change that users can see is written into each
   one it concerns, in the same landing: `README.md` (the repository on GitHub),
   `vscode/README.md` (the VS Code Marketplace page), `docs/index.html` and `eclipse/README.md`
@@ -15,5 +20,6 @@
   change narrative in the histories.
 - In the VS Code extension, every interface element must use a theme-aware background color. Do not hard-code a light or dark background that breaks with the active VS Code theme; use VS Code theme variables or inherited colors.
 - Diagram and Lens mode controls use the shared compact toggle style already used by VERTEX Smart Debugger: adjacent modes form a group; an active mode uses the theme focus colour, while inactive modes remain quiet. Do not introduce a separate toggle appearance for a diagram or Lens.
-- Two shared toggle types are canonical: independent on/off controls use `vertex-toggle` / `.on`; mutually exclusive choices use `vertex-segment-toggle` / `.active`. Both live in `org.vertex.abap.ui/resources/vertex-controls.css` and are copied to `vscode/resources/` at packaging. Do not redefine either style in a view; use the class unchanged.
+- A toggle is for a control that switches what the view shows or how it reads (a mode, a lens); a plain option that is simply on or off - a setting applied when something is built or run - is a checkbox (`<input type="checkbox">` with its label), not a toggle.
+- Two shared toggle types are canonical: independent on/off view controls use `vertex-toggle` / `.on`; mutually exclusive choices use `vertex-segment-toggle` / `.active`. Both live in `org.vertex.abap.ui/resources/vertex-controls.css` and are copied to `vscode/resources/` at packaging. Do not redefine either style in a view; use the class unchanged.
 - Every diagram and its controls (including Mermaid SVGs, range tracks and thumbs) must follow the active VS Code theme through VS Code CSS variables. Never hard-code a light/dark Mermaid theme or fixed surface colours; verify both light and dark rendering before packaging.
