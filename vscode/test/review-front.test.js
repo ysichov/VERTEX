@@ -102,3 +102,10 @@ test("a review built from ADT sends each part done, as a summary, on the progres
   assert.deepStrictEqual(so.developers.map(d => [d.author, d.hunks]), [["DEV", 1]]);
   assert.ok(PARTIAL_MARK.endsWith(" "));
 });
+
+test("an interface's section include is shown as the interface, among Interfaces", () => {
+  const { summarize } = require("../review-front");
+  const so = summarize({ OBJ_STATS: [{ OBJTYPE: "REPS", OBJ_NAME: "ZIF_CALC_TYPES=================IU", DISPLAY_NAME: "ZIF_CALC_TYPES=================IU",
+    AUTHOR: "DEV", INS_COUNT: 1, HUNK_COUNT: 1 }], HUNKS: [] });
+  assert.deepStrictEqual(so.objects.map(o => [o.kind, o.display_name, o.group, o.objtype]), [["INTF", "ZIF_CALC_TYPES", "Interfaces", "REPS"]]);
+});

@@ -206,12 +206,15 @@ Windows detection also checks `%APPDATA%/npm` independently of PATH.
 
 ## The ABAP backend
 
-The [repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src) is needed for one thing:
-saving a transport's review to SAP. It carries the `ZAVE_REVIEW` table, which AVE uses too, and
-`ZCL_VX_ADT_RES_STORE`, which writes a review into it; pull it with [abapGit](https://abapgit.org)
-and activate it. On a system without it, reviews are saved to files (see *Code review of a
-transport*), and the review page says so. Everything else - Code Explorer, Value Origin, SelecTor,
-the version history, its diff and building a review - reads SAP over ADT and needs no backend.
+The [repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src) is needed for what ADT
+cannot do: saving a transport's review to SAP, and the versions of data elements, domains and tables
+on releases where ADT keeps none of them. It carries the `ZAVE_REVIEW` table, which AVE uses too,
+`ZCL_VX_ADT_RES_STORE`, which writes a review into it, and `ZCL_VX_ADT_RES_DDIC`, which gives the
+text of a dictionary object's version; pull it with [abapGit](https://abapgit.org) and activate
+it. On a system without it, reviews are saved to files (see *Code review of a transport*), and a
+data element, domain or table ADT keeps no versions of is listed as needing the backend.
+Everything else - Code Explorer, Value Origin, SelecTor, the version history, its diff and building
+a review - reads SAP over ADT and needs no backend.
 
 ## First run
 
@@ -442,8 +445,10 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   wrote most of its lines, and **Developers** counts each developer's own lines and blocks. Hover
   the name for the version, date and request. With Blame off, a block is the author's of the new
   version. A review saved by AVE with Blame shows its line authors when the toggle is on. Opening a review only reads a saved one. A review that is not saved yet is built from ADT
-  with **Build review**: each part appears in the summary as soon as it is read, and the status line
-  says which part is being read; an object opens once the whole review is built. The
+  with **Build review** and saved, once built, where `vertex.review.storage` says: each part appears in the summary as soon as it is read, and the status line
+  says which part is being read; an object opens once the whole review is built. **Build log**, folded at the end of a review built
+  in this session, lists each step - the parts found, each part's versions and the pair taken - and a SKIP line
+  with the reason for every part that gave no block. The
   **Ignore SAP generated** checkbox beside **Build review** and **Rebuild from ADT**, on by default,
   leaves out the generated code listed above; cleared, it is reviewed like any other. **Rebuild from ADT** builds it again from the request as it is now, and **Save** keeps it. A saved review takes **Approve**,
   **Decline** and comments on each block, the way AVE records them, so AVE and every VERTEX window
@@ -456,7 +461,9 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   versions; when the check is done, a part that changed since, joined the request or left it is
   named above the table, or the review is marked up to date. **Rebuild from ADT**, under the line that says when and by whom the review
   was saved, replaces the saved review with one built from the request as it is now - its verdicts
-  and comments are dropped. A released request is not
+  and comments are dropped. A data element, domain or table that ADT keeps no versions of on the
+  system is taken from the saved review as AVE built it, and checked against the request by its
+  version directory (VRSD). A released request is not
   checked: its versions no longer change, and later work of other requests is not its review's
   concern. Two people saving the same review at once do not
   overwrite each other: the second save is refused and asks to read the review again.

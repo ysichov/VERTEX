@@ -164,8 +164,13 @@ function summarize(payload) {
       // Who wrote the object's blocks, and its blame breakdown's authors: a developer's own view lists it.
       const writers = [...new Set(list(payload.HUNKS).filter(h => up(h.OBJTYPE) === up(s.OBJTYPE) && up(h.OBJ_NAME) === up(s.OBJ_NAME))
         .map(h => up(h.AUTHOR) || up(s.AUTHOR)).concat(list(s.BT_AUTHORS).map(a => up(a.AUTHOR)), [up(s.AUTHOR)]))];
+      /* An interface's part is its section include, ZIF_X=====...IU, versioned as REPS: it is shown as the interface
+         it is, among Interfaces, not as a program. */
+      const intf = up(s.OBJTYPE) === "REPS" ? /^(.+?)=+IU$/.exec(up(s.OBJ_NAME).trim()) : null;
       objects.push({ authors: writers, objtype: up(s.OBJTYPE), obj_name: up(s.OBJ_NAME), class_name: up(s.CLASS_NAME),
-        group: up(s.CLASS_NAME) ? "" : catLabel(up(s.OBJTYPE)), display_name: up(s.DISPLAY_NAME), author: up(s.AUTHOR),
+        kind: intf ? "INTF" : up(s.OBJTYPE),
+        group: up(s.CLASS_NAME) ? "" : intf ? "Interfaces" : catLabel(up(s.OBJTYPE)),
+        display_name: intf ? intf[1] : up(s.DISPLAY_NAME), author: up(s.AUTHOR),
         author_name: up(s.AUTHOR_NAME), is_created: s.IS_CREATED === true || s.IS_CREATED === "X", hunks: Number(s.HUNK_COUNT),
         inserted: Number(s.INS_COUNT), deleted: Number(s.DEL_COUNT), modified: Number(s.MOD_COUNT), approved, declined,
         open: Number(s.HUNK_COUNT) - approved - declined });
@@ -219,7 +224,8 @@ function summarize(payload) {
   return { objects, reviewers, history, developers };
 }
 
-async function request(api, resource, progress, io) {
+// CANCELLED, when given, says the page has moved on; the check of a saved review stops at its next part.
+async function request(api, resource, progress, io, cancelled) {
   const url = new URL(resource, "https://sap.invalid"), params = url.searchParams;
   const match = /^\/sap\/bc\/adt\/vertex\/review\/([^/]+)$/.exec(url.pathname);
   if (!match) { return null; }
@@ -252,7 +258,7 @@ async function request(api, resource, progress, io) {
   const check = params.get("check");
   let stale = null;
   if (payload && !live && !remote && !part && check) {
-    try { stale = await require("./review-live").staleness(api, trkorr, payload, progress, keep); }
+    try { stale = await require("./review-live").staleness(api, trkorr, payload, progress, keep, cancelled); }
     catch (error) { stale = { error: String(error && error.message || error) }; }
   }
   /* Nothing saved and nothing built: the request's overview stands under Build review, as AVE's report shows its objects
@@ -272,6 +278,8 @@ async function request(api, resource, progress, io) {
     developers,
     // Objects the request names that the system no longer has, found while building it from ADT.
     missing: payload && Array.isArray(payload.MISSING) ? payload.MISSING : [],
+    // AVE's Code Review diagnostics: the build's own when built now, else this session's last build of the request.
+    build_log: payload && Array.isArray(payload.DIAG) ? payload.DIAG : require("./review-live").lastLog(trkorr),
     storage: storage(io, stored), copies, stale, overview, overview_kinds_error: overview && overview.kinds_error || "" };
 }
 
@@ -321,8 +329,9 @@ async function write(api, resource, body, io) {
     }
     // Only the record of earlier saves is kept; the stamp the store compares against is the old one.
     existing = { HISTORY: old.HISTORY, LAST_SAVED_AT: old.LAST_SAVED_AT };
-    current = state.applySaved(await require("./review-live").build(api, trkorr, undefined, true, params.get("blame") === "1",
-      params.get("generated") === "1"), who.user);
+    const live = require("./review-live");
+    current = state.applySaved(live.carryUnread(await live.build(api, trkorr, undefined, true, params.get("blame") === "1",
+      params.get("generated") === "1"), old), who.user);
   } else {
     if (!stored) { throw new Error("No review is saved for " + trkorr + ". Save the review built from ADT first."); }
     existing = state.parseForWrite(stored.text);

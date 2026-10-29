@@ -609,6 +609,14 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   let storing;
   const canStore = () => storing || (storing = client.httpClient.request("/sap/bc/adt/vertex/about", { method: "GET", headers: { Accept: "application/json" } })
     .then(response => (JSON.parse(response.body).services || []).some(s => s.name === "store" && s.active === "X"), () => false));
+  // Whether VERTEX's ABAP reads dictionary versions here (ZCL_VX_ADT_RES_DDIC), as /vertex/about reports it.
+  let dictionary;
+  const ddicVersions = () => dictionary || (dictionary = client.httpClient.request("/sap/bc/adt/vertex/about", { method: "GET", headers: { Accept: "application/json" } })
+    .then(response => (JSON.parse(response.body).services || []).some(s => s.name === "ddic" && s.active === "X"), () => false));
+  // The text of a version of a data element, domain or table (DTED, DOMD, TABD), as lines; VERSNO empty is the active state.
+  const ddicVersion = (type, objectName, versno) => client.httpClient.request("/sap/bc/adt/vertex/ddic/" + encodeURIComponent(type),
+    { method: "GET", qs: { name: objectName, versno: versno || "" }, headers: { Accept: "application/json" } })
+    .then(response => JSON.parse(response.body).lines || []);
   // Writes a review payload into ZAVE_REVIEW through ZCL_VX_ADT_RES_STORE; EXPECT is the stamp it was built on.
   const storeReview = (trkorr, remote, expect, body) => client.httpClient.request("/sap/bc/adt/vertex/store/" + encodeURIComponent(trkorr),
     { method: "POST", qs: { remote: remote || "", expect: expect || "" }, headers: { "Content-Type": "application/json", Accept: "application/json" }, body });
@@ -616,7 +624,7 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   const classComponents = url => client.classComponents(adtPath(url));
   // ADT's object types with their descriptions, as the New Object wizard lists them: [{ name: "CLAS/OC", description }].
   const objectTypes = () => client.objectTypes();
-  return { classComponents, objectTypes, execute, apply, query, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, textElements, dataElement, discard: id => drafts.delete(id),
+  return { classComponents, objectTypes, ddicVersions, ddicVersion, execute, apply, query, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, textElements, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath, dataPreviewLines };

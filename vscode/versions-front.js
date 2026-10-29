@@ -130,6 +130,42 @@ function methodOf(objName) {
   return { owner: owner || "", method: method || "" };
 }
 
+/* Data elements, domains and tables (DTED, DOMD, TABD): ADT keeps no version history of them on older releases
+   ("Request version for DTEL is not supported"). Their history is VRSD, read here; the text of a version comes from
+   VERTEX's ABAP (ZCL_VX_ADT_RES_DDIC). Without it they cannot be compared, and say what is missing. */
+const DICTIONARY = new Set(["DTED", "DOMD", "TABD"]);
+const NEEDS_BACKEND = "data elements, domains and tables need VERTEX's ABAP backend on the system (src/, pulled with abapGit) - ADT keeps no versions of them here";
+const readyKept = new WeakMap();
+async function dictionaryReady(api) {
+  if (typeof api.ddicVersions !== "function") { return false; }
+  if (!readyKept.has(api)) { readyKept.set(api, Promise.resolve(api.ddicVersions()).catch(() => false)); }
+  return readyKept.get(api);
+}
+/* A part's history: ADT's feed where ADT keeps one; for a dictionary part ADT refuses ("Request version for DTEL is
+   not supported", older releases), VRSD's and VERTEX's ABAP. Answers { feed, textOf } for the fallback, null for ADT's. */
+async function historyOf(api, ptype, part, where) {
+  if (!DICTIONARY.has(ptype)) { return { feed: await api.revisions(where.url, where.include || undefined), textOf: null }; }
+  try { return { feed: await api.revisions(where.url, where.include || undefined), textOf: null }; }
+  catch (error) {
+    if (!/not supported/i.test(String(error && error.message || error))) { throw error; }
+    return dictionaryHistory(api, ptype, part);
+  }
+}
+
+// The history of a dictionary part as a feed like ADT's - id, transport, author, time - with its versions' text.
+async function dictionaryHistory(api, ptype, part) {
+  if (!await dictionaryReady(api)) { throw new Error(NEEDS_BACKEND); }
+  const rows = (await api.query("SELECT versno, korrnum, author, datum, zeit FROM vrsd WHERE objtype = " + sqlText(ptype)
+    + " AND objname = " + sqlText(part), 1000)).values;
+  const feed = rows.map(r => {
+    const d = String(r.DATUM || "").replace(/-/g, ""), t = String(r.ZEIT || "").replace(/:/g, "");
+    return { id: String(r.VERSNO), transport: String(r.KORRNUM || ""), author: String(r.AUTHOR || ""), uri: "ddic:" + String(r.VERSNO),
+      time: d.length === 8 ? d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6, 8) + "T" + (t.padEnd(6, "0").replace(/(..)(..)(..)/, "$1:$2:$3")) : "" };
+  });
+  const textOf = async entry => entry ? api.ddicVersion(ptype, part, entry.id === "00000" ? "" : entry.id) : [];
+  return { feed, textOf };
+}
+
 // What a request (with its tasks, E071) or a package (TADIR) holds, as AVE lists it: a class, an interface or a
 // function group as one object to open; anything else as the part it versions as.
 async function scopeParts(api, type, name) {
@@ -461,7 +497,10 @@ async function request(api, resource) {
   }
   const where = await partOf(api, type, name, part, ptype);
   if (!where) { throw new Error(part + " of type " + ptype + " is not a part of " + name + ". Ask for the parts list first."); }
+  const history = await historyOf(api, ptype, part, where);
+  const dictionary = history.textOf ? history : null;
   const textOf = async uri => {
+    if (dictionary) { return dictionary.textOf(dictionary.feed.find(e => e.uri === uri)); }
     const text = await sourceAt(api, uri);
     return where.cut ? where.cut(text) : lines(text);
   };
@@ -471,7 +510,7 @@ async function request(api, resource) {
     return { part, part_type: ptype, include: where.include || name, source: (cut || []).join("\n") };
   }
 
-  const feed = await api.revisions(where.url, where.include || undefined);
+  const feed = history.feed;
   const numberOf = entry => entry.id === "00000" ? ACTIVE : entry.id;
   const from = params.get("from") || "", to = params.get("to") || "";
   const partHead = { part: part.toLowerCase(), part_type: ptype.toLowerCase() };
@@ -515,4 +554,4 @@ async function request(api, resource) {
     versions: rows.map(({ uri, ...r }) => Object.assign(r, { author_name: names.get(r.author) || "" })) });
 }
 
-module.exports = { requestOverview, methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
+module.exports = { DICTIONARY, NEEDS_BACKEND, dictionaryHistory, historyOf, requestOverview, methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };

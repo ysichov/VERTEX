@@ -42,8 +42,9 @@ Ordinary diagram nodes have transparent backgrounds, and their clickable labels 
 ![VERTEX architecture: VS Code and Eclipse ADT connect to shared VERTEX Web UI tools, with an MCP server for AI assistants and an optional SAP backend](docs/architecture2.png)
 
 The ABAP side is this repository's `src/`. It is optional: in VS Code everything works over ADT
-alone, and `src/` is needed only to save a transport's review to SAP; without it, reviews are saved
-to files. The Eclipse plugin does the same. The last column below says what needs it.
+alone, and `src/` is needed to save a transport's review to SAP and, where ADT keeps no versions of
+data elements, domains and tables, to read theirs; without it, reviews are saved to files and such
+parts say they need the backend. The Eclipse plugin does the same. The last column below says what needs it.
 
 In VS Code, the built-in VERTEX Assistant can use Codex, Claude Code, a signed-in
 GitHub Copilot model or API keys for Anthropic, OpenAI, Mistral, Gemini, Groq,
@@ -76,7 +77,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.31.20261024182823**; the VS Code extension is **0.9.39**.
+**0.9.31.20261024182823**; the VS Code extension is **0.9.41**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,

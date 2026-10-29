@@ -59,7 +59,7 @@
     --bg: var(--vscode-editor-background, #ffffff); --fg: var(--vscode-editor-foreground, #1c1c1c); --muted: var(--vscode-descriptionForeground, #666666); --faint: var(--vscode-disabledForeground, #b0b0b0);
     --border: var(--vscode-panel-border, #d6d6d6); --line: var(--vscode-editorWidget-border, #e2e2e2); --surface: var(--vscode-editorWidget-background, #fbfbfb); --surface-2: var(--vscode-sideBar-background, #f0f0f0);
     --field-bg: var(--vscode-input-background, #ffffff); --field-border: var(--vscode-input-border, #b8b8b8); --hover: var(--vscode-list-hoverBackground, #eaf2fb);
-    --th-bg: var(--vscode-keybindingTable-headerBackground, #eef2f7); --selected: var(--vscode-list-activeSelectionBackground, #dbe6f4); --row-alt: var(--vscode-tree-tableOddRowsBackground, #fafafa); --danger: var(--vscode-errorForeground, #a5292a);
+    --th-bg: var(--vscode-keybindingTable-headerBackground, #eef2f7); --selected: var(--vscode-list-inactiveSelectionBackground, #dbe6f4); --row-alt: var(--vscode-tree-tableOddRowsBackground, #fafafa); --danger: var(--vscode-errorForeground, #a5292a);
     --ins-bg: #e8f6ea; --ins-mark: #2c7a39; --del-bg: #fdecec; --del-mark: #a5292a;
   }
 
@@ -68,7 +68,7 @@
     --bg: var(--vscode-editor-background, #1f1f1f); --fg: var(--vscode-editor-foreground, #d4d4d4); --muted: var(--vscode-descriptionForeground, #9d9d9d); --faint: var(--vscode-disabledForeground, #5a5a5a);
     --border: var(--vscode-panel-border, #3c3c3c); --line: var(--vscode-editorWidget-border, #333333); --surface: var(--vscode-editorWidget-background, #252526); --surface-2: var(--vscode-sideBar-background, #2d2d30);
     --field-bg: var(--vscode-input-background, #3c3c3c); --field-border: var(--vscode-input-border, #5a5a5a); --hover: var(--vscode-list-hoverBackground, #2a3d55);
-    --th-bg: var(--vscode-keybindingTable-headerBackground, #2b3a4a); --selected: var(--vscode-list-activeSelectionBackground, #35506b); --row-alt: var(--vscode-tree-tableOddRowsBackground, #232323); --danger: var(--vscode-errorForeground, #f48771);
+    --th-bg: var(--vscode-keybindingTable-headerBackground, #2b3a4a); --selected: var(--vscode-list-inactiveSelectionBackground, #35506b); --row-alt: var(--vscode-tree-tableOddRowsBackground, #232323); --danger: var(--vscode-errorForeground, #f48771);
     --ins-bg: #17301c; --ins-mark: #6cc07a; --del-bg: #3a1f1f; --del-mark: #f48771;
   }
 
@@ -224,8 +224,9 @@
 
   .cards { padding: 6px 10px; background: var(--surface-2);
            border-bottom: 1px solid var(--line); display: flex; gap: 6px; }
-  /* The shared toggle (Blame) keeps its own look from vertex-controls.css. */
-  .cards button.on:not(.vertex-toggle) { background: var(--selected); font-weight: 600; }
+  /* Only the bar's own buttons: the shared toggle (Blame) keeps its look from vertex-controls.css, and the buttons of
+     a segmented choice (Versions | Review) theirs from .seg - a wider rule here outranked both. */
+  .cards > button.on:not(.vertex-toggle) { background: var(--selected); font-weight: 600; }
 
   .review { padding: 10px; }
   .review h3 { margin: 14px 0 4px; font-size: 12px; }
@@ -234,6 +235,8 @@
   .review .no { color: var(--del-mark); }
   /* An object deleted since, as AVE marks it: red on the theme's removed-line background. */
   .review tr.deleted td { color: var(--del-mark); background: var(--del-bg); }
+  .review pre.build-log { font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; color: var(--muted);
+                          background: var(--surface); border: 1px solid var(--line); padding: 6px 8px; max-height: 400px; overflow: auto; }
   .review .open { color: var(--muted); }
   /* The summary as AVE's report draws it in SAP GUI - coloured column heads, developers first, a group per kind of
      object with its total - in the theme's colours. */
@@ -524,6 +527,10 @@ function placePanels() {
    drawn instead, while that build is the one this page asked for. */
 var PARTIAL_MARK = "VERTEX-REVIEW-PARTIAL ";
 var review_building = "";
+// The request whose review the page asked to build: once built, it is saved where vertex.review.storage says.
+var review_autosave = "";
+// The request whose review was just built and saved: it is the request as it is now, and needs no check.
+var review_fresh = "";
 function vertexProgress(text) {
   text = String(text);
   if (text.indexOf(PARTIAL_MARK) === 0) {
@@ -649,6 +656,7 @@ function loadReview() {
 function buildReview(fresh) {
   review_part = null;
   review_building = objectName().toLowerCase();
+  review_autosave = review_building;
   status("building the review of " + objectName() + " ...");
   note("Building ...");
   sdeReview(objectName(), "", "", "", fresh ? "1" : "", review_blame ? "1" : "", review_from, reviewFlags(true));
@@ -864,8 +872,9 @@ function sdeReady() {
   if (raw.indexOf("ERROR:") === 0) {
     var said = raw.substring(6);
     stopPlan();
-    // A build that failed draws nothing more of itself.
+    // A build that failed draws nothing more of itself, and saves nothing.
     review_building = "";
+    review_autosave = "";
     // The host marks the one failure that can be a setup state.
     if (said.indexOf("NOBACKEND:") === 0) { notFound(said.substring(10)); }
     else { message(said); }
@@ -1003,7 +1012,8 @@ function renderParts() {
       tr.appendChild(only);
       return;
     }
-    cell(tr, p.part_type, "mono");
+    // An interface's part is its section include, versioned as REPS (ZIF_X=====...IU): it is shown as the interface.
+    cell(tr, p.part_type === "REPS" && /=+IU$/.test(String(p.name || "").trim()) ? "INTF" : p.part_type, "mono");
     // A method of a request or a package is named with its class; inside a class the class goes without saying.
     cell(tr, row.band ? row.label : (p.part_type === "METH"
       ? (scope && p.class ? p.class + "->" : "") + String(p.unit || "").toLowerCase() : p.unit));
@@ -2179,6 +2189,9 @@ function renderReview(data) {
           reviewFlags(false));
       };
       root.appendChild(save);
+      // A review built at the page's asking is saved at once, as Save would; one read for the assistant or left from
+      // before is not. A save that fails says so and leaves Save to try again.
+      if (review_autosave && review_autosave === data.request) { review_autosave = ""; review_fresh = data.request; save.onclick(); }
     }
     // Nothing keeps a live review, so reading it again builds it from the request as it is now.
     var rebuild = document.createElement("button");
@@ -2189,6 +2202,7 @@ function renderReview(data) {
     root.appendChild(section("Developers", developerTable(data.objects || [], data.developers)));
     root.appendChild(objectGroups(data.objects || []));
     if (data.missing && data.missing.length) { root.appendChild(missingSection(data.missing)); }
+    if (data.build_log && data.build_log.length) { root.appendChild(buildLog(data.build_log)); }
     var changed = (data.objects || []).reduce(function (n, o) { return n + o.hunks; }, 0);
     status(changed === 1 ? "1 changed block" : changed + " changed blocks");
     return;
@@ -2240,12 +2254,15 @@ function renderReview(data) {
   root.appendChild(section("Developers", developerTable(data.objects || [], data.developers)));
   root.appendChild(objectGroups(data.objects || []));
   if (data.reviewers && data.reviewers.length) { root.appendChild(section("Reviewers", reviewerTable(data.reviewers))); }
+  if (data.build_log && data.build_log.length) { root.appendChild(buildLog(data.build_log)); }
 
   var open = (data.objects || []).reduce(function (n, o) { return n + o.open; }, 0);
   status(open === 0 ? "nothing open" : open + (open === 1 ? " block open" : " blocks open"));
   // Shown again (back from a part or a developer), the review keeps the answer it already has.
   if (data.stale_answer) { showStale(data.stale_answer); }
-  else if (!data.remote && !data.stale_checked) { data.stale_checked = true; checkStale(); }
+  // A check cut short when the page asked for something else is asked again when the review is shown again.
+  else if (review_fresh && review_fresh === data.request) { review_fresh = ""; }
+  else if (!data.remote) { checkStale(); }
 }
 
 /* Whether the saved review is still the request's change, as the host checked it
@@ -2373,6 +2390,20 @@ function missingSection(missing) {
       var td = document.createElement("td"); td.textContent = text; tr.appendChild(td);
     });
   }));
+}
+
+/* How the review was built, a line per step and a SKIP line with the reason for each part that gave no block - AVE's
+   Code Review diagnostics. Folded; there to answer "why is this part not in the review". */
+function buildLog(lines) {
+  var box = document.createElement("details");
+  var head = document.createElement("summary");
+  head.textContent = "Build log (" + lines.length + " lines)";
+  box.appendChild(head);
+  var pre = document.createElement("pre");
+  pre.className = "build-log";
+  pre.textContent = lines.join("\n");
+  box.appendChild(pre);
+  return box;
 }
 
 function section(title, body) {
@@ -2562,7 +2593,7 @@ function objectGroups(objects) {
           tr.title = "Show the changed blocks of " + (o.display_name || o.obj_name);
           tr.addEventListener("click", function () { loadReviewPart(o); });
         }
-        cell(tr, o.objtype, "mono");
+        cell(tr, o.kind || o.objtype, "mono");
         var td = document.createElement("td"); var a = document.createElement("a"); a.className = "objlink";
         a.textContent = o.display_name || o.obj_name; td.appendChild(a); tr.appendChild(td);
         cell(tr, o.author_name || o.author);
@@ -2703,11 +2734,11 @@ function applyAbout() {
    resource this window is for, there is nothing to start. */
 function startWindow() {
   if (!usable("versions")) { setupPage(""); return; }
-  if (INITIAL) {
+  // No name: the window was opened to find requests, and the list is on its way - nothing to load or say meanwhile.
+  if (INITIAL && INITIAL.name) {
     if (INITIAL.action === "review") {
       mode = "R"; scope = true; renderCards(); loadReview();
-    } else if (INITIAL.name) { loadParts(false); }
-    // No name: the window was opened to find requests, and the list is on its way - nothing to say meanwhile.
+    } else { loadParts(false); }
   }
 }
 

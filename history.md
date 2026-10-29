@@ -1,5 +1,45 @@
 # Release history
 
+## 2026-10-29 — Data elements, domains and tables through VERTEX's ABAP
+
+Where ADT keeps no versions of data elements, domains and tables, Versions and the review read their history from the version directory and their text from VERTEX's ABAP (`src/`, new `ZCL_VX_ADT_RES_DDIC`), and diff them like source: an attribute, a fixed value or a table field per line. On a system without it, such a part says that it needs VERTEX's ABAP backend. The ABAP is in the repository for abapGit; it was not deployed by this change.
+
+## 2026-10-29 — A lighter selection in Versions
+
+The selected part and version in Versions are marked with the theme's lighter (inactive) selection colour, so their dark text stays readable in a light theme.
+
+## 2026-10-29 — Data elements and domains kept from AVE's review
+
+Where ADT keeps no versions of data elements, domains or tables, Rebuild from ADT keeps their blocks from the saved review as AVE built them instead of listing them under Not reviewed, and checking a saved review compares them with the request by their versions instead of saying "not supported".
+
+## 2026-10-29 — The Tools window keeps answering while a review is built
+
+While a review is built or checked against its request, Versions, diffs and the rest of the Tools window keep answering instead of waiting for it.
+
+## 2026-10-29 — A built review is saved at once
+
+Build review and Rebuild from ADT save the review as soon as it is built, where `vertex.review.storage` says - the table, files or both - as Save did. Save stays for a save that failed.
+
+## 2026-10-29 — Interfaces among Interfaces in a review
+
+An interface a request changes is listed in its review as the interface - INTF ZIF_X under Interfaces - not as its section include ZIF_X=====IU among Programs. Versions' list of an interface's parts names it INTF too.
+
+## 2026-10-29 — Build log; the review check no longer holds the window
+
+A review built from ADT has a folded **Build log**, as AVE's Code Review diagnostics: the parts found, each part's versions and pair, and why a part gave no block (only blank lines changed, no difference, not among the class's methods, generated). While a saved review is being checked against the request, clicking in Versions or opening anything else no longer waits for the check to finish (VS Code).
+
+## 2026-10-29 — 0.9.41: Versions | Review in the shared style
+
+The Versions | Review switch is back in the shared segmented style, as Table | File has it, instead of a filled blue button. VS Code 0.9.41 and Eclipse 0.9.41 (`0.9.41.20261029201523`).
+
+## 2026-10-29 — 0.9.40
+
+VS Code 0.9.40 and Eclipse 0.9.40 (`0.9.40.20261029170908`), after the published 0.9.39. They carry: a request's parts by more of AVE's rules (short method entries, a class reviewed by its listed methods only, no local includes in a whole class); includes of a request (LIMU REPS) reviewed again; the request's overview in Review under Build review, its type descriptions from ADT; deleted objects in red; the review drawn part by part while it is built; Find keeping the chosen function; Rebuild from ADT's explanation set apart from the Ignore SAP generated checkbox.
+
+## 2026-10-29 — Includes in a request's review
+
+An include a request changes (a user exit's ZX..., a program's _F01) is reviewed again; it was listed as "Resource PROGRAM ... does not exist".
+
 ## 2026-10-29 — Deleted objects named as deleted in a review
 
 An object of a request that has been deleted since - its TADIR entry kept, marked for deletion - is listed under Not reviewed as "deleted since" instead of the system's "does not exist", and shown in red as AVE marks it - under Not reviewed and in the request's overview.
@@ -10,11 +50,11 @@ Build review and Rebuild from ADT draw the review as it is read: each object joi
 
 ## 2026-10-29 — A request's overview; Find keeps Review
 
-A request's Review, while no review is saved, shows its overview under Build review, as AVE's report does before Prepare: each object with its class, the kind of object, its authors, TRs/Tasks, start, finish and days, tasks released into the request included. A request found with Find opens in Review unless Diff was chosen.
+A request's Review, while no review is saved, shows its overview under Build review, as AVE's report does before Prepare: each object with its class, the kind of object, its authors, TRs/Tasks, start, finish and days, tasks released into the request included. A request found with Find opens in the function chosen when Find was pressed - Object Navigator, Diff or Review.
 
 ## 2026-10-29 — 0.9.39: methods of a request reviewed; no RELE in Parts
 
-A method a request changes on its own (LIMU METH) is in the request's review again: it was left out when the class wrote its name in another case than the request. In a request's Parts a method is named with its class (`ZCL_X->get_tfc`), and the request's own records - released tasks (RELE) and other CORR entries - are no longer listed as parts. Changed lines show what changed inside them, the block's row stands above the lines leading into it, Blame has the shared toggle look, and Find no longer flashes "Type an object name". A request's parts follow AVE's rules further: a method entry in the short form (`CLASS=>METHOD`, `CLASS\METHOD`, or the class alone - then the methods the request holds versions of) is read, a class whose methods the request names one by one is reviewed by those methods only, and a whole class is reviewed without its local includes. VS Code 0.9.39 and Eclipse 0.9.39 (`0.9.39.20261029161154`).
+A method a request changes on its own (LIMU METH) is in the request's review again: it was left out when the class wrote its name in another case than the request. In a request's Parts a method is named with its class (`ZCL_X->get_tfc`), and the request's own records - released tasks (RELE) and other CORR entries - are no longer listed as parts. Changed lines show what changed inside them, the block's row stands above the lines leading into it, Blame has the shared toggle look, and Find no longer flashes "Type an object name". A request's parts follow AVE's rules further: a method entry in the short form (`CLASS=>METHOD`, `CLASS\METHOD`, or the class alone - then the methods the request holds versions of) is read, a class whose methods the request names one by one is reviewed by those methods only, and a whole class is reviewed without its local includes. VS Code 0.9.39 and Eclipse 0.9.39 (`0.9.39.20261029170042`).
 
 ## 2026-10-29 — Find no longer flashes "Type an object name"
 

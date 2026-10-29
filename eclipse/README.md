@@ -10,7 +10,8 @@ nothing from them has to be installed, and none of their code is called. Code Ex
 Origin analyse ADT source in the plugin, and SelecTor in VERTEX Tools reads through ADT's standard
 data preview once the plugin is built from the current repository. Versions and the review of a
 transport read ADT too, as in VS Code: the version history from ADT's revision feed, the review built
-from it in the window. VERTEX's own ABAP, `src/`, is needed only to save a review to SAP. The AVE
+from it in the window. VERTEX's own ABAP, `src/`, is needed to save a review to SAP and, where ADT keeps no versions of
+data elements, domains and tables, to read theirs. The AVE
 repository itself is not needed. Notes below that name a backend route describe the build they were
 written for.
 
@@ -164,9 +165,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.39.qualifier`; the checked-in update site carries build `0.9.31.20261024182823`.
+then regenerate. The feature and bundle sources are at `0.9.41.qualifier`; the checked-in update site carries build `0.9.31.20261024182823`.
 
-The local install archive is version `0.9.39.20261029161154`. Install its ZIP through
+The local install archive is version `0.9.41.20261029201523`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

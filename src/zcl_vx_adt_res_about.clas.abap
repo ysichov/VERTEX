@@ -54,9 +54,12 @@ CLASS zcl_vx_adt_res_about IMPLEMENTATION.
 
   METHOD services.
     " What is left of VERTEX's ABAP: the windows read everything over ADT, and
-    " write only a review into ZAVE_REVIEW - which ADT's data preview cannot.
+    " write only a review into ZAVE_REVIEW - which ADT's data preview cannot - and read the
+    " dictionary versions ADT keeps none of.
     rt_service = VALUE #(
       ( name = `store`    template = `/vertex/store/{name}`    handler = 'ZCL_VX_ADT_RES_STORE' )
+      " Data elements, domains and tables: ADT keeps no version of them on older releases.
+      ( name = `ddic`     template = `/vertex/ddic/{type}`     handler = 'ZCL_VX_ADT_RES_DDIC' )
       ( name = `about`    template = `/vertex/about`           handler = 'ZCL_VX_ADT_RES_ABOUT' ) ).
   ENDMETHOD.
 

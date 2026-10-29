@@ -276,7 +276,7 @@ async function fetch(context, requestPath, body, progress, cancelled) {
   // goes to the resource.
   if (body == null && frontendTableRequest && /^\/sap\/bc\/adt\/vertex\/((table|join|versions|review)\/|requests(\?|$))/.test(requestPath)) {
     let answer;
-    try { answer = await frontendTableRequest(requestPath, progress); }
+    try { answer = await frontendTableRequest(requestPath, progress, cancelled); }
     catch (error) { return 'ERROR:' + error.message; }
     if (answer) { return JSON.stringify(answer); }
   }
