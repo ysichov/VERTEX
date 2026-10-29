@@ -1,8 +1,12 @@
 # Development history
 
+## 2026-10-29 — Short review answers
+
+The user asked for "краткое ревью" and got headings, a five-item remark list and a verdict. A typed question replaced DEFAULT_QUESTION, which carried the only "briefly, no headings, no minor remarks" rule, and the system prompt said only "concise". askRequest (VS Code and Eclipse assistant) and chat.html now always add a format rule — no headings, at most three real problems, two to four sentences when asked briefly, the user's request for detail wins — and both system prompts say to keep brief requests to a few sentences. code-workbench test updated; suite unchanged at 1036 of 1041 with the same 4 pre-existing failures. VS Code 0.9.42 VSIX rebuilt; Eclipse not rebuilt.
+
 ## 2026-10-29 — Sidebar-only chat and growing prompt
 
-The user asked to drop the Tools chat in favour of the sidebar one, with review ASK AI filling its chip. With sdeSidebarChat the Tools page removes its chat frame, split and Ask AI toggle; review ASK AI and selection asks post reviewAsk/reviewSelection to the host, which runs vertex.askReviewBlock, and the legacy Tools chat backend is created lazily. The user then asked for a larger field for long pastes: the sidebar prompt auto-sizes up to 14em with a ⤢/⤡ toggle to 70vh, and chat.html auto-sizes up to 50vh. Suite: 1037 of 1041 pass; the same 4 tests (analysis-progress, debugger WebGUI, local-history-ui, review plan) fail on clean 8a3739f too. VS Code 0.9.42 VSIX rebuilt and verified; Eclipse not rebuilt in this stage.
+The user asked to drop the Tools chat in favour of the sidebar one, with review ASK AI filling its chip. With sdeSidebarChat the Tools page removes its chat frame, split and Ask AI toggle; review ASK AI and selection asks post reviewAsk/reviewSelection to the host, which runs vertex.askReviewBlock, and the legacy Tools chat backend is created lazily. The user then asked for a larger field for long pastes: the sidebar prompt auto-sizes up to 14em with a ⤢/⤡ toggle to 70vh, and chat.html auto-sizes up to 50vh. Suite: 1036 of 1041 pass; the same 4 tests (analysis-progress, debugger WebGUI, local-history-ui, review plan) fail on clean 8a3739f too. VS Code 0.9.42 VSIX rebuilt and verified; Eclipse not rebuilt in this stage.
 
 ## 2026-10-29 — Request-wide code expansion
 

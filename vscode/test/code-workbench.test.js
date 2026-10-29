@@ -305,7 +305,7 @@ test("the chip adds a block of the same review and the request carries the block
   assert.equal(review.askLabel(chip), 'Review · ZT · all 2 blocks');
   const other = review.mergeAsk(chip, review.askContext(parts, [1], after, 'A4H', 'ZOTHER'));
   assert.equal(review.askLabel(other), 'Review · ZOTHER · block 2');
-  assert.match(review.askRequest('why?', chip), /^why\?\n\nExplain only the explicitly selected review blocks below\./);
+  assert.match(review.askRequest('why?', chip), /^why\?\n\nFormat: no headings; name only real problems, at most three[^\n]*\nExplain only the explicitly selected review blocks below\./);
   assert.match(review.askRequest('', chip), /^Answer briefly/);
 });
 for (const partial of [false, true]) {

@@ -785,7 +785,8 @@ blocks with context lines:
   on another block of the same review adds it, and **ASK AI** beside Approve All takes every block.
   Type your question and press Enter: the chat shows the question, and the blocks - each with its
   method, line and surrounding lines - go to the model with it. Enter with nothing typed asks what the
-  change does and whether it has a real problem. The chip's × asks without the blocks;
+  change does and whether it has a real problem. Answers about the blocks have no headings and name at most
+  three real problems; ask for detail to get more. The chip's × asks without the blocks;
 - **VERTEX: Save & Activate** writes only the approved blocks. SAP locks the object,
   checks syntax, saves, activates and verifies the active source. If the active
   or inactive source changed since it was read, nothing is overwritten.

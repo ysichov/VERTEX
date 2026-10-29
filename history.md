@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-10-29 — Short answers to review questions
+
+ASK AI on review blocks now answers without headings and names at most three real problems, even when you type your own question; asking for a brief review gives a few sentences. Asking for detail still gets a full answer. VS Code 0.9.42 rebuilt.
+
 ## 2026-10-29 — One chat in VS Code, expandable question box
 
 In VS Code the VERTEX Tools window no longer has its own chat or Ask AI header button; the chat is only in the VERTEX panel. ASK AI inside a review (block, object, developer or reviewer) opens the panel with the selection on the chip, and the question stays yours to write and send. The question box grows with typed or pasted text, and ⤢ expands it to most of the panel. The Eclipse chat box grows the same way. VS Code 0.9.42 rebuilt.
