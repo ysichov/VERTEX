@@ -192,9 +192,12 @@ async function request(api, resource, progress, io) {
     });
     /* Developers, as AVE counts them: from each object's blame breakdown (BT_AUTHORS) when the review has one - an
        object written by two developers is under both, each with their own rows and blocks - and from the object's
-       author when it has none. A developer's blocks are the blocks whose author they are. */
+       author when it has none. A developer's blocks are the blocks whose author they are. SAP* is not a developer:
+       lines and blocks credited to it are SAP's own code and are left out of the table. */
     const devs = new Map();
+    const sink = { inserted: 0, modified: 0, deleted: 0, hunks: 0, approved: 0, declined: 0 };
     const dev = (author, name) => {
+      if (author === "SAP*") { return sink; }
       if (!devs.has(author)) { devs.set(author, { author, author_name: name, inserted: 0, modified: 0, deleted: 0, hunks: 0, approved: 0, declined: 0 }); }
       const d = devs.get(author);
       if (!d.author_name && name) { d.author_name = name; }
