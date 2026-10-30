@@ -512,6 +512,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       const dictionary = history.textOf ? history : null;
       // The feed's numbers are VRSD's for the part itself unless it is cut out of the class include's feed.
       stampKey = !where.cut || history.method ? { type: p.ptype, name: p.part } : null;
+      if (history.notice) { log("  NOTE " + history.notice); }
       if (history.method) { log("  VRSD: the method's own versions, their text from VERTEX's ABAP"); }
       else if (dictionary) { log("  VRSD: ADT keeps no versions of " + p.ptype + " here; VERTEX's ABAP gives their text"); }
       /* A dictionary object VRSD holds no version of was never versioned: it exists only as its active state, and the

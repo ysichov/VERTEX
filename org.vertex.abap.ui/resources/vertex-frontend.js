@@ -104473,6 +104473,7 @@ function methodOf(objName) {
    VERTEX's ABAP (ZCL_VX_ADT_RES_DDIC). Without it they cannot be compared, and say what is missing. */
 const DICTIONARY = new Set(["DTED", "DOMD", "TABD"]);
 const NEEDS_BACKEND = "data elements, domains and tables need VERTEX's ABAP backend on the system (src/, pulled with abapGit) - ADT keeps no versions of them here";
+const OLD_BACKEND = "VERTEX's ABAP on this system is older than 0.9.46 and reads no method versions: the method is cut from its class's versions instead. Pull src/ with abapGit and activate it for the method's own versions";
 const readyKept = new WeakMap();
 async function dictionaryReady(api) {
   if (typeof api.ddicVersions !== "function") { return false; }
@@ -104484,7 +104485,11 @@ async function dictionaryReady(api) {
 async function historyOf(api, ptype, part, where) {
   /* A method: ADT keeps the versions of the class include only, VRSD the method's own - those SE80 and AVE show. Where
      VERTEX's ABAP reads their text, the method's history is VRSD's; without it, the class include's feed, cut. */
-  if (ptype === "METH" && await dictionaryReady(api)) { return methodHistory(api, part, where); }
+  if (ptype === "METH" && await dictionaryReady(api)) {
+    const own = await methodHistory(api, part, where);
+    if (await methodsReadable(api, own)) { return own; }
+    return { feed: await api.revisions(where.url, where.include || undefined), textOf: null, notice: OLD_BACKEND };
+  }
   if (!DICTIONARY.has(ptype)) { return { feed: await api.revisions(where.url, where.include || undefined), textOf: null }; }
   try { return { feed: await api.revisions(where.url, where.include || undefined), textOf: null }; }
   catch (error) {
@@ -104507,13 +104512,34 @@ async function dictionaryHistory(api, ptype, part) {
   return { feed, textOf };
 }
 
+/* VERTEX's ABAP reads method versions since 0.9.46; an older one refuses METH ("not a dictionary part"). One version
+   is read to tell, once per connection; the class include's feed is then used, and the caller says so. */
+const methodsKept = new WeakMap();
+async function methodsReadable(api, own) {
+  if (methodsKept.has(api)) { return methodsKept.get(api); }
+  const probe = own.feed.find(e => e.id !== "00000");
+  if (!probe) { return true; }
+  try { await own.textOf(probe); methodsKept.set(api, true); return true; }
+  catch (error) {
+    if (String(error && error.message) !== OLD_BACKEND) { throw error; }
+    methodsKept.set(api, false);
+    return false;
+  }
+}
+
 // A method's own history from VRSD, its versions' text from VERTEX's ABAP; the active state is ADT's class source, cut.
 async function methodHistory(api, part, where) {
   const { feed } = await dictionaryHistory(api, "METH", part);
   const textOf = async entry => {
     if (!entry) { return []; }
     if (entry.id === "00000") { return where.cut(await api.currentSource(where.url, where.include || undefined)) || []; }
-    return api.ddicVersion("METH", part, entry.id);
+    /* VERTEX's ABAP reads method versions since 0.9.46. An older one on the system answers with its own refusal; it
+       is named as such, not as a fault of the request - the front end updates itself, the ABAP is pulled by hand. */
+    try { return await api.ddicVersion("METH", part, entry.id); }
+    catch (error) {
+      if (/not a dictionary part/i.test(String(error && error.message || error))) { throw new Error(OLD_BACKEND); }
+      throw error;
+    }
   };
   return { feed, textOf, method: true };
 }
@@ -104904,10 +104930,11 @@ async function request(api, resource, io) {
   const names = new Map(users.length ? (await inLists(api, "SELECT u~bname, a~name_text FROM usr21 AS u INNER JOIN adrp AS a"
     + " ON a~persnumber = u~persnumber WHERE u~bname", users, 1000)).map(row => [row.BNAME, row.NAME_TEXT]) : []);
   return Object.assign(head, partHead, {
-    versions: rows.map(({ uri, ...r }) => Object.assign(r, { author_name: names.get(r.author) || "" })) });
+    versions: rows.map(({ uri, ...r }) => Object.assign(r, { author_name: names.get(r.author) || "" })) },
+    history.notice ? { notice: history.notice } : {});
 }
 
-module.exports = { spacingKey, DICTIONARY, NEEDS_BACKEND, dictionaryHistory, historyOf, requestOverview, methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
+module.exports = { spacingKey, DICTIONARY, NEEDS_BACKEND, OLD_BACKEND, dictionaryHistory, historyOf, requestOverview, methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
 
 },
 function(module,exports,__vertexRequire){
@@ -105569,6 +105596,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       const dictionary = history.textOf ? history : null;
       // The feed's numbers are VRSD's for the part itself unless it is cut out of the class include's feed.
       stampKey = !where.cut || history.method ? { type: p.ptype, name: p.part } : null;
+      if (history.notice) { log("  NOTE " + history.notice); }
       if (history.method) { log("  VRSD: the method's own versions, their text from VERTEX's ABAP"); }
       else if (dictionary) { log("  VRSD: ADT keeps no versions of " + p.ptype + " here; VERTEX's ABAP gives their text"); }
       /* A dictionary object VRSD holds no version of was never versioned: it exists only as its active state, and the

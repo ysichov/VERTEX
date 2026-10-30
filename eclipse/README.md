@@ -98,8 +98,8 @@ gave no block. Data elements, domains and tables ADT keeps no versions of are re
 they say so. The **Blame** toggle beside Versions | Review, off by default,
 names the developer who wrote each changed line: the versions between the pair are replayed (one
 more read per version, so a long history takes longer), and a version is credited to the owner of
-the task it came from - a transport of copies to the task of the request it copies. A block belongs
-to whoever wrote most of its lines, and **Developers** counts each developer's own lines and blocks;
+the task it came from - a transport of copies to the task of the request it copies. Only the request's own versions count: a transport of copies made from another request does not. Of the request's tasks that carry the object, a copy goes to a released one stamped at or before it, by the system's date and time. When the object sits only in tasks of one developer, every changed line is that developer's and no versions are read. A block belongs
+to whoever wrote most of its lines, every line of it shows that name, and **Developers** counts each developer's own lines and blocks;
 hover the name for the version, date and request. With Blame off, a block is the author's of the new
 version. A review saved by AVE with Blame shows its line authors when the toggle is on.
 **Save** keeps it; a saved review takes Approve, Decline,
@@ -118,16 +118,10 @@ or both. A system without VERTEX's ABAP keeps reviews in files whatever is chose
 says so. Two people saving the same review at once do not overwrite each other: the second save is
 refused.
 
-The VS Code 0.8.0 Value Origin adds Expression alongside FLOW and Formula. The shared analysis UI continues to evolve in VS Code; this guide's version-specific notes below describe Eclipse source or packaged builds where stated.
-
-The shared diagram pages changed too. Their source is shared, but the published Eclipse archive
-currently contains the older 0.8.0 build; rebuild and publish the plugin to deliver the current
-pages to Eclipse users.
-
 The VS Code-only right-hand VERTEX Smart Debugger panel and its F5-F8 shortcuts in the source editor are not
 available in Eclipse; in Eclipse the keys work in the VERTEX Smart Debugger window itself.
 The VERTEX Tools window no longer has a View source function in Eclipse either: the source is the
-ADT editor. That change to the plugin was not built for Eclipse.
+ADT editor.
 
 ![VERTEX architecture: VS Code and Eclipse ADT, the VERTEX MCP server between them and the AI assistants (Claude Code, Codex, GitHub Copilot), the six VERTEX Web UI tools, and the ADT hub on SAP at /sap/bc/adt/vertex/*](../docs/architecture2.png)
 
@@ -171,9 +165,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.42.qualifier`; the checked-in update site carries build `0.9.42.20261029231959`.
+then regenerate. The feature and bundle sources are at `0.9.51.qualifier`; the checked-in update site carries build `0.9.51.20261030223027`.
 
-The local install archive is version `0.9.42.20261029231959`. Install its ZIP through
+The local install archive is version `0.9.51.20261030223027`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

@@ -81,11 +81,10 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.42.20261029231959**; the VS Code extension is **0.9.51**.
+**0.9.51.20261030223027**; the VS Code extension is **0.9.51**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
-opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,
-not yet on the update site, and has not been checked on a live ADT session.
+opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
 On a live stop, Eclipse opens and positions the source editor; VERTEX Smart Debugger no longer opens another class tab for each step.
 
 **Grew out of** names where a tool's ideas were worked out first. VERTEX does not depend on those projects: nothing from Simple Data Explorer, ACE, AVE, Smart Debugger or ABAP-AI-Code has to be installed, and none of their code is called. Code Explorer, Value Origin and VERTEX Smart Debugger read ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads them through ADT's standard data preview; in VS Code the version history and its diff come from ADT's revision feed, as in Eclipse's Revision History, and the review of a transport is built from them in the window, with AVE's rules for choosing the versions and cutting blocks. Saving it to SAP goes through one resource of VERTEX's own ABAP, `ZCL_VX_ADT_RES_STORE`, into the `ZAVE_REVIEW` table AVE uses too - ADT's data preview can read a table but not write it; reviews can also be kept in files. The AVE repository itself is not needed. The Eclipse plugin reads them the same way.

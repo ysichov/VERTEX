@@ -216,7 +216,9 @@ text of a dictionary object's version and of a method's own version; pull it wit
 it. On a system without it, reviews are saved to files (see *Code review of a transport*), and a
 data element, domain or table ADT keeps no versions of is listed as needing the backend. With it, a
 method in a review or in Versions has its own versions, as SE80 and AVE list them; without it, it is cut from the
-versions of its class.
+versions of its class. The extension updates itself, the ABAP does not: a backend older than 0.9.46 reads no
+method versions, so the method is cut from its class's versions, and Versions and the review's Build log say so and
+ask for `src/` to be pulled with abapGit.
 Everything else - Code Explorer, Value Origin, SelecTor, the version history, its diff and building
 a review - reads SAP over ADT and needs no backend.
 
@@ -448,8 +450,8 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   **Blame** toggle beside Versions | Review, off by default, names the developer who wrote each changed line: the versions
   between the pair are replayed (one more read per version, so a long history takes longer),
   and a version is credited to the owner of the task it came from - a transport of copies to the
-  task of the request it copies - not to whoever released or copied it. A block belongs to whoever
-  wrote most of its lines, and **Developers** counts each developer's own lines and blocks. Hover
+  task of the request it copies - not to whoever released or copied it. Only the request's own versions count: a transport of copies made from another request does not. Of the request's tasks that carry the object, a copy goes to a released one stamped at or before it, by the system's date and time. When the object sits only in tasks of one developer, every changed line is that developer's and no versions are read. A block belongs to whoever
+  wrote most of its lines, every line of it shows that name, and **Developers** counts each developer's own lines and blocks. Hover
   the name for the version, date and request. With Blame off, a block is the author's of the new
   version. A review saved by AVE with Blame shows its line authors when the toggle is on. Opening a review only reads a saved one. A review that is not saved yet is built from ADT
   with **Build review** and saved, once built, where `vertex.review.storage` says: each part appears in the summary as soon as it is read, and the status line

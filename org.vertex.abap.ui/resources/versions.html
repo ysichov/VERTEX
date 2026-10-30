@@ -1338,6 +1338,8 @@ function renderVersions(data) {
   }
 
   list.innerHTML = "";
+  // The method cut from its class's versions where VERTEX's ABAP is too old to read its own: said, not hidden.
+  if (data.notice) { var told = document.createElement("div"); told.className = "note"; told.textContent = data.notice; list.appendChild(told); }
   if (!autoDiff) { note("Pick a version to see what it changed, or pin one with ◇ as the base."); }
 
   var headRow = document.createElement("tr");

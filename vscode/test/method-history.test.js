@@ -26,6 +26,20 @@ test("a method's history is its own VRSD versions, their text from VERTEX's ABAP
   assert.deepStrictEqual(await history.textOf(history.feed[0]), ["active line"]);
 });
 
+test("an older VERTEX ABAP that reads no method versions: the class include's feed, and the switch said", async () => {
+  const api = {
+    ddicVersions: async () => true,
+    query: async () => ({ values: [{ VERSNO: "00082", KORRNUM: "TPX", AUTHOR: "DEV", DATUM: "20261028", ZEIT: "154831" }] }),
+    ddicVersion: async () => { throw new Error("Request could not be understood by the server due to malformed syntax: METH is not a dictionary part this resource reads;"); },
+    revisions: async () => [{ id: "00734", transport: "TPX" }]
+  };
+  const history = await versions.historyOf(api, "METH", PART, where);
+  assert.ok(!history.method && !history.textOf);
+  assert.deepStrictEqual(history.feed.map(e => e.id), ["00734"]);
+  assert.strictEqual(history.notice, versions.OLD_BACKEND);
+  assert.match(history.notice, /older than 0\.9\.46.*cut from its class's versions.*abapGit/);
+});
+
 test("without VERTEX's ABAP a method is cut from the class include's feed, as before", async () => {
   const api = { ddicVersions: async () => false, revisions: async () => [{ id: "00734", transport: "TPX" }] };
   const history = await versions.historyOf(api, "METH", PART, where);

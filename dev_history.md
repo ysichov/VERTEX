@@ -1,5 +1,26 @@
 # Development history
 
+## 2026-10-30 — The old ABAP named on a method's version
+
+On A4H a method's version answered "METH is not a dictionary part this resource reads": the system had VERTEX's ABAP
+of 0.9.41, whose ZCL_VX_DDIC_VERSION knows DTED, DOMD and TABD; METH came in 0.9.46. The front end only checks that
+the resource exists, and the extension updates itself while the ABAP is pulled by hand. I proposed only naming the old ABAP and
+not falling back; the user wanted the switch to the class include's feed, said aloud. `historyOf` reads one method
+version per connection to tell; on the old refusal it uses the class feed and returns a `notice`, which Versions
+shows above the list and the review logs as NOTE. Test added. The 6 failing tests of the full suite fail without
+this change too.
+Version kept at 0.9.51; VSIX and Eclipse rebuilt, the Eclipse site in `docs/` replaced.
+
+## 2026-10-30 — Eclipse 0.9.51 built and published
+
+0.9.47-0.9.51 were written up as "Eclipse not built (no JDK)". There was a JDK: Eclipse's own justj under the `.p2`
+pool has `javac.exe`; I had looked only at PATH, which holds a Java 8 JRE. The user said it used to build here.
+`eclipse/package.ps1` with that javac built 0.9.51.20261030220944; its site replaced the 0.9.42 jars in `docs/`.
+The pages that named 0.9.42 now name it, eclipse/README lost its 0.8.0 notes and a "not built" remark, footnote ³
+no longer says the debugger is not on the update site, and both READMEs' Blame paragraphs gained the rules of
+0.9.47-0.9.51 (request scope, one developer, released task by system time, one name per block). Not tried in a live
+Eclipse.
+
 ## 2026-10-30 — Tool tables brought up to date
 
 The user checked the tool tables. The Marketplace page had fallen behind the others: Value Origin was still "backwards", Go to's interface implementations, the debugger's dumps,
