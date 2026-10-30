@@ -346,6 +346,9 @@
   table.diff tr.said .who { color: var(--muted); }
   /* Blame: who wrote a changed line, in the review. */
   table.diff .blame { float: right; margin-left: 1.5em; color: var(--muted); font-size: 11px; }
+  /* In one pane the name has a column of its own, past the end of the longest line, so it never covers code. */
+  table.diff td.who { white-space: nowrap; padding-left: 1.5em; }
+  table.diff td.who .blame { float: none; margin-left: 0; }
   /* A comment is written in a box and has to come back out of it the same
      shape: line breaks and the indentation of a pasted snippet are part of
      what was said, and NORMAL on the cell would fold the lot onto one line. */
@@ -1386,6 +1389,11 @@ var CONTEXT = 3;
 /* A line in words, blanks and single signs - the units a change inside a line is shown in. */
 function tokens(text) { return String(text).match(/[A-Za-z0-9_]+|\s+|[^A-Za-z0-9_\s]/g) || []; }
 
+/* Blanks are not a change, as the review does not count indentation or spacing: two runs of blanks are the same,
+   a run of blanks only removed is not shown and one only added is shown as kept. */
+function blankTok(w) { return /^\s+$/.test(w); }
+function same(a, b) { return a === b || (blankTok(a) && blankTok(b)); }
+
 /* The two lines token by token (longest common subsequence): [{ op: "=" | "-" | "+", text }]. Lines are short, so the
    table is small; a pair too long for it is shown as a whole line out and a whole line in. */
 function wordDiff(a, b) {
@@ -1394,7 +1402,7 @@ function wordDiff(a, b) {
   var t = [], i, j;
   for (i = 0; i <= n; i++) { t.push(new Int32Array(m + 1)); }
   for (i = n - 1; i >= 0; i--) {
-    for (j = m - 1; j >= 0; j--) { t[i][j] = x[i] === y[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]); }
+    for (j = m - 1; j >= 0; j--) { t[i][j] = same(x[i], y[j]) ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]); }
   }
   var out = [];
   var push = function (op, text) {
@@ -1403,11 +1411,18 @@ function wordDiff(a, b) {
   };
   i = 0; j = 0;
   while (i < n || j < m) {
-    if (i < n && j < m && x[i] === y[j]) { push("=", x[i]); i++; j++; }
+    if (i < n && j < m && same(x[i], y[j])) { push("=", y[j]); i++; j++; }
     else if (i < n && (j === m || t[i + 1][j] >= t[i][j + 1])) { push("-", x[i]); i++; }
     else { push("+", y[j]); j++; }
   }
-  return out;
+  var shown = [];
+  out.forEach(function (w) {
+    var op = blankTok(w.text) ? (w.op === "-" ? "" : "=") : w.op;
+    if (!op) { return; }
+    var last = shown[shown.length - 1];
+    if (last && last.op === op) { last.text += w.text; } else { shown.push({ op: op, text: w.text }); }
+  });
+  return shown;
 }
 
 /* How much of two lines is the same, 0 to 1: kept characters, blanks not counted, against the longer line. */
@@ -1559,11 +1574,14 @@ function diffTable(ops, blocks, offset) {
 
     var cd = document.createElement("td");
     if (old) { markWords(cd, wordDiff(old.text, o.text), "~"); } else { cd.textContent = o.text; }
-    blameMark(cd, o.who);
+    var who = document.createElement("td");
+    who.className = "who";
+    blameMark(who, o.who);
 
     tr.appendChild(ln);
     tr.appendChild(mk);
     tr.appendChild(cd);
+    tr.appendChild(who);
     tbody.appendChild(tr);
   });
 

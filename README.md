@@ -43,7 +43,8 @@ Ordinary diagram nodes have transparent backgrounds, and their clickable labels 
 
 The ABAP side is this repository's `src/`. It is optional: in VS Code everything works over ADT
 alone, and `src/` is needed to save a transport's review to SAP and, where ADT keeps no versions of
-data elements, domains and tables, to read theirs; without it, reviews are saved to files and such
+data elements, domains and tables, to read theirs. With it, a method is reviewed from its own versions (as SE80
+and AVE show them) instead of being cut from the class's; without it, reviews are saved to files and such
 parts say they need the backend. The Eclipse plugin does the same. The last column below says what needs it.
 
 In VS Code, the built-in VERTEX Assistant can use Codex, Claude Code, a signed-in
@@ -78,7 +79,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.42.20261029231959**; the VS Code extension is **0.9.42**.
+**0.9.42.20261029231959**; the VS Code extension is **0.9.46**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is in the plugin source and a local test build,
@@ -237,7 +238,7 @@ Building either half from this repository instead: [BUILD.md](BUILD.md).
 
 Without a variable under the cursor, Forward Usage Analysis offers FLOW with Full scope; Formula, Expression and BSE are disabled until a variable is selected.
 
-Both Value Origin windows expose **Analysis log** directly above the flow. Review ignores indentation and trailing-space changes while preserving changes inside literals. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies the engine, source loading and parsing times, source closure, definitions, dependency edges, traversal, warnings, and Formula/Expression diagnostics. The log is accessible without enabling the technical sections.
+Both Value Origin windows expose **Analysis log** directly above the flow. Review ignores spacing outside literals - indentation, trailing blanks and blanks between words - while preserving changes inside literals; inside a changed line only the changed words and signs are marked, not the spacing around them. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies the engine, source loading and parsing times, source closure, definitions, dependency edges, traversal, warnings, and Formula/Expression diagnostics. The log is accessible without enabling the technical sections.
 
 **Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Forward Usage Analysis**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
 

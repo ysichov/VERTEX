@@ -210,9 +210,11 @@ The [repository's `src/`](https://github.com/ysichov/VERTEX/tree/main/src) is ne
 cannot do: saving a transport's review to SAP, and the versions of data elements, domains and tables
 on releases where ADT keeps none of them. It carries the `ZAVE_REVIEW` table, which AVE uses too,
 `ZCL_VX_ADT_RES_STORE`, which writes a review into it, and `ZCL_VX_ADT_RES_DDIC`, which gives the
-text of a dictionary object's version; pull it with [abapGit](https://abapgit.org) and activate
+text of a dictionary object's version and of a method's own version; pull it with [abapGit](https://abapgit.org) and activate
 it. On a system without it, reviews are saved to files (see *Code review of a transport*), and a
-data element, domain or table ADT keeps no versions of is listed as needing the backend.
+data element, domain or table ADT keeps no versions of is listed as needing the backend. With it, a
+method in a review or in Versions has its own versions, as SE80 and AVE list them; without it, it is cut from the
+versions of its class.
 Everything else - Code Explorer, Value Origin, SelecTor, the version history, its diff and building
 a review - reads SAP over ADT and needs no backend.
 
@@ -425,7 +427,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
 
   **A transport's overview.** Review of a request with no saved review shows, under **Build review**, each object it holds: type, object,
   class, the kind of object as ADT names it, who worked on it, in how many tasks, and from the first task to the
-  last - tasks released into the request included. **Stop** cancels a build before saving; a SAP call already in progress may finish. In the request list, request numbers link to reviews saved in SAP or in this system’s review files. Review ignores indentation and trailing-space changes while preserving changes inside literals. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies build diagnostics and skipped-part reasons. Chat receives the open review's objects and saved changed lines, including when the request summary is shown. Select text in Tools or the sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. Code SAP generates is marked as not reviewed, and newly created objects are shown in green and an object deleted since is shown in red, as
+  last - tasks released into the request included. **Stop** cancels a build before saving; a SAP call already in progress may finish. In the request list, request numbers link to reviews saved in SAP or in this system’s review files. Review ignores spacing outside literals - indentation, trailing blanks and blanks between words - while preserving changes inside literals; inside a changed line only the changed words and signs are marked, not the spacing around them. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies build diagnostics and skipped-part reasons. Chat receives the open review's objects and saved changed lines, including when the request summary is shown. Select text in Tools or the sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. Code SAP generates is marked as not reviewed, and newly created objects are shown in green and an object deleted since is shown in red, as
   it is under Not reviewed in the review.
 
   **Code review of a transport.** A transport request in Versions shows its review: every part
@@ -434,7 +436,9 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   request and no other request's version sits above it, against the first older version that is
   not the request's. The request's own transports of copies count as the request. A released
   request is reviewed only from its own versions; a part it holds no version of is listed with the
-  reason instead. With **Ignore SAP generated**, code SAP generated is not reviewed: a part whose new version is authored by `SAP*`,
+  reason instead. Without VERTEX's ABAP a method or a class section is cut from the class's own versions; its old
+  side is then the release of the previous request - another request's transport of copies holds the whole class,
+  the request's edits with it, and is skipped. With VERTEX's ABAP a method has its own versions. With **Ignore SAP generated**, code SAP generated is not reviewed: a part whose new version is authored by `SAP*`,
   the Gateway classes `*_MPC`, `*_MPC_EXT` and `*_DPC` (not `*_DPC_EXT`), a function group's main
   program `SAPL*`, a new object of comment lines only and a class section holding nothing but its
   header. A generator's stamp line rewritten in place (`generation date:`, `regenerated at`, the

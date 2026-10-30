@@ -30,6 +30,18 @@ test("the pair follows AVE: the request's newest version, the active one when it
   assert.deepStrictEqual([copied.old.id, copied.fresh.id], ["00001", "00000"]);
   assert.ok(require("../review-live").generated({ fresh: { author: "SAP" } }));
   assert.ok(!require("../review-live").generated({ fresh: { author: "DEV" } }));
+  /* A method cut from the class's feed (History of a class, 734..728): another request's ToCs (732..730) copied the
+     class with the request's edits and are out of scope; the boundary is the previous request's release, 729. */
+  const CLASS = [{ id: "00000", uri: "/k/0", author: "DEV", transport: "Q9S" },
+    { id: "00734", uri: "/k/734", author: "DEV", transport: "TPX" }, { id: "00733", uri: "/k/733", author: "DEV", transport: "TP6" },
+    { id: "00732", uri: "/k/732", author: "DEV", transport: "TN7" }, { id: "00731", uri: "/k/731", author: "DEV", transport: "TGS" },
+    { id: "00730", uri: "/k/730", author: "DEV", transport: "T53" }, { id: "00729", uri: "/k/729", author: "DEV", transport: "MYS" },
+    { id: "00728", uri: "/k/728", author: "DEV", transport: "SUP" }];
+  const mine = new Set(["SKR", "TPX", "TP6"]), copies = new Set(["TPX", "TP6", "TN7", "TGS", "T53", "SUP"]);
+  const method = pairOf(CLASS, mine, false, copies);
+  assert.deepStrictEqual([method.old.id, method.fresh.id], ["00729", "00734"]);
+  const whole = pairOf(CLASS, mine, false);
+  assert.deepStrictEqual([whole.old.id, whole.fresh.id], ["00732", "00734"]);
   const created = pairOf([{ id: "00001", uri: "/n/1", author: "DEV", transport: "K5" }], new Set(["K5"]), true);
   assert.deepStrictEqual([created.old, created.fresh.id], [null, "00001"]);
 });
@@ -153,4 +165,20 @@ test("indentation-only edits create no review object or changed blocks", async (
   const payload = await build(api, "K1");
   assert.equal(payload.OBJ_STATS.length, 0);
   assert.equal(payload.HUNKS.length, 0);
+});
+
+test("a method's version is credited to the task that holds that method, not to another task of the class", async () => {
+  const PART = "ZCL_X".padEnd(30, " ") + "RUN";
+  const api = { query: async sql => {
+    if (/FROM e070 WHERE trkorr = 'TPX'/.test(sql)) { return { values: [{ TRKORR: "TPX", TRFUNCTION: "T", STRKORR: "", AS4USER: "COPIER" }] }; }
+    if (/object = 'MERG'/.test(sql)) { return { values: [{ OBJ_NAME: "SKR       " }] }; }
+    if (/e071~object = 'METH'/.test(sql)) { return { values: [{ TRKORR: "SKS", AS4USER: "WRITER", AS4DATE: "20261020", AS4TIME: "100000" }] }; }
+    if (/LIKE 'ZCL_X%'/.test(sql)) { return { values: [{ TRKORR: "T1J", AS4USER: "OTHER", AS4DATE: "20261027", AS4TIME: "100000" },
+      { TRKORR: "SKS", AS4USER: "WRITER", AS4DATE: "20261020", AS4TIME: "100000" }] }; }
+    return { values: [] };
+  } };
+  const { ownerResolver } = require("../review-live");
+  const entry = { id: "00734", transport: "TPX", author: "COPIER", time: "2026-10-28T15:48:31" };
+  assert.strictEqual(await ownerResolver(api, "ZCL_X", PART)(entry), "WRITER");
+  assert.strictEqual(await ownerResolver(api, "ZCL_X", "")(entry), "OTHER");
 });

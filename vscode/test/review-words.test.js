@@ -25,3 +25,9 @@ test("a changed line is paired with the alike line of its run, order kept, and i
 test("lines with little in common stay a removed and an added line", () => {
   assert.deepStrictEqual(pairAll([{ op: "-", text: "ls_e071-pgmid = 'LIMU'." }, { op: "+", text: "\" LANG, not LIMU: CTS refuses it" }]), {});
 });
+
+test("blanks inside a changed line are not marked: only the words and signs that changed", () => {
+  const words = wordDiff("          rt_t_message  = rt_t_message", "    rt_t_message  = rt_t_message.          \" Error Messages");
+  assert.ok(words.every(w => w.op === "=" || /\S/.test(w.text)), JSON.stringify(words));
+  assert.deepStrictEqual(words.filter(w => w.op !== "=").map(w => w.text.trim()), [".          \" Error Messages"]);
+});

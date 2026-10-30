@@ -1,5 +1,21 @@
 # Release history
 
+## 2026-10-30 — 0.9.46: a method's own versions where VERTEX's ABAP is installed
+
+With VERTEX's ABAP (`src/`) on the system, a method in a review and in Versions has its own versions, as SE80 and AVE list them, instead of being cut from the versions of its class; its pair follows AVE's rule on that history. Pull `src/` again: `ZCL_VX_DDIC_VERSION` now also gives the text of a method's version. Without it the class's versions are used as in 0.9.45. A line whose only change is spacing between words outside a literal is no longer a changed block. Blame credits a method's change to the developer whose task holds that method, not to another developer of the same request who changed other methods of the class. In one pane, the Blame name stands in its own column after the code and no longer covers a long line. VS Code 0.9.46; Eclipse not built (no JDK on this machine).
+
+## 2026-10-30 — 0.9.45: a method is compared with the previous request's release
+
+A method or class section changed by a request is compared with the release of the previous request; another request's transport of copies, which holds the whole class with the request's edits, is skipped. 0.9.43 still stopped at such a copy, so a changed method could again show no difference. The Build log lists a part's versions only down to the one it is compared with. VS Code 0.9.45; Eclipse not built (no JDK on this machine).
+
+## 2026-10-30 — 0.9.44: spacing is not marked as a change
+
+Inside a changed line the review marks only the words and signs that changed; a different indentation or spacing is no longer shown as removed and added. Also in this release: a method's change compared with the class before the request's first version or transport of copies (0.9.43), now carried by the review page as well. VS Code 0.9.44; Eclipse not built (no JDK on this machine).
+
+## 2026-10-30 — 0.9.43: a method's change is found again
+
+A method or class section changed by a request is compared with the class as it was before the request's first version or transport of copies. Before, a later transport of copies of other work - which already held the request's edits - was taken as the old side, so a changed method showed little or no difference. The Build log no longer reports a method taken with its class as "not among the methods". VS Code 0.9.43; Eclipse not built (no JDK on this machine).
+
 ## 2026-10-29 — New dictionary objects no longer reported as changed
 
 Data elements, domains and tables a request created and that were never versioned are no longer reported as "Changed since this review was saved - no version of this part"; they are the request's new objects, as AVE reviewed them, and are built that way too.

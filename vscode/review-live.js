@@ -55,7 +55,9 @@ const drop = (map, text) => { for (let i = map.length - 1; i >= 0; i--) { if (ma
 // or the newest such task when none is before it (an R task carries a date past its own versions). A version no task
 // answers for stays its author's. OBJECT is the name the part is read through; a task carries it when an E071 entry
 // of the task starts with it (a class, its methods, its includes). Times are compared as the feed and E070 give them.
-function ownerResolver(api, object) {
+// METHOD (a class's method part, "<class padded to 30><method>"): the tasks that hold that very method (LIMU METH) answer
+// first - a request's tasks may each change other methods of the class; only when none holds it, the class's do.
+function ownerResolver(api, object, method) {
   const heads = new Map(), tasksOfK = new Map(), owners = new Map();
   const digits = value => String(value || "").replace(/\D/g, "");
   const head = async t => {
@@ -64,11 +66,13 @@ function ownerResolver(api, object) {
     }
     return heads.get(t);
   };
+  const carrying = (k, where) => api.query("SELECT e070~trkorr, e070~as4user, e070~as4date, e070~as4time FROM e070"
+    + " INNER JOIN e071 ON e071~trkorr = e070~trkorr WHERE e070~strkorr = " + sqlText(k)
+    + " AND e070~trfunction IN ('S', 'R') AND " + where, 1000).then(r => r.values);
   const tasks = async k => {
     if (!tasksOfK.has(k)) {
-      const rows = (await api.query("SELECT e070~trkorr, e070~as4user, e070~as4date, e070~as4time FROM e070"
-        + " INNER JOIN e071 ON e071~trkorr = e070~trkorr WHERE e070~strkorr = " + sqlText(k)
-        + " AND e070~trfunction IN ('S', 'R') AND e071~obj_name LIKE " + sqlText(object + "%"), 1000)).values;
+      let rows = method ? await carrying(k, "e071~object = 'METH' AND e071~obj_name = " + sqlText(method)) : [];
+      if (!rows.length) { rows = await carrying(k, "e071~obj_name LIKE " + sqlText(object + "%")); }
       const seen = new Set();
       tasksOfK.set(k, rows.filter(r => !seen.has(r.TRKORR) && seen.add(r.TRKORR))
         .map(r => ({ user: r.AS4USER, at: digits(r.AS4DATE) + digits(r.AS4TIME) })).sort((a, b) => b.at.localeCompare(a.at)));
@@ -246,8 +250,12 @@ async function partsOfRequest(api, keys, numbers, log, progress) {
       const wanted = new Set(methods.map(m => m.toUpperCase()));
       // E071 names the method in capitals; the class layout as it is written in the source.
       say("METH " + owner + " " + (method || "(class alone)") + ": wanted " + ([...wanted].join(", ") || "nothing"));
+      // A method the class entry already took is reviewed there; only one the class does not list is skipped.
+      const taken = [...wanted].filter(m => seen.has("METH|" + owner.padEnd(30, " ") + m));
+      taken.forEach(m => wanted.delete(m));
+      if (taken.length) { say("METH " + owner + "->" + taken.join(", ") + ": already taken with the class"); }
       if (wanted.size && !await add("CLAS", owner, p => p.part_type === "METH" && wanted.has(String(p.unit).toUpperCase()))) {
-        say("SKIP METH " + owner + "->" + [...wanted].join(", ") + ": not among the methods ADT lists for the class (or already taken)");
+        say("SKIP METH " + owner + "->" + [...wanted].join(", ") + ": not among the methods ADT lists for the class");
       }
       continue;
     }
@@ -301,7 +309,11 @@ const lastLog = request => lastLogs.get(String(request).toUpperCase()) || null;
 // OPEN: the active state stands in for a missing version of the request only while the request is not released. A
 // released request is history - every part it changed has a version of its own - and the active state of a part it has
 // none of holds another request's work (AVE: IS_RELEASED_KORR); such a part has no pair.
-function pairOf(feed, numbers, open) {
+// COPIES: for a part cut from the whole class's feed (a method, a section), the Set of the feed's transports of copies.
+// Another request's ToC copies the class whole, the request's edits of the part with it, and is out of scope: the
+// boundary is the release of the previous request, so OLD is the first version below NEW that is neither the
+// request's nor a ToC. Without it the rule above stands. ToCs still name their developer in Blame.
+function pairOf(feed, numbers, open, copies) {
   const ordered = feed.filter(e => e.id !== "00000").sort((a, b) => Number(b.id) - Number(a.id));
   const active = feed.find(e => e.id === "00000") || null;
   const at = ordered.findIndex(e => numbers.has(e.transport));
@@ -313,12 +325,20 @@ function pairOf(feed, numbers, open) {
   else { fresh = own || (open ? active : null); }
   if (!fresh) { return null; }
   const below = fresh === active ? ordered : ordered.slice(ordered.indexOf(fresh) + 1);
-  let old = below.find(e => e.transport && !numbers.has(e.transport)) || null;
+  let old = below.find(e => e.transport && !numbers.has(e.transport) && !(copies && copies.has(e.transport))) || null;
   if (!old && fresh.id !== "00001" && ordered.length) {
     const oldest = ordered[ordered.length - 1];
     old = oldest === fresh || numbers.has(oldest.transport) ? null : oldest;
   }
   return { fresh, old };
+}
+
+// The transports of copies among a feed's versions (E070 TRFUNCTION T).
+async function copiesIn(api, feed) {
+  const named = [...new Set(feed.map(e => e.transport).filter(Boolean))];
+  if (!named.length) { return new Set(); }
+  const rows = await inLists(api, "SELECT trkorr FROM e070 WHERE trfunction = 'T' AND trkorr", named, 10000);
+  return new Set(rows.map(r => String(r.TRKORR)));
 }
 
 // A numbered version never changes, so its text is read once a session; the active state (00000) can change under the
@@ -434,7 +454,11 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
   log("REQUEST " + request + ": " + [...numbers].join(", ") + (open ? ", open" : ", released") + "; " + parts.length + " part(s)");
   // One resolver per object read through, so its tasks and requests are asked once for all its parts.
   const resolvers = new Map();
-  const ownerOf = object => { if (!resolvers.has(object)) { resolvers.set(object, ownerResolver(api, object)); } return resolvers.get(object); };
+  const ownerOf = (object, method) => {
+    const key = object + "|" + (method || "");
+    if (!resolvers.has(key)) { resolvers.set(key, ownerResolver(api, object, method)); }
+    return resolvers.get(key);
+  };
   // Kept beside the payload, not in it: a saved review is AVE's format, which has no place for them.
   Object.defineProperty(payload, "MISSING", { value: missing, enumerable: false });
   for (const [at, p] of parts.entries()) {
@@ -452,13 +476,17 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       if (!where) { log("SKIP " + label + ": no version history for this kind of part"); continue; }
       const history = await versions.historyOf(api, p.ptype, p.part, where);
       const dictionary = history.textOf ? history : null;
-      if (dictionary) { log("  VRSD: ADT keeps no versions of " + p.ptype + " here; VERTEX's ABAP gives their text"); }
+      if (history.method) { log("  VRSD: the method's own versions, their text from VERTEX's ABAP"); }
+      else if (dictionary) { log("  VRSD: ADT keeps no versions of " + p.ptype + " here; VERTEX's ABAP gives their text"); }
       /* A dictionary object VRSD holds no version of was never versioned: it exists only as its active state, and the
          request names it, so that state is the request's - a new object, as AVE reviews it (99998 against nothing). */
       const feed = dictionary && !history.feed.length ? [{ id: "00000", transport: request, author: "", uri: "ddic:00000", time: "" }]
         : history.feed;
-      feed.forEach(e => log("  VER " + e.id + " " + (e.transport || "-") + " " + (e.author || "")));
-      pair = pairOf(feed, numbers, open);
+      pair = pairOf(feed, numbers, open, where.cut && !history.method ? await copiesIn(api, feed) : null);
+      // The versions down to OLD, the release the search stopped at; those below it say nothing about the pair.
+      const floor = pair && pair.old ? Number(pair.old.id) : 0;
+      feed.filter(e => e.id === "00000" || Number(e.id) >= floor)
+        .forEach(e => log("  VER " + e.id + " " + (e.transport || "-") + " " + (e.author || "")));
       if (!pair) { throw new Error(noPair(open)); }
       log("  PAIR new=" + pair.fresh.id + " (" + (pair.fresh.transport || "-") + ") old=" + (pair.old ? pair.old.id + " (" + (pair.old.transport || "-") + ")" : "none"));
       if (skip.pair(pair)) { log("SKIP " + label + ": SAP auto-generated code (author " + pair.fresh.author + ")"); continue; }
@@ -474,7 +502,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       blame = { map: [], deleted: [] };
       if (withBlame && ops.some(o => o.op !== "=")) {
         progress((at + 1) + " of " + parts.length + ": " + labelOf(p) + " - who wrote which line ...");
-        blame = await blameOf(api, feed, pair, ops, textOf, ownerOf(p.object));
+        blame = await blameOf(api, feed, pair, ops, textOf, ownerOf(p.object, p.ptype === "METH" ? p.part : ""));
       }
     } catch (error) {
       missing.push({ object: p.ptype === "METH" ? "METH" : p.type, name: p.ptype === "METH" ? p.object + "->" + p.unit : p.part,
@@ -585,11 +613,13 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
       }
       const where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
       if (!where) { continue; }
-      const pair = pairOf(await api.revisions(where.url, where.include || undefined), numbers, open);
+      const history = await versions.historyOf(api, p.ptype, p.part, where);
+      const feed = history.feed;
+      const pair = pairOf(feed, numbers, open, where.cut && !history.method ? await copiesIn(api, feed) : null);
       if (!pair) { throw new Error(noPair(open)); }
       if (skip.pair(pair)) { continue; }
       const now = versnos(pair);
-      const textOf = async entry => {
+      const textOf = history.textOf || async function (entry) {
         if (!entry) { return []; }
         const text = await activeOrKept(api, entry);
         return (where.cut ? where.cut(text) : versions.lines(text)) || [];
@@ -623,4 +653,4 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
   return { changed, unchecked };
 }
 
-module.exports = { carryUnread, methodOf, lastLog, build, pairOf, generated, generatedObject, stampLine, stripStamps, commentsOnly, emptySection, countChanges, staleness };
+module.exports = { ownerResolver, carryUnread, methodOf, lastLog, build, pairOf, generated, generatedObject, stampLine, stripStamps, commentsOnly, emptySection, countChanges, staleness };

@@ -7,14 +7,18 @@
 "! management does not fill a never-versioned object's active version. Any
 "! other version comes from SVRS_GET_VERSION_LOCAL. Restored from VERTEX's
 "! ZCL_VX_VERSION2 (removed in 0.8.8, when the windows moved to ADT).
+"!
+"! A method's version (METH) too: ADT keeps versions of the class include only,
+"! while VRSD keeps a method's own; its source is SVRS_GET_REPS_FROM_OBJECT's.
 CLASS zcl_vx_ddic_version DEFINITION
   PUBLIC
   FINAL
   CREATE PUBLIC.
 
   PUBLIC SECTION.
-    "! IV_TYPE: DTED, DOMD or TABD. IV_VERSNO: a VRSD version number, or
-    "! 00000 / 99998 / empty for the active state.
+    "! IV_TYPE: DTED, DOMD, TABD or METH. IV_VERSNO: a VRSD version number, or
+    "! 00000 / 99998 / empty for the active state - not for METH, whose active
+    "! state ADT reads. IV_NAME of a METH: the class padded to 30, the method.
     CLASS-METHODS lines
       IMPORTING iv_type         TYPE versobjtyp
                 iv_name         TYPE versobjnam
@@ -82,6 +86,11 @@ CLASS zcl_vx_ddic_version DEFINITION
                 it_fields       TYPE tt_field
       RETURNING VALUE(rt_lines) TYPE string_table.
 
+    CLASS-METHODS method_lines
+      IMPORTING iv_name         TYPE versobjnam
+                iv_versno       TYPE versno
+      RETURNING VALUE(rt_lines) TYPE string_table
+      RAISING   cx_adt_res_bad_request.
     CLASS-METHODS fail
       IMPORTING iv_text TYPE string
       RAISING   cx_adt_res_bad_request.
@@ -93,8 +102,12 @@ CLASS zcl_vx_ddic_version IMPLEMENTATION.
 
 
   METHOD lines.
+    IF iv_type = 'METH'.
+      rt_lines = method_lines( iv_name = iv_name iv_versno = iv_versno ).
+      RETURN.
+    ENDIF.
     IF iv_type <> 'DTED' AND iv_type <> 'DOMD' AND iv_type <> 'TABD'.
-      fail( |{ iv_type } is not a dictionary part this resource reads; DTED, DOMD and TABD are.| ).
+      fail( |{ iv_type } is not a part this resource reads; DTED, DOMD, TABD and METH are.| ).
     ENDIF.
     IF iv_versno IS INITIAL OR iv_versno = '00000' OR iv_versno = '99998'.
       rt_lines = active_lines( iv_type = iv_type iv_name = iv_name ).
@@ -365,6 +378,32 @@ CLASS zcl_vx_ddic_version IMPLEMENTATION.
           && |{ ls_field-rollname WIDTH = 30 } { ls_field-datatype WIDTH = 4 } { CONV i( ls_field-leng ) WIDTH = 6 } |
           && |{ CONV i( ls_field-decimals ) WIDTH = 3 } { COND string( WHEN ls_field-notnull = abap_true THEN `NN` ) WIDTH = 2 } |
           && |{ ls_field-checktable WIDTH = 16 } { ls_field-ddtext }| TO rt_lines.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD method_lines.
+    DATA lt_source TYPE abaptxt255_tab.
+    DATA lt_trdir  TYPE trdir_it.
+    IF iv_versno IS INITIAL OR iv_versno = '00000' OR iv_versno = '99998'.
+      fail( |The active state of method { iv_name } is read over ADT, not here.| ).
+    ENDIF.
+    CALL FUNCTION 'SVRS_GET_REPS_FROM_OBJECT'
+      EXPORTING
+        object_name = iv_name
+        object_type = 'METH'
+        versno      = iv_versno
+      TABLES
+        repos_tab   = lt_source
+        trdir_tab   = lt_trdir
+      EXCEPTIONS
+        no_version  = 1
+        OTHERS      = 2.
+    IF sy-subrc <> 0.
+      fail( |Version { iv_versno } of method { iv_name } cannot be read (SVRS_GET_REPS_FROM_OBJECT: { sy-subrc }).| ).
+    ENDIF.
+    LOOP AT lt_source INTO DATA(ls_line).
+      APPEND CONV string( ls_line-line ) TO rt_lines.
     ENDLOOP.
   ENDMETHOD.
 

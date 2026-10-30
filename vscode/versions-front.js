@@ -36,9 +36,23 @@ const normal = (line, ignore) => ignore ? line.trim().toUpperCase() : line;
 // differing only in its case or indentation is kept, as AVE's IC switch has it; a kept line carries the new text.
 // A host with a comparer of its own passes it as api.diffLines - Eclipse hands the lines to its own Text Compare
 // (RangeDifferencer); otherwise VERTEX's line-diff.js (Myers) computes it.
+// A line as the review compares it: trimmed, and every run of blanks outside a literal ('...', `...`, |...|) one blank,
+// so spacing moved inside a line is no change; blanks inside a literal still count, and so does case.
+function spacingKey(line) {
+  let out = "", quote = "", blank = false;
+  for (const c of String(line).trim()) {
+    if (quote) { out += c; if (c === quote) quote = ""; continue; }
+    if (/\s/.test(c)) { blank = true; continue; }
+    if (blank) { out += " "; blank = false; }
+    if (c === "'" || c === "`" || c === "|") quote = c;
+    out += c;
+  }
+  return out;
+}
+
 async function diff(oldLines, newLines, ignore, api) {
-  // Review ignores indentation/trailing whitespace without hiding changed case or literal contents.
-  if (ignore === "indentation") return require("./line-diff").diffLines(oldLines, newLines, line => line.trim());
+  // Review ignores spacing outside literals without hiding changed case or literal contents.
+  if (ignore === "indentation") return require("./line-diff").diffLines(oldLines, newLines, spacingKey);
   if (api && api.diffLines) { return api.diffLines(oldLines, newLines, Boolean(ignore)); }
   return require("./line-diff").diffLines(oldLines, newLines, ignore ? line => normal(line, true) : undefined);
 }
@@ -146,6 +160,9 @@ async function dictionaryReady(api) {
 /* A part's history: ADT's feed where ADT keeps one; for a dictionary part ADT refuses ("Request version for DTEL is
    not supported", older releases), VRSD's and VERTEX's ABAP. Answers { feed, textOf } for the fallback, null for ADT's. */
 async function historyOf(api, ptype, part, where) {
+  /* A method: ADT keeps the versions of the class include only, VRSD the method's own - those SE80 and AVE show. Where
+     VERTEX's ABAP reads their text, the method's history is VRSD's; without it, the class include's feed, cut. */
+  if (ptype === "METH" && await dictionaryReady(api)) { return methodHistory(api, part, where); }
   if (!DICTIONARY.has(ptype)) { return { feed: await api.revisions(where.url, where.include || undefined), textOf: null }; }
   try { return { feed: await api.revisions(where.url, where.include || undefined), textOf: null }; }
   catch (error) {
@@ -166,6 +183,17 @@ async function dictionaryHistory(api, ptype, part) {
   });
   const textOf = async entry => entry ? api.ddicVersion(ptype, part, entry.id === "00000" ? "" : entry.id) : [];
   return { feed, textOf };
+}
+
+// A method's own history from VRSD, its versions' text from VERTEX's ABAP; the active state is ADT's class source, cut.
+async function methodHistory(api, part, where) {
+  const { feed } = await dictionaryHistory(api, "METH", part);
+  const textOf = async entry => {
+    if (!entry) { return []; }
+    if (entry.id === "00000") { return where.cut(await api.currentSource(where.url, where.include || undefined)) || []; }
+    return api.ddicVersion("METH", part, entry.id);
+  };
+  return { feed, textOf, method: true };
 }
 
 // What a request (with its tasks, E071) or a package (TADIR) holds, as AVE lists it: a class, an interface or a
@@ -557,4 +585,4 @@ async function request(api, resource, io) {
     versions: rows.map(({ uri, ...r }) => Object.assign(r, { author_name: names.get(r.author) || "" })) });
 }
 
-module.exports = { DICTIONARY, NEEDS_BACKEND, dictionaryHistory, historyOf, requestOverview, methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
+module.exports = { spacingKey, DICTIONARY, NEEDS_BACKEND, dictionaryHistory, historyOf, requestOverview, methodOf, componentLayout, request, diff, classLayout, partsOf, partOf, sourceAt, lines, padded };
