@@ -68,3 +68,15 @@ test('both hosts give every sde* function the Tools window calls unguarded', () 
   assert.deepEqual(needs.filter(name => !vscode.has(name)), unused);
   assert.deepEqual(needs.filter(name => !given.eclipse.has(name)), unused);
 });
+
+// The finder hands the search to the Versions page it mounts; that page must have it, and must not run it while it
+// is still asking "about" - every answer then is taken for that one, and a list that came first was lost in Eclipse.
+test('the Tools finder calls a search the Versions page has, which waits for "about"', () => {
+  const tools = read('org.vertex.abap.ui/resources/tools.html');
+  const versions = read('org.vertex.abap.ui/resources/versions.html');
+  assert.match(tools, /child\.sdeFindRequests\(user,released\)/);
+  const search = versions.match(/function sdeFindRequests\([^)]*\) \{[\s\S]*?\n\}/);
+  assert.ok(search, 'versions.html defines sdeFindRequests');
+  assert.match(search[0], /if \(!askingAbout\) \{ go\(\); return; \}/);
+  assert.match(search[0], /afterAbout = function/);
+});

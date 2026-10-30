@@ -1170,6 +1170,19 @@ function showFinder() {
     objectType() === "TR" && usable("requests") ? "" : "none";
 }
 
+/* The Tools window's finder: the page's own search, with the window's user and choice. Asked as the page loads, it
+   waits for the answer to "about" - until then every answer is taken for that one, and a list arriving first was lost. */
+function sdeFindRequests(user, released) {
+  var go = function () {
+    document.getElementById("user").value = String(user || "");
+    document.getElementById("released").checked = !!released;
+    findRequests();
+  };
+  if (!askingAbout) { go(); return; }
+  var then = afterAbout;
+  afterAbout = function () { if (then) { then(); } go(); };
+}
+
 function findRequests() {
   if (typeof sdeRequests !== "function") {
     message("This host does not find requests yet.");

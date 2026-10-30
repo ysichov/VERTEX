@@ -10,7 +10,13 @@ page's calls reach both hosts through `tool-routes.js`. The one gap was the Tool
 both hosts answer, and VS Code's `requestSearch` bridge is gone. `host-coverage.test.js` checked only the debugger
 page; it now checks what `tools.html` calls of its host unguarded (`sdeMonitorRefresh` is listed: its panel needs
 `initial.debugMonitor`, which no host sets). Its debug-command list had kept `openRuns`, which Eclipse answers now.
-Two Value Origin tests in `eclipse/` still fail, as before. Not tried in a live Eclipse.
+Two Value Origin tests in `eclipse/` still fail, as before.
+
+The user tried it: still nothing. The page asks "about" first and takes every answer for that one until it comes
+(`askingAbout`); the finder asked at frame load, and in Eclipse "about" goes to the server through Java while the
+request list is computed in the browser worker, so the list came first and was swallowed. `versions.html` now has
+`sdeFindRequests`, which fills its own finder and runs its own `findRequests`, deferred through `afterAbout`; the
+Tools finder calls it. Test added in `host-coverage.test.js`. Not tried in a live Eclipse.
 
 ## 2026-10-30 — The old ABAP named on a method's version
 

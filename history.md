@@ -3,8 +3,9 @@
 ## 2026-10-30 — Find transport requests in Eclipse
 
 - In Eclipse, **Find** in the Tools window's *Find transport requests* lists the requests. It did nothing: it called
-  a function only VS Code's host had. Both hosts now read the list as the Versions page does. Eclipse
-  0.9.51.20261030230250 and VS Code 0.9.51 rebuilt.
+  a function only VS Code's host had, and then the list, read before the window had heard what the system has, was
+  taken for that answer and lost. The finder now runs the Versions page's own search once the page is ready. Eclipse
+  0.9.51.20261030235616 and VS Code 0.9.51 rebuilt.
 
 ## 2026-10-30 — An older VERTEX ABAP is named
 
@@ -13,7 +14,7 @@
   used to fail with a "malformed syntax" refusal. VS Code 0.9.51 and
   Eclipse 0.9.51 rebuilt.
 
-## 2026-10-30 — Eclipse 0.9.51.20261030230250
+## 2026-10-30 — Eclipse 0.9.51.20261030235616
 
 - The Eclipse update site carries 0.9.51 (it carried 0.9.42). It brings to Eclipse the review's authorship and
   blame of VS Code 0.9.47-0.9.51: only the request's own versions, one developer's object wholly theirs, a
