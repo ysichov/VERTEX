@@ -1,5 +1,34 @@
 # Release history
 
+## 2026-10-30 — 0.9.50: a version's time is the system's
+
+- Blame takes a version's date and time from VRSD, in the system's time like the transport requests' dates, as
+  AVE does. ADT's history gives it in another zone, and a task released shortly before a transport of copies
+  counted as released after it.
+
+## 2026-10-30 — 0.9.49: an object one developer holds is that developer's
+
+- Any object (not only a method) whose tasks in the request all belong to one developer is credited to that
+  developer, every changed line, without reading versions for blame.
+- When several developers changed an object in one request, a version of the request or a copy of it is credited
+  to the released task released before it; an open task's work is credited from the active state.
+- Selecting text over a link or a row no longer opens it.
+
+## 2026-10-30 — 0.9.48: a method held by one task is that task's owner's
+
+- A method that exactly one task of the request holds is credited, every changed line, to that task's owner.
+- Blame walks OLD and the request's own versions only. Another request's transport of copies takes the whole object,
+  this request's unreleased lines included, and was credited with them.
+- A block names the developer of the task behind the new version also with Blame off, not whoever saved that
+  version (a transport of copies is saved by its maker).
+
+## 2026-10-30 — 0.9.47: blame names the right task, and stays in view
+
+- A version saved under a request (or a transport of copies) is credited to the request's task that
+  holds the object, nearest before the version (the newest when none is), as in AVE.
+- In Inline mode the blame column stays pinned at the right edge, also when a line is wider than the window.
+- The Build Log lists, per object with blame, which task each version was credited to.
+
 ## 2026-10-30 — 0.9.46: a method's own versions where VERTEX's ABAP is installed
 
 With VERTEX's ABAP (`src/`) on the system, a method in a review and in Versions has its own versions, as SE80 and AVE list them, instead of being cut from the versions of its class; its pair follows AVE's rule on that history. Pull `src/` again: `ZCL_VX_DDIC_VERSION` now also gives the text of a method's version. Without it the class's versions are used as in 0.9.45. A line whose only change is spacing between words outside a literal is no longer a changed block. Blame credits a method's change to the developer whose task holds that method, not to another developer of the same request who changed other methods of the class. In one pane, the Blame name stands in its own column after the code and no longer covers a long line. VS Code 0.9.46; Eclipse not built (no JDK on this machine).

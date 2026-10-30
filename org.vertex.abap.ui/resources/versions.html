@@ -347,7 +347,7 @@
   /* Blame: who wrote a changed line, in the review. */
   table.diff .blame { float: right; margin-left: 1.5em; color: var(--muted); font-size: 11px; }
   /* In one pane the name has a column of its own, past the end of the longest line, so it never covers code. */
-  table.diff td.who { white-space: nowrap; padding-left: 1.5em; }
+  table.diff td.who { white-space: nowrap; padding-left: 1.5em; position: sticky; right: 0; background: var(--bg); }
   table.diff td.who .blame { float: none; margin-left: 0; }
   /* A comment is written in a box and has to come back out of it the same
      shape: line breaks and the indentation of a pasted snippet are part of
@@ -3851,6 +3851,11 @@ if (INITIAL) {
 // Wait for the document, so sdeReady exists before the host calls it. What the
 // system has is asked first; an object the window was opened on is read after.
 window.addEventListener("load", function () { askAbout(startWindow); });
+/* Selecting text by dragging over a link or a row ends in a click; it is a selection, not a click. */
+document.addEventListener("click", function (event) {
+  var selected = window.getSelection ? String(window.getSelection()) : "";
+  if (selected) { event.stopPropagation(); event.preventDefault(); }
+}, true);
 </script>
 </body>
 </html>

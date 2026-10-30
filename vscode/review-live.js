@@ -57,16 +57,28 @@ const drop = (map, text) => { for (let i = map.length - 1; i >= 0; i--) { if (ma
 // of the task starts with it (a class, its methods, its includes). Times are compared as the feed and E070 give them.
 // METHOD (a class's method part, "<class padded to 30><method>"): the tasks that hold that very method (LIMU METH) answer
 // first - a request's tasks may each change other methods of the class; only when none holds it, the class's do.
-function ownerResolver(api, object, method) {
+// STAMP ({ type, name }, the part's VRSD key, when the feed's numbers are VRSD's for it): a version's time is taken from
+// VRSD, in the system's time as E070's is, as AVE takes it. The feed's time is ADT's, in its own zone, and compared
+// with E070 it put a task released an hour before a copy after it.
+function ownerResolver(api, object, method, stamp) {
   const heads = new Map(), tasksOfK = new Map(), owners = new Map();
   const digits = value => String(value || "").replace(/\D/g, "");
+  let stamps = null;
+  const timeOf = async entry => {
+    if (stamp && !stamps) {
+      stamps = new Map((await api.query("SELECT versno, datum, zeit FROM vrsd WHERE objtype = " + sqlText(stamp.type)
+        + " AND objname = " + sqlText(stamp.name), 10000)).values.map(r => [String(r.VERSNO).padStart(5, "0"), digits(r.DATUM) + digits(r.ZEIT)]));
+    }
+    const kept = stamps && stamps.get(String(entry.id).padStart(5, "0"));
+    return kept && kept.length >= 14 ? kept.slice(0, 14) : digits(entry.time).slice(0, 14);
+  };
   const head = async t => {
     if (!heads.has(t)) {
       heads.set(t, (await api.query("SELECT trkorr, trfunction, strkorr, as4user FROM e070 WHERE trkorr = " + sqlText(t), 1)).values[0] || null);
     }
     return heads.get(t);
   };
-  const carrying = (k, where) => api.query("SELECT e070~trkorr, e070~as4user, e070~as4date, e070~as4time FROM e070"
+  const carrying = (k, where) => api.query("SELECT e070~trkorr, e070~as4user, e070~as4date, e070~as4time, e070~trstatus FROM e070"
     + " INNER JOIN e071 ON e071~trkorr = e070~trkorr WHERE e070~strkorr = " + sqlText(k)
     + " AND e070~trfunction IN ('S', 'R') AND " + where, 1000).then(r => r.values);
   const tasks = async k => {
@@ -75,7 +87,7 @@ function ownerResolver(api, object, method) {
       if (!rows.length) { rows = await carrying(k, "e071~obj_name LIKE " + sqlText(object + "%")); }
       const seen = new Set();
       tasksOfK.set(k, rows.filter(r => !seen.has(r.TRKORR) && seen.add(r.TRKORR))
-        .map(r => ({ user: r.AS4USER, at: digits(r.AS4DATE) + digits(r.AS4TIME) })).sort((a, b) => b.at.localeCompare(a.at)));
+        .map(r => ({ task: r.TRKORR, user: r.AS4USER, released: r.TRSTATUS === "R" || r.TRSTATUS === "N", at: digits(r.AS4DATE) + digits(r.AS4TIME) })).sort((a, b) => b.at.localeCompare(a.at)));
     }
     return tasksOfK.get(k);
   };
@@ -84,9 +96,9 @@ function ownerResolver(api, object, method) {
     if (!t) { return entry.author; }
     const key = t + "|" + entry.time;
     if (!owners.has(key)) {
-      let owner = entry.author;
+      let owner = entry.author, by = "";
       const h = await head(t);
-      if (h && (h.TRFUNCTION === "S" || h.TRFUNCTION === "R") && h.AS4USER) { owner = h.AS4USER; }
+      if (h && (h.TRFUNCTION === "S" || h.TRFUNCTION === "R") && h.AS4USER) { owner = h.AS4USER; by = t; }
       else if (h && (h.TRFUNCTION === "K" || h.TRFUNCTION === "T")) {
         let k = t;
         if (h.TRFUNCTION === "T") {
@@ -95,20 +107,42 @@ function ownerResolver(api, object, method) {
           k = merg ? String(merg.OBJ_NAME).slice(0, 10) : "";
         }
         if (k) {
-          const list = await tasks(k), at = digits(entry.time).slice(0, 14);
-          const pick = list.find(c => c.at <= at) || list[0];
-          if (pick && pick.user) { owner = pick.user; }
+          const list = await tasks(k), at = await timeOf(entry);
+          // A version of the request or a copy of it holds what its released tasks hand over: an open task's work is
+          // in the active state, under that task. So a released task released before the version answers first.
+          const pick = list.find(c => c.released && c.at <= at) || list.find(c => c.at <= at) || list[0];
+          if (pick && pick.user) { owner = pick.user; by = pick.task + " at " + at + " from " + list.map(c => c.task + (c.released ? " R " : " D ") + c.at).join(" / "); }
         }
       }
-      owners.set(key, owner);
+      owners.set(key, { owner, by });
     }
-    return owners.get(key);
+    entry.ownerBy = owners.get(key).by;
+    return owners.get(key).owner;
   };
 }
 
-async function blameOf(api, feed, pair, ops, textOf, ownerOf) {
+// An object that only one developer's S/R tasks of the request hold (E071) is that developer's, every changed line of
+// it: no version is read for blame. A method is matched by its own LIMU METH entry; any other part by its name or its
+// object's. Tasks of several developers, or none, answer null and the versions are walked.
+async function soleHolder(api, request, p, fresh) {
+  const which = p.ptype === "METH" ? "e071~object = 'METH' AND e071~obj_name = " + sqlText(p.part)
+    : "e071~obj_name IN (" + [...new Set([p.part, p.object])].map(sqlText).join(", ") + ")";
+  const holders = (await api.query("SELECT e070~trkorr, e070~as4user FROM e070"
+    + " INNER JOIN e071 ON e071~trkorr = e070~trkorr WHERE e070~strkorr = " + sqlText(request)
+    + " AND e070~trfunction IN ('S', 'R') AND " + which, 1000)).values;
+  const users = [...new Set(holders.map(h => h.AS4USER).filter(Boolean))];
+  return users.length === 1 ? Object.assign({}, fresh, { owner: users[0], transport: holders.find(h => h.AS4USER === users[0]).TRKORR,
+    tasks: [...new Set(holders.map(h => h.TRKORR))] }) : null;
+}
+const wholeBlame = (ops, sole) => ({ map: ops.filter(o => o.op === "+").map(o => blameEntry(sole, o.text)),
+  deleted: ops.filter(o => o.op === "-").map(o => blameEntry(sole, o.text)) });
+
+async function blameOf(api, feed, pair, ops, textOf, ownerOf, numbers) {
   const lo = pair.old ? num(pair.old) : 0, hi = num(pair.fresh);
-  const range = feed.filter(e => num(e) >= lo && num(e) <= hi).sort((a, b) => num(a) - num(b));
+  // Only OLD and the request's own versions: another request's transport of copies takes the whole object, this
+  // request's unreleased lines included, and would be credited with them.
+  const range = feed.filter(e => num(e) >= lo && num(e) <= hi && (e === pair.old || !numbers || numbers.has(e.transport)))
+    .sort((a, b) => num(a) - num(b));
   const map = [], deleted = [];
   for (const e of range) { e.owner = await ownerOf(e); }
   if (new Set(range.slice(pair.old ? 1 : 0).map(e => e.owner)).size <= 1) {
@@ -454,9 +488,9 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
   log("REQUEST " + request + ": " + [...numbers].join(", ") + (open ? ", open" : ", released") + "; " + parts.length + " part(s)");
   // One resolver per object read through, so its tasks and requests are asked once for all its parts.
   const resolvers = new Map();
-  const ownerOf = (object, method) => {
-    const key = object + "|" + (method || "");
-    if (!resolvers.has(key)) { resolvers.set(key, ownerResolver(api, object, method)); }
+  const ownerOf = (object, method, stamp) => {
+    const key = object + "|" + (method || "") + "|" + (stamp ? stamp.type + " " + stamp.name : "");
+    if (!resolvers.has(key)) { resolvers.set(key, ownerResolver(api, object, method, stamp)); }
     return resolvers.get(key);
   };
   // Kept beside the payload, not in it: a saved review is AVE's format, which has no place for them.
@@ -469,13 +503,15 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
     const label = labelOf(p);
     log("PART " + p.ptype + " " + label);
     if (skip.object(p)) { log("SKIP " + label + ": generated class or function group main program"); continue; }
-    let where, pair, ops, blame;
+    let where, pair, ops, blame, stampKey = null;
     try {
       // A data element, domain or table: VRSD's history and VERTEX's ABAP for the text, where ADT keeps none.
       where = await versions.partOf(api, p.type, p.object, p.part, p.ptype);
       if (!where) { log("SKIP " + label + ": no version history for this kind of part"); continue; }
       const history = await versions.historyOf(api, p.ptype, p.part, where);
       const dictionary = history.textOf ? history : null;
+      // The feed's numbers are VRSD's for the part itself unless it is cut out of the class include's feed.
+      stampKey = !where.cut || history.method ? { type: p.ptype, name: p.part } : null;
       if (history.method) { log("  VRSD: the method's own versions, their text from VERTEX's ABAP"); }
       else if (dictionary) { log("  VRSD: ADT keeps no versions of " + p.ptype + " here; VERTEX's ABAP gives their text"); }
       /* A dictionary object VRSD holds no version of was never versioned: it exists only as its active state, and the
@@ -500,9 +536,15 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       if (skip.text(p, pair, oldLines, newLines)) { log("SKIP " + label + ": new object of comments only, or an empty class section"); continue; }
       ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
       blame = { map: [], deleted: [] };
-      if (withBlame && ops.some(o => o.op !== "=")) {
+      const sole = await soleHolder(api, request, p, pair.fresh);
+      if (sole) {
+        pair.fresh.owner = sole.owner;
+        log("  OWNER " + sole.owner + ": the only developer whose tasks hold it (" + sole.tasks.join(", ") + ")");
+        if (withBlame) { blame = wholeBlame(ops, sole); }
+      } else if (withBlame && ops.some(o => o.op !== "=")) {
         progress((at + 1) + " of " + parts.length + ": " + labelOf(p) + " - who wrote which line ...");
-        blame = await blameOf(api, feed, pair, ops, textOf, ownerOf(p.object, p.ptype === "METH" ? p.part : ""));
+        blame = await blameOf(api, feed, pair, ops, textOf, ownerOf(p.object, p.ptype === "METH" ? p.part : "", stampKey), numbers);
+        log("  BLAME " + feed.filter(e => e.owner).map(e => e.id + " " + (e.transport || "-") + " = " + e.owner + (e.ownerBy ? " by " + e.ownerBy : "")).join(", "));
       }
     } catch (error) {
       missing.push({ object: p.ptype === "METH" ? "METH" : p.type, name: p.ptype === "METH" ? p.object + "->" + p.unit : p.part,
@@ -516,6 +558,9 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       continue;
     }
 
+    // The blocks are the NEW version's owner's when Blame is off too: the feed's author is whoever saved the version
+    // (a transport of copies is saved by its maker), not the developer of the task behind it.
+    if (!pair.fresh.owner) { pair.fresh.owner = await ownerOf(p.object, p.ptype === "METH" ? p.part : "", stampKey)(pair.fresh); }
     const ranges = hunkRanges(ops);
     if (!ranges.length) { log("SKIP " + label + ": only blank lines changed"); }
     else { log("  BLOCKS " + ranges.length); }
@@ -538,7 +583,7 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
     payload.DIFF_DATA.push({ KEY: { OBJTYPE: p.ptype, OBJNAME: p.part, VERSNO_O: versnoOld, VERSNO_N: versnoNew, BLAME: withBlame },
       RETROFIT: false, DIFF: ops.map(o => ({ OP: o.op, TEXT: o.text })), BLAME_MAP: blame.map, BLAME_DELETED: blame.deleted });
     payload.OBJ_STATS.push({ OBJTYPE: p.ptype, CLASS_NAME: p.className, OBJ_NAME: p.part, VERSNO_NEW: versnoNew, VERSNO_OLD: versnoOld,
-      AUTHOR: pair.fresh.author, AUTHOR_NAME: "", INS_COUNT: ins, DEL_COUNT: del, MOD_COUNT: mod, HUNK_COUNT: ranges.length,
+      AUTHOR: pair.fresh.owner || pair.fresh.author, AUTHOR_NAME: "", INS_COUNT: ins, DEL_COUNT: del, MOD_COUNT: mod, HUNK_COUNT: ranges.length,
       HUNK_INS: hIns, HUNK_MOD: hMod, HUNK_DEL: hDel, DISPLAY_NAME: display, IS_CREATED: !pair.old,
       BT_AUTHORS: withBlame ? blameAuthors(ops, blame.map, pair.fresh.owner || pair.fresh.author, partHunks) : [] });
     onPart(payload);
@@ -653,4 +698,4 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
   return { changed, unchecked };
 }
 
-module.exports = { ownerResolver, carryUnread, methodOf, lastLog, build, pairOf, generated, generatedObject, stampLine, stripStamps, commentsOnly, emptySection, countChanges, staleness };
+module.exports = { soleHolder, wholeBlame, ownerResolver, carryUnread, methodOf, lastLog, build, pairOf, generated, generatedObject, stampLine, stripStamps, commentsOnly, emptySection, countChanges, staleness };

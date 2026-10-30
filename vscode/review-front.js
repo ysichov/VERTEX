@@ -125,6 +125,16 @@ function partBody(payload, request, part, ptype, table) {
         const range = ranges.find(r => r.start_line === b.start_line);
         if (range) { b.op_from = range.op_from; b.op_to = range.op_to; }
       });
+      /* A block has one author: whoever wrote most of its lines. Blame finds a line by its text, so a line repeated across
+         the source ("*}   INSERT") is everywhere the work of whoever wrote it last; inside a block the majority decides. */
+      ranges.forEach(r => {
+        const lines = diff.slice(r.op_from - 1, r.op_to).filter(l => l.who);
+        const count = new Map();
+        lines.forEach(l => count.set(l.who.author, (count.get(l.who.author) || 0) + 1));
+        let top = null, most = 0;
+        lines.forEach(l => { if (count.get(l.who.author) > most) { most = count.get(l.who.author); top = l.who; } });
+        if (top) { lines.forEach(l => { l.who = top; }); }
+      });
     }
   }
   return { request: request.toLowerCase(), part: part.toLowerCase(), part_type: ptype.toLowerCase(), table, saved, ddic,

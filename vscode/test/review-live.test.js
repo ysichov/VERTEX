@@ -182,3 +182,57 @@ test("a method's version is credited to the task that holds that method, not to 
   assert.strictEqual(await ownerResolver(api, "ZCL_X", PART)(entry), "WRITER");
   assert.strictEqual(await ownerResolver(api, "ZCL_X", "")(entry), "OTHER");
 });
+
+test("an object that one developer's tasks of the request hold is that developer's, every changed line", async () => {
+  const { soleHolder, wholeBlame } = require("../review-live");
+  const PART = "ZCL_X".padEnd(30, " ") + "RUN";
+  const fresh = { id: "00734", transport: "TPX", author: "COPIER", time: "2026-10-28T15:48:31" };
+  let holders = [{ TRKORR: "SKS", AS4USER: "WRITER" }, { TRKORR: "SKT", AS4USER: "WRITER" }], asked = "";
+  const api = { query: async sql => { asked = sql; return { values: holders }; } };
+  const sole = await soleHolder(api, "SKR", { ptype: "METH", part: PART, object: "ZCL_X" }, fresh);
+  assert.match(asked, /strkorr = 'SKR'/);
+  assert.match(asked, /e071~object = 'METH' AND e071~obj_name = 'ZCL_X {25}RUN'/);
+  assert.deepStrictEqual([sole.owner, sole.transport, sole.tasks, sole.id, fresh.owner], ["WRITER", "SKS", ["SKS", "SKT"], "00734", undefined]);
+  const blame = wholeBlame([{ op: "=", text: "a." }, { op: "+", text: "b." }, { op: "-", text: "c." }], sole);
+  assert.deepStrictEqual(blame.map.map(b => [b.TEXT, b.AUTHOR, b.TASK]), [["b.", "WRITER", "SKS"]]);
+  assert.deepStrictEqual(blame.deleted.map(b => [b.TEXT, b.AUTHOR]), [["c.", "WRITER"]]);
+  // Any other part by its name: an include.
+  await soleHolder(api, "SKR", { ptype: "REPS", part: "ZXINC", object: "ZXINC" }, fresh);
+  assert.match(asked, /e071~obj_name IN \('ZXINC'\)/);
+  // Tasks of two developers, or none: the versions decide.
+  holders = [{ TRKORR: "TY2", AS4USER: "SINEM" }, { TRKORR: "T1J", AS4USER: "VASYL" }];
+  assert.strictEqual(await soleHolder(api, "SKR", { ptype: "REPS", part: "ZXINC", object: "ZXINC" }, fresh), null);
+  holders = [];
+  assert.strictEqual(await soleHolder(api, "SKR", { ptype: "REPS", part: "ZXINC", object: "ZXINC" }, fresh), null);
+});
+
+test("a copy of the request is credited to its released task, not to an open task dated before it", async () => {
+  const { ownerResolver } = require("../review-live");
+  const api = { query: async sql => {
+    if (/FROM e070 WHERE trkorr = 'TPX'/.test(sql)) { return { values: [{ TRKORR: "TPX", TRFUNCTION: "T", AS4USER: "COPIER" }] }; }
+    if (/object = 'MERG'/.test(sql)) { return { values: [{ OBJ_NAME: "SKR       " }] }; }
+    if (/INNER JOIN e071/.test(sql)) { return { values: [
+      { TRKORR: "T1J", AS4USER: "VASYL", AS4DATE: "20261025", AS4TIME: "100000", TRSTATUS: "R" },
+      { TRKORR: "TY2", AS4USER: "SINEM", AS4DATE: "20261027", AS4TIME: "100000", TRSTATUS: "D" }] }; }
+    return { values: [] };
+  } };
+  const entry = { id: "00520", transport: "TPX", author: "COPIER", time: "2026-10-28T15:48:31" };
+  assert.strictEqual(await ownerResolver(api, "ZXINC", "")(entry), "VASYL");
+});
+
+test("a version's time is VRSD's, the system's like E070's, not the feed's in ADT's zone", async () => {
+  const { ownerResolver } = require("../review-live");
+  const api = { query: async sql => {
+    if (/FROM vrsd/.test(sql)) { return { values: [{ VERSNO: "00518", DATUM: "20261028", ZEIT: "155507" }] }; }
+    if (/FROM e070 WHERE trkorr = 'TP6'/.test(sql)) { return { values: [{ TRKORR: "TP6", TRFUNCTION: "T", AS4USER: "COPIER" }] }; }
+    if (/object = 'MERG'/.test(sql)) { return { values: [{ OBJ_NAME: "SKR       " }] }; }
+    if (/INNER JOIN e071/.test(sql)) { return { values: [
+      { TRKORR: "T1J", AS4USER: "VASYL", AS4DATE: "20261028", AS4TIME: "150000", TRSTATUS: "R" },
+      { TRKORR: "TY2", AS4USER: "SINEM", AS4DATE: "20261030", AS4TIME: "164932", TRSTATUS: "D" }] }; }
+    return { values: [] };
+  } };
+  // ADT gives 13:55 for the copy SE80 shows at 15:55; T1J was released at 15:00 system time, before it.
+  const entry = { id: "00518", transport: "TP6", author: "COPIER", time: "2026-10-28T13:55:07Z" };
+  assert.strictEqual(await ownerResolver(api, "ZXINC", "", { type: "REPS", name: "ZXINC" })(entry), "VASYL");
+  assert.strictEqual(await ownerResolver(api, "ZXINC", "")(Object.assign({}, entry)), "SINEM");
+});

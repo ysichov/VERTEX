@@ -1,5 +1,57 @@
 # Development history
 
+## 2026-10-30 — VRSD time for blame; 0.9.50
+
+The user showed ZXPADU02's versions in SE80 (copy 518 at 15:55, 519 at 17:48) and in Eclipse's ADT History
+(13:55, 15:48): ADT's feed is two hours off the system's time, and the resolver cut the zone off and compared it
+with E070. T1J, released between, counted as after both copies; neither task preceded them, and the fallback took
+the newest - the open TY2. AVE reads VRSD's DATUM/ZEIT and has no such error. `ownerResolver` takes a STAMP key
+(the part's VRSD type and name, when the feed's numbers are VRSD's for it: not for a method cut from the class
+include's feed) and reads the version's time from VRSD, the feed's only when VRSD has no row. Test added with the
+user's times. Eclipse not built (no JDK).
+
+## 2026-10-30 — One developer, any object; 0.9.49
+
+The user widened the 0.9.48 rule: what decides is one developer, not one task, and it holds for every object.
+`soleHolder` takes the part: a method by its LIMU METH entry, any other part by its name or its object's; it
+answers when the S/R tasks of the request holding it belong to one user. An include held by two developers'
+repair tasks (one open, one released) still walks the versions; the user reported 0.9.48 crediting all of it to
+the open task's owner. Likely cause: the copy went to the task dated nearest before it, and an open task's
+E070 date is its last change, not a release. The user agreed: a request version or a copy now goes to a released
+task released before it first; only then any task before it, then the newest. Test added (open task dated
+between the released task and the copy). The user's next log still gave both copies to the open task - the
+released one did not count as released before the copy; the BLAME line now lists each candidate with its status and
+E070 stamp and the version's stamp, to see why (the feed's time carries ADT's zone, E070 the system's).
+A drag that selects text over a link or a row ended in a click and opened it; a click with a selection is now
+swallowed in the capture phase.
+Eclipse not built (no JDK).
+
+## 2026-10-30 — Blame skips other requests' copies; 0.9.48
+
+The user's rebuild with Blame on credited GET_TFC's lines - its own header line naming CT770028 and the request
+included - to another developer. Between OLD (729) and NEW (733/734) stood 730-732, transports of copies of another
+request: a ToC takes the whole class as it is in development, so the user's unreleased lines first appeared there and
+blame gave them to that ToC's owner. `blameOf` now walks OLD plus the versions whose transport is the request, its
+tasks or its own copies - the same scope as the pair rule. Not covered by a new test.
+Checked against AVE (`zcl_ave_version_list`): it picks the nearest task *before* the version and the newest when
+none is; 0.9.47's "first at or after" was mine and is taken back, the test fixture with it. The user then set a rule
+AVE does not have: a method that exactly one S/R task of the request holds (LIMU METH in E071) is that task's owner's,
+every added and deleted line, without reading versions for blame; the block author follows it with Blame off too.
+A log line `OWNER` says so. The rule is `soleHolder`/`wholeBlame`, covered by a test (one holder, two, none).
+
+The user rebuilt and still saw the other developer, though the BLAME log credited 733/734 to them. Blame was off:
+the block author then fell back to the feed author of NEW, and for a ToC version that is whoever made the ToC.
+NEW's owner is now resolved in every build, and the object's author is that owner too. Eclipse not built (no JDK).
+
+## 2026-10-30 — Blame by release order; 0.9.47
+
+0.9.46 still credited the GET_TFC block to another developer. `ownerResolver` took the task released nearest *before*
+the version, but a task is released after the versions saved in it, so the developer's own later-released task lost
+to an older one. It now takes the first task dated at or after the version (the newest when none is). The test fixture
+had a task released before its own version and was corrected. The blame cell moved off screen on long lines; it is now
+`position: sticky; right: 0` with the editor background. A `BLAME` log line names the task each version went to.
+Eclipse not built (no JDK).
+
 ## 2026-10-30 — Method versions from the backend; 0.9.46
 
 The user asked that a system with the backend use it, as two ways of working. I first restored the whole pre-0.8.8 review build (ZCL_VX_ADT_RES_PREPARE and 31 objects) and routed Build/Save/Rebuild through it; the user stopped that: only the method versions, and the backend only where front end plus ADT cannot. All of it was taken back. What ADT cannot give is a method's own version: its feed is the class include's. VRSD's METH rows are read through the data preview as before; only their text needs ABAP. `ZCL_VX_DDIC_VERSION=>LINES` takes type METH (name: class padded to 30 + method) and reads a numbered version through SVRS_GET_REPS_FROM_OBJECT; the active state is refused there, ADT's class source cut gives it. No new resource or service: `/vertex/ddic/METH` through the existing `ddic` entry. `versions-front.historyOf` returns `methodHistory` for a METH part when `ddic` is active - VRSD feed, backend text, ADT's active state - so Versions, the build, Blame and the staleness check all use it; `pairOf` then gets no ToC set, the method feed holds no other request's class copies. abaplint (check_syntax, deps mounted) finds nothing in the class and finds a planted unknown variable; a wrong field on ABAPTXT255 is not caught (the type is not in the stubs). Not activated on a system. New test method-history; suite 1040 pass, the same 6 failures. Then the user's first review on 0.9.46 (built over ADT) showed a block for a line whose only change was the blanks before its trailing comment: the review's line key was `trim()`. It is now `spacingKey` - trimmed, runs of blanks outside '...', `...` and |...| made one - so case and literal contents still count; test added. The same review credited every block of the method to another developer of the request: a ToC version's owner is the owner of the K's task that carries the object, nearest before the version, and "carries" was any E071 entry starting with the class name - so whichever task touched any method of the class. `ownerResolver` takes the method part: tasks holding LIMU METH of that very method answer first, the class match only when none does. When two tasks of the request hold the same method, the nearest-before rule still decides; one ToC version cannot tell their lines apart. Test added. The user also showed the Blame name floated over the end of a long line (float: right inside a white-space: pre cell). In one pane it now has a column of its own (td.who) after the code; two panes keep the float. Not looked at in a rendered page. Version files at 0.9.46; bundle regenerated, VSIX built (not installed); Eclipse not built: no javac.
