@@ -134,7 +134,7 @@ function open(vscode, context, deps, initial) {
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
     // The clipboard is the host's: a webview's own may be refused. Copy under a chat answer and the review's prompts.
     window.sdeCopyText=text=>{host.postMessage({call:"copyText",args:[String(text||"")]});return "";};
-    for(const call of ["workspace","asset","models","ask","browse","openToolSource","requestSearch","vertexContext","aiProvider","aiModel","aiConfig"]){
+    for(const call of ["workspace","asset","models","ask","browse","openToolSource","vertexContext","aiProvider","aiModel","aiConfig"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>{
         if(call==="vertexContext")try{
           const state=JSON.parse(args[0]||"{}"),object=state.workspace;
@@ -152,11 +152,6 @@ function open(vscode, context, deps, initial) {
       if(e.data.type==="codeCursor"&&typeof sdeCodeCursor==="function")sdeCodeCursor(e.data.payload);
       if(e.data.type==="progress"&&typeof sdeWorkspaceProgress==="function")sdeWorkspaceProgress(e.data.path,e.data.payload);
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
-      if(e.data.type==="requestSearch"){
-        // The page the finder mounted is the visible frame tools.html keeps as result; there is no element of that id.
-        const child=result&&result.contentWindow;
-        if(child&&typeof child.sdeDeliver==="function")child.sdeDeliver(e.data.payload);
-      }
       if(e.data.type==="localFolder"&&typeof sdeLocalFolderReady==="function")sdeLocalFolderReady(e.data.payload);
     });
   <\/script>`;
@@ -273,14 +268,6 @@ function open(vscode, context, deps, initial) {
       if(message.call === "browse") {
         if(/^https?:\/\//i.test(String(args[0]))) await vscode.env.openExternal(vscode.Uri.parse(args[0]));
         return;
-      }
-      if(message.call === "requestSearch") {
-        const user=String(args[0]||"").trim().toUpperCase();
-        let resource="/sap/bc/adt/vertex/requests";
-        if(user) resource+="?user="+encodeURIComponent(user);
-        if(args[1]) resource+=(user?"&":"?")+"released=true";
-        const payload=await deps.fetch(context,resource);
-        await panel.webview.postMessage({type:"requestSearch",payload}); return;
       }
       if(message.call === "origin") {
         const asked=JSON.parse(String(args[0]||"{}"));

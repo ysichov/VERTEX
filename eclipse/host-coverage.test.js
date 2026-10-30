@@ -45,8 +45,26 @@ test('Eclipse answers every debug command the page sends, but the known gaps', (
     ...names(eclipseHost, /name === '(\w+)'/g),
   ]);
   assert.deepEqual(sent.filter(name => !answered.has(name)), [
-    'allBreakpoints', 'openRuns', 'restore', 'saveRecord', 'selection', 'toProgram', // VS Code only for now
+    'allBreakpoints', 'restore', 'saveRecord', 'selection', 'toProgram', // VS Code only for now
     'watchpointAdd', 'watchpointRemove',
     'localSnapshot', 'sapRecompile', 'sapTranspile', // the transpiler, not offered in Eclipse
   ].sort());
+});
+
+// The Tools window is one page in both hosts too. What it calls of its host unguarded - not behind `typeof` - each
+// host must give: the request finder once called a function only VS Code's bridge had, and in Eclipse Find did nothing.
+test('both hosts give every sde* function the Tools window calls unguarded', () => {
+  const tools = read('org.vertex.abap.ui/resources/tools.html');
+  const own = names(tools, /(?:window\.|function\s+)(sde[A-Z]\w*)\s*(?:=|\()/g);
+  const guarded = names(tools, /typeof\s+(?:window\.)?(sde[A-Z]\w*)/g);
+  const needs = [...names(tools, /(?<![.\w"])(sde[A-Z]\w*)\s*\(/g)].filter(name => !own.has(name) && !guarded.has(name)).sort();
+  const bridge = read('vscode/tools-window.js');
+  const vscode = names(bridge, /window\.(sde[A-Z]\w*)\s*=/g);
+  const loop = bridge.match(/for\(const call of \[([^\]]*)\]/);
+  assert.ok(loop, 'the VS Code bridge lists its calls in one loop');
+  [...loop[1].matchAll(/"(\w+)"/g)].forEach(m => vscode.add('sde' + m[1][0].toUpperCase() + m[1].slice(1)));
+  // The debug monitor panel is drawn only when the window is opened with initial.debugMonitor, which no host sets.
+  const unused = ['sdeMonitorRefresh'];
+  assert.deepEqual(needs.filter(name => !vscode.has(name)), unused);
+  assert.deepEqual(needs.filter(name => !given.eclipse.has(name)), unused);
 });

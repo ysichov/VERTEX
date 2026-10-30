@@ -355,7 +355,10 @@ function findRequests(){
   findAction=actionBox.value||"review";
   // The chosen function stays on screen while the list is shown; the page lists requests whatever it is.
   current={type:"TR",name:"",action:findAction}; fields();
-  mount("versions",current,()=>sdeRequestSearch(user,released));
+  // The list is read as the page's own sdeRequests reads it, through the routes both hosts answer.
+  mount("versions",current,()=>{const child=result&&result.contentWindow;
+    if(!child||typeof child.sdeRequests!=="function")throw new Error("The Versions page has no request search.");
+    child.sdeRequests(user,released);});
 }
 function mount(service,state,afterLoad){
   const key=service+":"+state.action;

@@ -1,5 +1,17 @@
 # Development history
 
+## 2026-10-30 — Eclipse synced with the day's review work; Find fixed
+
+The user found Find in Eclipse's request dialog doing nothing, and asked to check all of today's AVE work in Eclipse.
+The review logic is shared - `versions-front`, `review-live`, `review-front` and `versions.html` go into the plugin
+through `prepare.js` - and the built jar carries every change of 0.9.47-0.9.51 and the old-ABAP notice; the Versions
+page's calls reach both hosts through `tool-routes.js`. The one gap was the Tools window's own finder: it called
+`sdeRequestSearch`, which only VS Code's bridge defined. It now calls the mounted page's `sdeRequests`, the route
+both hosts answer, and VS Code's `requestSearch` bridge is gone. `host-coverage.test.js` checked only the debugger
+page; it now checks what `tools.html` calls of its host unguarded (`sdeMonitorRefresh` is listed: its panel needs
+`initial.debugMonitor`, which no host sets). Its debug-command list had kept `openRuns`, which Eclipse answers now.
+Two Value Origin tests in `eclipse/` still fail, as before. Not tried in a live Eclipse.
+
 ## 2026-10-30 — The old ABAP named on a method's version
 
 On A4H a method's version answered "METH is not a dictionary part this resource reads": the system had VERTEX's ABAP
