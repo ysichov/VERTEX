@@ -1,5 +1,10 @@
 # Release history
 
+## 2026-10-30 — 0.9.51: one author per block
+
+- Every line of a block names the block's author - whoever wrote most of its lines. A line repeated across the
+  source (a closing comment, say) no longer names whoever wrote that text last somewhere else.
+
 ## 2026-10-30 — 0.9.50: a version's time is the system's
 
 - Blame takes a version's date and time from VRSD, in the system's time like the transport requests' dates, as

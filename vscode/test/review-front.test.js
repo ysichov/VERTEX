@@ -94,6 +94,19 @@ test("a review with blame names who wrote each changed line, and counts develope
     [["DEVA", 0, 1, 1, 1, 0], ["DEVB", 1, 0, 1, 0, 1]]);
 });
 
+test("every line of a block names the block's one author, a line repeated elsewhere included", async () => {
+  const stored = JSON.parse(PAYLOAD.replace(/(\d{14}\.\d{7})/g, '"$1"'));
+  // "call( x" is a text another developer wrote last somewhere else; in this block the other line is DEVA's too.
+  stored.DIFF_DATA[0].BLAME_MAP = [{ TEXT: "call( y", AUTHOR: "DEVA" }, { TEXT: "c.", AUTHOR: "DEVB" }];
+  stored.DIFF_DATA[0].BLAME_DELETED = [{ TEXT: "call( x", AUTHOR: "DEVB" }];
+  const part = encodeURIComponent("ZCL_X                         RUN");
+  const answer = await request(session(JSON.stringify(stored)).api, "/sap/bc/adt/vertex/review/A4HK900001?part=" + part + "&ptype=METH");
+  const block = answer.blocks[0], lines = answer.ops.slice(block.op_from - 1, block.op_to).filter(o => o.who);
+  assert.equal(lines.length, 2);
+  assert.equal(new Set(lines.map(o => o.who.author)).size, 1);
+  assert.equal(answer.ops.find(o => o.text === "c.").who.author, "DEVB");
+});
+
 test("a review built from ADT sends each part done, as a summary, on the progress line", async () => {
   const { PARTIAL_MARK, summarize } = require("../review-front");
   const so = summarize({ OBJ_STATS: [{ OBJTYPE: "REPS", OBJ_NAME: "ZPROG", AUTHOR: "DEV", INS_COUNT: 2, DEL_COUNT: 0, MOD_COUNT: 1, HUNK_COUNT: 1 }],

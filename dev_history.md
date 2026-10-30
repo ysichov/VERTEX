@@ -1,5 +1,14 @@
 # Development history
 
+## 2026-10-30 — One author per block; 0.9.51
+
+0.9.50 gave ZXPADU02 right: the copies to the released task's developer, the active state to the open task's. One
+line per block still named the other developer: `*}   INSERT`, repeated across the include. Blame is keyed by text,
+as AVE's is (`DELETE result WHERE text = lv_text`), so a repeated line is the work of whoever added that text last.
+I proposed tracking authors by line position; the user chose simpler: a block has one author, the one with most
+lines. `review-front` sets every blamed line of a block to that author after the blocks are laid on the diff; the
+blame map itself is unchanged. Test added. Eclipse not built (no JDK).
+
 ## 2026-10-30 — VRSD time for blame; 0.9.50
 
 The user showed ZXPADU02's versions in SE80 (copy 518 at 15:55, 519 at 17:48) and in Eclipse's ADT History
