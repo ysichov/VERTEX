@@ -32,12 +32,14 @@ what needs it.
 
 | Tool | Grew out of | What it does | ABAP backend |
 |---|---|---|---|
-| **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12), Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | not needed |
-| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates and watchpoint logs, the run started in WebGUI, the stops, a verdict naming the line and the values | not needed |
-| **VERTEX Smart Debugger** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, and the flow chart and player for a recorded run. SAP & Transpiler Logs lists SAP recordings and available transpiler runs for replay or deletion; SAP recordings can also be renamed. | not needed |
-| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Where a value came from, backwards across calls: the static call stack, the derivation as *FLOW*, *Formula* or *Expression*, each as a tree or a diagram | not needed |
+| **Enhanced Code Editor** | — | Hover with a data element's domain resolved, Go to (F12) with SAP-resolved interface method implementations, Outline, Save & Activate and block-by-block Review & Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1) | not needed |
+| **AI-driven ADT debugger** | [Smart Debugger](https://github.com/ysichov/Smart-Debugger) | Breakpoints with conditions SAP evaluates, ADT variable watchpoints with optional value conditions, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values; the VERTEX chat has it built in, Claude Code and Codex reach it over MCP as `vertex-debug` | not needed |
+| **VERTEX Smart Debugger** | — | The same session on screen: source, breakpoints, stack, every variable, tables as grids, and the flow chart and player for a recorded run. The first recorded SAP stop includes Globals such as selection-screen values. SAP & Transpiler Logs lists SAP recordings and available transpiler runs for replay or deletion; SAP recordings can also be renamed. | not needed |
+| **Value Origin** | [ACE](https://github.com/ysichov/ACE) | Forward Usage Analysis - how a value is computed, down from a line across calls: the static call stack, the derivation as *FLOW*, *Formula* or *Expression*, each as a tree or a diagram; Backward Usage Analysis - where the values of a routine go in its callers, by SAP's where-used | not needed |
+| **Path to This Line** | — | The conditions inside a METHOD or FORM under which the line at the cursor runs - enclosing branches, earlier branches that must be false or must not be taken because they leave, CHECKs - written as in the code; in the Logic view the Reachability toggle lights up that path | not needed |
+| **Block folding** | — | IF, CASE, LOOP, TRY, METHOD, FORM and other ABAP blocks and their branches fold by the code's structure, so unformatted code folds too | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
-| **Versions Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, and the two MCP transport tools | to save reviews in SAP |
+| **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, each block's author and, with Blame, the developer who wrote each changed line, and the two MCP transport tools | to save reviews in SAP |
 | **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic view of one method; a method opened from Calls draws its Logic view in the same picture | not needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | not needed |
 
@@ -584,13 +586,10 @@ Without a value chosen in Variables, Analyze flow path offers FLOW with Full sco
 
 Both Value Origin windows expose **Analysis log** directly above the flow. **Copy log** copies the engine, source loading and parsing times, source closure, definitions, dependency edges, traversal, warnings, and Formula/Expression diagnostics. The log is accessible without enabling the technical sections.
 
-**Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Forward Usage Analysis**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
-
-
 Choose a value in Variables of **VERTEX Smart Debugger** and click *Analyze flow path* on a breakpoint
-(Forward Usage Analysis, formerly *Analyze Variable Value Origin*). It answers where that value came from, backwards across calls, without running
-the program: ACE indexes and the customer sources they reference (`Z*`, `Y*`, `/namespace/`)
-are read from the same system, and standard ABAP objects stay analysis boundaries.
+(Forward Usage Analysis, formerly *Analyze Variable Value Origin*). It answers how that value is computed, down from the breakpoint across calls, without running
+the program: the sources are read through standard ADT and parsed with the bundled abaplint, customer code (`Z*`, `Y*`, `/namespace/`)
+is followed, and standard ABAP objects stay analysis boundaries.
 With no value chosen it draws the flow forward from the breakpoint - the routine from there on and every customer routine it calls - without a slice of a value.
 
 The result has a **Type**. *FLOW* is what the program does - its statements grouped by class and

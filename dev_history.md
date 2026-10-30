@@ -1,5 +1,15 @@
 # Development history
 
+## 2026-10-30 — Tool tables brought up to date
+
+The user checked the tool tables. The Marketplace page had fallen behind the others: Value Origin was still "backwards", Go to's interface implementations, the debugger's dumps,
+watchpoints and `vertex-debug`, and the Globals of the first stop were missing, and Path to This Line and Block
+folding had rows only in `docs/index.html`. All three tables now have them, and Versions / Reviewer names the block
+author and Blame. I first dropped *Expression* from the tables as a mere section of Formula; it is a Type
+button in `vertex-flow.js`, so it went back. The Value Origin section lost the paragraph on **VERTEX: BSE — only
+ADT + linter** (no such command in `package.json`) and its claim that ACE indexes are read: sources come through
+ADT and abaplint. No version change; VSIX 0.9.51 rebuilt.
+
 ## 2026-10-30 — One author per block; 0.9.51
 
 0.9.50 gave ZXPADU02 right: the copies to the released task's developer, the active state to the open task's. One
