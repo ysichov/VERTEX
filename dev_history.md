@@ -1,5 +1,29 @@
 # Development history
 
+## 2026-10-31 — Find in Eclipse: the bundle could not load ADT's destination data
+
+The user tried 0.9.51.20261030235616: the finder still stood at "finding your requests ..." with "Reading ...". Both
+earlier fixes were reasoned from the code and never run; this time the Eclipse workspace's `.metadata/.log` had the
+answer. The list's first step asks who is logged on (`user:`), and `PageView.logonUser` reads
+`IAdtCoreProject.getDestinationData()`: `NoClassDefFoundError: com/sap/adt/destinations/model/IDestinationData`. The
+interface lives in `com.sap.adt.destinations.model`, which the manifest never required - the build compiles against
+the whole bundle pool, so javac could not notice. The error is an `Error`, raised in the UI thread's `syncExec`; the
+job's `catch (Exception)` never saw it, answered `null`, and `AssistantBridge.quote(null)` threw in the reply, so the
+worker waited for ever and the page said nothing. `logonLanguage` reads the same interface and was as broken.
+`com.sap.adt.destinations.model` is now in `Require-Bundle`, and p2's metadata requires it too.
+
+The second fix's reasoning did not hold: "about" and the list go in the same main lane of `tools.html`, answered one at
+a time, so the list could not overtake "about". `sdeFindRequests` waiting for "about" stays; it is harmless.
+
+Asked by the user: such a failure is now said on the page, not waited on. `PageView.onUi` runs work on the UI thread
+and gives back its value or throws its failure in the calling thread - an `Error` as an exception named after it, so
+the page reads "NoClassDefFoundError | com/sap/..." - and every `syncExec` of `PageView` goes through it. The jobs
+behind `sdeAnalysisRead`, `sdeAnalysisWrite` and `sdeAnalysisDiff` and the page queue's `deliver` catch `Throwable`,
+and a read or write that answers `null` is reported as "Eclipse answered nothing for ...". The other views' own
+`syncExec` calls (22) were not gone through.
+Version kept at 0.9.51; Eclipse rebuilt as 0.9.51.20261031143705, the site in `docs/` replaced. Not tried in a live
+Eclipse.
+
 ## 2026-10-30 — Eclipse synced with the day's review work; Find fixed
 
 The user found Find in Eclipse's request dialog doing nothing, and asked to check all of today's AVE work in Eclipse.

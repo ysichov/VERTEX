@@ -1,5 +1,14 @@
 # Release history
 
+## 2026-10-31 — Find transport requests in Eclipse, again
+
+- In Eclipse, **Find** in the Tools window's *Find transport requests* stopped at "finding your requests ...": the
+  plugin could not load ADT's logon data, so it never learnt who is logged on, and the system's logon language was
+  unreadable the same way. The plugin now declares the ADT bundle that carries it. Eclipse 0.9.51.20261031143705
+  rebuilt.
+- In Eclipse, when the plugin itself fails while answering a VERTEX page, the page shows the error instead of waiting
+  on "Reading ..." for ever.
+
 ## 2026-10-30 — Find transport requests in Eclipse
 
 - In Eclipse, **Find** in the Tools window's *Find transport requests* lists the requests. It did nothing: it called

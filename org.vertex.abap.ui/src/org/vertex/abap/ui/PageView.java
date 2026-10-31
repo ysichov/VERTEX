@@ -173,7 +173,8 @@ public abstract class PageView extends ViewPart {
 		}
 		try {
 			this.pending = work.get();
-		} catch (Exception e) {
+		} catch (Throwable e) {
+			// An Error too: one that escaped here was only logged, and the page waited for an answer for ever.
 			// A resource that is not there is a setup state, not a failure: the
 			// plugin is installed on this machine and the ABAP half has never
 			// been put on the system. The page says what to install; it needs
@@ -229,24 +230,34 @@ public abstract class PageView extends ViewPart {
 		return resource.get(new NullProgressMonitor(), headers, String.class);
 	}
 
+	/**
+	 * Runs WORK on the UI thread and returns its value - or throws its failure - in the calling thread. A failure left
+	 * inside syncExec does not reach the caller when Eclipse runs it as pending UI work: it is only logged, the caller
+	 * goes on with nothing, and the page waits for ever. An Error comes back as an exception named after it.
+	 */
+	<T> T onUi(org.eclipse.swt.widgets.Display display, Supplier<T> work) {
+		final java.util.concurrent.atomic.AtomicReference<T> value = new java.util.concurrent.atomic.AtomicReference<>();
+		final Throwable[] failure = new Throwable[1];
+		display.syncExec(() -> {
+			try { value.set(work.get()); } catch (Throwable t) { failure[0] = t; }
+		});
+		if (failure[0] instanceof RuntimeException) throw (RuntimeException) failure[0];
+		if (failure[0] != null) throw new IllegalStateException(failure[0].getClass().getSimpleName(), failure[0]);
+		return value.get();
+	}
+
 	/** Logon and project selection stay on SWT; network I/O runs in the worker. */
 	String assistantRead(String path, org.eclipse.swt.widgets.Display display) {
-		final IRestResource[] target = new IRestResource[1];
-		final RuntimeException[] failure = new RuntimeException[1];
-		display.syncExec(() -> {
-			try {
-				if (browser.isDisposed()) throw new IllegalStateException("The VERTEX window was closed.");
-				target[0] = resource(path);
-			} catch (RuntimeException e) { failure[0] = e; }
+		IRestResource target = onUi(display, () -> {
+			if (browser.isDisposed()) throw new IllegalStateException("The VERTEX window was closed.");
+			return resource(path);
 		});
-		if (failure[0] != null) throw failure[0];
-		return get(target[0], path);
+		return get(target, path);
 	}
 
     /** Read-only ADT repository enumeration uses POST in the ADT protocol. */
     String assistantPost(String path, org.eclipse.swt.widgets.Display display) {
-        final IRestResource[] target=new IRestResource[1];
-        display.syncExec(()->target[0]=resource(path));
+        final IRestResource[] target={onUi(display,()->resource(path))};
         // The package tree (nodestructure) refuses a request without an Accept header ("Accept header missing");
         // this is the type ADT's Project Explorer asks for.
         com.sap.adt.communication.message.IHeaders headers = com.sap.adt.communication.message.HeadersFactory.newHeaders();
@@ -260,8 +271,7 @@ public abstract class PageView extends ViewPart {
      * table, join and pivot are built in the page and read this way. The answer is the data preview's XML.
      */
     String dataPreview(int rows, String sql, org.eclipse.swt.widgets.Display display) {
-        final IRestResource[] target = new IRestResource[1];
-        display.syncExec(() -> target[0] = resource("/sap/bc/adt/datapreview/freestyle?rowNumber=" + rows));
+        final IRestResource[] target = {onUi(display, () -> resource("/sap/bc/adt/datapreview/freestyle?rowNumber=" + rows))};
         com.sap.adt.communication.message.IHeaders headers = com.sap.adt.communication.message.HeadersFactory.newHeaders();
         headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Content-Type", "text/plain"));
         headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Accept", "application/*"));
@@ -270,31 +280,26 @@ public abstract class PageView extends ViewPart {
 
     /** The logon language of the project's ADT session, as its destination names it. */
     String logonLanguage(org.eclipse.swt.widgets.Display display) {
-        final String[] language = new String[1];
-        display.syncExec(() -> {
+        return onUi(display, () -> {
             IAdtCoreProject adtProject = abapProject().getAdapter(IAdtCoreProject.class);
             if (adtProject == null) throw new IllegalStateException("The project does not adapt to IAdtCoreProject.");
-            language[0] = adtProject.getDestinationData().getLanguage();
+            return adtProject.getDestinationData().getLanguage();
         });
-        return language[0];
     }
 
     /** The user of the project's ADT session - who a review's verdicts are written as. */
     String logonUser(org.eclipse.swt.widgets.Display display) {
-        final String[] user = new String[1];
-        display.syncExec(() -> {
+        return onUi(display, () -> {
             IAdtCoreProject adtProject = abapProject().getAdapter(IAdtCoreProject.class);
             if (adtProject == null) throw new IllegalStateException("The project does not adapt to IAdtCoreProject.");
-            user[0] = adtProject.getDestinationData().getUser();
+            return adtProject.getDestinationData().getUser();
         });
-        return user[0];
     }
 
     /** This system's folder of review files: the setting's folder and the project's name under it. */
     java.nio.file.Path reviewDir(org.eclipse.swt.widgets.Display display) {
-        final String[] name = new String[1];
-        display.syncExec(() -> name[0] = abapProject().getName());
-        return ReviewPreferences.folder().resolve(name[0].replaceAll("[^\\w.-]+", "_"));
+        String name = onUi(display, () -> abapProject().getName());
+        return ReviewPreferences.folder().resolve(name.replaceAll("[^\\w.-]+", "_"));
     }
 
     /** One review's file: REQUEST or REQUEST__REMOTE, and nothing that could leave the folder. */
@@ -321,14 +326,12 @@ public abstract class PageView extends ViewPart {
                                 result = file.toString();
                             } else if (kind.equals("store")) {
                                 if (!target.startsWith("/sap/bc/adt/vertex/store/") || target.contains("..") || target.contains("#")) throw new IllegalArgumentException("Invalid store path.");
-                                final IRestResource[] resource = new IRestResource[1];
-                                browser.getDisplay().syncExec(() -> resource[0] = resource(target));
+                                final IRestResource[] resource = {onUi(browser.getDisplay(), () -> resource(target))};
                                 result = resource[0].post(new NullProgressMonitor(), String.class, body);
                             } else if (kind.equals("adtpost")) {
                                 // SAP's where-used is asked by POST, but it reads only: the references and their snippets.
                                 if (!target.matches("/sap/bc/adt/repository/informationsystem/(usageReferences(\\?uri=[^#]*)?|usageSnippets)")) throw new IllegalArgumentException("Invalid where-used path.");
-                                final IRestResource[] resource = new IRestResource[1];
-                                browser.getDisplay().syncExec(() -> resource[0] = resource(target));
+                                final IRestResource[] resource = {onUi(browser.getDisplay(), () -> resource(target))};
                                 com.sap.adt.communication.message.IHeaders headers = com.sap.adt.communication.message.HeadersFactory.newHeaders();
                                 headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Content-Type", "application/*"));
                                 headers.addField(com.sap.adt.communication.message.HeadersFactory.newField("Accept", "application/*"));
@@ -336,7 +339,8 @@ public abstract class PageView extends ViewPart {
                             } else {
                                 throw new IllegalArgumentException("Unknown write " + kind + ".");
                             }
-                        } catch (Exception e) { result = describe(e); error = true; }
+                        } catch (Throwable e) { result = describe(e); error = true; }
+                        if (result == null) { result = "Eclipse answered nothing for " + kind + " " + target + "."; error = true; }
                         final String answer = result; final boolean failed = error;
                         browser.getDisplay().asyncExec(() -> { if (!browser.isDisposed()) browser.execute("window.vertexAdtReply(" + id + "," + AssistantBridge.quote(answer) + "," + failed + ");"); });
                         return org.eclipse.core.runtime.Status.OK_STATUS;
@@ -358,7 +362,7 @@ public abstract class PageView extends ViewPart {
                     @Override protected org.eclipse.core.runtime.IStatus run(org.eclipse.core.runtime.IProgressMonitor monitor) {
                         String result; boolean error = false;
                         try { result = LineDiff.ops(oldLines, newLines, ignore); }
-                        catch (Exception e) { result = describe(e); error = true; }
+                        catch (Throwable e) { result = describe(e); error = true; }
                         final String answer = result; final boolean failed = error;
                         browser.getDisplay().asyncExec(() -> { if (!browser.isDisposed()) browser.execute("window.vertexAdtReply(" + id + "," + AssistantBridge.quote(answer) + "," + failed + ");"); });
                         return org.eclipse.core.runtime.Status.OK_STATUS;
@@ -412,7 +416,9 @@ public abstract class PageView extends ViewPart {
                                 if(!path.startsWith("/sap/bc/adt/")||path.contains("..")||path.contains("#")||path.contains("\\")||path.toLowerCase().matches(".*%(2e|5c).*"))throw new IllegalArgumentException("Invalid ADT source URI.");
                                 result=assistantRead(path, browser.getDisplay());
                             }
-                        }catch(Exception e){result=describe(e);error=true;}
+                        }catch(Throwable e){result=describe(e);error=true;}
+                        // A failure of any kind, and no answer at all, reach the page: it waits for this reply.
+                        if(result==null){result="Eclipse answered nothing for "+path+".";error=true;}
                         final String answer=result; final boolean failed=error;
                         browser.getDisplay().asyncExec(()->{if(!browser.isDisposed())browser.execute("window.vertexAdtReply("+id+","+AssistantBridge.quote(answer)+","+failed+");");});
                         return org.eclipse.core.runtime.Status.OK_STATUS;
