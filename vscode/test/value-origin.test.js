@@ -92,7 +92,7 @@ test('execution flow enters resolved methods even when flow facts and event name
   // how the value was computed.
   assert(page.includes('data-mode-toggle'));
   assert(/<button class="active" data-mode-choice="flow"[^>]*>FLOW<\/button>/.test(page));
-  assert(/<button data-mode-choice="formula"[^>]*>Formula<\/button>/.test(page));
+  assert(/<button data-mode-choice="formula"[^>]*>Derivation<\/button>/.test(page));
   assert(page.includes("selectMode('flow');"));
   assert(flowView.includes('id="bse-formula-pane"'));
   assert(page.includes('Formula derivation — click a branch to expand its input formulas'));
@@ -589,9 +589,23 @@ test('optimized, the derivation reads every value by its name, and a value read 
   const pane = expressionPane({ expression: { ...oneFormula(tree), optimized }, byRun: false, pipeline: '', skipped: [] });
   assert.match(pane, /^<div class="vx-analysis-whole">/);
   assert.match(pane, /<div class="vx-analysis-optimized">/);
+  assert.match(pane, /<ol class="expression-alternatives">/);
+  assert.match(pane, /Statically possible definitions/);
+  assert.match(pane, /· ZCL_P/);
+  assert.match(pane, /· ZCL_M/);
+  assert.match(pane, /result: <code><button[^>]*>AMOUNT₁<\/button> = <button[^>]*>w<\/button> \* 2<\/code>/);
+  assert.match(pane, /input: <code><button[^>]*>AMOUNT₁<\/button><\/code> · change:/);
+  assert.match(pane, /<details><summary>.*condition not identified/);
+  assert.match(pane, /data-source="s" data-line="1">otherwise<\/button>/);
   const decoded = pane.slice(pane.indexOf('<ul class="expression-decode">'));
   assert.ok(decoded.indexOf('>AMOUNT₁</button> = ') < decoded.indexOf('<li class="more"><details><summary><code><button'), 'AMOUNT₁ is opened first, at the first level');
   assert.match(decoded, /<li class="more"><details><summary><code><button[^>]*>AMOUNT₂<\/button> = .*<ul class="expression-decode"><li><code><button[^>]*>EXTRA₁<\/button> = /);
+});
+
+test('full Expression separates nested otherwise alternatives without changing quoted text', () => {
+  const { layoutAlternatives } = require('../value-origin-formula-html');
+  assert.equal(layoutAlternatives("R = {a otherwise | (b + {c otherwise | d when x = 'a | b'}) when ok}"),
+    "R = {\n  a otherwise\n  | (b + {\n    c otherwise\n    | d when x = 'a | b'\n  }) when ok\n}");
 });
 
 test('a SELECT is shown by the field that concerns the value, its table and its conditions', () => {

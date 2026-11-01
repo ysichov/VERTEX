@@ -46,7 +46,7 @@ test("LLM Providers selects the Codex installation before loading its models", a
   t.mock.method(assistant, "sources", id => id === "codex"
     ? { extension: "/extension/codex", cli: "/app/codex" } : { extension: "", cli: "" });
   let receive, calls = 0, forgotten = "";
-  const posted = [], values = { codexSource: "ask", provider: "codex-subscription" };
+  const posted = [], values = { codexSource: "ask", provider: "codex-subscription", model: "gpt-5.2" };
   const panel = { webview: { onDidReceiveMessage: callback => { receive = callback; },
     postMessage: message => posted.push(message) } };
   const vscode = { ViewColumn: { Active: 1 }, ConfigurationTarget: { Global: 1 },
@@ -65,6 +65,12 @@ test("LLM Providers selects the Codex installation before loading its models", a
   assert.equal(forgotten, "codex");
   assert.equal(calls, 1);
   assert.equal(posted.at(-1).source.selected, "cli");
+  values.model = "gpt-5.2";
+  await receive({ action: "load", provider: "codex" });
+  assert.equal(forgotten, "codex");
+  assert.equal(calls, 2);
+  assert.equal(values.model, "", "a removed CLI model is no longer selected");
+  assert.doesNotMatch(panel.webview.html, /Refresh models/);
 });
 
 test("log folder button picks a directory and saves its path", async () => {

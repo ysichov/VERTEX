@@ -73,15 +73,14 @@ function formula(graph, keep = () => true, ran = null) {
   // A formula node is read as an expression, not as the statement it came from.
   // An assignment already reads as one; a SELECT is reduced to what it takes
   // and where from, because its projection is not part of the derivation.
-  const formulaLabel = value => {
+  const formulaLabel = (value, operand) => {
     const flat = String(value || '').replace(/\s+/g, ' ').trim();
     if (!/^SELECT\b/i.test(flat)) return withoutConversions(flat);
     const table = /\bFROM\s+([\w~\/]+)/i.exec(flat)?.[1] || '?';
-    const into = /\bINTO\s+(?:CORRESPONDING\s+FIELDS\s+OF\s+)?(?:TABLE\s+)?([\w@\-]+)/i.exec(flat)?.[1] || '';
     const fields = flat.replace(/^SELECT\s+(?:SINGLE\s+)?/i, '').split(/\bFROM\b/i)[0]
       .split(',').map(field => field.trim().split(/\s+AS\s+/i).at(-1)).filter(Boolean);
     const shown = fields.length > 3 ? fields.slice(0, 3).join(', ') + ', … (' + fields.length + ')' : fields.join(', ');
-    return (into ? into + ' = ' : '') + 'SELECT ' + shown + ' FROM ' + table + '.';
+    return (operand ? operand + ' ← ' : '') + 'From ' + table + ': ' + shown;
   };
   const isInvocationResult = node => node?.kind === 'calculation' && /=\s*(?:NEW\s+)?[A-Za-z_]\w*(?:\s*\([^)]*\))?\s*(?:->|=>)/i.test(node.text || '');
   const isDataTransfer = node => /^\s*(?:DATA\s*\(\s*)?[A-Za-z_]\w*(?:-[A-Za-z_]\w*)?\s*\)?\s*=\s*[A-Za-z_]\w*(?:-[A-Za-z_]\w*)?\s*\.\s*$/i.test(node?.text || '');
@@ -130,14 +129,14 @@ function formula(graph, keep = () => true, ran = null) {
     return definitions.map(definition => {
       if (whole) {
         const inputs = formulaInputs(definition.id);
-        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id), run: ran ? ran(definition) : undefined,
+        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text, edgeLabel), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id), run: ran ? ran(definition) : undefined,
           children: inputs.flatMap(input => formulaSteps(input.id, depth + 1, definition.id, input.text, path, true)) };
       }
       const known = formulaGraph.nodes.find(node => node.id === definition.id);
       if (known) { if ((known.level ?? 0) > depth + 1) known.level = depth + 1; }
       else {
         const formulaVariables = new Set([...formulaInputs(definition.id).map(node => canonical(node.text)), ...(graph.edges || []).filter(edge => edge.from === definition.id).map(edge => bseById.get(edge.to)).filter(node => node?.kind === 'value').map(node => canonical(node.text))]);
-        formulaGraph.nodes.push({ ...definition, location: definition.location || definition.source, dataText: definition.text, label: formulaLabel(definition.text), stack: stackOfScope(definition.location), level: depth + 1, variables: [...formulaVariables] });
+        formulaGraph.nodes.push({ ...definition, location: definition.location || definition.source, dataText: definition.text, label: formulaLabel(definition.text, edgeLabel), stack: stackOfScope(definition.location), level: depth + 1, variables: [...formulaVariables] });
       }
       if (parentId && !formulaGraph.edges.some(edge => edge.from === parentId && edge.to === definition.id)) {
         formulaGraph.edges.push({ from: parentId, to: definition.id, label: edgeLabel });
@@ -147,7 +146,7 @@ function formula(graph, keep = () => true, ran = null) {
       if (expanded.has(key)) return null;
       expanded.add(key);
       const children = formulaInputs(definition.id).flatMap(input => [formulaSteps(input.id, depth + 1, definition.id, input.text, path)]).flat();
-      return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, run: ran ? ran(definition) : undefined, children };
+      return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text, edgeLabel), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, run: ran ? ran(definition) : undefined, children };
     }).filter(Boolean);
   };
   // A derivation has one top: the value that was asked about. Its definitions are its branches, however many of them there

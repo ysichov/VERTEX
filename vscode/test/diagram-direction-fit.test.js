@@ -32,3 +32,17 @@ test("FLOW direction change fits after the replacement SVG arrives", () => {
     assert.deepEqual(fits, ["new SVG"]);
   }
 });
+test("switching Classes, Methods or Statements fits the replacement diagram", () => {
+  const source = read("vertex-flow.js");
+  const reading = source.slice(source.indexOf("flowReading.querySelectorAll('[data-flow-reading]').forEach(button=>button.addEventListener('click'"), source.indexOf("if(graph.hasSelectedValue===false)"));
+  assert.match(reading, /syncDepth\(\);renderedOnce=false;keepView=false;applyBranchChoice\(\)/);
+  const rendered = source.slice(source.indexOf("document.addEventListener('bse:mermaid-rendered',()=>{if(!renderedOnce"), source.indexOf("document.addEventListener('keydown',e=>{if(e.key==='Escape'"));
+  const frames = [], fits = [], context = { renderedOnce: true, keepView: true,
+    requestAnimationFrame: fn => frames.push(fn), fit: () => fits.push('replacement SVG'),
+    applyZoom: () => assert.fail('old zoom must not be restored') };
+  vm.createContext(context);
+  vm.runInContext('renderedOnce=false;keepView=false;', context);
+  vm.runInContext(rendered.replace("document.addEventListener('bse:mermaid-rendered',()=>{", '').replace(/\}\);$/, ''), context);
+  frames.forEach(fn => fn());
+  assert.deepEqual(fits, ['replacement SVG']);
+});

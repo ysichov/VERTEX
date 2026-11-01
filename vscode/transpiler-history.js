@@ -11,7 +11,7 @@ const schema = {
   inputSchema: { type: "object", additionalProperties: false, required: ["run_id"], properties: {
     run_id: { type: "string" },
     from_step: { type: "integer", minimum: 1, description: "First 1-based step; defaults to 1." },
-    limit: { type: "integer", minimum: 1, maximum: 20, description: "Steps per page; defaults to 5." },
+    limit: { type: "integer", minimum: 1, maximum: 100, description: "Steps per page; defaults to 5. Up to 100 for a broad history read." },
     include_state: { type: "boolean", description: "Include all routine variables as they stood at each step, reconstructed from changes." }
   } }
 };
@@ -111,8 +111,8 @@ function create(root = () => "") {
     const run = get(args.run_id);
     const from = args.from_step === undefined ? 1 : args.from_step;
     const limit = args.limit === undefined ? 5 : args.limit;
-    if (!Number.isInteger(from) || from < 1 || !Number.isInteger(limit) || limit < 1 || limit > 20)
-      throw new Error("from_step must be positive and limit must be 1..20.");
+    if (!Number.isInteger(from) || from < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100)
+      throw new Error("from_step must be positive and limit must be 1..100.");
     const states = new Map(), sy = {};
     const steps = [];
     for (let index = 0; index < Math.min(run.records.length, from - 1 + limit); index++) {

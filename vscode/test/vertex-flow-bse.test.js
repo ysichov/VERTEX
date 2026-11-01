@@ -41,7 +41,8 @@ test("opening or closing a node keeps the zoom and the place; the first drawing 
   assert.ok(!/setTimeout\(\(\)=>\{[^}]*keepView=true;if\(document\.body/.test(toggle), "never before it is known that a redrawing follows: the next one would lose its fit");
   const rendered = script.slice(script.indexOf("document.addEventListener('bse:mermaid-rendered',()=>{if(!renderedOnce"), script.indexOf("document.addEventListener('keydown',e=>{if(e.key==='Escape'"));
   assert.ok(rendered.includes("if(!renderedOnce&&!keepView)") && rendered.includes("requestAnimationFrame(fit)") && rendered.includes("viewport.scrollTop=scroll.top"), "the first drawing fits, later redraws preserve the viewport");
-  assert.ok(script.includes("document.getElementById('mermaid-fit').click()"), "a view or direction change still fits");
+  assert.match(script, /const showFrom=id=>[^\n]*renderedOnce=false;keepView=false;rebuild\(\)/, "Show from here fits after the new drawing");
+  assert.match(script, /const selectView=view=>[^\n]*renderedOnce=false;keepView=false;rebuild\(\)/, "opening Diagram fits after the new drawing");
 });
 
 test("a live redraw keeps the reader's scroll position in Logic", () => {

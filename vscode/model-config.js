@@ -105,7 +105,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     PROVIDERS.map(p => ({ id: p.id, label: p.label, on: isOn(vscode, p.id) })));
   const post = message => panel.webview.postMessage(message);
 
-  async function load(id) {
+  async function load(id, fresh = false) {
     const profiles = (id === "anthropic-api" || compatible.PROVIDERS[id]) && secrets
       ? await keyProfiles.list(secrets, id) : null;
     let source = null;
@@ -120,7 +120,15 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
       }
     }
     try {
-      post({ provider: id, rows: rows(await full(id), read(vscode, id), id), profiles, source });
+      if (fresh) forget(id);
+      const models = await full(id);
+      const settings = vscode.workspace.getConfiguration("vertex.ai");
+      const selected = settings.get("model", "");
+      if (settings.get("provider", "") === PROVIDERS.find(p => p.id === id).setting && selected
+          && !models.some(model => model.id === selected)) {
+        await settings.update("model", "", vscode.ConfigurationTarget.Global);
+      }
+      post({ provider: id, rows: rows(models, read(vscode, id), id), profiles, source });
     } catch (e) {
       post({ provider: id, error: e.message, profiles, source });
     }
@@ -139,7 +147,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     }
     const id = String(message.provider || "");
     if (!PROVIDERS.some(p => p.id === id)) { return; }
-    if (message.action === "load") { await load(id); return; }
+    if (message.action === "load") { await load(id, true); return; }
     if (message.action === "source") {
       if (id !== "claude" && id !== "codex") { return; }
       const choice = String(message.source || "");

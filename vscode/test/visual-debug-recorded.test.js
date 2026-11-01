@@ -10,11 +10,34 @@ test("recorded Expression keeps its view controls in the visible toolbar", () =>
   const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
   const join = html.slice(html.indexOf("function joinToolbars(){"), html.indexOf("function openRecordFlow(){"));
   assert.match(join, /row\.insertBefore\(\$\("fexpressionmodes"\),end\)/);
+  assert.match(join, /row\.insertBefore\(\$\("foptimized"\),end\)/);
+  assert.match(join, /row\.insertBefore\(\$\("fstepnav"\),end\)/);
   assert.match(join, /row\.insertBefore\(\$\("fvalues"\),end\)/);
   assert.match(html, /id="fexpressionmodes" class="vertex-segment-toggle"/);
   assert.match(html, /id="fanalysis" class="active"/);
   assert.match(html, /id="frecorded"/);
   assert.match(html, /id="foptimized"/);
+});
+
+test("With values appears only when a calculation recorded values", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
+  const source = html.slice(html.indexOf("function withRecordFormula(data){"), html.indexOf('$("fvalues").onclick=', html.indexOf("function withRecordFormula(data){")));
+  const controls = { fvalues: { hidden: false, classList: { contains: () => true } }, fexpressionmodes: {}, foptimized: {}, fstepnav: {} };
+  const context = { $: id => controls[id], chosenValue: { name: "A" }, flow: { timeline: [] }, staticFlow: null,
+    sdeOrigin() {}, expressionModes() {} };
+  vm.runInNewContext(source, context);
+  await context.withRecordFormula({ panes: {} });
+  assert.equal(controls.fvalues.hidden, true, "analysis alone has no recorded values");
+  context.flow.timeline = [{}];
+  context.recordSteps = () => [{ url: "", line: 1, location: "Z" }];
+  context.texts = {}; context.norm = x => x; context.INITIAL = { local: true };
+  context.localEnded = false; context.replayAt = null;
+  context.askOrigin = () => Promise.resolve({ formula: { nodes: [{ id: "n" }], edges: [] }, panes: { formula: "f", expression: "e" }, hasValues: false });
+  await context.withRecordFormula({ panes: {} });
+  assert.equal(controls.fvalues.hidden, true, "steps without values keep it hidden");
+  context.askOrigin = () => Promise.resolve({ formula: { nodes: [{ id: "n" }], edges: [] }, panes: { formula: "f", expression: "e" }, hasValues: true });
+  await context.withRecordFormula({ panes: {} });
+  assert.equal(controls.fvalues.hidden, false, "recorded values reveal it");
 });
 
 test("Analyze and Recorded are one choice; Optimized is a toggle of its own for both", () => {
