@@ -108749,15 +108749,14 @@ function formula(graph, keep = () => true, ran = null) {
   // A formula node is read as an expression, not as the statement it came from.
   // An assignment already reads as one; a SELECT is reduced to what it takes
   // and where from, because its projection is not part of the derivation.
-  const formulaLabel = value => {
+  const formulaLabel = (value, operand) => {
     const flat = String(value || '').replace(/\s+/g, ' ').trim();
     if (!/^SELECT\b/i.test(flat)) return withoutConversions(flat);
     const table = /\bFROM\s+([\w~\/]+)/i.exec(flat)?.[1] || '?';
-    const into = /\bINTO\s+(?:CORRESPONDING\s+FIELDS\s+OF\s+)?(?:TABLE\s+)?([\w@\-]+)/i.exec(flat)?.[1] || '';
     const fields = flat.replace(/^SELECT\s+(?:SINGLE\s+)?/i, '').split(/\bFROM\b/i)[0]
       .split(',').map(field => field.trim().split(/\s+AS\s+/i).at(-1)).filter(Boolean);
     const shown = fields.length > 3 ? fields.slice(0, 3).join(', ') + ', … (' + fields.length + ')' : fields.join(', ');
-    return (into ? into + ' = ' : '') + 'SELECT ' + shown + ' FROM ' + table + '.';
+    return (operand ? operand + ' ← ' : '') + 'From ' + table + ': ' + shown;
   };
   const isInvocationResult = node => node?.kind === 'calculation' && /=\s*(?:NEW\s+)?[A-Za-z_]\w*(?:\s*\([^)]*\))?\s*(?:->|=>)/i.test(node.text || '');
   const isDataTransfer = node => /^\s*(?:DATA\s*\(\s*)?[A-Za-z_]\w*(?:-[A-Za-z_]\w*)?\s*\)?\s*=\s*[A-Za-z_]\w*(?:-[A-Za-z_]\w*)?\s*\.\s*$/i.test(node?.text || '');
@@ -108806,14 +108805,14 @@ function formula(graph, keep = () => true, ran = null) {
     return definitions.map(definition => {
       if (whole) {
         const inputs = formulaInputs(definition.id);
-        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id), run: ran ? ran(definition) : undefined,
+        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text, edgeLabel), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id), run: ran ? ran(definition) : undefined,
           children: inputs.flatMap(input => formulaSteps(input.id, depth + 1, definition.id, input.text, path, true)) };
       }
       const known = formulaGraph.nodes.find(node => node.id === definition.id);
       if (known) { if ((known.level ?? 0) > depth + 1) known.level = depth + 1; }
       else {
         const formulaVariables = new Set([...formulaInputs(definition.id).map(node => canonical(node.text)), ...(graph.edges || []).filter(edge => edge.from === definition.id).map(edge => bseById.get(edge.to)).filter(node => node?.kind === 'value').map(node => canonical(node.text))]);
-        formulaGraph.nodes.push({ ...definition, location: definition.location || definition.source, dataText: definition.text, label: formulaLabel(definition.text), stack: stackOfScope(definition.location), level: depth + 1, variables: [...formulaVariables] });
+        formulaGraph.nodes.push({ ...definition, location: definition.location || definition.source, dataText: definition.text, label: formulaLabel(definition.text, edgeLabel), stack: stackOfScope(definition.location), level: depth + 1, variables: [...formulaVariables] });
       }
       if (parentId && !formulaGraph.edges.some(edge => edge.from === parentId && edge.to === definition.id)) {
         formulaGraph.edges.push({ from: parentId, to: definition.id, label: edgeLabel });
@@ -108823,7 +108822,7 @@ function formula(graph, keep = () => true, ran = null) {
       if (expanded.has(key)) return null;
       expanded.add(key);
       const children = formulaInputs(definition.id).flatMap(input => [formulaSteps(input.id, depth + 1, definition.id, input.text, path)]).flat();
-      return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, run: ran ? ran(definition) : undefined, children };
+      return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text, edgeLabel), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, run: ran ? ran(definition) : undefined, children };
     }).filter(Boolean);
   };
   // A derivation has one top: the value that was asked about. Its definitions are its branches, however many of them there
@@ -108843,7 +108842,9 @@ function formula(graph, keep = () => true, ran = null) {
   if (tree) {
     const whole = { id, text: tree.text, of: '', location: '', children: formulaSteps(graph.root, 0, id, graph.selectedVariable || '', new Set(), true) };
     if (graph.pipeline && Array.isArray(graph.pipeline.steps)) { sequence(whole, graph.pipeline.steps); }
-    expression = oneFormula(whole); if (process.env.DUMP) { const d = (n, k) => { console.log(" ".repeat(k * 2) + n.of + " <= " + String(n.location).split("->")[0] + " | " + String(n.text).slice(0, 60)); n.children.forEach(c => d(c, k + 1)); }; d(whole, 0); }
+    expression = oneFormula(whole);
+    if (expression) { expression.optimized = oneFormula(whole, false); }
+    if (process.env.DUMP) { const d = (n, k) => { console.log(" ".repeat(k * 2) + n.of + " <= " + String(n.location).split("->")[0] + " | " + String(n.text).slice(0, 60)); n.children.forEach(c => d(c, k + 1)); }; d(whole, 0); }
   }
   // The steps of a loaded pipeline put the definitions that the loop over it makes into the order they run in.
   if (tree && graph.pipeline && Array.isArray(graph.pipeline.steps)) {
@@ -108919,7 +108920,10 @@ function conditionText(raw) {
   return rest(branch);
 }
 
-function oneFormula(tree) {
+/* inline false gives the same derivation optimized: no value is written out in place of its name. The formula reads its
+   values by their names, numbered where a name holds several (amount₁, amount₂), and every step is listed once, with
+   what it reads - as the record's Optimized reading does. */
+function oneFormula(tree, inline = true) {
   // A node holds its statement as text: abaplint parses it, so assignment and its calls read the parse, not the text.
   const { parsedTokens } = __vertexRequire(23);
   const { assignment, variablePaths } = __vertexRequire(1);
@@ -108945,12 +108949,14 @@ function oneFormula(tree) {
   const step = (node, context) => {
     if (named.has(node)) { return named.get(node); }
     const all = parsedTokens(node.raw), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    // A value read from a table is already a name of its own, listed under where.
+    if (!inline && (!a || !a.expression.length)) { return body(node, context); }
     const text = body(node, context), existing = steps.find(item => item.text === text && item.variable === (a ? canonical(a.name) : node.of));
     if (existing) { named.set(node, existing.name); return existing.name; }
     const key = a ? canonical(a.name) : node.of, number = (counts.get(key) || 0) + 1;
     counts.set(key, number);
     const name = (a ? a.name : node.of) + subscript(number);
-    steps.push({ name, text, variable: key });
+    steps.push({ name, text, variable: key, id: node.id, source: node.source, line: node.line, location: node.location, full: node.of });
     named.set(node, name);
     return name;
   };
@@ -108979,7 +108985,7 @@ function oneFormula(tree) {
       const reads = canonical(path.name), reading = context && reads === context.name;
       const kids = reading ? context.kids : node.children.filter(child => canonical(child.of) === reads && !child.previous);
       if (!kids.length) { continue; }
-      edits.push({ from: a.expression[path.from].offset, to: a.expression[path.to - 1].endOffset, rep: inBrackets(define(kids, path.name, context, reading)) });
+      edits.push({ from: a.expression[path.from].offset, to: a.expression[path.to - 1].endOffset, rep: inBrackets(define(kids, path.name, context, reading || !inline)) });
     }
     edits.sort((x, y) => x.from - y.from);
     let out = '', at = first;
@@ -108988,14 +108994,14 @@ function oneFormula(tree) {
     if (a.compound) {
       const operator = ts.find(token => ['+=', '-=', '*=', '/='].includes(token.value)).value[0];
       const reading = context && canonical(a.name) === context.name;
-      const before = define(reading ? context.kids : node.children.filter(child => canonical(child.of) === canonical(a.name)), a.name, context, reading);
+      const before = define(reading ? context.kids : node.children.filter(child => canonical(child.of) === canonical(a.name)), a.name, context, reading || !inline);
       out = inBrackets(before) + ' ' + operator + ' (' + plain(out) + ')';
     }
     return plain(out);
   }
   if (!tree.children.length) { return null; }
   const top = { name: '', text: define(tree.children, tree.text, null, true) };
-  const items = steps.map(item => ({ name: item.name, text: item.text }));
+  const items = steps.map(item => inline ? { name: item.name, text: item.text } : { ...item });
   const isDigit = character => character >= '₀' && character <= '₉';
   const positions = (text, name) => { const found = []; for (let at = text.indexOf(name); at >= 0; at = text.indexOf(name, at + 1)) { if (!isDigit(text[at + name.length] || '')) { found.push(at); } } return found; };
   // A step that adds or takes off a share of the value before it is that value times one plus or minus the share: it then
@@ -109009,7 +109015,7 @@ function oneFormula(tree) {
     }
   }
   // What is read once is written where it is read; what is read more than once stays a step.
-  for (let again = true; again;) {
+  for (let again = inline; again;) {
     again = false;
     for (let i = items.length - 1; i >= 0 && !again; i--) {
       const it = items[i], holders = [top, ...items.filter(other => other !== it)].filter(holder => positions(holder.text, it.name).length);
@@ -109110,7 +109116,8 @@ function symbolic(graph) {
     while ((match = token.exec(text))) {
       output += syntaxCode(text.slice(offset, match.index));
       const name = match[0], key = canonical(name), definition = dataDefinitions.get(key)?.definition;
-      if (names.calculated.has(key)) output += `<span class="data-calculated">${escape(name)}</span>`;
+      if (step.colors?.has(key)) output += `<span style="color:var(--vscode-charts-${step.colors.get(key)},currentColor)">${escape(name)}</span>`;
+      else if (names.calculated.has(key)) output += `<span class="data-calculated">${escape(name)}</span>`;
       else if (names.composed.has(key)) output += definition ? `<button class="data-composed" title="Open the definition of ${escape(name)}" data-node="${escape(definition.id)}" data-source="${escape(definition.source)}" data-line="${definition.line}">${escape(name)}</button>` : `<span class="data-composed">${escape(name)}</span>`;
       else output += syntaxCode(name);
       offset = match.index + name.length;
@@ -109124,10 +109131,17 @@ function symbolic(graph) {
 
 function formulaPane(graph, derivation, sourceOf = node => node.source) {
   const { dataFormula } = symbolic(graph);
+  const colors = new Map(), palette = ['blue', 'orange', 'green', 'purple', 'yellow', 'red'];
+  const register = node => {
+    const key = String(node.of || '').toUpperCase();
+    if (key && !colors.has(key)) colors.set(key, palette[colors.size % palette.length]);
+    node.children.forEach(register);
+  };
+  if (derivation.tree) register(derivation.tree);
   const formulaHtml = (node, root = false) => {
     const children = node.children.map(child => formulaHtml(child)).join('');
     // The formula itself is the link to its statement; no separate </> beside it.
-    const text = root ? escape(node.text) : dataFormula({ text: node.text, calculated: [], composed: [] });
+    const text = root ? escape(node.text) : dataFormula({ text: node.text, calculated: [], composed: [], colors });
     // A recorded run marks what it made of each definition: ran, not run, a SELECT that found nothing.
     const run = node.run ? node.run.state : '', said = run === 'not-run' ? ' - not run in this run' : run === 'empty' ? ' - SELECT found nothing (sy-subrc ' + node.run.subrc + ')' : run === 'ran' ? ' - ran' : '';
     const caption = `<button class="data-composed${run ? ' vx-' + run : ''}" title="${root ? 'Open the selected value in source' : 'Open this formula in source'}${escape(said)}; Ctrl+Click opens beside" data-node="${escape(node.id)}" data-source="${escape(sourceOf(node))}" data-line="${node.line}"><span class="formula-expression">${text}</span></button>`;
@@ -109138,6 +109152,28 @@ function formulaPane(graph, derivation, sourceOf = node => node.source) {
     ? `<p class="edge">${derivation.byRun ? 'In the order the run executed them' : 'Ordered by the loaded pipeline'}${derivation.pipeline ? ' of scenario ' + escape(derivation.pipeline) : ''}${derivation.skipped.length ? '; not in it, so not run: ' + escape([...new Set(derivation.skipped)].join(', ')) : ''}.</p>` : '';
   const formulaView = derivation.tree ? pipelineNote + formulaHtml(derivation.tree, true) : '<p class="edge">No symbolic formula was resolved for this value.</p>';
   return '<p class="edge">Formula derivation — click a branch to expand its input formulas</p>' + formulaView;
+}
+
+// Keep the full symbolic expression intact, but give every alternative and nested group its own line.
+function layoutAlternatives(text) {
+  let out = '', depth = 0, quoted = false;
+  const indent = () => '  '.repeat(depth);
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === "'") {
+      out += char;
+      if (quoted && text[i + 1] === "'") out += text[++i];
+      else quoted = !quoted;
+    } else if (!quoted && char === '{') {
+      depth++; out += '{\n' + indent();
+    } else if (!quoted && char === '}' && depth) {
+      depth--; out = out.trimEnd() + '\n' + indent() + '}';
+    } else if (!quoted && depth && text.startsWith(' | ', i)) {
+      out = out.trimEnd() + '\n' + indent() + '| ';
+      i += 2;
+    } else out += char;
+  }
+  return out;
 }
 
 // The derivation as the one expression it comes to (see oneFormula): the steps in the order they run, then where its
@@ -109162,12 +109198,82 @@ function expressionPane(derivation, sourceOf = node => node.source) {
   };
   const steps = expression.steps.slice().reverse().map(step => `<li><code>${escape(step.name)} = ${write(step.text)}</code></li>`).join('');
   const where = expression.where.map(item => `<li><code>${link(item)}</code> &larr; <code>${escape(item.text)}</code> <span class="edge">${escape(String(item.location).split('->')[0])}</span></li>`).join('');
-  return `<p class="edge">Expression - the derivation written out, nothing simplified</p>${note}<p><code>${write(expression.text)}</code></p>`
+  const whole = `<p class="edge">Expression - the derivation written out, nothing simplified</p>${note}<p><code>${write(layoutAlternatives(expression.text))}</code></p>`
     + (steps ? `<p class="edge">Values read more than once, from the last</p><ol class="expression-steps">${steps}</ol>` : '')
+    + (where ? `<p class="edge">Where the values come from</p><ul class="expression-where">${where}</ul>` : '');
+  if (!expression.optimized) { return whole; }
+  return `<div class="vx-analysis-whole">${whole}</div><div class="vx-analysis-optimized">${optimizedPane(expression.optimized, note, link, sourceOf)}</div>`;
+}
+
+/* The derivation optimized: the formula reads its values by their names, and under where each name is what its statement
+   makes of the names it reads. The first level is the names of the formula, in its order; a line that reads names of its
+   own opens them one level down, folded, as the record's Optimized reading does. A name is opened once, where it is
+   first read. */
+function optimizedPane(optimized, note, link, sourceOf) {
+  const steps = new Map(optimized.steps.map(step => [step.name, step]));
+  const sourceLink = (step, label) => `<button class="data-composed" title="Open this definition in source; Ctrl+Click opens beside" data-node="${escape(step.id)}" data-source="${escape(sourceOf(step))}" data-line="${step.line}">${label}</button>`;
+  const known = new Map([...optimized.where.map(item => [item.name, link(item)]),
+    ...optimized.steps.map(step => [step.name, `<button class="data-composed" title="${escape(String(step.location).split('->')[0])} · line ${step.line}" data-node="${escape(step.id)}" data-source="${escape(sourceOf(step))}" data-line="${step.line}" data-full="${escape(step.full)}" data-location="${escape(step.location)}">${escape(step.name)}</button>`])]);
+  const names = [...known.keys()].sort((a, b) => b.length - a.length);
+  const isName = character => /[A-Za-z0-9_\-\[\]\/₀-₉]/.test(character || '');
+  const found = text => {
+    const out = [];
+    for (let at = 0; at < text.length;) {
+      const name = isName(text[at - 1]) ? null : names.find(candidate => text.startsWith(candidate, at) && !isName(text[at + candidate.length]));
+      if (name) { out.push({ at, name }); at += name.length; } else { at++; }
+    }
+    return out;
+  };
+  const write = text => {
+    let out = '', at = 0;
+    for (const item of found(text)) {
+      if (item.at < at) continue;
+      out += escape(text.slice(at, item.at)) + known.get(item.name);
+      at = item.at + item.name.length;
+      const step = steps.get(item.name);
+      if (step && text.startsWith(' otherwise', at)) {
+        out += ' ' + sourceLink(step, 'otherwise');
+        at += ' otherwise'.length;
+      }
+    }
+    return out + escape(text.slice(at));
+  };
+  const reads = text => [...new Set(found(text).map(item => item.name).filter(name => steps.has(name)))];
+  const done = new Set(), roots = [], queue = reads(optimized.text).map(name => ({ name, into: roots }));
+  while (queue.length) {
+    const entry = queue.shift();
+    if (done.has(entry.name)) { continue; }
+    done.add(entry.name);
+    entry.parts = [];
+    entry.into.push(entry);
+    reads(steps.get(entry.name).text).forEach(name => queue.push({ name, into: entry.parts }));
+  }
+  const list = entries => !entries.length ? '' : `<ul class="expression-decode">${entries.map(entry => {
+    const line = `<code>${known.get(entry.name)} = ${write(steps.get(entry.name).text)}</code>`;
+    return entry.parts.length ? `<li class="more"><details><summary>${line}</summary>${list(entry.parts)}</details></li>` : `<li>${line}</li>`;
+  }).join('')}</ul>`;
+  const where = optimized.where.map(item => `<li><code>${link(item)}</code> &larr; <code>${escape(item.text)}</code> <span class="edge">${escape(String(item.location).split('->')[0])}</span></li>`).join('');
+  const alternatives = /^(.+?) = \{([^{}]+)\}$/.exec(optimized.text);
+  const alternativesView = alternatives ? `<p class="edge">Statically possible definitions of <code>${escape(alternatives[1])}</code>; the executed path is known only after a run.</p><ol class="expression-alternatives">${alternatives[2].split(' | ').map(part => {
+    const match = /^(.*?)(?: when (.+)| otherwise)$/.exec(part);
+    if (!match) return `<li><code>${write(part)}</code></li>`;
+    const value = match[1], condition = match[2];
+    const step = steps.get(value);
+    const owner = step && String(step.location || '').split('->')[0];
+    const change = step && /^([\w\[\]₀-₉-]+) ([+-]) (.+)$/.exec(step.text);
+    const calculation = change ? `<div class="expression-change">input: <code>${write(change[1])}</code> · change: <code>${escape(change[2])} ${write(change[3])}</code> · result: <code>${write(value)}</code></div>`
+      : step ? `<div class="expression-change">result: <code>${write(value)} = ${write(step.text)}</code></div>` : '';
+    const details = `${calculation}${step ? `<div class="edge">source: ${sourceLink(step, escape(owner || 'Open code'))}</div>` : ''}`;
+    const heading = `<code>${write(value)}</code>${owner ? ` <span class="edge">· ${escape(owner)}</span>` : ''}`;
+    return condition ? `<li>${heading}<span class="edge">when ${escape(condition)}</span>${details}</li>`
+      : `<li><details><summary>${heading} <span class="edge">· condition not identified</span></summary>${details}<div class="edge">${step ? sourceLink(step, 'otherwise') : 'otherwise'}: no branch guard is known for this definition.</div></details></li>`;
+  }).join('')}</ol>` : `<p><code>${write(optimized.text)}</code></p>`;
+  return `<p class="edge">Expression - optimized: each value by its name, opened under where</p>${note}${alternativesView}`
+    + (roots.length ? `<p class="edge">where</p>${list(roots)}` : '')
     + (where ? `<p class="edge">Where the values come from</p><ul class="expression-where">${where}</ul>` : '');
 }
 
-module.exports = { symbolic, formulaPane, expressionPane, escape };
+module.exports = { symbolic, formulaPane, expressionPane, layoutAlternatives, escape };
 
 },
 function(module,exports,__vertexRequire){
@@ -109327,9 +109433,12 @@ function build(request) {
         if (signature(valueAt(name, index)) === signature(valueAt(name, index - 1)) && !entered(name, index)) continue;
         return { made: index - 1, seen: index };
       }
-      // An assignment can compute the same value (notably zero). It still has a derivation.
+      // An assignment can compute the same value (notably zero). It still has a derivation. A call that passes the name
+      // on (CHANGING cs_context = ls_context) and gives it back unchanged is not one: the value was made before it, and
+      // taking the call for it cut the chain at a modifier that changed nothing.
       if (signature(valueAt(name, index)) === signature(valueAt(name, index - 1))) {
-        if (writes(index - 1, name)) return { made: index - 1, seen: index };
+        const statement = statementOfStep(index - 1);
+        if (writes(index - 1, name) && !(statement && Object.keys(statement.bindings || {}).length)) return { made: index - 1, seen: index };
         continue;
       }
       let made = index - 1;
@@ -109459,7 +109568,8 @@ function build(request) {
 const where = node => node.outside ? "not changed in the record" : (String(node.location || "").split("->")[0] || node.source) + ":" + node.line + " · stop " + (node.stop + 1);
 // Every name of the formula and of the tree is the link to the statement that set its value; with no statement in
 // the record it is plain text.
-const link = (node, label) => node && node.source ? `<button class="data-composed" title="Open the statement that set it: ${escape(where(node))}" data-node="${escape(node.id)}" data-source="${escape(node.source)}" data-line="${node.line}">${label}</button>` : label;
+// The link carries the stop the statement ran at too, so a click shows the step as well as the code.
+const link = (node, label) => node && node.source ? `<button class="data-composed" title="${node.readHere ? "Read here before it was set" : "Open the statement that set it"}: ${escape(where(node))}" data-node="${escape(node.id)}" data-source="${escape(node.source)}" data-line="${node.line}"${Number.isInteger(node.stop) ? ` data-stop="${node.stop}"` : ""}>${label}</button>` : label;
 
 function formulaPane(tree, said, hasValues = true) {
   const html = (node, root) => {
@@ -109516,14 +109626,29 @@ const emptyFromSelect = (node, value) => {
    before it was set: red, with the stop that sets it. WRITTEN_LATER: name -> first stop that writes it, for the pane
    being drawn. */
 let writtenLater = null;
+// The statement that sets NODE's name later in the run: by its name, or - a structure handed on through a parameter,
+// cs_context-tax_amount read as the caller's ls_context-tax_amount - by its component.
+const laterOf = node => !writtenLater || !node ? null : writtenLater.get(upper(node.of)) || (tail(node.of) ? writtenLater.get("~" + tail(node.of)) : null) || null;
+/* Read before it was set: the value read is empty (0, initial) and a statement of the run sets the name to something
+   after the value read was made - never changed in the record, or made empty along with its structure
+   (DATA(ls_context) = get_shipment( ) fills the structure, leaving tax_amount 0), the tax computed later. */
+const isEmpty = value => /^(?:0+(?:[.,]0*)?)?$/.test(String(value == null ? "" : value).trim());
 const readBeforeSet = (node, value) => {
-  if (!writtenLater || !node || !node.outside || !/^(?:0+(?:[.,]0*)?)?$/.test(String(value == null ? "" : value).trim())) return "";
-  const later = writtenLater.get(upper(node.of));
-  return later === undefined ? "" : "Read before it was set: the run sets " + node.of.toLowerCase() + " later, at stop " + (later + 1);
+  if (!node || !isEmpty(value)) return "";
+  const later = laterOf(node);
+  if (!later || later === node || isEmpty(later.value) || (!node.outside && !(later.stop > node.stop))) return "";
+  return "Read before it was set: the run sets " + later.of.toLowerCase() + " later, at stop " + (later.stop + 1);
 };
-const named = (name, value, hasValues, node, mark = "") => {
-  const label = link(node, escape(name.toLowerCase()) + mark), why = emptyFromSelect(node, value) || readBeforeSet(node, value);
-  return (why ? `<span class="rf-empty" title="${escape(why)}">${label}</span>` : label) + (hasValues && value !== undefined && !(node && node.pending) ? valueSpan(value) : "");
+// A name read before it was set goes to where too: what it was then, and the statement that set it later. Its link
+// leads to the statement that read it - no statement set the value it read, and that read is where it went wrong.
+const readHere = at => Object.assign(Object.create(at), { readHere: true });
+const early = (piece, child) => !!child && !compound(child) && !!readBeforeSet(made(child), child.value);
+// READ: the value's own node when the link leads elsewhere (to the statement that read it).
+const named = (name, value, hasValues, node, mark = "", read = null) => {
+  const own = read || node, label = link(node, escape(name.toLowerCase()) + mark), why = readBeforeSet(own, value) || emptyFromSelect(own, value);
+  const shown = hasValues && value !== undefined && !(node && node.pending) ? valueSpan(value) : "";
+  // The name and its value red together: the value is what was wrong.
+  return why ? `<span class="rf-empty" title="${escape(why)}">${label}${shown}</span>` : label + shown;
 };
 const tail = name => upper(name).split("-").slice(1).join("-");
 /* A value a call changed is made where the routine computed it - the child that carries the same component
@@ -109554,7 +109679,9 @@ function stepText(node, hasValues, names = [], num = null) {
     if (!piece.chain) return sourceText(piece.text);
     const child = readIn(at, piece.chain);
     if (child && !child.outside && compound(child)) names.push({ name: piece.chain, node: child });
-    return named(piece.chain, child && child.value, hasValues, child && made(child), mark(piece.chain, child));
+    const soon = early(piece, child);
+    if (soon) names.push({ name: piece.chain, node: child, early: true, reader: at });
+    return named(piece.chain, child && child.value, hasValues, soon ? readHere(at) : child && made(child), mark(piece.chain, child), soon ? made(child) : null);
   }).join(" ");
 }
 const compound = node => { const at = made(node); return !at.outside && !!at.rhs && plainText(stepText(at, false)).includes(" "); };
@@ -109565,18 +109692,28 @@ const compound = node => { const at = made(node); return !at.outside && !!at.rhs
 function decoding(names, hasValues, done, num) {
   const roots = [], queue = names.map(item => ({ ...item, into: roots }));
   while (queue.length) {
-    const entry = queue.shift(), key = keyOf(entry.node);
+    const entry = queue.shift(), key = entry.early ? "early:" + keyOf(entry.node) : keyOf(entry.node);
     if (done.has(key)) continue;
     done.add(key);
     entry.at = made(entry.node);
     entry.parts = [];
+    // Read before it was set: no statement made it; under it, the statement that set it later in the run.
+    if (entry.early) {
+      const later = laterOf(entry.at);
+      entry.text = `<span class="edge">${escape(readBeforeSet(entry.at, entry.node.value))}${later && done.has(keyOf(later)) ? " (above)" : ""}</span>`;
+      entry.into.push(entry);
+      if (later) queue.push({ name: entry.name, node: later, into: entry.parts });
+      continue;
+    }
     const inner = [];
     entry.text = stepText(entry.at, hasValues, inner, num);
     entry.into.push(entry);
     inner.forEach(item => queue.push({ ...item, into: entry.parts }));
   }
   const list = entries => !entries.length ? "" : `<ul class="expression-decode">${entries.map(entry => {
-    const line = `<code>${named(entry.name, entry.node.value, hasValues, entry.at, num.mark(entry.name, entry.node, entry.at))} ${equals(entry.at)} ${entry.text}</code>`;
+    const name = entry.early && entry.reader ? named(entry.name, entry.node.value, hasValues, readHere(entry.reader), num.mark(entry.name, entry.node, entry.reader), entry.at)
+      : named(entry.name, entry.node.value, hasValues, entry.at, num.mark(entry.name, entry.node, entry.reader || entry.at));
+    const line = entry.early ? `<code>${name}</code> ${entry.text}` : `<code>${name} ${equals(entry.at)} ${entry.text}</code>`;
     return entry.parts.length ? `<li class="more"><details><summary>${line}</summary>${list(entry.parts)}</details></li>` : `<li>${line}</li>`;
   }).join("")}</ul>`;
   return list(roots);
@@ -109715,7 +109852,9 @@ function inlineText(node, hasValues, num, names = [], seen = new Set(), written 
     const child = readIn(at, piece.chain);
     if (!child || made(child).outside || !made(child).rhs || written.has(keyOf(child))) {
       if (child && !made(child).outside && compound(child)) names.push({ name: piece.chain, node: child });
-      return named(piece.chain, child && child.value, hasValues, child && made(child), num.mark(piece.chain, child, at));
+      const soon = early(piece, child);
+      if (soon) names.push({ name: piece.chain, node: child, early: true, reader: at });
+      return named(piece.chain, child && child.value, hasValues, soon ? readHere(at) : child && made(child), num.mark(piece.chain, child, at), soon ? made(child) : null);
     }
     const inner = inlineText(child, hasValues, num, names, path, written);
     return plainText(inner).includes(" ") ? "( " + inner + " )" : inner;
@@ -109740,7 +109879,10 @@ function expressionPane(tree, hasValues = true) {
   // The formula is the last step alone; what its computed names stand for is opened under it, level by level.
   // What the run writes, by name, for readBeforeSet: the first stop of each.
   writtenLater = new Map();
-  changes.forEach(node => { const key = upper(node.of); if (!writtenLater.has(key) || writtenLater.get(key) > node.stop) writtenLater.set(key, node.stop); });
+  // Only a write of a value counts: a structure filled with the field empty does not set it.
+  changes.filter(node => !isEmpty(node.value)).forEach(node => [upper(node.of), tail(node.of) ? "~" + tail(node.of) : ""].filter(Boolean).forEach(key => {
+    if (!writtenLater.has(key) || writtenLater.get(key).stop > node.stop) writtenLater.set(key, node);
+  }));
   const num = numbering(), names = [], head = named(tree.of, tree.value, hasValues, tree, num.mark(tree.of, tree));
   const top = stepText(tree, hasValues, names, num), productNames = [], product = productForm(tree, hasValues, num, productNames);
   const decoded = decoding(names, hasValues, new Set([keyOf(tree)]), num);
