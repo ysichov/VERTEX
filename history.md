@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-11-01 — VS Code: original provider token counters
+
+- AI session logs retain original response usage metadata separately from normalized assistant totals, including Claude Code model responses and CLI-run aggregates.
+
 ## 2026-11-01 — 0.9.52: Diagram name
 
 - Clicking a class or routine in the flow opens its code at once; its declared variables load afterwards.

@@ -67,6 +67,8 @@ async function ask(options) {
       system: options.instructions, messages, tools: apiTools });
     let answer;
     try { answer = JSON.parse(response.text); } catch (_) { answer = null; }
+    if (answer && options.onProviderResponse) options.onProviderResponse({
+      provider: "anthropic-api", scope: "model_response", response: answer });
     if (response.status !== 200 || !answer) {
       throw new Error("Anthropic API returned " + response.status + ": "
         + (answer && answer.error && answer.error.message || response.text.substring(0, 500)));

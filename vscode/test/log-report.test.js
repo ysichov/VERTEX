@@ -88,3 +88,16 @@ test("clear selected conversations deletes only known logs and prevents pending 
     assert.ok(fs.existsSync(recording));
   } finally { logger.reset(); fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test("provider evidence is visible without doubling session usage", () => {
+  const records = [
+    { type: "user", message: { content: "Question" } },
+    { type: "vertex_provider_response", provider: "claude", scope: "cli_run", response: { usage: { input_tokens: 2 } } },
+    { type: "assistant", message: { id: "one", usage: { input_tokens: 2 }, content: [] } }
+  ];
+  const session = report.parseSession(records.map(record => JSON.stringify({ timestamp: "2026-11-01T15:04:45Z", ...record })).join("\n"), "claude_20261101_170445.jsonl");
+  assert.equal(session.usage.input, 2);
+  assert.equal(session.prompts[0].details[0].type, "Provider usage (cli_run)");
+  assert.match(session.prompts[0].details[0].text, /input_tokens/);
+});

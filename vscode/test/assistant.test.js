@@ -334,3 +334,20 @@ test("Claude Code's StructuredOutput call streams as the answer, not as a tool i
   await assistant.ask(common(spawn, "claude", { onProgress: update => updates.push(update) }));
   assert.deepEqual(updates, [{ answer: "Five " }, { answer: "Five runs" }]);
 });
+
+
+test("Claude reports original model usage and CLI totals separately", async () => {
+  const events = [];
+  const usage = { input_tokens: 2, cache_creation_input_tokens: 123, output_tokens: 8 };
+  const modelUsage = { opus: { inputTokens: 2, outputTokens: 8, cacheCreationInputTokens: 123 } };
+  const spawn = spawner(call => {
+    const send = event => call.child.stdout.emit("data", JSON.stringify(event) + "\n");
+    send({ type: "assistant", message: { id: "raw-message", model: "opus", usage } });
+    send({ type: "result", subtype: "success", structured_output: PLAN, usage, modelUsage, num_turns: 3 });
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(spawn, "claude", { onProgress() {}, onProviderResponse: event => events.push(event) }));
+  assert.deepEqual(events.map(event => event.scope), ["model_response", "cli_run"]);
+  assert.deepEqual(events[0].response.usage, usage);
+  assert.deepEqual(events[1].response.modelUsage, modelUsage);
+});

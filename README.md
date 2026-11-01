@@ -440,3 +440,5 @@ The direct SNC transport uses fr0ster's [@mcp-abap-adt/connection](https://githu
 What is still missing, and what has to come out before it ships: [Next.md](Next.md).
 
 For feature instructions, see [VS Code documentation](vscode/README.md) and [Eclipse documentation](eclipse/README.md). For changes between releases, see [history.md](history.md).
+
+With a VS Code AI log folder configured, `vertex_provider_response` JSONL records retain original provider `usage` fields, including nested token details. Claude Code also retains per-model `modelUsage`, reported cost and turn count in a separate `cli_run` record; streamed assistant messages use `model_response`. Direct Anthropic and compatible APIs retain metadata per response. These diagnostic records do not contribute again to session totals. Answer bodies, credentials and HTTP headers are not included in these metadata records.

@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-11-01 — Provider usage evidence
+
+VS Code writes vertex_provider_response records before usage normalization: original usage and nested cache details, Claude Code modelUsage, cost and turn count. Streamed Claude assistant messages and CLI aggregates have distinct scopes; direct Anthropic and compatible APIs report each response. Diagnostic records are not assistant entries, avoiding duplicate usage totals. Response content and credentials are excluded. Current version retained. Original metadata is expandable as Provider usage in the session report. Validation: 64 focused tests pass; universal VSIX 0.9.52 rebuilt and passed the package verifier.
+
 ## 2026-11-01 — Formula and code lines in the assistant's context
 
 The user asked for the full formula in the debugger context, with values, in both Expression readings, and noted the steps carried no statement. `debugContext()` (both copies of `visual-debug.html`) now has `formula`: the Expression pane's text as drawn - the reading in force (analysis or recorded), whole and Optimized (the page holds both, its CSS shows one), the stop its values are of. Each step of `recorded.steps` carries `code`, the source line at that stop when the window has the source (Formula reads every step's source), at most 160 characters; a statement over several lines gives its first. Derivation is not sent: Expression writes the same derivation out. The test for the chat context got the new names. Suite: 1085 pass, the same 6 fail. Not tried with the assistant. VSIX 0.9.52 rebuilt.

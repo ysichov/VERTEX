@@ -54,6 +54,11 @@ function parseSession(text, file) {
       session.end = session.end === null ? time : Math.max(session.end, time);
     }
     const content = record.message?.content;
+    if (record.type === "vertex_provider_response") {
+      if (current) current.details.push({ type: "Provider usage (" + record.scope + ")",
+        text: prettyJson({ provider: record.provider, response: record.response }) });
+      continue;
+    }
     if (record.type === "vertex_request") {
       if (current && record.request) {
         current.details.push({ type: "VERTEX instructions", text: String(record.request.instructions || "") });

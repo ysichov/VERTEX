@@ -153,3 +153,23 @@ test('a review block in the context is logged as a reference to its part, not as
   assert.match(safe, /not logged; open the referenced object/);
   assert.ok(objects.some(o => o.object_name === 'Z_TR_TEXT_TRANSFER' && o.object_type === 'PROG' && o.part && o.part.type === 'REPS'));
 });
+
+
+test("provider usage is preserved verbatim without creating another assistant record", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-usage-"));
+  try {
+    const log = sessionLog.create(root, "claude", "usage", {});
+    const usage = { input_tokens: 2, cache_creation: { ephemeral_1h_input_tokens: 123 }, output_tokens: 8 };
+    const modelUsage = { opus: { inputTokens: 2, cacheReadInputTokens: 456, costUSD: 0.1 } };
+    log.providerResponse({ provider: "claude", scope: "cli_run", response: {
+      usage, modelUsage, num_turns: 7, total_cost_usd: 0.1, result: "PRIVATE ANSWER", apiKey: "SECRET" } });
+    const raw = fs.readFileSync(log.file, "utf8");
+    const record = JSON.parse(raw.trim());
+    assert.equal(record.type, "vertex_provider_response");
+    assert.equal(record.scope, "cli_run");
+    assert.deepEqual(record.response.usage, usage);
+    assert.deepEqual(record.response.modelUsage, modelUsage);
+    assert.equal(record.response.num_turns, 7);
+    assert.doesNotMatch(raw, /PRIVATE ANSWER|SECRET/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

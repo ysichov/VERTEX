@@ -76,6 +76,7 @@ async function ask(options) {
     const response = await request(id, options.apiKey, "/chat/completions", {
       model: options.model, messages, tools, stream: false
     });
+    if (options.onProviderResponse) options.onProviderResponse({ provider: id, scope: "model_response", response });
     let roundUsage = null;
     if (response.usage) {
       const raw = response.usage;

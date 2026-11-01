@@ -259,6 +259,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         onProgress: typeof options.onProgress === "function"
           ? update => { if (!superseded()) options.onProgress(update); } : undefined,
         onModelCall,
+        onProviderResponse: event => { if (log) log.providerResponse(event); },
         personalInstructions: config.get("personalInstructions", false),
         extensionPath: extensionPath(vscode, id),
         executable: await assistantExecutable(vscode, id),
