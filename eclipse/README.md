@@ -42,7 +42,7 @@ the line at the cursor runs inside its METHOD or FORM: enclosing branches, earli
 be false, CHECKs, and earlier branches that must not be taken because they leave the routine. It reads
 the editor's text as it stands, saved or not, and asks nothing of SAP. While the window is open, a
 click on another line of that editor builds that line's path in it; a line outside a METHOD or FORM
-leaves the last path shown and says why. The code is coloured as in the Logic view's Code. A line number
+leaves the last path shown and says why. The code is coloured as in the Diagram's Code. A line number
 in the window shows the line in the editor.
 
 **Value sources** colours each variable read in the conditions and puts the statement that gives it
@@ -77,7 +77,7 @@ on the one you pick. Recorded diagram and metrics context opens in the window. *
 conversations** deletes their log files after asking. Recorded transpiler runs and SAP debug sessions
 open in VS Code only.
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
-Opening VERTEX Tools from the VERTEX submenu of an ADT class or program editor selects that object and follows the editor's cursor. A method in a UML diagram opens its class at that method; a plain click reuses the editor the previous plain click opened (closing it unless it holds unsaved changes, and never one you had open already), Ctrl+click opens the class in a tab of its own. Opened from Project Explorer or by **Window → Show View → VERTEX → VERTEX Tools**, Tools shows the object type and name fields - from Show View filled with the active editor's object - - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Logic view takes its method. VERTEX Tools, the assistant and the VERTEX functions open docked right of the editors, half the width, all in one stack - the editor and VERTEX side by side, nothing covering the screen. A window already open is only brought to the front, wherever you moved or dragged it. Opening it also reveals hidden containing layout areas in the current perspective.
+Opening VERTEX Tools from the VERTEX submenu of an ADT class or program editor selects that object and follows the editor's cursor. A method in a UML diagram opens its class at that method; a plain click reuses the editor the previous plain click opened (closing it unless it holds unsaved changes, and never one you had open already), Ctrl+click opens the class in a tab of its own. Opened from Project Explorer or by **Window → Show View → VERTEX → VERTEX Tools**, Tools shows the object type and name fields - from Show View filled with the active editor's object - - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Diagram takes its method. VERTEX Tools, the assistant and the VERTEX functions open docked right of the editors, half the width, all in one stack - the editor and VERTEX side by side, nothing covering the screen. A window already open is only brought to the front, wherever you moved or dragged it. Opening it also reveals hidden containing layout areas in the current perspective.
 
 ## Versions and code review
 
@@ -226,7 +226,7 @@ run is one - and redraws it each time, whatever VERTEX hides.
   marks the ones that stop wrote.
 - **Visual** (off by default) draws the window at every step of a run. Off, the window is drawn when
   the run stops, and Eclipse's own Debug, Variables and Expressions windows, if open, are hidden for
-  the run and come back after it - they would otherwise answer every step too. The run's speed shows
+  the run and come back after it - they would otherwise answer every step too. Visual can be switched during a run: it applies from the next step. The run's speed shows
   above the player.
 - Closing the window while the program stands stopped asks whether to end the program, leave it
   stopped in ADT, or keep the window; meanwhile its tab shows a `*`.

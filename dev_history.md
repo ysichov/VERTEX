@@ -1,5 +1,70 @@
 # Development history
 
+## 2026-11-01 — Formula and code lines in the assistant's context
+
+The user asked for the full formula in the debugger context, with values, in both Expression readings, and noted the steps carried no statement. `debugContext()` (both copies of `visual-debug.html`) now has `formula`: the Expression pane's text as drawn - the reading in force (analysis or recorded), whole and Optimized (the page holds both, its CSS shows one), the stop its values are of. Each step of `recorded.steps` carries `code`, the source line at that stop when the window has the source (Formula reads every step's source), at most 160 characters; a statement over several lines gives its first. Derivation is not sent: Expression writes the same derivation out. The test for the chat context got the new names. Suite: 1085 pass, the same 6 fail. Not tried with the assistant. VSIX 0.9.52 rebuilt.
+
+## 2026-11-01 — The assistant reads the SAP recording, not the transpiler
+
+The user asked to find the bug from the debug history of a recorded SAP session (173 steps); the assistant called find_abap_transpiler_stops and ran the transpiler three times (three runs in transpiler-runs at 16:37). The prompt itself is not logged. `TRANSPILER_AGENT_INSTRUCTIONS` told it to run the transpiler first when no mode was named and that an answer about a cause had to call the transpiler history tools; there is no tool for a SAP recording, whose record comes in the debugger context. The instructions now say: with a SAP recording in the context and a question about that run, answer from it - stops, value_history, suspects - and do not call the transpiler tools for it, unless the user asks or the question needs a case the recording lacks; the must-call rule is for transpiler runs. `debugFlowSection` (chat.js) opens with a sentence naming the session, its step count and the red values. `MAX_CONTEXT` in `visual-debug.html` is 1000 (was 150), so a run of 173 steps is sent whole. Suite: 1085 pass, the same 6 fail. Not tried with the assistant. VSIX 0.9.52 rebuilt.
+
+## 2026-11-01 — Visual switched during a run
+
+`runVisual` read Visual once, at the start. The user asked to switch it while the run goes: `seen()` reads it at every stop, draws the stop when it is on, and turns the host's quieting (`sdeQuietDebugViews`, `s.hush`) on or off when it changes; the run's end releases it as before. Both copies of `visual-debug.html`; vscode/README.md and eclipse/README.md say so. Suite: 1085 pass, the same 6 fail. Not tried against SAP. VSIX 0.9.52 rebuilt.
+
+## 2026-11-01 — Red values go to the assistant as suspects
+
+The user's screenshot: the formula showed cs_context-tax_amount (0) red, read by the discount before the tax was set, and the assistant did not name it as the bug until told. `debugContext()` in `visual-debug.html` (both copies) now carries `suspects`: every `.rf-empty` (record-formula: read before it was set, or empty from a SELECT) and `.vx-empty` (the record holds no value or only an initial one) in the Formula and Expression panes, with its name, value and the reason its tooltip gives, and a note to check each first. `annotateValues` publishes the context again after it marks values. Tests: a new one for `redSuspects`; two that load parts of the page got the new names. Suite: 1085 pass, the same 6 fail. Not tried with the assistant. VSIX 0.9.52 rebuilt.
+
+## 2026-11-01 — Visual off holds the editor still
+
+The user saw the code move during a Continue run with Visual off and the stack not follow. In VS Code, `code-workbench.js` followed every SAP stop in the editor (`attachDebugger`'s watch), whatever Visual said; only Eclipse had `sdeQuietDebugViews`. The VS Code bridge (`tools-window.js`) now offers it, the panel's message `quietDebug` sets `quietFollow` in `code-workbench.js`, and while it is on a stop is not followed; when it goes off the editor shows the stop the run ended at. In `runVisual` the host quieting had shared `s.quiet` with "ended by Stop or Terminate", so a quiet run skipped the final `refresh()` (stack and variables of the last stop); it is now `s.hush` (both copies of `visual-debug.html`, so Eclipse gains the refresh too). That the stack updates at every step with Visual on was not reproduced: `apply()` redraws it at each stop; not run against SAP. Suite: 1084 pass, the same 6 fail. VSIX 0.9.52 rebuilt.
+
+## 2026-11-01 — One button style
+
+The user found three button styles in the debugger (Run in SAP's fill, the secondary header buttons, the plain chips) and the step buttons barely lit; one style for all buttons, toggles included, was asked. `vertex-controls.css` now defines the plain button (chip of the input background, the Smart Debugger's look) and its hover, the hover with `!important` so it wins over any view's class or id rule, toggles and segments included; a disabled button stays unlit. `visual-debug.html` (both copies) drops `#run`'s fill and hover, the header's secondary-button block and the `bpact` colours (its margin stays). The test that pinned Run in SAP's blue now checks the shared look. Other views' own class or id rules for a button's resting look were not reviewed one by one; their hover is the shared one. Suite: 1084 pass, the same 6 fail. Not seen in a live theme. VSIX 0.9.52 rebuilt.
+
+## 2026-11-01 — Depth as a number field
+
+At the user's request the Depth control of the shared flow view (`vertex-flow.js`, `#bse-depth`) is a number field like the Calls diagram's Depth instead of a range slider. Its min and max are those the slider had (1 or 0 on the derivation axis, up to the deepest level of the flow); a typed value outside them is taken back to the edge, an empty field changes nothing. README.md and vscode/README.md describe the field. Suite: 1084 pass, the same 6 fail. Not seen in a live view. VSIX 0.9.52 rebuilt.
+
+## 2026-11-01 — One hover for every button
+
+At the user's request every button highlights on hover as Run in SAP does. The rule is in the shared `vertex-controls.css` (copied to `vscode/resources/`), which both hosts inject after each page's own styles: a background of the theme's focus colour mixed 22% into the editor background, a shadow of that colour, the editor foreground. A view's rule for one button by id (Run in SAP and the debugger's step buttons) keeps its own hover. Not seen in a live theme: the preview pane would not open the local test page. Suite unchanged (1084 pass, the same 6 fail). VSIX 0.9.52 rebuilt; Eclipse site not built.
+
+## 2026-11-01 — Full / BSE and Depth fit the diagram
+
+The user reported that the Full / BSE switch left the diagram at the old scale. A reading or direction change clears `renderedOnce` and `keepView` so the next drawing is fitted; the scope switch in `vertex-flow.js` did not, and now does. The user then reported the same for Depth: `setDepth`, which the depth control calls, clears them too (not `applyDepth`, which other redraws call). Suite: 1084 pass, the same 6 fail. Not seen in a live view. VSIX 0.9.52 rebuilt.
+
+## 2026-11-01 — Breakpoint actions as buttons
+
+The user's screenshot showed a breakpoint's Analyze flow path and Where used as dotted links running into each other and into the name. They are now `bpact` buttons with VS Code's secondary button colours, border and spacing (both copies of `visual-debug.html`); the breakpoint's name stays a link. Not seen in a live VS Code theme: the preview pane could not render the local page. VSIX 0.9.52 rebuilt.
+
+## 2026-11-01 — No ENDMETHOD or ENDSELECT in the flow
+
+At the user's request the static flow builder (`vertex-flow-graph.js`, shared by the debugger's flow, Value Origin and Eclipse) no longer makes a node for ENDMETHOD, ENDFORM, ENDFUNCTION, ENDMODULE or ENDSELECT in Statements and Logic, unless a checked breakpoint stands on it; the row still goes to the execution edges. The recorded run already hid them. ENDIF and the other block ends stay. Test added; full VS Code suite 1083 pass, the same 6 fail. VSIX 0.9.52 rebuilt; Eclipse site not built.
+
+## 2026-11-01 — SELECT of the slice is green in Full flow
+
+The user's screenshot showed the SELECTs of GET_SHIPMENT and CALCULATE_BASE blue in Statements although their INTO targets feed ls_result-amount. The backward slice did reach them, as nodes of kind `select`, but `value-origin-model.js` counted only `calculation` nodes when marking a flow point or a full-flow statement as the slice's. Both checks now count `select`, and a statement over several lines is matched on any of its lines. The next screenshot still showed CALCULATE_BASE's SELECT ... INTO @DATA(ls_tariff) ... ENDSELECT blue. The flow steps (named `aceFlowSteps`, built by the abaplint parser in `value-origin-linter.js`) took a SELECT's calculated values from abaplint's Target nodes, which miss the inline @DATA(x), and its composed values from every name in it, columns and tables included. At the user's direction a SELECT's flow step now calculates what its INTO names (@x, @DATA(x), TABLE, CORRESPONDING FIELDS OF, a parenthesised list) and is composed of its host variables only; and a field read (ls_tariff-price_per_unit) links to the step that calculates its whole structure. On the debugger_tests sources every SELECT of the formula is green, none was before. Test added on the demo fixture. Full VS Code suite: 1081 pass, the same 6 fail as before. VSIX 0.9.52 rebuilt; Eclipse site not built.
+
+## 2026-11-01 — Flow link opens code first; one program box in Classes
+
+The user's screenshot showed a click on a class in the debugger flow waiting on "Analyzing variable declarations." before the code opened: `openSourceAt` asked for the variables before the open, and the host answered them first. The open is now asked first and the variables after it answers (both copies of `visual-debug.html`). A second screenshot showed ZVERTEX_DEBUG_LAB twice in Classes: the root node and a class node for the program's own START-OF-SELECTION. In Classes the program's name now maps to the root node and its entry routines stand at depth 0, so the classes they call are one call below it. Three `visual-debug-ui` assertions that encoded the duplicate box were updated. Full VS Code suite: 1080 pass, 6 fail, the same 6 that fail without the change. VSIX 0.9.52 rebuilt; Eclipse site not built.
+
+## 2026-11-01 — Return Code Flow Analysis
+
+At the user’s request, restored Code Flow Analysis on the VS Code debugger pane button beside Variables. Rebuilt the universal 0.9.52 VSIX, passed the package verifier and checked the label in its archived page.
+
+## 2026-11-01 — Restore debugger Diagram button
+
+Corrected the missed VS Code debugger pane button next to Variables: Code Flow Analysis is now Diagram. The Eclipse source already used Diagram. Rebuilt the universal 0.9.52 VSIX; the package verifier passed and the archived debugger page was checked for Variables | Diagram.
+
+## 2026-11-01 — Restore Diagram label
+
+Restored Diagram in the shared method-view labels, VS Code command and context labels, debugger frame title and current user documentation. Internal scheme routes and view controls are unchanged. Validation: 27 focused tests passed; the universal 0.9.52 VSIX was rebuilt and passed the package verifier. Eclipse sources share the restored label; its update site was not rebuilt in this landing.
+
+
 ## 2026-10-31 — The chain cut at a modifier that changed nothing; tax read before it was set; Analyze on Follow
 
 The user, testing in VS Code, saw tax_amount₁ (0) without an explanation and the chain stop at amount₁ = 10212.35.

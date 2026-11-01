@@ -92,7 +92,7 @@ test("in the BSE scope a kept block is drawn whole: its END statement comes with
   assert.ok(script.includes("if(node.closes&&keep.has(node.closes)&&withinDepth(node))keep.add(node.id);"), "the BSE scope keeps it with its block");
 });
 
-test("the BSE scope has no Logic reading: Logic is hidden there and a Logic view turns to Statements", () => {
+test("the BSE scope has no Logic reading: Logic is hidden there and a Diagram turns to Statements", () => {
   const script = require("node:fs").readFileSync(require("node:path").resolve(__dirname, "../../org.vertex.abap.ui/resources/vertex-flow.js"), "utf8");
   assert.ok(script.includes("logic.hidden=flowBseOnly;"), "hidden in BSE, back with Full");
   assert.ok(script.includes("if(flowBseOnly&&graph.flowReadings.active==='logic')flowReading.querySelector('[data-flow-reading=\"steps\"]').click();"), "Logic turns to Statements");

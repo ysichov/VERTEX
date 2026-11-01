@@ -65,6 +65,31 @@ function parsedTokens(text) {
   return out;
 }
 
+// A SELECT calculates what its INTO names - @x, @DATA(x), TABLE @x, CORRESPONDING FIELDS OF @x, (@a, @DATA(b)) - and is
+// composed of its host variables (@x elsewhere in it): the columns and tables it names are the database's, not variables.
+function selectFlow(tokens) {
+  const V = i => String(tokens[i]?.value || '').toUpperCase(), calculated = [], composed = [];
+  const path = i => { let name = tokens[i].value, j = i + 1;
+    while (['-', '~', '->'].includes(tokens[j]?.value) && tokens[j + 1]) { name += tokens[j].value + tokens[j + 1].value; j += 2; }
+    return { name: name.toUpperCase(), end: j }; };
+  const into = tokens.findIndex(t => String(t.value).toUpperCase() === 'INTO');
+  let i = 0;
+  while (i < tokens.length) {
+    if (i === into) {
+      let j = i + 1;
+      while (j < tokens.length && !/^(UP|WHERE|ORDER|GROUP|HAVING|FROM|FOR|BYPASSING|CONNECTION|PACKAGE|APPENDING|UNION)$/.test(V(j))) {
+        if (V(j) === 'DATA' && tokens[j + 1]?.value === '(') { calculated.push(V(j + 2)); j += 4; continue; }
+        if (/^[A-Z_<][\w<>]*$/.test(V(j)) && !/^(TABLE|CORRESPONDING|FIELDS|OF|NEW)$/.test(V(j))) { const p = path(j); calculated.push(p.name); j = p.end; continue; }
+        j++;
+      }
+      i = j; continue;
+    }
+    if (tokens[i].value === '@' && tokens[i + 1] && /^[A-Za-z_<]/.test(tokens[i + 1].value)) { const p = path(i + 1); composed.push(p.name); i = p.end; continue; }
+    i++;
+  }
+  return { calculated, composed };
+}
+
 function parseSource(source) {
   const lint = require('@abaplint/core');
   const { assignment, variablePaths, buildIndex } = require('./value-origin-model');
@@ -118,11 +143,11 @@ function parseSource(source) {
   const indexed = { ...source, aceStatements: statements, aceFlowSteps: [], lexColors: colours(lint, file) };
   const index = buildIndex([indexed]);
   for (const statement of statements) {
-    const a = assignment(statement.tokens);
-    const names = a ? [a.name] : statement.localTargets.map(ts => ts.map(t => t.value).join(''))
+    const a = assignment(statement.tokens), sql = String(statement.tokens[0].value).toUpperCase() === 'SELECT' ? selectFlow(statement.tokens) : null;
+    const names = a ? [a.name] : sql ? sql.calculated : statement.localTargets.map(ts => ts.map(t => t.value).join(''))
       .filter(name => /^(?:[A-Za-z_][\w]*|<\w+>)(?:-[\w]+)*$/.test(name)).map(name => name.toUpperCase());
     const operands = a ? a.expression : statement.tokens;
-    const dependencies = [...new Set(variablePaths(operands)
+    const dependencies = sql ? [...new Set(sql.composed)] : [...new Set(variablePaths(operands)
       .filter(p => !statement.localParameterOffsets.includes(operands[p.from].offset)).map(p => p.name))];
     const procedure = index.procedures.find(p => p.body.some(s => s.aceIndex === statement.aceIndex));
     indexed.aceFlowSteps.push({ statement_index: statement.aceIndex, line: statement.line,

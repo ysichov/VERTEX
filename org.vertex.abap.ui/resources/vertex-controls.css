@@ -70,3 +70,30 @@
 /* Geometry only; appearance stays in the canonical toggle rules. */
 .vertex-icon-button { display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; width:28px; height:26px; padding:2px 5px; vertical-align:middle; }
 .vertex-icon-button svg { display:block; flex:none; }
+
+/* One button for all of VERTEX, in every view of both hosts: a chip of the input background, and under the pointer a
+ * tint of the theme's focus colour with a soft shadow beneath. This file is injected after each page's own styles, so
+ * the plain look overrides a page's own `button` rule; the hover is the same for every button, whatever class or id a
+ * view gives it. A switch that is on (.on, .active) keeps its lit lower edge; a disabled button does not light up. */
+button {
+  cursor: pointer;
+  padding: 1px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--vscode-input-background, Field);
+  color: var(--vscode-descriptionForeground, GrayText);
+  white-space: nowrap;
+  transition: background-color .12s, box-shadow .12s, color .12s;
+}
+
+button:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--vscode-focusBorder, #0a66c2) 22%, var(--vscode-editor-background, Canvas)) !important;
+  box-shadow: 0 3px 8px -3px var(--vscode-focusBorder, #0a66c2) !important;
+  color: var(--vscode-editor-foreground, CanvasText) !important;
+}
+
+button:disabled {
+  opacity: .45;
+  cursor: default;
+}

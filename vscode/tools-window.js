@@ -33,6 +33,7 @@ function debugHtml(initial, generation) {
     window.sdeSource=(name,type)=>host.postMessage({call:"source",args:[name,type]});
     window.sdeAsset=name=>host.postMessage({call:"asset",args:[name]});
     window.sdeReveal=frame=>host.postMessage({call:"reveal",args:[JSON.stringify(frame||{})]});
+    window.sdeQuietDebugViews=on=>host.postMessage({call:"quietDebug",args:[!!on]});
     window.sdeBackward=point=>host.postMessage({call:"backward",args:[JSON.stringify(point||{})]});
     window.sdeClear=()=>host.postMessage({call:"clear"});
     document.addEventListener("DOMContentLoaded",()=>{

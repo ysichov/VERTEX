@@ -615,3 +615,27 @@ test('a SELECT is shown by the field that concerns the value, its table and its 
   assert.equal(selectOf("SELECT SINGLE action_value FROM zlog_rule WHERE action = 'TAX' INTO @DATA(lv_percent).", 'lv_percent'), "SELECT action_value FROM zlog_rule WHERE action = 'TAX'.", 'one field fetched is the value');
   assert.equal(selectOf('x = 1.', 'x'), null);
 });
+
+test('a SELECT whose INTO feeds the value is a statement of the slice in Full flow', () => {
+  const sources = require('./fixtures/value-origin-demo.json').map(source => ({ ...source, aceStatements: parsedStatements(source) }));
+  const g = analyze(sources, { source: 'zvertex_debug_lab.prog.abap', line: 16, variable: 'ls_result-amount' });
+  const select = g.fullFlow.find(row => row.source === 'zcl_calc_data_provider.clas.abap' && /^SELECT/i.test(row.text));
+  assert.ok(select && select.included, 'the shipment read is green');
+});
+
+test('a SELECT ... ENDSELECT whose INTO @DATA(x) feeds the value is green, though the parser flow steps do not name x', () => {
+  const text = ['REPORT z.', 'DATA ls_ctx TYPE zs.', 'SELECT price FROM ztariff INTO @DATA(ls_tariff) UP TO 1 ROWS.', 'ENDSELECT.',
+    'ls_ctx-amount = ls_tariff-price * 2.', 'WRITE ls_ctx-amount.'].join('\n');
+  const g = analyze([{ id: 'z', name: 'Z', objectName: 'Z', ...parseSource({ objectType: 'PROG', id: 'z', name: 'Z', objectName: 'Z', text }).source }],
+    { source: 'z', line: 6, variable: 'ls_ctx-amount' });
+  assert.ok(g.fullFlow.find(row => /^SELECT/i.test(row.text)).included);
+});
+
+test('a SELECT calculates its INTO targets and is composed of its host variables', () => {
+  const text = ['REPORT z.', 'DATA ls_x TYPE zs. DATA lt TYPE ztt.', 'SELECT price, cur FROM zt WHERE a = @ls_x-a INTO @DATA(ls_tariff) UP TO 1 ROWS.', 'ENDSELECT.',
+    'SELECT SINGLE a FROM zt INTO CORRESPONDING FIELDS OF @ls_x.', 'SELECT a, b FROM zt INTO (@DATA(lv_a), @DATA(lv_b)).', 'ENDSELECT.', 'SELECT * FROM zt INTO TABLE @lt WHERE a = @ls_x-b.'].join('\n');
+  const s = parseSource({ objectType: 'PROG', id: 'z', name: 'Z', objectName: 'Z', text }).source;
+  const steps = s.aceStatements.filter(st => /^SELECT/i.test(st.text)).map(st => s.aceFlowSteps.find(f => f.statement_index === st.aceIndex))
+    .map(f => [f.calculated.map(c => c.name), f.composed.map(c => c.name)]);
+  assert.deepEqual(steps, [[['LS_TARIFF'], ['LS_X-A']], [['LS_X'], []], [['LV_A', 'LV_B'], []], [['LT'], ['LS_X-B']]]);
+});

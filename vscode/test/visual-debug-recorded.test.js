@@ -399,7 +399,7 @@ test("a name of the analysis's formula the record gives no value for, or only an
   const names = [element("WEIGHT_KG"), element("TAX_RATE"), element("PRICE")];
   const box = { querySelectorAll: selector => selector === "[data-full]" ? names : [] };
   const context = { $: id => id === "bse-workspace" ? box : { classList: { contains: () => false } }, flow: { timeline: [{}] }, replayAt: null, chosenValue: null,
-    recordSteps: () => [{ location: "", values: { WEIGHT_KG: "0", PRICE: "5.42" } }], drawFlowValueList() {}, valueObserver: { takeRecords() {} } };
+    recordSteps: () => [{ location: "", values: { WEIGHT_KG: "0", PRICE: "5.42" } }], drawFlowValueList() {}, publishDebugContext() {}, valueObserver: { takeRecords() {} } };
   vm.runInNewContext(html.slice(html.indexOf("function recordedValue(full,location,steps,upto){"), html.indexOf("/* The values followed, also at the left")) +
     html.slice(html.indexOf("function annotateValues(){"), html.indexOf("var annotating=false,annotateTimer=null;")), context);
   context.annotateValues();

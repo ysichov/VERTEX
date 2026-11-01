@@ -1449,12 +1449,22 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     if (!frame || !(frame.url || frame.program)) { return Promise.resolve(); }
     return followStoppedFrame({ stopped: { frames: [{ ...frame, current: true }] } });
   }
+  // While a run with Visual off steps, the editor does not follow each stop; it shows the one the run ends at.
+  let followQuiet = false;
+  function quietFollow(on) {
+    followQuiet = !!on;
+    if (followQuiet || !debuggerApi || typeof debuggerApi.picture !== 'function') return;
+    const picture = debuggerApi.picture();
+    showStoppedLine(picture);
+    if (picture.stopped) void followStoppedFrame(picture);
+  }
   function attachDebugger(api) {
     debuggerApi = api;
     if (typeof api.watch === 'function' && typeof api.picture === 'function') {
       context.subscriptions.push(api.watch(() => {
         const picture = api.picture();
         queueBreakpointSync();
+        if (followQuiet && picture.stopped) return;
         showStoppedLine(picture);
         if (picture.stopped) void followStoppedFrame(picture);
         else stopFollow++;
@@ -2720,7 +2730,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
         + (include === 'main' ? '' : '.' + include) + '.abap').toString();
     },
     sourceOf: async args => (await sourceDocument(await repository(), args)).document,
-    schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger, revealFrame, originPath, forgetOrigin: () => { lastOriginGraph = null; }, openToolSource, originPoints, originOpen, originVariables, documentObject,
+    schemas, onEvent: events.on, runUnitTests: unitTestsOf, runAtc: atcOf, attachDebugger, revealFrame, quietFollow, originPath, forgetOrigin: () => { lastOriginGraph = null; }, openToolSource, originPoints, originOpen, originVariables, documentObject,
     editorContext() {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !editor.document) { return null; }

@@ -31,6 +31,8 @@ function build(sf,mode){
   if(!entries.length)entries=order.filter(function(x){return !called[x];}).slice(0,1);
   if(!entries.length)entries=order.slice(0,1);
   var seen={},unit={},firstOf={},klassNode={},pairs={},stubs=[],routineFlows=[];
+  // Among classes the program under debug is its root node: its own events and routines are not drawn as a second box.
+  if(mode==="classes")klassNode[sf.name]=nodes[0];
   // A path ends at a statement that stands on a checked breakpoint (sf.stopAt): that statement is the last one drawn, and what it calls is not.
   function atEnd(w){return !!(sf.stopAt&&String(w.name).toUpperCase()===sf.stopAt.name&&w.line===sf.stopAt.line);}
   // A class stands at the depth of the call that first reached it, as a routine and a statement do: the depth control counts calls.
@@ -60,7 +62,7 @@ function build(sf,mode){
       var k=classNode(n.klass,first,depth);
       if(!seen[scope]){seen[scope]=true;
         if(parent.klass){var key=parent.klass+">"+n.klass;if(parent.klass!==n.klass&&!pairs[key]){pairs[key]=true;edges.push({from:klassNode[parent.klass].id,to:k.id,label:label});}}
-        else if(!pairs["root>"+n.klass]){pairs["root>"+n.klass]=true;edges.push({from:"bseroot",to:k.id,label:""});}
+        else if(n.klass!==sf.name&&!pairs["root>"+n.klass]){pairs["root>"+n.klass]=true;edges.push({from:"bseroot",to:k.id,label:""});}
         scopes[scope].forEach(function(w){if(stopped)return;if(atEnd(w)){stopped=true;return;}var callees=sites[w.name+":"+w.line]||[];
           callees.forEach(function(c){callee(c,{klass:n.klass},String(w.line),depth+1);});});}
       return;
@@ -86,10 +88,12 @@ function build(sf,mode){
       var closing=/^END(IF|CASE|LOOP|DO|WHILE|SELECT|TRY)$/.test(word),opened=null;if(closing){while(blocks.length&&blocks[blocks.length-1].branch)blocks.pop();opened=blocks.pop()||null;}
       var diagramRow=Object.assign({},w,{nodeId:null});diagramRows.push(diagramRow);
       if(stopped)return;
+      // The end of a routine and ENDSELECT only close what opened them: the frame and the SELECT already show where they end.
+      if(/^(ENDMETHOD|ENDFORM|ENDFUNCTION|ENDMODULE|ENDSELECT)$/.test(word)&&!atEnd(w))return;
       sequence.push(w);
       if(mode==='logic'){
         var rules=w.control||(control&&control.classifyStatement({text:w.text}));
-        if(!rules)throw new Error('Shared ABAP statement rules are required for Logic view.');
+        if(!rules)throw new Error('Shared ABAP statement rules are required for Diagram.');
         if(!rules.logic&&!(sites[w.name+":"+w.line]||[]).length&&!atEnd(w))return;
       }
       var branch=/^(WHEN|ELSE|ELSEIF)$/.test(word);
@@ -106,7 +110,8 @@ function build(sf,mode){
     });
     var execution=control.executionEdges(diagramRows);routineFlows.push({header:container.id,entry:execution.entry,edges:execution.edges});
   }
-  entries.forEach(function(x){emit(x,mode==="classes"?{}:{id:"bseroot"},"",1);});
+  // Among classes the program's own routines are its root, so what they call stands one call below it.
+  entries.forEach(function(x){emit(x,mode==="classes"?{}:{id:"bseroot"},"",mode==="classes"&&at(x).klass===sf.name?0:1);});
   var unreached=sf.stopAt?[]:order.filter(function(x){return !seen[x];}),said=[];
   var named=function(list){return list.slice(0,3).map(function(x){return x.replace("→","=>");}).join(", ")+(list.length>3?", …":"");};
   if(unreached.length)said.push("Not drawn: "+unreached.length+" routine"+(unreached.length===1?"":"s")+" of the flow that no call the analysis can follow reaches ("+named(unreached)+").");

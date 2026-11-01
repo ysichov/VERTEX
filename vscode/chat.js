@@ -116,8 +116,13 @@ async function enrichSelectedMethodContext(codeTools, state) {
 /* What VERTEX Smart Debugger shows, for the question: the record (what the program did) and the analysis's flow (what can happen),
    each said to be what it is. Nothing where the window has neither. */
 function debugFlowSection(context) {
-  if (!context || (!context.recorded && !context.analysis)) { return ""; }
-  return "\n\nVERTEX Smart Debugger (the debugger window's record and analysis; `recorded` is what the program actually did, `analysis` is what static analysis says can happen - never present the second as the first):\n"
+  if (!context || (!context.recorded && !context.analysis && !context.suspects)) { return ""; }
+  // A recorded SAP session is said first, in words: the assistant answers from it rather than running the transpiler.
+  const session = context.recorded && (context.session_id || context.saved_session?.session_id);
+  const said = session ? "\n\nA SAP debugger session is recorded and open in VERTEX Smart Debugger: session " + session + ", "
+    + context.recorded.stops + " recorded steps" + (context.suspects ? ", " + context.suspects.values.length + " values shown red" : "")
+    + ". A question about this run or its debug history is answered from this record; cite it as [session " + String(session).slice(0, 8) + " step <n>]." : "";
+  return said + "\n\nVERTEX Smart Debugger (the debugger window's record and analysis; `recorded` is what the program actually did, `analysis` is what static analysis says can happen - never present the second as the first):\n"
     + JSON.stringify(context);
 }
 

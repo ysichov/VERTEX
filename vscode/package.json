@@ -259,7 +259,7 @@
       },
       {
         "command": "vertex.tools.scheme",
-        "title": "VERTEX: Logic view"
+        "title": "VERTEX: Diagram"
       },
       {
         "command": "vertex.tools.calls",

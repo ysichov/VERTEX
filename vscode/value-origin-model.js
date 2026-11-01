@@ -805,7 +805,7 @@ function analyze(sources, target, options = {}) {
   // client only marks whether the already-built backward slice reached it.
   const flow = sources.flatMap(source => (source.aceFlowSteps || []).flatMap(step => (step.calculated || []).map(change => {
     const dependencies = (step.composed || []).map(dependency => String(dependency.name));
-    const included = nodes.some(node => node.source === source.id && node.line === change.line && node.kind === 'calculation');
+    const included = nodes.some(node => node.source === source.id && node.line === change.line && (node.kind === 'calculation' || node.kind === 'select'));
     const owner = U(change.class || source.aceOwner || source.objectName);
     const event = U(change.eventname);
     const statement = (source.aceStatements || []).find(item => item.line === change.line);
@@ -817,8 +817,9 @@ function analyze(sources, target, options = {}) {
   // A composed variable belongs to the calculation that produces it, not to
   // the initial selected value. Link every dependency to that calculation in
   // the same ACE execution scope; unresolved values remain terminal inputs.
+  // A whole structure calculated (SELECT ... INTO @DATA(ls_x)) is what any of its fields is read from: ls_x-price links to it.
   for (const point of flow) point.links = point.dependencies.map(name => {
-    const candidates = flow.filter(candidate => candidate.source === point.source && candidate.scope === point.scope && U(candidate.changed) === U(name));
+    const candidates = flow.filter(candidate => candidate.source === point.source && candidate.scope === point.scope && (U(candidate.changed) === U(name) || U(name).startsWith(U(candidate.changed) + '-')));
     candidates.sort((left, right) => Math.abs(left.line - point.line) - Math.abs(right.line - point.line));
     return { name, pointId: candidates[0]?.id || '' };
   });
@@ -856,8 +857,12 @@ function analyze(sources, target, options = {}) {
       index.procedures.find(item => item.source.id === source.id && item.name === 'GLOBAL');
     // A statement is the slice's where ACE's flow says so, or - with no ACE flow, as in a local analysis - where the
     // backward slice itself reached a calculation on its line.
-    const isBse = boundedFlow.some(point => point.source === source.id && point.line === statement.line && point.included)
-      || (!(source.aceFlowSteps || []).length && nodes.some(node => node.source === source.id && node.line === statement.line && node.kind === 'calculation'));
+    // A statement over several lines - SELECT ... INTO @DATA(x) - is reached on any of them: the slice names the line of its target.
+    const head = statement.tokens[0], tail = statement.tokens[statement.tokens.length - 1];
+    const lastLine = head && tail ? statement.line + (String(source.text || '').slice(head.offset, tail.endOffset).match(/\n/g) || []).length : statement.line;
+    const onStatement = line => line >= statement.line && line <= lastLine;
+    const isBse = boundedFlow.some(point => point.source === source.id && onStatement(point.line) && point.included)
+      || (!(source.aceFlowSteps || []).length && nodes.some(node => node.source === source.id && onStatement(node.line) && (node.kind === 'calculation' || node.kind === 'select')));
     return [{ id: source.id + ':full:' + statement.offset, source: source.id, line: statement.line, statementIndex,
       control: classification, text: statement.text, changed: statement.text, scope: ((procedure && procedure.name !== 'GLOBAL' && procedure.owner) || source.aceOwner || source.objectName || source.name) + '→' + (procedure && procedure.name !== 'GLOBAL' ? procedure.name : (event || 'START-OF-SELECTION')), included: isBse }];
   });

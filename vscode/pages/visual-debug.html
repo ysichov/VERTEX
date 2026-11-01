@@ -12,14 +12,6 @@ button{--accent:var(--vscode-focusBorder,#0a66c2);cursor:pointer;padding:1px 8px
 button:hover:not(:disabled){color:var(--vscode-editor-foreground,CanvasText)}
 button.on{color:var(--vscode-editor-foreground,CanvasText);border-bottom-color:var(--accent);box-shadow:0 3px 8px -3px var(--accent)}
 button:disabled{opacity:.45;cursor:default}
-/* The actions of the header - Exit program, Detach, Recompile, the SAP program's transpiler run and
-   Clear - are one kind of button: VS Code's secondary button. Run alone keeps its fill, as the panel's first action. */
-#terminate,#stop,#recompile,#sapTranspile,#clearpanel{padding:2px 10px;border:1px solid var(--vscode-button-border,var(--vscode-panel-border));
-  border-radius:5px;background:var(--vscode-button-secondaryBackground,var(--vscode-editorWidget-background));
-  color:var(--vscode-button-secondaryForeground,var(--vscode-editor-foreground))}
-#terminate:hover:not(:disabled),#stop:hover:not(:disabled),#recompile:hover:not(:disabled),
-#sapTranspile:hover:not(:disabled),#clearpanel:hover:not(:disabled):hover:not(:disabled){background:var(--vscode-button-secondaryHoverBackground,var(--vscode-list-hoverBackground));
-  color:var(--vscode-button-secondaryForeground,var(--vscode-editor-foreground))}
 #analysis-copy{position:absolute;right:44px;top:6px;width:28px;height:28px;padding:2px;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground,var(--vscode-editorWidget-background));color:var(--vscode-button-secondaryForeground,var(--vscode-editor-foreground))}header{position:relative;flex:none;padding:6px 80px 6px 8px;border-bottom:1px solid var(--vscode-panel-border,GrayText);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .grp{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
 .grp+.grp{padding-left:8px;border-left:1px solid var(--vscode-panel-border,GrayText)}
@@ -71,8 +63,6 @@ section h3 label{font-weight:400;display:flex;gap:3px;align-items:center}
    is cut with an ellipsis rather than run under them. */
 header .grp:has(#run){padding-right:170px;box-sizing:border-box;max-width:100%;min-width:0}
 #title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#run{background:color-mix(in srgb,var(--vscode-terminal-ansiBrightBlue,#75bfff) 22%,var(--vscode-editor-background,Canvas));transition:background .12s,color .12s,box-shadow .12s}
-#run:hover:not(:disabled){background:color-mix(in srgb,var(--vscode-terminal-ansiBrightBlue,#75bfff) 34%,var(--vscode-editor-background,Canvas));box-shadow:0 3px 8px -3px var(--accent)}
 svg.dbg{width:16px;height:16px;flex:none}
 #run svg.clock{width:15px;height:15px;flex:none}
 table.stack{width:100%}
@@ -94,6 +84,7 @@ body.no-value div[aria-label="FLOW scope"],body.no-value div[data-mode-toggle]{d
 button.x{background:transparent;border:0}
 .row .dim{color:var(--vscode-descriptionForeground,GrayText)}
 /* A place in the source, written as the link it behaves like. */
+.row button.bpact{margin-left:6px}
 .row button.link{padding:0;border:0;background:transparent;color:var(--vscode-textLink-foreground,LinkText);font:inherit;text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 /* SAP's whole dump page, over the window but not over the workbench: the
    reader keeps the stack and the source behind it and closes it with Esc. */
@@ -754,11 +745,11 @@ function drawBreakpoints(){
       var t=document.createElement("button");t.className='link';t.textContent=b.name+":"+b.line;t.title='Open source at line '+b.line;t.onclick=function(e){e.preventDefault();e.stopPropagation();navigate();};r.appendChild(t);
       var d=document.createElement("span");d.className="dim";d.textContent=b.mode+(b.condition?" · "+b.condition:"");r.appendChild(d);
       var path=bpPaths[b.id];
-      var a=document.createElement("button");a.className="link";a.textContent="Analyze flow path";
+      var a=document.createElement("button");a.className="bpact";a.textContent="Analyze flow path";
       a.title="The path of the chosen value from this point to the next checked one - what Value origin shows between two breakpoints";
       a.onclick=function(e){e.stopPropagation();analyzePath(b).catch(function(err){notice(err&&err.message||String(err));});};r.appendChild(a);
       // Backward beside forward: where the values of the routine at this point go in its callers.
-      if(typeof sdeBackward==="function"){var w=document.createElement("button");w.className="link";w.textContent="Where used";
+      if(typeof sdeBackward==="function"){var w=document.createElement("button");w.className="bpact";w.textContent="Where used";
         w.title="Backward Usage Analysis from this point: where "+(chosenValue?chosenValue.name:"the routine's values")+" go in the callers";
         w.onclick=function(e){e.stopPropagation();sdeBackward({url:b.url,line:b.line,program:b.name,variable:chosenValue?chosenValue.name:""});};r.appendChild(w);}
       var x=document.createElement("button");x.className="x";x.textContent="×";x.title="Remove";
@@ -1159,8 +1150,9 @@ function runVisual(){
   // What the record keeps is the record control's question; Visual draws the window at every step of the run; off - the default - it is drawn when the run stops, and the run is
   // measured without the drawing.
   s.rec=recording();s.draw=$("visual").classList.contains("on");
-  // A host whose own debugger windows redraw at every step (Eclipse) hides them for a run with Visual off.
-  s.quiet=!s.draw&&typeof sdeQuietDebugViews==="function";if(s.quiet)sdeQuietDebugViews(true);
+  // A host whose own windows follow every stop - Eclipse's debugger views, VS Code's editor - holds them still for a run with Visual off.
+  // Its own flag: s.quiet says the run was ended by Stop or Terminate.
+  s.hush=!s.draw&&typeof sdeQuietDebugViews==="function";if(s.hush)sdeQuietDebugViews(true);
   if(s.rec){
     if(!flow.order.length||flow.ended!==picture.ended||flow.closed){flow={edges:{},nodes:{},order:[],ended:picture.ended};flowPath=[];}
     record(picture.stopped.frames);s.valueDue=!!chosenValue;s.snapDue=!INITIAL.local;$("cont").title="Pause the recording (F8)";
@@ -1171,6 +1163,10 @@ function runVisual(){
   function seen(p){
     picture=p;
     if(s.rec&&p.stopped){record(p.stopped.frames);s.snapDue=wantValues()&&!s.quietStep;s.valueDue=!!chosenValue||!!slicePoints;}
+    // Visual is read at every stop, so it can be switched while the run goes: on, this stop is drawn and the host's
+    // windows follow again; off, they are held still from here.
+    s.draw=$("visual").classList.contains("on");
+    if(typeof sdeQuietDebugViews==="function"&&s.hush===s.draw){s.hush=!s.draw;sdeQuietDebugViews(s.hush);}
     if(s.draw){var td=Date.now();apply(p);spent(s,"draw",td);}
   }
   function next(){
@@ -1228,7 +1224,7 @@ function runVisual(){
       });
   }
   s.done=next().catch(failed).then(function(){
-    if(s.quiet)sdeQuietDebugViews(false);
+    if(s.hush)sdeQuietDebugViews(false);
     // Where the run ended, shown in the editor by a host that does so (Eclipse); VS Code marks the line itself.
     if(typeof sdeRevealStop==="function")sdeRevealStop(picture);
     if(s.left)notice("The run stopped: the program left "+object.name+" - it is now at "+s.left+".");
@@ -2197,6 +2193,35 @@ function annotateValues(){
   // Its own insertions are not a change to answer: without this the observer starts it again, endlessly.
   valueObserver.takeRecords();
   annotating=false;
+  // What is red now is what the assistant is to look at first.
+  publishDebugContext();
+}
+/* The Expression of the chosen value as the window draws it, with the values of the stop the player stands at: whole
+   (the derivation written out) and Optimized (its last step, where and the one rule) - the page holds both, its CSS shows one. */
+function shownFormula(){
+  var pane=document.getElementById("bse-expression-pane");if(!pane||!String(pane.textContent||"").trim())return null;
+  var text=function(drop){var copy=pane.cloneNode(true);copy.querySelectorAll(drop).forEach(function(e){e.remove();});
+    copy.querySelectorAll(document.body.classList.contains("rf-recorded")?".rf-analysis":".rf-record").forEach(function(e){e.remove();});
+    return String(copy.textContent||"").replace(/[ \t]+/g," ").replace(/\s*\n\s*/g,"\n").trim().slice(0,20000);};
+  var steps=(flow.timeline||[]).length;
+  return {note:"The formula of the chosen value as VERTEX Smart Debugger shows it; values in brackets are those the record holds at the stop named.",
+    value:chosenValue?chosenValue.name:null,reading:document.body.classList.contains("rf-recorded")?"recorded":"analysis",
+    at_stop:steps?(replayAt!=null?replayAt+1:steps):null,whole:text(".rf-step,.vx-analysis-optimized"),optimized:text(".rf-inline,.vx-analysis-whole")};
+}
+/* The values the formula shows red - read before the run set them, empty from a SELECT, or held only initial by the
+   record - as the assistant is given them: each a potential bug, with the reason the view gives on hovering it. */
+function redSuspects(){
+  var box=$("bse-workspace");if(!box)return [];
+  var seen={},out=[];
+  box.querySelectorAll(".rf-empty,.vx-empty").forEach(function(e){
+    var text=String(e.textContent||"").replace(/\s+/g," ").trim(),why=String(e.title||"").replace(/^.* - /,"").trim();
+    if(e.classList.contains("rf-empty"))why=String(e.title||"").trim();
+    var m=text.match(/^(.*?)\s*\((.*)\)$/),name=m?m[1]:text,value=m?m[2]:null,next=e.nextElementSibling;
+    if(value===null&&next&&next.classList.contains("vx-value"))value=String(next.textContent).replace(/^\s*\(|\)\s*$/g,"");
+    var key=name.toUpperCase()+"|"+why;if(!name||seen[key])return;seen[key]=true;
+    var item={name:name,why:why};if(value!==null)item.value=value;out.push(item);
+  });
+  return out.slice(0,MAX_CONTEXT);
 }
 var annotating=false,annotateTimer=null;
 function annotateSoon(){clearTimeout(annotateTimer);annotateTimer=setTimeout(annotateValues,50);}
@@ -2222,7 +2247,7 @@ document.addEventListener("bse:reading",function(e){flowMode=e.detail;if(flowMod
 $("fclasses").onclick=function(){flowGrouping="classes";flowMode=flowDiagram==="logic"?"logic":flowGrouping;showFlow();};
 
 window.sdeLogicHtml=function(html){
-  var frame=$("logic-tools-frame");if(!frame){frame=document.createElement("iframe");frame.id="logic-tools-frame";frame.title="Logic view — Tools";frame.style.cssText="width:100%;flex:1;min-height:0;border:0;background:var(--vscode-editor-background)";$("flowpane").appendChild(frame);}
+  var frame=$("logic-tools-frame");if(!frame){frame=document.createElement("iframe");frame.id="logic-tools-frame";frame.title="Diagram — Tools";frame.style.cssText="width:100%;flex:1;min-height:0;border:0;background:var(--vscode-editor-background)";$("flowpane").appendChild(frame);}
   var computed=getComputedStyle(document.body),variables=[];for(var i=0;i<computed.length;i++){var key=computed[i];if(key.indexOf("--vscode-")===0)variables.push(key+":"+computed.getPropertyValue(key));}
   frame.srcdoc=html.replace("</head>","<style>:root{"+variables.join(";")+"}</style></head>").replace("<body>",'<body class="'+document.body.className+'">');frame.hidden=false;var workspace=$("bse-workspace");workspace.dataset.logicStyle=workspace.style.cssText;workspace.style.cssText="height:auto;min-height:0;flex:none";Array.from(workspace.children).forEach(function(child){if(!child.classList.contains("bse-view-toggle")){child.dataset.logicHidden=String(child.hidden);child.hidden=true;}});
 };
@@ -2254,8 +2279,10 @@ function openSourceAt(source,line,location){
     var routineAt=cut>=0?rest.slice(cut+1):(location||"");
     var selectedRow=staticFlow&&staticFlow.rows.find(function(w){return w.location===routineAt;});if(selectedRow)focusedRoutine=selectedRow.scope;
     var row=staticFlow&&routineAt?staticFlow.rows.filter(function(w){return w.location===routineAt;})[0]:null;
-    if(row&&!picture.stopped)askVariables({object_name:row.object_name||row.name,object_type:row.object_type||row.type,routine:routineAt}).catch(function(e){notice(e&&e.message||String(e));});
-    askOrigin({open:{source:cut>=0?rest.slice(0,cut):rest,location:cut>=0?rest.slice(cut+1):(location||""),line:line}}).catch(function(e){notice(e&&e.message||String(e));});return;}
+    // The code opens first; the declared variables are asked once it is there, so their analysis never holds the link.
+    var opened=askOrigin({open:{source:cut>=0?rest.slice(0,cut):rest,location:cut>=0?rest.slice(cut+1):(location||""),line:line}}).catch(function(e){notice(e&&e.message||String(e));});
+    if(row&&!picture.stopped)opened.then(function(){setTimeout(function(){askVariables({object_name:row.object_name||row.name,object_type:row.object_type||row.type,routine:routineAt}).catch(function(e){notice(e&&e.message||String(e));});},0);});
+    return;}
   if(document.body.classList.contains("vertex-docked-debug")&&typeof sdeReveal==="function"){sdeReveal({url:source,line:line});return;}
   show(source,"",line).catch(failed);
 }
@@ -2986,7 +3013,7 @@ function syncVarSwitches(){
    can happen (the flow between the breakpoints, with the statements the chosen value's slice reaches marked). Short: the record
    only as deep as the depth control shows, consecutive repeats once, at most MAX_CONTEXT entries each. Null where there is
    neither. The text of each part says what it is, so that the chat does not have to guess. */
-var MAX_CONTEXT=150;
+var MAX_CONTEXT=1000;
 var sessionId=typeof INITIAL!=="undefined"&&INITIAL.savedRecord&&INITIAL.savedRecord.session_id||null;
 function debugContext(){
   var tl=flow.timeline||[],limit=(window.vertexFlow&&window.vertexFlow.depth)?window.vertexFlow.depth():null;
@@ -2998,7 +3025,7 @@ function debugContext(){
       var depth=t.stack.length-base;if(limit!==null&&depth>=limit)return;
       var at=(t.cur?t.cur.name:String(f.label||""))+":"+f.line;if(at===last)return;last=at;
       if(steps.length>=MAX_CONTEXT){cut=true;return;}
-      var step={depth:Math.max(0,depth),at:at};if(chosenValue&&inSlice(t.cur?t.cur.owner:String(f.program||""),f.line))step.slice=true;
+      var step={depth:Math.max(0,depth),at:at},line=t.at&&t.at.line||f.line,lines=texts[norm(t.at&&t.at.url||f.url||"")],code=lines&&lines[line-1];if(code&&code.trim())step.code=code.trim().slice(0,160);if(chosenValue&&inSlice(t.cur?t.cur.owner:String(f.program||""),f.line))step.slice=true;
       steps.push(step);
     });
     recorded={note:"What the program actually did: the stops of the run in order, depth = calls below the first stop"+(limit!==null?" (only down to the depth the window shows)":"")+"; slice:true where the chosen value's slice reaches the statement.",stops:tl.length,steps:steps,truncated:cut};
@@ -3011,11 +3038,13 @@ function debugContext(){
       from:staticFlow.name+":"+staticFlow.from,to:staticFlow.stopAt?staticFlow.stopAt.name+":"+staticFlow.stopAt.line:null,
       statements:shown.map(function(w){var r={at:w.name+":"+w.line,text:String(w.text).slice(0,90)};if(w.included)r.slice=true;return r;}),truncated:seq.length>shown.length};
   }
-  if(!recorded&&!analysis)return null;
+  var formula=shownFormula();
+  var red=redSuspects(),suspects=red.length?{note:"Values the formula shows red. Each is a potential bug: a value read before the run set it (an order of steps that uses it too early), empty from a SELECT, or one the run held only initial. Check every one of these before anything else, and say for each whether it is the cause.",values:red}:null;
+  if(!recorded&&!analysis&&!suspects&&!formula)return null;
   return {view:"VERTEX Smart Debugger",session_id:!INITIAL.local&&recorded?sessionId:null,object:typeof object!=="undefined"&&object?{name:object.name,type:object.type}:null,
     state:picture.stopped?"stopped at "+picture.stopped.at:"no stopped program",
     chosen_value:chosenValue?{name:chosenValue.name,slice_places:slicePoints?Object.keys(slicePoints).length:null}:null,
-    recorded:recorded,analysis:analysis};
+    formula:formula,suspects:suspects,recorded:recorded,analysis:analysis};
 }
 var contextTimer=null;
 function publishDebugContext(){

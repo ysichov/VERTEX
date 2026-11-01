@@ -1,5 +1,23 @@
 # Release history
 
+## 2026-11-01 — 0.9.52: Diagram name
+
+- Clicking a class or routine in the flow opens its code at once; its declared variables load afterwards.
+- **Depth** in FLOW, Derivation and Formula is a number field, as in the Calls diagram, instead of a slider; it cannot go past the deepest level the flow has.
+- The assistant is also given the formula of the chosen value as Expression shows it, whole and Optimized, with the values of the current stop, and the code line each recorded step ran.
+- With a SAP debugger recording open, the assistant answers a question about that run from the recording (all its steps, the red values first) instead of running the transpiler.
+- **Visual** can be switched during a run; it applies from the next step.
+- The assistant is given the values the formula shows red - read before the run set them, empty from a SELECT, or held only initial - as potential bugs to check first.
+- In VS Code a run with **Visual** off no longer moves the editor at every step: it shows the line where the run stops. The window is read again when such a run ends, so the stack and variables show that stop.
+- All buttons share one look and one hover, toggles included: a chip of the input background that, under the pointer, takes a tint of the theme's focus colour and a soft shadow. Run in SAP, Exit program, Detach, Clear and the breakpoint actions no longer have looks of their own.
+- Switching **Full** / **BSE** or moving **Depth** fits the diagram to the window again.
+- A breakpoint's **Analyze flow path** and **Where used** are drawn as buttons, apart from the breakpoint's name and from each other.
+- Statements and Logic no longer draw ENDMETHOD (or ENDFORM, ENDFUNCTION, ENDMODULE) and ENDSELECT: the routine frame and the SELECT show where they end.
+- In Full flow a SELECT whose INTO target feeds the value is marked as part of it, as assignments are, including INTO @DATA(x) and a structure read field by field later.
+- Classes no longer draws the program under debug twice: its events are the root box.
+- The method view is named **Diagram** again in menus, Tools and help, matching the recorded videos. The VS Code debugger pane button beside **Variables** is named **Code Flow Analysis**.
+
+
 ## 2026-10-31 — 0.9.52: three Expression readings
 
 - Expression now offers **Analyze**, **Recorded** and **Optimized** as separate choices. Analyze is the default and keeps the full analysis formula without recorded values for every result, including zero. Recorded shows the run's derivation as it is, one line with every value written out; Optimized folds it: the last step, its `where`, and the same as one rule of the first value and the rates.

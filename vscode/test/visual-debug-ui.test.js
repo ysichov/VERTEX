@@ -403,10 +403,12 @@ test("the analysis answers on a channel of its own, by number, in whatever order
   vm.runInContext('sdeOriginReady(JSON.stringify({id:99,answer:{}}))', context);   // a stray answer is ignored
 });
 
-test("Run in SAP has a pale blue background that follows the theme", () => {
-  assert.match(page, /#run\{background:color-mix\(in srgb,var\(--vscode-terminal-ansiBrightBlue/);
-  assert.doesNotMatch(part("#run{background", "#run svg.clock"), /background:#/i, "no fixed colour as the background");
-  assert.match(part("#run{background", "#run svg.clock"), /var\(--vscode-editor-background/, "mixed into the editor's own background");
+test("every button, Run in SAP and the toggles included, has the one shared look and hover", () => {
+  const controls = require("fs").readFileSync(require("path").join(__dirname, "..", "..", "org.vertex.abap.ui", "resources", "vertex-controls.css"), "utf8");
+  assert.doesNotMatch(page, /#run\{background|#run:hover|#terminate,#stop|bpact:hover/, "no button of the debugger keeps a look of its own");
+  const hover = controls.match(/button:hover:not\(:disabled\) \{[^}]*\}/)[0];
+  assert.match(hover, /background-color:[^;]*var\(--vscode-focusBorder[^;]*!important/, "the hover wins over a view's own rule, a toggle's included");
+  assert.doesNotMatch(hover, /:\s*#[0-9a-f]{3,6}\s*!important/i, "and follows the theme");
 });
 
 test("the </> of a node in the diagram opens its source: the editor when docked", () => {
@@ -480,7 +482,7 @@ test("the flow of the analysis is drawn as program, classes, routines and statem
   vm.runInContext(part("function staticFlowGraph(mode,quiet){", "function sharedFlowGraph(mode){"), context);
   const graph = mode => JSON.parse(JSON.stringify(vm.runInContext("staticFlowGraph(" + JSON.stringify(mode) + ")", context).bseFlow));
   const classes = graph("classes"), steps = graph("steps");
-  assert.deepEqual(classes.nodes.map(n => n.type), ["program", "class", "class"]);
+  assert.deepEqual(classes.nodes.map(n => n.type), ["program", "class"], "the program is the root, not a class box of its own");
   // Since 0.8.1 Statements groups each routine's operators inside its routine frame.
   assert.deepEqual(steps.nodes.filter(n => n.type === "method").map(n => n.location), ["ZREP→START-OF-SELECTION", "ZCL_X→RUN"], "one frame per routine");
   const byLine = line => steps.nodes.find(n => n.type === "operation" && n.line === line);
@@ -529,9 +531,9 @@ test("a call draws the routine's statements under the calling statement, in the 
   assert.deepEqual(order, [15, 30, 31, 7, 32, 16], "a routine is drawn where it is called: before the statements that follow the call");
   assert.equal(op(7).bse && op(31).bse && op(15).bse, true, "what leads to the slice is in it");
   const classes = graph("classes"), names = classes.nodes.map(n => n.text);
-  assert.deepEqual(names, ["ZREP", "ZREP", "ZCL_X", "ZCL_Y"]);
-  assert.deepEqual(classes.nodes.map(n => n.stack), [0, 1, 2, 3], "a class stands at the depth of the call that reached it");
-  assert.equal(JSON.parse(JSON.stringify(vm.runInContext("staticFlowGraph('classes')", context))).maxStack, 3, "so the depth control reaches as deep as the calls do");
+  assert.deepEqual(names, ["ZREP", "ZCL_X", "ZCL_Y"], "the program is one box");
+  assert.deepEqual(classes.nodes.map(n => n.stack), [0, 1, 2], "a class stands at the depth of the call that reached it");
+  assert.equal(JSON.parse(JSON.stringify(vm.runInContext("staticFlowGraph('classes')", context))).maxStack, 2, "so the depth control reaches as deep as the calls do");
   const link = (a, b) => classes.edges.some(e => classes.nodes.find(n => n.id === e.from).text === a && classes.nodes.find(n => n.id === e.to).text === b);
   assert.deepEqual([link("ZCL_X", "ZCL_Y"), link("ZREP", "ZCL_X")], [true, true]);
 });
@@ -607,7 +609,8 @@ test("a call to a routine the flow lists no statement of is still drawn, as a bl
     assert.equal(mode === "steps" ? from.line : from.text, mode === "steps" ? 15 : "START-OF-SELECTION", "under the call that makes it");
   }
   const classes = graph("classes");
-  assert.deepEqual(classes.nodes.map(n => n.text), ["ZREP", "ZREP", "ZCL_LOG"]);
+  assert.deepEqual(classes.nodes.map(n => n.text), ["ZREP", "ZCL_LOG"], "the program is one box");
+  assert.deepEqual(classes.edges.map(e => e.from + ">" + e.to), [classes.nodes[0].id + ">" + classes.nodes[1].id]);
 });
 
 test("a variable of a structure type opens to its components before the run, and a component can be followed by its path", () => {
@@ -723,7 +726,7 @@ test("the chat is given what the window shows in two labelled parts: what ran, w
     INITIAL: { local: false }, sessionId: "a1b2c3d4-0000-4000-8000-000000000000",
     picture: { stopped: { at: "ZCL_X:31" } }, object: { name: "ZREP", type: "PROG" }, window: { vertexFlow: { depth: () => context.depth } }, depth: null,
     staticFlow: { formula: { nodes: [], edges: [], maxLevel: 0 }, panes: { formula: "", expression: "" }, rows: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)], sites: [], point: { url: "u" }, name: "ZREP", from: 10, stopAt: { name: "ZREP", line: 15 } },
-    staticFlowGraph: () => ({ sequence: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)] }), MAX_CONTEXT: 150,
+    staticFlowGraph: () => ({ sequence: [row("ZREP", 10, "a = 1."), row("ZREP", 15, "b = 2.", true)] }), MAX_CONTEXT: 150, redSuspects: () => [], shownFormula: () => null, texts: {}, norm: u => String(u).toLowerCase(),
     debugHistorySlice: () => ({ note: "Recorded values", totalStops: timeline.length, stopsWithWatch: 0, stops: [] }) });
   vm.runInContext(part("function debugContext(){", "var contextTimer=null;"), context);
   const read = () => JSON.parse(JSON.stringify(vm.runInContext("debugContext()", context)));
@@ -838,4 +841,27 @@ test("a run that ends with a value followed and no path analysed has the path an
   assert.deepEqual(analysed, ["record-start:11"]);
   vm.runInContext("staticFlow = {}; analyzeFollowed()", context);
   assert.deepEqual(analysed, ["record-start:11"], "a path already analysed is not analysed again");
+});
+
+test("ENDMETHOD and ENDSELECT are not drawn: the routine's frame and the SELECT show where they end", () => {
+  const row = (line, text) => ({ name: "ZCL_X", type: "CLAS", line, aceLine: line, text, scope: "ZCL_X→RUN", location: "ZCL_X->RUN", source: "s", included: false });
+  const sf = { name: "ZCL_X", point: { url: "/x", line: 1 }, sites: [], rows: [row(2, "SELECT a FROM t INTO @DATA(x) UP TO 1 ROWS."), row(3, "ENDSELECT."), row(4, "IF x = 1."), row(5, "ENDIF."), row(6, "ENDMETHOD.")] };
+  for (const mode of ["steps", "logic"]) {
+    const texts = flowGraph.build(sf, mode).bseFlow.nodes.filter(n => n.type === "operation").map(n => n.text);
+    assert.deepEqual(texts.filter(t => /^END(METHOD|SELECT)/.test(t)), [], mode);
+    assert.ok(texts.includes("ENDIF."), mode + ": ENDIF still closes its IF");
+  }
+});
+
+test("values the formula shows red go to the assistant as potential bugs, with the reason the view gives", () => {
+  const el = (cls, text, title, next) => ({ classList: { contains: c => c === cls }, textContent: text, title, nextElementSibling: next || null });
+  const items = [el("rf-empty", "cs_context-tax_amount₁ (0)", "Read before it was set: the run sets cs_context-tax_amount later, at stop 125"),
+    el("vx-empty", "LS_GEO-TAX_RATE", "Rate - the record holds only its initial value", { classList: { contains: c => c === "vx-value" }, textContent: " (0)" })];
+  const context = vm.createContext({ MAX_CONTEXT: 150, $: () => ({ querySelectorAll: () => items }) });
+  vm.runInContext(part("function redSuspects(){", "function drawFlowValueList") || part("function redSuspects(){", "var annotating=false"), context);
+  const red = JSON.parse(JSON.stringify(vm.runInContext("redSuspects()", context)));
+  assert.deepEqual(red, [
+    { name: "cs_context-tax_amount₁", value: "0", why: "Read before it was set: the run sets cs_context-tax_amount later, at stop 125" },
+    { name: "LS_GEO-TAX_RATE", value: "0", why: "the record holds only its initial value" }]);
+  assert.match(page, /suspects:suspects,recorded:recorded/, "the assistant's context carries them");
 });
