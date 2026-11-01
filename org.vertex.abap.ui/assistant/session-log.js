@@ -58,6 +58,17 @@ function create(root, provider, session, include) {
         tools: sanitize(tools || [], objects), schema: sanitize(schema || null, objects) };
       write({ type: "vertex_request", request, vertex_objects: objects, vertex_snapshots: snapshots });
     },
+    providerResponse({ provider, scope, response }) {
+      // Preserve provider counters verbatim, before normalization. These records
+      // are diagnostic evidence, never assistant records (no double counting).
+      const fields = ["id", "type", "model", "subtype", "is_error", "usage", "modelUsage",
+        "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
+      const metadata = {};
+      for (const key of fields) {
+        if (response && Object.prototype.hasOwnProperty.call(response, key)) metadata[key] = response[key];
+      }
+      write({ type: "vertex_provider_response", provider, scope, response: metadata });
+    },
     assistant({ model, usage, text }) {
       const objects = [];
       const answer = on.answers ? sanitizeText(String(text || ""), objects) : NOT_LOGGED;

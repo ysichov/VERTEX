@@ -61,6 +61,11 @@ function parseSession(text, file) {
       session.end = session.end === null ? time : Math.max(session.end, time);
     }
     const content = record.message?.content;
+    if (record.type === "vertex_provider_response") {
+      if (current) current.details.push({ type: "Provider usage (" + record.scope + ")",
+        text: prettyJson({ provider: record.provider, response: record.response }) });
+      continue;
+    }
     if (record.type === "vertex_request") {
       if (current && record.request) {
         current.details.push({ type: "VERTEX instructions", text: String(record.request.instructions || "") });
@@ -360,6 +365,17 @@ function create(root, provider, session, include) {
         prompt: sanitizeText(String(prompt || ""), objects, snapshots),
         tools: sanitize(tools || [], objects), schema: sanitize(schema || null, objects) };
       write({ type: "vertex_request", request, vertex_objects: objects, vertex_snapshots: snapshots });
+    },
+    providerResponse({ provider, scope, response }) {
+      // Preserve provider counters verbatim, before normalization. These records
+      // are diagnostic evidence, never assistant records (no double counting).
+      const fields = ["id", "type", "model", "subtype", "is_error", "usage", "modelUsage",
+        "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
+      const metadata = {};
+      for (const key of fields) {
+        if (response && Object.prototype.hasOwnProperty.call(response, key)) metadata[key] = response[key];
+      }
+      write({ type: "vertex_provider_response", provider, scope, response: metadata });
     },
     assistant({ model, usage, text }) {
       const objects = [];

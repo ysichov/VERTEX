@@ -247,6 +247,11 @@ async function probe(options) {
       ["-p", "--output-format", "json", "--tools", "", "--strict-mcp-config",
        "--no-session-persistence", "--model", id],
       { cwd: dir, env: env, input: "Reply with the word OK.", timeout: 60000 });
+    if (options.assistant === "claude" && options.onProviderResponse) {
+      let response = resultEvent;
+      if (!streaming) { try { response = JSON.parse(result.stdout); } catch (_) { /* No JSON result. */ } }
+      if (response) options.onProviderResponse({ provider: "claude", scope: "cli_run", response });
+    }
     if (result.timedOut) { throw new Error("Claude Code did not answer with " + id + " within a minute."); }
     let answer;
     try { answer = JSON.parse(result.stdout); } catch (e) { answer = null; }
@@ -331,6 +336,9 @@ async function ask(options) {
         let event;
         try { event = JSON.parse(line); } catch (_) { continue; }
         if (event.type === "result") { resultEvent = event; }
+        if (event.type === "assistant" && event.message && options.onProviderResponse) {
+          options.onProviderResponse({ provider: "claude", scope: "model_response", response: event.message });
+        }
         if (event.type !== "stream_event") { continue; }
         const inner = event.event || {};
         if (inner.type === "message_start" && inner.message?.role === "assistant") {
@@ -375,6 +383,11 @@ async function ask(options) {
     if (streaming && pending.trim()) {
       try { const last = JSON.parse(pending.trim()); if (last.type === "result") resultEvent = last; }
       catch (_) { /* An interrupted NDJSON line is not a completed result. */ }
+    }
+    if (options.assistant === "claude" && options.onProviderResponse) {
+      let response = resultEvent;
+      if (!streaming) { try { response = JSON.parse(result.stdout); } catch (_) { /* No JSON result. */ } }
+      if (response) options.onProviderResponse({ provider: "claude", scope: "cli_run", response });
     }
     if (result.timedOut) {
       throw new Error(assistant.label + " did not answer within " + Math.round(timeout / 1000)
