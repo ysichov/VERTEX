@@ -57,6 +57,15 @@ test("VERTEX Smart Debugger is the docked panel beside the editor, not a view of
   assert.match(docked,/window\.sdeAsset=/);
   assert.doesNotMatch(docked,/sdeOpenEditor/);
 });
+test("every message of the docked page says which writing of the page sent it",()=>{
+  const docked=workspace.debugHtml({name:"Z_TEST",type:"PROG"},7);
+  const bridge=docked.slice(docked.indexOf("<script>")+8,docked.indexOf("<\/script>"));
+  const posted=[],window={addEventListener(){}};
+  new Function("acquireVsCodeApi","window","document",bridge)(()=>({postMessage:message=>posted.push(message)}),window,{addEventListener(){}});
+  window.sdeDebug("source",{url:"a.abap"});
+  window.sdeAsset("flow");
+  assert.deepEqual(posted.map(message=>[message.call,message.generation]),[["debug",7],["asset",7]]);
+});
 test("the VERTEX Smart Debugger page asks the debugger for nothing it has no command for",async()=>{
   const seen=[];
   const dbg={picture:()=>({ok:1}),async setBreakpointAt(a){seen.push(a);return {id:"bp1"};},async advance(k){seen.push(k);}};

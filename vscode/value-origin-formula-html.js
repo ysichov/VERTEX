@@ -93,8 +93,53 @@ function expressionPane(derivation, sourceOf = node => node.source) {
   };
   const steps = expression.steps.slice().reverse().map(step => `<li><code>${escape(step.name)} = ${write(step.text)}</code></li>`).join('');
   const where = expression.where.map(item => `<li><code>${link(item)}</code> &larr; <code>${escape(item.text)}</code> <span class="edge">${escape(String(item.location).split('->')[0])}</span></li>`).join('');
-  return `<p class="edge">Expression - the derivation written out, nothing simplified</p>${note}<p><code>${write(expression.text)}</code></p>`
+  const whole = `<p class="edge">Expression - the derivation written out, nothing simplified</p>${note}<p><code>${write(expression.text)}</code></p>`
     + (steps ? `<p class="edge">Values read more than once, from the last</p><ol class="expression-steps">${steps}</ol>` : '')
+    + (where ? `<p class="edge">Where the values come from</p><ul class="expression-where">${where}</ul>` : '');
+  if (!expression.optimized) { return whole; }
+  return `<div class="vx-analysis-whole">${whole}</div><div class="vx-analysis-optimized">${optimizedPane(expression.optimized, note, link, sourceOf)}</div>`;
+}
+
+/* The derivation optimized: the formula reads its values by their names, and under where each name is what its statement
+   makes of the names it reads. The first level is the names of the formula, in its order; a line that reads names of its
+   own opens them one level down, folded, as the record's Optimized reading does. A name is opened once, where it is
+   first read. */
+function optimizedPane(optimized, note, link, sourceOf) {
+  const steps = new Map(optimized.steps.map(step => [step.name, step]));
+  const known = new Map([...optimized.where.map(item => [item.name, link(item)]),
+    ...optimized.steps.map(step => [step.name, `<button class="data-composed" title="${escape(String(step.location).split('->')[0])} · line ${step.line}" data-node="${escape(step.id)}" data-source="${escape(sourceOf(step))}" data-line="${step.line}" data-full="${escape(step.full)}" data-location="${escape(step.location)}">${escape(step.name)}</button>`])]);
+  const names = [...known.keys()].sort((a, b) => b.length - a.length);
+  const isName = character => /[A-Za-z0-9_\-\[\]\/₀-₉]/.test(character || '');
+  const found = text => {
+    const out = [];
+    for (let at = 0; at < text.length;) {
+      const name = isName(text[at - 1]) ? null : names.find(candidate => text.startsWith(candidate, at) && !isName(text[at + candidate.length]));
+      if (name) { out.push({ at, name }); at += name.length; } else { at++; }
+    }
+    return out;
+  };
+  const write = text => {
+    let out = '', at = 0;
+    for (const item of found(text)) { out += escape(text.slice(at, item.at)) + known.get(item.name); at = item.at + item.name.length; }
+    return out + escape(text.slice(at));
+  };
+  const reads = text => [...new Set(found(text).map(item => item.name).filter(name => steps.has(name)))];
+  const done = new Set(), roots = [], queue = reads(optimized.text).map(name => ({ name, into: roots }));
+  while (queue.length) {
+    const entry = queue.shift();
+    if (done.has(entry.name)) { continue; }
+    done.add(entry.name);
+    entry.parts = [];
+    entry.into.push(entry);
+    reads(steps.get(entry.name).text).forEach(name => queue.push({ name, into: entry.parts }));
+  }
+  const list = entries => !entries.length ? '' : `<ul class="expression-decode">${entries.map(entry => {
+    const line = `<code>${known.get(entry.name)} = ${write(steps.get(entry.name).text)}</code>`;
+    return entry.parts.length ? `<li class="more"><details><summary>${line}</summary>${list(entry.parts)}</details></li>` : `<li>${line}</li>`;
+  }).join('')}</ul>`;
+  const where = optimized.where.map(item => `<li><code>${link(item)}</code> &larr; <code>${escape(item.text)}</code> <span class="edge">${escape(String(item.location).split('->')[0])}</span></li>`).join('');
+  return `<p class="edge">Expression - optimized: each value by its name, opened under where</p>${note}<p><code>${write(optimized.text)}</code></p>`
+    + (roots.length ? `<p class="edge">where</p>${list(roots)}` : '')
     + (where ? `<p class="edge">Where the values come from</p><ul class="expression-where">${where}</ul>` : '');
 }
 

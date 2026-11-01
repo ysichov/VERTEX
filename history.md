@@ -11,6 +11,9 @@
 - Following a value with no path analysed analyses it at once, from the breakpoint the record starts at, so Analyze is there to explain what the record did not compute.
 - A value read before the run set it has its own line under *where*: what it was then, and the statement that set it later. A modifier that leaves the value as it was no longer cuts the recorded chain short.
 - In a recorded Expression a name is red, with the reason on hover, when its value came empty from a SELECT (found nothing, or found a row whose field is empty) or was read empty before the run set it - the discount reading `tax_amount (0)` before the tax is computed.
+- After a transpiler run without breakpoints, the record's sources are no longer shown one file off - each step with the text of the file before it - which left the formula at "line 38" and Analyze empty.
+- Analyze works on transpiler runs of SAP objects and on kept runs: the analysis reads the classes of the run's own sources, where before it looked for them in the workspace, found none and answered "No symbolic formula was resolved".
+- Optimized is a toggle of its own beside **Analyze | Recorded**, and works for both. Analyze optimized reads each value by its name, numbered where one name holds several, and gives it under *where* by its statement, the next level under an arrow - the base price is written once instead of in every branch, and a name with no assignment, such as the tax amount the discount reads, stands out unnumbered.
 - VS Code 0.9.52 and Eclipse were rebuilt with the three choices.
 
 ## 2026-10-31 — 0.9.52: zero results and Optimized explanation

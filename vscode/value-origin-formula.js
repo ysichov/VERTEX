@@ -167,7 +167,9 @@ function formula(graph, keep = () => true, ran = null) {
   if (tree) {
     const whole = { id, text: tree.text, of: '', location: '', children: formulaSteps(graph.root, 0, id, graph.selectedVariable || '', new Set(), true) };
     if (graph.pipeline && Array.isArray(graph.pipeline.steps)) { sequence(whole, graph.pipeline.steps); }
-    expression = oneFormula(whole); if (process.env.DUMP) { const d = (n, k) => { console.log(" ".repeat(k * 2) + n.of + " <= " + String(n.location).split("->")[0] + " | " + String(n.text).slice(0, 60)); n.children.forEach(c => d(c, k + 1)); }; d(whole, 0); }
+    expression = oneFormula(whole);
+    if (expression) { expression.optimized = oneFormula(whole, false); }
+    if (process.env.DUMP) { const d = (n, k) => { console.log(" ".repeat(k * 2) + n.of + " <= " + String(n.location).split("->")[0] + " | " + String(n.text).slice(0, 60)); n.children.forEach(c => d(c, k + 1)); }; d(whole, 0); }
   }
   // The steps of a loaded pipeline put the definitions that the loop over it makes into the order they run in.
   if (tree && graph.pipeline && Array.isArray(graph.pipeline.steps)) {
@@ -243,7 +245,10 @@ function conditionText(raw) {
   return rest(branch);
 }
 
-function oneFormula(tree) {
+/* inline false gives the same derivation optimized: no value is written out in place of its name. The formula reads its
+   values by their names, numbered where a name holds several (amount₁, amount₂), and every step is listed once, with
+   what it reads - as the record's Optimized reading does. */
+function oneFormula(tree, inline = true) {
   // A node holds its statement as text: abaplint parses it, so assignment and its calls read the parse, not the text.
   const { parsedTokens } = require('./value-origin-linter');
   const { assignment, variablePaths } = require('./value-origin-model');
@@ -269,12 +274,14 @@ function oneFormula(tree) {
   const step = (node, context) => {
     if (named.has(node)) { return named.get(node); }
     const all = parsedTokens(node.raw), a = assignment(all.length && all[all.length - 1].value === '.' ? all.slice(0, -1) : all);
+    // A value read from a table is already a name of its own, listed under where.
+    if (!inline && (!a || !a.expression.length)) { return body(node, context); }
     const text = body(node, context), existing = steps.find(item => item.text === text && item.variable === (a ? canonical(a.name) : node.of));
     if (existing) { named.set(node, existing.name); return existing.name; }
     const key = a ? canonical(a.name) : node.of, number = (counts.get(key) || 0) + 1;
     counts.set(key, number);
     const name = (a ? a.name : node.of) + subscript(number);
-    steps.push({ name, text, variable: key });
+    steps.push({ name, text, variable: key, id: node.id, source: node.source, line: node.line, location: node.location, full: node.of });
     named.set(node, name);
     return name;
   };
@@ -303,7 +310,7 @@ function oneFormula(tree) {
       const reads = canonical(path.name), reading = context && reads === context.name;
       const kids = reading ? context.kids : node.children.filter(child => canonical(child.of) === reads && !child.previous);
       if (!kids.length) { continue; }
-      edits.push({ from: a.expression[path.from].offset, to: a.expression[path.to - 1].endOffset, rep: inBrackets(define(kids, path.name, context, reading)) });
+      edits.push({ from: a.expression[path.from].offset, to: a.expression[path.to - 1].endOffset, rep: inBrackets(define(kids, path.name, context, reading || !inline)) });
     }
     edits.sort((x, y) => x.from - y.from);
     let out = '', at = first;
@@ -312,14 +319,14 @@ function oneFormula(tree) {
     if (a.compound) {
       const operator = ts.find(token => ['+=', '-=', '*=', '/='].includes(token.value)).value[0];
       const reading = context && canonical(a.name) === context.name;
-      const before = define(reading ? context.kids : node.children.filter(child => canonical(child.of) === canonical(a.name)), a.name, context, reading);
+      const before = define(reading ? context.kids : node.children.filter(child => canonical(child.of) === canonical(a.name)), a.name, context, reading || !inline);
       out = inBrackets(before) + ' ' + operator + ' (' + plain(out) + ')';
     }
     return plain(out);
   }
   if (!tree.children.length) { return null; }
   const top = { name: '', text: define(tree.children, tree.text, null, true) };
-  const items = steps.map(item => ({ name: item.name, text: item.text }));
+  const items = steps.map(item => inline ? { name: item.name, text: item.text } : { ...item });
   const isDigit = character => character >= '₀' && character <= '₉';
   const positions = (text, name) => { const found = []; for (let at = text.indexOf(name); at >= 0; at = text.indexOf(name, at + 1)) { if (!isDigit(text[at + name.length] || '')) { found.push(at); } } return found; };
   // A step that adds or takes off a share of the value before it is that value times one plus or minus the share: it then
@@ -333,7 +340,7 @@ function oneFormula(tree) {
     }
   }
   // What is read once is written where it is read; what is read more than once stays a step.
-  for (let again = true; again;) {
+  for (let again = inline; again;) {
     again = false;
     for (let i = items.length - 1; i >= 0 && !again; i--) {
       const it = items[i], holders = [top, ...items.filter(other => other !== it)].filter(holder => positions(holder.text, it.name).length);

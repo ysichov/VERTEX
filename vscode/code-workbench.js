@@ -77,9 +77,9 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       gutterIconSize: 'contain' }) : null;
   if (stopDecoration) context.subscriptions.push(stopDecoration);
   const mirroredEvents = new Set();
-  const linterSources = async (document, target, progress, cancelled, activeOnly = false, onParsed = () => {}) => {
+  const linterSources = async (document, target, progress, cancelled, activeOnly = false, onParsed = () => {}, files = null) => {
     if (require("./local-analysis").isLocalAbap(document)) {
-      return require("./local-analysis").originSources(vscode, document, target, progress, cancelled, onParsed);
+      return require("./local-analysis").originSources(vscode, document, target, progress, cancelled, onParsed, files);
     }
     const diagnostics = ['Loading policy: main source first; dependencies and class extras on demand. Full FLOW covers the loaded source closure.'];
     const selected = opened.get(document.uri.toString()) || await fileEntry(document.uri);
@@ -245,7 +245,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
      waits. A session that is busy with something else is waited for, not reported, for a few seconds. */
   const gate = require('./request-gate').createGate();
   // A local source is read from the workspace, not through the SAP session.
-  const originPoints = (request,progress=()=>{},document=null) => {if(document)return readOrigin(request,progress,document);progress({stage:'Waiting for SAP session'});return gate.gated(() => readOrigin(request,progress));};
+  const originPoints = (request,progress=()=>{},document=null,files=null) => {if(document)return readOrigin(request,progress,document,files);progress({stage:'Waiting for SAP session'});return gate.gated(() => readOrigin(request,progress));};
   const originOpen = request => gate.gated(() => openOrigin(request));
   const originVariables = gate.newest(readVariables);
   // The sources of the last analysis: what a node of its flow opens, as Value origin opens its nodes.
@@ -350,7 +350,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     await revealSource(opened.document, at, false);
     return {};
   }
-  async function readOrigin({ object_name, object_type, line, variable, from: boundFrom, to: boundTo }, progress = () => {}, localDocument = null) {
+  async function readOrigin({ object_name, object_type, line, variable, from: boundFrom, to: boundTo }, progress = () => {}, localDocument = null, localFiles = null) {
     const up = text => String(text || '').toUpperCase();
     const bounded = Number.isInteger(boundFrom);
     // A path from a breakpoint needs no value; the points of a slice do.
@@ -373,7 +373,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     let steps=0;const readSources=new Set();
     const report=(stage,object)=>progress({stage,object,sources:readSources.size,steps});
     report('Reading source',object_name);
-    const loaded = await linterSources(entry.document, target, name=>report('Reading source',name), () => false, true, parsed=>{readSources.add(parsed.id);steps+=parsed.aceStatements.length;report('Sources parsed',parsed.name);});
+    const loaded = await linterSources(entry.document, target, name=>report('Reading source',name), () => false, true, parsed=>{readSources.add(parsed.id);steps+=parsed.aceStatements.length;report('Sources parsed',parsed.name);}, localFiles);
     report('Building FLOW',object_name);
     const { analyze } = require('./value-origin');
     let graph = analyze(loaded.sources, { ...loaded.target, flowBounds: target.flowBounds && { ...target.flowBounds, source: loaded.target.source } });

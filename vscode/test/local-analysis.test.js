@@ -96,6 +96,20 @@ test("local source lookup prefers the active file's package folder", async () =>
   assert.equal(await session.find("ZCL_TARGET", "CLAS"), ownClass);
 });
 
+test("a transpiler run's objects are found among its own sources, never in the workspace", async () => {
+  // The copies read from SAP sit outside the workspace: the program under sap/, the classes under src/.
+  const owner = document(disk("tmp", "run", "sap", "zmain.prog.abap"), "REPORT zmain.");
+  const copy = document(disk("tmp", "run", "src", "zcl_target.clas.abap"), "CLASS zcl_target DEFINITION. ENDCLASS.");
+  const include = document(disk("tmp", "run", "src", "zcl_target.clas.locals_imp.abap"), "CLASS lcl DEFINITION. ENDCLASS.");
+  const workspaceClass = document(disk("work", "src", "zcl_target.clas.abap"), "CLASS zcl_target DEFINITION. ENDCLASS.");
+  const files = new Map([owner, copy, include, workspaceClass].map(item => [item.uri.toString(), item]));
+  const host = { ...vscode, Uri: { file: name => ({ toString: () => "file:///" + name }) },
+    workspace: { findFiles: async () => [workspaceClass.uri], openTextDocument: async uri => files.get(uri.toString()) } };
+  const session = local.create(host, owner, local.sourceObject(owner), [owner, include, copy].map(item => item.uri.fsPath));
+  assert.equal(await session.find("ZCL_TARGET", "CLAS"), copy);
+  await assert.rejects(session.find("ZCL_OTHER", "CLAS"), /ZCL_OTHER is not among the sources of this run/);
+});
+
 test("local variables expand an inline method result using its interface structure", async () => {
   const report = document(disk("work", "src", "zresult.prog.abap"),
     "REPORT zresult.\nSTART-OF-SELECTION.\nDATA(ls_result) = NEW zcl_calc_facade( )->run( ).\nWRITE ls_result-amount.");

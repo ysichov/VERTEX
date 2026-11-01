@@ -61,6 +61,67 @@ breakpoint: the run had ended on its last trace record, which still has a line. 
 `over` then, and the mark is cleared; replaying back still marks. Whether the mark was what kept the breakpoint off the
 gutter is not checked. Tests: a record with unread sources; all suites with the local adapter's 196 pass. VSIX rebuilt.
 
+The formula of a run without breakpoints still said "line 38" on the installed build. Replaying the page's own chain on
+that run (fb63a6d4) offline - its trace through `localPush`, `stepSources` reading each copy, the record formula - gave
+the whole formula, so on the page a source read must fail, and `stepSources` swallowed it. It now says which sources
+of the record could not be read and why. The user first asked to say plainly that the analysis needs two breakpoints,
+then for the default instead: what there is, from the first step to the last. `autoPoint` takes the breakpoint on the
+record's first step, else that step itself (`record-start`, PROG or CLAS by its source), and, with no record, the first
+active breakpoint; with neither the window says what Analyze needs. Then Analyze answered "No symbolic formula was
+resolved" while Recorded and Optimized were fine: the earlier rule had taken the first active breakpoint - line 17,
+WRITE - and the analysis runs forward from its point, where LS_RESULT-AMOUNT is no longer computed; from the
+record's first step (line 11 [run fb63a6d4 step 1]) it is. I had begun to switch Analyze off for an empty formula;
+the user asked why hide it rather than find the cause, and that was taken out. Tests moved; all suites 210 pass.
+VSIX rebuilt; Eclipse not.
+
+Analyze stayed empty on transpiler runs, with breakpoints or without, and even when Analyze flow path was run by hand;
+in SAP it worked. The user: perhaps it never worked - I asked for it. The analysis itself was sound: run offline on the
+run's own sources (fb63a6d4) through `eclipse/debug-analysis.js`, both the path from line 11 and the page's slice from
+line 17 gave 109 flow rows, 28 nodes and the whole formula. The page was the cause. `withRecordFormula` took
+`staticFlow.panes || data.panes`: with no path analysed, the record's drawing - which has no formula - stood in for the
+analysis, and Analyze showed its "No symbolic formula was resolved". In SAP the path is analysed before a run; on a
+transpiler run nothing started it once the run ended. Analyze now has the analysis's panes or nothing (off, saying
+why), and `analyzeFollowed` starts the analysis when a value is chosen and when a transpiler run ends with one chosen,
+from the record's first step. Codex's two tests had passed the analysis in `data.panes`; it is in `staticFlow` now. New
+test; all suites 212 pass. VSIX rebuilt; Eclipse not.
+
+That was not the end of it: after a run without breakpoints the formula still said "line 38", and all three readings
+were empty. The user's Log of that run showed why - each class step carried the text of the file before it, and the
+facade's steps none: every answer to the page's queue was one request late. The page asks one thing at a time and takes
+the answers in order; the host answered the page whose number held when the message arrived. When the program window's
+run ends, `refreshFlow` writes the panel again, and a request the old page had sent just before reached the host after
+that: its answer went to the new page and stood in for the new page's first answer. The first source read then got a
+non-source answer (the facade empty) and each next read the previous file. The bridge in `debugHtml` now puts the
+page's own number on every message, and the host answers only when that number is the current one; `logicTools`
+answers through the same guard. The no-breakpoint run itself was not repeated here - it needs the user's window.
+New test; all suites as before (six failures of HEAD unrelated to this stand). VSIX rebuilt; Eclipse not.
+
+The user's next Log had every step's own text - the shift was gone - and Analyze still said "No symbolic formula was
+resolved". The local analysis finds the objects a program calls with `vscode.workspace.findFiles`: in the workspace.
+A transpiler run of a SAP object has its copies in a folder of its own under the system's temp folder (the program under
+`sap/`, the classes under `src/`), a kept run under its `sources/<n>/`; none of it is in the workspace, so no class was
+found and the analysis had the program alone. On run bca182d2: the program only and 0 formula nodes; with the run's
+files, 11 sources and 28 nodes. In SAP the analysis reads through ADT, which is why it worked there. The host now gives
+the analysis the run's files (`runFiles`: the SAP copies, or a kept run's record files), and `local-analysis` looks for
+objects among them and only there - a file of the same name in the workspace may be another version; an object not
+among them is said to be so. A local file run of the workspace is searched as before. New test; all suites as before.
+VSIX rebuilt; Eclipse not.
+
+With Analyze working, the user asked where the discount on the zero tax was in its formula, and for Optimized to
+apply to Analyze as well - a toggle of its own for Analyze and Recorded rather than a third choice. The analysis's
+Expression substitutes every definition where it is read, so the base price stood in each of the six branches and
+the discount's `cs_context-tax_amount` was lost in a 1000-character line. `oneFormula(tree, false)` now gives the same
+derivation without substitution: every assignment is a step named by its variable and numbered (`CS_CONTEXT-AMOUNT₁`
+.. `₆`, `LV_PERCENT₁`, `₂`), a definition read by several branches is one step, and a value from a table stays its
+where name. `formula()` keeps it as `expression.optimized`; `expressionPane` draws both, `vx-analysis-whole` and
+`vx-analysis-optimized`, the second with the record's decoding - the formula's names on the first level, a line that
+reads names of its own opening them under an arrow, each once. On run bca182d2 the formula is six names with their
+conditions and twelve steps; the discount's step is the one line with a name that has no number - no assignment
+before it. The page: `fexpressionmodes` is Analyze | Recorded; `foptimized` is a `vertex-toggle` beside it, and the
+body class `rf-optimized` (default off) selects the optimized half of either pane; `rf-full` is gone, and the record's
+wrapper is `rf-record`. Checked light and dark on a sample page built from the run. Tests moved, one new; all suites
+as before. VSIX rebuilt; Eclipse not.
+
 ## 2026-10-31 — 0.9.52: Recorded and Optimized the right way round; what a run made of a formula, coloured
 
 Codex had left Expression with Analyze | Recorded | Optimized, Optimized showing the one-line record and Recorded the

@@ -85,13 +85,25 @@ async function declaredVariables(document, request = {}, vscode) {
   } finally { await parser.close(); }
 }
 
-function create(vscode, primary, object) {
+function create(vscode, primary, object, files = null) {
   const documents = new Map([[object.object_type + ":" + object.object_name, primary]]);
   async function find(name, type) {
     name = String(name).toUpperCase();
     type = String(type).toUpperCase();
     const key = type + ":" + name;
     if (documents.has(key)) { return documents.get(key); }
+    // A transpiler run has its sources in a folder of its own, outside the workspace: searched in the workspace, its
+    // classes were never found, and the analysis had the program alone. They are looked for among the run's files, and
+    // only there - a file of the same name in the workspace may be another version.
+    if (files) {
+      for (const file of files) {
+        if (!path.basename(file).toUpperCase().startsWith(name + ".")) continue;
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+        const found = sourceObject(document);
+        if (found?.object_name === name && found.object_type === type) { documents.set(key, document); return document; }
+      }
+      throw new Error(name + " is not among the sources of this run.");
+    }
     if (!vscode.workspace.findFiles) { throw new Error(name + " was not found in the local workspace."); }
     const uris = await vscode.workspace.findFiles("**/*.abap", "**/node_modules/**", 2000);
     const ownerFolder = path.dirname(primary.uri.fsPath || primary.uri.path || "");
@@ -210,10 +222,10 @@ async function createPackage(vscode, folder) {
   };
 }
 
-async function originSources(vscode, document, target, progress = () => {}, cancelled = () => false, onParsed = () => {}) {
+async function originSources(vscode, document, target, progress = () => {}, cancelled = () => false, onParsed = () => {}, files = null) {
   const object = sourceObject(document);
   if (!object) { throw new Error("Open a local ABAP program or class first."); }
-  const session = create(vscode, document, object);
+  const session = create(vscode, document, object, files);
   const parser = require("./value-origin-linter").createParser(cancelled);
   const parsed = new Map(), warnings = [];
   async function load(name, type) {

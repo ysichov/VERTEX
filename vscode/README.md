@@ -1204,10 +1204,14 @@ definitions that all ran - every modifier of a pipeline - stand as steps in the 
 reading what the one before left. One calculation is left. **With values** - shown whenever a value is chosen, on by default - puts
 after each of their names, in brackets, the value the record holds for it: in the routine the analysis places it in,
 at its last stop there up to the stop shown, so at the end of the record the final values, and it follows the player;
-the value on the left, the one the formula comes to, is given the same way. Expression has three readings:
-**Analyze** (the default) shows its complete formula without recorded values, whatever value the run produced;
-**Recorded** shows the calculation step by step from the run; **Optimized** writes the recorded derivation as one
-line and explains computed names left in it under **where**. Recorded Expression colours ABAP keywords, numbers
+the value on the left, the one the formula comes to, is given the same way. Expression has two readings,
+**Analyze** (the default: the analysis's complete formula without recorded values, whatever value the run produced)
+and **Recorded** (how the run computed the value), and the **Optimized** toggle for both. Off, the derivation is
+written out: Analyze puts every value into one formula, Recorded writes the run's derivation as one line. On, the
+formula reads its values by their names, numbered where one name holds several (`CS_CONTEXT-AMOUNT₁`,
+`CS_CONTEXT-AMOUNT₂`), and under **where** each is given by its statement, the values it reads one level down under
+an arrow; for Recorded, the last step, its where and the rule. In Analyze optimized, a name the analysis found no
+assignment for keeps its source spelling, with no number. Recorded Expression colours ABAP keywords, numbers
 and string literals in the active theme; variable names remain links to their source statements. An assignment
 that computes zero still counts as a calculation.
 Formula shows that formula above the tree of the run: each value, the statement that last changed it with its stop,

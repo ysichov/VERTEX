@@ -1020,7 +1020,14 @@ function activate(context) {
   // an answer to the page before - a request still running when the page was written again - must not reach the new
   // one: it would stand in the place of the new page's first answer, and every answer after it would be one off.
   let dockedGeneration = 0;
-  const setDockedHtml = html => { dockedGeneration++; dockedDebugView.webview.html = html; };
+  // The sources of a transpiler run - the copies read from SAP, or the files a kept run carries - for the analysis, which
+  // finds its objects among them; a local file run of the workspace has none and is analysed in the workspace.
+  const runFiles = source => source?.sapCopies ? source.sapCopies.copies.map(copy => copy.path)
+    : source?.storedRun ? [...new Set(source.storedRun.records.map(record => record.file).filter(Boolean))] : null;
+  const setDockedHtml = () => {
+    dockedGeneration++;
+    dockedDebugView.webview.html = require("./tools-window").debugHtml(dockedDebugInitial(), dockedGeneration) + "<!-- " + Date.now() + " -->";
+  };
   context.subscriptions.push(vscode.window.registerWebviewViewProvider("vertex.visualDebug", {
     async resolveWebviewView(view) {
       // VS Code restores the view, but extension-host objects do not survive Reload Window.
@@ -1039,7 +1046,7 @@ function activate(context) {
       dockedDebugView = view;
       view.webview.options = { enableScripts: true };
       dockedGeneration++;
-      view.webview.html = require("./tools-window").debugHtml(dockedDebugInitial());
+      view.webview.html = require("./tools-window").debugHtml(dockedDebugInitial(), dockedGeneration);
       if (dockedDebugSource?.local && latestLocalVariables) {
         setTimeout(() => void view.webview.postMessage({ type: "localVariables", state: latestLocalVariables }), 150);
       }
@@ -1060,8 +1067,9 @@ function activate(context) {
       setTimeout(sendCursor, 400);
       view.onDidDispose(() => { clearTimeout(cursorTimer); cursorWatchers.forEach(watcher => watcher.dispose()); });
       const receive = view.webview.onDidReceiveMessage(async message => {
-        // The answer goes to the page that asked, not to one written since.
-        const asked = dockedGeneration;
+        // The answer goes to the page that asked, not to one written since: the page says which it is. The number at
+        // the time the message arrived is not enough - a message of the page before can arrive after the new page is written.
+        const asked = message.generation;
         const replyTo = payload => asked === dockedGeneration ? view.webview.postMessage({ type: "result", payload }) : undefined;
         try {
           if (message.call === "localPanelReady") {
@@ -1123,7 +1131,7 @@ function activate(context) {
               : request.recordFormula ? require("./record-formula").build(request.recordFormula)
               : dockedDebugSource?.local && request.variables
               ? await require("./local-analysis").declaredVariables(dockedDebugSource.document, request.variables, vscode)
-              : request.open ? await sapCode.originOpen(request.open) : request.variables ? await sapCode.originVariables(request.variables) : await sapCode.originPoints(request,progress=>view.webview.postMessage({type:"originProgress",payload:{id:request.id,...progress}}),dockedDebugSource?.local?dockedDebugSource.document:null) }; }
+              : request.open ? await sapCode.originOpen(request.open) : request.variables ? await sapCode.originVariables(request.variables) : await sapCode.originPoints(request,progress=>view.webview.postMessage({type:"originProgress",payload:{id:request.id,...progress}}),dockedDebugSource?.local?dockedDebugSource.document:null,runFiles(dockedDebugSource)) }; }
             catch (error) { reply = { id: request.id, error: error.message }; }
             await view.webview.postMessage({ type: "origin", payload: JSON.stringify(reply) });
             return;
@@ -1273,7 +1281,7 @@ function activate(context) {
             const editor=vscode.window.activeTextEditor,editorObject=editor&&sapCode.documentObject(editor.document);
             const selected=editorObject?{name:editorObject.object_name,type:editorObject.object_type,cursorLine:editor.selection.active.line+1}:commandArgs;
             await showTools({...selected,action:"scheme",boundObject:true},embedded);
-            await view.webview.postMessage({type:"result",payload:"{}"});return;
+            await replyTo("{}");return;
           }
           const handled = Date.now();
           const answer = await pinTo(dockedDebugSource && dockedDebugSource.system_name, () =>
@@ -1379,12 +1387,12 @@ function activate(context) {
         autoSelection: source.autoSelection,
         builtAt: dockedDebugSource.sapCopies?.builtAt || "" } });
       // Written after the window opens, so the panel knows the window holds the run (its Run brings the window back).
-      if (dockedDebugView) setDockedHtml(require("./tools-window").debugHtml(dockedDebugInitial()) + "<!-- " + Date.now() + " -->");
+      if (dockedDebugView) setDockedHtml();
       return;
     }
     if (dockedDebugView) {
       // A page the same as the one shown is not loaded again by VS Code: the mark of this opening makes it new.
-      setDockedHtml(require("./tools-window").debugHtml(dockedDebugInitial()) + "<!-- " + Date.now() + " -->");
+      setDockedHtml();
       dockedDebugView.show(true);
       postDockedPicture();
     } else if (!restoring) {
@@ -1397,7 +1405,7 @@ function activate(context) {
   const refreshFlow = () => {
     if (!dockedDebugView || !localDebugAdapter?.hasTrace()) return false;
     if (dockedDebugSource) dockedDebugSource.runOnly = false;
-    setDockedHtml(require("./tools-window").debugHtml(dockedDebugInitial()) + "<!-- " + Date.now() + " -->");
+    setDockedHtml();
     postDockedPicture();
     return true;
   };

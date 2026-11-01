@@ -571,6 +571,29 @@ test('a step that adds a share of the value before it is that value times one pl
   assert.deepEqual(one.steps, []);
 });
 
+test('optimized, the derivation reads every value by its name, and a value read by several branches is one name', () => {
+  const { oneFormula } = require('../value-origin-formula');
+  const { expressionPane } = require('../value-origin-formula-html');
+  const node = (raw, of, location, children = [], conditions = []) => ({ id: raw, raw, text: raw, of, location, source: 's', line: 1, children, conditions });
+  const weight = node('SELECT weight FROM t INTO w.', 'w', 'ZCL_D->GET');
+  const base = () => node('amount = w * 2.', 'AMOUNT', 'ZCL_P->BASE', [weight]);
+  const rate = node('SELECT rate FROM r INTO p.', 'p', 'ZCL_M->APPLY');
+  const share = node('extra = amount * p.', 'EXTRA', 'ZCL_M->APPLY', [base(), rate]);
+  const raised = node('amount = amount + extra.', 'AMOUNT', 'ZCL_M->APPLY', [base(), share], ['IF sy-subrc = 0.']);
+  const tree = { id: 'root', text: 'R', of: '', location: '', children: [base(), raised] };
+  const optimized = oneFormula(tree, false);
+  assert.equal(optimized.text, 'R = {AMOUNT₁ otherwise | AMOUNT₂ when sy-subrc = 0}');
+  assert.deepEqual(optimized.steps.map(step => step.name + ' = ' + step.text),
+    ['AMOUNT₁ = w * 2', 'EXTRA₁ = AMOUNT₁ * p', 'AMOUNT₂ = AMOUNT₁ + EXTRA₁']);
+  // The pane carries both: the derivation written out, and optimized - AMOUNT₂ opens what it reads one level down.
+  const pane = expressionPane({ expression: { ...oneFormula(tree), optimized }, byRun: false, pipeline: '', skipped: [] });
+  assert.match(pane, /^<div class="vx-analysis-whole">/);
+  assert.match(pane, /<div class="vx-analysis-optimized">/);
+  const decoded = pane.slice(pane.indexOf('<ul class="expression-decode">'));
+  assert.ok(decoded.indexOf('>AMOUNT₁</button> = ') < decoded.indexOf('<li class="more"><details><summary><code><button'), 'AMOUNT₁ is opened first, at the first level');
+  assert.match(decoded, /<li class="more"><details><summary><code><button[^>]*>AMOUNT₂<\/button> = .*<ul class="expression-decode"><li><code><button[^>]*>EXTRA₁<\/button> = /);
+});
+
 test('a SELECT is shown by the field that concerns the value, its table and its conditions', () => {
   const { selectOf } = require('../value-origin-formula');
   const raw = "SELECT SINGLE shipment_id, distance_km, weight_kg FROM zlog_shipment\n  WHERE scenario_id = @iv_scenario INTO CORRESPONDING FIELDS OF @rs_context.";

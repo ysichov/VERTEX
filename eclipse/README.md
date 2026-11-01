@@ -233,9 +233,10 @@ run is one - and redraws it each time, whatever VERTEX hides.
 - Right-click a node or a routine frame of the diagram for *Show from here*, *Expand this branch*
   and *Collapse this branch*.
 - With a value chosen in Variables, Formula and Expression after a run keep only the path the run
-  took. Expression has **Analyze** (the default: the complete formula without recorded values for any result),
-  **Recorded** (the run's calculation step by step) and **Optimized** (the recorded derivation as one line, with
-  computed names explained under *where*). With values switches the recorded values in brackets; with no path analysed they
+  took. Expression has **Analyze** (the default: the complete formula without recorded values for any result) and
+  **Recorded** (how the run computed the value), and the **Optimized** toggle for both: off, the derivation written
+  out as one line; on, the formula reads its values by their names (`CS_CONTEXT-AMOUNT₁`, `CS_CONTEXT-AMOUNT₂`) and
+  *where* gives each by its statement, the next level under an arrow. With values switches the recorded values in brackets; with no path analysed they
   come from the record: Expression is the statement that made the value; right under it, after
   *where*, the computed values it reads are given by their statements side by side, and a line's
   arrow unfolds the next level; a value built up in one variable step after step is then written

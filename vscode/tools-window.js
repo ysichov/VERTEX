@@ -20,10 +20,14 @@ function html(pages, initial) {
 // The docked panel deliberately contains only the debugger page.  Its source
 // stays in the normal VS Code editor next to it; unlike Tools it has no object
 // picker, chat or duplicate source tab.
-function debugHtml(initial) {
+function debugHtml(initial, generation) {
   const controls = fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8");
+  // Every message carries the number of the page that sent it. A request of the page before, still on its way when the
+  // page was written again, reaches the host after the new page is up; answered by the time it arrived, its answer went
+  // to the new page, stood in the place of that page's first answer, and every answer after it was one off.
   const bridge = `<script>
-    const host=acquireVsCodeApi();let pending;
+    const vscodeHost=acquireVsCodeApi(),generation=${Number(generation) || 0};let pending;
+    const host={postMessage:message=>vscodeHost.postMessage({...message,generation})};
     window.sdeTake=()=>{const value=pending;pending=null;return value;};
     window.sdeDebug=(command,args)=>host.postMessage({call:"debug",args:[command,JSON.stringify(args||{})]});
     window.sdeSource=(name,type)=>host.postMessage({call:"source",args:[name,type]});
