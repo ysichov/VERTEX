@@ -83,7 +83,7 @@ table.stack tr.on td:first-child::before{content:"▶ "}
 
 
 .row{padding:1px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;gap:6px;align-items:center}
-.row:hover{background:var(--vscode-list-hoverBackground,Highlight)}
+.row:hover{background:var(--vscode-list-hoverBackground,color-mix(in srgb,currentColor 10%,transparent))}
 .row.on{background:var(--vscode-list-activeSelectionBackground,Highlight);color:var(--vscode-list-activeSelectionForeground,HighlightText)}
 .row .x{margin-left:auto;padding:0 4px}
 body.no-value div[aria-label="FLOW scope"],body.no-value div[data-mode-toggle]{display:none!important}
@@ -109,6 +109,18 @@ button.x{background:transparent;border:0}
 #dumppagebody td,#dumppagebody th{border:1px solid var(--vscode-panel-border,GrayText);padding:2px 6px;vertical-align:top}
 #dumppagebody h1,#dumppagebody h2,#dumppagebody h3{font-size:13px;margin:10px 0 4px}
 body:not(.vx-with-values) .rf-value{display:none}
+/* A recorded Expression carries two views: Optimized the formula, its where and its rule; Recorded the whole line. */
+body:not(.rf-full) .rf-inline,body.rf-full .rf-step{display:none}
+.rf-keyword{color:var(--vscode-symbolIcon-keywordForeground,var(--vscode-debugTokenExpression-name,var(--vscode-foreground)))}
+.rf-number{color:var(--vscode-debugTokenExpression-number,var(--vscode-charts-blue,var(--vscode-foreground)))}
+.rf-string{color:var(--vscode-debugTokenExpression-string,var(--vscode-charts-orange,var(--vscode-foreground)))}
+body:not(.rf-recorded):not(.rf-full) .rf-optimized,body.rf-recorded .rf-analysis,body.rf-full .rf-analysis{display:none}
+.rf-analysis .vx-value{display:none}
+#fexpressionmodes[hidden],body:not(.expression-mode) #fexpressionmodes{display:none}
+/* What a recorded run made of a formula's parts: ran, not run, a SELECT that found nothing or gave an empty value. */
+.data-composed.vx-ran{color:var(--vscode-testing-iconPassed,var(--vscode-charts-green))}
+.data-composed.vx-not-run{color:var(--vscode-disabledForeground,GrayText)}
+.data-composed.vx-empty,.rf-empty .data-composed{color:var(--vscode-testing-iconFailed,var(--vscode-errorForeground))}
 .rf-value,.vx-value{color:var(--vscode-debugTokenExpression-number,var(--vscode-descriptionForeground));font-family:var(--vscode-editor-font-family,monospace)}
 .rf-assigned{color:var(--vscode-testing-iconPassed,var(--vscode-charts-green))}.rf-pending{color:var(--vscode-testing-iconFailed,var(--vscode-errorForeground))}
 .empty{padding:4px 8px;color:var(--vscode-descriptionForeground,GrayText);font-family:system-ui,sans-serif}
@@ -121,7 +133,7 @@ table.vars td{padding:1px 6px;white-space:nowrap;overflow:hidden;text-overflow:e
 table.vars td.n{width:45%}
 table.vars td.t{width:22%;color:var(--vscode-descriptionForeground,GrayText)}
 table.vars tr.grp td{font-weight:600;background:var(--vscode-editorWidget-background,var(--vscode-editor-background,Canvas));font-family:system-ui,sans-serif}
-table.vars tr:hover td{background:var(--vscode-list-hoverBackground,Highlight)}
+table.vars tr:hover td{background:var(--vscode-list-hoverBackground,color-mix(in srgb,currentColor 10%,transparent))}
 .tw{display:inline-block;width:12px;cursor:pointer;user-select:none}
 .changed{color:var(--vscode-debugTokenExpression-error,var(--vscode-errorForeground,red));font-weight:600}
 .tlink{text-decoration:underline;cursor:pointer}
@@ -274,7 +286,7 @@ table.grid.log td:nth-child(3),table.grid.log td:nth-child(4){max-width:320px;ov
 #vmenu{position:fixed;z-index:6;display:none;min-width:200px;padding:4px 0;background:var(--vscode-menu-background,var(--vscode-editorWidget-background,Canvas));color:var(--vscode-menu-foreground,var(--vscode-foreground,CanvasText));border:1px solid var(--vscode-menu-border,var(--vscode-editorWidget-border,GrayText));box-shadow:0 2px 8px var(--vscode-widget-shadow,rgba(0,0,0,.3));font-family:system-ui,sans-serif}
 #vmenu.on{display:block}
 #vmenu button{display:block;width:100%;text-align:left;padding:4px 16px;background:transparent;color:inherit;border:0;border-radius:0;cursor:pointer;font:inherit}
-#vmenu button:hover{background:var(--vscode-menu-selectionBackground,var(--vscode-list-hoverBackground,Highlight));color:var(--vscode-menu-selectionForeground,inherit)}
+#vmenu button:hover{background:var(--vscode-menu-selectionBackground,var(--vscode-list-hoverBackground,color-mix(in srgb,currentColor 10%,transparent)));color:var(--vscode-menu-selectionForeground,inherit)}
 #bpedit input{width:300px;font-family:var(--vscode-editor-font-family,monospace)}
 #bpedit .btns{display:flex;gap:6px;justify-content:flex-end}
 /* In VS Code's docked debugger, the real source lives in the standard editor.
@@ -335,7 +347,7 @@ body.vertex-docked-debug #right{width:100%}
       <div class="list" id="dumpbox"></div></section>
     <section id="runscreen" hidden><h3><span id="runscreentitle">Selection screen</span><span class="grow"></span><button id="runexecute" class="primary">Execute (F8)</button></h3><div id="runscreenbody"></div></section>
     <section id="outsec" hidden><h3><span>Output</span><span class="grow"></span><button id="runback" hidden title="Back to the selection screen, to run again (F3)">Back (F3)</button></h3><pre id="outbox" class="list"></pre></section>
-    <div id="flowpane" hidden><div id="flowbar"><button id="fvalues" class="vertex-toggle on" hidden title="Show the value a recorded run holds for each name of Formula and Expression, in brackets after it. The values come from a run recorded with Steps &amp; values (a transpiler run always has them); before a run there are none to show">With values</button><button id="fclasses" class="active">Classes</button><button id="fmethods">Methods</button><button id="flogic" title="Branches, loops, calls and control transfers">Logic</button><button id="fsteps" hidden title="The recorded run as statements: one node per statement, however many times it ran">Statements</button><span id="fdepthbox" hidden><span class="vertex-segment-toggle" id="fexpand" role="group" aria-label="Branches"><button class="active" data-open="collapse">Collapse all</button><button data-open="expand">Expand all</button></span><label class="fdepth" title="How deep the statements are shown - the program is 0, a class 1, a routine 2">Depth <input type="range" id="fdepth" min="1" max="1" value="1" step="1" aria-label="Depth"><output id="fdepthvalue" class="dim">all</output></label></span><span class="grow"></span><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Hide the diagram">&#215;</button></div><div id="bse-workspace" class="bse-workspace"></div></div>
+    <div id="flowpane" hidden><div id="flowbar"><button id="fvalues" class="vertex-toggle on" hidden title="Show the value a recorded run holds for each name of Formula and Expression, in brackets after it. The values come from a run recorded with Steps &amp; values (a transpiler run always has them); before a run there are none to show">With values</button><span id="fexpressionmodes" class="vertex-segment-toggle" role="group" aria-label="Expression mode" hidden><button id="fanalysis" class="active" title="Full formula from Analyze, without recorded values">Analyze</button><button id="frecorded" title="Expression from the recorded run as it is: the whole derivation as one line, each value written out by its own statement">Recorded</button><button id="foptimized" title="Expression from the recorded run, optimized: the last step, its where, and the same as one rule of the first value and the rates">Optimized</button></span><button id="fclasses" class="active">Classes</button><button id="fmethods">Methods</button><button id="flogic" title="Branches, loops, calls and control transfers">Logic</button><button id="fsteps" hidden title="The recorded run as statements: one node per statement, however many times it ran">Statements</button><span id="fdepthbox" hidden><span class="vertex-segment-toggle" id="fexpand" role="group" aria-label="Branches"><button class="active" data-open="collapse">Collapse all</button><button data-open="expand">Expand all</button></span><label class="fdepth" title="How deep the statements are shown - the program is 0, a class 1, a routine 2">Depth <input type="range" id="fdepth" min="1" max="1" value="1" step="1" aria-label="Depth"><output id="fdepthvalue" class="dim">all</output></label></span><span class="grow"></span><button id="ffull" title="The whole window (Esc to leave)">&#10530;</button><button id="fclose" class="x" title="Hide the diagram">&#215;</button></div><div id="bse-workspace" class="bse-workspace"></div></div>
     <section id="logsec" hidden><h3><span>Log</span><span id="logtime" class="dim"></span></h3><div id="logbox" class="list"></div></section>
   </div>
 </main>
@@ -1156,6 +1168,7 @@ function runVisual(){
   function next(){
     if(s.valueDue&&!s.stop){s.valueDue=false;var pre=s.preread;s.preread=null;return timed(s,"values",readChosenValue(pre)).then(next);}
     if(s.snapDue&&!s.stop){s.snapDue=false;var scopes=s.prescopes;s.prescopes=null;return timed(s,"values",snapshot(null,scopes)).then(next);}
+    if(s.subrcDue!=null&&!s.stop){var after=s.subrcDue;s.subrcDue=null;return timed(s,"values",readSubrc(after)).then(next);}
     if(s.stop)return Promise.resolve();
     var f=currentFrame(),depth=picture.stopped.frames.length;
     // Still in SAP's own code above ours: back out before anything else.
@@ -1174,6 +1187,8 @@ function runVisual(){
     // value followed, that value too.
     // A statement that writes no variable (WRITE, SKIP, ULINE ... - the map marks it quiet): the stop after it is not read.
     var place=f&&maps[f.program]?placeOf(f,maps[f.program]):null;s.quietStep=!!(place&&place.here&&place.here.quiet);
+    // A SELECT's SY-SUBRC is read at the stop after it and kept with the SELECT's stop.
+    if(s.rec&&place&&place.here&&/^(SELECT|ENDSELECT)$/i.test(place.here.kw||""))s.subrcDue=flow.timeline.length-1;
     var t=Date.now(),reads=s.rec&&chosenValue&&chosenValue.name?[chosenValue.name]:null;
     explain(f,false,null,"F5");
     lastMove={action:"F5",from:String(f.label),detail:""};
@@ -1261,6 +1276,14 @@ function snapDue(frames){
   return !!(p&&ENDS.test(p.here.kw));
 }
 var localVarCache={};
+/* SY-SUBRC after a SELECT, kept with the SELECT's stop: the formulas tell a SELECT that found nothing (not 0) from one
+   that found a row with an empty field (0). A failed read is kept as such, not taken for a value. */
+function readSubrc(index){
+  return debug("vars",{names:["SY-SUBRC"]}).then(function(d){
+    var v=(d.variables||[])[0],t=flow.timeline&&flow.timeline[index];if(!t)return;
+    if(v)t.subrc=String(v.value).trim();else t.subrcError="SY-SUBRC was not read";
+  }).catch(function(e){var t=flow.timeline&&flow.timeline[index];if(t)t.subrcError=e&&e.message||String(e);});
+}
 function snapshot(captured,pre){
   var tl=flow.timeline,at=tl[tl.length-1];
   // Outside a routine - an event of a report - its variables are the program's globals.
@@ -1332,7 +1355,7 @@ function drawRecordedVars(i){
     box.textContent="";
     if(t.watch.error||t.watch.missing){var message=document.createElement("div");message.className="empty";message.textContent=t.watch.error?"Recorded value read failed: "+t.watch.error:"Requested values were unavailable at this recorded stop.";box.appendChild(message);return;}
     var recorded=document.createElement("table");recorded.className="vars";
-    var heading=document.createElement("tr"),title=document.createElement("td");heading.className="grp";title.colSpan=3;title.textContent="Watched values � read at stop "+(i+1);heading.appendChild(title);recorded.appendChild(heading);
+    var heading=document.createElement("tr"),title=document.createElement("td");heading.className="grp";title.colSpan=3;title.textContent="Watched values · read at stop "+(i+1);heading.appendChild(title);recorded.appendChild(heading);
     (t.watch.read||[]).forEach(function(value){var row=document.createElement("tr");[value.name,value.type,value.value].forEach(function(text,index){var cell=document.createElement("td");cell.className=index===0?"n":index===1?"t":"";cell.textContent=text==null?"":String(text);cell.title=cell.textContent;row.appendChild(cell);});recorded.appendChild(row);});
     box.appendChild(recorded);return;
   }
@@ -1664,6 +1687,8 @@ function joinToolbars(){
   // The readings (Classes, Methods, Logic, Statements) are the shared view's own switch, as in Value origin; the
   // window's earlier Classes / Methods buttons and its separate Logic button stay out of the row.
   var end=document.createElement("span");end.className="grow";row.appendChild(end);
+  row.insertBefore($("fvalues"),end);
+  row.insertBefore($("fexpressionmodes"),end);
   row.appendChild($("ffull"));row.appendChild($("fclose"));
   $("flowbar").hidden=true;
 }
@@ -2015,23 +2040,28 @@ function recordSteps(){
     }
     var f=t.stack&&t.stack[0];
     // A stop the record read no values at: what it holds is carried from before, not seen there.
-    steps.push({url:t.at&&t.at.url||"",line:t.at&&t.at.line||0,depth:(t.stack||[]).length,location:t.cur?String(t.cur.name).indexOf("=>")>0?t.cur.name:t.cur.owner+"=>"+t.cur.name:String(f&&f.program||""),values:values,read:Array.isArray(t.vars)||!!t.watch});
+    steps.push({url:t.at&&t.at.url||"",line:t.at&&t.at.line||0,depth:(t.stack||[]).length,location:t.cur?String(t.cur.name).indexOf("=>")>0?t.cur.name:t.cur.owner+"=>"+t.cur.name:String(f&&f.program||""),values:values,read:Array.isArray(t.vars)||!!t.watch,subrc:t.subrc});
   });
   return steps;
 }
 function withRecordFormula(data){
   // The toggle is there whenever a value is chosen: the values themselves come from a recorded run.
   $("fvalues").hidden=!chosenValue;
+  // Analyze, Recorded and Optimized are the three readings of Expression.
+  $("fexpressionmodes").hidden=true;
   // The analysis's formula stays as it was before the run; With values puts the final recorded values in brackets after
   // its names. The formula built from the record is for a run with no analysed path.
-  var analysed=data.panes;
+  var analysed=data.panes,staticPanes=typeof staticFlow!=="undefined"&&staticFlow&&staticFlow.panes||data.panes;
   if(!chosenValue||!(flow.timeline||[]).length||typeof sdeOrigin!=="function")return Promise.resolve(data);
   var steps=recordSteps(),sources={};
   steps.forEach(function(s){var lines=texts[norm(s.url)];if(s.url&&lines&&!(s.url in sources))sources[s.url]=lines.join("\n");});
   var at=replayAt!=null?replayAt:steps.length-1;
   // The analysed path as this run took it: only the definitions whose line the run executed.
   var executed=[],seen={};
-  steps.forEach(function(s){var object=String(s.location||"").split("=>")[0].toUpperCase(),key=object+":"+s.line;if(s.line&&!seen[key]){seen[key]=true;executed.push({object:object,line:s.line});}});
+  steps.forEach(function(s){var object=String(s.location||"").split("=>")[0].toUpperCase(),key=object+":"+s.line;if(!s.line)return;
+    // A SELECT run more than once found something if any pass did.
+    if(seen[key]){if(s.subrc!=null&&Number(s.subrc)===0)seen[key].subrc="0";return;}
+    seen[key]={object:object,line:s.line,subrc:s.subrc};executed.push(seen[key]);});
   // The branches the run did not take are known only when it is over: until then the analysis's formula stays whole.
   var finished=INITIAL.local?localEnded:!picture.stopped;
   var path=analysed&&finished?askOrigin({pathFormula:{executed:executed}}).catch(function(error){notice("The analysed path as run: "+(error&&error.message||error));return null;}):Promise.resolve(null);
@@ -2039,15 +2069,34 @@ function withRecordFormula(data){
     if(!rf||!rf.formula||!rf.formula.nodes.length)return data;
     // A record of steps alone gives the formula without values: there is nothing for the toggle to show.
     var on=rf.hasValues&&$("fvalues").classList.contains("on");
-    data.formula={nodes:rf.formula.nodes.map(function(n){return Object.assign({},n,{label:on?n.label:n.text,dataText:on?n.label:n.text});}),edges:rf.formula.edges};
-    data.maxLevel=rf.formula.maxLevel;
-    // Both panes must describe this recorded run. A static path may carry an empty Expression.
-    data.panes={formula:rf.panes.formula,expression:rf.panes.expression};
+    var recorded=!(rf.tree&&rf.tree.outside),full=!!(staticPanes&&staticPanes.expression);
+    if(recorded&&!full){
+      data.formula={nodes:rf.formula.nodes.map(function(n){return Object.assign({},n,{label:on?n.label:n.text,dataText:on?n.label:n.text});}),edges:rf.formula.edges};
+      data.maxLevel=rf.formula.maxLevel;
+    }
+    // Analyze is the complete formula for every result. Optimized reveals the recorded one-line substitution.
+    data.panes={formula:full?staticPanes.formula:run&&run.panes&&run.panes.formula||rf.panes.formula,
+      expression:full&&recorded?'<div class="rf-analysis">'+staticPanes.expression+'</div><div class="rf-optimized">'+rf.panes.expression+'</div>'
+        :full?staticPanes.expression:rf.panes.expression};
+    $("fexpressionmodes").hidden=!recorded;
+    $("fanalysis").disabled=!full;
+    if(!full&&$("fanalysis").classList.contains("active"))setExpressionMode("optimized");
     return data;
   });}).catch(function(error){notice("Formula from the run: "+(error&&error.message||error));return data;});
 }
 $("fvalues").onclick=function(){$("fvalues").classList.toggle("on");document.body.classList.toggle("vx-with-values",$("fvalues").classList.contains("on"));showFlow();};
 document.body.classList.add("vx-with-values");
+// Recorded is the record's derivation as it is, one line; Optimized the same record folded: its last step, where, rule.
+function setExpressionMode(mode){
+  document.body.classList.toggle("rf-recorded",mode!=="analysis");
+  document.body.classList.toggle("rf-full",mode==="recorded");
+  $("fanalysis").classList.toggle("active",mode==="analysis");
+  $("frecorded").classList.toggle("active",mode==="recorded");
+  $("foptimized").classList.toggle("active",mode==="optimized");
+}
+$("fanalysis").onclick=function(){setExpressionMode("analysis");};
+$("frecorded").onclick=function(){setExpressionMode("recorded");};
+$("foptimized").onclick=function(){setExpressionMode("optimized");};
 /* With values, the names the analysis's Formula and Expression read are given the value the record holds for them: in
    the routine the analysis places them in, at its last stop there up to the stop shown. A name the record has no value
    for is left as it is. */

@@ -54,3 +54,19 @@ test('analysis worker parses real ABAP and returns debugger FLOW and declared va
   const variables=await window.vertexDebugAnalysis.request(api,{variables:{object_name:'ZDEMO',object_type:'PROG',globals:true}});
   assert.ok(variables.globals.some(v=>v.name.toUpperCase()==='LV_RESULT'));
 });
+// The browser bundle cuts value-origin-linter's worker half and writes its exports anew: a name a module takes from it
+// and that list left out was undefined in Eclipse only ("parsedTokens is not a function" when an analysis started).
+test('the browser bundle keeps every name the analysis takes from value-origin-linter',()=>{
+  const taken=new Set();
+  for(const file of fs.readdirSync(path.join(root,'vscode')).filter(f=>f.endsWith('.js'))){
+    const text=fs.readFileSync(path.join(root,'vscode',file),'utf8');
+    for(const m of text.matchAll(/require\(['"]\.\/value-origin-linter['"]\)\.(\w+)/g))taken.add(m[1]);
+    for(const m of text.matchAll(/\{([\w\s,:]*)\}\s*=\s*require\(['"]\.\/value-origin-linter['"]\)/g))
+      m[1].split(',').map(s=>s.trim().split(/\s*:\s*/)[0]).filter(Boolean).forEach(name=>taken.add(name));
+  }
+  const exported=/module\.exports=\{([^}]*)\};`/.exec(fs.readFileSync(path.join(__dirname,'frontend-bundle.js'),'utf8'));
+  assert.ok(exported,'frontend-bundle.js writes the linter exports');
+  const names=new Set(exported[1].split(',').map(s=>s.trim()));
+  assert.ok(taken.has('parsedTokens'));
+  assert.deepEqual([...taken].filter(name=>!names.has(name)),[]);
+});

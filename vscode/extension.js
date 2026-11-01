@@ -1002,7 +1002,8 @@ function activate(context) {
   const postDockedPicture = () => {
     if (dockedDebugSource?.storedDebugRecord) return;
     if (dockedDebugSource?.local && localDebugAdapter) {
-      const frame = localDebugAdapter.picture().stopped?.frames?.[0];
+      // A run that is over stands nowhere: its last line keeps no mark, which took the gutter where a breakpoint goes.
+      const picture = localDebugAdapter.picture(), frame = picture.over ? null : picture.stopped?.frames?.[0];
       const editor = (vscode.window.visibleTextEditors || []).find(item =>
         frame && runPathOf(item.document.uri)?.toLowerCase() === String(frame.url || "").toLowerCase());
       if (localHistoryEditor && localHistoryEditor !== editor) clearLocalHistoryMark();

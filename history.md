@@ -1,5 +1,53 @@
 # Release history
 
+## 2026-10-31 — 0.9.52: three Expression readings
+
+- Expression now offers **Analyze**, **Recorded** and **Optimized** as separate choices. Analyze is the default and keeps the full analysis formula without recorded values for every result, including zero. Recorded shows the run's derivation as it is, one line with every value written out; Optimized folds it: the last step, its `where`, and the same as one rule of the first value and the rates.
+- After a run, the analysis's whole Formula is kept and marked with what the run made of it: green what ran, grey what did not - a branch whose condition did not hold - and red a SELECT that found nothing. The record keeps SY-SUBRC after each SELECT for that.
+- A click on a name of a recorded formula shows its statement and moves the player to the step it ran at.
+- ◀ ▶ beside the Expression readings move the player to the previous or next step at which a value of the formula was made.
+- Analyze, Recorded and Optimized stay in sight; a reading with nothing to show yet is off and says why.
+- In the analysis's formula a name the record gives no value for, or only an initial one, is red.
+- Following a value with no path analysed analyses it at once, from the breakpoint the record starts at, so Analyze is there to explain what the record did not compute.
+- A value read before the run set it has its own line under *where*: what it was then, and the statement that set it later. A modifier that leaves the value as it was no longer cuts the recorded chain short.
+- In a recorded Expression a name is red, with the reason on hover, when its value came empty from a SELECT (found nothing, or found a row whose field is empty) or was read empty before the run set it - the discount reading `tax_amount (0)` before the tax is computed.
+- VS Code 0.9.52 and Eclipse were rebuilt with the three choices.
+
+## 2026-10-31 — 0.9.52: zero results and Optimized explanation
+
+- Optimized now explains the computed names left in its one-line formula under **where**.
+- A recorded assignment that computes the same value, including zero, keeps its formula. When a recording contains no assignment for the selected value, Expression retains the formula already calculated by the analysis.
+- VS Code 0.9.52 and Eclipse 0.9.52.20261031210250 were rebuilt.
+
+## 2026-10-31 — 0.9.52: Expression controls and colours
+
+- In the recorded debugger view, **With values** and **Optimized** now appear beside the FLOW / Formula / Expression controls. Optimized starts off and switches to the one-line derivation when selected.
+- Recorded Expression colours ABAP keywords, numbers and string literals in the active theme while keeping variable names as source links.
+- VS Code 0.9.52 and Eclipse 0.9.52.20261031210250 were rebuilt.
+
+## 2026-10-31 — 0.9.52: the review summary after a verdict
+
+- Going back from an object of a review (**← Review**) after approving, declining or commenting a block reads the
+  summary again: its counts show the new verdicts, and **Rebuild from ADT** is no longer refused as if somebody else
+  had saved the review meanwhile. The summary keeps its scroll position.
+- In Eclipse, VERTEX Smart Debugger's analyses from a breakpoint (*Analyze*, *flow path*, *Where used*) start again;
+  they stopped at "parsedTokens is not a function".
+- In Eclipse, a row of Breakpoints or Variables under the pointer is tinted lightly instead of painted in the system's
+  selection colour.
+- A recorded run's Expression is the statement that made the value, each name with the value it read. Right under
+  it, after *where*, each value read that was itself computed from several terms is explained by its own statement,
+  side by side in the formula's order; a line that reads computed values of its own unfolds them under an arrow, one
+  level at a time. A value built up in one variable step after step is then written once more as one product -
+  `amount₁ × ( 1 + x ) × ...`, with what a step adds besides it as a term of its own - captioned *the same as one
+  rule: the first value and the rates, the sums in between folded in*, with its own where under it. **Optimized**, off by
+  default, shows the whole derivation as one line instead, a value written out once named the next time. Each value is explained once, and a name links to its
+  statement instead of naming the place beside it. It no longer writes the whole derivation out in one line, which
+  doubled at every `amount = amount + amount * x`. A component read with several values is numbered in the order
+  they were made - `amount₁`, `amount₂`, ...; two routines' own variables of one name are not. Values show four
+  decimals at most, the whole value on hover; a value SAP writes with a decimal comma is shown with a point.
+- The recorded stop's heading reads "Watched values · read at stop N"; a broken character stood in place of the dot.
+- VS Code 0.9.52 and Eclipse 0.9.52.20261031210250.
+
 ## 2026-10-31 — Find transport requests in Eclipse, again
 
 - In Eclipse, **Find** in the Tools window's *Find transport requests* stopped at "finding your requests ...": the

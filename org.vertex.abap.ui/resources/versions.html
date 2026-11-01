@@ -628,6 +628,11 @@ var mode = "V";
    the part by its padded key, and a reader wants the name they clicked. */
 var review = null;
 var review_part = null;
+/* A verdict or a comment written since the summary was read: its counts and its saved stamp no longer hold, so going
+   back reads it again - shown as kept, it hid the verdicts and its old stamp refused the next Rebuild. */
+var review_written = false;
+// Where to put the summary's scroll once it has been read again; null when it is not being read again.
+var review_scroll_after = null;
 // The build option "Ignore SAP generated", on as in AVE; it holds for this window.
 var review_ignore_generated = true;
 /* What a review is built with: B lets the host build it from ADT, G keeps the code SAP generated. */
@@ -2096,6 +2101,7 @@ function act(block, action, note, scope) {
     document.getElementById("root").querySelectorAll("button[data-act]").forEach(function (button) { button.disabled = true; });
   }
   status("writing ...");
+  review_written = true;
   sdeAct(objectName(), "", object.obj_name, object.objtype,
          JSON.stringify({ hunk_key: block.hunk_key, action: action,
                           note: note, saved_at: review_saved_at }), review_blame ? "1" : "", review_from);
@@ -2112,6 +2118,7 @@ function rememberScroll() {
 function backToReview() {
   if (!review) { loadReview(); return; }
   var at = review_scroll;
+  if (review_written) { review_scroll_after = at; loadReview(); return; }
   showing = { view: "review" };
   renderReview(review);
   if (at !== null) { requestAnimationFrame(function () { document.getElementById("root").parentNode.scrollTop = at; }); }
@@ -2352,6 +2359,12 @@ function renderReview(data) {
   try {
     showing = { view: "review" };
     renderReviewData(data);
+    if (!data.partial) { review_written = false; }
+    if (review_scroll_after !== null && !data.partial) {
+      var at = review_scroll_after;
+      review_scroll_after = null;
+      requestAnimationFrame(function () { document.getElementById("root").parentNode.scrollTop = at; });
+    }
     if (typeof sdeContextUpdate === "function" && !data.partial)
       sdeContextUpdate({ vertex_view: sdeContext(), review_source: null });
   }

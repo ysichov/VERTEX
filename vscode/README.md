@@ -1204,13 +1204,29 @@ definitions that all ran - every modifier of a pipeline - stand as steps in the 
 reading what the one before left. One calculation is left. **With values** - shown whenever a value is chosen, on by default - puts
 after each of their names, in brackets, the value the record holds for it: in the routine the analysis places it in,
 at its last stop there up to the stop shown, so at the end of the record the final values, and it follows the player;
-the value on the left, the one the formula comes to, is given the same way.
+the value on the left, the one the formula comes to, is given the same way. Expression has three readings:
+**Analyze** (the default) shows its complete formula without recorded values, whatever value the run produced;
+**Recorded** shows the calculation step by step from the run; **Optimized** writes the recorded derivation as one
+line and explains computed names left in it under **where**. Recorded Expression colours ABAP keywords, numbers
+and string literals in the active theme; variable names remain links to their source statements. An assignment
+that computes zero still counts as a calculation.
 Formula shows that formula above the tree of the run: each value, the statement that last changed it with its stop,
 line and the value before, and what that statement read, back through the record - a node that would open the
 same code as the node under it or above it, such as the parameter a call passed, is left out. Every name of the
 formula and of the tree, and each formula of the analysis's tree, is itself the link to the statement that set it; a value the record never saw
-change is a leaf, *not changed in the record*. With no path analysed, Expression is written out from the record
-instead, the same way. That formula is the one the whole record gives, and it follows the player: an assignment
+change is a leaf, *not changed in the record*. With no path analysed, Expression comes from the record instead:
+the statement that made the value, each name with the value it read. Right under it, after *where*, each value the
+formula reads that was itself computed from several terms is given by its own statement, side by side in the
+formula's order. A line that reads computed values of its own has an arrow: it unfolds the next level, those values
+by their statements, and so on. Each value is opened on the first level that reads it and once, a literal not at all,
+and a name links to the statement that set it. When the value was built up in one variable step after step
+(`amount = amount + amount * x`), a line after the where, captioned *the same as one rule: the first value and the rates,
+the sums in between folded in*, writes it as one product, `amount₁ × ( 1 + x ) × ...`, with what a step adds besides the value as a term of its own, and a *where* of
+its own under it - the first value, a percent computed on the way - so the two formulas can be set side by side; a
+step that is no sum or product of the value says so instead. The result closes the pane. A component read with several values is numbered
+by the order they were made (`amount₁`, `amount₂`, ...); a plain name of two routines - two modifiers' own
+`lv_percent` - is two variables and is not. Values show four decimals at most, the whole value on hover. That
+formula is the one the whole record gives, and it follows the player: an assignment
 that has run by the stop shown has a green `=` and its value, one still to run has a red `=` and no value; decimal
 values are shown without trailing zeros. Values come from Steps & values (a transpiler run always has them); from Rec steps alone the
 tree comes from the statements that ran - the last one that wrote each value - without values. In a SAP record a

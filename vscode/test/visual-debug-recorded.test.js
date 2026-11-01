@@ -6,6 +6,85 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
+test("recorded Expression keeps its view controls in the visible toolbar", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
+  const join = html.slice(html.indexOf("function joinToolbars(){"), html.indexOf("function openRecordFlow(){"));
+  assert.match(join, /row\.insertBefore\(\$\("fexpressionmodes"\),end\)/);
+  assert.match(join, /row\.insertBefore\(\$\("fvalues"\),end\)/);
+  assert.match(html, /id="fexpressionmodes" class="vertex-segment-toggle"/);
+  assert.match(html, /id="fanalysis" class="active"/);
+  assert.match(html, /id="frecorded"/);
+  assert.match(html, /id="foptimized"/);
+});
+
+test("Expression's three choices select Analyze, Recorded and Optimized exclusively", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
+  const source = html.slice(html.indexOf("function setExpressionMode(mode){"), html.indexOf("/* With values,", html.indexOf("function setExpressionMode(mode){")));
+  const active = {}, body = {};
+  const controls = Object.fromEntries(["fanalysis", "frecorded", "foptimized", "fprevstep", "fnextstep"].map(id => [id, { classList: { toggle: (_, on) => { active[id] = on; } } }]));
+  const context = { $: id => controls[id], document: { body: { classList: { toggle: (name, on) => { body[name] = on; } } } } };
+  vm.runInNewContext(source, context);
+  // Recorded: the record's derivation as it is, the whole line (rf-full).
+  controls.frecorded.onclick();
+  assert.deepEqual(active, { fanalysis: false, frecorded: true, foptimized: false });
+  assert.equal(body["rf-recorded"], true);
+  assert.equal(body["rf-full"], true);
+  // Optimized: the same record folded - its last step, where and rule (no rf-full).
+  controls.foptimized.onclick();
+  assert.deepEqual(active, { fanalysis: false, frecorded: false, foptimized: true });
+  assert.equal(body["rf-recorded"], true);
+  assert.equal(body["rf-full"], false);
+  controls.fanalysis.onclick();
+  assert.deepEqual(active, { fanalysis: true, frecorded: false, foptimized: false });
+  assert.equal(body["rf-recorded"], false);
+  assert.equal(body["rf-full"], false);
+});
+
+test("an unchanged recording keeps the precalculated Expression", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
+  const source = html.slice(html.indexOf("function withRecordFormula(data){"), html.indexOf('$("fvalues").onclick=', html.indexOf("function withRecordFormula(data){")));
+  const modes = html.slice(html.indexOf("function expressionModes("), html.indexOf("// Recorded is the record's derivation"));
+  const controls = { fvalues: { hidden: false, classList: { contains: () => true } }, fexpressionmodes: { hidden: true }, fstepnav: { hidden: true }, fanalysis: { classList: { contains: () => true } }, frecorded: {}, foptimized: {} };
+  const context = { $: id => controls[id], chosenValue: { name: "LS_RESULT-AMOUNT" }, flow: { timeline: [{}] },
+    sdeOrigin() {}, recordSteps: () => [{ url: "z.abap", line: 2, location: "Z" }], texts: {}, norm: x => x,
+    INITIAL: { local: true }, localEnded: false, picture: {}, replayAt: null,
+    askOrigin: () => Promise.resolve({ tree: { outside: true }, formula: { nodes: [{ id: "missing" }], edges: [] },
+      panes: { formula: "not changed", expression: "not changed" }, hasValues: true }) };
+  context.setExpressionMode = mode => { context.mode = mode; };
+  vm.runInNewContext(source + modes, context);
+  const data = { formula: { nodes: [{ id: "static" }], edges: [] }, panes: { formula: "static formula", expression: "static expression" } };
+  const result = await context.withRecordFormula(data);
+  assert.equal(result.panes.expression, "static expression");
+  assert.equal(result.panes.formula, "static formula");
+  assert.equal(result.formula.nodes[0].id, "static");
+  // The readings stay in sight: Analyze chosen, Recorded and Optimized off until the run sets the value.
+  assert.equal(controls.fexpressionmodes.hidden, false);
+  assert.equal(controls.frecorded.disabled, true);
+  assert.equal(controls.foptimized.disabled, true);
+  assert.equal(context.mode, "analysis");
+});
+
+test("a recorded zero shows Analyze's full formula without recorded values", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
+  const source = html.slice(html.indexOf("function withRecordFormula(data){"), html.indexOf('$("fvalues").onclick=', html.indexOf("function withRecordFormula(data){")));
+  const modes = html.slice(html.indexOf("function expressionModes("), html.indexOf("// Recorded is the record's derivation"));
+  const controls = { fvalues: { hidden: false, classList: { contains: () => true } }, fexpressionmodes: { hidden: false }, fstepnav: { hidden: false }, fanalysis: { classList: { contains: () => true } }, frecorded: {}, foptimized: {} };
+  const context = { $: id => controls[id],
+    chosenValue: { name: "LS_RESULT-AMOUNT" }, flow: { timeline: [{}] }, sdeOrigin() {},
+    recordSteps: () => [{ url: "z.abap", line: 2, location: "Z" }], texts: {}, norm: x => x,
+    INITIAL: { local: true }, localEnded: false, picture: {}, replayAt: null,
+    askOrigin: () => Promise.resolve({ tree: { value: "0", outside: false }, formula: { nodes: [{ id: "record" }], edges: [] },
+      panes: { formula: "recorded formula", expression: "ls_result-amount = ls_result-amount" }, hasValues: true }) };
+  context.setExpressionMode = mode => { context.mode = mode; };
+  vm.runInNewContext(source + modes, context);
+  const data = { formula: { nodes: [{ id: "analysis" }], edges: [] }, panes: { formula: "full formula", expression: "full Analyze expression" } };
+  const result = await context.withRecordFormula(data);
+  assert.match(result.panes.expression, /<div class="rf-analysis">full Analyze expression<\/div><div class="rf-optimized">ls_result-amount = ls_result-amount<\/div>/);
+  assert.equal(result.formula.nodes[0].id, "analysis");
+  assert.equal(controls.fexpressionmodes.hidden, false);
+  assert.equal(controls.fanalysis.disabled, false);
+});
+
 const helpers = html => ["function poolName(program){", "function recordedUnitKey(owner,unit){"].map(start =>
   html.slice(html.indexOf(start), html.indexOf("\n", html.indexOf(start)))).join("\n") + "\n";
 
@@ -170,7 +249,7 @@ test("a recorded result supplies Expression even when the static path has an emp
   const start = html.indexOf("function withRecordFormula(data){");
   const end = html.indexOf('$("fvalues").onclick=', start);
   const context = { chosenValue: { name: "LS_RESULT-AMOUNT" }, flow: { timeline: [{}] },
-    $: () => ({ hidden: false, classList: { contains: () => true } }), sdeOrigin() {},
+    $: () => ({ hidden: false, classList: { contains: () => true } }), setExpressionMode() {}, sdeOrigin() {},
     recordSteps: () => [{ url: "report.abap", line: 15, location: "REPORT=>START", values: {} }],
     texts: { "report.abap": ["REPORT report."] }, norm: value => value, replayAt: null,
     INITIAL: { local: true }, localEnded: true, picture: {}, notice() {},
@@ -272,4 +351,50 @@ test("statement diagram connects nested routines of the same class", () => {
   assert.ok(graph.edges["ZREPORT=>ZREPORT:5>m|ZCL_FACADE=>RUN"]);
   assert.ok(graph.edges["m|ZCL_FACADE=>RUN>m|ZCL_FACADE=>MODIFIER_FOR"]);
   assert.ok(graph.edges["m|ZCL_FACADE=>MODIFIER_FOR>ZCL_FACADE=>MODIFIER_FOR:25"]);
+});
+
+test("SY-SUBRC read after a SELECT is kept with the SELECT's stop and reaches the formula's steps", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
+  const part = (from, to) => html.slice(html.indexOf(from), html.indexOf(to, html.indexOf(from)));
+  const context = { flow: { timeline: [{ at: { url: "z.abap", line: 2 }, stack: [{ program: "Z" }], cur: { owner: "Z", name: "RUN" } }, { at: { url: "z.abap", line: 3 }, stack: [{ program: "Z" }], cur: { owner: "Z", name: "RUN" } }] },
+    asked: null, debug(command, args) { context.asked = [command, args]; return Promise.resolve({ variables: [{ name: "SY-SUBRC", value: "4 " }] }); } };
+  vm.runInNewContext(part("function readSubrc(index){", "\n}\n") + "\n}\n" + part("function recordSteps(){", "function withRecordFormula(data){"), context);
+  await context.readSubrc(0);
+  assert.equal(JSON.stringify(context.asked), JSON.stringify(["vars", { names: ["SY-SUBRC"] }]));
+  assert.equal(context.flow.timeline[0].subrc, "4");
+  assert.equal(context.recordSteps()[0].subrc, "4");
+  assert.equal(context.recordSteps()[1].subrc, undefined);
+});
+
+test("a name of the analysis's formula the record gives no value for, or only an initial one, is red", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
+  const element = full => { const classes = new Set(); return { dataset: { full, location: "" }, title: "Open", classList: { toggle: (name, on) => on ? classes.add(name) : classes.delete(name), has: name => classes.has(name) }, after() {} }; };
+  const names = [element("WEIGHT_KG"), element("TAX_RATE"), element("PRICE")];
+  const box = { querySelectorAll: selector => selector === "[data-full]" ? names : [] };
+  const context = { $: id => id === "bse-workspace" ? box : { classList: { contains: () => false } }, flow: { timeline: [{}] }, replayAt: null, chosenValue: null,
+    recordSteps: () => [{ location: "", values: { WEIGHT_KG: "0", PRICE: "5.42" } }], drawFlowValueList() {}, valueObserver: { takeRecords() {} } };
+  vm.runInNewContext(html.slice(html.indexOf("function recordedValue(full,location,steps,upto){"), html.indexOf("/* The values followed, also at the left")) +
+    html.slice(html.indexOf("function annotateValues(){"), html.indexOf("var annotating=false,annotateTimer=null;")), context);
+  context.annotateValues();
+  assert.equal(names[0].classList.has("vx-empty"), true);
+  assert.match(names[0].title, /only its initial value/);
+  assert.equal(names[1].classList.has("vx-empty"), true);
+  assert.match(names[1].title, /holds no value for it/);
+  assert.equal(names[2].classList.has("vx-empty"), false);
+  assert.equal(names[2].title, "Open");
+});
+
+test("a record whose sources were never shown has them read before its formula is built", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
+  const source = html.slice(html.indexOf("function withRecordFormula(data){"), html.indexOf('$("fvalues").onclick=', html.indexOf("function withRecordFormula(data){")));
+  const texts = {}, asked = [];
+  const controls = { fvalues: { hidden: false, classList: { contains: () => true } }, fexpressionmodes: { hidden: true }, fstepnav: { hidden: true }, fanalysis: { classList: { contains: () => false } }, frecorded: {}, foptimized: {} };
+  const context = { $: id => controls[id], chosenValue: { name: "LV_X" }, flow: { timeline: [{}] }, sdeOrigin() {}, texts, norm: x => x,
+    recordSteps: () => [{ url: "zcl_c.abap", line: 3, location: "ZCL_C" }], INITIAL: { local: true }, localEnded: false, picture: {}, replayAt: null,
+    stepSources: () => { texts["zcl_c.abap"] = ["CLASS zcl_c.", "", "lv_x = 1."]; return Promise.resolve(); }, expressionModes() {},
+    askOrigin: request => { asked.push(request.recordFormula && request.recordFormula.sources); return Promise.resolve(null); } };
+  vm.runInNewContext(source, context);
+  await context.withRecordFormula({ panes: {} });
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0]["zcl_c.abap"], "CLASS zcl_c.\n\nlv_x = 1.");
 });

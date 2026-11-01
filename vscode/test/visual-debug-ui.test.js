@@ -126,9 +126,9 @@ test("a statement that only closes a block is not a step of the diagram", () => 
 test("choosing a value asks for its slice at once, so Full marks it before BSE is ever pressed", () => {
   const asked = [];
   const context = vm.createContext({ chosenValue: null, followed: [], flowByValue: {}, staticFlow: null, slicePoints: "old", sliceAsked: "old", sliceFor: "old",
-    drawChosen() {}, drawVars() {}, paneOn: () => false, flow: {}, sdeOrigin() {}, notice() {},
+    drawChosen() {}, drawVars() {}, paneOn: () => false, flow: {}, sdeOrigin() {}, notice() {}, picture: { breakpoints: [] }, norm: value => value,
     fetchSlice: () => { asked.push(context.chosenValue && context.chosenValue.name); return Promise.resolve(); } });
-  vm.runInContext(part("function chooseValue(name){", "/* The places the analysis says the chosen value can be changed"), context);
+  vm.runInContext(part("function autoPoint(){", "/* The places the analysis says the chosen value can be changed"), context);
   vm.runInContext('chooseValue("ls_result-amount")', context);
   assert.deepEqual(asked, ["LS_RESULT-AMOUNT"]);
   assert.equal(context.slicePoints, null, "a new value drops the old slice");
@@ -783,4 +783,36 @@ test("a recorded stop is a point the analyses start from: its object, the object
   assert.equal(point(2), "TEST PROG 7");
   assert.equal(point(3), "ZCL_A CLAS 3");
   assert.equal(point(4), null, "a stop without a place starts nothing");
+});
+
+test("following a value with no path analysed analyses it from the breakpoint the record starts at", () => {
+  const analysed = [];
+  const start = { id: "b2", name: "ZLAB", objectType: "PROG", url: "zlab", line: 11, active: true };
+  const context = vm.createContext({ chosenValue: null, followed: [], flowByValue: {}, staticFlow: null, slicePoints: null, sliceAsked: null, sliceFor: "",
+    drawChosen() {}, drawVars() {}, paneOn: () => false, sdeOrigin() {}, notice() {}, norm: value => value, fetchSlice: () => Promise.resolve(),
+    picture: { breakpoints: [{ id: "b1", name: "ZLAB", objectType: "PROG", url: "zlab", line: 3, active: true }, start] },
+    flow: { timeline: [{ at: { url: "zlab", line: 11 } }] },
+    analyzePath: point => { analysed.push(point.id); return Promise.resolve(); }, setTimeout: fn => fn() });
+  vm.runInContext(part("function autoPoint(){", "/* The places the analysis says the chosen value can be changed"), context);
+  vm.runInContext('chooseValue("ls_result-amount")', context);
+  assert.deepEqual(analysed, ["b2"]);
+  context.picture.breakpoints = [];
+  vm.runInContext('staticFlow = null; chooseValue("lv_x")', context);
+  assert.deepEqual(analysed, ["b2"], "no breakpoint, nothing to analyse from");
+});
+
+test("the formula's arrows move the player to the next or previous step a value of the formula was made at", () => {
+  const replayed = [], notes = [];
+  const link = (stop, within) => ({ getAttribute: () => String(stop), closest: selector => selector === "[hidden]" ? null : selector === within ? {} : null });
+  const links = [link(7, ".rf-step"), link(2, ".rf-step"), link(7, ".rf-step"), link(4, ".rf-inline")];
+  const context = vm.createContext({ replayAt: 5, stops: () => 10, notice: text => notes.push(text), replay: i => replayed.push(i),
+    document: { body: { classList: { contains: () => false } }, querySelectorAll: () => links } });
+  vm.runInContext(page.slice(page.indexOf("function formulaStops(){"), page.indexOf('$("fprevstep").onclick')), context);
+  assert.equal(JSON.stringify(vm.runInContext("formulaStops()", context)), "[2,7]", "the folded view's own names, once each, in order");
+  vm.runInContext("formulaStep(1)", context);
+  vm.runInContext("formulaStep(-1)", context);
+  assert.deepEqual(replayed, [7, 2]);
+  vm.runInContext("replayAt = 7; formulaStep(1)", context);
+  assert.deepEqual(replayed, [7, 2]);
+  assert.equal(notes.at(-1), "No later step of the formula.");
 });

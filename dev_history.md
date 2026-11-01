@@ -1,5 +1,244 @@
 # Development history
 
+## 2026-10-31 — The chain cut at a modifier that changed nothing; tax read before it was set; Analyze on Follow
+
+The user, testing in VS Code, saw tax_amount₁ (0) without an explanation and the chain stop at amount₁ = 10212.35.
+The cut was Codex's "an assignment can compute the same value" rule in `changeOf`: a CHANGING call writes its actual
+(`ls_context`), so the hazard modifier, which left the amount as it was, was taken for the place it was made. The
+rule now holds for statements that bind no parameters; on the saved run the chain goes down to 8370.648 again (new
+test: a modifier leaving the value as it was). tax_amount₁ was not red because the discount reads it through the
+parameter, as the caller's `ls_context-tax_amount`: `laterOf` finds the later statement by name or by component.
+A value read before it was set now has a where line - what it was, and under it the statement that set it later
+(or "(above)" when that is already open) - numbered by its reader. The user then said that what the record did not
+compute is what Analyze is for, and that it should run by itself when a value is followed: `chooseValue` analyses
+from the breakpoint the record starts at, else the first active one, when no path was analysed (`autoPoint`). Tests:
+record-formula 29, debugger page 61, all suites run 176 pass. VSIX rebuilt; the Eclipse build was stopped by the user
+and not repeated. Not tried in a live host.
+
+Then: a click on a name opened the code but did not move the player - the user wants navigation through the history
+led by the formula. `link` carries the stop the statement ran at (`data-stop`), and the page's source-link handler
+replays to it after opening the code. New test; all suites 177 pass. VSIX rebuilt.
+
+The user then asked for the next step: arrows ◀ ▶ beside the readings (`fstepnav`) move the player to the previous or
+next stop at which a value of the formula shown was made - every name with a `data-stop` in the shown view, folded
+ones too. Then "why only one toggle?": Codex hid Analyze | Recorded | Optimized whenever the record had no formula for
+the value; `expressionModes` now keeps them in sight and turns off what has nothing yet, with why on hover - Recorded
+and Optimized before the run sets the value, Analyze before a path is analysed - choosing Analyze when it is all there
+is. On a transpiler run of 28 steps whose record keeps LS_RESULT without its fields the user said: no formula given,
+so red wherever it was not given. `annotateValues` marks each name of the analysis's formula red (`vx-empty`) when the
+record holds no value for it or only an initial one, with the reason in its title, during the run as well. Tests for
+the arrows, the readings and the red names; four Value Origin tests failed once while a VSIX build ran beside them and
+passed after it; all suites 179 pass. VSIX rebuilt; Eclipse not, the user stopped its build. Not tried in a live host.
+
+The user called the Recorded formula wrong at `cs_context-tax_amount₁ (0)`, with Variables showing tax_amount 1804.52.
+The formula is the run's: the discount read 0 because CLEAN computes the tax after it; Variables show the end. But
+the 0 was not red: `readBeforeSet` took only values the record never changed, and here the field came empty with
+its structure (`DATA(ls_context) = get_shipment( )`), and the map of later writes kept the earliest write of the name
+- that empty fill itself. It now takes any empty value read whose name a statement sets to a value after it was made,
+and the map counts only writes of a value; it is said before the SELECT's own reason, since a SELECT filling a
+structure did not read the field at all. New test; all suites 180 pass. VSIX rebuilt.
+
+On the new build the discount line had its arrow - the read-before-set entry was there - but the name was blue and the
+value plain. The shared view paints every source link with `button.data-composed{color:...!important}`, which beat the
+page's red, green and grey. Those rules are now `!important` with a higher specificity, and the value goes inside the
+red wrapper with its name. Three tests moved; all suites 180 pass. VSIX rebuilt.
+
+A click on tax_amount₁ (0) went to step 5, the assistant named 64; the user asked which is right. The last transpiler
+run (07e5e187) says: the field appears with 0 when the context is filled (step 3), comes into the discount as a
+parameter (64), is read by ZCL_MOD_DISCOUNT line 12 (66), and is set by the tax only at 80. Step 5 was the
+statement that filled the structure, which never set the field; 64 is the discount's entry. The wrong read is at 66.
+A name read before it was set now links to the statement that read it, titled "Read here before it was set", with
+the reason still from its own value; where's line for it does the same. Test moved; all suites 180 pass. Not checked
+on that run itself: its file keeps the transpiler's own records, which the formula is not built from offline. VSIX
+rebuilt.
+
+A transpiler run with no breakpoint broke the formula: `ls_result-amount = ls_context-amount` with "line 38" where the
+modifier call should stand, and the chain cut there. Such a run never stops, so the page never showed - never read - the
+classes' sources, and the record formula was built with the report's alone. `withRecordFormula` now reads the record's
+missing sources first, once (`stepSources`, which the diagram already used), then builds; a source that cannot be read
+is still named by the formula. After that run the editor kept the stop mark on line 17, where the user could not set a
+breakpoint: the run had ended on its last trace record, which still has a line. The local adapter's picture says
+`over` then, and the mark is cleared; replaying back still marks. Whether the mark was what kept the breakpoint off the
+gutter is not checked. Tests: a record with unread sources; all suites with the local adapter's 196 pass. VSIX rebuilt.
+
+## 2026-10-31 — 0.9.52: Recorded and Optimized the right way round; what a run made of a formula, coloured
+
+Codex had left Expression with Analyze | Recorded | Optimized, Optimized showing the one-line record and Recorded the
+folded one. The user had defined it the other way: the old formula is not optimized, the new one is. `setExpressionMode`
+now gives Recorded the line (`rf-full`) and Optimized the step, where and rule; with no analysis Optimized is taken. The
+user's idea before that: colour the analysis's whole formula with the run - green ran, grey not run, red a zero from a
+SELECT. `formula()` takes a `ran` marker instead of dropping definitions; `pathFormula` keeps every definition and marks
+it ran, not-run, or empty (a SELECT whose recorded SY-SUBRC is not 0); `formulaPane` gives the caption `vx-<state>` and
+says it in the title. The page reads SY-SUBRC (`vars`) at the stop after a SELECT/ENDSELECT and keeps it with the SELECT's
+stop; `recordSteps` and the executed list carry it; a read that fails is kept as an error, not a value. In the record's
+Expression `named` paints red, with why, a value a SELECT left empty (by its SY-SUBRC: found nothing, or a row with an
+empty field; without it, an empty value) and - after the user asked where tax = 0 in red was - a value read empty that
+the run sets later (`readBeforeSet`, from the pane's own changes). Codex's mode test was turned to the new meaning; new
+tests for the marks (`value-origin-path.test.js`), the red names and SY-SUBRC in the record. Formula and analysis suites
+174 pass. I had first created an empty `value-origin-formula.test.js` by a stray heredoc and removed it. One Eclipse
+build failed copying `visual-debug.html` (file busy) and passed on the retry. VSIX and Eclipse 0.9.52.20261031210250
+built, the site in `docs/` replaced (Codex's 190333 jars there taken out; its build stays in `target/`). Not tried in a
+live host.
+
+## 2026-10-31 — 0.9.52: Analyze, Recorded, Optimized
+
+The user clarified that the complete formula means Analyze without recorded data at any result. The preceding zero-only fallback was too narrow. The shared toolbar now has a three-choice `vertex-segment-toggle`: Analyze uses the saved static Expression, Recorded shows the record's step form, Optimized its one-line form and `where`. The full analysis remains the default. Focused VS Code and Eclipse tests pass (51); both packages were rebuilt.
+
+## 2026-10-31 — 0.9.52: recorded zero and Optimized where
+
+`changeOf` previously used value inequality alone to decide whether a statement computed a value. It now recognises an executed write with the same value. `inlineText` tracks computed names retained in the one-line view, and `decoding` writes their explanations below its own `where`. If the record has no derivation, `withRecordFormula` keeps the static formula and Expression instead of replacing them with “not changed in the record”. The focused VS Code and Eclipse tests pass (49); both packages were rebuilt. Live SAP scenarios were not rerun.
+
+## 2026-10-31 — 0.9.52: visible Expression controls
+
+`joinToolbars` hid the old flow bar after moving only the fullscreen and close buttons into the shared toolbar. It now moves With values and Optimized too. Optimized starts without `on`, and its click selects the one-line view. The recorded Expression renderer colours raw source fragments by keyword, number and string while preserving linked variable names. The focused VS Code and Eclipse tests pass (47); both packages were rebuilt. The broader test suite still has failures reported in the previous build turn.
+
+## 2026-10-31 — 0.9.52: the summary read again after a verdict
+
+The user found Find working, then approved and declined blocks of a request inside an object in Eclipse and went back:
+the summary still said 0/7, and Rebuild answered "SYCHOV saved this review while the page was open". The table held
+the verdicts (checked through the data preview: two A, one D, saved 12:54:42 UTC). The page keeps the summary it read
+(`review`) so that **← Review** costs nothing, and `backToReview` drew it again with its old counts and its old
+`saved_at`, which the next write is checked against. My first reading - that Eclipse's page had been read before
+verdicts made in VS Code - was wrong: the verdicts were made in that very page. `act` now marks the summary as
+written (`review_written`); going back reads it again and puts its scroll back once it is drawn. `versions.html` is
+shared, so VS Code gets the same code; the user had seen VS Code show the verdicts before this change, and I did not
+find why - its page has the same `backToReview`. The user named 0.9.52 for it.
+
+Then, in Eclipse's VERTEX Smart Debugger, a breakpoint's analysis said "parsedTokens is not a function", and the row
+under the pointer turned solid blue. The first: `eclipse/frontend-bundle.js` cuts `value-origin-linter`'s worker half
+and writes its exports anew as `{parseSource, createParser}`; `value-origin-formula` and `value-origin-ace` have since
+taken `parsedTokens` from it, which exists in the browser bundle but was not exported. It is now. A test in
+`eclipse/visual-debug.test.js` collects every name `vscode/*.js` takes from the linter and checks the bundle exports
+it; it fails on `parsedTokens` without the fix. The second: `.row:hover` and the Variables row hover fall back to the
+system's `Highlight` when `--vscode-list-hoverBackground` is missing, which in Eclipse it always is; the fallback is
+now `color-mix(in srgb, currentColor 10%, transparent)`, a tint that follows the theme. VS Code keeps its own
+variable.
+
+The user's next screenshot showed "Watched values � read at stop 171": the page's source has held U+FFFD there since
+0.8.4 (a write that was not UTF-8), the line below it a proper "·". It is "·" again. The same screenshot had
+Expression saying "LS_RESULT-AMOUNT was not changed in the record" after a run; the user says the formula differs
+at each stop in VS Code since the 2026-10-28 landing and should in Eclipse. That landing's note says Eclipse's
+bundle was not regenerated then; `package.ps1` regenerates it at every build now, and the bundle in this build
+differs from the committed one only by `parsedTokens`. The record formula does not use `parsedTokens`, so that fix is
+not shown to be the cause; the Eclipse run in the screenshot was also still on line 16, before `ls_result` is
+assigned. Not resolved: waiting for the user's run on this build.
+
+The user pasted VS Code's Expression of a CLEAN run (11302.0036...) and asked whether it is right. Evaluated in
+DECFLOAT34 it gives the recorded value, and its terms follow the pipeline in ZLOG_PIPELINE - road base, fuel, customs
+0.12, no hazard (the factor applies only to hazardous cargo, and the value would differ), discount 0.07 on amount less
+a tax amount still 0, VAT 0.19. But the base stood in it sixteen times: each `amount = amount + amount * x` doubled
+everything before it, and so did `amount + customs_amount` where `customs_amount` was computed from the same amount.
+At the user's word `expressionText` now names a value it has already written out - the same name made at the same
+stop, so both kinds of repeat - with its value the next time it is read; a plain value (one name, a literal) is
+written again, which keeps `100 + ( 100 * lv_rate )` of the existing test. The check for "written out" first looked
+for a space in the HTML, where every link has one; it reads the text without tags and values now. New test in
+`record-formula.test.js`, failing without the change (that file: 16 pass); the formula, recorded-view, value-origin
+and Eclipse debugger tests pass (75). On the saved recording of 2026-10-28 (PIPELINE) the Expression is one term per modifier and evaluates to
+the recorded 11437.83.
+
+The user's next CLEAN Expression showed two older blemishes, and asked for both: brackets round a single name,
+`( rs_context-weight_kg (1200) )` - the bracket test looked for a blank in the HTML, as the repeat test first did - and
+amounts from SAP with a decimal comma (`8370,648`, the user's decimal format) beside table values with a point.
+Brackets now go by the text without tags and values; `shown` takes a number with a comma as one with a point. New test,
+failing without the change; record-formula 17 pass, the other formula, recorded-view, value-origin and Eclipse
+debugger tests 75. The user asked whether the repeats had been a bug: the value was right, but nothing had ever been
+designed to name a value written out once - the substitution simply went on to the record's inputs, which in the
+2026-10-28 landing was taken for "the repeats are real".
+
+Then the user, on the next Expression (a run with hazard): the formula should be minimal from the start, its
+compound values explained below, and compound values in that explanation explained in turn, as in the tree - "a =
+b*c1 + c*d2, where d2 = koef1 + koef2". `expressionText` and its naming of repeats are gone. `stepText` writes one
+statement - the one `made` reaches by following the carriers (a call's returned value, a parameter's argument, the
+component a routine carried) - with each name and its value; names whose own statement has several terms go to a
+`where` list under it, `decoding` opens each by its own step and nests what that step reads, and a value opened once
+(the same name made at the same stop) is not opened again. A literal or a single name is not opened. Halfway the
+user saw the Formula tree of the same run and asked what use such output is; the answer was that it holds the same
+six lines under twice as many plumbing nodes (`ls_context-amount = lo_modifier->apply(...)` beside each modifier's
+own statement), and that the new where and the tree would overlap. The user left the tree for later and kept "a
+minimal formula, then the explanation". Six tests expected the inline form and were rewritten to the new one; a test
+for nesting was added; record-formula 18 pass, failing 6 without the change; the other formula, recorded-view,
+value-origin and Eclipse debugger tests 75. On the saved run of 2026-10-28 the formula is `cs_context-amount
+(12152.69) - cs_context-discount_amount (714.86)` with nine where lines down to the road tariff. The same name with
+five values (`cs_context-amount`) reads poorly there; the user asked whether they could be amount1, amount2, ...
+
+They are now, at the user's yes, with a subscript (`amount₁`) rather than a trailing digit, which could be a real
+ABAP name. A value is the statement `made` reaches, so a call's result and the routine's statement are one value; a
+value the record never saw change comes first. `numbering` leaves a placeholder after each name of the formula and
+its where, and fills it once every value of the name is known; a name with one value gets none. The statements list
+under it is not numbered. On the saved run: `cs_context-amount₄ - cs_context-discount_amount`, the where going down
+`amount₄ ... amount₁`; the three modifiers' own `lv_percent` (fuel, VAT, discount) are numbered too, being one name
+with three values. `record-formula.js` is CRLF, and the first scripted edit missed for it. New test; record-formula 19
+pass, the other suites 75. The user then thought aloud about a loop as a sum with its own sign, or sets - not taken up
+yet.
+
+The user compared the old one-line Expression with the new one (CLEAN, 11302.0036, both right) and, of the four
+weaknesses named, asked for all, and for the place beside each where line to go - the name's link leads there. (1)
+`decoding` puts the value a step was made from under its own name - amount₃ of amount₄ - on the same level after it,
+not inside it; a `later` set keeps it from being opened inside another step meanwhile. (2) `productForm` follows the
+root's variable back through the steps that read it and writes `amount₁ × k₂ × ... + c`: `linearIn` reads a step's
+right-hand side as k·A + c over + - * / of names, numbers and brackets, a computed name read through its own step
+when it depends on A (`fuel_amount = amount * lv_percent`), and the steps go one into the next, factored; anything
+else ends in a "No product:" line naming the step and why. (3) Values show four decimals at most (four significant
+digits below 1), the whole value in a title. (4) A plain name - `lv_percent` of three modifiers - is numbered per
+routine, a component across routines, since a component belongs to the structure handed on; an unchanged value's
+routine is its reader's. Where lines carry no place now, and their names link to the statement that made the value,
+not to the parameter that passed it. Tests: four old ones adjusted to the product line, three new (a variable built
+up through two routines with each one's own `lv_p`, a step adding a term besides the value and a `round( )` step
+with no product, rounding); record-formula 22 pass, the other suites 75. On the saved run of 2026-10-28 the product
+`( amount₁ × (1 + 0.0893) × (1 + 0.12) × (1 + 0.19) × (1 − 0.07) + tax_amount × 0.07 )` evaluates to the recorded
+11437.8278.
+
+The user then expected where to follow the formula: `amount₄ + tax_amount₂` explained as amount₄, then tax_amount₂,
+and so on - not amount₄ with its whole chain before tax_amount₂. `decoding` keeps a queue per list: the names of the
+step it explains go first in their order, and the value a step was made from under its own name joins the end of
+the same list. New assertion on the order in the product test; record-formula 22 pass, the other suites 75.
+
+That still put the discount line, opened under amount₄, between amount₄ and tax_amount₂. The user asked again: the
+values numbered in the formula should stand side by side in where, and the rest should go behind an arrow or icon
+that goes on with the explanation. The user also asked what the product line means; it was explained (base ×
+(1 + fuel) × (1 + customs) × (1 − discount) + tax_amount × discount, all × (1 + VAT); the extra bracket is the
+discount's `amount - tax_amount`), and a table with a line per step was offered instead - not decided. `decoding` now
+builds where breadth first: the formula's names make the first level, each entry's own computed names its parts, a
+value owned by the first level that reads it; a line with parts is a `<details>` whose summary is the line, folded,
+its parts the next level. The chain and its `later` set are gone - the levels do that work. The arrow's style is in
+the shared Formula/Expression style of `vertex-flow.js` (no bullet beside it, the open marker in the focus colour);
+the page's CSP takes no style attributes. A source link inside a summary does not fold it: the page takes the click
+and prevents its default. The nesting test and the order assertion now read the HTML levels. record-formula 22 pass,
+the other suites 75.
+
+The user did not see why where did not start right after the formula: the product line and the result stood between
+them. The pane is now the formula, its where, then the product under the caption "the same, from its first value"
+(the user had asked whether that line was an alternative formula - it is the same value written from the first
+amount), then the result. Six tests read the old order and were moved to the new one; record-formula 22 pass, the
+other suites 75.
+
+The user then asked for a where of the alternative too, captioned, so the difference can be seen. `productForm`
+collects the computed names its product reads as constants - the first value, a percent computed on the way, a tax
+amount computed before the discount - and the pane opens them under the product with the same `decoding`, afresh:
+it explains another formula, so a value opened in the first where is opened again here. The caption "the same, from
+its first value" stays over the product. Two tests moved; record-formula 22 pass, the other suites 75. On the saved
+run the product's where is the road base, the fuel percent and the tax amount (its chain folded under it).
+
+The user asked what the shorter where of the product means (the product has folded the sums in between into rates;
+only the base and a computed percent are left to explain), and then for a caption that says so: "the same as one
+rule: the first value and the rates, the sums in between folded in". Three tests carry the caption. The user then
+read a bug off the product: in CLEAN the term `tax_amount₁ (0) × lv_percent (0.07)` is nothing, because
+ZCL_MOD_DISCOUNT takes its discount from `amount - tax_amount` - written to run after VAT - and CLEAN's pipeline
+runs it before. With the same amount before discount and VAT (10212.3463) CLEAN gives × 0.93 × 1.19 = 11302.0036 and
+PIPELINE (VAT first) × 1.12 = 11437.8278, both the recorded values: the same rules price the shipment 135.82 apart by
+their order. Not changed in the ABAP - reported to the user. Asked whether zeros and gaps in a formula could be marked
+as possible bugs, I proposed signals (a value read before it is set later in the run, a term that is 0 or a factor 1,
+a step that ran and left the value unchanged); not decided.
+
+The user then asked for the old formula back behind a toggle, Optimized, off by default, the new view the default.
+`inlineText` writes the one line again - each value read written out by its own statement, a value written out once
+named by its value - over `made`, `readIn` and the numbering, as the version of earlier today did. The pane carries
+both views, `rf-step` and `rf-inline`; `visual-debug.html` has an Optimized `vertex-toggle` beside With values, shown
+when a value is chosen, which sets `rf-optimized` on the body, and one CSS rule shows one view at a time - no new
+drawing on a click. Three tests read the step view only now (`stepView`), one new for the line; record-formula 23
+pass, the debugger page tests 55, Eclipse's 7. VSIX and Eclipse 0.9.52.20261031210250 built, the site in `docs/`
+replaced. Not tried in a live host.
+
 ## 2026-10-31 — Find in Eclipse: the bundle could not load ADT's destination data
 
 The user tried 0.9.51.20261030235616: the finder still stood at "finding your requests ..." with "Reading ...". Both

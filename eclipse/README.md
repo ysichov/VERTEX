@@ -165,9 +165,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.51.qualifier`; the checked-in update site carries build `0.9.51.20261031143705`.
+then regenerate. The feature and bundle sources are at `0.9.52.qualifier`; the checked-in update site carries build `0.9.52.20261031210250`.
 
-The local install archive is version `0.9.51.20261031143705`. Install its ZIP through
+The local install archive is version `0.9.52.20261031210250`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:
@@ -233,8 +233,15 @@ run is one - and redraws it each time, whatever VERTEX hides.
 - Right-click a node or a routine frame of the diagram for *Show from here*, *Expand this branch*
   and *Collapse this branch*.
 - With a value chosen in Variables, Formula and Expression after a run keep only the path the run
-  took, with the recorded values in brackets (With values switches them); with no path analysed they
-  are written out from the record. Every name in them links to its statement. A formula from the
+  took. Expression has **Analyze** (the default: the complete formula without recorded values for any result),
+  **Recorded** (the run's calculation step by step) and **Optimized** (the recorded derivation as one line, with
+  computed names explained under *where*). With values switches the recorded values in brackets; with no path analysed they
+  come from the record: Expression is the statement that made the value; right under it, after
+  *where*, the computed values it reads are given by their statements side by side, and a line's
+  arrow unfolds the next level; a value built up in one variable step after step is then written
+  once more, captioned, as one product of its first value, with a where of its own. A component read with several values is numbered in
+  the order they were made (`amount₁`, `amount₂`); values show four decimals, the whole value on
+  hover. Every name in them links to its statement. A formula from the
   record follows the player: an assignment that has run by the stop shown has a green `=` and its
   value, one still to run a red `=`; decimal values are shown without trailing zeros.
 - Several values can be followed - a structure as its components - and a list on the chip and at the

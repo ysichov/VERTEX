@@ -1308,8 +1308,10 @@ function withoutConversions(text) {
 }
 
 /* keep: which definitions take part - all of them for the analysis; for a recorded run only those whose statement the
-   run executed, so the formula is the one calculation the run made, with no alternatives. */
-function formula(graph, keep = () => true) {
+   run executed, so the formula is the one calculation the run made, with no alternatives. ran, when given, marks each
+   definition of the tree with what a recorded run made of it instead (see value-origin-path): ran, not run, or a
+   SELECT that found nothing. */
+function formula(graph, keep = () => true, ran = null) {
   const { stackOfScope } = scopeStacks(graph);
   const bseById = new Map((graph.nodes || []).map(node => [node.id, node]));
   const canonical = value => String(value || '').toUpperCase().replace(/\s+/g, '');
@@ -1374,7 +1376,7 @@ function formula(graph, keep = () => true) {
     return definitions.map(definition => {
       if (whole) {
         const inputs = formulaInputs(definition.id);
-        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id),
+        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id), run: ran ? ran(definition) : undefined,
           children: inputs.flatMap(input => formulaSteps(input.id, depth + 1, definition.id, input.text, path, true)) };
       }
       const known = formulaGraph.nodes.find(node => node.id === definition.id);
@@ -1391,7 +1393,7 @@ function formula(graph, keep = () => true) {
       if (expanded.has(key)) return null;
       expanded.add(key);
       const children = formulaInputs(definition.id).flatMap(input => [formulaSteps(input.id, depth + 1, definition.id, input.text, path)]).flat();
-      return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, children };
+      return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, run: ran ? ran(definition) : undefined, children };
     }).filter(Boolean);
   };
   // A derivation has one top: the value that was asked about. Its definitions are its branches, however many of them there
@@ -1695,7 +1697,9 @@ function formulaPane(graph, derivation, sourceOf = node => node.source) {
     const children = node.children.map(child => formulaHtml(child)).join('');
     // The formula itself is the link to its statement; no separate </> beside it.
     const text = root ? escape(node.text) : dataFormula({ text: node.text, calculated: [], composed: [] });
-    const caption = `<button class="data-composed" title="${root ? 'Open the selected value in source' : 'Open this formula in source'}; Ctrl+Click opens beside" data-node="${escape(node.id)}" data-source="${escape(sourceOf(node))}" data-line="${node.line}"><span class="formula-expression">${text}</span></button>`;
+    // A recorded run marks what it made of each definition: ran, not run, a SELECT that found nothing.
+    const run = node.run ? node.run.state : '', said = run === 'not-run' ? ' - not run in this run' : run === 'empty' ? ' - SELECT found nothing (sy-subrc ' + node.run.subrc + ')' : run === 'ran' ? ' - ran' : '';
+    const caption = `<button class="data-composed${run ? ' vx-' + run : ''}" title="${root ? 'Open the selected value in source' : 'Open this formula in source'}${escape(said)}; Ctrl+Click opens beside" data-node="${escape(node.id)}" data-source="${escape(sourceOf(node))}" data-line="${node.line}"><span class="formula-expression">${text}</span></button>`;
     return children ? `<details class="formula-node" data-formula-node="${escape(node.id)}" data-level="${node.level}"${root ? ' open' : ''}><summary>${caption}</summary><div class="formula-children">${children}</div></details>` : `<div class="formula-leaf" data-formula-node="${escape(node.id)}" data-level="${node.level}">${caption}</div>`;
   };
   // What the loaded pipeline took out is said above the tree, never left out without a word.

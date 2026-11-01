@@ -59,7 +59,9 @@ function formulaPane(graph, derivation, sourceOf = node => node.source) {
     const children = node.children.map(child => formulaHtml(child)).join('');
     // The formula itself is the link to its statement; no separate </> beside it.
     const text = root ? escape(node.text) : dataFormula({ text: node.text, calculated: [], composed: [] });
-    const caption = `<button class="data-composed" title="${root ? 'Open the selected value in source' : 'Open this formula in source'}; Ctrl+Click opens beside" data-node="${escape(node.id)}" data-source="${escape(sourceOf(node))}" data-line="${node.line}"><span class="formula-expression">${text}</span></button>`;
+    // A recorded run marks what it made of each definition: ran, not run, a SELECT that found nothing.
+    const run = node.run ? node.run.state : '', said = run === 'not-run' ? ' - not run in this run' : run === 'empty' ? ' - SELECT found nothing (sy-subrc ' + node.run.subrc + ')' : run === 'ran' ? ' - ran' : '';
+    const caption = `<button class="data-composed${run ? ' vx-' + run : ''}" title="${root ? 'Open the selected value in source' : 'Open this formula in source'}${escape(said)}; Ctrl+Click opens beside" data-node="${escape(node.id)}" data-source="${escape(sourceOf(node))}" data-line="${node.line}"><span class="formula-expression">${text}</span></button>`;
     return children ? `<details class="formula-node" data-formula-node="${escape(node.id)}" data-level="${node.level}"${root ? ' open' : ''}><summary>${caption}</summary><div class="formula-children">${children}</div></details>` : `<div class="formula-leaf" data-formula-node="${escape(node.id)}" data-level="${node.level}">${caption}</div>`;
   };
   // What the loaded pipeline took out is said above the tree, never left out without a word.

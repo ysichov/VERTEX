@@ -58,6 +58,8 @@ function create(vscode, document, launch, publish, scope, more = {}) {
     const hit = breakpoints.find(bp => bp.active && bp.url.toLowerCase() === source.toLowerCase() && bp.line === line);
     return { system: "Transpiler", listening, ended, ending: null, error, breakpoints, watchpoints: watchpoints.map(w => ({ ...w })),
       traceLength: trace.length,
+      // The run is over and the record stands on its last step: nothing is stopped any more, though that step has a line.
+      over: traceEnded && !live && trace.length > 0 && traceIndex >= trace.length - 1,
       stopped: latest?.frame && line ? { at: name + ":" + line, breakpoint: hit || null,
         watchpoints: watchHit(trace[traceIndex]),
         frames: [{ n: 0, current: true, label: "EVENT " + latest.frame,

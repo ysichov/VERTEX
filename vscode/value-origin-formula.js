@@ -62,8 +62,10 @@ function withoutConversions(text) {
 }
 
 /* keep: which definitions take part - all of them for the analysis; for a recorded run only those whose statement the
-   run executed, so the formula is the one calculation the run made, with no alternatives. */
-function formula(graph, keep = () => true) {
+   run executed, so the formula is the one calculation the run made, with no alternatives. ran, when given, marks each
+   definition of the tree with what a recorded run made of it instead (see value-origin-path): ran, not run, or a
+   SELECT that found nothing. */
+function formula(graph, keep = () => true, ran = null) {
   const { stackOfScope } = scopeStacks(graph);
   const bseById = new Map((graph.nodes || []).map(node => [node.id, node]));
   const canonical = value => String(value || '').toUpperCase().replace(/\s+/g, '');
@@ -128,7 +130,7 @@ function formula(graph, keep = () => true) {
     return definitions.map(definition => {
       if (whole) {
         const inputs = formulaInputs(definition.id);
-        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id),
+        return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, conditions: conditionsOf(definition.id), run: ran ? ran(definition) : undefined,
           children: inputs.flatMap(input => formulaSteps(input.id, depth + 1, definition.id, input.text, path, true)) };
       }
       const known = formulaGraph.nodes.find(node => node.id === definition.id);
@@ -145,7 +147,7 @@ function formula(graph, keep = () => true) {
       if (expanded.has(key)) return null;
       expanded.add(key);
       const children = formulaInputs(definition.id).flatMap(input => [formulaSteps(input.id, depth + 1, definition.id, input.text, path)]).flat();
-      return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, children };
+      return { id: definition.id, level: depth + 1, text: formulaLabel(definition.text), raw: definition.text, location: definition.location || '', of: edgeLabel, source: definition.source, line: definition.line, run: ran ? ran(definition) : undefined, children };
     }).filter(Boolean);
   };
   // A derivation has one top: the value that was asked about. Its definitions are its branches, however many of them there
