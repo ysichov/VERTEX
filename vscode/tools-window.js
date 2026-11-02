@@ -139,6 +139,7 @@ function open(vscode, context, deps, initial) {
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
     // The clipboard is the host's: a webview's own may be refused. Copy under a chat answer and the review's prompts.
     window.sdeCopyText=text=>{host.postMessage({call:"copyText",args:[String(text||"")]});return "";};
+    window.sdePromptFile=(kind,operation,content,id)=>host.postMessage({call:"promptFile",args:[kind,operation,content,id]});
     for(const call of ["workspace","asset","models","ask","browse","openToolSource","vertexContext","aiProvider","aiModel","aiConfig"]){
       window["sde"+call[0].toUpperCase()+call.slice(1)]=(...args)=>{
         if(call==="vertexContext")try{
@@ -157,6 +158,7 @@ function open(vscode, context, deps, initial) {
       if(e.data.type==="codeCursor"&&typeof sdeCodeCursor==="function")sdeCodeCursor(e.data.payload);
       if(e.data.type==="progress"&&typeof sdeWorkspaceProgress==="function")sdeWorkspaceProgress(e.data.path,e.data.payload);
       if(e.data.type==="assistant")sdeAssistant(e.data.payload);
+      if(e.data.type==="promptFile"&&typeof sdePromptFileReady==="function")sdePromptFileReady(e.data.payload);
       if(e.data.type==="localFolder"&&typeof sdeLocalFolderReady==="function")sdeLocalFolderReady(e.data.payload);
     });
   <\/script>`;
@@ -242,6 +244,13 @@ function open(vscode, context, deps, initial) {
         await panel.webview.postMessage({type:"result",payload:"{}"});return;
       }
       if(message.call === "copyText") { await vscode.env.clipboard.writeText(String(args[0] || "")); return; }
+      if(message.call === "promptFile") {
+        const id=Number(args[3])||0;
+        let answer;
+        try { answer={id,...await require("./prompt-files").promptFile(String(args[0]||""),String(args[1]||""),args[2])}; }
+        catch(error) { answer={id,error:String(error&&error.message||error)}; }
+        await panel.webview.postMessage({type:"promptFile",payload:JSON.stringify(answer)});return;
+      }
       if(message.call === "openToolSource") {
         sourceNavigationUntil=Date.now()+700;
         // Nothing waits for an answer to a click, so a failure is said here, not posted to a page that drops it.

@@ -1,5 +1,17 @@
 # Release history
 
+## 2026-11-02 — 0.9.53: editable review prompts
+
+- **Prompts…** shows the effective Code review and Technical documentation instructions and saves edits as user files under `~/.vertex/prompts/`. These files override the built-in text; copying a prompt rereads the file, and **Use built-in** removes the override.
+- The file operation is available from the shared review page in VS Code and Eclipse.
+- VS Code 0.9.53 and Eclipse update site 0.9.53.20261102103354 were rebuilt.
+
+## 2026-11-02 — 0.9.53: transport documentation prompt
+
+- A saved transport review offers **Technical documentation** for all changed objects. The full transport view chooses **Code review** or **Technical documentation** for copied diff/full prompts; individual object, developer and reviewer prompts remain Code review.
+- The documentation prompt follows the supplied evidence and writing rules and ends with `TR Details: <request>`.
+- VS Code 0.9.53 and Eclipse update site 0.9.53.20261102103354 were built.
+
 ## 2026-11-01 — VS Code: original provider token counters
 
 - AI session logs retain original response usage metadata separately from normalized assistant totals, including Claude Code model responses and CLI-run aggregates.

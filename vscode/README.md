@@ -487,6 +487,13 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   **Decline** and **Comment**; beside the object's name **ASK AI** takes all its blocks, and **Copy
   prompt: diff** / **Copy prompt: full** put a ready prompt on the clipboard - the blocks with five
   lines around each, or the whole source with the changes marked - for a chat where no AI is set up here.
+  Individual objects and developer or reviewer views use a Code review prompt. From the saved transport summary,
+  **Technical documentation** opens all changed objects; there **Code review / Technical documentation** selects
+  the prompt for **AI prompt diff / full**. The documentation prompt uses only the visible diff, organizes changed
+  behavior by object, and ends with `TR Details: <request>`.
+  **Prompts…** shows and edits both prompt texts. **Save user file** writes `~/.vertex/prompts/code-review.txt`
+  or `~/.vertex/prompts/technical-documentation.txt`; these files take priority over the built-in texts and are
+  read again when copying. **Use built-in** removes the selected user file.
 - **VERTEX: Switch System**
 - **VERTEX: Forget Credentials**
 - **Add the VERTEX MCP server to Claude Code or Codex** — the link under `vertex.mcp.port` in

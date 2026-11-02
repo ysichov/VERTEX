@@ -90,6 +90,17 @@ public class ToolsView extends ChatView {
     @Override protected void addFunctions() {
         super.addFunctions();
         addAnalysisFunctions();
+        new BrowserFunction(browser, "sdePromptFile") {
+            @Override public Object function(Object[] args) {
+                String kind = args.length > 0 ? String.valueOf(args[0]) : "";
+                String operation = args.length > 1 ? String.valueOf(args[1]) : "";
+                String content = args.length > 2 && args[2] != null ? String.valueOf(args[2]) : "";
+                int id;
+                try { id = args.length > 3 ? Integer.parseInt(String.valueOf(args[3])) : 0; }
+                catch (NumberFormatException e) { id = 0; }
+                return PromptFiles.run(kind, operation, content, id);
+            }
+        };
         new BrowserFunction(browser, "sdeVertexContext") {
             @Override public Object function(Object[] args) {
                 String value = args.length > 0 && args[0] != null ? String.valueOf(args[0]).trim() : "{}";

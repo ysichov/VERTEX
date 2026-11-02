@@ -13,9 +13,9 @@ test('person view shows all objects and filters their blocks, with working expan
  const root=new Element('root'),scopes=[];
  const context=vm.createContext({document:{getElementById:()=>root,createElement:tag=>new Element(tag)},
  heading:text=>Object.assign(new Element('h3'),{textContent:text}),loadReview(){},copyText(){},status(){},
- segmented:(choices,index,pick)=>{context.pickFilter=pick;return new Element('controls')},
+ segmented:(choices,index,pick)=>{if(choices[0]&&choices[0][0]==='All')context.pickFilter=pick;return new Element('controls')},
  blockRow:(block,scope)=>{scopes.push(scope);return new Element('tr')},saidRows:()=>[],diffTable:()=>new Element('table'),
- compact:true,review_part:null,review_live:false,showing:{},sdeReviewAsk(){}});
+ promptEditorButton:()=>new Element('button'),compact:true,review_part:null,review_live:false,showing:{},promptKind:'review',PROMPT_CHOICES:[['Code review'],['Technical documentation']],sdeReviewAsk(){}});
  vm.runInContext(page.slice(page.indexOf('var personView = null;'),page.indexOf("/* One developer's part")),context);
  const make=(name,blocks)=>({object:{objtype:'METH',obj_name:name,class_name:'ZCL_X'},body:{blocks,ops:[{op:'+',text:name}]}});
  context.personView={title:'DEV',filter:'all',parts:[make('ONE',[{hunk_no:1,action:'A',op_from:1,op_to:1},{hunk_no:2,action:'D',op_from:1,op_to:1}]),make('TWO',[{hunk_no:1,action:'',messages:[{text:'note'}],op_from:1,op_to:1}])]};
@@ -53,4 +53,6 @@ test('Expand all in the request summary opens the code view, including for one c
  const all=node=>[node,...node.children.flatMap(all)];
  const expand=all(view).find(node=>node.textContent==='Expand all');assert.ok(expand);expand.click();
  assert.equal(opened.length,1);assert.equal(opened[0][0],'Review: K1');assert.equal(opened[0][2],'A:');
+ const documentation=all(view).find(node=>node.textContent==='Technical documentation');assert.ok(documentation);documentation.click();
+ assert.equal(context.promptKind,'technical');assert.equal(opened[1][2],'A:');
 });

@@ -94,7 +94,12 @@ the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's w
 it is read, the status line says which, and a changed line shows what changed inside it. Before it is built, Review
 lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's report does - with objects deleted
 since in red; newly created objects are green. In the request list, request numbers link to reviews saved in SAP or in this project’s review files. Review ignores indentation and trailing-space changes while preserving changes inside literals. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies the build diagnostics, including reasons for skipped parts. Selected text in Tools pages can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
-gave no block. Data elements, domains and tables ADT keeps no versions of are read through VERTEX's ABAP; without it
+gave no block. **Technical documentation** in the saved transport summary opens all changed objects. There,
+**Code review / Technical documentation** selects the prompt copied by **AI prompt diff / full**; individual
+object, developer and reviewer views keep the Code review prompt. The documentation prompt ends with
+`TR Details: <request>`. The **Prompts…** button shows and edits both prompt texts. **Save user file** writes
+`~/.vertex/prompts/code-review.txt` or `~/.vertex/prompts/technical-documentation.txt`; the file takes priority
+and is reread when copying. **Use built-in** removes it. Data elements, domains and tables ADT keeps no versions of are read through VERTEX's ABAP; without it
 they say so. The **Blame** toggle beside Versions | Review, off by default,
 names the developer who wrote each changed line: the versions between the pair are replayed (one
 more read per version, so a long history takes longer), and a version is credited to the owner of
@@ -165,9 +170,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.52.qualifier`; the checked-in update site carries build `0.9.52.20261101193004`.
+then regenerate. The feature and bundle sources are at `0.9.53.qualifier`; the checked-in update site carries build `0.9.53.20261102103354`.
 
-The local install archive is version `0.9.52.20261101193004`. Install its ZIP through
+The local install archive is version `0.9.53.20261102103354`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

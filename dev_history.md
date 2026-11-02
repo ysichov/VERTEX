@@ -1,5 +1,17 @@
 # Development history
 
+## 2026-11-02 — 0.9.53: user prompt files
+
+The shared Versions page now has a Prompts editor for Code review and Technical documentation. The page keeps built-in defaults and rereads the selected user file before every copy. VS Code and Eclipse read and write the same per-user paths, `~/.vertex/prompts/code-review.txt` and `technical-documentation.txt`; Save creates a user file, Use built-in deletes it. Individual review copies still use the review kind, and the all-object view selects the kind. ASK AI stays separate. The host bridges route explicit read/save/reset operations with fixed filenames; no path comes from the page.
+
+Focused prompt, review and page tests passed (45). VSIX 0.9.53 passed package verification; Eclipse 0.9.53.20261102103354 compiled and packaged.
+
+## 2026-11-02 — 0.9.53: two prompt types at transport scope
+
+The saved request summary opens all reviewed objects with Technical documentation selected. Only the all-object view has the Code review / Technical documentation segment; individual object and person prompts stay review-only. The prompt keeps diff/full as a separate scope choice, carries the supplied documentation rules, and appends the request as `TR Details: <request>`. ASK AI's block chip and chat question are unchanged.
+
+Focused prompt and review tests passed (42). The VSIX 0.9.53 package verifier passed; Eclipse 0.9.53.20261102103354 was compiled and packaged into the update site.
+
 ## 2026-11-01 — Provider usage evidence
 
 VS Code writes vertex_provider_response records before usage normalization: original usage and nested cache details, Claude Code modelUsage, cost and turn count. Streamed Claude assistant messages and CLI aggregates have distinct scopes; direct Anthropic and compatible APIs report each response. Diagnostic records are not assistant entries, avoiding duplicate usage totals. Response content and credentials are excluded. Current version retained. Original metadata is expandable as Provider usage in the session report. Validation: 64 focused tests pass; universal VSIX 0.9.52 rebuilt and passed the package verifier.

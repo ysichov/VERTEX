@@ -107,6 +107,15 @@ function sdeMonitorState(state){
 }
 let result = null;
 const resultFrames = new Map();
+const promptFileReplies = new Map();
+let nextPromptFileId = 0;
+function sdePromptFileReady(raw) {
+  let response;
+  try { response = JSON.parse(String(raw)); } catch (error) { return; }
+  const reply = promptFileReplies.get(response.id);
+  promptFileReplies.delete(response.id);
+  if (reply) reply(raw);
+}
 const findButton = document.getElementById("find-requests"), requestDialog = document.getElementById("request-dialog");
 const chat = document.getElementById("chat"), chatToggle = document.getElementById("chat-toggle");
 const sidebarChat=typeof sdeSidebarChat==="function"&&sdeSidebarChat();
@@ -489,6 +498,14 @@ function connect(child,service,generation){
   // A transport review's Open: the block's code in the editor, in any window - not only one bound to an editor.
   if(service!=="chat"&&typeof sdeOpenToolSource==="function")child.sdeOpenReviewSource=value=>sdeOpenToolSource(JSON.stringify(value));
   if(service!=="chat")child.sdeReviewAsk=json=>{if(live()&&typeof window.sdeReviewAsk==="function")window.sdeReviewAsk(json);};
+  if(service==="versions")child.sdePromptFile=(kind,operation,content)=>{
+    if(!live()||typeof window.sdePromptFile!=="function")return false;
+    const id=++nextPromptFileId;
+    promptFileReplies.set(id,raw=>{if(live()&&typeof child.sdePromptFileReady==="function")child.sdePromptFileReady(raw);});
+    try { const immediate=window.sdePromptFile(kind,operation,content,id);if(typeof immediate==="string")sdePromptFileReady(immediate); }
+    catch(error) { sdePromptFileReady(JSON.stringify({id,error:String(error&&error.message||error)})); }
+    return true;
+  };
   ["sdeCopyText","sdeOpenObject","sdeOpenLogs"].forEach(name=>{if(typeof window[name]==="function")child[name]=(...args)=>window[name](...args);});
   wireClipboard(child);
   child.sdeOpen=name=>navigate({type:"TABL",name,action:"data"});

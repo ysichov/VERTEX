@@ -80,6 +80,16 @@
   button { padding: 2px 8px; font: inherit; cursor: pointer; color: var(--vscode-button-secondaryForeground, var(--fg));
            background: var(--vscode-button-secondaryBackground, var(--field-bg)); border: 1px solid var(--field-border); border-radius: 4px; }
   button:hover { background: var(--vscode-button-secondaryHoverBackground, var(--hover)); }
+  .prompt-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+    padding: 16px; background: color-mix(in srgb, var(--bg) 55%, transparent); }
+  .prompt-editor { box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; width: min(850px, 100%);
+    max-height: 90vh; padding: 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--fg); box-shadow: 0 8px 28px color-mix(in srgb, var(--fg) 25%, transparent); }
+  .prompt-editor .actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .prompt-editor .source { color: var(--muted); overflow-wrap: anywhere; }
+  .prompt-editor textarea { box-sizing: border-box; width: 100%; min-height: 260px; flex: 1 1 auto; resize: vertical;
+    padding: 8px; color: var(--fg); background: var(--field-bg); border: 1px solid var(--field-border);
+    font: 12px/1.5 var(--vscode-editor-font-family, monospace); }
   /* A review block's verdicts in the colours of the editor's review (code-review.js). */
   table.diff tr.block button[data-act="A"], table.diff tr.block button[data-act="D"], button.ask { color: #fff; border-color: transparent; }
   table.diff tr.block button[data-act="A"] { background: #307345; }
@@ -1946,14 +1956,119 @@ function askReview(chosen, scope) { sdeReviewAsk(JSON.stringify(reviewAskContext
    changed blocks with five lines around each; full is the whole source with the changes marked. */
 var REVIEW_PROMPT = "Review this ABAP change: what it does and any real problem with it - correctness, data, performance,"
   + " security. No headings, no list of minor remarks.";
-function reviewPrompt(full, scope) {
+var TECH_DOC_PROMPT = `Review the provided ABAP change diff and generate concise technical documentation in English.
+
+Analysis rules:
+1. Base the documentation only on evidence visible in the diff: + lines are added, - lines are removed, and unchanged lines are context only.
+2. Do not infer functionality that is not supported by the code.
+3. Distinguish changed technical objects from existing tables, CDS views, infotypes, classes, methods, function modules, and other dependencies that are only read or called.
+4. Do not list a referenced dependency as a changed technical object unless its implementation or definition is modified in the diff.
+5. Organize the documentation by changed technical object. For each object describe only the purpose of the change, new or modified processing, conditions under which it executes, and resulting system behavior.
+6. If the same business requirement is implemented in several objects, describe its implementation separately under each object. Some overlap is acceptable because the documentation must remain object-oriented.
+7. Move rules, constants, classifications, or value lists shared by several objects into one common section before the object-specific sections. Do not repeat them under every object.
+8. Focus on changed behavior. Do not document unchanged parameters and outputs, unaffected standard processing, general system behavior, implementation details that do not explain the change, or inactive or commented-out code as active functionality.
+9. Account for dynamic calls and common interfaces. Do not classify a parameter as redundant merely because one dynamically called implementation does not use it internally. Verify whether the shared call signature requires it.
+10. Do not declare a parameter unused without checking whether it is assigned inside the object, passed through a dynamic call, consumed by calling code, or required for interface compatibility.
+11. If the diff appears incomplete because of filters, ownership, missing objects, or excluded changes, do not reconstruct the missing implementation from assumptions. State that a complete unfiltered diff is required.
+12. Produce technical documentation, not a code-review report. Do not include defects, refactoring suggestions, performance concerns, or minor style remarks unless the user explicitly requests them.
+
+Required output structure:
+- Title
+- Purpose
+- Changed Technical Objects
+- Common Rules or Classification, only when shared by multiple objects
+- One section for each changed technical object
+- Subsections for distinct changes within a large object, when useful
+- Transport request details at the end
+
+Writing style:
+- Use formal, precise technical English.
+- Keep the document concise and focused on new behavior.
+- Preserve the exact spelling of ABAP object, parameter, table, and field names.
+- Describe observable code behavior rather than assumed business intent.
+- Do not claim that a defect was fixed unless the diff proves that the previous behavior was incorrect.
+- Avoid repetitive descriptions of existing functionality.
+- Do not add a separate inventory of unchanged dependencies.
+
+End the document with the transport information supplied here, using the exact format TR Details: name. Do not invent missing transport details.`;
+var promptKind = "review";
+var PROMPT_CHOICES = [["Code review", "Prompt for change review"], ["Technical documentation", "Prompt for technical documentation"]];
+var promptOverrides = { review: null, technical: null }, promptWaiter = null, promptQueue = Promise.resolve();
+function promptBuiltIn(kind) { return kind === "technical" ? TECH_DOC_PROMPT : REVIEW_PROMPT; }
+function promptOpening(kind) { return promptOverrides[kind] === null ? promptBuiltIn(kind) : promptOverrides[kind]; }
+function promptEnding(kind) { return kind === "technical" ? "\n\nTR Details: " + objectName() : ""; }
+function sdePromptFileReady(raw) {
+  if (!promptWaiter) return;
+  var complete = promptWaiter; promptWaiter = null;
+  try { var answer = JSON.parse(String(raw)); if (answer.error) complete.reject(new Error(answer.error)); else complete.resolve(answer); }
+  catch (error) { complete.reject(error); }
+}
+function promptFileRequest(kind, operation, text) {
+  if (typeof sdePromptFile !== "function") {
+    if (operation === "read") return Promise.resolve({ kind: kind, exists: false, text: "", path: "" });
+    return Promise.reject(new Error("This host cannot save prompt files."));
+  }
+  var request = promptQueue.then(function () { return new Promise(function (resolve, reject) {
+    promptWaiter = { resolve: resolve, reject: reject };
+    if (sdePromptFile(kind, operation, text || "") === false) { promptWaiter = null; reject(new Error("Prompt files are unavailable in this window.")); }
+  }); });
+  promptQueue = request.catch(function () {});
+  return request;
+}
+function loadPrompt(kind) {
+  return promptFileRequest(kind, "read", "").then(function (answer) {
+    promptOverrides[kind] = answer.exists ? answer.text : null;
+    return answer;
+  });
+}
+function copyReadyPrompt(kind, make, button) {
+  loadPrompt(kind).then(function () { copyText(make(), button); }, function (error) { status("Prompt file: " + error.message); });
+}
+function showPromptEditor(kind) {
+  var old = document.getElementById("prompt-editor-overlay"); if (old) old.remove();
+  var overlay = document.createElement("div"); overlay.id = "prompt-editor-overlay"; overlay.className = "prompt-overlay";
+  overlay.setAttribute("role", "dialog"); overlay.setAttribute("aria-modal", "true");
+  var card = document.createElement("div"); card.className = "prompt-editor"; overlay.appendChild(card);
+  var title = document.createElement("strong"); title.textContent = "Prompt files"; card.appendChild(title);
+  var kindSelect = document.createElement("select"); kindSelect.setAttribute("aria-label", "Prompt type");
+  [["review", "Code review"], ["technical", "Technical documentation"]].forEach(function (choice) {
+    var option = document.createElement("option"); option.value = choice[0]; option.textContent = choice[1]; kindSelect.appendChild(option);
+  });
+  kindSelect.value = kind || "review"; card.appendChild(kindSelect);
+  var source = document.createElement("div"); source.className = "source"; card.appendChild(source);
+  var area = document.createElement("textarea"); area.setAttribute("aria-label", "Prompt text"); area.spellcheck = false; card.appendChild(area);
+  var actions = document.createElement("div"); actions.className = "actions"; card.appendChild(actions);
+  var save = document.createElement("button"); save.textContent = "Save user file"; actions.appendChild(save);
+  var reset = document.createElement("button"); reset.textContent = "Use built-in"; actions.appendChild(reset);
+  var close = document.createElement("button"); close.textContent = "Close"; actions.appendChild(close);
+  var update = function () {
+    loadPrompt(kindSelect.value).then(function (answer) {
+      area.value = promptOpening(kindSelect.value);
+      source.textContent = (answer.exists ? "User file: " : "Built-in prompt · user file: ") + (answer.path || "unavailable");
+    }, function (error) { source.textContent = error.message; });
+  };
+  kindSelect.onchange = update;
+  save.onclick = function () { promptFileRequest(kindSelect.value, "save", area.value).then(update, function (error) { source.textContent = error.message; }); };
+  reset.onclick = function () { promptFileRequest(kindSelect.value, "reset", "").then(update, function (error) { source.textContent = error.message; }); };
+  close.onclick = function () { overlay.remove(); };
+  overlay.onclick = function (event) { if (event.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay); update(); area.focus();
+}
+function promptEditorButton(kind) {
+  var button = document.createElement("button"); button.textContent = "Prompts…";
+  button.title = "View and edit the user prompt files";
+  button.onclick = function () { showPromptEditor(kind); };
+  return button;
+}
+function reviewPrompt(full, scope, kind) {
   var review_part = scope ? scope.object : globalThis.review_part;
   var review_ops = scope ? scope.body.ops : globalThis.review_ops;
   var review_blocks = scope ? scope.body.blocks : globalThis.review_blocks;
   var name = review_part ? (review_part.display_name || review_part.obj_name) : "";
+  kind = kind || "review";
   if (!full) {
     var placed = review_blocks.filter(function (b) { return b.op_from > 0; }).sort(function (a, c) { return a.op_from - c.op_from; });
-    var text = REVIEW_PROMPT + "\n\nThe changed blocks of " + name + ", each with five lines around it (+ added, - deleted):\n";
+    var text = promptOpening(kind) + "\n\nThe changed blocks of " + name + ", each with five lines around it (+ added, - deleted):\n";
     placed.forEach(function (b) {
       var start = b.op_from - 1, end = Math.min(review_ops.length, b.op_to || b.op_from);
       text += "\n--- block " + b.hunk_no + ", line " + b.start_line + "\n";
@@ -1964,10 +2079,10 @@ function reviewPrompt(full, scope) {
         text += (o.op === "+" || o.op === "-" ? o.op : " ") + " " + o.text + "\n";
       });
     });
-    return text;
+    return text + promptEnding(kind);
   }
-  return REVIEW_PROMPT + "\n\nThe whole source of " + name + ", the changes marked (+ added, - deleted, the rest unchanged):\n\n"
-    + review_ops.map(function (o) { return (o.op === "+" || o.op === "-" ? o.op : " ") + " " + o.text; }).join("\n");
+  return promptOpening(kind) + "\n\nThe whole source of " + name + ", the changes marked (+ added, - deleted, the rest unchanged):\n\n"
+    + review_ops.map(function (o) { return (o.op === "+" || o.op === "-" ? o.op : " ") + " " + o.text; }).join("\n") + promptEnding(kind);
 }
 function copyText(text, button) {
   var said = function (failure) {
@@ -2239,12 +2354,13 @@ function renderReviewPart(data) {
     askAll.addEventListener("click", function () { askReview(null); });
     bar.appendChild(askAll);
   }
+  bar.appendChild(promptEditorButton("review"));
   [["Copy prompt: diff", false, "The changed blocks with five lines around each, as a prompt to paste into any chat"],
    ["Copy prompt: full", true, "The whole source with the changes marked, as a prompt to paste into any chat"]].forEach(function (c) {
     var copy = document.createElement("button");
     copy.textContent = c[0];
     copy.title = c[2];
-    copy.addEventListener("click", function () { copyText(reviewPrompt(c[1]), copy); });
+    copy.addEventListener("click", function () { copyReadyPrompt("review", function () { return reviewPrompt(c[1]); }, copy); });
     bar.appendChild(copy);
   });
 
@@ -2745,13 +2861,14 @@ function personBlockMatches(block, filter) {
   if (filter === "comments") return Boolean(block.note || (block.messages || []).length);
   return true;
 }
-function personPrompt(full) {
-  var text = REVIEW_PROMPT + "\n\n" + personView.title + "; filter: " + personView.filter + "\n";
+function personPrompt(full, kind) {
+  kind = kind || (personView.selector === "A:" ? promptKind : "review");
+  var text = promptOpening(kind) + "\n\n" + personView.title + "; filter: " + personView.filter + "\n";
   personView.parts.forEach(function (entry) {
     var body = Object.assign({}, entry.body, { blocks: entry.body.blocks.filter(function (b) { return personBlockMatches(b, personView.filter); }) });
-    if (body.blocks.length) text += reviewPrompt(full, { object: entry.object, body: body }).substring(REVIEW_PROMPT.length) + "\n";
+    if (body.blocks.length) text += reviewPrompt(full, { object: entry.object, body: body }, "review").substring(REVIEW_PROMPT.length) + "\n";
   });
-  return text;
+  return text + promptEnding(kind);
 }
 function askPersonReview() {
   var blocks = [];
@@ -2807,9 +2924,17 @@ function drawPersonView() {
       root.querySelectorAll("details.person-section").forEach(function (section) { section.open = choice[1]; });
     }; bar.appendChild(button);
   });
+  if (personView.selector === "A:") bar.appendChild(segmented(PROMPT_CHOICES, promptKind === "technical" ? 1 : 0, function (index) {
+    promptKind = index === 1 ? "technical" : "review";
+    drawPersonView();
+  }, true));
+  bar.appendChild(promptEditorButton(personView.selector === "A:" ? promptKind : "review"));
   [["AI prompt diff", false], ["AI prompt full", true]].forEach(function (choice) {
     var button = document.createElement("button"); button.textContent = choice[0];
-    button.onclick = function () { copyText(personPrompt(choice[1]), button); }; bar.appendChild(button);
+    button.onclick = function () {
+      var kind = personView.selector === "A:" ? promptKind : "review";
+      copyReadyPrompt(kind, function () { return personPrompt(choice[1]); }, button);
+    }; bar.appendChild(button);
   });
   root.appendChild(bar); root.appendChild(heading(personView.title));
   var groups = {}, visible = 0, total = 0;
@@ -2940,6 +3065,15 @@ function objectGroups(objects) {
     });
     links.appendChild(a);
   });
+  if (review && review.saved === true && !review_live && !review_building) {
+    links.appendChild(document.createTextNode("  ·  "));
+    var documentation = document.createElement("span");
+    documentation.className = "lnk";
+    documentation.textContent = "Technical documentation";
+    documentation.title = "Open all changed objects and copy a technical documentation prompt";
+    documentation.addEventListener("click", function () { promptKind = "technical"; renderPerson("Review: " + objectName(), null, "A:"); });
+    links.appendChild(documentation);
+  }
   if (groups.length > 1 || objects.length && review && review.saved === true && !review_live && !review_building) { box.appendChild(links); }
   groups.forEach(function (name) {
     var rows = byName[name];
@@ -3538,9 +3672,9 @@ function sdeContext() { return pageState(); }
    chat names only (pageState); the model then saw the blocks its diff tool gives and no more, whatever the reader had
    on screen. Null outside a review's object. */
 function sdeReviewSource() {
-  if (showing.view === "review_person" && personView) return { object: personView.title, shown: "summary", text: personPrompt(false).substring(REVIEW_PROMPT.length) };
+  if (showing.view === "review_person" && personView) return { object: personView.title, shown: "summary", text: personPrompt(false, "review").substring(REVIEW_PROMPT.length) };
   if (showing.view !== "review_object" || !review_part || !review_ops.length) { return null; }
-  var body = reviewPrompt(!compact);
+  var body = reviewPrompt(!compact, null, "review");
   return { object: review_part.display_name || review_part.obj_name, type: review_part.objtype,
     shown: compact ? "compact" : "full", text: body.substring(REVIEW_PROMPT.length).replace(/^\s+/, "") };
 }
