@@ -12,23 +12,32 @@ const aveDiff = require("./ave-diff");
 
 // ZCL_VX_REVIEW_STATS=>FROM_DIFF: in each run of changes a deleted line pairs with the first unpaired inserted one it
 // has common characters with - a modified line; the rest are inserted or deleted; a run of blank lines counts for nothing.
+// Each run that counts is handed to `run` with, per deleted line, the index of the inserted line it pairs with (-1 for
+// none), and per inserted line whether it was paired.
 const blank = list => list.every(line => String(line).replace(/\s/g, "") === "");
-function countChanges(ops) {
-  let ins = 0, del = 0, mod = 0, dels = [], adds = [];
+function changeRuns(ops, run) {
+  let dels = [], adds = [];
   const flush = () => {
-    if (!dels.length && !adds.length) { return; }
-    if (!blank(dels.concat(adds))) {
+    if ((dels.length || adds.length) && !blank(dels.concat(adds))) {
       const used = adds.map(() => false);
-      dels.forEach(d => {
+      const pairs = dels.map(d => {
         const at = adds.findIndex((a, i) => !used[i] && aveDiff.hasCommonChars(d, a));
-        if (at >= 0) { used[at] = true; mod++; } else { del++; }
+        if (at >= 0) { used[at] = true; }
+        return at;
       });
-      ins += used.filter(u => !u).length;
+      run(adds, pairs, used);
     }
     dels = []; adds = [];
   };
   ops.forEach(o => { if (o.op === "-") { dels.push(o.text); } else if (o.op === "+") { adds.push(o.text); } else { flush(); } });
   flush();
+}
+function countChanges(ops) {
+  let ins = 0, del = 0, mod = 0;
+  changeRuns(ops, (adds, pairs, used) => {
+    pairs.forEach(at => { if (at >= 0) { mod++; } else { del++; } });
+    ins += used.filter(u => !u).length;
+  });
   return { ins, del, mod };
 }
 // ZCL_VX_REVIEW_STATS=>CLASSIFY_HUNK: a block is changed when any of its deleted lines pairs with an inserted one,
@@ -173,20 +182,10 @@ function blameAuthors(ops, map, def, hunks) {
       HUNK_COUNT: 0, HUNK_INS: 0, HUNK_MOD: 0, HUNK_DEL: 0 }); }
     return by.get(author);
   };
-  let dels = [], adds = [];
-  const flush = () => {
-    if ((dels.length || adds.length) && !blank(dels.concat(adds))) {
-      const used = adds.map(() => false);
-      dels.forEach(d => {
-        const i = adds.findIndex((a, k) => !used[k] && aveDiff.hasCommonChars(d, a));
-        if (i >= 0) { used[i] = true; at(blamed(map, adds[i]) || def).MOD_COUNT++; }
-      });
-      adds.forEach((a, k) => { if (!used[k]) { at(blamed(map, a) || def).INS_COUNT++; } });
-    }
-    dels = []; adds = [];
-  };
-  ops.forEach(o => { if (o.op === "-") { dels.push(o.text); } else if (o.op === "+") { adds.push(o.text); } else { flush(); } });
-  flush();
+  changeRuns(ops, (adds, pairs, used) => {
+    pairs.forEach(i => { if (i >= 0) { at(blamed(map, adds[i]) || def).MOD_COUNT++; } });
+    adds.forEach((a, k) => { if (!used[k]) { at(blamed(map, a) || def).INS_COUNT++; } });
+  });
   hunks.forEach(h => {
     const a = at(h.AUTHOR);
     a.HUNK_COUNT++;
@@ -203,10 +202,9 @@ function blockAuthor(adds, map, def) {
   return top || def;
 }
 
-const { inLists } = require("./selector-table");
+const { inLists, quote: sqlText } = require("./selector-table");
 const { hunkRanges } = require("./review-hunks");
 
-const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
 const CLASS_PART_TYPES = ["METH", "CPUB", "CPRO", "CPRI", "CINC"];
 
 // The parts a request names, each with the object it is read through (type, name) - a class's parts from the class.

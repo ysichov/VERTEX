@@ -8,6 +8,8 @@
 // Any other clause that reads a program value, and anything dynamic, is refused too: the statement is run as written
 // or not at all.
 
+const { escapeHtml } = require("./html-escape");
+
 const DEFAULT_ROWS = 100;
 
 function prepare(text, offset) {
@@ -352,19 +354,18 @@ async function run(api, text, offset) {
 
 // The rows of a SELECT run through the data preview, with the statement as run and what was left out of it.
 function page(prepared, result) {
-  const esc = value => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const head = result.columns.map(column => "<th title=\"" + esc(column.description) + "\">" + esc(column.name) + "</th>").join("");
-  const body = result.values.map(row => "<tr>" + result.columns.map(column => "<td>" + esc(row[column.name]) + "</td>").join("") + "</tr>").join("");
+  const head = result.columns.map(column => "<th title=\"" + escapeHtml(column.description) + "\">" + escapeHtml(column.name) + "</th>").join("");
+  const body = result.values.map(row => "<tr>" + result.columns.map(column => "<td>" + escapeHtml(row[column.name]) + "</td>").join("") + "</tr>").join("");
   const dropped = prepared.dropped.length ? "<div class=\"dropped\">Left out, not known without running the program: "
-    + prepared.dropped.map(text => "<code>" + esc(text) + "</code>").join(", ") + "</div>" : "";
-  const why = prepared.notSelector ? "<div class=\"count\">Not opened in SelecTor: " + esc(prepared.notSelector) + "</div>" : "";
+    + prepared.dropped.map(text => "<code>" + escapeHtml(text) + "</code>").join(", ") + "</div>" : "";
+  const why = prepared.notSelector ? "<div class=\"count\">Not opened in SelecTor: " + escapeHtml(prepared.notSelector) + "</div>" : "";
   return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
     + "body{background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);padding:8px}"
     + "pre{background:var(--vscode-textCodeBlock-background);padding:6px;white-space:pre-wrap;margin:0 0 6px}"
     + ".dropped{color:var(--vscode-editorWarning-foreground);margin:0 0 6px}.count{color:var(--vscode-descriptionForeground);margin:0 0 6px}"
     + "table{border-collapse:collapse}th,td{border:1px solid var(--vscode-panel-border);padding:2px 6px;text-align:left;white-space:nowrap}"
     + "th{background:var(--vscode-editorWidget-background);position:sticky;top:0}"
-    + "</style></head><body>" + why + "<pre>" + esc(prepared.sql) + "</pre>" + dropped
+    + "</style></head><body>" + why + "<pre>" + escapeHtml(prepared.sql) + "</pre>" + dropped
     + "<div class=\"count\">" + result.values.length + " rows" + (result.values.length >= prepared.rows ? " (limit " + prepared.rows + ")" : "") + "</div>"
     + "<table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></body></html>";
 }

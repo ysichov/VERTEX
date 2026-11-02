@@ -10,9 +10,10 @@ const { bundle } = require("./value-origin-bundle");
 const root = path.join(__dirname, "..");
 const plugin = path.join(root, "org.vertex.abap.ui");
 
-// As the plugin's browser runs it: a window, and no require, module or process.
+// As the plugin's browser runs it: a window, and no require, module or process. abaplint is the page's script before
+// this one (assistant/abaplint.js, window.vertexAbaplint).
 function browserOrigin() {
-  const window = {};
+  const window = { vertexAbaplint: require("../vscode/node_modules/@abaplint/core") };
   vm.runInNewContext(bundle(root), { window });
   return window.vertexOrigin;
 }
@@ -49,7 +50,7 @@ test("the analysis runs in a browser context and draws the page with everything 
   scripts.forEach((script, index) => assert.doesNotThrow(() => new vm.Script(script), "inline script " + index));
   assert.ok(scripts.some(script => script.includes("mermaidText='<\\/script>'")), "the library's own </script> is escaped");
   // The bridge stands before the script that calls acquireVsCodeApi.
-  const bridge = scripts.findIndex(script => script.includes("window.acquireVsCodeApi=")), caller = scripts.findIndex(script => script.includes("const api=acquireVsCodeApi()"));
+  const bridge = scripts.findIndex(script => script.includes("window.acquireVsCodeApi=")), caller = scripts.findIndex(script => /const api=(window\.vertexHost\|\|)?acquireVsCodeApi\(\)/.test(script));
   assert.ok(bridge >= 0 && bridge < caller);
 });
 
@@ -58,12 +59,16 @@ test("the Eclipse page parses once ValueOriginView has put its scripts and targe
   const inline = script => script.split("</script").join("<\\/script");
   const target = JSON.stringify({ project: "P", name: "ZDEMO", type: "PROG", sourcePath: "/sap/bc/adt/programs/programs/zdemo/source/main",
     text: "WRITE '</script>'.", offset: 0, line: 1, column: 0, breakpoints: [2, 5] }).split("<").join("\\u003c");
+  const resource = name => fs.readFileSync(path.join(plugin, "resources", name), "utf8");
   const page = fs.readFileSync(path.join(__dirname, "value-origin.html"), "utf8")
-    .replace("/*FLOW_GRAPH*/", () => inline(fs.readFileSync(path.join(plugin, "resources", "vertex-flow-graph.js"), "utf8")))
+    .replace("/*FLOW_GRAPH*/", () => inline(resource("vertex-abap-control.js")) + "\n" + inline(resource("vertex-flow-graph.js")))
+    .replace("/*ABAPLINT*/", () => inline(fs.readFileSync(path.join(plugin, "assistant", "abaplint.js"), "utf8")))
     .replace("/*ORIGIN_ENGINE*/", () => inline(bundle(root)))
+    .replace("/*ECLIPSE_FRONTEND*/", () => inline(resource("eclipse-frontend.js")
+      .replace("/*FRONTEND_BUNDLE*/", () => JSON.stringify(resource("vertex-frontend.js")).split("<").join("\\u003c"))))
     .replace("/*INIT*/null/*INIT*/", () => target);
   const scripts = scriptsOf(page);
-  assert.equal(scripts.length, 3);
+  assert.equal(scripts.length, 5);
   scripts.forEach((script, index) => assert.doesNotThrow(() => new vm.Script(script), "page script " + index));
 });
 

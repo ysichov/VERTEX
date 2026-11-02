@@ -10,7 +10,7 @@
 // Unlike the ABAP builder, a table the dictionary does not offer can still be taken, as ZCL_VX_TOOLS's own "add
 // table" does: it joins on the key fields it shares with the base, or on the ON the caller gives.
 
-const { quote, inLists, fieldsOf, language, value, whereClause, NUMBERS, OPTIONS, NAME } = require("./selector-table");
+const { quote, inLists, fieldsOf, language, value, typedRows, whereClause, NUMBERS, OPTIONS, NAME } = require("./selector-table");
 
 const MAX_TABLES = 10, MAX_FILTERS = 20, MAX_FIELDS = 200, MAX_OFFERED = 60;
 const CHARLIKE = ["CHAR", "NUMC", "DATS", "TIMS", "CLNT", "CUKY", "UNIT", "LANG"];
@@ -196,8 +196,7 @@ async function request(api, resource) {
   let lines = null;
   if (rows > 0 && sql) {
     const types = new Map(fields.map(f => [multi ? (f.alias + "_" + f.fieldname) : f.fieldname, f.datatype]));
-    lines = (await api.query(sql, rows)).values.map(row => Object.fromEntries(Object.keys(row).map(column =>
-      [column.toLowerCase(), value(row[column], types.get(column))])));
+    lines = typedRows((await api.query(sql, rows)).values, types);
   }
   return { table: base.toLowerCase(), sql, pivot: false, rows: lines, candidates, tables, fields };
 }

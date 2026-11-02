@@ -124,10 +124,7 @@ function create(vscode, primary, object, files = null) {
     throw new Error(name + " was not found in the local workspace.");
   }
   async function request(resource, progress, cancelled) {
-    const api = { local: true, analysisReader: () => async ({ object_name, object_type }) => {
-      const document = await find(object_name, object_type);
-      return { object_name, object_type, source_url: document.uri.toString(), source: document.getText(), includes: [] };
-    }, objectNavigator };
+    const api = { local: true, analysisReader: localReader(find), objectNavigator };
     return analysis.request(api, resource, progress, cancelled);
   }
   /* Object Navigator of a local program: its tree from the parse of the program and its includes, each include a file of
@@ -167,6 +164,12 @@ function create(vscode, primary, object, files = null) {
   } };
 }
 
+// What the analysis reads of a local object: its document's text, as a read from SAP answers it, with no includes.
+const localReader = find => () => async ({ object_name, object_type }) => {
+  const document = await find(object_name, object_type);
+  return { object_name, object_type, source_url: document.uri.toString(), source: document.getText(), includes: [] };
+};
+
 async function createPackage(vscode, folder) {
   const root = path.resolve(folder.fsPath || folder.path);
   const pattern = vscode.RelativePattern ? new vscode.RelativePattern(folder, "**/*.abap") : "**/*.abap";
@@ -199,10 +202,7 @@ async function createPackage(vscode, folder) {
     packageObjects: async () => [...documents.keys()].map(key => {
       const [object_type, object_name] = key.split(":"); return { object_type, object_name };
     }),
-    analysisReader: () => async ({ object_name, object_type }) => {
-      const document = await find(object_name, object_type);
-      return { object_name, object_type, source_url: document.uri.toString(), source: document.getText(), includes: [] };
-    }
+    analysisReader: localReader(find)
   };
   let versions = "";
   return { ...session, object, find,

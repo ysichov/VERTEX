@@ -1,5 +1,33 @@
 # Development history
 
+## 2026-11-02 — Duplicates: one browser bundler, shared helpers
+
+The user asked to check the whole code for duplicates and refactoring, since Claude Code and Codex wrote it. The hand-written sources were scanned twice: windows of six normalised lines, and an AST pass over every function (the same tokens, and the same token shape with names and literals renamed). Generated files (`assistant/`, `vertex-frontend.js`), `vendor/` and minified libraries were left out; the `assistant/` copies were checked to match their sources.
+
+Three eclipse/ bundlers wrapped VS Code modules for the plugin's browser the same way. Two kept their module lists by hand, and Value origin's had fallen behind: value-origin-model, value-origin-ace and value-origin-formula require value-origin-linter, which was not in it, so every Forward usage analysis in Eclipse stopped with *Value origin in Eclipse has no module ./value-origin-linter*; sap-fugr was missing too, and function module signatures were silently empty. `build` in frontend-bundle.js, the bundler that follows the requires, now takes `externals` (a require name and the browser expression it stands for) and builds all four. value-origin-bundle.js builds eclipse/value-origin-entry.js with @abaplint/core as window.vertexAbaplint; logs-bundle.js builds eclipse/logs-entry.js with a browser crypto, and model-config (choosing the log folder) as VS Code-only. For the same sources, vertex-frontend.js and abaplint.js come out byte for byte as before. The Value origin test gives the window abaplint as the page does, puts in all four scripts as ValueOriginView does (five scripts in the page), and looks for the page's unconditional acquireVsCodeApi call; eclipse/logs-bundle.test.js is new.
+
+In vscode/:
+- local-run.js answers a local run's Open SQL SELECT in one place, `selectRows`; the HTTP bridge and both pipe handlers each had a copy.
+- value-origin-view.js serves vertex-flow.js and vertex-lens.js through `resourceScript`; its two private copies are gone.
+- code-workbench.js finds a document's SAP entry with `sapEntry`, and a method's declaring class up the INHERITING FROM chain with `declaredSignature` and `superclassOf`; the walk was written twice.
+- `runSapTranspiler` reads the previous build and its selection once.
+- source-map-vlq.js replaces the VLQ decoders of local-trace.js and sap-transpile.js; it has a test and is in the VSIX verifier's list.
+- `sqlText` in review-front, review-live and versions-front is now `quote` from selector-table.
+- html-escape.js is the HTML escape of reach-path, select-query, value-origin-formula-html and value-origin-view. null and undefined now write nothing.
+- sap-code.js reads /vertex/about once for both `canStore` and `ddicVersions`. An answer that is not JSON now counts as "not offered", as a 404 does, instead of rejecting.
+- review-live.js: `countChanges` and `blameAuthors` share `changeRuns`. Compared with the previous code on 20,000 random diffs, the results are equal, author order included.
+- selector-table exports `typedRows`, which selector-join uses; local-analysis.js has one `localReader`.
+- In visual-debug.html, runVisual's three step accountings and two continuations after SAP's own code are now `counted` and `outOfStandard`.
+
+Left as they are. The escapes in system-table.js and code-review.js run as page scripts, where there is no require. sap-ddic and sap-fugr escape XML. mcp, selector and versions share ok/fail/pad, but Eclipse copies those files one by one (AssistantBridge.FILES).
+
+Not done in this landing:
+- the host half of metrics/table/versions/chat.html (setup page, project links, model picker; about 300 lines in three or four copies, read by both hosts and sliced by about 20 tests);
+- the call/pump bridge of the Eclipse pages (reach-path, session-logs, value-origin.html);
+- the alike Java views and handlers (ReachPath/RunSelect/ValueOrigin, JsonContentHandler/TextContentHandler).
+
+Suite with vscode/resources copied in: 1128 tests, 1120 pass; the 7 that fail failed before this landing. Two Value origin tests failed before and now pass. VSIX 0.9.53 was rebuilt and passed the package verifier. The Eclipse update site was not rebuilt, so the Value origin fix reaches Eclipse with its next build.
+
 ## 2026-11-02 — 0.9.53: user prompt files
 
 The shared Versions page now has a Prompts editor for Code review and Technical documentation. The page keeps built-in defaults and rereads the selected user file before every copy. VS Code and Eclipse read and write the same per-user paths, `~/.vertex/prompts/code-review.txt` and `technical-documentation.txt`; Save creates a user file, Use built-in deletes it. Individual review copies still use the review kind, and the all-object view selects the kind. ASK AI stays separate. The host bridges route explicit read/save/reset operations with fixed filenames; no path comes from the page.

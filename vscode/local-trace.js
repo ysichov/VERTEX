@@ -3,19 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-function vlq(segment) {
-  const result = [];
-  let value = 0, shift = 0;
-  for (const letter of segment) {
-    const digit = alphabet.indexOf(letter);
-    if (digit < 0) throw new Error("Invalid source map mapping.");
-    value += (digit & 31) * 2 ** shift;
-    if (digit & 32) shift += 5;
-    else { result.push(value & 1 ? -(value >> 1) : value >> 1); value = 0; shift = 0; }
-  }
-  return result;
-}
+const { decodeVlq: vlq } = require("./source-map-vlq");
 function mappedLines(map) {
   let source = 0, original = 0;
   return map.mappings.split(";").map(line => {

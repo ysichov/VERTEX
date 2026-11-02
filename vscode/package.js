@@ -26,6 +26,7 @@ const required = [
     "extension/node_modules/temporal-utils/package.json",
     "extension/local-run.js",
     "extension/local-trace.js",
+    "extension/source-map-vlq.js",
     "extension/local-debug-vars.js",
     "extension/local-debug-adapter.js",
     "extension/value-origin-linter.js",

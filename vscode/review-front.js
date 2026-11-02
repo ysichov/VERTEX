@@ -12,7 +12,7 @@
 // block keys are numbered by that walk and a different one would put verdicts on the wrong blocks.
 
 const NAME = /^[A-Z0-9_/$]{1,20}$/;
-const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
+const { quote: sqlText } = require("./selector-table");
 
 // /ui2/cl_json writes a TIMESTAMPL as a number of 21 digits, more than a double holds; the page writes the stamp back
 // to say which state it built on, so stamps are kept as the text they were written as.

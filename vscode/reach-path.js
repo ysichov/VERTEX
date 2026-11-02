@@ -198,7 +198,7 @@ function valueSources(text, fileName, statements, result) {
   return { variables: [...variables.values()], marks, before };
 }
 
-const escape = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const { escapeHtml: escape } = require('./html-escape');
 const words = { true: 'true', false: 'false', case: '', context: '', end: '', target: '', entered: 'entered', raises: 'raises an exception', catches: 'catches it',
   avoid: 'must not be taken', skip: 'must not be entered', when: 'if taken:' };
 

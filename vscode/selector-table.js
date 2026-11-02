@@ -161,10 +161,14 @@ async function request(api, resource) {
   const fields = shown.filter(f => f.DATATYPE !== "CLNT").map(f => ({
     name: f.FIELDNAME.toLowerCase(), position: Number(f.POSITION), key: f.KEYFLAG === "X", datatype: f.DATATYPE,
     length: Number(f.LENG), decimals: Number(f.DECIMALS), text: f.TEXT }));
-  const types = new Map(catalog.map(f => [f.FIELDNAME, f.DATATYPE]));
-  const lines = data.values.map(row => Object.fromEntries(Object.keys(row).map(column =>
-    [column.toLowerCase(), value(row[column], types.get(column))])));
+  const lines = typedRows(data.values, new Map(catalog.map(f => [f.FIELDNAME, f.DATATYPE])));
   return { table: table.toLowerCase(), count: lines.length, fields, rows: lines };
 }
 
-module.exports = { request, whereClause, value, quote, inLists, fieldsOf, language, NUMBERS, OPTIONS, NAME };
+// The rows of a preview answer, keyed by field name in lower case, each value read as its dictionary type (TYPES:
+// column as the answer names it -> data type).
+function typedRows(values, types) {
+  return values.map(row => Object.fromEntries(Object.keys(row).map(column => [column.toLowerCase(), value(row[column], types.get(column))])));
+}
+
+module.exports = { request, whereClause, value, typedRows, quote, inLists, fieldsOf, language, NUMBERS, OPTIONS, NAME };

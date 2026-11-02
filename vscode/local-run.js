@@ -19,6 +19,14 @@ function selectorSql(input) {
     input.primaryKey?.length ? " ORDER BY " + input.primaryKey.join(", ") : "")
     .replace(/\s+UP TO\s+\d+\s+ROWS\b/gi, "");
 }
+// One Open SQL SELECT of a local run, answered by the SAP system: its rows with the field names in lower case, as the
+// transpiled program reads them. The statement's own UP TO n ROWS is the limit, 10 000 without one.
+async function selectRows(input, query = selectorQuery) {
+  if (!query) throw new Error("Configure and select an SAP system for Open SQL SELECT.");
+  const limit = /\bUP TO\s+(\d+)\s+ROWS\b/i.exec(input?.select || "");
+  const data = await query(selectorSql(input), limit ? Number(limit[1]) : 10000);
+  return (data.values || []).map(row => Object.fromEntries(Object.entries(row).map(([name, value]) => [name.toLowerCase(), value])));
+}
 async function startSelectorBridge(query = selectorQuery) {
   if (!query) throw new Error("SAP SelecTor is unavailable in this VS Code window.");
   const token = crypto.randomBytes(24).toString("hex");
@@ -32,13 +40,9 @@ async function startSelectorBridge(query = selectorQuery) {
         body += chunk;
         if (body.length > 1024 * 1024) throw new Error("SELECT request is too large.");
       }
-      const input = JSON.parse(body);
-      const limit = /\bUP TO\s+(\d+)\s+ROWS\b/i.exec(input.select || "");
-      const sql = selectorSql(input);
-      const data = await query(sql, limit ? Number(limit[1]) : 10000);
+      const rows = await selectRows(JSON.parse(body), query);
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ rows: (data.values || []).map(row =>
-        Object.fromEntries(Object.entries(row).map(([name, value]) => [name.toLowerCase(), value]))) }));
+      response.end(JSON.stringify({ rows }));
     } catch (error) {
       response.writeHead(500, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: error.message }));
@@ -803,11 +807,7 @@ async function launch(vscode, debug, options = {}) {
             const requestText = line.slice(marker + "VERTEX_SELECTOR_REQUEST:".length);
             Promise.resolve().then(async () => {
               const request = JSON.parse(requestText);
-              if (!selectorQuery) throw new Error("Configure and select an SAP system for Open SQL SELECT.");
-              const input = request.input, limit = /\bUP TO\s+(\d+)\s+ROWS\b/i.exec(input.select || "");
-              const data = await selectorQuery(selectorSql(input), limit ? Number(limit[1]) : 10000);
-              return { id: request.id, result: { rows: (data.values || []).map(row =>
-                Object.fromEntries(Object.entries(row).map(([name, value]) => [name.toLowerCase(), value]))) } };
+              return { id: request.id, result: { rows: await selectRows(request.input) } };
             }).then(reply => child.stdin.write(JSON.stringify(reply) + "\n"), error => {
               // The program gets the failure as an empty result, so the reason is said where the reader looks: the
               // output of the run and the VERTEX Local ABAP channel.
@@ -860,11 +860,7 @@ async function launch(vscode, debug, options = {}) {
             const requestText = line.slice(marker + "VERTEX_SELECTOR_REQUEST:".length);
             Promise.resolve().then(async () => {
               const request = JSON.parse(requestText);
-              if (!selectorQuery) throw new Error("Configure and select an SAP system for Open SQL SELECT.");
-              const input = request.input, limit = /\bUP TO\s+(\d+)\s+ROWS\b/i.exec(input.select || "");
-              const data = await selectorQuery(selectorSql(input), limit ? Number(limit[1]) : 10000);
-              return { id: request.id, result: { rows: (data.values || []).map(row =>
-                Object.fromEntries(Object.entries(row).map(([name, value]) => [name.toLowerCase(), value]))) } };
+              return { id: request.id, result: { rows: await selectRows(request.input) } };
             }).then(reply => child.stdin.write(JSON.stringify(reply) + "\n"), error => {
               const request = JSON.parse(requestText);
               child.stdin.write(JSON.stringify({ id: request.id, error: error.message }) + "\n");

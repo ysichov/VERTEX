@@ -1454,16 +1454,19 @@ function activate(context) {
       const editor = vscode.window.activeTextEditor;
       entryLine = editor && editor.document.uri.toString() === tab ? editor.selection.active.line + 1 : 1;
     }
+    // The last build of this object, if the docked debugger still holds it: its parameters can be shown while
+    // a new build is read, and the run window offers them first.
+    const previous = dockedDebugSource?.sapCopies?.root?.object_name === shown.object_name
+      && dockedDebugSource.sapCopies.root.system_name === shown.system_name ? dockedDebugSource : null;
+    const previousSelection = async () => previous?.document
+      ? (kind === "PROG" ? { screen: require("./local-run").screenFor(previous.document) }
+        : { entry: require("./local-run").entryScreen(previous.document, previous.entryLine) }) : {};
     // Opening the run window is a choice of what to do next. SAP is read only
     // after Execute (saved build if possible) or Recompile (fresh read).
     if (!options.agentRun && !options.started && !options.recompile) {
-      const previous = dockedDebugSource?.sapCopies?.root?.object_name === shown.object_name
-        && dockedDebugSource.sapCopies.root.system_name === shown.system_name ? dockedDebugSource : null;
       require("./program-window").open(vscode, { name: shown.object_name, host: {
         deferred: true, builtAt: previous?.sapCopies?.builtAt || "",
-        selection: async () => previous?.document
-          ? (kind === "PROG" ? { screen: require("./local-run").screenFor(previous.document) }
-            : { entry: require("./local-run").entryScreen(previous.document, previous.entryLine) }) : {},
+        selection: previousSelection,
         adapter: (command, args) => localDebugAdapter?.command(command, args),
         run: async selection => {
           await runSapTranspiler(shown, { ...options, started: true, entryLine, selection });
@@ -1480,13 +1483,9 @@ function activate(context) {
     // only route back to the object. Previous compiled parameters can still
     // be shown while the new build is prepared.
     let preparing = true, queuedRecompile = false;
-    const previous = dockedDebugSource?.sapCopies?.root?.object_name === shown.object_name
-      && dockedDebugSource.sapCopies.root.system_name === shown.system_name ? dockedDebugSource : null;
     const pendingPanel = options.agentRun ? null : require("./program-window").open(vscode, { name: shown.object_name, host: {
       pending: true, builtAt: previous?.sapCopies?.builtAt || "",
-      selection: async () => previous?.document
-        ? (kind === "PROG" ? { screen: require("./local-run").screenFor(previous.document) }
-          : { entry: require("./local-run").entryScreen(previous.document, previous.entryLine) }) : {},
+      selection: previousSelection,
       adapter: (command, args) => localDebugAdapter?.command(command, args),
       run: async () => { throw new Error("Recompile the SAP object before running it."); },
       recompile: async () => {
