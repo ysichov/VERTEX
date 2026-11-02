@@ -45,8 +45,7 @@ public class DebugMonitorView extends ToolsView implements org.eclipse.ui.ISavea
         if (!path.equals(page())) return value;
         String theme = super.readResource("assistant/value-origin.html");
         theme = theme.substring(theme.indexOf("<style id=\"theme\">"), theme.indexOf("</style>") + 8);
-        String frontend = super.readResource("resources/eclipse-frontend.js")
-            .replace("/*FRONTEND_BUNDLE*/", AssistantBridge.quote(super.readResource("resources/vertex-frontend.js")).replace("<", "\\u003c"));
+        String frontend = analysisWorker();
         String bridge = "<script>window.vertexDebugHost=true;" + frontend + "\n" + super.readResource("assistant/visual-debug-host.js") + "</script>";
         // Only the document's own tags: the page's script builds frames with "</head>" and "<body>" in strings.
         value = first(value, "</head>", theme + "<style>" + super.readResource("resources/vertex-controls.css") + "</style></head>");

@@ -608,13 +608,16 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   // service as active. Asked once a session; a system without VERTEX's ABAP answers 404, which is a plain no.
   // /ui2/cl_json writes ZCL_VX_ADT_RES_ABOUT's ABAP_BOOL as true; an older one as "X".
   const serviceActive = service => service.active === true || service.active === "X";
+  // One reading of /vertex/about serves every question about it; a failed one, or an answer that is not JSON, offers nothing.
+  let about;
+  const aboutServices = () => about || (about = client.httpClient.request("/sap/bc/adt/vertex/about", { method: "GET", headers: { Accept: "application/json" } })
+    .then(response => JSON.parse(response.body).services || []));
+  const offers = name => aboutServices().then(services => services.some(s => s.name === name && serviceActive(s)), () => false);
   let storing;
-  const canStore = () => storing || (storing = client.httpClient.request("/sap/bc/adt/vertex/about", { method: "GET", headers: { Accept: "application/json" } })
-    .then(response => (JSON.parse(response.body).services || []).some(s => s.name === "store" && serviceActive(s)), () => false));
+  const canStore = () => storing || (storing = offers("store"));
   // Whether VERTEX's ABAP reads dictionary versions here (ZCL_VX_ADT_RES_DDIC), as /vertex/about reports it.
   let dictionary;
-  const ddicVersions = () => dictionary || (dictionary = client.httpClient.request("/sap/bc/adt/vertex/about", { method: "GET", headers: { Accept: "application/json" } })
-    .then(response => (JSON.parse(response.body).services || []).some(s => s.name === "ddic" && serviceActive(s)), () => false));
+  const ddicVersions = () => dictionary || (dictionary = offers("ddic"));
   // The text of a version of a data element, domain or table (DTED, DOMD, TABD), as lines; VERSNO empty is the active state.
   const ddicVersion = (type, objectName, versno) => client.httpClient.request("/sap/bc/adt/vertex/ddic/" + encodeURIComponent(type),
     { method: "GET", qs: { name: objectName, versno: versno || "" }, headers: { Accept: "application/json" } })

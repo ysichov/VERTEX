@@ -6,7 +6,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 test("Build review builds and saves in one request, without a preliminary read/build", () => {
-  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/versions.html"), "utf8");
+  const page = require("./tools-page").toolsPage("versions.html");
   const calls = [];
   const context = vm.createContext({
     objectName: () => "DEVK900001", review_blame: true, review_from: "file",

@@ -64,8 +64,7 @@ public class RunSelectView extends PageView {
 		if (!path.equals(PAGE)) {
 			return value;
 		}
-		return value.replace("/*ECLIPSE_FRONTEND*/", (super.readResource("resources/eclipse-frontend.js").replace("/*FRONTEND_BUNDLE*/",
-				AssistantBridge.quote(super.readResource("resources/vertex-frontend.js")).replace("<", "\\u003c"))).replace("</script", "<\\/script"));
+		return value.replace("/*ECLIPSE_FRONTEND*/", inline(analysisWorker()));
 	}
 
 	@Override

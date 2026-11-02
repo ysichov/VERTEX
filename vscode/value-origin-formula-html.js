@@ -2,7 +2,7 @@
 /* The Formula pane of the analysis as HTML, and the symbolic writing of an expression it uses: one drawing for Value origin
    and for the debugger's flow path. `sourceOf(node)` names the source a </> button opens - the analysis's own source id
    in Value origin, the debugger's "origin:<source>|<routine>" marker there. */
-const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const { escapeHtml: escape } = require('./html-escape');
 
 function symbolic(graph) {
   const bseById = new Map((graph.nodes || []).map(node => [node.id, node])), dataDefinitions = new Map();

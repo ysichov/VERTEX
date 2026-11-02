@@ -1169,6 +1169,15 @@ function runVisual(){
     if(typeof sdeQuietDebugViews==="function"&&s.hush===s.draw){s.hush=!s.draw;sdeQuietDebugViews(s.hush);}
     if(s.draw){var td=Date.now();apply(p);spent(s,"draw",td);}
   }
+  // A step SAP answered: its time and SAP's share go into the run's figures and onto the move it made.
+  function counted(o,t0){if(lastMove){lastMove.ms=Date.now()-t0;lastMove.sap=o.sap||0;}
+    stepShare(s,o,t0);s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t0;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));}
+  // Out of SAP's own code: the run goes on from where that left it, unless it ended or left the programs it began in.
+  function outOfStandard(o,t0){counted(o,t0);s.standard++;spots=[];drawStats(s);
+    if(o.ended)return stepEnded(o);
+    return timed(s,"picture",debug("picture")).then(function(q){logStep(q);seen(q);if(!q.stopped||stopsHere(q))return;
+      if(!q.stopped.frames.some(function(x){return s.home[x.program];})){s.left=q.stopped.at;return;}
+      return next();});}
   function next(){
     if(s.valueDue&&!s.stop){s.valueDue=false;var pre=s.preread;s.preread=null;return timed(s,"values",readChosenValue(pre)).then(next);}
     if(s.snapDue&&!s.stop){s.snapDue=false;var scopes=s.prescopes;s.prescopes=null;return timed(s,"values",snapshot(null,scopes)).then(next);}
@@ -1178,14 +1187,7 @@ function runVisual(){
     // Still in SAP's own code above ours: back out before anything else.
     if($("zonly").classList.contains("on")&&strayed(picture.stopped.frames)){
       var t0=Date.now();
-      s.quietStep=false;return backToOurs(picture.stopped.frames).then(function(o){
-        if(lastMove){lastMove.ms=Date.now()-t0;lastMove.sap=o.sap||0;}
-        stepShare(s,o,t0);s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t0;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
-        if(o.ended)return stepEnded(o);
-        return timed(s,"picture",debug("picture")).then(function(q){logStep(q);seen(q);if(!q.stopped||stopsHere(q))return;
-          if(!q.stopped.frames.some(function(x){return s.home[x.program];})){s.left=q.stopped.at;return;}
-          return next();});
-      });
+      s.quietStep=false;return backToOurs(picture.stopped.frames).then(function(o){return outOfStandard(o,t0);});
     }
     // F5, and SAP says where the program now is: the stack comes back in the same request as the step, and with a
     // value followed, that value too.
@@ -1198,10 +1200,8 @@ function runVisual(){
     lastMove={action:"F5",from:String(f.label),detail:""};
     // Steps & values: every scope is read with the step too; the record keeps the ones it wants.
     return debug("step",{kind:"into",quick:true,read:reads,scopes:wantValues()&&!s.quietStep?["params","locals","globals"]:null}).then(function(r){
-        if(lastMove){lastMove.ms=Date.now()-t;lastMove.sap=r.sap||0;}
         s.preread=r.values||null;s.prescopes=r.scopes||null;
-        stepShare(s,r,t);s.steps++;s.sap+=r.sap||0;s.total+=Date.now()-t;s.stackMs+=Math.max(0,(r.total||0)-(r.sap||0));
-        drawStats(s);
+        counted(r,t);drawStats(s);
         if(r.ended)return stepEnded(r);
         return timed(s,"picture",debug("picture")).then(function(p){
           logStep(p);
@@ -1209,12 +1209,7 @@ function runVisual(){
           // call runs to its end and the run goes on in our code.
           if(p.stopped&&!p.stopped.breakpoint&&$("zonly").classList.contains("on")&&strayed(p.stopped.frames)){
             var t2=Date.now();lastMove={action:"outside Z/Y: F7",from:String(p.stopped.frames[0].label)};
-            return debug("step",{kind:"out",quick:true}).then(function(o){if(lastMove){lastMove.ms=Date.now()-t2;lastMove.sap=o.sap||0;}
-              stepShare(s,o,t2);s.steps++;s.sap+=o.sap||0;s.total+=Date.now()-t2;s.stackMs+=Math.max(0,(o.total||0)-(o.sap||0));s.standard++;spots=[];drawStats(s);
-              if(o.ended)return stepEnded(o);
-              return timed(s,"picture",debug("picture")).then(function(q){logStep(q);seen(q);if(!q.stopped||stopsHere(q))return;
-                if(!q.stopped.frames.some(function(x){return s.home[x.program];})){s.left=q.stopped.at;return;}
-                return next();});});
+            return debug("step",{kind:"out",quick:true}).then(function(o){return outOfStandard(o,t2);});
           }
           seen(p);if(!p.stopped||stopsHere(p))return;
           // The programs on the stack when the run began are gone: the program is

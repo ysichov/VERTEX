@@ -928,6 +928,17 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
   /* Read-only views of other objects, by URI: the system and the ADT source
      URL they show, so hover and navigation work inside them too. */
   const readOnly = new Map();
+  // The SAP source a document shows: an opened tab - by URI, or by the document itself once its URI changed - or a
+  // read-only view of another object.
+  function sapEntry(document) {
+    return opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
+      || readOnly.get(document.uri.toString());
+  }
+  // The superclass a class source names after INHERITING FROM, upper case; "" when it names none.
+  function superclassOf(source) {
+    const parent = /\bINHERITING\s+FROM\s+([A-Za-z_/$][A-Za-z0-9_/$]*)/i.exec(source);
+    return parent ? parent[1].toUpperCase() : "";
+  }
   async function adtForeign(document, at) {
     const asked = await adtAsk("definition", document, at);
     const found = asked && asked.answer;
@@ -1508,8 +1519,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     }));
   }
   async function methodCounterpart(document, at) {
-    const entry = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
-      || readOnly.get(document.uri.toString());
+    const entry = sapEntry(document);
     if (!entry) { return undefined; }
     const anchor = methodAnchor(document, at);
     if (!anchor) { return undefined; }
@@ -1613,8 +1623,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     return { document, target: location(document.uri, line, Math.max(0, column), anchor.name.length) };
   }
   async function externalCallTarget(document, at) {
-    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
-      || readOnly.get(document.uri.toString());
+    const current = sapEntry(document);
     const call = current && (externalCallAnchor(document, at) || classAnchor(document, at));
     if (!call) { return undefined; }
     if (call.kind === "instance-method") {
@@ -1661,45 +1670,36 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     const line = Math.min(target.document.lineCount - 1, implementation + Math.max(0, methodLineNumber - 1));
     return { document: target.document, line: line + 1 };
   }
-  async function externalMethodInformation(document, at) {
-    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
-      || readOnly.get(document.uri.toString());
-    const call = current && externalCallAnchor(document, at);
-    if (!call || call.kind !== "method") { return undefined; }
-    const key = current.repo.key + "|" + call.object_name + "|" + call.method;
+  // A method's signature from the class that declares it: the named class, or the nearest superclass up its
+  // INHERITING FROM chain. Read from SAP once per key; a failed read is no signature.
+  function declaredSignature(current, key, className, method) {
     if (!externalSignatures.has(key)) {
       const resolve = async name => {
         const data = await current.repo.api.execute("read_sap_object", { object_type: "CLAS", object_name: name });
-        const signature = methodSignature(data.source, call.method);
+        const signature = methodSignature(data.source, method);
         if (signature) { return { signature, owner: name }; }
-        const parent = /\bINHERITING\s+FROM\s+([A-Za-z_/$][A-Za-z0-9_/$]*)/i.exec(data.source);
-        return parent ? resolve(parent[1].toUpperCase()) : null;
+        const parent = superclassOf(data.source);
+        return parent ? resolve(parent) : null;
       };
-      externalSignatures.set(key, resolve(call.object_name).catch(() => null));
+      externalSignatures.set(key, resolve(className).catch(() => null));
     }
-    const found = await externalSignatures.get(key);
+    return externalSignatures.get(key);
+  }
+  async function externalMethodInformation(document, at) {
+    const current = sapEntry(document);
+    const call = current && externalCallAnchor(document, at);
+    if (!call || call.kind !== "method") { return undefined; }
+    const found = await declaredSignature(current, current.repo.key + "|" + call.object_name + "|" + call.method, call.object_name, call.method);
     if (!found) { return undefined; }
     return { call, signature: found.signature, owner: found.owner };
   }
   async function inheritedMethodInformation(document, at) {
-    const current = opened.get(document.uri.toString()) || [...opened.values()].find(item => item.document === document)
-      || readOnly.get(document.uri.toString());
+    const current = sapEntry(document);
     const anchor = current && current.data.object_type === "CLAS" && methodAnchor(document, at);
     if (!anchor || methodSignature(document.getText(), anchor.name)) { return undefined; }
-    const parent = /\bINHERITING\s+FROM\s+([A-Za-z_/$][A-Za-z0-9_/$]*)/i.exec(document.getText());
+    const parent = superclassOf(document.getText());
     if (!parent) { return undefined; }
-    const key = current.repo.key + "|" + current.data.object_name + "|" + anchor.name + "|inherited";
-    if (!externalSignatures.has(key)) {
-      const resolve = async name => {
-        const data = await current.repo.api.execute("read_sap_object", { object_type: "CLAS", object_name: name });
-        const signature = methodSignature(data.source, anchor.name);
-        if (signature) { return { signature, owner: name }; }
-        const next = /\bINHERITING\s+FROM\s+([A-Za-z_/$][A-Za-z0-9_/$]*)/i.exec(data.source);
-        return next ? resolve(next[1].toUpperCase()) : null;
-      };
-      externalSignatures.set(key, resolve(parent[1].toUpperCase()).catch(() => null));
-    }
-    const found = await externalSignatures.get(key);
+    const found = await declaredSignature(current, current.repo.key + "|" + current.data.object_name + "|" + anchor.name + "|inherited", parent, anchor.name);
     return found && { anchor, signature: found.signature, owner: found.owner };
   }
   function selectTarget(editor, target) {

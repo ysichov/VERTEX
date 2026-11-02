@@ -19,7 +19,7 @@ function page() {
     getElementById(id) { return elements[id] || (elements[id] = element()); },
     createElement: element, createTextNode: text => ({ textContent: text })
   }, sdeLoad: (...args) => calls.push(args), sdeRequests: (...args) => found.push(args) });
-  const html = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/versions.html"), "utf8");
+  const html = require("./tools-page").toolsPage("versions.html");
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   vm.runInContext(script.split("/* ---------- wiring ---------- */")[0], context);
   context.status = context.note = () => {};

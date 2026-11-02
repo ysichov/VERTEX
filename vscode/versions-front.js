@@ -14,7 +14,7 @@
 
 const ACTIVE = "99998";
 const NAME = /^[A-Z0-9_/$]{1,40}$/;
-const { inLists } = require("./selector-table");
+const { inLists, quote: sqlText } = require("./selector-table");
 
 const objectUrl = (type, name) => (type === "INCL" ? "/sap/bc/adt/programs/includes/" : "/sap/bc/adt/programs/programs/")
   + encodeURIComponent(name.toLowerCase());
@@ -113,7 +113,6 @@ function sourceAt(api, uri) {
 
 const enc = name => encodeURIComponent(name.toLowerCase());
 const DDIC = { TABL: "TABD", DOMA: "DOMD", DTEL: "DTED" };
-const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
 
 // A part of a request or a package, by its own type: a REPS is a program, an include or a function group's main
 // program (TRDIR SUBC); a FUNC lives in its group; a class part in its class; a dictionary part in its object.

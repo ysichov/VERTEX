@@ -26,6 +26,7 @@ const required = [
     "extension/node_modules/temporal-utils/package.json",
     "extension/local-run.js",
     "extension/local-trace.js",
+    "extension/source-map-vlq.js",
     "extension/local-debug-vars.js",
     "extension/local-debug-adapter.js",
     "extension/value-origin-linter.js",
@@ -46,6 +47,7 @@ const required = [
     "extension/resources/log-report.html",
     "extension/resources/metrics.html",
     "extension/resources/versions.html",
+    "extension/resources/vertex-page.js",
     "extension/pages/visual-debug.html",
     "extension/node_modules/@mcp-abap-adt/auth-broker/package.json",
     "extension/node_modules/@mcp-abap-adt/auth-broker/COPYING",
@@ -235,6 +237,8 @@ function main(args) {
         try {
             const page = path.join(temp, "metrics.html");
             fs.writeFileSync(page, metrics);
+            // The page as the packaged extension hands it over: with the packaged vertex-page.js put in.
+            fs.writeFileSync(path.join(temp, "vertex-page.js"), archive.get("extension/resources/vertex-page.js")());
             run(process.execPath, ["--test", path.join(__dirname, "test", "scheme-navigation.test.js")], { env: { ...process.env, VERTEX_METRICS_HTML: page } });
         } finally { fs.rmSync(temp, { recursive: true, force: true }); }
         for (const needle of ['function renderUmlParts()', 'var UML_SECTIONS', 'mode === "scheme" && classMetrics()']) if (!metrics.includes(needle)) throw new Error("VSIX verification failed: UML Parts navigator is missing " + needle);

@@ -90,7 +90,7 @@ test('source cache is isolated per repository and shares concurrent reads',async
 });
 test('orientation redraws cached Mermaid without requesting another analysis',()=>{
  const vm=require('node:vm');
- const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/metrics.html'),'utf8');
+ const page=require("./tools-page").toolsPage("metrics.html");
  const start=page.indexOf('function setDirection(value)'),end=page.indexOf('/* The library arrives',start);
  let draws=0,requests=0;const button={getAttribute:()=> 'LR',className:''};
  const context=vm.createContext({direction:'TB',lastMermaid:'flowchart LR\na --> b',document:{querySelectorAll:()=>[button]},draw:()=>draws++,requestDiagram:()=>requests++});
@@ -118,13 +118,13 @@ test('package progress counts completed objects and keeps moving through Metrics
  assert.ok(messages.some(text=>/2\/2 objects/.test(text)),messages.join('\n'));
 });
 test('UML and Metrics display the live stage in the result area',()=>{
- const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/metrics.html'),'utf8');
+ const page=require("./tools-page").toolsPage("metrics.html");
  assert.match(page,/id="analysis-progress"[^>]*role="status"/);
  assert.match(page,/function sdeAnalysisProgress\(text\)[\s\S]*hintBox\.textContent=text/);
  assert.match(page,/\.hint\.busy::before/);
 });
 test('warning details are collapsed and progress follows the active request',()=>{
- const metrics=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/metrics.html'),'utf8');
+ const metrics=require("./tools-page").toolsPage("metrics.html");
  assert.match(metrics,/createElement\('details'\)/);assert.match(metrics,/max-height:180px/);
  assert.doesNotMatch(metrics,/engineNote\.textContent = .*warnings\.join/);
  const tools=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/tools.html'),'utf8');

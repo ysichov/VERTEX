@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/metrics.html"), "utf8");
+const page = require("./tools-page").toolsPage("metrics.html");
 const source = page.slice(page.indexOf("function openMetricSource("), page.indexOf("function classMetrics("));
 
 test("unbound package Metrics frame receives the source-opening bridge", () => {

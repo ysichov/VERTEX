@@ -1,5 +1,9 @@
 # Release history
 
+## Unreleased — Eclipse: Value origin analyses again
+
+- **Forward usage** (Value origin) in Eclipse runs its analysis again instead of stopping with *Value origin in Eclipse has no module ./value-origin-linter*; function module signatures are read there too. It reaches Eclipse with the next update-site build.
+
 ## 2026-11-02 — 0.9.53: editable review prompts
 
 - **Prompts…** shows the effective Code review and Technical documentation instructions and saves edits as user files under `~/.vertex/prompts/`. These files override the built-in text; copying a prompt rereads the file, and **Use built-in** removes the override.

@@ -3,27 +3,12 @@ const { analyze, variableAt, literalAt, callsIn, variablePaths } = require('./va
 const { pathRows, siteRows } = require('./value-origin-points');
 const { formula, scopeStacks } = require('./value-origin-formula');
 const { symbolic, formulaPane, expressionPane } = require('./value-origin-formula-html');
-const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const { escapeHtml: escape } = require('./html-escape');
 // ACE method includes start at line 1, whereas the editable class document
 // contains every method.  openSource translates the include position to that
 // document; never replace its answer with the include-local line.
 const navigationLine = (opened, requestedLine) => opened?.line || requestedLine;
 
-/* The flow - tree, diagram, and the controls over both - is one script, shared
-   with every VERTEX view that draws a flow. A webview loads it by address; with
-   no address to give (a test, or a host that cannot serve files) the page
-   carries the same file inline. One source either way. */
-let flowScriptText = null;
-function flowScript() {
-  if (flowScriptText !== null) { return flowScriptText; }
-  const fs = require('fs'), path = require('path');
-  const places = [path.join(__dirname, 'resources', 'vertex-flow.js'),
-    path.join(__dirname, '..', 'org.vertex.abap.ui', 'resources', 'vertex-flow.js')];
-  for (const file of places) {
-    try { return flowScriptText = fs.readFileSync(file, 'utf8'); } catch (error) { /* the next one */ }
-  }
-  throw new Error('vertex-flow.js was not found in ' + places.join(' or ') + '.');
-}
 // The flow's graph builder is shared with the debugger's flow path; a required module, from the packaged copy or the repository's.
 function flowGraphBuilder() {
   const path = require('path');
@@ -32,8 +17,12 @@ function flowGraphBuilder() {
   }
   throw new Error('vertex-flow-graph.js was not found.');
 }
-// The flow builder and the ABAP control rules it needs, for the page to build a reading when it is asked for: from the
-// packaged copy or the repository's. A host (Eclipse) hands the page its own instead.
+// A shared script of the pages, from the packaged copy or the repository's. The flow - tree, diagram, and the controls
+// over both - is one script, shared with every VERTEX view that draws a flow, and the magnifier every diagram has is
+// another, loaded before the flow that uses it. A webview loads them by address; with no address to give (a test, or a
+// host that cannot serve files) the page carries the same file inline. One source either way. The flow builder and the
+// ABAP control rules it needs come the same way, for the page to build a reading when it is asked for; a host
+// (Eclipse) hands the page its own instead.
 const resourceTexts = new Map();
 function resourceScript(name) {
   if (resourceTexts.has(name)) { return resourceTexts.get(name); }
@@ -43,18 +32,6 @@ function resourceScript(name) {
     try { const text = fs.readFileSync(file, 'utf8'); resourceTexts.set(name, text); return text; } catch (error) { /* the next one */ }
   }
   throw new Error(name + ' was not found in ' + places.join(' or ') + '.');
-}
-// The magnifier every diagram has, loaded before the flow that uses it - the same way, by address or inline.
-let lensScriptText = null;
-function lensScript() {
-  if (lensScriptText !== null) { return lensScriptText; }
-  const fs = require('fs'), path = require('path');
-  const places = [path.join(__dirname, 'resources', 'vertex-lens.js'),
-    path.join(__dirname, '..', 'org.vertex.abap.ui', 'resources', 'vertex-lens.js')];
-  for (const file of places) {
-    try { return lensScriptText = fs.readFileSync(file, 'utf8'); } catch (error) { /* the next one */ }
-  }
-  throw new Error('vertex-lens.js was not found in ' + places.join(' or ') + '.');
 }
 /* A script carried in the page rather than loaded by address: its text must not close the tag it stands in. */
 const inlineScript = (nonce, text) => `<script nonce="${nonce}">${String(text).replace(/<\/script/gi, '<\\/script')}</script>`;
@@ -289,7 +266,7 @@ function html(graph, nonce, mermaidSource = '', cspSource = '', styleSource = ''
   ${graph.stopNotice ? `<p class="warning">⛔ ${escape(graph.stopNotice)}</p>` : ''}${(graph.warnings || []).map(w => `<p class="warning">${escape(w)}</p>`).join('')}
   <details class="origin-log debug-only"><summary>Analysis log — ${escape(graph.analysisEngine || 'ACE')}</summary><button id="copy-flow" class="location">Copy log</button><pre class="analysis-log">${escape(diagnosticLog)}</pre><div class="analysis-log">${fullLog || escape(analysisLog)}</div><p class="edge">Copy log includes FLOW, Formula and Expression structures.</p></details>
   ${scenarioControls ? `<details class="scenario-panel"><summary>Simulate selection screen</summary>${scenarioControls}</details>` : ''}<div id="bse-workspace" class="bse-workspace"><template data-flow-pane="tree"><p class="edge">Execution flow${graph.flowBounds ? ` between breakpoints ${graph.flowBounds.from}–${graph.flowBounds.to}` : ''} — changes and parameter transfers to ${escape(graph.selectedVariable || '?')}</p>${aceExecution || '<p>Execution flow was not produced.</p>'}</template><template data-flow-pane="formula">${formulaView}</template><template data-flow-pane="expression">${expressionPane(derivation)}</template></div>
-  <script id="mermaid-data" type="application/json">${JSON.stringify(mermaidGraph).replaceAll('<', '\\u003c')}</script>${scripts.lens ? inlineScript(nonce, scripts.lens) : lensSource ? `<script nonce="${nonce}" src="${lensSource}"></script>` : `<script nonce="${nonce}">${lensScript()}</script>`}${host ? '' : inlineScript(nonce, resourceScript('vertex-abap-control.js')) + inlineScript(nonce, resourceScript('vertex-flow-graph.js'))}${scripts.flow ? inlineScript(nonce, scripts.flow) : inlineScript(nonce, flowScript())}<script nonce="${nonce}">if(!window.vertexFlow){const box=document.getElementById('bse-workspace');if(box)box.innerHTML='<p class="warning">The flow view did not load${flowSource ? ` from ${flowSource}` : ''}: the page has its data but nothing to draw it with.</p>';}</script>
+  <script id="mermaid-data" type="application/json">${JSON.stringify(mermaidGraph).replaceAll('<', '\\u003c')}</script>${scripts.lens ? inlineScript(nonce, scripts.lens) : lensSource ? `<script nonce="${nonce}" src="${lensSource}"></script>` : `<script nonce="${nonce}">${resourceScript('vertex-lens.js')}</script>`}${host ? '' : inlineScript(nonce, resourceScript('vertex-abap-control.js')) + inlineScript(nonce, resourceScript('vertex-flow-graph.js'))}${scripts.flow ? inlineScript(nonce, scripts.flow) : inlineScript(nonce, resourceScript('vertex-flow.js'))}<script nonce="${nonce}">if(!window.vertexFlow){const box=document.getElementById('bse-workspace');if(box)box.innerHTML='<p class="warning">The flow view did not load${flowSource ? ` from ${flowSource}` : ''}: the page has its data but nothing to draw it with.</p>';}</script>
   <script nonce="${nonce}">(()=>{const state=${JSON.stringify(graph.restore || {}).replaceAll('<', '\\u003c')};if(!state.choice)return;const panel=document.querySelector('.scenario-panel');if(panel)panel.open=true;const selected=document.querySelector('.scenario input[value="'+state.choice+'"]');if(selected){selected.checked=true;selected.dispatchEvent(new Event('change',{bubbles:true}));}if(state.mode){document.querySelector('.bse-view-toggle [data-mode="'+state.mode+'"]').click();}if(state.view){document.querySelector('.bse-view-toggle [data-view="'+state.view+'"]').click();}})();</script>
   <details class="debug-only"><summary>BSE dependency tree (technical)</summary>${dependencyTree}</details><details class="debug-only"><summary>${escape(graph.analysisEngine || 'ACE')} source closure (${(graph.sourceClosure || []).length})</summary><p class="edge">These are the exact source objects loaded for this analysis. Missing factory or implementation here explains an unresolved call.</p><pre class="analysis-log">${escape((graph.sourceClosure || []).map(item => `${item.objectType || '?'} ${item.objectName || item.name} · ${item.name}`).join('\n') || 'No sources were loaded.')}</pre></details>
   <details class="debug-only"><summary>Static call stack contributing to the selected value</summary><div class="call-stack">${callPath || '<p>No resolved calls.</p>'}</div></details>

@@ -1,6 +1,6 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),vm=require("node:vm");
-const page=fs.readFileSync(path.join(__dirname,"../../org.vertex.abap.ui/resources/metrics.html"),"utf8");
+const page=require("./tools-page").toolsPage("metrics.html");
 const source=page.slice(page.indexOf("function visiblePackageMetricRows("),page.indexOf("function setMetricMapZoom("))+
  page.slice(page.indexOf("function metricMapRisk("),page.indexOf("function updateMetricView("));
 

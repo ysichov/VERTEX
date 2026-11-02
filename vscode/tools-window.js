@@ -9,7 +9,10 @@ function html(pages, initial) {
   const bundle = {};
   // The magnifier every diagram has is one file; a page that draws diagrams marks where it goes.
   const lens = read("vertex-lens.js");
+  // What the Tools pages share is one file too, put where a page marks it (as PageView does in Eclipse).
+  const shared = read("vertex-page.js");
   for (const name of ["chat", "metrics", "versions", "table", "navigator"]) bundle[name] = read(name + ".html").replace("/*VERTEX_LENS*/", () => lens)
+    .replace("/*VERTEX_PAGE*/", () => shared)
     .replace("</head>", () => "<style>" + read("vertex-controls.css") + "</style></head>");
   return read("tools.html")
     .replace("/*INIT*/null/*INIT*/", () => JSON.stringify(initial || null).replace(/</g, "\\u003c"))

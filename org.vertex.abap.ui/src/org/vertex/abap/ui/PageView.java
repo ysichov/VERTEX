@@ -532,7 +532,7 @@ public abstract class PageView extends ViewPart {
 
 	/** The VERTEX resources answer JSON; a view reading standard ADT resources adds more. */
 	protected void addContentHandlers(IRestResource resource) {
-		resource.addContentHandler(new JsonContentHandler());
+		resource.addContentHandler(new TextContentHandler("application/json"));
 	}
 
 	/**
@@ -613,6 +613,32 @@ public abstract class PageView extends ViewPart {
 	 * @param path bundle-relative, e.g. resources/mermaid.min.js
 	 */
 	protected String readResource(String path) throws IOException {
+		String text = readEntry(path);
+		// What the Tools pages share (resources/vertex-page.js) goes where a page marks it, whichever view reads the
+		// page: ToolsView's bundle, ChatView and MetricsView alike. VS Code's tools-window.js and extension.js do the same.
+		if (path.endsWith(".html") && text.contains(SHARED_PAGE)) {
+			text = text.replace(SHARED_PAGE, readEntry("resources/vertex-page.js"));
+		}
+		return text;
+	}
+
+	private static final String SHARED_PAGE = "/*VERTEX_PAGE*/";
+
+	/**
+	 * The analysis worker as a page runs it: resources/eclipse-frontend.js with the VS Code analysis
+	 * (resources/vertex-frontend.js) put in as the string it starts the worker from.
+	 */
+	protected String analysisWorker() throws IOException {
+		return readEntry("resources/eclipse-frontend.js").replace("/*FRONTEND_BUNDLE*/",
+				AssistantBridge.quote(readEntry("resources/vertex-frontend.js")).replace("<", "\\u003c"));
+	}
+
+	/** A script carried in a page rather than loaded by it: its text must not close the tag it stands in. */
+	protected static String inline(String script) {
+		return script.replace("</script", "<\\/script");
+	}
+
+	private String readEntry(String path) throws IOException {
 		URL entry = FrameworkUtil.getBundle(getClass()).getEntry(path);
 		if (entry == null) {
 			throw new IOException(path + " is missing from the bundle."

@@ -75,7 +75,7 @@ public class ToolsView extends ChatView {
         return value.replace("/*OBJECT_MODEL*/", super.readResource("resources/object-tools.js"))
             .replace("/*TOOL_ROUTES*/", super.readResource("resources/tool-routes.js"))
             .replace("/*BUNDLE*/{}", bundle.toString())
-            .replace("/*ECLIPSE_FRONTEND*/", super.readResource("resources/eclipse-frontend.js").replace("/*FRONTEND_BUNDLE*/", AssistantBridge.quote(super.readResource("resources/vertex-frontend.js")).replace("<", "\\u003c")));
+            .replace("/*ECLIPSE_FRONTEND*/", analysisWorker());
     }
     @Override protected String accept(String path) {
         if (path.startsWith("/sap/bc/adt/vertex/")) return null;

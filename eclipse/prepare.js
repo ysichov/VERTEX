@@ -18,15 +18,17 @@ fs.copyFileSync(path.join(root, "org.vertex.abap.ui", "resources", "object-tools
 fs.writeFileSync(path.join(target, "value-origin.js"), require("./value-origin-bundle").bundle(root));
 fs.writeFileSync(path.join(target, "abaplint.js"), require("./frontend-bundle").abaplint(root));
 fs.copyFileSync(path.join(root, "vscode", "value-origin.css"), path.join(target, "value-origin.css"));
-fs.copyFileSync(path.join(__dirname, "value-origin.html"), path.join(target, "value-origin.html"));
+// The pages that ask their view carry its one-request bridge (eclipse-calls.js), put in by eclipse/pages.js.
+const { page } = require("./pages");
+fs.writeFileSync(path.join(target, "value-origin.html"), page("value-origin.html"));
 console.log("Prepared Eclipse Value origin.");
 // Path to This Line: its page; the path itself is built in the analysis worker (vertex-frontend.js below).
-fs.copyFileSync(path.join(__dirname, "reach-path.html"), path.join(target, "reach-path.html"));
+fs.writeFileSync(path.join(target, "reach-path.html"), page("reach-path.html"));
 // Run Select: its page; the SELECT is decided in the analysis worker (select-query.run in vertex-frontend.js).
 fs.copyFileSync(path.join(__dirname, "run-select.html"), path.join(target, "run-select.html"));
 // Session Logs: VS Code's log reading as one browser script, and the page that hosts the report.
 fs.writeFileSync(path.join(target, "logs.js"), require("./logs-bundle").bundle(root));
-fs.copyFileSync(path.join(__dirname, "session-logs.html"), path.join(target, "session-logs.html"));
+fs.writeFileSync(path.join(target, "session-logs.html"), page("session-logs.html"));
 
 // The statement rules are org.vertex.abap.ui/resources/vertex-abap-control.js itself; vscode/abap-control.js only
 // finds that file. Copying it over the rules - as this script did - left a finder where the rules belong.

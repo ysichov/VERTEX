@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/versions.html"), "utf8");
+const page = require("./tools-page").toolsPage("versions.html");
 const source = page.slice(page.indexOf("var REVIEW_PROMPT ="), page.indexOf("function copyText("));
 const ops = [{ op: "=", text: "CLASS zcl_ship DEFINITION." }, { op: "-", text: "amount = old_price." },
   { op: "+", text: "amount = new_price * 2." }, { op: "=", text: "ENDCLASS." }];

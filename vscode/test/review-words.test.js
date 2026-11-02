@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 // The change inside a line, as versions.html computes it: its functions taken from the page as they are.
-const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/versions.html"), "utf8");
+const page = require("./tools-page").toolsPage("versions.html");
 const { wordDiff, pairAll } = new Function(page.slice(page.indexOf("function tokens("), page.indexOf("function markWords("))
   + "; return { wordDiff, pairAll };")();
 

@@ -5,7 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 test("UML Scheme renders the Source/Diff-style Parts navigator for every ADT class type", () => {
-  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/metrics.html"), "utf8");
+  const page = require("./tools-page").toolsPage("metrics.html");
   assert.match(page, /function renderUmlParts\(\)/);
   assert.match(page, /\["", "Type", "Name"\]/);
   assert.match(page, /CPUB/);

@@ -1,6 +1,6 @@
 "use strict";
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/versions.html'),'utf8');
+const page=require("./tools-page").toolsPage("versions.html");
 class Element {
  constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.style={};this.className='';}
  appendChild(child){this.children.push(child);child.parentNode=this;return child;}

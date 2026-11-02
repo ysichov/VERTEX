@@ -43,7 +43,7 @@ function page(host) {
     globals.sdeModels = (...args) => calls.push(["models", ...args]);
   }
   const context = vm.createContext(globals);
-  const html = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/table.html"), "utf8");
+  const html = require("./tools-page").toolsPage("table.html");
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   vm.runInContext(script.split("/* ---------- wiring ---------- */")[0], context);
   // A select in a real document takes the value of one of its options.
@@ -162,7 +162,7 @@ test("without the table resource SelecTor opens on what is missing, and reads no
 });
 
 test("a window opened on a plan - Run Select's SELECT - starts from it; an empty line restricts nothing", () => {
-  const html = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/table.html"), "utf8");
+  const html = require("./tools-page").toolsPage("table.html");
   const plan = { table: "ZLOG_PIPELINE", filters: [
     { field: "scenario_id", sign: "I", option: "EQ", low: "", high: "" },
     { field: "step_no", sign: "I", option: "BT", low: "010", high: "030" }] };
@@ -186,7 +186,7 @@ test("a plan's join types and ON go to the join resource; a table taken by hand 
 });
 
 test("Run Select's table is read with its SELECT list; Show hidden reads every field and leaves the others unticked", () => {
-  const html = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/table.html"), "utf8");
+  const html = require("./tools-page").toolsPage("table.html");
   const plan = { table: "E070", filters: [{ field: "as4user", sign: "I", option: "EQ", low: "", high: "" }], columns: ["trkorr"] };
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace("/*INIT*/null/*INIT*/", JSON.stringify(plan));
   const { context, calls, elements } = page();
@@ -243,7 +243,7 @@ test("the pivot offers the fields the join selected, not every field of its tabl
   const { context } = page();
   const fields = [{ sel: true, alias: "T0", fieldname: "CARRID", key: true }, { sel: false, alias: "T1", fieldname: "CUSTOMID", key: false }];
   context.applyPlan({ table: "SFLIGHT", filters: [], join: ["SBOOK"], fields: [], pivot: { rows: ["t0~carrid"], cols: [], vals: [] } });
-  const html = require("node:fs").readFileSync(require("node:path").join(__dirname, "../../org.vertex.abap.ui/resources/table.html"), "utf8");
+  const html = require("./tools-page").toolsPage("table.html");
   assert.match(html, /crossPanel\(\(data\.fields \|\| \[\]\)\.filter\(function \(f\) \{ return f\.sel === "X" \|\| f\.sel === true; \}\)\)/);
   assert.equal(fields.filter(f => f.sel).length, 1);
 });

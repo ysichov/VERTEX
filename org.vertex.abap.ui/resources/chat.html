@@ -118,60 +118,9 @@ function sdeReady() {
   if (typeof sdeTitle === "function") { sdeTitle(raw); }
 }
 
-/* A Claude model by its full id - a version the aliases no longer reach. The
-   page asks the host to check it with one short request; what came back
-   stays in the list, the rest is only offered. */
-var SPECIFY = "?version";
-
-function addVersionOptions(box, data, kept) {
-  var listed = data.models.some(function (m) { return m.id === kept; });
-  if (kept && !listed) {
-    var own = document.createElement("option");
-    own.value = kept;
-    own.textContent = data.probed && data.probed.id === kept ? data.probed.label : kept;
-    box.appendChild(own);
-  }
-  var specify = document.createElement("option");
-  specify.value = SPECIFY;
-  specify.textContent = "Specify version...";
-  box.appendChild(specify);
-}
-
-function specifyVersion() {
-  var box = document.getElementById("model");
-  var who = document.getElementById("who").value;
-  box.value = recall("model." + who);
-  if (document.getElementById("versionrow")) { document.getElementById("versionid").focus(); return; }
-  var row = document.createElement("div");
-  row.id = "versionrow";
-  row.style.cssText = "display: flex; gap: 4px; padding: 4px 6px;";
-  var input = document.createElement("input");
-  input.id = "versionid";
-  input.placeholder = "claude-opus-5";
-  input.spellcheck = false;
-  input.style.cssText = "flex: 1 1 0; min-width: 0;";
-  var check = document.createElement("button");
-  check.textContent = "Check";
-  var cancel = document.createElement("button");
-  cancel.textContent = "Cancel";
-  function close() { row.parentNode.removeChild(row); }
-  function go() {
-    var id = input.value.trim();
-    if (!id) { input.focus(); return; }
-    close();
-    say("you", "VERTEX", "Checking " + id + " with Claude Code ...");
-    askModels(id);
-  }
-  check.addEventListener("click", go);
-  cancel.addEventListener("click", close);
-  input.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") { go(); } else if (e.key === "Escape") { close(); }
-  });
-  row.appendChild(input); row.appendChild(check); row.appendChild(cancel);
-  var holder = box.parentNode;
-  holder.parentNode.insertBefore(row, holder.nextSibling);
-  input.focus();
-}
+/*VERTEX_PAGE*/
+// The class say() gives the user's own lines here (vertex-page.js writes one when a model version is checked).
+var USER_KIND = "you";
 
 /* In VS Code the chat offers what the VERTEX panel does - its provider, the
    models Config models switched on, and the chosen one - instead of an
@@ -195,13 +144,6 @@ function showShared(state) {
     provider.appendChild(option);
   });
   provider.value = state.provider;
-}
-
-function askModels(version) {
-  var box = document.getElementById("model");
-  box.innerHTML = "<option>loading ...</option>";
-  box.disabled = true;
-  sdeModels(document.getElementById("who").value, version || "");
 }
 
 /* ASK AI of a review: its blocks on the chip above the input, attached to the next question only when it is sent - the

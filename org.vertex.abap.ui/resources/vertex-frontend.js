@@ -438,7 +438,7 @@ async function backward(api, resource, progress = () => {}, cancelled = () => fa
   if (!/^\/sap\/bc\/adt\//.test(start.url)) throw new Error('Backward Usage Analysis needs the ADT source of the object.');
   const breakpoints = String(params.get('breakpoints') || '').split(',').filter(Boolean).map(Number);
   const { parseSource } = __vertexRequire(23);
-  const { customerObject } = __vertexRequire(1558);
+  const { customerObject } = __vertexRequire(1559);
   const sources = new Map();
   const sourceOf = (url, name, type) => {
     if (!sources.has(url)) {
@@ -463,13 +463,13 @@ async function backward(api, resource, progress = () => {}, cancelled = () => fa
     return { places, skipped };
   };
   const first = await sourceOf(start.url, start.name, start.type);
-  const result = await __vertexRequire(1559).analyze({ source: first, line: Number(params.get('line')) || 1, variable: upper(params.get('variable')) }, {
+  const result = await __vertexRequire(1560).analyze({ source: first, line: Number(params.get('line')) || 1, variable: upper(params.get('variable')) }, {
     callers: routine => whereUsed(routine.source, routine.line, routine.column),
     uses: attribute => whereUsed(attribute.source, attribute.line, attribute.column),
     breakpointAt: (id, line) => id === start.url && breakpoints.includes(line),
     ask: points => api.askBreakpoint(points)
   });
-  return { backward: result, page: __vertexRequire(1559).page(result) };
+  return { backward: result, page: __vertexRequire(1560).page(result) };
 }
 
 // A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
@@ -479,7 +479,7 @@ async function write(api, resource, body, progress) {
   // Run Select: the SELECT at the cursor of the editor's text, decided as VS Code decides it (select-query.run).
   if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/runselect') {
     const command = JSON.parse(String(body));
-    return __vertexRequire(1560).run(api, String(command.text), Number(command.offset));
+    return __vertexRequire(1561).run(api, String(command.text), Number(command.offset));
   }
   if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/reach') {
     const command = JSON.parse(String(body));
@@ -104019,13 +104019,17 @@ async function request(api, resource) {
   const fields = shown.filter(f => f.DATATYPE !== "CLNT").map(f => ({
     name: f.FIELDNAME.toLowerCase(), position: Number(f.POSITION), key: f.KEYFLAG === "X", datatype: f.DATATYPE,
     length: Number(f.LENG), decimals: Number(f.DECIMALS), text: f.TEXT }));
-  const types = new Map(catalog.map(f => [f.FIELDNAME, f.DATATYPE]));
-  const lines = data.values.map(row => Object.fromEntries(Object.keys(row).map(column =>
-    [column.toLowerCase(), value(row[column], types.get(column))])));
+  const lines = typedRows(data.values, new Map(catalog.map(f => [f.FIELDNAME, f.DATATYPE])));
   return { table: table.toLowerCase(), count: lines.length, fields, rows: lines };
 }
 
-module.exports = { request, whereClause, value, quote, inLists, fieldsOf, language, NUMBERS, OPTIONS, NAME };
+// The rows of a preview answer, keyed by field name in lower case, each value read as its dictionary type (TYPES:
+// column as the answer names it -> data type).
+function typedRows(values, types) {
+  return values.map(row => Object.fromEntries(Object.keys(row).map(column => [column.toLowerCase(), value(row[column], types.get(column))])));
+}
+
+module.exports = { request, whereClause, value, typedRows, quote, inLists, fieldsOf, language, NUMBERS, OPTIONS, NAME };
 
 },
 function(module,exports,__vertexRequire){
@@ -104042,7 +104046,7 @@ var require=__vertexRequire;
 // Unlike the ABAP builder, a table the dictionary does not offer can still be taken, as ZCL_VX_TOOLS's own "add
 // table" does: it joins on the key fields it shares with the base, or on the ON the caller gives.
 
-const { quote, inLists, fieldsOf, language, value, whereClause, NUMBERS, OPTIONS, NAME } = __vertexRequire(1543);
+const { quote, inLists, fieldsOf, language, value, typedRows, whereClause, NUMBERS, OPTIONS, NAME } = __vertexRequire(1543);
 
 const MAX_TABLES = 10, MAX_FILTERS = 20, MAX_FIELDS = 200, MAX_OFFERED = 60;
 const CHARLIKE = ["CHAR", "NUMC", "DATS", "TIMS", "CLNT", "CUKY", "UNIT", "LANG"];
@@ -104228,8 +104232,7 @@ async function request(api, resource) {
   let lines = null;
   if (rows > 0 && sql) {
     const types = new Map(fields.map(f => [multi ? (f.alias + "_" + f.fieldname) : f.fieldname, f.datatype]));
-    lines = (await api.query(sql, rows)).values.map(row => Object.fromEntries(Object.keys(row).map(column =>
-      [column.toLowerCase(), value(row[column], types.get(column))])));
+    lines = typedRows((await api.query(sql, rows)).values, types);
   }
   return { table: base.toLowerCase(), sql, pivot: false, rows: lines, candidates, tables, fields };
 }
@@ -104366,7 +104369,7 @@ var require=__vertexRequire;
 
 const ACTIVE = "99998";
 const NAME = /^[A-Z0-9_/$]{1,40}$/;
-const { inLists } = __vertexRequire(1543);
+const { inLists, quote: sqlText } = __vertexRequire(1543);
 
 const objectUrl = (type, name) => (type === "INCL" ? "/sap/bc/adt/programs/includes/" : "/sap/bc/adt/programs/programs/")
   + encodeURIComponent(name.toLowerCase());
@@ -104465,7 +104468,6 @@ function sourceAt(api, uri) {
 
 const enc = name => encodeURIComponent(name.toLowerCase());
 const DDIC = { TABL: "TABD", DOMA: "DOMD", DTEL: "DTED" };
-const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
 
 // A part of a request or a package, by its own type: a REPS is a program, an include or a function group's main
 // program (TRDIR SUBC); a FUNC lives in its group; a class part in its class; a dictionary part in its object.
@@ -105126,23 +105128,32 @@ const aveDiff = __vertexRequire(1549);
 
 // ZCL_VX_REVIEW_STATS=>FROM_DIFF: in each run of changes a deleted line pairs with the first unpaired inserted one it
 // has common characters with - a modified line; the rest are inserted or deleted; a run of blank lines counts for nothing.
+// Each run that counts is handed to `run` with, per deleted line, the index of the inserted line it pairs with (-1 for
+// none), and per inserted line whether it was paired.
 const blank = list => list.every(line => String(line).replace(/\s/g, "") === "");
-function countChanges(ops) {
-  let ins = 0, del = 0, mod = 0, dels = [], adds = [];
+function changeRuns(ops, run) {
+  let dels = [], adds = [];
   const flush = () => {
-    if (!dels.length && !adds.length) { return; }
-    if (!blank(dels.concat(adds))) {
+    if ((dels.length || adds.length) && !blank(dels.concat(adds))) {
       const used = adds.map(() => false);
-      dels.forEach(d => {
+      const pairs = dels.map(d => {
         const at = adds.findIndex((a, i) => !used[i] && aveDiff.hasCommonChars(d, a));
-        if (at >= 0) { used[at] = true; mod++; } else { del++; }
+        if (at >= 0) { used[at] = true; }
+        return at;
       });
-      ins += used.filter(u => !u).length;
+      run(adds, pairs, used);
     }
     dels = []; adds = [];
   };
   ops.forEach(o => { if (o.op === "-") { dels.push(o.text); } else if (o.op === "+") { adds.push(o.text); } else { flush(); } });
   flush();
+}
+function countChanges(ops) {
+  let ins = 0, del = 0, mod = 0;
+  changeRuns(ops, (adds, pairs, used) => {
+    pairs.forEach(at => { if (at >= 0) { mod++; } else { del++; } });
+    ins += used.filter(u => !u).length;
+  });
   return { ins, del, mod };
 }
 // ZCL_VX_REVIEW_STATS=>CLASSIFY_HUNK: a block is changed when any of its deleted lines pairs with an inserted one,
@@ -105287,20 +105298,10 @@ function blameAuthors(ops, map, def, hunks) {
       HUNK_COUNT: 0, HUNK_INS: 0, HUNK_MOD: 0, HUNK_DEL: 0 }); }
     return by.get(author);
   };
-  let dels = [], adds = [];
-  const flush = () => {
-    if ((dels.length || adds.length) && !blank(dels.concat(adds))) {
-      const used = adds.map(() => false);
-      dels.forEach(d => {
-        const i = adds.findIndex((a, k) => !used[k] && aveDiff.hasCommonChars(d, a));
-        if (i >= 0) { used[i] = true; at(blamed(map, adds[i]) || def).MOD_COUNT++; }
-      });
-      adds.forEach((a, k) => { if (!used[k]) { at(blamed(map, a) || def).INS_COUNT++; } });
-    }
-    dels = []; adds = [];
-  };
-  ops.forEach(o => { if (o.op === "-") { dels.push(o.text); } else if (o.op === "+") { adds.push(o.text); } else { flush(); } });
-  flush();
+  changeRuns(ops, (adds, pairs, used) => {
+    pairs.forEach(i => { if (i >= 0) { at(blamed(map, adds[i]) || def).MOD_COUNT++; } });
+    adds.forEach((a, k) => { if (!used[k]) { at(blamed(map, a) || def).INS_COUNT++; } });
+  });
   hunks.forEach(h => {
     const a = at(h.AUTHOR);
     a.HUNK_COUNT++;
@@ -105317,10 +105318,9 @@ function blockAuthor(adds, map, def) {
   return top || def;
 }
 
-const { inLists } = __vertexRequire(1543);
+const { inLists, quote: sqlText } = __vertexRequire(1543);
 const { hunkRanges } = __vertexRequire(1550);
 
-const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
 const CLASS_PART_TYPES = ["METH", "CPUB", "CPRO", "CPRI", "CINC"];
 
 // The parts a request names, each with the object it is read through (type, name) - a class's parts from the class.
@@ -106136,7 +106136,7 @@ var require=__vertexRequire;
 // block keys are numbered by that walk and a different one would put verdicts on the wrong blocks.
 
 const NAME = /^[A-Z0-9_/$]{1,20}$/;
-const sqlText = value => "'" + String(value).replace(/'/g, "''") + "'";
+const { quote: sqlText } = __vertexRequire(1543);
 
 // /ui2/cl_json writes a TIMESTAMPL as a number of 21 digits, more than a double holds; the page writes the stamp back
 // to say which state it built on, so stamps are kept as the text they were written as.
@@ -107394,7 +107394,7 @@ function valueSources(text, fileName, statements, result) {
   return { variables: [...variables.values()], marks, before };
 }
 
-const escape = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const { escapeHtml: escape } = __vertexRequire(1558);
 const words = { true: 'true', false: 'false', case: '', context: '', end: '', target: '', entered: 'entered', raises: 'raises an exception', catches: 'catches it',
   avoid: 'must not be taken', skip: 'must not be entered', when: 'if taken:' };
 
@@ -107551,6 +107551,17 @@ function register(vscode, context) {
 }
 
 module.exports = { reachPath, reachLines, valueSources, page, build, register };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+// Text put into a page - an element's content or a quoted attribute - as text: & < > and " are written as entities,
+// and nothing (null or undefined) as nothing. The pages built in VS Code and those built in the analysis worker for
+// Eclipse (vertex-frontend.js, Value origin) use this one.
+const escapeHtml = value => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+module.exports = { escapeHtml };
 
 },
 function(module,exports,__vertexRequire){
@@ -107936,6 +107947,8 @@ var require=__vertexRequire;
 // Any other clause that reads a program value, and anything dynamic, is refused too: the statement is run as written
 // or not at all.
 
+const { escapeHtml } = __vertexRequire(1558);
+
 const DEFAULT_ROWS = 100;
 
 function prepare(text, offset) {
@@ -108280,19 +108293,18 @@ async function run(api, text, offset) {
 
 // The rows of a SELECT run through the data preview, with the statement as run and what was left out of it.
 function page(prepared, result) {
-  const esc = value => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const head = result.columns.map(column => "<th title=\"" + esc(column.description) + "\">" + esc(column.name) + "</th>").join("");
-  const body = result.values.map(row => "<tr>" + result.columns.map(column => "<td>" + esc(row[column.name]) + "</td>").join("") + "</tr>").join("");
+  const head = result.columns.map(column => "<th title=\"" + escapeHtml(column.description) + "\">" + escapeHtml(column.name) + "</th>").join("");
+  const body = result.values.map(row => "<tr>" + result.columns.map(column => "<td>" + escapeHtml(row[column.name]) + "</td>").join("") + "</tr>").join("");
   const dropped = prepared.dropped.length ? "<div class=\"dropped\">Left out, not known without running the program: "
-    + prepared.dropped.map(text => "<code>" + esc(text) + "</code>").join(", ") + "</div>" : "";
-  const why = prepared.notSelector ? "<div class=\"count\">Not opened in SelecTor: " + esc(prepared.notSelector) + "</div>" : "";
+    + prepared.dropped.map(text => "<code>" + escapeHtml(text) + "</code>").join(", ") + "</div>" : "";
+  const why = prepared.notSelector ? "<div class=\"count\">Not opened in SelecTor: " + escapeHtml(prepared.notSelector) + "</div>" : "";
   return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
     + "body{background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);padding:8px}"
     + "pre{background:var(--vscode-textCodeBlock-background);padding:6px;white-space:pre-wrap;margin:0 0 6px}"
     + ".dropped{color:var(--vscode-editorWarning-foreground);margin:0 0 6px}.count{color:var(--vscode-descriptionForeground);margin:0 0 6px}"
     + "table{border-collapse:collapse}th,td{border:1px solid var(--vscode-panel-border);padding:2px 6px;text-align:left;white-space:nowrap}"
     + "th{background:var(--vscode-editorWidget-background);position:sticky;top:0}"
-    + "</style></head><body>" + why + "<pre>" + esc(prepared.sql) + "</pre>" + dropped
+    + "</style></head><body>" + why + "<pre>" + escapeHtml(prepared.sql) + "</pre>" + dropped
     + "<div class=\"count\">" + result.values.length + " rows" + (result.values.length >= prepared.rows ? " (limit " + prepared.rows + ")" : "") + "</div>"
     + "<table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></body></html>";
 }
@@ -108305,18 +108317,18 @@ var require=__vertexRequire;
 'use strict';
 // Adapter only: parsing, source closure, BSE, FLOW and formulas are the VS Code modules.
 const {parseSource} = __vertexRequire(23);
-const origin = __vertexRequire(1558);
-const points = __vertexRequire(1562);
-const {collect} = __vertexRequire(1563);
-const {formula} = __vertexRequire(1565);
-const panes = __vertexRequire(1566);
+const origin = __vertexRequire(1559);
+const points = __vertexRequire(1563);
+const {collect} = __vertexRequire(1564);
+const {formula} = __vertexRequire(1566);
+const panes = __vertexRequire(1567);
 let lastSources = [], lastGraph = null;
 const upper = value => String(value || '').toUpperCase();
 
 async function request(api, request, progress = () => {}) {
   // Formula and Expression of a recorded run, and the analysed path as that run took it: the same readings VS Code uses.
-  if (request.recordFormula) return __vertexRequire(1567).build(request.recordFormula);
-  if (request.pathFormula) return __vertexRequire(1568).pathFormula(lastGraph, request.pathFormula.executed);
+  if (request.recordFormula) return __vertexRequire(1568).build(request.recordFormula);
+  if (request.pathFormula) return __vertexRequire(1569).pathFormula(lastGraph, request.pathFormula.executed);
   if (request.open) {
     const source = lastSources.find(s => s.id === request.open.source);
     if (!source) throw new Error('Run the analysis again: this source is no longer in its result.');
@@ -108563,7 +108575,7 @@ var require=__vertexRequire;
    own way - VS Code through its ADT client, Eclipse through the ABAP project's session - so each hands in only how to
    read an object (load) and a part of a class (loadPart). How much is read is not theirs to choose: the two once
    diverged, Eclipse reading every customer object the source named while VS Code read only what the slice needed. */
-const { collectDemandSources } = __vertexRequire(1564);
+const { collectDemandSources } = __vertexRequire(1565);
 
 const MAX_SOURCES = 240;
 
@@ -109112,7 +109124,7 @@ var require=__vertexRequire;
 /* The Formula pane of the analysis as HTML, and the symbolic writing of an expression it uses: one drawing for Value origin
    and for the debugger's flow path. `sourceOf(node)` names the source a </> button opens - the analysis's own source id
    in Value origin, the debugger's "origin:<source>|<routine>" marker there. */
-const escape = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const { escapeHtml: escape } = __vertexRequire(1558);
 
 function symbolic(graph) {
   const bseById = new Map((graph.nodes || []).map(node => [node.id, node])), dataDefinitions = new Map();
@@ -109320,7 +109332,7 @@ var require=__vertexRequire;
    field chains of its sources, and each of those is derived the same way, back through the record. The result has the
    shape of the analysis's formula - nodes and edges for the diagram, a tree for the panes - so the view draws either. */
 
-const { escape } = __vertexRequire(1566);
+const { escape } = __vertexRequire(1567);
 
 const upper = value => String(value || "").toUpperCase();
 const signature = value => value === undefined ? undefined : JSON.stringify(value);
@@ -109948,8 +109960,8 @@ var require=__vertexRequire;
    hold - or a SELECT that ran and found nothing, sy-subrc not 0 (red). Definitions of one value that ran - every
    modifier of a pipeline - are steps in the order the run made them, given to the formula as its pipeline.
    executed: [{ object, line, subrc }] in the order the record holds them; subrc is SY-SUBRC read after a SELECT. */
-const { formula } = __vertexRequire(1565);
-const paneHtml = __vertexRequire(1566);
+const { formula } = __vertexRequire(1566);
+const paneHtml = __vertexRequire(1567);
 
 function pathFormula(graph, executed, sourceOf = node => "origin:" + node.source + "|" + (node.location || "")) {
   if (!graph) throw new Error("No path was analysed: use Analyze flow path first.");
@@ -109971,4 +109983,4 @@ function pathFormula(graph, executed, sourceOf = node => "origin:" + node.source
 
 module.exports = { pathFormula };
 
-}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(0);window.vertexDebugAnalysis=load(1561);})();
+}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(0);window.vertexDebugAnalysis=load(1562);})();
