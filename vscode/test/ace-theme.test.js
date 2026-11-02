@@ -1,7 +1,7 @@
 "use strict";
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 test('ACE diagram colours adapt to both editor palettes and preserve distinct type hues',()=>{
- const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/metrics.html'),'utf8');
+ const page=require("./tools-page").toolsPage("metrics.html");
  let background='#ffffff',foreground='#111111';
  const context=vm.createContext({document:{body:{}},getComputedStyle:()=>({getPropertyValue:key=>key==='--vscode-editor-background'?background:key==='--vscode-editor-foreground'?foreground:''})});
  vm.runInContext(page.match(/<script>([\s\S]*?)<\/script>/)[1].split('/* ---------- wiring ---------- */')[0],context);

@@ -62,7 +62,7 @@ test('an IF with an early RETURN keeps a visible ENDIF before the next condition
 test('labels keep the code as written: operators, => and field symbols; only " and | are replaced, < travels as U+E000',()=>{
  const mm=draw(['IF a <> zcl_x=>c AND b <= 3.','ASSIGN ls-f TO <fs>.','ENDIF.']);
  assert.match(mm,/IF a > zcl_x => c/);assert.match(mm,/ASSIGN ls-f TO fs>\./);assert.doesNotMatch(mm,/ NE |&lt;/);
- const page=require('node:fs').readFileSync(require('node:path').resolve(__dirname,'../../org.vertex.abap.ui/resources/metrics.html'),'utf8');
+ const page=require("./tools-page").toolsPage("metrics.html");
  assert.ok(page.includes('now = was.replace(/\\uE000/g, "<").replace(/&lt;/g, "<")'),'the Tools page puts the characters back after drawing');
 });
 test('a CATCH that returns leaves the TRY body going on after ENDTRY',()=>{

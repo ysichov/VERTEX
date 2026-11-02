@@ -70,7 +70,7 @@ public class LogsView extends PageView {
 		if (!path.equals(PAGE)) {
 			return value;
 		}
-		return value.replace("/*LOGS_ENGINE*/", super.readResource("assistant/logs.js").replace("</script", "<\\/script"));
+		return value.replace("/*LOGS_ENGINE*/", inline(super.readResource("assistant/logs.js")));
 	}
 
 	/** The report page itself, as text; the page writes it into its frame. */

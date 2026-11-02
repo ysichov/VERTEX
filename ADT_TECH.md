@@ -109,7 +109,7 @@ String destinationId = project.getAdapter(IAdtCoreProject.class).getDestinationI
 IRestResource r = AdtRestResourceFactory.createRestResourceFactory()
         .createResourceWithStatelessSession(URI.create("/sap/bc/adt/vertex/table/T001?rows=100"),
                                             destinationId);
-r.addContentHandler(new JsonContentHandler());
+r.addContentHandler(new TextContentHandler("application/json"));
 String json = r.get(new NullProgressMonitor(), String.class);
 ```
 
@@ -117,8 +117,8 @@ Points that cost time:
 
 - The URI is **relative to the system root**. The destination supplies host and port.
 - A content handler must be supplied. ADT has `PlainTextContentHandler`, but its package is
-  internal and not exported, so `JsonContentHandler` here implements `IContentHandler<String>`
-  instead — four methods, of which only `deserialize` does anything.
+  internal and not exported, so `TextContentHandler` here implements `IContentHandler<String>`
+  instead, for one content type each — four methods, of which `deserialize` and `serialize` do anything.
 - Declaring `application/json` matches a response sent as `application/json;charset=utf-8`.
   ADT compares media types without their parameters.
 - `Require-Bundle` needs `com.sap.adt.communication`, `com.sap.adt.project` and

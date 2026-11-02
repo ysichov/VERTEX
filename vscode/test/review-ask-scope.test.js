@@ -1,6 +1,6 @@
 "use strict";
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/versions.html'),'utf8');
+const page=require("./tools-page").toolsPage("versions.html");
 const code=page.slice(page.indexOf('function reviewAskContext('),page.indexOf("/* AVE's AI prompt"));
 function run(all){let answer;const context=vm.createContext({objectName:()=> 'K1',review_part:{display_name:'RUN',obj_name:'ZCL_X RUN'},
  review_blocks:[{hunk_no:1,start_line:1,op_from:1,op_to:2},{hunk_no:2,start_line:3,op_from:4,op_to:5},{hunk_no:3,start_line:5,op_from:7,op_to:8}],

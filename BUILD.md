@@ -43,8 +43,8 @@ org.vertex.abap.ui/         the Eclipse plugin
     ├── MetricsHandler.java       the same, for metrics
     ├── VersionsHandler.java      the same, for versions
     ├── SelectionContext.java     the ADT object and project behind a workbench selection
-    ├── JsonContentHandler.java   reads a JSON response body as a String
-    └── TextContentHandler.java   reads source (text/plain) or search (XML) as a String
+    ├── EditorCursor.java         the text and cursor of an ADT source editor, for a command on the cursor
+    └── TextContentHandler.java   reads and writes a body of one content type - source, XML, JSON - as a String
 org.vertex.abap.feature/    the Eclipse feature and its category for the update site
 eclipse/                    the Eclipse side's own scripts and assistant parts
 ├── prepare.js              fills org.vertex.abap.ui/assistant/ before a PDE export

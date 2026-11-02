@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {request}=require('../frontend-analysis');
 test('Parts method selection replaces constructor as the Calls start',()=>{
  const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
- const html=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/metrics.html'),'utf8');
+ const html=require("./tools-page").toolsPage("metrics.html");
  let selected;
  const context=vm.createContext({mode:'calls',loadedObject:'ZTEST',shownUnit:null,setCallStart:start=>{selected=start;}});
  vm.runInContext(html.match(/function sdeSelectPart\(chosen\) \{[\s\S]*?(?=function markMetricRow)/)[0],context);

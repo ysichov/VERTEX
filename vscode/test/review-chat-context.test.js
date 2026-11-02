@@ -12,7 +12,7 @@ test('request context includes every reviewed object and its saved diff, with a 
 
 test('the review summary published by the page includes the objects and selected storage copy',()=>{
  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
- const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/versions.html'),'utf8');
+ const page=require("./tools-page").toolsPage("versions.html");
  const objects=[{obj_name:'ZPROG',objtype:'REPS',inserted:2}];
  const context=vm.createContext({objectType:()=> 'TR',objectName:()=> 'K1',showing:{view:'review'},scope:true,current:null,review_part:null,
  review:{request:'k1',saved:true,saved_at:'stamp',objects,storage:{from:'file'}}});

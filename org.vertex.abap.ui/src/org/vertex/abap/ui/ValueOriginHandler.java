@@ -8,17 +8,14 @@ import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.resources.IMarker;
-import org.eclipse.core.runtime.Adapters;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.debug.core.DebugPlugin;
 import org.eclipse.debug.core.model.IBreakpoint;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
-import org.eclipse.jface.text.ITextSelection;
 import org.eclipse.jface.text.Position;
 import org.eclipse.jface.text.source.Annotation;
 import org.eclipse.jface.text.source.IAnnotationModel;
-import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IWorkbenchPage;
@@ -62,22 +59,17 @@ public class ValueOriginHandler extends AbstractHandler {
 					+ object.type + " (" + object.uri + "). A class is analysed from its Global Class tab.");
 			return;
 		}
-		ITextEditor text = Adapters.adapt(editor, ITextEditor.class);
-		if (text == null || text.getDocumentProvider() == null) {
-			SelectionContext.report(shell, "The editor of " + object.name + " does not offer its text.");
-			return;
-		}
 		if (editor.isDirty()) {
 			SelectionContext.report(shell, "Save and activate the source before ACE analysis. ACE reads active SAP code.");
 			return;
 		}
-		ISelection selection = text.getSelectionProvider().getSelection();
-		if (!(selection instanceof ITextSelection)) {
-			SelectionContext.report(shell, "Place the cursor on a variable.");
+		EditorCursor cursor = EditorCursor.of(shell, editor, object, "Place the cursor on a variable.");
+		if (cursor == null) {
 			return;
 		}
-		IDocument document = text.getDocumentProvider().getDocument(text.getEditorInput());
-		int offset = ((ITextSelection) selection).getOffset();
+		ITextEditor text = cursor.text;
+		IDocument document = cursor.document;
+		int offset = cursor.offset;
 		int line, column;
 		try {
 			line = document.getLineOfOffset(offset);

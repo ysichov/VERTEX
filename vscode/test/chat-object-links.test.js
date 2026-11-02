@@ -1,6 +1,6 @@
 "use strict";
 const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),vm=require("node:vm");
-const page=fs.readFileSync(path.join(__dirname,"../../org.vertex.abap.ui/resources/chat.html"),"utf8");
+const page=require("./tools-page").toolsPage("chat.html");
 
 test("same-name program and package both become openable chat links",()=>{
  const opened=[];

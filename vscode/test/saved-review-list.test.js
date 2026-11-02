@@ -16,7 +16,7 @@ test('an unavailable SAP table does not hide local review links or fail the requ
 });
 test('only saved reviews get a link and clicking it opens Review instead of the row action',()=>{
  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
- const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/versions.html'),'utf8');
+ const page=require("./tools-page").toolsPage("versions.html");
  const nodes=[],selected=[];
  const element=tag=>{const el={tag,children:[],appendChild(child){this.children.push(child)},addEventListener(name,fn){this[name]=fn}};nodes.push(el);return el};
  const root=element('root');

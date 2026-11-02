@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { bundle } = require("./value-origin-bundle");
+const { page: eclipsePage } = require("./pages");
 
 const root = path.join(__dirname, "..");
 const plugin = path.join(root, "org.vertex.abap.ui");
@@ -24,7 +25,7 @@ test("the plugin carries the bundle and page prepare.js makes from the current s
   assert.equal(fs.readFileSync(path.join(plugin, "assistant", "value-origin.js"), "utf8"), bundle(root),
     "run node eclipse/prepare.js");
   assert.equal(fs.readFileSync(path.join(plugin, "assistant", "value-origin.html"), "utf8"),
-    fs.readFileSync(path.join(__dirname, "value-origin.html"), "utf8"), "run node eclipse/prepare.js");
+    eclipsePage("value-origin.html"), "run node eclipse/prepare.js");
   assert.equal(fs.readFileSync(path.join(plugin, "assistant", "value-origin.css"), "utf8"),
     fs.readFileSync(path.join(root, "vscode", "value-origin.css"), "utf8"), "run node eclipse/prepare.js");
 });
@@ -60,7 +61,7 @@ test("the Eclipse page parses once ValueOriginView has put its scripts and targe
   const target = JSON.stringify({ project: "P", name: "ZDEMO", type: "PROG", sourcePath: "/sap/bc/adt/programs/programs/zdemo/source/main",
     text: "WRITE '</script>'.", offset: 0, line: 1, column: 0, breakpoints: [2, 5] }).split("<").join("\\u003c");
   const resource = name => fs.readFileSync(path.join(plugin, "resources", name), "utf8");
-  const page = fs.readFileSync(path.join(__dirname, "value-origin.html"), "utf8")
+  const page = eclipsePage("value-origin.html")
     .replace("/*FLOW_GRAPH*/", () => inline(resource("vertex-abap-control.js")) + "\n" + inline(resource("vertex-flow-graph.js")))
     .replace("/*ABAPLINT*/", () => inline(fs.readFileSync(path.join(plugin, "assistant", "abaplint.js"), "utf8")))
     .replace("/*ORIGIN_ENGINE*/", () => inline(bundle(root)))
