@@ -1,6 +1,32 @@
 # Release history
 
-## Unreleased — VS Code: SNC through a message server, ABAP from any editor
+## 2026-11-03 — 0.9.53: visible model-check status and current documentation
+
+The model-check button shows Checking while a request runs; progress, completion counts and Stop are in the provider header. The LLM settings page now injects the shared vertex-controls.css after its styles, matching VERTEX buttons. Updated current instructions and version labels across the repository, VSIX README, Eclipse README and update-site page.
+
+
+## 2026-11-03 — 0.9.53: provider-scoped model checks
+
+Check models is beside each provider and tests only its models. The host rejects a scan without a known provider; the global scan button is removed. Other providers keep their selections.
+
+
+## 2026-11-03 — 0.9.53: model availability and method history
+
+- LLM Providers in VS Code can test listed models with short requests, disable failed models and providers, show failure reasons and stop after the current request. Save applies the discovered choices.
+- Method Diff falls back to class history when VRSD has no separate method directory, with a visible notice.
+- VS Code 0.9.53 and Eclipse 0.9.53.20261103172457 were rebuilt and verified.
+
+
+## 2026-11-03 — 0.9.53: Tools Logic diagram label
+
+- The method diagram is labelled **Logic diagram** in Tools and its VS Code command, distinct from the debugger pane.
+
+
+## 2026-11-03 — 0.9.53: current packages
+
+- Rebuilt and verified VS Code 0.9.53 and Eclipse 0.9.53.20261103165610 from the current sources. The local Eclipse update site and install ZIP include the Value origin analysis fix.
+
+## 2026-11-03 — 0.9.53: SNC through a message server, ABAP from any editor
 
 - An SNC system reached through a SAP Logon group connects: `rfc.mshost`, `rfc.sysid`, `rfc.group` and optionally `rfc.msserv` replace `rfc.ashost`/`rfc.sysnr`, and **VERTEX: Import SAP Systems** no longer skips such entries.
 - A failed SNC connection names the address it used; **SAP Systems** opens the connection log and, with `vertex.rfcTrace` 1-3, the SAP NW RFC SDK trace folder.
@@ -12,9 +38,9 @@
 - The shared Code Flow Analysis depth field now keeps its normal number-input appearance instead of inheriting the zoom slider's range styling. The class tree also retains `ZCL_CALC_LOG` when a recorded frame identifies it.
 - VS Code 0.9.53 was repackaged and verified.
 
-## Unreleased — Eclipse: Value origin analyses again
+## 2026-11-03 — 0.9.53: Eclipse Value origin analyses again
 
-- **Forward usage** (Value origin) in Eclipse runs its analysis again instead of stopping with *Value origin in Eclipse has no module ./value-origin-linter*; function module signatures are read there too. It reaches Eclipse with the next update-site build.
+- **Forward usage** (Value origin) in Eclipse runs its analysis again instead of stopping with *Value origin in Eclipse has no module ./value-origin-linter*; function module signatures are read there too. Included in Eclipse build `0.9.53.20261103165610`.
 
 ## 2026-11-02 — 0.9.53: editable review prompts
 

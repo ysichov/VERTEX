@@ -105,7 +105,10 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     PROVIDERS.map(p => ({ id: p.id, label: p.label, on: isOn(vscode, p.id) })));
   const post = message => panel.webview.postMessage(message);
 
+  const loadGeneration = new Map();
   async function load(id, fresh = false) {
+    const generation = loadGeneration.get(id) || 0;
+    const send = message => { if (generation === (loadGeneration.get(id) || 0)) post(message); };
     const profiles = (id === "anthropic-api" || compatible.PROVIDERS[id]) && secrets
       ? await keyProfiles.list(secrets, id) : null;
     let source = null;
@@ -115,7 +118,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
       source = { extension: found.extension, cli: found.cli,
         selected: found.extension && found.cli ? choice : found.extension ? "extension" : found.cli ? "cli" : "" };
       if (found.extension && found.cli && choice === "ask") {
-        post({ provider: id, source, profiles });
+        send({ provider: id, source, profiles });
         return;
       }
     }
@@ -128,12 +131,14 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
           && !models.some(model => model.id === selected)) {
         await settings.update("model", "", vscode.ConfigurationTarget.Global);
       }
-      post({ provider: id, rows: rows(models, read(vscode, id), id), profiles, source });
+      send({ provider: id, rows: rows(models, read(vscode, id), id), profiles, source });
     } catch (e) {
-      post({ provider: id, error: e.message, profiles, source });
+      send({ provider: id, error: e.message, profiles, source });
     }
   }
 
+  let detecting = false, cancelled = false;
+  panel.onDidDispose(() => { cancelled = true; });
   panel.webview.onDidReceiveMessage(async message => {
     if (!message || typeof message !== "object") { return; }
     if (message.action === "log-settings") {
@@ -143,6 +148,23 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     if (message.action === "choose-log-folder") {
       try { const selected = await chooseLogFolder(vscode); if (selected) post({ logFolder: selected }); }
       catch (error) { post({ logFolderError: error.message }); }
+      return;
+    }
+    if (message.action === "stop-detection") { cancelled = true; return; }
+    if (message.action === "detect") {
+      const provider = PROVIDERS.find(p => p.id === message.provider);
+      if (detecting || !provider) return;
+      detecting = true; cancelled = false; loadGeneration.set(provider.id, (loadGeneration.get(provider.id) || 0) + 1);
+      try {
+        const detection = require("./model-detection");
+        const result = await detection.detect([provider], async id => {
+          forget(id);
+          return rows(await full(id), read(vscode, id), id);
+        }, (id, model) => detection.probe(vscode, secrets, id, model, extensionPath, executable),
+        progress => post({ detectionProgress: progress }), () => cancelled);
+        post({ detection: result });
+      } catch (error) { post({ detectionError: error.message }); }
+      finally { detecting = false; }
       return;
     }
     const id = String(message.provider || "");
@@ -247,22 +269,20 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
 }
 
 function html(nonce, selected, providers) {
+  const controls = require("fs").readFileSync(require("path").join(__dirname, "resources", "vertex-controls.css"), "utf8");
   const init = JSON.stringify({ use: selected, providers }).replace(/</g, "\\u003c");
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
 body { font: var(--vscode-font-size) var(--vscode-font-family); color: var(--vscode-foreground);
        background: var(--vscode-editor-background); padding: 10px 14px; }
-input, button, select { font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+input, select { font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background);
        border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); padding: 3px 6px; }
 input[type=checkbox], input[type=radio] { padding: 0; }
-button { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); cursor: pointer; }
-button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+button { font: inherit; }
 .prov { margin: 0 0 14px; }
 .phead { display: flex; gap: 8px; align-items: center; padding: 5px 8px; font-weight: 600; max-width: 600px;
          background: var(--vscode-sideBar-background, transparent); border: 1px solid var(--vscode-panel-border); }
-.phead .fold { padding: 0 3px; border: 0; color: var(--vscode-foreground);
-               background: transparent; font-weight: 600; }
 .phead .use { margin-left: auto; font-weight: normal; display: flex; gap: 4px; align-items: center; }
 .pbody { margin-left: 22px; }
 .prov.off .pbody { opacity: .55; }
@@ -274,13 +294,15 @@ td.id { font-family: var(--vscode-editor-font-family); }
 .note { color: var(--vscode-descriptionForeground); }
 .error { color: var(--vscode-errorForeground); white-space: pre-wrap; }
 .ok { color: var(--vscode-testing-iconPassed, var(--vscode-foreground)); }
-</style></head><body>
+</style><style>${controls}</style></head><body>
 <div id="tree"></div>
-<div class="row"><button class="primary" id="save">Save</button><button id="choose-log-folder" type="button">Choose log folder...</button><button id="log-settings" type="button" title="Open logging settings" aria-label="Open logging settings">⚙</button><span id="said"></span></div>
+<div class="row"><button class="primary" id="save">Save</button><button id="stop-detection" type="button" hidden>Stop</button><button id="choose-log-folder" type="button">Choose log folder...</button><button id="log-settings" type="button" title="Open logging settings" aria-label="Open logging settings">⚙</button><span id="said"></span></div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
 const INIT = ${init};
 let use = INIT.use;
+let scanning = false, scanningProvider = "";
+const checkStatus = {};
 // Per provider: on, and its rows once read (null while loading or when it could not be read).
 const state = {};
 INIT.providers.forEach(p => { state[p.id] = { label: p.label, on: p.on, rows: null, profiles: null,
@@ -310,6 +332,24 @@ function build() {
     radio.addEventListener("change", () => { use = p.id; say(""); build(); });
     useLabel.appendChild(radio); useLabel.appendChild(document.createTextNode("In use"));
     head.appendChild(useLabel);
+    const check = el("button", { type: "button", textContent: scanningProvider === p.id ? "Checking…" : "Check models", disabled: scanning,
+      title: "Test only this provider’s models with short requests; normal provider usage applies." });
+    check.addEventListener("click", () => {
+      scanning = true; scanningProvider = p.id; checkStatus[p.id] = "Reading model list…";
+      api.postMessage({ action: "detect", provider: p.id });
+      build(); $("save").disabled = true; $("stop-detection").hidden = false;
+      say("Checking " + p.label + "…");
+    });
+    head.appendChild(check);
+    if (scanningProvider === p.id) {
+      const stop = el("button", { type: "button", textContent: "Stop" });
+      stop.addEventListener("click", () => { api.postMessage({ action: "stop-detection" }); stop.disabled = true;
+        checkStatus[p.id] = "Stopping after the current request…"; $("check-status-" + p.id).textContent = checkStatus[p.id]; });
+      head.appendChild(stop);
+    }
+    const status = el("span", { id: "check-status-" + p.id, className: "note", textContent: checkStatus[p.id] || "" });
+    status.setAttribute("role", "status");
+    head.appendChild(status);
     box.appendChild(head);
     const body = el("div", { className: "pbody", id: "body-" + p.id });
     body.hidden = !s.expanded;
@@ -384,8 +424,8 @@ function fill(id) {
   };
   bulk.addEventListener("click", () => {
     const next = !s.rows.every(r => r.on);
-    s.rows.forEach(r => { r.on = next; });
-    table.querySelectorAll('tbody input[type="checkbox"]').forEach(box => { box.checked = next; });
+    s.rows.forEach(r => { r.on = next && r.available !== false; });
+    table.querySelectorAll('tbody input[type="checkbox"]').forEach(box => { box.checked = next && !box.disabled; });
     updateBulk(); say("");
   });
   updateBulk();
@@ -395,12 +435,13 @@ function fill(id) {
   const tbody = el("tbody");
   s.rows.forEach((r, i) => {
     const tr = el("tr");
-    const box = el("input", { type: "checkbox", checked: r.on });
+    const box = el("input", { type: "checkbox", checked: r.on, disabled: r.available === false, title: r.reason || "" });
     box.addEventListener("change", () => { r.on = box.checked; updateBulk(); say(""); });
     tr.appendChild(el("td")).appendChild(box);
     tr.appendChild(el("td", { textContent: r.label }));
     tr.appendChild(el("td", { className: "id", textContent: r.id === "" ? "(default)" : r.id }));
     const act = tr.appendChild(el("td"));
+    if (r.available === false) act.appendChild(el("span", { className: "error", textContent: "Unavailable", title: r.reason }));
     if (r.version) {
       const remove = el("button", { textContent: "Remove" });
       remove.addEventListener("click", () => { s.rows.splice(i, 1); fill(id); say("Removed - Save to keep it.", "note"); });
@@ -425,15 +466,40 @@ function fill(id) {
 }
 $("save").addEventListener("click", () => {
   if (!state[use] || !state[use].on) { say("The provider in use stays switched on.", "error"); return; }
-  const bad = INIT.providers.find(p => state[p.id].rows && !state[p.id].rows.some(r => r.on));
+  const bad = INIT.providers.find(p => state[p.id].on && state[p.id].rows && !state[p.id].rows.some(r => r.on));
   if (bad) { say(bad.label + ": keep at least one model switched on.", "error"); return; }
   api.postMessage({ action: "save", provider: use, use,
     providers: INIT.providers.map(p => ({ id: p.id, on: state[p.id].on, rows: state[p.id].rows })) });
+});
+$("stop-detection").addEventListener("click", () => {
+  api.postMessage({ action: "stop-detection" }); $("stop-detection").disabled = true;
+  say("Stopping after the current request…");
 });
 $("log-settings").addEventListener("click", () => api.postMessage({ action: "log-settings" }));
 $("choose-log-folder").addEventListener("click", () => api.postMessage({ action: "choose-log-folder" }));
 window.addEventListener("message", event => {
   const m = event.data;
+  if (m?.detectionProgress) {
+    const p = m.detectionProgress;
+    checkStatus[p.provider] = p.model ? "Checking " + p.model + "…" : "Reading model list…";
+    const status = $("check-status-" + p.provider); if (status) status.textContent = checkStatus[p.provider];
+    say(checkStatus[p.provider]); return;
+  }
+  if (m?.detection || m?.detectionError) {
+    const checkedProvider = scanningProvider;
+    scanning = false; scanningProvider = ""; build(); $("save").disabled = false; $("stop-detection").hidden = true; $("stop-detection").disabled = false;
+    if (m.detectionError) { checkStatus[checkedProvider] = m.detectionError; build(); say(m.detectionError, "error"); return; }
+    m.detection.results.forEach(result => {
+      checkStatus[result.provider] = result.rows ? result.rows.filter(r => r.on).length + " / " + result.rows.length + " working" : result.error;
+      const s = state[result.provider];
+      if (result.rows) { s.rows = result.rows; s.error = null; s.on = result.rows.some(r => r.on); }
+      else { s.error = result.error; s.on = false; }
+    });
+    if (m.detection.cancelled) checkStatus[checkedProvider] = "Stopped";
+    const first = INIT.providers.find(p => state[p.id].on);
+    if (!state[use].on && first) use = first.id;
+    build(); say((m.detection.cancelled ? "Stopped. " : "Check complete. ") + "Unavailable models are off. Save to apply."); return;
+  }
   if (m?.logFolder) { say("Logs: " + m.logFolder, "ok"); return; }
   if (m?.logFolderError) { say(m.logFolderError, "error"); return; }
   if (!m || !state[m.provider]) { return; }

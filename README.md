@@ -1,6 +1,9 @@
 # ABAP VERTEX Tools
 
+
 ## Install
+
+Current VS Code extension: **0.9.53**.
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
@@ -73,7 +76,7 @@ From a SAP source tab's context menu, **VERTEX: Run SAP in web GUI** opens the p
 | **Block folding** | — | IF, CASE, LOOP, TRY, METHOD, FORM and other ABAP blocks and their branches fold by the code's structure, so unformatted code folds too | ✓ | — | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | ✓ | ✓ ¹ | not needed |
 | **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, each block's author and, with Blame, the developer who wrote each changed line, and the two MCP transport tools | ✓ | ✓ ² | to save reviews in SAP |
-| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Diagram of one method; a method opened from Calls draws its Diagram in the same picture | ✓ | ✓ ² | not needed |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | ✓ | ✓ ² | not needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | ✓ | ✓ ² | not needed |
 
 ¹ In Eclipse the assistant is run by the Codex or Claude Code CLI on your own subscription, and
@@ -81,7 +84,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.53.20261102103354**; the VS Code extension is **0.9.53**.
+**0.9.53.20261103172457**; the VS Code extension is **0.9.53**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -451,3 +454,7 @@ What is still missing, and what has to come out before it ships: [Next.md](Next.
 For feature instructions, see [VS Code documentation](vscode/README.md) and [Eclipse documentation](eclipse/README.md). For changes between releases, see [history.md](history.md).
 
 With a VS Code AI log folder configured, `vertex_provider_response` JSONL records retain original provider `usage` fields, including nested token details. Claude Code also retains per-model `modelUsage`, reported cost and turn count in a separate `cli_run` record; streamed assistant messages use `model_response`. Direct Anthropic and compatible APIs retain metadata per response. These diagnostic records do not contribute again to session totals. Answer bodies, credentials and HTTP headers are not included in these metadata records.
+
+For a method with no separate version directory, Diff uses the class history and extracts that method, with a notice identifying the source of the history.
+
+In VS Code, **LLM Providers → Check models**, beside each provider, checks only that provider. Progress, the working-model count and **Stop** appear in the same header. Failed models are switched off; **Save** applies the choices to chat. Checks use short requests without SAP context and consume normal provider quota or billing.

@@ -1,5 +1,7 @@
 # Built-in Eclipse Assistant
 
+**Version: 0.9.53**
+
 The assistant JSONL log omits program bodies from tool arguments and results; object names and result summaries are retained. Source-code logging has no separate option.
 
 
@@ -77,7 +79,7 @@ on the one you pick. Recorded diagram and metrics context opens in the window. *
 conversations** deletes their log files after asking. Recorded transpiler runs and SAP debug sessions
 open in VS Code only.
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
-Opening VERTEX Tools from the VERTEX submenu of an ADT class or program editor selects that object and follows the editor's cursor. A method in a UML diagram opens its class at that method; a plain click reuses the editor the previous plain click opened (closing it unless it holds unsaved changes, and never one you had open already), Ctrl+click opens the class in a tab of its own. Opened from Project Explorer or by **Window → Show View → VERTEX → VERTEX Tools**, Tools shows the object type and name fields - from Show View filled with the active editor's object - - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Diagram takes its method. VERTEX Tools, the assistant and the VERTEX functions open docked right of the editors, half the width, all in one stack - the editor and VERTEX side by side, nothing covering the screen. A window already open is only brought to the front, wherever you moved or dragged it. Opening it also reveals hidden containing layout areas in the current perspective.
+Opening VERTEX Tools from the VERTEX submenu of an ADT class or program editor selects that object and follows the editor's cursor. A method in a UML diagram opens its class at that method; a plain click reuses the editor the previous plain click opened (closing it unless it holds unsaved changes, and never one you had open already), Ctrl+click opens the class in a tab of its own. Opened from Project Explorer or by **Window → Show View → VERTEX → VERTEX Tools**, Tools shows the object type and name fields - from Show View filled with the active editor's object - - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Logic diagram takes its method. VERTEX Tools, the assistant and the VERTEX functions open docked right of the editors, half the width, all in one stack - the editor and VERTEX side by side, nothing covering the screen. A window already open is only brought to the front, wherever you moved or dragged it. Opening it also reveals hidden containing layout areas in the current perspective.
 
 ## Versions and code review
 
@@ -170,9 +172,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.53.qualifier`; the checked-in update site carries build `0.9.53.20261102103354`.
+then regenerate. The feature and bundle sources are at `0.9.53.qualifier`; the checked-in update site carries build `0.9.53.20261103172457`.
 
-The local install archive is version `0.9.53.20261102103354`. Install its ZIP through
+The local install archive is version `0.9.53.20261103172457`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:
@@ -278,7 +280,7 @@ UML and Metrics show the current analysis stage, object count and elapsed time w
 Click a method in UML to open its ADT source.
 UML shows interface method implementations in their implementing classes.
 
-Tools offers Metrics, Logic and Calls for function modules. Clicking a method
+Tools offers Metrics, Logic diagram and Calls for function modules. Clicking a method
 of a class local to a program opens that program at the method. Logic follows
 the visible routine in the ADT editor.
 
@@ -290,3 +292,5 @@ local class code, including test classes.
 Chat object names are links to their ADT editors. Copy copies an answer as Markdown.
 In a two-pane diff the new version is on the left; review blocks offer Approve,
 Decline and Comment. Inline / 2 pane is shared with the version diff.
+
+For a method with no separate version directory, Diff uses the class history and extracts that method, with a notice identifying the source of the history.

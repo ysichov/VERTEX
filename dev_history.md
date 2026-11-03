@@ -1,5 +1,31 @@
 # Development history
 
+## 2026-11-03 — 0.9.53: visible model-check status and current documentation
+
+The model-check button shows Checking while a request runs; progress, completion counts and Stop are in the provider header. The LLM settings page now injects the shared vertex-controls.css after its styles, matching VERTEX buttons. Updated current instructions and version labels across the repository, VSIX README, Eclipse README and update-site page.
+
+
+## 2026-11-03 — 0.9.53: provider-scoped model checks
+
+Check models is beside each provider and tests only its models. The host rejects a scan without a known provider; the global scan button is removed. Other providers keep their selections. Model-list generation guards are per provider, so other providers’ pending loads are preserved. Four focused tests pass, including host routing and rejection of unscoped scans. VSIX 0.9.53 rebuilt and verified. The buttons retain the existing settings theme styling; live visual verification remains unavailable in this session.
+
+
+## 2026-11-03 — Detect working models; empty METH directory
+
+Added explicit sequential model probes through the existing provider adapters, without SAP context or tools. Detection edits the settings draft, preserves incomplete providers on Stop, and uses existing button markup and theme variables. Failed rows are disabled and stored in the existing modelConfig on Save. Stale initial model-list responses cannot overwrite detection.
+
+The installed 0.9.53 versions-front.js matched the pre-fix source. An empty VRSD METH directory previously returned an empty history despite available class revisions; historyOf now falls back to the class source with a notice. The regression test checks the method-only versions remain filtered. Validation: 17 focused tests pass; the universal VSIX and Eclipse 0.9.53.20261103172457 were rebuilt and their archived code and Eclipse checksums verified. The new controls reuse the existing settings buttons and theme rules; an isolated VS Code development host was launched, but the UI automation remained attached to the user’s active window, so the new controls were not visually verified there. No live SAP or paid model probes were run.
+
+
+## 2026-11-03 — Tools label and method-history check
+
+Restored the explicit Logic diagram label for the scheme action and its mode selector. The latest desktop screenshot shows Diff with a populated method list and No versions recorded for the selected method; that is not evidence of a source-reading failure. The 13 version-history tests pass; the universal 0.9.53 VSIX was rebuilt and verified, including both archived Tools labels. Eclipse sources have the label change; no additional Eclipse archive was built for this label-only landing. a precise failing source-reading symptom is still needed.
+
+
+## 2026-11-03 — Package 0.9.53 for both hosts
+
+The sources already declared 0.9.53 on both hosts, so no version bump was needed. Rebuilt the universal VSIX with the package verifier, prepared Eclipse resources and compiled Java with --release 21 against the ADT bundle pool. DetachedView checks passed. The portable packaging of eclipse/package.ps1 produced 0.9.53.20261103165610; verified ZIP CRCs, plugin Java 21 class versions, metadata artifact paths and SHA-256 checksums, and replaced the local docs/ update site. Focused auth, RFC and local-analysis tests: 38 passed, one skipped. No remote publishing.
+
 ## 2026-11-03 — SNC through a message server; ABAP from any editor
 
 At a customer, import skipped every SNC system ("SNC logon group: no application server for RFC is specified"), so the code was opened with another extension (ABAP remote filesystem, `adt://`), where the chat saw one line and Tools had nothing to read.
