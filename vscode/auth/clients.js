@@ -74,7 +74,12 @@ function createAuth({ vscode, context, logger }) {
     if (system.authType === "basic" && !pw) throw new Error("No password was entered for " + system.name + ", so nothing was sent.");
     const providerFor = s => broker.providerFor(s);
     const wire = system.authType === "snc"
-      ? require("./rfc-wire").createRfcWire(system, { providerFor, logger })
+      ? require("./rfc-wire").createRfcWire(system, { providerFor, logger, trace: () => {
+          // vertex.rfcTrace 1-3: the NW RFC SDK's own trace, dev_rfc*.log, for whoever administers the SAP side.
+          const config = vscode.workspace.getConfiguration("vertex");
+          const level = Math.max(0, Math.min(3, Number(config.get("rfcTrace", 0)) || 0));
+          return { level, folder: config.get("rfcTraceFolder", "") || require("path").join(require("os").tmpdir(), "vertex-rfc-trace") };
+        } })
       : createHttpWire(system, { providerFor, onRefusal,
           ensureMeans: async s => s.authType !== "basic" || !!(await password(s)) });
     wires.add(wire);

@@ -56,7 +56,7 @@ In the VS Code sidebar, model-loading errors appear below the model selector.
 Start chat by naming the package or program to inspect; a single match opens in Object Navigator.
 For a plain name without an exact match, VERTEX tries prefix and contained-name searches; explicit
 wildcards are used as written.
-The VS Code chat can explain an active local `.abap` file using its current editor text, even without a SAP connection.
+The VS Code chat can explain the ABAP source of the active editor using its current text, even without a SAP connection: a local `.abap` file, or a source another extension opened (SAP's ADT extension, ABAP remote filesystem). With no SAP system in VERTEX, UML, Metrics, Logic and Calls in the editor's **VERTEX Tools** menu analyse such a source from its text, as for a local file.
 In VS Code the chat is only in the VERTEX panel: **ASK AI** inside a review opens it with the selected blocks on a chip, and you write the question. The question box grows with pasted text; **⤢** expands it.
 Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **VERTEX Smart Debugger** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **Run with ABAP Transpiler** beside Run in SAP in VERTEX Smart Debugger: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. SAP program selection screens use the selection texts and text symbols maintained in SAP. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
 
@@ -134,7 +134,7 @@ password is discarded; the next operation asks again. Basic also works on remote
 extension hosts. **VERTEX: Forget Credentials** clears the active system's stored
 credentials.
 
-**SAP Systems** (the server icon in the VERTEX panel's title, or the link under `vertex.systems` in Settings) lists every configured system in a table. Per row: the radio button makes it the active system; **SNC** switches it between SNC single sign-on and password authentication; **On** switches it off or on - a system switched off stays in `vertex.systems` (`"disabled": true`) but is left out of every list, switch and test, and a tab opened from it says so; **Log in** asks for the password and keeps it in the OS credential store, then tests - where a password is already kept, the button reads **Save new password** (SAP is not asked to tell); **Test** asks ADT on that system alone and shows the answer in the row, kept there until the window is reloaded, also when the table is closed; **Delete** removes it from `vertex.systems` after a confirmation. **Import from SAP Logon and Eclipse** and **Edit in settings.json** stand above the table.
+**SAP Systems** (the server icon in the VERTEX panel's title, or the link under `vertex.systems` in Settings) lists every configured system in a table. Per row: the radio button makes it the active system; **SNC** switches it between SNC single sign-on and password authentication; **On** switches it off or on - a system switched off stays in `vertex.systems` (`"disabled": true`) but is left out of every list, switch and test, and a tab opened from it says so; **Log in** asks for the password and keeps it in the OS credential store, then tests - where a password is already kept, the button reads **Save new password** (SAP is not asked to tell); **Test** asks ADT on that system alone and shows the answer in the row, kept there until the window is reloaded, also when the table is closed; **Delete** removes it from `vertex.systems` after a confirmation. **Import from SAP Logon and Eclipse**, **Edit in settings.json**, **Open connection log** and **Open RFC trace folder** stand above the table.
 
 In **SAP Systems**, the **SNC** checkbox switches a system between SNC single sign-on and password authentication.
 Turning SNC off keeps its connection details; turning it back on requires the
@@ -168,8 +168,14 @@ VERTEX's direct SNC connection builds on [fr0ster-forks' auth-broker PR #1](http
 
 For SNC, `user` identifies the ABAP user the debugger targets; no password is
 prompted for. Secure Login Client supplies the logon. `snc.partnerName` and
-`rfc.ashost`/`rfc.sysnr` are required; the RFC address is never derived from `url`.
-**VERTEX: Import SAP Systems** fills those SNC and RFC fields from a direct SAP Logon entry; it asks for a client or user only when the chosen Eclipse workspace does not supply them. An SNC logon group without a named application server needs a separate direct entry before import.
+an RFC address are required; the RFC address is never derived from `url`. It is an application
+server - `rfc.ashost` and `rfc.sysnr` - or, as for a SAP Logon group entry, a message server: `rfc.mshost`,
+`rfc.sysid`, `rfc.group` (default `PUBLIC`) and, when its port is not `sapms<SID>`, `rfc.msserv` (e.g. `"3600"`).
+**VERTEX: Import SAP Systems** fills those SNC and RFC fields from a SAP Logon entry, direct or through a logon group; it asks for a client or user only when the chosen Eclipse workspace does not supply them.
+When an SNC connection fails, its message names the address it used, and the VERTEX output (**Open connection log**
+in **SAP Systems**) records each connection. `vertex.rfcTrace` `1`-`3` has the SAP NW RFC SDK write its own trace,
+`dev_rfc*.log`, into `vertex.rfcTraceFolder` (by default `vertex-rfc-trace` in the system temporary folder) from the
+next connection; **Open RFC trace folder** opens it.
 Optional SNC settings are `qop` (`"1"`, `"2"`, `"3"`, `"8"`, `"9"`), `library`
 (the SNC library path, discovered when omitted), and `myName` (the local SNC
 name). `rfc.saprouter` is optional. `url` remains required for identity and WebGUI.

@@ -43,7 +43,27 @@ function defaultConnector(system, provider, open, logger) {
   return new AdtOnPremConnector(config, provider, new RfcTransport(open, logger), logger);
 }
 
-function createRfcWire(system, { providerFor, logger = null, connector = defaultConnector }) {
+// The NW RFC SDK's logon parameters for SYSTEM: its application server, or its message server and logon group.
+function rfcAddress(system, logon = {}) {
+  const rfc = system.rfc;
+  const address = rfc.mshost
+    ? { mshost: rfc.mshost, sysid: rfc.sysid, group: rfc.group || "PUBLIC", ...(rfc.msserv ? { msserv: rfc.msserv } : {}), lang: "EN" }
+    : { ashost: rfc.ashost, sysnr: rfc.sysnr, lang: "EN" };
+  if (rfc.saprouter) address.saprouter = rfc.saprouter;
+  if (system.client) address.client = system.client;
+  return { ...address, ...logon };
+}
+
+// Where RFC goes, in words, for an error and the VERTEX output: never a user, password or ticket.
+function describeAddress(system) {
+  const rfc = system.rfc;
+  return (rfc.mshost
+    ? "message server " + rfc.mshost + (rfc.msserv ? ":" + rfc.msserv : "") + ", system " + rfc.sysid + ", group " + (rfc.group || "PUBLIC")
+    : "application server " + rfc.ashost + ", instance " + rfc.sysnr) + (rfc.saprouter ? ", via SAProuter" : "");
+}
+
+// TRACE: () => { level, folder } - vertex.rfcTrace. Level 1-3 has the NW RFC SDK write dev_rfc*.log files there.
+function createRfcWire(system, { providerFor, logger = null, connector = defaultConnector, trace = () => ({ level: 0 }) }) {
   let session = null;          // the live connector, or null
   let queue = Promise.resolve();
   let mode = "stateless";
@@ -51,16 +71,27 @@ function createRfcWire(system, { providerFor, logger = null, connector = default
 
   function open(logon) {
     const Client = loadClient();
-    const address = { ashost: system.rfc.ashost, sysnr: system.rfc.sysnr, lang: "EN" };
-    if (system.rfc.saprouter) address.saprouter = system.rfc.saprouter;
-    if (system.client) address.client = system.client;
-    try { return new Client({ ...address, ...logon }); } catch (e) { throw new Error(sdkSentence(e)); }
+    const { level = 0, folder = "" } = trace() || {};
+    const address = rfcAddress(system, logon);
+    if (level > 0) {
+      address.trace = String(level);
+      if (folder) { fs.mkdirSync(folder, { recursive: true }); process.env.RFC_TRACE_DIR = folder; }
+    }
+    if (logger) logger.info("RFC " + system.name + ": connecting through " + describeAddress(system)
+      + (system.client ? ", client " + system.client : "") + (level > 0 ? "; SDK trace level " + level + " in " + (folder || "the working folder") : ""));
+    try { return new Client(address); } catch (e) { throw new Error(sdkSentence(e)); }
   }
   async function live() {
     if (session) return session;
     const provider = await providerFor(system);
     const c = connector(system, provider, open, logger);
-    await c.connect();
+    try { await c.connect(); }
+    catch (e) {
+      // The SDK says what failed, not where it was asked: the address goes in front.
+      if (e && typeof e.message === "string" && !e.message.startsWith("RFC through ")) e.message = "RFC through " + describeAddress(system) + ": " + e.message;
+      if (logger) logger.error(e && e.message || String(e));
+      throw e;
+    }
     session = c;
     return c;
   }
@@ -102,4 +133,4 @@ function createRfcWire(system, { providerFor, logger = null, connector = default
     dispose() { return run(end); },
   };
 }
-module.exports = { createRfcWire, sdkSentence, findRfcLibrary };
+module.exports = { createRfcWire, rfcAddress, describeAddress, sdkSentence, findRfcLibrary };

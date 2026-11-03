@@ -3,14 +3,34 @@
 const path = require("path");
 const analysis = require("./frontend-analysis");
 
+// A file on disk or not yet saved: what a local run, the local debugger and a local folder are made of.
 function isLocalAbap(document) {
   const uri = document && document.uri;
-  return !!(uri && ["file", "untitled"].includes(uri.scheme) &&
+  return !!(uri && ["file", "untitled"].includes(uri.scheme) && isAbapDocument(document));
+}
+
+// VERTEX's own SAP tabs: their source is read, saved and analysed through the SAP system.
+const VERTEX_SCHEMES = ["vertex-sap", "vertex-source"];
+
+// ABAP in any editor but VERTEX's own SAP tabs: a local file, an unsaved one, or a source another extension opened
+// (SAP's ADT extension, ABAP remote filesystem, a diff view). Its text is what the editor holds.
+function isAbapDocument(document) {
+  const uri = document && document.uri;
+  return !!(uri && !VERTEX_SCHEMES.includes(uri.scheme) &&
     (document.languageId === "abap" || /\.abap$/i.test(uri.fsPath || uri.path || "")));
 }
 
+// Whether VERTEX Tools analyses DOCUMENT from its own text, with abaplint: a local file always; another extension's
+// source when VERTEX has no SAP system to read it from - with one, the object is read from that system as before.
+function analyzedFromText(vscode, document) {
+  if (isLocalAbap(document)) return true;
+  if (!isAbapDocument(document)) return false;
+  const systems = vscode?.workspace?.getConfiguration ? vscode.workspace.getConfiguration("vertex").get("systems", []) : [];
+  return !Array.isArray(systems) || systems.length === 0;
+}
+
 function sourceObject(document) {
-  if (!isLocalAbap(document)) { return null; }
+  if (!isAbapDocument(document)) { return null; }
   const text = document.getText();
   const declaration = /^\s*(?:CLASS|INTERFACE|REPORT|PROGRAM)\s+([\w/]+)/im.exec(text);
   const kind = /^\s*(CLASS|INTERFACE|REPORT|PROGRAM)\b/im.exec(text)?.[1]?.toUpperCase();
@@ -286,4 +306,4 @@ function whereUsed(vscode, primary, sourceOf) {
   };
 }
 
-module.exports = { isLocalAbap, sourceObject, declaredVariables, create, createPackage, originSources, whereUsed };
+module.exports = { isLocalAbap, isAbapDocument, analyzedFromText, sourceObject, declaredVariables, create, createPackage, originSources, whereUsed };

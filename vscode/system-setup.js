@@ -35,10 +35,12 @@ function landscape(files) {
       const sncDetails = a.sncname ? { partnerName: a.sncname, ...(a.sncop ? { qop: a.sncop } : {}) } : null;
       const snc = sncDetails && a.sncnosso !== "1";
       if (a.msid) {
-        if (snc) { skipped.push(title + " (SNC logon group: no application server for RFC is specified)"); continue; }
         const ms = messageServers[a.msid], port = ms && /^36(\d\d)$/.exec(ms.port || "");
         if (!ms || !ms.host) { skipped.push(title + " (logon group, message server not described)"); continue; }
-        systems.push({ id, title, host: ms.host, instance: port ? port[1] : "", group: a.server || "" });
+        // RFC - what SNC goes over - takes the same message server and group SAP Logon logs on through.
+        const rfc = { mshost: ms.host, sysid: id, group: a.server || "PUBLIC", ...(ms.port ? { msserv: ms.port } : {}) };
+        systems.push({ id, title, host: ms.host, instance: port ? port[1] : "", group: a.server || "",
+          ...(snc ? { rfc, snc: sncDetails, authType: "snc" } : {}) });
         continue;
       }
       const server = /^(.+):32(\d\d)$/.exec(a.server || "");
@@ -328,7 +330,8 @@ async function importSystems(vscode, context) {
     const system = { name, url, ...(client ? { client } : {}), user };
     if (c.authType === "snc") { system.authType = "snc"; }
     if (c.snc) { system.snc = c.snc; }
-    if (c.group === undefined) { system.rfc = { ashost: c.host, sysnr: c.instance }; }
+    if (c.rfc) { system.rfc = c.rfc; }
+    else if (c.group === undefined) { system.rfc = { ashost: c.host, sysnr: c.instance }; }
     if (c.found && c.found.insecure) { system.allowInsecureCertificate = true; }
     // WebGUI found somewhere else than url: the debugger opens it there. Not found at all: said, left to the reader.
     if (url === (c.found && c.found.url) && c.webgui) { system.webgui = c.webgui; }

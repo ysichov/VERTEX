@@ -1059,8 +1059,8 @@ function activate(context) {
       let cursorTimer;
       const sendCursor = () => {
         if (dockedDebugSource?.storedDebugRecord) return;
-        const editor = vscode.window.activeTextEditor, object = editor && (dockedDebugSource?.local
-          ? require("./local-analysis").sourceObject(editor.document) : sapCode.documentObject(editor.document));
+        const local = require("./local-analysis"), editor = vscode.window.activeTextEditor, object = editor && (dockedDebugSource?.local
+          ? (local.isLocalAbap(editor.document) ? local.sourceObject(editor.document) : null) : sapCode.documentObject(editor.document));
         if (!object) { return; }
         view.webview.postMessage({ type: "cursor", payload: JSON.stringify({ ...object, line: editor.selection.active.line + 1 }) });
       };
@@ -1627,7 +1627,7 @@ function activate(context) {
     catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
   };
   context.subscriptions.push(vscode.commands.registerCommand("vertex.tools", initial => {
-    if (!initial && require("./local-analysis").isLocalAbap(vscode.window.activeTextEditor?.document)) {
+    if (!initial && require("./local-analysis").analyzedFromText(vscode, vscode.window.activeTextEditor?.document)) {
       const object = require("./local-analysis").sourceObject(vscode.window.activeTextEditor.document);
       return vscode.commands.executeCommand(object?.object_type === "CLAS" ? "vertex.tools.uml" : "vertex.tools.metrics");
     }
@@ -1821,12 +1821,23 @@ function activate(context) {
     vscode.commands.registerCommand("vertex.openSystemSettings", () => require("./system-table").open(vscode, { test: testSystem,
       hasPassword: async entry => { const chosen = auth.systemOf(entry); return !chosen.error && auth.hasPassword(chosen.system); },
       login: async entry => { const chosen = auth.systemOf(entry); if (chosen.error) throw new Error(chosen.error); return auth.login(chosen.system); } })),
+    vscode.commands.registerCommand("vertex.showLog", () => {
+      if (!output) { output = vscode.window.createOutputChannel("VERTEX", { log: true }); }
+      output.show(true);
+    }),
+    vscode.commands.registerCommand("vertex.openRfcTrace", async () => {
+      const config = vscode.workspace.getConfiguration("vertex");
+      const folder = config.get("rfcTraceFolder", "") || path.join(require("os").tmpdir(), "vertex-rfc-trace");
+      fs.mkdirSync(folder, { recursive: true });
+      if (!(Number(config.get("rfcTrace", 0)) > 0)) vscode.window.showInformationMessage("VERTEX: the RFC trace is off. Set vertex.rfcTrace to 1-3 and connect again; the SDK writes dev_rfc*.log into " + folder + ".");
+      await vscode.env.openExternal(vscode.Uri.file(folder));
+    }),
     vscode.commands.registerCommand("vertex.ai.chooseLogFolder", () => require("./model-config").chooseLogFolder(vscode)),
     vscode.commands.registerCommand("vertex.open", function () {
       showTools({ type: "TABL" });
     }),
     vscode.commands.registerCommand("vertex.metrics", function () {
-      if (require("./local-analysis").isLocalAbap(vscode.window.activeTextEditor?.document)) {
+      if (require("./local-analysis").analyzedFromText(vscode, vscode.window.activeTextEditor?.document)) {
         return vscode.commands.executeCommand("vertex.tools.metrics");
       }
       showTools({ type: "CLAS", action: "metrics" });

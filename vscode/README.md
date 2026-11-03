@@ -251,11 +251,11 @@ password is discarded; the next operation asks again. Basic also works on remote
 extension hosts. **VERTEX: Forget Credentials** clears the active system's stored
 credentials.
 
-**SAP Systems** (the server icon in the VERTEX panel's title, or the link under `vertex.systems` in Settings) lists every configured system in a table. Per row: the radio button makes it the active system; **SNC** switches it between SNC single sign-on and password authentication; **On** switches it off or on - a system switched off stays in `vertex.systems` (`"disabled": true`) but is left out of every list, switch and test, and a tab opened from it says so; **Log in** asks for the password and keeps it in the OS credential store, then tests - where a password is already kept, the button reads **Save new password** (SAP is not asked to tell); **Test** asks ADT on that system alone and shows the answer in the row, kept there until the window is reloaded, also when the table is closed; **Delete** removes it from `vertex.systems` after a confirmation. **Import from SAP Logon and Eclipse** and **Edit in settings.json** stand above the table.
+**SAP Systems** (the server icon in the VERTEX panel's title, or the link under `vertex.systems` in Settings) lists every configured system in a table. Per row: the radio button makes it the active system; **SNC** switches it between SNC single sign-on and password authentication; **On** switches it off or on - a system switched off stays in `vertex.systems` (`"disabled": true`) but is left out of every list, switch and test, and a tab opened from it says so; **Log in** asks for the password and keeps it in the OS credential store, then tests - where a password is already kept, the button reads **Save new password** (SAP is not asked to tell); **Test** asks ADT on that system alone and shows the answer in the row, kept there until the window is reloaded, also when the table is closed; **Delete** removes it from `vertex.systems` after a confirmation. **Import from SAP Logon and Eclipse**, **Edit in settings.json**, **Open connection log** and **Open RFC trace folder** stand above the table.
 
 In **SAP Systems**, the **SNC** checkbox switches a system between SNC single sign-on and password authentication.
 Turning SNC off keeps its connection details in settings; turning it back on
-requires `snc.partnerName` and `rfc.ashost`/`rfc.sysnr`. The checkbox changes only
+requires `snc.partnerName` and an RFC address (`rfc.ashost`/`rfc.sysnr` or `rfc.mshost`/`rfc.sysid`). The checkbox changes only
 that system's `authType`, without deleting or re-importing it. Basic authentication
 asks for a password on the next request.
 
@@ -286,7 +286,9 @@ The direct SNC connection builds on [fr0ster-forks' auth-broker PR #1](https://g
 
 For SNC, `user` identifies the ABAP user the debugger targets; no password is
 prompted for. Secure Login Client supplies the logon. `snc.partnerName` and
-`rfc.ashost`/`rfc.sysnr` are required; the RFC address is never derived from `url`.
+an RFC address are required; the RFC address is never derived from `url`. It is an application
+server - `rfc.ashost` and `rfc.sysnr` - or, as for a SAP Logon group entry, a message server: `rfc.mshost`,
+`rfc.sysid`, `rfc.group` (default `PUBLIC`) and, when its port is not `sapms<SID>`, `rfc.msserv` (e.g. `"3600"`).
 Optional SNC settings are `qop` (`"1"`, `"2"`, `"3"`, `"8"`, `"9"`), `library`
 (the SNC library path, discovered when omitted), and `myName` (the local SNC
 name). `rfc.saprouter` is optional. `url` remains required for identity and WebGUI.
@@ -337,7 +339,11 @@ development systems often have; it is off by default on purpose.
 
 A system that logs on with SNC single sign-on - SAP Logon's *Activate Secure Network
 Communication* without *SNC logon with user/password* - has no password VERTEX could use over HTTP.
-**VERTEX: Import SAP Systems** reads a direct SAP Logon entry's SNC name, protection level, application server and instance into VERTEX's own SNC connection. It finds the ADT HTTP address; the client and user come from the selected Eclipse workspace or are asked. An SNC logon group without a named application server is skipped with an explanation.
+**VERTEX: Import SAP Systems** reads a SAP Logon entry's SNC name, protection level and RFC address into VERTEX's own SNC connection: the application server and instance of a direct entry, the message server, system ID and logon group of a group entry. It finds the ADT HTTP address; the client and user come from the selected Eclipse workspace or are asked.
+When an SNC connection fails, its message names the address it used, and the VERTEX output (**Open connection log**
+in **SAP Systems**) records each connection. `vertex.rfcTrace` `1`-`3` has the SAP NW RFC SDK write its own trace,
+`dev_rfc*.log`, into `vertex.rfcTraceFolder` (by default `vertex-rfc-trace` in the system temporary folder) from the
+next connection; **Open RFC trace folder** opens it.
 
 Code reviews are saved where `vertex.review.storage` says: `table` (default) - SAP's
 `ZAVE_REVIEW`, shared with AVE; `file` - one JSON file per request; `both` - the table is read
@@ -649,8 +655,11 @@ Z_BILLING* or *open program Z_INVOICE*. A single match opens in Object Navigator
 name has no exact match, VERTEX tries a prefix and then a contained-name search. An explicit
 wildcard is used as written.
 
-With a local `.abap` file active, the chat receives its current editor text, including unsaved
+With an ABAP source active - a local `.abap` file, or a source another extension opened (SAP's ADT
+extension, ABAP remote filesystem) - the chat receives its current editor text, including unsaved
 edits (up to 24,000 characters). It can explain that source without a configured SAP system;
+with no SAP system in VERTEX, UML, Metrics, Logic and Calls in the editor's **VERTEX Tools** menu analyse
+another extension's source from its text, as they do a local file;
 SAP search, changes, tests and debugger actions require a system.
 For API-key providers, the chat displays the provider's input, cached and output token counts
 for the complete answer, including model requests made around tool calls when reported by the API.

@@ -57,6 +57,9 @@ function open(vscode, { test, login, hasPassword = async () => false }) {
       if (message.action === "ready") { await draw(); return; }
       if (message.action === "import") { await vscode.commands.executeCommand("vertex.importSystems"); return; }
       if (message.action === "json") { await vscode.commands.executeCommand("workbench.action.openSettingsJson"); return; }
+      // What a connection said - VERTEX's output, and the NW RFC SDK's trace when vertex.rfcTrace is on.
+      if (message.action === "log") { await vscode.commands.executeCommand("vertex.showLog"); return; }
+      if (message.action === "trace") { await vscode.commands.executeCommand("vertex.openRfcTrace"); return; }
       const index = Number(message.index), name = String(message.name || "");
       if (message.action === "snc") {
         await require("./system-setup").setSystemAuthType(vscode, name, !!message.on);
@@ -120,7 +123,7 @@ tr.off td:not(.keep) { opacity: .55; }
 .bad { color: var(--vscode-errorForeground); }
 .result { max-width: 420px; }
 </style></head><body>
-<div class="row"><button id="import" type="button">Import from SAP Logon and Eclipse</button><button id="json" type="button">Edit in settings.json</button></div>
+<div class="row"><button id="import" type="button">Import from SAP Logon and Eclipse</button><button id="json" type="button">Edit in settings.json</button><button id="log" type="button" title="The VERTEX output: each connection, the address it used and what failed">Open connection log</button><button id="trace" type="button" title="The NW RFC SDK trace (dev_rfc*.log), written when vertex.rfcTrace is 1-3">Open RFC trace folder</button></div>
 <p class="note">A system switched off stays in vertex.systems but is left out of every list, switch and test. SNC needs snc and rfc in the entry - Import fills them from SAP Logon.</p>
 <div id="said" class="error"></div>
 <table><thead><tr><th>Active</th><th>System</th><th>Address</th><th>Client</th><th>User</th><th>SNC</th><th>On</th><th></th><th></th><th></th><th>Test result</th></tr></thead>
@@ -160,6 +163,8 @@ document.getElementById("rows").addEventListener("click", event => {
 });
 document.getElementById("import").addEventListener("click", () => api.postMessage({ action: "import" }));
 document.getElementById("json").addEventListener("click", () => api.postMessage({ action: "json" }));
+document.getElementById("log").addEventListener("click", () => api.postMessage({ action: "log" }));
+document.getElementById("trace").addEventListener("click", () => api.postMessage({ action: "trace" }));
 window.addEventListener("message", event => {
   const m = event.data || {};
   if (m.rows) { draw(m.rows); }

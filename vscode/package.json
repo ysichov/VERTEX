@@ -283,6 +283,16 @@
         "command": "vertex.openModelSettings",
         "title": "VERTEX: LLM Providers",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "vertex.showLog",
+        "title": "Show Connection Log",
+        "category": "VERTEX"
+      },
+      {
+        "command": "vertex.openRfcTrace",
+        "title": "Open RFC Trace Folder",
+        "category": "VERTEX"
       }
     ],
     "configuration": {
@@ -367,20 +377,37 @@
               },
               "rfc": {
                 "type": "object",
-                "description": "RFC address, required for snc; never derived from url.",
+                "description": "RFC address, required for snc; never derived from url. Either an application server (ashost, sysnr) or a message server with its logon group (mshost, sysid, group), as in SAP Logon.",
                 "properties": {
                   "ashost": {
                     "type": "string",
-                    "description": "Required. Application server host."
+                    "description": "Application server host. Required unless mshost is given."
                   },
                   "sysnr": {
                     "type": "string",
                     "pattern": "^\\d\\d$",
-                    "description": "Required. Two-digit instance number."
+                    "description": "Two-digit instance number of ashost."
                   },
                   "saprouter": {
                     "type": "string",
                     "description": "Optional SAProuter string."
+                  },
+                  "mshost": {
+                    "type": "string",
+                    "description": "Message server host: RFC logs on to a server of the logon group, as SAP Logon does for a group entry. Used instead of ashost."
+                  },
+                  "sysid": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9]{3}$",
+                    "description": "System ID (e.g. PRD). Required with mshost."
+                  },
+                  "group": {
+                    "type": "string",
+                    "description": "Logon group with mshost. Default PUBLIC."
+                  },
+                  "msserv": {
+                    "type": "string",
+                    "description": "Message server port or service (e.g. 3600 or sapmsPRD). Optional; without it the SDK uses sapms<sysid>."
                   }
                 }
               },
@@ -519,6 +546,22 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Folder for reviews saved to files, one `<system>/<request>.json` each. Empty means `.vertex/reviews` in the first workspace folder; a relative path is taken from there too."
+        },
+        "vertex.rfcTrace": {
+          "type": "number",
+          "enum": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "default": 0,
+          "description": "SAP NW RFC SDK trace for SNC connections: 0 off, 1-3 more detail. The SDK writes dev_rfc*.log into vertex.rfcTraceFolder; the SAP Systems panel opens that folder. Takes effect on the next connection."
+        },
+        "vertex.rfcTraceFolder": {
+          "type": "string",
+          "default": "",
+          "description": "Folder for the RFC trace files. Empty: vertex-rfc-trace in the system temporary folder."
         }
       }
     },
