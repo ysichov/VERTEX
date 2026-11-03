@@ -66,3 +66,28 @@ test('a Tools window opened from an editor keeps that editor, a source of SAP\'s
  await commands['vertex.tools.scheme']();
  assert.equal(opened.pop().sourceUri,'abap:/repotree-v1/A4H/zcl_x.clas.abap');
 });
+
+test('another extension\'s ABAP source is analysed from its editor text when VERTEX has no SAP system, and read from SAP when it has one',async()=>{
+ // ABAP remote filesystem's address of a program: the system in the authority, the package tree in the path.
+ const uri={scheme:'adt',path:'/Local Objects ($TMP)/Source Code Library/Programs/ZMAN_TEST_CCS/zman_test_ccs.prog.abap',
+  toString:()=>'adt://icd_001/Local%20Objects%20(%24TMP)/Source%20Code%20Library/Programs/ZMAN_TEST_CCS/zman_test_ccs.prog.abap'};
+ const document={uri,languageId:'abap',getText:()=>'REPORT zman_test_ccs.\nWRITE 1.'};
+ const run=async systems=>{
+  const commands={},opened=[],errors=[];
+  const vscode={commands:{registerCommand:(name,fn)=>{commands[name]=fn;return {};}},window:{activeTextEditor:{document,selection:{active:{line:0}}},showErrorMessage:s=>errors.push(s)},
+   workspace:{getConfiguration:()=>({get:()=>systems})}};
+  require('../tools-context').register(vscode,{subscriptions:[]},{documentObject:()=>null},value=>opened.push(value));
+  await commands['vertex.tools.scheme']();
+  assert.deepEqual(errors,[]);
+  return opened[0];
+ };
+ const local=await run([]);
+ assert.deepEqual([local.name,local.type],['ZMAN_TEST_CCS','PROG']);
+ assert.equal(local.localSession.primary,document,'the editor\'s own text is analysed');
+ assert.equal(local.sourceUri,uri.toString());
+ const sap=await run([{name:'ICD',url:'https://icd',user:'u'}]);
+ assert.equal(sap.localSession,undefined,'with a system it is read from SAP, as before');
+ const analysis=require('../local-analysis');
+ assert.equal(analysis.isAbapDocument({uri:{scheme:'vertex-sap',path:'/zx.prog.abap'},languageId:'abap'}),false,'VERTEX\'s own SAP tab is not');
+ assert.equal(analysis.isLocalAbap(document),false,'a run or the local debugger still needs a file');
+});

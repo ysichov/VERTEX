@@ -22,6 +22,16 @@ test("snc needs snc.partnerName and rfc.ashost/sysnr", () => {
   assert.match(readSystem({ ...base, authType: "snc", snc: { partnerName: "p:CN=X", qop: "5" }, rfc: { ashost: "h", sysnr: "00" } }).error, /snc\.qop/);
   assert.ok(readSystem({ ...base, authType: "snc", snc: { partnerName: "p:CN=X" }, rfc: { ashost: "h", sysnr: "00" } }).system);
 });
+test("snc reaches the system through a message server and its logon group as well", () => {
+  const snc = { ...base, authType: "snc", snc: { partnerName: "p:CN=X" } };
+  assert.match(readSystem({ ...snc, rfc: { mshost: "ms" } }).error, /rfc\.sysid/);
+  assert.match(readSystem({ ...snc, rfc: { mshost: "ms", sysid: "PRD", msserv: "36 00" } }).error, /rfc\.msserv/);
+  assert.deepEqual(readSystem({ ...snc, rfc: { mshost: "ms", sysid: "prd" } }).system.rfc, { mshost: "ms", sysid: "PRD", group: "PUBLIC", saprouter: undefined });
+  const { rfcAddress, describeAddress } = require("../auth/rfc-wire");
+  const direct = readSystem({ ...snc, client: "100", rfc: { ashost: "h", sysnr: "00", saprouter: "/H/r/S/3299" } }).system;
+  assert.deepEqual(rfcAddress(direct), { ashost: "h", sysnr: "00", lang: "EN", saprouter: "/H/r/S/3299", client: "100" });
+  assert.equal(describeAddress(direct), "application server h, instance 00, via SAProuter");
+});
 test("an unknown authType is refused", () => {
   assert.match(readSystem({ ...base, authType: "jwt" }).error, /authType/);
 });

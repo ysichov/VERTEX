@@ -1709,7 +1709,9 @@ function callGraph(byOwner){
     var frames=t.stack||[],chain=frames.slice(0,frames.length-(typeof INITIAL==="undefined"?0:callerFrames(frames))).reverse(),parent=null;
     chain.forEach(function(f,index){
       var current=index===chain.length-1;
-      var owner=poolName(current&&t.cur?t.cur.owner:f.program||"");
+      // The frame names the class that actually ran. t.cur comes from source-map
+      // inference and can still name the caller for a short callee such as LOG.
+      var owner=poolName(f.program||(current&&t.cur?t.cur.owner:""));
       var unit=current&&t.cur?t.cur.name:String(f.unit||f.program||"");
       var key=byOwner?owner:recordedUnitKey(owner,unit),label=byOwner?owner:recordedUnitKey(owner,unit).slice(2);
       if(!nodes[key]){nodes[key]={key:key,text:label,

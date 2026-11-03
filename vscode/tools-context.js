@@ -36,8 +36,9 @@ function register(vscode,context,sapCode,showTools){
     }
    }
    if(!object?.object_name||!object?.object_type)throw new Error('Select an ABAP object or open its source first.');
-   const local=localAnalysis.isLocalAbap(document)?localAnalysis.create(vscode,document,object):null;
-   if(local&&action==='diff')throw new Error('Version history needs a SAP system; local files have no ADT versions.');
+   // A local file, or another extension's source with no SAP system in VERTEX to read it from: analysed from its text.
+   const local=localAnalysis.analyzedFromText(vscode,document)?localAnalysis.create(vscode,document,object):null;
+   if(local&&action==='diff')throw new Error('Version history needs a SAP system in VERTEX; a source analysed from its editor has no ADT versions.');
    // The UI route is named flow; calls is only the diagram's mode and command.
    const initial={name:String(object.object_name).toUpperCase(),type:String(object.object_type).toUpperCase(),action:action==='calls'?'flow':action};
    const editor=vscode.window.activeTextEditor;

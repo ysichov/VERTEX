@@ -210,6 +210,30 @@ test("the chat reads the active local ABAP document without a SAP system", async
   assert.deepEqual(request.tools, []);
 });
 
+test("the chat reads the whole ABAP source another extension's editor holds, not a fragment of it", async (t) => {
+  let request;
+  t.mock.method(assistant, "ask", async options => {
+    request = options;
+    return { plan: { answer: "It reads notifications.", navigation: null }, model: "haiku", usage: null };
+  });
+  const vscode = fakeVscode({ provider: "claude-subscription", model: "haiku", systems: [] });
+  // ABAP remote filesystem: an adt:// document, opened from a system VERTEX does not have.
+  const text = "REPORT zman_test_ccs.\nTYPES BEGIN OF type_data.\nDATA lt_data TYPE ttype_data.";
+  vscode.window.activeTextEditor = { document: { languageId: "abap",
+    uri: { scheme: "adt", path: "/Local Objects ($TMP)/zman_test_ccs.prog.abap", toString: () => "adt://icd_001/Local%20Objects/zman_test_ccs.prog.abap" },
+    getText: () => text } };
+  const ask = chat.create(vscode, { schemas: [], instructions: "", editorContext: () => null },
+    { start: async () => ({ url: "http://127.0.0.1:1/mcp" }), token: "t" });
+  assert.equal((await ask("видишь ли ты весь код этой программы?")).answer, "It reads notifications.");
+  assert.match(request.prompt, /DATA lt_data TYPE ttype_data/);
+  assert.match(request.prompt, /adt:\/\/icd_001/);
+  assert.match(request.instructions, /another extension \(adt\) opened it/);
+  assert.match(request.instructions, /do not say only a fragment is visible/);
+  // VERTEX's own SAP tab comes through editorContext, not as another editor's document.
+  vscode.window.activeTextEditor = { document: { languageId: "abap", uri: { scheme: "vertex-sap", path: "/zx.prog.abap" }, getText: () => "REPORT zx." } };
+  assert.equal(chat.localAbapContext(vscode), null);
+});
+
 test("an active UML view is sent as diagram context and is analysed without requesting an object", async (t) => {
   let prompt = "", instructions = "";
   t.mock.method(assistant, "ask", async options => {

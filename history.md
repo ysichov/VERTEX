@@ -1,5 +1,12 @@
 # Release history
 
+## Unreleased — VS Code: SNC through a message server, ABAP from any editor
+
+- An SNC system reached through a SAP Logon group connects: `rfc.mshost`, `rfc.sysid`, `rfc.group` and optionally `rfc.msserv` replace `rfc.ashost`/`rfc.sysnr`, and **VERTEX: Import SAP Systems** no longer skips such entries.
+- A failed SNC connection names the address it used; **SAP Systems** opens the connection log and, with `vertex.rfcTrace` 1-3, the SAP NW RFC SDK trace folder.
+- The chat reads the whole ABAP source of any editor, including one another extension opened (ABAP remote filesystem, SAP's ADT extension), instead of a visible line.
+- With no SAP system in VERTEX, UML, Metrics, Logic and Calls analyse such a source from its editor text.
+
 ## 2026-11-02 — 0.9.53: debugger depth control
 
 - The shared Code Flow Analysis depth field now keeps its normal number-input appearance instead of inheriting the zoom slider's range styling. The class tree also retains `ZCL_CALC_LOG` when a recorded frame identifies it.

@@ -1,5 +1,15 @@
 # Development history
 
+## 2026-11-03 — SNC through a message server; ABAP from any editor
+
+At a customer, import skipped every SNC system ("SNC logon group: no application server for RFC is specified"), so the code was opened with another extension (ABAP remote filesystem, `adt://`), where the chat saw one line and Tools had nothing to read.
+
+- `auth/systems.js` accepts `rfc.mshost` + `rfc.sysid` (+ `group`, default PUBLIC, and `msserv`) instead of `ashost`/`sysnr`. `auth/rfc-wire.js` `rfcAddress` hands the SDK either set: sap-rfc-lite passes every parameter to `RfcOpenConnection` unchanged, so load balancing needs nothing from the library. `system-setup.js` `landscape` gives an SNC group entry that address from its `<Messageserver>`; import writes it.
+- Debug info: `describeAddress` prefixes a failed connect ("RFC through message server msg:3600, system ICD, group SPACE: ...") and every open is logged to the VERTEX output, without credentials. `vertex.rfcTrace` 1-3 sets the SDK's TRACE and RFC_TRACE_DIR (`vertex.rfcTraceFolder`, default `vertex-rfc-trace` in the temp folder). SAP Systems has **Open connection log** (`vertex.showLog`) and **Open RFC trace folder** (`vertex.openRfcTrace`), the panel's own button markup.
+- `local-analysis.js`: `isAbapDocument` is ABAP in any editor but VERTEX's `vertex-sap`/`vertex-source` tabs; `isLocalAbap` (file, untitled) stays what runs and the local debugger need. `analyzedFromText` decides Tools: a local file, or another extension's source when `vertex.systems` is empty - with systems, such a source is read from SAP as before (the SAP ADT extension test keeps its route). `chat.js` `localAbapContext` uses `isAbapDocument` and tells the model which extension's editor the source came from, whole unless truncated. The docked debugger's cursor still follows local files only.
+
+Not tried against a message server or with ABAP remote filesystem here: no SAP. Tests cover the address, import, chat and Tools routes.
+
 ## 2026-11-02 — Reuse working controls
 
 Recorded the UI rule in `AGENTS.md`: reuse an existing working control before adding a new variant. The shared flow view applied slider styling to every `.mermaid-zoom input`, including its numeric Depth field; the selector now targets range inputs only. The earlier class-flow fix uses the executed frame's program for class grouping. Verified 68 focused tests and the updated 0.9.53 VSIX archive.

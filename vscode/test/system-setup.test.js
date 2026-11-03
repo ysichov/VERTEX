@@ -96,14 +96,26 @@ test("SAP Logon entries give the host and instance; a logon group gives its mess
   } finally { fs.unlinkSync(file); }
 });
 
-test("SNC logon group without an RFC application server is explained and skipped", () => {
+test("an SNC logon group is offered with RFC through its message server and group", () => {
   const file = path.join(os.tmpdir(), "vertex-snc-group-" + process.pid + ".xml");
-  fs.writeFileSync(file, '<Landscape><Messageservers><Messageserver uuid="m1" host="msg" port="3600"/></Messageservers>'
-    + '<Services><Service type="SAPGUI" name="SNC Group" systemid="PRD" msid="m1" sncname="p:CN=PRD"/></Services></Landscape>');
+  fs.writeFileSync(file, '<Landscape><Messageservers><Messageserver uuid="m1" host="msg" port="3600"/>'
+    + '<Messageserver uuid="m2" host="msg2"/></Messageservers><Services>'
+    + '<Service type="SAPGUI" name="ICD [EXTERNAL]" systemid="ICD" msid="m1" server="SPACE" sncname="p:CN=ICD" sncop="9"/>'
+    + '<Service type="SAPGUI" name="ICT" systemid="ICT" msid="m2" sncname="p:CN=ICT"/></Services></Landscape>');
   try {
     const result = landscape([file]);
-    assert.deepEqual(result.systems, []);
-    assert.match(result.skipped[0], /SNC logon group.*no application server/);
+    assert.deepEqual(result.skipped, []);
+    assert.deepEqual(result.systems, [
+      { id: "ICD", title: "ICD [EXTERNAL]", host: "msg", instance: "00", group: "SPACE", authType: "snc",
+        snc: { partnerName: "p:CN=ICD", qop: "9" }, rfc: { mshost: "msg", sysid: "ICD", group: "SPACE", msserv: "3600" } },
+      { id: "ICT", title: "ICT", host: "msg2", instance: "", group: "", authType: "snc",
+        snc: { partnerName: "p:CN=ICT" }, rfc: { mshost: "msg2", sysid: "ICT", group: "PUBLIC" } }]);
+    // What import writes is a system readSystem takes, and RFC is asked through the message server.
+    const { readSystem } = require("../auth/systems"), { rfcAddress, describeAddress } = require("../auth/rfc-wire");
+    const system = readSystem({ name: "ICD", url: "https://msg:44300", user: "U", authType: "snc",
+      snc: result.systems[0].snc, rfc: result.systems[0].rfc }).system;
+    assert.deepEqual(rfcAddress(system, { snc_mode: "1" }), { mshost: "msg", sysid: "ICD", group: "SPACE", msserv: "3600", lang: "EN", snc_mode: "1" });
+    assert.equal(describeAddress(system), "message server msg:3600, system ICD, group SPACE");
   } finally { fs.unlinkSync(file); }
 });
 

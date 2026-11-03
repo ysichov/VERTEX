@@ -36,10 +36,19 @@ function readSystem(entry) {
     const snc = e.snc || {}, rfc = e.rfc || {};
     if (!snc.partnerName) return { error: "System " + name + " is snc and has no snc.partnerName (the system's SNC name, e.g. p:CN=SID, O=ACME)." };
     if (snc.qop !== undefined && !QOPS.includes(String(snc.qop))) return { error: "System " + name + " has snc.qop " + snc.qop + "; use 1, 2, 3, 8 or 9." };
-    if (!rfc.ashost) return { error: "System " + name + " is snc and has no rfc.ashost (the application server host)." };
-    if (!/^\d\d$/.test(String(rfc.sysnr || ""))) return { error: "System " + name + " needs rfc.sysnr as two digits, e.g. 00." };
     system.snc = { partnerName: snc.partnerName, qop: snc.qop, library: snc.library, myName: snc.myName };
-    system.rfc = { ashost: rfc.ashost, sysnr: String(rfc.sysnr), saprouter: rfc.saprouter };
+    // RFC reaches the system as SAP Logon does: at one application server (ashost, sysnr), or through its message
+    // server, which picks a server of the logon group (mshost, sysid, group; msserv when the port is not sapms<SID>).
+    if (rfc.mshost && !rfc.ashost) {
+      if (!/^[A-Z0-9]{3}$/i.test(String(rfc.sysid || ""))) return { error: "System " + name + " has rfc.mshost and needs rfc.sysid, the three-character system ID, e.g. PRD." };
+      if (rfc.msserv !== undefined && rfc.msserv !== "" && !/^[\w.-]+$/.test(String(rfc.msserv))) return { error: "System " + name + " has rfc.msserv " + JSON.stringify(rfc.msserv) + "; give the message server's port or service, e.g. 3600 or sapmsPRD." };
+      system.rfc = { mshost: rfc.mshost, sysid: String(rfc.sysid).toUpperCase(), group: String(rfc.group || "PUBLIC"),
+        ...(rfc.msserv ? { msserv: String(rfc.msserv) } : {}), saprouter: rfc.saprouter };
+    } else {
+      if (!rfc.ashost) return { error: "System " + name + " is snc and has no rfc.ashost (the application server host) or rfc.mshost (its message server)." };
+      if (!/^\d\d$/.test(String(rfc.sysnr || ""))) return { error: "System " + name + " needs rfc.sysnr as two digits, e.g. 00." };
+      system.rfc = { ashost: rfc.ashost, sysnr: String(rfc.sysnr), saprouter: rfc.saprouter };
+    }
   }
   return { system };
 }
