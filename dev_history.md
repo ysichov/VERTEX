@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-11-03 — 0.9.54: Logic diagram for reports and forms
+
+`ace-scheme.scheme` began an event unit (no METHOD/FORM root) at `prevLine=0`, and `ops()` returned at `from<=0`, so an event's statements were never emitted: the diagram was the title node alone. Without a root the walk now starts after the event's own statement (or at row 0 for a report's implicit START-OF-SELECTION), and `ops()` accepts `from=0` there. FORM and MODULE already drew. `tools-context` looks up the enclosing FORM or MODULE at the cursor as well as METHOD. New test in `local-analysis.test.js` (event, AT SELECTION-SCREEN, FORM); suite 1107 pass, the same 10 failures as on main before the change. Versions bumped to 0.9.54 on both hosts. VSIX 0.9.54 built and verified by package.js. Eclipse: no pwsh here, so `package.ps1`'s steps were run by an equivalent script (javac --release 21 with Temurin 25 against ~/.p2/pool) - 0.9.54.20261103215020; class files are Java 21 (major 65), artifact SHA-256 and sizes checked, ZIP entries tested, and docs/ update site replaced. Not checked in a live SAP system or a rendered page.
+
 ## 2026-11-03 — 0.9.53: visible model-check status and current documentation
 
 The model-check button shows Checking while a request runs; progress, completion counts and Stop are in the provider header. The LLM settings page now injects the shared vertex-controls.css after its styles, matching VERTEX buttons. Updated current instructions and version labels across the repository, VSIX README, Eclipse README and update-site page.

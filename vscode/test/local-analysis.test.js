@@ -205,3 +205,19 @@ test("local backward usage finds calls in workspace source without SAP", async (
   const result = await callers(source, 6, 8);
   assert.deepEqual(result.places.map(place => [place.source.objectName, place.line]), [["ZREPORT", 3]]);
 });
+
+test("local report draws the Logic diagram of its events and forms", async () => {
+  const text = "REPORT zlogic.\nPARAMETERS p TYPE i.\nAT SELECTION-SCREEN.\n IF p < 0.\n MESSAGE 'x' TYPE 'E'.\n ENDIF.\nSTART-OF-SELECTION.\n p = p + 1.\n PERFORM show USING p.\nFORM show USING v TYPE i.\n WRITE v.\nENDFORM.";
+  const report = document("zlogic.prog.abap", text);
+  const host = { workspace: { findFiles: async () => [report.uri], openTextDocument: async () => report } };
+  const session = local.create(host, report, local.sourceObject(report));
+  const root = "/sap/bc/adt/vertex/flow/ZLOGIC?type=PROG&mode=scheme&depth=3&unit=";
+  const event = await session.request(root + "START-OF-SELECTION");
+  assert.match(event.mermaid, /start --> p\d+/);
+  assert.match(event.mermaid, /p = p \+ 1/);
+  assert.doesNotMatch(event.mermaid, /\("START-OF-SELECTION\./);
+  const screen = await session.request(root + encodeURIComponent("AT SELECTION-SCREEN"));
+  assert.match(screen.mermaid, /MESSAGE 'x'/);
+  const form = await session.request(root + "SHOW");
+  assert.match(form.mermaid, /WRITE v/);
+});

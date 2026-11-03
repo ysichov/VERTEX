@@ -1,5 +1,11 @@
 # Release history
 
+## 2026-11-03 — 0.9.54: Logic diagram for reports and forms
+
+- The Logic diagram draws a report's events (START-OF-SELECTION, AT SELECTION-SCREEN and the others, and a report's statements outside every event); before, an event showed only its title. FORM and dialog MODULE routines are drawn as well.
+- VERTEX Tools → Logic diagram opened from the editor picks the FORM or MODULE at the cursor, as it does a method.
+- VS Code 0.9.54 and Eclipse 0.9.54.20261103215020 were built and verified.
+
 ## 2026-11-03 — 0.9.53: visible model-check status and current documentation
 
 The model-check button shows Checking while a request runs; progress, completion counts and Stop are in the provider header. The LLM settings page now injects the shared vertex-controls.css after its styles, matching VERTEX buttons. Updated current instructions and version labels across the repository, VSIX README, Eclipse README and update-site page.
