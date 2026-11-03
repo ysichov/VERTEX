@@ -1,5 +1,10 @@
 # Release history
 
+## 2026-11-02 — 0.9.53: debugger depth control
+
+- The shared Code Flow Analysis depth field now keeps its normal number-input appearance instead of inheriting the zoom slider's range styling. The class tree also retains `ZCL_CALC_LOG` when a recorded frame identifies it.
+- VS Code 0.9.53 was repackaged and verified.
+
 ## Unreleased — Eclipse: Value origin analyses again
 
 - **Forward usage** (Value origin) in Eclipse runs its analysis again instead of stopping with *Value origin in Eclipse has no module ./value-origin-linter*; function module signatures are read there too. It reaches Eclipse with the next update-site build.

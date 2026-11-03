@@ -1,5 +1,7 @@
 # Project rules
 
+- Before adding or restyling an interface control, find the same working control already used in the project and reuse its markup, behavior, and theme styling. Do not invent a separate variant for the same action. Check the result in its actual host and theme.
+
 - After fixes or changes to the VS Code extension, always rebuild and verify the VSIX before handing off. Keep the current version unless the user requests a version change.
 
 - When the user names a new version, bump it on both hosts together: `vscode/package.json`,

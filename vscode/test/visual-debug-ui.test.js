@@ -214,6 +214,21 @@ test("SAP method diagram omits the launcher and uses ABAP class names", () => {
   assert.equal(Object.keys(graph.nodes).some(key => /SAPMSSY0|===CP/.test(key)), false);
 });
 
+test("class flow keeps a callee named by its frame when source inference names the caller", () => {
+  const context = vm.createContext({ INITIAL: { local: true }, callerFrames: () => 0,
+    poolName: name => String(name).replace(/=+C[PIOU]$/i, ""),
+    flow: { timeline: [{ cur: { owner: "ZCL_CALC_FACADE", name: "ZCL_CALC_FACADE=>RUN" },
+      at: { url: "/log", line: 13 }, stack: [
+        { program: "ZCL_CALC_LOG===CP", unit: "ADD", line: 13 },
+        { program: "ZCL_CALC_FACADE===CP", unit: "RUN", line: 32 },
+        { program: "ZVERTEX_DEBUG_LAB", unit: "START-OF-SELECTION", line: 16 }
+      ] }] } });
+  vm.runInContext(part("function callGraph(byOwner){", "/* Where the chosen value changed"), context);
+  const graph = vm.runInContext("callGraph(true)", context);
+  assert.ok(graph.nodes.ZCL_CALC_LOG);
+  assert.ok(graph.edges["ZCL_CALC_FACADE>ZCL_CALC_LOG"]);
+});
+
 test("SAP statements share their method frame, including interface method names", () => {
   const context = vm.createContext({ INITIAL: { local: false }, flow: { timeline: [] },
     poolName: name => String(name).replace(/=+C[PIOU]$/i, ""),

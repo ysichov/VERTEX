@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-11-02 — Reuse working controls
+
+Recorded the UI rule in `AGENTS.md`: reuse an existing working control before adding a new variant. The shared flow view applied slider styling to every `.mermaid-zoom input`, including its numeric Depth field; the selector now targets range inputs only. The earlier class-flow fix uses the executed frame's program for class grouping. Verified 68 focused tests and the updated 0.9.53 VSIX archive.
+
 ## 2026-11-02 — Duplicates, part two: the Tools pages, the Eclipse pages, the views
 
 The rest of the duplicates the previous stage left, done after the user chose to keep page-level sharing with a test guarding it.
