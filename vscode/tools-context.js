@@ -47,8 +47,9 @@ function register(vscode,context,sapCode,showTools){
     const declaration=/^\s*(?:CLASS-)?METHODS\s+([\w~]+)/i.exec(lines[at]||'');
     let method=declaration&&declaration[1];
     if(!method)for(let i=at;i>=0;i--){
-     if(/^\s*ENDMETHOD\b/i.test(lines[i]))break;
-     const match=/^\s*METHOD\s+([\w~]+)/i.exec(lines[i]);if(match){method=match[1];break;}
+     if(/^\s*END(?:METHOD|FORM|MODULE)\b/i.test(lines[i]))break;
+     // A report's routine is a FORM or a dialog MODULE; its events are found by the cursor line in the window.
+     const match=/^\s*(?:METHOD|FORM|MODULE)\s+([\w~\/]+)/i.exec(lines[i]);if(match){method=match[1];break;}
     }
     if(method)initial.part=method.toUpperCase();
    }

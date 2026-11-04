@@ -43,7 +43,7 @@ what needs it.
 | **Block folding** | — | IF, CASE, LOOP, TRY, METHOD, FORM and other ABAP blocks and their branches fold by the code's structure, so unformatted code folds too | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
 | **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, each block's author and, with Blame, the developer who wrote each changed line, and the two MCP transport tools | to save reviews in SAP |
-| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | not needed |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method, report event, FORM or MODULE; a method opened from Calls draws its Logic diagram in the same picture | not needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | not needed |
 
 **Grew out of** names where a tool's ideas were worked out first; those projects are not developed
@@ -387,7 +387,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   its source in the editor beside the tree, a component at its line, and the tree keeps the focus. **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
   per class or per method, and picking an event or a form in Parts starts the calls there, as a
-  double-click in ACE's tree does (a click on the object's name at the top of the parts list goes back to the whole program). **Logic diagram** is one method, as its code (Code) or as its flowchart (Diagram, ACE's Flow Scheme). A magnifier follows the
+  double-click in ACE's tree does (a click on the object's name at the top of the parts list goes back to the whole program). **Logic diagram** is one routine - a method, a report event such as START-OF-SELECTION or AT SELECTION-SCREEN, a FORM or a dialog MODULE - as its code (Code) or as its flowchart (Diagram, ACE's Flow Scheme). A magnifier follows the
   pointer over every diagram; Shift and two fingers on the touchpad (or the wheel) change its strength; Ctrl and a pinch zoom
   the whole picture. The available functions depend
   on the selected object type; there are no separate SelecTor, Metrics or

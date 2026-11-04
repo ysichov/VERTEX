@@ -44,6 +44,14 @@ Opening `/CFF/CL_CCS` from a Tools window failed with "Unable to resolve nonexis
 
 origin/main carried f845bd1 (0.9.53, 2026-11-03): model checks per provider, the Logic diagram label, the method history fallback. It was merged and released as 0.9.58, at the user's word, since the 0.9.57 builds did not hold it: code merged as both sides wrote it, with Fields kept beside the Logic diagram label in object-tools.js; its 0.9.53 site jars dropped; versions bumped to 0.9.58 on both hosts; its release notes became the 0.9.58 section. Built vertex-abap-0.9.58.vsix and target/eclipse-0.9.58.20261104165411 from the merged sources, update site copied to docs/; 53 focused tests pass. Its own stages follow, as written then.
 
+## 2026-11-04 — Merge of the other machine's 0.9.54
+
+origin/main gained 7b8be9a (0.9.54, 2026-11-03: the Logic diagram for report events, FORM and MODULE) after the 0.9.58 merge was committed. Merged the same way: code as written there, versions, build numbers and the docs/ update site kept at 0.9.58 and its 0.9.54 site jars dropped, its release notes folded into the 0.9.58 section. Rebuilt vertex-abap-0.9.58.vsix and target/eclipse-0.9.58.20261104170235 from the merged sources, update site copied to docs/; 70 focused tests pass. Its own stage follows.
+
+## 2026-11-03 — 0.9.54: Logic diagram for reports and forms
+
+`ace-scheme.scheme` began an event unit (no METHOD/FORM root) at `prevLine=0`, and `ops()` returned at `from<=0`, so an event's statements were never emitted: the diagram was the title node alone. Without a root the walk now starts after the event's own statement (or at row 0 for a report's implicit START-OF-SELECTION), and `ops()` accepts `from=0` there. FORM and MODULE already drew. `tools-context` looks up the enclosing FORM or MODULE at the cursor as well as METHOD. New test in `local-analysis.test.js` (event, AT SELECTION-SCREEN, FORM); suite 1107 pass, the same 10 failures as on main before the change. Versions bumped to 0.9.54 on both hosts. VSIX 0.9.54 built and verified by package.js. Eclipse: no pwsh here, so `package.ps1`'s steps were run by an equivalent script (javac --release 21 with Temurin 25 against ~/.p2/pool) - 0.9.54.20261103215020; class files are Java 21 (major 65), artifact SHA-256 and sizes checked, ZIP entries tested, and docs/ update site replaced. Not checked in a live SAP system or a rendered page.
+
 ## 2026-11-03 — 0.9.53: visible model-check status and current documentation
 
 The model-check button shows Checking while a request runs; progress, completion counts and Stop are in the provider header. The LLM settings page now injects the shared vertex-controls.css after its styles, matching VERTEX buttons. Updated current instructions and version labels across the repository, VSIX README, Eclipse README and update-site page.

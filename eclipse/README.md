@@ -174,9 +174,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.58.qualifier`; the checked-in update site carries build `0.9.58.20261104165411`.
+then regenerate. The feature and bundle sources are at `0.9.58.qualifier`; the checked-in update site carries build `0.9.58.20261104170235`.
 
-The local install archive is version `0.9.58.20261104165411`. Install its ZIP through
+The local install archive is version `0.9.58.20261104170235`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:
@@ -282,7 +282,7 @@ UML and Metrics show the current analysis stage, object count and elapsed time w
 Click a method in UML to open its ADT source.
 UML shows interface method implementations in their implementing classes.
 
-Tools offers Metrics, Logic diagram and Calls for function modules. Clicking a method
+Tools offers Metrics, Logic diagram and Calls for function modules. In a program the Logic diagram draws any of its routines: a report event (START-OF-SELECTION, AT SELECTION-SCREEN), a FORM or a MODULE as well as a method. Clicking a method
 of a class local to a program opens that program at the method. Logic follows
 the visible routine in the ADT editor.
 

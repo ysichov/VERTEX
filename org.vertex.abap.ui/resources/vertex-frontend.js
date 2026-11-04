@@ -107069,7 +107069,7 @@ function scheme(p,expandedText='',logicOnly=false,maxDepth=0) {
   }
   function ops(from,to,prior,edgeLabel){
     lastExit='';
-    if(!prior||from<=0||to<=from+1)return prior;
+    if(!prior||from<(root?1:0)||to<=from+1)return prior;
     let chain=prior;
     function append(id,text,shape='round',klass=''){
       mm.push(id+(shape==='box'?'["':'("')+label(text)+(shape==='box'?'"]':'")'));
@@ -107089,7 +107089,12 @@ function scheme(p,expandedText='',logicOnly=false,maxDepth=0) {
     return chain;
   }
   let lastExit='';
-  if(!root&&label(title)){mm.push('start(["'+label(title)+'"])');prev='start';}
+  /* An event block (START-OF-SELECTION, AT SELECTION-SCREEN, ...) or a report's statements outside every event has no
+     METHOD/FORM around it: the drawing starts at its title, and its statements follow from the first row - after the
+     event's own statement, which the title already names. */
+  if(!root&&label(title)){mm.push('start(["'+label(title)+'"])');prev='start';
+    const head=String(rows[0]?.text||'').replace(/\.$/,'').replace(/\s+/g,' ').trim().toUpperCase();
+    prevLine=p.unitType==='EVENT'&&head===String(p.name||'').toUpperCase()?1:0;}
   for(const r of rows){
     while(conds.length&&conds[0].close===r.line){const c=conds.shift();const tail=ops(prevLine,r.line,prev,pendingLabel);c.tails.push(tail?{id:tail,label:tail===prev?pendingLabel:''}:null);if(c.word==='IF'&&!tail&&lastExit)c.exitTails.push(lastExit);pendingLabel='';const id='j'+r.line,live=c.tails.filter(Boolean),fallthrough=c.word==='IF'&&!c.hasElse;if(live.length||fallthrough||c.exitTails.length){mm.push(id+'("'+label(r.text)+'")');live.forEach(t=>connect(t,id));/* Draw the structural ENDIF after every branch so the following diagram stays centred; RETURN still ends execution. */c.exitTails.forEach(exit=>connect(exit,id));if(fallthrough)connect(c.header,id,'false');prev=live.length||fallthrough?id:'';}else prev='';prevLine=r.line;}
     while(subs.length&&subs[0]<r.line){mm.push('end');subs.shift();}

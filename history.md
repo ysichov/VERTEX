@@ -1,7 +1,9 @@
 # Release history
 
-## 2026-11-04 — 0.9.58: model checks per provider, Logic diagram label, method history fallback
+## 2026-11-04 — 0.9.58: model checks per provider, Logic diagram for events and forms, method history fallback
 
+- Logic diagram, both hosts: a report's events (START-OF-SELECTION, AT SELECTION-SCREEN and the others, and a report's statements outside every event) are drawn; before, an event showed only its title. FORM and dialog MODULE routines are drawn as well.
+- VERTEX Tools → Logic diagram opened from the editor picks the FORM or MODULE at the cursor, as it does a method.
 - Transport review, both hosts: in a prompt a class's parts carry their class - `ZCL_X=>RUN`, `ZCL_X, public section` - instead of the bare method name, and the documentation prompt asks for every method of a created class, each with its purpose, parameters, processing and result.
 - LLM Providers, VS Code: **Check models** beside each provider tests only that provider's listed models with short requests, shows Checking, progress and the working-model count, and **Stop** in the provider header ends the scan after its current request. **Save** keeps failed models out of chat choices. No SAP source is sent; normal provider usage applies.
 - Tools, both hosts: the method diagram is labelled **Logic diagram**, in Tools and in its VS Code command.
