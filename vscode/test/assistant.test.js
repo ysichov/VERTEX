@@ -386,3 +386,45 @@ test("CodeMie runs Claude Code through codemie-claude: Claude's options, its fol
   assert.equal(call.options.env.PATH.split(path.delimiter)[0], bin);
   assert.equal(call.options.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS, "1");
 });
+
+test("CodeMie's profiles come from its global configuration; a chosen one reaches models list and the run", { skip: WIN }, async () => {
+  const home = folder("vertex-home-");
+  fs.mkdirSync(path.join(home, ".codemie"));
+  fs.writeFileSync(path.join(home, ".codemie", "codemie-cli.config.json"),
+    JSON.stringify({ version: 2, activeProfile: "work", profiles: { work: {}, personal: {} } }));
+  assert.deepEqual(assistant.codemieProfiles(home), { names: ["personal", "work"], active: "work" });
+  assert.deepEqual(assistant.codemieProfiles(folder("vertex-empty-")), { names: [], active: "" });
+
+  const bin = folder("vertex-codemie-");
+  const file = path.join(bin, "codemie-claude");
+  fs.writeFileSync(file, "", { mode: 0o755 });
+  let overlay = null;
+  const lists = spawner(call => {
+    overlay = JSON.parse(fs.readFileSync(path.join(call.options.cwd, ".codemie", "codemie-cli.config.json"), "utf8"));
+    call.child.stdout.emit("data", "ID   NAME   TYPE\n" + "─".repeat(20) + "\nclaude-haiku-5-5   Haiku 5.5   model\n");
+    call.child.emit("close", 0);
+  });
+  const models = await assistant.models({ assistant: "codemie", executable: file, profile: "personal", spawn: lists });
+  assert.equal(lists.calls[0].file, path.join(bin, "codemie"));
+  assert.equal(overlay.activeProfile, "personal");
+  assert.deepEqual(models.map(m => m.id), ["", "claude-haiku-5-5"]);
+
+  const runs = spawner(call => {
+    call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "",
+      structured_output: PLAN, modelUsage: { "claude-haiku-5-5": {} } }));
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(runs, "codemie", { extensionPath: "", executable: file, profile: "personal" }));
+  assert.deepEqual(runs.calls[0].args.slice(0, 2), ["--profile", "personal"]);
+});
+
+test("a CodeMie profile chosen in the settings counts only while CodeMie has it", () => {
+  const home = folder("vertex-home-");
+  fs.mkdirSync(path.join(home, ".codemie"));
+  fs.writeFileSync(path.join(home, ".codemie", "codemie-cli.config.json"),
+    JSON.stringify({ version: 2, activeProfile: "work", profiles: { work: {} } }));
+  const vscode = chosen => ({ workspace: { getConfiguration: () => ({ get: () => chosen }) } });
+  assert.equal(assistant.profileFor(vscode("work"), "codemie", home), "work");
+  assert.equal(assistant.profileFor(vscode("gone"), "codemie", home), "");
+  assert.equal(assistant.profileFor(vscode("work"), "claude", home), "");
+});

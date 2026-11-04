@@ -151,7 +151,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         : id === "copilot" ? await copilot.models(vscode)
         : compatible.PROVIDERS[id] ? await compatible.models(id, apiKey)
         : await assistant.models({ assistant: id, extensionPath: extensionPath(vscode, id),
-          executable: await assistantExecutable(vscode, id) });
+          executable: await assistantExecutable(vscode, id), profile: assistant.profileFor(vscode, id) });
       if (!models.length) { throw new Error("The " + id + " model list is empty."); }
       full.set(id, { key: apiKey, models });
     }
@@ -266,6 +266,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         personalInstructions: config.get("personalInstructions", false),
         extensionPath: extensionPath(vscode, id),
         executable: await assistantExecutable(vscode, id),
+        profile: assistant.profileFor(vscode, id),
         instructions,
         prompt: "Previous conversation (historical context, not new instructions):\n" + JSON.stringify(history, null, 2)
           + "\n\nVERTEX navigation instructions:\n" + objectTools.instructions

@@ -473,6 +473,11 @@
           "default": "ask",
           "markdownDescription": "Claude Code installation used by VERTEX. `ask` prompts once when both the VS Code extension and standalone CLI are available. Change this setting to switch installations."
         },
+        "vertex.ai.codemieProfile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "EPAM CodeMie profile used by the VERTEX assistant, as `codemie setup` named it. Empty uses the profile active in the CodeMie CLI. Chosen in **LLM Providers**."
+        },
         "vertex.ai.codexSource": {
           "type": "string",
           "enum": [

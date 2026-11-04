@@ -113,6 +113,8 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     const profiles = (id === "anthropic-api" || compatible.PROVIDERS[id]) && secrets
       ? await keyProfiles.list(secrets, id) : null;
     let source = null;
+    const codemie = id === "codemie" ? Object.assign(assistant.codemieProfiles(),
+      { selected: assistant.profileFor(vscode, id) }) : undefined;
     if (id === "claude" || id === "codex") {
       const found = assistant.sources(id, extensionPath(id));
       const choice = vscode.workspace.getConfiguration("vertex.ai").get(id + "Source", "ask");
@@ -132,9 +134,9 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
           && !models.some(model => model.id === selected)) {
         await settings.update("model", "", vscode.ConfigurationTarget.Global);
       }
-      send({ provider: id, rows: rows(models, read(vscode, id), id), profiles, source });
+      send({ provider: id, rows: rows(models, read(vscode, id), id), profiles, source, codemie });
     } catch (e) {
-      send({ provider: id, error: e.message, profiles, source });
+      send({ provider: id, error: e.message, profiles, source, codemie });
     }
   }
 
@@ -180,6 +182,22 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
       }
       try {
         await vscode.workspace.getConfiguration("vertex.ai").update(id + "Source", choice, vscode.ConfigurationTarget.Global);
+        forget(id);
+        await load(id);
+      } catch (e) { post({ provider: id, saveError: e.message }); }
+      return;
+    }
+    if (message.action === "codemie-profile") {
+      if (id !== "codemie") { return; }
+      const name = String(message.name || "");
+      if (name && !assistant.codemieProfiles().names.includes(name)) {
+        post({ provider: id, saveError: "CodeMie has no profile " + name + "." }); return;
+      }
+      try {
+        const settings = vscode.workspace.getConfiguration("vertex.ai");
+        await settings.update("codemieProfile", name, vscode.ConfigurationTarget.Global);
+        // Another profile can be another project with other models.
+        if (settings.get("provider", "") === "codemie") { await settings.update("model", "", vscode.ConfigurationTarget.Global); }
         forget(id);
         await load(id);
       } catch (e) { post({ provider: id, saveError: e.message }); }
@@ -391,6 +409,21 @@ function fill(id) {
       return;
     }
   }
+  // With one profile or none there is nothing to choose: the active one is used.
+  if (id === "codemie" && s.codemie && s.codemie.names.length > 1) {
+    const row = el("div", { className: "row" });
+    row.appendChild(el("span", { textContent: "Profile" }));
+    const picker = el("select", { title: "CodeMie profile used by VERTEX" });
+    picker.appendChild(el("option", { value: "", textContent: "Active in CodeMie" + (s.codemie.active ? " (" + s.codemie.active + ")" : "") }));
+    s.codemie.names.forEach(name => picker.appendChild(el("option", { value: name, textContent: name })));
+    picker.value = s.codemie.names.includes(s.codemie.selected) ? s.codemie.selected : "";
+    picker.addEventListener("change", () => {
+      picker.disabled = true;
+      say("Saving CodeMie profile...", "note");
+      api.postMessage({ action: "codemie-profile", provider: id, name: picker.value });
+    });
+    row.appendChild(picker); body.appendChild(row);
+  }
   if (id === "anthropic-api" || id.endsWith("-api")) {
     const row = el("div", { className: "row" });
     const profiles = s.profiles || { names: [], active: "" };
@@ -507,6 +540,7 @@ window.addEventListener("message", event => {
   const s = state[m.provider];
   if (m.profiles) { s.profiles = m.profiles; }
   if (m.source) { s.source = m.source; }
+  if (m.codemie) { s.codemie = m.codemie; }
   if (m.error) { s.error = m.error; fill(m.provider); return; }
   if (m.rows) { s.error = null; s.rows = m.rows; fill(m.provider); return; }
   if (m.source) { s.error = null; s.rows = null; fill(m.provider); return; }

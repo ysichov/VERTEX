@@ -740,7 +740,12 @@ or Codex CLI from its VS Code extension or a native installation. Copilot models
 come from VS Code's Language Model API. For EPAM CodeMie, VERTEX runs
 `codemie-claude` - found on PATH, in npm's global folder or in nvm's - which signs
 in with the CodeMie profile; the model list is the profile's (`codemie models
-list`), and **CodeMie default** is the model chosen in `codemie setup`. VERTEX never reads the clients' login
+list`), and **CodeMie default** is the model chosen in `codemie setup`. **Profile**
+in LLM Providers picks one of the CodeMie profiles (`codemie setup` makes one per
+project or account), shown when there are two or more; **Active in CodeMie** follows `codemie profile switch`, and so does a chosen profile CodeMie no longer has. The
+choice is kept in `vertex.ai.codemieProfile`. While EPAM CodeMie is the chosen
+provider, the provider list and the VERTEX Tools button in the VERTEX panel show
+CodeMie's violet-to-blue gradient in light and dark themes; a high-contrast theme keeps its own colours. VERTEX never reads the clients' login
 tokens. Each API provider can keep several named keys in VS Code SecretStorage.
 Choose the active name manually in **LLM Providers**; VERTEX uses that key for
 model loading and requests. Existing single keys appear as `DEFAULT`. API

@@ -527,7 +527,9 @@ async function assistantModels(context, args) {
     return { assistant: id, models: require("./model-config").apply(vscode, id, id === "anthropic-api"
       ? await anthropic.models((await require("./key-profiles").getActiveKey(context.secrets, id)).key)
       : await assistant.models({ assistant: id, extensionPath: assistantExtension(id),
-        executable: await assistant.executableFor(vscode, id, assistantExtension(id)) })) };
+        executable: await assistant.executableFor(vscode, id, assistantExtension(id)),
+      profile: assistant.profileFor(vscode, id),
+        profile: assistant.profileFor(vscode, id) })) };
   } catch (e) {
     return { assistant: id, error: e.message };
   }

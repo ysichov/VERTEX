@@ -12,7 +12,8 @@ async function probe(vscode, secrets, id, model, extensionPath, executable) {
     const apiKey = (await require("./key-profiles").getActiveKey(secrets, id)).key;
     result = id === "anthropic-api" ? await require("./anthropic").ask({ ...options, apiKey })
       : await compatible.ask({ ...options, apiKey });
-  } else result = await require("./assistant").ask({ ...options, extensionPath: extensionPath(id), executable: await executable(id) });
+  } else result = await require("./assistant").ask({ ...options, extensionPath: extensionPath(id), executable: await executable(id),
+    profile: require("./assistant").profileFor(vscode, id) });
   if (!result?.plan?.answer?.trim()) throw new Error("The model returned no answer.");
 }
 

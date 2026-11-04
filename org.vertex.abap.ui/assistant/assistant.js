@@ -211,6 +211,21 @@ function codemieModels(text) {
   return listed;
 }
 
+/* CodeMie's profiles, from its global configuration: their names and the one active in the CLI.
+   VERTEX may use another than the active one (vertex.ai.codemieProfile); empty is the active one. */
+function codemieProfiles(home) {
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(home || os.homedir(), ".codemie", "codemie-cli.config.json"), "utf8"));
+    return { names: Object.keys(config.profiles || {}).sort(), active: String(config.activeProfile || "") };
+  } catch (_) { return { names: [], active: "" }; }
+}
+// A chosen profile that CodeMie no longer has falls back to the active one.
+function profileFor(vscode, id, home) {
+  if (id !== "codemie") { return ""; }
+  const chosen = String(vscode.workspace.getConfiguration("vertex.ai").get("codemieProfile", "") || "").trim();
+  return chosen && codemieProfiles(home).names.includes(chosen) ? chosen : "";
+}
+
 // What a provider's assistant runs: the installation chosen for Claude Code or Codex, CodeMie's
 // command, nothing for a provider VERTEX asks itself.
 async function executableFor(vscode, id, extensionPath) {
@@ -257,12 +272,23 @@ async function models(options) {
     // The models of the CodeMie profile; its own default first, the one codemie setup chose.
     const file = options.executable || locate(id, "");
     const lister = path.join(path.dirname(file), process.platform === "win32" ? "codemie.js" : "codemie");
-    const result = await collect(options.spawn, lister, ["models", "list"],
-                                 { timeout: 60000, input: "", env: codemieEnv(file) });
+    // models list has no --profile: it takes the activeProfile of a .codemie configuration in the
+    // folder it runs in, which may name a global profile.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-codemie-"));
+    let result;
+    try {
+      if (options.profile) {
+        fs.mkdirSync(path.join(dir, ".codemie"));
+        fs.writeFileSync(path.join(dir, ".codemie", "codemie-cli.config.json"),
+          JSON.stringify({ version: 2, activeProfile: options.profile, profiles: {} }));
+      }
+      result = await collect(options.spawn, lister, ["models", "list"],
+                             { cwd: dir, timeout: 60000, input: "", env: codemieEnv(file) });
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
     if (result.timedOut || result.code !== 0) {
       throw new Error("CodeMie did not list its models: "
                       + (result.timedOut ? "no answer within a minute." : tail(result.stderr || result.stdout))
-                      + " Run codemie setup in a terminal.");
+                      + (options.profile ? " Profile: " + options.profile + "." : "") + " Run codemie setup in a terminal.");
     }
     return [{ id: "", label: "CodeMie default" }].concat(codemieModels(result.stdout));
   }
@@ -371,6 +397,8 @@ async function ask(options) {
     const command = claudeLike(options.assistant)
       ? claudeCommand(options, dir)
       : codexCommand(options, dir);
+    // codemie-claude takes --profile itself and passes the rest to Claude Code.
+    if (options.assistant === "codemie" && options.profile) { command.args.unshift("--profile", options.profile); }
     const env = options.assistant === "codemie" ? codemieEnv(file) : Object.assign({}, process.env);
     // The token reaches the child through its environment only: the files in
     // the folder name the variable, never the value.
@@ -701,6 +729,8 @@ exports.resolveClaude = resolveClaude;
 exports.resolveAssistant = resolveAssistant;
 exports.executableFor = executableFor;
 exports.codemieModels = codemieModels;
+exports.codemieProfiles = codemieProfiles;
+exports.profileFor = profileFor;
 exports.models = models;
 exports.probe = probe;
 exports.CLAUDE_VERSIONS = CLAUDE_VERSIONS;

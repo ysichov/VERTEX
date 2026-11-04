@@ -224,6 +224,13 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .line button { margin: 4px 0; padding: 4px 10px; }
 .line select { padding: 3px 4px; }
+/* EPAM CodeMie, while it is the chosen provider: its violet-to-blue on the provider list and on
+   VERTEX Tools, darkened for white text (5:1 at
+   least) in light and dark themes; a high-contrast theme keeps its own colours. The open list stays the theme's. */
+body.vscode-dark[data-provider="codemie"] #provider-select, body.vscode-light[data-provider="codemie"] #provider-select,
+body.vscode-dark[data-provider="codemie"] #tools, body.vscode-light[data-provider="codemie"] #tools { color: #fff; border-color: transparent; background: linear-gradient(90deg, #5b3fd6, #1a6fc4); }
+body.vscode-dark[data-provider="codemie"] #tools:hover, body.vscode-light[data-provider="codemie"] #tools:hover { background: linear-gradient(90deg, #4c33bd, #155ea8); }
+body[data-provider="codemie"] #provider-select option { color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); }
 .chat-head { margin-bottom: 4px; }
 #new-conversation { margin-left: auto; }
 #tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 6px; font-size: 1.7em; font-weight: 600; }
@@ -242,6 +249,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
 document.getElementById('provider-select').addEventListener('change', event => {
+  document.body.dataset.provider = event.target.value;
   api.postMessage({ action: 'setProvider', provider: event.target.value });
 });
 document.getElementById('model-select').addEventListener('change', event => {
@@ -390,6 +398,7 @@ window.addEventListener('message', event => {
     const select = document.getElementById('provider-select');
     select.replaceChildren(...(event.data.ai.providers || []).map(p => new Option(p.short, p.setting)));
     select.value = event.data.ai.provider;
+    document.body.dataset.provider = select.value;
   }
   if (event.data && event.data.models) {
     const select = document.getElementById('model-select');
