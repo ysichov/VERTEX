@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.54**
+**Version: 0.9.60**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -181,10 +181,11 @@ CI runner needs its own npm dependencies and `abap_transpile.json`; see
 [open-abap-core's test scripts](https://github.com/open-abap/open-abap-core/blob/main/package.json).
 Tests requiring SAP services need local substitutes or a SAP-backed job.
 
-For the built-in VERTEX Assistant, choose Claude Code, Codex, GitHub Copilot or
-an API provider in **LLM Providers**. Copilot uses the models available from a
-signed-in GitHub Copilot extension through VS Code; it can call the same SAP
-tools as the other providers. API providers are Anthropic, OpenAI, Mistral,
+For the built-in VERTEX Assistant, choose Claude Code, Codex, GitHub Copilot,
+EPAM CodeMie or an API provider in **LLM Providers**. Copilot uses the models
+available from a signed-in GitHub Copilot extension through VS Code; it can call
+the same SAP tools as the other providers. EPAM CodeMie runs Claude Code through
+the CodeMie CLI's `codemie-claude`, with the models of your CodeMie profile. API providers are Anthropic, OpenAI, Mistral,
 Gemini, Groq, Cerebras, OpenRouter and NVIDIA. This is separate from Copilot
 Chat's MCP setup.
 
@@ -730,12 +731,16 @@ for a position in the source, not for a name, so the chat says which key does it
 | **Claude subscription (Claude Code)** | Your Claude subscription | The Claude Code extension, signed in |
 | **ChatGPT subscription (Codex)** | Your ChatGPT subscription | The Codex (OpenAI) extension, signed in |
 | **GitHub Copilot (VS Code)** | Your Copilot access | The Copilot extension, signed in |
+| **EPAM CodeMie (CodeMie CLI)** | Your CodeMie project | Claude Code and the CodeMie CLI (`npm install -g @codemieai/code`), with a profile made by `codemie setup` |
 | **Anthropic API (key)** | Tokens, billed to the API key | Nothing — only the key |
 | **OpenAI, Mistral, Gemini, Groq, Cerebras, OpenRouter, NVIDIA APIs** | Usage billed by the selected provider | That provider's API key |
 
 A subscription is used through its installed client. VERTEX runs the Claude Code
 or Codex CLI from its VS Code extension or a native installation. Copilot models
-come from VS Code's Language Model API. VERTEX never reads the clients' login
+come from VS Code's Language Model API. For EPAM CodeMie, VERTEX runs
+`codemie-claude` - found on PATH, in npm's global folder or in nvm's - which signs
+in with the CodeMie profile; the model list is the profile's (`codemie models
+list`), and **CodeMie default** is the model chosen in `codemie setup`. VERTEX never reads the clients' login
 tokens. Each API provider can keep several named keys in VS Code SecretStorage.
 Choose the active name manually in **LLM Providers**; VERTEX uses that key for
 model loading and requests. Existing single keys appear as `DEFAULT`. API

@@ -21,19 +21,19 @@ function subscriptionProvider(vscode) {
   if (selected === "codex-subscription") { return "codex"; }
   if (selected === "anthropic-api") { return "anthropic-api"; }
   if (selected === "copilot") { return "copilot"; }
+  if (selected === "codemie") { return "codemie"; }
   if (compatible.PROVIDERS[selected]) { return selected; }
   throw new Error("Select a supported provider in VERTEX: LLM Providers before using chat.");
 }
 
 function extensionPath(vscode, id) {
   const item = assistant.ASSISTANTS[id];
-  const found = item && vscode.extensions.getExtension(item.extension);
+  const found = item && item.extension && vscode.extensions.getExtension(item.extension);
   return found && found.extensionPath;
 }
 
 async function assistantExecutable(vscode, id) {
-  return id === "claude" || id === "codex"
-    ? assistant.resolveAssistant(vscode, id, extensionPath(vscode, id)) : undefined;
+  return assistant.executableFor(vscode, id, extensionPath(vscode, id));
 }
 
 /* The open editor tabs as metadata only - never a file's content. */

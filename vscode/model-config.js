@@ -20,6 +20,7 @@ const PROVIDERS = [
   { id: "claude", setting: "claude-subscription", label: "Claude subscription (Claude Code)", short: "Claude" },
   { id: "codex", setting: "codex-subscription", label: "ChatGPT subscription (Codex)", short: "ChatGPT" },
   { id: "copilot", setting: "copilot", label: "GitHub Copilot (VS Code)", short: "Copilot" },
+  { id: "codemie", setting: "codemie", label: "EPAM CodeMie (CodeMie CLI)", short: "CodeMie" },
   { id: "anthropic-api", setting: "anthropic-api", label: "Anthropic API (key)", short: "Anthropic API" },
   ...Object.entries(compatible.PROVIDERS).map(([id, provider]) => ({
     id, setting: id, label: provider.label + " API (key)", short: provider.label + " API"

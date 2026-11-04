@@ -3,7 +3,7 @@
 
 ## Install
 
-Current VS Code extension: **0.9.54**.
+Current VS Code extension: **0.9.60**.
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
@@ -51,7 +51,7 @@ and AVE show them) instead of being cut from the class's; without it, reviews ar
 parts say they need the backend. The Eclipse plugin does the same. The last column below says what needs it.
 
 In VS Code, the built-in VERTEX Assistant can use Codex, Claude Code, a signed-in
-GitHub Copilot model or API keys for Anthropic, OpenAI, Mistral, Gemini, Groq,
+GitHub Copilot model, EPAM CodeMie through the CodeMie CLI or API keys for Anthropic, OpenAI, Mistral, Gemini, Groq,
 Cerebras, OpenRouter and NVIDIA. Provider model lists can be collapsed independently.
 Each list has a Clear all / Select all control for its model checkboxes.
 If a provider returns no models, LLM Providers displays an explicit empty-state message.
@@ -84,7 +84,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.54.20261103215020**; the VS Code extension is **0.9.54**.
+**0.9.54.20261103215020**; the VS Code extension is **0.9.60**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.

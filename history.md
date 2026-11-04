@@ -1,5 +1,11 @@
 # Release history
 
+## 2026-11-04 — 0.9.60: EPAM CodeMie as an AI provider
+
+- VS Code: **EPAM CodeMie (CodeMie CLI)** is an AI provider after GitHub Copilot. It runs Claude Code through the CodeMie CLI's `codemie-claude` with the SAP tools the other providers get; the model list is the CodeMie profile's, and **CodeMie default** is the model chosen in `codemie setup`.
+- A transport request whose objects are in a namespace (`/NS/`) is covered by a test of its object list and ADT addresses.
+- VS Code 0.9.60 built and verified. Eclipse sources are at 0.9.60, but the Eclipse update site was not rebuilt and stays at 0.9.54.20261103215020.
+
 ## 2026-11-03 — 0.9.54: Logic diagram for reports and forms
 
 - The Logic diagram draws a report's events (START-OF-SELECTION, AT SELECTION-SCREEN and the others, and a report's statements outside every event); before, an event showed only its title. FORM and dialog MODULE routines are drawn as well.
