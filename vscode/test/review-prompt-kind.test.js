@@ -50,6 +50,17 @@ test("a created object goes to the prompt whole and named NEW, a changed one nam
   assert.doesNotMatch(prompt, /old_price/);
 });
 
+test("a class's parts are named under their class", () => {
+  const state = context();
+  state.review_part = { objtype: "METH", display_name: "RUN", class_name: "ZCL_NEW", is_created: true };
+  assert.match(state.reviewPrompt(false, null, "technical"), /NEW object ZCL_NEW=>RUN, created in this transport/);
+  assert.match(state.reviewPrompt(false, null, "technical"), /for a created one go through every method/);
+  state.review_part = { objtype: "CPUB", display_name: "ZCL_NEW=======CU", class_name: "ZCL_NEW" };
+  assert.match(state.reviewPrompt(false, null, "technical"), /ZCL_NEW, public section/);
+  state.review_part = { objtype: "REPS", display_name: "ZPROG" };
+  assert.match(state.reviewPrompt(false, null, "technical"), /MODIFIED object ZPROG -/);
+});
+
 test("code review remains the default prompt", () => {
   const state = context();
   const prompt = state.reviewPrompt(false);

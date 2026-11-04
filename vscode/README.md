@@ -1,5 +1,8 @@
 # SAP ABAP VERTEX Tools
 
+**Version: 0.9.58**
+
+
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
 
 **Serverless, in VS Code** - the ABAP transpiler runs ABAP on your machine:
@@ -40,7 +43,7 @@ what needs it.
 | **Block folding** | — | IF, CASE, LOOP, TRY, METHOD, FORM and other ABAP blocks and their branches fold by the code's structure, so unformatted code folds too | not needed |
 | **AI Assistant** | [ABAP-AI-Code](https://github.com/ysichov/ABAP-AI-Code) | Chat over any configured SAP system: reads, explains and changes code — the change lands in the tab, reviewed block by block before activation — runs the tests and ATC on an object, and drives the debugger | not needed |
 | **Versions / Reviewer** | [AVE](https://github.com/ysichov/AVE) | Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, each block's author and, with Blame, the developer who wrote each changed line, and the two MCP transport tools | to save reviews in SAP |
-| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Diagram of one method; a method opened from Calls draws its Diagram in the same picture | not needed |
+| **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture | not needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | not needed |
 
 **Grew out of** names where a tool's ideas were worked out first; those projects are not developed
@@ -373,7 +376,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   enter its name (a name with `*` or `+`, such as `Z_VX*`, lists the objects of that type that
   match; pick one with the mouse or the arrow keys and Enter; a plain name that is not found
   lists the names starting with it), then choose the available function (for example Data,
-  UML diagram, Metrics, Calls diagram, Diagram, Diff or Versions). Only the functions that
+  UML diagram, Metrics, Calls diagram, Logic diagram, Diff or Versions). Only the functions that
   apply to the chosen type are offered: a transport has Versions and its review, a class or a
   program metrics, diagrams and diff, a package its package-level views. **Object Navigator**, first and the default for a
   package, a transport request, a program, an include (its program's tree), a function module (its group's tree), a class or an interface, is SE80's Repository Browser tree: a package's subpackages and its objects
@@ -384,7 +387,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   its source in the editor beside the tree, a component at its line, and the tree keeps the focus. **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
   per class or per method, and picking an event or a form in Parts starts the calls there, as a
-  double-click in ACE's tree does (a click on the object's name at the top of the parts list goes back to the whole program). **Diagram** is one method, as its code (Code) or as its flowchart (Diagram, ACE's Flow Scheme). A magnifier follows the
+  double-click in ACE's tree does (a click on the object's name at the top of the parts list goes back to the whole program). **Logic diagram** is one method, as its code (Code) or as its flowchart (Diagram, ACE's Flow Scheme). A magnifier follows the
   pointer over every diagram; Shift and two fingers on the touchpad (or the wheel) change its strength; Ctrl and a pinch zoom
   the whole picture. The available functions depend
   on the selected object type; there are no separate SelecTor, Metrics or
@@ -744,6 +747,10 @@ The panel shows the provider's short name. Changing the provider there
 switches at once and clears the chosen model (`vertex.ai.provider`, `vertex.ai.model`).
 
 ### Which models are offered
+
+Open **VERTEX: LLM Providers** from the VERTEX panel's sparkle icon. Press **Check models** beside the provider you want to check: only that provider's models are tested. The button shows **Checking…**, and progress and the final working-model count appear beside it. **Stop** in the same provider header stops after the current request.
+
+Failed models are switched off and show their failure reason. **Save** applies these choices to the chat model lists; other providers keep their choices. Checks use short requests with no SAP source or workspace context. They require the provider's existing sign-in or active API key and consume its normal quota or billing. A temporary connection failure can also fail a check; rerun it to check availability again.
 
 **LLM Providers** shows every provider with its own checkbox, **In use** switch,
 and a fold button for its model list. Each provider can be expanded or collapsed
@@ -1556,3 +1563,5 @@ What changed in each version: [history.md](https://github.com/ysichov/VERTEX/blo
 MIT. See [the project](https://github.com/ysichov/VERTEX).
 
 With a VS Code AI log folder configured, `vertex_provider_response` JSONL records retain original provider `usage` fields, including nested token details. Claude Code also retains per-model `modelUsage`, reported cost and turn count in a separate `cli_run` record; streamed assistant messages use `model_response`. Direct Anthropic and compatible APIs retain metadata per response. These diagnostic records do not contribute again to session totals. Answer bodies, credentials and HTTP headers are not included in these metadata records.
+
+For a method with no separate version directory, Diff uses the class history and extracts that method, with a notice identifying the source of the history.

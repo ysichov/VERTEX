@@ -1,5 +1,12 @@
 # Release history
 
+## 2026-11-04 — 0.9.58: model checks per provider, Logic diagram label, method history fallback
+
+- Transport review, both hosts: in a prompt a class's parts carry their class - `ZCL_X=>RUN`, `ZCL_X, public section` - instead of the bare method name, and the documentation prompt asks for every method of a created class, each with its purpose, parameters, processing and result.
+- LLM Providers, VS Code: **Check models** beside each provider tests only that provider's listed models with short requests, shows Checking, progress and the working-model count, and **Stop** in the provider header ends the scan after its current request. **Save** keeps failed models out of chat choices. No SAP source is sent; normal provider usage applies.
+- Tools, both hosts: the method diagram is labelled **Logic diagram**, in Tools and in its VS Code command.
+- Method Diff, both hosts: when a system keeps no separate method versions, the method is shown from its class history, with a notice.
+
 ## 2026-11-04 — 0.9.57: new objects named in the documentation prompt
 
 - Object Navigator, both hosts: a transport request's tree hides an object only a released task holds - taken out of the request - and **Show removed objects**, offered when there is one, shows such objects in red.
@@ -36,9 +43,9 @@
 - The shared Code Flow Analysis depth field now keeps its normal number-input appearance instead of inheriting the zoom slider's range styling. The class tree also retains `ZCL_CALC_LOG` when a recorded frame identifies it.
 - VS Code 0.9.53 was repackaged and verified.
 
-## Unreleased — Eclipse: Value origin analyses again
+## 2026-11-03 — 0.9.53: Eclipse Value origin analyses again
 
-- **Forward usage** (Value origin) in Eclipse runs its analysis again instead of stopping with *Value origin in Eclipse has no module ./value-origin-linter*; function module signatures are read there too. It reaches Eclipse with the next update-site build.
+- **Forward usage** (Value origin) in Eclipse runs its analysis again instead of stopping with *Value origin in Eclipse has no module ./value-origin-linter*; function module signatures are read there too. Included in Eclipse build `0.9.53.20261103165610`.
 
 ## 2026-11-02 — 0.9.53: editable review prompts
 

@@ -92,7 +92,7 @@
 
 <p>In VS Code, importing SAP systems offers Eclipse workspaces that still contain ABAP projects or logon settings; a remembered path to a removed workspace is not offered. On macOS it also reads SAP GUI for Java connections from <code>~/Library/Preferences/SAP/SAPGUILandscape.xml</code> (also <code>SAPUILandscape.xml</code> and <code>SAPUILandscapeGlobal.xml</code>). Choose <b>No Eclipse workspace</b> to import from SAP GUI alone; client and user are requested. If a connection has no system ID field, its name must be an exact three-character SAP system ID.</p>
 
-<p class="build">Latest build <b>0.9.57.20261104161607</b>.</p>
+<p class="build">Latest build <b>0.9.58.20261104165411</b>.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -141,7 +141,7 @@
       Eclipse, and in VS Code VERTEX's own line differ (Myers), written from the published algorithm
       because Eclipse's comparer is under the EPL and VERTEX is MIT.</li>
   <li><b>Calls, Logic and UML diagrams.</b> The flow of a program is now the <i>Calls
-      diagram</i> and the branch scheme of one method the <i>Diagram</i>. Calls starts
+      diagram</i> and the branch scheme of one method the <i>Logic diagram</i>. Calls starts
       from the event or form picked in Parts, as a double-click in ACE's tree does, and draws
       one block per method or per class. Clicking one of those methods draws its Diagram
       inside the same canvas, joined to the block it came from, so the call and what it does
@@ -186,7 +186,7 @@
   <tr><td><b>Block folding</b></td><td>VS Code: IF, CASE, LOOP, TRY, METHOD, FORM and other ABAP blocks and their branches fold by the code's structure, so unformatted code folds too</td><td>not needed</td></tr>
   <tr><td><b>AI Assistant</b></td><td>Chat over the SAP system: reads, explains and changes code &mdash; the change is reviewed block by block before activation &mdash; runs the tests and ATC on an object, and drives the debugger</td><td>not needed</td></tr>
   <tr><td><b>Versions / Reviewer</b></td><td>Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, each block's author and, with <i>Blame</i>, the developer who wrote each changed line</td><td>to save reviews in SAP</td></tr>
-  <tr><td><b>Code Explorer</b></td><td>Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Diagram of one method; a method opened from Calls draws its Diagram in the same picture</td><td>not needed</td></tr>
+  <tr><td><b>Code Explorer</b></td><td>Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method; a method opened from Calls draws its Logic diagram in the same picture</td><td>not needed</td></tr>
   <tr><td><b>Data Explorer (SelecTor)</b></td><td>Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either. Run Select shows SELECT, WHERE, JOIN ON and ORDER BY fields together in the result; WHERE host values are not result columns; the selection panel starts folded and grouped queries retain their pivot shape.</td><td>not needed</td></tr>
 </table>
 
@@ -358,5 +358,6 @@ In VS Code, the <b>SNC</b> checkbox beside the SAP system selector switches betw
   link.href = document.getElementById("logo").src;
   document.head.appendChild(link);
 </script>
+<p>In VS Code, LLM Providers offers Check models beside each provider: short requests test only that provider’s listed models, with progress and the working-model count beside that provider’s button. Save keeps failed models out of chat choices. Stop in the provider header ends the scan after its current request. Normal provider usage applies; no SAP source is sent. Method Diff can use the class history when a separate method version directory is empty, with a notice.</p>
 </body>
 </html>

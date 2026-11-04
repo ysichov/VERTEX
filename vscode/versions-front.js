@@ -165,6 +165,11 @@ async function historyOf(api, ptype, part, where) {
      VERTEX's ABAP reads their text, the method's history is VRSD's; without it, the class include's feed, cut. */
   if (ptype === "METH" && await dictionaryReady(api)) {
     const own = await methodHistory(api, part, where);
+    if (!own.feed.length) {
+      // Some systems keep only the class include's directory, even with a readable METH backend.
+      return { feed: await api.revisions(where.url, where.include || undefined), textOf: null,
+        notice: "No separate method versions were recorded; showing this method from its class history." };
+    }
     if (await methodsReadable(api, own)) { return own; }
     return { feed: await api.revisions(where.url, where.include || undefined), textOf: null, notice: OLD_BACKEND };
   }

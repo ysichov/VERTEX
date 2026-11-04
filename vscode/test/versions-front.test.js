@@ -231,3 +231,13 @@ test("review comparison ignores indentation and trailing whitespace but keeps li
   const literal = await diff(["lv_x = 'abc'."], ["LV_X = 'ABC'."], "indentation");
   assert.ok(literal.some(op => op.op === "+"));
 });
+
+test("a method without a VRSD directory still reads its class history when the backend is present", async () => {
+  const { api } = classSession();
+  api.ddicVersions = async () => true;
+  api.ddicVersion = async () => { throw new Error("No own version should be read"); };
+  const part = encodeURIComponent("ZCL_X" + " ".repeat(25) + "RUN");
+  const result = await request(api, "/sap/bc/adt/vertex/versions/ZCL_X?type=CLAS&part=" + part + "&ptype=METH");
+  assert.deepStrictEqual(result.versions.map(v => v.version), ["00003", "00001"]);
+  assert.match(result.notice, /class history/);
+});

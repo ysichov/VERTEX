@@ -1,0 +1,37 @@
+"use strict";
+
+// Availability checks are explicit, tiny requests without SAP or workspace context.
+const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false };
+async function probe(vscode, secrets, id, model, extensionPath, executable) {
+  const options = { assistant: id, model, tools: [], schema, token: "", timeout: 60000,
+    instructions: "This is a connectivity check. Return the answer OK. Do not use tools.", prompt: "Reply OK." };
+  let result;
+  const compatible = require("./openai-compatible");
+  if (id === "copilot") result = await require("./copilot").ask(vscode, options);
+  else if (id === "anthropic-api" || compatible.PROVIDERS[id]) {
+    const apiKey = (await require("./key-profiles").getActiveKey(secrets, id)).key;
+    result = id === "anthropic-api" ? await require("./anthropic").ask({ ...options, apiKey })
+      : await compatible.ask({ ...options, apiKey });
+  } else result = await require("./assistant").ask({ ...options, extensionPath: extensionPath(id), executable: await executable(id) });
+  if (!result?.plan?.answer?.trim()) throw new Error("The model returned no answer.");
+}
+
+async function detect(providers, list, check, report, cancelled = () => false) {
+  const results = [];
+  for (const provider of providers) {
+    if (cancelled()) break;
+    let models;
+    try { models = await list(provider.id); }
+    catch (error) { results.push({ provider: provider.id, error: String(error.message || error), rows: null }); continue; }
+    const rows = [];
+    for (const model of models) {
+      if (cancelled()) return { results, cancelled: true };
+      report({ provider: provider.id, model: model.label || model.id });
+      try { await check(provider.id, model.id); rows.push({ ...model, on: true, available: true }); }
+      catch (error) { rows.push({ ...model, on: false, available: false, reason: String(error.message || error) }); }
+    }
+    results.push({ provider: provider.id, rows });
+  }
+  return { results, cancelled: cancelled() };
+}
+module.exports = { probe, detect };

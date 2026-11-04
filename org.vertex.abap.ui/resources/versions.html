@@ -1942,7 +1942,7 @@ Analysis rules:
 2. Do not infer functionality that is not supported by the code.
 3. Distinguish changed technical objects from existing tables, CDS views, infotypes, classes, methods, function modules, and other dependencies that are only read or called.
 4. Do not list a referenced dependency as a changed technical object unless its implementation or definition is modified in the diff.
-5. Organize the documentation by technical object, and keep created objects apart from modified ones. An object the diff marks as NEW was created in this transport: describe its whole functionality as it now is - its purpose, inputs, processing, conditions and results - and do not word it as a change. For a modified object describe only the purpose of the change, new or modified processing, conditions under which it executes, and resulting system behavior.
+5. Organize the documentation by technical object, and keep created objects apart from modified ones. An object the diff marks as NEW was created in this transport: describe its whole functionality as it now is - its purpose, inputs, processing, conditions and results - and do not word it as a change. A class or interface comes in parts - its sections and each method, named CLASS=>METHOD: document it as one object, and for a created one go through every method, each with its purpose, parameters, processing and result. For a modified object describe only the purpose of the change, new or modified processing, conditions under which it executes, and resulting system behavior.
 6. If the same business requirement is implemented in several objects, describe its implementation separately under each object. Some overlap is acceptable because the documentation must remain object-oriented.
 7. Move rules, constants, classifications, or value lists shared by several objects into one common section before the object-specific sections. Do not repeat them under every object.
 8. For modified objects, focus on changed behavior. Do not document unchanged parameters and outputs, unaffected standard processing, general system behavior, implementation details that do not explain the change, or inactive or commented-out code as active functionality.
@@ -2040,11 +2040,22 @@ function promptEditorButton(kind) {
   button.onclick = function () { showPromptEditor(kind); };
   return button;
 }
+/* A part as the prompt names it: a method or a section of a class under its class, so the model can put a class back
+   together from its parts - a method's own name alone (RUN) tells it nothing. */
+var SECTION_NAMES = { CPUB: "public section", CPRO: "protected section", CPRI: "private section" };
+function promptPartName(part) {
+  if (!part) return "";
+  var own = part.display_name || part.obj_name || "";
+  var owner = String(part.class_name || "").trim();
+  if (!owner) return own;
+  if (part.objtype === "METH") return owner + "=>" + own;
+  return owner + ", " + (SECTION_NAMES[part.objtype] || own);
+}
 function reviewPrompt(full, scope, kind) {
   var review_part = scope ? scope.object : globalThis.review_part;
   var review_ops = scope ? scope.body.ops : globalThis.review_ops;
   var review_blocks = scope ? scope.body.blocks : globalThis.review_blocks;
-  var name = review_part ? (review_part.display_name || review_part.obj_name) : "";
+  var name = promptPartName(review_part);
   kind = kind || "review";
   // An object the review marks created - no earlier version - or one all of added lines: the prompt says it is new,
   // so it is described whole.

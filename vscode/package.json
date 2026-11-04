@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.57",
+  "version": "0.9.58",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -259,7 +259,7 @@
       },
       {
         "command": "vertex.tools.scheme",
-        "title": "VERTEX: Diagram"
+        "title": "VERTEX: Logic diagram"
       },
       {
         "command": "vertex.tools.calls",
