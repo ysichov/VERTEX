@@ -318,8 +318,10 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         log.assistant({ model: result.model, usage: result.usage, text: result.plan.answer });
       }
       return { answer: result.plan.answer, model: result.model, usage: result.usage,
-        // Only CodeMie's cost is money spent; a Claude subscription's is a notional figure.
-        cost: id === "codemie" && typeof result.cost === "number" ? result.cost : undefined,
+        // Only CodeMie's cost is money spent; a Claude subscription's is a notional figure. It is
+        // Claude Code's estimate from list prices, not CodeMie's bill, so it is shown on request only.
+        cost: id === "codemie" && config.get("showCodemieCost", false) && typeof result.cost === "number"
+          ? result.cost : undefined,
         navigation: result.plan.navigation ? objectTools.normalize(result.plan.navigation) : null };
     } finally { if (activeRequest === turn) activeRequest = null; }
   };

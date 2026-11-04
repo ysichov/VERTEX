@@ -473,6 +473,11 @@
           "default": "ask",
           "markdownDescription": "Claude Code installation used by VERTEX. `ask` prompts once when both the VS Code extension and standalone CLI are available. Change this setting to switch installations."
         },
+        "vertex.ai.showCodemieCost": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show the cost of each EPAM CodeMie answer after its token counts in the VERTEX panel. The figure is Claude Code's estimate from the model's list price, not what CodeMie charges; the budget and spending are on the CodeMie site."
+        },
         "vertex.ai.codemieProfile": {
           "type": "string",
           "default": "",

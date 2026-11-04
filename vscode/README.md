@@ -745,10 +745,12 @@ in LLM Providers picks one of the CodeMie profiles (`codemie setup` makes one pe
 project or account), shown when there are two or more; **Active in CodeMie** follows `codemie profile switch`, and so does a chosen profile CodeMie no longer has. The
 choice is kept in `vertex.ai.codemieProfile`. While EPAM CodeMie is the chosen
 provider, the provider list and the VERTEX Tools button in the VERTEX panel show
-CodeMie's indigo-to-magenta gradient in light and dark themes; a high-contrast theme keeps its own colours.
-Under each CodeMie answer the token line ends with its cost, as Claude Code
-reckons it from the model's price (`≈ $0.0022`); the budget itself is on the
-CodeMie site, under Profile → Your personal spending. VERTEX never reads the clients' login
+CodeMie's indigo-to-magenta gradient in light and dark themes, as does EPAM CodeMie's row in LLM Providers;
+a high-contrast theme keeps its own colours.
+With `vertex.ai.showCodemieCost` on (off by default), the token line under each
+CodeMie answer ends with its cost (`≈ $0.0022`). It is Claude Code's estimate
+from the model's list price, not what CodeMie charges; the budget and spending
+are on the CodeMie site, under Profile → Your personal spending. VERTEX never reads the clients' login
 tokens. Each API provider can keep several named keys in VS Code SecretStorage.
 Choose the active name manually in **LLM Providers**; VERTEX uses that key for
 model loading and requests. Existing single keys appear as `DEFAULT`. API

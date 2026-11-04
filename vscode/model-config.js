@@ -302,6 +302,10 @@ button { font: inherit; }
 .prov { margin: 0 0 14px; }
 .phead { display: flex; gap: 8px; align-items: center; padding: 5px 8px; font-weight: 600; max-width: 600px;
          background: var(--vscode-sideBar-background, transparent); border: 1px solid var(--vscode-panel-border); }
+/* EPAM CodeMie's row, in CodeMie's gradient as in the VERTEX panel (light and dark themes; high
+   contrast keeps the theme's colours). Its buttons keep theirs. */
+body.vscode-dark .phead.codemie, body.vscode-light .phead.codemie { color: #fff; border-color: transparent;
+  background: linear-gradient(90deg, #4f46e5, #9333ea 55%, #c026d3); }
 .phead .use { margin-left: auto; font-weight: normal; display: flex; gap: 4px; align-items: center; }
 .pbody { margin-left: 22px; }
 .prov.off .pbody { opacity: .55; }
@@ -334,7 +338,7 @@ function build() {
   INIT.providers.forEach(p => {
     const s = state[p.id];
     const box = el("div", { className: "prov" + (s.on ? "" : " off") });
-    const head = el("div", { className: "phead" });
+    const head = el("div", { className: "phead" + (p.id === "codemie" ? " codemie" : "") });
     const fold = el("button", { className: "fold", type: "button", textContent: s.expanded ? "▾" : "▸",
       title: s.expanded ? "Collapse models" : "Expand models" });
     fold.setAttribute("aria-expanded", String(s.expanded));
