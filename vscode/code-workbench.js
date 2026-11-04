@@ -56,6 +56,10 @@ async function originStep(log, label, work) {
   }
 }
 
+// A namespaced name (/CFF/CL_CCS) cannot stand in a path: VS Code decodes %2F to a real slash, and the tab is then
+// looked up under a different path than it was made under. The namespace is written as (CFF), as SAP's file names do.
+const pathName = name => encodeURIComponent(String(name).replace(/^\/([^/]+)\//, "($1)"));
+
 function register(vscode, context, { active, auth, pin, pinned, systems }) {
   const events = require("./agent-events").createEmitter();
   const pendingRepositories = new Map();
@@ -1184,7 +1188,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     if (!entry) {
       const system = require("crypto").createHash("sha256").update(repo.key).digest("hex").slice(0, 16);
       const uri = vscode.Uri.parse("vertex-sap:/" + system + "/" + data.object_type + "/"
-        + encodeURIComponent(data.object_name) + (data.include === "main" ? "" : "." + data.include) + ".abap");
+        + pathName(data.object_name) + (data.include === "main" ? "" : "." + data.include) + ".abap");
       entry = opened.get(uri.toString()) || { repo, data };
       if (entry.document && entry.document.isClosed) { entry.data = data; }
       opened.set(uri.toString(), entry);
@@ -2726,7 +2730,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     // The address of an object's VERTEX tab, open or not, as sourceDocument makes it; and that tab's document.
     sourceUri: async ({ object_name, object_type, include = 'main' }) => {
       const system = require('crypto').createHash('sha256').update((await repository()).key).digest('hex').slice(0, 16);
-      return vscode.Uri.parse('vertex-sap:/' + system + '/' + object_type + '/' + encodeURIComponent(object_name)
+      return vscode.Uri.parse('vertex-sap:/' + system + '/' + object_type + '/' + pathName(object_name)
         + (include === 'main' ? '' : '.' + include) + '.abap').toString();
     },
     sourceOf: async args => (await sourceDocument(await repository(), args)).document,

@@ -1,10 +1,11 @@
 # Release history
 
-## Unreleased — VS Code: SNC through a message server, ABAP from any editor
+## 2026-11-04 — 0.9.55: SNC through a message server, ABAP from any editor, namespaced objects
 
 - An SNC system reached through a SAP Logon group connects: `rfc.mshost`, `rfc.sysid`, `rfc.group` and optionally `rfc.msserv` replace `rfc.ashost`/`rfc.sysnr`, and **VERTEX: Import SAP Systems** no longer skips such entries.
 - A failed SNC connection names the address it used; **SAP Systems** opens the connection log and, with `vertex.rfcTrace` 1-3, the SAP NW RFC SDK trace folder.
 - The chat reads the whole ABAP source of any editor, including one another extension opened (ABAP remote filesystem, SAP's ADT extension), instead of a visible line.
+- An object with a namespace (`/1FB/CL_TR_CONT_ACCESS_10`) opens in its VERTEX tab again: the tab's address writes the namespace as `(1FB)`, so VS Code no longer fails with "Unable to resolve nonexistent file".
 - With no SAP system in VERTEX, UML, Metrics, Logic and Calls analyse such a source from its editor text.
 
 ## 2026-11-02 — 0.9.53: debugger depth control

@@ -1,5 +1,13 @@
 # Development history
 
+## 2026-11-04 — 0.9.55: namespaced objects in the tab address
+
+Opening `/CFF/CL_CCS` from a Tools window failed with "Unable to resolve nonexistent file vertex-sap:/.../CLAS/CFF/CL_CCS.abap". The address was built with `encodeURIComponent`, and VS Code decodes `%2F` into a real slash when it parses the URI, so the path the file system provider is asked for is not the one the tab was stored under (`opened`/`savedEntries` are keyed by `uri.toString()`). This is a hypothesis from the code: not reproduced in VS Code, and `/CFF/CL_CCS` is not on the test system; `/1FB/CL_TR_CONT_ACCESS_10` is.
+
+- `code-workbench.js` `pathName` writes a leading `/NS/` as `(NS)`; `sourceDocument` and `sourceUri` both use it. Nothing reads the name back from the address, the entry holds the real one.
+- No test for it yet. The existing code-workbench tests pass.
+- Built on 0.9.55 for both hosts: VSIX and Eclipse update site 0.9.55.20261104102238, published into `docs/`. The version skips 0.9.54 as named.
+
 ## 2026-11-03 — SNC through a message server; ABAP from any editor
 
 At a customer, import skipped every SNC system ("SNC logon group: no application server for RFC is specified"), so the code was opened with another extension (ABAP remote filesystem, `adt://`), where the chat saw one line and Tools had nothing to read.
