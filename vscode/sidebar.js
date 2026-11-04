@@ -224,8 +224,12 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 .secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
 .link { color: var(--vscode-textLink-foreground); text-decoration: none; }
 .link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
-#logs { margin: 0 0 0 auto; padding: 3px 6px; font-size: 17px; line-height: 1; background: transparent; color: var(--vscode-foreground); }
-#logs:hover { background: var(--vscode-list-hoverBackground); }
+/* The two log buttons are one pair, styled as the view's title actions beside them: no fill or
+   border until hovered, then the toolbar's hover colour. */
+#logs, #execution-logs { padding: 3px 6px; font-size: 17px; line-height: 1; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
+#logs { margin: 0 0 0 auto; }
+#logs:hover, #execution-logs:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
+#logs:focus-visible, #execution-logs:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .line button { margin: 4px 0; padding: 4px 10px; }
 .line select { padding: 3px 4px; }

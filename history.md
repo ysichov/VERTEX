@@ -6,6 +6,7 @@
 - **Profile** under EPAM CodeMie in LLM Providers chooses which CodeMie profile (project or personal account) VERTEX uses, independently of the one active in the CLI; it is shown when there are two or more profiles, and **Active in CodeMie** (or a profile CodeMie no longer has) follows `codemie profile switch`.
 - While EPAM CodeMie is chosen, the provider list and the VERTEX Tools button in the VERTEX panel show CodeMie's indigo-to-magenta gradient (light and dark themes; high contrast keeps the theme's colours).
 - Each CodeMie answer in the VERTEX panel shows its cost after the token counts (`≈ $0.0022`), as Claude Code reckons it.
+- The VERTEX panel's 📜 SAP log button and 📜 AI look like the title actions beside them: coloured only on hover. 📜 SAP had the filled button style.
 - A transport request whose objects are in a namespace (`/NS/`) is covered by a test of its object list and ADT addresses.
 - VS Code 0.9.60 built and verified. Eclipse sources are at 0.9.60, but the Eclipse update site was not rebuilt and stays at 0.9.54.20261103215020.
 
