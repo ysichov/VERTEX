@@ -122,8 +122,11 @@ function open(vscode, context, deps, initial) {
   // chosen later is for the windows opened after. The tab names it.
   const opened = local ? null : deps.active();
   const system = local ? "" : opened.error ? "" : opened.system.name;
-  const pin = work => local ? work() : deps.pin ? deps.pin(system, work) : work();
-  const panel = deps.panel || vscode.window.createWebviewPanel("vertex.tools", initial?.boundObject ? initial.name + " · VERTEX Tools" : system ? "VERTEX " + system : "VERTEX Tools", // Run Select opens SelecTor beside the code it came from.
+  // And its client, when the system lists more than one: the tab names it, and a client picked later is for new windows.
+  const client = local || opened.error || !opened.system.clients ? "" : opened.system.client;
+  const pin = work => local ? work() : deps.pin ? deps.pin(system, work, client) : work();
+  const named = system ? "VERTEX " + system + (client ? " " + client : "") : "VERTEX Tools";
+  const panel = deps.panel || vscode.window.createWebviewPanel("vertex.tools", initial?.boundObject ? initial.name + " · VERTEX Tools" : named, // Run Select opens SelecTor beside the code it came from.
     initial?.boundObject || initial?.selectorPlan ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   let ask;
@@ -229,7 +232,7 @@ function open(vscode, context, deps, initial) {
     const args = message.args || [];
     try {
       if(message.call === "localFolder") {
-        if(args[0]===true) { local=null;panel.title=system?'VERTEX '+system:'VERTEX Tools'; return; }
+        if(args[0]===true) { local=null;panel.title=named; return; }
         const path=require('path');
         const active=vscode.window.activeTextEditor?.document?.uri;
         const defaultUri=active?.scheme==='file'?vscode.Uri.file(path.dirname(active.fsPath)):vscode.workspace.workspaceFolders?.[0]?.uri;

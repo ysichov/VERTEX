@@ -12,11 +12,11 @@ const withSystem = tool => tool.name === "review_sap_changes" ? tool : { ...tool
 const openSchema = require("./schemas/sap-code-tools.json").find(t => t.name === "read_sap_object").inputSchema;
 const schemas = require("./schemas/sap-code-tools.json").concat([{
   name: "open_sap_object",
-  description: "Open SAP source in an editable VS Code tab, or a package in Object Navigator. Does not save to SAP.",
+  description: "Open SAP source in an editable VS Code tab, a package in Object Navigator, or a table in a VERTEX window on its data (a structure on its fields). Does not save to SAP.",
   // Opens the SAP editor without modifying repository data.
   annotations: { readOnlyHint: true, destructiveHint: false },
   inputSchema: { ...openSchema, properties: { ...openSchema.properties,
-    object_type: { ...openSchema.properties.object_type, enum: openSchema.properties.object_type.enum.concat("DEVC") } } }
+    object_type: { ...openSchema.properties.object_type, enum: openSchema.properties.object_type.enum.concat("DEVC", "TABL") } } }
 }, {
   name: "run_abap_unit",
   description: "Run the ABAP Unit tests of a class or program in SAP and return the result: test classes, passed, failed and the failure messages. "
@@ -1205,6 +1205,17 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       await vscode.commands.executeCommand("vertex.tools", { type: "DEVC", name: packageName,
         action: "navigator", systemName: repo.system.name });
       return { opened: true, object_name: packageName, object_type: "DEVC", system: repo.label };
+    }
+    // A table has no source tab: it opens in a VERTEX window on its data, as the chat's navigation opens one.
+    if (args.object_type === "TABL") {
+      const tableName = String(args.object_name || "").toUpperCase();
+      if (!/^[A-Z0-9_/$]+$/.test(tableName) || tableName.length > 30) throw new Error("Invalid table name.");
+      // A structure has no rows: it opens on its fields, a table on its data.
+      const kind = await repo.api.query("SELECT tabclass FROM dd02l WHERE tabname = '" + tableName.replace(/'/g, "''") + "' AND as4local = 'A'", 1);
+      const tabclass = kind.values.length ? String(kind.values[0].TABCLASS) : "";
+      const action = ["TRANSP", "CLUSTER", "POOL"].includes(tabclass) ? "data" : "fields";
+      await vscode.commands.executeCommand("vertex.tools", { type: "TABL", name: tableName, action, systemName: repo.system.name });
+      return { opened: true, object_name: tableName, object_type: "TABL", system: repo.label };
     }
     const entry = await sourceDocument(repo, args);
     const viewColumn = vscode.window.activeTextEditor?.viewColumn || vscode.ViewColumn.One;

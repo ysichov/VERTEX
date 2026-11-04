@@ -202,3 +202,32 @@ test("macOS import without an Eclipse workspace reads SAP GUI for Java", async (
     assert.match(messages[0], /every system found.*already in vertex.systems/);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
+
+test("a client the system does not list yet is added to its clients, not as a second system", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-clients-import-"));
+  const workspace = path.join(home, "ws");
+  for (const [dir, client] of [["p1", "600"], ["p2", "610"]]) {
+    const folder = path.join(workspace, ".metadata", ".plugins", "org.eclipse.core.resources.semantic", ".cache", dir);
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, ".destination.properties"), "systemId=ER6\nserver=h.example.com\nsystemNumber=00\nclient=" + client + "\nuser=U\n");
+  }
+  const loaded = { exports: {} }, written = [];
+  require("node:vm").runInNewContext(fs.readFileSync(path.join(__dirname, "../system-setup.js"), "utf8"),
+    { module: loaded, require, process: { platform: "win32", env: { APPDATA: home } }, URL });
+  let offered, call = 0;
+  const vscode = {
+    ConfigurationTarget: { Global: 1 },
+    workspace: { getConfiguration: () => ({ get: key => key === "systems" ? [{ name: "ER6", url: "https://h.example.com:44300", client: "600", user: "U" }] : "",
+      update: async (key, value) => written.push([key, value]) }) },
+    window: {
+      showQuickPick: async items => { if (call++ === 0) { return { value: "found", workspace }; } offered = items; return items; },
+      showInformationMessage: () => {},
+      withProgress: () => { throw new Error("A known system must not be probed"); },
+    },
+  };
+  try {
+    await loaded.exports.importSystems(vscode, { globalState: { get: () => "" } });
+    assert.equal(JSON.stringify(offered.map(item => item.label)), JSON.stringify(["ER6  client 610"]));
+    assert.equal(JSON.stringify(written), JSON.stringify([["systems", [{ name: "ER6", url: "https://h.example.com:44300", client: "600", user: "U", clients: ["600", "610"] }]]]));
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

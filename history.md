@@ -1,5 +1,21 @@
 # Release history
 
+## 2026-11-04 — 0.9.56: Fields of a table or structure; VS Code: several clients of one system; prompt choice per object
+
+- SelecTor, both hosts: a view or CDS entity opens as a table does, its fields the columns the data preview describes; **Run Select** opens a SELECT on one view or CDS entity in SelecTor instead of the plain window.
+- **Fields**, both hosts: a table's or structure's fields as SE11 lists them, with each `.INCLUDE` / `.APPEND` as a link to the structure it brings in. A structure opens on Fields, from VERTEX Tools and from the chat.
+
+- A system can list its clients, for one user: `clients` beside the default `client`. In the **SAP Systems** table, **+** in the Client column adds a client, and a list switches between them, there and on the VERTEX panel beside the SAP system; each client keeps its own password.
+- A VERTEX window keeps the client it was opened on, as it keeps its system, and names it in the tab: `VERTEX ALC 200`.
+- In the chat, a single word such as `SCARR` is looked up in the system and opened without a model; only a word the system does not know goes to the model. An exact name is also looked up in the object directory, so a table such as `ZTEST_MOVE` opens on its data instead of a program whose name only starts the same.
+- Transport review, both hosts: **Code review / Technical documentation** sits beside **Copy prompt: diff / full** on an object's page and in a developer's or reviewer's view, so one object's or one person's changes copy as technical documentation too. A user `code-review.txt` no longer cuts the start of each object's diff in a multi-object prompt.
+- Transport review, both hosts: a class has the **All / Approved / Declined / Not processed / Comments only** filter of a developer's view. A verdict or comment redraws only its block's head, so the page keeps its place instead of being rebuilt and scrolled to the top.
+- Transport review, both hosts: with **Ignore SAP generated**, the includes the table maintenance generator (SE54) writes for an SM30 view - `TABLEFRAME_<group>`, `TABLEPROC_<group>` and the rest, recognised by their generator-version header - are left out of the review and its prompts. A saved review keeps them until **Rebuild from ADT**.
+- Transport review, both hosts: the built-in Technical documentation prompt lists created and modified objects apart. An object new in the request goes to the prompt whole, marked NEW, and is described as it is; a modified one is marked MODIFIED and described by its change. A saved `technical-documentation.txt` still wins - **Use built-in** removes it.
+- Transport review, both hosts: a line whose only change is its case outside literals - the Pretty Printer turning `describe table` into `DESCRIBE TABLE` - is no longer a change. Case inside a literal still counts. A saved review keeps its blocks until **Rebuild from ADT**.
+- Buttons, both hosts: every plain button and on/off toggle has a border, and a plain button the theme's secondary button colours, so it no longer reads as muted text.
+- **Import SAP Systems** adds a client found in SAP Logon or Eclipse to the system that is already configured, instead of leaving it out because the system name is taken. Two ADT projects of one system with different clients come in as one system with both.
+
 ## 2026-11-04 — 0.9.55: SNC through a message server, ABAP from any editor, namespaced objects
 
 - An SNC system reached through a SAP Logon group connects: `rfc.mshost`, `rfc.sysid`, `rfc.group` and optionally `rfc.msserv` replace `rfc.ashost`/`rfc.sysnr`, and **VERTEX: Import SAP Systems** no longer skips such entries.

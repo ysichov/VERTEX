@@ -32,6 +32,18 @@ test("technical documentation prompt keeps diff evidence and ends with TR Detail
   }
 });
 
+test("a created object goes to the prompt whole and named NEW, a changed one named MODIFIED", () => {
+  const state = context();
+  assert.match(state.reviewPrompt(false, null, "technical"), /MODIFIED object ZCL_SHIP=>RUN/);
+  assert.match(state.reviewPrompt(false, null, "technical"), /keep created objects apart from modified ones/);
+  state.review_ops = [{ op: "+", text: "FUNCTION z_new." }, { op: "+", text: "ENDFUNCTION." }];
+  for (const full of [false, true]) {
+    const prompt = state.reviewPrompt(full, null, "technical");
+    assert.match(prompt, /NEW object ZCL_SHIP=>RUN, created in this transport - its whole source:\n\n\+ FUNCTION z_new\.\n\+ ENDFUNCTION\.\n\nTR Details: ER6K9A1QXV$/);
+    assert.doesNotMatch(prompt, /MODIFIED object/);
+  }
+});
+
 test("code review remains the default prompt", () => {
   const state = context();
   const prompt = state.reviewPrompt(false);
@@ -73,6 +85,9 @@ test("multi-object technical prompt uses one instruction and one transport foote
   assert.match(prompt, /ZCL_SHIP=>RUN/);
   assert.match(prompt, /ZCL_PRICE=>CALCULATE/);
   assert.equal(prompt.match(/TR Details: ER6K9A1QXV/g).length, 1);
+  // A developer's view follows the same choice.
   state.personView.selector = "D:AUTHOR";
+  assert.match(state.personPrompt(false), /^Review the provided ABAP change diff/);
+  state.promptKind = "review";
   assert.match(state.personPrompt(false), /^Review this ABAP change:/);
 });

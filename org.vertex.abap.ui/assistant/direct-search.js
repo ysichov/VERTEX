@@ -21,6 +21,9 @@ function isObjectName(text) {
 function objectRequest(text) {
   const value = String(text || "").trim();
   if (isObjectName(value)) { return { query: value, openEditor: false }; }
+  // Any other single word (SCARR, MARA) is looked up too; only when the system has nothing by that name is it a
+  // question for the model ("hello").
+  if (/^[A-Z]{3,40}$/i.test(value)) { return { query: value, openEditor: false, word: true }; }
   const found = value.match(/^(?:open|edit|открой)\s+(?:(?:class|program|function|module|класс|программу|функцию)\s+)?([A-Z0-9_\/$*+]{3,40})(?:\s+(?:please|пожалуйста))?[.!]?$/i);
   return found && isObjectName(found[1]) ? { query: found[1], openEditor: true } : null;
 }
@@ -35,7 +38,7 @@ function systemName(value) {
  * open({ object_type, object_name }) -> anything; it throws on failure.
  * Returns the answer text for the chat.
  */
-async function answer(text, { search, open, system, choices = () => {} }) {
+async function answer(text, { search, open, system, choices = () => {}, word = false }) {
   const query = String(text).trim().toUpperCase();
   let found = await search({ query, limit: 50 });
   if (!(found?.objects || []).length && !/[*+]/.test(query)) {
@@ -47,6 +50,8 @@ async function answer(text, { search, open, system, choices = () => {} }) {
   const label = system || systemName(found && found.system);
   const where = label ? " in system " + label : "";
   const objects = (found && found.objects) || [];
+  // A plain word the system does not know is no object request: the caller asks the model.
+  if (word && !objects.length) { return null; }
   const exact = objects.filter(o => String(o.object_name).toUpperCase() === query);
   // A pattern can still resolve to exactly one object.  The result count is
   // what determines whether a choice is needed, not the spelling of the

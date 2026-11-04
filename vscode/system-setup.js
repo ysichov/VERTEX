@@ -286,34 +286,53 @@ async function importSystems(vscode, context) {
       + (skipped.length ? " Skipped: " + skipped.join(", ") : ""));
   }
 
-  // Only systems not yet in vertex.systems (switched off ones included) are offered - and probed.
-  const fresh = [], seen = new Set();
+  // Only systems not yet in vertex.systems (switched off ones included) are offered - and probed. A system already there
+  // is offered again for each client it does not list yet: that client is added to its clients, not as a second system.
+  // Two clients of one system found together come in as one system with both.
+  const fresh = [], more = [], seen = new Map();
   for (const s of logon) {
+    const client = s.client || logons[s.id]?.client || "";
+    const entry = existing.find(e => String(e.name).toUpperCase() === String(s.id).toUpperCase());
+    if (entry) {
+      const have = [entry.client, ...(Array.isArray(entry.clients) ? entry.clients : [])].map(String);
+      const key = s.id + "|" + client;
+      if (!client || have.includes(client) || seen.has(key)) { continue; }
+      seen.set(key, true);
+      more.push({ ...s, client, entry });
+      continue;
+    }
     const key = s.id + "|" + s.host + "|" + s.instance;
-    if (seen.has(key) || known.has(String(s.id).toUpperCase())) { continue; }
-    seen.add(key);
+    if (seen.has(key)) {
+      const first = seen.get(key);
+      if (client && first && client !== first.client && !(first.moreClients || (first.moreClients = [])).includes(client)) { first.moreClients.push(client); }
+      continue;
+    }
+    seen.set(key, s);
     fresh.push(s);
   }
-  if (!fresh.length) {
+  if (!fresh.length && !more.length) {
     vscode.window.showInformationMessage("VERTEX: every system found in SAP Logon and Eclipse is already in vertex.systems.");
     return;
   }
-  const candidates = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
+  const candidates = !fresh.length ? [] : await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
     title: "VERTEX: looking for ADT on " + fresh.length + " systems" }, () => Promise.all(fresh.map(async s =>
       { const found = await probe(s.host, s.instance);
         return { ...s, found, webgui: found ? await findWebgui(found, found.answering) : null,
           logon: { client: s.client || logons[s.id]?.client || "", user: s.user || logons[s.id]?.user || "" } }; })));
-  const items = candidates.map(c => ({
+  const items = [...candidates.map(c => ({
     label: c.id + "  " + c.title + (c.group !== undefined ? "  (logon group " + c.group + ", message server " + c.host + ")" : ""),
     description: (c.authType === "snc" ? "SNC · " : "") + (c.found ? c.found.url + (c.found.insecure ? " (certificate not verified)" : "") : "ADT did not answer on any usual port"),
     detail: [c.webgui ? "WebGUI at " + c.webgui : c.found && c.webgui === null ? "WebGUI not found" : "", c.logon.client ? "client " + c.logon.client : "client: asked", c.logon.user ? "user " + c.logon.user : "user: asked"].filter(Boolean).join(" · "),
-    picked: !!c.found, candidate: c }));
+    picked: !!c.found, candidate: c })),
+    ...more.map(c => ({ label: c.id + "  client " + c.client, description: "added to " + c.entry.name + "'s clients",
+      picked: true, add: c }))];
   const chosen = await vscode.window.showQuickPick(items, { canPickMany: true, ignoreFocusOut: true,
     title: "VERTEX: systems to add to vertex.systems" + (skipped.length ? " (not offered: " + skipped.join(", ") + ")" : "") });
   if (!chosen || !chosen.length) { return; }
 
   const added = [], noWebgui = [];
-  for (const { candidate: c } of chosen) {
+  const grown = chosen.filter(item => item.add).map(item => item.add);
+  for (const { candidate: c } of chosen.filter(item => item.candidate)) {
     let name = c.id;
     for (let n = 2; known.has(name.toUpperCase()); n++) { name = c.id + "_" + n; }
     let url = c.found && c.found.url;
@@ -328,6 +347,7 @@ async function importSystems(vscode, context) {
     const user = c.logon.user || await vscode.window.showInputBox({ title: c.id + ": SAP user", prompt: "Enter the SAP user", ignoreFocusOut: true });
     if (!user) { continue; }
     const system = { name, url, ...(client ? { client } : {}), user };
+    if (c.moreClients && c.moreClients.length && client) { system.clients = [client, ...c.moreClients]; }
     if (c.authType === "snc") { system.authType = "snc"; }
     if (c.snc) { system.snc = c.snc; }
     if (c.rfc) { system.rfc = c.rfc; }
@@ -339,12 +359,22 @@ async function importSystems(vscode, context) {
     added.push(system);
     known.add(name.toUpperCase());
   }
-  if (!added.length) { return; }
+  if (!added.length && !grown.length) { return; }
+  const withClients = existing.map(e => {
+    const more = grown.filter(g => g.entry === e).map(g => g.client);
+    if (!more.length) { return e; }
+    const list = [...new Set([...(e.client ? [String(e.client)] : []), ...(Array.isArray(e.clients) ? e.clients.map(String) : []), ...more])];
+    return { ...e, clients: list };
+  });
   const systemsScope = config.inspect && config.inspect("systems");
   const systemsTarget = systemsScope && systemsScope.workspaceFolderValue !== undefined ? vscode.ConfigurationTarget.WorkspaceFolder
     : systemsScope && systemsScope.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace
       : vscode.ConfigurationTarget.Global;
-  await config.update("systems", [...existing, ...added], systemsTarget);
+  await config.update("systems", [...withClients, ...added], systemsTarget);
+  if (!added.length) {
+    vscode.window.showInformationMessage("VERTEX: added " + grown.map(g => "client " + g.client + " to " + g.entry.name).join(", ") + ". Pick the client in VERTEX: SAP Systems.");
+    return;
+  }
   const selectedSystem = added.find(system => system.authType === "snc") || added[0];
   const activeScope = config.inspect && config.inspect("active");
   const activeTarget = activeScope && activeScope.workspaceFolderValue !== undefined ? vscode.ConfigurationTarget.WorkspaceFolder

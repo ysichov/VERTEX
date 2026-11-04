@@ -329,7 +329,7 @@ function run(){
   if(!current.name){notice("Enter an object name.");return;}
   if(typeof sdeVertexContext==="function")sdeVertexContext(JSON.stringify({workspace:current}));
   notice(""); fields();
-  const service=["data","join","pivot"].includes(current.action)?"table":current.action==="navigator"?"navigator":
+  const service=["data","fields","join","pivot"].includes(current.action)?"table":current.action==="navigator"?"navigator":
     ["diff","review"].includes(current.action)?"versions":"metrics";
   const state=current;
   // A page must not wait for its optional Parts list.  The first request for

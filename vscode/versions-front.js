@@ -37,7 +37,8 @@ const normal = (line, ignore) => ignore ? line.trim().toUpperCase() : line;
 // A host with a comparer of its own passes it as api.diffLines - Eclipse hands the lines to its own Text Compare
 // (RangeDifferencer); otherwise VERTEX's line-diff.js (Myers) computes it.
 // A line as the review compares it: trimmed, and every run of blanks outside a literal ('...', `...`, |...|) one blank,
-// so spacing moved inside a line is no change; blanks inside a literal still count, and so does case.
+// and upper case outside a literal, so spacing moved inside a line and the Pretty Printer's change of case are no change;
+// blanks and case inside a literal still count.
 function spacingKey(line) {
   let out = "", quote = "", blank = false;
   for (const c of String(line).trim()) {
@@ -45,13 +46,13 @@ function spacingKey(line) {
     if (/\s/.test(c)) { blank = true; continue; }
     if (blank) { out += " "; blank = false; }
     if (c === "'" || c === "`" || c === "|") quote = c;
-    out += c;
+    out += c.toUpperCase();
   }
   return out;
 }
 
 async function diff(oldLines, newLines, ignore, api) {
-  // Review ignores spacing outside literals without hiding changed case or literal contents.
+  // Review ignores spacing and case outside literals without hiding changed literal contents.
   if (ignore === "indentation") return require("./line-diff").diffLines(oldLines, newLines, spacingKey);
   if (api && api.diffLines) { return api.diffLines(oldLines, newLines, Boolean(ignore)); }
   return require("./line-diff").diffLines(oldLines, newLines, ignore ? line => normal(line, true) : undefined);

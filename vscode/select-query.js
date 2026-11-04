@@ -340,14 +340,8 @@ async function run(api, text, offset) {
   if (prepared.selector && prepared.selector.join && (prepared.selector.join.length || prepared.selector.pivot)) {
     return { open: { type: "TABL", name: prepared.selector.table, action: prepared.selector.pivot ? "pivot" : "join", selectorPlan: prepared.selector } };
   }
-  if (prepared.selector) {
-    const table = prepared.selector.table;
-    const kind = await api.query("SELECT tabclass FROM dd02l WHERE tabname = '" + table + "' AND as4local = 'A'", 1);
-    const tabclass = kind.values.length ? kind.values[0].TABCLASS : "";
-    if (["TRANSP", "CLUSTER"].includes(tabclass)) { return { open: { type: "TABL", name: table, selectorPlan: prepared.selector } }; }
-    prepared.notSelector = table + " is " + (tabclass ? "a " + tabclass.toLowerCase() : "not a dictionary table") + ", and SelecTor reads tables.";
-    prepared.selector = null;
-  }
+  // SelecTor reads a table, a view or a CDS entity through the same data preview: one source opens there.
+  if (prepared.selector) { return { open: { type: "TABL", name: prepared.selector.table, selectorPlan: prepared.selector } }; }
   if (!prepared.sql) { throw new Error("The SELECT cannot run as written, and SelecTor cannot take it: " + prepared.notSelector); }
   return { line: prepared.line, html: page(prepared, await api.query(prepared.sql, prepared.rows)) };
 }

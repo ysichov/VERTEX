@@ -160,8 +160,13 @@ function systems() {
    active() answers with that system instead of vertex.active. */
 const pinnedSystem = new (require("async_hooks").AsyncLocalStorage)();
 
-function pinTo(name, work) {
-  return name ? pinnedSystem.run(name, work) : work();
+// A window keeps its client too: what it reads stays in the client it was opened on when another is picked later.
+// Held with the system's name, so a call inside it pinned to another system takes that system's own client.
+const pinnedClient = new (require("async_hooks").AsyncLocalStorage)();
+
+function pinTo(name, work, client) {
+  if (!name) return work();
+  return pinnedSystem.run(name, client ? () => pinnedClient.run({ name, client }, work) : work);
 }
 
 function active() {
@@ -182,7 +187,8 @@ function active() {
            + " in vertex.systems. There is " + all.map(function (s) { return s.name; }).join(", ") + "."
     };
   }
-  return auth.systemOf(found[0]);
+  const held = pinned && pinnedClient.getStore();
+  return held && held.name === wanted ? auth.systemAt(found[0], held.client) : auth.systemOf(found[0]);
 }
 
 /** The client belongs to every request, not to one of them. */
@@ -277,7 +283,7 @@ async function fetch(context, requestPath, body, progress, cancelled) {
   }
   // SelecTor's table and join are read through ADT's data preview, not the VERTEX resource on SAP; a pivot still
   // goes to the resource.
-  if (body == null && frontendTableRequest && /^\/sap\/bc\/adt\/vertex\/((table|join|versions|review)\/|requests(\?|$))/.test(requestPath)) {
+  if (body == null && frontendTableRequest && /^\/sap\/bc\/adt\/vertex\/((table|fields|join|versions|review)\/|requests(\?|$))/.test(requestPath)) {
     let answer;
     try { answer = await frontendTableRequest(requestPath, progress, cancelled); }
     catch (error) { return 'ERROR:' + error.message; }
@@ -1790,7 +1796,8 @@ function activate(context) {
   );
   require("./sidebar").register(vscode, context, active,
     require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext()), systems,
-    extra => withShownDiff(context, extra ? { ...(toolsContextState.current() || {}), ...extra } : toolsContextState.current()));
+    extra => withShownDiff(context, extra ? { ...(toolsContextState.current() || {}), ...extra } : toolsContextState.current()),
+    { set: auth.setClient, onChange: auth.onClientChange });
   require("./log-report").register(vscode, context, { openObject: object => chatTools.execute("open_sap_object", object) });
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation
@@ -1818,7 +1825,7 @@ function activate(context) {
 
   context.subscriptions.push(
     // The server icon in the VERTEX panel's title: the SAP Systems table.
-    vscode.commands.registerCommand("vertex.openSystemSettings", () => require("./system-table").open(vscode, { test: testSystem,
+    vscode.commands.registerCommand("vertex.openSystemSettings", () => require("./system-table").open(vscode, { test: testSystem, chosen: auth.clientOf, setClient: auth.setClient, onClientChange: auth.onClientChange,
       hasPassword: async entry => { const chosen = auth.systemOf(entry); return !chosen.error && auth.hasPassword(chosen.system); },
       login: async entry => { const chosen = auth.systemOf(entry); if (chosen.error) throw new Error(chosen.error); return auth.login(chosen.system); } })),
     vscode.commands.registerCommand("vertex.showLog", () => {

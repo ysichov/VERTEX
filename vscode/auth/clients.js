@@ -8,8 +8,18 @@ const { createHttpWire } = require("./http-wire");
 const { refusalFor } = require("./hosts");
 
 function createAuth({ vscode, context, logger }) {
+  // The client picked in the SAP Systems table, by system name; the entry's own client is only the default.
+  const clientOf = name => (context.globalState.get("vertex.activeClient", {}) || {})[name];
+  // Whoever shows the client (the panel, the SAP Systems table) is told of a switch made in the other.
+  const clientListeners = new Set();
+  const setClient = async (name, client) => {
+    await context.globalState.update("vertex.activeClient", { ...context.globalState.get("vertex.activeClient", {}), [name]: client });
+    for (const listener of clientListeners) listener(name, client);
+  };
+  const onClientChange = listener => { clientListeners.add(listener); return { dispose: () => clientListeners.delete(listener) }; };
+  const systemOf = entry => readSystem(entry, clientOf(entry && entry.name));
   const currentSystems = () => (vscode.workspace.getConfiguration("vertex").get("systems") || [])
-    .filter(s => !(s && s.disabled === true)).map(readSystem).filter(r => r.system).map(r => r.system);
+    .filter(s => !(s && s.disabled === true)).map(systemOf).filter(r => r.system).map(r => r.system);
   const secrets = context.secrets;
   const { serviceKeyStore, sessionStore, means } = createStores({ secrets, currentSystems });
   const broker = createBroker({ serviceKeyStore, sessionStore, logger });
@@ -128,7 +138,7 @@ function createAuth({ vscode, context, logger }) {
     return is401 && r ? text + " — " + r.reason + (r.hint ? " " + r.hint : "") : text;
   }
   return {
-    systemOf: readSystem, currentSystems, makeClient, commandWire, password, login, hasPassword, hostRefusal, explain,
+    systemOf, systemAt: (entry, client) => readSystem(entry, client), clientOf, setClient, onClientChange, currentSystems, makeClient, commandWire, password, login, hasPassword, hostRefusal, explain,
     lastRefusal: system => refusals.get(loginIdentity(system)),
     async forget(system) { await migrated; await means.forget(loginIdentity(system)); },
     disposeAll() {

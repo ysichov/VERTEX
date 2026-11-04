@@ -103,7 +103,11 @@ test("blame credits each line to the developer whose task it came from, a transp
 });
 
 test("AVE's ignore rules: generator stamps, generated objects, comment-only objects, empty sections", () => {
-  const { stripStamps, generatedObject, commentsOnly, emptySection } = require("../review-live");
+  const { stripStamps, generatedObject, commentsOnly, emptySection, maintenanceGenerated } = require("../review-live");
+  assert.strictEqual(maintenanceGenerated(["*---*", "*    program for:   TABLEFRAME_ZHR_FG", "*   generation date: 16.07.2019",
+    "*   view maintenance generator version: #001407#", "FUNCTION TABLEFRAME_ZHR_FG ."]), true);
+  assert.strictEqual(maintenanceGenerated(["FORM after_save.", "  \" view maintenance generator version is irrelevant here"]), false);
+  assert.strictEqual(maintenanceGenerated(["FORM after_save.", "ENDFORM."]), false);
   const ops = stripStamps([{ op: "=", text: "*" }, { op: "-", text: "*   generation date: 12.02.2020 at 13:28:20" },
     { op: "+", text: "*   generation date: 28.09.2026 at 16:31:07" }, { op: "=", text: "FUNCTION X." }]);
   assert.deepStrictEqual(ops.map(o => o.op), ["=", "=", "="]);

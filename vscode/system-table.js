@@ -11,14 +11,21 @@ function target(vscode, config, key) {
       : vscode.ConfigurationTarget.Global;
 }
 
-function rows(vscode) {
+/* CHOSEN answers the client picked in the table for a system name; the entry's own client is the default. */
+function rows(vscode, chosen = () => undefined) {
   const config = vscode.workspace.getConfiguration("vertex");
   const active = (config.get("active") || "").trim();
   const all = config.get("systems") || [];
   const firstOn = all.find(s => s && s.name && s.disabled !== true);
+  const read = s => require("./auth/systems").readSystem(s, chosen(s && s.name)).system;
   return all.map((s, index) => ({ index, name: s && s.name || "(unnamed)", url: s && (s.url || s.destination) || "",
-    client: s && s.client || "", user: s && s.user || "", snc: !!(s && s.authType === "snc"), on: !(s && s.disabled === true),
+    client: (read(s) || s || {}).client || "", clients: (read(s) || {}).clients || [], user: s && s.user || "", snc: !!(s && s.authType === "snc"), on: !(s && s.disabled === true),
     active: !!(s && s.name) && (active ? s.name === active : s === firstOn) }));
+}
+
+/* An entry's clients as the setting will keep them: the default client first, then its list. */
+function clientList(entry) {
+  return [...new Set([...(entry.client ? [String(entry.client)] : []), ...(Array.isArray(entry.clients) ? entry.clients.map(String) : [])])];
 }
 
 /* Changes one entry, found by its index and checked by its name, so a setting edited meanwhile is not overwritten. */
@@ -33,14 +40,14 @@ async function change(vscode, index, name, edit) {
 // The last test result of each system, by name, until the window is reloaded - also when the table is closed.
 const lastResults = new Map();
 
-function open(vscode, { test, login, hasPassword = async () => false }) {
+function open(vscode, { test, login, hasPassword = async () => false, chosen = () => undefined, setClient = async () => {}, onClientChange = () => ({ dispose() {} }) }) {
   const panel = vscode.window.createWebviewPanel("vertex.systemTable", "VERTEX: SAP Systems",
     vscode.ViewColumn.Active, { enableScripts: true, localResourceRoots: [] });
   const nonce = require("crypto").randomBytes(24).toString("hex");
   panel.webview.html = html(nonce);
   // Each row says whether a password is kept for it; the kept password itself never reaches the page.
   const draw = async () => {
-    const shown = rows(vscode), all = vscode.workspace.getConfiguration("vertex").get("systems") || [];
+    const shown = rows(vscode, chosen), all = vscode.workspace.getConfiguration("vertex").get("systems") || [];
     for (const row of shown) {
       row.password = !row.snc && await hasPassword(all[row.index]).catch(() => false);
       row.result = lastResults.get(row.name) || null;
@@ -50,7 +57,8 @@ function open(vscode, { test, login, hasPassword = async () => false }) {
   const changes = vscode.workspace.onDidChangeConfiguration(event => {
     if (event.affectsConfiguration("vertex.systems") || event.affectsConfiguration("vertex.active")) { draw(); }
   });
-  panel.onDidDispose(() => changes.dispose());
+  const clientSwitch = onClientChange(() => draw());
+  panel.onDidDispose(() => { changes.dispose(); clientSwitch.dispose(); });
   panel.webview.onDidReceiveMessage(async message => {
     if (!message || typeof message !== "object") { return; }
     try {
@@ -68,6 +76,19 @@ function open(vscode, { test, login, hasPassword = async () => false }) {
           if (message.on) { delete all[i].disabled; } else { all[i].disabled = true; }
           return all;
         });
+      } else if (message.action === "addClient") {
+        const entry = (vscode.workspace.getConfiguration("vertex").get("systems") || [])[index];
+        const listed = entry ? clientList(entry) : [];
+        const client = await vscode.window.showInputBox({ title: name + ": add a client", prompt: "The SAP client, for the same user " + (entry && entry.user || ""),
+          ignoreFocusOut: true, validateInput: value => !/^\d{1,3}$/.test(value.trim()) ? "A client is one to three digits." : listed.includes(value.trim()) ? name + " already has client " + value.trim() + "." : null });
+        if (!client) { await draw(); return; }
+        await change(vscode, index, name, (all, i) => { all[i].clients = [...clientList(all[i]), client.trim()]; return all; });
+      } else if (message.action === "client") {
+        // Only a client of the entry's own list: the page sends a value, the setting says what is allowed.
+        const entry = (vscode.workspace.getConfiguration("vertex").get("systems") || [])[index];
+        const listed = entry && (rows(vscode, chosen).find(r => r.index === index) || {}).clients || [];
+        if (!entry || (entry.name || "(unnamed)") !== name || !listed.includes(String(message.value))) { throw new Error(String(message.value) + " is not a client of " + name + "."); }
+        await setClient(name, String(message.value));
       } else if (message.action === "active") {
         const config = vscode.workspace.getConfiguration("vertex");
         await config.update("active", name, target(vscode, config, "active"));
@@ -109,6 +130,8 @@ button { --accent: var(--vscode-focusBorder); font: inherit; color: var(--vscode
        white-space: nowrap; transition: box-shadow .12s, border-color .12s; }
 button:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 0 6px -1px var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
+select { font: inherit; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background);
+       border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border)); border-radius: 6px; padding: 2px 6px; }
 input[type=checkbox], input[type=radio] { accent-color: var(--vscode-focusBorder); }
 table { border-collapse: collapse; margin: 8px 0; }
 th, td { border-bottom: 1px solid var(--vscode-panel-border); padding: 4px 8px; text-align: left; vertical-align: top; }
@@ -142,7 +165,7 @@ function draw(rows) {
   if (!rows.length) { body.innerHTML = '<tr><td colspan="11" class="note">No system yet: Import fills the table from SAP Logon and Eclipse.</td></tr>'; return; }
   body.innerHTML = rows.map(r => '<tr class="' + (r.on ? '' : 'off') + '" data-index="' + r.index + '">'
     + '<td class="c"><input type="radio" name="active" data-act="active"' + (r.active ? ' checked' : '') + (r.on ? '' : ' disabled') + ' aria-label="Active system"></td>'
-    + '<td>' + esc(r.name) + '</td><td class="url">' + esc(r.url) + '</td><td>' + esc(r.client) + '</td><td>' + esc(r.user) + '</td>'
+    + '<td>' + esc(r.name) + '</td><td class="url">' + esc(r.url) + '</td><td>' + (r.clients.length > 1 ? '<select data-act="client" aria-label="Client of ' + esc(r.name) + '">' + r.clients.map(c => '<option' + (c === r.client ? ' selected' : '') + '>' + esc(c) + '</option>').join("") + '</select>' : esc(r.client)) + ' <button type="button" data-act="addClient" title="Add a client of ' + esc(r.name) + ' for the same user">+</button></td><td>' + esc(r.user) + '</td>'
     + '<td class="c"><input type="checkbox" data-act="snc"' + (r.snc ? ' checked' : '') + ' aria-label="SNC"></td>'
     + '<td class="c keep"><input type="checkbox" data-act="on"' + (r.on ? ' checked' : '') + ' aria-label="Switched on"></td>'
     + '<td><button type="button" data-act="login" title="' + (r.password ? 'A password is kept for ' + esc(r.user) + '; enter a new one' : 'Enter the SAP password for ' + esc(r.user)) + ' - it is kept in the OS credential store"' + (r.on && !r.snc ? '' : ' disabled') + '>' + (r.snc ? 'SNC' : r.password ? 'Save new password' : 'Log in') + '</button></td>'
@@ -153,13 +176,21 @@ function draw(rows) {
 }
 document.getElementById("rows").addEventListener("click", event => {
   const control = event.target.closest("[data-act]");
-  if (!control) { return; }
+  // The client list answers its change, not its click.
+  if (!control || control.dataset.act === "client") { return; }
   const row = shown.find(r => String(r.index) === control.closest("tr").dataset.index);
   if (!row) { return; }
   document.getElementById("said").textContent = "";
   const act = control.dataset.act;
   if (act === "snc" || act === "on") { control.disabled = true; }
   api.postMessage({ action: act, index: row.index, name: row.name, on: control.checked });
+});
+document.getElementById("rows").addEventListener("change", event => {
+  const control = event.target.closest("select[data-act=client]");
+  const row = control && shown.find(r => String(r.index) === control.closest("tr").dataset.index);
+  if (!row) { return; }
+  document.getElementById("said").textContent = "";
+  api.postMessage({ action: "client", index: row.index, name: row.name, value: control.value });
 });
 document.getElementById("import").addEventListener("click", () => api.postMessage({ action: "import" }));
 document.getElementById("json").addEventListener("click", () => api.postMessage({ action: "json" }));
@@ -178,4 +209,4 @@ api.postMessage({ action: "ready" });
 </script></body></html>`;
 }
 
-module.exports = { open, rows };
+module.exports = { open, rows, clientList };

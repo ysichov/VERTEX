@@ -426,9 +426,16 @@ const emptySection = lines => lines.every(l => {
   return !t || t[0] === "*" || t[0] === '"' || /^(PUBLIC|PROTECTED|PRIVATE) SECTION\.$/.test(t);
 });
 
+// An include the table maintenance generator (SE54, for SM30) writes whole - TABLEFRAME_<group>, TABLEPROC_<group>
+// and the rest - opens with its header, naming the generator version. Hand-written event routines carry no such header.
+const maintenanceGenerated = lines => lines.slice(0, 10).some(l => {
+  const t = String(l).trim().toUpperCase();
+  return t[0] === "*" && t.includes("MAINTENANCE GENERATOR VERSION");
+});
+
 // The rules together, as the build applies them while "Ignore SAP generated" is on.
 const ignored = { object: generatedObject, pair: generated, ops: stripStamps,
-  text: (p, pair, oldLines, newLines) => (!pair.old && commentsOnly(newLines))
+  text: (p, pair, oldLines, newLines) => (!pair.old && commentsOnly(newLines)) || maintenanceGenerated(newLines)
     || (["CPUB", "CPRO", "CPRI"].includes(p.ptype) && emptySection(newLines) && emptySection(oldLines)) };
 
 // A part without a pair is listed, never dropped without a word.
@@ -532,7 +539,8 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       };
       const oldLines = await textOf(pair.old), newLines = await textOf(pair.fresh);
       log("  TEXT old=" + oldLines.length + " line(s), new=" + newLines.length + " line(s)");
-      if (skip.text(p, pair, oldLines, newLines)) { log("SKIP " + label + ": new object of comments only, or an empty class section"); continue; }
+      if (skip.text(p, pair, oldLines, newLines)) { log("SKIP " + label + ": " + (maintenanceGenerated(newLines) ? "written by the table maintenance generator (SE54)"
+        : "new object of comments only, or an empty class section")); continue; }
       ops = skip.ops(await versions.diff(oldLines, newLines, "indentation", api));
       blame = { map: [], deleted: [] };
       const sole = await soleHolder(api, request, p, pair.fresh);
@@ -697,4 +705,4 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
   return { changed, unchecked };
 }
 
-module.exports = { soleHolder, wholeBlame, ownerResolver, carryUnread, methodOf, lastLog, build, pairOf, generated, generatedObject, stampLine, stripStamps, commentsOnly, emptySection, countChanges, staleness };
+module.exports = { soleHolder, wholeBlame, ownerResolver, carryUnread, methodOf, lastLog, build, pairOf, generated, generatedObject, stampLine, stripStamps, commentsOnly, emptySection, maintenanceGenerated, countChanges, staleness };

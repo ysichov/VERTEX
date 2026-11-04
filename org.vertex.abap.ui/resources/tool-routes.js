@@ -15,6 +15,10 @@ const SERVICES = {
       }
       return p;
     },
+    // name - the Fields view of a table or structure, .INCLUDE rows kept
+    fields: function (args) {
+      return "/sap/bc/adt/vertex/fields/" + upper(args[0]);
+    },
     // table, taken, rows, query, cross, build
     join: function (args) {
       let p = "/sap/bc/adt/vertex/join/" + upper(args[0]);

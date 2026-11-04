@@ -144,7 +144,7 @@ async function request(api, resource, progress, cancelled = () => false) {
   const match = /^\/sap\/bc\/adt\/vertex\/(metrics|class|package|flow)\/(.+)$/.exec(url.pathname);
   if (!match) {
     // SelecTor's table, join and pivot, for a host that sends every analysis here (Eclipse's bundle).
-    if (/^\/sap\/bc\/adt\/vertex\/(table|join)\//.test(url.pathname)) {
+    if (/^\/sap\/bc\/adt\/vertex\/(table|fields|join)\//.test(url.pathname)) {
       return await require('./selector-table').request(api, resource) ?? await require('./selector-join').request(api, resource);
     }
     if (/^\/sap\/bc\/adt\/vertex\/backward\//.test(url.pathname)) return backward(api, resource, progress, cancelled);
