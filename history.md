@@ -4,7 +4,8 @@
 
 - VS Code: **EPAM CodeMie (CodeMie CLI)** is an AI provider after GitHub Copilot. It runs Claude Code through the CodeMie CLI's `codemie-claude` with the SAP tools the other providers get; the model list is the CodeMie profile's, and **CodeMie default** is the model chosen in `codemie setup`.
 - **Profile** under EPAM CodeMie in LLM Providers chooses which CodeMie profile (project or personal account) VERTEX uses, independently of the one active in the CLI; it is shown when there are two or more profiles, and **Active in CodeMie** (or a profile CodeMie no longer has) follows `codemie profile switch`.
-- While EPAM CodeMie is chosen, the provider list and the VERTEX Tools button in the VERTEX panel show CodeMie's violet-to-blue gradient (light and dark themes; high contrast keeps the theme's colours).
+- While EPAM CodeMie is chosen, the provider list and the VERTEX Tools button in the VERTEX panel show CodeMie's indigo-to-magenta gradient (light and dark themes; high contrast keeps the theme's colours).
+- Each CodeMie answer in the VERTEX panel shows its cost after the token counts (`≈ $0.0022`), as Claude Code reckons it.
 - A transport request whose objects are in a namespace (`/NS/`) is covered by a test of its object list and ADT addresses.
 - VS Code 0.9.60 built and verified. Eclipse sources are at 0.9.60, but the Eclipse update site was not rebuilt and stays at 0.9.54.20261103215020.
 

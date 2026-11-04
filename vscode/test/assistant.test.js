@@ -428,3 +428,18 @@ test("a CodeMie profile chosen in the settings counts only while CodeMie has it"
   assert.equal(assistant.profileFor(vscode("gone"), "codemie", home), "");
   assert.equal(assistant.profileFor(vscode("work"), "claude", home), "");
 });
+
+test("Claude Code's reckoned cost comes back with the answer; the panel writes it after the tokens", async () => {
+  const spawn = spawner(call => {
+    call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "",
+      structured_output: PLAN, total_cost_usd: 0.00312, modelUsage: { "claude-haiku-5-5": {} } }));
+    call.child.emit("close", 0);
+  });
+  const answer = await assistant.ask(common(spawn, "claude"));
+  assert.equal(answer.cost, 0.00312);
+  const { usageLine } = require("../sidebar");
+  const usage = { input_tokens: 1200, output_tokens: 40, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  assert.match(usageLine({ model: "m", usage, cost: 0.00312 }), / · ≈ \$0\.0031$/);
+  assert.match(usageLine({ model: "m", usage, cost: 0.1234567 }), / · ≈ \$0\.1235$/);
+  assert.doesNotMatch(usageLine({ model: "m", usage }), /\$/);
+});

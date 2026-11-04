@@ -577,7 +577,10 @@ function readClaude(result) {
     throw named(new Error("Claude Code answered without a plan"
                           + (answer.result ? ": " + answer.result : ".")), model);
   }
-  return { plan: answer.structured_output, model: model, usage: totalUsage(answer) };
+  const read = { plan: answer.structured_output, model: model, usage: totalUsage(answer) };
+  // What Claude Code reckons the run cost, from the models' prices; CodeMie bills its project by it.
+  if (typeof answer.total_cost_usd === "number" && isFinite(answer.total_cost_usd)) { read.cost = answer.total_cost_usd; }
+  return read;
 }
 
 // Claude's structured output arrives as JSON text deltas. Only expose the

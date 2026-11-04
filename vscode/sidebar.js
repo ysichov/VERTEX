@@ -155,14 +155,19 @@ function register(vscode, context, active, ask, systems, toolContext) {
 }
 
 /* One line under an answer: the model and what it cost in tokens. */
+// A CodeMie answer's cost, as Claude Code reckons it: cents to four places, more under a cent.
+function costText(cost) {
+  if (typeof cost !== "number" || !isFinite(cost)) { return ""; }
+  return " · ≈ $" + (cost >= 0.01 ? cost.toFixed(4) : cost.toPrecision(2));
+}
 function usageLine(reply) {
   const usage = reply.usage;
   if (reply.direct) { return "searched the system directly · no tokens"; }
-  if (!usage) { return reply.model ? reply.model + " · token usage not reported" : ""; }
+  if (!usage) { return reply.model ? reply.model + " · token usage not reported" + costText(reply.cost) : ""; }
   const k = n => n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n || 0);
   const input = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
   return (reply.model ? reply.model + " · " : "") + k(input) + " in (" + k(usage.cache_read_input_tokens) + " from cache) · "
-    + k(usage.output_tokens) + " out";
+    + k(usage.output_tokens) + " out" + costText(reply.cost);
 }
 
 // The extension's own mark, inline: the view loads nothing from disk.
@@ -224,12 +229,12 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .line button { margin: 4px 0; padding: 4px 10px; }
 .line select { padding: 3px 4px; }
-/* EPAM CodeMie, while it is the chosen provider: its violet-to-blue on the provider list and on
-   VERTEX Tools, darkened for white text (5:1 at
+/* EPAM CodeMie, while it is the chosen provider: its indigo-violet-magenta on the provider list and on
+   VERTEX Tools, darkened for white text (4.7:1 at
    least) in light and dark themes; a high-contrast theme keeps its own colours. The open list stays the theme's. */
 body.vscode-dark[data-provider="codemie"] #provider-select, body.vscode-light[data-provider="codemie"] #provider-select,
-body.vscode-dark[data-provider="codemie"] #tools, body.vscode-light[data-provider="codemie"] #tools { color: #fff; border-color: transparent; background: linear-gradient(90deg, #5b3fd6, #1a6fc4); }
-body.vscode-dark[data-provider="codemie"] #tools:hover, body.vscode-light[data-provider="codemie"] #tools:hover { background: linear-gradient(90deg, #4c33bd, #155ea8); }
+body.vscode-dark[data-provider="codemie"] #tools, body.vscode-light[data-provider="codemie"] #tools { color: #fff; border-color: transparent; background: linear-gradient(90deg, #4f46e5, #9333ea 55%, #c026d3); }
+body.vscode-dark[data-provider="codemie"] #tools:hover, body.vscode-light[data-provider="codemie"] #tools:hover { background: linear-gradient(90deg, #4338ca, #7e22ce 55%, #a21caf); }
 body[data-provider="codemie"] #provider-select option { color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); }
 .chat-head { margin-bottom: 4px; }
 #new-conversation { margin-left: auto; }
@@ -531,4 +536,4 @@ api.postMessage({ action: 'ready' });
 </script></body></html>`;
 }
 
-module.exports = { register };
+module.exports = { register, usageLine };
