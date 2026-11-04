@@ -379,7 +379,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   package, a transport request, a program, an include (its program's tree), a function module (its group's tree), a class or an interface, is SE80's Repository Browser tree: a package's subpackages and its objects
   by category and type (in an ABAP editor, **VERTEX Tools → Object Navigator** in the context menu opens it for that
   object; for a program in local files the tree - includes, events, local classes with their methods, subroutines - is
-  read from the program and its include files, each entry opening in its own file), a request's objects, its tasks' included, by type, a program's includes, fields, events, subroutines (opening at their FORM), screens, GUI statuses, tables and local classes (unfolding to their methods and attributes), a class's superclass (Inherited from), types, attributes, methods, events with their visibility and friends (Friends of); an interface's types, attributes, methods and events.
+  read from the program and its include files, each entry opening in its own file), a request's objects, its tasks' included, by type (an object only a released task holds, taken out of the request, is hidden; **Show removed objects** shows it in red), a program's includes, fields, events, subroutines (opening at their FORM), screens, GUI statuses, tables and local classes (unfolding to their methods and attributes), a class's superclass (Inherited from), types, attributes, methods, events with their visibility and friends (Friends of); an interface's types, attributes, methods and events.
   A subpackage, class, interface or function group unfolds where it stands; a click on the name of an object or component opens
   its source in the editor beside the tree, a component at its line, and the tree keeps the focus. **Calls diagram** shows which program, class or
   method calls which in the whole object (ACE's Calls Flow): **Classes | Methods** draws a block
@@ -465,7 +465,7 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   the name for the version, date and request. With Blame off, a block is the author's of the new
   version. A review saved by AVE with Blame shows its line authors when the toggle is on. Opening a review only reads a saved one. A review that is not saved yet is built from ADT
   with **Build review** and saved, once built, where `vertex.review.storage` says: each part appears in the summary as soon as it is read, and the status line
-  says which part is being read; an object opens once the whole review is built. **Build log**, folded at the end of a review built
+  says which part is being read; an object opens once the whole review is built. The review takes the objects on the request's own list and in its tasks not yet released; an object taken out of the request after its task was released is not reviewed. **Build log**, folded at the end of a review built
   in this session, lists each step - the parts found, each part's versions and the pair taken - and a SKIP line
   with the reason for every part that gave no block. The
   **Ignore SAP generated** checkbox beside **Build review** and **Rebuild from ADT**, on by default,

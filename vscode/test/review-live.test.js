@@ -44,6 +44,12 @@ test("the pair follows AVE: the request's newest version, the active one when it
   assert.deepStrictEqual([whole.old.id, whole.fresh.id], ["00732", "00734"]);
   const created = pairOf([{ id: "00001", uri: "/n/1", author: "DEV", transport: "K5" }], new Set(["K5"]), true);
   assert.deepStrictEqual([created.old, created.fresh.id], [null, "00001"]);
+  // A first version with no request under the request's own ones (ZHRR_EMP_ALERTS: 1 without a request, 2..13 the
+  // request's ToCs, 14 the request) is the part before it went into a request: the request created it.
+  const local = pairOf([{ id: "00000", uri: "/e/0", author: "DEV", transport: "" },
+    { id: "00003", uri: "/e/3", author: "DEV", transport: "K8" }, { id: "00002", uri: "/e/2", author: "DEV", transport: "K8T" },
+    { id: "00001", uri: "/e/1", author: "DEV", transport: "" }], new Set(["K8", "K8T"]), true);
+  assert.deepStrictEqual([local.old, local.fresh.id], [null, "00003"]);
 });
 
 test("a request's program is reviewed as the diff of its pair, cut into blocks, with its author named", async () => {
@@ -65,6 +71,29 @@ test("a request's program is reviewed as the diff of its pair, cut into blocks, 
     [["REPS", "ZPROG", "00001", "00002", 2, 2, "Dev One"]]);
   assert.deepStrictEqual(payload.HUNKS.map(h => [h.HUNK_KEY, h.START_LINE, h.CHANGE_KIND]),
     [["REPS~ZPROG~1", 2, "added"], ["REPS~ZPROG~2", 4, "added"]]);
+});
+
+test("objects come from the request's own list and its open tasks, not from a released task they were taken out of", async () => {
+  const lists = { K1: ["ZKEPT"], K1R: ["ZKEPT", "ZDROPPED"], K1O: ["ZOPEN"] };
+  const asked = [];
+  const api = {
+    query: async sql => {
+      if (/FROM e070 WHERE trkorr/.test(sql)) { return { values: [{ TRKORR: "K1", TRSTATUS: "D" }] }; }
+      if (/FROM e070 WHERE strkorr/.test(sql)) { return { values: [{ TRKORR: "K1R", TRSTATUS: "R" }, { TRKORR: "K1O", TRSTATUS: "D" }] }; }
+      if (/object = 'MERG'/.test(sql)) { return { values: [] }; }
+      if (/SELECT pgmid, object, obj_name FROM e071/.test(sql)) {
+        asked.push(sql);
+        return { values: Object.keys(lists).filter(k => sql.includes("'" + k + "'"))
+          .flatMap(k => lists[k].map(name => ({ PGMID: "R3TR", OBJECT: "PROG", OBJ_NAME: name }))) };
+      }
+      return { values: [] };
+    },
+    revisions: async () => [], revisionSource: async () => ""
+  };
+  const payload = await build(api, "K1", null, true);
+  const named = payload.DIAG.filter(l => /^PART /.test(l)).map(l => l.split(" ").pop()).sort();
+  assert.deepStrictEqual(named, ["ZKEPT", "ZOPEN"]);
+  assert.ok(asked.every(sql => !sql.includes("'K1R'")));
 });
 
 test("blame credits each line to the developer whose task it came from, a transport of copies included", async () => {

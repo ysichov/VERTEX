@@ -91,7 +91,7 @@ script, nothing on top. The VS Code extension computes the same kind of diff wit
 implementation, because Eclipse's comparer is under the EPL and cannot be carried into VERTEX's MIT
 code.
 
-**The review of a transport** is built from ADT with **Build review** when none is saved - opening only reads a saved one - every part the request changed except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections, includes the table maintenance generator (SE54) writes for SM30, and generator stamp lines) unless **Ignore SAP generated** is cleared,
+**The review of a transport** is built from ADT with **Build review** when none is saved - opening only reads a saved one - every part the request carries - on its own object list or in a task not yet released; an object taken out of the request after its task was released is left out - except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections, includes the table maintenance generator (SE54) writes for SM30, and generator stamp lines) unless **Ignore SAP generated** is cleared,
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - each part appears as soon as
 it is read, the status line says which, and a changed line shows what changed inside it. Before it is built, Review
 lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's report does - with objects deleted
@@ -172,9 +172,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.56.qualifier`; the checked-in update site carries build `0.9.56.20261104151755`.
+then regenerate. The feature and bundle sources are at `0.9.57.qualifier`; the checked-in update site carries build `0.9.57.20261104161607`.
 
-The local install archive is version `0.9.56.20261104151755`. Install its ZIP through
+The local install archive is version `0.9.57.20261104161607`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

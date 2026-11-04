@@ -17,7 +17,11 @@ li>.row:hover{background:var(--vscode-list-hoverBackground,#8882)}
 .mark{display:inline-block;width:8px;height:8px;flex:none}
 .mark.public{background:#2e9e44}.mark.protected{background:#d9a400;width:7px;height:7px;transform:rotate(45deg)}.mark.private{background:#d33a2c;border-radius:50%}
 li.closed>ul{display:none}
+#options{padding:6px 10px 0}#options[hidden]{display:none}
+body:not(.show-removed) li.removed{display:none}
+li.removed>.row>.label{color:var(--vscode-errorForeground,#d33a2c)}
 </style></head><body>
+<div id="options" hidden><label title="Objects a released task holds that were taken out of the request"><input type="checkbox" id="show-removed"> Show removed objects</label></div>
 <div id="status" role="status"></div><div id="tree" role="tree"></div>
 <script>
 const initial = /*INIT*/null/*INIT*/;
@@ -30,7 +34,8 @@ function sdeContext() {
     const object = node.open || node.expand || {};
     let depth = 0, parent = li.parentElement;
     while (parent) { if (parent.tagName === "LI") depth++; parent = parent.parentElement; }
-    return { depth, label: node.label, ...(object.name ? { name: object.name, type: object.type || "" } : {}) };
+    return { depth, label: node.label, ...(object.name ? { name: object.name, type: object.type || "" } : {}),
+      ...(node.removed ? { removed_from_request: true } : {}) };
   });
   return { view: "navigator", name: initial && initial.name || "", type: initial && initial.type || "",
     loading, loaded_nodes, truncated: all.length > loaded_nodes.length,
@@ -62,6 +67,7 @@ function item(node) {
   const label = document.createElement("span"); label.className = "label"; label.textContent = node.label; row.appendChild(label);
   if (node.description) { const d = document.createElement("span"); d.className = "desc"; d.textContent = node.description; row.appendChild(d); }
   if (!node.open && !node.expand) li.classList.add("group");
+  if (node.removed) { li.classList.add("removed"); label.title = "Taken out of the request after its task was released"; }
   if (node.open) { li.classList.add("link"); label.title = "Open " + node.open.name + " in the editor"; label.onclick = () => open(node.open); }
   const list = document.createElement("ul");
   let loaded = !!node.children;
@@ -104,8 +110,11 @@ function show(state) {
     const ul = document.createElement("ul"), top = item(root);
     top.classList.remove("closed"); top.querySelector(".twist").textContent = "⌄";
     ul.appendChild(top); document.getElementById("tree").appendChild(ul);
+    // A request with objects taken out of it offers to show them; others have nothing to offer.
+    document.getElementById("options").hidden = !ul.querySelector("li.removed");
     publishContext();
   });
 }
+document.getElementById("show-removed").addEventListener("change", e => document.body.classList.toggle("show-removed", e.target.checked));
 if (initial && initial.name) show(initial);
 </script></body></html>

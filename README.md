@@ -81,7 +81,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.56.20261104151755**; the VS Code extension is **0.9.56**.
+**0.9.57.20261104161607**; the VS Code extension is **0.9.57**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -315,7 +315,7 @@ When the VERTEX chat resolves a single SAP object name, its answer links both th
 
 - **VERTEX Tools** — pick an object type and a name; the functions offered depend on the type
   (Object Navigator, Data, UML, Metrics, the Calls diagram and the Diagram, Diff, Versions). Object Navigator is the SE80
-  tree of a package, transport request, program, class or interface, each entry a link to its source. There is no View source: the source is the
+  tree of a package, transport request, program, class or interface, each entry a link to its source; for a request, **Show removed objects** shows in red what a released task held but the request no longer carries. There is no View source: the source is the
   editor tab, and its parts are VS Code's Outline. VERTEX Smart Debugger is the panel beside the editor.
   Clicking a method in the Calls diagram opens its Diagram inside the same canvas, joined
   to the block it came from; the magnifier icon magnifies the diagram under the pointer, the same lens in every diagram.
@@ -383,7 +383,7 @@ SelecTor offers **Technical names / Text** for Selection field labels and table 
 Status: **early**. All three answer, and each is a fraction of what it was cut from.
 
 Building a review is here too, not only reading one. In VS Code a request with no saved review is
-built from ADT with **Build review** - opening only reads a saved one - every part it changed except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections, includes the table maintenance generator (SE54) writes for SM30, and generator stamp lines) unless **Ignore SAP generated** is cleared, with the **Blame** toggle each changed line with the developer who wrote it, the pair of versions chosen by AVE's rule,
+built from ADT with **Build review** - opening only reads a saved one - every part it carries - on its own object list or in a task not yet released; an object taken out of the request after its task was released is left out - except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections, includes the table maintenance generator (SE54) writes for SM30, and generator stamp lines) unless **Ignore SAP generated** is cleared, with the **Blame** toggle each changed line with the developer who wrote it, the pair of versions chosen by AVE's rule,
 diffed and cut into blocks by AVE's walk - each part appears as soon as it is read, and a changed line shows what changed
 inside it. Before it is built, Review lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's
 report does - with newly created objects in green and objects deleted since in red. In VS Code, **Stop** cancels a build before saving; a SAP call already in progress may finish. In the request list, a request number is a link to its review when one is saved in SAP or in files for the current system. **Copy log** copies the build diagnostics. In VS Code, the chat receives the open request review's object list and saved changed lines; it can explain the request without opening every object. Select text in a Tools page or the VS Code sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. **Rebuild from ADT** builds it again from

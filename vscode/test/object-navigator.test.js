@@ -57,6 +57,16 @@ test("a transport request lists its objects once each, by type; a method opens i
   assert.deepEqual(group[0].children[0].children[0].open, { name: "Z_CALC", type: "FUNC" });
   assert.deepEqual(tree[1].children[0].open, { name: "ZCL_B", type: "CLAS", method: "RUN" });
   assert.equal(tree[2].children[0].open, undefined);
+  // An object only a released task holds was taken out of the request; an open task's object is still carried.
+  const marked = navigator.requestTree([
+    { TRKORR: "K1", TRSTATUS: "D", OBJECT: "PROG", OBJ_NAME: "ZKEPT" },
+    { TRKORR: "K1R", TRSTATUS: "R", OBJECT: "PROG", OBJ_NAME: "ZKEPT" },
+    { TRKORR: "K1R", TRSTATUS: "R", OBJECT: "PROG", OBJ_NAME: "ZDROPPED" },
+    { TRKORR: "K1O", TRSTATUS: "D", OBJECT: "PROG", OBJ_NAME: "ZOPEN" },
+    { TRKORR: "K1R", TRSTATUS: "R", OBJECT: "TABL", OBJ_NAME: "ZGONE" }], "K1");
+  assert.deepEqual(marked[0].children.map(c => [c.label, Boolean(c.removed)]), [["ZDROPPED", true], ["ZKEPT", false], ["ZOPEN", false]]);
+  assert.equal(marked[0].removed, undefined);
+  assert.equal(marked[1].removed, true);
 });
 
 test("Object Navigator is first for a transport request too, and its default", () => {

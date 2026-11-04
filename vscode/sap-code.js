@@ -580,10 +580,10 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
       // One read: the objects of the request and of its tasks, by E070's link from a task to its request. What is
       // inside a class is read when it is unfolded.
       const request = "'" + name(objectName).replace(/'/g, "''") + "'";
-      const keys = (await query("SELECT e071~object, e071~obj_name FROM e071 INNER JOIN e070 ON e070~trkorr = e071~trkorr"
+      const keys = (await query("SELECT e070~trkorr, e070~trstatus, e071~object, e071~obj_name FROM e071 INNER JOIN e070 ON e070~trkorr = e071~trkorr"
         + " WHERE e070~trkorr = " + request + " OR e070~strkorr = " + request, 10000)).values;
       if (!keys.length) throw new Error("Transport request " + name(objectName) + " holds no objects or does not exist.");
-      return navigator.requestTree(keys);
+      return navigator.requestTree(keys, name(objectName));
     }
     if (objectType !== "CLAS" && objectType !== "INTF") throw new Error("Object Navigator shows a package, a transport request, a program, a function group or module, a class or an interface, not " + objectType + ".");
     const object = await resolve({ object_name: objectName, object_type: objectType });

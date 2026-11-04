@@ -2046,11 +2046,13 @@ function reviewPrompt(full, scope, kind) {
   var review_blocks = scope ? scope.body.blocks : globalThis.review_blocks;
   var name = review_part ? (review_part.display_name || review_part.obj_name) : "";
   kind = kind || "review";
-  // An object with no earlier version is all added lines: the prompt says it is new, so it is described whole.
-  var created = review_ops.length > 0 && review_ops.every(function (o) { return o.op === "+"; });
+  // An object the review marks created - no earlier version - or one all of added lines: the prompt says it is new,
+  // so it is described whole.
+  var created = Boolean(review_part && review_part.is_created)
+    || (review_ops.length > 0 && review_ops.every(function (o) { return o.op === "+"; }));
   if (created) {
     return promptOpening(kind) + "\n\nNEW object " + name + ", created in this transport - its whole source:\n\n"
-      + review_ops.map(function (o) { return "+ " + o.text; }).join("\n") + promptEnding(kind);
+      + review_ops.filter(function (o) { return o.op !== "-"; }).map(function (o) { return "+ " + o.text; }).join("\n") + promptEnding(kind);
   }
   if (!full) {
     var placed = review_blocks.filter(function (b) { return b.op_from > 0; }).sort(function (a, c) { return a.op_from - c.op_from; });

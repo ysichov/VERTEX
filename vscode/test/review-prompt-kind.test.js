@@ -42,6 +42,12 @@ test("a created object goes to the prompt whole and named NEW, a changed one nam
     assert.match(prompt, /NEW object ZCL_SHIP=>RUN, created in this transport - its whole source:\n\n\+ FUNCTION z_new\.\n\+ ENDFUNCTION\.\n\nTR Details: ER6K9A1QXV$/);
     assert.doesNotMatch(prompt, /MODIFIED object/);
   }
+  // The review's own mark decides too: its new source, without lines a version before it held.
+  const marked = context();
+  marked.review_part = { display_name: "ZHRR_EMP_ALERTS", is_created: true };
+  const prompt = marked.reviewPrompt(false, null, "technical");
+  assert.match(prompt, /NEW object ZHRR_EMP_ALERTS, created in this transport - its whole source:\n\n\+ CLASS zcl_ship DEFINITION\.\n\+ amount = new_price \* 2\.\n\+ ENDCLASS\./);
+  assert.doesNotMatch(prompt, /old_price/);
 });
 
 test("code review remains the default prompt", () => {

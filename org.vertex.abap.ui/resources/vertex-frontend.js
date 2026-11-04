@@ -105508,7 +105508,9 @@ function pairOf(feed, numbers, open, copies) {
   let old = below.find(e => e.transport && !numbers.has(e.transport) && !(copies && copies.has(e.transport))) || null;
   if (!old && fresh.id !== "00001" && ordered.length) {
     const oldest = ordered[ordered.length - 1];
-    old = oldest === fresh || numbers.has(oldest.transport) ? null : oldest;
+    // A version with no request under nothing but the request's own is the part before it went into a request - a
+    // developer's local first save - so the request created the part; only another request's version makes it older.
+    old = oldest === fresh || numbers.has(oldest.transport) || !oldest.transport ? null : oldest;
   }
   return { fresh, old };
 }
@@ -105613,7 +105615,12 @@ async function build(api, request, progress, fresh, blame, keepGenerated, onPart
 async function requestParts(api, request, log, progress) {
   const head = (await api.query("SELECT trkorr, trstatus FROM e070 WHERE trkorr = " + sqlText(request), 1)).values[0];
   if (!head) { throw new Error("Transport request " + request + " does not exist."); }
-  const tasks = (await api.query("SELECT trkorr FROM e070 WHERE strkorr = " + sqlText(request), 1000)).values.map(r => r.TRKORR);
+  const taskRows = (await api.query("SELECT trkorr, trstatus FROM e070 WHERE strkorr = " + sqlText(request), 1000)).values;
+  const tasks = taskRows.map(r => r.TRKORR);
+  /* Which objects the request carries: its own object list, and the lists of tasks not yet released. A released task's
+     objects went into the request's list on release, so one missing there was taken out of the request - tried in a
+     task, moved on as a ToC, and meant to go no further - and is not reviewed. Its versions still count as the request's. */
+  const carriers = [request].concat(taskRows.filter(r => r.TRSTATUS !== "R" && r.TRSTATUS !== "N").map(r => r.TRKORR));
   // The request's own transports of copies are the request too (ZCL_VX_REQUEST=>RESOLVE_PARENT_K): a ToC names the
   // request it copies in its CORR/MERG entry. Without them the newest ToC of the request became the old side, and the
   // review showed only what changed since the last copy.
@@ -105621,7 +105628,7 @@ async function requestParts(api, request, log, progress) {
     + " AND obj_name LIKE " + sqlText(request + "%"), 10000)).values
     .filter(r => String(r.OBJ_NAME || "").slice(0, 10) === request).map(r => r.TRKORR);
   const numbers = new Set([request, ...tasks, ...copies]);
-  const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", [...numbers], 10000);
+  const keys = await inLists(api, "SELECT pgmid, object, obj_name FROM e071 WHERE trkorr", carriers, 10000);
   const open = head.TRSTATUS !== "R" && head.TRSTATUS !== "N";
   return Object.assign({ numbers, open }, await partsOfRequest(api, keys, numbers, log, progress));
 }

@@ -1,5 +1,12 @@
 # Release history
 
+## 2026-11-04 — 0.9.57: new objects named in the documentation prompt
+
+- Object Navigator, both hosts: a transport request's tree hides an object only a released task holds - taken out of the request - and **Show removed objects**, offered when there is one, shows such objects in red.
+- Transport review, both hosts: the review takes its objects from the request's own list and from tasks not yet released. An object a released task held but that was then taken out of the request - tried, moved on as a ToC, not meant to travel further - is no longer reviewed or documented.
+- Transport review, both hosts: an object whose only version below the request's own is one with no request - its first local save - is created by the request: it shows green, is reviewed against nothing, and goes to the prompt as NEW. A saved review keeps the old pair until **Rebuild from ADT**.
+- Transport review, both hosts: an object the review marks as created - shown green in the summary - goes to the prompt as `NEW object`, its whole new source, even when the diff pairs it with an earlier version; the documentation prompt then describes it in full rather than as a change.
+
 ## 2026-11-04 — 0.9.56: Fields of a table or structure; VS Code: several clients of one system; prompt choice per object
 
 - SelecTor, both hosts: a view or CDS entity opens as a table does, its fields the columns the data preview describes; **Run Select** opens a SELECT on one view or CDS entity in SelecTor instead of the plain window.
