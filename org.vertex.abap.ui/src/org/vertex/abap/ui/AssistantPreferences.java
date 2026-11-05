@@ -44,6 +44,54 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
         return STORE.get(key, key.equals("node") ? "node" : "");
     }
 
+    /**
+     * The Node executable: the one set here, else the first found on PATH, in nvm's versions (newest
+     * first), Volta, Homebrew or /usr/local - Eclipse started from the Dock does not get the shell's
+     * PATH, where nvm puts Node. Plain "node" when none is found, so the error still names it.
+     */
+    static String node() {
+        String set = setting("node").trim();
+        if (!set.isEmpty() && !set.equals("node")) return set;
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        String name = windows ? "node.exe" : "node";
+        java.util.List<java.nio.file.Path> folders = new java.util.ArrayList<>();
+        String path = System.getenv("PATH");
+        if (path != null) for (String part : path.split(java.io.File.pathSeparator)) if (!part.isBlank()) folders.add(java.nio.file.Paths.get(part.replace("\"", "")));
+        String home = System.getProperty("user.home", "");
+        String nvmDir = System.getenv("NVM_DIR");
+        java.nio.file.Path nvm = (nvmDir != null && !nvmDir.isBlank() ? java.nio.file.Paths.get(nvmDir) : java.nio.file.Paths.get(home, ".nvm")).resolve("versions").resolve("node");
+        try (java.util.stream.Stream<java.nio.file.Path> versions = java.nio.file.Files.list(nvm)) {
+            versions.sorted((a, b) -> compareVersions(b.getFileName().toString(), a.getFileName().toString()))
+                .forEach(v -> folders.add(v.resolve("bin")));
+        } catch (java.io.IOException | RuntimeException none) { /* No nvm. */ }
+        folders.add(java.nio.file.Paths.get(home, ".volta", "bin"));
+        folders.add(java.nio.file.Paths.get("/opt/homebrew/bin"));
+        folders.add(java.nio.file.Paths.get("/usr/local/bin"));
+        if (windows) {
+            String programs = System.getenv("ProgramFiles");
+            if (programs != null) folders.add(java.nio.file.Paths.get(programs, "nodejs"));
+        }
+        for (java.nio.file.Path folder : folders) {
+            java.nio.file.Path candidate = folder.resolve(name);
+            if (java.nio.file.Files.isRegularFile(candidate) && java.nio.file.Files.isExecutable(candidate)) return candidate.toString();
+        }
+        return "node";
+    }
+
+    /** v26.13.0 against v22.9.1, by number. */
+    static int compareVersions(String a, String b) {
+        String[] x = a.replaceFirst("^v", "").split("\\."), y = b.replaceFirst("^v", "").split("\\.");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int p = i < x.length ? parse(x[i]) : 0, q = i < y.length ? parse(y[i]) : 0;
+            if (p != q) return Integer.compare(p, q);
+        }
+        return 0;
+    }
+
+    private static int parse(String part) {
+        try { return Integer.parseInt(part.replaceAll("\\D.*$", "")); } catch (NumberFormatException e) { return 0; }
+    }
+
     /** The log folder, chosen from Session Logs as VS Code's Choose Log Folder sets vertex.ai.logPath. */
     static void setLogPath(String folder) throws java.util.prefs.BackingStoreException {
         STORE.put("logPath", folder);
@@ -56,7 +104,8 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
         Composite box = new Composite(parent, SWT.NONE);
         box.setLayout(new GridLayout(3, false));
         Label explanation = new Label(box, SWT.WRAP);
-        explanation.setText("Node.js 22+ is required. Choose native Codex/Claude executables and log in with their CLI first.\n"
+        explanation.setText("Node.js 22+ is required. Left as node, it is found on PATH, in nvm, Volta, Homebrew or /usr/local.\n"
+                + "Choose native Codex/Claude executables and log in with their CLI first.\n"
                 + "Empty assistant paths use installed CLI executables or VS Code extension binaries automatically.");
         explanation.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false, 3, 1));
         for (int i = 0; i < keys.length; i++) {

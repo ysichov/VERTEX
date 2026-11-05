@@ -90,7 +90,7 @@ final class AssistantBridge implements AutoCloseable {
             for (String file : FILES) {
                 Files.writeString(directory.resolve(file), view.readResource("assistant/" + file), StandardCharsets.UTF_8);
             }
-            ProcessBuilder builder = new ProcessBuilder(AssistantPreferences.setting("node"), directory.resolve("bridge.js").toString());
+            ProcessBuilder builder = new ProcessBuilder(AssistantPreferences.node(), directory.resolve("bridge.js").toString());
             builder.directory(directory.toFile());
             child = builder.start();
             children.add(child);

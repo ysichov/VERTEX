@@ -153,8 +153,10 @@ it cannot save or approve reviews.
    works only through the vendor's own client, so without one of them the
    Assistant cannot answer. Existing VS Code extension binaries are also
    discovered automatically; VS Code need not be running.
-3. Open **Window > Preferences > VERTEX Assistant**. Set the Node executable
-   if `node` is not on Eclipse's PATH. Optionally select native Codex/Claude
+3. Open **Window > Preferences > VERTEX Assistant**. Left as `node`, the Node
+   executable is found on Eclipse's PATH, in nvm's versions (the newest first),
+   Volta, Homebrew or `/usr/local/bin`, so an Eclipse started from the Dock
+   finds an nvm install too; set it here only for another Node. Optionally select native Codex/Claude
    executables; on Windows select `.exe`, not `.cmd` wrappers.
 4. Open Selector or Versions on your ABAP project and click **Assistant**.
    Choose the assistant/model and send a request. For Claude the list holds the

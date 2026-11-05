@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-11-05 — Eclipse finds Node
+
+Eclipse started from the Dock has no shell PATH, so `ProcessBuilder("node", ...)` failed with "Cannot run program node" for an nvm install until the preference was set by hand. `AssistantPreferences.node()` keeps a set path; for an empty or plain `node` it looks on PATH, in `$NVM_DIR` or ~/.nvm `versions/node/*/bin` (versions compared by number, newest first), ~/.volta/bin, /opt/homebrew/bin, /usr/local/bin and, on Windows, `%ProgramFiles%\nodejs`, and falls back to `node` so the error still names it. `AssistantBridge` starts the bridge with it. Checked by a scratch class in the package run with `env -i PATH=/usr/bin:/bin`: it returned ~/.nvm/versions/node/v26.13.0/bin/node. Docs: eclipse/README.md step 3, history.md. A test ZIP was built under target/; the docs/ update site was not replaced. Not checked in a running Eclipse.
+
 ## 2026-11-05 — Merge origin/main (0.9.61) into the CodeMie profile and gradient work
 
 The other machine's 0.9.55-0.9.61 (CodeMie in Eclipse's chat, Anthropic API there, the Edge timeout message) merged into the branch with the CodeMie profile choice, panel and LLM Providers gradient, cost behind `vertex.ai.showCodemieCost` and the log buttons. Only history.md conflicted: both added to the top; this branch's items went into the 0.9.61 entry and its "VS Code 0.9.60" line became 0.9.61. Code merged without conflicts. Version stays 0.9.61; VSIX 0.9.61 rebuilt by package.js. VS Code suite: 11 failures, each also failing on origin/main in a separate checkout (25 there, without the generated bundle). Eclipse not rebuilt in this landing.

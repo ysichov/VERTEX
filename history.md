@@ -8,6 +8,7 @@
 - With **Show CodeMie Cost** (`vertex.ai.showCodemieCost`, off by default), each CodeMie answer in the VERTEX panel shows its cost after the token counts (`≈ $0.0022`). It is Claude Code's estimate from list prices, not CodeMie's bill.
 - The VERTEX panel's 📜 SAP log button and 📜 AI look like the title actions beside them: coloured only on hover. 📜 SAP had the filled button style.
 - A transport request whose objects are in a namespace (`/NS/`) is covered by a test of its object list and ADT addresses.
+- Eclipse: the assistant finds Node by itself when its preference is left as `node` - on PATH, in nvm (newest first), Volta, Homebrew or /usr/local - so an Eclipse started from the Dock no longer stops at "Cannot run program node".
 - VS Code 0.9.61 built and verified with these changes.
 
 ## 2026-11-04 — 0.9.58: model checks per provider, Logic diagram for events and forms, method history fallback
