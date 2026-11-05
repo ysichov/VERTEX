@@ -1231,11 +1231,14 @@ and runs **VERTEX: Backward Usage Analysis** there for the value chosen in Varia
 routine - or, with none chosen, for the routine at the point, so where its values go in the callers is shown from the
 debugger.
 
-**Several values.** *Follow* in a variable's menu adds it to the values followed; *Follow* on a structure adds its
-components - after a run those the run changed, before it all of them. With more than one, a list on the chip in
-Variables and at the left of the diagram's toolbar chooses the one Formula, Expression and the places are about; the
-path analysed for each is kept, so switching back is immediate. *Follow* again on a value drops it; the chip's ×
-drops them all. The variable trees start closed.
+**Several values.** *Follow* in a variable's menu adds it to the values followed. *Follow* on a structure follows the
+structure itself, as one value: its places are every statement that writes any of its fields, also under another
+name in a method it is passed to (`ls_result` passed as `cs_context`, then `cs_context-amount = ...`). Its fields
+are offered beside it - after a run those the run changed, before it all of them - and a field is analysed when it
+is chosen. With more than one value, a list on the chip in Variables and at the left of the diagram's toolbar
+chooses the one Formula, Expression and the places are about; what was analysed for each is kept, so switching
+back asks nothing again. *Follow* again on a value drops it, a structure with its fields; the chip's × drops them
+all. The variable trees start closed.
 
 **Formula and Expression with the run's values.** With a value chosen in Variables and a path analysed, after a run
 Formula and Expression are the analysis's formula as the run took it: only the definitions whose line the run
@@ -1398,8 +1401,10 @@ Changing a diagram’s direction between Top-down and Left-right automatically f
 
 - **Sections.** The switches at the very top of the window show or hide Main (Clear, help, diagnostics and the run controls:
   Run in SAP, the steps, Visual, Z only and the record) and the right column's Stack, Breakpoints,
-  Variables, Diagram and Log. The line between two visible sections drags to resize them. Diagram
-  opens by itself when a run has recorded something. Variables and Diagram each have a button
+  Variables, Code Flow Analysis, Dump, Output and Log; the name of the program being debugged stands beside them.
+  The line between two visible sections drags to resize them. Breakpoints is as tall as its list, at most 40% of the
+  column, until its line is dragged. Code Flow Analysis opens by itself when a run has recorded something. The **?**
+  in Main explains the window: analysis without running, the ABAP transpiler and debugging in SAP, then each section. Variables and Code Flow Analysis each have a button
   (&#10530;) that takes the whole window; Esc gives it back.
 - **Log.** A section of its own; it lists every step of the Visual runs:
   what was done (F5, F6, F7, F8 and to which points), from where, to where, and
