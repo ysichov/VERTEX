@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.58",
+  "version": "0.9.61",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -450,6 +450,7 @@
             "claude-subscription",
             "codex-subscription",
             "copilot",
+            "codemie",
             "anthropic-api",
             "openai-api",
             "mistral-api",
@@ -490,7 +491,7 @@
         "vertex.ai.modelConfig": {
           "type": "object",
           "default": {},
-          "markdownDescription": "Which models VERTEX offers per provider (`claude`, `codex`, `copilot` and API providers): `hidden` model ids are left out of every model list, `versions` are Claude models checked by full id, `off: true` leaves the provider out of every provider choice. Edited with **Config models** in the VERTEX panel."
+          "markdownDescription": "Which models VERTEX offers per provider (`claude`, `codex`, `copilot`, `codemie` and API providers): `hidden` model ids are left out of every model list, `versions` are Claude models checked by full id, `off: true` leaves the provider out of every provider choice. Edited with **Config models** in the VERTEX panel."
         },
         "vertex.transpiler.runPath": {
           "type": "string",
@@ -971,7 +972,7 @@
           {
             "id": "ai",
             "title": "Choose the assistant",
-            "description": "Claude Code, Codex, GitHub Copilot or the Anthropic API, in the VERTEX panel.\n[Open the VERTEX Panel](command:vertex.showPanel)\n[ⓘ Info](command:vertex.aiInfo)",
+            "description": "Claude Code, Codex, GitHub Copilot, EPAM CodeMie or the Anthropic API, in the VERTEX panel.\n[Open the VERTEX Panel](command:vertex.showPanel)\n[ⓘ Info](command:vertex.aiInfo)",
             "media": {
               "markdown": "walkthrough/ai.md"
             },

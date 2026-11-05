@@ -177,6 +177,41 @@ test("a part opened inside a request reads the feed of the object it belongs to"
   assert.strictEqual(asked.at(-1), "/sap/bc/adt/ddic/structures/ztab");
 });
 
+// The same request with objects in a namespace: /NS/ in E071, TRDIR and the ADT addresses.
+function namespaceScopeSession() {
+  const asked = [];
+  const api = {
+    query: async sql => {
+      asked.push(sql);
+      if (/FROM e070 WHERE trkorr = 'A4HK900001'/.test(sql)) { return { values: [{ TRKORR: "A4HK900001" }] }; }
+      if (/FROM e070 WHERE strkorr/.test(sql)) { return { values: [] }; }
+      if (/FROM e071/.test(sql)) {
+        return { values: [{ PGMID: "R3TR", OBJECT: "CLAS", OBJ_NAME: "/NS/CL_X" },
+          { PGMID: "LIMU", OBJECT: "METH", OBJ_NAME: "/NS/CL_Y" + " ".repeat(22) + "RUN" },
+          { PGMID: "R3TR", OBJECT: "PROG", OBJ_NAME: "/NS/PROG" }, { PGMID: "R3TR", OBJECT: "TABL", OBJ_NAME: "/NS/TAB" }] };
+      }
+      if (/FROM trdir WHERE name = '\/NS\/PROG'/.test(sql)) { return { values: [{ SUBC: "1" }] }; }
+      if (/FROM dd02l/.test(sql)) { return { values: [{ TABCLASS: "TRANSP" }] }; }
+      return { values: [] };
+    },
+    revisions: async (url, include) => { asked.push(url + (include ? "#" + include : "")); return []; }
+  };
+  return { api, asked };
+}
+
+test("a transport request with namespace objects lists them and opens each at its encoded ADT address", async () => {
+  const { api, asked } = namespaceScopeSession();
+  const answer = await request(api, "/sap/bc/adt/vertex/versions/A4HK900001?type=TR");
+  assert.deepStrictEqual(answer.parts.map(p => [p.part_type, p.name.trim()]), [
+    ["METH", "/NS/CL_Y" + " ".repeat(22) + "RUN"], ["CLAS", "/NS/CL_X"], ["REPS", "/NS/PROG"], ["TABD", "/NS/TAB"]]);
+  await request(api, "/sap/bc/adt/vertex/versions/A4HK900001?type=TR&part=" + encodeURIComponent("/NS/PROG") + "&ptype=REPS");
+  assert.strictEqual(asked.at(-1), "/sap/bc/adt/programs/programs/%2Fns%2Fprog");
+  await request(api, "/sap/bc/adt/vertex/versions/A4HK900001?type=TR&part=" + encodeURIComponent("/NS/CL_Y" + " ".repeat(22) + "RUN") + "&ptype=METH");
+  assert.strictEqual(asked.at(-1), "/sap/bc/adt/oo/classes/%2Fns%2Fcl_y#main");
+  await request(api, "/sap/bc/adt/vertex/versions/A4HK900001?type=TR&part=" + encodeURIComponent("/NS/TAB") + "&ptype=TABD");
+  assert.strictEqual(asked.at(-1), "/sap/bc/adt/ddic/tables/%2Fns%2Ftab");
+});
+
 test("a package lists what TADIR keeps under it; a data element reads its own feed", async () => {
   const { api, asked } = scopeSession();
   const answer = await request(api, "/sap/bc/adt/vertex/versions/ZPACK?type=DEVC");

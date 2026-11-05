@@ -24,8 +24,13 @@ const TOKEN_VAR = "VERTEX_WINDOW_TOKEN";
 
 const ASSISTANTS = {
   claude: { label: "Claude Code", extension: "anthropic.claude-code" },
-  codex: { label: "Codex", extension: "openai.chatgpt" }
+  codex: { label: "Codex", extension: "openai.chatgpt" },
+  // EPAM CodeMie: Claude Code run through the CodeMie CLI's codemie-claude, which signs in with the
+  // profile codemie setup made and passes Claude Code's own options through.
+  codemie: { label: "CodeMie CLI", extension: "" }
 };
+// CodeMie runs Claude Code, so it is asked and answers as Claude does.
+const claudeLike = id => id === "claude" || id === "codemie";
 
 // The models a Claude subscription offers, by full id - the same ids the
 // Anthropic API lists; Claude Code reports no list of its own. The newest of
@@ -71,6 +76,7 @@ function describe(id) {
 /** The executable inside the assistant's extension, or an error saying why not. */
 function locate(id, extensionPath) {
   const assistant = describe(id);
+  if (id === "codemie") { return codemieBinary("codemie-claude"); }
   if (!extensionPath) {
     if (id === "claude" || id === "codex") {
       const name = process.platform === "win32" ? id + ".exe" : id;
@@ -157,6 +163,62 @@ async function resolveClaude(vscode, extensionPath) {
   return resolveAssistant(vscode, "claude", extensionPath);
 }
 
+/* The CodeMie CLI is an npm package: its commands lie in npm's global bin - on PATH, or in nvm's
+   folders when VS Code was started from the Dock without the shell's PATH. On Windows npm's .cmd
+   shim cannot be spawned without a shell, so the package's own script is run with node. */
+function codemieFolders() {
+  const home = os.homedir();
+  const folders = (process.env.PATH || process.env.Path || "").split(path.delimiter)
+    .concat([path.join(home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin"]);
+  const nvm = path.join(process.env.NVM_DIR || path.join(home, ".nvm"), "versions", "node");
+  try {
+    fs.readdirSync(nvm).sort().reverse().forEach(version => folders.push(path.join(nvm, version, "bin")));
+  } catch (_) { /* No nvm. */ }
+  if (process.platform === "win32" && process.env.APPDATA) { folders.push(path.join(process.env.APPDATA, "npm")); }
+  return folders.filter(Boolean).map(folder => folder.replace(/^"|"$/g, ""));
+}
+
+function codemieBinary(command) {
+  for (const root of codemieFolders()) {
+    const candidate = process.platform === "win32"
+      ? path.join(root, "node_modules", "@codemieai", "code", "bin", command === "codemie" ? "codemie.js" : command + ".js")
+      : path.join(root, command);
+    try {
+      if (fs.statSync(candidate).isFile()) {
+        if (process.platform !== "win32") { fs.accessSync(candidate, fs.constants.X_OK); }
+        return candidate;
+      }
+    } catch (_) { /* Try the next folder. */ }
+  }
+  throw new Error("The CodeMie CLI was not found in PATH, ~/.nvm or npm's global folder. Install it with "
+                  + "npm install -g @codemieai/code, run codemie setup, and restart VS Code.");
+}
+
+// codemie models list prints a table: a header, a rule of ─, then a model per line, its id first.
+function codemieModels(text) {
+  const rows = String(text || "").replace(/\u001b\[[0-9;]*m/g, "").split(/\r?\n/);
+  const rule = rows.findIndex(line => /^─{10,}/.test(line.trim()));
+  if (rule < 0) { return []; }
+  const listed = [];
+  // Columns are padded with two spaces or more: ID, NAME, TYPE, DESCRIPTION. A row of another type
+  // than model (an embedding) is left out.
+  for (const line of rows.slice(rule + 1)) {
+    const cols = line.trim().split(/\s{2,}/);
+    if (!cols[0]) { break; }
+    if (cols[2] && cols[2] !== "model") { continue; }
+    if (!listed.some(m => m.id === cols[0])) { listed.push({ id: cols[0], label: cols[1] || cols[0] }); }
+  }
+  return listed;
+}
+
+// What a provider's assistant runs: the installation chosen for Claude Code or Codex, CodeMie's
+// command, nothing for a provider VERTEX asks itself.
+async function executableFor(vscode, id, extensionPath) {
+  if (id === "claude" || id === "codex") { return resolveAssistant(vscode, id, extensionPath); }
+  if (id === "codemie") { return locate("codemie", ""); }
+  return undefined;
+}
+
 function claudeBinary(root) {
   return path.join(root, "resources", "native-binary",
                    process.platform === "win32" ? "claude.exe" : "claude");
@@ -190,6 +252,19 @@ async function models(options) {
   if (id === "claude") {
     if (!options.executable) { locate(id, options.extensionPath); }
     return CLAUDE_VERSIONS;
+  }
+  if (id === "codemie") {
+    // The models of the CodeMie profile; its own default first, the one codemie setup chose.
+    const file = options.executable || locate(id, "");
+    const lister = path.join(path.dirname(file), process.platform === "win32" ? "codemie.js" : "codemie");
+    const result = await collect(options.spawn, lister, ["models", "list"],
+                                 { timeout: 60000, input: "", env: codemieEnv(file) });
+    if (result.timedOut || result.code !== 0) {
+      throw new Error("CodeMie did not list its models: "
+                      + (result.timedOut ? "no answer within a minute." : tail(result.stderr || result.stdout))
+                      + " Run codemie setup in a terminal.");
+    }
+    return [{ id: "", label: "CodeMie default" }].concat(codemieModels(result.stdout));
   }
 
   const file = options.executable || locate(id, options.extensionPath);
@@ -293,14 +368,14 @@ async function ask(options) {
   const file = options.executable || locate(options.assistant, options.extensionPath);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-window-"));
   try {
-    const command = options.assistant === "claude"
+    const command = claudeLike(options.assistant)
       ? claudeCommand(options, dir)
       : codexCommand(options, dir);
-    const env = Object.assign({}, process.env);
+    const env = options.assistant === "codemie" ? codemieEnv(file) : Object.assign({}, process.env);
     // The token reaches the child through its environment only: the files in
     // the folder name the variable, never the value.
     env[TOKEN_VAR] = options.token;
-    if (options.assistant === "claude" && !options.personalInstructions) {
+    if (claudeLike(options.assistant) && !options.personalInstructions) {
       // No personal CLAUDE.md or auto-memory: they would travel with every SAP
       // request, be repeated in answers and steer a tool they were not written
       // for. --setting-sources does not exclude CLAUDE.md, --safe-mode drops
@@ -309,7 +384,7 @@ async function ask(options) {
       env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
     }
     const timeout = options.timeout || TIMEOUT;
-    const streaming = options.assistant === "claude" && typeof options.onProgress === "function";
+    const streaming = claudeLike(options.assistant) && typeof options.onProgress === "function";
     let pending = "", resultEvent = null, generated = "", structured = "", thinking = "", lastAnswer = "", lastStatus = "";
     const toolBlocks = new Map();
     const emitAnswer = answer => {
@@ -384,7 +459,7 @@ async function ask(options) {
       try { const last = JSON.parse(pending.trim()); if (last.type === "result") resultEvent = last; }
       catch (_) { /* An interrupted NDJSON line is not a completed result. */ }
     }
-    if (options.assistant === "claude" && options.onProviderResponse) {
+    if (claudeLike(options.assistant) && options.onProviderResponse) {
       let response = resultEvent;
       if (!streaming) { try { response = JSON.parse(result.stdout); } catch (_) { /* No JSON result. */ } }
       if (response) options.onProviderResponse({ provider: "claude", scope: "cli_run", response });
@@ -393,7 +468,7 @@ async function ask(options) {
       throw new Error(assistant.label + " did not answer within " + Math.round(timeout / 1000)
                       + " seconds and was stopped.");
     }
-    return options.assistant === "claude"
+    return claudeLike(options.assistant)
       ? readClaude(streaming ? { ...result, stdout: resultEvent ? JSON.stringify(resultEvent) : "" } : result)
       : readCodex(result, command.answerFile);
   } finally {
@@ -559,9 +634,20 @@ function codexError(stderr) {
 
 /* ---------- processes ---------- */
 
+// The CodeMie CLI's scripts start with #!/usr/bin/env node and run claude: their folder and
+// Claude Code's go first on PATH, for a VS Code started without the shell's PATH.
+function codemieEnv(file, base) {
+  const env = Object.assign({}, base || process.env);
+  const key = Object.keys(env).find(k => k.toUpperCase() === "PATH") || "PATH";
+  env[key] = [path.dirname(file), path.join(os.homedir(), ".local", "bin"), env[key] || ""].join(path.delimiter);
+  return env;
+}
+
 function collect(spawn, file, args, options) {
   return new Promise(function (resolve) {
     let child;
+    // A script (CodeMie on Windows) is run with node.
+    if (/\.js$/i.test(file)) { args = [file].concat(args); file = "node"; }
     try {
       child = (spawn || childProcess.spawn)(file, args, {
         cwd: options.cwd, env: options.env, windowsHide: true
@@ -613,6 +699,8 @@ exports.locate = locate;
 exports.sources = sources;
 exports.resolveClaude = resolveClaude;
 exports.resolveAssistant = resolveAssistant;
+exports.executableFor = executableFor;
+exports.codemieModels = codemieModels;
 exports.models = models;
 exports.probe = probe;
 exports.CLAUDE_VERSIONS = CLAUDE_VERSIONS;

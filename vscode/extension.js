@@ -521,7 +521,7 @@ function windowTools() {
 
 function assistantExtension(id) {
   const described = assistant.ASSISTANTS[id];
-  const found = described ? vscode.extensions.getExtension(described.extension) : null;
+  const found = described && described.extension ? vscode.extensions.getExtension(described.extension) : null;
   return found ? found.extensionPath : "";
 }
 
@@ -533,8 +533,7 @@ async function assistantModels(context, args) {
     return { assistant: id, models: require("./model-config").apply(vscode, id, id === "anthropic-api"
       ? await anthropic.models((await require("./key-profiles").getActiveKey(context.secrets, id)).key)
       : await assistant.models({ assistant: id, extensionPath: assistantExtension(id),
-        executable: id === "claude" || id === "codex"
-          ? await assistant.resolveAssistant(vscode, id, assistantExtension(id)) : undefined })) };
+        executable: await assistant.executableFor(vscode, id, assistantExtension(id)) })) };
   } catch (e) {
     return { assistant: id, error: e.message };
   }
@@ -566,8 +565,7 @@ async function assistantAsk(context, service, args) {
       model: String(args[1] || ""),
       personalInstructions: vscode.workspace.getConfiguration("vertex.ai").get("personalInstructions", false),
       extensionPath: assistantExtension(id),
-      executable: id === "claude" || id === "codex"
-        ? await assistant.resolveAssistant(vscode, id, assistantExtension(id)) : undefined,
+      executable: await assistant.executableFor(vscode, id, assistantExtension(id)),
       url: running.url.replace(/\/mcp$/, ASSISTED[service].route),
       token: tools.token,
       instructions: brain.INSTRUCTIONS,

@@ -351,3 +351,38 @@ test("Claude reports original model usage and CLI totals separately", async () =
   assert.deepEqual(events[0].response.usage, usage);
   assert.deepEqual(events[1].response.modelUsage, modelUsage);
 });
+
+test("CodeMie's model table: the id and name of each model, embeddings left out", () => {
+  const table = "\u001b[1m\nProvider: \u001b[36mai-run-sso\u001b[39m\u001b[22m\n\n"
+    + "ID                     NAME                         TYPE       DESCRIPTION\n"
+    + "─".repeat(80) + "\n"
+    + "\u001b[36mclaude-4-5-sonnet      \u001b[39mBedrock Claude 4.5 Sonnet    model      \n"
+    + "claude-haiku-5-5       Bedrock Claude Haiku 5.5     model      fast\n"
+    + "text-embedding-005     Embedding                    embedding  \n"
+    + "\n50 model(s) available.\n";
+  assert.deepEqual(assistant.codemieModels(table), [
+    { id: "claude-4-5-sonnet", label: "Bedrock Claude 4.5 Sonnet" },
+    { id: "claude-haiku-5-5", label: "Bedrock Claude Haiku 5.5" }]);
+  assert.deepEqual(assistant.codemieModels("No profiles found."), []);
+});
+
+test("CodeMie runs Claude Code through codemie-claude: Claude's options, its folder first on PATH", { skip: WIN }, async () => {
+  const bin = folder("vertex-codemie-");
+  const file = path.join(bin, "codemie-claude");
+  fs.writeFileSync(file, "", { mode: 0o755 });
+  const spawn = spawner(call => {
+    call.child.stdout.emit("data", JSON.stringify({
+      type: "result", subtype: "success", is_error: false, result: "",
+      structured_output: PLAN, modelUsage: { "claude-haiku-5-5": {} }
+    }));
+    call.child.emit("close", 0);
+  });
+  const answer = await assistant.ask(common(spawn, "codemie", { model: "claude-haiku-5-5", extensionPath: "", executable: file }));
+  assert.equal(answer.model, "claude-haiku-5-5");
+  const call = spawn.calls[0];
+  assert.equal(call.file, file);
+  assert.equal(after(call.args, "--model"), "claude-haiku-5-5");
+  assert.equal(after(call.args, "--tools"), "");
+  assert.equal(call.options.env.PATH.split(path.delimiter)[0], bin);
+  assert.equal(call.options.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS, "1");
+});

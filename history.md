@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-11-05 — 0.9.61: EPAM CodeMie as an AI provider
+
+- VS Code: **EPAM CodeMie (CodeMie CLI)** is an AI provider after GitHub Copilot. It runs Claude Code through the CodeMie CLI's `codemie-claude` with the SAP tools the other providers get; the model list is the CodeMie profile's, and **CodeMie default** is the model chosen in `codemie setup`.
+
 ## 2026-11-04 — 0.9.58: model checks per provider, Logic diagram for events and forms, method history fallback
 
 - Logic diagram, both hosts: a report's events (START-OF-SELECTION, AT SELECTION-SCREEN and the others, and a report's statements outside every event) are drawn; before, an event showed only its title. FORM and dialog MODULE routines are drawn as well.
