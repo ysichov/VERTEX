@@ -66,6 +66,7 @@ final class AssistantBridge implements AutoCloseable {
         String request = "{\"call\":" + quote(call) + ",\"assistant\":" + quote(assistant)
                 + ",\"service\":" + quote(service) + ",\"executable\":" + quote(AssistantPreferences.setting(assistant))
                 + ",\"apiKey\":" + quote(apiKey)
+                + ",\"profile\":" + quote(assistant.equals("codemie") ? AssistantPreferences.setting("codemieProfile") : "")
                 + ",\"model\":" + quote(text(args, 1)) + ",\"text\":" + quote(text(args, 2))
                 + ",\"log\":" + quote(view instanceof ChatView ? AssistantPreferences.setting("logPath") : "")
                 + ",\"session\":" + quote(text(args, 4))
@@ -75,6 +76,7 @@ final class AssistantBridge implements AutoCloseable {
                 + ",\"tools\":" + AssistantPreferences.flag("logTools")
                 + ",\"request\":" + AssistantPreferences.flag("logRequest") + "}"
                 + ",\"personalInstructions\":" + AssistantPreferences.flag("personalInstructions")
+                + ",\"showCost\":" + AssistantPreferences.flag("showCodemieCost")
                 + ",\"state\":" + state + "}";
         if (!closed) workers.submit(() -> run(call, assistant, service, request));
     }

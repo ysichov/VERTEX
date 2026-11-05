@@ -15,6 +15,9 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
     private final String[] keys = { "node", "codex", "claude" };
     private final Text[] fields = new Text[3];
     private Text logPath;
+    private Combo codemieProfile;
+    private Button codemieCost;
+    private java.util.List<String> codemieNames = new java.util.ArrayList<>();
 
     private static final String[][] FLAGS = {
         { "logQuestions", "Log questions" },
@@ -78,6 +81,44 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
         return "node";
     }
 
+    /**
+     * CodeMie's profiles, from ~/.codemie/codemie-cli.config.json: the names under "profiles" and
+     * "activeProfile". A small scan of the JSON's top level and of that object's keys; nothing else of
+     * the file is read. Empty when there is no such file.
+     */
+    static String[] codemieProfiles(java.util.List<String> names) {
+        String active = "";
+        try {
+            String json = java.nio.file.Files.readString(java.nio.file.Paths.get(System.getProperty("user.home", ""), ".codemie", "codemie-cli.config.json"));
+            java.util.regex.Matcher a = java.util.regex.Pattern.compile("\"activeProfile\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(json);
+            if (a.find()) active = a.group(1);
+            java.util.regex.Matcher p = java.util.regex.Pattern.compile("\"profiles\"\\s*:\\s*\\{").matcher(json);
+            if (p.find()) {
+                int depth = 1, i = p.end();
+                boolean inString = false, key = true;
+                StringBuilder current = null;
+                for (; i < json.length() && depth > 0; i++) {
+                    char c = json.charAt(i);
+                    if (inString) {
+                        if (c == '\\') { if (current != null && i + 1 < json.length()) current.append(json.charAt(i + 1)); i++; continue; }
+                        if (c == '"') {
+                            inString = false;
+                            if (current != null) { names.add(current.toString()); current = null; }
+                        } else if (current != null) current.append(c);
+                        continue;
+                    }
+                    if (c == '"') { inString = true; if (depth == 1 && key) current = new StringBuilder(); }
+                    else if (c == '{' || c == '[') depth++;
+                    else if (c == '}' || c == ']') depth--;
+                    else if (c == ':' && depth == 1) key = false;
+                    else if (c == ',' && depth == 1) key = true;
+                }
+            }
+        } catch (java.io.IOException | RuntimeException none) { /* No CodeMie configuration. */ }
+        java.util.Collections.sort(names);
+        return new String[] { active };
+    }
+
     /** v26.13.0 against v22.9.1, by number. */
     static int compareVersions(String a, String b) {
         String[] x = a.replaceFirst("^v", "").split("\\."), y = b.replaceFirst("^v", "").split("\\.");
@@ -121,6 +162,22 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
                 if (chosen != null) fields[n].setText(chosen);
             });
         }
+        new Label(box, SWT.NONE).setText("CodeMie profile");
+        codemieProfile = new Combo(box, SWT.READ_ONLY);
+        codemieProfile.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+        String active = codemieProfiles(codemieNames)[0];
+        codemieProfile.add("Active in CodeMie" + (active.isEmpty() ? "" : " (" + active + ")"));
+        for (String name : codemieNames) codemieProfile.add(name);
+        int saved = codemieNames.indexOf(setting("codemieProfile"));
+        codemieProfile.select(saved < 0 ? 0 : saved + 1);
+        codemieProfile.setEnabled(codemieNames.size() > 1);
+        codemieProfile.setToolTipText(codemieNames.size() > 1
+            ? "The profile (project or account) the CodeMie CLI uses for VERTEX; codemie setup makes one per project."
+            : "codemie setup makes a profile per project or account; with two or more, choose here.");
+        codemieCost = new Button(box, SWT.CHECK);
+        codemieCost.setText("Show the cost of each CodeMie answer (Claude Code's estimate from list prices, not CodeMie's bill)");
+        codemieCost.setSelection(flag("showCodemieCost"));
+        codemieCost.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
         new Label(box, SWT.NONE).setText("Anthropic API key");
         anthropicKey = new Text(box, SWT.BORDER | SWT.PASSWORD);
         anthropicKey.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
@@ -153,6 +210,9 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
     @Override public boolean performOk() {
         for (int i = 0; i < keys.length; i++) STORE.put(keys[i], fields[i].getText().trim());
         STORE.put("logPath", logPath.getText().trim());
+        int profile = codemieProfile.getSelectionIndex();
+        STORE.put("codemieProfile", profile > 0 ? codemieNames.get(profile - 1) : "");
+        STORE.putBoolean("showCodemieCost", codemieCost.getSelection());
         for (int i = 0; i < FLAGS.length; i++) STORE.putBoolean(FLAGS[i][0], flags[i].getSelection());
         try {
             String key = anthropicKey.getText().trim();
@@ -168,6 +228,8 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
     @Override protected void performDefaults() {
         for (int i = 0; i < keys.length; i++) fields[i].setText(i == 0 ? "node" : "");
         logPath.setText("");
+        codemieProfile.select(0);
+        codemieCost.setSelection(false);
         for (Button b : flags) b.setSelection(false);
         super.performDefaults();
     }

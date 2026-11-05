@@ -156,7 +156,12 @@ it cannot save or approve reviews.
 3. Open **Window > Preferences > VERTEX Assistant**. Left as `node`, the Node
    executable is found on Eclipse's PATH, in nvm's versions (the newest first),
    Volta, Homebrew or `/usr/local/bin`, so an Eclipse started from the Dock
-   finds an nvm install too; set it here only for another Node. Optionally select native Codex/Claude
+   finds an nvm install too; set it here only for another Node. **CodeMie profile**
+   chooses which CodeMie profile (project or account) the chat uses; **Active in
+   CodeMie** follows `codemie profile switch`. It is enabled from two profiles.
+   **Show the cost of each CodeMie answer** (off by default) ends the token line
+   with `≈ $…`, Claude Code's estimate from list prices, not CodeMie's bill. While
+   CodeMie is the chosen assistant, its list shows CodeMie's gradient. Optionally select native Codex/Claude
    executables; on Windows select `.exe`, not `.cmd` wrappers.
 4. Open Selector or Versions on your ABAP project and click **Assistant**.
    Choose the assistant/model and send a request. For Claude the list holds the

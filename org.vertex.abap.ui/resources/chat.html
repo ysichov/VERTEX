@@ -27,6 +27,9 @@ select, button { padding: 3px 6px; }
 button { cursor: pointer; }
 button.primary { background: var(--button); color: var(--button-fg); border-color: var(--button); }
 button:disabled, select:disabled { opacity: .6; cursor: default; }
+/* CodeMie, while it is the chosen assistant: its gradient, as in VS Code's VERTEX panel. */
+body[data-assistant="codemie"] #who { color: #fff; border-color: transparent; background: linear-gradient(90deg, #4f46e5, #9333ea 55%, #c026d3); }
+body[data-assistant="codemie"] #who option { color: var(--fg); background: var(--input); }
 #messages { flex: 1; overflow-y: auto; padding: 10px 12px; }
 .message { margin: 0 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
 .vertex { white-space: normal; }
@@ -265,7 +268,9 @@ function sdeAssistant(raw) {
     line.className = "message hint";
     line.style.fontSize = "11px";
     line.textContent = k((u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0))
-      + " in (" + k(u.cache_read_input_tokens) + " from cache) · " + k(u.output_tokens) + " out";
+      + " in (" + k(u.cache_read_input_tokens) + " from cache) · " + k(u.output_tokens) + " out"
+      // A CodeMie answer's cost, when Preferences asks for it: Claude Code's estimate, not CodeMie's bill.
+      + (typeof data.cost === "number" ? " · ≈ $" + (data.cost >= 0.01 ? data.cost.toFixed(4) : data.cost.toPrecision(2)) : "");
     document.getElementById("messages").appendChild(line);
   }
 }
@@ -355,6 +360,7 @@ document.getElementById("prompt").addEventListener("keydown", function (event) {
   if (event.key === "Enter" && !event.ctrlKey) { event.preventDefault(); send(); }
 });
 document.getElementById("who").addEventListener("change", function (event) {
+  document.body.dataset.assistant = event.target.value;
   remember("assistant", event.target.value);
   askModels();
 });
@@ -388,6 +394,7 @@ document.getElementById("logs").addEventListener("click", function () {
   var problem = sdeOpenLogs();
   if (problem) { say("error", "VERTEX", problem); }
 });
+document.body.dataset.assistant = assistantBox.value;
 sdeProject();
 askModels();
 document.getElementById("prompt").focus();

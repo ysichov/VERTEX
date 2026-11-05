@@ -1,5 +1,13 @@
 # Development history
 
+## 2026-11-05 — Eclipse: CodeMie gradient and answer cost
+
+`chat.html` (Eclipse's chat, shared with VS Code's Tools window chat) sets `body[data-assistant]` from the assistant list, and `#who` takes the panel's three-stop CodeMie gradient with white text while it is `codemie`; the open list keeps the page's colours. Cost: Preferences → VERTEX Assistant has a checkbox `showCodemieCost` (off); `AssistantBridge` sends `showCost`; `eclipse/bridge.js` adds `cost` to a CodeMie answer from the CLI path only (an edit that first landed in the Anthropic API path was moved), and `chat.html` appends `≈ $x` to the token line. Bridge checked with a stub assistant: cost only for codemie with showCost. Not checked in a running Eclipse.
+
+## 2026-11-05 — Eclipse: CodeMie profile choice
+
+As in VS Code: Preferences → VERTEX Assistant has a read-only **CodeMie profile** combo (Active in CodeMie, then the profiles), enabled from two profiles, stored as `codemieProfile`. `AssistantPreferences.codemieProfiles` reads ~/.codemie/codemie-cli.config.json with a scan of the `profiles` object's own keys (nested objects, arrays and escaped quotes skipped; a `profiles` deeper in the file is not taken) and `activeProfile`. `AssistantBridge` sends `profile` for codemie; `eclipse/bridge.js` passes it on as `options.profile` while CodeMie still has it, so `models list` and `codemie-claude --profile` use it. Checked: the scan on a test file with nested values and an escaped name, and on the real config (`no project profile`, `test`); the bridge passed `test` and dropped an unknown `gone`. Not checked in a running Eclipse.
+
 ## 2026-11-05 — Eclipse finds Node
 
 Eclipse started from the Dock has no shell PATH, so `ProcessBuilder("node", ...)` failed with "Cannot run program node" for an nvm install until the preference was set by hand. `AssistantPreferences.node()` keeps a set path; for an empty or plain `node` it looks on PATH, in `$NVM_DIR` or ~/.nvm `versions/node/*/bin` (versions compared by number, newest first), ~/.volta/bin, /opt/homebrew/bin, /usr/local/bin and, on Windows, `%ProgramFiles%\nodejs`, and falls back to `node` so the error still names it. `AssistantBridge` starts the bridge with it. Checked by a scratch class in the package run with `env -i PATH=/usr/bin:/bin`: it returned ~/.nvm/versions/node/v26.13.0/bin/node. Docs: eclipse/README.md step 3, history.md. A test ZIP was built under target/; the docs/ update site was not replaced. Not checked in a running Eclipse.

@@ -101,6 +101,10 @@ async function run(request, fetch, api = assistant, open = async () => { throw n
   }
   if (request.assistant === "anthropic-api") { return anthropicApi(request, brain, fetch, open); }
   const options ={ assistant: request.assistant, executable: executable(request.assistant, request.executable) };
+  // The CodeMie profile chosen in Preferences, while CodeMie still has it; else the CLI's active one.
+  if (request.assistant === "codemie" && request.profile && api.codemieProfiles().names.includes(request.profile)) {
+    options.profile = request.profile;
+  }
   if (request.call === "models") {
     // Eclipse has no Config models: Claude's newest of each family is offered,
     // and another version is named in the page.
@@ -131,7 +135,9 @@ async function run(request, fetch, api = assistant, open = async () => { throw n
       tools: brain.TOOLS.map(t => t.name), prompt });
     const plan = await brain.checkPlan(deps, answer.plan);
     if (log) { log.assistant({ model: answer.model, usage: answer.usage, text: plan.answer }); }
-    return { call: "ask", model: answer.model, usage: answer.usage || null, plan };
+    const result = { call: "ask", model: answer.model, usage: answer.usage || null, plan };
+    if (request.assistant === "codemie" && request.showCost === true && typeof answer.cost === "number") { result.cost = answer.cost; }
+    return result;
   } catch (error) {
     if (log) { log.assistant({ model: error.model || request.model, text: "Request failed: " + error.message }); }
     throw error;
