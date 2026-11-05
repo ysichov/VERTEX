@@ -78,8 +78,9 @@
 button {
   cursor: pointer;
   padding: 1px 8px;
-  border: 1px solid var(--vscode-button-border, var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder)));
-  border-bottom: 2px solid var(--vscode-button-border, var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder)));
+  /* The toggles' outline: the theme's button border is transparent in many themes, which left a plain button as bare text. */
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder));
+  border-bottom: 2px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder));
   border-radius: 6px;
   background: var(--vscode-button-secondaryBackground, var(--vscode-input-background, ButtonFace));
   color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, ButtonText));

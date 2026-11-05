@@ -13,8 +13,9 @@ test("sidebar HTML contains an executable chat script", () => {
   assert.match(script, /requestSubmit\(\)/);
   assert.match(script, /action: 'ready'/);
   assert.match(html, /id="model-status" role="status"/);
-  assert.match(html, /data-action="logs"[^>]*>📜 AI/);
-  assert.match(html, /data-action="executionLogs"[^>]*>📜 SAP/);
+  // The icon is a span of its own, larger than the words.
+  assert.match(html, /data-action="logs"[^>]*><span class="log-icon">📜<\/span> AI/);
+  assert.match(html, /data-action="executionLogs"[^>]*><span class="log-icon">📜<\/span> SAP/);
   assert.match(script, /status\.textContent = data\.error/);
   assert.doesNotMatch(html, /system-snc/);
 });

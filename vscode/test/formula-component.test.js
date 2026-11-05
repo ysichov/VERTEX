@@ -19,6 +19,7 @@ test('formula follows a component through a structure transfer and keeps SQL onl
   const formula = page.split('Formula derivation — click a branch to expand its input formulas</p>')[1]
     .split('</template>')[0];
   const plain = formula.replace(/<[^>]*>/g, ' ');
-  assert(plain.indexOf('context-amount') < plain.indexOf('SELECT'));
-  assert.equal((plain.match(/SELECT\s+weight/g) || []).length, 1);
+  // A SELECT is written short, as its table and the fields read: "From shipments: weight".
+  assert(plain.indexOf('context-amount') < plain.search(/From\s+shipments/));
+  assert.equal((plain.match(/From\s+shipments\s*:\s*weight/g) || []).length, 1);
 });

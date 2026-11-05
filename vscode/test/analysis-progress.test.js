@@ -40,10 +40,12 @@ test('Calls queue cancels the active traversal and retains only the newest pendi
  const start=text.indexOf('function enqueue('),end=text.indexOf('function sdeWorkspaceProgress',start);
  let cancellations=0;
  const active={request:{path:'/sap/bc/adt/vertex/flow/ZTEST?mode=calls&depth=99'}};
- const context=vm.createContext({queue:[{request:{path:'/sap/bc/adt/vertex/flow/ZTEST?mode=calls&depth=3'}}],activeRequest:active,sdeCancelWorkspace:()=>cancellations++,pump:()=>{}});
+ // The queue is per lane now; Calls goes on the main lane, and cancelling a lane cancels its workspace read.
+ const lane={active,queue:[{request:{path:'/sap/bc/adt/vertex/flow/ZTEST?mode=calls&depth=3'}}]};
+ const context=vm.createContext({lanes:{main:lane},laneOf:()=>'main',cancelLane:()=>cancellations++,sdeCancelWorkspace:()=>{},pump:()=>{}});
  vm.runInContext(text.slice(start,end),context);
  vm.runInContext("enqueue({path:'/sap/bc/adt/vertex/flow/ZTEST?mode=calls&depth=1'},()=>{},()=>true)",context);
- assert.equal(cancellations,1);assert.equal(active.superseded,true);assert.equal(context.queue.length,1);assert.match(context.queue[0].request.path,/depth=1/);
+ assert.equal(cancellations,1);assert.equal(active.superseded,true);assert.equal(lane.queue.length,1);assert.match(lane.queue[0].request.path,/depth=1/);
 });
 test('superseded analysis exits without waiting for its current ADT read',async()=>{
  let stopped=false;const started=Date.now();

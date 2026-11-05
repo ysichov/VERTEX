@@ -20,7 +20,7 @@ VERTEX is a set of plugins for VS Code and Eclipse ADT. Each window reads over t
 
 **Serverless, in VS Code** - the ABAP transpiler runs ABAP on your machine:
 
-- a report, a method of a local class or a function module, its parameters asked in a panel and kept as named variants
+- runs a report (its selection screen, then the list), a method of a local class or a function module; for a method or a function module the panel asks the parameters, and their values can be saved as named variants to run again
 - only SELECTs go to the SAP system, read through ADT; the logic runs locally
 - every step and every value change recorded: step, set breakpoints and conditional variable watchpoints, replay the run to any step
 - a value followed back to a clickable formula of how it was calculated, each part opening the line that produced it

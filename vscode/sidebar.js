@@ -232,14 +232,22 @@ textarea { width: 100%; resize: vertical; padding: 8px; }
 button { margin: 8px 0; padding: 8px 12px; border: 0; border-radius: 4px; cursor: pointer; font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
 button:hover { background: var(--vscode-button-hoverBackground); }
 #chat button { width: 100%; }
-.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+/* The outline of vertex-controls.css's plain button and the toggles: a secondary button stays a button on a background like its own. */
+.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder));
+  border-bottom: 2px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder)); }
 .secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
 .link { color: var(--vscode-textLink-foreground); text-decoration: none; }
 .link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
-/* The two log buttons are one pair, styled as the view's title actions beside them: no fill or
-   border until hovered, then the toolbar's hover colour. */
-#logs, #execution-logs { padding: 3px 6px; font-size: 17px; line-height: 1; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
+/* The two log buttons are one pair. They were drawn as the view's title actions, bare until hovered, and read as
+   plain text: they are buttons with the secondary buttons' fill and outline. The icon large, the words in the
+   panel's own size, as "SAP system" beside them; hover stays the toolbar's. */
+#logs, #execution-logs { padding: 3px 6px; font-size: inherit; line-height: 1; border-radius: 5px;
+  color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder));
+  border-bottom: 2px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder)); }
 #logs { margin: 0 0 0 auto; }
+#logs .log-icon, #execution-logs .log-icon { font-size: 17px; vertical-align: middle; }
 #logs:hover, #execution-logs:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
 #logs:focus-visible, #execution-logs:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -260,8 +268,8 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 <div class="line"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
-<button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs">📜 AI</button>
-<button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs">📜 SAP</button></div>
+<button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs"><span class="log-icon">📜</span> AI</button>
+<button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs"><span class="log-icon">📜</span> SAP</button></div>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>

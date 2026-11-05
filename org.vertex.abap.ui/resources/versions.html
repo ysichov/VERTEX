@@ -344,8 +344,9 @@
                            padding: 4px 8px; white-space: normal;
                            border-top: 1px solid var(--border); }
   table.diff tr.block .who { color: var(--fg); font-weight: 600; }
-  table.diff tr.block .ok { color: var(--ins-mark); }
-  table.diff tr.block .no { color: var(--del-mark); }
+  /* The verdict is what a reader of the review looks for first: bold, in the colour of its kind. */
+  table.diff tr.block .ok { color: var(--ins-mark); font-weight: 700; }
+  table.diff tr.block .no { color: var(--del-mark); font-weight: 700; }
   table.diff tr.block .acts { float: right; display: flex; gap: 4px; }
   table.diff tr.block button { padding: 1px 7px; font-size: 11px; }
 
@@ -363,7 +364,7 @@
      shape: line breaks and the indentation of a pasted snippet are part of
      what was said, and NORMAL on the cell would fold the lot onto one line. */
   table.diff tr.said .text { display: block; margin-top: 2px; padding: 4px 8px;
-                             border: 1px solid var(--line); font-style: italic;
+                             border: 1px solid var(--line); border-radius: 6px; font-style: italic;
                              white-space: pre-wrap; overflow-wrap: anywhere; }
   table.diff tr.said .text.no { background: var(--del-bg);
                                 border-color: var(--del-mark); }

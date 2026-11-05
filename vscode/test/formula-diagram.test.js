@@ -54,7 +54,8 @@ test('Formula keeps configuration out of the derivation and reduces a SELECT to 
   const graph = JSON.parse(output.match(/<script id="mermaid-data" type="application\/json">(.*?)<\/script>/s)[1]).formula;
   const select = graph.nodes.find(node => /^SELECT/i.test(node.text));
   assert(select, 'the demo formula reaches a SELECT');
-  assert.match(select.label, /^(?:[\w@-]+ = )?SELECT .* FROM \w+\.$/);
+  // Written short: the operand it fills, then its table and the fields read - "CS_CONTEXT-WEIGHT_KG ← From zlog_shipment: ...".
+  assert.match(select.label, /^(?:[\w@-]+ ← )?From \w+: .+$/);
   assert(select.label.length < select.text.length);
 });
 

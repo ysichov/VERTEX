@@ -932,9 +932,9 @@ test("nothing is read or stepped without a stopped program", async () => {
   await assert.rejects(dbg.step("over"), /not stopped/);
 });
 
-test("a run opens WebGUI on the system, and needs a breakpoint first", async () => {
+// Since 0.9.36 a run needs no breakpoint: it may be started only to see it run, and a watchpoint or a dump stops it too.
+test("a run opens WebGUI on the system", async () => {
   const { dbg, opened } = fakeSap();
-  await assert.rejects(dbg.run("Z_CALC"), /Set or activate a breakpoint/);
   await dbg.setBreakpoint({ name: "Z_CALC", line: 45 });
   await dbg.run("z_calc");
   assert.match(opened[0], /^https:\/\/sap\.example:44300\/sap\/bc\/gui\/sap\/its\/webgui\?~transaction=/);

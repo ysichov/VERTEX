@@ -568,6 +568,9 @@ function analyze(sources, target, options = {}) {
       const a = s.assignment, ts = s.tokens, into = find(ts, 'INTO');
       let candidate;
       if (a && contains(a.name, name)) candidate = { s, a, suffix: name.slice(a.name.length) };
+      // A write to one of the value's own components changes the value too, but only in part: it is kept beside the
+      // definitions before it instead of replacing them. Followed into a call, the component goes under the formal's name.
+      if (a && a.name.startsWith(name + '-')) { candidates.push({ s, a, suffix: '', part: a.name.slice(name.length) }); continue; }
       if (val(ts, 0) === 'CLEAR' && contains(pathAt(ts, 1)?.name || '?', name)) candidate = { s, clear: true };
       if (val(ts, 0) === 'SELECT' && into >= 0) {
         let start = into + 1; while (['@', 'TABLE', 'CORRESPONDING', 'FIELDS', 'OF'].includes(val(ts, start))) start++;
@@ -579,6 +582,7 @@ function analyze(sources, target, options = {}) {
         for (const [formal, binding] of Object.entries(b)) {
           if (!['CHANGING', 'IMPORTING', 'RECEIVING'].includes(binding?.mode)) continue;
           const actual = onlyPath(binding.actual); if (actual && contains(actual, name)) candidate = { s, call: s.call, matches, formal, suffix: name.slice(actual.length) };
+          else if (actual && actual.startsWith(name + '-')) candidates.push({ s, call: s.call, matches, formal, suffix: '', part: actual.slice(name.length) });
         }
       }
       if (candidate) { if (!s.conditions.length) candidates.length = 0; candidates.push(candidate); }
@@ -597,7 +601,8 @@ function analyze(sources, target, options = {}) {
         }
       }
     }
-    if (!candidates.length || candidates.every(c => c.s.conditions.length)) {
+    // Writes to components only leave the rest of the value as it came in: where it came from is still asked.
+    if (!candidates.length || candidates.every(c => c.s.conditions.length || c.part)) {
       const formal = Object.keys(bound).find(k => !k.startsWith('$') && contains(k, name)), b = formal && bound[formal];
       const output = index.signature(p).find(param => param.mode === 'RETURNING' && contains(param.name, name));
       if (output) edge(node('literal', 'No assignment in loaded ACE statements: ' + name, p, { line: p.line }), root, 'assignment not found');
@@ -616,10 +621,10 @@ function analyze(sources, target, options = {}) {
     }
     for (const c of candidates) {
       const n = node(c.sql ? 'select' : c.call ? 'call' : 'calculation', c.s.text, p, c.s, {
-        conditional: !!c.s.conditions.length, component: c.suffix || '',
+        conditional: !!c.s.conditions.length || !!c.part, component: c.suffix || c.part || '',
         componentTransfer: !!c.a && !!c.suffix && !!onlyPath(c.a.expression)
       });
-      edge(n, root, c.s.conditions.length ? 'possible definition' : 'definition');
+      edge(n, root, c.part ? 'component ' + c.part.slice(1) : c.s.conditions.length ? 'possible definition' : 'definition');
       conditions(c.s, p, n, bound, depth);
       if (c.clear) edge(node('literal', 'Initial value', p, c.s), n, 'CLEAR');
       if (c.a) { expression(c.a.expression, p, c.s, n, bound, depth + 1, c.suffix); if (c.a.compound) edge(trace(p, name, c.s.offset, bound, depth + 1), n, 'previous value'); }

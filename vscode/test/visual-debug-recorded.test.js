@@ -253,7 +253,7 @@ test("Follow opens the completed BSE only after its flow has rendered", async ()
   let finishRender, clicked = false, rendered = false;
   const bse = { classList: { contains: () => false }, click: () => { clicked = true; assert.equal(rendered, true); } };
   const context = { chosenValue: { name: "LS_RESULT-AMOUNT" }, bseAfterFollow: true,
-    sliceFor: "", sliceAsked: null, sliceSeq: 0,
+    sliceFor: "", sliceAsked: null, sliceSeq: 0, sliceAnswers: {},
     slicePoints: null, sdeOrigin() {}, originLine: () => 16,
     object: { name: "ZVERTEX_DEBUG_LAB", type: "PROG" }, notice() {},
     askOrigin: () => Promise.resolve({ points: [{ name: "ZVERTEX_DEBUG_LAB", line: 15 }] }),

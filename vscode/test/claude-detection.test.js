@@ -28,12 +28,13 @@ test("Claude model loading reports a missing executable before a chat request", 
 
 test("Claude asks which installation to use when extension and CLI are present", async () => {
   const extension = "/extensions/claude";
-  const bundled = path.join(extension, "resources/native-binary/claude");
+  // A macOS machine: its paths are POSIX whatever machine the test runs on.
+  const bundled = path.posix.join(extension, "resources/native-binary/claude");
   const cli = "/users/test/.local/bin/claude";
   const values = { claudeSource: "ask" };
   let prompts = 0;
   const context = { exports: {}, process: { platform: "darwin", env: { PATH: "" } },
-    require: name => name === "os" ? { homedir: () => "/users/test" }
+    require: name => name === "path" ? path.posix : name === "os" ? { homedir: () => "/users/test" }
       : name === "fs" ? { constants: { X_OK: 1 }, existsSync: file => file === bundled,
         accessSync() {}, statSync(file) { if (file !== cli) { throw new Error("missing"); }
           return { isFile: () => true }; } } : require(name) };
@@ -68,12 +69,13 @@ test("Codex CLI resolves native and npm installations without a VS Code extensio
 
 test("Codex can choose the ChatGPT.app CLI over its VS Code extension", async () => {
   const root = "/extensions/codex";
-  const bundled = path.join(root, "bin/platform/codex");
+  // A macOS machine: its paths are POSIX whatever machine the test runs on.
+  const bundled = path.posix.join(root, "bin/platform/codex");
   const cli = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex";
   const values = { codexSource: "ask" };
   let prompts = 0;
   const context = { exports: {}, process: { platform: "darwin", arch: "arm64", env: { PATH: "" } },
-    require: name => name === "os" ? { homedir: () => "/users/test" }
+    require: name => name === "path" ? path.posix : name === "os" ? { homedir: () => "/users/test" }
       : name === "fs" ? { constants: { X_OK: 1 }, existsSync: file => file === bundled,
         readdirSync: () => ["platform"], readFileSync: () => '{"target":"aarch64-apple-darwin"}',
         accessSync() {}, statSync(file) { if (file !== cli) { throw new Error("missing"); }

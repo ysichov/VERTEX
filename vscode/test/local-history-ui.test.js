@@ -13,7 +13,7 @@ test("local playback shows the recorded values for its last frame", () => {
   const seen = [];
   const context = vm.createContext({ INITIAL: { local: true }, replayAt: null,
     stops: () => 2, drawPos() {}, showStop: i => { seen.push(i); return Promise.resolve(); },
-    failed() {}, window: {} });
+    failed() {}, window: {}, clearTimeout, setTimeout, chosenValue: null });
   vm.runInContext(section("function replay(i){", '$("fprev").onclick='), context);
   vm.runInContext("replay(1)", context);
   assert.equal(context.replayAt, 1);
