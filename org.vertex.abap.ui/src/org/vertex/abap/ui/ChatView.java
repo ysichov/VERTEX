@@ -46,6 +46,13 @@ public class ChatView extends PageView {
 	protected void addFunctions() {
 		// Resolving the project can ask the user to pick one, which must not
 		// happen inside the browser callback.
+		// The chat offers Anthropic API: the bridge runs it with the key from Preferences.
+		new BrowserFunction(this.browser, "sdeAnthropicApi") {
+			@Override
+			public Object function(Object[] arguments) {
+				return Boolean.TRUE;
+			}
+		};
 		new BrowserFunction(this.browser, "sdeProject") {
 			@Override
 			public Object function(Object[] arguments) {
@@ -58,6 +65,7 @@ public class ChatView extends PageView {
 	@Override
 	public void createPartControl(org.eclipse.swt.widgets.Composite parent) {
 		super.createPartControl(parent);
+		if (pageFailed()) return;
 		// An answer's Copy button: Eclipse's clipboard, since the page's own may not be allowed. Empty means copied.
 		new BrowserFunction(this.browser, "sdeCopyText") {
 			@Override

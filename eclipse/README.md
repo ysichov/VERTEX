@@ -66,7 +66,9 @@ values - is left out and named above the rows. SelecTor results show the SELECT 
 
 **VERTEX Assistant** opens the chat beside the editor, on the system of the object selected in Project
 Explorer or shown in the active editor; with neither, it asks which ABAP project. The same chat is **Ask AI**
-in VERTEX Tools; its question box grows with what you type or paste and then scrolls. It runs Claude Code or Codex, set in **Window → Preferences → VERTEX Assistant**, where the
+in VERTEX Tools; its question box grows with what you type or paste and then scrolls. It runs Claude Code, Codex, EPAM CodeMie through the CodeMie CLI (`npm install -g @codemieai/code`, then
+`codemie setup`) or the Anthropic API with your own key. Set them up in **Window → Preferences → VERTEX Assistant**: the Anthropic API key
+is entered there and kept in Eclipse secure storage. The same page sets the
 log folder and what is logged - questions, answers, SAP tool calls, and what is sent to the model (VERTEX's
 instructions, the prompt with its context, the tools) - are chosen too; nothing is logged until a folder is set. The log icon in the chat's header opens Session Logs, or says
 where to set the folder when none is set.

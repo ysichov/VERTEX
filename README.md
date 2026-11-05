@@ -79,7 +79,7 @@ From a SAP source tab's context menu, **VERTEX: Run SAP in web GUI** opens the p
 | **Code Explorer** | [ACE](https://github.com/ysichov/ACE) | Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method, report event, FORM or MODULE; a method opened from Calls draws its Logic diagram in the same picture | ✓ | ✓ ² | not needed |
 | **Data Explorer (SelecTor)** | [Simple Data Explorer](https://github.com/ysichov/Simple-Data-Explorer) | Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either | ✓ | ✓ ² | not needed |
 
-¹ In Eclipse the assistant is run by the Codex or Claude Code CLI on your own subscription, and
+¹ In Eclipse the assistant is run by the Codex, Claude Code or CodeMie CLI on your own subscription, or by the Anthropic API with your key, and
 ADT is the editor: there is no VERTEX tab for it to write into, and the debugger is not part of it.
 See [eclipse/README.md](eclipse/README.md).
 

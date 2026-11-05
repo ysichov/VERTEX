@@ -10,7 +10,7 @@ import org.eclipse.swt.widgets.Display;
 
 /** One private child process per request; lifetime is owned by its view. */
 final class AssistantBridge implements AutoCloseable {
-    private static final List<String> FILES = List.of("bridge.js", "assistant.js", "mcp.js", "selector.js", "versions.js", "chat.js", "session-log.js", "direct-search.js", "object-tools.js");
+    private static final List<String> FILES = List.of("bridge.js", "assistant.js", "anthropic.js", "mcp.js", "selector.js", "versions.js", "chat.js", "session-log.js", "direct-search.js", "object-tools.js");
     private static final String OBJECT = "/sap/bc/adt/(programs/programs/[^/?#]+|oo/classes/[^/?#]+|functions/groups/[^/?#]+/fmodules/[^/?#]+)";
     private final PageView view;
     private final Display display;
@@ -38,7 +38,17 @@ final class AssistantBridge implements AutoCloseable {
 
     private void submit(String call, Object[] args) {
         String assistant = text(args, 0);
-        if (!assistant.equals("codex") && !assistant.equals("claude")) return;
+        if (!assistant.equals("codex") && !assistant.equals("claude") && !assistant.equals("codemie")
+                && !assistant.equals("anthropic-api")) return;
+        String apiKey = "";
+        if (assistant.equals("anthropic-api")) {
+            try { apiKey = AssistantPreferences.anthropicKey(); }
+            catch (Exception e) {
+                deliver("{\"call\":" + quote(call) + ",\"assistant\":" + quote(assistant) + ",\"error\":"
+                        + quote("Cannot read the Anthropic API key from Eclipse secure storage: " + PageView.describe(e)) + "}");
+                return;
+            }
+        }
         String service = view instanceof ChatView ? "chat" : "versions";
         String state = text(args, 3).isBlank() ? "{}" : text(args, 3);
         if (view instanceof ChatView && call.equals("ask")) {
@@ -55,6 +65,7 @@ final class AssistantBridge implements AutoCloseable {
         }
         String request = "{\"call\":" + quote(call) + ",\"assistant\":" + quote(assistant)
                 + ",\"service\":" + quote(service) + ",\"executable\":" + quote(AssistantPreferences.setting(assistant))
+                + ",\"apiKey\":" + quote(apiKey)
                 + ",\"model\":" + quote(text(args, 1)) + ",\"text\":" + quote(text(args, 2))
                 + ",\"log\":" + quote(view instanceof ChatView ? AssistantPreferences.setting("logPath") : "")
                 + ",\"session\":" + quote(text(args, 4))

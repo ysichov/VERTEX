@@ -29,6 +29,7 @@ Require-Bundle: org.eclipse.ui,
  org.eclipse.e4.ui.model.workbench,
  org.eclipse.e4.ui.workbench,
  org.eclipse.ui.ide,
- org.eclipse.core.filesystem
+ org.eclipse.core.filesystem,
+ org.eclipse.equinox.security
 Import-Package: org.osgi.framework,
  com.google.gson

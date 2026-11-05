@@ -1,5 +1,16 @@
 # Development history
 
+## 2026-11-05 — Eclipse: Edge timeout said plainly, CodeMie and Anthropic API in the chat
+
+The VERTEX Assistant opened as Eclipse's bare "Failed to create the part's controls". The log had `SWTException: Waiting for Edge operation to terminate timed out` from the first `BrowserFunction` in `PageView.createPartControl`, a minute after Eclipse started; reopened later, the chat worked. The user asked for at least a message to open it again later.
+
+- `PageView.createPartControl`: that one `SWTException` ("Waiting for Edge") disposes the browser and leaves a label saying the built-in browser did not answer in time and to reopen the window a little later, with SWT's text. Any other exception is thrown as before. `pageFailed()` stops Chat, Tools, Smart Debugger and Path to line from adding their own functions after it; `setFocus` skips the disposed browser. The message has not been seen yet: the timeout was not reproduced.
+- CodeMie (0.9.59) reached only VS Code: Eclipse's chat offered Claude Code and Codex. `chat.html` lists CodeMie CLI, `AssistantBridge.submit` lets `codemie` through, and `eclipse/bridge.js` `executable` finds it with `assistant.locate("codemie")` (npm's global folder) when no path is set. The first try edited `org.vertex.abap.ui/assistant/bridge.js`, which `eclipse/prepare.js` regenerates from `eclipse/` and `vscode/` on every build, so the edit was lost; the same for a reworded not-found message in the copy of `assistant.js` (it still says "restart VS Code"). CodeMie is not installed on this laptop: only its loud not-found error was seen, not models or an answer.
+- Anthropic API: `chat.html` already listed it but removed the option unless the host defines `sdeAnthropicApi`, which Eclipse did not, so it never showed (an earlier note here said the bridge dropped it silently - wrong, it was not reachable). Now: the key is entered in Preferences → VERTEX Assistant and kept in Eclipse secure storage (`org.eclipse.equinox.security`, encrypted; empty removes it); `AssistantBridge` reads it per request and passes it over the bridge's stdin, a storage error is said in the chat. `eclipse/bridge.js` `anthropicApi` runs VS Code's `anthropic.js` (now copied by `prepare.js`): models from `/v1/models`, the answer with the brain's tools called directly, no CLI and no MCP server, logged like the others. `ChatView` defines `sdeAnthropicApi`.
+- Checked through the bridge in node: no key gives "No Anthropic API key is set", a bad key Anthropic's 401. Not checked with a real key, nor in Eclipse itself (Preferences page, the chat).
+- Docs: `eclipse/README.md`, `README.md`, `docs/index.html`.
+- Eclipse update site built (0.9.61, unchanged version); VS Code untouched.
+
 ## 2026-11-04 — SelecTor reads views and CDS
 
 Run Select on `zhr_cds_ba_adsvsp_19` said "not a dictionary table, and SelecTor reads tables". The user pointed out that everything is on ADT now: that limit was the deleted ABAP resource's (`ZCL_VX_ADT_RES_TABLE` read TRANSP and CLUSTER only), and the data preview SelecTor reads through runs any view or CDS entity. Chosen with the user: the fields of a view or CDS entity are the data preview's columns, since a CDS view entity has no DD02L or DD03L row (`I_ABAPPACKAGE` on the test system).

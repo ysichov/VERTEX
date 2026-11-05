@@ -302,6 +302,7 @@ public class ToolsView extends ChatView {
     }
     @Override public void createPartControl(org.eclipse.swt.widgets.Composite parent){
         super.createPartControl(parent);
+        if(pageFailed())return;
         editorSelection=(part,selection)->{
             if(!(part instanceof IEditorPart)||!(selection instanceof ITextSelection)||browser.isDisposed()||System.currentTimeMillis()<sourceNavigationUntil)return;
             AdtEditor object=AdtEditor.of((IEditorPart)part);if(object==null)return;
