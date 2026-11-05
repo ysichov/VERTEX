@@ -1,17 +1,23 @@
 # Release history
 
-## 2026-11-05 — 0.9.61: EPAM CodeMie as an AI provider
+## 2026-11-05 — 0.9.61: EPAM CodeMie as an AI provider, a structure followed whole, outlined buttons
 
 - VS Code: **EPAM CodeMie (CodeMie CLI)** is an AI provider after GitHub Copilot. It runs Claude Code through the CodeMie CLI's `codemie-claude` with the SAP tools the other providers get; the model list is the CodeMie profile's, and **CodeMie default** is the model chosen in `codemie setup`.
 - **Profile** under EPAM CodeMie in LLM Providers chooses which CodeMie profile (project or personal account) VERTEX uses, independently of the one active in the CLI; it is shown when there are two or more profiles, and **Active in CodeMie** (or a profile CodeMie no longer has) follows `codemie profile switch`.
 - While EPAM CodeMie is chosen, the provider list and the VERTEX Tools button in the VERTEX panel show CodeMie's indigo-to-magenta gradient (light and dark themes; high contrast keeps the theme's colours). EPAM CodeMie's row in LLM Providers has the same gradient.
 - With **Show CodeMie Cost** (`vertex.ai.showCodemieCost`, off by default), each CodeMie answer in the VERTEX panel shows its cost after the token counts (`≈ $0.0022`). It is Claude Code's estimate from list prices, not CodeMie's bill.
-- The VERTEX panel's 📜 SAP log button and 📜 AI look like the title actions beside them: coloured only on hover. 📜 SAP had the filled button style.
+- The VERTEX panel's 📜 AI and 📜 SAP log buttons are a pair of outlined buttons: a large icon, the words in the panel's own size, as **SAP system** beside them.
+- Buttons read as buttons in every theme: a plain button, and the VERTEX panel's secondary buttons (**New conversation**, **VERTEX Tools**, **Copy**), have the outline the toggles have. Before, the theme's button border - transparent in many themes - left them as text, or as a fill hardly different from the page.
+- VERTEX Smart Debugger: **Follow** on a structure follows the structure as one value. Its analysis covers every place any of its fields is written, also under another name in a called method (`ls_result` passed as `cs_context`, then `cs_context-amount = ...`). Its fields are offered beside it and analysed when one is chosen; an analysed value is kept, so switching back asks nothing again.
+- VERTEX Smart Debugger: the program's name stands in the top row beside the section switches; **Breakpoints** is as tall as its list, at most 40% of the column, until its line is dragged; the **?** help describes the window as it is: analysis without running, the ABAP transpiler and debugging in SAP, then each section.
+- Transport review: a block's verdict (**approved by** / **declined by**) is bold in its colour, and comments are in rounded boxes.
+- Eclipse: the VERTEX chat offers **CodeMie CLI** and **Anthropic API**. The Anthropic API key is entered in Preferences → VERTEX Assistant and kept in Eclipse secure storage.
+- Eclipse: a VERTEX window whose built-in browser (Edge WebView2) does not answer in time - while Eclipse is still starting - says so and asks to open it again a little later, instead of "Failed to create the part's controls".
 - A transport request whose objects are in a namespace (`/NS/`) is covered by a test of its object list and ADT addresses.
 - Eclipse: the assistant finds Node by itself when its preference is left as `node` - on PATH, in nvm (newest first), Volta, Homebrew or /usr/local - so an Eclipse started from the Dock no longer stops at "Cannot run program node".
 - Eclipse: **CodeMie profile** in Preferences → VERTEX Assistant chooses the CodeMie profile the chat uses, as LLM Providers does in VS Code; **Active in CodeMie** follows the CLI.
 - Eclipse and the VERTEX Tools chat: the assistant list shows CodeMie's gradient while CodeMie is chosen; **Show the cost of each CodeMie answer** in Preferences → VERTEX Assistant (off by default) adds the estimated cost after the token counts.
-- VS Code 0.9.61 built and verified with these changes; the Eclipse update site carries build 0.9.61.20261105104742 with them.
+- VS Code 0.9.61 and the Eclipse update site 0.9.61.20261105165053 are built from these changes.
 
 ## 2026-11-04 — 0.9.58: model checks per provider, Logic diagram for events and forms, method history fallback
 
