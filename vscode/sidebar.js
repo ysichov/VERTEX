@@ -12,7 +12,7 @@ const ACTIONS = Object.freeze({
   system: "vertex.switchSystem"
 });
 
-function register(vscode, context, active, ask, systems, toolContext) {
+function register(vscode, context, active, ask, systems, toolContext, clients = { set: async () => {}, onChange: () => ({ dispose() {} }) }) {
   let currentView, ready = false, nextRequest = 0;
   // ASK AI of a review: the blocks on the chip above the input, attached to the next question only when it is sent.
   let reviewAsk = null;
@@ -36,6 +36,8 @@ function register(vscode, context, active, ask, systems, toolContext) {
         const chosen = active();
         return view.webview.postMessage({
           system: chosen.error ? "" : chosen.system.name,
+          // The active system's clients, when it lists more than one, and the one in use.
+          client: chosen.error ? "" : chosen.system.client, clients: chosen.error ? [] : chosen.system.clients || [],
           systems: systems().map(item => item.name),
           // What the list shows: a system reached through SAP's extension says so beside its name.
           labels: systems().map(item => item.name),
@@ -135,6 +137,15 @@ function register(vscode, context, active, ask, systems, toolContext) {
             answer: "Request failed: " + error.message, done: true } }); }
           return;
         }
+        if (message.action === "client") {
+          // Only a client of the active system's own list; the panel and the SAP Systems table show the same one.
+          const chosen = active();
+          if (chosen.error || chosen.system.name !== message.name || !(chosen.system.clients || []).includes(String(message.client))) {
+            vscode.window.showErrorMessage("VERTEX: " + String(message.client) + " is not a client of " + message.name + "."); void refresh(); return;
+          }
+          await clients.set(message.name, String(message.client));
+          return;
+        }
         if (!Object.hasOwn(ACTIONS, message.action)) { return; }
         try {
           await vscode.commands.executeCommand(ACTIONS[message.action],
@@ -146,7 +157,8 @@ function register(vscode, context, active, ask, systems, toolContext) {
       const changes = vscode.workspace.onDidChangeConfiguration(event => {
         if (event.affectsConfiguration("vertex")) { void refresh(); }
       });
-      view.onDidDispose(() => { currentView = undefined; ready = false; messages.dispose(); changes.dispose(); });
+      const clientSwitch = clients.onChange(() => { void refresh(); });
+      view.onDidDispose(() => { currentView = undefined; ready = false; messages.dispose(); changes.dispose(); clientSwitch.dispose(); });
     }
   };
   context.subscriptions.push(vscode.window.registerWebviewViewProvider("vertex.launcher", provider));
@@ -247,6 +259,7 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 </style></head><body>
 <div class="line"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
+<select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs">📜 AI</button>
 <button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs">📜 SAP</button></div>
 <main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
@@ -266,6 +279,9 @@ document.getElementById('model-select').addEventListener('change', event => {
 });
 document.querySelectorAll('button[data-action]').forEach(button => {
   button.addEventListener('click', () => api.postMessage({ action: button.dataset.action }));
+});
+document.getElementById('client-select').addEventListener('change', event => {
+  api.postMessage({ action: 'client', name: document.getElementById('system-select').value, client: event.target.value });
 });
 document.getElementById('system-select').addEventListener('change', event => {
   api.postMessage({ action: 'system', name: event.target.value });
@@ -402,6 +418,9 @@ window.addEventListener('message', event => {
       return option;
     }));
     if (!event.data.systems.length) select.add(new Option('No SAP systems configured', ''));
+    const clientSelect = document.getElementById('client-select'), clients = event.data.clients || [];
+    clientSelect.hidden = clients.length < 2;
+    clientSelect.replaceChildren(...clients.map(client => { const option = new Option(client, client); option.selected = client === event.data.client; return option; }));
   }
   if (event.data && event.data.ai) {
     const select = document.getElementById('provider-select');

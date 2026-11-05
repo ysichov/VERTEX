@@ -25,6 +25,17 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
     };
     private final Button[] flags = new Button[FLAGS.length];
 
+    /** The Anthropic API key, in Eclipse's secure storage (encrypted), never in the plain preferences. */
+    private static org.eclipse.equinox.security.storage.ISecurePreferences secure() {
+        return org.eclipse.equinox.security.storage.SecurePreferencesFactory.getDefault().node("org.vertex.abap/assistant");
+    }
+
+    static String anthropicKey() throws org.eclipse.equinox.security.storage.StorageException {
+        return secure().get("anthropicApiKey", "");
+    }
+
+    private Text anthropicKey;
+
     static boolean flag(String key) {
         return STORE.getBoolean(key, false);
     }
@@ -61,6 +72,12 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
                 if (chosen != null) fields[n].setText(chosen);
             });
         }
+        new Label(box, SWT.NONE).setText("Anthropic API key");
+        anthropicKey = new Text(box, SWT.BORDER | SWT.PASSWORD);
+        anthropicKey.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+        anthropicKey.setToolTipText("For Anthropic API in the VERTEX chat. Kept in Eclipse secure storage. Empty removes it.");
+        try { anthropicKey.setText(anthropicKey()); }
+        catch (Exception e) { setErrorMessage("Cannot read the Anthropic API key from secure storage: " + e.getMessage()); }
         new Label(box, SWT.NONE).setText("Chat log folder");
         logPath = new Text(box, SWT.BORDER);
         logPath.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
@@ -88,7 +105,14 @@ public class AssistantPreferences extends PreferencePage implements IWorkbenchPr
         for (int i = 0; i < keys.length; i++) STORE.put(keys[i], fields[i].getText().trim());
         STORE.put("logPath", logPath.getText().trim());
         for (int i = 0; i < FLAGS.length; i++) STORE.putBoolean(FLAGS[i][0], flags[i].getSelection());
-        try { STORE.flush(); return true; }
+        try {
+            String key = anthropicKey.getText().trim();
+            if (key.isEmpty()) secure().remove("anthropicApiKey");
+            else secure().put("anthropicApiKey", key, true);
+            secure().flush();
+            STORE.flush();
+            return true;
+        }
         catch (Exception e) { setErrorMessage(e.getMessage()); return false; }
     }
 

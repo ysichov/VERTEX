@@ -77,8 +77,8 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   let applying = false;
   let executing = false;
   async function search(args) {
-    const query = args.query;
-    if (typeof query !== "string" || !/^[A-Z0-9_/$*+]+$/i.test(query) || query.length > 80) {
+    const asked = args.query;
+    if (typeof asked !== "string" || !/^[A-Z0-9_/$*+]+$/i.test(asked) || asked.length > 80) {
       throw new Error("Use a SAP name or name pattern (* and + wildcards).");
     }
     const max = args.limit === undefined ? 50 : args.limit;
@@ -89,14 +89,29 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
     // A stateful SAP client is never shared by parallel requests.
     for (const key of types) {
       const adtType = key === "DEVC" ? PACKAGE_TYPE : TYPES[key];
-      const matches = await client.searchObject(query.toUpperCase(), adtType, max + 1);
+      const matches = await client.searchObject(asked.toUpperCase(), adtType, max + 1);
       all.push(...matches.filter(x => x["adtcore:type"] === adtType).map(row));
       if (key === "FUNC" && !matches.some(x => x["adtcore:type"] === TYPES.FUNC)) {
         // Some ADT systems index function modules under another FUGR type.
         // Use the same unfiltered fallback as resolve() before reporting none.
-        const fallback = await client.searchObject(query.toUpperCase(), undefined, max + 1);
+        const fallback = await client.searchObject(asked.toUpperCase(), undefined, max + 1);
         all.push(...fallback.filter(x => /^FUGR\//.test(String(x["adtcore:type"]))
           && /\/fmodules\//.test(String(x["adtcore:uri"]))).map(row));
+      }
+    }
+    // An exact name is looked up in TADIR too, where every repository object is, whatever ADT's search covers: a table
+    // (ZTEST_MOVE) is found there, and opens in its own window rather than a program whose name only starts the same.
+    // A pattern too (ZTEST_MOV*): a table that matches it is listed beside the program, not left out so the program opens alone.
+    if (!args.object_type) {
+      const seen = new Set(all.map(item => String(item.object_name).toUpperCase()));
+      const wanted = asked.toUpperCase().replace(/'/g, "''");
+      const where = /[*+]/.test(wanted) ? "LIKE '" + wanted.replace(/[%_]/g, "#$&").replace(/\*/g, "%").replace(/\+/g, "_") + "' ESCAPE '#'" : "= '" + wanted + "'";
+      const rows = (await query("SELECT object, obj_name, devclass FROM tadir WHERE pgmid = 'R3TR' AND obj_name " + where
+        + " AND object IN ('TABL', 'PROG', 'CLAS', 'INTF', 'DEVC')", max + 1)).values;
+      for (const raw of rows) {
+        const found = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key.toUpperCase(), String(value).trim()]));
+        if (seen.has(found.OBJ_NAME.toUpperCase())) continue;
+        all.unshift({ object_name: found.OBJ_NAME, object_type: found.OBJECT, description: "", package: found.DEVCLASS || "" });
       }
     }
     return { system: systemId, objects: all.slice(0, max), truncated: all.length > max };
@@ -565,10 +580,10 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
       // One read: the objects of the request and of its tasks, by E070's link from a task to its request. What is
       // inside a class is read when it is unfolded.
       const request = "'" + name(objectName).replace(/'/g, "''") + "'";
-      const keys = (await query("SELECT e071~object, e071~obj_name FROM e071 INNER JOIN e070 ON e070~trkorr = e071~trkorr"
+      const keys = (await query("SELECT e070~trkorr, e070~trstatus, e071~object, e071~obj_name FROM e071 INNER JOIN e070 ON e070~trkorr = e071~trkorr"
         + " WHERE e070~trkorr = " + request + " OR e070~strkorr = " + request, 10000)).values;
       if (!keys.length) throw new Error("Transport request " + name(objectName) + " holds no objects or does not exist.");
-      return navigator.requestTree(keys);
+      return navigator.requestTree(keys, name(objectName));
     }
     if (objectType !== "CLAS" && objectType !== "INTF") throw new Error("Object Navigator shows a package, a transport request, a program, a function group or module, a class or an interface, not " + objectType + ".");
     const object = await resolve({ object_name: objectName, object_type: objectType });

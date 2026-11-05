@@ -106,14 +106,17 @@ async function language(api) {
 }
 
 // A table's fields as DD03L lists them, in their order, each with its text in the session's language.
-async function fieldsOf(api, table) {
+// INCLUDES keeps the .INCLUDE and .APPEND rows, each naming its structure in PRECFIELD: the Fields view shows them as
+// links. DD03L lists an include's fields after it for a table, but not always for a structure (ZTEST_MOVE_ST holds only
+// the .INCLUDE row of CI_MOVE_DATA), so a view of the dictionary must not drop them.
+async function fieldsOf(api, table, { includes = false } = {}) {
   const spras = quote(await language(api));
   // Plain single-table reads only: ADT's data preview rewrites the statement before it runs it, and a join of
   // DD03L with its text tables came back as a syntax error. .INCLUDE and .APPEND rows name structures, not fields -
   // their fields are listed in their own right - and are dropped here rather than with a literal holding a full stop,
   // which the data preview also takes apart.
   const catalog = (await api.query("SELECT * FROM dd03l WHERE tabname = " + quote(table) + " AND as4local = 'A'", 10000))
-    .values.filter(f => !f.FIELDNAME.startsWith(".")).sort((a, b) => Number(a.POSITION) - Number(b.POSITION));
+    .values.filter(f => includes || !f.FIELDNAME.startsWith(".")).sort((a, b) => Number(a.POSITION) - Number(b.POSITION));
   const elements = new Map(), own = new Map();
   const rollnames = [...new Set(catalog.map(f => f.ROLLNAME).filter(Boolean))];
   for (const row of await inLists(api, "SELECT rollname, ddtext FROM dd04t WHERE ddlanguage = " + spras
@@ -124,8 +127,36 @@ async function fieldsOf(api, table) {
   return catalog;
 }
 
+/* The Fields view of a table or structure, as SE11 lists it: /sap/bc/adt/vertex/fields/<NAME> answers
+   { name, kind (DD02L's TABCLASS), fields: [{ name, position, key, rollname, datatype, length, decimals, text,
+   include }] } - include is the structure a .INCLUDE or .APPEND row names. */
+async function fieldsAnswer(api, name) {
+  if (!NAME.test(name)) { throw new Error(name + " is not a table or structure name."); }
+  const kind = await api.query("SELECT tabclass FROM dd02l WHERE tabname = " + quote(name) + " AND as4local = 'A'", 1);
+  if (!kind.values.length) { throw new Error(name + " is not a table or structure in the dictionary."); }
+  const catalog = await fieldsOf(api, name, { includes: true });
+  return { name, kind: kind.values[0].TABCLASS, fields: catalog.map(f => ({ name: f.FIELDNAME, position: Number(f.POSITION),
+    key: f.KEYFLAG === "X", rollname: f.ROLLNAME || "", datatype: f.DATATYPE || "", length: Number(f.LENG) || 0,
+    decimals: Number(f.DECIMALS) || 0, text: f.TEXT || "", include: f.FIELDNAME.startsWith(".") ? f.PRECFIELD || "" : "" })) };
+}
+
+/* The fields of a view or CDS entity as the data preview describes its columns, in the shape fieldsOf gives a table's:
+   name, key, dictionary type, length and description. Decimals the preview does not say. A name the preview cannot
+   read is said as SAP refused it. */
+async function previewFields(api, name) {
+  let answer;
+  try { answer = await api.query("SELECT * FROM " + name, 1); }
+  catch (error) { throw new Error(name + " is not a table, view or CDS entity that can be read: " + (error.message || error)); }
+  if (!(answer.columns || []).length) { throw new Error(name + " has no columns the data preview can show."); }
+  return answer.columns.map((column, index) => ({ FIELDNAME: String(column.name).toUpperCase(), POSITION: String(index + 1),
+    KEYFLAG: column.keyAttribute === true || column.keyAttribute === "true" ? "X" : "", DATATYPE: column.colType || "",
+    LENG: String(column.length || 0), DECIMALS: "0", ROLLNAME: "", TEXT: column.description || "" }));
+}
+
 async function request(api, resource) {
   const url = new URL(resource, "https://sap.invalid");
+  const fieldsRoute = /^\/sap\/bc\/adt\/vertex\/fields\/([^/]+)$/.exec(url.pathname);
+  if (fieldsRoute) { return fieldsAnswer(api, decodeURIComponent(fieldsRoute[1]).toUpperCase()); }
   const match = /^\/sap\/bc\/adt\/vertex\/table\/([^/]+)$/.exec(url.pathname);
   if (!match) { return null; }
   const table = decodeURIComponent(match[1]).toUpperCase();
@@ -133,11 +164,11 @@ async function request(api, resource) {
   const rows = Number(url.searchParams.get("rows") || 100);
   if (!Number.isInteger(rows) || rows < 0) { throw new Error("rows must be a whole number."); }
 
-  // The ABAP resource reads transparent and cluster tables only, not views.
+  // A table's fields come from DD03L, with their texts. A view or a CDS entity is read through the same data preview,
+  // and its fields are the preview's own columns: a CDS view entity has no DD02L or DD03L row at all.
   const kind = await api.query("SELECT tabclass FROM dd02l WHERE tabname = " + quote(table) + " AND as4local = 'A'", 1);
-  if (!kind.values.length || !["TRANSP", "CLUSTER"].includes(kind.values[0].TABCLASS)) { throw new Error("table " + table + " was not found."); }
-
-  const catalog = await fieldsOf(api, table);
+  const isTable = kind.values.length > 0 && ["TRANSP", "CLUSTER"].includes(kind.values[0].TABCLASS);
+  const catalog = isTable ? await fieldsOf(api, table) : await previewFields(api, table);
 
   const where = whereClause(readFilters(url.searchParams, catalog, table));
   // pick=X with sf1..: only these columns are read and answered, in their order - Run Select's SELECT list, until
@@ -153,8 +184,8 @@ async function request(api, resource) {
   }
   const keys = catalog.filter(f => f.KEYFLAG === "X").map(f => f.FIELDNAME.toLowerCase());
   const list = shown === catalog ? "*" : shown.map(f => f.FIELDNAME.toLowerCase()).join(", ");
-  // ORDER BY PRIMARY KEY wants every column; a shorter list is ordered by the key fields named.
-  const order = shown === catalog || !keys.length ? " ORDER BY PRIMARY KEY" : " ORDER BY " + keys.join(", ");
+  // ORDER BY PRIMARY KEY wants every column of a table; a shorter list, or a view, is ordered by the key fields named.
+  const order = isTable && (shown === catalog || !keys.length) ? " ORDER BY PRIMARY KEY" : keys.length ? " ORDER BY " + keys.join(", ") : "";
   const data = await api.query("SELECT " + list + " FROM " + table + (where ? " WHERE " + where : "") + order, rows);
 
   // The client field holds the session's client in every row: noise in the grid, useless as a criterion.

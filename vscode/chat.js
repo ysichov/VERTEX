@@ -178,20 +178,22 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
       const configured = vscode.workspace.getConfiguration("vertex").get("systems", null);
       const hasSap = !Array.isArray(configured) || configured.length > 0;
       const request = hasSap && directSearch.objectRequest(prompt);
+      let text = null, choices = [];
+      const navigation = null;
       if (request) {
-        const navigation = null;
-        let choices = [];
         // No model for a bare object name: search the system and open it.
         // In an editor tab, as the model is told to do with source as well:
         // a name typed with nothing said about it is not a request for the
         // VERTEX window, and the reader opens it there if that is what they
         // want.
-        const text = await directSearch.answer(request.query, {
+        text = await directSearch.answer(request.query, {
           search: args => codeTools.execute("search_sap_objects", args),
           open: args => codeTools.execute("open_sap_object", args),
-          choices: found => { choices = found; }
+          choices: found => { choices = found; }, word: request.word === true
         });
         if (superseded()) return replaced();
+      }
+      if (request && text !== null) {
         conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: text });
         return { answer: text, model: "", usage: null, direct: true, navigation, choices };
       }

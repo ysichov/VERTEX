@@ -111,16 +111,21 @@ function classTree(root, objectName, objectType, superClass, localClass) {
 }
 
 /* A transport request: its objects and its tasks' objects, once each, grouped by the object type E071 names. A class,
-   an interface, a program or a function module opens; a method opens in its class at its METHOD statement. */
+   an interface, a program or a function module opens; a method opens in its class at its METHOD statement.
+   REQUEST, when given with rows that name their TRKORR and TRSTATUS, marks as removed an object only a released task
+   holds: release puts a task's objects on the request's list, so one missing there was taken out of the request. */
 const E071_OPENS = { CLAS: "CLAS", INTF: "INTF", PROG: "PROG", FUNC: "FUNC" };
-function requestTree(keys) {
+function requestTree(keys, request) {
   const byType = new Map(), seen = new Set();
+  const carried = new Set(keys.filter(k => !request || !k.TRKORR || String(k.TRKORR) === request
+    || (k.TRSTATUS !== "R" && k.TRSTATUS !== "N")).map(k => String(k.OBJECT) + "|" + String(k.OBJ_NAME)));
   for (const k of keys) {
     const type = String(k.OBJECT), name = String(k.OBJ_NAME);
     if (seen.has(type + "|" + name)) continue;
     seen.add(type + "|" + name);
     if (!byType.has(type)) byType.set(type, []);
     let node = { label: name };
+    if (!carried.has(type + "|" + name)) node.removed = true;
     if (type === "METH") {
       const owner = name.slice(0, 30).trim(), method = name.slice(30).trim();
       node = { label: owner + "=>" + method, open: { name: owner, type: "CLAS", method } };
@@ -129,7 +134,8 @@ function requestTree(keys) {
     byType.get(type).push(node);
   }
   return [...byType.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([label, children]) => ({ label, children: children.sort((x, y) => x.label.localeCompare(y.label)) }));
+    .map(([label, children]) => Object.assign({ label, children: children.sort((x, y) => x.label.localeCompare(y.label)) },
+      children.every(c => c.removed) ? { removed: true } : {}));
 }
 
 /* A program's Parts - its events, subroutines and local methods - from the same node structure, in the shape the

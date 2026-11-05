@@ -1,6 +1,6 @@
 # Release history
 
-## 2026-11-04 — 0.9.60: EPAM CodeMie as an AI provider
+## 2026-11-05 — 0.9.61: EPAM CodeMie as an AI provider
 
 - VS Code: **EPAM CodeMie (CodeMie CLI)** is an AI provider after GitHub Copilot. It runs Claude Code through the CodeMie CLI's `codemie-claude` with the SAP tools the other providers get; the model list is the CodeMie profile's, and **CodeMie default** is the model chosen in `codemie setup`.
 - **Profile** under EPAM CodeMie in LLM Providers chooses which CodeMie profile (project or personal account) VERTEX uses, independently of the one active in the CLI; it is shown when there are two or more profiles, and **Active in CodeMie** (or a profile CodeMie no longer has) follows `codemie profile switch`.
@@ -8,45 +8,46 @@
 - With **Show CodeMie Cost** (`vertex.ai.showCodemieCost`, off by default), each CodeMie answer in the VERTEX panel shows its cost after the token counts (`≈ $0.0022`). It is Claude Code's estimate from list prices, not CodeMie's bill.
 - The VERTEX panel's 📜 SAP log button and 📜 AI look like the title actions beside them: coloured only on hover. 📜 SAP had the filled button style.
 - A transport request whose objects are in a namespace (`/NS/`) is covered by a test of its object list and ADT addresses.
-- VS Code 0.9.60 built and verified. Eclipse sources are at 0.9.60, but the Eclipse update site was not rebuilt and stays at 0.9.54.20261103215020.
+- VS Code 0.9.61 built and verified with these changes.
 
-## 2026-11-03 — 0.9.54: Logic diagram for reports and forms
+## 2026-11-04 — 0.9.58: model checks per provider, Logic diagram for events and forms, method history fallback
 
-- The Logic diagram draws a report's events (START-OF-SELECTION, AT SELECTION-SCREEN and the others, and a report's statements outside every event); before, an event showed only its title. FORM and dialog MODULE routines are drawn as well.
+- Logic diagram, both hosts: a report's events (START-OF-SELECTION, AT SELECTION-SCREEN and the others, and a report's statements outside every event) are drawn; before, an event showed only its title. FORM and dialog MODULE routines are drawn as well.
 - VERTEX Tools → Logic diagram opened from the editor picks the FORM or MODULE at the cursor, as it does a method.
-- VS Code 0.9.54 and Eclipse 0.9.54.20261103215020 were built and verified.
+- Transport review, both hosts: in a prompt a class's parts carry their class - `ZCL_X=>RUN`, `ZCL_X, public section` - instead of the bare method name, and the documentation prompt asks for every method of a created class, each with its purpose, parameters, processing and result.
+- LLM Providers, VS Code: **Check models** beside each provider tests only that provider's listed models with short requests, shows Checking, progress and the working-model count, and **Stop** in the provider header ends the scan after its current request. **Save** keeps failed models out of chat choices. No SAP source is sent; normal provider usage applies.
+- Tools, both hosts: the method diagram is labelled **Logic diagram**, in Tools and in its VS Code command.
+- Method Diff, both hosts: when a system keeps no separate method versions, the method is shown from its class history, with a notice.
 
-## 2026-11-03 — 0.9.53: visible model-check status and current documentation
+## 2026-11-04 — 0.9.57: new objects named in the documentation prompt
 
-The model-check button shows Checking while a request runs; progress, completion counts and Stop are in the provider header. The LLM settings page now injects the shared vertex-controls.css after its styles, matching VERTEX buttons. Updated current instructions and version labels across the repository, VSIX README, Eclipse README and update-site page.
+- Object Navigator, both hosts: a transport request's tree hides an object only a released task holds - taken out of the request - and **Show removed objects**, offered when there is one, shows such objects in red.
+- Transport review, both hosts: the review takes its objects from the request's own list and from tasks not yet released. An object a released task held but that was then taken out of the request - tried, moved on as a ToC, not meant to travel further - is no longer reviewed or documented.
+- Transport review, both hosts: an object whose only version below the request's own is one with no request - its first local save - is created by the request: it shows green, is reviewed against nothing, and goes to the prompt as NEW. A saved review keeps the old pair until **Rebuild from ADT**.
+- Transport review, both hosts: an object the review marks as created - shown green in the summary - goes to the prompt as `NEW object`, its whole new source, even when the diff pairs it with an earlier version; the documentation prompt then describes it in full rather than as a change.
 
+## 2026-11-04 — 0.9.56: Fields of a table or structure; VS Code: several clients of one system; prompt choice per object
 
-## 2026-11-03 — 0.9.53: provider-scoped model checks
+- SelecTor, both hosts: a view or CDS entity opens as a table does, its fields the columns the data preview describes; **Run Select** opens a SELECT on one view or CDS entity in SelecTor instead of the plain window.
+- **Fields**, both hosts: a table's or structure's fields as SE11 lists them, with each `.INCLUDE` / `.APPEND` as a link to the structure it brings in. A structure opens on Fields, from VERTEX Tools and from the chat.
 
-Check models is beside each provider and tests only its models. The host rejects a scan without a known provider; the global scan button is removed. Other providers keep their selections.
+- A system can list its clients, for one user: `clients` beside the default `client`. In the **SAP Systems** table, **+** in the Client column adds a client, and a list switches between them, there and on the VERTEX panel beside the SAP system; each client keeps its own password.
+- A VERTEX window keeps the client it was opened on, as it keeps its system, and names it in the tab: `VERTEX ALC 200`.
+- In the chat, a single word such as `SCARR` is looked up in the system and opened without a model; only a word the system does not know goes to the model. An exact name is also looked up in the object directory, so a table such as `ZTEST_MOVE` opens on its data instead of a program whose name only starts the same.
+- Transport review, both hosts: **Code review / Technical documentation** sits beside **Copy prompt: diff / full** on an object's page and in a developer's or reviewer's view, so one object's or one person's changes copy as technical documentation too. A user `code-review.txt` no longer cuts the start of each object's diff in a multi-object prompt.
+- Transport review, both hosts: a class has the **All / Approved / Declined / Not processed / Comments only** filter of a developer's view. A verdict or comment redraws only its block's head, so the page keeps its place instead of being rebuilt and scrolled to the top.
+- Transport review, both hosts: with **Ignore SAP generated**, the includes the table maintenance generator (SE54) writes for an SM30 view - `TABLEFRAME_<group>`, `TABLEPROC_<group>` and the rest, recognised by their generator-version header - are left out of the review and its prompts. A saved review keeps them until **Rebuild from ADT**.
+- Transport review, both hosts: the built-in Technical documentation prompt lists created and modified objects apart. An object new in the request goes to the prompt whole, marked NEW, and is described as it is; a modified one is marked MODIFIED and described by its change. A saved `technical-documentation.txt` still wins - **Use built-in** removes it.
+- Transport review, both hosts: a line whose only change is its case outside literals - the Pretty Printer turning `describe table` into `DESCRIBE TABLE` - is no longer a change. Case inside a literal still counts. A saved review keeps its blocks until **Rebuild from ADT**.
+- Buttons, both hosts: every plain button and on/off toggle has a border, and a plain button the theme's secondary button colours, so it no longer reads as muted text.
+- **Import SAP Systems** adds a client found in SAP Logon or Eclipse to the system that is already configured, instead of leaving it out because the system name is taken. Two ADT projects of one system with different clients come in as one system with both.
 
-
-## 2026-11-03 — 0.9.53: model availability and method history
-
-- LLM Providers in VS Code can test listed models with short requests, disable failed models and providers, show failure reasons and stop after the current request. Save applies the discovered choices.
-- Method Diff falls back to class history when VRSD has no separate method directory, with a visible notice.
-- VS Code 0.9.53 and Eclipse 0.9.53.20261103172457 were rebuilt and verified.
-
-
-## 2026-11-03 — 0.9.53: Tools Logic diagram label
-
-- The method diagram is labelled **Logic diagram** in Tools and its VS Code command, distinct from the debugger pane.
-
-
-## 2026-11-03 — 0.9.53: current packages
-
-- Rebuilt and verified VS Code 0.9.53 and Eclipse 0.9.53.20261103165610 from the current sources. The local Eclipse update site and install ZIP include the Value origin analysis fix.
-
-## 2026-11-03 — 0.9.53: SNC through a message server, ABAP from any editor
+## 2026-11-04 — 0.9.55: SNC through a message server, ABAP from any editor, namespaced objects
 
 - An SNC system reached through a SAP Logon group connects: `rfc.mshost`, `rfc.sysid`, `rfc.group` and optionally `rfc.msserv` replace `rfc.ashost`/`rfc.sysnr`, and **VERTEX: Import SAP Systems** no longer skips such entries.
 - A failed SNC connection names the address it used; **SAP Systems** opens the connection log and, with `vertex.rfcTrace` 1-3, the SAP NW RFC SDK trace folder.
 - The chat reads the whole ABAP source of any editor, including one another extension opened (ABAP remote filesystem, SAP's ADT extension), instead of a visible line.
+- An object with a namespace (`/1FB/CL_TR_CONT_ACCESS_10`) opens in its VERTEX tab again: the tab's address writes the namespace as `(1FB)`, so VS Code no longer fails with "Unable to resolve nonexistent file".
 - With no SAP system in VERTEX, UML, Metrics, Logic and Calls analyse such a source from its editor text.
 
 ## 2026-11-02 — 0.9.53: debugger depth control

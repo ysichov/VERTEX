@@ -9,8 +9,24 @@ function canonicalOrigin(url) {
   return u.protocol.toLowerCase() + "//" + u.hostname.toLowerCase() + (port ? ":" + port : "");
 }
 
-/** One vertex.systems entry → a validated system, or a sentence naming what is wrong. */
-function readSystem(entry) {
+/* The clients of one entry: its list (numbers or text), with the default client first when the list leaves it out. */
+function clientsOf(e) {
+  if (e.clients === undefined) return { list: [] };
+  if (!Array.isArray(e.clients)) return { error: "clients must be a list of SAP clients, e.g. [\"600\", \"610\"]." };
+  const list = [];
+  for (const item of e.clients) {
+    const client = typeof item === "number" ? String(item) : item;
+    if (typeof client !== "string" || !/^\d{1,3}$/.test(client.trim())) return { error: "clients has " + JSON.stringify(item) + "; a client is one to three digits." };
+    if (!list.includes(client.trim())) list.push(client.trim());
+  }
+  const first = String(e.client || "").trim();
+  if (first && !list.includes(first)) list.unshift(first);
+  return { list };
+}
+
+/** One vertex.systems entry → a validated system, or a sentence naming what is wrong. CHOSEN is the client picked in the
+ * SAP Systems table; the entry's `client` is the default, used while none is picked or the picked one has left the list. */
+function readSystem(entry, chosen) {
   const e = entry || {};
   const name = String(e.name || "").trim() || "(unnamed)";
   if (Object.prototype.hasOwnProperty.call(e, "password")) {
@@ -30,8 +46,12 @@ function readSystem(entry) {
     try { parsed = new URL(e[field]); } catch (_) { continue; }
     if (parsed.username || parsed.password) return { error: "System " + name + " has a user or password in its " + field + ". Remove it: VERTEX keeps passwords in the OS credential store and asks for them." };
   }
-  const system = { name, url: e.url, client: e.client || "", user: e.user, authType,
+  const clients = clientsOf(e);
+  if (clients.error) return { error: "System " + name + ": " + clients.error };
+  const client = clients.list.includes(String(chosen)) ? String(chosen) : e.client || clients.list[0] || "";
+  const system = { name, url: e.url, client, user: e.user, authType,
     webgui: e.webgui, allowInsecureCertificate: e.allowInsecureCertificate === true };
+  if (clients.list.length) system.clients = clients.list;
   if (authType === "snc") {
     const snc = e.snc || {}, rfc = e.rfc || {};
     if (!snc.partnerName) return { error: "System " + name + " is snc and has no snc.partnerName (the system's SNC name, e.g. p:CN=SID, O=ACME)." };

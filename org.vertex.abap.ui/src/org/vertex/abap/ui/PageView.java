@@ -85,7 +85,27 @@ public abstract class PageView extends ViewPart {
 	@Override
 	public void createPartControl(Composite parent) {
 		this.browser = new Browser(parent, SWT.EDGE);
+		try {
+			installPage();
+		} catch (org.eclipse.swt.SWTException e) {
+			// Edge (WebView2) can be too slow to answer while Eclipse is still starting up. The window says so
+			// instead of Eclipse's bare "Failed to create the part's controls"; any other failure goes on as it was.
+			if (e.getMessage() == null || !e.getMessage().contains("Waiting for Edge")) {
+				throw e;
+			}
+			this.browser.dispose();
+			org.eclipse.swt.widgets.Label message = new org.eclipse.swt.widgets.Label(parent, SWT.WRAP);
+			message.setText("The built-in browser (Edge WebView2) did not answer in time - this happens while Eclipse "
+					+ "is still starting up. Close this window and open it again a little later.\n\n" + e.getMessage());
+		}
+	}
 
+	/** True when the page could not be set up and the window shows only why; a subclass then adds nothing. */
+	protected boolean pageFailed() {
+		return this.browser == null || this.browser.isDisposed();
+	}
+
+	private void installPage() {
 		// Called once Java says the answer is ready. Handing over a string that
 		// is already in memory is instant, so doing it in a callback is safe.
 		new BrowserFunction(this.browser, "sdeTake") {
@@ -682,6 +702,8 @@ public abstract class PageView extends ViewPart {
 	@Override
 	public void setFocus() {
 		DetachedView.reveal(this);
-		this.browser.setFocus();
+		if (!pageFailed()) {
+			this.browser.setFocus();
+		}
 	}
 }

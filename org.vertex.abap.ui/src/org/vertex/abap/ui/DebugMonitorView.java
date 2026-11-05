@@ -209,6 +209,7 @@ public class DebugMonitorView extends ToolsView implements org.eclipse.ui.ISavea
     }
     @Override public void createPartControl(org.eclipse.swt.widgets.Composite parent) {
         super.createPartControl(parent);
+        if (pageFailed()) return;
         listener = events -> {
             if (closed || session == null) return;
             boolean relevant = false;

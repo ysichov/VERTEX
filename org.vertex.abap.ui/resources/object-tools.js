@@ -2,7 +2,7 @@
 (function (root) {
   "use strict";
   const objects = [
-    ["TABL", "Table", ["data", "join", "pivot", "diff"]],
+    ["TABL", "Table", ["data", "fields", "join", "pivot", "diff"]],
     ["CLAS", "Class", ["uml", "metrics", "scheme", "flow", "diff"]],
     ["INTF", "Interface", ["uml", "diff"]],
     ["PROG", "Program", ["metrics", "scheme", "flow", "diff"]],
@@ -13,7 +13,7 @@
     ["FUNC", "Function module", ["metrics", "scheme", "flow", "diff"]],
     ["DDLS", "CDS", ["diff"]], ["DOMA", "Domain", ["diff"]], ["DTEL", "Data element", ["diff"]]
   ];
-  const labels = { data: "Data", join: "Join", pivot: "Pivot", diff: "Diff", review: "Review",
+  const labels = { data: "Data", fields: "Fields", join: "Join", pivot: "Pivot", diff: "Diff", review: "Review",
     uml: "UML diagram", metrics: "Metrics", scheme: "Logic diagram", flow: "Calls diagram" };
   // Visual order is not the default action: Diff belongs at the end of the
   // picker, while a class/package opened from a version-oriented command must

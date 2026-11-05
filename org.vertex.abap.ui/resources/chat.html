@@ -60,7 +60,7 @@ textarea { box-sizing: border-box; width: 100%; min-height: 64px; max-height: 50
 </style></head><body>
 <header>
   <span id="system">Resolving ABAP project ...</span>
-  <select id="who" aria-label="Assistant"><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="anthropic-api">Anthropic API</option></select>
+  <select id="who" aria-label="Assistant"><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="codemie">CodeMie CLI</option><option value="anthropic-api">Anthropic API</option></select>
   <select id="model" aria-label="Model" disabled><option>loading ...</option></select>
   <button id="logs" type="button" title="Session Logs" aria-label="Session Logs"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3"/></svg></button>
 </header>
@@ -374,8 +374,8 @@ var savedAssistant = recall("assistant");
 var assistantBox = document.getElementById("who");
 var anthropicOption = assistantBox.querySelector('option[value="anthropic-api"]');
 if (anthropicOption && !(typeof sdeAnthropicApi === "function" && sdeAnthropicApi())) {
-  // The Eclipse embedded browser shares this page but has no SecretStorage
-  // backed Anthropic client, so never offer a provider that cannot answer.
+  // Offered only where the host says it can run it (Eclipse's chat does, with the key from its
+  // secure storage); never a provider that cannot answer.
   anthropicOption.remove();
 }
 if (Array.prototype.some.call(assistantBox.options, function (option) { return option.value === savedAssistant; })) {

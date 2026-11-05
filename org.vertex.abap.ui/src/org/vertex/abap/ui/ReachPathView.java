@@ -116,6 +116,7 @@ public class ReachPathView extends PageView {
 	@Override
 	public void createPartControl(Composite parent) {
 		super.createPartControl(parent);
+		if (pageFailed()) return;
 		follow();
 	}
 

@@ -87,12 +87,12 @@
 </p>
 
 <p>Opening a VERTEX window in Eclipse reveals its containing layout in the current perspective, including areas hidden in a saved layout.</p>
-<p>A saved transport review can open all changed objects for a Code review or Technical documentation prompt; the documentation prompt ends with <code>TR Details: &lt;request&gt;</code>.</p>
+<p>A saved transport review copies a Code review or Technical documentation prompt for one object, a developer, a reviewer or all changed objects; the documentation prompt ends with <code>TR Details: &lt;request&gt;</code>.</p>
 <p>The <strong>Prompts…</strong> button lets you view and edit both instructions. User files in <code>~/.vertex/prompts/</code> take priority over the built-in prompts.</p>
 
 <p>In VS Code, importing SAP systems offers Eclipse workspaces that still contain ABAP projects or logon settings; a remembered path to a removed workspace is not offered. On macOS it also reads SAP GUI for Java connections from <code>~/Library/Preferences/SAP/SAPGUILandscape.xml</code> (also <code>SAPUILandscape.xml</code> and <code>SAPUILandscapeGlobal.xml</code>). Choose <b>No Eclipse workspace</b> to import from SAP GUI alone; client and user are requested. If a connection has no system ID field, its name must be an exact three-character SAP system ID.</p>
 
-<p class="build">VS Code extension <b>0.9.60</b>; Eclipse build <b>0.9.54.20261103215020</b>.</p>
+<p class="build">Latest build <b>0.9.61.20261105033632</b>.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -162,9 +162,10 @@
 
 <p>
   Settings are in <strong>Window &rarr; Preferences &rarr; VERTEX Assistant</strong>.
-  The chat needs Node.js 22 or newer and Claude Code or Codex installed and signed in:
-  it runs on your Claude or ChatGPT subscription, which has no public API and works only
-  through the vendor's own client.
+  The chat needs Node.js 22 or newer and one of: Claude Code or Codex installed and signed in
+  (your Claude or ChatGPT subscription, which has no public API and works only through the
+  vendor's own client), the EPAM CodeMie CLI after <code>codemie setup</code>, or an Anthropic
+  API key entered on that preference page and kept in Eclipse secure storage.
 </p>
 
 <h2>The other half is ABAP</h2>

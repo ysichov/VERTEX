@@ -118,7 +118,7 @@ public class ToolsView extends ChatView {
                 String body = args.length > 1 && args[1] != null ? String.valueOf(args[1]) : null;
                 queue(() -> {
                     if (path.equals("project")) return abapProject().getName();
-                    String route = body == null ? "(about|requests|(table|join|metrics|flow|class|package|versions|review)/[^?]+)"
+                    String route = body == null ? "(about|requests|(table|fields|join|metrics|flow|class|package|versions|review)/[^?]+)"
                         : "review/[^?]+";
                     // The object field's mask search: ADT's quick search, read only.
                     boolean search = body == null && path.matches("/sap/bc/adt/repository/informationsystem/search\\?operation=quickSearch&maxResults=\\d{1,3}&objectType=[A-Z]{4}%2F[A-Z]{1,2}&query=[A-Z0-9_%*+$]{1,80}");
@@ -302,6 +302,7 @@ public class ToolsView extends ChatView {
     }
     @Override public void createPartControl(org.eclipse.swt.widgets.Composite parent){
         super.createPartControl(parent);
+        if(pageFailed())return;
         editorSelection=(part,selection)->{
             if(!(part instanceof IEditorPart)||!(selection instanceof ITextSelection)||browser.isDisposed()||System.currentTimeMillis()<sourceNavigationUntil)return;
             AdtEditor object=AdtEditor.of((IEditorPart)part);if(object==null)return;

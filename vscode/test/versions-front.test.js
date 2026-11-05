@@ -260,6 +260,11 @@ test("review comparison ignores indentation and trailing whitespace but keeps li
   const changed = await diff(["  value = 'A B'."], ["    value = 'A  B'."], "indentation");
   assert.ok(changed.some(op => op.op === "+"));
   assert.ok(changed.some(op => op.op === "-"));
+  // The Pretty Printer's case is no change; case inside a literal is.
+  const printed = await diff(["describe table gt_tab[] lines lv_n.", "if lv_n > 0."], ["DESCRIBE TABLE gt_tab[] LINES lv_n.", "IF lv_n > 0."], "indentation");
+  assert.ok(printed.every(op => op.op === "="));
+  const literal = await diff(["lv_x = 'abc'."], ["LV_X = 'ABC'."], "indentation");
+  assert.ok(literal.some(op => op.op === "+"));
 });
 
 test("a method without a VRSD directory still reads its class history when the backend is present", async () => {

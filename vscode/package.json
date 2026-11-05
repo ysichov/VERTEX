@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.60",
+  "version": "0.9.61",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -331,7 +331,12 @@
               },
               "client": {
                 "type": "string",
-                "description": "SAP client, sent as sap-client. Leave empty to use the system default."
+                "description": "SAP client, sent as sap-client. Leave empty to use the system default. With `clients`, this is the default one."
+              },
+              "clients": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[0-9]{1,3}$" },
+                "markdownDescription": "The clients of this system, for one user: `[\"600\", \"610\"]`. The default is `client`; the SAP Systems table has a list to switch between them. Each client keeps its own password."
               },
               "user": {
                 "type": "string",

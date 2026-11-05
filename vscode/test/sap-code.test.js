@@ -10,6 +10,8 @@ function fixture(kind = "PROG") {
     : kind === "CLAS" ? "/sap/bc/adt/oo/classes/ztest" : "/sap/bc/adt/functions/groups/zgroup/fmodules/ztest";
   let active = "original", working = active, exists = true, localLock = true;
   const client = {
+    tadir: [],
+    async runQuery(sql) { return { values: /FROM tadir/i.test(sql) ? client.tadir : [] }; },
     async searchObject(query, filter) {
       calls.push(["search", query, filter]);
       if (filter === "DEVC/K" && query !== "$TMP" && query !== "Z_RIG") return [];
@@ -444,4 +446,18 @@ test("abaplint finds a definition inside one SAP source that is not sent", async
   const document = { uri: "u", getText: () => text };
   const found = await resolveSource(vscode, document, { line: 7, character: 5 }, "CLAS", "ZCL_X");
   assert.equal(found.target.range.start.line, 9);
+});
+
+test("an exact name is looked up in TADIR, so a table the ADT search leaves out is found", async () => {
+  const f = fixture();
+  f.client.searchObject = async () => [];
+  f.client.tadir = [{ object: "TABL", obj_name: "ZTEST_MOVE", devclass: "$TMP" }];
+  const result = await f.repo.execute("search_sap_objects", { query: "ZTEST_MOVE" });
+  assert.deepEqual(result.objects.map(object => [object.object_type, object.object_name, object.package]), [["TABL", "ZTEST_MOVE", "$TMP"]]);
+  let asked = "";
+  f.client.runQuery = async sql => { asked = sql; return { values: [{ object: "TABL", obj_name: "ZTEST_MOVE" }] }; };
+  f.client.searchObject = async (query, filter) => filter === "PROG/P" ? [{ "adtcore:name": "ZTEST_MOVE_DATA", "adtcore:type": "PROG/P", "adtcore:uri": "/sap/bc/adt/programs/programs/ztest_move_data" }] : [];
+  const both = await f.repo.execute("search_sap_objects", { query: "ZTEST_MOV*" });
+  assert.match(asked, /obj_name LIKE 'ZTEST#_MOV%' ESCAPE '#'/);
+  assert.deepEqual(both.objects.map(object => object.object_name).sort(), ["ZTEST_MOVE", "ZTEST_MOVE_DATA"]);
 });

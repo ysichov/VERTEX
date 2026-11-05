@@ -32,6 +32,35 @@ test("technical documentation prompt keeps diff evidence and ends with TR Detail
   }
 });
 
+test("a created object goes to the prompt whole and named NEW, a changed one named MODIFIED", () => {
+  const state = context();
+  assert.match(state.reviewPrompt(false, null, "technical"), /MODIFIED object ZCL_SHIP=>RUN/);
+  assert.match(state.reviewPrompt(false, null, "technical"), /keep created objects apart from modified ones/);
+  state.review_ops = [{ op: "+", text: "FUNCTION z_new." }, { op: "+", text: "ENDFUNCTION." }];
+  for (const full of [false, true]) {
+    const prompt = state.reviewPrompt(full, null, "technical");
+    assert.match(prompt, /NEW object ZCL_SHIP=>RUN, created in this transport - its whole source:\n\n\+ FUNCTION z_new\.\n\+ ENDFUNCTION\.\n\nTR Details: ER6K9A1QXV$/);
+    assert.doesNotMatch(prompt, /MODIFIED object/);
+  }
+  // The review's own mark decides too: its new source, without lines a version before it held.
+  const marked = context();
+  marked.review_part = { display_name: "ZHRR_EMP_ALERTS", is_created: true };
+  const prompt = marked.reviewPrompt(false, null, "technical");
+  assert.match(prompt, /NEW object ZHRR_EMP_ALERTS, created in this transport - its whole source:\n\n\+ CLASS zcl_ship DEFINITION\.\n\+ amount = new_price \* 2\.\n\+ ENDCLASS\./);
+  assert.doesNotMatch(prompt, /old_price/);
+});
+
+test("a class's parts are named under their class", () => {
+  const state = context();
+  state.review_part = { objtype: "METH", display_name: "RUN", class_name: "ZCL_NEW", is_created: true };
+  assert.match(state.reviewPrompt(false, null, "technical"), /NEW object ZCL_NEW=>RUN, created in this transport/);
+  assert.match(state.reviewPrompt(false, null, "technical"), /for a created one go through every method/);
+  state.review_part = { objtype: "CPUB", display_name: "ZCL_NEW=======CU", class_name: "ZCL_NEW" };
+  assert.match(state.reviewPrompt(false, null, "technical"), /ZCL_NEW, public section/);
+  state.review_part = { objtype: "REPS", display_name: "ZPROG" };
+  assert.match(state.reviewPrompt(false, null, "technical"), /MODIFIED object ZPROG -/);
+});
+
 test("code review remains the default prompt", () => {
   const state = context();
   const prompt = state.reviewPrompt(false);
@@ -73,6 +102,9 @@ test("multi-object technical prompt uses one instruction and one transport foote
   assert.match(prompt, /ZCL_SHIP=>RUN/);
   assert.match(prompt, /ZCL_PRICE=>CALCULATE/);
   assert.equal(prompt.match(/TR Details: ER6K9A1QXV/g).length, 1);
+  // A developer's view follows the same choice.
   state.personView.selector = "D:AUTHOR";
+  assert.match(state.personPrompt(false), /^Review the provided ABAP change diff/);
+  state.promptKind = "review";
   assert.match(state.personPrompt(false), /^Review this ABAP change:/);
 });

@@ -39,7 +39,7 @@ test("the VS Code chat sends the conversation so far, and a new conversation sta
   assert.match(instructions, /If a tool fails/);
 
   ask.newConversation();
-  await ask("hello");
+  await ask("hello there");
   assert.doesNotMatch(prompts[2], /show Z_CALC|Answer 1/);
 });
 
@@ -133,7 +133,7 @@ test("every direct model round is a separate Anthropic-format log entry", async 
   const tools = { schemas: [], instructions: "", editorContext: () => null };
   const ask = chat.create(fakeVscode({ provider: "mistral-api", model: "mistral-test", logPath: root,
     "log.questions": true, "log.answers": true }), tools, {}, { get: async () => "secret" });
-  await ask("Explain");
+  await ask("Explain this");
   const dir = path.join(root, "claude_compatible");
   const file = fs.readdirSync(dir).find(name => name.endsWith(".jsonl"));
   const lines = fs.readFileSync(path.join(dir, file), "utf8").trim().split("\n").map(JSON.parse);

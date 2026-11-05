@@ -195,3 +195,18 @@ for (const stored of [false, true]) test("CSRF refusal suppresses auto-login pro
   assert.equal(v.prompts.length, after + 1);
   assert.equal(sends, before + 2);
 });
+
+test("a client picked for a system is what every read uses, and whoever shows it is told", async () => {
+  const entry = { name: "ER6", url: "https://h", user: "u", client: "600", clients: ["610"] };
+  const auth = createAuth({ vscode: fakeVscode([entry]), context: fakeContext(), logger: null });
+  const told = [];
+  const listening = auth.onClientChange((name, client) => told.push(name + "/" + client));
+  assert.equal(auth.currentSystems()[0].client, "600");
+  await auth.setClient("ER6", "610");
+  assert.equal(auth.currentSystems()[0].client, "610");
+  assert.equal(auth.systemOf(entry).system.client, "610");
+  assert.deepEqual(told, ["ER6/610"]);
+  listening.dispose();
+  await auth.setClient("ER6", "600");
+  assert.deepEqual(told, ["ER6/610"]);
+});

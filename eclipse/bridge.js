@@ -9,6 +9,7 @@ const assistant = require("./assistant");
 const mcp = require("./mcp");
 const sessionLog = require("./session-log");
 const directSearch = require("./direct-search");
+const anthropic = require("./anthropic");
 const encode = value => Buffer.from(value, "utf8").toString("base64");
 const decode = value => Buffer.from(value, "base64").toString("utf8");
 
@@ -17,6 +18,8 @@ function executable(id, explicit) {
     if (!fs.existsSync(explicit)) { throw new Error("Assistant executable not found: " + explicit); }
     return explicit;
   }
+  // CodeMie lies in npm's global folder, not in a VS Code extension or on PATH as an .exe.
+  if (id === "codemie") { return assistant.locate(id, ""); }
   const direct = path.join(os.homedir(), ".local", "bin", id === "claude" ? "claude.exe" : "codex.exe");
   if (process.platform === "win32" && fs.existsSync(direct)) { return direct; }
   const root = path.join(os.homedir(), ".vscode", "extensions");
@@ -33,6 +36,40 @@ function executable(id, explicit) {
     if (fs.existsSync(file)) { return file; }
   }
   throw new Error("Configure the " + id + " executable in Eclipse Preferences > VERTEX Assistant. Log in using that CLI first.");
+}
+
+/* The Anthropic Messages API with the key Eclipse keeps in its secure storage. No CLI and no MCP server:
+   the model's tool calls go straight to the window's SAP tools, as VS Code's anthropic.js does there. */
+async function anthropicApi(request, brain, fetch, open) {
+  const key = String(request.apiKey || "");
+  if (!key) { throw new Error("No Anthropic API key is set: enter one in Window > Preferences > VERTEX Assistant."); }
+  if (request.call === "models") {
+    return { call: "models", assistant: request.assistant, models: await anthropic.models(key) };
+  }
+  if (!request.model) { throw new Error("Choose an Anthropic model first."); }
+  const log = request.service === "chat" ? sessionLog.create(request.log, request.assistant, request.session, request.logInclude) : null;
+  const deps = { fetch, open, context: {} };
+  const call = sessionLog.tools(log, brain.callTool);
+  if (log) { log.user(request.text); }
+  try {
+    const prompt = brain.preparePrompt ? await brain.preparePrompt(deps, request.text, request.state)
+      : brain.prompt(request.text, request.state);
+    if (log) { log.request({ instructions: brain.INSTRUCTIONS, prompt, tools: brain.TOOLS, schema: brain.PLAN_SCHEMA }); }
+    const answer = await anthropic.ask({ apiKey: key, model: request.model, prompt,
+      instructions: brain.INSTRUCTIONS, schema: brain.PLAN_SCHEMA, tools: brain.TOOLS,
+      callTool: async (name, args) => {
+        const result = await call(deps, name, args);
+        const text = result.content.map(c => c.text).join("");
+        if (result.isError) { throw new Error(text); }
+        try { return JSON.parse(text); } catch { return text; }
+      } });
+    const plan = await brain.checkPlan(deps, answer.plan);
+    if (log) { log.assistant({ model: answer.model, usage: answer.usage, text: plan.answer }); }
+    return { call: "ask", model: answer.model, usage: answer.usage || null, plan };
+  } catch (error) {
+    if (log) { log.assistant({ model: request.model, text: "Request failed: " + error.message }); }
+    throw error;
+  }
 }
 
 const BRAINS = { selector: "./selector", versions: "./versions", chat: "./chat" };
@@ -62,6 +99,7 @@ async function run(request, fetch, api = assistant, open = async () => { throw n
       choices: found => { choices = found; } });
     return { call: "ask", model: "", usage: null, direct: true, plan: { answer }, choices };
   }
+  if (request.assistant === "anthropic-api") { return anthropicApi(request, brain, fetch, open); }
   const options ={ assistant: request.assistant, executable: executable(request.assistant, request.executable) };
   if (request.call === "models") {
     // Eclipse has no Config models: Claude's newest of each family is offered,

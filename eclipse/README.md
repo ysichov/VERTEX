@@ -1,11 +1,13 @@
 # Built-in Eclipse Assistant
 
-**Version: 0.9.54**
+**Version: 0.9.61**
 
 The assistant JSONL log omits program bodies from tool arguments and results; object names and result summaries are retained. Source-code logging has no separate option.
 
 
 SelecTor offers **Technical names / Text** for selection labels and table headers. The choice is remembered.
+
+**Fields** (a table's function beside Data) lists the fields of a table or structure as SE11 does - key, data element, type, length, decimals, short text - and an `.INCLUDE` or `.APPEND` row names the structure it brings in as a link that opens that structure's fields. A structure has no rows, so it opens on Fields; the chat opens a structure that way too.
 
 The plugin depends on none of the projects VERTEX grew out of - Simple Data Explorer, ACE, AVE:
 nothing from them has to be installed, and none of their code is called. Code Explorer and Value
@@ -55,7 +57,7 @@ SAP GUI numbers a method.
 ## Run Select
 
 **VERTEX: Run Select** runs the SELECT at the cursor, from the editor's text, saved or not, as VS Code
-does: a SELECT that SelecTor can say opens in VERTEX Tools on its table, its WHERE as selection lines (a join or
+does: a SELECT that SelecTor can say opens in VERTEX Tools on its table, view or CDS entity, its WHERE as selection lines (a join or
 a grouped SELECT in SelecTor's join or pivot); any other runs through ADT's data preview and its rows are shown
 with the statement as run. What only the running program knows - INTO, FOR ALL ENTRIES, conditions on program
 values - is left out and named above the rows. SelecTor results show the SELECT fields plus fields used by WHERE, JOIN ON and ORDER BY, without duplicates. ABAP structure components on the value side of WHERE are not result columns. The selection panel starts folded; grouped queries retain their pivot shape.
@@ -64,7 +66,9 @@ values - is left out and named above the rows. SelecTor results show the SELECT 
 
 **VERTEX Assistant** opens the chat beside the editor, on the system of the object selected in Project
 Explorer or shown in the active editor; with neither, it asks which ABAP project. The same chat is **Ask AI**
-in VERTEX Tools; its question box grows with what you type or paste and then scrolls. It runs Claude Code or Codex, set in **Window → Preferences → VERTEX Assistant**, where the
+in VERTEX Tools; its question box grows with what you type or paste and then scrolls. It runs Claude Code, Codex, EPAM CodeMie through the CodeMie CLI (`npm install -g @codemieai/code`, then
+`codemie setup`) or the Anthropic API with your own key. Set them up in **Window → Preferences → VERTEX Assistant**: the Anthropic API key
+is entered there and kept in Eclipse secure storage. The same page sets the
 log folder and what is logged - questions, answers, SAP tool calls, and what is sent to the model (VERTEX's
 instructions, the prompt with its context, the tools) - are chosen too; nothing is logged until a folder is set. The log icon in the chat's header opens Session Logs, or says
 where to set the folder when none is set.
@@ -91,14 +95,14 @@ script, nothing on top. The VS Code extension computes the same kind of diff wit
 implementation, because Eclipse's comparer is under the EPL and cannot be carried into VERTEX's MIT
 code.
 
-**The review of a transport** is built from ADT with **Build review** when none is saved - opening only reads a saved one - every part the request changed except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections and generator stamp lines) unless **Ignore SAP generated** is cleared,
+**The review of a transport** is built from ADT with **Build review** when none is saved - opening only reads a saved one - every part the request carries - on its own object list or in a task not yet released; an object taken out of the request after its task was released is left out - except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections, includes the table maintenance generator (SE54) writes for SM30, and generator stamp lines) unless **Ignore SAP generated** is cleared,
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - each part appears as soon as
 it is read, the status line says which, and a changed line shows what changed inside it. Before it is built, Review
 lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's report does - with objects deleted
-since in red; newly created objects are green. In the request list, request numbers link to reviews saved in SAP or in this project’s review files. Review ignores indentation and trailing-space changes while preserving changes inside literals. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies the build diagnostics, including reasons for skipped parts. Selected text in Tools pages can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
+since in red; newly created objects are green. In the request list, request numbers link to reviews saved in SAP or in this project’s review files. Review ignores spacing and case outside literals - indentation, trailing blanks and the Pretty Printer's upper or lower case - while preserving changes inside literals. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. A class opened from the review has the same filter. **Approve**, **Decline**, **Comment** and **Undo** change only their block; the page keeps its scroll. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies the build diagnostics, including reasons for skipped parts. Selected text in Tools pages can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
 gave no block. **Technical documentation** in the saved transport summary opens all changed objects. There,
-**Code review / Technical documentation** selects the prompt copied by **AI prompt diff / full**; individual
-object, developer and reviewer views keep the Code review prompt. The documentation prompt ends with
+**Code review / Technical documentation** selects the prompt copied by **AI prompt diff / full**, and on a single object's page the one copied by **Copy prompt: diff / full**;
+developer and reviewer views have the same choice. The documentation prompt keeps created objects (sent whole, described as they are) apart from modified ones, and ends with
 `TR Details: <request>`. The **Prompts…** button shows and edits both prompt texts. **Save user file** writes
 `~/.vertex/prompts/code-review.txt` or `~/.vertex/prompts/technical-documentation.txt`; the file takes priority
 and is reread when copying. **Use built-in** removes it. Data elements, domains and tables ADT keeps no versions of are read through VERTEX's ABAP; without it
@@ -172,9 +176,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.54.qualifier`; the checked-in update site carries build `0.9.54.20261103215020`.
+then regenerate. The feature and bundle sources are at `0.9.61.qualifier`; the checked-in update site carries build `0.9.61.20261105033632`.
 
-The local install archive is version `0.9.54.20261103215020`. Install its ZIP through
+The local install archive is version `0.9.61.20261105033632`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

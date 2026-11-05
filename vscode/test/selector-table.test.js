@@ -22,6 +22,7 @@ function session(rows) {
       }
       if (/FROM dd04t/.test(sql)) { return { values: [{ ROLLNAME: "S_CARR_ID", DDTEXT: "Airline Code" }, { ROLLNAME: "S_PRICE", DDTEXT: "Airfare" }] }; }
       if (/FROM dd03t/.test(sql)) { return { values: [{ FIELDNAME: "FLDATE", DDTEXT: "Flight date" }] }; }
+      if (/^SELECT \* FROM NOSUCH$/.test(sql)) { throw new Error("NOSUCH is not known"); }
       return { values: rows };
     }
   };
@@ -52,7 +53,7 @@ test("filters keep select-option semantics and quote what the reader typed", asy
 
 test("what the ABAP resource refused is refused here, a missing table included", async () => {
   const { api } = session([]);
-  await assert.rejects(request(api, "/sap/bc/adt/vertex/table/NOSUCH"), /was not found/);
+  await assert.rejects(request(api, "/sap/bc/adt/vertex/table/NOSUCH"), /NOSUCH is not a table, view or CDS entity that can be read: NOSUCH is not known/);
   await assert.rejects(request(api, "/sap/bc/adt/vertex/table/SFLIGHT?f1=seatsmax&l1=1"), /has no field SEATSMAX/);
   await assert.rejects(request(api, "/sap/bc/adt/vertex/table/SFLIGHT?f1=carrid&o1=BT&l1=A"), /needs an upper bound/);
   await assert.rejects(request(api, "/sap/bc/adt/vertex/table/SFLIGHT'%20OR"), /not a table name/);
@@ -88,4 +89,40 @@ test("requested columns are intersected with the dictionary catalog", async () =
   const result = await request(api, "/sap/bc/adt/vertex/table/SFLIGHT?pick=X&sf1=price&sf2=pricing_date&sf3=carrid");
   assert.deepStrictEqual(result.fields.map(f => f.name), ["price", "carrid"]);
   assert.ok(!asked.at(-1).sql.toLowerCase().includes("pricing_date"));
+});
+
+test("Fields lists a structure's fields with its .INCLUDE rows as links to the structure they name", async () => {
+  const api = { query: async sql => {
+    if (/FROM t002/.test(sql)) return { values: [{ SPRAS: "E" }] };
+    if (/FROM dd02l/.test(sql)) return { values: /'ZTEST_MOVE_ST'/.test(sql) ? [{ TABCLASS: "INTTAB" }] : [] };
+    if (/FROM dd03l/.test(sql)) return { values: [
+      { FIELDNAME: ".INCLUDE", POSITION: "0002", PRECFIELD: "CI_MOVE_DATA", ROLLNAME: "", DATATYPE: "", LENG: "000000", DECIMALS: "000000" },
+      { FIELDNAME: "DUMMY", POSITION: "0001", PRECFIELD: "", ROLLNAME: "XFELD", DATATYPE: "CHAR", LENG: "000001", DECIMALS: "000000" }] };
+    if (/FROM dd04t/.test(sql)) return { values: [{ ROLLNAME: "XFELD", DDTEXT: "Checkbox" }] };
+    return { values: [] };
+  }, language: () => "EN" };
+  const answer = await request(api, "/sap/bc/adt/vertex/fields/ZTEST_MOVE_ST");
+  assert.deepStrictEqual(answer, { name: "ZTEST_MOVE_ST", kind: "INTTAB", fields: [
+    { name: "DUMMY", position: 1, key: false, rollname: "XFELD", datatype: "CHAR", length: 1, decimals: 0, text: "Checkbox", include: "" },
+    { name: ".INCLUDE", position: 2, key: false, rollname: "", datatype: "", length: 0, decimals: 0, text: "", include: "CI_MOVE_DATA" }] });
+  await assert.rejects(request(api, "/sap/bc/adt/vertex/fields/NOPE"), /not a table or structure in the dictionary/);
+});
+
+test("a view or CDS entity is read with the data preview's columns as its fields, ordered by its key", async () => {
+  const asked = [];
+  const api = { language: () => "EN", query: async (sql, max) => {
+    asked.push(sql);
+    if (/FROM dd02l/.test(sql)) return { values: [] };
+    if (/FROM t002/.test(sql)) return { values: [{ SPRAS: "E" }] };
+    return { columns: [
+      { name: "ABAPPACKAGE", keyAttribute: true, colType: "CHAR", length: 30, description: "Package" },
+      { name: "CREATIONDATE", keyAttribute: false, colType: "DATS", length: 8, description: "Created on" }],
+      values: [{ ABAPPACKAGE: "LE", CREATIONDATE: "20210722" }] };
+  } };
+  const answer = await request(api, "/sap/bc/adt/vertex/table/I_ABAPPACKAGE?rows=5");
+  assert.deepStrictEqual(answer.fields.map(f => [f.name, f.key, f.datatype, f.text]),
+    [["abappackage", true, "CHAR", "Package"], ["creationdate", false, "DATS", "Created on"]]);
+  assert.deepStrictEqual(answer.rows, [{ abappackage: "LE", creationdate: "2021-07-22" }]);
+  assert.ok(asked.includes("SELECT * FROM I_ABAPPACKAGE ORDER BY abappackage"), asked.join(" | "));
+  assert.ok(!asked.some(sql => /PRIMARY KEY|dd03l/i.test(sql)));
 });

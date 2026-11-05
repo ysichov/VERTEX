@@ -723,7 +723,7 @@ function buildOptions() {
   box.appendChild(check);
   box.appendChild(document.createTextNode(" Ignore SAP generated"));
   box.title = "Leave out SAP*'s versions, *_MPC / *_MPC_EXT / *_DPC, SAPL*, comment-only new objects,"
-    + " empty class sections and generator stamp lines";
+    + " empty class sections, includes the table maintenance generator (SE54) writes, and generator stamp lines";
   return box;
 }
 
@@ -929,6 +929,9 @@ function sdeReady() {
   // blocks that make it one.
   // The check of a saved review comes after the review itself and leaves the view as it is.
   if (data.stale_check) { showStale(data); return; }
+  // An answer to a verdict changes one block: only its head is redrawn, so the page and its scroll stay.
+  var verdict = pendingVerdict; pendingVerdict = null;
+  if (data.blocks && verdict && verdictInPlace(verdict, data)) { return; }
   if (data.person_view) { renderPersonParts(data); }
   else if (data.requests) { showing = { view: "requests" }; renderRequests(data); }
   else if (data.parts) { showing = { view: "parts" }; renderPartList(data); }
@@ -1830,6 +1833,7 @@ function renderDiff(data) {
 function blockRow(b, scope) {
   var tr = document.createElement("tr");
   tr.className = "block";
+  tr._vxBlock = b; tr._vxScope = scope;
   var td = document.createElement("td");
   td.colSpan = 3;
 
@@ -1938,10 +1942,10 @@ Analysis rules:
 2. Do not infer functionality that is not supported by the code.
 3. Distinguish changed technical objects from existing tables, CDS views, infotypes, classes, methods, function modules, and other dependencies that are only read or called.
 4. Do not list a referenced dependency as a changed technical object unless its implementation or definition is modified in the diff.
-5. Organize the documentation by changed technical object. For each object describe only the purpose of the change, new or modified processing, conditions under which it executes, and resulting system behavior.
+5. Organize the documentation by technical object, and keep created objects apart from modified ones. An object the diff marks as NEW was created in this transport: describe its whole functionality as it now is - its purpose, inputs, processing, conditions and results - and do not word it as a change. A class or interface comes in parts - its sections and each method, named CLASS=>METHOD: document it as one object, and for a created one go through every method, each with its purpose, parameters, processing and result. For a modified object describe only the purpose of the change, new or modified processing, conditions under which it executes, and resulting system behavior.
 6. If the same business requirement is implemented in several objects, describe its implementation separately under each object. Some overlap is acceptable because the documentation must remain object-oriented.
 7. Move rules, constants, classifications, or value lists shared by several objects into one common section before the object-specific sections. Do not repeat them under every object.
-8. Focus on changed behavior. Do not document unchanged parameters and outputs, unaffected standard processing, general system behavior, implementation details that do not explain the change, or inactive or commented-out code as active functionality.
+8. For modified objects, focus on changed behavior. Do not document unchanged parameters and outputs, unaffected standard processing, general system behavior, implementation details that do not explain the change, or inactive or commented-out code as active functionality.
 9. Account for dynamic calls and common interfaces. Do not classify a parameter as redundant merely because one dynamically called implementation does not use it internally. Verify whether the shared call signature requires it.
 10. Do not declare a parameter unused without checking whether it is assigned inside the object, passed through a dynamic call, consumed by calling code, or required for interface compatibility.
 11. If the diff appears incomplete because of filters, ownership, missing objects, or excluded changes, do not reconstruct the missing implementation from assumptions. State that a complete unfiltered diff is required.
@@ -1950,9 +1954,10 @@ Analysis rules:
 Required output structure:
 - Title
 - Purpose
-- Changed Technical Objects
+- Changed Technical Objects, as two lists: Created Objects and Modified Objects
 - Common Rules or Classification, only when shared by multiple objects
-- One section for each changed technical object
+- Created Objects: one section for each, describing its full functionality
+- Modified Objects: one section for each, describing what changed
 - Subsections for distinct changes within a large object, when useful
 - Transport request details at the end
 
@@ -2035,15 +2040,34 @@ function promptEditorButton(kind) {
   button.onclick = function () { showPromptEditor(kind); };
   return button;
 }
+/* A part as the prompt names it: a method or a section of a class under its class, so the model can put a class back
+   together from its parts - a method's own name alone (RUN) tells it nothing. */
+var SECTION_NAMES = { CPUB: "public section", CPRO: "protected section", CPRI: "private section" };
+function promptPartName(part) {
+  if (!part) return "";
+  var own = part.display_name || part.obj_name || "";
+  var owner = String(part.class_name || "").trim();
+  if (!owner) return own;
+  if (part.objtype === "METH") return owner + "=>" + own;
+  return owner + ", " + (SECTION_NAMES[part.objtype] || own);
+}
 function reviewPrompt(full, scope, kind) {
   var review_part = scope ? scope.object : globalThis.review_part;
   var review_ops = scope ? scope.body.ops : globalThis.review_ops;
   var review_blocks = scope ? scope.body.blocks : globalThis.review_blocks;
-  var name = review_part ? (review_part.display_name || review_part.obj_name) : "";
+  var name = promptPartName(review_part);
   kind = kind || "review";
+  // An object the review marks created - no earlier version - or one all of added lines: the prompt says it is new,
+  // so it is described whole.
+  var created = Boolean(review_part && review_part.is_created)
+    || (review_ops.length > 0 && review_ops.every(function (o) { return o.op === "+"; }));
+  if (created) {
+    return promptOpening(kind) + "\n\nNEW object " + name + ", created in this transport - its whole source:\n\n"
+      + review_ops.filter(function (o) { return o.op !== "-"; }).map(function (o) { return "+ " + o.text; }).join("\n") + promptEnding(kind);
+  }
   if (!full) {
     var placed = review_blocks.filter(function (b) { return b.op_from > 0; }).sort(function (a, c) { return a.op_from - c.op_from; });
-    var text = promptOpening(kind) + "\n\nThe changed blocks of " + name + ", each with five lines around it (+ added, - deleted):\n";
+    var text = promptOpening(kind) + "\n\nMODIFIED object " + name + " - its changed blocks, each with five lines around it (+ added, - deleted):\n";
     placed.forEach(function (b) {
       var start = b.op_from - 1, end = Math.min(review_ops.length, b.op_to || b.op_from);
       text += "\n--- block " + b.hunk_no + ", line " + b.start_line + "\n";
@@ -2056,7 +2080,7 @@ function reviewPrompt(full, scope, kind) {
     });
     return text + promptEnding(kind);
   }
-  return promptOpening(kind) + "\n\nThe whole source of " + name + ", the changes marked (+ added, - deleted, the rest unchanged):\n\n"
+  return promptOpening(kind) + "\n\nMODIFIED object " + name + " - its whole source, the changes marked (+ added, - deleted, the rest unchanged):\n\n"
     + review_ops.map(function (o) { return (o.op === "+" || o.op === "-" ? o.op : " ") + " " + o.text; }).join("\n") + promptEnding(kind);
 }
 function copyText(text, button) {
@@ -2190,11 +2214,44 @@ function act(block, action, note, scope) {
     personView.awaiting = object.objtype + "~" + object.obj_name;
     document.getElementById("root").querySelectorAll("button[data-act]").forEach(function (button) { button.disabled = true; });
   }
+  var head = Array.prototype.find.call(document.querySelectorAll("tr.block"), function (row) { return row._vxBlock === block; });
+  pendingVerdict = head ? { row: head, block: block } : null;
   status("writing ...");
   review_written = true;
   sdeAct(objectName(), "", object.obj_name, object.objtype,
          JSON.stringify({ hunk_key: block.hunk_key, action: action,
                           note: note, saved_at: review_saved_at }), review_blame ? "1" : "", review_from);
+}
+
+/* The block a verdict was written for, and its head row on screen. */
+var pendingVerdict = null;
+
+/* The written block's head and what was said under it, drawn again from the answer in place of the old ones; the
+   block keeps its object, so every view holding it sees the verdict. False when the block or its row is gone. */
+function verdictInPlace(verdict, data) {
+  var fresh = data.blocks.find(function (b) { return b.hunk_key === verdict.block.hunk_key; });
+  if (!fresh || !verdict.row.isConnected) return false;
+  Object.assign(verdict.block, fresh);
+  review_saved_at = data.saved_at || review_saved_at;
+  var row = verdict.row, span = row.firstChild.colSpan;
+  while (row.nextSibling && /^(said|words)$/.test(row.nextSibling.className)) { row.parentNode.removeChild(row.nextSibling); }
+  var rows = [blockRow(verdict.block, row._vxScope)].concat(saidRows(verdict.block));
+  rows.forEach(function (r) { r.firstChild.colSpan = span; });
+  var after = row.nextSibling;
+  row.parentNode.replaceChild(rows[0], row);
+  rows.slice(1).forEach(function (r) { rows[0].parentNode.insertBefore(r, after); });
+  if (personView && personView.awaiting) {
+    personView.awaiting = null;
+    document.getElementById("root").querySelectorAll("button[data-act]").forEach(function (button) { button.disabled = false; });
+  }
+  var blocks = showing && showing.view === "review_object" ? review_blocks : null;
+  if (blocks) {
+    var approved = blocks.filter(function (b) { return b.action === "A"; }).length;
+    var declined = blocks.filter(function (b) { return b.action === "D"; }).length;
+    status(blocks.length + (blocks.length === 1 ? " block, " : " blocks, ") + approved + " approved, " + declined + " declined, "
+      + (blocks.length - approved - declined) + " open");
+  } else { status(""); }
+  return true;
 }
 
 /* ---------- a whole class of the review ---------- */
@@ -2228,6 +2285,7 @@ function loadReviewClass(name) {
 
 /* Each part of the class under its own heading, with its own blocks, one after another - the way AVE shows a class's
    changes. A block remembers its part, so a verdict goes there. */
+var classFilter = "all";
 function renderReviewClass(data) {
   review_saved_at = data.saved_at || "";
   review_live = data.live === true;
@@ -2260,10 +2318,17 @@ function renderReviewClass(data) {
   bar.appendChild(segmented(SIDE_CHOICES, sideBySide ? 1 : 0, function (index) {
     sideBySide = index === 1; placePanels(); renderReviewClass(data);
   }));
+  bar.appendChild(blockFilterControl(classFilter, function (filter) { classFilter = filter; renderReviewClass(data); }));
   root.appendChild(bar);
+  var shown = 0, total = 0;
   (data.sections || []).forEach(function (s) {
     var part = { obj_name: s.obj_name, objtype: s.objtype, display_name: s.display_name };
     (s.blocks || []).forEach(function (b) { b.part = part; });
+    total += (s.blocks || []).length;
+    // Filtered, a part shows only its matching blocks, each on its own as in a person's view; a part with none is left out.
+    var matching = classFilter === "all" ? null : (s.blocks || []).filter(function (b) { return personBlockMatches(b, classFilter); });
+    if (matching && !matching.length) { return; }
+    if (matching) { shown += matching.length; }
     var title = document.createElement("h3");
     title.className = "class-part";
     title.textContent = s.objtype + "  " + (s.objtype === "METH" ? String(s.display_name || s.obj_name).toLowerCase() : (s.display_name || s.obj_name));
@@ -2274,8 +2339,17 @@ function renderReviewClass(data) {
       return;
     }
     review_ops = s.ops || []; review_blocks = s.blocks || [];
+    if (matching) {
+      matching.forEach(function (b) { root.appendChild(blockCard(b, { ops: s.ops || [], ddic_needs: s.ddic_needs })); });
+      return;
+    }
     root.appendChild(sideBySide ? sideTable(s.ops || [], true, s.blocks || []) : diffTable(s.ops || [], s.blocks || []));
   });
+  if (classFilter !== "all") {
+    if (!shown) { var none = document.createElement("p"); none.textContent = "No blocks match this filter."; root.appendChild(none); }
+    status(shown + " of " + total + " blocks");
+    return;
+  }
   var open = 0;
   (data.sections || []).forEach(function (s) { (s.blocks || []).forEach(function (b) { if (!b.action) { open++; } }); });
   status(open === 0 ? "nothing open" : open + (open === 1 ? " block open" : " blocks open"));
@@ -2329,13 +2403,25 @@ function renderReviewPart(data) {
     askAll.addEventListener("click", function () { askReview(null); });
     bar.appendChild(askAll);
   }
-  bar.appendChild(promptEditorButton("review"));
+  // Which prompt Copy prompt takes for this one object: a review, or technical documentation of it alone.
+  var promptSwitch = function () {
+    return segmented(PROMPT_CHOICES, promptKind === "technical" ? 1 : 0, function (index) {
+      promptKind = index === 1 ? "technical" : "review";
+      var fresh = promptSwitch(); kindBox.replaceWith(fresh); kindBox = fresh;
+    }, true);
+  };
+  var kindBox = promptSwitch();
+  bar.appendChild(kindBox);
+  var editor = document.createElement("button"); editor.textContent = "Prompts…";
+  editor.title = "View and edit the user prompt files";
+  editor.onclick = function () { showPromptEditor(promptKind); };
+  bar.appendChild(editor);
   [["Copy prompt: diff", false, "The changed blocks with five lines around each, as a prompt to paste into any chat"],
    ["Copy prompt: full", true, "The whole source with the changes marked, as a prompt to paste into any chat"]].forEach(function (c) {
     var copy = document.createElement("button");
     copy.textContent = c[0];
     copy.title = c[2];
-    copy.addEventListener("click", function () { copyReadyPrompt("review", function () { return reviewPrompt(c[1]); }, copy); });
+    copy.addEventListener("click", function () { var kind = promptKind; copyReadyPrompt(kind, function () { return reviewPrompt(c[1], null, kind); }, copy); });
     bar.appendChild(copy);
   });
 
@@ -2837,11 +2923,11 @@ function personBlockMatches(block, filter) {
   return true;
 }
 function personPrompt(full, kind) {
-  kind = kind || (personView.selector === "A:" ? promptKind : "review");
+  kind = kind || promptKind;
   var text = promptOpening(kind) + "\n\n" + personView.title + "; filter: " + personView.filter + "\n";
   personView.parts.forEach(function (entry) {
     var body = Object.assign({}, entry.body, { blocks: entry.body.blocks.filter(function (b) { return personBlockMatches(b, personView.filter); }) });
-    if (body.blocks.length) text += reviewPrompt(full, { object: entry.object, body: body }, "review").substring(REVIEW_PROMPT.length) + "\n";
+    if (body.blocks.length) text += reviewPrompt(full, { object: entry.object, body: body }, "review").substring(promptOpening("review").length) + "\n";
   });
   return text + promptEnding(kind);
 }
@@ -2878,6 +2964,29 @@ function updatePersonPart(data) {
   review_saved_at = data.saved_at;
   drawPersonView();
 }
+/* One block on its own: its head, what was said, and its lines with three around them - a person's view and a filtered
+   class draw their blocks so. */
+function blockCard(block, body, scope) {
+  var card = document.createElement("section"); card.className = "person-block";
+  var header = document.createElement("table"); header.className = "diff"; var tbody = document.createElement("tbody");
+  tbody.appendChild(blockRow(block, scope)); saidRows(block).forEach(function (row) { tbody.appendChild(row); }); header.appendChild(tbody); card.appendChild(header);
+  if (block.op_from > 0) {
+    var from = block.op_from - 1, to = block.op_to;
+    // Adjacent blocks stay separate: only unchanged lines become context.
+    while (from > 0 && block.op_from - 1 - from < 3 && body.ops[from - 1].op === "=") from--;
+    while (to < body.ops.length && to - block.op_to < 3 && body.ops[to].op === "=") to++;
+    var offset = body.ops.slice(0, from).filter(function (op) { return op.op !== "-"; }).length;
+    card.appendChild(diffTable(body.ops.slice(from, to), null, offset));
+  } else {
+    var note = document.createElement("p"); note.textContent = body.ddic_needs || "This block cannot be located in the saved line diff."; card.appendChild(note);
+  }
+  return card;
+}
+var BLOCK_FILTERS = [["all", "All"], ["approved", "Approved"], ["declined", "Declined"], ["open", "Not processed"], ["comments", "Comments only"]];
+function blockFilterControl(current, onPick) {
+  return segmented(BLOCK_FILTERS.map(function (f) { return [f[1], "Show " + f[1].toLowerCase() + " blocks"]; }),
+    BLOCK_FILTERS.findIndex(function (f) { return f[0] === current; }), function (index) { onPick(BLOCK_FILTERS[index][0]); }, true);
+}
 function drawPersonView() {
   showing = { view: "review_person" };
   var root = document.getElementById("root");
@@ -2890,24 +2999,22 @@ function drawPersonView() {
     askPerson.title = "Put the blocks matching this person's current filter on the sidebar chat chip";
     askPerson.onclick = askPersonReview; bar.appendChild(askPerson);
   }
-  var filters = [["all", "All"], ["approved", "Approved"], ["declined", "Declined"], ["open", "Not processed"], ["comments", "Comments only"]];
-  bar.appendChild(segmented(filters.map(function (f) { return [f[1], "Show " + f[1].toLowerCase() + " blocks"]; }),
-    filters.findIndex(function (f) { return f[0] === personView.filter; }), function (index) { personView.filter = filters[index][0]; drawPersonView(); }, true));
+  bar.appendChild(blockFilterControl(personView.filter, function (filter) { personView.filter = filter; drawPersonView(); }));
   [["Expand all", true], ["Collapse all", false]].forEach(function (choice) {
     var button = document.createElement("button"); button.textContent = choice[0]; button.onclick = function () {
       personView.expanded = choice[1];
       root.querySelectorAll("details.person-section").forEach(function (section) { section.open = choice[1]; });
     }; bar.appendChild(button);
   });
-  if (personView.selector === "A:") bar.appendChild(segmented(PROMPT_CHOICES, promptKind === "technical" ? 1 : 0, function (index) {
+  bar.appendChild(segmented(PROMPT_CHOICES, promptKind === "technical" ? 1 : 0, function (index) {
     promptKind = index === 1 ? "technical" : "review";
     drawPersonView();
   }, true));
-  bar.appendChild(promptEditorButton(personView.selector === "A:" ? promptKind : "review"));
+  bar.appendChild(promptEditorButton(promptKind));
   [["AI prompt diff", false], ["AI prompt full", true]].forEach(function (choice) {
     var button = document.createElement("button"); button.textContent = choice[0];
     button.onclick = function () {
-      var kind = personView.selector === "A:" ? promptKind : "review";
+      var kind = promptKind;
       copyReadyPrompt(kind, function () { return personPrompt(choice[1]); }, button);
     }; bar.appendChild(button);
   });
@@ -2934,22 +3041,7 @@ function drawPersonView() {
       ask.title = "Ask about this person's blocks in this object";
       ask.onclick = function () { askReview(blocks, scope); }; section.appendChild(ask);
     }
-    blocks.forEach(function (block) {
-      var card = document.createElement("section"); card.className = "person-block";
-      var header = document.createElement("table"); header.className = "diff"; var tbody = document.createElement("tbody");
-      tbody.appendChild(blockRow(block, scope)); saidRows(block).forEach(function (row) { tbody.appendChild(row); }); header.appendChild(tbody); card.appendChild(header);
-      if (block.op_from > 0) {
-        var from = block.op_from - 1, to = block.op_to;
-        // Adjacent blocks stay separate: only unchanged lines become context.
-        while (from > 0 && block.op_from - 1 - from < 3 && body.ops[from - 1].op === "=") from--;
-        while (to < body.ops.length && to - block.op_to < 3 && body.ops[to].op === "=") to++;
-        var offset = body.ops.slice(0, from).filter(function (op) { return op.op !== "-"; }).length;
-        card.appendChild(diffTable(body.ops.slice(from, to), null, offset));
-      } else {
-        var note = document.createElement("p"); note.textContent = body.ddic_needs || "This block cannot be located in the saved line diff."; card.appendChild(note);
-      }
-      section.appendChild(card);
-    });
+    blocks.forEach(function (block) { section.appendChild(blockCard(block, body, scope)); });
   });
   if (!visible) { var empty = document.createElement("p"); empty.textContent = "No blocks match this filter."; root.appendChild(empty); }
   root.querySelectorAll("button[data-act]").forEach(function (button) { button.disabled = Boolean(personView.awaiting); });
@@ -3429,7 +3521,7 @@ function sdeContext() { return pageState(); }
    chat names only (pageState); the model then saw the blocks its diff tool gives and no more, whatever the reader had
    on screen. Null outside a review's object. */
 function sdeReviewSource() {
-  if (showing.view === "review_person" && personView) return { object: personView.title, shown: "summary", text: personPrompt(false, "review").substring(REVIEW_PROMPT.length) };
+  if (showing.view === "review_person" && personView) return { object: personView.title, shown: "summary", text: personPrompt(false, "review").substring(promptOpening("review").length) };
   if (showing.view !== "review_object" || !review_part || !review_ops.length) { return null; }
   var body = reviewPrompt(!compact, null, "review");
   return { object: review_part.display_name || review_part.obj_name, type: review_part.objtype,

@@ -802,7 +802,63 @@ function sdeReady() {
     return;
   }
   // Two questions about the same table, and the answer says which it is.
+  if (askingFields) { askingFields = false; renderFields(data); return; }
   if (data.candidates) { renderJoin(data); } else { render(data); }
+}
+
+/* ---------- Fields: a table's or structure's fields, as SE11 lists them ----------
+   A structure has no rows, so this is what it opens on. An .INCLUDE or .APPEND row names another structure:
+   it is a link that opens that structure's fields in the same window. */
+var askingFields = false;
+
+function loadFields(name) {
+  if (!name) { return; }
+  status("loading the fields of " + name + " ...");
+  askingFields = true;
+  sdeFields(name);
+}
+
+function renderFields(data) {
+  var root = document.getElementById("root");
+  root.className = "";
+  joinView(root, false);
+  root.innerHTML = "";
+  document.getElementById("app").classList.add("collapsed");
+  var heads = ["Field", "Key", "Data element", "Type", "Length", "Decimals", "Short text"];
+  var thead = document.createElement("thead"), headRow = document.createElement("tr");
+  heads.forEach(function (text) { var th = document.createElement("th"); th.textContent = text; headRow.appendChild(th); });
+  thead.appendChild(headRow);
+  var tbody = document.createElement("tbody");
+  data.fields.forEach(function (f) {
+    var tr = document.createElement("tr");
+    var cells = [f.name, f.key ? "X" : "", "", f.datatype, f.length || "", f.decimals || "", f.text];
+    cells.forEach(function (value, index) {
+      var td = document.createElement("td");
+      if (index === 2) {
+        if (f.include) {
+          var link = document.createElement("span");
+          link.className = "link";
+          link.textContent = f.include;
+          link.title = "Open the fields of " + f.include;
+          link.addEventListener("click", function () {
+            if (typeof sdeSelectObject === "function") { sdeSelectObject({ type: "TABL", name: f.include, action: "fields" }); }
+            else { loadFields(f.include); }
+          });
+          td.appendChild(link);
+        } else { td.textContent = f.rollname; }
+      } else {
+        td.textContent = value;
+        if (index === 4 || index === 5) { td.className = "num"; }
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  var table = document.createElement("table");
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  root.appendChild(table);
+  status(data.name + " (" + String(data.kind || "").toLowerCase() + ") " + data.fields.length + " fields");
 }
 
 /* Which column the rows are shown by, and which way. It sorts the rows that
@@ -1865,7 +1921,8 @@ function startWindow() {
     // asked for only then.
     full = true;
   } else if (INITIAL) {
-    if (window.VERTEX_ACTION === "join" || window.VERTEX_ACTION === "pivot") {
+    if (window.VERTEX_ACTION === "fields") { loadFields(INITIAL); }
+    else if (window.VERTEX_ACTION === "join" || window.VERTEX_ACTION === "pivot") {
       currentTable = INITIAL;
       mode = window.VERTEX_ACTION === "pivot" ? "P" : "J";
       loadJoin(0);
