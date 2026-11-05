@@ -1,5 +1,9 @@
 # Development history
 
+## 2026-11-05 — Eclipse update site 0.9.61.20261105104742
+
+docs/ replaced with the build made from the same sources as main (61de9cf): Node lookup, CodeMie profile, gradient and cost. Built without pwsh by a script following package.ps1's steps (javac --release 21, Temurin 25, ~/.p2/pool); content.xml now has double-quoted attributes, so the script's patterns take either quote. Artifact checksums and sizes checked, ZIP entries tested, class files major 65. Labels in README.md, eclipse/README.md and docs/index.html moved to the new build. Not installed in a running Eclipse here.
+
 ## 2026-11-05 — Eclipse: CodeMie gradient and answer cost
 
 `chat.html` (Eclipse's chat, shared with VS Code's Tools window chat) sets `body[data-assistant]` from the assistant list, and `#who` takes the panel's three-stop CodeMie gradient with white text while it is `codemie`; the open list keeps the page's colours. Cost: Preferences → VERTEX Assistant has a checkbox `showCodemieCost` (off); `AssistantBridge` sends `showCost`; `eclipse/bridge.js` adds `cost` to a CodeMie answer from the CLI path only (an edit that first landed in the Anthropic API path was moved), and `chat.html` appends `≈ $x` to the token line. Bridge checked with a stub assistant: cost only for codemie with showCost. Not checked in a running Eclipse.
