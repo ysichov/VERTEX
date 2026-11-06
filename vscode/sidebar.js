@@ -52,7 +52,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           systems: systems().map(item => item.name),
           // What the list shows: a system reached through SAP's extension says so beside its name.
           labels: systems().map(item => item.name),
-          ai: ask.state()
+          ai: ask.state(),
+          effort: String(vscode.workspace.getConfiguration("vertex.ai").get("effort", "") || "")
         }).then(async () => {
           // The model list comes after: it may have to ask the provider.
           try { await view.webview.postMessage({ models: await ask.listModels() }); }
@@ -83,6 +84,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "setProvider") {
           try { await view.webview.postMessage({ ai: await ask.setProvider(message.provider) }); await showFolder(); }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
+          return;
+        }
+        if (message.action === "setEffort") {
+          const level = String(message.effort || "");
+          if (["", "minimal", "low", "medium", "high", "xhigh", "max"].includes(level)) {
+            await vscode.workspace.getConfiguration("vertex.ai").update("effort", level, vscode.ConfigurationTarget.Global);
+          }
           return;
         }
         if (message.action === "setModel") {
@@ -294,14 +302,29 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 <span id="folder-line" hidden>Folder <strong id="folder-name"></strong></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
+// The effort levels of the chosen assistant; hidden for one that takes none (API providers, Copilot).
+const EFFORTS = { 'claude-subscription': ['low', 'medium', 'high', 'xhigh', 'max'], codemie: ['low', 'medium', 'high', 'xhigh', 'max'],
+  'codex-subscription': ['minimal', 'low', 'medium', 'high'] };
+let effort = '';
+function drawEffort(provider) {
+  const select = document.getElementById('effort-select'), levels = EFFORTS[provider] || [];
+  select.hidden = !levels.length;
+  select.replaceChildren(new Option('Effort: default', ''), ...levels.map(level => new Option('Effort: ' + level, level)));
+  select.value = levels.includes(effort) ? effort : '';
+}
+document.getElementById('effort-select').addEventListener('change', event => {
+  effort = event.target.value;
+  api.postMessage({ action: 'setEffort', effort });
+});
 document.getElementById('provider-select').addEventListener('change', event => {
   document.body.dataset.provider = event.target.value;
+  drawEffort(event.target.value);
   api.postMessage({ action: 'setProvider', provider: event.target.value });
 });
 document.getElementById('model-select').addEventListener('change', event => {
@@ -499,6 +522,8 @@ window.addEventListener('message', event => {
     select.replaceChildren(...(event.data.ai.providers || []).map(p => new Option(p.short, p.setting)));
     select.value = event.data.ai.provider;
     document.body.dataset.provider = select.value;
+    if (typeof event.data.effort === 'string') effort = event.data.effort;
+    drawEffort(select.value);
   }
   if (event.data && event.data.models) {
     const select = document.getElementById('model-select');

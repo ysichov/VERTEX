@@ -550,6 +550,12 @@
           "default": false,
           "markdownDescription": "Let Claude Code load your personal CLAUDE.md and auto-memory for VERTEX requests. Off by default: they travel with every SAP request and can show up in answers."
         },
+        "vertex.ai.effort": {
+          "type": "string",
+          "default": "",
+          "enum": ["", "minimal", "low", "medium", "high", "xhigh", "max"],
+          "markdownDescription": "How much the model thinks before it answers - the **Effort** list beside the model in the VERTEX panel. Claude Code and EPAM CodeMie take low, medium, high, xhigh and max (`--effort`); Codex takes minimal, low, medium and high (`model_reasoning_effort`). Empty is the assistant's own default; a level the chosen assistant does not take is not passed. API providers and GitHub Copilot do not use it."
+        },
         "vertex.ai.buildCommand": {
           "type": "string",
           "default": "",

@@ -369,6 +369,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         // In a working copy Claude names the copy's files; the log names the user's own, which outlive the copy.
         onStep: step => { if (log && log.step) log.step(working ? inFolder(step, working) : step); },
         personalInstructions: config.get("personalInstructions", false),
+        // The effort level chosen on the panel; each assistant passes it in its own form, or not at all.
+        effort: String(config.get("effort", "") || ""),
         ...(workDir ? { workDir: working ? working.cwd : workDir } : {}),
         ...(working ? { reviewAfter: true, shellWithoutAsking: config.get("shellWithoutAsking", false) === true } : {}),
         ...(images.length ? { images } : {}),

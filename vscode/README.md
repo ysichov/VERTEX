@@ -236,6 +236,8 @@ and use Save & Activate or Review & Activate.
 Every Get Started step has an **ⓘ Info** button opening its explanation: SAP
 system import, connection testing, assistant choice and MCP capabilities.
 
+The **Effort** list beside the model in the VERTEX panel sets how much the model thinks before it answers (`vertex.ai.effort`): low to max for Claude Code and EPAM CodeMie (`--effort`), minimal to high for Codex (`model_reasoning_effort`); **Effort: default** leaves the assistant's own level. API providers and GitHub Copilot have no such list.
+
 Claude Code uses the executable bundled with its installed VS Code extension
 or the native CLI from `PATH` or `~/.local/bin`. When both are found, VERTEX
 asks which to use once. Change `vertex.ai.claudeSource` in Settings to switch

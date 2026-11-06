@@ -190,6 +190,24 @@ test("Claude's thinking is taken from the stream and logged after its message's 
   assert.deepEqual(order, ["model m1", "thinking: Found the markup; checking logs.js.", "text: Now the notes."]);
 });
 
+test("the effort level reaches Claude Code as --effort and Codex as model_reasoning_effort, a foreign level not at all", async () => {
+  const done = call => { call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false,
+    structured_output: PLAN, modelUsage: {} })); call.child.emit("close", 0); };
+  const claude = spawner(done);
+  await assistant.ask(common(claude, "claude", { effort: "xhigh" }));
+  assert.equal(after(claude.calls[0].args, "--effort"), "xhigh");
+  await assistant.ask(common(claude, "claude", { effort: "minimal" }));
+  assert.equal(claude.calls[1].args.includes("--effort"), false, "Claude Code takes no 'minimal'");
+  await assistant.ask(common(claude, "claude", {}));
+  assert.equal(claude.calls[2].args.includes("--effort"), false, "nothing when not set");
+  const codex = spawner(call => {
+    require("node:fs").writeFileSync(after(call.args, "-o"), JSON.stringify(PLAN));
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(codex, "codex", { effort: "high" }));
+  assert.ok(codex.calls[0].args.includes("model_reasoning_effort=high"));
+});
+
 test("pasted screenshots go to Claude Code inside a stream-json message", async () => {
   const spawn = spawner(call => {
     call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false,

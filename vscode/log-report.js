@@ -131,6 +131,18 @@ function parseSession(text, file) {
       }
     }
   }
+  // Claude Code streams its answer as plain text before the structured one, so the last "note" of a run is often
+  // the answer itself: a note the answer contains is not shown twice.
+  const flat = text => String(text || "").replace(/\s+/g, " ").trim();
+  for (const prompt of session.prompts) {
+    const answers = prompt.details.filter(d => d.type === "answer").map(d => flat(d.text));
+    if (!answers.length) continue;
+    prompt.timeline = prompt.timeline.filter(entry => {
+      if (entry.kind !== "note" || entry.note !== "text") return true;
+      const said = flat(entry.text).slice(0, 300);
+      return !said || !answers.some(answer => answer.includes(said));
+    });
+  }
   // debug_run knows its ID before the first stop is saved. Once a later tool
   // response confirms that recording, the initial call can link to it too.
   const recordings = new Map();

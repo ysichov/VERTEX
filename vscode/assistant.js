@@ -34,6 +34,9 @@ const claudeLike = id => id === "claude" || id === "codemie";
 // Claude Code's own tools allowed in a working folder.
 const FOLDER_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash"];
 const FOLDER_READ_TOOLS = ["Read", "Grep", "Glob"];
+// The effort levels each command-line assistant takes (Claude Code's --effort, Codex's model_reasoning_effort);
+// CodeMie runs Claude Code and passes --effort on.
+const EFFORTS = { claude: ["low", "medium", "high", "xhigh", "max"], codex: ["minimal", "low", "medium", "high"] };
 const APPROVE_SERVER = "vertex_approve";
 
 // The models a Claude subscription offers, by full id - the same ids the
@@ -597,6 +600,10 @@ function claudeCommand(options, dir) {
   if (options.model) {
     args.push("--model", options.model);
   }
+  // The effort level chosen on the panel; left out when not set, so a Claude Code without --effort still runs.
+  if (EFFORTS.claude.includes(options.effort)) {
+    args.push("--effort", options.effort);
+  }
   const images = options.images || [];
   if (!images.length) return { args: args, input: options.prompt };
   // Screenshots travel inside the message: Claude Code reads one stream-json user message from stdin.
@@ -627,6 +634,10 @@ function codexCommand(options, dir) {
   }
   if (options.model) {
     args.push("-m", options.model);
+  }
+  // Codex's own name for the effort level chosen on the panel.
+  if (EFFORTS.codex.includes(options.effort)) {
+    args.push("-c", "model_reasoning_effort=" + options.effort);
   }
   // The instructions travel with the request: exec has no separate channel
   // for them once the person's own configuration is left out.
@@ -821,3 +832,5 @@ exports.configuredCodexModel = configuredCodexModel;
 exports.codexError = codexError;
 
 exports.codemieEnv = codemieEnv;
+
+exports.EFFORTS = EFFORTS;

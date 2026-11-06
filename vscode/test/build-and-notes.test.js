@@ -61,6 +61,23 @@ test("what Claude says and thinks between steps is logged with the answers optio
   assert.equal(fs.existsSync(quiet.file), false, "nothing without the answers option");
 });
 
+test("a note that is the start of the answer is not shown twice; other notes stay", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-dupe-"));
+  const log = sessionLog.create(root, "claude", "dupe", { questions: true, answers: true, tools: true });
+  log.user("Compare the two");
+  log.step({ kind: "note", id: "m1:0", note: "text", text: "Compared the main files; checking where VS Code gets the page." });
+  log.step({ kind: "note", id: "m2:0", note: "text", text: "Session Logs is mostly shared already.\n\n## What is shared" });
+  log.assistant({ model: "claude", usage: {}, text: "Session Logs is mostly shared already.\n\n## What is shared\n- the page" });
+  const session = report.parseSession(fs.readFileSync(log.file, "utf8"), path.basename(log.file));
+  assert.deepEqual(session.prompts[0].timeline.map(t => t.text), ["Compared the main files; checking where VS Code gets the page."]);
+});
+
+test("the effort chosen on the panel reaches Claude Code as --effort and Codex as model_reasoning_effort, and only a level each takes", () => {
+  const assistant = require("../assistant");
+  assert.deepEqual(assistant.EFFORTS.claude, ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(assistant.EFFORTS.codex, ["minimal", "low", "medium", "high"]);
+});
+
 test("the review offers the proposed build once something was applied, and runs it on Run", async () => {
   const reviewer = require("../worktree-review");
   const page = { posted: [], send: null };
