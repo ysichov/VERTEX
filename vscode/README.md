@@ -194,17 +194,23 @@ appears as a thumbnail above the field (× removes it) and goes with the next qu
 message. PNG, JPEG, GIF and WebP up to 5 MB each. Screenshots are sent to Claude Code, Codex (ChatGPT subscription) and EPAM
 CodeMie; with another provider the question is refused and nothing is sent.
 
-**Claude Code in a folder.** When the active editor holds a file of an open workspace folder -
-or no editor is open and the workspace has one folder - Claude Code answers in that folder.
+**VERTEX Code Agent (alpha).**
 
-*A folder in git:* Claude Code works in its own git working copy of the folder, made from the folder
+Claude Code uses its native **Read**, **Glob**, **Grep**, **Edit**, **Write** and **Bash**, with VERTEX’s existing approval and review integration. Codex / ChatGPT subscription, EPAM CodeMie, GitHub Copilot and every API provider use the corresponding VERTEX local tools. Working-copy review, builds after Apply and logging are available for all providers. The selected model must support tool calls. The agent works with local projects in any language, alongside the SAP tools when a system is connected.
+
+The VERTEX-provided file tools stay inside the selected folder and reject symlinks and `.git` metadata. Existing files must be read before editing; a file changed since that read is rejected. Grep uses literal text, Glob supports `*`, `**` and `?`; generated dependency/build directories are skipped. Reads and search results are bounded and report truncation. Direct API and Copilot requests allow up to 50 model rounds for local-project work. VERTEX-provided shell commands run in PowerShell on Windows and `sh` elsewhere, with a two-minute timeout and approval unless the working-copy setting below allows them.
+
+When the active editor holds a file of an open workspace folder -
+or no editor is open and the workspace has one folder - the assistant answers in that folder.
+
+*A folder in git:* the assistant works in its own git working copy of the folder, made from the folder
 as it is (uncommitted changes and new files included, files ignored by git left out), and your folder
 is not changed while it works. When the answer is done, one VERTEX review page, **Review assistant
 changes**, shows every file it changed, all of a file's edits together, laid out as a transport
 review: the totals (rows +/~/-, blocks), a group per folder with a row per file (type, rows, blocks,
 decision; **Expand all · Collapse all**), then each file's blocks - a row opens its file. Approve or
 decline each file, then **Apply**: approved files are copied into your folder. A declined file takes
-an optional reason; with one, the reasons are sent to Claude Code as your next message and it reworks
+an optional reason; with one, the reasons are sent to the assistant as your next message and it reworks
 the file in its copy, and the next review shows it again; without one, its change is dropped. If you
 changed a file yourself meanwhile, git merges the two changes line by line (`git merge-file`) when
 they do not overlap: the review then shows your file with the assistant's change merged in, marked
@@ -217,19 +223,18 @@ page decides nothing: the files come up again after the next answer. The copy la
 conversation; **New conversation** removes it, with any change not yet applied. Builds and tests in
 the copy lack ignored files (`node_modules`, build output) and can fail there.
 
-*Building after the review.* Claude Code does not build in its copy - ignored files such as `node_modules` are not there. It names the command the project builds or tests with, taken from the project's rules and build files, and after **Apply** has copied something into your folder the review offers it: **Run** runs it once, **Run & remember for this folder** stores it as `vertex.ai.buildCommand` in the folder's settings, and from then on it runs by itself after each **Apply**. VERTEX runs it in your folder (in PowerShell on Windows), shows the output in the **VERTEX Build** output channel, and when it fails sends the end of the output to Claude Code as your next message, to fix in its copy.
+*Building after the review.* the assistant does not build in its copy - ignored files such as `node_modules` are not there. It names the command the project builds or tests with, taken from the project's rules and build files, and after **Apply** has copied something into your folder the review offers it: **Run** runs it once, **Run & remember for this folder** stores it as `vertex.ai.buildCommand` in the folder's settings, and from then on it runs by itself after each **Apply**. VERTEX runs it in your folder (in PowerShell on Windows), shows the output in the **VERTEX Build** output channel, and when it fails sends the end of the output to the assistant as your next message, to fix in its copy.
 
 *A folder outside git:* every file edit or write waits in the same review page before it is written;
 **Allow** writes the approved files, **Deny** or closing the page refuses them all.
 
-In both, Claude Code is told to read files with its read and search tools and to change them only
+In both, the assistant is told to read files with its read and search tools and to change them only
 with its edit tools, never through the shell. A shell command (a build, a test run) asks in a VS Code
 dialog showing the command; **Allow** runs it, closing the dialog refuses it. In a git working copy
 the setting `vertex.ai.shellWithoutAsking` (off by default) runs the commands without asking: file
 changes they make still come to the review, but a command can reach outside the copy - an absolute
-path into your folder, git commands on the shared repository, the network. While Claude Code has a folder, the VERTEX panel shows it as **Folder** beside
-**SAP system** (the full path on hover); the SAP system stays the one its SAP tools use. The folder's `CLAUDE.md` applies
-(your user-level `CLAUDE.md` loads with it). A SAP tab, or a file outside the workspace, works as
+path into your folder, git commands on the shared repository, the network. While the assistant has a folder, the VERTEX panel shows it as **Folder** beside
+**SAP system** (the full path on hover); the SAP system stays the one its SAP tools use. Project rules in `AGENTS.md` and `CLAUDE.md` apply. Claude Code can additionally load its personal instructions according to its settings. A SAP tab, or a file outside the workspace, works as
 before, through VERTEX's SAP tools: a change goes into its editor tab unsaved, and you review it
 and use Save & Activate or Review & Activate.
 
@@ -717,7 +722,7 @@ For API-key providers, the chat displays the provider's input, cached and output
 for the complete answer, including model requests made around tool calls when reported by the API.
 Set `vertex.ai.logPath` to write a Claude-compatible JSONL conversation log in its
 `claude_compatible` subfolder. `vertex.ai.log.questions`, `.answers`, `.tools` and `.request`
-control which content is retained. Program bodies are omitted from tool arguments, results and request context, with links to the current ABAP object or local file instead. With `.tools`, Claude Code's own steps are logged too - Read, Grep, Glob, Edit, Write, Bash, each with its result (a command's output, a search's matches; a file read only by its line count) - and every file a step names is a link to the file in your folder, also when Claude worked in its git working copy. `vertex.ai.log.localCode` (on by default) adds the text of Claude's changes to local project files, Edit and Write; program source from SAP is never logged. The review of a working copy is logged as a **Review** step: each file's decision, a decline's reason, and what was applied. The session report renders Markdown in questions, answers and reasoning, with blue user text, green answers and indigo reasoning. In the session report these steps read as what they did - a command, a file, an edit as removed and added lines, the review as a table - in one **Steps** timeline of each prompt - with what Claude said or thought between its steps when `vertex.ai.log.answers` is on - each call to the model with its tokens, the tools it called indented under it. A screenshot pasted with a question is saved with **Log questions** as a file in the conversation's folder beside the log, and **Open screenshot** under the question opens it; clearing the conversation removes it. Enable `vertex.ai.log.request` to inspect VERTEX instructions, source-free request context, tool definitions and answer schema in new entries. Conversation history and local paths can be included, so it is off by default. The provider's own hidden
+control which content is retained. Program bodies are omitted from tool arguments, results and request context, with links to the current ABAP object or local file instead. With `.tools`, the Code Agent's local steps are logged too - Read, Grep, Glob, Edit, Write, Bash, each with its result (a command's output, a search's matches; a file read only by its line count) - and every file a step names is a link to the file in your folder, also when the agent worked in its Git working copy. `vertex.ai.log.localCode` (on by default) adds the text of the agent's changes to local project files, Edit and Write; program source from SAP is never logged. The review of a working copy is logged as a **Review** step: each file's decision, a decline's reason, and what was applied. The session report renders Markdown in questions, answers and reasoning, with blue user text, green answers and indigo reasoning. In the session report these steps read as what they did - a command, a file, an edit as removed and added lines, the review as a table - in one **Steps** timeline of each prompt - with what Claude said or thought between its steps when `vertex.ai.log.answers` is on - each call to the model with its tokens, the tools it called indented under it. A screenshot pasted with a question is saved with **Log questions** as a file in the conversation's folder beside the log, and **Open screenshot** under the question opens it; clearing the conversation removes it. Enable `vertex.ai.log.request` to inspect VERTEX instructions, source-free request context, tool definitions and answer schema in new entries. Conversation history and local paths can be included, so it is off by default. The provider's own hidden
 instructions are not available to VERTEX. Direct Anthropic API tool calls are included when `.tools`
 is on. Each direct Anthropic, compatible API and Copilot model call gets a separate assistant
 record with its reported usage; Claude Code and Codex subscriptions have one record per VERTEX

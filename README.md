@@ -50,10 +50,12 @@ data elements, domains and tables, to read theirs. With it, a method is reviewed
 and AVE show them) instead of being cut from the class's; without it, reviews are saved to files and such
 parts say they need the backend. The Eclipse plugin does the same. The last column below says what needs it.
 
+**VERTEX Code Agent (alpha), in VS Code:** a local-project agent for any language, with file search, reading and editing for every provider (native tools for Claude Code, VERTEX tools for the others); isolated Git working copies, file-by-file review and rework, builds after Apply with failures returned to the assistant, and optional detailed session logs. The selected model must support tool calls. Outside Git, writes wait for review before reaching the files. See [the VS Code documentation](vscode/README.md).
+
 In VS Code, the built-in VERTEX Assistant can use Codex, Claude Code, a signed-in
 GitHub Copilot model, EPAM CodeMie through the CodeMie CLI or API keys for Anthropic, OpenAI, Mistral, Gemini, Groq,
 Cerebras, OpenRouter and NVIDIA. With the active editor on a file of an open workspace folder (or no editor open and one folder in the
-workspace), Claude Code works in that folder: in a git folder it works in its own working copy and, when its answer
+workspace), the selected assistant works in that folder: in a git folder it works in its own working copy and, when its answer
 is done, its changes are reviewed file by file in one VERTEX review page (approved files are copied in,
 declined ones go back to it with your reason); outside git each file edit waits for review before it is written, and each shell command (a build, a test) waits for **Allow** in a VS Code dialog. Provider model lists can be collapsed independently.
 Each list has a Clear all / Select all control for its model checkboxes.

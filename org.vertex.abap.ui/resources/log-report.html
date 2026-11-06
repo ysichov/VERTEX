@@ -26,9 +26,10 @@
   .error { color: var(--vscode-errorForeground); }
   .totals { margin: 6px 0 12px; }
   details.session { border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); margin-bottom: 6px; }
-  details.session > summary { padding: 6px 8px; cursor: pointer; display: flex; gap: 12px; flex-wrap: wrap; }
-  details.session > summary .preview { flex-basis: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  details.session[open] > summary .preview { display: none; }
+  details.session > summary { padding: 6px 8px; cursor: pointer; display: flex; gap: 8px; align-items: flex-start; }
+  .session-heading { flex: 1; min-width: 0; }
+  details.session > summary .preview { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 0.9em; }
   .provider { font-weight: 600; }
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: 4px 8px; border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border)); vertical-align: top; }
@@ -427,17 +428,19 @@ function markdown(text, target) {
       select.onclick = function (event) { event.stopPropagation(); };
       select.onchange = function () { if (select.checked) selected.add(s.id); else selected.delete(s.id); selectionChanged(); };
       head.appendChild(select);
-      head.appendChild(el("span", "provider", s.provider));
-      head.appendChild(el("span", "", time(s.start)));
-      head.appendChild(el("span", "muted", span(s.start, s.end)));
-      head.appendChild(el("span", "muted", s.prompts.length + " prompts"));
-      head.appendChild(el("span", "muted", usageText(s.usage)));
+      var heading = el("div", "session-heading");
       var preview = promptPreview(s.prompts);
-      if (preview) {
-        var excerpt = el("span", "preview muted", preview);
-        excerpt.title = preview;
-        head.appendChild(excerpt);
-      }
+      var excerpt = el("span", "preview", preview || "(no prompt text)");
+      excerpt.title = preview;
+      heading.appendChild(excerpt);
+      var meta = el("div", "session-meta");
+      meta.appendChild(el("span", "provider", s.provider));
+      meta.appendChild(el("span", "", time(s.start)));
+      meta.appendChild(el("span", "", span(s.start, s.end)));
+      meta.appendChild(el("span", "", s.prompts.length + " prompts"));
+      meta.appendChild(el("span", "", usageText(s.usage)));
+      heading.appendChild(meta);
+      head.appendChild(heading);
       box.appendChild(head);
 
       var table = el("table");

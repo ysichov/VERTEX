@@ -118,10 +118,10 @@ function create(root, provider, session, include) {
       if (!on.tools) { return; }
       const objects = [];
       if (step.kind === "use") {
-        write({ type: "assistant", vertex_step: "claude", message: { id: step.id, content: [{ type: "tool_use", id: step.id,
+        write({ type: "assistant", vertex_step: step.provider || "claude", message: { id: step.id, content: [{ type: "tool_use", id: step.id,
           name: String(step.name || ""), input: stepInput(step.name, step.input || {}, objects, on.localCode), vertex_objects: objects }] } });
       } else if (step.kind === "result") {
-        write({ type: "user", vertex_step: "claude", message: { role: "user", content: [{ type: "tool_result", tool_use_id: step.id,
+        write({ type: "user", vertex_step: step.provider || "claude", message: { role: "user", content: [{ type: "tool_result", tool_use_id: step.id,
           is_error: step.is_error === true, content: stepResult(step.name, step.content, step.is_error === true, objects), vertex_objects: objects }] } });
       }
     },

@@ -20,10 +20,13 @@ test("two folders and no editor leave no folder; an active file picks its own", 
   assert.equal(workingFolder(host({ scheme: "file", fsPath: "C:\\B\\x.abap" }, two), "claude"), "C:\\B");
 });
 
-test("a SAP tab leaves no folder, and only Claude gets one", () => {
+test("a SAP tab leaves no folder; every provider gets a local workspace folder", () => {
   const one = [folder("C:\\A")];
   assert.equal(workingFolder(host({ scheme: "vertex", fsPath: "/x" }, one), "claude"), "");
-  assert.equal(workingFolder(host(null, one), "codex"), "");
+  for (const id of ["claude", "codex", "codemie", "copilot", "anthropic-api", ...Object.keys(require("../openai-compatible").PROVIDERS)])
+    assert.equal(workingFolder(host(null, one), id), "C:\\A");
+  const untrusted = host(null, one); untrusted.workspace.isTrusted = false;
+  assert.equal(workingFolder(untrusted, "codex"), "");
 });
 
 test("a step's paths into the working copy become the folder's, in either slash style", () => {

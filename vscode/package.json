@@ -538,7 +538,7 @@
         "vertex.ai.log.localCode": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "With **Log tools**: also log the text of Claude Code's changes to local project files (Edit and Write), each with a link to the file. Program source from SAP is never logged."
+          "markdownDescription": "With **Log tools**: also log the text of the Code Agent's changes to local project files (Edit and Write), each with a link to the file. Program source from SAP is never logged."
         },
         "vertex.ai.log.request": {
           "type": "boolean",
@@ -560,12 +560,12 @@
           "type": "string",
           "default": "",
           "scope": "resource",
-          "markdownDescription": "The command that builds or tests this folder's project after Claude Code's changes are applied (for example `npm test`, `mvn -q package`, `./build.ps1`). VERTEX runs it in the folder after **Apply** and sends a failure's output back to Claude. Set by **Run & remember** in the review, or by hand per folder. On Windows it runs in PowerShell."
+          "markdownDescription": "The command that builds or tests this folder's project after the Code Agent's changes are applied (for example `npm test`, `mvn -q package`, `./build.ps1`). VERTEX runs it in the folder after **Apply** and sends a failure's output back to the assistant. Set by **Run & remember** in the review, or by hand per folder. On Windows it runs in PowerShell."
         },
         "vertex.ai.shellWithoutAsking": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Run Claude Code's shell commands in its git working copy without asking. Off by default. The working copy keeps file changes for review, but a command can still reach outside it: an absolute path into your folder, git commands on the shared repository (commit, branch, reset, stash, push), the network. A folder outside git always asks."
+          "markdownDescription": "Run the Code Agent's shell commands in its git working copy without asking. Off by default. The working copy keeps file changes for review, but a command can still reach outside it: an absolute path into your folder, git commands on the shared repository (commit, branch, reset, stash, push), the network. A folder outside git always asks."
         },
         "vertex.review.storage": {
           "type": "string",

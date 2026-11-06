@@ -60,6 +60,9 @@ test("the panel's scroll title action opens the theme-aware report from the conf
   await receive({ action: "openRecording", recording: { kind: "transpiler", id: "../unsafe" } });
   assert.deepEqual(executed.slice(1), [["vertex.openTranspilerRun", { run_id: "run-1", step: 1 }], ["vertex.openDebugSession", { session_id: "sap-1", step: 1 }]]);
   assert.match(panel.webview.html, /var\(--vscode-editor-background\)/);
+  assert.match(panel.webview.html, /\.session-meta \{[^}]*font-size: 0\.9em/);
+  assert.ok(panel.webview.html.indexOf('heading.appendChild(excerpt)') < panel.webview.html.indexOf('heading.appendChild(meta)'),
+    "the prompt preview precedes the smaller session metadata");
   assert.doesNotMatch(panel.webview.html, /\{\{NONCE\}\}/);
   new vm.Script(panel.webview.html.match(/<script nonce="[a-f0-9]+">([\s\S]*?)<\/script>/)[1]);
 });

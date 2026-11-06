@@ -16,13 +16,13 @@ const PROVIDERS = Object.freeze({
 
 function secretKey(id) { return "vertex.provider." + id + ".apiKey"; }
 
-function requestJson(id, apiKey, route, body) {
+function requestJson(id, apiKey, route, body, maxBytes = 64000) {
   const provider = PROVIDERS[id];
   if (!provider) { return Promise.reject(new Error("Unknown API provider: " + id)); }
   if (!apiKey) { return Promise.reject(new Error("No " + provider.label + " API key is configured. Enter it in LLM Providers.")); }
   const payload = body == null ? null : JSON.stringify(body);
-  if (payload && Buffer.byteLength(payload, "utf8") > 64000) {
-    return Promise.reject(new Error("VERTEX: request exceeds 64 KB; narrow the context or start a new conversation."));
+  if (payload && Buffer.byteLength(payload, "utf8") > maxBytes) {
+    return Promise.reject(new Error("VERTEX: request exceeds " + (maxBytes === 64000 ? "64 KB" : (maxBytes / 1024) + " KiB") + "; narrow the context or start a new conversation."));
   }
   const url = new URL(provider.base + route);
   return new Promise((resolve, reject) => {
@@ -72,10 +72,10 @@ async function ask(options) {
     description: "Submit the final VERTEX answer and navigation plan.", parameters: options.schema } }]);
   const messages = [{ role: "system", content: options.instructions }, { role: "user", content: options.prompt }];
   let usage = null;
-  for (let round = 0; round < 12; round += 1) {
+  for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     const response = await request(id, options.apiKey, "/chat/completions", {
       model: options.model, messages, tools, stream: false
-    });
+    }, options.localTools ? 2 * 1024 * 1024 : 64000);
     if (options.onProviderResponse) options.onProviderResponse({ provider: id, scope: "model_response", response });
     let roundUsage = null;
     if (response.usage) {

@@ -307,3 +307,5 @@ Decline and Comment. Inline / 2 pane is shared with the version diff.
 For a method with no separate version directory, Diff uses the class history and extracts that method, with a notice identifying the source of the history.
 
 Session logs render Markdown in questions, answers and reasoning; user text is blue, answers green and reasoning indigo.
+
+**Host scope:** VERTEX Code Agent (alpha), with native Claude Code tools and VERTEX file tools for the other providers, Git working-copy review and builds after Apply, is available in the VS Code extension. The Eclipse assistant continues to use its documented SAP workflow.

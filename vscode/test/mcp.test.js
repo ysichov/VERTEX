@@ -44,3 +44,21 @@ test("MCP authenticates, lists tools, reads a transport and survives reload", as
     assert.equal(next.token, token);
   } finally { await next.stop(); }
 });
+
+test("per-request tool routes are isolated and revoked on disposal", async () => {
+  const server = mcp.create({});
+  const a = server.registerTools({ tools: [{ name: "Read" }], call: async () => ({ content: [{ type: "text", text: "folder A" }] }) });
+  const b = server.registerTools({ tools: [{ name: "Write" }], call: async () => ({ content: [{ type: "text", text: "folder B" }] }) });
+  const running = await server.start();
+  const rpc = async route => fetch(running.url.replace(/\/mcp$/, route), { method: "POST", headers: {
+    Authorization: "Bearer " + server.token, "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
+  try {
+    assert.deepEqual((await (await rpc(a.route)).json()).result.tools.map(t => t.name), ["Read"]);
+    assert.deepEqual((await (await rpc(b.route)).json()).result.tools.map(t => t.name), ["Write"]);
+    assert.deepEqual((await (await rpc("/mcp")).json()).result.tools.map(t => t.name), ["sap_transport_changes", "sap_transport_diff"]);
+    a.dispose();
+    assert.equal((await rpc(a.route)).status, 404);
+    assert.equal((await rpc(b.route)).status, 200);
+  } finally { b.dispose(); await server.stop(); }
+});

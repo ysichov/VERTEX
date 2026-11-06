@@ -1,3 +1,21 @@
+## 2026-11-06 — Prompt-first session headings
+
+Session Logs now starts each collapsed session with the beginning of its prompt. Provider, time, duration, prompt count and token usage sit together on a smaller secondary line below it. The shared page gives VS Code and Eclipse the same layout. Version remains 0.9.64.
+
+## 2026-11-06 — Codex local-tool approval routing
+
+Codex's private local MCP tools are explicitly approved at the CLI boundary; VERTEX retains file review and command approval. Read, Glob and Grep advertise read-only annotations. This removes the noninteractive Codex approval barrier for project tools. Version remains 0.9.64.
+
+## 2026-11-06 — Preserve Claude Code’s native local tools
+
+Claude Code again uses its native Read, Glob, Grep, Edit, Write and Bash in local projects, with the existing approval endpoint and Git-copy review. VERTEX’s literal-search and file-size restrictions are no longer included in Claude’s instructions. The common VERTEX tools remain available to all other providers. Version remains 0.9.64.
+
+## 2026-11-06 — VERTEX Code Agent (alpha), all VS Code providers
+
+All VS Code providers receive VERTEX-owned Read, Glob, Grep, Edit, Write and Bash tools for local workspaces, with Git-copy review and non-Git write approval. CLI agents receive an isolated, per-request MCP endpoint, revoked at the end of the turn; Claude uses these common tools instead of its native file tools in this workflow. Path containment, symlink rejection, read-before-write checks and serialized changes guard file operations. Provider-independent tool logging preserves local-code settings; review and build logging use the originating provider. Direct providers have a 50-round local-agent budget and larger bounded API request payloads. Documentation identifies the feature as alpha and states its host and model requirements. Version remains 0.9.64.
+
+Validation: 121 focused tests passed, two platform-specific tests skipped. Tests cover all 12 provider routes with simulated model responses and real local tools/Git review, path escapes and symlinks, stale writes, non-Git approval and cancellation, command execution, and request endpoint revocation. Live model/account checks are separate from this regression suite.
+
 ## 2026-11-06 — Chat screenshots and readable session logs
 
 Session logs render questions, answers and reasoning with the chat’s safe DOM Markdown renderer. User text is blue, answers green, reasoning indigo with a lighter dark-theme shade. ChatGPT subscription requests now pass screenshots to Codex as temporary image files via `--image`; files are removed on success and failure. Version remains 0.9.64.

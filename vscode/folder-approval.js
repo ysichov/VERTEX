@@ -105,7 +105,7 @@ function reviewQueue(vscode) {
       settle([...pending.keys()], item => deny("The user closed the review of " + item.seen.file + " without allowing it."));
     });
   };
-  return function add(input, seen, parts) {
+  const add = function (input, seen, parts) {
     return new Promise(resolve => {
       const id = "f" + (++next);
       pending.set(id, { id, input, seen, parts, resolve });
@@ -113,12 +113,18 @@ function reviewQueue(vscode) {
       render();
     });
   };
+  add.dispose = () => {
+    settle([...pending.keys()], () => deny("This request is no longer active."));
+    if (panel && panel.dispose) panel.dispose();
+  };
+  return add;
 }
 
 function set(vscode, read = file => fs.readFileSync(file, "utf8")) {
   const queue = reviewQueue(vscode);
   return {
     tools: [schema],
+    dispose: () => queue.dispose(),
     call: async function (_deps, _name, args) {
       const name = String(args.tool_name || "");
       const input = args.input || {};

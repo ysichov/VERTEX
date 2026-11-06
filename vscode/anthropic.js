@@ -34,13 +34,13 @@ function models(apiKey) {
   });
 }
 
-function request(apiKey, body) {
+function request(apiKey, body, maxBytes = 64000) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     // Enforce at the transport boundary, including history, schemas and tool
     // results. This is a byte ceiling, not an estimated token count.
-    if (Buffer.byteLength(payload, "utf8") > 64000) {
-      reject(new Error("VERTEX: request exceeds 64 KB; nothing was sent to Anthropic. Start a new conversation or narrow the context."));
+    if (Buffer.byteLength(payload, "utf8") > maxBytes) {
+      reject(new Error("VERTEX: request exceeds " + (maxBytes === 64000 ? "64 KB" : (maxBytes / 1024) + " KiB") + "; nothing was sent to Anthropic. Start a new conversation or narrow the context."));
       return;
     }
     const req = https.request({ hostname: "api.anthropic.com", path: "/v1/messages", method: "POST", headers: {
@@ -62,9 +62,9 @@ async function ask(options) {
       description: "Submit the final VERTEX answer and navigation plan.", input_schema: options.schema }]);
   const messages = [{ role: "user", content: options.prompt }];
   let usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
-  for (let round = 0; round < 12; round += 1) {
+  for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     const response = await request(options.apiKey, { model: options.model, max_tokens: 16000,
-      system: options.instructions, messages, tools: apiTools });
+      system: options.instructions, messages, tools: apiTools }, options.localTools ? 2 * 1024 * 1024 : 64000);
     let answer;
     try { answer = JSON.parse(response.text); } catch (_) { answer = null; }
     if (answer && options.onProviderResponse) options.onProviderResponse({

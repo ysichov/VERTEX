@@ -374,6 +374,19 @@ test("Codex runs without the person's config, shell or plugins, and gets the rul
   assert.doesNotMatch(args.join(" "), /secret-token/);
 });
 
+test("Codex delegates only supplied local-tool approvals to VERTEX", async () => {
+  const spawn = spawner(call => {
+    fs.writeFileSync(after(call.args, "-o"), JSON.stringify(PLAN));
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(spawn, "codex", { localTools: true, tools: ["Read", "Edit", "read_sap_object"] }));
+  const args = spawn.calls[0].args;
+  assert.ok(args.includes('mcp_servers.vertex.tools.Read.approval_mode="approve"'));
+  assert.ok(args.includes('mcp_servers.vertex.tools.Edit.approval_mode="approve"'));
+  assert.ok(!args.some(arg => /tools\.(Bash|read_sap_object)\.approval_mode/.test(arg)));
+  assert.equal(after(args, "-s"), "read-only");
+});
+
 test("Codex receives no SAP MCP server when the chat has no SAP tools", async () => {
   const spawn = spawner(call => {
     fs.writeFileSync(after(call.args, "-o"), JSON.stringify({ answer: "ok", navigation: null }));
@@ -595,4 +608,18 @@ for (const fails of [false, true]) test("Codex receives multiple screenshot file
   const request = assistant.ask(common(spawn, "codex", { images }));
   if (fails) await assert.rejects(request); else await request;
   files.forEach(file => assert.equal(fs.existsSync(file), false));
+});
+
+test("Claude retains native tools and approval routing in a local-agent request", async () => {
+  const spawn = spawner(call => {
+    for (const name of ["Read", "Grep", "Glob", "Edit", "Write", "Bash"]) assert.ok(after(call.args, "--tools").split(",").includes(name));
+    assert.equal(call.args.includes("--permission-prompt-tool"), true);
+    assert.ok(after(call.args, "--allowedTools").split(",").includes("Edit"));
+    assert.equal(after(call.args, "--allowedTools").split(",").includes("Bash"), false);
+    const config = JSON.parse(fs.readFileSync(after(call.args, "--mcp-config"), "utf8"));
+    assert.ok(Object.values(config.mcpServers).some(server => server.url === "http://localhost/approve"));
+    call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", structured_output: PLAN }));
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(spawn, "claude", { workDir: folder("vertex-native-"), reviewAfter: true, approveUrl: "http://localhost/approve", tools: [] }));
 });

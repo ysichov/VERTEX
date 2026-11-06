@@ -551,6 +551,7 @@ async function ask(options) {
 }
 
 function claudeCommand(options, dir) {
+  const nativeFolder = options.workDir && !options.localTools;
   const config = path.join(dir, "mcp.json");
   const servers = {};
   servers[SERVER] = {
@@ -559,7 +560,7 @@ function claudeCommand(options, dir) {
     headers: { Authorization: "Bearer ${" + TOKEN_VAR + "}" }
   };
   const listed = options.tools.length ? servers : {};
-  if (options.workDir) {
+  if (nativeFolder) {
     // Every edit, write and command in a working folder waits for the user.
     if (!options.approveUrl) throw new Error("A working folder needs the VERTEX approval address; nothing was run.");
     listed[APPROVE_SERVER] = { type: "http", url: options.approveUrl,
@@ -580,18 +581,18 @@ function claudeCommand(options, dir) {
     // even though the compact source fragment already answers the question.
     // In a working folder (a local file of an open workspace folder) Claude
     // works on its files with its own tools, shell included.
-    "--tools", options.workDir ? FOLDER_TOOLS.join(",") : "",
+    "--tools", nativeFolder ? FOLDER_TOOLS.join(",") : "",
     "--strict-mcp-config", "--mcp-config", config,
     "--no-session-persistence"
   ];
   if (options.onProgress) { args.push("--verbose", "--include-partial-messages"); }
-  if (options.workDir) {
+  if (nativeFolder) {
     args.push("--permission-prompt-tool", "mcp__" + APPROVE_SERVER + "__" + require("./folder-approval").TOOL);
   }
   // Reading runs freely; Edit, Write and Bash are left to the approval tool. In a git working copy (reviewAfter)
   // edits and writes run freely too - they are reviewed when the answer is done - and only Bash asks.
   // shellWithoutAsking (a setting, off by default) lets Bash run in the working copy without asking as well.
-  const allowed = (options.workDir ? (options.reviewAfter
+  const allowed = (nativeFolder ? (options.reviewAfter
     ? FOLDER_TOOLS.filter(t => t !== "Bash" || options.shellWithoutAsking === true) : FOLDER_READ_TOOLS) : [])
     .concat(options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }));
   if (allowed.length) {
@@ -631,6 +632,14 @@ function codexCommand(options, dir) {
   if (options.tools.length) {
     args.push("-c", "mcp_servers." + SERVER + ".url=" + options.url,
       "-c", "mcp_servers." + SERVER + ".bearer_token_env_var=" + TOKEN_VAR);
+    // exec cannot display Codex approval dialogs. These private local tools enforce
+    // containment and ask through VERTEX's own review/approval UI before mutations.
+    if (options.localTools) {
+      for (const name of ["Read", "Glob", "Grep", "Edit", "Write", "Bash"]) {
+        if (options.tools.includes(name)) args.push("-c",
+          "mcp_servers." + SERVER + ".tools." + name + '.approval_mode="approve"');
+      }
+    }
   }
   if (options.model) {
     args.push("-m", options.model);

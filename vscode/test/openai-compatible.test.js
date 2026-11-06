@@ -15,7 +15,7 @@ test("API provider catalog matches the ABAP-AI-Code key providers", () => {
 });
 
 test("LLM Providers offers an independent fold control for each model list", () => {
-  const panel = { webview: { onDidReceiveMessage: () => {} } };
+  const panel = { onDidDispose() {}, webview: { onDidReceiveMessage: () => {} } };
   const vscode = { ViewColumn: { Active: 1 }, window: { createWebviewPanel: () => panel },
     workspace: { getConfiguration: () => ({ get: (key, fallback) => key === "provider" ? "copilot" : fallback }) } };
   modelConfig.open(vscode, async () => [], () => "", () => {}, null);
@@ -27,13 +27,13 @@ test("LLM Providers offers an independent fold control for each model list", () 
   assert.match(panel.webview.html, /this is not an account sign-in check/);
   assert.match(panel.webview.html, /select-key/);
   assert.match(panel.webview.html, /all \? "Clear all" : "Select all"/);
-  assert.match(panel.webview.html, /s\.rows\.forEach\(r => \{ r\.on = next; \}\)/);
+  assert.match(panel.webview.html, /s\.rows\.forEach\(r => \{ r\.on = next && r\.available !== false; \}\)/);
   assert.match(panel.webview.html, /Open logging settings/);
 });
 
 test("LLM Providers gear opens the logging settings", async () => {
   let receive, command;
-  const panel = { webview: { onDidReceiveMessage: callback => { receive = callback; } } };
+  const panel = { onDidDispose() {}, webview: { onDidReceiveMessage: callback => { receive = callback; } } };
   const vscode = { ViewColumn: { Active: 1 }, commands: { executeCommand: async (...args) => { command = args; } },
     window: { createWebviewPanel: () => panel },
     workspace: { getConfiguration: () => ({ get: (_, fallback) => fallback }) } };
@@ -47,7 +47,7 @@ test("LLM Providers selects the Codex installation before loading its models", a
     ? { extension: "/extension/codex", cli: "/app/codex" } : { extension: "", cli: "" });
   let receive, calls = 0, forgotten = "";
   const posted = [], values = { codexSource: "ask", provider: "codex-subscription", model: "gpt-5.2" };
-  const panel = { webview: { onDidReceiveMessage: callback => { receive = callback; },
+  const panel = { onDidDispose() {}, webview: { onDidReceiveMessage: callback => { receive = callback; },
     postMessage: message => posted.push(message) } };
   const vscode = { ViewColumn: { Active: 1 }, ConfigurationTarget: { Global: 1 },
     window: { createWebviewPanel: () => panel },
@@ -76,7 +76,7 @@ test("LLM Providers selects the Codex installation before loading its models", a
 test("log folder button picks a directory and saves its path", async () => {
   let receive, saved;
   const folder = { scheme: "file", fsPath: "C:\\logs" };
-  const panel = { webview: { onDidReceiveMessage: callback => { receive = callback; }, postMessage: () => {} } };
+  const panel = { onDidDispose() {}, webview: { onDidReceiveMessage: callback => { receive = callback; }, postMessage: () => {} } };
   const vscode = { ViewColumn: { Active: 1 }, ConfigurationTarget: { Global: 1 }, Uri: { file: fsPath => ({ fsPath }) },
     window: { createWebviewPanel: () => panel, showOpenDialog: async options => {
       assert.equal(options.canSelectFolders, true); assert.equal(options.canSelectFiles, false); return [folder]; } },

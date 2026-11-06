@@ -23,7 +23,7 @@ async function ask(vscode, options) {
     description: "Submit the final VERTEX answer and navigation plan.", inputSchema: options.schema }]);
   const cancellation = new vscode.CancellationTokenSource();
   try {
-  for (let round = 0; round < 12; round += 1) {
+  for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     const response = await model.sendRequest(messages, { tools }, cancellation.token);
     const parts = [];
     for await (const part of response.stream) { parts.push(part); }
