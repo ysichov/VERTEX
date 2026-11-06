@@ -1,5 +1,13 @@
 # Release history
 
+## 2026-11-06 — 0.9.62: Claude Code works in the workspace folder, each action confirmed
+
+- VS Code: with Claude Code as the provider and the active editor on a file of an open workspace folder - or no editor open and a workspace of one folder - the VERTEX chat runs Claude Code in that folder with its own tools: it reads and searches the folder's files freely. Every file edit or write - any file type, any language - opens in the VERTEX review page block by block, as a SAP change does: **Allow** writes only the approved blocks, **Deny** or closing the page refuses the change; a new file is reviewed against an empty one, and ABAP keywords are marked only in `.abap` files. Every shell command - a VSIX build, a test run - opens a modal VS Code dialog naming it; **Allow** runs it, closing the dialog refuses it. The folder's `CLAUDE.md` applies (the user-level one loads with it; auto-memory stays off). Such a request may run up to ten minutes.
+- A SAP tab, another extension's document or a file outside the workspace is handled as before: through VERTEX's SAP tools, a change put into its editor tab for review and activation.
+- The VERTEX panel shows the folder Claude Code works in as **Folder** under **SAP system**, and its greeting reads "Ask about SAP code, data, a transport or the project in your folder."
+- The VERTEX panel keeps its chat on screen when another sidebar view (Explorer) is opened and the panel is opened again; before, the conversation shown was wiped.
+- VS Code 0.9.62 and the Eclipse update site 0.9.62.20261106090715 are built; Eclipse carries no change of its own.
+
 ## 2026-11-05 — 0.9.61: EPAM CodeMie as an AI provider, a structure followed whole, outlined buttons
 
 - VS Code: **EPAM CodeMie (CodeMie CLI)** is an AI provider after GitHub Copilot. It runs Claude Code through the CodeMie CLI's `codemie-claude` with the SAP tools the other providers get; the model list is the CodeMie profile's, and **CodeMie default** is the model chosen in `codemie setup`.

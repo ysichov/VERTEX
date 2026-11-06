@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.61**
+**Version: 0.9.62**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -188,6 +188,18 @@ the same SAP tools as the other providers. EPAM CodeMie runs Claude Code through
 the CodeMie CLI's `codemie-claude`, with the models of your CodeMie profile. API providers are Anthropic, OpenAI, Mistral,
 Gemini, Groq, Cerebras, OpenRouter and NVIDIA. This is separate from Copilot
 Chat's MCP setup.
+
+**Claude Code in a folder.** When the active editor holds a file of an open workspace folder -
+or no editor is open and the workspace has one folder - Claude Code answers in that folder: it reads and searches its files freely. Every file edit or
+write - any file type, any language - first opens in the VERTEX review page, block by block, as a SAP
+change does: approve or decline each block, then **Allow** writes only the approved blocks; **Deny**,
+or closing the page, refuses the change. A new file is reviewed against an empty one. A shell command
+(a build, a test run) asks in a VS Code dialog showing the command; **Allow** runs it, closing the
+dialog refuses it. While Claude Code has a folder, the VERTEX panel shows it as **Folder** under
+**SAP system** (the full path on hover); the SAP system stays the one its SAP tools use. The folder's `CLAUDE.md` applies
+(your user-level `CLAUDE.md` loads with it). A SAP tab, or a file outside the workspace, works as
+before, through VERTEX's SAP tools: a change goes into its editor tab unsaved, and you review it
+and use Save & Activate or Review & Activate.
 
 Every Get Started step has an **ⓘ Info** button opening its explanation: SAP
 system import, connection testing, assistant choice and MCP capabilities.

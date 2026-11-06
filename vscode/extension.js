@@ -927,7 +927,8 @@ function activate(context) {
   };
   tools = mcp.create({ fetch: fetch, context: context, port: port,
     pin: pinTo, pinned: () => pinnedSystem.getStore() || "",
-    pages: Object.assign(windowTools(), { "/chat": chatSet, "/debug": agentDebugSet }) });
+    pages: Object.assign(windowTools(), { "/chat": chatSet, "/debug": agentDebugSet,
+      "/approve": require("./folder-approval").set(vscode) }) });
   const showTools = (initial, embeddedPanel) => initial && initial.systemName
     ? pinTo(initial.systemName, () => openTools(initial, embeddedPanel)) : openTools(initial, embeddedPanel);
   const openTools = (initial, embeddedPanel) => require("./tools-window").open(vscode, context,

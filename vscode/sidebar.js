@@ -48,10 +48,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           catch (error) { await view.webview.postMessage({ models: { error: error.message } }); }
         });
       };
+      // The folder Claude works in, under the SAP system, so the panel does not read as SAP-only.
+      const showFolder = () => ready ? view.webview.postMessage({ folder: require("./chat").currentWorkingFolder(vscode) }) : undefined;
       const messages = view.webview.onDidReceiveMessage(async message => {
         if (!message || typeof message !== "object") { return; }
         if (message.action === "ready") {
           ready = true;
+          await showFolder();
           await refresh();
           await showReview();
           return;
@@ -67,7 +70,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "setProvider") {
-          try { await view.webview.postMessage({ ai: await ask.setProvider(message.provider) }); }
+          try { await view.webview.postMessage({ ai: await ask.setProvider(message.provider) }); await showFolder(); }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
         }
@@ -155,13 +158,17 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
       });
       const changes = vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration("vertex")) { void refresh(); }
+        if (event.affectsConfiguration("vertex")) { void refresh(); void showFolder(); }
       });
+      const folderWatch = [vscode.window.onDidChangeActiveTextEditor(() => { void showFolder(); }),
+        vscode.workspace.onDidChangeWorkspaceFolders(() => { void showFolder(); })];
       const clientSwitch = clients.onChange(() => { void refresh(); });
-      view.onDidDispose(() => { currentView = undefined; ready = false; messages.dispose(); changes.dispose(); clientSwitch.dispose(); });
+      view.onDidDispose(() => { currentView = undefined; ready = false; messages.dispose(); changes.dispose(); folderWatch.forEach(watch => watch.dispose()); clientSwitch.dispose(); });
     }
   };
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider("vertex.launcher", provider));
+  // The panel holds the chat: switching to Explorer and back must not wipe the conversation on screen.
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider("vertex.launcher", provider,
+    { webviewOptions: { retainContextWhenHidden: true } }));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.showPanel", () =>
     vscode.commands.executeCommand("vertex.launcher.focus")));
 }
@@ -270,7 +277,8 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs"><span class="log-icon">📜</span> AI</button>
 <button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs"><span class="log-icon">📜</span> SAP</button></div>
-<main id="messages" aria-live="polite"><p>Ask about SAP code, data or a transport.</p></main>
+<div class="line" id="folder-line" hidden><span>Folder</span><strong id="folder-name"></strong></div>
+<main id="messages" aria-live="polite"><p>Ask about SAP code, data, a transport or the project in your folder.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
@@ -357,7 +365,7 @@ window.addEventListener('message', event => {
     const box = document.getElementById('messages');
     box.textContent = '';
     const hint = document.createElement('p');
-    hint.textContent = 'Ask about SAP code, data or a transport.';
+    hint.textContent = 'Ask about SAP code, data, a transport or the project in your folder.';
     box.appendChild(hint);
     progressItems.clear();
   }
@@ -416,6 +424,12 @@ window.addEventListener('message', event => {
       }
       const box = document.getElementById('messages'); box.scrollTop = box.scrollHeight;
     }
+  }
+  if (event.data && typeof event.data.folder === 'string') {
+    const folder = event.data.folder, name = document.getElementById('folder-name');
+    document.getElementById('folder-line').hidden = !folder;
+    name.textContent = folder.split(/[\\/]/).filter(Boolean).pop() || folder;
+    name.title = folder;
   }
   if (event.data && Array.isArray(event.data.systems)) {
     const select = document.getElementById('system-select');

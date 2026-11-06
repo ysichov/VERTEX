@@ -1,5 +1,23 @@
 # Development history
 
+## 2026-11-06 — Claude Code in the workspace folder, every action confirmed (0.9.62)
+
+The user asked about CodeMie as a coding agent and about working "in a chosen folder with any CLI"; we started with Claude. Until now every chat request ran Claude Code in an empty `vertex-window-*` temp folder with `--tools ""` and CLAUDE.md switched off: a SAP assistant that could not see files.
+
+The user settled the design: the folder is the workspace folder of the active local file (a SAP/ADT tab keeps the VERTEX MCP path - change in the editor tab, user reviews and activates); full access including Bash; the folder's CLAUDE.md on. `chat.js` `workingFolder()` finds the folder (Claude only - CodeMie would take the same arguments but was not asked for); `assistant.js` runs Claude there with Read/Grep/Glob/Edit/Write/Bash, keeps `mcp.json` in the temp folder, and leaves `CLAUDE_CODE_DISABLE_CLAUDE_MDS` unset - Claude Code cannot load a project CLAUDE.md without the user-level one, so both load.
+
+First cut allowed all six tools outright. The user then asked about builds and runs: with `-p` Claude Code cannot ask, so Bash ran unattended. They chose "confirm everything for now": a new `/approve` page on the extension's MCP server (`folder-approval.js`) is passed as `--permission-prompt-tool`; Read/Grep/Glob stay allowed, Edit/Write/Bash each open a modal dialog with the command or path. A working folder without the approval address throws instead of running unconfirmed.
+
+Tests: new cases for both; the full suite has the same 7 failures as clean main (checked by stashing). Not tried end to end against a real Claude Code yet. VSIX and Eclipse site built, 0.9.62.
+
+The user's first try (an abapGit project HR_DME open in Explorer, no file open): Claude said the workspace was empty - no active editor, so no folder. With no editor open, the workspace's only folder is now the working folder; two or more folders and no editor still give none. The instruction now says questions about the project are about that folder. Also seen: going to Explorer and back to the VERTEX panel wiped the chat on screen - `vertex.launcher` was the one webview view registered without `retainContextWhenHidden`; it has it now. VSIX rebuilt, 0.9.62.
+
+The user asked to approve file changes in "our differ", for every file type and language. The approval tool gets the whole Edit (`old_string`/`new_string`) or Write (`content`), so `folder-approval.js` builds the file before and after and opens `code-review.js`'s `reviewHtml` - the Review & Activate page - with a new `file` mode: **Deny** beside **Allow** instead of Save & Activate, file wording, ABAP keyword marking only for `.abap` (`abap` option; SAP reviews unchanged). The approved blocks become the `updatedInput`: for a Write the kept text; for an Edit the new `new_string` between the edit's unchanged prefix and suffix, with the file's CRLF kept. A replace-all edit, or approved blocks reaching outside the edit, must be approved whole. Closing the page denies. Bash keeps the modal dialog. Not tried against a real Claude Code yet.
+
+Packaging slip: after `git rm` of the 0.9.61 jars emptied `docs/features` and `docs/plugins`, `Copy-Item` wrote each as a file named `features`/`plugins`; the next Eclipse build failed reading the site in `docs`. Restored the folders with the 085447 site, built again: `target/eclipse-0.9.62.20261106090715` is in `docs`; `...090602` is a broken leftover, kept as the rule says.
+
+The user tried it on HR_DME and it worked; they asked whether **SAP system** at the top misleads when Claude works in a folder. It stays - Claude still has the SAP tools on that system - and a **Folder** line under it (name, full path on hover) shows the folder `chat.currentWorkingFolder` would use, updated on editor, workspace-folder, provider and setting changes. The greeting "Ask about SAP code, data or a transport." was out of date too: it now adds "or the project in your folder". Not seen in VS Code yet. VSIX rebuilt.
+
 ## 2026-11-05 — A plain button has an outline
 
 In VS Code's light theme Rebuild from ADT read as faint text. First it was disabled (a rebuild was running, Stop was shown, and the shared disabled style is 45% opacity), but enabled it was still bare text, and so were Expand all, Prompts..., AI prompt diff/full: a background close to the page and no frame, while the toggles beside them had one. The shared `button` rule in `vertex-controls.css` drew its border from `--vscode-button-border` first, which many themes leave transparent; the toggles use `--vscode-input-border`. The plain button now takes the toggles' border variables. Not looked at in a dark theme or in Eclipse yet. VSIX and Eclipse site rebuilt, 0.9.61.

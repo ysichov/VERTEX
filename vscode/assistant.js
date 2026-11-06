@@ -31,6 +31,10 @@ const ASSISTANTS = {
 };
 // CodeMie runs Claude Code, so it is asked and answers as Claude does.
 const claudeLike = id => id === "claude" || id === "codemie";
+// Claude Code's own tools allowed in a working folder.
+const FOLDER_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash"];
+const FOLDER_READ_TOOLS = ["Read", "Grep", "Glob"];
+const APPROVE_SERVER = "vertex_approve";
 
 // The models a Claude subscription offers, by full id - the same ids the
 // Anthropic API lists; Claude Code reports no list of its own. The newest of
@@ -403,7 +407,11 @@ async function ask(options) {
     // The token reaches the child through its environment only: the files in
     // the folder name the variable, never the value.
     env[TOKEN_VAR] = options.token;
-    if (claudeLike(options.assistant) && !options.personalInstructions) {
+    // In a working folder the folder's own CLAUDE.md is wanted; Claude Code
+    // cannot load it without the user-level one, so both load there.
+    if (claudeLike(options.assistant) && options.workDir) {
+      if (!options.personalInstructions) env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
+    } else if (claudeLike(options.assistant) && !options.personalInstructions) {
       // No personal CLAUDE.md or auto-memory: they would travel with every SAP
       // request, be repeated in answers and steer a tool they were not written
       // for. --setting-sources does not exclude CLAUDE.md, --safe-mode drops
@@ -482,7 +490,7 @@ async function ask(options) {
       }
     } : null;
     const result = await collect(options.spawn, file, command.args,
-                                 { cwd: dir, env: env, input: command.input, timeout: timeout, onData });
+                                 { cwd: options.workDir || dir, env: env, input: command.input, timeout: timeout, onData });
     if (streaming && pending.trim()) {
       try { const last = JSON.parse(pending.trim()); if (last.type === "result") resultEvent = last; }
       catch (_) { /* An interrupted NDJSON line is not a completed result. */ }
@@ -512,7 +520,14 @@ function claudeCommand(options, dir) {
     url: options.url,
     headers: { Authorization: "Bearer ${" + TOKEN_VAR + "}" }
   };
-  fs.writeFileSync(config, JSON.stringify({ mcpServers: options.tools.length ? servers : {} }));
+  const listed = options.tools.length ? servers : {};
+  if (options.workDir) {
+    // Every edit, write and command in a working folder waits for the user.
+    if (!options.approveUrl) throw new Error("A working folder needs the VERTEX approval address; nothing was run.");
+    listed[APPROVE_SERVER] = { type: "http", url: options.approveUrl,
+      headers: { Authorization: "Bearer ${" + TOKEN_VAR + "}" } };
+  }
+  fs.writeFileSync(config, JSON.stringify({ mcpServers: listed }));
 
   const args = [
     "-p", "--output-format", options.onProgress ? "stream-json" : "json",
@@ -521,13 +536,21 @@ function claudeCommand(options, dir) {
     // No built-in tool. For a visible method explanation there are no MCP
     // tools either: supplying a server would make the CLI run an agent loop
     // even though the compact source fragment already answers the question.
-    "--tools", "",
+    // In a working folder (a local file of an open workspace folder) Claude
+    // works on its files with its own tools, shell included.
+    "--tools", options.workDir ? FOLDER_TOOLS.join(",") : "",
     "--strict-mcp-config", "--mcp-config", config,
     "--no-session-persistence"
   ];
   if (options.onProgress) { args.push("--verbose", "--include-partial-messages"); }
-  if (options.tools.length) {
-    args.push("--allowedTools", options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }).join(","));
+  if (options.workDir) {
+    args.push("--permission-prompt-tool", "mcp__" + APPROVE_SERVER + "__" + require("./folder-approval").TOOL);
+  }
+  // Reading runs freely; Edit, Write and Bash are left to the approval tool.
+  const allowed = (options.workDir ? FOLDER_READ_TOOLS : [])
+    .concat(options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }));
+  if (allowed.length) {
+    args.push("--allowedTools", allowed.join(","));
   }
   if (options.model) {
     args.push("--model", options.model);

@@ -104,6 +104,34 @@ test("Claude Code runs shut in: no built-in tool, one MCP server, the token only
   assert.equal(fs.existsSync(call.options.cwd), false, "the run's folder is removed");
 });
 
+test("in a working folder Claude Code runs there with its file and shell tools and the folder's CLAUDE.md", async () => {
+  const work = folder("vertex-work-");
+  const spawn = spawner(call => {
+    assert.ok(fs.existsSync(after(call.args, "--mcp-config")), "the MCP config stays in the run's own folder");
+    call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false,
+      result: "", structured_output: PLAN, modelUsage: {} }));
+    call.child.emit("close", 0);
+  });
+  let config = null;
+  const wrapped = (file, args, options) => {
+    const child = spawn(file, args, options);
+    config = JSON.parse(fs.readFileSync(after(args, "--mcp-config"), "utf8"));
+    return child;
+  };
+  wrapped.calls = spawn.calls;
+  await assistant.ask(common(wrapped, "claude", { workDir: work, approveUrl: "http://127.0.0.1:37777/approve" }));
+  const call = spawn.calls[0];
+  assert.equal(call.options.cwd, work);
+  assert.equal(after(call.args, "--tools"), "Read,Grep,Glob,Edit,Write,Bash");
+  assert.equal(after(call.args, "--allowedTools"), "Read,Grep,Glob,mcp__vertex__sap_table_layout");
+  assert.equal(after(call.args, "--permission-prompt-tool"), "mcp__vertex_approve__approve_action");
+  assert.equal(config.mcpServers.vertex_approve.url, "http://127.0.0.1:37777/approve");
+  await assert.rejects(assistant.ask(common(spawner(() => {}), "claude", { workDir: work })), /approval address/);
+  assert.equal(call.options.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS, undefined);
+  assert.equal(call.options.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1");
+  assert.ok(fs.existsSync(work), "the working folder is not removed");
+});
+
 test("every model Claude Code reports is named, the one that wrote most first", async () => {
   const spawn = spawner(call => {
     call.child.stdout.emit("data", JSON.stringify({
