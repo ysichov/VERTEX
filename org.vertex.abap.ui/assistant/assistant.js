@@ -396,6 +396,9 @@ function configuredCodexModel(codexHome) {
 async function ask(options) {
   const assistant = describe(options.assistant);
   const file = options.executable || locate(options.assistant, options.extensionPath);
+  if ((options.images || []).length && !claudeLike(options.assistant)) {
+    throw new Error("Screenshots are sent only to Claude Code and EPAM CodeMie; nothing was sent.");
+  }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-window-"));
   try {
     const command = claudeLike(options.assistant)
@@ -546,8 +549,9 @@ function claudeCommand(options, dir) {
   if (options.workDir) {
     args.push("--permission-prompt-tool", "mcp__" + APPROVE_SERVER + "__" + require("./folder-approval").TOOL);
   }
-  // Reading runs freely; Edit, Write and Bash are left to the approval tool.
-  const allowed = (options.workDir ? FOLDER_READ_TOOLS : [])
+  // Reading runs freely; Edit, Write and Bash are left to the approval tool. In a git working copy (reviewAfter)
+  // edits and writes run freely too - they are reviewed when the answer is done - and only Bash asks.
+  const allowed = (options.workDir ? (options.reviewAfter ? FOLDER_TOOLS.filter(t => t !== "Bash") : FOLDER_READ_TOOLS) : [])
     .concat(options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }));
   if (allowed.length) {
     args.push("--allowedTools", allowed.join(","));
@@ -555,7 +559,15 @@ function claudeCommand(options, dir) {
   if (options.model) {
     args.push("--model", options.model);
   }
-  return { args: args, input: options.prompt };
+  const images = options.images || [];
+  if (!images.length) return { args: args, input: options.prompt };
+  // Screenshots travel inside the message: Claude Code reads one stream-json user message from stdin.
+  if (!options.onProgress) throw new Error("Screenshots need the streaming chat; nothing was sent.");
+  args.push("--input-format", "stream-json");
+  const content = [{ type: "text", text: options.prompt }].concat(images.map(function (image) {
+    return { type: "image", source: { type: "base64", media_type: image.media_type, data: image.data } };
+  }));
+  return { args: args, input: JSON.stringify({ type: "user", message: { role: "user", content: content } }) + "\n" };
 }
 
 function codexCommand(options, dir) {

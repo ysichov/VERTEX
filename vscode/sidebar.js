@@ -20,6 +20,17 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", draft: reviewAsk && reviewAsk.question || "" }) : undefined;
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
+  // The working copy goes when VS Code closes.
+  context.subscriptions.push({ dispose: () => { if (typeof ask.dispose === "function") return ask.dispose(); } });
+  // A message to the assistant that VERTEX sends itself - the reasons from a review - asked as the user's would be.
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.chatSend", async text => {
+    if (!currentView || !ready || typeof text !== "string" || !text.trim()) {
+      vscode.window.showWarningMessage("VERTEX: open the VERTEX panel to send the review's reasons to the assistant.");
+      return;
+    }
+    await vscode.commands.executeCommand("vertex.launcher.focus");
+    await currentView.webview.postMessage({ send: text });
+  }));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.askReviewBlock", async blocks => {
     reviewAsk = review.mergeAsk(reviewAsk, blocks);
     await vscode.commands.executeCommand("vertex.launcher.focus");
@@ -113,9 +124,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
           const asked = reviewAsk;
           if (asked) { reviewAsk = null; await showReview(); }
-          const shown = String(message.text || "").trim() || (asked ? "What does this change do, and is there a real problem with it?" : "");
+          const images = (Array.isArray(message.images) ? message.images : []).filter(image => image
+            && /^image\/(png|jpeg|gif|webp)$/.test(image.media_type) && typeof image.data === "string" && image.data);
+          const shown = String(message.text || "").trim() || (asked ? "What does this change do, and is there a real problem with it?"
+            : images.length ? "What is in this screenshot?" : "");
           if (!shown) { return; }
-          await view.webview.postMessage({ chat: "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "") });
+          await view.webview.postMessage({ chat: "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "")
+            + (images.length ? "  [" + images.length + " screenshot" + (images.length > 1 ? "s" : "") + "]" : "") });
           await view.webview.postMessage({ progress: { id: requestId, status: "VERTEX is working…" } });
           try {
             const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
@@ -125,7 +140,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
               delete state.review_source;
               delete state.selected_fragment;
             }
-            const reply = await ask(asked ? review.askRequest(message.text, asked) : message.text, {model: message.model, state,
+            const reply = await ask(asked ? review.askRequest(message.text, asked) : shown, {model: message.model, state,
+              ...(images.length ? { images } : {}),
               onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, ...update } })).catch(() => {}); } });
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId, answer: reply.answer,
@@ -212,6 +228,14 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
   padding: 2px 2px 2px 8px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-left: 3px solid var(--vscode-focusBorder);
   border-radius: 4px; background: var(--vscode-editorWidget-background, var(--vscode-input-background)); color: var(--vscode-foreground); font-size: 12px; }
 #review-chip[hidden] { display: none; }
+/* Pasted screenshots: the review chip's tag, one per image, a thumbnail and × to drop it. */
+#image-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+#image-chips[hidden] { display: none; }
+.image-chip { display: flex; align-items: center; gap: 4px; padding: 2px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+  border-left: 3px solid var(--vscode-focusBorder); border-radius: 4px; background: var(--vscode-editorWidget-background, var(--vscode-input-background)); }
+.image-chip img { display: block; height: 48px; max-width: 96px; object-fit: cover; border-radius: 2px; }
+#chat .image-chip button { flex: none; width: auto; margin: 0; padding: 0 6px; line-height: 18px; border-radius: 3px; background: transparent; color: var(--vscode-foreground); opacity: .7; }
+#chat .image-chip button:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); box-shadow: none; }
 #review-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #chat #review-chip button { flex: none; width: auto; margin: 0; padding: 0 6px; line-height: 18px; border-radius: 3px; background: transparent; color: var(--vscode-foreground); opacity: .7; }
 #chat #review-chip button:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); box-shadow: none; }
@@ -278,10 +302,10 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 <button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs"><span class="log-icon">📜</span> AI</button>
 <button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs"><span class="log-icon">📜</span> SAP</button></div>
 <div class="line" id="folder-line" hidden><span>Folder</span><strong id="folder-name"></strong></div>
-<main id="messages" aria-live="polite"><p>Ask about SAP code, data, a transport or the project in your folder.</p></main>
+<main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
-<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
+<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
 <script nonce="${nonce}">
@@ -307,10 +331,41 @@ document.getElementById('chat').addEventListener('submit', event => {
   const field = document.getElementById('prompt');
   const text = field.value.trim();
   // With a review's blocks on the chip an empty question asks the default one.
-  if (!text && document.getElementById('review-chip').hidden) return;
-  api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value });
+  if (!text && document.getElementById('review-chip').hidden && !images.length) return;
+  api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value,
+    images: images.map(image => ({ media_type: image.media_type, data: image.data })) });
   field.value = '';
+  images = []; drawImages();
   fitPrompt();
+});
+// Screenshots pasted from the clipboard go with the next question, as images in the message.
+const IMAGE_LIMIT = 5 * 1024 * 1024;
+let images = [];
+function drawImages() {
+  const box = document.getElementById('image-chips');
+  box.replaceChildren(...images.map((image, index) => {
+    const chip = document.createElement('div'); chip.className = 'image-chip';
+    const img = document.createElement('img'); img.src = 'data:' + image.media_type + ';base64,' + image.data; img.alt = 'Screenshot ' + (index + 1);
+    const drop = document.createElement('button'); drop.type = 'button'; drop.className = 'secondary'; drop.textContent = '×';
+    drop.title = drop.ariaLabel = 'Remove screenshot ' + (index + 1);
+    drop.addEventListener('click', () => { images.splice(index, 1); drawImages(); });
+    chip.append(img, drop); return chip;
+  }));
+  box.hidden = !images.length;
+}
+document.getElementById('prompt').addEventListener('paste', event => {
+  const files = [...(event.clipboardData ? event.clipboardData.items : [])]
+    .filter(item => item.kind === 'file' && ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(item.type)).map(item => item.getAsFile()).filter(Boolean);
+  if (!files.length) return;
+  event.preventDefault();
+  files.forEach(file => {
+    if (file.size > IMAGE_LIMIT) { document.getElementById('model-status').textContent = 'Screenshot not added: it is over 5 MB.'; return; }
+    const reader = new FileReader();
+    reader.onload = () => { const url = String(reader.result), comma = url.indexOf(',');
+      images.push({ media_type: file.type, data: url.slice(comma + 1) }); drawImages(); };
+    reader.onerror = () => { document.getElementById('model-status').textContent = 'Screenshot not added: it could not be read.'; };
+    reader.readAsDataURL(file);
+  });
 });
 // The message field grows with what is typed or pasted, up to a few lines; ⤢ lets it take most of the panel.
 const promptField = document.getElementById('prompt'), expandPrompt = document.getElementById('expand-prompt');
@@ -347,6 +402,11 @@ document.addEventListener('keydown', event => {
 });
 const progressItems = new Map();
 window.addEventListener('message', event => {
+  if (event.data && typeof event.data.send === 'string') {
+    // VERTEX's own message - a review's reasons - goes as a question the user can read in the chat.
+    document.getElementById('prompt').value = event.data.send; fitPrompt();
+    document.getElementById('chat').requestSubmit();
+  }
   if (event.data && event.data.draft && !document.getElementById('prompt').value) { document.getElementById('prompt').value = event.data.draft; fitPrompt(); }
   if (event.data && typeof event.data.copied === 'boolean' && lastCopy) {
     lastCopy.textContent = event.data.copied ? 'Copied' : 'Copy failed: ' + event.data.error;
@@ -365,7 +425,7 @@ window.addEventListener('message', event => {
     const box = document.getElementById('messages');
     box.textContent = '';
     const hint = document.createElement('p');
-    hint.textContent = 'Ask about SAP code, data, a transport or the project in your folder.';
+    hint.textContent = 'Ask anything — about SAP or any project in your folder.';
     box.appendChild(hint);
     progressItems.clear();
   }
@@ -428,7 +488,7 @@ window.addEventListener('message', event => {
   if (event.data && typeof event.data.folder === 'string') {
     const folder = event.data.folder, name = document.getElementById('folder-name');
     document.getElementById('folder-line').hidden = !folder;
-    name.textContent = folder.split(/[\\/]/).filter(Boolean).pop() || folder;
+    name.textContent = folder.split(/[\\\\/]/).filter(Boolean).pop() || folder;
     name.title = folder;
   }
   if (event.data && Array.isArray(event.data.systems)) {

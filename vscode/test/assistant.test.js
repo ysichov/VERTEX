@@ -132,6 +132,43 @@ test("in a working folder Claude Code runs there with its file and shell tools a
   assert.ok(fs.existsSync(work), "the working folder is not removed");
 });
 
+test("in a git working copy edits run freely and only Bash asks", async () => {
+  const work = folder("vertex-copy-");
+  const spawn = spawner(call => {
+    call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false,
+      result: "", structured_output: PLAN, modelUsage: {} }));
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(spawn, "claude", { workDir: work, reviewAfter: true, approveUrl: "http://127.0.0.1:1/approve" }));
+  const call = spawn.calls[0];
+  assert.equal(call.options.cwd, work);
+  assert.equal(after(call.args, "--allowedTools"), "Read,Grep,Glob,Edit,Write,mcp__vertex__sap_table_layout");
+  assert.equal(after(call.args, "--permission-prompt-tool"), "mcp__vertex_approve__approve_action");
+});
+
+test("pasted screenshots go to Claude Code inside a stream-json message", async () => {
+  const spawn = spawner(call => {
+    call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false,
+      result: "", structured_output: PLAN, modelUsage: {} }) + "\n");
+    call.child.emit("close", 0);
+  });
+  const image = { media_type: "image/png", data: "iVBORw0KGgo=" };
+  await assistant.ask(common(spawn, "claude", { images: [image], onProgress() {} }));
+  const call = spawn.calls[0];
+  assert.equal(after(call.args, "--input-format"), "stream-json");
+  assert.equal(after(call.args, "--output-format"), "stream-json");
+  const message = JSON.parse(call.input.trim());
+  assert.equal(message.type, "user");
+  assert.deepEqual(message.message.content, [{ type: "text", text: "PROMPT" },
+    { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } }]);
+});
+
+test("a screenshot is refused, not dropped, where it cannot be sent", async () => {
+  const image = { media_type: "image/png", data: "x" };
+  await assert.rejects(assistant.ask(common(spawner(() => {}), "codex", { images: [image], onProgress() {} })), /only to Claude Code/);
+  await assert.rejects(assistant.ask(common(spawner(() => {}), "claude", { images: [image] })), /streaming chat/);
+});
+
 test("every model Claude Code reports is named, the one that wrote most first", async () => {
   const spawn = spawner(call => {
     call.child.stdout.emit("data", JSON.stringify({

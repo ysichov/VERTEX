@@ -189,13 +189,34 @@ the CodeMie CLI's `codemie-claude`, with the models of your CodeMie profile. API
 Gemini, Groq, Cerebras, OpenRouter and NVIDIA. This is separate from Copilot
 Chat's MCP setup.
 
+**Screenshots in the chat.** Paste an image (Ctrl+V) into the VERTEX panel's message field: it
+appears as a thumbnail above the field (× removes it) and goes with the next question, inside the
+message. PNG, JPEG, GIF and WebP up to 5 MB each. Screenshots are sent to Claude Code and EPAM
+CodeMie only; with another provider the question is refused and nothing is sent.
+
 **Claude Code in a folder.** When the active editor holds a file of an open workspace folder -
-or no editor is open and the workspace has one folder - Claude Code answers in that folder: it reads and searches its files freely. Every file edit or
-write - any file type, any language - first opens in the VERTEX review page, block by block, as a SAP
-change does: approve or decline each block, then **Allow** writes only the approved blocks; **Deny**,
-or closing the page, refuses the change. A new file is reviewed against an empty one. A shell command
-(a build, a test run) asks in a VS Code dialog showing the command; **Allow** runs it, closing the
-dialog refuses it. While Claude Code has a folder, the VERTEX panel shows it as **Folder** under
+or no editor is open and the workspace has one folder - Claude Code answers in that folder.
+
+*A folder in git:* Claude Code works in its own git working copy of the folder, made from the folder
+as it is (uncommitted changes and new files included, files ignored by git left out), and your folder
+is not changed while it works. When the answer is done, one VERTEX review page, **Review assistant
+changes**, shows every file it changed, all of a file's edits together, laid out as a transport
+review: the totals (rows +/~/-, blocks), a group per folder with a row per file (type, rows, blocks,
+decision; **Expand all · Collapse all**), then each file's blocks - a row opens its file. Approve or
+decline each file, then **Apply**: approved files are copied into your folder. A declined file takes
+an optional reason; with one, the reasons are sent to Claude Code as your next message and it reworks
+the file in its copy, and the next review shows it again; without one, its change is dropped. A file
+you changed yourself meanwhile can only be declined, so your change is never overwritten. Closing the
+page decides nothing: the files come up again after the next answer. The copy lasts for the
+conversation; **New conversation** removes it, with any change not yet applied. Builds and tests in
+the copy lack ignored files (`node_modules`, build output) and can fail there.
+
+*A folder outside git:* every file edit or write waits in the same review page before it is written;
+**Allow** writes the approved files, **Deny** or closing the page refuses them all.
+
+In both, Claude Code is told to change files only with its edit tools, never through the shell. A
+shell command (a build, a test run) asks in a VS Code dialog showing the command; **Allow** runs it,
+closing the dialog refuses it. While Claude Code has a folder, the VERTEX panel shows it as **Folder** under
 **SAP system** (the full path on hover); the SAP system stays the one its SAP tools use. The folder's `CLAUDE.md` applies
 (your user-level `CLAUDE.md` loads with it). A SAP tab, or a file outside the workspace, works as
 before, through VERTEX's SAP tools: a change goes into its editor tab unsaved, and you review it
