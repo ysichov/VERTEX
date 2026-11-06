@@ -14,7 +14,7 @@ function open(vscode, copy, changes, onDone) {
     vscode.ViewColumn.Beside, { enableScripts: true });
   const byId = new Map(changes.map((change, i) => ["f" + (i + 1), change]));
   panel.webview.html = review.filesReviewHtml([...byId].map(([id, change]) => ({
-    id, path: change.path, label: path.basename(change.file), conflict: change.conflict, binary: change.binary,
+    id, path: change.path, label: path.basename(change.file), conflict: change.conflict, merged: change.merged, binary: change.binary,
     kind: change.status === "added" ? "new" : change.status === "deleted" ? "deleted" : "changed",
     parts: change.binary || change.status === "deleted" ? [] : review.hunks(change.before, change.after),
     after: change.after, abap: /\.abap$/i.test(change.file)
@@ -37,11 +37,11 @@ function open(vscode, copy, changes, onDone) {
       return;
     }
     finished = true;
-    const outcome = { applied: [], reworked: [], dropped: [], failed: [] };
+    const outcome = { applied: [], merged: [], reworked: [], dropped: [], failed: [] };
     for (const [id, change] of byId) {
       try {
-        if (approved.has(id)) { await copy.apply(change); outcome.applied.push(change.file); }
-        else if (declined.get(id)) { copy.keep(change); outcome.reworked.push({ file: change.file, reason: declined.get(id) }); }
+        if (approved.has(id)) { await copy.apply(change); outcome.applied.push(change.file); if (change.merged) outcome.merged.push(change.file); }
+        else if (declined.get(id)) { await copy.keep(change); outcome.reworked.push({ file: change.file, reason: declined.get(id), overlapped: change.conflict }); }
         else { await copy.revert(change); outcome.dropped.push(change.file); }
       } catch (error) { outcome.failed.push({ file: change.file, error: error.message }); }
     }
@@ -53,7 +53,7 @@ function open(vscode, copy, changes, onDone) {
     if (finished) return;
     finished = true;
     // Closed without deciding: nothing is copied; the changes stay in the copy and come up again after the next answer.
-    onDone({ applied: [], reworked: [], dropped: [], failed: [], closed: changes.map(c => c.file) });
+    onDone({ applied: [], merged: [], reworked: [], dropped: [], failed: [], closed: changes.map(c => c.file) });
   });
   return panel;
 }
@@ -71,10 +71,12 @@ function summary(outcome) {
 function report(outcome) {
   const lines = [];
   if (outcome.applied.length) lines.push("Approved and copied into the user's folder: " + outcome.applied.join(", ") + ".");
+  if ((outcome.merged || []).length) lines.push("Of these, merged with the user's own change made meanwhile (your working copy now has the merged file): " + outcome.merged.join(", ") + ".");
   if (outcome.dropped.length) lines.push("Declined without a reason; your change was dropped and the working copy has the user's version again: " + outcome.dropped.join(", ") + ".");
   if (outcome.failed.length) lines.push("Approved but not copied: " + outcome.failed.map(f => f.error).join(" "));
   if (outcome.closed && outcome.closed.length) lines.push("The user closed the review without deciding; still waiting in the working copy: " + outcome.closed.join(", ") + ".");
-  outcome.reworked.forEach(r => lines.push("Declined " + r.file + " - the user's reason: " + r.reason));
+  outcome.reworked.forEach(r => lines.push("Declined " + r.file + " - the user's reason: " + r.reason
+    + (r.overlapped ? " (the user had changed this file too and the changes overlapped: your working copy now holds the user's version; redo your change on top of it)" : "")));
   return lines.join("\n");
 }
 

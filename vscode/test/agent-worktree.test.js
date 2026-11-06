@@ -64,11 +64,55 @@ test("a file the user changed meanwhile is a conflict and is not overwritten; re
     fs.writeFileSync(path.join(dir, "a.txt"), "user\n");
     const [change] = await copy.changes();
     assert.equal(change.conflict, true);
-    await assert.rejects(copy.apply(change), /changed in your folder/);
+    await assert.rejects(copy.apply(change), /overlap/);
     assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "user\n");
     await copy.revert(change);
     assert.equal(fs.readFileSync(path.join(copy.dir, "a.txt"), "utf8"), "user\n");
     assert.deepEqual(await copy.changes(), []);
+  } finally { await copy.remove(); }
+});
+
+test("changes that do not overlap are merged; the merged file goes to the folder and the copy", async () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, "m.txt"), "1\n2\n3\n4\n5\n6\n7\n8\n");
+  execFileSync("git", ["add", "-A"], { cwd: dir });
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "m"], { cwd: dir });
+  const copy = await worktree.open(dir);
+  try {
+    fs.writeFileSync(path.join(copy.dir, "m.txt"), "1\nassistant\n3\n4\n5\n6\n7\n8\n");
+    fs.writeFileSync(path.join(dir, "m.txt"), "1\n2\n3\n4\n5\n6\n7\nuser\n");
+    const [change] = await copy.changes();
+    assert.equal(change.conflict, false);
+    assert.equal(change.merged, true);
+    assert.equal(change.after, "1\nassistant\n3\n4\n5\n6\n7\nuser\n");
+    assert.equal(change.before, "1\n2\n3\n4\n5\n6\n7\nuser\n", "the review compares with the folder as it is");
+    await copy.apply(change);
+    assert.equal(fs.readFileSync(path.join(dir, "m.txt"), "utf8"), "1\nassistant\n3\n4\n5\n6\n7\nuser\n");
+    assert.equal(fs.readFileSync(path.join(copy.dir, "m.txt"), "utf8"), "1\nassistant\n3\n4\n5\n6\n7\nuser\n");
+    assert.deepEqual(await copy.changes(), []);
+    // The next edit of the same file is measured against what the folder holds now: no stale conflict.
+    fs.writeFileSync(path.join(copy.dir, "m.txt"), "1\nassistant\n3\nmore\n5\n6\n7\nuser\n");
+    const [next] = await copy.changes();
+    assert.equal(next.conflict, false);
+    assert.equal(next.merged, false);
+  } finally { await copy.remove(); }
+});
+
+test("a declined overlap leaves the folder's version in the copy, and the redone change is not a conflict", async () => {
+  const dir = repo();
+  const copy = await worktree.open(dir);
+  try {
+    fs.writeFileSync(path.join(copy.dir, "a.txt"), "assistant\n");
+    fs.writeFileSync(path.join(dir, "a.txt"), "user\n");
+    const [change] = await copy.changes();
+    assert.equal(change.conflict, true);
+    await copy.keep(change);
+    assert.equal(fs.readFileSync(path.join(copy.dir, "a.txt"), "utf8"), "user\n");
+    fs.writeFileSync(path.join(copy.dir, "a.txt"), "user\nassistant\n");
+    const [redone] = await copy.changes();
+    assert.equal(redone.conflict, false);
+    await copy.apply(redone);
+    assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "user\nassistant\n");
   } finally { await copy.remove(); }
 });
 

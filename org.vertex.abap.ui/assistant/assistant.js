@@ -551,7 +551,9 @@ function claudeCommand(options, dir) {
   }
   // Reading runs freely; Edit, Write and Bash are left to the approval tool. In a git working copy (reviewAfter)
   // edits and writes run freely too - they are reviewed when the answer is done - and only Bash asks.
-  const allowed = (options.workDir ? (options.reviewAfter ? FOLDER_TOOLS.filter(t => t !== "Bash") : FOLDER_READ_TOOLS) : [])
+  // shellWithoutAsking (a setting, off by default) lets Bash run in the working copy without asking as well.
+  const allowed = (options.workDir ? (options.reviewAfter
+    ? FOLDER_TOOLS.filter(t => t !== "Bash" || options.shellWithoutAsking === true) : FOLDER_READ_TOOLS) : [])
     .concat(options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }));
   if (allowed.length) {
     args.push("--allowedTools", allowed.join(","));

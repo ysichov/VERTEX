@@ -144,6 +144,10 @@ test("in a git working copy edits run freely and only Bash asks", async () => {
   assert.equal(call.options.cwd, work);
   assert.equal(after(call.args, "--allowedTools"), "Read,Grep,Glob,Edit,Write,mcp__vertex__sap_table_layout");
   assert.equal(after(call.args, "--permission-prompt-tool"), "mcp__vertex_approve__approve_action");
+  await assistant.ask(common(spawn, "claude", { workDir: work, reviewAfter: true, shellWithoutAsking: true, approveUrl: "http://127.0.0.1:1/approve" }));
+  assert.equal(after(spawn.calls[1].args, "--allowedTools"), "Read,Grep,Glob,Edit,Write,Bash,mcp__vertex__sap_table_layout");
+  await assistant.ask(common(spawn, "claude", { workDir: work, shellWithoutAsking: true, approveUrl: "http://127.0.0.1:1/approve" }));
+  assert.equal(after(spawn.calls[2].args, "--allowedTools"), "Read,Grep,Glob,mcp__vertex__sap_table_layout", "outside a copy the setting does nothing");
 });
 
 test("pasted screenshots go to Claude Code inside a stream-json message", async () => {

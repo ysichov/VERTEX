@@ -55,10 +55,40 @@ async function open(folder, options = {}) {
   const sub = path.relative(top, path.resolve(folder));
   // What the user decided, by path: the copy's blob id then. A file shows again only when the copy changes it anew.
   const settled = new Map();
-  const blobIn = async (repo, file) => fs.existsSync(path.join(repo, file))
-    ? (await git(repo, ["hash-object", "--", file])).trim() : "deleted";
-  const baselineBlob = async file => (await git(dir, ["rev-parse", "-q", "--verify", baseline + ":" + file]).catch(() => "")).trim() || "deleted";
-  const text = async (repo, file) => fs.existsSync(path.join(repo, file)) ? fs.readFileSync(path.join(repo, file)) : null;
+  // A file's base: what the assistant's change is measured against and what the folder is expected to still hold.
+  // It starts as the baseline commit's and moves to the folder's version after every decision on the file, so a
+  // decided file never shows a conflict that is not there.
+  const bases = new Map();
+  const blobIn = async (repo, file, write) => fs.existsSync(path.join(repo, file))
+    ? (await git(repo, ["hash-object"].concat(write ? ["-w"] : [], ["--", file]))).trim() : "deleted";
+  const baseBlob = async file => bases.get(file)
+    || (await git(dir, ["rev-parse", "-q", "--verify", baseline + ":" + file]).catch(() => "")).trim() || "deleted";
+  const read = (repo, file) => fs.existsSync(path.join(repo, file)) ? fs.readFileSync(path.join(repo, file)) : null;
+  const write = (repo, file, content) => {
+    const target = path.join(repo, file);
+    if (content === null) { if (fs.existsSync(target)) fs.rmSync(target); return; }
+    fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, content);
+  };
+  /* The folder's version, the base and the assistant's version merged line by line (git merge-file): the merged
+     text, or null when their changes overlap or a side is missing. */
+  async function merge(file, base) {
+    const mine = read(top, file), theirs = read(dir, file);
+    if (!mine || !theirs || base === "deleted") return null;
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-merge-"));
+    try {
+      fs.writeFileSync(path.join(scratch, "folder"), mine);
+      fs.writeFileSync(path.join(scratch, "base"), await git(dir, ["cat-file", "-p", base], true));
+      fs.writeFileSync(path.join(scratch, "assistant"), theirs);
+      return await new Promise(resolve => execFile("git", ["merge-file", "-p", "folder", "base", "assistant"],
+        { cwd: scratch, windowsHide: true, encoding: "buffer", maxBuffer: 512 * 1024 * 1024 },
+        (error, out) => resolve(error ? null : out)));
+    } finally { fs.rmSync(scratch, { recursive: true, force: true }); }
+  }
+  // After a decision: the folder's version is the file's base from now on.
+  const settle = async (change) => {
+    bases.set(change.file, await blobIn(top, change.file, true));
+    settled.set(change.file, await blobIn(dir, change.file));
+  };
   return {
     folder: path.resolve(folder), top, dir, cwd: sub ? path.join(dir, sub) : dir,
     /** The files the assistant changed since the start, or since the user's last decision on them. */
@@ -70,33 +100,44 @@ async function open(folder, options = {}) {
         const status = listed[i], file = listed[i + 1];
         const now = await blobIn(dir, file);
         if (settled.get(file) === now) continue;
-        const before = await text(top, file), after = await text(dir, file);
+        const base = await baseBlob(file), folderNow = await blobIn(top, file);
+        if (now === base) continue;
+        const before = read(top, file);
+        let after = read(dir, file), conflict = false, merged = false;
+        if (folderNow !== base && folderNow !== now) {
+          // The user changed the file too: their change and the assistant's are merged when they do not overlap.
+          const joined = await merge(file, base);
+          if (joined) { after = joined; merged = true; } else conflict = true;
+        }
         result.push({ file, path: path.join(top, file), status: status === "A" ? "added" : status === "D" ? "deleted" : "changed",
-          // The user's own copy changed since the start: carrying the assistant's version over would lose it.
-          conflict: (await blobIn(top, file)) !== (await baselineBlob(file)),
+          conflict, merged, folderBlob: folderNow, content: after,
           binary: [before, after].some(content => content && content.includes(0)),
           before: before ? before.toString("utf8") : "", after: after ? after.toString("utf8") : "", blob: now });
       }
       return result;
     },
-    /** Carries the copy's version of FILE into the user's folder. */
+    /** Carries the assistant's version - merged with the folder's when both changed it - into the user's folder. */
     async apply(change) {
-      const target = path.join(top, change.file);
-      if ((await blobIn(top, change.file)) !== (await baselineBlob(change.file))) {
-        throw new Error(change.file + " changed in your folder while the assistant worked; it was not overwritten.");
+      if (change.conflict) throw new Error(change.file + ": your change and the assistant's overlap; it was not overwritten.");
+      if ((await blobIn(top, change.file)) !== change.folderBlob) {
+        throw new Error(change.file + " changed in your folder during the review; it was not overwritten.");
       }
-      if (change.status === "deleted") { if (fs.existsSync(target)) fs.rmSync(target); }
-      else { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.copyFileSync(path.join(dir, change.file), target); }
-      settled.set(change.file, change.blob);
+      const content = change.status === "deleted" ? null : change.content;
+      write(top, change.file, content);
+      // A merged file goes into the copy too, so the assistant goes on from what the folder now holds.
+      if (change.merged) write(dir, change.file, content);
+      await settle(change);
     },
-    /** Leaves the copy's version where it is, for the assistant to rework. */
-    keep(change) { settled.set(change.file, change.blob); },
+    /** Leaves the copy's version for the assistant to rework. Where it overlaps the user's own change the copy
+        gets the folder's version, and the assistant redoes its change on top of it. */
+    async keep(change) {
+      if (change.conflict) write(dir, change.file, read(top, change.file));
+      await settle(change);
+    },
     /** Puts the user's version of FILE back into the copy. */
     async revert(change) {
-      const source = path.join(top, change.file), target = path.join(dir, change.file);
-      if (fs.existsSync(source)) { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.copyFileSync(source, target); }
-      else if (fs.existsSync(target)) fs.rmSync(target);
-      settled.set(change.file, await blobIn(dir, change.file));
+      write(dir, change.file, read(top, change.file));
+      await settle(change);
     },
     async remove() {
       await git(top, ["worktree", "remove", "--force", dir]).catch(() => {});

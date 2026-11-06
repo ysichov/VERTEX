@@ -43,7 +43,7 @@ test("one review per answer: approved copied, declined with a reason kept for re
     assert.equal(page.posted.pop().action, "error", "every file needs a decision");
     await page.send({ action: "apply", approved: ["f1"], declined: [{ id: "f2", reason: "keep the old wording" }, { id: "f3", reason: "" }] });
     assert.deepEqual(outcome.applied, ["a.txt"]);
-    assert.deepEqual(outcome.reworked, [{ file: "b.txt", reason: "keep the old wording" }]);
+    assert.deepEqual(outcome.reworked, [{ file: "b.txt", reason: "keep the old wording", overlapped: false }]);
     assert.deepEqual(outcome.dropped, ["c.txt"]);
     assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "a\nfirst\nsecond\n");
     assert.equal(fs.readFileSync(path.join(dir, "b.txt"), "utf8"), "b.txt\n", "a declined file is not copied");

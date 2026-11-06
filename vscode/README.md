@@ -205,8 +205,12 @@ review: the totals (rows +/~/-, blocks), a group per folder with a row per file 
 decision; **Expand all · Collapse all**), then each file's blocks - a row opens its file. Approve or
 decline each file, then **Apply**: approved files are copied into your folder. A declined file takes
 an optional reason; with one, the reasons are sent to Claude Code as your next message and it reworks
-the file in its copy, and the next review shows it again; without one, its change is dropped. A file
-you changed yourself meanwhile can only be declined, so your change is never overwritten. Closing the
+the file in its copy, and the next review shows it again; without one, its change is dropped. If you
+changed a file yourself meanwhile, git merges the two changes line by line (`git merge-file`) when
+they do not overlap: the review then shows your file with the assistant's change merged in, marked
+as merged, for you to approve - a clean merge is not a check that the result is right. When the
+changes overlap the file can only be declined, so your change is never overwritten; declined with a
+reason, the assistant gets your version in its copy and redoes its change on top of it. Closing the
 page decides nothing: the files come up again after the next answer. The copy lasts for the
 conversation; **New conversation** removes it, with any change not yet applied. Builds and tests in
 the copy lack ignored files (`node_modules`, build output) and can fail there.
@@ -214,9 +218,12 @@ the copy lack ignored files (`node_modules`, build output) and can fail there.
 *A folder outside git:* every file edit or write waits in the same review page before it is written;
 **Allow** writes the approved files, **Deny** or closing the page refuses them all.
 
-In both, Claude Code is told to change files only with its edit tools, never through the shell. A
-shell command (a build, a test run) asks in a VS Code dialog showing the command; **Allow** runs it,
-closing the dialog refuses it. While Claude Code has a folder, the VERTEX panel shows it as **Folder** under
+In both, Claude Code is told to read files with its read and search tools and to change them only
+with its edit tools, never through the shell. A shell command (a build, a test run) asks in a VS Code
+dialog showing the command; **Allow** runs it, closing the dialog refuses it. In a git working copy
+the setting `vertex.ai.shellWithoutAsking` (off by default) runs the commands without asking: file
+changes they make still come to the review, but a command can reach outside the copy - an absolute
+path into your folder, git commands on the shared repository, the network. While Claude Code has a folder, the VERTEX panel shows it as **Folder** under
 **SAP system** (the full path on hover); the SAP system stays the one its SAP tools use. The folder's `CLAUDE.md` applies
 (your user-level `CLAUDE.md` loads with it). A SAP tab, or a file outside the workspace, works as
 before, through VERTEX's SAP tools: a change goes into its editor tab unsaved, and you review it

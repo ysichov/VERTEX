@@ -543,6 +543,11 @@
           "default": false,
           "markdownDescription": "Let Claude Code load your personal CLAUDE.md and auto-memory for VERTEX requests. Off by default: they travel with every SAP request and can show up in answers."
         },
+        "vertex.ai.shellWithoutAsking": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Run Claude Code's shell commands in its git working copy without asking. Off by default. The working copy keeps file changes for review, but a command can still reach outside it: an absolute path into your folder, git commands on the shared repository (commit, branch, reset, stash, push), the network. A folder outside git always asks."
+        },
         "vertex.review.storage": {
           "type": "string",
           "enum": [
