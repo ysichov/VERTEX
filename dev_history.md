@@ -1,3 +1,7 @@
+## 2026-11-06 — Keep current project access distinct from editor tabs
+
+The reported Codex session had a working directory and local tools in all five logged requests, but made no file-tool calls and inferred missing access from Session Logs. Added authoritative per-request project access beside the question, with a Glob check before denying access and explicit separation from historical replies and editor metadata. Seventeen provider and working-folder tests passed. A live gpt-6-luna check with stale denial history and a Session Logs tab called Glob, Read and Edit and changed an isolated test file. Version remains 0.9.64.
+
 ## 2026-11-06 — Prompt-first Session Logs rows
 
 At the user's request, a session summary now leads with the first prompt's ellipsised preview, followed by provider, time, duration, prompt count and usage in a theme-aware 0.9em metadata row. The checkbox remains at the left, and the prompt stays visible while the session is open. The shared report source covers VS Code and Eclipse; the report test pins the content order and reduced metadata size. Version remains 0.9.64.

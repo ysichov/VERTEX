@@ -1,3 +1,7 @@
+## 2026-11-06 — Explicit current project access in chat
+
+Each request names the available project folder, working directory and local tools beside the question. Session Logs and other editor tabs no longer imply missing filesystem access; the assistant is instructed to check the folder with Glob before claiming it is unavailable. Version remains 0.9.64.
+
 ## 2026-11-06 — Prompt-first session headings
 
 Session Logs now starts each collapsed session with the beginning of its prompt. Provider, time, duration, prompt count and token usage sit together on a smaller secondary line below it. The shared page gives VS Code and Eclipse the same layout. Version remains 0.9.64.

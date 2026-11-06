@@ -26,6 +26,11 @@ for (const { id, fails } of ["claude", "codex", "codemie", "copilot", "anthropic
       review = { copy, changes, callback, options }; return { dispose() {}, panel: {} };
     });
     const run = async options => {
+      const access = JSON.parse(options.prompt.split("Current local project access (authoritative for this request):\n")[1].split("\n")[0]);
+      assert.equal(access.folder, root);
+      assert.equal(access.working_directory, options.workDir);
+      assert.deepEqual(access.tools, local.schemas.map(tool => tool.name));
+      assert.match(options.prompt, /Open editor tabs describe the UI, not filesystem access/);
       if (id === "claude") {
         assert.equal(options.localTools, false);
         assert.equal(options.approveUrl, "http://127.0.0.1:1/approve");
