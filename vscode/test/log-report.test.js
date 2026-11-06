@@ -140,3 +140,22 @@ test("provider evidence is visible without doubling session usage", () => {
   assert.equal(session.prompts[0].details[0].type, "Provider usage (cli_run)");
   assert.match(session.prompts[0].details[0].text, /input_tokens/);
 });
+
+test("log Markdown renders formatting while keeping HTML and code inert", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const node = tag => ({ tagName: tag.toUpperCase(), children: [], dataset: {}, textContent: "",
+    appendChild(child) { this.children.push(child); return child; } });
+  const context = { document: { createElement: node, createTextNode: text => ({ textContent: text }) } };
+  vm.createContext(context);
+  vm.runInContext(page.slice(page.indexOf("function inline("), page.indexOf("  function n(value)")), context);
+  const target = node("div");
+  context.markdown("# Title\n**bold** and *italic* with `code`\n\n- one\n- two\n\n1. first\n\n```js\n<script>alert(1)</script>\n```\n<img src=x onerror=alert(1)>", target);
+  const all = [];
+  const walk = item => { all.push(item); (item.children || []).forEach(walk); };
+  walk(target);
+  for (const tag of ["STRONG", "EM", "CODE", "UL", "OL", "PRE"]) assert.ok(all.some(item => item.tagName === tag), tag);
+  assert.equal(all.filter(item => item.tagName === "LI").length, 3);
+  assert.ok(all.some(item => item.tagName === "CODE" && item.textContent === "<script>alert(1)</script>"));
+  assert.ok(all.some(item => !item.tagName && item.textContent === "<img src=x onerror=alert(1)>"));
+  assert.equal(all.some(item => item.tagName === "SCRIPT" || item.tagName === "IMG"), false);
+});

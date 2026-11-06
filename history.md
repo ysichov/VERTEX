@@ -1,3 +1,7 @@
+## 2026-11-06 — Chat screenshots and readable session logs
+
+Session logs render questions, answers and reasoning with the chat’s safe DOM Markdown renderer. User text is blue, answers green, reasoning indigo with a lighter dark-theme shade. ChatGPT subscription requests now pass screenshots to Codex as temporary image files via `--image`; files are removed on success and failure. Version remains 0.9.64.
+
 # Release history
 
 ## 2026-11-06 — 0.9.64: Claude's file work in the log, with the code and a link to each file

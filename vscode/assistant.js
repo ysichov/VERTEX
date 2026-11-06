@@ -399,8 +399,8 @@ function configuredCodexModel(codexHome) {
 async function ask(options) {
   const assistant = describe(options.assistant);
   const file = options.executable || locate(options.assistant, options.extensionPath);
-  if ((options.images || []).length && !claudeLike(options.assistant)) {
-    throw new Error("Screenshots are sent only to Claude Code and EPAM CodeMie; nothing was sent.");
+  if ((options.images || []).length && !claudeLike(options.assistant) && options.assistant !== "codex") {
+    throw new Error("Screenshots are sent to Claude Code, Codex and EPAM CodeMie; nothing was sent.");
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-window-"));
   try {
@@ -639,6 +639,16 @@ function codexCommand(options, dir) {
   if (EFFORTS.codex.includes(options.effort)) {
     args.push("-c", "model_reasoning_effort=" + options.effort);
   }
+  // Keep attachments in this request's temporary directory, removed by ask's finally block.
+  (options.images || []).forEach((image, index) => {
+    const extension = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[image.media_type];
+    if (!extension || typeof image.data !== "string" || !image.data || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) {
+      throw new Error("Invalid screenshot attachment; nothing was sent.");
+    }
+    const file = path.join(dir, "screenshot-" + (index + 1) + "." + extension);
+    fs.writeFileSync(file, Buffer.from(image.data, "base64"), { mode: 0o600 });
+    args.push("--image", file);
+  });
   // The instructions travel with the request: exec has no separate channel
   // for them once the person's own configuration is left out.
   args.push("-");

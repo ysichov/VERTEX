@@ -227,7 +227,7 @@ test("pasted screenshots go to Claude Code inside a stream-json message", async 
 
 test("a screenshot is refused, not dropped, where it cannot be sent", async () => {
   const image = { media_type: "image/png", data: "x" };
-  await assert.rejects(assistant.ask(common(spawner(() => {}), "codex", { images: [image], onProgress() {} })), /only to Claude Code/);
+  await assert.rejects(assistant.ask(common(spawner(() => {}), "codex", { images: [{ media_type: "text/html", data: "eA==" }] })), /Invalid screenshot/);
   await assert.rejects(assistant.ask(common(spawner(() => {}), "claude", { images: [image] })), /streaming chat/);
 });
 
@@ -579,4 +579,20 @@ test("on Windows CodeMie's commands are found through npm's .cmd folder, never i
   assert.ok(!env.Path.includes(String.raw`@codemieai\code\bin`));
   const unix = assistant.codemieEnv("/usr/local/bin/codemie-claude", { PATH: "/usr/bin" }, "linux");
   assert.equal(unix.PATH.split(":")[0], "/usr/local/bin");
+});
+
+for (const fails of [false, true]) test("Codex receives multiple screenshot files and cleans them after " + (fails ? "failure" : "success"), async () => {
+  let files;
+  const images = [{ media_type: "image/png", data: "iVBORw0KGgo=" }, { media_type: "image/jpeg", data: "/9j/" }];
+  const spawn = spawner(call => {
+    files = call.args.flatMap((arg, i) => arg === "--image" ? [call.args[i + 1]] : []);
+    assert.equal(files.length, 2);
+    files.forEach((file, i) => assert.deepEqual(fs.readFileSync(file), Buffer.from(images[i].data, "base64")));
+    assert.equal(call.input, "RULES\n\nPROMPT");
+    if (!fails) fs.writeFileSync(after(call.args, "-o"), JSON.stringify(PLAN));
+    call.child.emit("close", fails ? 1 : 0);
+  });
+  const request = assistant.ask(common(spawn, "codex", { images }));
+  if (fails) await assert.rejects(request); else await request;
+  files.forEach(file => assert.equal(fs.existsSync(file), false));
 });

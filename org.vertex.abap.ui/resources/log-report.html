@@ -71,7 +71,19 @@
   /* What Claude said or thought between its steps: the panel's "Claude reasoning", kept in the timeline. */
   .step-note { padding: 4px 8px; white-space: pre-wrap; overflow-wrap: anywhere; border-top: 1px solid var(--vscode-panel-border); }
   .step-note .label { display: block; color: var(--vscode-descriptionForeground); font-size: 0.85em; margin-bottom: 2px; }
-  .step-note.thinking { color: var(--vscode-descriptionForeground); font-style: italic; }
+  .entry.user > .detail, .entry.model > .detail { color: var(--entry-color); }
+  .step-note { color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }
+  .step-note.thinking { color: #4f46e5; }
+  body.vscode-dark .step-note.thinking, body.vscode-high-contrast .step-note.thinking { color: #a5b4fc; }
+  @media (prefers-color-scheme: dark) { body:not([class*="vscode-"]) .step-note.thinking { color: #a5b4fc; } }
+  .step-note .label, .step-note .detail { color: inherit; }
+  .markdown { white-space: normal; }
+  .technical .step-note .detail { background: transparent; font: inherit; padding: 0; }
+  .markdown p { margin: 0 0 6px; }
+  .markdown p:last-child { margin-bottom: 0; }
+  .markdown pre { white-space: pre-wrap; background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); padding: 8px; }
+  .markdown code { font-family: var(--vscode-editor-font-family); }
+  .markdown ul, .markdown ol { margin: 4px 0; padding-left: 24px; }
   .step-fields { margin: 0; padding: 4px 0; font-size: 0.9em; }
   .step-fields .step-line { font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; }
 </style>
@@ -107,6 +119,57 @@
     if (text !== undefined) node.textContent = text;
     return node;
   }
+function inline(text, parent) {
+  text.split(/(\[(?:run|session) [0-9a-f-]{6,36} step \d+\]|\x60[^\x60]+\x60|\*\*[^*]+\*\*|\*[^*\s][^*]*\*)/).forEach(token => {
+    if (!token) return;
+    let node;
+    const cite = /^\[(run|session) ([0-9a-f-]{6,36}) step (\d+)\]$/.exec(token);
+    // A cited step of a transpiler run: a link once the run is known (runLinks), plain text otherwise.
+    if (cite) { node = document.createElement('span'); node.className = 'run-cite'; node.dataset.kind = cite[1]; node.dataset.run = cite[2]; node.dataset.step = cite[3]; node.textContent = token; }
+    else if (/^\x60[^\x60]+\x60$/.test(token)) { node = document.createElement('code'); node.textContent = token.slice(1, -1); }
+    else if (/^\*\*[^*]+\*\*$/.test(token)) { node = document.createElement('strong'); node.textContent = token.slice(2, -2); }
+    else if (/^\*[^*\s][^*]*\*$/.test(token)) { node = document.createElement('em'); node.textContent = token.slice(1, -1); }
+    else { node = document.createTextNode(token); }
+    parent.appendChild(node);
+  });
+}
+function markdown(text, target) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  let list = null, paragraph = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*\x60\x60\x60/.test(line)) {
+      const code = [];
+      for (i++; i < lines.length && !/^\s*\x60\x60\x60/.test(lines[i]); i++) { code.push(lines[i]); }
+      const pre = document.createElement('pre'), inner = document.createElement('code');
+      inner.textContent = code.join('\n'); pre.appendChild(inner); target.appendChild(pre);
+      list = paragraph = null; continue;
+    }
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    if (bullet || numbered) {
+      const kind = bullet ? 'UL' : 'OL';
+      if (!list || list.tagName !== kind) { list = document.createElement(kind); target.appendChild(list); }
+      const li = document.createElement('li'); inline((bullet || numbered)[1], li); list.appendChild(li);
+      paragraph = null; continue;
+    }
+    list = null;
+    if (!line.trim()) { paragraph = null; continue; }
+    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    if (heading) {
+      const p = document.createElement('p'), strong = document.createElement('strong');
+      inline(heading[1], strong); p.appendChild(strong); target.appendChild(p); paragraph = null; continue;
+    }
+    if (paragraph) { paragraph.appendChild(document.createElement('br')); }
+    else { paragraph = document.createElement('p'); target.appendChild(paragraph); }
+    inline(line, paragraph);
+  }
+}
+
+  function richText(text) {
+    var node = el("div", "detail markdown");
+    markdown(String(text || ""), node);
+    return node;
+  }
   function n(value) { return Number(value || 0).toLocaleString(); }
   function time(value) { return value ? new Date(value).toLocaleString() : ""; }
   // A prompt's time of day; the date only when it differs from the session's, which the session line shows.
@@ -131,7 +194,7 @@
   function section(label, cls, text) {
     var box = el("details", "entry " + cls);
     box.appendChild(el("summary", "", label));
-    if (text !== undefined) box.appendChild(el("div", "detail", text));
+    if (text !== undefined) box.appendChild(cls === "user" || cls === "model" ? richText(text) : el("div", "detail", text));
     return box;
   }
   function objectLinks(parent, objects) {
@@ -260,7 +323,7 @@
       var answer = section("Model answer", "model");
       answers.forEach(function (d, i) {
         if (answers.length > 1) answer.appendChild(el("div", "kind", "Response " + (i + 1)));
-        answer.appendChild(el("div", "detail", d.text));
+        answer.appendChild(richText(d.text));
         objectLinks(answer, d.objects);
       });
       body.appendChild(answer);
@@ -314,7 +377,7 @@
           } else if (t.kind === "note") {
             var note = el("div", "step-note " + t.note);
             note.appendChild(el("span", "label", t.note === "thinking" ? "Thinking" : "Claude"));
-            note.appendChild(document.createTextNode(t.text));
+            note.appendChild(richText(t.text));
             (group || toolBox).appendChild(note);
           }
         });

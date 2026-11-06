@@ -431,3 +431,15 @@ test("an explicit review-block question is not widened by the visible object's f
   assert.match(prompt, /ONLY_BLOCK_ONE/);
   assert.doesNotMatch(prompt, /OTHER_BLOCKS_FULL_DIFF|UNRELATED_SELECTION/);
 });
+
+test("ChatGPT subscription forwards screenshots to Codex", async t => {
+  const images = [{ media_type: "image/png", data: "iVBORw0KGgo=" }];
+  let received;
+  t.mock.method(assistant, "ask", async options => { received = options; return { plan: { answer: "Screenshot received" }, model: "codex" }; });
+  const ask = chat.create(fakeVscode({ provider: "codex-subscription" }),
+    { schemas: [], instructions: "", editorContext: () => null },
+    { start: async () => ({ url: "http://127.0.0.1:1/mcp" }), token: "t" });
+  assert.equal((await ask("Explain this screenshot", { images })).answer, "Screenshot received");
+  assert.equal(received.assistant, "codex");
+  assert.deepEqual(received.images, images);
+});

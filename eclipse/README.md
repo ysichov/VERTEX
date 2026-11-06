@@ -305,3 +305,5 @@ In a two-pane diff the new version is on the left; review blocks offer Approve,
 Decline and Comment. Inline / 2 pane is shared with the version diff.
 
 For a method with no separate version directory, Diff uses the class history and extracts that method, with a notice identifying the source of the history.
+
+Session logs render Markdown in questions, answers and reasoning; user text is blue, answers green and reasoning indigo.

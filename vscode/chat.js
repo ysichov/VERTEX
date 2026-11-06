@@ -404,8 +404,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         // program to reach its breakpoints; three minutes are too few for that.
         ...(toolSchemas.length || workDir ? { timeout: 600000 } : {})
       };
-      if (images.length && id !== "claude" && id !== "codemie") {
-        throw new Error("Screenshots are sent only to Claude Code and EPAM CodeMie. Remove them or switch the provider; nothing was sent.");
+      if (images.length && id !== "claude" && id !== "codemie" && id !== "codex") {
+        throw new Error("Screenshots are sent to Claude Code, Codex and EPAM CodeMie. Remove them or switch the provider; nothing was sent.");
       }
       if (log) log.request({ instructions: requestOptions.instructions, prompt: requestOptions.prompt,
         tools: toolSchemas, schema: requestOptions.schema, ...(images.length ? { screenshots: images.length } : {}) });

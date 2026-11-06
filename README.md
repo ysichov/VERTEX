@@ -463,3 +463,5 @@ With a VS Code AI log folder configured, `vertex_provider_response` JSONL record
 For a method with no separate version directory, Diff uses the class history and extracts that method, with a notice identifying the source of the history.
 
 In VS Code, **LLM Providers → Check models**, beside each provider, checks only that provider. Progress, the working-model count and **Stop** appear in the same header. Failed models are switched off; **Save** applies the choices to chat. Checks use short requests without SAP context and consume normal provider quota or billing.
+
+Session logs render Markdown in questions, answers and reasoning; user text is blue, answers green and reasoning indigo.
