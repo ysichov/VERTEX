@@ -69,7 +69,7 @@ dialog label{display:block;margin:8px 0}
 <button id="chat-toggle" title="Show or hide the assistant" aria-expanded="false">Ask AI</button>
 <button id="back" title="Back to the previous VERTEX source" hidden>← Back</button>
 <select id="object-type" aria-label="Object type"></select>
-<div id="object-field"><input id="object-name" placeholder="Object name or mask: Z_VX*" aria-label="Object name" title="Enter an object name and press Enter; a name with * or + lists what matches" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/></svg></button><div id="object-matches" role="listbox"></div></div><button id="browse-local" type="button" hidden>Browse...</button>
+<div id="object-field"><input id="object-name" placeholder="Object name or mask: Z_VX*" aria-label="Object name" title="Enter an object name and press Enter; a name with * or + lists what matches" spellcheck="false"><button id="find-requests" type="button" title="Find transport requests" aria-label="Find transport requests"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5"/><path d="m10 10 4 4"/></svg></button><div id="object-matches" role="listbox"></div></div><button id="browse-local" type="button" hidden>Browse...</button><button id="local-git-history" type="button" title="Show the git history of the local folder" hidden>Git History</button>
 <select id="function" aria-label="Function"></select>
 </header><div id="notice" role="status"></div><div id="work"><aside id="tparts" aria-label="Parts"></aside><div id="tsplit" title="Drag to resize the parts"></div><div id="results" aria-label="Function result"></div></div></main>
 <dialog id="request-dialog"><form method="dialog"><strong>Find transport requests</strong>
@@ -139,7 +139,7 @@ if(typeof sdeLocalFolder==="function"&&!initial?.boundObject)typeBox.add(new Opt
 function fields(){
   typeBox.value=localFolderState?"LOCAL_FOLDER":current.type; nameBox.value=localFolderState?localFolderState.folder:current.name;
   nameBox.readOnly=!!localFolderState;nameBox.style.textTransform=localFolderState?"none":"";
-  document.getElementById("browse-local").hidden=!localFolderState;actionBox.replaceChildren();
+  document.getElementById("browse-local").hidden=!localFolderState;document.getElementById("local-git-history").hidden=!localFolderState;actionBox.replaceChildren();
   VertexObjects.objects.find(o=>o[0]===current.type)[2].filter(a=>!(initial?.local||localFolderState)||["uml","metrics","scheme","flow"].includes(a)).forEach(a=>actionBox.add(new Option(VertexObjects.labels[a],a)));
   actionBox.value=current.action;
   findButton.style.display = current.type === "TR" ? "inline-block" : "none";
@@ -645,6 +645,10 @@ function sdeLocalFolderReady(value){
   fields();run();
 }
 document.getElementById("browse-local").onclick=()=>sdeLocalFolder(false);
+document.getElementById("local-git-history").onclick=()=>{
+  if(typeof sdeLocalGitHistory==="function")sdeLocalGitHistory(localFolderState?.folder||"");
+  else notice("Git History is not available yet.");
+};
 typeBox.onchange=()=>{
   if(typeBox.value==="LOCAL_FOLDER"){sdeLocalFolder(false);return;}
   if(localFolderState){localFolderState=null;sdeLocalFolder(true);}

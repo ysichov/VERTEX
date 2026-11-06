@@ -1,3 +1,23 @@
+## 2026-11-06 — Git History in the VERTEX panel
+
+In VS Code the VERTEX panel shows **Git History** beside **Folder**: it opens the commits of the folder the assistant works in. A commit hash in Git History opens the commit on the review page, read only, with ASK AI on a block, a file or the whole commit.
+
+## 2026-11-06 — 0.9.65
+
+VS Code extension 0.9.65 and Eclipse build 0.9.65.20261106194949, with the changes of 2026-11-06 below.
+
+## 2026-11-06 — Git History of a local folder
+
+In VS Code's VERTEX Tools, **Git History** beside a chosen local folder opens **VERTEX: Git History**: a separate window listing the folder's commits as a table (commit, date, author, message). Eclipse does not have it. Version remains 0.9.64.
+
+## 2026-11-06 — Glob lists folders
+
+The VERTEX Glob tool lists folders for a pattern ending in `/`: `*/` the top-level folders, `**/` all of them. Before, such a pattern returned an empty list, which a model read as "no folders". Version remains 0.9.64.
+
+## 2026-11-06 — The question comes last in the chat prompt
+
+The request now closes the prompt, after the list of open editor tabs, so a model answers the question instead of the last context block it read. Version remains 0.9.64.
+
 ## 2026-11-06 — Explicit current project access in chat
 
 Each request names the available project folder, working directory and local tools beside the question. Session Logs and other editor tabs no longer imply missing filesystem access; the assistant is instructed to check the folder with Glob before claiming it is unavailable. Version remains 0.9.64.

@@ -92,7 +92,14 @@ function parseSession(text, file) {
     }
     const content = record.message?.content;
     if (record.type === "vertex_provider_response") {
-      if (current) current.details.push({ type: "Provider usage (" + record.scope + ")",
+      // A model call within the run is a step of the timeline: the events Claude Code sends for one message (its
+      // text, then a tool call) share the message id and are one step. The run's total stays a detail of its own.
+      if (current && record.scope === "model_response") {
+        const id = record.response?.id || "";
+        const last = current.timeline.filter(entry => entry.kind === "model").pop();
+        if (last && id && last.id === id) last.usage = record.response?.usage || last.usage;
+        else current.timeline.push({ kind: "model", id, usage: record.response?.usage || null, time: Number.isFinite(time) ? time : null });
+      } else if (current) current.details.push({ type: "Provider usage (" + record.scope + ")",
         text: prettyJson({ provider: record.provider, response: record.response }) });
       continue;
     }
@@ -112,7 +119,10 @@ function parseSession(text, file) {
         ? content.filter(block => block?.type === "text").map(block => block.text || "").join("\n") : "";
       if (prompt.trim()) {
         current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end,
-          text: prompt.trim(), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [] };
+          text: prompt.trim(), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
+          screenshots: Array.isArray(record.vertex_screenshots) ? record.vertex_screenshots : [],
+          // Model calls and tool calls in the order they happened.
+          timeline: [] };
         session.prompts.push(current);
       } else if (current && Array.isArray(content)) {
         for (const block of content) if (block?.type === "tool_result") {
@@ -124,6 +134,12 @@ function parseSession(text, file) {
           current.details.push(detail);
         }
       }
+      continue;
+    }
+    // Claude's words and thinking between its steps: a line of the timeline, not an answer.
+    if (record.vertex_step === "claude_note") {
+      const note = Array.isArray(content) && content[0];
+      if (current && note && note.text) current.timeline.push({ kind: "note", note: note.note === "thinking" ? "thinking" : "text", text: String(note.text) });
       continue;
     }
     if (record.type !== "assistant" || !record.message) continue;
@@ -141,13 +157,28 @@ function parseSession(text, file) {
         if (block?.type === "text" && block.text) current.details.push({ type: "answer", text: String(block.text), objects: record.vertex_objects || [] });
         if (block?.type === "tool_use") {
           const detail = { type: "tool", name: String(block.name || "tool"), tool_id: block.id || message.id || "",
-            text: String(block.name || "tool") + "\n" + JSON.stringify(block.input || {}, null, 2) };
+            text: String(block.name || "tool") + "\n" + JSON.stringify(block.input || {}, null, 2),
+            // Claude Code's own steps and the review are drawn from their arguments, not as JSON.
+            ...(record.vertex_step ? { step: record.vertex_step, input: block.input || {} } : {}) };
           if (block.vertex_objects?.length) detail.objects = block.vertex_objects;
           if (detail.tool_id) toolCalls.set(detail.tool_id, detail);
           current.details.push(detail);
+          current.timeline.push({ kind: "tool", tool_id: detail.tool_id });
         }
       }
     }
+  }
+  // Claude Code streams its answer as plain text before the structured one, so the last "note" of a run is often
+  // the answer itself: a note the answer contains is not shown twice.
+  const flat = text => String(text || "").replace(/\s+/g, " ").trim();
+  for (const prompt of session.prompts) {
+    const answers = prompt.details.filter(d => d.type === "answer").map(d => flat(d.text));
+    if (!answers.length) continue;
+    prompt.timeline = prompt.timeline.filter(entry => {
+      if (entry.kind !== "note" || entry.note !== "text") return true;
+      const said = flat(entry.text).slice(0, 300);
+      return !said || !answers.some(answer => answer.includes(said));
+    });
   }
   // debug_run knows its ID before the first stop is saved. Once a later tool
   // response confirms that recording, the initial call can link to it too.
@@ -189,6 +220,8 @@ async function clearConversations(vscode, ids) {
   for (const session of sessions) {
     const file = path.join(report.folder, session.id + ".jsonl");
     fs.unlinkSync(file);
+    // The conversation's screenshots go with it.
+    fs.rmSync(path.join(report.folder, session.id), { recursive: true, force: true });
     // Prevent a pending model response from recreating a deleted conversation.
     __vertexRequire(2).discardFiles([file]);
   }
@@ -218,6 +251,17 @@ function open(vscode, options = {}) {
     if (message?.action === "openSnapshot") {
       try { __vertexRequire(3).open(vscode, message.snapshot); }
       catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "openScreenshot") {
+      // Only a screenshot saved in the configured log folder opens, in VS Code's own image viewer.
+      try {
+        const root = path.resolve(vscode.workspace.getConfiguration("vertex.ai").get("logPath", "") || "", "claude_compatible");
+        const file = path.resolve(String(message.file || ""));
+        if (!/\.(png|jpe?g|gif|webp)$/i.test(file) || path.relative(root, file).startsWith("..") || path.isAbsolute(path.relative(root, file))) {
+          throw new Error("That screenshot is not in the log folder.");
+        }
+        await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file), { viewColumn: vscode.ViewColumn.Beside });
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openObject") {
       try {
@@ -292,7 +336,7 @@ function create(root, provider, session, include) {
   const dir = path.join(root, "claude_compatible");
   const file = path.join(dir, String(provider || "assistant").replace(/[^\w.-]/g, "_") + "_"
     + String(session || stamp(new Date())).replace(/[^\w.-]/g, "_") + ".jsonl");
-  let sequence = 0, discarded = false;
+  let sequence = 0, discarded = false, screenshotCount = 0;
   const write = entry => {
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
@@ -302,10 +346,24 @@ function create(root, provider, session, include) {
   return {
     file,
     discard() { discarded = true; },
-    user(text) {
+    /* A question; screenshots pasted with it are part of it: with the questions option each is saved as a file in
+       the conversation's folder beside the log (<log name>/screenshot-<n>.<ext>), without it only counted. */
+    user(text, images) {
       const objects = [];
       const content = on.questions ? sanitizeText(String(text || ""), objects) : NOT_LOGGED;
-      write({ type: "user", message: { role: "user", content }, vertex_objects: objects });
+      const pasted = Array.isArray(images) ? images.filter(image => image && typeof image.data === "string" && image.data) : [];
+      let screenshots;
+      if (pasted.length && on.questions) {
+        const folder = file.replace(/\.jsonl$/, "");
+        fs.mkdirSync(folder, { recursive: true });
+        screenshots = pasted.map(image => {
+          const ext = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[image.media_type] || "png";
+          const target = path.join(folder, "screenshot-" + (++screenshotCount) + "." + ext);
+          fs.writeFileSync(target, Buffer.from(image.data, "base64"));
+          return { file: target, media_type: image.media_type || "image/png" };
+        });
+      } else if (pasted.length) screenshots = pasted.map(image => ({ media_type: image.media_type || "image/png" }));
+      write({ type: "user", message: { role: "user", content }, vertex_objects: objects, ...(screenshots ? { vertex_screenshots: screenshots } : {}) });
     },
     request({ instructions, prompt, tools, schema }) {
       if (!on.request) { return; }
@@ -348,13 +406,21 @@ function create(root, provider, session, include) {
     /* A step of Claude Code's own (Read, Grep, Glob, Edit, Write, Bash, ...), with the tool option. What it read
        or wrote is not logged - only where and how much - as for SAP tools; a command and its output are. */
     step(step) {
-      if (!on.tools || !step || !step.id) { return; }
+      if (!step || !step.id) { return; }
+      // What Claude says or thinks between its steps is model text, kept with the answers option.
+      if (step.kind === "note") {
+        if (!on.answers) { return; }
+        write({ type: "assistant", vertex_step: "claude_note", message: { id: step.id, content: [{ type: "vertex_note",
+          note: step.note === "thinking" ? "thinking" : "text", text: sanitizeText(String(step.text || ""), []) }] } });
+        return;
+      }
+      if (!on.tools) { return; }
       const objects = [];
       if (step.kind === "use") {
-        write({ type: "assistant", vertex_step: "claude", message: { id: step.id, content: [{ type: "tool_use", id: step.id,
+        write({ type: "assistant", vertex_step: step.provider || "claude", message: { id: step.id, content: [{ type: "tool_use", id: step.id,
           name: String(step.name || ""), input: stepInput(step.name, step.input || {}, objects, on.localCode), vertex_objects: objects }] } });
       } else if (step.kind === "result") {
-        write({ type: "user", vertex_step: "claude", message: { role: "user", content: [{ type: "tool_result", tool_use_id: step.id,
+        write({ type: "user", vertex_step: step.provider || "claude", message: { role: "user", content: [{ type: "tool_result", tool_use_id: step.id,
           is_error: step.is_error === true, content: stepResult(step.name, step.content, step.is_error === true, objects), vertex_objects: objects }] } });
       }
     },
@@ -397,7 +463,14 @@ function resultText(content) {
 /* What a step was asked to do: a command in full, a path and a pattern; an edit's or a write's text counted, and
    with the localCode option logged as well. Every file named is a link to it. */
 function stepInput(name, input, objects, localCode) {
-  const local = file => { if (typeof file === "string" && file) addReference(objects, { path: file, kind: "file" }); return file; };
+  // A Windows path in one slash style: Claude may write C:/..., and the copy's prefix swapped for the folder's
+  // left the rest as it was.
+  const local = file => {
+    if (typeof file !== "string" || !file) return file;
+    const shown = /^[A-Za-z]:[\\/]/.test(file) ? file.replace(/\//g, "\\") : file;
+    addReference(objects, { path: shown, kind: "file" });
+    return shown;
+  };
   if (name === "Edit") return { file_path: local(input.file_path), ...(input.replace_all ? { replace_all: true } : {}),
     old_lines: lineCount(input.old_string), new_lines: lineCount(input.new_string),
     old_characters: String(input.old_string || "").length, new_characters: String(input.new_string || "").length,

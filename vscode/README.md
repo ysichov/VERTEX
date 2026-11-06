@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.64**
+**Version: 0.9.65**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -198,7 +198,7 @@ CodeMie; with another provider the question is refused and nothing is sent.
 
 Claude Code uses its native **Read**, **Glob**, **Grep**, **Edit**, **Write** and **Bash**, with VERTEX’s existing approval and review integration. Codex / ChatGPT subscription, EPAM CodeMie, GitHub Copilot and every API provider use the corresponding VERTEX local tools. Working-copy review, builds after Apply and logging are available for all providers. The selected model must support tool calls. The agent works with local projects in any language, alongside the SAP tools when a system is connected.
 
-The VERTEX-provided file tools stay inside the selected folder and reject symlinks and `.git` metadata. Existing files must be read before editing; a file changed since that read is rejected. Grep uses literal text, Glob supports `*`, `**` and `?`; generated dependency/build directories are skipped. Reads and search results are bounded and report truncation. Direct API and Copilot requests allow up to 50 model rounds for local-project work. VERTEX-provided shell commands run in PowerShell on Windows and `sh` elsewhere, with a two-minute timeout and approval unless the working-copy setting below allows them.
+The VERTEX-provided file tools stay inside the selected folder and reject symlinks and `.git` metadata. Existing files must be read before editing; a file changed since that read is rejected. Grep uses literal text, Glob supports `*`, `**` and `?`, and a pattern ending in `/` lists folders (`*/` the top-level ones, `**/` all); generated dependency/build directories are skipped. Reads and search results are bounded and report truncation. Direct API and Copilot requests allow up to 50 model rounds for local-project work. VERTEX-provided shell commands run in PowerShell on Windows and `sh` elsewhere, with a two-minute timeout and approval unless the working-copy setting below allows them.
 
 When the active editor holds a file of an open workspace folder -
 or no editor is open and the workspace has one folder - the assistant answers in that folder.
@@ -759,6 +759,10 @@ from the Command Palette and select the folder in the dialog.
 In the main **VERTEX Tools** window, choose **Local Folder** from the object type list
 to pick a folder directly. The selected folder stays visible beside a **Browse...** button;
 switch between UML diagram and Metrics in the function list.
+**Git History** beside it opens **VERTEX: Git History**, a separate window with the folder's commits
+as a table: commit, date, author and message. The VERTEX panel has the same **Git History** button
+beside **Folder**, for the folder the assistant works in. A commit hash in the table opens that commit
+on the review page, read only: its files and changed blocks, with **ASK AI** on a block, on a file, or on the whole commit.
 Both views show analysis progress, the object count and elapsed time. Switching views reuses parsed local source until a file changes.
 Both views show analysis progress, the object count and elapsed time. Switching views reuses parsed local source until a file changes.
 In package Metrics, **Expand all / Collapse all** above Objects opens or closes every object's unit table.

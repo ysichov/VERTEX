@@ -142,6 +142,7 @@ function open(vscode, context, deps, initial) {
     window.sdeSidebarSelection=(question,fragment,view)=>host.postMessage({call:"reviewSelection",args:[question,fragment,view]});
     window.sdeCancelWorkspace=lane=>host.postMessage({call:"cancelWorkspace",args:[lane||"main"]});
     window.sdeLocalFolder=clear=>host.postMessage({call:"localFolder",args:[clear===true]});
+    window.sdeLocalGitHistory=folder=>host.postMessage({call:"localGitHistory",args:[String(folder||"")]});
     window.sdeTake=()=>{const r=pending;pending=null;return r;};
     // The clipboard is the host's: a webview's own may be refused. Copy under a chat answer and the review's prompts.
     window.sdeCopyText=text=>{host.postMessage({call:"copyText",args:[String(text||"")]});return "";};
@@ -242,6 +243,12 @@ function open(vscode, context, deps, initial) {
         local=await require('./local-analysis').createPackage(vscode,picked[0]);
         panel.title=local.object.object_name+' · VERTEX Tools';
         await panel.webview.postMessage({type:'localFolder',payload:{name:local.object.object_name,type:'DEVC',action:'uml',folder:picked[0].fsPath}});
+        return;
+      }
+      // Git History of the chosen folder: its commits as a table in a window of its own.
+      if(message.call === "localGitHistory") {
+        try { await require('./git-history').open(vscode,args[0]); }
+        catch(error) { vscode.window.showErrorMessage('VERTEX Git History: '+error.message); }
         return;
       }
       if(message.call==="debug"&&args[0]==="logicTools"){

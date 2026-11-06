@@ -17,6 +17,16 @@ function fixture(t, options = {}) {
   fs.writeFileSync(path.join(root, "a.txt"), "one\ntwo\n");
   return { root, agent, page, steps };
 }
+test("a Glob pattern ending in / lists folders, not files", async t => {
+  const { agent, root } = fixture(t);
+  fs.mkdirSync(path.join(root, "docs", "img"), { recursive: true });
+  fs.mkdirSync(path.join(root, "src"));
+  fs.mkdirSync(path.join(root, "node_modules"));
+  fs.writeFileSync(path.join(root, "docs", "x.md"), "x");
+  assert.deepEqual((await agent.call("Glob", { pattern: "*/" })).matches, ["docs/", "src/"]);
+  assert.deepEqual((await agent.call("Glob", { pattern: "**/" })).matches, ["docs/", "docs/img/", "src/"]);
+  assert.deepEqual((await agent.call("Glob", { pattern: "*" })).matches, ["a.txt"]);
+});
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test("common tools search, page, edit and create files, and log every step", async t => {

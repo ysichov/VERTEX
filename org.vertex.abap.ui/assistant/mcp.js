@@ -2,10 +2,8 @@
 
 // An MCP server, so that an agent already living in the editor - Copilot,
 // Claude Code, Codex - can read what a transport request changed and review it
-// itself. VERTEX supplies no agent and no model of its own: those tools have a
-// loop, a chat, a model picker and the user's own subscription, and all of that
-// is better than anything written here would be. What they cannot do is know
-// SAP. That is what this hands them.
+// itself. The external routes supply SAP tools; the built-in VERTEX Code Agent
+// also registers a private, temporary tool set for each local-project request.
 //
 // The review at /mcp is read-only on purpose. A tool result goes to the model,
 // so it offers what a reviewer looks at and nothing that writes. The debugger
@@ -548,6 +546,7 @@ async function dispatch(deps, message, set) {
 function create(deps) {
   let token;
   let started = null;
+  const requests = new Map();
 
   function handler(req, res) {
     if (!authorised(req)) {
@@ -568,8 +567,8 @@ function create(deps) {
     const system = new URL(req.url, "http://localhost").searchParams.get("system") || "";
     const within = work => system && deps.pin ? deps.pin(system, work) : work();
     const pages = deps.pages || {};
-    const set = route === "/mcp" ? REVIEW
-              : (Object.prototype.hasOwnProperty.call(pages, route) ? pages[route] : null);
+    const set = requests.get(route) || (route === "/mcp" ? REVIEW
+              : (Object.prototype.hasOwnProperty.call(pages, route) ? pages[route] : null));
     if (!set) {
       return send(res, 404, {}, "");
     }
@@ -655,6 +654,12 @@ function create(deps) {
 
   return {
     get token() { return token; },
+    // Private, unguessable tool set for one chat turn. Never extends the public /mcp route.
+    registerTools(set) {
+      const route = "/chat/" + crypto.randomBytes(24).toString("hex");
+      requests.set(route, set);
+      return { route, dispose: () => requests.delete(route) };
+    },
     /** A page's address, carrying the system of the window that asks, if it keeps one. */
     route: function (url) {
       const system = deps.pinned ? deps.pinned() : "";
@@ -689,6 +694,7 @@ function create(deps) {
       return started;
     },
     stop: function () {
+      requests.clear();
       if (!started) { return; }
       const stopping = started.then(function (running) {
         return new Promise(function (resolve) { running.server.close(resolve); });

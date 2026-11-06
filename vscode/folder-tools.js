@@ -19,8 +19,8 @@ const schema = (name, description, properties, required) => ({ name, description
 const schemas = [
   schema("Read", "Read a UTF-8 project file with line numbers. Read existing files before changing them. Use offset/limit for paging.",
     { file_path: str("Path relative to the working folder."), offset: integer("First line, starting at 1."), limit: integer("Maximum lines, default 200, at most 500.") }, ["file_path"]),
-  schema("Glob", "List project files. Supports *, ** and ? in a relative glob; skips symlinks, .git and generated dependency/build directories. Results are bounded.",
-    { pattern: str("For example **/*.js or **/AGENTS.md."), path: str("Optional subdirectory, default working folder.") }, ["pattern"]),
+  schema("Glob", "List project files. Supports *, ** and ? in a relative glob; a pattern ending in / lists directories instead (*/ the top-level folders, **/ all folders). Skips symlinks, .git and generated dependency/build directories. Results are bounded.",
+    { pattern: str("For example **/*.js, **/AGENTS.md, or */ for folders."), path: str("Optional subdirectory, default working folder.") }, ["pattern"]),
   schema("Grep", "Search project files for literal text (not a regular expression). Returns file, line and text. Results are bounded; narrow path/glob when truncated.",
     { pattern: str("Literal text to find."), path: str("Optional file or subdirectory."), glob: str("Optional file glob, e.g. **/*.js."), ignore_case: { type: "boolean" } }, ["pattern"]),
   schema("Edit", "Replace exact text in a previously read file. An ambiguous match needs replace_all or a more specific old_string. Changes are reviewed by the user.",
@@ -84,7 +84,7 @@ function create(vscode, options) {
     return bytes.toString("utf8");
   }
   function listing(start) {
-    const files = [], pending = [start];
+    const files = [], dirs = [], pending = [start];
     let visited = 0;
     while (pending.length && visited < 10000) {
       active();
@@ -92,12 +92,13 @@ function create(vscode, options) {
       const stat = fs.lstatSync(file);
       if (stat.isSymbolicLink()) continue;
       if (stat.isDirectory()) {
+        if (file !== start) dirs.push(file);
         for (const item of fs.readdirSync(file, { withFileTypes: true })) {
           if (!SKIP.has(item.name.toLowerCase()) && !item.isSymbolicLink()) pending.push(path.join(file, item.name));
         }
       } else if (stat.isFile()) files.push(file);
     }
-    return { files: files.sort(), truncated: pending.length > 0 };
+    return { files: files.sort(), dirs: dirs.sort(), truncated: pending.length > 0 };
   }
   async function permission(name, input) {
     const result = await approve.call(null, approval.TOOL, { tool_name: name, input });
@@ -124,14 +125,17 @@ function create(vscode, options) {
     }
     if (name === "Glob" || name === "Grep") {
       const start = resolve(args.path || ".");
-      const listed = listing(start), matches = [], filter = glob(name === "Glob" ? args.pattern : args.glob || "**");
+      // A Glob pattern ending in / asks for directories: */ the top-level folders, **/ all of them.
+      const folders = name === "Glob" && typeof args.pattern === "string" && /[\\/]$/.test(args.pattern);
+      const listed = listing(start), matches = [];
+      const filter = glob(name === "Glob" ? (folders ? args.pattern.replace(/[\\/]+$/, "") : args.pattern) : args.glob || "**");
       let truncated = listed.truncated, scanned = 0, size = 0;
       const base = fs.statSync(start).isDirectory() ? start : path.dirname(start);
       if (name === "Grep" && (typeof args.pattern !== "string" || !args.pattern)) throw new Error("Grep needs nonempty literal text.");
-      for (const file of listed.files) {
+      for (const file of folders ? listed.dirs : listed.files) {
         const relative = path.relative(base, file).replace(/\\/g, "/");
         if (!filter.test(relative)) continue;
-        if (name === "Glob") matches.push(path.relative(root, file).replace(/\\/g, "/"));
+        if (name === "Glob") matches.push(path.relative(root, file).replace(/\\/g, "/") + (folders ? "/" : ""));
         else {
           let text;
           try { text = read(file); } catch (_) { continue; }

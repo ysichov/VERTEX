@@ -419,8 +419,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
           + "\n\nCurrent local project access (authoritative for this request):\n" + JSON.stringify(projectAccess)
           + (workDir ? "\nThis folder and its file tools are available even when no source editor is open or the active tab is Session Logs. Open editor tabs describe the UI, not filesystem access. Previous replies and screenshots do not override this access. When asked whether you can see/access the folder, check with Glob (pattern: '*') before answering. Never claim the folder or working copy is absent without a failed file-tool call; report the actual failure if one occurs. Use paths relative to working_directory with the supplied local tools."
             : "\nNo local project folder was resolved for this request.")
-          + "\n\nRequest:\n" + prompt.trim()
-          + "\n\nOpen editor tabs (titles and paths only; only the active ABAP document above supplies source):\n" + JSON.stringify(openTabs(vscode)), schema: RESULT_SCHEMA,
+          + "\n\nOpen editor tabs (titles and paths only; only the active ABAP document above supplies source):\n" + JSON.stringify(openTabs(vscode))
+          // The request comes last: a weaker model answers whatever block it read last.
+          + "\n\nRequest:\n" + prompt.trim(), schema: RESULT_SCHEMA,
         tools: toolSchemas.map(tool => tool.name),
         // A debugging run waits for the user to log on to WebGUI and for the
         // program to reach its breakpoints; three minutes are too few for that.

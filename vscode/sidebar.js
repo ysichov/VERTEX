@@ -98,6 +98,12 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
         }
+        // Git History of the folder shown in the header, in the same window the Tools window opens.
+        if (message.action === "gitHistory") {
+          try { await require("./git-history").open(vscode, require("./chat").currentWorkingFolder(vscode)); }
+          catch (error) { vscode.window.showErrorMessage("VERTEX Git History: " + error.message); }
+          return;
+        }
         if (message.action === "newConversation") {
           // A new conversation writes to a new log file.
           require("./session-log").reset();
@@ -299,7 +305,7 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 <div class="line"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
-<span id="folder-line" hidden>Folder <strong id="folder-name"></strong></span></div>
+<span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>

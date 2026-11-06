@@ -34,6 +34,9 @@ const claudeLike = id => id === "claude" || id === "codemie";
 // Claude Code's own tools allowed in a working folder.
 const FOLDER_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash"];
 const FOLDER_READ_TOOLS = ["Read", "Grep", "Glob"];
+// The effort levels each command-line assistant takes (Claude Code's --effort, Codex's model_reasoning_effort);
+// CodeMie runs Claude Code and passes --effort on.
+const EFFORTS = { claude: ["low", "medium", "high", "xhigh", "max"], codex: ["minimal", "low", "medium", "high"] };
 const APPROVE_SERVER = "vertex_approve";
 
 // The models a Claude subscription offers, by full id - the same ids the
@@ -396,8 +399,8 @@ function configuredCodexModel(codexHome) {
 async function ask(options) {
   const assistant = describe(options.assistant);
   const file = options.executable || locate(options.assistant, options.extensionPath);
-  if ((options.images || []).length && !claudeLike(options.assistant)) {
-    throw new Error("Screenshots are sent only to Claude Code and EPAM CodeMie; nothing was sent.");
+  if ((options.images || []).length && !claudeLike(options.assistant) && options.assistant !== "codex") {
+    throw new Error("Screenshots are sent to Claude Code, Codex and EPAM CodeMie; nothing was sent.");
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-window-"));
   try {
@@ -425,7 +428,9 @@ async function ask(options) {
     const timeout = options.timeout || TIMEOUT;
     const streaming = claudeLike(options.assistant) && typeof options.onProgress === "function";
     let pending = "", resultEvent = null, generated = "", structured = "", thinking = "", lastAnswer = "", lastStatus = "";
-    const toolBlocks = new Map(), steps = new Map();
+    const toolBlocks = new Map(), steps = new Map(), thinkingBlocks = new Map(), pendingThinking = [];
+    const flushThinking = () => { while (pendingThinking.length) { const note = pendingThinking.shift(); if (typeof options.onStep === "function") options.onStep(note); } };
+    let thinkingCount = 0;
     const emitAnswer = answer => {
       if (answer && answer !== lastAnswer && !lastAnswer.startsWith(answer)) {
         lastAnswer = answer;
@@ -453,11 +458,20 @@ async function ask(options) {
         if (event.type === "assistant" && event.message && options.onProviderResponse) {
           options.onProviderResponse({ provider: "claude", scope: "model_response", response: event.message });
         }
+        if (event.type === "assistant" || event.type === "result") flushThinking();
         // Claude Code's own steps - Read, Edit, Bash and the rest - for the session log: the call, then its result.
         // The SAP tools are logged where VERTEX runs them, and the answer's StructuredOutput is the answer itself.
         if (typeof options.onStep === "function" && (event.type === "assistant" || event.type === "user")
           && event.message && Array.isArray(event.message.content)) {
-          for (const block of event.message.content) {
+          for (const [index, block] of event.message.content.entries()) {
+            // What Claude says or thinks between its steps - the "Claude reasoning" the panel shows as it comes.
+            // Thinking comes from the stream's deltas instead (the finished message holds it empty).
+            if (event.type === "assistant" && block && block.type === "thinking") continue;
+            if (event.type === "assistant" && block && block.type === "text") {
+              const text = String(block.text || "").trim();
+              if (text) options.onStep({ kind: "note", id: String(event.message.id || "") + ":" + index, note: "text", text });
+              continue;
+            }
             if (block && block.type === "tool_use" && !/^mcp__vertex|^StructuredOutput$/.test(String(block.name || ""))) {
               steps.set(block.id, block.name);
               options.onStep({ kind: "use", id: block.id, name: block.name, input: block.input || {} });
@@ -490,6 +504,8 @@ async function ask(options) {
         } else if (inner.type === "content_block_delta" && inner.delta?.type === "thinking_delta") {
           const fragment = inner.delta.thinking || "";
           if (fragment) { thinking += fragment; options.onProgress({ thinking }); }
+          // Claude Code's finished message carries its thinking empty: the log keeps the streamed text.
+          if (fragment) thinkingBlocks.set(inner.index, (thinkingBlocks.get(inner.index) || "") + fragment);
           const status = fragment ? "Claude is thinking…" : "Claude is working…";
           if (lastStatus !== status) { lastStatus = status; options.onProgress({ status }); }
         } else if (inner.type === "content_block_start" && inner.content_block?.type === "tool_use"
@@ -503,6 +519,11 @@ async function ask(options) {
         } else if (inner.type === "content_block_stop" && toolBlocks.has(inner.index)) {
           toolStatus(toolBlocks.get(inner.index));
           toolBlocks.delete(inner.index);
+        } else if (inner.type === "content_block_stop" && thinkingBlocks.has(inner.index)) {
+          const text = thinkingBlocks.get(inner.index).trim();
+          thinkingBlocks.delete(inner.index);
+          // Held until the message's model step is logged, so the thinking sits under its own step.
+          if (text) pendingThinking.push({ kind: "note", id: "thinking:" + (++thinkingCount), note: "thinking", text });
         }
       }
     } : null;
@@ -530,6 +551,7 @@ async function ask(options) {
 }
 
 function claudeCommand(options, dir) {
+  const nativeFolder = options.workDir && !options.localTools;
   const config = path.join(dir, "mcp.json");
   const servers = {};
   servers[SERVER] = {
@@ -538,7 +560,7 @@ function claudeCommand(options, dir) {
     headers: { Authorization: "Bearer ${" + TOKEN_VAR + "}" }
   };
   const listed = options.tools.length ? servers : {};
-  if (options.workDir) {
+  if (nativeFolder) {
     // Every edit, write and command in a working folder waits for the user.
     if (!options.approveUrl) throw new Error("A working folder needs the VERTEX approval address; nothing was run.");
     listed[APPROVE_SERVER] = { type: "http", url: options.approveUrl,
@@ -559,18 +581,18 @@ function claudeCommand(options, dir) {
     // even though the compact source fragment already answers the question.
     // In a working folder (a local file of an open workspace folder) Claude
     // works on its files with its own tools, shell included.
-    "--tools", options.workDir ? FOLDER_TOOLS.join(",") : "",
+    "--tools", nativeFolder ? FOLDER_TOOLS.join(",") : "",
     "--strict-mcp-config", "--mcp-config", config,
     "--no-session-persistence"
   ];
   if (options.onProgress) { args.push("--verbose", "--include-partial-messages"); }
-  if (options.workDir) {
+  if (nativeFolder) {
     args.push("--permission-prompt-tool", "mcp__" + APPROVE_SERVER + "__" + require("./folder-approval").TOOL);
   }
   // Reading runs freely; Edit, Write and Bash are left to the approval tool. In a git working copy (reviewAfter)
   // edits and writes run freely too - they are reviewed when the answer is done - and only Bash asks.
   // shellWithoutAsking (a setting, off by default) lets Bash run in the working copy without asking as well.
-  const allowed = (options.workDir ? (options.reviewAfter
+  const allowed = (nativeFolder ? (options.reviewAfter
     ? FOLDER_TOOLS.filter(t => t !== "Bash" || options.shellWithoutAsking === true) : FOLDER_READ_TOOLS) : [])
     .concat(options.tools.map(function (t) { return "mcp__" + SERVER + "__" + t; }));
   if (allowed.length) {
@@ -578,6 +600,10 @@ function claudeCommand(options, dir) {
   }
   if (options.model) {
     args.push("--model", options.model);
+  }
+  // The effort level chosen on the panel; left out when not set, so a Claude Code without --effort still runs.
+  if (EFFORTS.claude.includes(options.effort)) {
+    args.push("--effort", options.effort);
   }
   const images = options.images || [];
   if (!images.length) return { args: args, input: options.prompt };
@@ -606,10 +632,32 @@ function codexCommand(options, dir) {
   if (options.tools.length) {
     args.push("-c", "mcp_servers." + SERVER + ".url=" + options.url,
       "-c", "mcp_servers." + SERVER + ".bearer_token_env_var=" + TOKEN_VAR);
+    // exec cannot display Codex approval dialogs. These private local tools enforce
+    // containment and ask through VERTEX's own review/approval UI before mutations.
+    if (options.localTools) {
+      for (const name of ["Read", "Glob", "Grep", "Edit", "Write", "Bash"]) {
+        if (options.tools.includes(name)) args.push("-c",
+          "mcp_servers." + SERVER + ".tools." + name + '.approval_mode="approve"');
+      }
+    }
   }
   if (options.model) {
     args.push("-m", options.model);
   }
+  // Codex's own name for the effort level chosen on the panel.
+  if (EFFORTS.codex.includes(options.effort)) {
+    args.push("-c", "model_reasoning_effort=" + options.effort);
+  }
+  // Keep attachments in this request's temporary directory, removed by ask's finally block.
+  (options.images || []).forEach((image, index) => {
+    const extension = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[image.media_type];
+    if (!extension || typeof image.data !== "string" || !image.data || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) {
+      throw new Error("Invalid screenshot attachment; nothing was sent.");
+    }
+    const file = path.join(dir, "screenshot-" + (index + 1) + "." + extension);
+    fs.writeFileSync(file, Buffer.from(image.data, "base64"), { mode: 0o600 });
+    args.push("--image", file);
+  });
   // The instructions travel with the request: exec has no separate channel
   // for them once the person's own configuration is left out.
   args.push("-");
@@ -803,3 +851,5 @@ exports.configuredCodexModel = configuredCodexModel;
 exports.codexError = codexError;
 
 exports.codemieEnv = codemieEnv;
+
+exports.EFFORTS = EFFORTS;

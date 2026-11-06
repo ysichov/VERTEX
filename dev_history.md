@@ -1,3 +1,25 @@
+## 2026-11-06 — Git History in the VERTEX panel
+
+The user looked for Git History in the chat panel (sidebar.js), where it had never been: only the Tools window had it, and only after a local folder was chosen. Added a secondary button beside the folder line; the host opens git-history.js with chat.currentWorkingFolder. VSIX rebuilt, version kept at 0.9.65.
+
+Then the commit hash became a link to the review page. filesReviewHtml took a readonly mode rather than a second page: decision controls hidden, ASK AI on each block (the file page had no hunk-level ask handler), on each file and on the whole commit. git-history.js reads the commit with diff-tree --relative and git show of parent and commit; a file with a NUL byte is binary.
+
+## 2026-11-06 — 0.9.65
+
+Bumped to 0.9.65 on both hosts at the user's word, with the working tree as it stood, including the user's own Git History work in progress (vscode/git-history.js, tools-window.js, tools.html) from testing VERTEX. Built vertex-abap-0.9.65.vsix and target/eclipse-0.9.65.20261106194949; update site copied to docs/. Tests: 1198 pass, 3 fail - the same 3 as before this day's changes. Neither host checked visually.
+
+## 2026-11-06 — Git History of a local folder
+
+tools.html had a Git History button beside the local folder that called sdeLocalGitHistory, which no host defined. VS Code now defines it in the tools-window bridge; the host runs `git log -- .` in the folder (vscode/git-history.js) and shows the commits in a webview panel of its own, "VERTEX: Git History", opened beside like Session Logs, with VS Code theme colours. A folder outside git shows git's error in the window. Eclipse is unchanged (it has no Local Folder either). Not built in the working copy.
+
+## 2026-11-06 — Glob lists folders
+
+Asked for the folder list, codestral-2508 called Glob with `**/`, got an empty match list with truncated false, and told the user the root had no subfolders. listing() walked directories but returned files only, so a directory pattern could never match. At the user's choice (over an error for such patterns), a pattern ending in `/` now matches the walked directories, the start folder excluded, returned with a trailing `/`; the tool description and vscode/README.md say so. Test added. Tests: 1198 pass, the same 3 earlier failures. Rebuilt 0.9.64.
+
+## 2026-11-06 — The question comes last in the chat prompt
+
+The user reported that Mistral did not see the folder. Its log (codestral-2508, then mistral-code-fim-latest) showed the folder, working copy and Read/Glob/Grep/Edit/Write/Bash all in the request; the model called no tool and answered from the last block, the open-tabs list (only Session Logs). The Codex session of 17:34-17:42 the user then asked about did the same on a build that predated the project-access block. Request now follows the open-tabs list. The FIM/Codestral models remain poor tool callers; a Mistral chat model is the user's choice. Tests: 1197 pass, 3 fail, the same 3 failing without this change. Rebuilt 0.9.64.
+
 ## 2026-11-06 — Keep current project access distinct from editor tabs
 
 The reported Codex session had a working directory and local tools in all five logged requests, but made no file-tool calls and inferred missing access from Session Logs. Added authoritative per-request project access beside the question, with a Glob check before denying access and explicit separation from historical replies and editor metadata. Seventeen provider and working-folder tests passed. A live gpt-6-luna check with stale denial history and a Session Logs tab called Glob, Read and Edit and changed an isolated test file. Version remains 0.9.64.

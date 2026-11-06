@@ -1,6 +1,6 @@
 # Built-in Eclipse Assistant
 
-**Version: 0.9.64**
+**Version: 0.9.65**
 
 The assistant JSONL log omits program bodies from tool arguments and results; object names and result summaries are retained. Source-code logging has no separate option.
 
@@ -183,9 +183,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.64.qualifier`; the checked-in update site carries build `0.9.64.20261106125710`.
+then regenerate. The feature and bundle sources are at `0.9.65.qualifier`; the checked-in update site carries build `0.9.65.20261106194949`.
 
-The local install archive is version `0.9.64.20261106125710`. Install its ZIP through
+The local install archive is version `0.9.65.20261106194949`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:
