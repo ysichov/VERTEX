@@ -4,23 +4,39 @@
 const { randomBytes } = require("crypto");
 function hunks(before, after) {
   const a = before.replace(/\r\n/g, "\n").split("\n"), b = after.replace(/\r\n/g, "\n").split("\n");
-  const result = []; let i = 0, j = 0;
-  const same = (x, y) => x === y;
-  while (i < a.length || j < b.length) {
-    if (same(a[i], b[j])) { i++; j++; continue; }
-    const from = i, to = j; let found = null;
-    for (let span = 1; span <= 40 && !found; span++) {
-      for (let left = 0; left <= span; left++) {
-        const right = span - left;
-        if (same(a[i + left], b[j + right])) { found = { left, right }; break; }
-      }
+  // Myers' shortest edit script: the matched lines are a longest common subsequence, so an inserted paragraph does
+  // not pair every following line with the wrong one (a greedy re-sync caught on the next blank line).
+  const n = a.length, m = b.length, max = n + m, off = max + 1, trace = [];
+  let v = new Int32Array(2 * max + 3), d = 0;
+  outer: for (; d <= max; d++) {
+    trace.push(v.slice());
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[off + k - 1] < v[off + k + 1]) ? v[off + k + 1] : v[off + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && a[x] === b[y]) { x++; y++; }
+      v[off + k] = x;
+      if (x >= n && y >= m) { break outer; }
     }
-    i += found ? found.left : a.length - i;
-    j += found ? found.right : b.length - j;
-    result.push({ beforeFrom: from, beforeTo: i, afterFrom: to, afterTo: j,
-      before: a.slice(from, i), after: b.slice(to, j) });
   }
-  return result.filter(h => h.before.join("\n") !== h.after.join("\n"));
+  const pairs = [];
+  let x = n, y = m;
+  for (; d > 0; d--) {
+    const pv = trace[d], k = x - y;
+    const prevK = k === -d || (k !== d && pv[off + k - 1] < pv[off + k + 1]) ? k + 1 : k - 1;
+    const px = pv[off + prevK], py = px - prevK;
+    while (x > px && y > py) { x--; y--; pairs.push([x, y]); }
+    x = px; y = py;
+  }
+  while (x > 0 && y > 0) { x--; y--; pairs.push([x, y]); }
+  pairs.reverse(); pairs.push([n, m]);
+  const result = []; let i = 0, j = 0;
+  for (const [pi, pj] of pairs) {
+    if (pi > i || pj > j) {
+      result.push({ beforeFrom: i, beforeTo: pi, afterFrom: j, afterTo: pj, before: a.slice(i, pi), after: b.slice(j, pj) });
+    }
+    i = pi + 1; j = pj + 1;
+  }
+  return result;
 }
 function reviewedSource(base, parts, approved) {
   const lines = base.replace(/\r\n/g, "\n").split("\n"); let shift = 0;
