@@ -9,7 +9,9 @@ const path = require("path");
 const review = require("./code-review");
 
 /** Opens the review of CHANGES (from agent-worktree's changes()); ONDONE gets the outcome after Apply. */
-function open(vscode, copy, changes, onDone) {
+/* OPTIONS.build: { command } the assistant proposed for building the folder after a change; offered on the page
+   once something was applied. OPTIONS.onBuild(command, remember) runs it; the page shows how it ended. */
+function open(vscode, copy, changes, onDone, options = {}) {
   const panel = vscode.window.createWebviewPanel("vertex.worktreeReview", "Review assistant changes",
     vscode.ViewColumn.Beside, { enableScripts: true });
   const byId = new Map(changes.map((change, i) => ["f" + (i + 1), change]));
@@ -19,8 +21,17 @@ function open(vscode, copy, changes, onDone) {
     parts: change.binary || change.status === "deleted" ? [] : review.hunks(change.before, change.after),
     after: change.after, abap: /\.abap$/i.test(change.file)
   })), { worktree: true });
-  let finished = false;
+  let finished = false, built = false;
+  const offered = options.build && typeof options.build.command === "string" ? options.build.command.trim() : "";
   panel.webview.onDidReceiveMessage(async message => {
+    if (message && message.action === "build" && finished && offered && !built && typeof options.onBuild === "function") {
+      built = true;
+      await panel.webview.postMessage({ action: "buildStatus", message: "Building in your folder: " + offered + " - output in VERTEX Build." });
+      const result = await options.onBuild(offered, message.remember === true);
+      await panel.webview.postMessage({ action: "buildStatus", message: result && result.code === 0
+        ? "Build passed." : "Build failed (exit " + (result ? result.code : "?") + "); its output went to the assistant." });
+      return;
+    }
     if (!message || finished) return;
     if (message.action === "ask" && byId.has(message.file)) {
       const change = byId.get(message.file);
@@ -38,6 +49,10 @@ function open(vscode, copy, changes, onDone) {
     finished = true;
     const outcome = await carryOut(decided);
     await panel.webview.postMessage({ action: "saved", message: summary(outcome) });
+    // Something reached the folder: the assistant's build command is offered there (unless the folder remembers one,
+    // which the conversation runs by itself).
+    // Not while declined files go back to the assistant: it is about to change them again.
+    if (outcome.applied.length && !outcome.reworked.length && offered) await panel.webview.postMessage({ action: "offerBuild", command: offered });
     onDone(outcome);
   });
   // The page reports its marks as they are made, so closing it can offer to apply them.

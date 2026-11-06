@@ -107,7 +107,15 @@ function create(root, provider, session, include) {
     /* A step of Claude Code's own (Read, Grep, Glob, Edit, Write, Bash, ...), with the tool option. What it read
        or wrote is not logged - only where and how much - as for SAP tools; a command and its output are. */
     step(step) {
-      if (!on.tools || !step || !step.id) { return; }
+      if (!step || !step.id) { return; }
+      // What Claude says or thinks between its steps is model text, kept with the answers option.
+      if (step.kind === "note") {
+        if (!on.answers) { return; }
+        write({ type: "assistant", vertex_step: "claude_note", message: { id: step.id, content: [{ type: "vertex_note",
+          note: step.note === "thinking" ? "thinking" : "text", text: sanitizeText(String(step.text || ""), []) }] } });
+        return;
+      }
+      if (!on.tools) { return; }
       const objects = [];
       if (step.kind === "use") {
         write({ type: "assistant", vertex_step: "claude", message: { id: step.id, content: [{ type: "tool_use", id: step.id,

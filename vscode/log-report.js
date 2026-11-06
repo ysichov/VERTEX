@@ -99,6 +99,12 @@ function parseSession(text, file) {
       }
       continue;
     }
+    // Claude's words and thinking between its steps: a line of the timeline, not an answer.
+    if (record.vertex_step === "claude_note") {
+      const note = Array.isArray(content) && content[0];
+      if (current && note && note.text) current.timeline.push({ kind: "note", note: note.note === "thinking" ? "thinking" : "text", text: String(note.text) });
+      continue;
+    }
     if (record.type !== "assistant" || !record.message) continue;
     const message = record.message;
     if (message.id && seen.has(message.id)) continue;

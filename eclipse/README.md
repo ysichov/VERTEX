@@ -77,7 +77,7 @@ where to set the folder when none is set.
 
 **VERTEX: Session Logs** (Quick Access, or **Window → Show View → VERTEX → Session Logs**) shows the
 assistant's conversations from the log folder set in **Window → Preferences → VERTEX Assistant**:
-each session with its prompts, answers, models and token usage, and the objects a prompt named, which
+each session with its prompts - several as one narrow line each, which opens the prompt's conversation - answers, models and token usage, and the objects a prompt named, which
 open in ADT - on the system the log names when the workspace has a project of that name, otherwise
 on the one you pick. Recorded diagram and metrics context opens in the window. **Clear selected
 conversations** deletes their log files after asking. Recorded transpiler runs and SAP debug sessions

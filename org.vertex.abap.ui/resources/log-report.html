@@ -35,6 +35,13 @@
   th { color: var(--vscode-descriptionForeground); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; }
   .conversation { min-width: 240px; }
+  /* The prompt's time takes only the width it needs: the date is in the session line above. */
+  td.time, th.time { width: 1%; white-space: nowrap; }
+  /* A session of several prompts opens as one narrow line per prompt; a line opens its conversation. */
+  details.prompt > summary { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; min-width: 100%; }
+  details.prompt > summary:hover { background: var(--vscode-list-hoverBackground); }
+  details.prompt[open] > summary { color: var(--vscode-descriptionForeground); }
+  tr.compact > td { padding-top: 2px; padding-bottom: 2px; }
   .entry { --entry-color: var(--vscode-descriptionForeground); margin: 6px 0; background: var(--vscode-editor-background); }
   /* No coloured bar at the side: the block's kind reads from its title colour. A block inside a block (a step in
      Steps, a call in Tools) is separated from the one before by a thin rule above. */
@@ -60,7 +67,11 @@
   .model-step { margin: 0; padding: 6px 8px 4px; color: var(--vscode-descriptionForeground); font-size: 0.9em; border-top: 1px solid var(--vscode-panel-border); }
   .model-step strong { color: var(--vscode-editor-foreground); margin-right: 4px; }
   /* The tools a model step called sit indented under it, so the step reads as their parent. */
-  .model-group > .entry { margin-left: 18px; }
+  .model-group > .entry, .model-group > .step-note { margin-left: 18px; }
+  /* What Claude said or thought between its steps: the panel's "Claude reasoning", kept in the timeline. */
+  .step-note { padding: 4px 8px; white-space: pre-wrap; overflow-wrap: anywhere; border-top: 1px solid var(--vscode-panel-border); }
+  .step-note .label { display: block; color: var(--vscode-descriptionForeground); font-size: 0.85em; margin-bottom: 2px; }
+  .step-note.thinking { color: var(--vscode-descriptionForeground); font-style: italic; }
   .step-fields { margin: 0; padding: 4px 0; font-size: 0.9em; }
   .step-fields .step-line { font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; }
 </style>
@@ -98,6 +109,12 @@
   }
   function n(value) { return Number(value || 0).toLocaleString(); }
   function time(value) { return value ? new Date(value).toLocaleString() : ""; }
+  // A prompt's time of day; the date only when it differs from the session's, which the session line shows.
+  function promptTime(value, start) {
+    if (!value) return "";
+    var d = new Date(value);
+    return start && new Date(start).toDateString() === d.toDateString() ? d.toLocaleTimeString() : d.toLocaleString();
+  }
   function span(a, b) {
     if (!a || !b) return "";
     var s = Math.round((b - a) / 1000);
@@ -294,6 +311,11 @@
             toolBox.appendChild(group);
           } else if (t.kind === "tool" && byId.has(t.tool_id) && !placed.has(t.tool_id)) {
             placed.add(t.tool_id); addCall(byId.get(t.tool_id), group);
+          } else if (t.kind === "note") {
+            var note = el("div", "step-note " + t.note);
+            note.appendChild(el("span", "label", t.note === "thinking" ? "Thinking" : "Claude"));
+            note.appendChild(document.createTextNode(t.text));
+            (group || toolBox).appendChild(note);
           }
         });
         calls.forEach(function (d) { if (!placed.has(d.tool_id)) addCall(d); });
@@ -357,13 +379,23 @@
 
       var table = el("table");
       var hr = el("tr");
-      ["Time", "Conversation", "Model", "In", "Out", "Cache read"].forEach(function (h, i) { hr.appendChild(el("th", i > 2 ? "num" : "", h)); });
+      ["Time", "Conversation", "Model", "In", "Out", "Cache read"].forEach(function (h, i) { hr.appendChild(el("th", i > 2 ? "num" : i === 0 ? "time" : "", h)); });
       table.appendChild(hr);
+      var several = s.prompts.length > 1;
       s.prompts.forEach(function (p) {
-        var row = el("tr");
-        row.appendChild(el("td", "", time(p.time)));
+        var row = el("tr", several ? "compact" : "");
+        row.appendChild(el("td", "time", promptTime(p.time, s.start)));
         var cell = el("td");
-        cell.appendChild(conversation(p));
+        if (several) {
+          // One narrow line per prompt; its conversation opens under the line.
+          var prompt = el("details", "prompt");
+          var line = el("summary", "", promptPreview([p]) || "(no prompt text)");
+          line.title = promptPreview([p]);
+          prompt.appendChild(line);
+          prompt.appendChild(conversation(p));
+          prompt.ontoggle = function () { row.className = prompt.open ? "" : "compact"; };
+          cell.appendChild(prompt);
+        } else cell.appendChild(conversation(p));
         row.appendChild(cell);
         row.appendChild(el("td", "", p.model));
         row.appendChild(el("td", "num", n(p.usage.input)));

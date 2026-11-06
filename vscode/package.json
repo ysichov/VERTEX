@@ -550,6 +550,12 @@
           "default": false,
           "markdownDescription": "Let Claude Code load your personal CLAUDE.md and auto-memory for VERTEX requests. Off by default: they travel with every SAP request and can show up in answers."
         },
+        "vertex.ai.buildCommand": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "The command that builds or tests this folder's project after Claude Code's changes are applied (for example `npm test`, `mvn -q package`, `./build.ps1`). VERTEX runs it in the folder after **Apply** and sends a failure's output back to Claude. Set by **Run & remember** in the review, or by hand per folder. On Windows it runs in PowerShell."
+        },
         "vertex.ai.shellWithoutAsking": {
           "type": "boolean",
           "default": false,

@@ -457,7 +457,13 @@ async function ask(options) {
         // The SAP tools are logged where VERTEX runs them, and the answer's StructuredOutput is the answer itself.
         if (typeof options.onStep === "function" && (event.type === "assistant" || event.type === "user")
           && event.message && Array.isArray(event.message.content)) {
-          for (const block of event.message.content) {
+          for (const [index, block] of event.message.content.entries()) {
+            // What Claude says or thinks between its steps - the "Claude reasoning" the panel shows as it comes.
+            if (event.type === "assistant" && block && (block.type === "text" || block.type === "thinking")) {
+              const text = String(block.type === "text" ? block.text || "" : block.thinking || "").trim();
+              if (text) options.onStep({ kind: "note", id: String(event.message.id || "") + ":" + index, note: block.type, text });
+              continue;
+            }
             if (block && block.type === "tool_use" && !/^mcp__vertex|^StructuredOutput$/.test(String(block.name || ""))) {
               steps.set(block.id, block.name);
               options.onStep({ kind: "use", id: block.id, name: block.name, input: block.input || {} });
