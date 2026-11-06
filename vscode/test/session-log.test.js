@@ -173,3 +173,24 @@ test("provider usage is preserved verbatim without creating another assistant re
     assert.doesNotMatch(raw, /PRIVATE ANSWER|SECRET/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test("Claude Code's own steps are logged with the tool option: a command and its output, an edit only counted", () => {
+  const root = require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "vertex-steps-"));
+  const log = require("../session-log").create(root, "claude", "steps", { tools: true });
+  log.step({ kind: "use", id: "toolu_1", name: "Bash", input: { command: "npm test", description: "Run tests" } });
+  log.step({ kind: "result", id: "toolu_1", name: "Bash", content: "ok 12 tests" });
+  log.step({ kind: "use", id: "toolu_2", name: "Edit", input: { file_path: "C:\p\a.js", old_string: "secret old\ncode", new_string: "secret new" } });
+  log.step({ kind: "result", id: "toolu_3", name: "Read", content: [{ type: "text", text: "line 1\nline 2\nline 3" }] });
+  log.step({ kind: "result", id: "toolu_4", name: "Bash", is_error: true, content: "The user denied this action." });
+  const text = require("node:fs").readFileSync(log.file, "utf8");
+  const records = text.trim().split("\n").map(line => JSON.parse(line));
+  assert.equal(records[0].message.content[0].input.command, "npm test");
+  assert.equal(records[1].message.content[0].content, "ok 12 tests");
+  assert.deepEqual(records[2].message.content[0].input, { file_path: "C:\p\a.js", old_lines: 2, new_lines: 1, old_characters: 15, new_characters: 10 });
+  assert.doesNotMatch(text, /secret/, "an edit's text is not logged");
+  assert.equal(records[3].message.content[0].content, "[3 lines read, not logged]");
+  assert.equal(records[4].message.content[0].is_error, true);
+  const off = require("../session-log").create(root, "claude", "off", { tools: false });
+  off.step({ kind: "use", id: "toolu_9", name: "Bash", input: { command: "x" } });
+  assert.equal(require("node:fs").existsSync(off.file), false, "nothing without the tool option");
+});

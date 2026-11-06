@@ -1,5 +1,13 @@
 # Release history
 
+## 2026-11-06 — 0.9.63: Claude's steps in the session log, the review asks before it is lost, log icons in the title bar
+
+- VS Code: with **Log tools** on, the session log records Claude Code's own steps - Read, Grep, Glob, Edit, Write, Bash and the rest - each call with its result, between the question and the answer in the session report: a command in full with its output, a search with its matches, a refused step as refused. What a step read or wrote is not logged, only where and how much (a file's path, an edit's lines and characters), as program source is not logged anywhere.
+- The review of Claude Code's working copy counts, until **Apply**, how many files are left to decide; closing it with marks but without Apply asks whether to apply them, and undecided files stay for the next review. After any decision a file is measured against the folder's version, so a later change to it no longer shows a stale conflict.
+- The VERTEX panel's AI and SAP log buttons are icons in its title bar, just before the settings gear: **Session Logs** (a scroll) and **SAP & Transpiler Logs** (a bug). **Folder** stands beside **SAP system**, and the greeting reads "Ask anything — about SAP or any project in your folder. You can paste screenshots here too."
+- EPAM CodeMie on Windows, in VS Code and Eclipse: CodeMie no longer opens Windows' "choose an app to open this .js file" dialog, nor hangs in Eclipse. VERTEX put the CodeMie package's own folder of `.js` scripts first in its PATH, and Windows, which runs `.js` as a document, found CodeMie's commands there; npm's folder with `codemie.cmd` comes first now. Its next stop, "The command line is too long" on any question, is gone too: VERTEX's instructions go to Claude Code in a file (`--system-prompt-file`) instead of on the command line, which Windows caps - at 8 191 characters through cmd, the way CodeMie starts Claude Code.
+- VS Code 0.9.63 and the Eclipse update site 0.9.63.20261106122058 are built; Eclipse carries only the CodeMie fix - it is the SAP host, and the other features are VS Code's.
+
 ## 2026-11-06 — 0.9.62: Claude Code works in the workspace folder, its changes reviewed
 
 - VS Code: with Claude Code as the provider and the active editor on a file of an open workspace folder - or no editor open and a workspace of one folder - the VERTEX chat runs Claude Code on that folder with its own tools.

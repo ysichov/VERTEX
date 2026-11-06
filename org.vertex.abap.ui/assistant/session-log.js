@@ -88,6 +88,19 @@ function create(root, provider, session, include) {
         input, vertex_objects: objects }] } });
       return toolId;
     },
+    /* A step of Claude Code's own (Read, Grep, Glob, Edit, Write, Bash, ...), with the tool option. What it read
+       or wrote is not logged - only where and how much - as for SAP tools; a command and its output are. */
+    step(step) {
+      if (!on.tools || !step || !step.id) { return; }
+      const objects = [];
+      if (step.kind === "use") {
+        write({ type: "assistant", vertex_step: "claude", message: { id: step.id, content: [{ type: "tool_use", id: step.id,
+          name: String(step.name || ""), input: stepInput(step.name, step.input || {}, objects), vertex_objects: objects }] } });
+      } else if (step.kind === "result") {
+        write({ type: "user", vertex_step: "claude", message: { role: "user", content: [{ type: "tool_result", tool_use_id: step.id,
+          is_error: step.is_error === true, content: stepResult(step.name, step.content, step.is_error === true, objects), vertex_objects: objects }] } });
+      }
+    },
     toolResult(toolId, result) {
       if (!on.tools || !toolId) { return; }
       const objects = [];
@@ -97,6 +110,32 @@ function create(root, provider, session, include) {
         ...(result?.vertex_recording ? { vertex_recording: result.vertex_recording } : {}) }] } });
     }
   };
+}
+
+const STEP_TEXT = 4000;
+const lineCount = text => text ? String(text).split(/\r?\n/).length : 0;
+const clip = text => text.length > STEP_TEXT ? text.slice(0, STEP_TEXT) + "\n[" + (text.length - STEP_TEXT) + " more characters not logged]" : text;
+function resultText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map(part => part && part.type === "text" ? String(part.text || "") : part && part.type === "image" ? "[image]" : "").join("\n");
+  return content == null ? "" : JSON.stringify(content);
+}
+/* What a step was asked to do: a command in full, a path and a pattern; an edit's or a write's text only counted. */
+function stepInput(name, input, objects) {
+  const local = file => { if (typeof file === "string" && /\.abap$/i.test(file)) addReference(objects, { path: file }); return file; };
+  if (name === "Edit") return { file_path: local(input.file_path), ...(input.replace_all ? { replace_all: true } : {}),
+    old_lines: lineCount(input.old_string), new_lines: lineCount(input.new_string),
+    old_characters: String(input.old_string || "").length, new_characters: String(input.new_string || "").length };
+  if (name === "Write") return { file_path: local(input.file_path), lines: lineCount(input.content), characters: String(input.content || "").length };
+  if (name === "Read") return { file_path: local(input.file_path), ...(input.offset ? { offset: input.offset } : {}), ...(input.limit ? { limit: input.limit } : {}) };
+  if (name === "Bash") return { command: String(input.command || ""), ...(input.description ? { description: String(input.description) } : {}) };
+  return sanitize(input, objects);
+}
+/* What came back: a command's output, a search's matches, an error or a refusal in words; a file's text only counted. */
+function stepResult(name, content, error, objects) {
+  const text = resultText(content);
+  if (name === "Read" && !error) return "[" + lineCount(text) + " lines read, not logged]";
+  return clip(sanitizeText(text, objects));
 }
 
 function redactArgs(args) {

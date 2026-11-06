@@ -270,17 +270,9 @@ button:hover { background: var(--vscode-button-hoverBackground); }
 .secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
 .link { color: var(--vscode-textLink-foreground); text-decoration: none; }
 .link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
-/* The two log buttons are one pair. They were drawn as the view's title actions, bare until hovered, and read as
-   plain text: they are buttons with the secondary buttons' fill and outline. The icon large, the words in the
-   panel's own size, as "SAP system" beside them; hover stays the toolbar's. */
-#logs, #execution-logs { padding: 3px 6px; font-size: inherit; line-height: 1; border-radius: 5px;
-  color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground);
-  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder));
-  border-bottom: 2px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder)); }
-#logs { margin: 0 0 0 auto; }
-#logs .log-icon, #execution-logs .log-icon { font-size: 17px; vertical-align: middle; }
-#logs:hover, #execution-logs:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
-#logs:focus-visible, #execution-logs:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+/* The AI and SAP logs are the view's title actions, beside the settings (the user's choice, for the space); the
+   working folder stands in the SAP system line. */
+#folder-line { margin-left: 6px; overflow-wrap: anywhere; }
 .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .line button { margin: 4px 0; padding: 4px 10px; }
 .line select { padding: 3px 4px; }
@@ -299,10 +291,8 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 <div class="line"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
-<button type="button" data-action="logs" id="logs" title="AI conversation logs" aria-label="Open AI conversation logs"><span class="log-icon">📜</span> AI</button>
-<button type="button" data-action="executionLogs" id="execution-logs" title="SAP debug and transpiler recordings" aria-label="Open SAP debug and transpiler logs"><span class="log-icon">📜</span> SAP</button></div>
-<div class="line" id="folder-line" hidden><span>Folder</span><strong id="folder-name"></strong></div>
-<main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder.</p></main>
+<span id="folder-line" hidden>Folder <strong id="folder-name"></strong></span></div>
+<main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
@@ -425,7 +415,7 @@ window.addEventListener('message', event => {
     const box = document.getElementById('messages');
     box.textContent = '';
     const hint = document.createElement('p');
-    hint.textContent = 'Ask anything — about SAP or any project in your folder.';
+    hint.textContent = 'Ask anything — about SAP or any project in your folder. You can paste screenshots here too.';
     box.appendChild(hint);
     progressItems.clear();
   }

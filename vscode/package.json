@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.62",
+  "version": "0.9.63",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -159,11 +159,13 @@
       },
       {
         "command": "vertex.showLogs",
-        "title": "VERTEX: Session Logs"
+        "title": "VERTEX: Session Logs",
+        "icon": { "light": "images/scroll-light.svg", "dark": "images/scroll-dark.svg" }
       },
       {
         "command": "vertex.openSapDebugRuns",
-        "title": "VERTEX: SAP & Transpiler Logs"
+        "title": "VERTEX: SAP & Transpiler Logs",
+        "icon": "$(debug-alt)"
       },
       {
         "command": "vertex.tools",
@@ -857,9 +859,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "vertex.openSettings",
+          "command": "vertex.showLogs",
           "when": "view == vertex.launcher",
           "group": "navigation@3"
+        },
+        {
+          "command": "vertex.openSapDebugRuns",
+          "when": "view == vertex.launcher",
+          "group": "navigation@4"
+        },
+        {
+          "command": "vertex.openSettings",
+          "when": "view == vertex.launcher",
+          "group": "navigation@5"
         }
       ]
     },

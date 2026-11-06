@@ -3,7 +3,7 @@
 
 ## Install
 
-Current VS Code extension: **0.9.62**.
+Current VS Code extension: **0.9.63**.
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
@@ -87,7 +87,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.62.20261106112130**; the VS Code extension is **0.9.62**.
+**0.9.63.20261106122058**; the VS Code extension is **0.9.63**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -308,7 +308,7 @@ Eclipse Tools selects the active ADT class or program when opened from its edito
 Each API provider can have several named keys, with one selected manually.
 For Mistral and other compatible APIs, the VS Code chat shows the token usage returned by the provider, summed across tool calls.
 With `vertex.ai.logPath` set, the VS Code assistant writes an Anthropic-compatible JSONL log for any provider. Each direct API or Copilot model call has its own record; CLI subscriptions are recorded per VERTEX invocation. Choose the folder in LLM Providers or Settings. Raw HTTP request bodies are not stored.
-The **📜 AI** button on the VERTEX panel opens a session report for these logs beside the active editor, with date, provider, model and prompt filters and token totals. Sessions and content sections start collapsed. User questions, plain model answers and technical details have three theme-aware accent colours; tools, instructions and request context open separately. Each tool call starts collapsed under its name; expand it to inspect its arguments, matching result and links. Only content enabled in log settings is shown. Program bodies are replaced by links to current ABAP objects. Assistant transpiler and SAP debug calls link to recorded runs; SAP recordings retain observed stops. Recorded UML and metrics open from saved JSON snapshots, preserving the context supplied to the assistant. **Clear selected conversations** removes selected conversation logs while keeping execution recordings. **📜 SAP** opens the separate SAP & Transpiler Logs list, where either type of recording can be opened or deleted.
+**Session Logs** (the scroll icon in the VERTEX panel's title bar, before the settings gear) opens a session report for these logs beside the active editor, with date, provider, model and prompt filters and token totals. Sessions and content sections start collapsed. User questions, plain model answers and technical details have three theme-aware accent colours; tools, instructions and request context open separately. Each tool call starts collapsed under its name; expand it to inspect its arguments, matching result and links. Only content enabled in log settings is shown. Program bodies are replaced by links to current ABAP objects. Assistant transpiler and SAP debug calls link to recorded runs; SAP recordings retain observed stops. Recorded UML and metrics open from saved JSON snapshots, preserving the context supplied to the assistant. **Clear selected conversations** removes selected conversation logs while keeping execution recordings. **SAP & Transpiler Logs** (the bug icon beside it) opens the separate list, where either type of recording can be opened or deleted.
 Eclipse's built-in
 Assistant uses Codex or Claude Code; Copilot Chat in Eclipse connects separately
 through MCP.

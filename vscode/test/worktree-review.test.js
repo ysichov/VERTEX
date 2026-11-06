@@ -53,6 +53,30 @@ test("one review per answer: approved copied, declined with a reason kept for re
   } finally { await copy.remove(); }
 });
 
+test("closing the review with marks but no Apply asks, and Apply there does the marked ones", async () => {
+  const dir = repo();
+  const copy = await worktree.open(dir);
+  try {
+    fs.writeFileSync(path.join(copy.dir, "a.txt"), "changed\n");
+    fs.writeFileSync(path.join(copy.dir, "b.txt"), "changed too\n");
+    const page = { posted: [] }, asked = [];
+    const vscode = fakeVscode(page);
+    vscode.window.showWarningMessage = async (text, options, ...items) => { asked.push({ text, options }); return "Apply"; };
+    let resolveDone;
+    const done = new Promise(resolve => { resolveDone = resolve; });
+    reviewer.open(vscode, copy, await copy.changes(), resolveDone);
+    await page.send({ action: "decisions", approved: ["f1"], declined: [] });
+    page.close();
+    const outcome = await done;
+    assert.match(asked[0].text, /without Apply/);
+    assert.match(asked[0].options.detail, /1 not decided/);
+    assert.deepEqual(outcome.applied, ["a.txt"]);
+    assert.deepEqual(outcome.closed, ["b.txt"]);
+    assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "changed\n");
+    assert.deepEqual((await copy.changes()).map(c => c.file), ["b.txt"], "the undecided file comes up again");
+  } finally { await copy.remove(); }
+});
+
 test("closing the review decides nothing: the changes come up again after the next answer", async () => {
   const dir = repo();
   const copy = await worktree.open(dir);

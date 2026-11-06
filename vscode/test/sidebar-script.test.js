@@ -13,9 +13,13 @@ test("sidebar HTML contains an executable chat script", () => {
   assert.match(script, /requestSubmit\(\)/);
   assert.match(script, /action: 'ready'/);
   assert.match(html, /id="model-status" role="status"/);
-  // The icon is a span of its own, larger than the words.
-  assert.match(html, /data-action="logs"[^>]*><span class="log-icon">📜<\/span> AI/);
-  assert.match(html, /data-action="executionLogs"[^>]*><span class="log-icon">📜<\/span> SAP/);
+  // The AI and SAP logs are the view's title actions, not buttons in the panel; the folder shares the SAP system line.
+  assert.doesNotMatch(html, /data-action="(logs|executionLogs)"/);
+  assert.match(html, /<span id="folder-line" hidden>/);
+  const title = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")).contributes.menus["view/title"]
+    .filter(item => item.when === "view == vertex.launcher").map(item => item.command);
+  // Just before the settings gear, the last of the title actions.
+  assert.deepEqual(title.slice(-3), ["vertex.showLogs", "vertex.openSapDebugRuns", "vertex.openSettings"]);
   assert.match(script, /status\.textContent = data\.error/);
   assert.doesNotMatch(html, /system-snc/);
 });

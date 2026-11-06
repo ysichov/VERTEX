@@ -160,7 +160,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
   // Claude's git working copy of the folder for this conversation, the review open on it, and what the
   // last review decided - said to Claude with the next request.
   let copy = null, openReview = null, reviewNote = "";
-  const dropReview = () => { if (openReview) { openReview.silent = true; openReview.panel.dispose(); openReview = null; } };
+  const dropReview = () => { if (openReview) { openReview.silent = true; openReview.panel.quiet = true; openReview.panel.dispose(); openReview = null; } };
   // A folder in git gets a working copy; another folder keeps the review of each edit before it is written.
   async function copyFor(folder) {
     if (copy && copy.folder === nodePath.resolve(folder)) return copy;
@@ -322,6 +322,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
           ? update => { if (!superseded()) options.onProgress(update); } : undefined,
         onModelCall,
         onProviderResponse: event => { if (log) log.providerResponse(event); },
+        onStep: step => { if (log && log.step) log.step(step); },
         personalInstructions: config.get("personalInstructions", false),
         ...(workDir ? { workDir: working ? working.cwd : workDir } : {}),
         ...(working ? { reviewAfter: true, shellWithoutAsking: config.get("shellWithoutAsking", false) === true } : {}),

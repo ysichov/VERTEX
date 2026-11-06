@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#424242" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+  <!-- A scroll, for the AI session logs: a sheet with rolled top and bottom edges and lines of text. -->
+  <path d="M4.5 2.5h8a1.5 1.5 0 0 1 0 3h-1"/>
+  <path d="M4.5 2.5a1.5 1.5 0 0 0-1.5 1.5v0a1.5 1.5 0 0 0 1.5 1.5"/>
+  <path d="M4.5 2.5v9"/>
+  <path d="M11.5 5.5v6"/>
+  <path d="M3 13.5h8a1.5 1.5 0 0 0 0-3H4.5a1.5 1.5 0 0 0 0 3"/>
+  <path d="M6.5 6.5h3M6.5 8.5h3"/>
+</svg>

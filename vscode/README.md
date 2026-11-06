@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.62**
+**Version: 0.9.63**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -210,7 +210,9 @@ changed a file yourself meanwhile, git merges the two changes line by line (`git
 they do not overlap: the review then shows your file with the assistant's change merged in, marked
 as merged, for you to approve - a clean merge is not a check that the result is right. When the
 changes overlap the file can only be declined, so your change is never overwritten; declined with a
-reason, the assistant gets your version in its copy and redoes its change on top of it. Closing the
+reason, the assistant gets your version in its copy and redoes its change on top of it. Approve and
+Decline only mark a file - the status line counts what is left until **Apply** - and closing the page
+with marks but without Apply asks whether to apply them; files not decided stay for the next review. Closing the
 page decides nothing: the files come up again after the next answer. The copy lasts for the
 conversation; **New conversation** removes it, with any change not yet applied. Builds and tests in
 the copy lack ignored files (`node_modules`, build output) and can fail there.
@@ -223,7 +225,7 @@ with its edit tools, never through the shell. A shell command (a build, a test r
 dialog showing the command; **Allow** runs it, closing the dialog refuses it. In a git working copy
 the setting `vertex.ai.shellWithoutAsking` (off by default) runs the commands without asking: file
 changes they make still come to the review, but a command can reach outside the copy - an absolute
-path into your folder, git commands on the shared repository, the network. While Claude Code has a folder, the VERTEX panel shows it as **Folder** under
+path into your folder, git commands on the shared repository, the network. While Claude Code has a folder, the VERTEX panel shows it as **Folder** beside
 **SAP system** (the full path on hover); the SAP system stays the one its SAP tools use. The folder's `CLAUDE.md` applies
 (your user-level `CLAUDE.md` loads with it). A SAP tab, or a file outside the workspace, works as
 before, through VERTEX's SAP tools: a change goes into its editor tab unsaved, and you review it
@@ -718,7 +720,7 @@ record with its reported usage; Claude Code and Codex subscriptions have one rec
 CLI invocation because their internal model calls are not exposed. The format is the same for
 every provider and does not capture raw HTTP payloads. Use **Choose log folder...** in LLM
 Providers or the folder link beside `vertex.ai.logPath` in Settings; the gear opens the log settings.
-The **📜 AI** button on the panel's top line opens the session report beside the active editor. It reads the
+**Session Logs**, the scroll icon in the panel's title bar before the settings gear, opens the session report beside the active editor. It reads the
 configured log folder and shows sessions, prompts and token usage by day or across all dates.
 Filter by provider, model or prompt text; expand a session and its sections to inspect the content
 retained by the log settings. Sessions and their content sections start collapsed: **User**, **Model answer**, **Tools**, instructions and request context open independently. Three theme-aware accent colours distinguish user questions, plain model answers and technical details. JSON tool results are indented for reading. Each tool call starts collapsed under its name; expand it to inspect its arguments, matching result and links. The report has a refresh button and a log-folder picker. Each assistant transpiler call links to its recording when one exists. With tool logging enabled, SAP runs started by the assistant save observed stops to `vertex.debug.runPath` (or extension storage) and link to that recording; intermediate statements skipped by Continue are not recorded. Links open an offline replay without running the program again. Assistant transpiler recordings are kept in extension storage by default, so their links survive a restart; `vertex.transpiler.runPath` selects another folder.
@@ -1360,7 +1362,7 @@ it - `LS_ORDER`, `GS_INVOICE-ITEMS`, `ME->MV_RATE`.
 **VERTEX Smart Debugger** is the right-hand panel beside the source tab (programs, classes and function modules); it shows the same
 debugger the assistant drives - one session, not a second one:
 
-Use **Save log** on the replay bar to keep a SAP recording and its available source snapshots as a local file. Each saved SAP recording has a GUID `session_id`; evidence citations such as `[session a1b2c3d4 step 4]` open that recording at the cited step. The **📜 SAP** sidebar button opens **SAP & Transpiler Logs**, which lists SAP recordings and available transpiler runs with date/time, type, program and step count. Click a row to open an offline replay. SAP recordings have a rename action; either type can be deleted individually or selected with checkboxes for **Delete selected recordings**. Deleting a persisted transpiler run removes its recording folder and private source copies, leaving the original source file intact. Transpiler entries marked **this session** are held in memory and disappear after restarting VS Code. With a recording open, the VERTEX assistant can use its recorded steps as evidence and link to cited steps. The default folder is VERTEX's extension storage; `vertex.debug.runPath` selects another folder. Existing recordings receive a stable ID the first time VERTEX reads them.
+Use **Save log** on the replay bar to keep a SAP recording and its available source snapshots as a local file. Each saved SAP recording has a GUID `session_id`; evidence citations such as `[session a1b2c3d4 step 4]` open that recording at the cited step. The bug icon in the panel's title bar opens **SAP & Transpiler Logs**, which lists SAP recordings and available transpiler runs with date/time, type, program and step count. Click a row to open an offline replay. SAP recordings have a rename action; either type can be deleted individually or selected with checkboxes for **Delete selected recordings**. Deleting a persisted transpiler run removes its recording folder and private source copies, leaving the original source file intact. Transpiler entries marked **this session** are held in memory and disappear after restarting VS Code. With a recording open, the VERTEX assistant can use its recorded steps as evidence and link to cited steps. The default folder is VERTEX's extension storage; `vertex.debug.runPath` selects another folder. Existing recordings receive a stable ID the first time VERTEX reads them.
 
 - **The source stays in the editor.** The panel opens beside the source tab and draws no copy
   of it; the lines are those of the active version, which is what the program runs. Breakpoints the assistant set appear

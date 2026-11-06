@@ -34,7 +34,7 @@ test("session report reads provider logs without treating tool results as prompt
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test("sidebar scroll button opens the theme-aware report from the configured log folder", async () => {
+test("the panel's scroll title action opens the theme-aware report from the configured log folder", async () => {
   const commands = new Map(), posted = [], executed = [], created = [], revealed = [];
   let receive;
   const panel = { webview: { postMessage: message => posted.push(message), onDidReceiveMessage: callback => { receive = callback; }, html: "" },
@@ -44,7 +44,9 @@ test("sidebar scroll button opens the theme-aware report from the configured log
       executeCommand: async (...args) => { executed.push(args); } },
     window: { createWebviewPanel: (...args) => { created.push(args); return panel; } } };
   report.register(vscode, { subscriptions: [] });
-  assert.match(fs.readFileSync(path.join(__dirname, "../sidebar.js"), "utf8"), /data-action="logs"[^>]*><span class="log-icon">📜<\/span> AI<\/button>/);
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"));
+  assert.ok(manifest.contributes.menus["view/title"].some(item => item.command === "vertex.showLogs" && item.when === "view == vertex.launcher"));
+  assert.match(JSON.stringify(manifest.contributes.commands.find(c => c.command === "vertex.showLogs").icon), /scroll-light\.svg/);
   commands.get("vertex.showLogs")();
   assert.equal(created[0][2], vscode.ViewColumn.Beside);
   commands.get("vertex.showLogs")();

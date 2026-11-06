@@ -28,30 +28,51 @@ function open(vscode, copy, changes, onDone) {
         review.askContext(review.hunks(change.before, change.after), null, change.after, "local", change.path));
       return;
     }
+    if (message.action === "decisions") { marked = decisionsOf(message); return; }
     if (message.action !== "apply") return;
-    const approved = new Set(Array.isArray(message.approved) ? message.approved : []);
-    const declined = new Map((Array.isArray(message.declined) ? message.declined : [])
-      .filter(d => d && byId.has(d.id)).map(d => [d.id, String(d.reason || "").trim()]));
-    if ([...byId.keys()].some(id => !approved.has(id) && !declined.has(id))) {
+    const decided = decisionsOf(message);
+    if ([...byId.keys()].some(id => !decided.approved.has(id) && !decided.declined.has(id))) {
       await panel.webview.postMessage({ action: "error", message: "Approve or decline every file first." });
       return;
     }
     finished = true;
-    const outcome = { applied: [], merged: [], reworked: [], dropped: [], failed: [] };
-    for (const [id, change] of byId) {
-      try {
-        if (approved.has(id)) { await copy.apply(change); outcome.applied.push(change.file); if (change.merged) outcome.merged.push(change.file); }
-        else if (declined.get(id)) { await copy.keep(change); outcome.reworked.push({ file: change.file, reason: declined.get(id), overlapped: change.conflict }); }
-        else { await copy.revert(change); outcome.dropped.push(change.file); }
-      } catch (error) { outcome.failed.push({ file: change.file, error: error.message }); }
-    }
+    const outcome = await carryOut(decided);
     await panel.webview.postMessage({ action: "saved", message: summary(outcome) });
-    if (outcome.failed.length) vscode.window.showErrorMessage("VERTEX: " + outcome.failed.map(f => f.error).join(" "));
     onDone(outcome);
   });
-  panel.onDidDispose(() => {
+  // The page reports its marks as they are made, so closing it can offer to apply them.
+  let marked = { approved: new Set(), declined: new Map() };
+  function decisionsOf(message) {
+    return { approved: new Set((Array.isArray(message.approved) ? message.approved : []).filter(id => byId.has(id))),
+      declined: new Map((Array.isArray(message.declined) ? message.declined : [])
+        .filter(d => d && byId.has(d.id)).map(d => [d.id, String(d.reason || "").trim()])) };
+  }
+  /* Does what was decided; an undecided file stays in the copy for the next review. */
+  async function carryOut(decided) {
+    const outcome = { applied: [], merged: [], reworked: [], dropped: [], failed: [], closed: [] };
+    for (const [id, change] of byId) {
+      try {
+        if (decided.approved.has(id)) { await copy.apply(change); outcome.applied.push(change.file); if (change.merged) outcome.merged.push(change.file); }
+        else if (decided.declined.get(id)) { await copy.keep(change); outcome.reworked.push({ file: change.file, reason: decided.declined.get(id), overlapped: change.conflict }); }
+        else if (decided.declined.has(id)) { await copy.revert(change); outcome.dropped.push(change.file); }
+        else outcome.closed.push(change.file);
+      } catch (error) { outcome.failed.push({ file: change.file, error: error.message }); }
+    }
+    if (outcome.failed.length) vscode.window.showErrorMessage("VERTEX: " + outcome.failed.map(f => f.error).join(" "));
+    return outcome;
+  }
+  panel.onDidDispose(async () => {
     if (finished) return;
     finished = true;
+    const count = marked.approved.size + marked.declined.size;
+    // Replaced by a newer review (quiet), or closed with nothing marked: nothing is done, the files come up again.
+    if (!panel.quiet && count) {
+      const left = byId.size - count;
+      const answer = await vscode.window.showWarningMessage("The review was closed without Apply. Apply the decisions you made?",
+        { modal: true, detail: marked.approved.size + " approved, " + marked.declined.size + " declined"
+          + (left ? "; " + left + " not decided stay for the next review." : ".") }, "Apply");
+      if (answer === "Apply") { onDone(await carryOut(marked)); return; }
+    }
     // Closed without deciding: nothing is copied; the changes stay in the copy and come up again after the next answer.
     onDone({ applied: [], merged: [], reworked: [], dropped: [], failed: [], closed: changes.map(c => c.file) });
   });
@@ -74,7 +95,7 @@ function report(outcome) {
   if ((outcome.merged || []).length) lines.push("Of these, merged with the user's own change made meanwhile (your working copy now has the merged file): " + outcome.merged.join(", ") + ".");
   if (outcome.dropped.length) lines.push("Declined without a reason; your change was dropped and the working copy has the user's version again: " + outcome.dropped.join(", ") + ".");
   if (outcome.failed.length) lines.push("Approved but not copied: " + outcome.failed.map(f => f.error).join(" "));
-  if (outcome.closed && outcome.closed.length) lines.push("The user closed the review without deciding; still waiting in the working copy: " + outcome.closed.join(", ") + ".");
+  if (outcome.closed && outcome.closed.length) lines.push("Not decided by the user yet, still waiting in the working copy: " + outcome.closed.join(", ") + ".");
   outcome.reworked.forEach(r => lines.push("Declined " + r.file + " - the user's reason: " + r.reason
     + (r.overlapped ? " (the user had changed this file too and the changes overlapped: your working copy now holds the user's version; redo your change on top of it)" : "")));
   return lines.join("\n");

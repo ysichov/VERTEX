@@ -425,7 +425,7 @@ async function ask(options) {
     const timeout = options.timeout || TIMEOUT;
     const streaming = claudeLike(options.assistant) && typeof options.onProgress === "function";
     let pending = "", resultEvent = null, generated = "", structured = "", thinking = "", lastAnswer = "", lastStatus = "";
-    const toolBlocks = new Map();
+    const toolBlocks = new Map(), steps = new Map();
     const emitAnswer = answer => {
       if (answer && answer !== lastAnswer && !lastAnswer.startsWith(answer)) {
         lastAnswer = answer;
@@ -452,6 +452,20 @@ async function ask(options) {
         if (event.type === "result") { resultEvent = event; }
         if (event.type === "assistant" && event.message && options.onProviderResponse) {
           options.onProviderResponse({ provider: "claude", scope: "model_response", response: event.message });
+        }
+        // Claude Code's own steps - Read, Edit, Bash and the rest - for the session log: the call, then its result.
+        // The SAP tools are logged where VERTEX runs them, and the answer's StructuredOutput is the answer itself.
+        if (typeof options.onStep === "function" && (event.type === "assistant" || event.type === "user")
+          && event.message && Array.isArray(event.message.content)) {
+          for (const block of event.message.content) {
+            if (block && block.type === "tool_use" && !/^mcp__vertex|^StructuredOutput$/.test(String(block.name || ""))) {
+              steps.set(block.id, block.name);
+              options.onStep({ kind: "use", id: block.id, name: block.name, input: block.input || {} });
+            } else if (block && block.type === "tool_result" && steps.has(block.tool_use_id)) {
+              options.onStep({ kind: "result", id: block.tool_use_id, name: steps.get(block.tool_use_id),
+                is_error: block.is_error === true, content: block.content });
+            }
+          }
         }
         if (event.type !== "stream_event") { continue; }
         const inner = event.event || {};
@@ -531,11 +545,15 @@ function claudeCommand(options, dir) {
       headers: { Authorization: "Bearer ${" + TOKEN_VAR + "}" } };
   }
   fs.writeFileSync(config, JSON.stringify({ mcpServers: listed }));
+  // The instructions run to tens of thousands of characters. Windows caps a command line at 32 767, and cmd -
+  // through which CodeMie starts Claude Code on Windows - at 8 191, so they go in a file in the run's folder.
+  const system = path.join(dir, "system-prompt.md");
+  fs.writeFileSync(system, String(options.instructions || ""));
 
   const args = [
     "-p", "--output-format", options.onProgress ? "stream-json" : "json",
     "--json-schema", JSON.stringify(options.schema),
-    "--system-prompt", options.instructions,
+    "--system-prompt-file", system,
     // No built-in tool. For a visible method explanation there are no MCP
     // tools either: supplying a server would make the CLI run an agent loop
     // even though the compact source fragment already answers the question.
@@ -704,10 +722,16 @@ function codexError(stderr) {
 
 // The CodeMie CLI's scripts start with #!/usr/bin/env node and run claude: their folder and
 // Claude Code's go first on PATH, for a VS Code started without the shell's PATH.
-function codemieEnv(file, base) {
+function codemieEnv(file, base, platform = process.platform) {
   const env = Object.assign({}, base || process.env);
   const key = Object.keys(env).find(k => k.toUpperCase() === "PATH") || "PATH";
-  env[key] = [path.dirname(file), path.join(os.homedir(), ".local", "bin"), env[key] || ""].join(path.delimiter);
+  // CodeMie calls its own commands by name. On Windows FILE is the package's bin\codemie.js; that folder holds
+  // only .js files, and with .JS in PATHEXT a name found there opens as a document ("choose an app to open this
+  // .js file", or a hidden wait in Eclipse). The folder to put first is npm's, four levels up
+  // (<npm>\node_modules\@codemieai\code\bin), where codemie.cmd and its siblings are.
+  const folder = platform === "win32" && /\.js$/i.test(file)
+    ? path.win32.resolve(path.win32.dirname(file), "..", "..", "..", "..") : path.dirname(file);
+  env[key] = [folder, path.join(os.homedir(), ".local", "bin"), env[key] || ""].join(platform === "win32" ? ";" : ":");
   return env;
 }
 
@@ -777,3 +801,5 @@ exports.CLAUDE_VERSIONS = CLAUDE_VERSIONS;
 exports.ask = ask;
 exports.configuredCodexModel = configuredCodexModel;
 exports.codexError = codexError;
+
+exports.codemieEnv = codemieEnv;

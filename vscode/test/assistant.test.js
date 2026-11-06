@@ -73,9 +73,10 @@ function common(spawn, kind, extra) {
 }
 
 test("Claude Code runs shut in: no built-in tool, one MCP server, the token only in the environment", async () => {
-  let config = null;
+  let config = null, systemPrompt = null;
   const spawn = spawner(call => {
     config = fs.readFileSync(after(call.args, "--mcp-config"), "utf8");
+    systemPrompt = fs.readFileSync(after(call.args, "--system-prompt-file"), "utf8");
     call.child.stdout.emit("data", JSON.stringify({
       type: "result", subtype: "success", is_error: false, result: "",
       structured_output: PLAN, modelUsage: { "claude-haiku-4-5-20251001": {} }
@@ -92,7 +93,10 @@ test("Claude Code runs shut in: no built-in tool, one MCP server, the token only
   assert.ok(call.args.includes("--strict-mcp-config"));
   assert.equal(after(call.args, "--allowedTools"), "mcp__vertex__sap_table_layout");
   assert.equal(after(call.args, "--model"), "haiku");
-  assert.equal(after(call.args, "--system-prompt"), "RULES");
+  // The instructions travel in a file: Windows and cmd cap the command line.
+  assert.equal(call.args.includes("--system-prompt"), false);
+  assert.match(after(call.args, "--system-prompt-file"), /system-prompt\.md$/);
+  assert.equal(systemPrompt, "RULES");
   assert.equal(after(call.args, "--output-format"), "json");
   assert.equal(call.input, "PROMPT");
   assert.equal(call.options.env.VERTEX_WINDOW_TOKEN, "secret-token");
@@ -148,6 +152,24 @@ test("in a git working copy edits run freely and only Bash asks", async () => {
   assert.equal(after(spawn.calls[1].args, "--allowedTools"), "Read,Grep,Glob,Edit,Write,Bash,mcp__vertex__sap_table_layout");
   await assistant.ask(common(spawn, "claude", { workDir: work, shellWithoutAsking: true, approveUrl: "http://127.0.0.1:1/approve" }));
   assert.equal(after(spawn.calls[2].args, "--allowedTools"), "Read,Grep,Glob,mcp__vertex__sap_table_layout", "outside a copy the setting does nothing");
+});
+
+test("Claude Code's own steps reach onStep, the SAP tools and the answer's StructuredOutput do not", async () => {
+  const steps = [];
+  const spawn = spawner(call => {
+    const send = event => call.child.stdout.emit("data", JSON.stringify(event) + "\n");
+    send({ type: "assistant", message: { content: [
+      { type: "tool_use", id: "t1", name: "Bash", input: { command: "npm test" } },
+      { type: "tool_use", id: "t2", name: "mcp__vertex__read_sap_object", input: {} },
+      { type: "tool_use", id: "t3", name: "StructuredOutput", input: {} }] } });
+    send({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" },
+      { type: "tool_result", tool_use_id: "t2", content: "source" }] } });
+    send({ type: "result", subtype: "success", is_error: false, structured_output: PLAN, modelUsage: {} });
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(spawn, "claude", { onProgress() {}, onStep: step => steps.push(step) }));
+  assert.deepEqual(steps, [{ kind: "use", id: "t1", name: "Bash", input: { command: "npm test" } },
+    { kind: "result", id: "t1", name: "Bash", is_error: false, content: "ok" }]);
 });
 
 test("pasted screenshots go to Claude Code inside a stream-json message", async () => {
@@ -511,4 +533,14 @@ test("Claude Code's reckoned cost comes back with the answer; the panel writes i
   assert.match(usageLine({ model: "m", usage, cost: 0.00312 }), / · ≈ \$0\.0031$/);
   assert.match(usageLine({ model: "m", usage, cost: 0.1234567 }), / · ≈ \$0\.1235$/);
   assert.doesNotMatch(usageLine({ model: "m", usage }), /\$/);
+});
+
+test("on Windows CodeMie's commands are found through npm's .cmd folder, never its package's .js folder", () => {
+  const file = String.raw`C:\Users\u\AppData\Roaming\npm\node_modules\@codemieai\code\bin\codemie-claude.js`;
+  const env = assistant.codemieEnv(file, { Path: String.raw`C:\Windows` }, "win32");
+  const first = env.Path.split(";")[0];
+  assert.equal(first, String.raw`C:\Users\u\AppData\Roaming\npm`);
+  assert.ok(!env.Path.includes(String.raw`@codemieai\code\bin`));
+  const unix = assistant.codemieEnv("/usr/local/bin/codemie-claude", { PATH: "/usr/bin" }, "linux");
+  assert.equal(unix.PATH.split(":")[0], "/usr/local/bin");
 });
