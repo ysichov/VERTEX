@@ -35,10 +35,10 @@
   th { color: var(--vscode-descriptionForeground); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; }
   .conversation { min-width: 240px; }
-  .entry { --entry-color: var(--vscode-descriptionForeground); margin: 6px 0; border-left: 3px solid var(--entry-color); background: var(--vscode-editor-background); }
-  /* A block inside a block (a step in Steps, a call in Tools) has no bar of its own: bars side by side read as
-     a stack of lines. A thin rule above separates it from the one before. */
-  .entry .entry { border-left: 0; margin: 0; border-top: 1px solid var(--vscode-panel-border); }
+  .entry { --entry-color: var(--vscode-descriptionForeground); margin: 6px 0; background: var(--vscode-editor-background); }
+  /* No coloured bar at the side: the block's kind reads from its title colour. A block inside a block (a step in
+     Steps, a call in Tools) is separated from the one before by a thin rule above. */
+  .entry .entry { margin: 0; border-top: 1px solid var(--vscode-panel-border); }
   .entry .entry > summary { font-weight: normal; color: var(--vscode-editor-foreground); }
   .entry.user { --entry-color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
   .entry.model { --entry-color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }

@@ -109,7 +109,7 @@ test("Claude Code's steps reach the report page with their arguments, to be draw
   assert.match(page, /function drawStep/);
   assert.match(page, /--vscode-diffEditor-insertedLineBackground/);
   assert.doesNotMatch(page, /charts-orange/, "technical entries in a quiet colour");
-  assert.match(page, /\.entry \.entry \{ border-left: 0/, "no stacked bars for nested entries");
+  assert.doesNotMatch(page, /border-left/, "no side bars on log entries");
 });
 
 test("a run reads as one timeline: a model call per message, then the tools it called, in order", () => {
