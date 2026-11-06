@@ -56,8 +56,11 @@ function change(name, input, read) {
 function reviewQueue(vscode) {
   const pending = new Map();
   let panel = null, next = 0;
+  // The files on the page: ASK AI stays open for them after Allow or Deny settled them.
+  let shownFiles = new Map();
   const render = () => {
     const files = [...pending.values()];
+    shownFiles = new Map(files.map(f => [f.id, f]));
     const total = new Map(), seenCount = new Map();
     files.forEach(f => total.set(f.seen.file, (total.get(f.seen.file) || 0) + 1));
     panel.webview.html = review.filesReviewHtml(files.map(f => {
@@ -77,8 +80,8 @@ function reviewQueue(vscode) {
       vscode.ViewColumn.Beside, { enableScripts: true });
     panel.webview.onDidReceiveMessage(async message => {
       if (!message) return;
-      if (message.action === "ask" && pending.has(message.file)) {
-        const item = pending.get(message.file);
+      if (message.action === "ask" && shownFiles.has(message.file)) {
+        const item = shownFiles.get(message.file);
         await vscode.commands.executeCommand("vertex.askReviewBlock",
           review.askContext(item.parts, null, item.seen.after, "local", item.seen.file));
       } else if (message.action === "deny") {

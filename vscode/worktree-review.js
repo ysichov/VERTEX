@@ -32,13 +32,15 @@ function open(vscode, copy, changes, onDone, options = {}) {
         ? "Build passed." : "Build failed (exit " + (result ? result.code : "?") + "); its output went to the assistant." });
       return;
     }
-    if (!message || finished) return;
+    if (!message) return;
+    // ASK AI stays open after Apply: the reader may still ask about a change already decided.
     if (message.action === "ask" && byId.has(message.file)) {
       const change = byId.get(message.file);
       await vscode.commands.executeCommand("vertex.askReviewBlock",
         review.askContext(review.hunks(change.before, change.after), null, change.after, "local", change.path));
       return;
     }
+    if (finished) return;
     if (message.action === "decisions") { marked = decisionsOf(message); return; }
     if (message.action !== "apply") return;
     const decided = decisionsOf(message);
