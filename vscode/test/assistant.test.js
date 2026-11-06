@@ -172,6 +172,24 @@ test("Claude Code's own steps reach onStep, the SAP tools and the answer's Struc
     { kind: "result", id: "t1", name: "Bash", is_error: false, content: "ok" }]);
 });
 
+test("Claude's thinking is taken from the stream and logged after its message's model step", async () => {
+  const order = [];
+  const spawn = spawner(call => {
+    const send = event => call.child.stdout.emit("data", JSON.stringify(event) + "\n");
+    send({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "thinking" } } });
+    send({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Found the markup; " } } });
+    send({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "checking logs.js." } } });
+    send({ type: "stream_event", event: { type: "content_block_stop", index: 0 } });
+    send({ type: "assistant", message: { id: "m1", content: [{ type: "thinking", thinking: "" }, { type: "text", text: "Now the notes." }] } });
+    send({ type: "result", subtype: "success", is_error: false, structured_output: PLAN, modelUsage: {} });
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(spawn, "claude", { onProgress() {},
+    onProviderResponse: event => { if (event.scope === "model_response") order.push("model " + event.response.id); },
+    onStep: step => order.push(step.note + ": " + step.text) }));
+  assert.deepEqual(order, ["model m1", "thinking: Found the markup; checking logs.js.", "text: Now the notes."]);
+});
+
 test("pasted screenshots go to Claude Code inside a stream-json message", async () => {
   const spawn = spawner(call => {
     call.child.stdout.emit("data", JSON.stringify({ type: "result", subtype: "success", is_error: false,

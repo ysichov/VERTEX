@@ -425,7 +425,9 @@ async function ask(options) {
     const timeout = options.timeout || TIMEOUT;
     const streaming = claudeLike(options.assistant) && typeof options.onProgress === "function";
     let pending = "", resultEvent = null, generated = "", structured = "", thinking = "", lastAnswer = "", lastStatus = "";
-    const toolBlocks = new Map(), steps = new Map();
+    const toolBlocks = new Map(), steps = new Map(), thinkingBlocks = new Map(), pendingThinking = [];
+    const flushThinking = () => { while (pendingThinking.length) { const note = pendingThinking.shift(); if (typeof options.onStep === "function") options.onStep(note); } };
+    let thinkingCount = 0;
     const emitAnswer = answer => {
       if (answer && answer !== lastAnswer && !lastAnswer.startsWith(answer)) {
         lastAnswer = answer;
@@ -453,15 +455,18 @@ async function ask(options) {
         if (event.type === "assistant" && event.message && options.onProviderResponse) {
           options.onProviderResponse({ provider: "claude", scope: "model_response", response: event.message });
         }
+        if (event.type === "assistant" || event.type === "result") flushThinking();
         // Claude Code's own steps - Read, Edit, Bash and the rest - for the session log: the call, then its result.
         // The SAP tools are logged where VERTEX runs them, and the answer's StructuredOutput is the answer itself.
         if (typeof options.onStep === "function" && (event.type === "assistant" || event.type === "user")
           && event.message && Array.isArray(event.message.content)) {
           for (const [index, block] of event.message.content.entries()) {
             // What Claude says or thinks between its steps - the "Claude reasoning" the panel shows as it comes.
-            if (event.type === "assistant" && block && (block.type === "text" || block.type === "thinking")) {
-              const text = String(block.type === "text" ? block.text || "" : block.thinking || "").trim();
-              if (text) options.onStep({ kind: "note", id: String(event.message.id || "") + ":" + index, note: block.type, text });
+            // Thinking comes from the stream's deltas instead (the finished message holds it empty).
+            if (event.type === "assistant" && block && block.type === "thinking") continue;
+            if (event.type === "assistant" && block && block.type === "text") {
+              const text = String(block.text || "").trim();
+              if (text) options.onStep({ kind: "note", id: String(event.message.id || "") + ":" + index, note: "text", text });
               continue;
             }
             if (block && block.type === "tool_use" && !/^mcp__vertex|^StructuredOutput$/.test(String(block.name || ""))) {
@@ -496,6 +501,8 @@ async function ask(options) {
         } else if (inner.type === "content_block_delta" && inner.delta?.type === "thinking_delta") {
           const fragment = inner.delta.thinking || "";
           if (fragment) { thinking += fragment; options.onProgress({ thinking }); }
+          // Claude Code's finished message carries its thinking empty: the log keeps the streamed text.
+          if (fragment) thinkingBlocks.set(inner.index, (thinkingBlocks.get(inner.index) || "") + fragment);
           const status = fragment ? "Claude is thinking…" : "Claude is working…";
           if (lastStatus !== status) { lastStatus = status; options.onProgress({ status }); }
         } else if (inner.type === "content_block_start" && inner.content_block?.type === "tool_use"
@@ -509,6 +516,11 @@ async function ask(options) {
         } else if (inner.type === "content_block_stop" && toolBlocks.has(inner.index)) {
           toolStatus(toolBlocks.get(inner.index));
           toolBlocks.delete(inner.index);
+        } else if (inner.type === "content_block_stop" && thinkingBlocks.has(inner.index)) {
+          const text = thinkingBlocks.get(inner.index).trim();
+          thinkingBlocks.delete(inner.index);
+          // Held until the message's model step is logged, so the thinking sits under its own step.
+          if (text) pendingThinking.push({ kind: "note", id: "thinking:" + (++thinkingCount), note: "thinking", text });
         }
       }
     } : null;

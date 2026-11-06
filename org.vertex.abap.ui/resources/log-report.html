@@ -379,12 +379,11 @@
 
       var table = el("table");
       var hr = el("tr");
-      ["Time", "Conversation", "Model", "In", "Out", "Cache read"].forEach(function (h, i) { hr.appendChild(el("th", i > 2 ? "num" : i === 0 ? "time" : "", h)); });
+      ["Conversation", "Model", "In", "Out", "Cache read", "Time"].forEach(function (h, i) { hr.appendChild(el("th", i === 5 ? "time" : i > 1 ? "num" : "", h)); });
       table.appendChild(hr);
       var several = s.prompts.length > 1;
       s.prompts.forEach(function (p) {
         var row = el("tr", several ? "compact" : "");
-        row.appendChild(el("td", "time", promptTime(p.time, s.start)));
         var cell = el("td");
         if (several) {
           // One narrow line per prompt; its conversation opens under the line.
@@ -401,6 +400,7 @@
         row.appendChild(el("td", "num", n(p.usage.input)));
         row.appendChild(el("td", "num", n(p.usage.output)));
         row.appendChild(el("td", "num", n(p.usage.cacheRead)));
+        row.appendChild(el("td", "time", promptTime(p.time, s.start)));
         table.appendChild(row);
       });
       var scroll = el("div", "table-scroll");

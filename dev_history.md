@@ -16,7 +16,11 @@ The user agreed but noted that a command in a setting is not universal - another
 
 In the same turn the user showed the panel's **Claude reasoning** and asked whether it is logged: it was not - `onStep` took only tool calls. Text and thinking blocks of Claude's stream messages now come as `note` steps, logged with the answers option (`claude_note` records) and drawn in the timeline under their model step, thinking in italics. The report page is the shared one, so Eclipse gets it with its next build. VSIX rebuilt, still 0.9.64.
 
+Then VERTEX moved the report's Time column to the end of the table at the user's request - header and cells in the same order, the `time` class (width and no wrap) going with it - and wrote both histories; checked here, VSIX rebuilt with it. Its log showed one note, a line of text, and no thinking although the panel had shown Claude's reasoning: Claude Code's finished message carries a thinking block empty, the text comes only in the stream's `thinking_delta`s. `assistant.js` now gathers a thinking block's deltas and logs it when the block ends - held until its message's model step is logged, so it sits under that step - and takes only text blocks from the finished messages. VSIX rebuilt, still 0.9.64.
+
 Next, from the panel: an opened session of several prompts showed every prompt's full conversation at once, and the Time column took a wide share of the row for "11/6/2026, 2:46:22 PM". In `log-report.html` a session with more than one prompt now puts each prompt's conversation in a `details.prompt` whose summary is one ellipsised line of the question (the summary's `max-width: 0; min-width: 100%` keeps a long question from widening the table); the row's padding is tighter while the line is closed. A one-prompt session is drawn as before. The Time cell shows `toLocaleTimeString()` when the prompt falls on the session's start date, the full date otherwise, and the column is `width: 1%; white-space: nowrap`. Not seen rendered; the VSIX is to be rebuilt in the folder after review.
+
+The user then asked for the Time column at the end of the table: the header and each row now run Conversation, Model, In, Out, Cache read, Time, so a prompt's line starts with its question; the Time cell keeps its `time` class (narrow, no wrap). Still 0.9.64.
 
 ## 2026-11-06 — Claude's steps in the session log; 0.9.63
 
