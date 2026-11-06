@@ -92,6 +92,43 @@ test("clear selected conversations deletes only known logs and prevents pending 
 });
 
 
+test("Claude Code's steps reach the report page with their arguments, to be drawn as what they did", () => {
+  const records = [
+    { type: "user", message: { content: "Change the greeting" } },
+    { type: "assistant", vertex_step: "claude", message: { id: "toolu_1", content: [{ type: "tool_use", id: "toolu_1", name: "Edit",
+      input: { file_path: "C:\\p\\a.js", old_lines: 1, new_lines: 1, old_string: "old", new_string: "new" } }] } },
+    { type: "assistant", message: { id: "plain", content: [{ type: "tool_use", id: "t2", name: "read_sap_object", input: { object_name: "ZX" } }] } }
+  ];
+  const session = report.parseSession(records.map(record => JSON.stringify({ timestamp: "2026-11-06T10:00:00Z", ...record })).join("\n"), "claude_20261106_120000.jsonl");
+  const [edit, sap] = session.prompts[0].details.filter(d => d.type === "tool");
+  assert.equal(edit.step, "claude");
+  assert.equal(edit.input.old_string, "old");
+  assert.equal(sap.step, undefined, "a SAP tool keeps the plain view");
+  // The page's source: vscode/resources/log-report.html is a copy made at packaging, not kept in git.
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  assert.match(page, /function drawStep/);
+  assert.match(page, /--vscode-diffEditor-insertedLineBackground/);
+  assert.doesNotMatch(page, /charts-orange/, "technical entries in a quiet colour");
+  assert.match(page, /\.entry \.entry \{ border-left: 0/, "no stacked bars for nested entries");
+});
+
+test("a run reads as one timeline: a model call per message, then the tools it called, in order", () => {
+  const records = [
+    { type: "user", message: { content: "Rules?" } },
+    { type: "vertex_provider_response", provider: "claude", scope: "model_response", response: { id: "m1", usage: { input_tokens: 1 } } },
+    { type: "vertex_provider_response", provider: "claude", scope: "model_response", response: { id: "m1", usage: { input_tokens: 1, output_tokens: 9 } } },
+    { type: "assistant", vertex_step: "claude", message: { id: "t1", content: [{ type: "tool_use", id: "t1", name: "Glob", input: { pattern: "*.md" } }] } },
+    { type: "vertex_provider_response", provider: "claude", scope: "model_response", response: { id: "m2", usage: { input_tokens: 2 } } },
+    { type: "assistant", vertex_step: "claude", message: { id: "t2", content: [{ type: "tool_use", id: "t2", name: "Read", input: { file_path: "a.md" } }] } },
+    { type: "vertex_provider_response", provider: "claude", scope: "cli_run", response: { usage: { input_tokens: 3 } } }
+  ];
+  const session = report.parseSession(records.map(record => JSON.stringify({ timestamp: "2026-11-06T10:00:00Z", ...record })).join("\n"), "claude_20261106_120001.jsonl");
+  const prompt = session.prompts[0];
+  assert.deepEqual(prompt.timeline.map(t => t.kind + ":" + (t.id || t.tool_id)), ["model:m1", "tool:t1", "model:m2", "tool:t2"]);
+  assert.equal(prompt.timeline[0].usage.output_tokens, 9, "one message's events are one step, its last usage kept");
+  assert.deepEqual(prompt.details.filter(d => /^Provider usage/.test(d.type)).map(d => d.type), ["Provider usage (cli_run)"]);
+});
+
 test("provider evidence is visible without doubling session usage", () => {
   const records = [
     { type: "user", message: { content: "Question" } },

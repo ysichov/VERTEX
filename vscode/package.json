@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.63",
+  "version": "0.9.64",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -534,6 +534,11 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Log tool calls, source-free arguments, result summaries and links to ABAP objects and recorded runs."
+        },
+        "vertex.ai.log.localCode": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "With **Log tools**: also log the text of Claude Code's changes to local project files (Edit and Write), each with a link to the file. Program source from SAP is never logged."
         },
         "vertex.ai.log.request": {
           "type": "boolean",

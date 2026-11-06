@@ -35,7 +35,11 @@
   th { color: var(--vscode-descriptionForeground); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; }
   .conversation { min-width: 240px; }
-  .entry { --entry-color: var(--vscode-charts-orange, var(--vscode-descriptionForeground)); margin: 6px 0; border-left: 3px solid var(--entry-color); background: var(--vscode-editor-background); }
+  .entry { --entry-color: var(--vscode-descriptionForeground); margin: 6px 0; border-left: 3px solid var(--entry-color); background: var(--vscode-editor-background); }
+  /* A block inside a block (a step in Steps, a call in Tools) has no bar of its own: bars side by side read as
+     a stack of lines. A thin rule above separates it from the one before. */
+  .entry .entry { border-left: 0; margin: 0; border-top: 1px solid var(--vscode-panel-border); }
+  .entry .entry > summary { font-weight: normal; color: var(--vscode-editor-foreground); }
   .entry.user { --entry-color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
   .entry.model { --entry-color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }
   .entry > summary { padding: 6px 8px; cursor: pointer; color: var(--entry-color); font-weight: 600; }
@@ -46,6 +50,19 @@
   .entry-body { padding: 0 8px 4px; }
   .kind { padding: 4px 8px; color: var(--entry-color); font-size: 0.9em; }
   .table-scroll { overflow-x: auto; }
+  /* Claude Code's steps: an edit as removed and added lines, in the theme's diff colours; each model call a line. */
+  .step-diff { margin: 0; padding: 4px 0; font-family: var(--vscode-editor-font-family); font-size: 0.9em; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); }
+  .step-diff .del, .step-diff .add { display: block; padding: 0 8px; }
+  .step-diff .del { background: var(--vscode-diffEditor-removedLineBackground, var(--vscode-diffEditor-removedTextBackground)); }
+  .step-diff .add { background: var(--vscode-diffEditor-insertedLineBackground, var(--vscode-diffEditor-insertedTextBackground)); }
+  .step-line { padding: 2px 8px; }
+  .step-line .label { color: var(--vscode-descriptionForeground); margin-right: 6px; }
+  .model-step { margin: 0; padding: 6px 8px 4px; color: var(--vscode-descriptionForeground); font-size: 0.9em; border-top: 1px solid var(--vscode-panel-border); }
+  .model-step strong { color: var(--vscode-editor-foreground); margin-right: 4px; }
+  /* The tools a model step called sit indented under it, so the step reads as their parent. */
+  .model-group > .entry { margin-left: 18px; }
+  .step-fields { margin: 0; padding: 4px 0; font-size: 0.9em; }
+  .step-fields .step-line { font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -101,7 +118,12 @@
     return box;
   }
   function objectLinks(parent, objects) {
+    // A call's arguments and its result often name the same object: one link per object in an entry.
+    var seen = parent.vertexLinks || (parent.vertexLinks = new Set());
     (objects || []).forEach(function (object) {
+      var key = JSON.stringify([object.object_name || "", object.object_type || "", object.path || ""]);
+      if (seen.has(key)) return;
+      seen.add(key);
       var link = el("button", "recording-link", "Open current object: " + (object.object_name || object.path));
       link.type = "button";
       link.title = "Opens the current source; it may have changed since this conversation.";
@@ -109,10 +131,112 @@
       parent.appendChild(link);
     });
   }
+  /* Claude Code's own steps and the review, read as what they did rather than as JSON. */
+  function fileName(file) { return String(file || "").split(/[\\/]/).filter(Boolean).pop() || String(file || ""); }
+  // A tool call's arguments, from its JSON when the log has no structured copy (SAP tools).
+  function argsOf(d) {
+    if (d.input) return d.input;
+    try { var parsed = JSON.parse(d.text.slice(d.text.indexOf("\n") + 1)); return parsed && typeof parsed === "object" ? parsed : null; } catch (e) { return null; }
+  }
+  function stepTitle(d) {
+    var name = d.name || d.text.split("\n")[0], input = d.input || {};
+    if (!d.step) {
+      var a = argsOf(d) || {};
+      var what = [a.object_type, a.object_name, a.method_name || a.include].filter(function (x) { return x && x !== "main"; }).join(" ") || a.query || a.pattern || "";
+      return what ? name + ": " + String(what).slice(0, 90) : name;
+    }
+    if (name === "Bash") return "Bash: " + (input.description || String(input.command || "").split("\n")[0]).slice(0, 90);
+    if (name === "Read" || name === "Edit" || name === "Write") return name + ": " + fileName(input.file_path);
+    if (name === "Grep" || name === "Glob") return name + ": " + String(input.pattern || "").slice(0, 90);
+    if (name === "Review") return "Review: " + (input.files || []).length + " file" + ((input.files || []).length === 1 ? "" : "s");
+    return name;
+  }
+  function line(target, label, value) {
+    var row = el("div", "step-line");
+    row.appendChild(el("span", "label", label));
+    row.appendChild(document.createTextNode(String(value)));
+    target.appendChild(row);
+  }
+  function diffBlock(target, removed, added) {
+    var box = el("pre", "step-diff");
+    String(removed).split("\n").forEach(function (s) { box.appendChild(el("span", "del", "− " + s)); });
+    String(added).split("\n").forEach(function (s) { box.appendChild(el("span", "add", "+ " + s)); });
+    target.appendChild(box);
+  }
+  /* An object's fields as "name: value" lines: a long text cut, a nested value compact, a JSON list kept in a string
+     (a system's connection, say) read as its items. Null when the text is not a JSON object. */
+  function fields(target, value) {
+    var object = value;
+    if (typeof value === "string") { try { object = JSON.parse(value); } catch (e) { return false; } }
+    if (!object || typeof object !== "object" || Array.isArray(object)) return false;
+    var box = el("div", "step-fields");
+    Object.keys(object).forEach(function (key) {
+      var v = object[key], shown;
+      if (typeof v === "string" && /^\s*\[/.test(v)) { try { var list = JSON.parse(v); if (Array.isArray(list)) v = list.filter(function (x) { return x !== null && x !== ""; }).join(", "); } catch (e) { /* plain text */ } }
+      shown = v === null || v === undefined ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v);
+      if (shown.length > 300) shown = shown.slice(0, 300) + " … (" + shown.length + " characters)";
+      line(box, key, shown);
+    });
+    target.appendChild(box);
+    return true;
+  }
+  function drawStep(target, d) {
+    var name = d.name, input = d.input || {};
+    if (name === "Bash") {
+      if (input.description) line(target, "What", input.description);
+      target.appendChild(el("div", "detail", "$ " + String(input.command || "")));
+      return true;
+    }
+    if (name === "Read") {
+      line(target, "File", input.file_path || "");
+      if (input.offset || input.limit) line(target, "Lines", (input.offset || 1) + (input.limit ? " + " + input.limit : ""));
+      return true;
+    }
+    if (name === "Grep" || name === "Glob") {
+      line(target, "Pattern", input.pattern || "");
+      if (input.path) line(target, "In", input.path);
+      if (input.glob) line(target, "Files", input.glob);
+      return true;
+    }
+    if (name === "Edit") {
+      line(target, "File", input.file_path || "");
+      line(target, "Change", input.old_lines + " line" + (input.old_lines === 1 ? "" : "s") + " → " + input.new_lines + (input.replace_all ? ", every occurrence" : ""));
+      if (typeof input.old_string === "string") diffBlock(target, input.old_string, input.new_string || "");
+      return true;
+    }
+    if (name === "Write") {
+      line(target, "File", input.file_path || "");
+      line(target, "Size", input.lines + " lines, " + input.characters + " characters");
+      if (typeof input.content === "string") target.appendChild(el("div", "detail", input.content));
+      return true;
+    }
+    if (name === "Review") {
+      if (input.folder) line(target, "Folder", input.folder);
+      var table = el("table");
+      var head = el("tr"); ["File", "Decision", "Reason"].forEach(function (h) { head.appendChild(el("th", "", h)); }); table.appendChild(head);
+      (input.files || []).forEach(function (f) {
+        var row = el("tr");
+        row.appendChild(el("td", "", f.file || ""));
+        row.appendChild(el("td", "", f.decision || ""));
+        row.appendChild(el("td", "", f.reason || f.error || ""));
+        table.appendChild(row);
+      });
+      var scroll = el("div", "table-scroll"); scroll.appendChild(table); target.appendChild(scroll);
+      return true;
+    }
+    return false;
+  }
   function conversation(p) {
     var body = el("div", "conversation");
-    var user = section("User", "user", p.text);
+    var user = section("User" + ((p.screenshots || []).length ? " · " + p.screenshots.length + " screenshot" + (p.screenshots.length === 1 ? "" : "s") : ""), "user", p.text);
     objectLinks(user, p.objects);
+    (p.screenshots || []).forEach(function (shot, i) {
+      if (!shot.file) { user.appendChild(el("div", "kind", "Screenshot " + (i + 1) + " (not saved: questions are not logged)")); return; }
+      var link = el("button", "recording-link", "Open screenshot " + (i + 1));
+      link.type = "button";
+      link.onclick = function () { vscode.postMessage({ action: "openScreenshot", file: shot.file }); };
+      user.appendChild(link);
+    });
     body.appendChild(user);
     var answers = p.details.filter(function (d) { return d.type === "answer"; });
     if (answers.length) {
@@ -125,11 +249,17 @@
       body.appendChild(answer);
     }
     var tools = p.details.filter(function (d) { return d.type === "tool" || d.type === "tool result"; });
-    if (tools.length) {
+    var modelSteps = (p.timeline || []).filter(function (t) { return t.kind === "model"; });
+    if (tools.length || modelSteps.length) {
       var calls = tools.filter(function (d) { return d.type === "tool"; });
-      var toolBox = section("Tools (" + calls.length + " calls)", "technical");
+      // One timeline when the log has the model's calls: each model step with its tokens, then the tools it called.
+      var steps = modelSteps.length > 0;
+      var toolBox = section(steps ? "Steps (" + modelSteps.length + " model call" + (modelSteps.length === 1 ? "" : "s") + ", " + calls.length + " tool" + (calls.length === 1 ? "" : "s") + ")"
+        : "Tools (" + calls.length + " calls)", "technical");
+      if (steps) toolBox.open = true;
       var entries = new Map();
       function appendEntry(target, d) {
+        if (d.type === "tool" && d.step && drawStep(target, d)) { objectLinks(target, d.objects); return; }
         target.appendChild(el("div", "kind", d.type === "tool" ? "Arguments" : "Result"));
         if (d.recording) {
           var link = el("button", "recording-link", (d.recording.kind === "transpiler" ? "Open transpiler recording " : "Open SAP debug recording ") + d.recording.id.slice(0, 8));
@@ -138,15 +268,36 @@
           target.appendChild(link);
         }
         var text = d.type === "tool" ? d.text.slice(d.text.indexOf("\n") + 1) : d.text;
-        target.appendChild(el("div", "detail", text));
+        // Fields as lines where the text is a JSON object; anything else as it is.
+        if (!fields(target, text)) target.appendChild(el("div", "detail", text));
         objectLinks(target, d.objects);
       }
-      calls.forEach(function (d) {
-        var entry = section(d.name || d.text.split("\n")[0], "technical");
+      var byId = new Map(calls.map(function (d) { return [d.tool_id, d]; }));
+      function addCall(d, into) {
+        var entry = section(stepTitle(d), "technical");
         if (d.tool_id) entries.set(d.tool_id, entry);
         appendEntry(entry, d);
-        toolBox.appendChild(entry);
-      });
+        (into || toolBox).appendChild(entry);
+      }
+      if (steps) {
+        // Each model call is a group: its line on top, the tools it called indented under it.
+        var k = 0, placed = new Set(), group = null;
+        p.timeline.forEach(function (t) {
+          if (t.kind === "model") {
+            var u = t.usage || {};
+            group = el("div", "model-group");
+            var head = el("div", "model-step");
+            head.appendChild(el("strong", "", "Model step " + (++k)));
+            head.appendChild(document.createTextNode(" · in " + n(u.input_tokens) + " · out " + n(u.output_tokens)
+              + " · cache read " + n(u.cache_read_input_tokens) + " · cache write " + n(u.cache_creation_input_tokens)));
+            group.appendChild(head);
+            toolBox.appendChild(group);
+          } else if (t.kind === "tool" && byId.has(t.tool_id) && !placed.has(t.tool_id)) {
+            placed.add(t.tool_id); addCall(byId.get(t.tool_id), group);
+          }
+        });
+        calls.forEach(function (d) { if (!placed.has(d.tool_id)) addCall(d); });
+      } else calls.forEach(function (d) { addCall(d); });
       tools.filter(function (d) { return d.type === "tool result"; }).forEach(function (d) {
         var entry = d.tool_id && entries.get(d.tool_id);
         if (!entry) { entry = section("Tool result", "technical"); toolBox.appendChild(entry); }

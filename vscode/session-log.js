@@ -25,7 +25,9 @@ function options(include) {
   const given = include || {};
   return { questions: given.questions === true, answers: given.answers === true,
     tools: given.tools === true,
-    request: given.request === true };
+    request: given.request === true,
+    // The text of Claude Code's changes to local project files (Edit, Write). Program source from SAP stays out.
+    localCode: given.localCode === true };
 }
 
 /** Null when no folder is configured. `session` names the file and stays fixed for a conversation. */
@@ -35,7 +37,7 @@ function create(root, provider, session, include) {
   const dir = path.join(root, "claude_compatible");
   const file = path.join(dir, String(provider || "assistant").replace(/[^\w.-]/g, "_") + "_"
     + String(session || stamp(new Date())).replace(/[^\w.-]/g, "_") + ".jsonl");
-  let sequence = 0, discarded = false;
+  let sequence = 0, discarded = false, screenshotCount = 0;
   const write = entry => {
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
@@ -45,10 +47,24 @@ function create(root, provider, session, include) {
   return {
     file,
     discard() { discarded = true; },
-    user(text) {
+    /* A question; screenshots pasted with it are part of it: with the questions option each is saved as a file in
+       the conversation's folder beside the log (<log name>/screenshot-<n>.<ext>), without it only counted. */
+    user(text, images) {
       const objects = [];
       const content = on.questions ? sanitizeText(String(text || ""), objects) : NOT_LOGGED;
-      write({ type: "user", message: { role: "user", content }, vertex_objects: objects });
+      const pasted = Array.isArray(images) ? images.filter(image => image && typeof image.data === "string" && image.data) : [];
+      let screenshots;
+      if (pasted.length && on.questions) {
+        const folder = file.replace(/\.jsonl$/, "");
+        fs.mkdirSync(folder, { recursive: true });
+        screenshots = pasted.map(image => {
+          const ext = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[image.media_type] || "png";
+          const target = path.join(folder, "screenshot-" + (++screenshotCount) + "." + ext);
+          fs.writeFileSync(target, Buffer.from(image.data, "base64"));
+          return { file: target, media_type: image.media_type || "image/png" };
+        });
+      } else if (pasted.length) screenshots = pasted.map(image => ({ media_type: image.media_type || "image/png" }));
+      write({ type: "user", message: { role: "user", content }, vertex_objects: objects, ...(screenshots ? { vertex_screenshots: screenshots } : {}) });
     },
     request({ instructions, prompt, tools, schema }) {
       if (!on.request) { return; }
@@ -95,11 +111,28 @@ function create(root, provider, session, include) {
       const objects = [];
       if (step.kind === "use") {
         write({ type: "assistant", vertex_step: "claude", message: { id: step.id, content: [{ type: "tool_use", id: step.id,
-          name: String(step.name || ""), input: stepInput(step.name, step.input || {}, objects), vertex_objects: objects }] } });
+          name: String(step.name || ""), input: stepInput(step.name, step.input || {}, objects, on.localCode), vertex_objects: objects }] } });
       } else if (step.kind === "result") {
         write({ type: "user", vertex_step: "claude", message: { role: "user", content: [{ type: "tool_result", tool_use_id: step.id,
           is_error: step.is_error === true, content: stepResult(step.name, step.content, step.is_error === true, objects), vertex_objects: objects }] } });
       }
+    },
+    /* The user's review of Claude Code's working copy: each file's decision, with a link to the file in the folder. */
+    review(outcome) {
+      if (!on.tools || !outcome) { return; }
+      const objects = [], reviewId = id("review");
+      const files = [];
+      const add = (file, decision, extra) => {
+        files.push({ file, decision, ...(extra || {}) });
+        if (outcome.folder) addReference(objects, { path: path.join(outcome.folder, file), kind: "file" });
+      };
+      (outcome.applied || []).forEach(file => add(file, (outcome.merged || []).includes(file) ? "approved, merged with the folder's change" : "approved"));
+      (outcome.reworked || []).forEach(r => add(r.file, "declined, sent back to rework", { reason: sanitizeText(String(r.reason || ""), []) }));
+      (outcome.dropped || []).forEach(file => add(file, "declined, dropped"));
+      (outcome.closed || []).forEach(file => add(file, "not decided"));
+      (outcome.failed || []).forEach(f => add(f.file, "not applied", { error: String(f.error || "") }));
+      write({ type: "assistant", vertex_step: "review", message: { id: reviewId, content: [{ type: "tool_use", id: reviewId,
+        name: "Review", input: { folder: outcome.folder || "", files }, vertex_objects: objects }] } });
     },
     toolResult(toolId, result) {
       if (!on.tools || !toolId) { return; }
@@ -120,13 +153,23 @@ function resultText(content) {
   if (Array.isArray(content)) return content.map(part => part && part.type === "text" ? String(part.text || "") : part && part.type === "image" ? "[image]" : "").join("\n");
   return content == null ? "" : JSON.stringify(content);
 }
-/* What a step was asked to do: a command in full, a path and a pattern; an edit's or a write's text only counted. */
-function stepInput(name, input, objects) {
-  const local = file => { if (typeof file === "string" && /\.abap$/i.test(file)) addReference(objects, { path: file }); return file; };
+/* What a step was asked to do: a command in full, a path and a pattern; an edit's or a write's text counted, and
+   with the localCode option logged as well. Every file named is a link to it. */
+function stepInput(name, input, objects, localCode) {
+  // A Windows path in one slash style: Claude may write C:/..., and the copy's prefix swapped for the folder's
+  // left the rest as it was.
+  const local = file => {
+    if (typeof file !== "string" || !file) return file;
+    const shown = /^[A-Za-z]:[\\/]/.test(file) ? file.replace(/\//g, "\\") : file;
+    addReference(objects, { path: shown, kind: "file" });
+    return shown;
+  };
   if (name === "Edit") return { file_path: local(input.file_path), ...(input.replace_all ? { replace_all: true } : {}),
     old_lines: lineCount(input.old_string), new_lines: lineCount(input.new_string),
-    old_characters: String(input.old_string || "").length, new_characters: String(input.new_string || "").length };
-  if (name === "Write") return { file_path: local(input.file_path), lines: lineCount(input.content), characters: String(input.content || "").length };
+    old_characters: String(input.old_string || "").length, new_characters: String(input.new_string || "").length,
+    ...(localCode ? { old_string: String(input.old_string || ""), new_string: String(input.new_string || "") } : {}) };
+  if (name === "Write") return { file_path: local(input.file_path), lines: lineCount(input.content), characters: String(input.content || "").length,
+    ...(localCode ? { content: String(input.content || "") } : {}) };
   if (name === "Read") return { file_path: local(input.file_path), ...(input.offset ? { offset: input.offset } : {}), ...(input.limit ? { limit: input.limit } : {}) };
   if (name === "Bash") return { command: String(input.command || ""), ...(input.description ? { description: String(input.description) } : {}) };
   return sanitize(input, objects);
@@ -155,6 +198,8 @@ function objectReference(value, inherited = {}) {
   const type = value.object_type || ({ class: "CLAS", interface: "INTF" }[value.kind]) || value.type || inherited.object_type;
   const local = value.path || inherited.path;
   if (typeof local === "string" && /^(?:\/|[A-Za-z]:[\\/])/.test(local) && /\.abap$/i.test(local)) return { path: local };
+  // A local project file that Claude Code read or changed: any type, opened as a text document.
+  if (value.kind === "file" && typeof local === "string" && /^(?:\/|[A-Za-z]:[\\/])/.test(local)) return { path: local, kind: "file" };
   if (typeof name !== "string" || !/^[A-Z0-9_/$~]+$/i.test(name) || !["PROG", "INCL", "CLAS", "INTF", "FUNC", "DEVC"].includes(type)) return inherited;
   return { object_name: name, object_type: type,
     ...(value.system || value.system_name || inherited.system ? { system: value.system || value.system_name || inherited.system } : {}),
@@ -307,7 +352,8 @@ function discardFiles(files) {
 function fromConfig(config) {
   return { questions: config.get("log.questions", false), answers: config.get("log.answers", false),
     tools: config.get("log.tools", false),
-    request: config.get("log.request", false) };
+    request: config.get("log.request", false),
+    localCode: config.get("log.localCode", true) };
 }
 
 module.exports = { create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference };

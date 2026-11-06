@@ -55,7 +55,14 @@ function parseSession(text, file) {
     }
     const content = record.message?.content;
     if (record.type === "vertex_provider_response") {
-      if (current) current.details.push({ type: "Provider usage (" + record.scope + ")",
+      // A model call within the run is a step of the timeline: the events Claude Code sends for one message (its
+      // text, then a tool call) share the message id and are one step. The run's total stays a detail of its own.
+      if (current && record.scope === "model_response") {
+        const id = record.response?.id || "";
+        const last = current.timeline.filter(entry => entry.kind === "model").pop();
+        if (last && id && last.id === id) last.usage = record.response?.usage || last.usage;
+        else current.timeline.push({ kind: "model", id, usage: record.response?.usage || null, time: Number.isFinite(time) ? time : null });
+      } else if (current) current.details.push({ type: "Provider usage (" + record.scope + ")",
         text: prettyJson({ provider: record.provider, response: record.response }) });
       continue;
     }
@@ -75,7 +82,10 @@ function parseSession(text, file) {
         ? content.filter(block => block?.type === "text").map(block => block.text || "").join("\n") : "";
       if (prompt.trim()) {
         current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end,
-          text: prompt.trim(), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [] };
+          text: prompt.trim(), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
+          screenshots: Array.isArray(record.vertex_screenshots) ? record.vertex_screenshots : [],
+          // Model calls and tool calls in the order they happened.
+          timeline: [] };
         session.prompts.push(current);
       } else if (current && Array.isArray(content)) {
         for (const block of content) if (block?.type === "tool_result") {
@@ -104,10 +114,13 @@ function parseSession(text, file) {
         if (block?.type === "text" && block.text) current.details.push({ type: "answer", text: String(block.text), objects: record.vertex_objects || [] });
         if (block?.type === "tool_use") {
           const detail = { type: "tool", name: String(block.name || "tool"), tool_id: block.id || message.id || "",
-            text: String(block.name || "tool") + "\n" + JSON.stringify(block.input || {}, null, 2) };
+            text: String(block.name || "tool") + "\n" + JSON.stringify(block.input || {}, null, 2),
+            // Claude Code's own steps and the review are drawn from their arguments, not as JSON.
+            ...(record.vertex_step ? { step: record.vertex_step, input: block.input || {} } : {}) };
           if (block.vertex_objects?.length) detail.objects = block.vertex_objects;
           if (detail.tool_id) toolCalls.set(detail.tool_id, detail);
           current.details.push(detail);
+          current.timeline.push({ kind: "tool", tool_id: detail.tool_id });
         }
       }
     }
@@ -152,6 +165,8 @@ async function clearConversations(vscode, ids) {
   for (const session of sessions) {
     const file = path.join(report.folder, session.id + ".jsonl");
     fs.unlinkSync(file);
+    // The conversation's screenshots go with it.
+    fs.rmSync(path.join(report.folder, session.id), { recursive: true, force: true });
     // Prevent a pending model response from recreating a deleted conversation.
     require("./session-log").discardFiles([file]);
   }
@@ -181,6 +196,17 @@ function open(vscode, options = {}) {
     if (message?.action === "openSnapshot") {
       try { require("./log-snapshot").open(vscode, message.snapshot); }
       catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "openScreenshot") {
+      // Only a screenshot saved in the configured log folder opens, in VS Code's own image viewer.
+      try {
+        const root = path.resolve(vscode.workspace.getConfiguration("vertex.ai").get("logPath", "") || "", "claude_compatible");
+        const file = path.resolve(String(message.file || ""));
+        if (!/\.(png|jpe?g|gif|webp)$/i.test(file) || path.relative(root, file).startsWith("..") || path.isAbsolute(path.relative(root, file))) {
+          throw new Error("That screenshot is not in the log folder.");
+        }
+        await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(file), { viewColumn: vscode.ViewColumn.Beside });
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openObject") {
       try {

@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.63**
+**Version: 0.9.64**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -713,7 +713,7 @@ For API-key providers, the chat displays the provider's input, cached and output
 for the complete answer, including model requests made around tool calls when reported by the API.
 Set `vertex.ai.logPath` to write a Claude-compatible JSONL conversation log in its
 `claude_compatible` subfolder. `vertex.ai.log.questions`, `.answers`, `.tools` and `.request`
-control which content is retained. Program bodies are omitted from tool arguments, results and request context, with links to the current ABAP object or local file instead. Enable `vertex.ai.log.request` to inspect VERTEX instructions, source-free request context, tool definitions and answer schema in new entries. Conversation history and local paths can be included, so it is off by default. The provider's own hidden
+control which content is retained. Program bodies are omitted from tool arguments, results and request context, with links to the current ABAP object or local file instead. With `.tools`, Claude Code's own steps are logged too - Read, Grep, Glob, Edit, Write, Bash, each with its result (a command's output, a search's matches; a file read only by its line count) - and every file a step names is a link to the file in your folder, also when Claude worked in its git working copy. `vertex.ai.log.localCode` (on by default) adds the text of Claude's changes to local project files, Edit and Write; program source from SAP is never logged. The review of a working copy is logged as a **Review** step: each file's decision, a decline's reason, and what was applied. In the session report these steps read as what they did - a command, a file, an edit as removed and added lines, the review as a table - in one **Steps** timeline of each prompt: each call to the model with its tokens, the tools it called indented under it. A screenshot pasted with a question is saved with **Log questions** as a file in the conversation's folder beside the log, and **Open screenshot** under the question opens it; clearing the conversation removes it. Enable `vertex.ai.log.request` to inspect VERTEX instructions, source-free request context, tool definitions and answer schema in new entries. Conversation history and local paths can be included, so it is off by default. The provider's own hidden
 instructions are not available to VERTEX. Direct Anthropic API tool calls are included when `.tools`
 is on. Each direct Anthropic, compatible API and Copilot model call gets a separate assistant
 record with its reported usage; Claude Code and Codex subscriptions have one record per VERTEX

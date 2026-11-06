@@ -96,6 +96,17 @@ function localAbapContext(vscode) {
     source: source.slice(0, limit), truncated: source.length > limit, totalCharacters: source.length };
 }
 
+/* A step of Claude's with every path into its working copy turned into the same path in the user's folder:
+   the copy goes with its conversation, the folder stays. Both slash styles, any letter case of the copy's path. */
+function inFolder(step, copy) {
+  const variants = [copy.dir, copy.dir.replace(/\\/g, "/")].map(p => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(variants.join("|"), "gi");
+  const swap = value => typeof value === "string" ? value.replace(pattern, match => match.includes("/") ? copy.top.replace(/\\/g, "/") : copy.top)
+    : Array.isArray(value) ? value.map(swap)
+    : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, swap(v)])) : value;
+  return swap(step);
+}
+
 // Claude works in a folder: the workspace folder of the active local file, or, with no editor
 // open, the workspace's only folder. A SAP tab, another extension's document or a file outside
 // the workspace leaves it none.
@@ -175,10 +186,13 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
   }
   function showReview(changes) {
     dropReview();
-    const entry = { silent: false };
+    const entry = { silent: false }, reviewed = copy;
     entry.panel = worktreeReview.open(vscode, copy, changes, outcome => {
       if (entry.silent) return;
       if (openReview === entry) openReview = null;
+      const config = vscode.workspace.getConfiguration("vertex.ai");
+      const log = sessionLog.current(config.get("logPath", ""), "claude", sessionLog.fromConfig(config));
+      if (log && log.review) log.review({ ...outcome, folder: reviewed.top });
       reviewNote = worktreeReview.report(outcome);
       if (outcome.reworked.length) {
         void vscode.commands.executeCommand("vertex.chatSend", "I declined some of your changes. Rework them:\n"
@@ -282,7 +296,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
       if (superseded()) return replaced();
       const sapDebugger = require("./debug-mode").sapDebuggerRequested(prompt, history);
       const toolSchemas = hasSap ? codeTools.schemas.filter(tool => sapDebugger || !/^debug_/.test(tool.name)) : [];
-      if (log) { log.user(prompt.trim()); }
+      if (log) { log.user(prompt.trim(), images); }
       const callTool = (name, args) => sessionLog.assistantTool(log, name, args,
         (toolName, toolArgs) => {
           if (superseded()) throw new Error("This request was superseded by a new conversation.");
@@ -322,7 +336,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
           ? update => { if (!superseded()) options.onProgress(update); } : undefined,
         onModelCall,
         onProviderResponse: event => { if (log) log.providerResponse(event); },
-        onStep: step => { if (log && log.step) log.step(step); },
+        // In a working copy Claude names the copy's files; the log names the user's own, which outlive the copy.
+        onStep: step => { if (log && log.step) log.step(working ? inFolder(step, working) : step); },
         personalInstructions: config.get("personalInstructions", false),
         ...(workDir ? { workDir: working ? working.cwd : workDir } : {}),
         ...(working ? { reviewAfter: true, shellWithoutAsking: config.get("shellWithoutAsking", false) === true } : {}),
@@ -482,4 +497,4 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
 /** The folder the chat's next request would work in, for the panel to show: "" when none. */
 const currentWorkingFolder = vscode => workingFolder(vscode, subscriptionProvider(vscode));
 
-module.exports = { create, debugFlowSection, originFlowSection, localAbapContext, workingFolder, currentWorkingFolder };
+module.exports = { create, debugFlowSection, originFlowSection, localAbapContext, workingFolder, currentWorkingFolder, inFolder };

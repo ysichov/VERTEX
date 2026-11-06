@@ -3,7 +3,7 @@
 
 ## Install
 
-Current VS Code extension: **0.9.63**.
+Current VS Code extension: **0.9.64**.
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
@@ -87,7 +87,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.63.20261106122058**; the VS Code extension is **0.9.63**.
+**0.9.64.20261106125710**; the VS Code extension is **0.9.64**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.

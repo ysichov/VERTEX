@@ -194,3 +194,51 @@ test("Claude Code's own steps are logged with the tool option: a command and its
   off.step({ kind: "use", id: "toolu_9", name: "Bash", input: { command: "x" } });
   assert.equal(require("node:fs").existsSync(off.file), false, "nothing without the tool option");
 });
+
+test("with localCode an edit's text is logged and every file named is a link; a review is logged file by file", () => {
+  const nfs = require("node:fs"), npath = require("node:path");
+  const root = nfs.mkdtempSync(npath.join(require("node:os").tmpdir(), "vertex-local-"));
+  const sessionLog = require("../session-log");
+  const log = sessionLog.create(root, "claude", "local", { tools: true, localCode: true });
+  log.step({ kind: "use", id: "toolu_1", name: "Edit", input: { file_path: "C:/p/a.md", old_string: "old", new_string: "new" } });
+  log.review({ folder: "C:/p", applied: ["a.md"], merged: [], reworked: [{ file: "b.md", reason: "keep it" }], dropped: [], closed: [], failed: [] });
+  const records = nfs.readFileSync(log.file, "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const edit = records[0].message.content[0];
+  assert.equal(edit.input.old_string, "old");
+  assert.equal(edit.input.new_string, "new");
+  assert.deepEqual(edit.vertex_objects, [{ path: String.raw`C:\p\a.md`, kind: "file" }]);
+  assert.deepEqual(sessionLog.objectReference(edit.vertex_objects[0]), { path: String.raw`C:\p\a.md`, kind: "file" });
+  const review = records[1].message.content[0];
+  assert.equal(review.name, "Review");
+  assert.deepEqual(review.input.files.map(f => [f.file, f.decision]), [["a.md", "approved"], ["b.md", "declined, sent back to rework"]]);
+  assert.equal(sessionLog.fromConfig({ get: (key, fallback) => fallback }).localCode, true, "on by default");
+});
+
+test("a Windows path in a step is written in one slash style", () => {
+  const nfs = require("node:fs"), npath = require("node:path");
+  const root = nfs.mkdtempSync(npath.join(require("node:os").tmpdir(), "vertex-slash-"));
+  const log = require("../session-log").create(root, "claude", "slash", { tools: true });
+  log.step({ kind: "use", id: "toolu_1", name: "Read", input: { file_path: String.raw`C:/soft/P\AGENTS.md` } });
+  const use = JSON.parse(nfs.readFileSync(log.file, "utf8").trim()).message.content[0];
+  assert.equal(use.input.file_path, String.raw`C:\soft\P\AGENTS.md`);
+  assert.deepEqual(use.vertex_objects, [{ path: String.raw`C:\soft\P\AGENTS.md`, kind: "file" }]);
+});
+
+test("screenshots pasted with a question are saved beside the log with the questions option, only counted without it", () => {
+  const nfs = require("node:fs"), npath = require("node:path");
+  const root = nfs.mkdtempSync(npath.join(require("node:os").tmpdir(), "vertex-shots-"));
+  const sessionLog = require("../session-log");
+  const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+  const log = sessionLog.create(root, "claude", "shots", { questions: true });
+  log.user("What is this?", [{ media_type: "image/png", data: png }]);
+  const record = JSON.parse(nfs.readFileSync(log.file, "utf8").trim());
+  assert.equal(record.vertex_screenshots.length, 1);
+  assert.equal(npath.basename(record.vertex_screenshots[0].file), "screenshot-1.png");
+  assert.equal(npath.basename(npath.dirname(record.vertex_screenshots[0].file)), "claude_shots", "in the conversation's own folder");
+  assert.deepEqual(nfs.readFileSync(record.vertex_screenshots[0].file), Buffer.from(png, "base64"));
+  const quiet = sessionLog.create(root, "claude", "quiet", {});
+  quiet.user("What is this?", [{ media_type: "image/png", data: png }]);
+  const counted = JSON.parse(nfs.readFileSync(quiet.file, "utf8").trim());
+  assert.deepEqual(counted.vertex_screenshots, [{ media_type: "image/png" }]);
+  assert.equal(nfs.existsSync(quiet.file.replace(/\.jsonl$/, "")), false, "no file without the questions option");
+});

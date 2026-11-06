@@ -25,3 +25,11 @@ test("a SAP tab leaves no folder, and only Claude gets one", () => {
   assert.equal(workingFolder(host({ scheme: "vertex", fsPath: "/x" }, one), "claude"), "");
   assert.equal(workingFolder(host(null, one), "codex"), "");
 });
+
+test("a step's paths into the working copy become the folder's, in either slash style", () => {
+  const { inFolder } = require("../chat");
+  const copy = { dir: String.raw`C:\Temp\vertex-wt-1`, top: String.raw`C:\soft\P` };
+  const step = inFolder({ input: { file_path: String.raw`c:\temp\vertex-wt-1\src\a.js`, command: "cat C:/Temp/vertex-wt-1/b.md" } }, copy);
+  assert.equal(step.input.file_path, String.raw`C:\soft\P\src\a.js`);
+  assert.equal(step.input.command, "cat C:/soft/P/b.md");
+});
