@@ -3,7 +3,7 @@ const test=require("node:test"),assert=require("node:assert/strict"),fs=require(
 const visual=require("../task-visual"),review=require("../code-review");
 
 test("review and commit scenes are distinct, theme-aware and static under reduced motion",()=>{
- assert.match(visual.html("review"),/review-lens/);assert.match(visual.html("commit"),/commit-seal/);
+ assert.match(visual.html("review"),/review-lens/);assert.match(visual.html("commit"),/commit-link/);
  assert.doesNotMatch(visual.css,/rotate\(|filter:/);assert.match(visual.css,/prefers-reduced-motion/);assert.match(visual.css,/vscode-reduce-motion/);assert.match(visual.css,/var\(--vscode-/);
  const failed=review.waitingHtml("Review","Could not read changes",true);assert.doesNotMatch(failed,/<svg/);assert.match(failed,/aria-busy="false"/);
 });
@@ -16,7 +16,7 @@ test("chat review scene survives progress updates and is removed on completion o
  context.paintTaskScene(item,{kind:"review"});const first=item.children[0];assert.match(first.innerHTML,/review-lens/);assert.equal(item['aria-busy'],"true");
  context.paintTaskScene(item,{status:"Model request"});assert.equal(item.children[0],first);
  context.paintTaskScene(item,{done:true,answer:"Request failed"});assert.equal(item.children.length,0);assert.equal(item['aria-busy'],"false");
- context.paintTaskScene(item,{kind:"commit"});assert.match(item.children[0].innerHTML,/commit-seal/);context.paintTaskScene(item,{done:true});assert.equal(item.children.length,0);
+ context.paintTaskScene(item,{kind:"commit"});assert.match(item.children[0].innerHTML,/commit-link/);context.paintTaskScene(item,{done:true});assert.equal(item.children.length,0);
 });
 
 test("commit waiting visual covers generation and commit, and stops after success or failure",()=>{

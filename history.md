@@ -1,3 +1,7 @@
+## 2026-11-07 — Git-node commit waiting scene
+
+Replace the commit seal animation with documents collecting into a stack, connecting to a Git timeline node and receiving a check mark. Keep theme colors, reduced-motion support and the existing waiting lifecycle. Version remains 0.9.70.
+
 ## 0.9.70 — 2026-11-07
 
 Add theme-aware waiting scenes for review and commit requests: a magnifying lens scans documents for review, while a commit message is assembled and sealed. Show review loading immediately before Git reads files; keep commit feedback visible through generation and commit, stopping on success or error. Respect reduced motion and avoid rotating logos for these tasks. Bump and build VS Code and Eclipse together.
