@@ -8,16 +8,17 @@ const SEP = "\x1f", END = "\x1e";
 
 async function readCommits(folder, filter = {}) {
   // Only hashes and dates for numbering/months; load descriptions for visible rows only.
-  const index = (await git(folder, ["log", "--date=iso-strict", "--pretty=format:%H" + SEP + "%ad" + END, "--", "."]))
+  const index = (await git(folder, ["log", "--date=iso-strict", "--pretty=format:%H" + SEP + "%ad" + SEP + "%an" + END, "--", "."]))
     .split(END).map(line => line.replace(/^\r?\n/, "")).filter(Boolean).map(line => {
-      const [hash, date] = line.split(SEP); return { hash, date };
+      const [hash, date, author] = line.split(SEP); return { hash, date, author };
     });
   index.forEach((entry, i) => { entry.number = index.length - i; });
   const valid = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
   const from = valid(filter.from), to = valid(filter.to);
-  const selected = from || to ? index.filter(entry => {
+  const byAuthor = filter.author ? index.filter(entry => entry.author === filter.author) : index;
+  const selected = from || to ? byAuthor.filter(entry => {
     const day = entry.date.slice(0, 10); return (!from || day >= from) && (!to || day <= to);
-  }) : index.slice(0, 10);
+  }) : byAuthor.slice(0, 10);
   const details = new Map();
   for (let i = 0; i < selected.length; i += 100) {
     const text = await git(folder, ["log", "--no-walk=unsorted", "--date=iso-strict", "--pretty=format:%H" + SEP + "%h" + SEP + "%ad" + SEP + "%an" + SEP + "%s" + SEP + "%b" + END,
@@ -29,6 +30,7 @@ async function readCommits(folder, filter = {}) {
   }
   const commits = selected.map(entry => ({ ...details.get(entry.hash), number: entry.number }));
   commits.months = [...new Set(index.map(entry => entry.date.slice(0, 7)))].sort().reverse();
+  commits.authors = [...new Set(index.map(entry => entry.author))].sort((a,b)=>a.localeCompare(b));
   return commits;
 }
 
@@ -175,14 +177,14 @@ tr:hover td{background:var(--vscode-list-hoverBackground)}
 td.hash{font-family:var(--vscode-editor-font-family);white-space:nowrap}td.hash a{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:none}td.hash a:hover{color:var(--vscode-textLink-activeForeground);text-decoration:underline}td.date{white-space:nowrap}
 </style></head><body>
 <h1>Git History</h1><div id="folder"></div><div id="error" role="alert"></div>
-<div id="filters" hidden><label>From <input id="from" placeholder="dd-mm-yyyy" aria-label="From date, dd-mm-yyyy" maxlength="10"></label><label>To <input id="to" placeholder="dd-mm-yyyy" aria-label="To date, dd-mm-yyyy" maxlength="10"></label><label>Month <select id="month"><option value="">All dates</option></select></label></div>
+<div id="filters" hidden><label>From <input id="from" placeholder="dd-mm-yyyy" aria-label="From date, dd-mm-yyyy" maxlength="10"></label><label>To <input id="to" placeholder="dd-mm-yyyy" aria-label="To date, dd-mm-yyyy" maxlength="10"></label><label>Month <select id="month"><option value="">Last 10 commits</option></select></label><label>Author <select id="author"><option value="">All authors</option></select></label></div>
 <table hidden><thead><tr><th>#</th><th>Commit</th><th>Date</th><th>Author</th><th>Message</th></tr></thead><tbody></tbody></table>
 <script nonce="${nonce}">
 const vscode=acquireVsCodeApi();
 const formatDate=${formatDate.toString()};
 let commits=[];
 const expandedDescriptions=new Set();
-const from=document.getElementById("from"),to=document.getElementById("to"),month=document.getElementById("month"),error=document.getElementById("error");
+const from=document.getElementById("from"),to=document.getElementById("to"),month=document.getElementById("month"),author=document.getElementById("author"),error=document.getElementById("error");
 function parseDate(input){
   const value=input.value.trim();
   if(!value)return "";
@@ -201,7 +203,7 @@ function render(){
   from.setAttribute("aria-invalid",String(start===null));to.setAttribute("aria-invalid",String(end===null));
   if(start===null||end===null){error.textContent="Enter dates as dd-mm-yyyy.";return;}
   if(start&&end&&start>end){error.textContent="From date must be on or before To date.";return;}
-  const visible=commits.filter(c=>{const day=String(c.date||"").slice(0,10);return (!start||day>=start)&&(!end||day<=end);});
+  const visible=commits.filter(c=>{const day=String(c.date||"").slice(0,10);return (!start||day>=start)&&(!end||day<=end)&&(!author.value||c.author===author.value);});
   error.textContent=visible.length?"":commits.length?"No commits match these dates.":"No commits in this folder.";
   visible.forEach(c=>{
     const tr=document.createElement("tr");
@@ -225,9 +227,10 @@ let filterTimer;
 function requestPeriod(){
   const start=parseDate(from),end=parseDate(to);
   if(start===null||end===null||(start&&end&&start>end))return;
-  vscode.postMessage({action:"filter",from:start,to:end});
+  vscode.postMessage({action:"filter",from:start,to:end,author:author.value});
 }
 [from,to].forEach(input=>input.addEventListener("input",()=>{month.value="";render();clearTimeout(filterTimer);filterTimer=setTimeout(requestPeriod,350);}));
+author.addEventListener("change",()=>{render();requestPeriod();});
 month.addEventListener("change",()=>{
   if(month.value){
     const [year,m]=month.value.split("-");
@@ -238,7 +241,7 @@ month.addEventListener("change",()=>{
 });
 window.addEventListener("message",e=>{
   const m=e.data||{};
-  if(document.getElementById("folder").textContent!==m.folder){expandedDescriptions.clear();from.value="";to.value="";month.value="";}
+  if(document.getElementById("folder").textContent!==m.folder){expandedDescriptions.clear();from.value="";to.value="";month.value="";author.value="";}
   document.getElementById("folder").textContent=m.folder||"";
   commits=(m.commits||[]).map((c,i)=>({...c,number:c.number ?? m.commits.length-i}));
   document.querySelector("table").hidden=!m.commits;
@@ -248,6 +251,9 @@ window.addEventListener("message",e=>{
     month.add(new Option(value.slice(5)+"-"+value.slice(0,4),value));
   });
   month.value=selected;
+  const selectedAuthor=author.value;author.replaceChildren(new Option("All authors",""));
+  (m.authors||[...new Set(commits.map(c=>c.author).filter(Boolean))]).forEach(value=>author.add(new Option(value,value)));
+  author.value=selectedAuthor;
   if(m.error){error.textContent=m.error;return;}
   render();
 });
@@ -264,7 +270,7 @@ function open(vscode, folder) {
     const id = ++refreshId, folder = shown;
     try {
       const commits = await readCommits(folder, filter);
-      if (id === refreshId && folder === shown) await panel?.webview.postMessage({ folder, commits, months: commits.months });
+      if (id === refreshId && folder === shown) await panel?.webview.postMessage({ folder, commits, months: commits.months, authors: commits.authors });
     }
     catch (error) { await panel?.webview.postMessage({ folder: shown, error: error.message }); }
   };
@@ -274,7 +280,7 @@ function open(vscode, folder) {
   panel.webview.html = page(crypto.randomBytes(16).toString("hex"));
   panel.webview.onDidReceiveMessage(async message => {
     if (message?.action === "ready") refresh();
-    if (message?.action === "filter") refresh({from:message.from,to:message.to});
+    if (message?.action === "filter") refresh({from:message.from,to:message.to,author:message.author});
     if (message?.action === "commit" && message.commit) {
       try { await openCommit(vscode, shown, message.commit); }
       catch (error) { vscode.window.showErrorMessage("VERTEX Git History: " + error.message); }

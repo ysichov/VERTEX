@@ -1,3 +1,17 @@
+## 2026-11-07 — Runtime tool capability negotiation
+
+All OpenAI-compatible providers handle explicit unsupported-tool 400s with one text-only retry before any tools execute. Negative API evidence overrides catalog declarations for 24 hours, scoped to provider/model and a credential hash, persisted in extension storage. Never replay prior tool actions. Update selected model details immediately and retain rejection diagnostics in logs. Catalog-positive labels now describe declarations rather than guaranteed runtime support. Version stays 0.9.68.
+
+## 0.9.68 — 2026-11-07
+
+Visible Git-diff descriptions explicitly avoid redundant filesystem searches. Vercel billing reads actual usage.gateway_cost / usage.cost directly before falling back to generation lookup.
+
+Git History adds an Author selector combined with date/month filters, keeping original commit numbers. With no date period, it loads the latest ten commits by the selected author. Restore the six-second task-logo rotation by limiting animation suppression to reduced-motion settings; completed-task logos stay hidden. Version advanced on VS Code and Eclipse.
+
+## 2026-11-07 — Vercel-only model details
+
+Show the $ model-details button only for Vercel AI Gateway. Switching to another provider closes the details dialog and hides the button.
+
 ## 2026-11-07 — Active-task logo only
 
 Hide the chat task logo after completion or failure. Only an active task displays the rotating mark; its reserved space prevents the answer from shifting when the mark disappears.

@@ -823,6 +823,7 @@ function withDebugger(sapCode, debugTools, runTranspiler, transpilerHistory) {
 }
 
 function activate(context) {
+  require("./tool-support").configure(context.globalState);
   auth = require("./auth/clients").createAuth({ vscode, context, logger: outputLogger });
   const sapCode = require("./code-workbench").register(vscode, context, { active, auth, pin: pinTo,
     pinned: () => pinnedSystem.getStore() || "", systems });

@@ -455,7 +455,7 @@ test("a visible Git review snapshot reaches ordinary chat; explicit blocks keep 
   {start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
  await ask('Сформируй краткое описание для коммита');
  assert.match(calls[0].prompt,/VISIBLE_GIT_DIFF/);
- assert.match(calls[0].prompt,/Do not run git again/);
+ assert.match(calls[0].prompt,/Do not run Git, Grep, Glob, Read or shell commands/);
  await ask('Explain ONLY_SELECTED_BLOCK',{state:{review_ask:{object:'RUN',all:false,blocks:[1]}}});
  assert.doesNotMatch(calls[1].prompt,/VISIBLE_GIT_DIFF/);
  t.mock.method(gitHistory,'reviewContext',()=>null);

@@ -264,12 +264,11 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages .vertex.task:not(.working)::before { visibility: hidden; }
 #messages .vertex.task.working::before { animation: vertex-task-turn 6s linear infinite; }
 @keyframes vertex-task-turn { to { transform: rotate(360deg); } }
-body.vscode-reduce-motion #messages .vertex.task:not(.working)::before { visibility: hidden; }
-#messages .vertex.task.working::before { animation: none; }
-@media (prefers-reduced-motion: reduce) { #messages .vertex.task:not(.working)::before { visibility: hidden; }
-#messages .vertex.task.working::before { animation: none; } }
+body.vscode-reduce-motion #messages .vertex.task.working::before { animation: none; }
+@media (prefers-reduced-motion: reduce) { #messages .vertex.task.working::before { animation: none; } }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .model-picker #model-select { flex: 1 1 auto; min-width: 0; }
+.line #model-details-button[hidden] { display: none; }
 .line #model-details-button { flex: none; margin: 0; padding: 3px 8px; }
 #model-details-dialog { box-sizing: border-box; width: calc(100% - 24px); max-width: 560px; max-height: 80vh; overflow: auto; padding: 14px 18px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-panel-border); }
 #model-details-dialog::backdrop { background: var(--vscode-widget-shadow,transparent); }
@@ -326,7 +325,7 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 <span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
@@ -343,11 +342,14 @@ function drawModelCapabilities() {
   const target = document.getElementById('model-capabilities'); target.replaceChildren();
   const dialog = document.getElementById('model-details-dialog'); if (dialog.open) dialog.close();
   const model = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
-  document.getElementById('model-details-button').disabled = !model;
-  if (!model) return;
+  const button = document.getElementById('model-details-button');
+  button.hidden = document.getElementById('provider-select').value !== 'vercel-api';
+  button.disabled = button.hidden || !model;
+  if (button.hidden || !model) return;
   const line = text => { const row = document.createElement('p'); row.className = 'model-detail'; row.textContent = text; target.appendChild(row); };
   document.getElementById('model-details-title').textContent = model.label || model.id;
   line(model.id);
+  if (model.toolSupportEvidence) line(model.toolSupportEvidence.reason + " Text-only mode; this observation expires after 24 hours.");
   capabilityDefinitions.forEach(d => {
     const value = model.capabilities?.[d.key];
     line(d.icon + ' ' + d.label + ': ' + (value === true ? d.yes : value === false ? d.no || 'Not supported by the catalog declaration.' : 'Not reported by the catalog; not tested.'));
@@ -494,6 +496,10 @@ window.addEventListener('message', event => {
   }
   if (event.data && event.data.progress) {
     const update = event.data.progress;
+    if (update.toolSupport && document.getElementById('provider-select').value === update.toolSupport.provider) {
+      const model = modelCatalog.find(m => m.id === update.toolSupport.model);
+      if (model) { model.capabilities = { ...model.capabilities, tools:false }; model.toolSupportEvidence = update.toolSupport.evidence; drawModelCapabilities(); }
+    }
     let item = progressItems.get(update.id);
     if (!item && !update.remove) {
       item = document.createElement('div'); item.className = 'vertex task working';

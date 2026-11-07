@@ -1,7 +1,7 @@
 "use strict";
 // Catalog declarations, not results of the paid connectivity probe. Null means unknown.
 const definitions = [
-  { key: "tools", icon: "⚒", label: "Tools", yes: "Can call tools; VERTEX can read and change objects through them.", no: "No tool calling: text answers only; VERTEX actions are unavailable." },
+  { key: "tools", icon: "⚒", label: "Tools", yes: "Catalog declares tool calling; actual availability depends on the serving API.", no: "No tool calling: text answers only; VERTEX actions are unavailable." },
   { key: "json", icon: "{}", label: "Structured output", yes: "Declares structured JSON output; this does not guarantee answer correctness.", no: "No structured-output API support declared." },
   { key: "reasoning", icon: "💭", label: "Reasoning", yes: "Supports reasoning; thinking tokens may be billed. This is not a quality rating." },
   { key: "vision", icon: "▣", label: "Vision", yes: "Accepts images and screenshots.", no: "Does not accept images or screenshots. Use a Vision model or remove the image." },

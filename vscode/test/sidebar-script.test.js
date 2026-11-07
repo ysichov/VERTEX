@@ -95,3 +95,10 @@ test("sidebar selection uses the VS Code clipboard for macOS Copy", () => {
   assert.equal(sent[0].action, "copyAnswer");
   assert.equal(sent[0].text, "Selected answer");
 });
+
+test("task logo animation is disabled only by reduced-motion rules",()=>{
+ const source=fs.readFileSync(path.join(__dirname,"..","sidebar.js"),"utf8");
+ assert.match(source,/#messages \.vertex\.task\.working::before \{ animation: vertex-task-turn 6s linear infinite;/);
+ assert.doesNotMatch(source,/^#messages \.vertex\.task\.working::before \{ animation: none;/m);
+ assert.match(source,/body\.vscode-reduce-motion #messages \.vertex\.task\.working::before \{ animation: none;/);
+});

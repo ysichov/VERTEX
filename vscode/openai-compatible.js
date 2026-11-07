@@ -1,6 +1,7 @@
 "use strict";
 
 const https = require("https");
+const toolSupport = require("./tool-support");
 
 // Provider endpoints from ABAP-AI-Code's ZAICODE_PROVIDER seed list. The
 // Assistant calls only these fixed HTTPS hosts; keys stay in SecretStorage.
@@ -102,7 +103,7 @@ async function generationCost(response, options, request) {
   const gateway = response.providerMetadata?.gateway || response.provider_metadata?.gateway;
   const generationId = gateway?.generationId || response.id;
   const number = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
-  let cost = number(gateway?.cost);
+  let cost = number(response.usage?.gateway_cost ?? response.usage?.cost ?? gateway?.cost);
   if (cost === null && generationId) {
     for (let attempt = 0; attempt < 3; attempt++) {
       if (options.isActive && !options.isActive()) break;
@@ -123,22 +124,42 @@ async function ask(options) {
   const id = options.assistant;
   const request = options.request || requestJson;
   if (options.images?.length && options.capabilities?.vision === false) throw new Error("This model does not accept screenshots. Choose a Vision model or remove the images.");
-  const tools = options.capabilities?.tools === false ? [] : (options.tools || []).map(tool => ({ type: "function", function: {
+  let tools = options.capabilities?.tools === false || toolSupport.rejection(id, options.apiKey, options.model) ? [] : (options.tools || []).map(tool => ({ type: "function", function: {
     name: tool.name, description: tool.description, parameters: tool.inputSchema
   } })).concat([{ type: "function", function: { name: "submit_vertex_answer",
     description: "Submit the final VERTEX answer and navigation plan.", parameters: options.schema } }]);
   const content = options.images?.length ? [{ type: "text", text: options.prompt },
     ...options.images.map(image => ({ type: "image_url", image_url: { url: "data:" + image.media_type + ";base64," + image.data } }))] : options.prompt;
-  const messages = [{ role: "system", content: options.instructions }, { role: "user", content }];
+  const textOnly = "Tools are unavailable for this request. Reply directly as plain text from supplied context, not through submit_vertex_answer or JSON. Do not claim to read files, search, run commands, modify objects or perform live actions. If the request needs unavailable tools, explain that limitation and ask the user to choose a tool-capable model.";
+  const messages = [{ role: "system", content: options.instructions + (!tools.length ? "\n" + textOnly : "") }, { role: "user", content }];
   const imageBytes = (options.images || []).reduce((sum, image) => sum + Buffer.byteLength(image.data || "", "utf8") + 256, 0);
   let usage = null;
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     options.onProgress?.({ status: "Model request " + (round + 1) });
-    const response = await rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
+    const send = () => rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
       model: options.model, messages, ...(tools.length ? { tools } : {}), stream: false
-    }, (options.localTools ? 2 * 1024 * 1024 : 64000) + imageBytes), options).catch(error => {
-      error.model_step = round + 1; error.operation = "Model request"; throw error;
-    });
+    }, (options.localTools ? 2 * 1024 * 1024 : 64000) + imageBytes), options);
+    let response;
+    try { response = await send(); }
+    catch (error) {
+      const unsupported = (error.status === 400 || /returned 400\b/.test(error.message || ""))
+        && /(?:does(?:n't| not)|does not|cannot|can't) support (?:tool use|tool calling|tools|function calling)|(?:tool use|tool calling|tools|function calling) (?:is |are )?not supported/i.test(error.message || "");
+      if (tools.length && unsupported) {
+        const evidence = await toolSupport.reject(id, options.apiKey, options.model);
+        options.onToolUnsupported?.(evidence);
+        options.onProviderResponse?.({ provider:id, scope:"tool_support_rejected", response:{ model:options.model, is_error:true, error:error.message, model_step:round+1, operation:"Tool support negotiation" } });
+        // Only an initial rejected request may be resent. Never replay completed tools.
+        if (round === 0) {
+          tools = [];
+          messages[0].content += "\n" + textOnly;
+          options.onProgress?.({ status:"API rejected tools. Continuing once in text-only mode." });
+          try { response = await send(); } catch (retryError) { retryError.model_step=round+1; retryError.operation="Text-only model request"; throw retryError; }
+        } else {
+          error.message += " Tool support was disabled for future requests. Earlier tool operations were not repeated.";
+        }
+      }
+      if (!response) { error.model_step = round + 1; error.operation = "Model request"; throw error; }
+    }
     if (options.onProviderResponse) options.onProviderResponse({ provider: id, scope: "model_response", response });
     let roundUsage = null;
     if (response.usage) {
@@ -163,6 +184,7 @@ async function ask(options) {
     const message = response.choices && response.choices[0] && response.choices[0].message;
     if (!message) { throw new Error(PROVIDERS[id].label + " answered without a chat message."); }
     const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    if (!tools.length && calls.length) throw new Error("The model returned tool calls although tools are disabled; no action was executed.");
     const final = calls.find(call => call.function && call.function.name === "submit_vertex_answer");
     if (final) {
       let plan;

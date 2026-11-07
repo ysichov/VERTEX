@@ -250,3 +250,37 @@ test('Vercel zero cost is preserved and billing failure never fails the answer',
 test('failed model request carries its step and operation',async()=>{
  await assert.rejects(()=>api.ask({assistant:'vercel-api',apiKey:'test',model:'x',prompt:'x',instructions:'x',request:async()=>{throw new Error('API timed out');}}),error=>error.model_step===1 && error.operation==='Model request' && /timed out/.test(error.message));
 });
+
+test('Vercel actual response usage cost needs no generation lookup',async()=>{
+ let requests=0,call;
+ await api.ask({assistant:'vercel-api',apiKey:'test',model:'x',prompt:'x',instructions:'x',capabilities:{tools:false},onModelCall:e=>call=e,request:async()=>{requests++;return {id:'gen_x',usage:{prompt_tokens:4,completion_tokens:1,cost:0.2,gateway_cost:0.1},choices:[{message:{content:'Done'}}]};}});
+ assert.equal(requests,1);assert.equal(call.usage.cost_usd,0.1);
+});
+
+test('tool support rejection retries once without tools and is remembered per key',async()=>{
+ const support=require('../tool-support');support.configure(undefined);
+ const bodies=[],events=[],notices=[];let executions=0;
+ const options={assistant:'vercel-api',apiKey:'tool-key',model:'catalog-tools-test',prompt:'Describe supplied diff',instructions:'Context',capabilities:{tools:true},schema:{type:'object'},tools:[{name:'Read',inputSchema:{}}],callTool:async()=>{executions++;},onProviderResponse:e=>events.push(e),onToolUnsupported:e=>notices.push(e),request:async(id,key,route,body)=>{bodies.push(body);if(body.tools)throw Object.assign(new Error("API returned 400: This model doesn't support tool use."),{status:400});return {choices:[{message:{content:'Text answer'}}]};}};
+ const answer=await api.ask(options);assert.equal(answer.plan.answer,'Text answer');assert.equal(answer.plan.navigation,null);
+ assert.equal(bodies.length,2);assert.ok(bodies[0].tools.some(t=>t.function.name==='submit_vertex_answer'));assert.ok(!('tools' in bodies[1]));assert.match(bodies[1].messages[0].content,/Tools are unavailable/);assert.equal(executions,0);assert.equal(notices.length,1);assert.ok(events.some(e=>e.scope==='tool_support_rejected'));
+ bodies.length=0;await api.ask(options);assert.equal(bodies.length,1);assert.ok(!bodies[0].tools);
+ assert.equal(support.rejection('vercel-api','another-key',options.model),null);
+ assert.equal(support.rejection('groq-api',options.apiKey,options.model),null);
+ support.configure(undefined);
+});
+test('unrelated 400 errors are never treated as unsupported tools',async()=>{
+ let requests=0;
+ await assert.rejects(()=>api.ask({assistant:'groq-api',apiKey:'k',model:'bad-schema',prompt:'x',instructions:'x',request:async()=>{requests++;throw Object.assign(new Error('Invalid tools schema'),{status:400});}}),/Invalid tools schema/);
+ assert.equal(requests,1);
+});
+test('tool rejection after executed actions stops without replaying them',async()=>{
+ const support=require('../tool-support');support.configure(undefined);let requests=0,actions=0;
+ await assert.rejects(()=>api.ask({assistant:'groq-api',apiKey:'k',model:'changed-route',prompt:'x',instructions:'x',tools:[{name:'Read',inputSchema:{}}],callTool:async()=>{actions++;return 'data';},request:async()=>{if(++requests===1)return {choices:[{message:{tool_calls:[{id:'a',function:{name:'Read',arguments:'{}'}}]}}]};throw Object.assign(new Error('Tool calling is not supported'),{status:400});}}),/Earlier tool operations were not repeated/);
+ assert.equal(requests,2);assert.equal(actions,1);assert.ok(support.rejection('groq-api','k','changed-route'));support.configure(undefined);
+});
+test('runtime tool support evidence persists without storing credentials and expires',async()=>{
+ const support=require('../tool-support');let saved;const storage={get:()=>saved||{},update:async(key,value)=>{saved=value;}};
+ support.configure(storage);await support.reject('vercel-api','private-key','model');assert.ok(!JSON.stringify(saved).includes('private-key'));
+ support.configure(storage);assert.equal(support.model('vercel-api','private-key',{id:'model',capabilities:{tools:true}}).capabilities.tools,false);
+ const original=Date.now;try{Date.now=()=>original()+25*60*60*1000;assert.equal(support.rejection('vercel-api','private-key','model'),null);}finally{Date.now=original;support.configure(undefined);}
+});

@@ -43,6 +43,10 @@ const crypto = ({ randomBytes: function (n) { var bytes = new Uint8Array(n); win
 
 const emptyUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 const sumUsage = (into, usage) => {
+  if (Object.prototype.hasOwnProperty.call(usage, "cost_usd")) {
+    if (usage.cost_usd !== null && Number.isFinite(usage.cost_usd)) into.cost = (into.cost || 0) + usage.cost_usd;
+    else into.costMissing = (into.costMissing || 0) + 1;
+  }
   into.input += Number(usage.input_tokens || 0);
   into.output += Number(usage.output_tokens || 0);
   into.cacheRead += Number(usage.cache_read_input_tokens || 0);
@@ -99,7 +103,7 @@ function parseSession(text, file) {
         const last = current.timeline.filter(entry => entry.kind === "model").pop();
         if (last && id && last.id === id) last.usage = record.response?.usage || last.usage;
         else current.timeline.push({ kind: "model", id, usage: record.response?.usage || null, time: Number.isFinite(time) ? time : null });
-      } else if (current) current.details.push({ type: "Provider usage (" + record.scope + ")",
+      } else if (current) current.details.push({ type: record.scope === "request_error" ? "Request failed" + (record.response?.model_step ? " at model step " + record.response.model_step : "") : "Provider usage (" + record.scope + ")",
         text: prettyJson({ provider: record.provider, response: record.response }) });
       continue;
     }
@@ -147,6 +151,10 @@ function parseSession(text, file) {
     if (message.id && seen.has(message.id)) continue;
     if (message.id) seen.add(message.id);
     if (message.usage) {
+      if (current && Object.prototype.hasOwnProperty.call(message.usage, "cost_usd")) {
+        const last = current.timeline.filter(entry => entry.kind === "model").pop();
+        if (last && (!message.usage.generation_id || last.id === message.usage.generation_id)) last.usage = message.usage;
+      }
       sumUsage(session.usage, message.usage);
       if (current) sumUsage(current.usage, message.usage);
     }
@@ -377,7 +385,7 @@ function create(root, provider, session, include) {
       // Preserve provider counters verbatim, before normalization. These records
       // are diagnostic evidence, never assistant records (no double counting).
       const fields = ["id", "type", "model", "subtype", "is_error", "usage", "modelUsage",
-        "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
+        "error", "model_step", "operation", "status", "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
       const metadata = {};
       for (const key of fields) {
         if (response && Object.prototype.hasOwnProperty.call(response, key)) metadata[key] = response[key];
@@ -391,7 +399,8 @@ function create(root, provider, session, include) {
         input_tokens: usage && usage.input_tokens || 0,
         output_tokens: usage && usage.output_tokens || 0,
         cache_creation_input_tokens: usage && usage.cache_creation_input_tokens || 0,
-        cache_read_input_tokens: usage && usage.cache_read_input_tokens || 0
+        cache_read_input_tokens: usage && usage.cache_read_input_tokens || 0,
+        ...(usage && Object.prototype.hasOwnProperty.call(usage, "cost_usd") ? { cost_usd: usage.cost_usd, generation_id: usage.generation_id } : {})
       }, content: [{ type: "text", text: answer }] } });
     },
     toolUse(name, args) {

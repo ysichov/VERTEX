@@ -13,7 +13,7 @@ function fixture(){
   setAttribute(){}
   querySelector(){return body;}
  }
- const body=new Element(),table=new Element(),ids=Object.fromEntries(['from','to','month','error','folder','filters'].map(k=>[k,new Element()]));
+ const body=new Element(),table=new Element(),ids=Object.fromEntries(['from','to','month','author','error','folder','filters'].map(k=>[k,new Element()]));
  vm.runInNewContext(html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1],{document:{getElementById:id=>ids[id],querySelector:()=>table,createElement:()=>new Element()},window:{addEventListener(name,fn){receive=fn;}},setTimeout:()=>0,clearTimeout(){},acquireVsCodeApi:()=>({postMessage(){}}),Option:function(text,value){this.text=text;this.value=value;}});
  receive({data:{folder:'.',commits:[{short:'c',date:'2024-03-01T00:00:00+02:00'},{short:'b',date:'2024-02-29T23:59:59-08:00'},{short:'a',date:'2024-02-01T00:00:00Z'}]}});
  close();return {ids,body,receive};
@@ -103,7 +103,9 @@ test('history loads ten latest details and retrieves older commits only for a pe
  const folder=await fs.mkdtemp(path.join(os.tmpdir(),'vertex-ten-'));t.after(()=>fs.rm(folder,{recursive:true,force:true}));
  const git=(...args)=>execFileSync('git',args,{cwd:folder,windowsHide:true});
  git('init');git('config','user.email','test@example.test');git('config','user.name','Test');
- for(let i=1;i<=12;i++){await fs.writeFile(path.join(folder,'file'),String(i));git('add','.');git('commit','-m','Commit '+i,'--date=2025-01-'+String(i).padStart(2,'0')+'T12:00:00Z');}
+ for(let i=1;i<=12;i++){await fs.writeFile(path.join(folder,'file'),String(i));git('add','.');git('commit','--author='+(i===12?'Other':'Test')+' <test@example.test>','-m','Commit '+i,'--date=2025-01-'+String(i).padStart(2,'0')+'T12:00:00Z');}
  const latest=await history.readCommits(folder);assert.equal(latest.length,10);assert.equal(latest[0].number,12);assert.equal(latest[9].number,3);assert.deepEqual(latest.months,['2025-01']);
  const older=await history.readCommits(folder,{from:'2025-01-01',to:'2025-01-02'});assert.equal(older.length,2);assert.deepEqual(older.map(c=>c.number),[2,1]);assert.equal(older[1].subject,'Commit 1');
+ const filtered=await history.readCommits(folder,{author:'Other'});assert.equal(filtered.length,1);assert.equal(filtered[0].number,12);assert.equal(filtered[0].author,'Other');assert.deepEqual(filtered.authors,['Other','Test']);
+ const combined=await history.readCommits(folder,{author:'Other',from:'2025-01-01',to:'2025-01-02'});assert.equal(combined.length,0);
 });
