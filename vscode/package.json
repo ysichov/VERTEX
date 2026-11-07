@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.69",
+  "version": "0.9.70",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"

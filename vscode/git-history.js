@@ -118,18 +118,24 @@ async function openCommit(vscode, folder, commit) {
     commitPanels.get(key).dispose();
   }
   const path = require("path"), review = require("./code-review");
-  let changes = working ? await readWorkingChanges(folder) : await readCommitChanges(folder, commit.hash);
-  if (!changes.length && !working) throw new Error("Commit " + commit.short + " changed nothing in this folder.");
-  let expectedHead = working ? (await git(folder,["rev-parse","HEAD"])).trim() : "";
   const title = working ? "Uncommitted changes" : "Commit " + commit.short;
+  const panel = vscode.window.createWebviewPanel("vertex.commitReview", title, vscode.ViewColumn.Active, { enableScripts: true });
+  let disposed=false,untrackLinks=()=>{};
+  commitPanels.set(key,panel);
+  panel.onDidDispose(()=>{disposed=true;untrackLinks();if(commitPanels.get(key)===panel)commitPanels.delete(key);reviewSnapshots.delete(panel);});
+  panel.webview.html=review.waitingHtml(title,"Reading files and preparing the diff…");
+  let changes,expectedHead;
+  try{
+    changes=working?await readWorkingChanges(folder):await readCommitChanges(folder,commit.hash);
+    if(!changes.length&&!working)throw new Error("Commit "+commit.short+" changed nothing in this folder.");
+    expectedHead=working?(await git(folder,["rev-parse","HEAD"])).trim():"";
+  }catch(error){if(disposed)return;panel.webview.html=review.waitingHtml(title,error.message,true);throw error;}
+  if(disposed)return;
   const makeFiles = changes => changes.map((c, i) => ({ id: "f" + (i + 1), path: c.file, label: path.basename(c.file), binary: c.binary,
     kind: c.status === "A" ? "new" : c.status === "D" ? "deleted" : "changed",
     parts: c.binary ? [] : review.hunks(c.before, c.after), before:c.before, after: c.after, abap: /\.abap$/i.test(c.file) }));
   let files = makeFiles(changes);
-  const panel = vscode.window.createWebviewPanel("vertex.commitReview", title, vscode.ViewColumn.Active, { enableScripts: true });
-  const untrackLinks = require("./file-links").register(panel,()=>files.map(f=>({id:f.id,path:path.resolve(folder,f.path),relative:f.path})));
-  commitPanels.set(key, panel);
-  panel.onDidDispose(() => { untrackLinks();commitPanels.delete(key); reviewSnapshots.delete(panel); });
+  untrackLinks = require("./file-links").register(panel,()=>files.map(f=>({id:f.id,path:path.resolve(folder,f.path),relative:f.path})));
   let snapshot = changes.length ? reviewSnapshot(changes, title, folder) : null;
   if(snapshot)reviewSnapshots.set(panel, snapshot);
   panel.onDidChangeViewState(event => {

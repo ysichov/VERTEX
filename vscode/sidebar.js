@@ -155,10 +155,12 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           if (!shown) { return; }
           await view.webview.postMessage({ chat: "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "")
             + (images.length ? "  [" + images.length + " screenshot" + (images.length > 1 ? "s" : "") + "]" : "") });
-          await view.webview.postMessage({ progress: { id: requestId, status: "VERTEX is working…" } });
+          let taskKind=web?"":/коммит|commit/i.test(shown)?"commit":asked||require("./git-history").reviewContext()||/ревью|review|дифф|diff|проверь\s+(?:код|изменен)/i.test(shown)?"review":"";
+          await view.webview.postMessage({ progress: { id: requestId, kind:taskKind,status: taskKind==="review"?"Reviewing changes…":taskKind==="commit"?"Preparing commit message…":"VERTEX is working…" } });
           try {
             const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
             const state = web ? {} : (await toolContext(scope)) || {};
+            if(!web&&!taskKind&&(state.review_source||state.vertex_view?.view==="review")){taskKind="review";await view.webview.postMessage({progress:{id:requestId,kind:taskKind,status:"Reading review context…"}});}
             if (asked) {
               state.review_ask = { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) };
               delete state.review_source;
@@ -166,7 +168,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             }
             const reply = await ask(asked ? review.askRequest(message.text, asked) : shown, {model: message.model, state, web,contextMode:asked?.system==="local"?"folder":ask.state().contextMode,
               ...(images.length ? { images } : {}),
-              onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, ...update } })).catch(() => {}); } });
+              onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId, answer: reply.answer,
               done: true, usage: usageLine(reply), choices: reply.choices || [],
@@ -281,6 +283,10 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 @keyframes vertex-task-turn { to { transform: rotate(360deg); } }
 body.vscode-reduce-motion #messages .vertex.task.working::before { animation: none; }
 @media (prefers-reduced-motion: reduce) { #messages .vertex.task.working::before { animation: none; } }
+${require(require("path").join(__dirname,"task-visual")).css}
+#messages .vertex.task[data-task-kind]{padding-left:52px}
+#messages .vertex.task[data-task-kind]::before{display:none}
+#messages .vertex.task .task-scene{position:absolute;left:0;top:0}
 #vercel-row-break { display:none; }
 body[data-provider="vercel-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
 #subprovider-select[hidden] { display:none; }
@@ -517,6 +523,14 @@ document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') copySelectedText(event);
 });
 const progressItems = new Map();
+const taskVisuals=${JSON.stringify({review:require(require("path").join(__dirname,"task-visual")).html("review"),commit:require(require("path").join(__dirname,"task-visual")).html("commit")})};
+function paintTaskScene(item,update){
+      if(['review','commit'].includes(update.kind))item.dataset.taskKind=update.kind;
+      let scene=item.querySelector('.task-scene');
+      if(update.done){if(scene)scene.remove();}
+      else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}if(scene.dataset.kind!==item.dataset.taskKind){scene.dataset.kind=item.dataset.taskKind;scene.innerHTML=taskVisuals[item.dataset.taskKind];}}
+      item.setAttribute('aria-busy',String(!update.done));
+}
 window.addEventListener('message', event => {
   const selectedContext=event.data.contextMode||event.data.ai?.contextMode;if(selectedContext){contextMode=selectedContext;document.querySelectorAll('[data-context]').forEach(button=>{const selected=button.dataset.context===contextMode;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));});document.getElementById('sap-context-controls').hidden=contextMode!=='sap';if(contextMode==='sap')document.getElementById('folder-line').hidden=true;}
   if(event.data.localFiles){projectFileAliases=new Set(event.data.localFiles);document.querySelectorAll('.vertex').forEach(linkProjectFiles);}
@@ -561,6 +575,7 @@ window.addEventListener('message', event => {
     }
     if (item && update.remove) { item.remove(); progressItems.delete(update.id); }
     else if (item) {
+      paintTaskScene(item,update);
       let body = item.querySelector('.progress-body');
       if (!body) { body = document.createElement('div'); body.className = 'progress-body streaming-answer'; item.appendChild(body); }
       const previous = item.dataset.answer || '';

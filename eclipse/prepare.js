@@ -5,12 +5,14 @@ const path = require("node:path");
 const root = path.join(__dirname, "..");
 const target = path.join(root, "org.vertex.abap.ui", "assistant");
 fs.mkdirSync(target, { recursive: true });
-for (const file of ["assistant.js", "mcp.js", "selector.js", "versions.js", "code-review.js", "session-log.js", "direct-search.js", "anthropic.js"]) {
+for (const file of ["assistant.js", "mcp.js", "selector.js", "versions.js", "code-review.js", "task-visual.js", "session-log.js", "direct-search.js", "anthropic.js"]) {
   fs.copyFileSync(path.join(root, "vscode", file), path.join(target, file));
 }
 for (const file of ["bridge.js", "chat.js"]) {
   fs.copyFileSync(path.join(__dirname, file), path.join(target, file));
 }
+fs.mkdirSync(path.join(target,"resources"),{recursive:true});
+fs.copyFileSync(path.join(root,"org.vertex.abap.ui","resources","vertex-controls.css"),path.join(target,"resources","vertex-controls.css"));
 console.log("Prepared Eclipse assistant runtime.");
 fs.copyFileSync(path.join(root, "org.vertex.abap.ui", "resources", "object-tools.js"), path.join(target, "object-tools.js"));
 // Value origin runs in the plugin's browser: the VS Code analysis and page as one script, its stylesheet, and the

@@ -1,3 +1,7 @@
+## 0.9.70 — 2026-11-07
+
+Add theme-aware waiting scenes for review and commit requests: a magnifying lens scans documents for review, while a commit message is assembled and sealed. Show review loading immediately before Git reads files; keep commit feedback visible through generation and commit, stopping on success or error. Respect reduced motion and avoid rotating logos for these tasks. Bump and build VS Code and Eclipse together.
+
 ## 2026-11-07 — File header change counts
 
 Repeat the tree’s per-file added, modified, deleted and block counts in the selected-file header using the same formatter. Binary file headers show Binary without text counters.
