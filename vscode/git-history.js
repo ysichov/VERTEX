@@ -79,6 +79,7 @@ async function readWorkingChanges(folder) {
     } catch (error) { if (error.code !== "ENOENT") throw error; }
     if (before.equals(after) && status === "M") continue;
     changes.push({ file, status: status === "A" ? "A" : after.length === 0 && status === "D" ? "D" : status,
+      digest: crypto.createHash("sha256").update(before).update("\0").update(after).digest("hex"), afterDigest: crypto.createHash("sha256").update(after).digest("hex"),
       binary: before.includes(0) || after.includes(0), before: before.toString("utf8"), after: after.toString("utf8") });
   }
   return changes;
@@ -118,6 +119,7 @@ async function openCommit(vscode, folder, commit) {
   const path = require("path"), review = require("./code-review");
   const changes = working ? await readWorkingChanges(folder) : await readCommitChanges(folder, commit.hash);
   if (!changes.length) throw new Error(working ? "No uncommitted changes in this folder." : "Commit " + commit.short + " changed nothing in this folder.");
+  const expectedHead = working ? (await git(folder,["rev-parse","HEAD"])).trim() : "";
   const title = working ? "Uncommitted changes" : "Commit " + commit.short;
   const files = changes.map((c, i) => ({ id: "f" + (i + 1), path: c.file, label: path.basename(c.file), binary: c.binary,
     kind: c.status === "A" ? "new" : c.status === "D" ? "deleted" : "changed",
@@ -131,9 +133,26 @@ async function openCommit(vscode, folder, commit) {
     if (event.webviewPanel.active) { reviewSnapshots.delete(panel); reviewSnapshots.set(panel, snapshot); }
   });
   panel.webview.html = review.filesReviewHtml(files, { readonly: { title: title + (working ? "" : " · " + (commit.subject || "")),
-    subtitle: working ? folder + " · HEAD → working folder (including staged and untracked files)" : [commit.author, formatDate(commit.date), commit.hash].filter(Boolean).join(" · ") } });
+    commit: working, subtitle: working ? folder + " · HEAD → working folder (including staged and untracked files)" : [commit.author, formatDate(commit.date), commit.hash].filter(Boolean).join(" · ") } });
   const name = working ? "uncommitted changes" : "commit " + commit.short;
+  let commitBusy=false, committed=false;
   panel.webview.onDidReceiveMessage(async message => {
+    if (working && message?.action === "generateCommit") {
+      if(commitBusy||committed)return;commitBusy=true;
+      try {
+        const result=await vscode.commands.executeCommand("vertex.generateCommitMessage",snapshot,{summary:message.summary,description:message.description});
+        if(!result)throw new Error("No commit message returned.");
+        await panel.webview.postMessage({commitDraft:result});
+      }catch(error){await panel.webview.postMessage({commitError:error.message});}finally{commitBusy=false;}return;
+    }
+    if (working && message?.action === "commitChanges") {
+      if(commitBusy||committed)return;commitBusy=true;
+      try {
+        const result=await require("./git-commit").commit(folder,expectedHead,changes,message);committed=true;
+        reviewSnapshots.delete(panel);panel.title="Commit "+result.hash;await panel.webview.postMessage({commitDone:result});
+        vscode.window.showInformationMessage("VERTEX: committed "+result.hash+(result.warning?". "+result.warning:""));
+      }catch(error){await panel.webview.postMessage({commitError:error.message});}finally{commitBusy=false;}return;
+    }
     if (!message || message.action !== "ask") return;
     let context;
     if (message.all) {

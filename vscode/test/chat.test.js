@@ -481,3 +481,10 @@ test('Vercel Vision chat forwards images and removes tools when the model cannot
  assert.deepEqual(received.images,images);assert.deepEqual(received.tools,[]);
  assert.match(received.instructions,/cannot call tools/);
 });
+
+test('commit message generation is isolated and supplies no action tools',async t=>{
+ let options;t.mock.method(compatible,'ask',async value=>{options=value;return {model:'text',plan:{answer:'Improve Git review\n\nAdd a draft commit form.'}};});
+ const ask=chat.create(fakeVscode({provider:'vercel-api',model:'text'}),{schemas:[{name:'read_sap_object'}],instructions:'',editorContext:()=>{throw Error('No editor access needed');}},{start:()=>{throw Error('No MCP needed');}},{get:async()=>null});
+ const result=await ask.generateCommitMessage({text:'SUPPLIED_DIFF'},{summary:'Draft'});
+ assert.equal(result.summary,'Improve Git review');assert.deepEqual(options.tools,[]);assert.equal(options.textOnly,true);assert.equal(options.capabilities.tools,false);assert.match(options.prompt,/SUPPLIED_DIFF/);assert.equal(options.workDir,undefined);assert.equal(options.callTool,undefined);
+});

@@ -57,14 +57,14 @@ function request(apiKey, body, maxBytes = 64000) {
 
 async function ask(options) {
   if (!options.apiKey) { throw new Error("No Anthropic API key is configured. Choose Anthropic API again and enter a key."); }
-  const apiTools = (options.tools || []).map(tool => ({ name: tool.name, description: tool.description,
+  const apiTools = options.textOnly ? [] : (options.tools || []).map(tool => ({ name: tool.name, description: tool.description,
     input_schema: tool.inputSchema })).concat([{ name: "submit_vertex_answer",
       description: "Submit the final VERTEX answer and navigation plan.", input_schema: options.schema }]);
   const messages = [{ role: "user", content: options.prompt }];
   let usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     const response = await request(options.apiKey, { model: options.model, max_tokens: options.maxOutputTokens || 16000,
-      system: options.instructions, messages, tools: apiTools }, options.localTools ? 2 * 1024 * 1024 : 64000);
+      system: options.instructions, messages, ...(apiTools.length ? {tools:apiTools} : {}) }, options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000));
     let answer;
     try { answer = JSON.parse(response.text); } catch (_) { answer = null; }
     if (answer && options.onProviderResponse) options.onProviderResponse({

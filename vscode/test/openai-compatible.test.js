@@ -284,3 +284,19 @@ test('runtime tool support evidence persists without storing credentials and exp
  support.configure(storage);assert.equal(support.model('vercel-api','private-key',{id:'model',capabilities:{tools:true}}).capabilities.tools,false);
  const original=Date.now;try{Date.now=()=>original()+25*60*60*1000;assert.equal(support.rejection('vercel-api','private-key','model'),null);}finally{Date.now=original;support.configure(undefined);}
 });
+
+test('draft generation retries one network reset and does not enable retries for normal actions',async()=>{
+ let calls=0;const delays=[],events=[];
+ const answer=await api.rateLimitedRequest(async()=>{if(++calls===1)throw Object.assign(new Error('read ECONNRESET'),{code:'ECONNRESET'});return 'draft';},{retryNetwork:true,sleep:async ms=>delays.push(ms),onProviderResponse:e=>events.push(e)});
+ assert.equal(answer,'draft');assert.equal(calls,2);assert.deepEqual(delays,[1500]);assert.equal(events[0].scope,'network_retry');
+ calls=0;await assert.rejects(()=>api.rateLimitedRequest(async()=>{calls++;throw Object.assign(new Error('read ECONNRESET'),{code:'ECONNRESET'});},{retryNetwork:true,sleep:async()=>{}}),error=>error.networkAttempts===2);assert.equal(calls,2);
+ calls=0;await assert.rejects(()=>api.rateLimitedRequest(async()=>{calls++;throw Object.assign(new Error('read ECONNRESET'),{code:'ECONNRESET'});}),/ECONNRESET/);assert.equal(calls,1);
+});
+
+test('an aborted HTTP response rejects with a recoverable transport code',async t=>{
+ const https=require('node:https'),{EventEmitter}=require('node:events');
+ t.mock.method(https,'request',(_url,_options,receive)=>{
+  const req=new EventEmitter();req.setTimeout=()=>req;req.end=()=>{const res=new EventEmitter();res.setEncoding=()=>{};res.statusCode=200;receive(res);res.emit('aborted');};return req;
+ });
+ await assert.rejects(()=>api.requestJson('vercel-api','test','/chat/completions',{model:'x'}),error=>error.code==='ECONNRESET');
+});

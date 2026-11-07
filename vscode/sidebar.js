@@ -20,6 +20,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", draft: reviewAsk && reviewAsk.question || "" }) : undefined;
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.generateCommitMessage", (snapshot,draft) => ask.generateCommitMessage(snapshot,draft)));
   // The working copy goes when VS Code closes.
   context.subscriptions.push({ dispose: () => { if (typeof ask.dispose === "function") return ask.dispose(); } });
   // A message to the assistant that VERTEX sends itself - the reasons from a review - asked as the user's would be.

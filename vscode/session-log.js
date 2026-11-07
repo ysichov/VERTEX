@@ -78,7 +78,7 @@ function create(root, provider, session, include) {
       // Preserve provider counters verbatim, before normalization. These records
       // are diagnostic evidence, never assistant records (no double counting).
       const fields = ["id", "type", "model", "subtype", "is_error", "usage", "modelUsage",
-        "error", "model_step", "operation", "status", "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
+        "error", "code", "attempt", "model_step", "operation", "status", "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
       const metadata = {};
       for (const key of fields) {
         if (response && Object.prototype.hasOwnProperty.call(response, key)) metadata[key] = response[key];

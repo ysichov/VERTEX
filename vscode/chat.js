@@ -593,6 +593,32 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
     await vscode.workspace.getConfiguration("vertex.ai").update("model", String(model || ""), vscode.ConfigurationTarget.Global);
     return ask.state();
   };
+  ask.generateCommitMessage = async (snapshot, draft) => {
+    if (!snapshot || typeof snapshot.text !== "string") throw new Error("No reviewed diff was supplied.");
+    const helper=require("./git-commit"), id=subscriptionProvider(vscode);
+    const config=vscode.workspace.getConfiguration("vertex.ai"), model=config.get("model", "") || await defaultModel(id);
+    const log=sessionLog.create(config.get("logPath", ""),id,sessionLog.stamp(new Date())+"_"+require("crypto").randomBytes(3).toString("hex"),sessionLog.fromConfig(config));
+    const prompt=helper.prompt(snapshot,draft);
+    const instructions="Generate only a draft commit message from the supplied snapshot. Tools, filesystem access and Git actions are unavailable. Put the entire message in the answer field when a result schema is required. Return navigation null and build_command empty. Never commit or claim to have committed.";
+    let calls=0;
+    const options={assistant:id,model,prompt,instructions,schema:RESULT_SCHEMA,tools:[],capabilities:{tools:false},textOnly:true,maxRounds:1,maxInputBytes:256*1024,retryNetwork:true,
+      effort:String(config.get("effort", "")||""),extensionPath:extensionPath(vscode,id),executable:await assistantExecutable(vscode,id),profile:assistant.profileFor(vscode,id),
+      onProviderResponse:event=>log?.providerResponse(event),onModelCall:event=>{calls++;log?.assistant(event);}};
+    log?.user("Generate a commit message for the reviewed changes");log?.request({instructions,prompt,tools:[],schema:RESULT_SCHEMA});
+    try{
+      const result=compatible.PROVIDERS[id] ? await compatible.ask({...options,apiKey:(await keyProfiles.getActiveKey(secrets,id)).key})
+        : id==="anthropic-api" ? await anthropic.ask({...options,apiKey:(await keyProfiles.getActiveKey(secrets,id)).key})
+        : id==="copilot" ? await copilot.ask(vscode,options) : await assistant.ask(options);
+      if(!calls)log?.assistant({model:result.model,usage:result.usage,text:result.plan?.answer});
+      return helper.parse(result.plan?.answer);
+    }catch(error){
+      log?.providerResponse({provider:id,scope:"request_error",response:{model,is_error:true,error:error.message,code:error.code,attempt:error.networkAttempts,operation:"Generate commit message",model_step:error.model_step}});
+      if (["ECONNRESET","EPIPE","ECONNREFUSED","EAI_AGAIN"].includes(error.code) || /\b(?:ECONNRESET|EPIPE|ECONNREFUSED|EAI_AGAIN)\b/.test(error.message||"")) {
+        throw new Error("Connection interrupted while generating the commit message"+(error.networkAttempts>1?" after one automatic retry":"")+". Your draft is kept; no commit was created. Try Generate with AI again.\nDetails: "+error.message);
+      }
+      throw error;
+    }
+  };
   ask.configModels = () => {
     full.clear();
     return modelConfig.open(vscode, fullModels, id => extensionPath(vscode, id), id => full.delete(id), secrets,

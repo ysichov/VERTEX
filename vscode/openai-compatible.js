@@ -40,6 +40,8 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
           req.destroy(new Error(provider.label + " response exceeds 8 MB."));
         }
       });
+      res.on("error", reject);
+      res.on("aborted", () => reject(Object.assign(new Error(provider.label + " connection closed before the response completed."), {code:"ECONNRESET"})));
       res.on("end", () => {
         let parsed;
         try { parsed = JSON.parse(text); } catch (_) { parsed = null; }
@@ -72,10 +74,22 @@ async function models(id, apiKey, request = requestJson) {
 }
 
 async function rateLimitedRequest(send, options = {}) {
-  for (let retry = 0; ; retry++) {
+  let retry = 0, networkRetries = 0;
+  for (;;) {
     if (options.isActive && !options.isActive()) throw new Error("This request was superseded.");
     try { return await send(); }
     catch (error) {
+      const transient = ["ECONNRESET", "EPIPE", "ECONNREFUSED", "EAI_AGAIN"].includes(error.code)
+        || /\b(?:ECONNRESET|EPIPE|ECONNREFUSED|EAI_AGAIN)\b/.test(error.message || "");
+      if (options.retryNetwork && transient) {
+        error.networkAttempts = networkRetries + 1;
+        if (networkRetries >= 1) throw error;
+        networkRetries++;
+        options.onProgress?.({status:"Connection interrupted. Retrying message generation once…"});
+        options.onProviderResponse?.({provider:options.assistant,scope:"network_retry",response:{model:options.model,is_error:true,error:error.message,code:error.code,operation:"Generate commit message",attempt:networkRetries}});
+        await (options.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms))))(1500);
+        continue;
+      }
       if (!(error.status === 429 || /returned 429\b/.test(error.message || "")) || retry >= 2) throw error;
       const hint = /retry\s+after\s+(\d+(?:\.\d+)?)\s*s/i.exec(error.message || "");
       let ms = Number.isFinite(Number(error.retryAfter)) && error.retryAfter !== undefined ? Number(error.retryAfter) * 1000
@@ -83,7 +97,8 @@ async function rateLimitedRequest(send, options = {}) {
         : hint ? Number(hint[1]) * 1000 : 60000;
       ms = Math.max(1000, ms + 250);
       if (ms > 60250) throw error;
-      options.onProgress?.({ status: "Rate limit reached. Waiting " + Math.ceil(ms / 1000) + " s before retrying the model request (" + (retry + 1) + "/2)." });
+      retry++;
+      options.onProgress?.({ status: "Rate limit reached. Waiting " + Math.ceil(ms / 1000) + " s before retrying the model request (" + retry + "/2)." });
       await (options.sleep || (delay => new Promise(resolve => setTimeout(resolve, delay))))(ms);
     }
   }
@@ -138,7 +153,7 @@ async function ask(options) {
     options.onProgress?.({ status: "Model request " + (round + 1) });
     const send = () => rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
       model: options.model, messages, ...(tools.length ? { tools } : {}), stream: false
-    }, (options.localTools ? 2 * 1024 * 1024 : 64000) + imageBytes), options);
+    }, (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000)) + imageBytes), options);
     let response;
     try { response = await send(); }
     catch (error) {

@@ -51,3 +51,9 @@ test("Copilot accepts a plain text answer for a question that needs no tools", a
   const result = await copilot.ask(vscode, { model: "copilot-test", instructions: "Explain", prompt: "What does it do?", tools: [] });
   assert.deepEqual(result.plan, { answer: "This method appends a row.", navigation: null });
 });
+
+test('Copilot commit generation omits all tools including submit_vertex_answer',async()=>{
+ const {vscode,requests}=fixture([[new TextPart('Improve review')]]);
+ const result=await copilot.ask(vscode,{model:'copilot-test',instructions:'Draft only',prompt:'Diff',textOnly:true,tools:[]});
+ assert.equal(result.plan.answer,'Improve review');assert.deepEqual(requests[0].options,{});
+});

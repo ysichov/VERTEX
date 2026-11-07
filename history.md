@@ -1,3 +1,11 @@
+## 2026-11-07 — Commit-generation connection recovery
+
+Handle aborted/error response streams and retry a transient network failure once only for isolated commit-message generation. Keep drafts and show a readable connection error on exhaustion; record the transport code and attempt in logs. No automatic Git commit retry, no retry added to normal agent actions. Version remains 0.9.68.
+
+## 2026-11-07 — Commit composer for working changes
+
+Uncommitted changes adds a themed Commit dialog with required Summary, Description, isolated AI drafting and explicit Commit. Generation receives only the snapshot and draft, with no action tools or chat history. Commits stage the reviewed paths in a temporary index, verify content and HEAD, create the commit, then refresh only the reviewed paths in the real index, preserving outside staging. Detect stale reviews; keep drafts editable and report errors without closing. Version remains 0.9.68.
+
 ## 2026-11-07 — Runtime tool capability negotiation
 
 All OpenAI-compatible providers handle explicit unsupported-tool 400s with one text-only retry before any tools execute. Negative API evidence overrides catalog declarations for 24 hours, scoped to provider/model and a credential hash, persisted in extension storage. Never replay prior tool actions. Update selected model details immediately and retain rejection diagnostics in logs. Catalog-positive labels now describe declarations rather than guaranteed runtime support. Version stays 0.9.68.

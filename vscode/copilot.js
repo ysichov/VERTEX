@@ -18,13 +18,13 @@ async function ask(vscode, options) {
   const model = found.find(item => item.id === options.model);
   if (!model) { throw new Error("Copilot model " + options.model + " is unavailable. Open VERTEX: LLM Providers and choose an available model."); }
   const messages = [vscode.LanguageModelChatMessage.User(options.instructions + "\n\n" + options.prompt)];
-  const tools = (options.tools || []).map(tool => ({ name: tool.name, description: tool.description,
+  const tools = options.textOnly ? [] : (options.tools || []).map(tool => ({ name: tool.name, description: tool.description,
     inputSchema: tool.inputSchema })).concat([{ name: "submit_vertex_answer",
     description: "Submit the final VERTEX answer and navigation plan.", inputSchema: options.schema }]);
   const cancellation = new vscode.CancellationTokenSource();
   try {
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
-    const response = await model.sendRequest(messages, { tools }, cancellation.token);
+    const response = await model.sendRequest(messages, tools.length ? { tools } : {}, cancellation.token);
     const parts = [];
     for await (const part of response.stream) { parts.push(part); }
     const calls = parts.filter(part => part instanceof vscode.LanguageModelToolCallPart);
