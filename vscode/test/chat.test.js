@@ -443,3 +443,22 @@ test("ChatGPT subscription forwards screenshots to Codex", async t => {
   assert.equal(received.assistant, "codex");
   assert.deepEqual(received.images, images);
 });
+
+
+test("a visible Git review snapshot reaches ordinary chat; explicit blocks keep priority", async t => {
+ const gitHistory=require('../git-history');
+ t.mock.method(gitHistory,'reviewContext',()=>({title:'Uncommitted changes',folder:'project',truncated:false,text:'VISIBLE_GIT_DIFF before old after new'}));
+ const calls=[];
+ t.mock.method(assistant,'ask',async options=>{calls.push(options);return {plan:{answer:'Summary'}};});
+ const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'haiku'}),
+  {schemas:[],instructions:'',editorContext:()=>null},
+  {start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+ await ask('Сформируй краткое описание для коммита');
+ assert.match(calls[0].prompt,/VISIBLE_GIT_DIFF/);
+ assert.match(calls[0].prompt,/Do not run git again/);
+ await ask('Explain ONLY_SELECTED_BLOCK',{state:{review_ask:{object:'RUN',all:false,blocks:[1]}}});
+ assert.doesNotMatch(calls[1].prompt,/VISIBLE_GIT_DIFF/);
+ t.mock.method(gitHistory,'reviewContext',()=>null);
+ await ask('Another question');
+ assert.doesNotMatch(calls[2].prompt,/VISIBLE_GIT_DIFF/);
+});

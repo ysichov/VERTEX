@@ -300,13 +300,17 @@ input, select { font: inherit; color: var(--vscode-input-foreground); background
 input[type=checkbox], input[type=radio] { padding: 0; }
 button { font: inherit; }
 .prov { margin: 0 0 14px; }
-.phead { display: flex; gap: 8px; align-items: center; padding: 5px 8px; font-weight: 600; max-width: 600px;
+.phead { display: grid; grid-template-columns: 36px 18px minmax(110px, 1fr) 70px 110px 56px; gap: 6px 8px; align-items: center; padding: 5px 8px; font-weight: 600; max-width: 600px;
          background: var(--vscode-sideBar-background, transparent); border: 1px solid var(--vscode-panel-border); }
 /* EPAM CodeMie's row, in CodeMie's gradient as in the VERTEX panel (light and dark themes; high
    contrast keeps the theme's colours). Its buttons keep theirs. */
 body.vscode-dark .phead.codemie, body.vscode-light .phead.codemie { color: #fff; border-color: transparent;
   background: linear-gradient(90deg, #4f46e5, #9333ea 55%, #c026d3); }
-.phead .use { margin-left: auto; font-weight: normal; display: flex; gap: 4px; align-items: center; }
+.phead .use { margin-left: 0; white-space: nowrap; font-weight: normal; display: flex; gap: 4px; align-items: center; }
+.phead .provider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.phead button { box-sizing: border-box; width: 100%; white-space: nowrap; }
+.phead .stop.idle { visibility: hidden; }
+.phead .check-status { grid-column: 1 / -1; min-width: 0; height: 1.4em; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pbody { margin-left: 22px; }
 .prov.off .pbody { opacity: .55; }
 table { border-collapse: collapse; margin: 6px 0; min-width: 420px; }
@@ -348,14 +352,14 @@ function build() {
       title: use === p.id ? "In use - switch to another provider first" : "Offer this provider" });
     on.addEventListener("change", () => { s.on = on.checked; say(""); build(); });
     head.appendChild(on);
-    head.appendChild(el("span", { textContent: p.label }));
+    head.appendChild(el("span", { className: "provider-name", textContent: p.label, title: p.label }));
     const useLabel = el("label", { className: "use" });
     const radio = el("input", { type: "radio", name: "use", checked: use === p.id, disabled: !s.on,
       title: s.on ? "Use this provider" : "Switch the provider on first" });
     radio.addEventListener("change", () => { use = p.id; say(""); build(); });
     useLabel.appendChild(radio); useLabel.appendChild(document.createTextNode("In use"));
     head.appendChild(useLabel);
-    const check = el("button", { type: "button", textContent: scanningProvider === p.id ? "Checking…" : "Check models", disabled: scanning,
+    const check = el("button", { className: "check-models", type: "button", textContent: scanningProvider === p.id ? "Checking…" : "Check models", disabled: scanning,
       title: "Test only this provider’s models with short requests; normal provider usage applies." });
     check.addEventListener("click", () => {
       scanning = true; scanningProvider = p.id; checkStatus[p.id] = "Reading model list…";
@@ -364,13 +368,14 @@ function build() {
       say("Checking " + p.label + "…");
     });
     head.appendChild(check);
-    if (scanningProvider === p.id) {
-      const stop = el("button", { type: "button", textContent: "Stop" });
+    {
+      const stop = el("button", { className: "stop" + (scanningProvider === p.id ? "" : " idle"),
+        type: "button", textContent: "Stop", disabled: scanningProvider !== p.id });
       stop.addEventListener("click", () => { api.postMessage({ action: "stop-detection" }); stop.disabled = true;
         checkStatus[p.id] = "Stopping after the current request…"; $("check-status-" + p.id).textContent = checkStatus[p.id]; });
       head.appendChild(stop);
     }
-    const status = el("span", { id: "check-status-" + p.id, className: "note", textContent: checkStatus[p.id] || "" });
+    const status = el("span", { id: "check-status-" + p.id, className: "note check-status", textContent: checkStatus[p.id] || "", title: checkStatus[p.id] || "" });
     status.setAttribute("role", "status");
     head.appendChild(status);
     box.appendChild(head);
@@ -479,7 +484,8 @@ function fill(id) {
     tr.appendChild(el("td", { textContent: r.label }));
     tr.appendChild(el("td", { className: "id", textContent: r.id === "" ? "(default)" : r.id }));
     const act = tr.appendChild(el("td"));
-    if (r.available === false) act.appendChild(el("span", { className: "error", textContent: "Unavailable", title: r.reason }));
+    if (r.checked === false) act.appendChild(el("span", { className: "note", textContent: "Not checked" }));
+    else if (r.available === false) act.appendChild(el("span", { className: "error", textContent: "Unavailable", title: r.reason }));
     if (r.version) {
       const remove = el("button", { textContent: "Remove" });
       remove.addEventListener("click", () => { s.rows.splice(i, 1); fill(id); say("Removed - Save to keep it.", "note"); });
@@ -519,8 +525,8 @@ window.addEventListener("message", event => {
   const m = event.data;
   if (m?.detectionProgress) {
     const p = m.detectionProgress;
-    checkStatus[p.provider] = p.model ? "Checking " + p.model + "…" : "Reading model list…";
-    const status = $("check-status-" + p.provider); if (status) status.textContent = checkStatus[p.provider];
+    checkStatus[p.provider] = p.model ? "Checking " + p.index + " / " + p.total + ": " + p.model + "…" : "Reading model list…";
+    const status = $("check-status-" + p.provider); if (status) { status.textContent = checkStatus[p.provider]; status.title = checkStatus[p.provider]; }
     say(checkStatus[p.provider]); return;
   }
   if (m?.detection || m?.detectionError) {
@@ -528,15 +534,22 @@ window.addEventListener("message", event => {
     scanning = false; scanningProvider = ""; build(); $("save").disabled = false; $("stop-detection").hidden = true; $("stop-detection").disabled = false;
     if (m.detectionError) { checkStatus[checkedProvider] = m.detectionError; build(); say(m.detectionError, "error"); return; }
     m.detection.results.forEach(result => {
-      checkStatus[result.provider] = result.rows ? result.rows.filter(r => r.on).length + " / " + result.rows.length + " working" : result.error;
+      const checked = result.checked ?? result.rows?.length ?? 0;
+      const working = result.rows ? result.rows.filter(r => r.checked !== false && r.available !== false && r.on).length : 0;
+      checkStatus[result.provider] = !result.rows ? result.error
+        : result.partial || result.stopReason || m.detection.cancelled
+          ? "Stopped: " + checked + " / " + (result.total ?? result.rows.length) + " checked · " + working + " working" + (result.stopReason ? " · " + result.stopReason : "")
+          : working + " / " + result.rows.length + " working";
       const s = state[result.provider];
-      if (result.rows) { s.rows = result.rows; s.error = null; s.on = result.rows.some(r => r.on); }
+      if (result.rows) { s.rows = result.rows; s.error = null; if (!result.partial) s.on = result.rows.some(r => r.on); }
       else { s.error = result.error; s.on = false; }
     });
-    if (m.detection.cancelled) checkStatus[checkedProvider] = "Stopped";
+    if (m.detection.cancelled && !m.detection.results.length) checkStatus[checkedProvider] = "Stopped before checking models";
     const first = INIT.providers.find(p => state[p.id].on);
     if (!state[use].on && first) use = first.id;
-    build(); say((m.detection.cancelled ? "Stopped. " : "Check complete. ") + "Unavailable models are off. Save to apply."); return;
+    const stopped = m.detection.cancelled || m.detection.results.some(r => r.stopReason);
+    build(); say((stopped ? "Stopped. Checked results are kept; untested models are unchanged. " : "Check complete. Unavailable models are off. ")
+      + "Save to apply." + (m.detection.results.find(r => r.stopReason)?.stopReason ? " " + m.detection.results.find(r => r.stopReason).stopReason : "")); return;
   }
   if (m?.logFolder) { say("Logs: " + m.logFolder, "ok"); return; }
   if (m?.logFolderError) { say(m.logFolderError, "error"); return; }

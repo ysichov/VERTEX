@@ -1,3 +1,35 @@
+## 2026-11-07 — Partial model checks and billing stop
+
+Stopping Check models preserves completed checks and leaves untested model selections unchanged, labelled Not checked. Billing failures such as 403 requiring a credit card, 402 Payment required or insufficient credits stop further probes for that provider immediately. Status retains the checked count and error; Save applies the results. Model-specific access failures continue checking other models. Version remains 0.9.66.
+
+## 2026-11-07 — Stable model check controls
+
+LLM Providers keeps Check models and Stop in fixed grid columns. A reserved single-line status row shows progress without shifting the controls; long model names are shortened visually and available in the tooltip. Version remains 0.9.66.
+
+## 2026-11-07 — Visible Git diff in chat
+
+Chat automatically receives the displayed Git History commit or uncommitted-changes diff while its review page is visible. A commit description can be requested directly in the chat; ASK AI selections retain priority. Hidden or closed Git review pages are excluded. Version remains 0.9.66.
+
+## 2026-11-07 — Uncommitted changes in Git History
+
+The first row of Git History opens a read-only review of the folder against HEAD, including staged, unstaged and untracked files. The link stays above date-filtered commits; commit numbers are unchanged. Each click reads the current files again.
+
+## 2026-11-07 — Vercel chat model filter
+
+Vercel AI Gateway model selection excludes asynchronous Batch variants by model ID and display name. Ordinary language models remain available. VS Code version remains 0.9.66.
+
+## 2026-11-07 — Git History dates and numbering
+
+Git History in VS Code numbers commits from the beginning of the folder history, keeps their numbers while filtering, and offers inclusive From/To date filters and a month selector. Dates use dd-mm-yyyy, including commit review details. Version remains 0.9.66.
+
+## 2026-11-06 — 0.9.66
+
+VS Code extension 0.9.66 and Eclipse build 0.9.66.20261106232710, with Vercel AI Gateway as an API provider below.
+
+## 2026-11-06 — Vercel AI Gateway as an API provider
+
+LLM Providers in VS Code offers **Vercel AI Gateway** beside the other API-key providers. The key stays in VS Code SecretStorage; the Assistant lists the gateway's models and calls them through its OpenAI-compatible endpoint. Image and embedding models of the gateway are not listed. While models are checked, the status shows how far the check is: `Checking 12 / 240: <model>`. Eclipse unchanged. Released in 0.9.66.
+
 ## 2026-11-06 — Git History in the VERTEX panel
 
 In VS Code the VERTEX panel shows **Git History** beside **Folder**: it opens the commits of the folder the assistant works in. A commit hash in Git History opens the commit on the review page, read only, with ASK AI on a block, a file or the whole commit.

@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.65**
+**Version: 0.9.66**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -186,7 +186,7 @@ EPAM CodeMie or an API provider in **LLM Providers**. Copilot uses the models
 available from a signed-in GitHub Copilot extension through VS Code; it can call
 the same SAP tools as the other providers. EPAM CodeMie runs Claude Code through
 the CodeMie CLI's `codemie-claude`, with the models of your CodeMie profile. API providers are Anthropic, OpenAI, Mistral,
-Gemini, Groq, Cerebras, OpenRouter and NVIDIA. This is separate from Copilot
+Gemini, Groq, Cerebras, OpenRouter, NVIDIA and Vercel AI Gateway. This is separate from Copilot
 Chat's MCP setup.
 
 **Screenshots in the chat.** Paste an image (Ctrl+V) into the VERTEX panel's message field: it
@@ -760,7 +760,7 @@ In the main **VERTEX Tools** window, choose **Local Folder** from the object typ
 to pick a folder directly. The selected folder stays visible beside a **Browse...** button;
 switch between UML diagram and Metrics in the function list.
 **Git History** beside it opens **VERTEX: Git History**, a separate window with the folder's commits
-as a table: commit, date, author and message. The VERTEX panel has the same **Git History** button
+as a table: number, commit, date, author and message. The first row, **Uncommitted changes**, opens a read-only diff against HEAD, including staged changes, working files and untracked files. It remains above the commits when dates are filtered. While a Git diff page is visible, ordinary chat questions include that displayed diff automatically, so you can ask for a commit description directly. ASK AI on selected blocks limits the question to those blocks. Numbers start at 1 for the oldest commit and stay unchanged when filtering. Dates use **dd-mm-yyyy**. Use **From** and **To** for an inclusive date range, or select **Month** for a whole month; **All dates** clears the filter. The VERTEX panel has the same **Git History** button
 beside **Folder**, for the folder the assistant works in. A commit hash in the table opens that commit
 on the review page, read only: its files and changed blocks, with **ASK AI** on a block, on a file, or on the whole commit.
 Both views show analysis progress, the object count and elapsed time. Switching views reuses parsed local source until a file changes.
@@ -790,7 +790,7 @@ for a position in the source, not for a name, so the chat says which key does it
 | **GitHub Copilot (VS Code)** | Your Copilot access | The Copilot extension, signed in |
 | **EPAM CodeMie (CodeMie CLI)** | Your CodeMie project | Claude Code and the CodeMie CLI (`npm install -g @codemieai/code`), with a profile made by `codemie setup` |
 | **Anthropic API (key)** | Tokens, billed to the API key | Nothing — only the key |
-| **OpenAI, Mistral, Gemini, Groq, Cerebras, OpenRouter, NVIDIA APIs** | Usage billed by the selected provider | That provider's API key |
+| **OpenAI, Mistral, Gemini, Groq, Cerebras, OpenRouter, NVIDIA, Vercel AI Gateway APIs** | Usage billed by the selected provider | That provider's API key |
 
 A subscription is used through its installed client. VERTEX runs the Claude Code
 or Codex CLI from its VS Code extension or a native installation. Copilot models
@@ -819,6 +819,8 @@ switches at once and clears the chosen model (`vertex.ai.provider`, `vertex.ai.m
 ### Which models are offered
 
 Open **VERTEX: LLM Providers** from the VERTEX panel's sparkle icon. Press **Check models** beside the provider you want to check: only that provider's models are tested. The button shows **Checking…**, and progress and the final working-model count appear beside it. **Stop** in the same provider header stops after the current request.
+
+**Check models** checks one provider at a time. **Stop** finishes the current request and keeps the results already checked; untested models retain their selections and are marked **Not checked**. A billing error such as **403 require credit card**, **402 Payment required**, or insufficient credits stops that provider immediately. The status shows the checked count and reason. Select **Save** to apply checked results.
 
 Failed models are switched off and show their failure reason. **Save** applies these choices to the chat model lists; other providers keep their choices. Checks use short requests with no SAP source or workspace context. They require the provider's existing sign-in or active API key and consume its normal quota or billing. A temporary connection failure can also fail a check; rerun it to check availability again.
 

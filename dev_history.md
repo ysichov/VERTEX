@@ -1,3 +1,35 @@
+## 2026-11-07 — Partial model checks and billing stop
+
+Stopping Check models preserves completed checks and leaves untested model selections unchanged, labelled Not checked. Billing failures such as 403 requiring a credit card, 402 Payment required or insufficient credits stop further probes for that provider immediately. Status retains the checked count and error; Save applies the results. Model-specific access failures continue checking other models. Version remains 0.9.66.
+
+## 2026-11-07 — Stable model check controls
+
+LLM Providers keeps Check models and Stop in fixed grid columns. A reserved single-line status row shows progress without shifting the controls; long model names are shortened visually and available in the tooltip. Version remains 0.9.66.
+
+## 2026-11-07 — Visible Git diff in chat
+
+Git review pages previously sent their blocks only through ASK AI. Git History now retains the rendered snapshot and exposes the most recently active visible review to chat. Ordinary questions include filenames, change kinds and before/after blocks, including deleted files and binary markers, with explicit truncation at 180,000 characters. This uses the displayed snapshot rather than rereading git; explicit review_ask excludes the automatic context. Lifecycle and prompt regressions cover hiding, closing, snapshot stability and selected-block priority.
+
+## 2026-11-07 — Uncommitted changes in Git History
+
+The first row of Git History opens a read-only review of the folder against HEAD, including staged, unstaged and untracked files. The link stays above date-filtered commits; commit numbers are unchanged. Each click reads the current files again.
+
+## 2026-11-07 — Vercel chat model filter
+
+Vercel AI Gateway model selection excludes asynchronous Batch variants by model ID and display name. Ordinary language models remain available. VS Code version remains 0.9.66.
+
+## 2026-11-07 — Git History dates and numbering
+
+Git History assigns numbers before filtering (oldest commit is 1), filters by the author date as recorded in git without timezone conversion, validates dd-mm-yyyy dates, and derives quick month ranges from available commits. Inputs and selects reuse model-config theme styles. Commit review dates use the same format.
+
+## 2026-11-06 — 0.9.66
+
+VS Code extension 0.9.66 and Eclipse build 0.9.66.20261106232710, with Vercel AI Gateway as an API provider below.
+
+## 2026-11-06 — Vercel AI Gateway as an API provider
+
+Added `vercel-api` (base `https://ai-gateway.vercel.sh/v1`) to the OpenAI-compatible provider catalog in `openai-compatible.js` and to the `vertex.ai.provider` enum. The gateway speaks the same `/models` and `/chat/completions` routes with a Bearer key, so no request code changed; the catalog test lists the new id. Docs name the provider. Detection progress now carries `index`/`total`, and the status reads `Checking N / M: model`, since the gateway lists hundreds of models. For `vercel-api` the model list keeps only entries with `type: "language"`; image and embedding models cannot answer a chat probe. Not tested against a live Vercel key.
+
 ## 2026-11-06 — Git History in the VERTEX panel
 
 The user looked for Git History in the chat panel (sidebar.js), where it had never been: only the Tools window had it, and only after a local folder was chosen. Added a secondary button beside the folder line; the host opens git-history.js with chat.currentWorkingFolder. VSIX rebuilt, version kept at 0.9.65.

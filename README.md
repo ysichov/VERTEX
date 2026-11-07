@@ -3,7 +3,7 @@
 
 ## Install
 
-Current VS Code extension: **0.9.65**.
+Current VS Code extension: **0.9.66**.
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
@@ -54,7 +54,7 @@ parts say they need the backend. The Eclipse plugin does the same. The last colu
 
 In VS Code, the built-in VERTEX Assistant can use Codex, Claude Code, a signed-in
 GitHub Copilot model, EPAM CodeMie through the CodeMie CLI or API keys for Anthropic, OpenAI, Mistral, Gemini, Groq,
-Cerebras, OpenRouter and NVIDIA. With the active editor on a file of an open workspace folder (or no editor open and one folder in the
+Cerebras, OpenRouter, NVIDIA and Vercel AI Gateway. With the active editor on a file of an open workspace folder (or no editor open and one folder in the
 workspace), the selected assistant works in that folder: in a git folder it works in its own working copy and, when its answer
 is done, its changes are reviewed file by file in one VERTEX review page (approved files are copied in,
 declined ones go back to it with your reason); outside git each file edit waits for review before it is written, and each shell command (a build, a test) waits for **Allow** in a VS Code dialog. Provider model lists can be collapsed independently.
@@ -89,7 +89,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.65.20261106194949**; the VS Code extension is **0.9.65**.
+**0.9.66.20261106232710**; the VS Code extension is **0.9.66**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.

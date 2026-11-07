@@ -45,23 +45,79 @@ async function readCommitChanges(folder, hash) {
   return changes;
 }
 
+/* Compare the working folder with HEAD, including staged and untracked files. */
+async function readWorkingChanges(folder) {
+  const fs = require("fs/promises"), path = require("path");
+  const list = (await git(folder, ["diff", "HEAD", "--no-renames", "--relative", "--name-status", "-z", "--", "."])).split("\0").filter(Boolean);
+  const untracked = (await git(folder, ["ls-files", "--others", "--exclude-standard", "-z", "--", "."])).split("\0").filter(Boolean);
+  const entries = new Map();
+  for (let i = 0; i + 1 < list.length; i += 2) entries.set(list[i + 1], list[i][0]);
+  for (const file of untracked) entries.set(file, "A");
+  const changes = [];
+  for (const [file, status] of entries) {
+    const before = status === "A" ? Buffer.alloc(0) : await git(folder, ["show", "HEAD:./" + file], "buffer");
+    let after = Buffer.alloc(0);
+    try {
+      const filename = path.join(folder, file), stat = await fs.lstat(filename);
+      if (stat.isDirectory()) continue; // Submodule contents have their own history.
+      after = stat.isSymbolicLink() ? Buffer.from(await fs.readlink(filename)) : await fs.readFile(filename);
+    } catch (error) { if (error.code !== "ENOENT") throw error; }
+    if (before.equals(after) && status === "M") continue;
+    changes.push({ file, status: status === "A" ? "A" : after.length === 0 && status === "D" ? "D" : status,
+      binary: before.includes(0) || after.includes(0), before: before.toString("utf8"), after: after.toString("utf8") });
+  }
+  return changes;
+}
+
 let commitPanels = new Map();
+const reviewSnapshots = new Map();
+
+// The exact snapshot rendered by the visible Git review, not a fresh git read.
+function reviewContext() {
+  return [...reviewSnapshots].reverse().find(([panel]) => panel.visible)?.[1] || null;
+}
+
+function reviewSnapshot(changes, title, folder, limit = 180000) {
+  const review = require("./code-review");
+  const manifest = changes.map(c => c.status + " " + c.file + (c.binary ? " (binary)" : "")).join("\n");
+  const sections = changes.map(c => {
+    const header = c.status + " " + c.file;
+    if (c.binary) return header + "\nBinary file; no text diff.";
+    const blocks = review.askContext(review.hunks(c.before, c.after), null, c.after, "local", c.file).blocks;
+    return header + "\n" + JSON.stringify(blocks);
+  });
+  const text = title + "\nFolder: " + folder + "\nFiles:\n" + manifest
+    + "\n\nChanged blocks (before = removed, after = added; context_before/context_after = unchanged):\n" + sections.join("\n\n");
+  const truncated = text.length > limit;
+  return { title, folder, file_count: changes.length, truncated,
+    text: truncated ? text.slice(0, Math.max(0, limit - 50)) + "\n[Git review context truncated]" : text };
+}
 /* A commit of the history on VERTEX's review page, read only: ASK AI on a block, a file or the whole commit. */
 async function openCommit(vscode, folder, commit) {
-  const key = folder + "|" + commit.hash;
-  if (commitPanels.has(key)) { commitPanels.get(key).reveal(vscode.ViewColumn.Active); return; }
+  const working = commit.working === true;
+  const key = folder + "|" + (working ? "working" : commit.hash);
+  if (commitPanels.has(key)) {
+    if (!working) { commitPanels.get(key).reveal(vscode.ViewColumn.Active); return; }
+    commitPanels.get(key).dispose();
+  }
   const path = require("path"), review = require("./code-review");
-  const changes = await readCommitChanges(folder, commit.hash);
-  if (!changes.length) throw new Error("Commit " + commit.short + " changed nothing in this folder.");
+  const changes = working ? await readWorkingChanges(folder) : await readCommitChanges(folder, commit.hash);
+  if (!changes.length) throw new Error(working ? "No uncommitted changes in this folder." : "Commit " + commit.short + " changed nothing in this folder.");
+  const title = working ? "Uncommitted changes" : "Commit " + commit.short;
   const files = changes.map((c, i) => ({ id: "f" + (i + 1), path: c.file, label: path.basename(c.file), binary: c.binary,
     kind: c.status === "A" ? "new" : c.status === "D" ? "deleted" : "changed",
     parts: c.binary || c.status === "D" ? [] : review.hunks(c.before, c.after), after: c.after, abap: /\.abap$/i.test(c.file) }));
-  const panel = vscode.window.createWebviewPanel("vertex.commitReview", "Commit " + commit.short, vscode.ViewColumn.Active, { enableScripts: true });
+  const panel = vscode.window.createWebviewPanel("vertex.commitReview", title, vscode.ViewColumn.Active, { enableScripts: true });
   commitPanels.set(key, panel);
-  panel.onDidDispose(() => commitPanels.delete(key));
-  panel.webview.html = review.filesReviewHtml(files, { readonly: { title: "Commit " + commit.short + " · " + (commit.subject || ""),
-    subtitle: [commit.author, String(commit.date || "").replace("T", " ").replace(/([+-]\d\d:\d\d|Z)$/, ""), commit.hash].filter(Boolean).join(" · ") } });
-  const name = "commit " + commit.short;
+  panel.onDidDispose(() => { commitPanels.delete(key); reviewSnapshots.delete(panel); });
+  const snapshot = reviewSnapshot(changes, title, folder);
+  reviewSnapshots.set(panel, snapshot);
+  panel.onDidChangeViewState(event => {
+    if (event.webviewPanel.active) { reviewSnapshots.delete(panel); reviewSnapshots.set(panel, snapshot); }
+  });
+  panel.webview.html = review.filesReviewHtml(files, { readonly: { title: title + (working ? "" : " · " + (commit.subject || "")),
+    subtitle: working ? folder + " · HEAD → working folder (including staged and untracked files)" : [commit.author, formatDate(commit.date), commit.hash].filter(Boolean).join(" · ") } });
+  const name = working ? "uncommitted changes" : "commit " + commit.short;
   panel.webview.onDidReceiveMessage(async message => {
     if (!message || message.action !== "ask") return;
     let context;
@@ -80,12 +136,20 @@ async function openCommit(vscode, folder, commit) {
   });
 }
 
+function formatDate(value) {
+  return String(value || "").replace(/^(\d{4})-(\d{2})-(\d{2})/, "$3-$2-$1").replace("T", " ").replace(/([+-]\d\d:\d\d|Z)$/, "");
+}
+
 function page(nonce) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <style nonce="${nonce}">
 body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);color:var(--vscode-foreground);background:var(--vscode-editor-background);margin:0;padding:8px 12px}
 h1{font-size:1.2em;margin:4px 0 2px}#folder{color:var(--vscode-descriptionForeground);margin-bottom:8px;word-break:break-all}
+#filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}#filters[hidden]{display:none}
+#filters label{display:flex;align-items:center;gap:4px}
+input,select{font:inherit;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));padding:3px 6px}
+input{width:105px}input:focus,select:focus{outline:1px solid var(--vscode-focusBorder)}
 #error{color:var(--vscode-errorForeground)}
 table{border-collapse:collapse;width:100%}
 th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--vscode-panel-border,transparent);vertical-align:top}
@@ -94,25 +158,66 @@ tr:hover td{background:var(--vscode-list-hoverBackground)}
 td.hash{font-family:var(--vscode-editor-font-family);white-space:nowrap}td.hash a{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:none}td.hash a:hover{color:var(--vscode-textLink-activeForeground);text-decoration:underline}td.date{white-space:nowrap}
 </style></head><body>
 <h1>Git History</h1><div id="folder"></div><div id="error" role="alert"></div>
-<table hidden><thead><tr><th>Commit</th><th>Date</th><th>Author</th><th>Message</th></tr></thead><tbody></tbody></table>
+<div id="filters" hidden><label>From <input id="from" placeholder="dd-mm-yyyy" aria-label="From date, dd-mm-yyyy" maxlength="10"></label><label>To <input id="to" placeholder="dd-mm-yyyy" aria-label="To date, dd-mm-yyyy" maxlength="10"></label><label>Month <select id="month"><option value="">All dates</option></select></label></div>
+<table hidden><thead><tr><th>#</th><th>Commit</th><th>Date</th><th>Author</th><th>Message</th></tr></thead><tbody></tbody></table>
 <script nonce="${nonce}">
 const vscode=acquireVsCodeApi();
-window.addEventListener("message",e=>{
-  const m=e.data||{};
-  document.getElementById("folder").textContent=m.folder||"";
-  document.getElementById("error").textContent=m.error||"";
+const formatDate=${formatDate.toString()};
+let commits=[];
+const from=document.getElementById("from"),to=document.getElementById("to"),month=document.getElementById("month"),error=document.getElementById("error");
+function parseDate(input){
+  const value=input.value.trim();
+  if(!value)return "";
+  const m=/^(\\d{2})-(\\d{2})-(\\d{4})$/.exec(value);
+  if(!m)return null;
+  const iso=m[3]+"-"+m[2]+"-"+m[1],date=new Date(iso+"T00:00:00Z");
+  return !isNaN(date)&&date.toISOString().slice(0,10)===iso?iso:null;
+}
+function render(){
   const table=document.querySelector("table"),body=table.querySelector("tbody");body.replaceChildren();
-  table.hidden=!m.commits;
-  (m.commits||[]).forEach(c=>{
+  const row=document.createElement("tr"),cell=document.createElement("td"),link=document.createElement("a");
+  cell.colSpan=5;cell.className="hash";link.textContent="Uncommitted changes";link.tabIndex=0;link.title="Review staged, unstaged and untracked changes";
+  const go=()=>vscode.postMessage({action:"commit",commit:{working:true}});
+  link.onclick=go;link.onkeydown=e=>{if(e.key==="Enter")go();};cell.appendChild(link);row.appendChild(cell);body.appendChild(row);
+  const start=parseDate(from),end=parseDate(to);
+  from.setAttribute("aria-invalid",String(start===null));to.setAttribute("aria-invalid",String(end===null));
+  if(start===null||end===null){error.textContent="Enter dates as dd-mm-yyyy.";return;}
+  if(start&&end&&start>end){error.textContent="From date must be on or before To date.";return;}
+  const visible=commits.filter(c=>{const day=String(c.date||"").slice(0,10);return (!start||day>=start)&&(!end||day<=end);});
+  error.textContent=visible.length?"":commits.length?"No commits match these dates.":"No commits in this folder.";
+  visible.forEach(c=>{
     const tr=document.createElement("tr");
-    [["hash",c.short],["date",String(c.date||"").replace("T"," ").replace(/([+-]\\d\\d:\\d\\d|Z)$/,"")],["author",c.author],["subject",c.subject]].forEach(([k,v])=>{
+    [["number",c.number],["hash",c.short],["date",formatDate(c.date)],["author",c.author],["subject",c.subject]].forEach(([k,v])=>{
       const td=document.createElement("td");td.className=k;
       if(k==="hash"){const a=document.createElement("a");a.textContent=v||"";a.title="Review commit "+c.hash;a.tabIndex=0;
         const go=()=>vscode.postMessage({action:"commit",commit:c});a.onclick=go;a.onkeydown=e=>{if(e.key==="Enter")go();};td.appendChild(a);}
       else td.textContent=v||"";tr.appendChild(td);});
     body.appendChild(tr);
   });
-  if(m.commits&&!m.commits.length)document.getElementById("error").textContent="No commits in this folder.";
+}
+[from,to].forEach(input=>input.addEventListener("input",()=>{month.value="";render();}));
+month.addEventListener("change",()=>{
+  if(month.value){
+    const [year,m]=month.value.split("-");
+    from.value="01-"+m+"-"+year;
+    to.value=new Date(Date.UTC(Number(year),Number(m),0)).getUTCDate()+"-"+m+"-"+year;
+  }else{from.value="";to.value="";}
+  render();
+});
+window.addEventListener("message",e=>{
+  const m=e.data||{};
+  if(document.getElementById("folder").textContent!==m.folder){from.value="";to.value="";month.value="";}
+  document.getElementById("folder").textContent=m.folder||"";
+  commits=(m.commits||[]).map((c,i)=>({...c,number:m.commits.length-i}));
+  document.querySelector("table").hidden=!m.commits;
+  document.getElementById("filters").hidden=!m.commits;
+  const selected=month.value;month.replaceChildren(new Option("All dates",""));
+  [...new Set(commits.map(c=>String(c.date||"").slice(0,7)))].sort().reverse().forEach(value=>{
+    month.add(new Option(value.slice(5)+"-"+value.slice(0,4),value));
+  });
+  month.value=selected;
+  if(m.error){error.textContent=m.error;return;}
+  render();
 });
 vscode.postMessage({action:"ready"});
 </script></body></html>`;
@@ -140,4 +245,4 @@ function open(vscode, folder) {
   panel.onDidDispose(() => { panel = undefined; });
 }
 
-module.exports = { open, readCommits, readCommitChanges };
+module.exports = { open, readCommits, readCommitChanges, readWorkingChanges, openCommit, reviewContext, reviewSnapshot };

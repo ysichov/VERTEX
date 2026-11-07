@@ -11,7 +11,8 @@ const PROVIDERS = Object.freeze({
   "groq-api": { label: "Groq", base: "https://api.groq.com/openai/v1" },
   "cerebras-api": { label: "Cerebras", base: "https://api.cerebras.ai/v1" },
   "openrouter-api": { label: "OpenRouter", base: "https://openrouter.ai/api/v1" },
-  "nvidia-api": { label: "NVIDIA", base: "https://integrate.api.nvidia.com/v1" }
+  "nvidia-api": { label: "NVIDIA", base: "https://integrate.api.nvidia.com/v1" },
+  "vercel-api": { label: "Vercel AI Gateway", base: "https://ai-gateway.vercel.sh/v1" }
 });
 
 function secretKey(id) { return "vertex.provider." + id + ".apiKey"; }
@@ -56,7 +57,10 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000) {
 async function models(id, apiKey, request = requestJson) {
   const response = await request(id, apiKey, "/models");
   if (!Array.isArray(response.data)) { throw new Error(PROVIDERS[id].label + " did not return a model list."); }
-  const list = response.data.filter(item => item && item.id).map(item => ({
+  // Vercel also lists non-chat models and asynchronous batch variants.
+  const list = response.data.filter(item => item && item.id && (id !== "vercel-api" || (item.type === "language"
+    && !/(?:^|[-_/])batch(?:$|[-_/])/i.test(String(item.id))
+    && !/\bbatch\b/i.test(String(item.name || item.display_name || ""))))).map(item => ({
     id: String(item.id), label: String(item.name || item.display_name || item.id)
   }));
   if (!list.length) { throw new Error(PROVIDERS[id].label + " returned no models for this key."); }

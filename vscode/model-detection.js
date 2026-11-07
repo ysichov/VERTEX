@@ -24,14 +24,24 @@ async function detect(providers, list, check, report, cancelled = () => false) {
     let models;
     try { models = await list(provider.id); }
     catch (error) { results.push({ provider: provider.id, error: String(error.message || error), rows: null }); continue; }
-    const rows = [];
-    for (const model of models) {
-      if (cancelled()) return { results, cancelled: true };
-      report({ provider: provider.id, model: model.label || model.id });
-      try { await check(provider.id, model.id); rows.push({ ...model, on: true, available: true }); }
-      catch (error) { rows.push({ ...model, on: false, available: false, reason: String(error.message || error) }); }
+    const rows = models.map(model => ({ ...model, checked: false }));
+    let checked = 0, stopReason = "";
+    for (const [index, model] of models.entries()) {
+      if (cancelled()) break;
+      report({ provider: provider.id, model: model.label || model.id, index: index + 1, total: models.length });
+      try { await check(provider.id, model.id); rows[index] = { ...model, on: true, available: true, checked: true }; }
+      catch (error) {
+        const reason = String(error.message || error);
+        rows[index] = { ...model, on: false, available: false, checked: true, reason };
+        // Account billing failures cannot be fixed by trying every other model.
+        if (/\b402\b|credit[ -]?card|payment[ _-]?required|insufficient[ _-]?(?:credits?|balance|funds|quota)|(?:add|purchase|buy|require[sd]?).{0,30}credits?|billing.{0,30}(?:required|disabled|enable|limit)/i.test(reason)) stopReason = reason;
+      }
+      checked++;
+      if (stopReason) break;
     }
-    results.push({ provider: provider.id, rows });
+    results.push({ provider: provider.id, rows, checked, total: models.length, partial: checked < models.length,
+      ...(stopReason ? { stopReason } : {}) });
+    if (cancelled()) return { results, cancelled: true };
   }
   return { results, cancelled: cancelled() };
 }

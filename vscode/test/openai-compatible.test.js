@@ -7,7 +7,7 @@ const assistant = require("../assistant");
 
 test("API provider catalog matches the ABAP-AI-Code key providers", () => {
   assert.deepEqual(Object.keys(api.PROVIDERS), ["openai-api", "mistral-api", "gemini-api", "groq-api",
-    "cerebras-api", "openrouter-api", "nvidia-api"]);
+    "cerebras-api", "openrouter-api", "nvidia-api", "vercel-api"]);
   for (const id of Object.keys(api.PROVIDERS)) {
     assert.ok(modelConfig.PROVIDERS.some(provider => provider.id === id && provider.setting === id));
     assert.match(api.PROVIDERS[id].base, /^https:\/\//);
@@ -122,4 +122,26 @@ test("OpenAI-compatible provider executes SAP tools and accepts a final plan", a
   assert.deepEqual(requests[1].body.messages.at(-1), {
     role: "tool", tool_call_id: "call-1", content: '{"source":"CLASS zcl_a."}'
   });
+});
+
+test("Vercel AI Gateway lists only language models", async () => {
+  const request = async () => ({ data: [{ id: "openai/gpt-x", name: "GPT X", type: "language" },
+    { id: "openai/img", type: "image" }, { id: "openai/emb", type: "embedding" }] });
+  assert.deepEqual(await api.models("vercel-api", "k", request), [{ id: "openai/gpt-x", label: "GPT X" }]);
+});
+
+
+test("Vercel excludes batch variants by model id and display name", async () => {
+  const data = [
+    { id: "anthropic/claude-fable-5", name: "Claude Fable 5", type: "language" },
+    { id: "anthropic/claude-fable-5-batch", type: "language" },
+    { id: "anthropic/claude-fable-5-batch-v2", type: "language" },
+    { id: "anthropic/alias", name: "Claude Fable 5 (Batch)", type: "language" },
+    { id: "anthropic/alias2", display_name: "Claude Fable 5 (BATCH)", type: "language" }
+  ];
+  const request = async () => ({ data });
+  assert.deepEqual(await api.models("vercel-api", "k", request), [
+    { id: "anthropic/claude-fable-5", label: "Claude Fable 5" }
+  ]);
+  assert.equal((await api.models("openrouter-api", "k", request)).length, data.length);
 });
