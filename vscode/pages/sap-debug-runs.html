@@ -14,7 +14,7 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--vscode-
 <div id="empty" hidden>No matching execution recordings. SAP debug recordings and available transpiler runs appear here.</div>
 <script>
 const vscode=acquireVsCodeApi();let runs=[],selected=new Set();
-const date=value=>{const parsed=new Date(value);return Number.isNaN(parsed.getTime())?String(value||""):parsed.toLocaleString();};
+const date=value=>{const parsed=new Date(value);return Number.isNaN(parsed.getTime())?String(value||""):parsed.toLocaleString(undefined, {hourCycle:"h23"});};
 const selectionChanged=()=>{document.getElementById("delete-selected").disabled=selected.size===0;};
 function button(label,action,key){const element=document.createElement("button");element.textContent=label;element.title=action==="rename"?"Rename session":"Delete recording";element.setAttribute("aria-label",element.title);element.onclick=event=>{event.stopPropagation();vscode.postMessage({action,key});};return element;}
 function cell(text){const element=document.createElement("td");element.textContent=text;return element;}

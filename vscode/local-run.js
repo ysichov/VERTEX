@@ -323,6 +323,17 @@ function projectFor(document, workspaceRoot, driver) {
     "(?:^|[/\\\\])" + name.toLowerCase() + "\\.dtel\\.xml$"));
   if (hasCore) filters.push("(?:^|[/\\\\])[^/\\\\]+\\.(?:dtel|doma)\\.xml$");
   const inputs = [input];
+  // Plain report files keep their names on disk; only the transpiler input needs the abapGit suffix.
+  let normalizedSource = null;
+  if (!/\.(?:prog|clas|intf|fugr)\.abap$/i.test(file) && /^\s*(?:REPORT|PROGRAM)\s+/im.test(document.getText())) {
+    const normalizedFolder = path.join(temporary, "normalized");
+    fs.mkdirSync(normalizedFolder, { recursive: true });
+    const alias = path.join(normalizedFolder, path.basename(file).replace(/\.abap$/i, ".prog.abap"));
+    fs.writeFileSync(alias, document.getText());
+    inputs.push(normalizedFolder);
+    filters.push("(?:^|[/\\\\])" + path.basename(alias).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$");
+    normalizedSource = { alias, original: file };
+  }
   // A method or function module run: the program that calls it, from a folder of its own.
   if (driver) { inputs.push(path.dirname(driver)); filters.push("(?:^|[/\\\\])" + path.basename(driver).replace(/[.]/g, "\\.") + "$"); }
   if (hasCore) inputs.push(path.join(core, "src", "ddic"));
@@ -342,7 +353,7 @@ function projectFor(document, workspaceRoot, driver) {
   } };
   stampOf(path.join(root, input));
   return { root, configFile, cli, entry: path.join(outputFolder, "index.mjs"), automatic: true,
-    includedClasses: dependencyList.classes, stamp: crypto.createHash("sha256").update(stampParts.join("\n")).digest("hex") };
+    normalizedSource, includedClasses: dependencyList.classes, stamp: crypto.createHash("sha256").update(stampParts.join("\n")).digest("hex") };
 }
 
 function stageRuntime(project) {
@@ -536,7 +547,7 @@ function entryFor(project, document, selection = {}) {
     return project.entry;
   }
   const outputRoot = path.dirname(project.entry);
-  const generatedName = filename.replace(/\.abap$/i, ".mjs");
+  const generatedName = path.basename(project.normalizedSource?.alias || filename).replace(/\.abap$/i, ".mjs");
   const candidates = [];
   function visit(dir) {
     for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -687,6 +698,20 @@ async function launch(vscode, debug, options = {}) {
     if (project.automatic) output.appendLine("Included classes/interfaces: " +
       (project.includedClasses.length ? project.includedClasses.join(", ") : "none"));
     await transpile(project, output);
+    if (project.normalizedSource) {
+      const remap = dir => { for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+        const location = path.join(dir, item.name);
+        if (item.isDirectory()) { remap(location); continue; }
+        if (!item.name.endsWith(".map")) continue;
+        const map = JSON.parse(fs.readFileSync(location, "utf8"));let changed = false;
+        map.sources = (map.sources || []).map(source => {
+          if (path.resolve(path.dirname(location), source) !== project.normalizedSource.alias) return source;
+          changed = true;return project.normalizedSource.original;
+        });
+        if (changed) fs.writeFileSync(location, JSON.stringify(map));
+      } };
+      remap(outputRoot);
+    }
     // An SAP program's run: its includes were written into it, and its map is pointed back at them.
     if (fs.existsSync(path.join(path.dirname(project.configFile), "vertex-includes.json")))
       require("./sap-transpile").remapIncludes(path.dirname(project.configFile), path.dirname(project.entry));

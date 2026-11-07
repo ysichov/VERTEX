@@ -1,3 +1,93 @@
+## 2026-11-07 — Active-task logo only
+
+Hide the chat task logo after completion or failure. Only an active task displays the rotating mark; its reserved space prevents the answer from shifting when the mark disappears.
+
+## 2026-11-07 — Ten recent commits by default
+
+Git History loads full details only for ten latest commits, or the selected date period. A compact hash/date index supplies original history numbers and the month picker. Date inputs debounce requests, and stale responses are discarded.
+
+## 2026-11-07 — Lightweight Git preview and failed requests
+
+Read-only Git reviews start folded, skip offscreen rendering and bound very long preview lines; complete source stays available to ASK AI. API request failures retain the failed model step, operation and error even when answer logging is disabled.
+
+## 2026-11-07 — Actual Vercel request cost
+
+Record Gateway generation IDs and actual USD debit from response metadata or generation lookup, with bounded retries for delayed ingestion. Session Logs show model-step, prompt, session and recorded-total cost; missing amounts stay unknown and partial totals are labelled. No inference is repeated for billing lookup.
+
+## 2026-11-07 — Task progress and 24-hour timestamps
+
+The chat task logo is 32px. Working progress shows the operation step and name. Logs, recording lists and transpiler windows use 00–23 hours without AM/PM, regardless of locale. Model details are behind the $ button alongside the selected model.
+
+## 2026-11-07 — One model details button in chat
+
+The chat hides the entire capability/context/price line behind a single $ button immediately beside the model selector. It opens a theme-aware dialog with explanations, context and rates, with Close and Escape support. The selector and button stay together, reducing sidebar height. Model settings retain their full comparison table. Version remains 0.9.67.
+
+## 2026-11-07 — Compact chat price icon
+
+The selected-model capability line replaces the inline price text with a $ icon. Hover or keyboard focus exposes the input/output rates and cache/tier notes. Settings retain sortable price columns. Version remains 0.9.67.
+
+## 2026-11-07 — Slow VERTEX task indicator
+
+The VS Code chat uses the existing VERTEX logo in a fixed 18-pixel slot beside each task response. Active tasks rotate it once every six seconds; completion and errors stop it, superseding or clearing a request removes it. Respects both VS Code reduced-motion and the OS media preference. No image generation or model calls are used for the animation. Version remains 0.9.67.
+
+## 2026-11-07 — 0.9.67: standalone local Code Agent documentation
+
+Agent transpiler calls prefer matching open local report sources (active or visible editors) before any SAP lookup, including with a selected SAP system. Scalar selection shorthand is normalized to parameter values. The reported repeated Fibonacci attempts were failed SAP lookups, not completed transpiler runs. Compatible API calls retain 429 status and Retry-After metadata and retry only the pending model request up to twice, with progress and conversation cancellation checks; completed tools are not executed again by the retry.
+
+Release artifacts: VS Code 0.9.67; Eclipse 0.9.67.20261107120632. Eclipse update-site metadata, artifact hashes and JAR contents verified; the local site is in docs/.
+
+The local transpiler also accepts ordinary `.abap` REPORT/PROGRAM files in automatic projects through temporary program-named inputs, preserving the original filename and trace mappings. Local debugger Run opens the separate program window instead of the legacy selection popup, including when no program window is open.
+
+Release 0.9.67 makes the standalone AI Code Agent prominent in the opening documentation and Marketplace description: local Git projects in any programming language, with no SAP connection or ABAP project required. The introduction includes provider/model selection, working-copy review, Apply and project build/test commands. The Code Agent host is VS Code; Eclipse documentation links to that workflow and retains its own ADT scope.
+
+## 2026-11-07 — Persist unavailable independently of selection
+
+Availability flags and reasons are stored independently of selected models in modelConfig. A queued one-time migration seeds unavailable flags only for previously unchecked Vercel rows when its catalog is successfully loaded, preserving existing reasons and selection. Other providers are not migrated. An explicit marker prevents repeating the conversion when users uncheck models later. The imported Vercel flags represent prior checks, as confirmed by the user, and carry no no-probe disclaimer. Save preserves the availability flags and migration marker; individual rechecks can restore availability. Version remains 0.9.66.
+
+## 2026-11-07 — Sortable model comparison table
+
+LLM Providers separates model names, IDs, each declared capability, context size, input/output prices and check state into sortable columns. Headers support pointer and keyboard sorting with direction indicators. Prices and context sort numerically; unknowns remain last in both directions. Sorting uses a copy and retains original row identities for editing and removal. The unavailable filter and provider-specific sort state survive view rebuilds. Tables scroll horizontally in narrow panes. Version remains 0.9.66.
+
+## 2026-11-07 — Catalog prices beside model capabilities
+
+LLM Providers and the selected-model display show Vercel base input/output prices in USD per million text tokens. A shared formatter preserves zero-cost rates, marks provider/context-dependent pricing and exposes cache rates in the tooltip. Pricing comes from the catalog and does not claim a fixed request cost. Version remains 0.9.66.
+
+## 2026-11-07 — Catalog capabilities and screenshot handling
+
+Vercel catalog capabilities reach LLM Providers and the selected-model display as icons with tooltips. Shared normalization preserves true, false and unknown declarations for tool calling, structured output, reasoning, image input and provider web search, plus context size. Connectivity checks remain separate. Explicitly text-only models reject screenshots before inference and retain the draft in the UI; Vision images are encoded as API image content. Explicitly tool-less models receive no tool schemas and answer from supplied text. The sidebar and API both guard unsupported screenshots. Web search metadata does not activate provider search. Version remains 0.9.66.
+
+## 2026-11-07 — Expandable commit descriptions
+
+Git History reads the commit body alongside its subject. Commits with a nonempty description show a fold icon beside the message; clicking expands or collapses selectable plain text with original line breaks. Expansion survives date filtering. Uses the existing fold control and theme-aware button styling. Version remains 0.9.66.
+
+## 2026-11-07 — Compact individual check icon
+
+Individual model checks use a compact checkmark button with an explanatory tooltip and accessible model-specific label. Version remains 0.9.66.
+
+## 2026-11-07 — Skip models already available
+
+Bulk model checks reuse successful checks in the current settings window, including individual checks, and skip those models without a generation request. The individual Check button explicitly rechecks a model. Changing a key, installation or profile invalidates cached checks. Version remains 0.9.66.
+
+## 2026-11-07 — Individual and minimal model checks
+
+Hide unavailable is enabled by default. Only a credit-card error automatically stops provider checks. Each model has Check for an individual probe, updating only its row. OpenAI-compatible API probes use one Reply OK request, no agent history or tool schemas, and a 16-token output cap. Anthropic checks cap output at 16 tokens and all agent-based probes allow one round. Checks remain paid generation requests. Version remains 0.9.66.
+
+## 2026-11-07 — Model plan restrictions and unavailable filter
+
+A model-specific Pro/Enterprise requirement no longer triggers account billing auto-stop; checking continues with the remaining models. Hide unavailable beside the model selection controls hides failed rows without altering selections or hiding untested rows. The Unavailable error dialog remains available when the filter is off. Version remains 0.9.66.
+
+## 2026-11-07 — Model error dialog
+
+Unavailable is a link opening a theme-aware modal dialog with selectable error text, clickable HTTP/HTTPS URLs, Copy error and Close. Reuses the native dialog pattern from Metrics. Links open in the browser through VS Code; source text is inserted as text nodes. Version remains 0.9.66.
+
+## 2026-11-07 — Compact provider groups
+
+LLM Providers places Vercel AI Gateway immediately after EPAM CodeMie. Other API providers share a collapsible API providers group, automatically expanded when it contains the selected provider. Empty status rows are hidden and gaps between providers reduced; checking controls retain fixed columns. Version remains 0.9.66.
+
+## 2026-11-07 — Copy model check errors
+
+Model check failures and provider errors offer Copy error. It copies the complete stored error with provider/model identification and URLs through the VS Code clipboard, with success or failure feedback. Version remains 0.9.66.
+
 ## 2026-11-07 — Partial model checks and billing stop
 
 Stopping Check models preserves completed checks and leaves untested model selections unchanged, labelled Not checked. Billing failures such as 403 requiring a credit card, 402 Payment required or insufficient credits stop further probes for that provider immediately. Status retains the checked count and error; Save applies the results. Model-specific access failures continue checking other models. Version remains 0.9.66.

@@ -19,7 +19,7 @@ function open(vscode, { name, host }) {
   current?.panel.dispose();
   const panel = vscode.window.createWebviewPanel("vertex.programWindow", name + " · ABAP program", vscode.ViewColumn.Active,
     { enableScripts: true, retainContextWhenHidden: true });
-  const self = { panel };
+  const self = { panel, name };
   current = self;
   panel.onDidDispose(() => { if (current === self) current = null; });
   panel.webview.html = html({ name, recompile: !!host.recompile, builtAt: host.builtAt || "", pending: !!host.pending,
@@ -41,7 +41,7 @@ function open(vscode, { name, host }) {
 }
 
 /* The window in front again, when it is still open: VERTEX Smart Debugger's way back to the program. */
-function reveal() { if (!current) return false; current.panel.reveal(); return true; }
+function reveal(name) { if (!current || name && current.name.toUpperCase() !== String(name).toUpperCase()) return false; current.panel.reveal(); return true; }
 const isOpen = () => !!current;
 /* The editor column the window stands in, while it is open and in sight. */
 const column = () => current && current.panel.visible ? current.panel.viewColumn : undefined;

@@ -17,7 +17,7 @@ const PROVIDERS = Object.freeze({
 
 function secretKey(id) { return "vertex.provider." + id + ".apiKey"; }
 
-function requestJson(id, apiKey, route, body, maxBytes = 64000) {
+function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
   const provider = PROVIDERS[id];
   if (!provider) { return Promise.reject(new Error("Unknown API provider: " + id)); }
   if (!apiKey) { return Promise.reject(new Error("No " + provider.label + " API key is configured. Enter it in LLM Providers.")); }
@@ -43,13 +43,15 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000) {
         let parsed;
         try { parsed = JSON.parse(text); } catch (_) { parsed = null; }
         if (res.statusCode < 200 || res.statusCode >= 300 || !parsed) {
-          reject(new Error(provider.label + " API returned " + res.statusCode + ": "
-            + String(parsed && parsed.error && (parsed.error.message || parsed.error) || text).slice(0, 500)));
+          const error = new Error(provider.label + " API returned " + res.statusCode + ": "
+            + String(parsed && parsed.error && (parsed.error.message || parsed.error) || text).slice(0, 500));
+          error.status = res.statusCode; error.retryAfter = res.headers?.["retry-after"];
+          reject(error);
         } else { resolve(parsed); }
       });
     });
     req.on("error", reject);
-    req.setTimeout(payload ? 180000 : 60000, () => req.destroy(new Error(provider.label + " API timed out.")));
+    req.setTimeout(timeoutMs || (payload ? 180000 : 60000), () => req.destroy(new Error(provider.label + " API timed out.")));
     req.end(payload || undefined);
   });
 }
@@ -61,25 +63,82 @@ async function models(id, apiKey, request = requestJson) {
   const list = response.data.filter(item => item && item.id && (id !== "vercel-api" || (item.type === "language"
     && !/(?:^|[-_/])batch(?:$|[-_/])/i.test(String(item.id))
     && !/\bbatch\b/i.test(String(item.name || item.display_name || ""))))).map(item => ({
-    id: String(item.id), label: String(item.name || item.display_name || item.id)
+    id: String(item.id), label: String(item.name || item.display_name || item.id),
+    ...(id === "vercel-api" ? require("./model-capabilities").metadata(item) : {})
   }));
   if (!list.length) { throw new Error(PROVIDERS[id].label + " returned no models for this key."); }
   return list.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+async function rateLimitedRequest(send, options = {}) {
+  for (let retry = 0; ; retry++) {
+    if (options.isActive && !options.isActive()) throw new Error("This request was superseded.");
+    try { return await send(); }
+    catch (error) {
+      if (!(error.status === 429 || /returned 429\b/.test(error.message || "")) || retry >= 2) throw error;
+      const hint = /retry\s+after\s+(\d+(?:\.\d+)?)\s*s/i.exec(error.message || "");
+      let ms = Number.isFinite(Number(error.retryAfter)) && error.retryAfter !== undefined ? Number(error.retryAfter) * 1000
+        : error.retryAfter && Number.isFinite(Date.parse(error.retryAfter)) ? Date.parse(error.retryAfter) - Date.now()
+        : hint ? Number(hint[1]) * 1000 : 60000;
+      ms = Math.max(1000, ms + 250);
+      if (ms > 60250) throw error;
+      options.onProgress?.({ status: "Rate limit reached. Waiting " + Math.ceil(ms / 1000) + " s before retrying the model request (" + (retry + 1) + "/2)." });
+      await (options.sleep || (delay => new Promise(resolve => setTimeout(resolve, delay))))(ms);
+    }
+  }
+}
+
+// One minimal paid generation request: no tool schemas, history or agent rounds.
+async function probe(id, apiKey, model, request = requestJson) {
+  const response = await rateLimitedRequest(() => request(id, apiKey, "/chat/completions", {
+    model, messages: [{ role: "user", content: "Reply OK." }], stream: false,
+    ...(id === "openai-api" ? { max_completion_tokens: 16 } : { max_tokens: 16 })
+  }));
+  if (!response.choices?.[0]?.message) throw new Error(PROVIDERS[id].label + " answered without a chat message.");
+}
+
+// Actual Gateway debit, never an estimate from catalog token prices.
+async function generationCost(response, options, request) {
+  const gateway = response.providerMetadata?.gateway || response.provider_metadata?.gateway;
+  const generationId = gateway?.generationId || response.id;
+  const number = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
+  let cost = number(gateway?.cost);
+  if (cost === null && generationId) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (options.isActive && !options.isActive()) break;
+      try {
+        const result = await request("vercel-api", options.apiKey, "/generation?id=" + encodeURIComponent(generationId), undefined, 64000, 5000);
+        cost = number(result.data?.total_cost ?? result.data?.gateway_cost);
+        if (cost !== null) break;
+      } catch (error) {
+        if (error.status !== 404 && !/Usage event not found/i.test(error.message || "")) break;
+      }
+      if (attempt < 2) await (options.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms))))((attempt + 1) * 1000);
+    }
+  }
+  return { generation_id: generationId || null, cost_usd: cost };
+}
+
 async function ask(options) {
   const id = options.assistant;
   const request = options.request || requestJson;
-  const tools = (options.tools || []).map(tool => ({ type: "function", function: {
+  if (options.images?.length && options.capabilities?.vision === false) throw new Error("This model does not accept screenshots. Choose a Vision model or remove the images.");
+  const tools = options.capabilities?.tools === false ? [] : (options.tools || []).map(tool => ({ type: "function", function: {
     name: tool.name, description: tool.description, parameters: tool.inputSchema
   } })).concat([{ type: "function", function: { name: "submit_vertex_answer",
     description: "Submit the final VERTEX answer and navigation plan.", parameters: options.schema } }]);
-  const messages = [{ role: "system", content: options.instructions }, { role: "user", content: options.prompt }];
+  const content = options.images?.length ? [{ type: "text", text: options.prompt },
+    ...options.images.map(image => ({ type: "image_url", image_url: { url: "data:" + image.media_type + ";base64," + image.data } }))] : options.prompt;
+  const messages = [{ role: "system", content: options.instructions }, { role: "user", content }];
+  const imageBytes = (options.images || []).reduce((sum, image) => sum + Buffer.byteLength(image.data || "", "utf8") + 256, 0);
   let usage = null;
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
-    const response = await request(id, options.apiKey, "/chat/completions", {
-      model: options.model, messages, tools, stream: false
-    }, options.localTools ? 2 * 1024 * 1024 : 64000);
+    options.onProgress?.({ status: "Model request " + (round + 1) });
+    const response = await rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
+      model: options.model, messages, ...(tools.length ? { tools } : {}), stream: false
+    }, (options.localTools ? 2 * 1024 * 1024 : 64000) + imageBytes), options).catch(error => {
+      error.model_step = round + 1; error.operation = "Model request"; throw error;
+    });
     if (options.onProviderResponse) options.onProviderResponse({ provider: id, scope: "model_response", response });
     let roundUsage = null;
     if (response.usage) {
@@ -92,7 +151,14 @@ async function ask(options) {
         cache_read_input_tokens: cached, cache_creation_input_tokens: created };
       roundUsage = next;
       if (!usage) usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
-      for (const key of Object.keys(usage)) usage[key] += next[key];
+      for (const key of Object.keys(next)) usage[key] = (usage[key] || 0) + next[key];
+    }
+    if (id === "vercel-api") {
+      roundUsage = { ...(roundUsage || {}), ...await generationCost(response, options, request) };
+      if (roundUsage.cost_usd !== null) {
+        if (!usage) usage = {};
+        usage.cost_usd = (usage.cost_usd || 0) + roundUsage.cost_usd;
+      }
     }
     const message = response.choices && response.choices[0] && response.choices[0].message;
     if (!message) { throw new Error(PROVIDERS[id].label + " answered without a chat message."); }
@@ -135,4 +201,4 @@ async function ask(options) {
   throw new Error(PROVIDERS[id].label + " did not finish the VERTEX plan.");
 }
 
-module.exports = { PROVIDERS, secretKey, requestJson, models, ask };
+module.exports = { PROVIDERS, secretKey, requestJson, models, ask, probe, rateLimitedRequest };

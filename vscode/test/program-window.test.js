@@ -27,3 +27,16 @@ test("a class reference opens a variables dialog instead of a text input", () =>
   assert.match(page, /if\(shape\.kind==="reference"\)return referenceEditor\(p\)/);
   assert.match(page, /button\.onclick=function\(\)\{dialog\.showModal\(\)/);
 });
+
+
+test('Run from the local analysis panel opens the program window when none exists',async()=>{
+ const fs=require('fs'),path=require('path');
+ const source=fs.readFileSync(path.join(__dirname,'../extension.js'),'utf8');
+ const body=source.slice(source.indexOf('if (command === "toProgram") {'),source.indexOf('if (dockedDebugSource?.local && localDebugAdapter)',source.indexOf('if (command === "toProgram") {')));
+ const calls=[];
+ const run=new (Object.getPrototypeOf(async function(){}).constructor)('command','dockedDebugSource','require','openVisualDebug','runSapTranspiler','replyTo',body);
+ const document={uri:{fsPath:'zfibonacci_report.abap'}};
+ await run('toProgram',{local:true,object_name:'ZFIBONACCI',document},()=>({reveal(name){calls.push(name);return false;}}),async(runOnly,source)=>calls.push([runOnly,source.document]),async()=>{throw new Error('Local run must not read SAP');},async()=>{});
+ assert.deepEqual(calls,['ZFIBONACCI',[true,document]]);
+ assert.match(source,/programWindow: dockedDebugSource.local === true && !dockedDebugSource.storedRun,/);
+});

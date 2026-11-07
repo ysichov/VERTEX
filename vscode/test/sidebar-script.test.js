@@ -13,6 +13,10 @@ test("sidebar HTML contains an executable chat script", () => {
   assert.match(script, /requestSubmit\(\)/);
   assert.match(script, /action: 'ready'/);
   assert.match(html, /id="model-status" role="status"/);
+  assert.match(html, /class="model-picker"><select id="model-select"[\s\S]*?id="model-details-button"[\s\S]*?>\$<\/button><\/span>/);
+  assert.match(html, /<dialog id="model-details-dialog"[\s\S]*?<div id="model-capabilities"><\/div>/);
+  assert.match(script, /getElementById\('model-details-dialog'\)\.showModal\(\)/);
+
   // The AI and SAP logs are the view's title actions, not buttons in the panel; the folder shares the SAP system line.
   assert.doesNotMatch(html, /data-action="(logs|executionLogs)"/);
   assert.match(html, /<span id="folder-line" hidden>/);

@@ -3345,7 +3345,7 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
     object.url=first||Object.keys(saved.sources||{})[0]||"";object.lines=texts[norm(object.url)]||[];
     shown={url:object.url,lines:object.lines,name:object.name};drawSource();
     $("title").textContent=object.name+" · Saved SAP Debug Run";
-    $("state").textContent=new Date(saved.meta.created).toLocaleString()+" · "+timeline.length+" recorded steps · offline replay";
+    $("state").textContent=new Date(saved.meta.created).toLocaleString(undefined, {hourCycle:"h23"})+" · "+timeline.length+" recorded steps · offline replay";
     ["run","recompile","sapTranspile","into","over","out","cont","terminate","stop","recmode","program","zonly"].forEach(function(id){if($(id))$(id).disabled=true;});
     $("run").hidden=true;$("recompile").hidden=true;$("sapTranspile").hidden=true;$("stop").hidden=true;$("terminate").hidden=true;
     replayAt=Number.isInteger(INITIAL.replayStep)?Math.max(0,Math.min(timeline.length-1,INITIAL.replayStep-1)):0;
@@ -3365,7 +3365,7 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
     // Detach lets a SAP program go on and stops listening; a transpiler run has no session to leave: Exit program ends it.
     $("stop").hidden=true;
     // An SAP object's run takes its last build, as SAP runs a program's load; Recompile reads SAP's code again.
-    if(INITIAL.sapBuild){var built=INITIAL.sapBuild.builtAt?new Date(INITIAL.sapBuild.builtAt).toLocaleString():"";
+    if(INITIAL.sapBuild){var built=INITIAL.sapBuild.builtAt?new Date(INITIAL.sapBuild.builtAt).toLocaleString(undefined, {hourCycle:"h23"}):"";
       $("run").title="Run the last build of "+INITIAL.sapBuild.name+(built?", read from SAP "+built:"")+" - Recompile takes SAP's code as it is now";
       $("recompile").hidden=false;$("recompile").title="Read "+INITIAL.sapBuild.name+" and what it uses from SAP again and transpile it"+(built?" (this build: "+built+")":"");
       $("recompile").onclick=function(){runFailure="";notice("");$("state").textContent="Recompiling "+INITIAL.sapBuild.name+" from SAP.";

@@ -78,7 +78,7 @@ function create(root, provider, session, include) {
       // Preserve provider counters verbatim, before normalization. These records
       // are diagnostic evidence, never assistant records (no double counting).
       const fields = ["id", "type", "model", "subtype", "is_error", "usage", "modelUsage",
-        "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
+        "error", "model_step", "operation", "status", "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
       const metadata = {};
       for (const key of fields) {
         if (response && Object.prototype.hasOwnProperty.call(response, key)) metadata[key] = response[key];
@@ -92,7 +92,8 @@ function create(root, provider, session, include) {
         input_tokens: usage && usage.input_tokens || 0,
         output_tokens: usage && usage.output_tokens || 0,
         cache_creation_input_tokens: usage && usage.cache_creation_input_tokens || 0,
-        cache_read_input_tokens: usage && usage.cache_read_input_tokens || 0
+        cache_read_input_tokens: usage && usage.cache_read_input_tokens || 0,
+        ...(usage && Object.prototype.hasOwnProperty.call(usage, "cost_usd") ? { cost_usd: usage.cost_usd, generation_id: usage.generation_id } : {})
       }, content: [{ type: "text", text: answer }] } });
     },
     toolUse(name, args) {

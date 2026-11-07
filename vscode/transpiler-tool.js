@@ -6,7 +6,7 @@ const schema = {
   description: "Run an ABAP report, class method or function module with the local transpiler and return its output. This simulates ABAP execution; it is not a SAP runtime run. SELECT may read the selected SAP system through VERTEX. Parallel runs use isolated local projects. Use interventions to replace a scalar variable immediately before a specified ABAP line for a testable hypothesis; the trace records before and after values. Use this first for runnable code; if compilation or runtime says the case is unsupported, explain why and ask the user whether to run it in SAP. For a class, read its source and supply entry_line inside the method. Supply selection values for reports that need parameters.",
   inputSchema: { type: "object", additionalProperties: false, required: ["object_type", "object_name"], properties: {
     object_type: { type: "string", enum: ["PROG", "CLAS", "FUNC"] },
-    object_name: { type: "string", description: "Exact SAP technical name." },
+    object_name: { type: "string", description: "Local report declaration or file stem when that report is open in the editor; otherwise exact SAP technical name. A matching open file is always the source, including when system is provided." },
     entry_line: { type: "integer", minimum: 1, description: "Line inside the class method or function module to execute. Required for CLAS." },
     screen_only: { type: "boolean", description: "Return the selection screen or method argument fields without executing." },
     selection: { type: "object", description: "Selection screen values. Radio group IDs map to chosen parameter names; other values go in $parameters. For a method or function module, supply its $entry arguments.", additionalProperties: true },
@@ -16,7 +16,7 @@ const schema = {
         line: { type: "integer", minimum: 1 }, name: { type: "string", description: "Simple ABAP variable or parameter name." },
         value: { type: ["string", "number", "boolean"] }, occurrence: { type: "integer", minimum: 1, description: "Which execution of this line; default 1." }
       } } },
-    system: { type: "string", description: "Configured SAP system; defaults to the active system." }
+    system: { type: "string", description: "Configured SAP system; defaults to the active system. For local files this selects dictionary/SELECT access only and never replaces the file source." }
   } }
 };
 
@@ -76,7 +76,8 @@ function normalizeSelection(screen, selection) {
       const choice = String(value).toUpperCase();
       if (!groups[name].includes(choice)) throw new Error("Radio group " + name + " has no choice " + value + ". Use " + groups[name].join("/") + ".");
       result[name] = choice;
-    } else throw new Error("Selection key " + key + " is not on this screen. Radio groups: " + (shape || "none")
+    } else if (plain.has(name)) (result.$parameters ||= {})[name] = value;
+    else throw new Error("Selection key " + key + " is not on this screen. Radio groups: " + (shape || "none")
       + "; other parameters go in $parameters, select-options in $ranges.");
   }
   return result;
@@ -101,6 +102,37 @@ function missingEntry(entry, selection) {
   ];
 }
 
+function activeLocalReport(document, name) {
+  if (document?.uri?.scheme !== "file" || !/\.abap$/i.test(document.uri.fsPath)) return null;
+  const report = /^\s*(?:REPORT|PROGRAM)\s+([A-Za-z0-9_/$]+)/im.exec(document.getText());
+  if (!report) return null;
+  const stem = require("path").basename(document.uri.fsPath).replace(/(?:\.prog)?\.abap$/i, "");
+  return [report[1], stem].some(value => value.toUpperCase() === String(name).toUpperCase()) ? report[1].toUpperCase() : null;
+}
+function findLocalReport(vscode, name) {
+  const active = vscode.window.activeTextEditor?.document;
+  if (activeLocalReport(active, name)) return active;
+  const found = new Map();
+  for (const editor of vscode.window.visibleTextEditors || []) {
+    if (activeLocalReport(editor.document, name)) found.set(editor.document.uri.fsPath, editor.document);
+  }
+  if (found.size > 1) throw new Error("Several visible local reports match " + name + ". Focus the one to run.");
+  return found.values().next().value || null;
+}
+async function runLocalReport(vscode, args, document, history) {
+  const run = require("./local-run"), request = validate(args), screen = run.screenFor(document);
+  const selection = normalizeSelection(screen, request.selection);
+  if (args.screen_only) return { status: "selection_screen", mode: "transpiler", system: "local", object_name: request.object_name, selection_screen: describeScreen(screen) };
+  const missing = missingSelection(screen, selection);
+  if (missing.length) return { status: "needs_input", mode: "transpiler", system: "local", object_name: request.object_name, missing, selection_screen: describeScreen(screen) };
+  const result = await run.launch(vscode, false, { document, selection, interventions: request.interventions, trace: true });
+  const records = result.records || [], run_id = history.save(records, { object_name: request.object_name, object_type: "PROG", system: "local" }, { output: result.output || "", main: document.uri.fsPath });
+  return { status: "completed", mode: "transpiler", system: "local", object_name: request.object_name,
+    run_id, session_id: run_id, run_number: history.number(run_id), recorded_steps: records.length,
+    output: result.output || "", duration_ms: result.durationMs || 0,
+    note: "Local simulation. The requested local report has already run; use its run_id to read history instead of rerunning the same case." };
+}
+
 function createRunQueue() {
   let tail = Promise.resolve();
   return work => {
@@ -110,4 +142,4 @@ function createRunQueue() {
   };
 }
 
-module.exports = { schema, validate, describeScreen, normalizeSelection, missingSelection, missingEntry, createRunQueue };
+module.exports = { schema, validate, describeScreen, normalizeSelection, missingSelection, missingEntry, createRunQueue, activeLocalReport, findLocalReport, runLocalReport };

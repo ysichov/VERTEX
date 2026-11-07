@@ -6,6 +6,10 @@ const crypto = require("crypto");
 
 const emptyUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 const sumUsage = (into, usage) => {
+  if (Object.prototype.hasOwnProperty.call(usage, "cost_usd")) {
+    if (usage.cost_usd !== null && Number.isFinite(usage.cost_usd)) into.cost = (into.cost || 0) + usage.cost_usd;
+    else into.costMissing = (into.costMissing || 0) + 1;
+  }
   into.input += Number(usage.input_tokens || 0);
   into.output += Number(usage.output_tokens || 0);
   into.cacheRead += Number(usage.cache_read_input_tokens || 0);
@@ -62,7 +66,7 @@ function parseSession(text, file) {
         const last = current.timeline.filter(entry => entry.kind === "model").pop();
         if (last && id && last.id === id) last.usage = record.response?.usage || last.usage;
         else current.timeline.push({ kind: "model", id, usage: record.response?.usage || null, time: Number.isFinite(time) ? time : null });
-      } else if (current) current.details.push({ type: "Provider usage (" + record.scope + ")",
+      } else if (current) current.details.push({ type: record.scope === "request_error" ? "Request failed" + (record.response?.model_step ? " at model step " + record.response.model_step : "") : "Provider usage (" + record.scope + ")",
         text: prettyJson({ provider: record.provider, response: record.response }) });
       continue;
     }
@@ -110,6 +114,10 @@ function parseSession(text, file) {
     if (message.id && seen.has(message.id)) continue;
     if (message.id) seen.add(message.id);
     if (message.usage) {
+      if (current && Object.prototype.hasOwnProperty.call(message.usage, "cost_usd")) {
+        const last = current.timeline.filter(entry => entry.kind === "model").pop();
+        if (last && (!message.usage.generation_id || last.id === message.usage.generation_id)) last.usage = message.usage;
+      }
       sumUsage(session.usage, message.usage);
       if (current) sumUsage(current.usage, message.usage);
     }

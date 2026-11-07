@@ -3,7 +3,7 @@
 
 ## Install
 
-Current VS Code extension: **0.9.66**.
+Current VS Code extension: **0.9.67**.
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
@@ -17,6 +17,21 @@ For VS Code, the recommended companion is
 
 
 VERTEX is a set of plugins for VS Code and Eclipse ADT. Each window reads over the developer's existing ADT connection and renders as HTML. In Eclipse, opening a VERTEX window reveals its containing layout even when that area was hidden in the saved perspective.
+
+**Standalone AI Code Agent for local Git projects — any programming language (VS Code).**
+
+VERTEX can work as an AI coding agent for an ordinary local Git repository: Python, JavaScript, TypeScript, Java, C#, Go, ABAP or another language. Open the project folder in VS Code, choose a provider and a model that supports tool calls, and give the agent a task in the VERTEX chat. No SAP system or ABAP project is required.
+
+- Search and read project files, explain code, implement changes and work with Git diffs.
+- Review the agent's edits in an isolated Git working copy, then approve files and **Apply** them to your folder; declined changes can be returned for rework with your reason.
+- Run the project's own build and test commands after Apply; failures can be sent back to the agent for correction.
+- Use Claude Code, Codex / ChatGPT subscription, EPAM CodeMie, GitHub Copilot or a supported API provider, with optional session logs.
+
+**Quick start:** open a local Git folder → open the VERTEX panel → choose a provider/model in **LLM Providers** → ask for a change → review the diff → **Apply**.
+
+While a chat task runs in VS Code, the VERTEX mark beside its answer rotates slowly (one turn in six seconds). It disappears on completion or error. Its fixed space keeps the answer from shifting; reduced-motion settings leave the mark static. Progress shows Working: step N and the operation name. Times in logs and execution windows use the 24-hour format. Failed API requests retain their model step and error even with answer logging disabled. Git History loads the latest ten commits by default; choosing a month or date range loads that period while retaining original commit numbers. Git previews start with files folded and shorten very long display lines; ASK AI retains the full source context. Session Logs show actual Vercel Gateway charges in USD per model step, prompt and session. Missing charges are shown as unknown, never as zero; partial totals are marked.
+
+In the agent chat, an open local REPORT/PROGRAM is the transpiler source when its declaration or filename matches the request, even if a SAP system is selected or named. SAP supplies dictionary or SELECT access; it does not replace that file. VERTEX checks visible source editors even when focus is on a webview. API 429 responses wait for Retry-After (up to about one minute) and retry the pending model request at most twice, without replaying completed tool calls.
 
 **Serverless, in VS Code** - the ABAP transpiler runs ABAP on your machine:
 
@@ -50,8 +65,6 @@ data elements, domains and tables, to read theirs. With it, a method is reviewed
 and AVE show them) instead of being cut from the class's; without it, reviews are saved to files and such
 parts say they need the backend. The Eclipse plugin does the same. The last column below says what needs it.
 
-**VERTEX Code Agent (alpha), in VS Code:** a local-project agent for any language, with file search, reading and editing for every provider (native tools for Claude Code, VERTEX tools for the others); isolated Git working copies, file-by-file review and rework, builds after Apply with failures returned to the assistant, and optional detailed session logs. The selected model must support tool calls. Outside Git, writes wait for review before reaching the files. See [the VS Code documentation](vscode/README.md).
-
 In VS Code, the built-in VERTEX Assistant can use Codex, Claude Code, a signed-in
 GitHub Copilot model, EPAM CodeMie through the CodeMie CLI or API keys for Anthropic, OpenAI, Mistral, Gemini, Groq,
 Cerebras, OpenRouter, NVIDIA and Vercel AI Gateway. With the active editor on a file of an open workspace folder (or no editor open and one folder in the
@@ -66,6 +79,8 @@ For a plain name without an exact match, VERTEX tries prefix and contained-name 
 wildcards are used as written.
 The VS Code chat can explain the ABAP source of the active editor using its current text, even without a SAP connection: a local `.abap` file, or a source another extension opened (SAP's ADT extension, ABAP remote filesystem). With no SAP system in VERTEX, UML, Metrics, Logic and Calls in the editor's **VERTEX Tools** menu analyse such a source from its text, as for a local file.
 In VS Code the chat is only in the VERTEX panel: **ASK AI** inside a review opens it with the selected blocks on a chip, and you write the question. The question box grows with pasted text; **⤢** expands it.
+Plain `.abap` reports without a custom transpiler configuration run through a temporary program-named copy; the editor file and trace locations keep their original names. Run from the local debugger opens the separate program window.
+
 Local ABAP programs and classes support VERTEX Outline, definition navigation, UML, metrics, Logic and Calls diagrams, and forward/backward usage analysis. VERTEX bundles the abaplint transpiler and runtime. **VERTEX: Run with ABAP Transpiler** on a local file asks the selection screen in a popup - blocks, PARAMETERS, SELECT-OPTIONS and the program's selection texts, laid out as SAP does - and shows what the program wrote (Output); with a breakpoint set the same panel is the debugger, which stops there and steps on. **VERTEX Smart Debugger** opens that panel whole, for analysis with or without a run. Project configuration is generated automatically when absent. After a run, Formula and Expression of a chosen value keep only the path the run took and carry the recorded values in brackets; with no path analysed they are written out from the record. An SAP program, a method of an SAP class or a function module runs with the transpiler too, from **Run with ABAP Transpiler** beside Run in SAP in VERTEX Smart Debugger: its active version, its includes, the customer classes and interfaces the run can reach from where it starts and the dictionary types they use are read from SAP first - a method nothing reaches goes to the transpiler without its body -, and a step goes into an include as in SAP; a function module the code calls brings its function group. SAP program selection screens use the selection texts and text symbols maintained in SAP. See [local execution setup](vscode/README.md#local-abap-execution). SAP execution and version history still require a system.
 
 From a SAP source tab's context menu, **VERTEX: Run SAP in web GUI** opens the program in WebGUI or a class/function module's test screen. It works without a breakpoint.
@@ -89,7 +104,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.66.20261106232710**; the VS Code extension is **0.9.66**.
+**0.9.67.20261107120632**; the VS Code extension is **0.9.67**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -463,6 +478,8 @@ For feature instructions, see [VS Code documentation](vscode/README.md) and [Ecl
 With a VS Code AI log folder configured, `vertex_provider_response` JSONL records retain original provider `usage` fields, including nested token details. Claude Code also retains per-model `modelUsage`, reported cost and turn count in a separate `cli_run` record; streamed assistant messages use `model_response`. Direct Anthropic and compatible APIs retain metadata per response. These diagnostic records do not contribute again to session totals. Answer bodies, credentials and HTTP headers are not included in these metadata records.
 
 For a method with no separate version directory, Diff uses the class history and extracts that method, with a notice identifying the source of the history.
+
+In VS Code, Vercel model rows show catalog capability icons: ⚒ tools, {} structured JSON, 💭 reasoning, ▣ image input, 🌐 provider web search, and ▤ context size. Hover or focus an icon for its meaning. × means explicitly unsupported; ? means the catalog does not report it. These declarations are separate from the paid connectivity check and do not rate quality. A model explicitly lacking image input cannot send screenshots; the prompt and pasted image remain available to switch models. Vision-capable compatible APIs receive actual image content. Models explicitly lacking tool calling receive text-only requests without VERTEX tools. Provider web-search support does not enable web search in this chat automatically. Catalog base prices appear as input/output USD per million tokens in the settings table. In the chat, the $ button next to the model selector opens all capability explanations, context size, input/output rates and cache/tier notes in one dialog. These rates are not the cost of an individual request. In LLM Providers these values are separate table columns. Click a column heading to sort, and click again to reverse; unknown values stay last. Sorting preserves model selections and the Hide unavailable filter. Availability is saved separately from selection. On the first successful Vercel catalog load after this migration, previously unchecked Vercel models are imported as unavailable based on their prior checks, so Hide unavailable hides them. Other providers are unaffected. Later unchecking a model does not mark it unavailable. A successful individual check can restore availability. Narrow panes scroll the table horizontally.
 
 In VS Code, **LLM Providers → Check models**, beside each provider, checks only that provider. Progress, the working-model count and **Stop** appear in the same header. Failed models are switched off; **Save** applies the choices to chat. Checks use short requests without SAP context and consume normal provider quota or billing.
 

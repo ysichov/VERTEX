@@ -258,6 +258,23 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages p.tool-status { font-size: 11px; opacity: .8; }
 #messages p.you { color: var(--vscode-charts-blue); }
 #messages .vertex { color: var(--vscode-charts-green); white-space: normal; line-height: 1.5; margin: 1em 0; }
+/* Fixed logo slot: the existing VERTEX mark rotates slowly only while this request is active. */
+#messages .vertex.task { position: relative; padding-left: 42px; }
+#messages .vertex.task::before { content: ""; position: absolute; left: 0; top: 2px; width: 32px; height: 32px; background: url("${LOGO}") center/contain no-repeat; transform-origin: center; }
+#messages .vertex.task:not(.working)::before { visibility: hidden; }
+#messages .vertex.task.working::before { animation: vertex-task-turn 6s linear infinite; }
+@keyframes vertex-task-turn { to { transform: rotate(360deg); } }
+body.vscode-reduce-motion #messages .vertex.task:not(.working)::before { visibility: hidden; }
+#messages .vertex.task.working::before { animation: none; }
+@media (prefers-reduced-motion: reduce) { #messages .vertex.task:not(.working)::before { visibility: hidden; }
+#messages .vertex.task.working::before { animation: none; } }
+.model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.model-picker #model-select { flex: 1 1 auto; min-width: 0; }
+.line #model-details-button { flex: none; margin: 0; padding: 3px 8px; }
+#model-details-dialog { box-sizing: border-box; width: calc(100% - 24px); max-width: 560px; max-height: 80vh; overflow: auto; padding: 14px 18px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-panel-border); }
+#model-details-dialog::backdrop { background: var(--vscode-widget-shadow,transparent); }
+#model-details-dialog .model-detail { margin: 8px 0; white-space: normal; overflow-wrap: anywhere; }
+#model-details-dialog form { margin-top: 12px; }
 #messages .streaming-answer { white-space: pre-wrap; overflow-wrap: anywhere; }
 #messages .vertex p, #messages .vertex ul, #messages .vertex ol { margin: .4em 0; color: inherit; }
 #messages .vertex ul, #messages .vertex ol { padding-left: 1.4em; }
@@ -302,13 +319,14 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 #tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 6px; font-size: 1.7em; font-weight: 600; }
 #tools img { width: 40px; height: 40px; }
 </style></head><body>
+<dialog id="model-details-dialog" aria-labelledby="model-details-title"><strong id="model-details-title">Model details</strong><div id="model-capabilities"></div><form method="dialog"><button class="secondary">Close</button></form></dialog>
 <div class="line"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
@@ -318,6 +336,28 @@ const api = acquireVsCodeApi();
 const EFFORTS = { 'claude-subscription': ['low', 'medium', 'high', 'xhigh', 'max'], codemie: ['low', 'medium', 'high', 'xhigh', 'max'],
   'codex-subscription': ['minimal', 'low', 'medium', 'high'] };
 let effort = '';
+const capabilityDefinitions = ${JSON.stringify(require(require("path").join(__dirname, "model-capabilities")).definitions)};
+const priceInfo = ${require(require("path").join(__dirname, "model-capabilities")).priceInfo.toString()};
+let modelCatalog = [];
+function drawModelCapabilities() {
+  const target = document.getElementById('model-capabilities'); target.replaceChildren();
+  const dialog = document.getElementById('model-details-dialog'); if (dialog.open) dialog.close();
+  const model = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
+  document.getElementById('model-details-button').disabled = !model;
+  if (!model) return;
+  const line = text => { const row = document.createElement('p'); row.className = 'model-detail'; row.textContent = text; target.appendChild(row); };
+  document.getElementById('model-details-title').textContent = model.label || model.id;
+  line(model.id);
+  capabilityDefinitions.forEach(d => {
+    const value = model.capabilities?.[d.key];
+    line(d.icon + ' ' + d.label + ': ' + (value === true ? d.yes : value === false ? d.no || 'Not supported by the catalog declaration.' : 'Not reported by the catalog; not tested.'));
+  });
+  line('▤ Context: ' + (model.contextWindow ? model.contextWindow.toLocaleString() + ' tokens' : 'Not reported'));
+  const price = priceInfo(model);
+  if (price) { line(price.text); line(price.title); }
+  else line('Price: not reported by this provider.');
+}
+document.getElementById('model-details-button').addEventListener('click', () => document.getElementById('model-details-dialog').showModal());
 function drawEffort(provider) {
   const select = document.getElementById('effort-select'), levels = EFFORTS[provider] || [];
   select.hidden = !levels.length;
@@ -331,9 +371,11 @@ document.getElementById('effort-select').addEventListener('change', event => {
 document.getElementById('provider-select').addEventListener('change', event => {
   document.body.dataset.provider = event.target.value;
   drawEffort(event.target.value);
+  modelCatalog = []; drawModelCapabilities();
   api.postMessage({ action: 'setProvider', provider: event.target.value });
 });
 document.getElementById('model-select').addEventListener('change', event => {
+  drawModelCapabilities(); document.getElementById('model-status').textContent = '';
   api.postMessage({ action: 'setModel', model: event.target.value });
 });
 document.querySelectorAll('button[data-action]').forEach(button => {
@@ -351,6 +393,8 @@ document.getElementById('chat').addEventListener('submit', event => {
   const text = field.value.trim();
   // With a review's blocks on the chip an empty question asks the default one.
   if (!text && document.getElementById('review-chip').hidden && !images.length) return;
+  const selected = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
+  if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
   api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value,
     images: images.map(image => ({ media_type: image.media_type, data: image.data })) });
   field.value = '';
@@ -452,7 +496,7 @@ window.addEventListener('message', event => {
     const update = event.data.progress;
     let item = progressItems.get(update.id);
     if (!item && !update.remove) {
-      item = document.createElement('div'); item.className = 'vertex';
+      item = document.createElement('div'); item.className = 'vertex task working';
       document.getElementById('messages').appendChild(item);
       progressItems.set(update.id, item);
     }
@@ -485,6 +529,7 @@ window.addEventListener('message', event => {
         details.querySelector('pre').textContent = update.thinking;
       }
       if (update.done) {
+        item.classList.remove('working');
         const answer = item.dataset.answer || '';
         body.classList.remove('streaming-answer'); body.replaceChildren();
         markdown('VERTEX:\\n' + (answer || 'No answer returned.'), body);
@@ -535,6 +580,7 @@ window.addEventListener('message', event => {
     const select = document.getElementById('model-select');
     const data = event.data.models;
     if (data.error) {
+      modelCatalog = [];drawModelCapabilities();
       select.replaceChildren(new Option('no models', ''));
       select.title = data.error;
       const status = document.getElementById('model-status');
@@ -548,6 +594,7 @@ window.addEventListener('message', event => {
       if (data.model && !data.models.some(m => m.id === data.model)) { select.add(new Option(data.model + ' (off)', data.model)); }
       // No model chosen runs the first one switched on, so that is what shows.
       select.value = data.model || (data.models[0] ? data.models[0].id : '');
+      modelCatalog = data.models; drawModelCapabilities();
     }
   }
   if (event.data && event.data.chat) {

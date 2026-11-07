@@ -865,6 +865,11 @@ function activate(context) {
   const agentBuilds = new Map();
   const chatTools = withDebugger(sapCode, debugTools, async args => {
     const request = require("./transpiler-tool").validate(args);
+    const localDocument = request.object_type === "PROG" ? require("./transpiler-tool").findLocalReport(vscode, request.object_name) : null;
+    if (localDocument) return agentSourceQueue(() => {
+      const run = () => require("./transpiler-tool").runLocalReport(vscode, args, localDocument, transpilerHistory);
+      return args.system ? pinTo(String(args.system), run) : run();
+    });
     const own = pinnedSystem.getStore() || "";
     const activeSystem = active();
     const selected = String(args.system || own || (activeSystem.error ? "" : activeSystem.system.name)).trim();
@@ -974,8 +979,8 @@ function activate(context) {
     runOnly: dockedDebugSource.local === true && dockedDebugSource.runOnly === true,
     // Opened by the Run command, not by Clear: the program runs at once.
     autoRun: dockedDebugSource.local === true && dockedDebugSource.autoRun === true && !localDebugAdapter?.hasTrace(),
-    // A run of the program window: VERTEX Smart Debugger offers the way back to it.
-    programWindow: dockedDebugSource.local === true && require("./program-window").isOpen(),
+    // Local execution uses the program window; a saved run keeps its own replay output.
+    programWindow: dockedDebugSource.local === true && !dockedDebugSource.storedRun,
     // An SAP object's run: when its build was read, for Recompile.
     sapBuild: dockedDebugSource.sapCopies ? { name: dockedDebugSource.sapCopies.root?.object_name || "", builtAt: dockedDebugSource.sapCopies.builtAt || "" } : null,
     // Opened again while its run is alive: the page takes the run's record instead of starting one.
@@ -1257,9 +1262,10 @@ function activate(context) {
           if (command === "toProgram") {
             // An SAP object's build whose window is gone (closed, or a Reload Window) gets it again on that build: nothing is read from SAP.
             const sap = dockedDebugSource?.sapCopies;
-            if (!require("./program-window").reveal()) {
-              if (!sap?.root) throw new Error("The program window is closed: Run with ABAP Transpiler opens it again.");
-              await runSapTranspiler(sap.root, { entryLine: sap.root.object_type === "PROG" ? 0 : sap.entryLine });
+            if (!require("./program-window").reveal(dockedDebugSource?.object_name)) {
+              if (sap?.root) await runSapTranspiler(sap.root, { entryLine: sap.root.object_type === "PROG" ? 0 : sap.entryLine });
+              else if (dockedDebugSource?.local) await openVisualDebug(true, { ...dockedDebugSource, autoRun: false });
+              else throw new Error("Open a local or SAP ABAP source before running the transpiler.");
             }
             await replyTo("{}");
             return;

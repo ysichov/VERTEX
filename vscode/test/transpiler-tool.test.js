@@ -51,3 +51,18 @@ test("transpiler agent tool normalizes selection case and refuses keys the scree
   assert.throws(() => tool.normalizeSelection(screen, { SC: "P_NONE" }), /no choice P_NONE/);
   assert.throws(() => tool.normalizeSelection(screen, { $parameters: { P_X: "1" } }), /P_X is not a parameter/);
 });
+
+
+test('the agent finds an open local report by declaration or filename even while a webview has focus',async t=>{
+ const document={uri:{scheme:'file',fsPath:require('path').join(process.cwd(),'zfibonacci_report.abap')},getText:()=>"REPORT zfibonacci.\nPARAMETERS n TYPE i DEFAULT 10.\nWRITE n."};
+ const vscode={window:{visibleTextEditors:[{document}]}};
+ assert.equal(tool.findLocalReport(vscode,'ZFIBONACCI'),document);
+ assert.equal(tool.findLocalReport(vscode,'ZFIBONACCI_REPORT'),document);
+ assert.equal(tool.findLocalReport(vscode,'OTHER'),null);
+ const launches=[];
+ t.mock.method(require('../local-run'),'launch',async(_,__,options)=>{launches.push(options);return {records:[{line:3}],output:'12'};});
+ const result=await tool.runLocalReport(vscode,{object_name:'ZFIBONACCI',object_type:'PROG',selection:{n:12}},document,{save:()=> 'run1',number:()=>1});
+ assert.equal(launches.length,1);assert.equal(launches[0].document,document);
+ assert.deepEqual(launches[0].selection,{$parameters:{N:12}});
+ assert.equal(result.system,'local');assert.equal(result.output,'12');assert.equal(result.run_id,'run1');
+});

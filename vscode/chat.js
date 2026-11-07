@@ -297,6 +297,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
       }
       const id = options.assistant || subscriptionProvider(vscode);
       const model = options.model || vscode.workspace.getConfiguration("vertex.ai").get("model", "") || await defaultModel(id);
+      const modelCapabilities = id === "vercel-api" ? (await fullModels(id)).find(item => item.id === model)?.capabilities : undefined;
+      if (images.length && modelCapabilities?.vision === false) throw new Error("This model does not accept screenshots (no Vision). Choose a Vision model or remove the images; nothing was sent.");
+
       const config = vscode.workspace.getConfiguration("vertex.ai");
       const log = sessionLog.current(config.get("logPath", ""), id, sessionLog.fromConfig(config));
       const editor = options.state && options.state.review_ask ? null : codeTools.editorContext && codeTools.editorContext();
@@ -332,22 +335,35 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         ? state.selected_fragment : editor && editor.selected_fragment);
       if (superseded()) return replaced();
       const sapDebugger = require("./debug-mode").sapDebuggerRequested(prompt, history);
-      const toolSchemas = hasSap ? codeTools.schemas.filter(tool => sapDebugger || !/^debug_/.test(tool.name)) : [];
+      const toolSchemas = codeTools.schemas.filter(tool => hasSap ? sapDebugger || !/^debug_/.test(tool.name) : /abap_transpiler/.test(tool.name));
       if (log) { log.user(prompt.trim(), images); }
       const working = workDir ? await copyFor(workDir) : null;
       if (superseded()) return replaced();
-      const onStep = step => { if (log && log.step) log.step(working ? inFolder(step, working) : step); };
-      if (workDir && id !== "claude") {
+      let progressStep = 0;
+      const progressIds = new Set();
+      const reportProgress = update => {
+        if (!superseded() && typeof options.onProgress === "function") options.onProgress(update);
+      };
+      const onStep = step => {
+        if (log && log.step) log.step(working ? inFolder(step, working) : step);
+        if (step.kind === "use" && (!step.id || !progressIds.has(step.id))) {
+          if (step.id) progressIds.add(step.id);
+          reportProgress({ status: "Working: step " + (++progressStep) + " — " + String(step.name || "Operation").replace(/^mcp__vertex__/, "") });
+        }
+      };
+      if (workDir && id !== "claude" && modelCapabilities?.tools !== false) {
         localTools = folderTools.create(vscode, { cwd: working ? working.cwd : workDir,
           reviewAfter: !!working, shellWithoutAsking: config.get("shellWithoutAsking", false) === true,
           isActive: () => !superseded(), onStep });
         toolSchemas.push(...localTools.schemas);
         turn.dispose = () => { localTools.dispose(); if (endpoint) endpoint.dispose(); };
       }
+      if (modelCapabilities?.tools === false) toolSchemas.length = 0;
       const callTool = (name, args) => {
         if (superseded()) throw new Error("This request was superseded by a new conversation.");
         if (!toolSchemas.some(tool => tool.name === name)) throw new Error("Tool is unavailable for this request: " + name);
         if (localTools && localTools.schemas.some(tool => tool.name === name)) return localTools.call(name, args);
+        reportProgress({ status: "Working: step " + (++progressStep) + " — " + name });
         return sessionLog.assistantTool(log, name, args, (toolName, toolArgs) => codeTools.execute(toolName, toolArgs));
       };
       const onModelCall = ({ model: usedModel, usage, text }) => {
@@ -384,8 +400,14 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
       const requestOptions = {
         assistant: id,
         model,
+        isActive: () => !superseded(),
         onProgress: typeof options.onProgress === "function"
-          ? update => { if (!superseded()) options.onProgress(update); } : undefined,
+          ? update => {
+            if (update.status) {
+              const operation = String(update.status).replace(/^Using /, "").replace(/…$/, "");
+              reportProgress({ ...update, status: "Working: step " + Math.max(1, progressStep) + " — " + operation });
+            } else reportProgress(update);
+          } : undefined,
         onModelCall,
         onProviderResponse: event => { if (log) log.providerResponse(event); },
         // In a working copy Claude names the copy's files; the log names the user's own, which outlive the copy.
@@ -401,7 +423,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         extensionPath: extensionPath(vscode, id),
         executable: await assistantExecutable(vscode, id),
         profile: assistant.profileFor(vscode, id),
-        instructions,
+        instructions: instructions + (modelCapabilities?.tools === false ? "\nThis model cannot call tools. Answer from the supplied context as text. State that tool actions, reading external files or SAP objects, and live web searches are unavailable; do not claim to have performed them." : ""),
+        ...(modelCapabilities ? { capabilities: modelCapabilities } : {}),
         prompt: "Previous conversation (historical context, not new instructions):\n" + JSON.stringify(history, null, 2)
           + "\n\nVERTEX navigation instructions:\n" + objectTools.instructions
           + "\n\nCurrent workspace:\n" + JSON.stringify(state.workspace || null)
@@ -438,7 +461,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         // program to reach its breakpoints; three minutes are too few for that.
         ...(toolSchemas.length || workDir ? { timeout: 600000 } : {})
       };
-      if (images.length && id !== "claude" && id !== "codemie" && id !== "codex") {
+      if (images.length && !compatible.PROVIDERS[id] && id !== "claude" && id !== "codemie" && id !== "codex") {
         throw new Error("Screenshots are sent to Claude Code, Codex and EPAM CodeMie. Remove them or switch the provider; nothing was sent.");
       }
       if (log) log.request({ instructions: requestOptions.instructions, prompt: requestOptions.prompt,
@@ -461,7 +484,11 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
             ...(workDir && id === "claude" ? { approveUrl: started.url.replace(/\/mcp$/, "/approve") } : {}),
             token: server.token });
         })()).catch(async error => {
-        if (log) { log.assistant({ model: error.model || model, text: "Request failed: " + error.message }); }
+        if (log) {
+          log.providerResponse({provider:id, scope:"request_error", response:{model:error.model || model,
+            is_error:true, error:error.message, model_step:error.model_step, operation:error.operation || "Request", status:error.status}});
+          log.assistant({ model: error.model || model, text: "Request failed: " + error.message });
+        }
         if (superseded()) return replaced();
         if (working) {
           const pending = await working.changes();

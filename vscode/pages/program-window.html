@@ -131,7 +131,7 @@ $("name").textContent=INITIAL.name;
 $("execute").onclick=execute;
 $("back").onclick=function(){showScreen();status("");};
 $("flow").onclick=function(){ask("flow").catch(function(error){status(error.message,true);});};
-if(INITIAL.recompile){var built=INITIAL.builtAt?new Date(INITIAL.builtAt).toLocaleString():"";$("recompile").hidden=false;
+if(INITIAL.recompile){var built=INITIAL.builtAt?new Date(INITIAL.builtAt).toLocaleString(undefined, {hourCycle:"h23"}):"";$("recompile").hidden=false;
   $("recompile").title="Read "+INITIAL.name+" and what it uses from SAP again and transpile it"+(built?" (this build: "+built+")":"");
   $("recompile").onclick=function(){status("Recompiling "+INITIAL.name+" from SAP.");ask("recompile").catch(function(error){status(error.message,true);});};}
 document.addEventListener("keydown",function(e){
@@ -141,7 +141,7 @@ document.addEventListener("keydown",function(e){
 if(INITIAL.pending){$("execute").disabled=true;$("mode").textContent="Preparing build";status("Reading SAP for the transpiler.");}
 else if(INITIAL.deferred){$("mode").textContent="Ready";status("Execute uses the saved build when available; Recompile reads SAP again.");}
 loadScreen().then(function(screen){if(screen){showScreen();if(INITIAL.autoSelection)executeWith(INITIAL.autoSelection);
-    else if(INITIAL.builtAt&&!INITIAL.pending)status("Build of "+new Date(INITIAL.builtAt).toLocaleString()+".");}
+    else if(INITIAL.builtAt&&!INITIAL.pending)status("Build of "+new Date(INITIAL.builtAt).toLocaleString(undefined, {hourCycle:"h23"})+".");}
   else if(!INITIAL.pending&&!INITIAL.deferred)execute();})
   .catch(function(error){status(error.message,true);});
 </script>

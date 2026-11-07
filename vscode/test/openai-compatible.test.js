@@ -127,7 +127,7 @@ test("OpenAI-compatible provider executes SAP tools and accepts a final plan", a
 test("Vercel AI Gateway lists only language models", async () => {
   const request = async () => ({ data: [{ id: "openai/gpt-x", name: "GPT X", type: "language" },
     { id: "openai/img", type: "image" }, { id: "openai/emb", type: "embedding" }] });
-  assert.deepEqual(await api.models("vercel-api", "k", request), [{ id: "openai/gpt-x", label: "GPT X" }]);
+  assert.deepEqual((await api.models("vercel-api", "k", request)).map(({id,label})=>({id,label})), [{ id: "openai/gpt-x", label: "GPT X" }]);
 });
 
 
@@ -140,8 +140,113 @@ test("Vercel excludes batch variants by model id and display name", async () => 
     { id: "anthropic/alias2", display_name: "Claude Fable 5 (BATCH)", type: "language" }
   ];
   const request = async () => ({ data });
-  assert.deepEqual(await api.models("vercel-api", "k", request), [
+  assert.deepEqual((await api.models("vercel-api", "k", request)).map(({id,label})=>({id,label})), [
     { id: "anthropic/claude-fable-5", label: "Claude Fable 5" }
   ]);
   assert.equal((await api.models("openrouter-api", "k", request)).length, data.length);
+});
+
+
+test('availability probe makes one capped request without history or tools',async()=>{
+ const calls=[];
+ await api.probe('vercel-api','key','model',async(...args)=>{calls.push(args);return {choices:[{message:{content:'OK'}}]};});
+ assert.equal(calls.length,1);assert.equal(calls[0][2],'/chat/completions');
+ assert.deepEqual(calls[0][3],{model:'model',messages:[{role:'user',content:'Reply OK.'}],stream:false,max_tokens:16});
+});
+
+
+test('Vercel metadata distinguishes declared support, no image input and unknown fields',async()=>{
+ const result=await api.models('vercel-api','k',async()=>({data:[{id:'test/text',type:'language',name:'Text',supported_parameters:['tools','response_format'],modalities:{input:['text']},tags:['reasoning'],context_window:1000000}]}));
+ assert.deepEqual(result[0].capabilities,{tools:true,json:true,reasoning:true,vision:false,web:null});
+ assert.equal(result[0].contextWindow,1000000);
+ const unknown=require('../model-capabilities').metadata({});assert.equal(unknown.capabilities.vision,null);
+ const vscode={workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})}};
+ assert.deepEqual(modelConfig.apply(vscode,'vercel-api',result)[0].capabilities,result[0].capabilities);
+});
+
+test('Vision images reach the API as image content; text-only models send no tools',async()=>{
+ let body;
+ await api.ask({assistant:'vercel-api',apiKey:'k',model:'vision',prompt:'See this',instructions:'Explain',images:[{media_type:'image/png',data:'abcd'}],capabilities:{vision:true,tools:false},tools:[{name:'read',inputSchema:{}}],schema:{},request:async(_,__,___,value)=>{body=value;return {choices:[{message:{content:'Screenshot answer'}}]};}});
+ assert.equal(body.tools,undefined);
+ assert.deepEqual(body.messages[1].content,[{type:'text',text:'See this'},{type:'image_url',image_url:{url:'data:image/png;base64,abcd'}}]);
+ let calls=0;
+ await assert.rejects(()=>api.ask({capabilities:{vision:false},images:[{}],request:async()=>{calls++;}}),/screenshots/);
+ assert.equal(calls,0);
+});
+
+
+test('catalog pricing is preserved and displayed per million, with zero and tiered rates',async()=>{
+ const model=(await api.models('vercel-api','k',async()=>({data:[{id:'price',type:'language',pricing:{input:'0.00000015',output:'0.0000006',input_cache_read:'0.000000015',varies_by_provider:true}}]})))[0];
+ const {priceInfo}=require('../model-capabilities');
+ assert.match(priceInfo(model).text,/In \$0.15 · Out \$0.6 \/1M \*/);
+ assert.match(priceInfo(model).title,/provider/);assert.match(priceInfo(model).title,/\$0.015/);
+ assert.equal(priceInfo({pricing:{input:'0',output:'0'}}).text,'In $0 · Out $0 /1M');
+ assert.equal(priceInfo({}),null);
+ assert.match(priceInfo({pricing:{input:'invalid'}}).text,/In —/);
+});
+
+
+test('model columns sort prices numerically, preserve zero and put unknown last in both directions',()=>{
+ const {sortModels}=require('../model-capabilities');
+ const models=[{id:'high',pricing:{input:'0.00001'},capabilities:{vision:true}},
+ {id:'low',pricing:{input:'0.000002'},capabilities:{vision:false}},
+ {id:'unknown'},{id:'free',pricing:{input:'0'}}];
+ assert.deepEqual(sortModels(models,'inputPrice').map(m=>m.id),['free','low','high','unknown']);
+ assert.deepEqual(sortModels(models,'inputPrice',true).map(m=>m.id),['high','low','free','unknown']);
+ assert.deepEqual(sortModels(models,'cap.vision',true).map(m=>m.id),['high','low','unknown','free']);
+ assert.equal(models[0].id,'high');
+});
+
+
+test('a 429 retries only the pending model request after Retry-After, without repeating tools',async()=>{
+ let requests=0,tools=0;const delays=[],progress=[];
+ const result=await api.ask({assistant:'vercel-api',apiKey:'k',model:'free',prompt:'Run once',instructions:'Use tools',schema:{},tools:[{name:'run_abap_transpiler',inputSchema:{}}],
+ callTool:async()=>{tools++;return {run_id:'run1'};},sleep:async ms=>delays.push(ms),onProgress:update=>progress.push(update),
+ request:async()=>{
+  requests++;
+  if(requests===1)return {choices:[{message:{tool_calls:[{id:'call1',function:{name:'run_abap_transpiler',arguments:'{}'}}]}}]};
+  if(requests===2)throw Object.assign(new Error('API returned 429: Retry after 11s'),{status:429,retryAfter:'11'});
+  return {choices:[{message:{content:'Done'}}]};
+ }});
+ assert.equal(result.plan.answer,'Done');assert.equal(tools,1);assert.equal(requests,3);
+ assert.deepEqual(delays,[11250]);assert.ok(progress.some(update=>/Rate limit/.test(update.status)));
+});
+
+test('rate-limit retries are bounded and stop when the conversation is superseded',async()=>{
+ let calls=0;
+ await assert.rejects(()=>api.rateLimitedRequest(async()=>{calls++;throw Object.assign(new Error('429'),{status:429});},{sleep:async()=>{}}),/429/);
+ assert.equal(calls,3);
+ let active=true;calls=0;
+ await assert.rejects(()=>api.rateLimitedRequest(async()=>{calls++;throw Object.assign(new Error('429'),{status:429});},{isActive:()=>active,sleep:async()=>{active=false;}}),/superseded/);
+ assert.equal(calls,1);
+});
+
+test('Vercel costs survive logging and aggregate without double counting', async () => {
+ const os=require('node:os'),fs=require('node:fs'),path=require('node:path');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-cost-'));
+ try {
+ const log=require('../session-log').create(root,'vercel-api','20261107_120000',{});log.user('Check cost');
+ let lookups=0;let inference=0;
+ const result=await api.ask({assistant:'vercel-api',apiKey:'test',model:'x',prompt:'x',instructions:'x',capabilities:{tools:false},sleep:async()=>{},
+ onProviderResponse:event=>log.providerResponse(event),onModelCall:event=>log.assistant(event),request:async(id,key,route)=>{
+ if(route.startsWith('/generation')){lookups++;if(lookups===1)throw Object.assign(new Error('Usage event not found'),{status:404});return {data:{total_cost:0.0123}};}
+ inference++;return {id:'gen_test',usage:{prompt_tokens:10,completion_tokens:2},choices:[{message:{content:'Done'}}]};}});
+ assert.equal(inference,1);assert.equal(lookups,2);assert.equal(result.usage.cost_usd,0.0123);
+ const session=require('../log-report').parseSession(fs.readFileSync(log.file,'utf8'),log.file);
+ assert.equal(session.usage.cost,0.0123);assert.equal(session.prompts[0].usage.cost,0.0123);
+ assert.equal(session.prompts[0].timeline[0].usage.cost_usd,0.0123);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('Vercel zero cost is preserved and billing failure never fails the answer',async()=>{
+ for(const cost of [0,null]){
+ let lookup=0;let call;
+ await api.ask({assistant:'vercel-api',apiKey:'test',model:'x',prompt:'x',instructions:'x',capabilities:{tools:false},onModelCall:e=>call=e,request:async(id,key,route)=>{
+ if(route.startsWith('/generation')){lookup++;throw Object.assign(new Error('Forbidden'),{status:403});}
+ return {id:'gen_test',providerMetadata:{gateway:{cost}},choices:[{message:{content:'OK'}}]};}});
+ assert.equal(call.usage.cost_usd,cost);assert.equal(lookup,cost===0?0:1);
+ }
+});
+
+test('failed model request carries its step and operation',async()=>{
+ await assert.rejects(()=>api.ask({assistant:'vercel-api',apiKey:'test',model:'x',prompt:'x',instructions:'x',request:async()=>{throw new Error('API timed out');}}),error=>error.model_step===1 && error.operation==='Model request' && /timed out/.test(error.message));
 });

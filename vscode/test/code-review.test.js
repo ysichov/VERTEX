@@ -22,3 +22,10 @@ test('both editor actions are scoped to SAP files', () => {
     assert.ok(contributes.menus['editor/context'].some(c => c.command === id && c.when === 'resourceScheme == vertex-sap'));
   }
 });
+
+test('read-only Git preview folds files and bounds long display lines',()=>{
+ const review=require('../code-review');const line='x'.repeat(10000);
+ const html=review.filesReviewHtml([{id:'f1',path:'bundle.js',label:'bundle.js',kind:'new',after:line,parts:review.hunks('',line)}],{readonly:{title:'Changes'}});
+ assert.match(html,/foldAll\(false\)/);assert.match(html,/content-visibility:auto/);
+ assert.match(html,/long line shortened in preview/);assert.ok(!html.includes(line));
+});

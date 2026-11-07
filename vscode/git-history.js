@@ -6,17 +6,30 @@ const crypto = require("crypto");
 
 const SEP = "\x1f", END = "\x1e";
 
-function readCommits(folder) {
-  return new Promise((resolve, reject) => {
-    execFile("git", ["log", "--date=iso-strict", "--pretty=format:%H" + SEP + "%h" + SEP + "%ad" + SEP + "%an" + SEP + "%s" + END, "--", "."],
-      { cwd: folder, maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
-        if (error) { reject(new Error(String(stderr || error.message).trim() || "git log failed")); return; }
-        resolve(stdout.split(END).map(line => line.replace(/^\r?\n/, "")).filter(Boolean).map(line => {
-          const [hash, short, date, author, subject] = line.split(SEP);
-          return { hash, short, date, author, subject };
-        }));
-      });
-  });
+async function readCommits(folder, filter = {}) {
+  // Only hashes and dates for numbering/months; load descriptions for visible rows only.
+  const index = (await git(folder, ["log", "--date=iso-strict", "--pretty=format:%H" + SEP + "%ad" + END, "--", "."]))
+    .split(END).map(line => line.replace(/^\r?\n/, "")).filter(Boolean).map(line => {
+      const [hash, date] = line.split(SEP); return { hash, date };
+    });
+  index.forEach((entry, i) => { entry.number = index.length - i; });
+  const valid = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+  const from = valid(filter.from), to = valid(filter.to);
+  const selected = from || to ? index.filter(entry => {
+    const day = entry.date.slice(0, 10); return (!from || day >= from) && (!to || day <= to);
+  }) : index.slice(0, 10);
+  const details = new Map();
+  for (let i = 0; i < selected.length; i += 100) {
+    const text = await git(folder, ["log", "--no-walk=unsorted", "--date=iso-strict", "--pretty=format:%H" + SEP + "%h" + SEP + "%ad" + SEP + "%an" + SEP + "%s" + SEP + "%b" + END,
+      ...selected.slice(i, i + 100).map(entry => entry.hash), "--"]);
+    for (const line of text.split(END).map(line => line.replace(/^\r?\n/, "")).filter(Boolean)) {
+      const [hash, short, date, author, subject, ...body] = line.split(SEP);
+      details.set(hash, { hash, short, date, author, subject, description: body.join(SEP).trimEnd() });
+    }
+  }
+  const commits = selected.map(entry => ({ ...details.get(entry.hash), number: entry.number }));
+  commits.months = [...new Set(index.map(entry => entry.date.slice(0, 7)))].sort().reverse();
+  return commits;
 }
 
 function git(folder, args, encoding = "utf8") {
@@ -150,6 +163,10 @@ h1{font-size:1.2em;margin:4px 0 2px}#folder{color:var(--vscode-descriptionForegr
 #filters label{display:flex;align-items:center;gap:4px}
 input,select{font:inherit;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));padding:3px 6px}
 input{width:105px}input:focus,select:focus{outline:1px solid var(--vscode-focusBorder)}
+button { --accent: var(--vscode-focusBorder); font: inherit; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); border: 1px solid var(--vscode-input-border,var(--vscode-panel-border)); border-radius: 6px; padding: 3px 10px; cursor: pointer; white-space: nowrap; transition: box-shadow .12s,border-color .12s; }
+button:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 0 6px -1px var(--accent); }
+.fold { padding: 1px 6px; margin-right: 6px; }
+.description { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 3px; color: var(--vscode-descriptionForeground); }
 #error{color:var(--vscode-errorForeground)}
 table{border-collapse:collapse;width:100%}
 th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--vscode-panel-border,transparent);vertical-align:top}
@@ -164,6 +181,7 @@ td.hash{font-family:var(--vscode-editor-font-family);white-space:nowrap}td.hash 
 const vscode=acquireVsCodeApi();
 const formatDate=${formatDate.toString()};
 let commits=[];
+const expandedDescriptions=new Set();
 const from=document.getElementById("from"),to=document.getElementById("to"),month=document.getElementById("month"),error=document.getElementById("error");
 function parseDate(input){
   const value=input.value.trim();
@@ -191,28 +209,42 @@ function render(){
       const td=document.createElement("td");td.className=k;
       if(k==="hash"){const a=document.createElement("a");a.textContent=v||"";a.title="Review commit "+c.hash;a.tabIndex=0;
         const go=()=>vscode.postMessage({action:"commit",commit:c});a.onclick=go;a.onkeydown=e=>{if(e.key==="Enter")go();};td.appendChild(a);}
-      else td.textContent=v||"";tr.appendChild(td);});
+      else if(k==="subject"&&String(c.description||"").trim()){
+        const fold=document.createElement("button"),description=document.createElement("div"),subject=document.createElement("span");
+        fold.type="button";fold.className="fold";subject.textContent=v||"";
+        description.className="description";description.textContent=c.description;
+        const paint=()=>{const expanded=expandedDescriptions.has(c.hash);description.hidden=!expanded;fold.textContent=expanded?"▾":"▸";
+          fold.title=expanded?"Hide description":"Show description";fold.setAttribute("aria-label",fold.title);fold.setAttribute("aria-expanded",String(expanded));};
+        fold.onclick=()=>{if(expandedDescriptions.has(c.hash))expandedDescriptions.delete(c.hash);else expandedDescriptions.add(c.hash);paint();};
+        paint();td.appendChild(fold);td.appendChild(subject);td.appendChild(description);
+      }else td.textContent=v||"";tr.appendChild(td);});
     body.appendChild(tr);
   });
 }
-[from,to].forEach(input=>input.addEventListener("input",()=>{month.value="";render();}));
+let filterTimer;
+function requestPeriod(){
+  const start=parseDate(from),end=parseDate(to);
+  if(start===null||end===null||(start&&end&&start>end))return;
+  vscode.postMessage({action:"filter",from:start,to:end});
+}
+[from,to].forEach(input=>input.addEventListener("input",()=>{month.value="";render();clearTimeout(filterTimer);filterTimer=setTimeout(requestPeriod,350);}));
 month.addEventListener("change",()=>{
   if(month.value){
     const [year,m]=month.value.split("-");
     from.value="01-"+m+"-"+year;
     to.value=new Date(Date.UTC(Number(year),Number(m),0)).getUTCDate()+"-"+m+"-"+year;
   }else{from.value="";to.value="";}
-  render();
+  render();requestPeriod();
 });
 window.addEventListener("message",e=>{
   const m=e.data||{};
-  if(document.getElementById("folder").textContent!==m.folder){from.value="";to.value="";month.value="";}
+  if(document.getElementById("folder").textContent!==m.folder){expandedDescriptions.clear();from.value="";to.value="";month.value="";}
   document.getElementById("folder").textContent=m.folder||"";
-  commits=(m.commits||[]).map((c,i)=>({...c,number:m.commits.length-i}));
+  commits=(m.commits||[]).map((c,i)=>({...c,number:c.number ?? m.commits.length-i}));
   document.querySelector("table").hidden=!m.commits;
   document.getElementById("filters").hidden=!m.commits;
-  const selected=month.value;month.replaceChildren(new Option("All dates",""));
-  [...new Set(commits.map(c=>String(c.date||"").slice(0,7)))].sort().reverse().forEach(value=>{
+  const selected=month.value;month.replaceChildren(new Option("Last 10 commits",""));
+  (m.months||[...new Set(commits.map(c=>String(c.date||"").slice(0,7)))].sort().reverse()).forEach(value=>{
     month.add(new Option(value.slice(5)+"-"+value.slice(0,4),value));
   });
   month.value=selected;
@@ -227,8 +259,13 @@ let panel, shown = "";
 function open(vscode, folder) {
   shown = String(folder || "");
   if (!shown) throw new Error("Choose a folder first.");
-  const refresh = async () => {
-    try { await panel?.webview.postMessage({ folder: shown, commits: await readCommits(shown) }); }
+  let refreshId = 0;
+  const refresh = async (filter = {}) => {
+    const id = ++refreshId, folder = shown;
+    try {
+      const commits = await readCommits(folder, filter);
+      if (id === refreshId && folder === shown) await panel?.webview.postMessage({ folder, commits, months: commits.months });
+    }
     catch (error) { await panel?.webview.postMessage({ folder: shown, error: error.message }); }
   };
   if (panel) { panel.reveal(vscode.ViewColumn.Beside, false); return refresh(); }
@@ -237,6 +274,7 @@ function open(vscode, folder) {
   panel.webview.html = page(crypto.randomBytes(16).toString("hex"));
   panel.webview.onDidReceiveMessage(async message => {
     if (message?.action === "ready") refresh();
+    if (message?.action === "filter") refresh({from:message.from,to:message.to});
     if (message?.action === "commit" && message.commit) {
       try { await openCommit(vscode, shown, message.commit); }
       catch (error) { vscode.window.showErrorMessage("VERTEX Git History: " + error.message); }

@@ -1,9 +1,24 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.66**
+**Version: 0.9.67**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
+
+**Standalone AI Code Agent for local Git projects — any programming language (VS Code).**
+
+VERTEX can work as an AI coding agent for an ordinary local Git repository: Python, JavaScript, TypeScript, Java, C#, Go, ABAP or another language. Open the project folder in VS Code, choose a provider and a model that supports tool calls, and give the agent a task in the VERTEX chat. No SAP system or ABAP project is required.
+
+- Search and read project files, explain code, implement changes and work with Git diffs.
+- Review the agent's edits in an isolated Git working copy, then approve files and **Apply** them to your folder; declined changes can be returned for rework with your reason.
+- Run the project's own build and test commands after Apply; failures can be sent back to the agent for correction.
+- Use Claude Code, Codex / ChatGPT subscription, EPAM CodeMie, GitHub Copilot or a supported API provider, with optional session logs.
+
+**Quick start:** open a local Git folder → open the VERTEX panel → choose a provider/model in **LLM Providers** → ask for a change → review the diff → **Apply**.
+
+While a chat task runs in VS Code, the VERTEX mark beside its answer rotates slowly (one turn in six seconds). It disappears on completion or error. Its fixed space keeps the answer from shifting; reduced-motion settings leave the mark static. Progress shows Working: step N and the operation name. Times in logs and execution windows use the 24-hour format. Failed API requests retain their model step and error even with answer logging disabled. Git History loads the latest ten commits by default; choosing a month or date range loads that period while retaining original commit numbers. Git previews start with files folded and shorten very long display lines; ASK AI retains the full source context. Session Logs show actual Vercel Gateway charges in USD per model step, prompt and session. Missing charges are shown as unknown, never as zero; partial totals are marked.
+
+In the agent chat, an open local REPORT/PROGRAM is the transpiler source when its declaration or filename matches the request, even if a SAP system is selected or named. SAP supplies dictionary or SELECT access; it does not replace that file. VERTEX checks visible source editors even when focus is on a webview. API 429 responses wait for Retry-After (up to about one minute) and retry the pending model request at most twice, without replaying completed tool calls.
 
 **Serverless, in VS Code** - the ABAP transpiler runs ABAP on your machine:
 
@@ -66,6 +81,8 @@ Recommended companion extension:
 Open Welcome with **VERTEX: Get Started** in the Command Palette.
 
 ## Local ABAP execution
+
+Open an ordinary `.abap` file containing `REPORT` or `PROGRAM`; without a custom transpiler configuration, VERTEX supplies the required abapGit program suffix in a temporary copy and keeps trace links on your original file. **Run with ABAP Transpiler** from the local analysis panel opens the separate program window with its selection screen and output.
 
 For calculation code that can run without SAP services, use the transpiler and
 runtime bundled with VERTEX. Open a saved local `.abap` file and choose
@@ -191,10 +208,9 @@ Chat's MCP setup.
 
 **Screenshots in the chat.** Paste an image (Ctrl+V) into the VERTEX panel's message field: it
 appears as a thumbnail above the field (× removes it) and goes with the next question, inside the
-message. PNG, JPEG, GIF and WebP up to 5 MB each. Screenshots are sent to Claude Code, Codex (ChatGPT subscription) and EPAM
-CodeMie; with another provider the question is refused and nothing is sent.
+message. PNG, JPEG, GIF and WebP up to 5 MB each. Screenshots are sent to Claude Code, Codex (ChatGPT subscription), EPAM CodeMie and compatible API models with image input. For Vercel, the Vision capability comes from its catalog; an explicitly text-only model is blocked before inference.
 
-**VERTEX Code Agent (alpha).**
+**VERTEX Code Agent (alpha): local projects in any programming language.**
 
 Claude Code uses its native **Read**, **Glob**, **Grep**, **Edit**, **Write** and **Bash**, with VERTEX’s existing approval and review integration. Codex / ChatGPT subscription, EPAM CodeMie, GitHub Copilot and every API provider use the corresponding VERTEX local tools. Working-copy review, builds after Apply and logging are available for all providers. The selected model must support tool calls. The agent works with local projects in any language, alongside the SAP tools when a system is connected.
 
@@ -760,7 +776,7 @@ In the main **VERTEX Tools** window, choose **Local Folder** from the object typ
 to pick a folder directly. The selected folder stays visible beside a **Browse...** button;
 switch between UML diagram and Metrics in the function list.
 **Git History** beside it opens **VERTEX: Git History**, a separate window with the folder's commits
-as a table: number, commit, date, author and message. The first row, **Uncommitted changes**, opens a read-only diff against HEAD, including staged changes, working files and untracked files. It remains above the commits when dates are filtered. While a Git diff page is visible, ordinary chat questions include that displayed diff automatically, so you can ask for a commit description directly. ASK AI on selected blocks limits the question to those blocks. Numbers start at 1 for the oldest commit and stay unchanged when filtering. Dates use **dd-mm-yyyy**. Use **From** and **To** for an inclusive date range, or select **Month** for a whole month; **All dates** clears the filter. The VERTEX panel has the same **Git History** button
+as a table: number, commit, date, author and message. A **▸** icon beside the message appears when the commit has a description; click it to expand or collapse the full description. The first row, **Uncommitted changes**, opens a read-only diff against HEAD, including staged changes, working files and untracked files. It remains above the commits when dates are filtered. While a Git diff page is visible, ordinary chat questions include that displayed diff automatically, so you can ask for a commit description directly. ASK AI on selected blocks limits the question to those blocks. Numbers start at 1 for the oldest commit and stay unchanged when filtering. Dates use **dd-mm-yyyy**. Use **From** and **To** for an inclusive date range, or select **Month** for a whole month; **All dates** clears the filter. The VERTEX panel has the same **Git History** button
 beside **Folder**, for the folder the assistant works in. A commit hash in the table opens that commit
 on the review page, read only: its files and changed blocks, with **ASK AI** on a block, on a file, or on the whole commit.
 Both views show analysis progress, the object count and elapsed time. Switching views reuses parsed local source until a file changes.
@@ -818,11 +834,13 @@ switches at once and clears the chosen model (`vertex.ai.provider`, `vertex.ai.m
 
 ### Which models are offered
 
-Open **VERTEX: LLM Providers** from the VERTEX panel's sparkle icon. Press **Check models** beside the provider you want to check: only that provider's models are tested. The button shows **Checking…**, and progress and the final working-model count appear beside it. **Stop** in the same provider header stops after the current request.
+Open **VERTEX: LLM Providers** from the VERTEX panel's sparkle icon. Vercel AI Gateway follows EPAM CodeMie; the remaining API providers are in the collapsible **API providers** group, which opens automatically when one of them is in use. Press **Check models** beside the provider you want to check: only that provider's models are tested. The button shows **Checking…**, and progress and the final working-model count appear beside it. **Stop** in the same provider header stops after the current request.
 
-**Check models** checks one provider at a time. **Stop** finishes the current request and keeps the results already checked; untested models retain their selections and are marked **Not checked**. A billing error such as **403 require credit card**, **402 Payment required**, or insufficient credits stops that provider immediately. The status shows the checked count and reason. Select **Save** to apply checked results.
+**Check models** checks one provider at a time. **Stop** finishes the current request and keeps the results already checked; untested models retain their selections and are marked **Not checked**. Only a credit-card error stops that provider automatically; payment, credit balance and model-specific plan errors mark the model unavailable and checking continues. **Hide unavailable** is enabled by default and hides failed models without changing selections; untested models remain visible. Bulk checks skip models already verified as available in the current settings window. Use the **✓** icon beside a model to explicitly test it again; its tooltip describes the short paid check. Changing a key, installation or CodeMie profile resets these cached checks. API checks are paid: compatible APIs receive one `Reply OK.` request with no history or tools and a 16-token output limit. Loading the model list does not generate text or confirm account access. The status shows the checked count and reason. **Unavailable** opens a dialog with selectable error text and clickable links. **Copy error** in that dialog or in the provider body copies the error and its links to the clipboard. Select **Save** to apply checked results.
 
 Failed models are switched off and show their failure reason. **Save** applies these choices to the chat model lists; other providers keep their choices. Checks use short requests with no SAP source or workspace context. They require the provider's existing sign-in or active API key and consume its normal quota or billing. A temporary connection failure can also fail a check; rerun it to check availability again.
+
+In VS Code, Vercel model rows show catalog capability icons: ⚒ tools, {} structured JSON, 💭 reasoning, ▣ image input, 🌐 provider web search, and ▤ context size. Hover or focus an icon for its meaning. × means explicitly unsupported; ? means the catalog does not report it. These declarations are separate from the paid connectivity check and do not rate quality. A model explicitly lacking image input cannot send screenshots; the prompt and pasted image remain available to switch models. Vision-capable compatible APIs receive actual image content. Models explicitly lacking tool calling receive text-only requests without VERTEX tools. Provider web-search support does not enable web search in this chat automatically. Catalog base prices appear as input/output USD per million tokens in the settings table. In the chat, the $ button next to the model selector opens all capability explanations, context size, input/output rates and cache/tier notes in one dialog. These rates are not the cost of an individual request. In LLM Providers these values are separate table columns. Click a column heading to sort, and click again to reverse; unknown values stay last. Sorting preserves model selections and the Hide unavailable filter. Availability is saved separately from selection. On the first successful Vercel catalog load after this migration, previously unchecked Vercel models are imported as unavailable based on their prior checks, so Hide unavailable hides them. Other providers are unaffected. Later unchecking a model does not mark it unavailable. A successful individual check can restore availability. Narrow panes scroll the table horizontally.
 
 **LLM Providers** shows every provider with its own checkbox, **In use** switch,
 and a fold button for its model list. Each provider can be expanded or collapsed

@@ -462,3 +462,22 @@ test("a visible Git review snapshot reaches ordinary chat; explicit blocks keep 
  await ask('Another question');
  assert.doesNotMatch(calls[2].prompt,/VISIBLE_GIT_DIFF/);
 });
+
+
+test('Vercel chat rejects screenshots before inference for a declared text-only model',async t=>{
+ t.mock.method(compatible,'models',async()=>[{id:'text',label:'Text',capabilities:{vision:false,tools:true}}]);
+ let calls=0;t.mock.method(compatible,'ask',async()=>{calls++;});
+ const ask=chat.create(fakeVscode({provider:'vercel-api',model:'text'}),{schemas:[],instructions:'',editorContext:()=>null},{},{get:async()=>null});
+ await assert.rejects(()=>ask('Explain screenshot',{images:[{media_type:'image/png',data:'abcd'}]}),/no Vision/);
+ assert.equal(calls,0);
+});
+
+test('Vercel Vision chat forwards images and removes tools when the model cannot call them',async t=>{
+ t.mock.method(compatible,'models',async()=>[{id:'vision',label:'Vision',capabilities:{vision:true,tools:false}}]);
+ let received;t.mock.method(compatible,'ask',async options=>{received=options;return {plan:{answer:'Image described'}};});
+ const ask=chat.create(fakeVscode({provider:'vercel-api',model:'vision'}),{schemas:[{name:'read_sap_object'}],instructions:'',editorContext:()=>null},{},{get:async()=>null});
+ const images=[{media_type:'image/png',data:'abcd'}];
+ assert.equal((await ask('Explain screenshot',{images})).answer,'Image described');
+ assert.deepEqual(received.images,images);assert.deepEqual(received.tools,[]);
+ assert.match(received.instructions,/cannot call tools/);
+});

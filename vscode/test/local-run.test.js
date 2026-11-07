@@ -288,3 +288,21 @@ test("one compiled report runs two selection variants in parallel copies", async
     assert.match(b.output, /X/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test('a plain .abap REPORT runs with parameters and maps trace back to the unchanged original file',async()=>{
+ const root=fs.mkdtempSync(path.join(tmp,'vertex-plain-report-'));
+ try{
+  const source=path.join(root,'zfibonacci_report.abap');
+  const text="REPORT zfibonacci.\nPARAMETERS n TYPE i DEFAULT 10.\nDATA a TYPE i.\na = n + 1.\nWRITE a.\n";
+  fs.writeFileSync(source,text);
+  const document={uri:{scheme:'file',fsPath:source},getText:()=>fs.readFileSync(source,'utf8')};
+  const vscode={workspace:{getWorkspaceFolder:()=>({uri:{fsPath:root}})},window:{createOutputChannel:()=>({append(){},appendLine(){},hide(){},show(){}})}};
+  const result=await launch(vscode,false,{document,selection:{$parameters:{N:'3'}},trace:true});
+  assert.match(result.output,/4/);assert.ok(result.records.length>0);
+  assert.equal(result.records.at(-1).file,source);assert.equal(fs.readFileSync(source,'utf8'),text);
+  const again=await launch(vscode,false,{document,selection:{$parameters:{N:'4'}},trace:true});
+  assert.match(again.output,/5/);assert.equal(again.records.at(-1).file,source);
+  assert.equal(fs.existsSync(path.join(root,'zfibonacci_report.prog.abap')),false);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});

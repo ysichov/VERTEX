@@ -172,20 +172,23 @@ function markdown(text, target) {
     return node;
   }
   function n(value) { return Number(value || 0).toLocaleString(); }
-  function time(value) { return value ? new Date(value).toLocaleString() : ""; }
+  function time(value) { return value ? new Date(value).toLocaleString(undefined, {hourCycle:"h23"}) : ""; }
   // A prompt's time of day; the date only when it differs from the session's, which the session line shows.
   function promptTime(value, start) {
     if (!value) return "";
     var d = new Date(value);
-    return start && new Date(start).toDateString() === d.toDateString() ? d.toLocaleTimeString() : d.toLocaleString();
+    return start && new Date(start).toDateString() === d.toDateString() ? d.toLocaleTimeString(undefined, {hourCycle:"h23"}) : d.toLocaleString(undefined, {hourCycle:"h23"});
   }
   function span(a, b) {
     if (!a || !b) return "";
     var s = Math.round((b - a) / 1000);
     return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + (s % 60) + "s";
   }
+  function costText(u) {
+    return u.cost == null ? "-" : "$" + Number(u.cost).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:8}) + (u.costMissing ? " (partial)" : "");
+  }
   function usageText(u) {
-    return "in " + n(u.input) + " · out " + n(u.output) + " · cache read " + n(u.cacheRead) + " · cache write " + n(u.cacheWrite);
+    return "in " + n(u.input) + " · out " + n(u.output) + " · cache read " + n(u.cacheRead) + " · cache write " + n(u.cacheWrite) + (u.cost != null ? " - cost " + costText(u) : u.costMissing ? " - cost unavailable" : "");
   }
   function promptPreview(prompts) {
     if (!prompts.length || !prompts[0].text) return "";
@@ -370,7 +373,9 @@ function markdown(text, target) {
             var head = el("div", "model-step");
             head.appendChild(el("strong", "", "Model step " + (++k)));
             head.appendChild(document.createTextNode(" · in " + n(u.input_tokens) + " · out " + n(u.output_tokens)
-              + " · cache read " + n(u.cache_read_input_tokens) + " · cache write " + n(u.cache_creation_input_tokens)));
+              + " · cache read " + n(u.cache_read_input_tokens) + " · cache write " + n(u.cache_creation_input_tokens)
+              + (Object.prototype.hasOwnProperty.call(u, "cost_usd") ? " - cost " + costText({cost:u.cost_usd}) : "")));
+            if (u.generation_id) head.title = "Generation: " + u.generation_id;
             group.appendChild(head);
             toolBox.appendChild(group);
           } else if (t.kind === "tool" && byId.has(t.tool_id) && !placed.has(t.tool_id)) {
@@ -414,7 +419,9 @@ function markdown(text, target) {
     if (!report.configured) { status.className = "muted"; status.textContent = "No log folder is set. Choose a folder to read session logs from."; return; }
     if (!report.sessions.length) { status.className = "muted"; status.textContent = "No sessions in " + report.folder + "."; return; }
     var total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-    report.sessions.forEach(function (s) { for (var k in total) total[k] += s.usage[k]; });
+    report.sessions.forEach(function (s) { ["input", "output", "cacheRead", "cacheWrite"].forEach(function(k){total[k] += s.usage[k] || 0;});
+      if (s.usage.cost != null) total.cost = (total.cost || 0) + s.usage.cost;
+      if (s.usage.costMissing) total.costMissing = (total.costMissing || 0) + s.usage.costMissing; });
     status.className = "muted";
     status.textContent = report.sessions.length + " sessions in " + report.folder;
     content.appendChild(el("div", "totals", "Total: " + usageText(total)));
@@ -445,7 +452,7 @@ function markdown(text, target) {
 
       var table = el("table");
       var hr = el("tr");
-      ["Conversation", "Model", "In", "Out", "Cache read", "Time"].forEach(function (h, i) { hr.appendChild(el("th", i === 5 ? "time" : i > 1 ? "num" : "", h)); });
+      ["Conversation", "Model", "In", "Out", "Cache read", "Cost USD", "Time"].forEach(function (h, i) { hr.appendChild(el("th", i === 5 ? "time" : i > 1 ? "num" : "", h)); });
       table.appendChild(hr);
       var several = s.prompts.length > 1;
       s.prompts.forEach(function (p) {
@@ -466,6 +473,7 @@ function markdown(text, target) {
         row.appendChild(el("td", "num", n(p.usage.input)));
         row.appendChild(el("td", "num", n(p.usage.output)));
         row.appendChild(el("td", "num", n(p.usage.cacheRead)));
+        row.appendChild(el("td", "num", costText(p.usage)));
         row.appendChild(el("td", "time", promptTime(p.time, s.start)));
         table.appendChild(row);
       });
