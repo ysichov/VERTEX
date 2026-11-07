@@ -102,3 +102,10 @@ test("task logo animation is disabled only by reduced-motion rules",()=>{
  assert.doesNotMatch(source,/^#messages \.vertex\.task\.working::before \{ animation: none;/m);
  assert.match(source,/body\.vscode-reduce-motion #messages \.vertex\.task\.working::before \{ animation: none;/);
 });
+
+test('web citations create only HTTP links through host openExternal',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'..','sidebar.js'),'utf8'),sandbox={module:{exports:{}},require,__dirname:path.join(__dirname,'..')};
+ vm.runInNewContext(source+'\nmodule.exports.render=html;',sandbox);const html=sandbox.module.exports.render('n');const script=html.match(/<script nonce="n">([\s\S]*?)<\/script>/)[1];const start=script.indexOf('function inline('),end=script.indexOf('\n}\n',start)+2;
+ const children=[],posted=[];const context={document:{createElement:tag=>({tag,addEventListener(name,fn){this.click=fn;}}),createTextNode:text=>({text})},api:{postMessage:m=>posted.push(m)}};vm.runInNewContext(script.slice(start,end),context);
+ context.inline('[Source](https://example.com) [bad](javascript:alert)',{appendChild:n=>children.push(n)});const link=children.find(n=>n.tag==='a');assert.equal(link.href,'https://example.com');assert.equal(children.filter(n=>n.tag==='a').length,1);link.click({preventDefault(){}});assert.equal(posted[0].action,'openWebLink');
+});

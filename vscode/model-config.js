@@ -297,12 +297,15 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     }
     if (message.action === "check") {
       if (id !== "claude") { return; }
+      const audit=require("./ai-accounting").begin(vscode,"claude",String(message.model||""));
       try {
-        const probed = await assistant.probe({ assistant: "claude", extensionPath: extensionPath("claude"),
+        const probed = await assistant.probe({ ...audit.callbacks,assistant: "claude", extensionPath: extensionPath("claude"),
                                                executable: executable ? await executable("claude") : undefined,
                                                model: message.model });
+        audit.finish(probed);
         post({ provider: id, probed: probed });
       } catch (e) {
+        audit.fail(e);
         post({ provider: id, probeError: e.message });
       }
       return;

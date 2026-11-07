@@ -374,6 +374,7 @@ function markdown(text, target) {
             head.appendChild(el("strong", "", "Model step " + (++k)));
             head.appendChild(document.createTextNode(" · in " + n(u.input_tokens) + " · out " + n(u.output_tokens)
               + " · cache read " + n(u.cache_read_input_tokens) + " · cache write " + n(u.cache_creation_input_tokens)
+              + (u.web_search_calls != null ? " · web searches " + n(u.web_search_calls) : "")
               + (Object.prototype.hasOwnProperty.call(u, "cost_usd") ? " - cost " + costText({cost:u.cost_usd}) : "")));
             if (u.generation_id) head.title = "Generation: " + u.generation_id;
             group.appendChild(head);

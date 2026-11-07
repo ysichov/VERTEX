@@ -1,3 +1,13 @@
+## 2026-11-07 — Account for all model requests
+
+Enable Codex CLI JSONL accounting, retain raw turn counters, normalize cached tokens and avoid logging run totals twice. Capture native CLI JSON errors and fix a dormant undefined-variable path in Claude model-version probe logging.
+
+Log minimal model probes, standalone Claude version checks and legacy SAP-window assistants with tokens, provider metadata, actual reported cost and failures. Group model checks in one session; completed probes remain recorded after Stop. Classify Chat, Web search, Commit message, Model check and window assistants; add activity totals/filter to Usage & Cost. Read native per-model token counts without double counting aggregate CLI totals or billing subscription estimates as money. Usage metadata falls back to private extension storage when no custom log folder is set; optional content logging remains opt-in. Old unlogged model checks cannot be reconstructed locally. Version remains 0.9.68.
+
+## 2026-11-07 — Web questions and usage dashboard
+
+Add opt-in Vercel Web mode via Gateway server-side Perplexity search, required initial search and reported search-count verification. Isolate Web history from SAP/local/review context and expose safe HTTP(S) citations. Clarify direct-answer instructions for AI benchmark questions. Add $ title action with date/month/provider filters, per-provider and per-model usage, actual USD and missing-cost counts. Read usage metadata only, deduplicate provider and assistant records, preserve costs in legacy raw usage, exclude CLI subscription cost estimates. Fix provider names for hexadecimal generation-log suffixes. Version stays 0.9.68.
+
 ## 2026-11-07 — Commit-generation connection recovery
 
 Handle aborted/error response streams and retry a transient network failure once only for isolated commit-message generation. Keep drafts and show a readable connection error on exhaustion; record the transport code and attempt in logs. No automatic Git commit retry, no retry added to normal agent actions. Version remains 0.9.68.

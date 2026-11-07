@@ -488,3 +488,12 @@ test('commit message generation is isolated and supplies no action tools',async 
  const result=await ask.generateCommitMessage({text:'SUPPLIED_DIFF'},{summary:'Draft'});
  assert.equal(result.summary,'Improve Git review');assert.deepEqual(options.tools,[]);assert.equal(options.textOnly,true);assert.equal(options.capabilities.tools,false);assert.match(options.prompt,/SUPPLIED_DIFF/);assert.equal(options.workDir,undefined);assert.equal(options.callTool,undefined);
 });
+
+test('Web mode bypasses local editor, worktree and SAP context',async t=>{
+ t.mock.method(compatible,'models',async()=>[{id:'web',label:'Web',capabilities:{tools:true}}]);let received;
+ t.mock.method(compatible,'ask',async options=>{received=options;return {model:'web',plan:{answer:'Answer with source'}};});
+ const vscode=fakeVscode({provider:'vercel-api',model:'web'});
+ const ask=chat.create(vscode,{editorContext(){throw Error('No editor context');},schemas:[{name:'read_sap_object'}]},{start(){throw Error('No MCP');}},{get:async()=>null});
+ const answer=await ask('ABAP benchmarks',{web:true,state:{git_review:{text:'PRIVATE_DIFF'},selected_fragment:{text:'PRIVATE_SOURCE'}}});
+ assert.equal(answer.navigation,null);assert.equal(received.webSearch,true);assert.deepEqual(received.tools,[]);assert.equal(received.webQuery,'ABAP benchmarks');assert.doesNotMatch(received.prompt,/PRIVATE_DIFF|PRIVATE_SOURCE/);
+});

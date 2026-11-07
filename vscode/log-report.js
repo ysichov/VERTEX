@@ -43,7 +43,7 @@ function recordingReference(content) {
 function parseSession(text, file) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
-  const provider = name.replace(/_\d{8}_\d{6}(?:_\d+)?$/, "");
+  const provider = name.replace(/_\d{8}_\d{6}(?:_[0-9a-f]+)?$/, "");
   const session = { id: name, provider, start: null, end: null, usage: emptyUsage(), prompts: [] };
   const seen = new Set();
   const toolCalls = new Map();
@@ -167,6 +167,7 @@ function parseSession(text, file) {
 }
 
 function readSessions(root) {
+  root=require("./session-log").resolveRoot(root);
   if (!root) return { configured: false, folder: "", sessions: [] };
   const folder = path.join(root, "claude_compatible");
   if (!fs.existsSync(folder)) return { configured: true, folder, sessions: [] };

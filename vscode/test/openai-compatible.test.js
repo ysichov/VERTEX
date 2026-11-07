@@ -300,3 +300,14 @@ test('an aborted HTTP response rejects with a recoverable transport code',async 
  });
  await assert.rejects(()=>api.requestJson('vercel-api','test','/chat/completions',{model:'x'}),error=>error.code==='ECONNRESET');
 });
+
+test('Web mode requires server search and exposes no client tools',async()=>{
+ let body,tools=0,usage;
+ const result=await api.ask({assistant:'vercel-api',apiKey:'web-key',model:'web-model',webSearch:true,webQuery:'ABAP benchmarks',prompt:'Question',instructions:'Search',capabilities:{tools:true,web:false},tools:[{name:'read_sap_object'}],callTool:()=>{tools++;},onModelCall:event=>usage=event.usage,request:async(_,__,___,value)=>{body=value;return {model:'web-model',usage:{prompt_tokens:10,completion_tokens:2,gateway_cost:0.01},choices:[{message:{content:'See [Source](https://example.com)',provider_metadata:{gateway:{gatewayToolCalls:{perplexity_search:1}}}}}]};}});
+ assert.equal(body.tool_choice,'required');assert.deepEqual(body.tools,[{type:'vercel:perplexity_search',config:{query:'ABAP benchmarks',max_results:5}}]);assert.equal(tools,0);assert.equal(usage.web_search_calls,1);assert.equal(usage.cost_usd,0.01);assert.equal(result.plan.navigation,null);
+});
+test('Web mode never silently falls back to unsearched text',async()=>{
+ let calls=0;
+ await assert.rejects(()=>api.ask({assistant:'vercel-api',apiKey:'web-key',model:'web-failed',webSearch:true,prompt:'Query',instructions:'Search',request:async()=>{calls++;throw Object.assign(new Error("This model doesn't support tool use."),{status:400});}}),/support tool use/);assert.equal(calls,1);
+ await assert.rejects(()=>api.ask({assistant:'vercel-api',model:'web-zero',webSearch:true,prompt:'Q',instructions:'Search',request:async()=>({choices:[{message:{content:'Unverified',provider_metadata:{gateway:{gatewayToolCalls:0}}}}]})}),/did not confirm/);
+});

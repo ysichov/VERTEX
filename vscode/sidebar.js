@@ -115,6 +115,10 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           await showReview();
           return;
         }
+        if (message.action === "openWebLink") {
+          try { const url=new URL(String(message.url||""));if(["https:","http:"].includes(url.protocol)&&!url.username&&!url.password)await vscode.env.openExternal(vscode.Uri.parse(url.href)); }catch(_){}
+          return;
+        }
         if (message.action === "copyAnswer") {
           // The host's clipboard: a webview's own clipboard access depends on permissions VS Code may not give it.
           try { await vscode.env.clipboard.writeText(String(message.text || "")); await view.webview.postMessage({ copied: true }); }
@@ -137,7 +141,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "chat") {
           const requestId = ++nextRequest;
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
-          const asked = reviewAsk;
+          const asked = message.web ? null : reviewAsk;
           if (asked) { reviewAsk = null; await showReview(); }
           const images = (Array.isArray(message.images) ? message.images : []).filter(image => image
             && /^image\/(png|jpeg|gif|webp)$/.test(image.media_type) && typeof image.data === "string" && image.data);
@@ -149,13 +153,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           await view.webview.postMessage({ progress: { id: requestId, status: "VERTEX is working…" } });
           try {
             const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
-            const state = (await toolContext(scope)) || {};
+            const state = message.web ? {} : (await toolContext(scope)) || {};
             if (asked) {
               state.review_ask = { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) };
               delete state.review_source;
               delete state.selected_fragment;
             }
-            const reply = await ask(asked ? review.askRequest(message.text, asked) : shown, {model: message.model, state,
+            const reply = await ask(asked ? review.askRequest(message.text, asked) : shown, {model: message.model, state, web:message.web===true,
               ...(images.length ? { images } : {}),
               onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, ...update } })).catch(() => {}); } });
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
@@ -267,6 +271,9 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 @keyframes vertex-task-turn { to { transform: rotate(360deg); } }
 body.vscode-reduce-motion #messages .vertex.task.working::before { animation: none; }
 @media (prefers-reduced-motion: reduce) { #messages .vertex.task.working::before { animation: none; } }
+#web-search-option { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+#web-search-option[hidden] { display:none; }
+#web-search-option input { width:auto; margin:0; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .model-picker #model-select { flex: 1 1 auto; min-width: 0; }
 .line #model-details-button[hidden] { display: none; }
@@ -326,7 +333,7 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 <span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><label id="web-search-option" hidden title="Search the public web through Vercel/Perplexity (billed by Vercel). Only your question and Web history are sent; SAP and local files are excluded."><input id="web-search" type="checkbox">🌐 Web</label><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
@@ -340,6 +347,8 @@ const capabilityDefinitions = ${JSON.stringify(require(require("path").join(__di
 const priceInfo = ${require(require("path").join(__dirname, "model-capabilities")).priceInfo.toString()};
 let modelCatalog = [];
 function drawModelCapabilities() {
+  const web=document.getElementById('web-search-option');web.hidden=document.getElementById('provider-select').value!=='vercel-api';
+  if(web.hidden)document.getElementById('web-search').checked=false;
   const target = document.getElementById('model-capabilities'); target.replaceChildren();
   const dialog = document.getElementById('model-details-dialog'); if (dialog.open) dialog.close();
   const model = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
@@ -398,7 +407,9 @@ document.getElementById('chat').addEventListener('submit', event => {
   if (!text && document.getElementById('review-chip').hidden && !images.length) return;
   const selected = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
   if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
+  if(document.getElementById('web-search').checked && images.length){document.getElementById('model-status').textContent='Web mode searches your typed question. Remove screenshots first.';return;}
   api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value,
+    web: document.getElementById('web-search').checked,
     images: images.map(image => ({ media_type: image.media_type, data: image.data })) });
   field.value = '';
   images = []; drawImages();
@@ -668,12 +679,14 @@ function runLinks(item, runs) {
 }
 // Markdown built as DOM nodes with textContent only, so an answer cannot inject markup.
 function inline(text, parent) {
-  text.split(/(\\[(?:run|session) [0-9a-f-]{6,36} step \\d+\\]|\\x60[^\\x60]+\\x60|\\*\\*[^*]+\\*\\*|\\*[^*\\s][^*]*\\*)/).forEach(token => {
+  text.split(/(\\[[^\\]\\n]+\\]\\(https?:\\/\\/[^\\s)]+\\)|\\[(?:run|session) [0-9a-f-]{6,36} step \\d+\\]|\\x60[^\\x60]+\\x60|\\*\\*[^*]+\\*\\*|\\*[^*\\s][^*]*\\*)/).forEach(token => {
     if (!token) return;
     let node;
     const cite = /^\\[(run|session) ([0-9a-f-]{6,36}) step (\\d+)\\]$/.exec(token);
     // A cited step of a transpiler run: a link once the run is known (runLinks), plain text otherwise.
-    if (cite) { node = document.createElement('span'); node.className = 'run-cite'; node.dataset.kind = cite[1]; node.dataset.run = cite[2]; node.dataset.step = cite[3]; node.textContent = token; }
+    const webLink = /^\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)$/.exec(token);
+    if(webLink){node=document.createElement('a');node.className='link';node.href=webLink[2];node.textContent=webLink[1];node.title=webLink[2];node.addEventListener('click',event=>{event.preventDefault();api.postMessage({action:'openWebLink',url:webLink[2]});});}
+    else if (cite) { node = document.createElement('span'); node.className = 'run-cite'; node.dataset.kind = cite[1]; node.dataset.run = cite[2]; node.dataset.step = cite[3]; node.textContent = token; }
     else if (/^\\x60[^\\x60]+\\x60$/.test(token)) { node = document.createElement('code'); node.textContent = token.slice(1, -1); }
     else if (/^\\*\\*[^*]+\\*\\*$/.test(token)) { node = document.createElement('strong'); node.textContent = token.slice(2, -2); }
     else if (/^\\*[^*\\s][^*]*\\*$/.test(token)) { node = document.createElement('em'); node.textContent = token.slice(1, -1); }

@@ -105,17 +105,22 @@ async function rateLimitedRequest(send, options = {}) {
 }
 
 // One minimal paid generation request: no tool schemas, history or agent rounds.
-async function probe(id, apiKey, model, request = requestJson) {
+async function probe(id, apiKey, model, request = requestJson, options = {}) {
   const response = await rateLimitedRequest(() => request(id, apiKey, "/chat/completions", {
     model, messages: [{ role: "user", content: "Reply OK." }], stream: false,
     ...(id === "openai-api" ? { max_completion_tokens: 16 } : { max_tokens: 16 })
-  }));
+  }),options);
+  options.onProviderResponse?.({provider:id,scope:"model_response",response});
+  const raw=response.usage||{},cached=Number(raw.prompt_tokens_details?.cached_tokens??raw.cache_read_input_tokens??0)||0,created=Number(raw.cache_creation_input_tokens||0);
+  const usage={input_tokens:raw.prompt_tokens==null?Number(raw.input_tokens||0):Math.max(0,Number(raw.prompt_tokens)-cached-created),output_tokens:Number(raw.completion_tokens??raw.output_tokens??0)||0,cache_read_input_tokens:cached,cache_creation_input_tokens:created,...(id==="vercel-api"?await generationCost(response,{...options,apiKey},request):{})};
+  options.onModelCall?.({model:response.model||model,usage,text:response.choices?.[0]?.message?.content||""});
   if (!response.choices?.[0]?.message) throw new Error(PROVIDERS[id].label + " answered without a chat message.");
+  return {model:response.model||model,usage};
 }
 
 // Actual Gateway debit, never an estimate from catalog token prices.
 async function generationCost(response, options, request) {
-  const gateway = response.providerMetadata?.gateway || response.provider_metadata?.gateway;
+  const gateway = response.providerMetadata?.gateway || response.provider_metadata?.gateway || response.choices?.[0]?.message?.provider_metadata?.gateway;
   const generationId = gateway?.generationId || response.id;
   const number = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
   let cost = number(response.usage?.gateway_cost ?? response.usage?.cost ?? gateway?.cost);
@@ -135,11 +140,18 @@ async function generationCost(response, options, request) {
   return { generation_id: generationId || null, cost_usd: cost };
 }
 
+function searchCallCount(response) {
+  const gateway=response.choices?.[0]?.message?.provider_metadata?.gateway || response.provider_metadata?.gateway || response.providerMetadata?.gateway;
+  const count=value=>typeof value==="number" ? Math.max(0,value) : Array.isArray(value) ? value.reduce((n,v)=>n+count(v),0) : value && typeof value==="object" ? (typeof value.count==="number" ? Math.max(0,value.count) : Object.values(value).reduce((n,v)=>n+count(v),0)) : 0;
+  return gateway?.gatewayToolCalls == null ? null : count(gateway.gatewayToolCalls);
+}
 async function ask(options) {
   const id = options.assistant;
   const request = options.request || requestJson;
   if (options.images?.length && options.capabilities?.vision === false) throw new Error("This model does not accept screenshots. Choose a Vision model or remove the images.");
-  let tools = options.capabilities?.tools === false || toolSupport.rejection(id, options.apiKey, options.model) ? [] : (options.tools || []).map(tool => ({ type: "function", function: {
+  if(options.webSearch && id!=="vercel-api")throw new Error("Web mode currently requires Vercel AI Gateway.");
+  if(options.webSearch && (options.capabilities?.tools===false || toolSupport.rejection(id,options.apiKey,options.model)))throw new Error("This model cannot use Gateway search tools. Choose another Vercel model for Web mode.");
+  let tools = options.webSearch ? [{type:"vercel:perplexity_search",config:{query:options.webQuery || options.prompt,max_results:5}}] : options.capabilities?.tools === false || toolSupport.rejection(id, options.apiKey, options.model) ? [] : (options.tools || []).map(tool => ({ type: "function", function: {
     name: tool.name, description: tool.description, parameters: tool.inputSchema
   } })).concat([{ type: "function", function: { name: "submit_vertex_answer",
     description: "Submit the final VERTEX answer and navigation plan.", parameters: options.schema } }]);
@@ -152,14 +164,14 @@ async function ask(options) {
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     options.onProgress?.({ status: "Model request " + (round + 1) });
     const send = () => rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
-      model: options.model, messages, ...(tools.length ? { tools } : {}), stream: false
+      model: options.model, messages, ...(tools.length ? { tools } : {}), ...(options.webSearch ? {tool_choice:"required"} : {}), stream: false
     }, (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000)) + imageBytes), options);
     let response;
     try { response = await send(); }
     catch (error) {
       const unsupported = (error.status === 400 || /returned 400\b/.test(error.message || ""))
         && /(?:does(?:n't| not)|does not|cannot|can't) support (?:tool use|tool calling|tools|function calling)|(?:tool use|tool calling|tools|function calling) (?:is |are )?not supported/i.test(error.message || "");
-      if (tools.length && unsupported) {
+      if (tools.length && unsupported && !options.webSearch) {
         const evidence = await toolSupport.reject(id, options.apiKey, options.model);
         options.onToolUnsupported?.(evidence);
         options.onProviderResponse?.({ provider:id, scope:"tool_support_rejected", response:{ model:options.model, is_error:true, error:error.message, model_step:round+1, operation:"Tool support negotiation" } });
@@ -175,7 +187,8 @@ async function ask(options) {
       }
       if (!response) { error.model_step = round + 1; error.operation = "Model request"; throw error; }
     }
-    if (options.onProviderResponse) options.onProviderResponse({ provider: id, scope: "model_response", response });
+    const webSearchCalls=options.webSearch ? searchCallCount(response) : null;
+    if (options.onProviderResponse) options.onProviderResponse({ provider: id, scope: "model_response", response:options.webSearch?{...response,gateway_tool_calls:webSearchCalls}:response });
     let roundUsage = null;
     if (response.usage) {
       const raw = response.usage;
@@ -198,6 +211,14 @@ async function ask(options) {
     }
     const message = response.choices && response.choices[0] && response.choices[0].message;
     if (!message) { throw new Error(PROVIDERS[id].label + " answered without a chat message."); }
+    if(options.webSearch){
+      roundUsage={...(roundUsage||{}),web_search_calls:webSearchCalls};
+      if(!(webSearchCalls>0)){
+        options.onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"Web search execution was not confirmed; answer withheld."});
+        throw new Error("Vercel did not confirm a successful web search. No web-verified answer is available; try another model or retry.");
+      }
+      if(message.tool_calls?.length)throw new Error("Gateway returned client tool calls instead of executing web search. No SAP or file action was performed.");
+    }
     const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
     if (!tools.length && calls.length) throw new Error("The model returned tool calls although tools are disabled; no action was executed.");
     const final = calls.find(call => call.function && call.function.name === "submit_vertex_answer");

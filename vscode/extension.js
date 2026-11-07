@@ -561,8 +561,10 @@ async function assistantAsk(context, service, args) {
     return { error: "The VERTEX tool server did not start, so the assistant would have no tools: "
                     + e.message };
   }
+  const audit=require("./ai-accounting").begin(vscode,id,String(args[1]||""),"Window assistant: "+service);
   try {
     const answer = await assistant.ask({
+      ...audit.callbacks,
       assistant: id,
       model: String(args[1] || ""),
       personalInstructions: vscode.workspace.getConfiguration("vertex.ai").get("personalInstructions", false),
@@ -577,9 +579,11 @@ async function assistantAsk(context, service, args) {
       schema: brain.PLAN_SCHEMA,
       tools: brain.TOOLS.map(function (t) { return t.name; })
     });
+    audit.finish(answer);
     const plan = await brain.checkPlan({ fetch: fetch, context: context }, answer.plan);
     return { plan: plan, model: answer.model, system: chosen.system.name };
   } catch (e) {
+    audit.fail(e);
     return { error: e.message, model: e.model || "", system: chosen.system.name };
   }
 }
@@ -823,7 +827,9 @@ function withDebugger(sapCode, debugTools, runTranspiler, transpilerHistory) {
 }
 
 function activate(context) {
+  require("./session-log").configureAccounting(context);
   require("./tool-support").configure(context.globalState);
+  require("./usage-report").register(vscode,context);
   auth = require("./auth/clients").createAuth({ vscode, context, logger: outputLogger });
   const sapCode = require("./code-workbench").register(vscode, context, { active, auth, pin: pinTo,
     pinned: () => pinnedSystem.getStore() || "", systems });

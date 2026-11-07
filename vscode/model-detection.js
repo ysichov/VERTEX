@@ -3,18 +3,22 @@
 // Availability checks are explicit, tiny requests without SAP or workspace context.
 const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false };
 async function probe(vscode, secrets, id, model, extensionPath, executable) {
-  const options = { assistant: id, model, tools: [], schema, token: "", timeout: 60000, maxRounds: 1, maxOutputTokens: 16,
+  const audit=require("./ai-accounting").begin(vscode,id,model);
+  const options = { ...audit.callbacks,textOnly:true, assistant: id, model, tools: [], schema, token: "", timeout: 60000, maxRounds: 1, maxOutputTokens: 16,
     instructions: "This is a connectivity check. Return the answer OK. Do not use tools.", prompt: "Reply OK." };
   let result;
+  try {
   const compatible = require("./openai-compatible");
   if (id === "copilot") result = await require("./copilot").ask(vscode, options);
   else if (id === "anthropic-api" || compatible.PROVIDERS[id]) {
     const apiKey = (await require("./key-profiles").getActiveKey(secrets, id)).key;
     if (id === "anthropic-api") result = await require("./anthropic").ask({ ...options, apiKey });
-    else { await compatible.probe(id, apiKey, model); return; }
+    else { result=await compatible.probe(id, apiKey, model,compatible.requestJson,options);audit.finish(result);return; }
   } else result = await require("./assistant").ask({ ...options, extensionPath: extensionPath(id), executable: await executable(id),
     profile: require("./assistant").profileFor(vscode, id) });
   if (!result?.plan?.answer?.trim()) throw new Error("The model returned no answer.");
+  audit.finish(result);
+  }catch(error){audit.fail(error);throw error;}
 }
 
 async function detect(providers, list, check, report, cancelled = () => false) {

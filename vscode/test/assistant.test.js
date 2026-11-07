@@ -623,3 +623,12 @@ test("Claude retains native tools and approval routing in a local-agent request"
   });
   await assistant.ask(common(spawn, "claude", { workDir: folder("vertex-native-"), reviewAfter: true, approveUrl: "http://localhost/approve", tools: [] }));
 });
+
+test('Codex JSONL reports exact tokens and original counters without treating subscription as dollars',async()=>{
+ const events=[],calls=[];const spawn=spawner(call=>{
+  fs.writeFileSync(after(call.args,'-o'),JSON.stringify(PLAN));
+  call.child.stdout.emit('data',JSON.stringify({type:'thread.started',thread_id:'thread-cost'})+'\n'+JSON.stringify({type:'turn.completed',usage:{input_tokens:100,cached_input_tokens:60,output_tokens:5}})+'\n');call.child.emit('close',0);
+ });
+ const result=await assistant.ask(common(spawn,'codex',{model:'gpt-test',onProviderResponse:event=>events.push(event),onModelCall:event=>calls.push(event)}));
+ assert.ok(spawn.calls[0].args.includes('--json'));assert.equal(result.usage.input_tokens,40);assert.equal(result.usage.cache_read_input_tokens,60);assert.equal(result.usage.output_tokens,5);assert.equal(result.model,'gpt-test');assert.equal(events[0].response.usage.input_tokens,100);assert.equal(calls[0].usage.generation_id,'thread-cost:1');assert.equal(calls[0].usage.cost_usd,undefined);
+});
