@@ -164,7 +164,8 @@ async function ask(options) {
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     options.onProgress?.({ status: "Model request " + (round + 1) });
     const send = () => rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
-      model: options.model, messages, ...(tools.length ? { tools } : {}), ...(options.webSearch ? {tool_choice:"required"} : {}), stream: false
+      model: options.model, messages, ...(tools.length ? { tools } : {}), ...(options.webSearch ? {tool_choice:"required"} : {}),
+      ...(Number.isInteger(options.maxOutputTokens)&&options.maxOutputTokens>0 ? id==="openai-api"?{max_completion_tokens:options.maxOutputTokens}:{max_tokens:options.maxOutputTokens} : {}), stream: false
     }, (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000)) + imageBytes), options);
     let response;
     try { response = await send(); }
@@ -188,7 +189,11 @@ async function ask(options) {
       if (!response) { error.model_step = round + 1; error.operation = "Model request"; throw error; }
     }
     const webSearchCalls=options.webSearch ? searchCallCount(response) : null;
-    if (options.onProviderResponse) options.onProviderResponse({ provider: id, scope: "model_response", response:options.webSearch?{...response,gateway_tool_calls:webSearchCalls}:response });
+    const choice=response.choices?.[0],rawMessage=choice?.message;
+    const diagnostics={content_type:Array.isArray(rawMessage?.content)?"array":typeof rawMessage?.content,content_characters:typeof rawMessage?.content==="string"?rawMessage.content.length:0,
+      reasoning_characters:typeof rawMessage?.reasoning_content==="string"?rawMessage.reasoning_content.length:typeof rawMessage?.reasoning==="string"?rawMessage.reasoning.length:0,
+      reasoning_tokens:Number(response.usage?.completion_tokens_details?.reasoning_tokens||0),refusal:typeof rawMessage?.refusal==="string"?rawMessage.refusal.slice(0,500):null};
+    if (options.onProviderResponse) options.onProviderResponse({ provider: id, scope: "model_response", response:{...response,finish_reason:choice?.finish_reason,message_diagnostics:diagnostics,...(options.webSearch?{gateway_tool_calls:webSearchCalls}:{})} });
     let roundUsage = null;
     if (response.usage) {
       const raw = response.usage;
@@ -230,12 +235,19 @@ async function ask(options) {
       return { plan, model: options.model, usage };
     }
     if (!calls.length) {
-      const answer = typeof message.content === "string" ? message.content.trim() : "";
+      const answer = typeof message.content === "string" ? message.content.trim() : Array.isArray(message.content)
+        ? message.content.filter(part=>part && ["text","output_text"].includes(part.type)&&typeof part.text==="string").map(part=>part.text).join("\n").trim() : "";
       if (answer) {
         if (options.onModelCall) options.onModelCall({ model: response.model || options.model, usage: roundUsage, text: answer });
         return { plan: { answer, navigation: null }, model: options.model, usage };
       }
-      throw new Error(PROVIDERS[id].label + " answered without text or a VERTEX plan.");
+      options.onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"[The model returned no final text.]"});
+      const reason=diagnostics.refusal ? " refused to answer: "+diagnostics.refusal
+        : choice?.finish_reason==="length" ? " reached its output limit before returning final text."
+        : diagnostics.reasoning_tokens>0||diagnostics.reasoning_characters>0 ? " returned reasoning only, with no final text."
+        : " returned an empty final response.";
+      const error=new Error(PROVIDERS[id].label+reason+" Finish reason: "+(choice?.finish_reason||"not reported")+". Try generating again or select another model.");
+      error.model_step=round+1;error.operation="Read model response";error.finish_reason=choice?.finish_reason;throw error;
     }
     if (options.onModelCall) options.onModelCall({ model: response.model || options.model, usage: roundUsage,
       text: typeof message.content === "string" ? message.content : "" });

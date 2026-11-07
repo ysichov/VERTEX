@@ -311,3 +311,18 @@ test('Web mode never silently falls back to unsearched text',async()=>{
  await assert.rejects(()=>api.ask({assistant:'vercel-api',apiKey:'web-key',model:'web-failed',webSearch:true,prompt:'Query',instructions:'Search',request:async()=>{calls++;throw Object.assign(new Error("This model doesn't support tool use."),{status:400});}}),/support tool use/);assert.equal(calls,1);
  await assert.rejects(()=>api.ask({assistant:'vercel-api',model:'web-zero',webSearch:true,prompt:'Q',instructions:'Search',request:async()=>({choices:[{message:{content:'Unverified',provider_metadata:{gateway:{gatewayToolCalls:0}}}}]})}),/did not confirm/);
 });
+
+test('reasoning-only response records usage and finish diagnostics without exposing reasoning as answer',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-reasoning-only-'));
+ try{const log=require('../session-log').create(root,'vercel-api','20261107_160000',{answers:true});log.user('Commit draft');let calls=0,recorded;
+ await assert.rejects(()=>api.ask({assistant:'vercel-api',apiKey:'k',model:'nemotron-test',prompt:'Draft',instructions:'Plain message',capabilities:{tools:false},maxOutputTokens:4096,onProviderResponse:event=>log.providerResponse(event),onModelCall:event=>{recorded=event;log.assistant(event);},request:async(id,key,route,body)=>{calls++;assert.equal(body.max_tokens,4096);return {id:'gen_only_reasoning',model:'nemotron-test',usage:{prompt_tokens:36632,completion_tokens:284,completion_tokens_details:{reasoning_tokens:284},cost:0},choices:[{finish_reason:'stop',message:{content:null,reasoning_content:'PRIVATE_THINKING'}}]};}}),error=>/reasoning only/.test(error.message)&&/Finish reason: stop/.test(error.message)&&error.model_step===1&&!error.message.includes('PRIVATE_THINKING'));
+ assert.equal(calls,1);assert.equal(recorded.usage.output_tokens,284);assert.equal(recorded.usage.cost_usd,0);const text=fs.readFileSync(log.file,'utf8');assert.ok(!text.includes('PRIVATE_THINKING'));assert.match(text,/"finish_reason":"stop"/);assert.match(text,/"reasoning_tokens":284/);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('compatible API reads text content arrays and diagnoses truncated empty replies',async()=>{
+ const result=await api.ask({assistant:'groq-api',model:'parts',prompt:'Draft',instructions:'Plain',capabilities:{tools:false},request:async()=>({choices:[{message:{content:[{type:'text',text:'Fix commit generation'},{type:'output_text',text:'Preserve usage.'}]}}]})});assert.equal(result.plan.answer,'Fix commit generation\nPreserve usage.');
+ await assert.rejects(()=>api.ask({assistant:'groq-api',model:'limit',prompt:'Draft',instructions:'Plain',capabilities:{tools:false},request:async()=>({choices:[{finish_reason:'length',message:{content:''}}]})}),/reached its output limit/);
+});
+test('OpenAI output limit uses max_completion_tokens',async()=>{
+ let body;await api.ask({assistant:'openai-api',model:'limit',prompt:'Draft',instructions:'Plain',capabilities:{tools:false},maxOutputTokens:4096,request:async(id,key,route,value)=>{body=value;return {choices:[{message:{content:'Done'}}]};}});assert.equal(body.max_completion_tokens,4096);assert.equal(body.max_tokens,undefined);
+});

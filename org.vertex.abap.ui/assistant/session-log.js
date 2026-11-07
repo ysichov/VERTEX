@@ -14,6 +14,9 @@ const fs = require("fs");
 const path = require("path");
 
 const NOT_LOGGED = "[not logged]";
+let accountingRoot="";
+function configureAccounting(context){accountingRoot=context?.globalStorageUri?.fsPath?path.join(context.globalStorageUri.fsPath,"ai-logs"):"";}
+function resolveRoot(root){return root||accountingRoot;}
 
 function stamp(date) {
   const p = n => String(n).padStart(2, "0");
@@ -31,7 +34,8 @@ function options(include) {
 }
 
 /** Null when no folder is configured. `session` names the file and stays fixed for a conversation. */
-function create(root, provider, session, include) {
+function create(root, provider, session, include, operation = "Chat") {
+  root=resolveRoot(root);
   if (!root) { return null; }
   const on = options(include);
   const dir = path.join(root, "claude_compatible");
@@ -41,11 +45,12 @@ function create(root, provider, session, include) {
   const write = entry => {
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString() }, entry)) + "\n", "utf8");
+    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation }, entry)) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
     file,
+    setOperation(value){operation=String(value||"Chat");},
     discard() { discarded = true; },
     /* A question; screenshots pasted with it are part of it: with the questions option each is saved as a file in
        the conversation's folder beside the log (<log name>/screenshot-<n>.<ext>), without it only counted. */
@@ -78,7 +83,7 @@ function create(root, provider, session, include) {
       // Preserve provider counters verbatim, before normalization. These records
       // are diagnostic evidence, never assistant records (no double counting).
       const fields = ["id", "type", "model", "subtype", "is_error", "usage", "modelUsage",
-        "error", "model_step", "operation", "status", "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
+        "gateway_tool_calls", "error", "code", "attempt", "model_step", "operation", "status", "total_cost_usd", "num_turns", "duration_ms", "duration_api_ms", "stop_reason"];
       const metadata = {};
       for (const key of fields) {
         if (response && Object.prototype.hasOwnProperty.call(response, key)) metadata[key] = response[key];
@@ -93,7 +98,9 @@ function create(root, provider, session, include) {
         output_tokens: usage && usage.output_tokens || 0,
         cache_creation_input_tokens: usage && usage.cache_creation_input_tokens || 0,
         cache_read_input_tokens: usage && usage.cache_read_input_tokens || 0,
-        ...(usage && Object.prototype.hasOwnProperty.call(usage, "cost_usd") ? { cost_usd: usage.cost_usd, generation_id: usage.generation_id } : {})
+        ...(usage && Object.prototype.hasOwnProperty.call(usage,"web_search_calls") ? {web_search_calls:usage.web_search_calls} : {}),
+        ...(usage?.generation_id ? {generation_id:usage.generation_id} : {}),
+        ...(usage && Object.prototype.hasOwnProperty.call(usage, "cost_usd") ? { cost_usd: usage.cost_usd } : {})
       }, content: [{ type: "text", text: answer }] } });
     },
     toolUse(name, args) {
@@ -338,6 +345,7 @@ async function assistantTool(log, name, args, call) {
 const shared = new Map();
 /** One log per folder, provider and choice for the life of the process: the VS Code chat is one conversation. */
 function current(root, provider, include) {
+  root=resolveRoot(root);
   if (!root) { return null; }
   const key = [root, provider, JSON.stringify(options(include))].join("\n");
   if (!shared.has(key)) { shared.set(key, create(root, provider, undefined, include)); }
@@ -365,4 +373,4 @@ function fromConfig(config) {
     localCode: config.get("log.localCode", true) };
 }
 
-module.exports = { create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference };
+module.exports = { configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference };

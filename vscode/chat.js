@@ -511,7 +511,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         if (log) {
           log.providerResponse({provider:id, scope:"request_error", response:{model:error.model || model,
             is_error:true, error:error.message, model_step:error.model_step, operation:error.operation || "Request", status:error.status}});
-          log.assistant({ model: error.model || model, text: "Request failed: " + error.message });
+          if(!recordedModelCalls)log.assistant({ model: error.model || model, text: "Request failed: " + error.message });
         }
         if (superseded()) return replaced();
         if (working) {
@@ -620,9 +620,11 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
     const config=vscode.workspace.getConfiguration("vertex.ai"), model=config.get("model", "") || await defaultModel(id);
     const log=sessionLog.create(config.get("logPath", ""),id,sessionLog.stamp(new Date())+"_"+require("crypto").randomBytes(3).toString("hex"),sessionLog.fromConfig(config),"Commit message");
     const prompt=helper.prompt(snapshot,draft);
-    const instructions="Generate only a draft commit message from the supplied snapshot. Tools, filesystem access and Git actions are unavailable. Put the entire message in the answer field when a result schema is required. Return navigation null and build_command empty. Never commit or claim to have committed.";
+    const instructions="Generate only a draft commit message from the supplied snapshot. Tools, filesystem access and Git actions are unavailable. Never commit or claim to have committed. "
+      + (compatible.PROVIDERS[id]||id==="anthropic-api"||id==="copilot" ? "Reply as plain text only: one Summary line, blank line, then Description. No JSON, answer-field wrapper, labels or commentary."
+        : "Put the entire commit message in the answer field of the required result schema. Return navigation null and build_command empty.");
     let calls=0;
-    const options={assistant:id,model,prompt,instructions,schema:RESULT_SCHEMA,tools:[],capabilities:{tools:false},textOnly:true,maxRounds:1,maxInputBytes:256*1024,retryNetwork:true,
+    const options={assistant:id,model,prompt,instructions,schema:RESULT_SCHEMA,tools:[],capabilities:{tools:false},textOnly:true,maxRounds:1,maxOutputTokens:4096,maxInputBytes:256*1024,retryNetwork:true,
       effort:String(config.get("effort", "")||""),extensionPath:extensionPath(vscode,id),executable:await assistantExecutable(vscode,id),profile:assistant.profileFor(vscode,id),
       onProviderResponse:event=>log?.providerResponse(event),onModelCall:event=>{calls++;log?.assistant(event);}};
     log?.user("Generate a commit message for the reviewed changes");log?.request({instructions,prompt,tools:[],schema:RESULT_SCHEMA});
@@ -633,7 +635,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
       if(!calls)log?.assistant({model:result.model,usage:result.usage,text:result.plan?.answer});
       return helper.parse(result.plan?.answer);
     }catch(error){
-      log?.providerResponse({provider:id,scope:"request_error",response:{model,is_error:true,error:error.message,code:error.code,attempt:error.networkAttempts,operation:"Generate commit message",model_step:error.model_step}});
+      log?.providerResponse({provider:id,scope:"request_error",response:{model,is_error:true,error:error.message,code:error.code,attempt:error.networkAttempts,operation:"Generate commit message",model_step:error.model_step,finish_reason:error.finish_reason}});
       if (["ECONNRESET","EPIPE","ECONNREFUSED","EAI_AGAIN"].includes(error.code) || /\b(?:ECONNRESET|EPIPE|ECONNREFUSED|EAI_AGAIN)\b/.test(error.message||"")) {
         throw new Error("Connection interrupted while generating the commit message"+(error.networkAttempts>1?" after one automatic retry":"")+". Your draft is kept; no commit was created. Try Generate with AI again.\nDetails: "+error.message);
       }

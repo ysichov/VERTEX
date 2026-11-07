@@ -274,6 +274,11 @@ body.vscode-reduce-motion #messages .vertex.task.working::before { animation: no
 #web-search-option { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
 #web-search-option[hidden] { display:none; }
 #web-search-option input { width:auto; margin:0; }
+#vercel-row-break { display:none; }
+body[data-provider="vercel-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
+#subprovider-select[hidden] { display:none; }
+body[data-provider="vercel-api"] #subprovider-select { flex:0 1 150px; max-width:45%; }
+body[data-provider="vercel-api"] .model-picker { flex:1 1 170px; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .model-picker #model-select { flex: 1 1 auto; min-width: 0; }
 .line #model-details-button[hidden] { display: none; }
@@ -333,7 +338,7 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 <span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><label id="web-search-option" hidden title="Search the public web through Vercel/Perplexity (billed by Vercel). Only your question and Web history are sent; SAP and local files are excluded."><input id="web-search" type="checkbox">🌐 Web</label><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Vercel model provider" title="Vercel model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><label id="web-search-option" hidden title="Search the public web through Vercel/Perplexity (billed by Vercel). Only your question and Web history are sent; SAP and local files are excluded."><input id="web-search" type="checkbox">🌐 Web</label><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
@@ -345,7 +350,39 @@ const EFFORTS = { 'claude-subscription': ['low', 'medium', 'high', 'xhigh', 'max
 let effort = '';
 const capabilityDefinitions = ${JSON.stringify(require(require("path").join(__dirname, "model-capabilities")).definitions)};
 const priceInfo = ${require(require("path").join(__dirname, "model-capabilities")).priceInfo.toString()};
+const sortModels = ${require(require("path").join(__dirname,"model-capabilities")).sortModels.toString()};
+const groupModels = ${require(require("path").join(__dirname,"model-capabilities")).groupModels.toString()};
 let modelCatalog = [];
+const lastVercelModels=new Map();
+function vercelGroups(models){
+  // Stable two-pass order: input price first, output price as the tie breaker; unknown prices last.
+  return groupModels(sortModels(sortModels(models,'outputPrice',false),'inputPrice',false),undefined,false,false);
+}
+function drawModelPickers(selected) {
+  const model=document.getElementById('model-select'),sub=document.getElementById('subprovider-select');
+  const vercel=document.getElementById('provider-select').value==='vercel-api';sub.hidden=!vercel;
+  const offered=modelCatalog.slice();
+  if(selected&&!offered.some(m=>m.id===selected))offered.push({id:selected,label:selected+' (off)'});
+  model.disabled=!offered.length;
+  if(!offered.length){model.replaceChildren(new Option('Loading…',''));sub.replaceChildren(new Option('Loading…',''));sub.disabled=true;return;}
+  const chosen=selected||offered[0].id;
+  if(vercel){
+    const groups=vercelGroups(offered),group=groups.find(g=>g.models.some(m=>m.id===chosen))||groups[0];
+    sub.replaceChildren(...groups.map(g=>new Option(g.label,g.id)));sub.value=group.id;sub.disabled=false;
+    model.replaceChildren(...group.models.map(m=>new Option(m.label,m.id)));model.value=chosen;
+    lastVercelModels.set(group.id,chosen);
+  }else{
+    sub.replaceChildren();sub.disabled=true;model.replaceChildren(...offered.map(m=>new Option(m.label,m.id)));model.value=chosen;
+  }
+}
+function chooseVercelProvider(){
+  const sub=document.getElementById('subprovider-select');
+  const group=vercelGroups(modelCatalog).find(g=>g.id===sub.value);if(!group)return;
+  const saved=lastVercelModels.get(group.id),selected=group.models.some(m=>m.id===saved)?saved:group.models[0].id;
+  drawModelPickers(selected);drawModelCapabilities();document.getElementById('model-status').textContent='';
+  api.postMessage({action:'setModel',model:selected});
+}
+document.getElementById('subprovider-select').addEventListener('change',chooseVercelProvider);
 function drawModelCapabilities() {
   const web=document.getElementById('web-search-option');web.hidden=document.getElementById('provider-select').value!=='vercel-api';
   if(web.hidden)document.getElementById('web-search').checked=false;
@@ -383,10 +420,11 @@ document.getElementById('effort-select').addEventListener('change', event => {
 document.getElementById('provider-select').addEventListener('change', event => {
   document.body.dataset.provider = event.target.value;
   drawEffort(event.target.value);
-  modelCatalog = []; drawModelCapabilities();
+  modelCatalog = []; drawModelPickers('');drawModelCapabilities();
   api.postMessage({ action: 'setProvider', provider: event.target.value });
 });
 document.getElementById('model-select').addEventListener('change', event => {
+  if(document.getElementById('provider-select').value==='vercel-api')lastVercelModels.set(document.getElementById('subprovider-select').value,event.target.value);
   drawModelCapabilities(); document.getElementById('model-status').textContent = '';
   api.postMessage({ action: 'setModel', model: event.target.value });
 });
@@ -405,6 +443,7 @@ document.getElementById('chat').addEventListener('submit', event => {
   const text = field.value.trim();
   // With a review's blocks on the chip an empty question asks the default one.
   if (!text && document.getElementById('review-chip').hidden && !images.length) return;
+  if(document.getElementById('model-select').disabled){document.getElementById('model-status').textContent='Wait for the model list to load.';return;}
   const selected = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
   if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
   if(document.getElementById('web-search').checked && images.length){document.getElementById('model-status').textContent='Web mode searches your typed question. Remove screenshots first.';return;}
@@ -588,9 +627,11 @@ window.addEventListener('message', event => {
   }
   if (event.data && event.data.ai) {
     const select = document.getElementById('provider-select');
+    const previousProvider=select.value;
     select.replaceChildren(...(event.data.ai.providers || []).map(p => new Option(p.short, p.setting)));
     select.value = event.data.ai.provider;
     document.body.dataset.provider = select.value;
+    if(previousProvider!==select.value){modelCatalog=[];drawModelPickers('');drawModelCapabilities();}
     if (typeof event.data.effort === 'string') effort = event.data.effort;
     drawEffort(select.value);
   }
@@ -598,7 +639,7 @@ window.addEventListener('message', event => {
     const select = document.getElementById('model-select');
     const data = event.data.models;
     if (data.error) {
-      modelCatalog = [];drawModelCapabilities();
+      modelCatalog = [];drawModelPickers('');drawModelCapabilities();
       select.replaceChildren(new Option('no models', ''));
       select.title = data.error;
       const status = document.getElementById('model-status');
@@ -607,12 +648,8 @@ window.addEventListener('message', event => {
       select.title = 'Model';
       const status = document.getElementById('model-status');
       if (status) status.textContent = '';
-      select.replaceChildren(...data.models.map(m => new Option(m.label, m.id)));
-      // A chosen model no longer switched on is shown as it is, not swapped.
-      if (data.model && !data.models.some(m => m.id === data.model)) { select.add(new Option(data.model + ' (off)', data.model)); }
-      // No model chosen runs the first one switched on, so that is what shows.
-      select.value = data.model || (data.models[0] ? data.models[0].id : '');
-      modelCatalog = data.models; drawModelCapabilities();
+      // The configured model selects its Vercel subprovider automatically; off models stay visible.
+      modelCatalog = data.models;drawModelPickers(data.model);drawModelCapabilities();
     }
   }
   if (event.data && event.data.chat) {

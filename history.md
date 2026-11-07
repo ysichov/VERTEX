@@ -1,3 +1,17 @@
+## 2026-11-07 — Commit reply diagnostics and output budget
+
+Investigate a Nemotron commit request that returned 284 completion tokens, all reported as reasoning, and no final text. Use a plain-text-only commit instruction for API models, retain schema instructions only for native CLI clients, and set a 4096-token API output budget. Read text content arrays. Log finish reason and safe response diagnostics, account usage on empty replies and distinguish reasoning-only, length-limited, refused and empty responses. Never display private reasoning as a commit message or automatically repeat a reasoning-only paid request. Version remains 0.9.69.
+
+## 0.9.69 — 2026-11-07
+
+VS Code 0.9.69 and Eclipse 0.9.69.20261107155926.
+
+In the VS Code chat, Vercel stays on a row above linked model-provider and model selectors. Groups use the existing model-ID prefix labels and include enabled models sorted by ascending input price, then output price, with unknown prices last; the configured model selects its group automatically. Remember model choices per group during the session, preserve off-model display and retain native-provider selector behavior. Version advanced on VS Code and Eclipse.
+
+## 2026-11-07 — Vercel model-provider grouping
+
+Add All models / By provider views using the canonical segment toggle. Vercel-only groups follow model-ID prefixes, fold independently and show visible model counts. Sort inside groups while preserving original row objects, checkbox choices and Hide unavailable behavior. Group fold state stays intact while switching layouts. Version stays 0.9.68.
+
 ## 2026-11-07 — Account for all model requests
 
 Enable Codex CLI JSONL accounting, retain raw turn counters, normalize cached tokens and avoid logging run totals twice. Capture native CLI JSON errors and fix a dormant undefined-variable path in Claude model-version probe logging.

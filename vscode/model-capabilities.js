@@ -52,4 +52,15 @@ function sortModels(models, key, down = false) {
     return order * (down ? -1 : 1);
   });
 }
-module.exports = { definitions, metadata, priceInfo, sortModels };
+function groupModels(models, key, down = false, hideUnavailable = true) {
+  const names={openai:"OpenAI",anthropic:"Anthropic",google:"Google",deepseek:"DeepSeek",mistral:"Mistral",nvidia:"NVIDIA",meta:"Meta",amazon:"Amazon",alibaba:"Alibaba",xai:"xAI",minimax:"MiniMax",moonshotai:"Moonshot AI",zai:"Z.AI",inclusionai:"InclusionAI"};
+  const groups=new Map();
+  for(const model of sortModels(models,key,down)){
+    if(hideUnavailable&&model.available===false)continue;
+    const prefix=String(model.id||"").includes("/")?String(model.id).split("/")[0]:"other";
+    if(!groups.has(prefix))groups.set(prefix,{id:prefix,label:Object.prototype.hasOwnProperty.call(names,prefix)?names[prefix]:(prefix==="other"?"Other":prefix),models:[]});
+    groups.get(prefix).models.push(model);
+  }
+  return [...groups.values()].sort((a,b)=>a.label.localeCompare(b.label));
+}
+module.exports = { definitions, metadata, priceInfo, sortModels, groupModels };

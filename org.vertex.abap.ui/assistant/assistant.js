@@ -355,10 +355,9 @@ async function probe(options) {
       ["-p", "--output-format", "json", "--tools", "", "--strict-mcp-config",
        "--no-session-persistence", "--model", id],
       { cwd: dir, env: env, input: "Reply with the word OK.", timeout: 60000 });
-    if (options.assistant === "claude" && options.onProviderResponse) {
-      let response = resultEvent;
-      if (!streaming) { try { response = JSON.parse(result.stdout); } catch (_) { /* No JSON result. */ } }
-      if (response) options.onProviderResponse({ provider: "claude", scope: "cli_run", response });
+    if (options.onProviderResponse) {
+      let response;try{response=JSON.parse(result.stdout);}catch(_){}
+      if(response)options.onProviderResponse({provider:options.assistant,scope:"cli_run",response});
     }
     if (result.timedOut) { throw new Error("Claude Code did not answer with " + id + " within a minute."); }
     let answer;
@@ -456,7 +455,7 @@ async function ask(options) {
         try { event = JSON.parse(line); } catch (_) { continue; }
         if (event.type === "result") { resultEvent = event; }
         if (event.type === "assistant" && event.message && options.onProviderResponse) {
-          options.onProviderResponse({ provider: "claude", scope: "model_response", response: event.message });
+          options.onProviderResponse({ provider: options.assistant, scope: "model_response", response: event.message });
         }
         if (event.type === "assistant" || event.type === "result") flushThinking();
         // Claude Code's own steps - Read, Edit, Bash and the rest - for the session log: the call, then its result.
@@ -536,15 +535,24 @@ async function ask(options) {
     if (claudeLike(options.assistant) && options.onProviderResponse) {
       let response = resultEvent;
       if (!streaming) { try { response = JSON.parse(result.stdout); } catch (_) { /* No JSON result. */ } }
-      if (response) options.onProviderResponse({ provider: "claude", scope: "cli_run", response });
+      if (response) options.onProviderResponse({ provider: options.assistant, scope: "cli_run", response });
+    }
+    if (options.assistant === "codex" && options.onProviderResponse) {
+      const parsed=codexUsage(result,options.model);
+      for(const response of parsed.responses)options.onProviderResponse({provider:"codex",scope:"model_response",response});
     }
     if (result.timedOut) {
       throw new Error(assistant.label + " did not answer within " + Math.round(timeout / 1000)
                       + " seconds and was stopped.");
     }
-    return claudeLike(options.assistant)
+    const answer=claudeLike(options.assistant)
       ? readClaude(streaming ? { ...result, stdout: resultEvent ? JSON.stringify(resultEvent) : "" } : result)
-      : readCodex(result, command.answerFile);
+      : readCodex(result, command.answerFile,options.model);
+    if(options.assistant==="codex"&&answer.usage&&options.onModelCall){
+      const responses=codexUsage(result,options.model).responses;
+      responses.forEach((response,index)=>{const raw=response.usage,cached=Number(raw.cached_input_tokens||0);options.onModelCall({model:response.model||answer.model,usage:{input_tokens:Math.max(0,Number(raw.input_tokens||0)-cached),output_tokens:Number(raw.output_tokens||0),cache_read_input_tokens:cached,cache_creation_input_tokens:0,generation_id:response.id},text:index===responses.length-1?answer.plan?.answer||"":""});});
+    }
+    return answer;
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -622,7 +630,7 @@ function codexCommand(options, dir) {
   fs.writeFileSync(schema, JSON.stringify(options.schema));
 
   const args = [
-    "exec", "--ignore-user-config", "--skip-git-repo-check", "--ephemeral",
+    "exec", "--json", "--ignore-user-config", "--skip-git-repo-check", "--ephemeral",
     "-s", "read-only", "-C", dir,
     "--output-schema", schema, "-o", answerFile,
     // No shell and nothing a plugin or an app would add.
@@ -727,11 +735,24 @@ function modelsUsed(usage) {
     .join(", ");
 }
 
-function readCodex(result, answerFile) {
-  const shown = /^model:\s*(\S+)/m.exec(result.stderr || "");
-  const model = shown ? shown[1] : "";
+function codexUsage(result,configuredModel) {
+  const shown=/^model:\s*(\S+)/m.exec(result.stderr||""),model=shown?shown[1]:configuredModel||"";
+  let thread="",turn=0,usage=null,error="";const responses=[];
+  for(const line of String(result.stdout||"").split(/\r?\n/)){
+    let event;try{event=JSON.parse(line);}catch(_){continue;}
+    if(event.type==="thread.started")thread=event.thread_id||"";
+    if(event.type==="turn.failed"||event.type==="error")error=event.error?.message||event.message||error;
+    if(event.type!=="turn.completed"||!event.usage)continue;
+    const raw=event.usage,cached=Number(raw.cached_input_tokens||0),current={input_tokens:Math.max(0,Number(raw.input_tokens||0)-cached),output_tokens:Number(raw.output_tokens||0),cache_read_input_tokens:cached,cache_creation_input_tokens:0};
+    if(!usage)usage={input_tokens:0,output_tokens:0,cache_read_input_tokens:0,cache_creation_input_tokens:0};for(const key of Object.keys(current))usage[key]+=current[key];
+    responses.push({id:thread?thread+":"+(++turn):undefined,model:event.model||model,usage:raw});
+  }
+  return {model,usage,responses,error};
+}
+function readCodex(result, answerFile, configuredModel) {
+  const parsed=codexUsage(result,configuredModel),model=parsed.model;
   if (result.code !== 0) {
-    throw named(new Error("Codex: " + codexError(result.stderr)), model);
+    throw named(new Error("Codex: " + (parsed.error||codexError(result.stderr))), model);
   }
   let text = "";
   try { text = fs.readFileSync(answerFile, "utf8"); } catch (e) { text = ""; }
@@ -739,7 +760,7 @@ function readCodex(result, answerFile) {
     throw named(new Error("Codex ended without an answer. " + tail(result.stderr)), model);
   }
   try {
-    return { plan: JSON.parse(text), model: model };
+    return { plan: JSON.parse(text), model: model, ...(parsed.usage?{usage:parsed.usage}:{}) };
   } catch (e) {
     throw named(new Error("Codex answered with something that is not a plan: "
                           + text.substring(0, 300)), model);

@@ -417,6 +417,7 @@ const INIT = ${init};
 const capabilityDefinitions = ${JSON.stringify(require("./model-capabilities").definitions)};
 const priceInfo = ${require("./model-capabilities").priceInfo.toString()};
 const sortModels = ${require("./model-capabilities").sortModels.toString()};
+const groupModels = ${require("./model-capabilities").groupModels.toString()};
 let use = INIT.use;
 let apiExpanded = use.endsWith("-api") && use !== "vercel-api";
 let scanning = false, scanningProvider = "";
@@ -424,7 +425,7 @@ const checkStatus = {}, checkErrors = {};
 // Per provider: on, and its rows once read (null while loading or when it could not be read).
 const state = {};
 INIT.providers.forEach(p => { state[p.id] = { label: p.label, on: p.on, rows: null, profiles: null,
-  source: null, hideUnavailable: true, expanded: p.id === INIT.use }; });
+  source: null, hideUnavailable: true, grouped: false, collapsedGroups: new Set(), expanded: p.id === INIT.use }; });
 const $ = id => document.getElementById(id);
 function say(text, kind) { $("said").textContent = text || ""; $("said").className = kind || "note"; }
 function el(tag, props) { return Object.assign(document.createElement(tag), props || {}); }
@@ -609,7 +610,15 @@ function fill(id) {
   const hide = el("input", { type: "checkbox", checked: !!s.hideUnavailable, title: "Hide unavailable models" });
   hide.addEventListener("change", () => { s.hideUnavailable = hide.checked; fill(id); });
   hideLabel.appendChild(hide); hideLabel.appendChild(document.createTextNode("Hide unavailable"));
-  toolbar.appendChild(hideLabel); body.appendChild(toolbar);
+  toolbar.appendChild(hideLabel);
+  if(id==="vercel-api"){
+    const modes=el("span",{className:"vertex-segment-toggle"});modes.setAttribute("role","group");modes.setAttribute("aria-label","Vercel model view");
+    [[false,"All models"],[true,"By provider"]].forEach(([grouped,label])=>{
+      const button=el("button",{type:"button",className:s.grouped===grouped?"active":"",textContent:label,title:grouped?"Group by model ID prefix: openai/, google/, anthropic/, etc.":"Show one sortable model list"});
+      button.setAttribute("aria-pressed",String(s.grouped===grouped));button.addEventListener("click",()=>{s.grouped=grouped;fill(id);});modes.appendChild(button);
+    });toolbar.appendChild(modes);
+  }
+  body.appendChild(toolbar);
   const table = el("table", { className: "models-table" });
   const hasMetadata = s.rows.some(row => row.capabilities || row.pricing || row.contextWindow);
   const columns = [{ key: "on", label: "On" }, { key: "label", label: "Model" }, { key: "id", label: "ID" }];
@@ -629,9 +638,17 @@ function fill(id) {
     th.appendChild(label);headerRow.appendChild(th);
   });
   head.appendChild(headerRow);table.appendChild(head);
-  const tbody = el("tbody");
-  sortModels(s.rows, s.sort?.key, s.sort?.down).forEach(r => {
-    if (s.hideUnavailable && r.available === false) return;
+  const groups=id==="vercel-api"&&s.grouped?groupModels(s.rows,s.sort?.key,s.sort?.down,s.hideUnavailable):[{id:"",models:sortModels(s.rows,s.sort?.key,s.sort?.down).filter(r=>!s.hideUnavailable||r.available!==false)}];
+  groups.forEach(group=>{
+  const tbody=el("tbody"),modelRows=[];let fold;
+  if(group.id){
+    const tr=el("tr"),th=el("th",{colSpan:columns.length,scope:"rowgroup"});
+    fold=el("button",{type:"button",className:"fold",title:"Expand or collapse "+group.label});
+    const paint=()=>{const collapsed=s.collapsedGroups.has(group.id);fold.textContent=collapsed?"▸":"▾";fold.setAttribute("aria-expanded",String(!collapsed));modelRows.forEach(row=>{row.hidden=collapsed;});};
+    fold.addEventListener("click",()=>{if(s.collapsedGroups.has(group.id))s.collapsedGroups.delete(group.id);else s.collapsedGroups.add(group.id);paint();});
+    paint();th.appendChild(fold);th.appendChild(document.createTextNode(" "+group.label+" ("+group.models.length+")"));tr.appendChild(th);tbody.appendChild(tr);
+  }
+  group.models.forEach(r => {
     const i = s.rows.indexOf(r);
     const tr = el("tr");
     const box = el("input", { type: "checkbox", checked: r.on, disabled: r.available === false, title: r.reason || "" });
@@ -673,9 +690,11 @@ function fill(id) {
       remove.addEventListener("click", () => { s.rows.splice(i, 1); fill(id); say("Removed - Save to keep it.", "note"); });
       act.appendChild(remove);
     }
-    tbody.appendChild(tr);
+    tr.hidden=!!group.id&&s.collapsedGroups.has(group.id);modelRows.push(tr);tbody.appendChild(tr);
   });
-  table.appendChild(tbody); const scroll = el("div", { className: "model-table-scroll" });scroll.appendChild(table);body.appendChild(scroll);
+  table.appendChild(tbody);
+  });
+  const scroll = el("div", { className: "model-table-scroll" });scroll.appendChild(table);body.appendChild(scroll);
   if (id === "claude") {
     const row = el("div", { className: "row" });
     const input = el("input", { placeholder: "claude-opus-5", spellcheck: false });
