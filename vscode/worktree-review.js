@@ -21,9 +21,11 @@ function open(vscode, copy, changes, onDone, options = {}) {
     parts: change.binary || change.status === "deleted" ? [] : review.hunks(change.before, change.after),
     after: change.after, abap: /\.abap$/i.test(change.file)
   })), { worktree: true });
+  const untrackLinks=require("./file-links").register(panel,()=>[...byId].map(([id,change])=>({id,path:change.path,relative:path.relative(copy.folder||copy.top,change.path)})));
   let finished = false, built = false;
   const offered = options.build && typeof options.build.command === "string" ? options.build.command.trim() : "";
   panel.webview.onDidReceiveMessage(async message => {
+    if(message?.action==="fileView"){const change=byId.get(message.file);await review.sendFileView(panel,message,change?{parts:change.binary?[]:review.hunks(change.before,change.after),before:change.before,after:change.after,binary:change.binary,abap:/\.abap$/i.test(change.file)}:null);return;}
     if (message && message.action === "build" && finished && offered && !built && typeof options.onBuild === "function") {
       built = true;
       await panel.webview.postMessage({ action: "buildStatus", message: "Building in your folder: " + offered + " - output in VERTEX Build." });
@@ -79,6 +81,7 @@ function open(vscode, copy, changes, onDone, options = {}) {
     return outcome;
   }
   panel.onDidDispose(async () => {
+    untrackLinks();
     if (finished) return;
     finished = true;
     const count = marked.approved.size + marked.declined.size;

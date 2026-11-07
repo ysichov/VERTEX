@@ -162,3 +162,8 @@ test("log Markdown renders formatting while keeping HTML and code inert", () => 
   assert.ok(all.some(item => !item.tagName && item.textContent === "<img src=x onerror=alert(1)>"));
   assert.equal(all.some(item => item.tagName === "SCRIPT" || item.tagName === "IMG"), false);
 });
+
+test('session header model list collects actual models without duplicate aggregate labels',()=>{
+ const rows=[{type:'user',message:{content:'Generate commit'}},{type:'vertex_provider_response',scope:'model_response',response:{id:'a',model:'inclusionai/ling-3.0-flash'}},{type:'assistant',message:{id:'b',model:'inclusionai/ling-3.0-flash',usage:{input_tokens:1}}},{type:'vertex_provider_response',scope:'request_error',response:{model:'nvidia/free'}}].map(r=>({timestamp:'2026-11-07T12:00:00Z',...r}));
+ const parsed=report.parseSession(rows.map(JSON.stringify).join('\n'),'vercel-api_20261107_120000.jsonl');assert.deepEqual(parsed.models,['inclusionai/ling-3.0-flash','nvidia/free']);
+});

@@ -625,6 +625,16 @@
           "type": "string",
           "default": "",
           "description": "Folder for the RFC trace files. Empty: vertex-rfc-trace in the system temporary folder."
+        },
+        "vertex.ai.contextMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "sap",
+            "folder"
+          ],
+          "default": "auto",
+          "description": "Context source for the VERTEX chat. SAP uses SAP editors and VERTEX analysis/debugger views; Folder uses local project files and Git reviews. Auto initially selects from the active editor; the panel offers SAP / Folder."
         }
       }
     },

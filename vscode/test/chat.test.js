@@ -497,3 +497,30 @@ test('Web mode bypasses local editor, worktree and SAP context',async t=>{
  const answer=await ask('ABAP benchmarks',{web:true,state:{git_review:{text:'PRIVATE_DIFF'},selected_fragment:{text:'PRIVATE_SOURCE'}}});
  assert.equal(answer.navigation,null);assert.equal(received.webSearch,true);assert.deepEqual(received.tools,[]);assert.equal(received.webQuery,'ABAP benchmarks');assert.doesNotMatch(received.prompt,/PRIVATE_DIFF|PRIVATE_SOURCE/);
 });
+
+test('commit header metadata reports actual model and cost separately for repeated generations',async t=>{
+ let attempt=0;t.mock.method(compatible,'ask',async options=>{const model=++attempt===1?'inclusionai/ling-3.0-flash':'nvidia/free',usage={input_tokens:attempt===1?40964:42055,output_tokens:attempt===1?461:177,cost_usd:attempt===1?0.00088929:0};options.onModelCall({model,usage,text:'Update commit dialog'});return {model,usage,plan:{answer:'Update commit dialog\n\nShow generation cost.'}};});
+ const ask=chat.create(fakeVscode({provider:'vercel-api',model:'configured-model'}),{schemas:[],instructions:''},{},{get:async()=>null});
+ const first=await ask.generateCommitMessage({text:'diff'},{}),second=await ask.generateCommitMessage({text:'diff'},{});
+ assert.equal(first.generation.model,'inclusionai/ling-3.0-flash');assert.equal(first.generation.cost_usd,0.00088929);assert.equal(first.generation.usage.output_tokens,461);assert.equal(second.generation.model,'nvidia/free');assert.equal(second.generation.cost_usd,0);assert.equal(second.generation.usage.input_tokens,42055);
+});
+test('failed commit generation retains reported charge metadata',async t=>{
+ t.mock.method(compatible,'ask',async options=>{options.onModelCall({model:'failed-model',usage:{input_tokens:10,output_tokens:3,cost_usd:0.001},text:'[empty]'});throw new Error('No final text');});
+ const ask=chat.create(fakeVscode({provider:'vercel-api',model:'configured'}),{schemas:[],instructions:''},{},{get:async()=>null});await assert.rejects(()=>ask.generateCommitMessage({text:'diff'},{}),error=>error.generation.model==='failed-model'&&error.generation.cost_usd===0.001);
+});
+
+test('natural-language Web request bypasses local and SAP context without a checkbox',async t=>{
+ t.mock.method(compatible,'models',async()=>[{id:'web',label:'Web',capabilities:{tools:true}}]);let received;
+ t.mock.method(compatible,'ask',async options=>{received=options;return {model:'web',plan:{answer:'Found'}};});
+ const ask=chat.create(fakeVscode({provider:'vercel-api',model:'web'}),{editorContext(){throw Error('No SAP context');},schemas:[]},{},{get:async()=>null});
+ await ask('Найди в интернете ABAP benchmarks',{state:{git_review:{text:'PRIVATE_DIFF'}}});assert.equal(received.webSearch,true);assert.doesNotMatch(received.prompt,/PRIVATE_DIFF/);
+});
+test('explicit SAP and Folder modes select context, and text-only models can read supplied source',async t=>{
+ t.mock.method(compatible,'models',async()=>[{id:'text',label:'Text',capabilities:{tools:false}}]);let received;
+ t.mock.method(compatible,'ask',async options=>{received=options;return {model:'text',plan:{answer:'Shown'}};});
+ const vscode=fakeVscode({provider:'vercel-api',model:'text'}),tools={schemas:[{name:'read_sap_object'},{name:'run_abap_transpiler'}],instructions:'SAP_RULES',editorContext:()=>({source:'REPORT VISIBLE_SAP_SOURCE.',object_name:'Z_REPORT',object_type:'PROG'})};
+ const sap=chat.create(vscode,tools,{},{get:async()=>null},()=>({analysis:{methods:['VISIBLE_METHOD']}}));
+ await sap('видишь Z_REPORT?',{contextMode:'sap',state:{git_review:{text:'PRIVATE_DIFF'}}});assert.match(received.prompt,/VISIBLE_SAP_SOURCE|VISIBLE_METHOD/);assert.doesNotMatch(received.prompt,/PRIVATE_DIFF/);assert.match(received.instructions,/supplied source, review and debugger context are available/);
+ const folder=chat.create(vscode,tools,{},{get:async()=>null},()=>{throw Error('No SAP debugger in Folder mode');});
+ await folder('список файлов',{contextMode:'folder',state:{vertex_view:{secret:'PRIVATE_SAP_VIEW'}}});assert.doesNotMatch(received.prompt,/PRIVATE_SAP_VIEW|VISIBLE_SAP_SOURCE/);assert.deepEqual(received.tools.map(x=>x.name),[]);
+});

@@ -27,7 +27,7 @@ const schemas = [
     { file_path: str("File path."), old_string: str("Exact existing text."), new_string: str("Replacement text."), replace_all: { type: "boolean" } }, ["file_path", "old_string", "new_string"]),
   schema("Write", "Create a UTF-8 file or replace a previously read file. Changes are reviewed by the user.",
     { file_path: str("File path."), content: str("Complete file contents.") }, ["file_path", "content"]),
-  schema("Bash", "Run a project command in the working folder (PowerShell on Windows, sh elsewhere). VERTEX requests approval unless shellWithoutAsking is enabled for a Git copy. Do not use this to edit files. Propose post-review builds in build_command instead.",
+  schema("Bash", "Run a project command in the working folder (Windows PowerShell 5.1 on Windows, sh elsewhere). The working folder is already cwd: use git log -1 --oneline directly. On Windows do not use &&, /c/... paths, or Unix commands; use one command per call. Glob excludes .git by design, so an empty .git glob does not mean there is no repository. VERTEX requests approval unless shellWithoutAsking is enabled for a Git copy. Do not use this to edit files. Propose post-review builds in build_command instead.",
     { command: str("Command to run."), description: str("Purpose of the command."), timeout: integer("Timeout in milliseconds, at most 120000.") }, ["command"])
 ];
 
@@ -178,12 +178,13 @@ function create(vscode, options) {
       active();
       const win = process.platform === "win32";
       return new Promise(resolveCommand => execFile(win ? "powershell.exe" : "/bin/sh",
-        win ? ["-NoProfile", "-NonInteractive", "-Command", args.command] : ["-lc", args.command],
+        win ? ["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding; $OutputEncoding = [Console]::OutputEncoding; " + args.command] : ["-lc", args.command],
         { cwd: root, windowsHide: true, timeout: Math.min(120000, Math.max(1000, Number(args.timeout) || 120000)),
           maxBuffer: 128 * 1024, signal: controller.signal },
         (error, stdout, stderr) => resolveCommand({ code: error ? error.code || -1 : 0,
           stdout: String(stdout).slice(-8000), stderr: String(stderr).slice(-4000),
-          ...(error ? { error: error.message.slice(0, 2000) } : {}) })));
+          ...(error ? { error: error.message.slice(0, 2000) } : {}),
+          ...(win && /InvalidEndOfLine/.test(String(stderr)) ? { hint: "Windows PowerShell 5.1 does not support && or ||. The project folder is already cwd; retry the single command directly, e.g. git log -1 --oneline. Git did not run. Do not substitute a changelog for Git output." } : {}) })));
     }
     throw new Error("Unknown local tool: " + name);
   }
@@ -212,4 +213,20 @@ function create(vscode, options) {
   };
 }
 
-module.exports = { schemas, create };
+
+// Report the extension host, which also executes VERTEX local tools (including remote VS Code hosts).
+function environment(cwd) {
+  const os = require("node:os");
+  const win = process.platform === "win32";
+  return "Execution environment (actual extension host):\n" + JSON.stringify({
+    platform: process.platform, os: os.type(), release: os.release(), architecture: process.arch,
+    localToolShell: win ? "Windows PowerShell 5.1 (powershell.exe), not Bash or PowerShell 7" : "/bin/sh (not necessarily Bash or the user's interactive shell)",
+    workingDirectory: cwd || null, cwdAlreadySelected: Boolean(cwd),
+    extensionNodeVersion: process.version,
+    dependencyStatus: "External git, node, python, Java and build tools are not verified. Check the required executable and version before relying on it. The extension's Node runtime does not imply node is on PATH.",
+    shellRules: win ? "Use native Windows paths and one command per call. No &&, || or /c/... paths. Invoke git directly from cwd." : "Use POSIX sh syntax and quote paths; do not assume Bash features.",
+    nativeProviderShell: "CLI providers may use their own shell; verify it before applying shell-specific syntax."
+  }) + "\n\n";
+}
+
+module.exports = { schemas, create, environment };

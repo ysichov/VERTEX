@@ -11,6 +11,8 @@ test("sidebar HTML contains an executable chat script", () => {
   const script = html.slice(html.indexOf('<script nonce="test-nonce">') + '<script nonce="test-nonce">'.length, html.indexOf("</script>"));
   assert.doesNotThrow(() => new vm.Script(script));
   assert.match(script, /requestSubmit\(\)/);
+  assert.doesNotMatch(html,/id="web-search"|id="web-search-option"/);
+  assert.match(html,/id="context-mode"/);
   assert.match(script, /action: 'ready'/);
   assert.match(html, /id="model-status" role="status"/);
   assert.match(html, /class="model-picker"><select id="model-select"[\s\S]*?id="model-details-button"[\s\S]*?>\$<\/button><\/span>/);
@@ -122,4 +124,14 @@ test('Vercel chat selects a model provider and filters models without losing cur
  nodes['provider-select'].value='claude-subscription';context.drawModelPickers('openai/a');assert.equal(nodes['subprovider-select'].hidden,true);assert.equal(nodes['model-select'].options.length,3);
  nodes['provider-select'].value='vercel-api';context.modelCatalog=[{id:'openai/high',label:'High',pricing:{input:'0.00001',output:'0.00002'}},{id:'openai/unknown',label:'Unknown'},{id:'openai/tie-high',label:'Tie high',pricing:{input:'0.000001',output:'0.000004'}},{id:'openai/free',label:'Free',pricing:{input:'0',output:'0'}},{id:'openai/tie-low',label:'Tie low',pricing:{input:'0.000001',output:'0.000002'}}];context.drawModelPickers('openai/high');assert.deepEqual(nodes['model-select'].options.map(o=>o.value),['openai/free','openai/tie-low','openai/tie-high','openai/high','openai/unknown']);assert.equal(nodes['model-select'].value,'openai/high');
  context.modelCatalog=[];context.drawModelPickers('');assert.equal(nodes['model-select'].disabled,true);assert.equal(nodes['subprovider-select'].disabled,true);
+});
+
+test("answer footer preserves actual Vercel cost precision, zero and missing costs", () => {
+ const {usageLine}=require('../sidebar');
+ const reply={model:'test/model',usage:{input_tokens:10,output_tokens:2,cost_usd:0.00088929}};
+ assert.match(usageLine(reply),/\$0\.00088929/);
+ reply.usage.cost_usd=0.000000000123456789;assert.match(usageLine(reply),/\$0\.000000000123456789/);
+ reply.usage.cost_usd=0;assert.match(usageLine(reply),/\$0(?: ·|$)/);
+ reply.usage.cost_missing=1;assert.match(usageLine(reply),/partial/);
+ delete reply.usage.cost_usd;assert.match(usageLine(reply),/cost not reported/);
 });

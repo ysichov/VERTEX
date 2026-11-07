@@ -78,7 +78,9 @@ function reviewQueue(vscode) {
   const open = () => {
     panel = vscode.window.createWebviewPanel("vertex.fileReview", "Review assistant changes",
       vscode.ViewColumn.Beside, { enableScripts: true });
+    const untrackLinks=require("./file-links").register(panel,()=>[...shownFiles].map(([id,f])=>({id,path:f.seen.file,relative:path.basename(f.seen.file)})));
     panel.webview.onDidReceiveMessage(async message => {
+      if(message?.action==="fileView"){const f=shownFiles.get(message.file);await review.sendFileView(panel,message,f?{parts:f.parts,after:f.seen.after,before:f.seen.before,abap:/\.abap$/i.test(f.seen.file)}:null);return;}
       if (!message) return;
       if (message.action === "ask" && shownFiles.has(message.file)) {
         const item = shownFiles.get(message.file);
@@ -101,6 +103,7 @@ function reviewQueue(vscode) {
       }
     });
     panel.onDidDispose(() => {
+      untrackLinks();
       panel = null;
       settle([...pending.keys()], item => deny("The user closed the review of " + item.seen.file + " without allowing it."));
     });

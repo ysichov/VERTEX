@@ -20,7 +20,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", draft: reviewAsk && reviewAsk.question || "" }) : undefined;
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
-  context.subscriptions.push(vscode.commands.registerCommand("vertex.generateCommitMessage", (snapshot,draft) => ask.generateCommitMessage(snapshot,draft)));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.generateCommitMessage", async (snapshot,draft) => {try{return await ask.generateCommitMessage(snapshot,draft);}catch(error){return {error:error.message,generation:error.generation};}}));
   // The working copy goes when VS Code closes.
   context.subscriptions.push({ dispose: () => { if (typeof ask.dispose === "function") return ask.dispose(); } });
   // A message to the assistant that VERTEX sends itself - the reasons from a review - asked as the user's would be.
@@ -62,7 +62,9 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         });
       };
       // The folder Claude works in, under the SAP system, so the panel does not read as SAP-only.
-      const showFolder = () => ready ? view.webview.postMessage({ folder: require("./chat").currentWorkingFolder(vscode) }) : undefined;
+      let fileLinksUpdated=0;
+      const updateFileLinks=async(force=false)=>{if(!ready||!force&&Date.now()-fileLinksUpdated<3000)return;fileLinksUpdated=Date.now();try{await view.webview.postMessage({localFiles:await require("./file-links").catalog(vscode)});}catch(_){};};
+      const showFolder = async () => {if(!ready)return;await view.webview.postMessage({folder:ask.state().contextFolder??require("./chat").currentWorkingFolder(vscode),contextMode:ask.state().contextMode});await updateFileLinks();};
       const messages = view.webview.onDidReceiveMessage(async message => {
         if (!message || typeof message !== "object") { return; }
         if (message.action === "ready") {
@@ -72,6 +74,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           await showReview();
           return;
         }
+        if(message.action==="setContextMode"){try{await view.webview.postMessage({ai:await ask.setContextMode(message.mode)});await showFolder();}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
         if (message.action === "clearReview") {
           reviewAsk = null;
           await showReview();
@@ -115,6 +118,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           await showReview();
           return;
         }
+        if(message.action==="openProjectFile"){try{await require("./file-links").open(vscode,message.reference);}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
         if (message.action === "openWebLink") {
           try { const url=new URL(String(message.url||""));if(["https:","http:"].includes(url.protocol)&&!url.username&&!url.password)await vscode.env.openExternal(vscode.Uri.parse(url.href)); }catch(_){}
           return;
@@ -141,7 +145,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "chat") {
           const requestId = ++nextRequest;
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
-          const asked = message.web ? null : reviewAsk;
+          const web=message.web===true||require("./web-intent").requested(message.text);
+          const asked = web ? null : reviewAsk;
           if (asked) { reviewAsk = null; await showReview(); }
           const images = (Array.isArray(message.images) ? message.images : []).filter(image => image
             && /^image\/(png|jpeg|gif|webp)$/.test(image.media_type) && typeof image.data === "string" && image.data);
@@ -153,13 +158,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           await view.webview.postMessage({ progress: { id: requestId, status: "VERTEX is working…" } });
           try {
             const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
-            const state = message.web ? {} : (await toolContext(scope)) || {};
+            const state = web ? {} : (await toolContext(scope)) || {};
             if (asked) {
               state.review_ask = { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) };
               delete state.review_source;
               delete state.selected_fragment;
             }
-            const reply = await ask(asked ? review.askRequest(message.text, asked) : shown, {model: message.model, state, web:message.web===true,
+            const reply = await ask(asked ? review.askRequest(message.text, asked) : shown, {model: message.model, state, web,contextMode:asked?.system==="local"?"folder":ask.state().contextMode,
               ...(images.length ? { images } : {}),
               onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, ...update } })).catch(() => {}); } });
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
@@ -169,6 +174,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             // The answer names a VERTEX function to run - a table's data, a
             // class's diff - and the panel has no view of its own for it, so
             // a Tools window opens on it, on the panel's system.
+            await updateFileLinks(true);
             if (reply.navigation) { await vscode.commands.executeCommand("vertex.tools", reply.navigation); }
           }
           catch (error) { await view.webview.postMessage({ progress: { id: requestId,
@@ -209,19 +215,23 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
 }
 
 /* One line under an answer: the model and what it cost in tokens. */
-// A CodeMie answer's cost, as Claude Code reckons it: cents to four places, more under a cent.
+// CodeMie's estimated cost keeps the precision of the reported number.
 function costText(cost) {
   if (typeof cost !== "number" || !isFinite(cost)) { return ""; }
-  return " · ≈ $" + (cost >= 0.01 ? cost.toFixed(4) : cost.toPrecision(2));
+  return " · ≈ $" + cost.toLocaleString("en-US", { maximumSignificantDigits: 21, useGrouping: false });
 }
 function usageLine(reply) {
   const usage = reply.usage;
+  const actual = usage && usage.cost_usd;
+  const cost = typeof actual === "number" && Number.isFinite(actual) && actual >= 0
+    ? " · $" + actual.toLocaleString("en-US", { maximumSignificantDigits: 21, useGrouping: false }) + (usage.cost_missing ? " (partial)" : "")
+    : costText(reply.cost) || " · cost not reported";
   if (reply.direct) { return "searched the system directly · no tokens"; }
-  if (!usage) { return reply.model ? reply.model + " · token usage not reported" + costText(reply.cost) : ""; }
+  if (!usage) { return reply.model ? reply.model + " · token usage not reported" + cost : ""; }
   const k = n => n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n || 0);
   const input = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
   return (reply.model ? reply.model + " · " : "") + k(input) + " in (" + k(usage.cache_read_input_tokens) + " from cache) · "
-    + k(usage.output_tokens) + " out" + costText(reply.cost);
+    + k(usage.output_tokens) + " out" + cost;
 }
 
 // The extension's own mark, inline: the view loads nothing from disk.
@@ -271,9 +281,6 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 @keyframes vertex-task-turn { to { transform: rotate(360deg); } }
 body.vscode-reduce-motion #messages .vertex.task.working::before { animation: none; }
 @media (prefers-reduced-motion: reduce) { #messages .vertex.task.working::before { animation: none; } }
-#web-search-option { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
-#web-search-option[hidden] { display:none; }
-#web-search-option input { width:auto; margin:0; }
 #vercel-row-break { display:none; }
 body[data-provider="vercel-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
 #subprovider-select[hidden] { display:none; }
@@ -330,26 +337,32 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 #new-conversation { margin-left: auto; }
 #tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 6px; font-size: 1.7em; font-weight: 600; }
 #tools img { width: 40px; height: 40px; }
+${require(require("path").join(__dirname,"code-review")).controlsCss}
 </style></head><body>
 <dialog id="model-details-dialog" aria-labelledby="model-details-title"><strong id="model-details-title">Model details</strong><div id="model-capabilities"></div><form method="dialog"><button class="secondary">Close</button></form></dialog>
-<div class="line"><span>SAP system</span>
+<div class="line"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
-<span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
+</span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Vercel model provider" title="Vercel model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><label id="web-search-option" hidden title="Search the public web through Vercel/Perplexity (billed by Vercel). Only your question and Web history are sent; SAP and local files are excluded."><input id="web-search" type="checkbox">🌐 Web</label><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Vercel model provider" title="Vercel model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
+let contextMode="sap";
+let projectFileAliases=new Set();
+document.querySelectorAll('[data-context]').forEach(button=>button.addEventListener('click',()=>api.postMessage({action:'setContextMode',mode:button.dataset.context})));
+const findFileReferences=${require(require("path").join(__dirname,"file-links")).references.toString()};
 // The effort levels of the chosen assistant; hidden for one that takes none (API providers, Copilot).
 const EFFORTS = { 'claude-subscription': ['low', 'medium', 'high', 'xhigh', 'max'], codemie: ['low', 'medium', 'high', 'xhigh', 'max'],
   'codex-subscription': ['minimal', 'low', 'medium', 'high'] };
 let effort = '';
 const capabilityDefinitions = ${JSON.stringify(require(require("path").join(__dirname, "model-capabilities")).definitions)};
 const priceInfo = ${require(require("path").join(__dirname, "model-capabilities")).priceInfo.toString()};
+const detailLines = ${require(require("path").join(__dirname,"model-capabilities")).detailLines.toString()};
 const sortModels = ${require(require("path").join(__dirname,"model-capabilities")).sortModels.toString()};
 const groupModels = ${require(require("path").join(__dirname,"model-capabilities")).groupModels.toString()};
 let modelCatalog = [];
@@ -384,8 +397,6 @@ function chooseVercelProvider(){
 }
 document.getElementById('subprovider-select').addEventListener('change',chooseVercelProvider);
 function drawModelCapabilities() {
-  const web=document.getElementById('web-search-option');web.hidden=document.getElementById('provider-select').value!=='vercel-api';
-  if(web.hidden)document.getElementById('web-search').checked=false;
   const target = document.getElementById('model-capabilities'); target.replaceChildren();
   const dialog = document.getElementById('model-details-dialog'); if (dialog.open) dialog.close();
   const model = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
@@ -395,16 +406,7 @@ function drawModelCapabilities() {
   if (button.hidden || !model) return;
   const line = text => { const row = document.createElement('p'); row.className = 'model-detail'; row.textContent = text; target.appendChild(row); };
   document.getElementById('model-details-title').textContent = model.label || model.id;
-  line(model.id);
-  if (model.toolSupportEvidence) line(model.toolSupportEvidence.reason + " Text-only mode; this observation expires after 24 hours.");
-  capabilityDefinitions.forEach(d => {
-    const value = model.capabilities?.[d.key];
-    line(d.icon + ' ' + d.label + ': ' + (value === true ? d.yes : value === false ? d.no || 'Not supported by the catalog declaration.' : 'Not reported by the catalog; not tested.'));
-  });
-  line('▤ Context: ' + (model.contextWindow ? model.contextWindow.toLocaleString() + ' tokens' : 'Not reported'));
-  const price = priceInfo(model);
-  if (price) { line(price.text); line(price.title); }
-  else line('Price: not reported by this provider.');
+  detailLines(model,capabilityDefinitions,priceInfo).forEach(line);
 }
 document.getElementById('model-details-button').addEventListener('click', () => document.getElementById('model-details-dialog').showModal());
 function drawEffort(provider) {
@@ -446,9 +448,7 @@ document.getElementById('chat').addEventListener('submit', event => {
   if(document.getElementById('model-select').disabled){document.getElementById('model-status').textContent='Wait for the model list to load.';return;}
   const selected = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
   if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
-  if(document.getElementById('web-search').checked && images.length){document.getElementById('model-status').textContent='Web mode searches your typed question. Remove screenshots first.';return;}
   api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value,
-    web: document.getElementById('web-search').checked,
     images: images.map(image => ({ media_type: image.media_type, data: image.data })) });
   field.value = '';
   images = []; drawImages();
@@ -518,6 +518,8 @@ document.addEventListener('keydown', event => {
 });
 const progressItems = new Map();
 window.addEventListener('message', event => {
+  const selectedContext=event.data.contextMode||event.data.ai?.contextMode;if(selectedContext){contextMode=selectedContext;document.querySelectorAll('[data-context]').forEach(button=>{const selected=button.dataset.context===contextMode;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));});document.getElementById('sap-context-controls').hidden=contextMode!=='sap';if(contextMode==='sap')document.getElementById('folder-line').hidden=true;}
+  if(event.data.localFiles){projectFileAliases=new Set(event.data.localFiles);document.querySelectorAll('.vertex').forEach(linkProjectFiles);}
   if (event.data && typeof event.data.send === 'string') {
     // VERTEX's own message - a review's reasons - goes as a question the user can read in the chat.
     document.getElementById('prompt').value = event.data.send; fitPrompt();
@@ -591,7 +593,7 @@ window.addEventListener('message', event => {
         body.classList.remove('streaming-answer'); body.replaceChildren();
         markdown('VERTEX:\\n' + (answer || 'No answer returned.'), body);
         if (status) status.remove();
-        links(item, update.choices || []);
+        links(item, update.choices || []);linkProjectFiles(item);
         runLinks(item, update.runs || []);
         const copy = document.createElement('button');
         copy.className = 'secondary copy-answer'; copy.textContent = 'Copy'; copy.title = 'Copy this answer to the clipboard';
@@ -608,7 +610,7 @@ window.addEventListener('message', event => {
   }
   if (event.data && typeof event.data.folder === 'string') {
     const folder = event.data.folder, name = document.getElementById('folder-name');
-    document.getElementById('folder-line').hidden = !folder;
+    document.getElementById('folder-line').hidden = !folder||contextMode==='sap';
     name.textContent = folder.split(/[\\\\/]/).filter(Boolean).pop() || folder;
     name.title = folder;
   }
@@ -658,7 +660,7 @@ window.addEventListener('message', event => {
     item.className = mine ? 'you' : 'vertex';
     if (mine) { item.textContent = event.data.chat; } else { markdown(event.data.chat, item); }
     // Each found object is a link: a click opens it, as a single match is opened.
-    if (!mine) { links(item, event.data.choices || []); }
+    if (!mine) { links(item, event.data.choices || []);linkProjectFiles(item); }
     let copy = null;
     if (!mine) {
       copy = document.createElement('button');
@@ -696,6 +698,11 @@ function links(item, choices) {
     link.addEventListener('click', event => { event.preventDefault(); api.postMessage({ action: 'openObject', object_type: object.object_type, object_name: object.object_name }); });
     name.replaceWith(link);
   });
+}
+function linkProjectFiles(item){
+ if(!projectFileAliases.size)return;
+ const nodes=[];const walk=node=>{if(node.nodeType===3){nodes.push(node);return;}if(node.nodeType!==1||['A','PRE','SCRIPT','STYLE'].includes(node.tagName))return;[...node.childNodes].forEach(walk);};walk(item);
+ for(const text of nodes){const matches=findFileReferences(text.textContent,projectFileAliases);if(!matches.length)continue;const fragment=document.createDocumentFragment();let cursor=0;for(const match of matches){fragment.appendChild(document.createTextNode(text.textContent.slice(cursor,match.start)));const link=document.createElement('a');link.className='link';link.href='#';link.textContent=text.textContent.slice(match.start,match.end);link.title='Show review or open '+match.reference;link.addEventListener('click',event=>{event.preventDefault();api.postMessage({action:'openProjectFile',reference:match.reference});});fragment.appendChild(link);cursor=match.end;}fragment.appendChild(document.createTextNode(text.textContent.slice(cursor)));text.replaceWith(fragment);}
 }
 // A citation whose id begins exactly one known session opens it at the cited step.
 function runLinks(item, runs) {

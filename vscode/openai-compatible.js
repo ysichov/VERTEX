@@ -157,7 +157,7 @@ async function ask(options) {
     description: "Submit the final VERTEX answer and navigation plan.", parameters: options.schema } }]);
   const content = options.images?.length ? [{ type: "text", text: options.prompt },
     ...options.images.map(image => ({ type: "image_url", image_url: { url: "data:" + image.media_type + ";base64," + image.data } }))] : options.prompt;
-  const textOnly = "Tools are unavailable for this request. Reply directly as plain text from supplied context, not through submit_vertex_answer or JSON. Do not claim to read files, search, run commands, modify objects or perform live actions. If the request needs unavailable tools, explain that limitation and ask the user to choose a tool-capable model.";
+  const textOnly = "Tools are unavailable for this request. Reply directly as plain text from supplied context, not through submit_vertex_answer or JSON. Do not claim to read files, search, run commands, modify objects or perform live actions. The supplied source, review and debugger context are available for reading and analysis. Do not say that this supplied context is unavailable. Mention tool limitations only when the actual requested action needs unavailable tools.";
   const messages = [{ role: "system", content: options.instructions + (!tools.length ? "\n" + textOnly : "") }, { role: "user", content }];
   const imageBytes = (options.images || []).reduce((sum, image) => sum + Buffer.byteLength(image.data || "", "utf8") + 256, 0);
   let usage = null;
@@ -212,6 +212,9 @@ async function ask(options) {
       if (roundUsage.cost_usd !== null) {
         if (!usage) usage = {};
         usage.cost_usd = (usage.cost_usd || 0) + roundUsage.cost_usd;
+      } else {
+        if (!usage) usage = {};
+        usage.cost_missing = (usage.cost_missing || 0) + 1;
       }
     }
     const message = response.choices && response.choices[0] && response.choices[0].message;
@@ -235,8 +238,15 @@ async function ask(options) {
       return { plan, model: options.model, usage };
     }
     if (!calls.length) {
-      const answer = typeof message.content === "string" ? message.content.trim() : Array.isArray(message.content)
+      let answer = typeof message.content === "string" ? message.content.trim() : Array.isArray(message.content)
         ? message.content.filter(part=>part && ["text","output_text"].includes(part.type)&&typeof part.text==="string").map(part=>part.text).join("\n").trim() : "";
+      if(answer&&options.schema){
+        try{const object=JSON.parse(answer.replace(/^```(?:json)?\s*|\s*```$/g,""));if(object&&typeof object.answer==="string"&&Object.keys(object).every(key=>["answer","navigation","build_command"].includes(key)))answer=object.answer.trim();}catch(_){}
+      }
+      if (answer && options.schema && /^\{\s*\}$/.test(answer)) {
+        options.onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"[The model returned an empty JSON object without an answer.]"});
+        const error=new Error(PROVIDERS[id].label+" returned an empty JSON object without an answer. The supplied context was sent; try another model or generate again.");error.model_step=round+1;error.operation="Read model response";throw error;
+      }
       if (answer) {
         if (options.onModelCall) options.onModelCall({ model: response.model || options.model, usage: roundUsage, text: answer });
         return { plan: { answer, navigation: null }, model: options.model, usage };

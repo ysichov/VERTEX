@@ -11,17 +11,28 @@ test('Vercel grouped view folds groups and preserves selection through layout ch
   set id(value){this._id=value;ids.set(value,this);}get id(){return this._id;}
   set innerHTML(value){this.children=[];}replaceChildren(...items){this.children=items;}appendChild(item){this.children.push(item);return item;}
   setAttribute(name,value){this[name]=value;}addEventListener(name,fn){this.events[name]=fn;}
-  querySelectorAll(){return [];}
+  querySelectorAll(){return [];}showModal(){this.open=true;}close(){this.open=false;}
  }
  const vnode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(key,fallback)=>key==='provider'?'vercel-api':fallback})},window:{createWebviewPanel:()=>panel={webview:{onDidReceiveMessage(){},postMessage(){}},onDidDispose(){}}}};
  require('../model-config').open(vnode,async()=>[],()=>'',()=>{},{});
- for(const id of ['tree','save','stop-detection','choose-log-folder','log-settings','said','error-dialog','error-text','error-copy-status','copy-dialog-error','close-error']){const node=new Element();node.id=id;}
+ for(const id of ['tree','save','stop-detection','choose-log-folder','log-settings','said','error-dialog','error-text','error-copy-status','copy-dialog-error','close-error','close-model-info','model-info-dialog','model-info-title','model-info-id','model-info-text']){const node=new Element();node.id=id;}
  const script=panel.webview.html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1];vm.runInNewContext(script,{document:{getElementById:id=>ids.get(id),createElement:tag=>new Element(tag),createTextNode:text=>({textContent:text})},window:{addEventListener:(name,fn)=>receive=fn},acquireVsCodeApi:()=>({postMessage(){}})});
- const rows=[{id:'openai/a',label:'A',on:true},{id:'google/b',label:'B',on:false}];receive({data:{provider:'vercel-api',rows}});
- const walk=node=>[node,...(node.children||[]).flatMap(walk)];const body=()=>ids.get('body-vercel-api');let nodes=walk(body());nodes.find(n=>n.textContent==='By provider').events.click();
+ const rows=[{id:'openai/a',label:'A',on:true,description:'Specialized model description from API',contextWindow:200,pricing:{input:'0.2'}},{id:'google/b',label:'B',on:false,contextWindow:300,pricing:{input:'0.3'}},{id:'openai/c',label:'C',on:true,contextWindow:100,pricing:{input:'0.1'}},{id:'google/d',label:'D',on:true,contextWindow:50,pricing:{input:'0.1'}}];receive({data:{provider:'vercel-api',rows}});
+ assert.match(panel.webview.html,/position: sticky; top: 0/);
+ const walk=node=>[node,...(node.children||[]).flatMap(walk)];const body=()=>ids.get('body-vercel-api');let nodes=walk(body());nodes.find(n=>n.className==='model-info').events.click();assert.ok(ids.get('model-info-text').children.some(n=>n.textContent==='Specialized model description from API'));assert.ok(ids.get('model-info-text').children.some(n=>n.textContent.startsWith('Source: Vercel')));assert.equal(ids.get('model-info-dialog').open,true);nodes.find(n=>n.textContent==='By provider').events.click();
  nodes=walk(body());const table=nodes.find(n=>n.tag==='table'),bodies=table.children.filter(n=>n.tag==='tbody');assert.equal(bodies.length,2);assert.ok(nodes.some(n=>n.className==='vertex-segment-toggle'));
  const google=bodies[0],fold=google.children[0].children[0].children[0];fold.events.click();assert.equal(google.children[1].hidden,true);assert.equal(fold['aria-expanded'],'false');
  const box=google.children[1].children[0].children[0];box.checked=true;box.events.change();assert.equal(rows[1].on,true);
  walk(body()).find(n=>n.textContent==='All models').events.click();assert.equal(walk(body()).find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody').length,1);
  walk(body()).find(n=>n.textContent==='By provider').events.click();const again=walk(body()).find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody')[0];assert.equal(again.children[1].hidden,true);assert.equal(again.children[1].children[0].children[0].checked,true);
+ const grouped=()=>walk(body()).find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody');
+ const picker=tbody=>walk(tbody.children[0]).find(n=>n.tag==='select');
+ const order=tbody=>tbody.children.slice(1).map(row=>row.children[2].textContent);
+ const nameCell=grouped()[1].children[1].children[1];assert.equal(nameCell.children[0].className,'model-info');
+ ids.get('models-scroll-vercel-api').scrollTop=237;
+ let select=picker(grouped()[1]);select.value='inputPrice';select.events.change();assert.deepEqual(order(grouped()[1]),['openai/c','openai/a']);assert.deepEqual(order(grouped()[0]),['google/b','google/d']);assert.equal(ids.get('models-scroll-vercel-api').scrollTop,237);
+ select=picker(grouped()[0]);select.value='contextWindow';select.events.change();assert.deepEqual(order(grouped()[0]),['google/d','google/b']);assert.deepEqual(order(grouped()[1]),['openai/c','openai/a']);
+ const direction=walk(grouped()[1].children[0]).find(n=>n['aria-label']==='Reverse sorting in OpenAI');direction.events.click();assert.deepEqual(order(grouped()[1]),['openai/a','openai/c']);assert.deepEqual(order(grouped()[0]),['google/d','google/b']);
+ walk(body()).find(n=>n.textContent==='All models').events.click();walk(body()).find(n=>n.textContent==='By provider').events.click();assert.deepEqual(order(grouped()[1]),['openai/a','openai/c']);
+
 });

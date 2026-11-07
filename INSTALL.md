@@ -7,6 +7,16 @@ The VS Code half needs none of this: it installs from the
 [Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap) and
 touches nothing but its own folder.
 
+## VS Code prerequisites
+
+### Git and external tools (VS Code)
+
+Install Git and make the `git` executable available on the VS Code extension host's `PATH` for Git History, diffs, commits and isolated local Git history/working copies. Isolated storage is still real Git: a folder without `.git` does not remove this dependency. GitHub access, a remote repository and publishing are not required for local Git operations.
+
+Check `git --version` in the environment where VERTEX runs, then fully restart VS Code after installing Git or changing `PATH`. On Windows, make Git available from other programs; on macOS/Linux, install Git through the system tools or package manager. With Remote SSH, WSL or a container, Git must be installed on that extension host, not only on the desktop computer.
+
+Ordinary API chat needs the configured provider credentials and network access; it does not require Git, SAP, Python or a separate Node.js installation. Claude Code, Codex and CodeMie modes require their installed client and authentication. Project builds/tests require that project's own toolchain. VERTEX local commands use Windows PowerShell 5.1 on Windows and `/bin/sh` elsewhere; commands and paths must match that host. The bundled Node runtime does not mean an external `node` command is installed.
+
 ## Install into a separate Eclipse first
 
 Not a preference. A p2 install does not add files to a running installation — it **recomputes the

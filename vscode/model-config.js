@@ -391,7 +391,10 @@ body.vscode-dark .phead.codemie, body.vscode-light .phead.codemie { color: #fff;
 table { border-collapse: collapse; margin: 6px 0; min-width: 420px; }
 th, td { border-bottom: 1px solid var(--vscode-panel-border); padding: 4px 8px; text-align: left; }
 th { background: var(--vscode-keybindingTable-headerBackground, transparent); }
-.model-table-scroll { overflow-x: auto; }
+.model-table-scroll { max-height: 65vh; overflow: auto; }
+.models-table thead th { position: sticky; top: 0; z-index: 2; background: var(--vscode-keybindingTable-headerBackground, var(--vscode-editor-background)); }
+.group-sort-controls { display:inline-flex; align-items:center; gap:4px; margin-left:14px; font-weight:normal; }
+.group-sort-controls select { padding:1px 6px; }
 .model-sort { cursor: pointer; white-space: nowrap; }
 .model-sort:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .models-table td.numeric { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -399,15 +402,17 @@ th { background: var(--vscode-keybindingTable-headerBackground, transparent); }
 td.id { font-family: var(--vscode-editor-font-family); }
 .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
 .note { color: var(--vscode-descriptionForeground); }
+#model-info-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .error { color: var(--vscode-errorForeground); white-space: pre-wrap; }
 a.error-link, #error-dialog a { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: underline; }
-#error-dialog { color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-panel-border); padding: 14px 18px; width: min(760px,80vw); max-height: 80vh; overflow: auto; }
-#error-dialog::backdrop { background: var(--vscode-widget-shadow,transparent); }
+#error-dialog, #model-info-dialog { color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-panel-border); padding: 14px 18px; width: min(760px,80vw); max-height: 80vh; overflow: auto; }
+#error-dialog::backdrop, #model-info-dialog::backdrop { background: var(--vscode-widget-shadow,transparent); }
 #error-text { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; margin: 12px 0; }
 .capability { display: inline-block; margin-left: 5px; font-weight: normal; }
 .capability.missing { opacity: .45; }
 .ok { color: var(--vscode-testing-iconPassed, var(--vscode-foreground)); }
 </style><style>${controls}</style></head><body>
+<dialog id="model-info-dialog" aria-labelledby="model-info-title"><strong id="model-info-title">Model information</strong><div id="model-info-text"></div><p><button type="button" id="close-model-info">Close</button></p></dialog>
 <dialog id="error-dialog" aria-labelledby="error-title"><strong id="error-title">Model check error</strong><div id="error-text"></div><div class="row"><button id="copy-dialog-error" type="button">Copy error</button><button id="close-error" type="button">Close</button><span id="error-copy-status" role="status"></span></div></dialog>
 <div id="tree"></div>
 <div class="row"><button class="primary" id="save">Save</button><button id="stop-detection" type="button" hidden>Stop</button><button id="choose-log-folder" type="button">Choose log folder...</button><button id="log-settings" type="button" title="Open logging settings" aria-label="Open logging settings">⚙</button><span id="said"></span></div>
@@ -418,6 +423,7 @@ const capabilityDefinitions = ${JSON.stringify(require("./model-capabilities").d
 const priceInfo = ${require("./model-capabilities").priceInfo.toString()};
 const sortModels = ${require("./model-capabilities").sortModels.toString()};
 const groupModels = ${require("./model-capabilities").groupModels.toString()};
+const detailLines = ${require("./model-capabilities").detailLines.toString()};
 let use = INIT.use;
 let apiExpanded = use.endsWith("-api") && use !== "vercel-api";
 let scanning = false, scanningProvider = "";
@@ -425,7 +431,7 @@ const checkStatus = {}, checkErrors = {};
 // Per provider: on, and its rows once read (null while loading or when it could not be read).
 const state = {};
 INIT.providers.forEach(p => { state[p.id] = { label: p.label, on: p.on, rows: null, profiles: null,
-  source: null, hideUnavailable: true, grouped: false, collapsedGroups: new Set(), expanded: p.id === INIT.use }; });
+  source: null, hideUnavailable: true, grouped: false, collapsedGroups: new Set(), groupSorts: new Map(), expanded: p.id === INIT.use }; });
 const $ = id => document.getElementById(id);
 function say(text, kind) { $("said").textContent = text || ""; $("said").className = kind || "note"; }
 function el(tag, props) { return Object.assign(document.createElement(tag), props || {}); }
@@ -452,6 +458,8 @@ function showError(text) {
 }
 $("copy-dialog-error").addEventListener("click", () => api.postMessage({ action: "copy-error", text: shownError }));
 $("close-error").addEventListener("click", () => $("error-dialog").close());
+$("close-model-info").addEventListener("click",()=>$("model-info-dialog").close());
+function showModelInfo(model){$("model-info-title").textContent=model.label||model.id;const text=$("model-info-text");text.replaceChildren();detailLines(model,capabilityDefinitions,priceInfo).forEach(value=>text.appendChild(el("p",{textContent:value})));$("model-info-dialog").showModal();}
 function build() {
   const tree = $("tree"); tree.innerHTML = "";
   let apiBody;
@@ -515,7 +523,7 @@ function build() {
   });
 }
 function fill(id) {
-  const s = state[id], body = $("body-" + id); body.innerHTML = "";
+  const s = state[id], body = $("body-" + id), oldScroll=$("models-scroll-"+id), scrollTop=oldScroll?.scrollTop||0, scrollLeft=oldScroll?.scrollLeft||0; body.innerHTML = "";
   if (s.source && (s.source.extension || s.source.cli)) {
     const source = s.source;
     const both = source.extension && source.cli;
@@ -633,20 +641,25 @@ function fill(id) {
     const th = el("th"); th.setAttribute("aria-sort", selected ? s.sort.down ? "descending" : "ascending" : "none");
     const label = el("span", { className: "model-sort", tabIndex: 0, textContent: column.label + (selected ? s.sort.down ? " ▼" : " ▲" : ""), title: (column.title || column.label) + " — click to sort; click again to reverse" });
     label.setAttribute("role", "button"); label.setAttribute("aria-label", label.title);
-    const sort = () => { s.sort = { key: column.key, down: selected ? !s.sort.down : false }; fill(id); };
+    const sort = () => { s.sort = { key: column.key, down: selected ? !s.sort.down : false };s.groupSorts.clear();fill(id); };
     label.addEventListener("click", sort); label.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); sort(); } });
     th.appendChild(label);headerRow.appendChild(th);
   });
   head.appendChild(headerRow);table.appendChild(head);
   const groups=id==="vercel-api"&&s.grouped?groupModels(s.rows,s.sort?.key,s.sort?.down,s.hideUnavailable):[{id:"",models:sortModels(s.rows,s.sort?.key,s.sort?.down).filter(r=>!s.hideUnavailable||r.available!==false)}];
   groups.forEach(group=>{
+  const ownSort=s.groupSorts.get(group.id);if(ownSort)group.models=sortModels(group.models,ownSort.key,ownSort.down);
   const tbody=el("tbody"),modelRows=[];let fold;
   if(group.id){
     const tr=el("tr"),th=el("th",{colSpan:columns.length,scope:"rowgroup"});
     fold=el("button",{type:"button",className:"fold",title:"Expand or collapse "+group.label});
     const paint=()=>{const collapsed=s.collapsedGroups.has(group.id);fold.textContent=collapsed?"▸":"▾";fold.setAttribute("aria-expanded",String(!collapsed));modelRows.forEach(row=>{row.hidden=collapsed;});};
     fold.addEventListener("click",()=>{if(s.collapsedGroups.has(group.id))s.collapsedGroups.delete(group.id);else s.collapsedGroups.add(group.id);paint();});
-    paint();th.appendChild(fold);th.appendChild(document.createTextNode(" "+group.label+" ("+group.models.length+")"));tr.appendChild(th);tbody.appendChild(tr);
+    paint();th.appendChild(fold);th.appendChild(document.createTextNode(" "+group.label+" ("+group.models.length+")"));const controls=el("span",{className:"group-sort-controls"});controls.appendChild(document.createTextNode(" Sort "));
+    const picker=el("select",{title:"Sort only "+group.label+"; Global order follows the table header"});picker.setAttribute("aria-label","Sort models in "+group.label);
+    picker.appendChild(el("option",{value:"",textContent:"Global order"}));columns.forEach(column=>picker.appendChild(el("option",{value:column.key,textContent:column.title||column.label})));picker.value=ownSort?.key||"";
+    picker.addEventListener("change",()=>{if(picker.value)s.groupSorts.set(group.id,{key:picker.value,down:ownSort?.down||false});else s.groupSorts.delete(group.id);fill(id);});controls.appendChild(picker);
+    const direction=el("button",{type:"button",textContent:(ownSort?ownSort.down:s.sort?.down)?"↓":"↑",disabled:!ownSort,title:"Reverse sorting in "+group.label});direction.setAttribute("aria-label","Reverse sorting in "+group.label);direction.addEventListener("click",()=>{if(ownSort){s.groupSorts.set(group.id,{...ownSort,down:!ownSort.down});fill(id);}});controls.appendChild(direction);th.appendChild(controls);tr.appendChild(th);tbody.appendChild(tr);
   }
   group.models.forEach(r => {
     const i = s.rows.indexOf(r);
@@ -654,7 +667,9 @@ function fill(id) {
     const box = el("input", { type: "checkbox", checked: r.on, disabled: r.available === false, title: r.reason || "" });
     box.addEventListener("change", () => { r.on = box.checked; updateBulk(); say(""); });
     tr.appendChild(el("td")).appendChild(box);
-    tr.appendChild(el("td", { textContent: r.label }));
+    const nameCell=tr.appendChild(el("td"));
+    if(id==="vercel-api"){const info=el("button",{type:"button",textContent:"ⓘ",title:"Model description from Vercel API",className:"model-info"});info.setAttribute("aria-label","Model information: "+(r.label||r.id));info.addEventListener("click",()=>showModelInfo(r));nameCell.appendChild(info);nameCell.appendChild(document.createTextNode(" "));}
+    nameCell.appendChild(document.createTextNode(r.label||r.id));
     tr.appendChild(el("td", { className: "id", textContent: r.id === "" ? "(default)" : r.id }));
     const price = priceInfo(r);
     if (hasMetadata) {
@@ -694,7 +709,7 @@ function fill(id) {
   });
   table.appendChild(tbody);
   });
-  const scroll = el("div", { className: "model-table-scroll" });scroll.appendChild(table);body.appendChild(scroll);
+  const scroll = el("div", { id:"models-scroll-"+id,className: "model-table-scroll" });scroll.appendChild(table);body.appendChild(scroll);scroll.scrollTop=scrollTop;scroll.scrollLeft=scrollLeft;
   if (id === "claude") {
     const row = el("div", { className: "row" });
     const input = el("input", { placeholder: "claude-opus-5", spellcheck: false });

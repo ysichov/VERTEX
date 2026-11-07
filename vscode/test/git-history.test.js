@@ -73,12 +73,12 @@ test('working diff includes staged, unstaged, deleted and untracked files within
 });
 
 
-test('Git review context marks truncation and includes deleted and binary files',()=>{
+test('Git review context marks truncation, includes deleted text and excludes binaries',()=>{
  const snapshot=history.reviewSnapshot([
   {file:'removed.js',status:'D',before:'removed content',after:''},
   {file:'image.png',status:'M',binary:true,before:'',after:''}
  ],'Commit abc','folder');
- assert.match(snapshot.text,/removed content/);assert.match(snapshot.text,/Binary file/);
+ assert.match(snapshot.text,/removed content/);assert.doesNotMatch(snapshot.text,/image.png|Binary file/);assert.equal(snapshot.file_count,1);
  const limited=history.reviewSnapshot([{file:'big.js',status:'M',before:'x',after:'y'.repeat(500)}],'Changes','folder',200);
  assert.equal(limited.truncated,true);assert.ok(limited.text.length<=200);assert.match(limited.text,/truncated/);
 });
@@ -108,4 +108,17 @@ test('history loads ten latest details and retrieves older commits only for a pe
  const older=await history.readCommits(folder,{from:'2025-01-01',to:'2025-01-02'});assert.equal(older.length,2);assert.deepEqual(older.map(c=>c.number),[2,1]);assert.equal(older[1].subject,'Commit 1');
  const filtered=await history.readCommits(folder,{author:'Other'});assert.equal(filtered.length,1);assert.equal(filtered[0].number,12);assert.equal(filtered[0].author,'Other');assert.deepEqual(filtered.authors,['Other','Test']);
  const combined=await history.readCommits(folder,{author:'Other',from:'2025-01-01',to:'2025-01-02'});assert.equal(combined.length,0);
+});
+
+test('uncommitted refresh updates the same panel and clears obsolete review context',async t=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');
+ const folder=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-refresh-'));let close,receive,html,panels=0;
+ t.after(()=>{close?.();fs.rmSync(folder,{recursive:true,force:true});});
+ const git=(...args)=>execFileSync('git',args,{cwd:folder,windowsHide:true});
+ git('init');git('config','user.name','Test');git('config','user.email','test@example.test');
+ fs.writeFileSync(path.join(folder,'a.txt'),'base');git('add','.');git('commit','-m','base');fs.writeFileSync(path.join(folder,'a.txt'),'first');
+ const vscode={ViewColumn:{Active:1},window:{createWebviewPanel(){panels++;return {webview:{set html(v){html=v;},onDidReceiveMessage(fn){receive=fn;},postMessage(){}},onDidDispose(fn){close=fn;},onDidChangeViewState(){}};}}};
+ await history.openCommit(vscode,folder,{working:true});assert.match(html,/id="review-refresh"/);assert.match(html,/first/);
+ fs.writeFileSync(path.join(folder,'a.txt'),'second');await receive({action:'refresh'});assert.match(html,/second/);assert.equal(panels,1);
+ git('checkout','--','a.txt');await receive({action:'refresh'});assert.match(html,/0 files/);assert.doesNotMatch(html,/id="commit-open"/);assert.match(html,/id="review-refresh"/);
 });

@@ -94,7 +94,7 @@
   <h1>Session Logs</h1>
   <button id="folder">Choose Folder…</button>
   <button id="settings">Log Settings</button>
-  <button id="refresh">Refresh</button>
+  <button id="refresh" title="Refresh session logs" aria-label="Refresh session logs">↻</button>
   <button id="clear-conversations" disabled>Clear selected conversations</button>
 </header>
 <div id="status" class="muted">Loading…</div>
@@ -185,7 +185,7 @@ function markdown(text, target) {
     return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + (s % 60) + "s";
   }
   function costText(u) {
-    return u.cost == null ? "-" : "$" + Number(u.cost).toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:8}) + (u.costMissing ? " (partial)" : "");
+    return u.cost == null ? "-" : "$" + Number(u.cost).toLocaleString("en-US", {maximumSignificantDigits:21, useGrouping:false}) + (u.costMissing ? " (partial)" : "");
   }
   function usageText(u) {
     return "in " + n(u.input) + " · out " + n(u.output) + " · cache read " + n(u.cacheRead) + " · cache write " + n(u.cacheWrite) + (u.cost != null ? " - cost " + costText(u) : u.costMissing ? " - cost unavailable" : "");
@@ -443,6 +443,8 @@ function markdown(text, target) {
       heading.appendChild(excerpt);
       var meta = el("div", "session-meta");
       meta.appendChild(el("span", "provider", s.provider));
+      var models=s.models||[...new Set(s.prompts.map(function(p){return p.model;}).filter(Boolean))];
+      if(models.length){var modelNames=el("span","session-models",models.slice(0,3).join(", ")+(models.length>3?" +"+(models.length-3)+" models":""));modelNames.title=models.join(", ");meta.appendChild(modelNames);}
       meta.appendChild(el("span", "", time(s.start)));
       meta.appendChild(el("span", "", span(s.start, s.end)));
       meta.appendChild(el("span", "", s.prompts.length + " prompts"));

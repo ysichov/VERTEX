@@ -44,7 +44,7 @@ function parseSession(text, file) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
   const provider = name.replace(/_\d{8}_\d{6}(?:_[0-9a-f]+)?$/, "");
-  const session = { id: name, provider, start: null, end: null, usage: emptyUsage(), prompts: [] };
+  const session = { id: name, provider, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
   const seen = new Set();
   const toolCalls = new Map();
   let current;
@@ -56,6 +56,9 @@ function parseSession(text, file) {
     if (Number.isFinite(time)) {
       session.start = session.start === null ? time : Math.min(session.start, time);
       session.end = session.end === null ? time : Math.max(session.end, time);
+    }
+    for(const value of [record.message?.model,record.response?.model,...Object.keys(record.response?.modelUsage||{})]){
+      for(const model of String(value||"").split(",").map(value=>value.trim()).filter(Boolean))if(!session.models.includes(model))session.models.push(model);
     }
     const content = record.message?.content;
     if (record.type === "vertex_provider_response") {

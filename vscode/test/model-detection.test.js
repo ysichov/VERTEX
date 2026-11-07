@@ -67,7 +67,7 @@ test("checking shows progress next to the provider, and finishes with its result
     setAttribute(name,value) { this[name]=value; }
     addEventListener(event,fn) { this.listeners[event]=fn; }
   }
-  for(const id of ["tree","save","stop-detection","choose-log-folder","log-settings","said","error-dialog","error-text","error-copy-status","copy-dialog-error","close-error"]) { const node=new Element(); node.id=id; }
+  for(const id of ["tree","save","stop-detection","choose-log-folder","log-settings","said","error-dialog","error-text","error-copy-status","copy-dialog-error","close-error","close-model-info","model-info-dialog","model-info-title","model-info-text"]) { const node=new Element(); node.id=id; }
   const document = { getElementById: id => ids.get(id), createElement: () => new Element(), createTextNode: text => ({textContent:text}) };
   require("node:vm").runInNewContext(panel.webview.html.match(/<script nonce="[^"]+">([\s\S]*)<\/script>/)[1], {
     document, acquireVsCodeApi: () => ({postMessage: message => messages.push(message)}),

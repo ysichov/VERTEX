@@ -156,9 +156,9 @@ test('availability probe makes one capped request without history or tools',asyn
 
 
 test('Vercel metadata distinguishes declared support, no image input and unknown fields',async()=>{
- const result=await api.models('vercel-api','k',async()=>({data:[{id:'test/text',type:'language',name:'Text',supported_parameters:['tools','response_format'],modalities:{input:['text']},tags:['reasoning'],context_window:1000000}]}));
+ const result=await api.models('vercel-api','k',async()=>({data:[{id:'test/text',type:'language',name:'Text',description:'Specialized extraction model',supported_parameters:['tools','response_format'],modalities:{input:['text']},tags:['reasoning'],context_window:1000000}]}));
  assert.deepEqual(result[0].capabilities,{tools:true,json:true,reasoning:true,vision:false,web:null});
- assert.equal(result[0].contextWindow,1000000);
+ assert.equal(result[0].contextWindow,1000000);assert.equal(result[0].description,'Specialized extraction model');
  const unknown=require('../model-capabilities').metadata({});assert.equal(unknown.capabilities.vision,null);
  const vscode={workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})}};
  assert.deepEqual(modelConfig.apply(vscode,'vercel-api',result)[0].capabilities,result[0].capabilities);
@@ -240,10 +240,12 @@ test('Vercel costs survive logging and aggregate without double counting', async
 test('Vercel zero cost is preserved and billing failure never fails the answer',async()=>{
  for(const cost of [0,null]){
  let lookup=0;let call;
- await api.ask({assistant:'vercel-api',apiKey:'test',model:'x',prompt:'x',instructions:'x',capabilities:{tools:false},onModelCall:e=>call=e,request:async(id,key,route)=>{
+ const result=await api.ask({assistant:'vercel-api',apiKey:'test',model:'x',prompt:'x',instructions:'x',capabilities:{tools:false},onModelCall:e=>call=e,request:async(id,key,route)=>{
  if(route.startsWith('/generation')){lookup++;throw Object.assign(new Error('Forbidden'),{status:403});}
  return {id:'gen_test',providerMetadata:{gateway:{cost}},choices:[{message:{content:'OK'}}]};}});
  assert.equal(call.usage.cost_usd,cost);assert.equal(lookup,cost===0?0:1);
+ assert.equal(result.usage.cost_missing||0,cost===null?1:0);
+ if(cost===null)assert.equal(result.usage.cost_usd,undefined);
  }
 });
 
@@ -325,4 +327,11 @@ test('compatible API reads text content arrays and diagnoses truncated empty rep
 });
 test('OpenAI output limit uses max_completion_tokens',async()=>{
  let body;await api.ask({assistant:'openai-api',model:'limit',prompt:'Draft',instructions:'Plain',capabilities:{tools:false},maxOutputTokens:4096,request:async(id,key,route,value)=>{body=value;return {choices:[{message:{content:'Done'}}]};}});assert.equal(body.max_completion_tokens,4096);assert.equal(body.max_tokens,undefined);
+});
+
+test('text-only JSON answer wrapper is unwrapped, empty JSON remains an accountable error',async()=>{
+ for(const content of ['{"answer":"Visible methods"}','{}']){
+ let logged;const options={assistant:'vercel-api',model:'text',apiKey:'test',prompt:'methods',instructions:'Reply',schema:{type:'object'},capabilities:{tools:false},onModelCall:event=>logged=event,request:async()=>({model:'text',usage:{prompt_tokens:10,completion_tokens:7,cost:0.0001},choices:[{message:{content},finish_reason:'stop'}]})};
+ if(content==='{}')await assert.rejects(api.ask(options),/empty JSON object without an answer/);else assert.equal((await api.ask(options)).plan.answer,'Visible methods');assert.equal(logged.usage.cost_usd,0.0001);
+ }
 });

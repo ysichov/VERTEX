@@ -115,3 +115,19 @@ test("approved commands run in the selected folder and report failed exits", asy
   assert.equal((await agent.call("Bash", { command: "exit 7" })).code, 7);
   assert.equal(steps.at(-1).is_error, true);
 });
+
+test("Windows shell parsing failure explains that Git did not run", {skip:process.platform!=='win32'}, async t => {
+ const {agent}=fixture(t,{allow:true});
+ const result=await agent.call('Bash',{command:'git --version && git --version'});
+ assert.notEqual(result.code,0);assert.match(result.hint,/Git did not run/);
+});
+
+test('environment identifies the executing host and separates bundled runtime from PATH', () => {
+ const text=tools.environment('test folder');
+ const data=JSON.parse(text.slice(text.indexOf('{')));
+ assert.equal(data.platform,process.platform);assert.equal(data.architecture,process.arch);
+ assert.equal(data.workingDirectory,'test folder');assert.equal(data.cwdAlreadySelected,true);
+ assert.match(data.dependencyStatus,/not verified/);assert.match(data.dependencyStatus,/does not imply node is on PATH/);
+ assert.equal(tools.environment('').includes('"workingDirectory":null'),true);
+ assert.equal(text.includes(process.env.PATH||'impossible env value'),false);
+});

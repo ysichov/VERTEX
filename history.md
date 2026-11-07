@@ -1,3 +1,63 @@
+## 2026-11-07 — File header change counts
+
+Repeat the tree’s per-file added, modified, deleted and block counts in the selected-file header using the same formatter. Binary file headers show Binary without text counters.
+
+## 2026-11-07 — Unified model info and independent group sorting
+
+Move model info before the name. Use one complete source-labelled information formatter for the panel and settings. Add per-provider group sort keys and direction, preserving scroll position and local sort choices across view changes; the main table sort resets overrides.
+
+## 2026-11-07 — Prompt Web requests, explicit context and model info
+
+Remove the Web checkbox and route explicit natural-language search/current-information requests through the existing verified Vercel search path. Add SAP / Folder context selection, broader visible-SAP-source questions, accurate text-only context instructions, JSON answer unwrapping and errors for empty objects with billing retained. Preserve Vercel API descriptions, expose source-labelled model info in chat and settings, and keep model-table sorting headers visible during scrolling.
+
+## 2026-11-07 — File links and compact review views
+
+Link known project file references in AI answers to existing reviews, falling back to the workspace editor. Add tree totals, shared compact VERTEX buttons and info-left/action-right strips. Add per-file Compact/Full with Compact default and lazy full-file rendering, preserving AI context and binary exclusions.
+
+## 2026-11-07 — Restore rounded button styling
+
+Restore the established rounded buttons in code review and Git History, correcting the interpretation of the earlier styling request.
+
+## 2026-11-07 — Compact single-block review
+
+Keep only the file toolbar for a single changed block, removing duplicate ASK AI and fold bars. Omit redundant change-kind labels and Open status in the read-only tree. Show block counts beside text files; preserve full block structure in AI context and retain binary exclusions.
+
+## 2026-11-07 — Local branches and GitHub PR
+
+Add current-branch selection, creation of a task branch preserving local edits, and clean-tree switching without force. Add GitHub PR preparation after Push: validate current HEAD and pushed source, then open the browser comparison page for explicit publication. No automatic merge or PR publication.
+
+## 2026-11-07 — Explicit Git Push
+
+Add Push after ASK AI and Commit in the uncommitted review. Preview the actual local branch, commit, configured remote and destination before explicit Push; validate unchanged HEAD/branch and reject force or implicit branch switching.
+
+## 2026-11-07 — File tree and selected diff
+
+Replace folder summary tables with a nested folder/file tree and a selected-file diff pane, stacking on narrow views. Keep binary entries visible without text counters; exclude them from visible-review AI snapshots, ASK AI and commit-message generation. Put ASK AI before Commit.
+
+## 2026-11-07 — Binary review summary
+
+Remove the redundant Type column from file review tables. Binary rows and binary-only group totals show Binary and no block count instead of misleading zero line statistics. Keep the published docs/ update-site artifacts tracked; target/ remains ignored.
+
+## 2026-11-07 — Compact review folder tables
+
+Group root-level files into one folder table instead of one table per file, and omit redundant Total rows for single-file groups. Use square buttons in Git History and code review.
+
+## 2026-11-07 — Unrounded cost display
+
+Display reported numeric USD costs without decimal-place limits in answer footers, commit generation, Session Logs and Usage & Cost. Zero is shown as $0, while unknown costs remain unknown.
+
+## 2026-11-07 — Refresh logs and uncommitted review
+
+Add accessible refresh icons for Session Logs and the uncommitted review. Reload changes in the existing review panel, updating HEAD validation and AI context; an empty result clears the obsolete snapshot and commit action. Document real Git and host toolchain installation requirements.
+
+## 2026-11-07 — Answer cost and Windows shell diagnostics
+
+Show actual Vercel USD cost in answer footers with eight-decimal precision and explicit partial or unknown totals. Include actual extension-host OS, architecture, shell, cwd and bundled Node version in agent requests without exposing environment variables or claiming external dependencies are installed. Identify Windows PowerShell 5.1 in tool instructions, use UTF-8 command output, and explain unsupported command chaining without confusing shell failures with Git errors or changelogs with Git history.
+
+## 2026-11-07 — Generation cost and model in headers
+
+Show the latest generation model, input/output/cache tokens and reported USD cost in the commit composer header, retaining metadata on errors and reopening the dialog. Preserve small charges, distinguish zero from unknown and mark partial reporting. Reuse returned counters without extra API requests and keep different generation attempts separate. Session Logs headers list actual model IDs, compacting long multi-model lists with a tooltip. Version remains 0.9.69.
+
 ## 2026-11-07 — Commit reply diagnostics and output budget
 
 Investigate a Nemotron commit request that returned 284 completion tokens, all reported as reasoning, and no final text. Use a plain-text-only commit instruction for API models, retain schema instructions only for native CLI clients, and set a 4096-token API output budget. Read text content arrays. Log finish reason and safe response diagnostics, account usage on empty replies and distinguish reasoning-only, length-limited, refused and empty responses. Never display private reasoning as a commit message or automatically repeat a reasoning-only paid request. Version remains 0.9.69.

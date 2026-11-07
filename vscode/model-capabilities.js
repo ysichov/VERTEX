@@ -11,7 +11,7 @@ function metadata(item) {
   const tags = new Set(item.tags || []), params = Array.isArray(item.supported_parameters) ? item.supported_parameters : null;
   const inputs = Array.isArray(item.modalities?.input) ? item.modalities.input : null;
   const parameter = names => params ? names.some(name => params.includes(name)) : null;
-  return { capabilities: {
+  return { ...(typeof item.description==="string"&&item.description.trim()?{description:item.description.trim()}:{}), capabilities: {
     tools: tags.has("tool-use") ? true : parameter(["tools"]),
     json: tags.has("structured-output") ? true : parameter(["response_format", "structured_outputs"]),
     reasoning: tags.has("reasoning") || (item.reasoning_options || []).length > 0 ? true : null,
@@ -63,4 +63,15 @@ function groupModels(models, key, down = false, hideUnavailable = true) {
   }
   return [...groups.values()].sort((a,b)=>a.label.localeCompare(b.label));
 }
-module.exports = { definitions, metadata, priceInfo, sortModels, groupModels };
+function detailLines(model, capabilityDefinitions, priceInfo) {
+  const lines=[model.id,
+    "Source: Vercel AI Gateway /models API (catalog declarations, not a capability or quality test).",
+    "Catalog cached for the current provider/key session. Reload Window fetches a fresh catalog.",
+    model.description || "Description / specialization: not provided by the catalog API."];
+  if(model.toolSupportEvidence)lines.push(model.toolSupportEvidence.reason+" Source: observed API response; text-only mode for this provider/key/model, expires after 24 hours.");
+  for(const d of capabilityDefinitions){const value=model.capabilities?.[d.key];lines.push(d.icon+" "+d.label+": "+(value===true?d.yes:value===false?d.no||"Not supported by the catalog declaration.":"Not reported by the catalog; not tested."));}
+  lines.push("▤ Context: "+(model.contextWindow?model.contextWindow.toLocaleString()+" tokens":"Not reported"));
+  const price=priceInfo(model);if(price)lines.push(price.text,price.title);else lines.push("Price: not reported by this provider.");
+  return lines;
+}
+module.exports = { definitions, metadata, priceInfo, sortModels, groupModels, detailLines };

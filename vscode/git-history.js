@@ -95,6 +95,7 @@ function reviewContext() {
 
 function reviewSnapshot(changes, title, folder, limit = 180000) {
   const review = require("./code-review");
+  changes = changes.filter(c => !c.binary);
   const manifest = changes.map(c => c.status + " " + c.file + (c.binary ? " (binary)" : "")).join("\n");
   const sections = changes.map(c => {
     const header = c.status + " " + c.file;
@@ -117,39 +118,77 @@ async function openCommit(vscode, folder, commit) {
     commitPanels.get(key).dispose();
   }
   const path = require("path"), review = require("./code-review");
-  const changes = working ? await readWorkingChanges(folder) : await readCommitChanges(folder, commit.hash);
-  if (!changes.length) throw new Error(working ? "No uncommitted changes in this folder." : "Commit " + commit.short + " changed nothing in this folder.");
-  const expectedHead = working ? (await git(folder,["rev-parse","HEAD"])).trim() : "";
+  let changes = working ? await readWorkingChanges(folder) : await readCommitChanges(folder, commit.hash);
+  if (!changes.length && !working) throw new Error("Commit " + commit.short + " changed nothing in this folder.");
+  let expectedHead = working ? (await git(folder,["rev-parse","HEAD"])).trim() : "";
   const title = working ? "Uncommitted changes" : "Commit " + commit.short;
-  const files = changes.map((c, i) => ({ id: "f" + (i + 1), path: c.file, label: path.basename(c.file), binary: c.binary,
+  const makeFiles = changes => changes.map((c, i) => ({ id: "f" + (i + 1), path: c.file, label: path.basename(c.file), binary: c.binary,
     kind: c.status === "A" ? "new" : c.status === "D" ? "deleted" : "changed",
-    parts: c.binary || c.status === "D" ? [] : review.hunks(c.before, c.after), after: c.after, abap: /\.abap$/i.test(c.file) }));
+    parts: c.binary ? [] : review.hunks(c.before, c.after), before:c.before, after: c.after, abap: /\.abap$/i.test(c.file) }));
+  let files = makeFiles(changes);
   const panel = vscode.window.createWebviewPanel("vertex.commitReview", title, vscode.ViewColumn.Active, { enableScripts: true });
+  const untrackLinks = require("./file-links").register(panel,()=>files.map(f=>({id:f.id,path:path.resolve(folder,f.path),relative:f.path})));
   commitPanels.set(key, panel);
-  panel.onDidDispose(() => { commitPanels.delete(key); reviewSnapshots.delete(panel); });
-  const snapshot = reviewSnapshot(changes, title, folder);
-  reviewSnapshots.set(panel, snapshot);
+  panel.onDidDispose(() => { untrackLinks();commitPanels.delete(key); reviewSnapshots.delete(panel); });
+  let snapshot = changes.length ? reviewSnapshot(changes, title, folder) : null;
+  if(snapshot)reviewSnapshots.set(panel, snapshot);
   panel.onDidChangeViewState(event => {
-    if (event.webviewPanel.active) { reviewSnapshots.delete(panel); reviewSnapshots.set(panel, snapshot); }
+    if (event.webviewPanel.active) { reviewSnapshots.delete(panel); if(snapshot)reviewSnapshots.set(panel, snapshot); }
   });
-  panel.webview.html = review.filesReviewHtml(files, { readonly: { title: title + (working ? "" : " · " + (commit.subject || "")),
-    commit: working, subtitle: working ? folder + " · HEAD → working folder (including staged and untracked files)" : [commit.author, formatDate(commit.date), commit.hash].filter(Boolean).join(" · ") } });
+  const render = () => { panel.webview.html = review.filesReviewHtml(files, { readonly: { title: title + (working ? "" : " · " + (commit.subject || "")),
+    commit: working && files.length > 0, refresh: working, subtitle: working ? folder + " · HEAD → working folder (including staged and untracked files)" : [commit.author, formatDate(commit.date), commit.hash].filter(Boolean).join(" · ") } }); };
+  render();
   const name = working ? "uncommitted changes" : "commit " + commit.short;
   let commitBusy=false, committed=false;
   panel.webview.onDidReceiveMessage(async message => {
+    if(message?.action==="fileView"){await review.sendFileView(panel,message,files.find(f=>f.id===message.file),true);return;}
+    if(working && ["loadBranches","switchBranch","preparePR","openPR"].includes(message?.action)){
+      const kind=message.action==="loadBranches"||message.action==="switchBranch"?"branchError":"prError";
+      if(commitBusy){await panel.webview.postMessage({[kind]:"Another Git operation is running. Try again when it finishes."});return;}
+      commitBusy=true;
+      try{
+        const helper=require("./git-branches");
+        if(message.action==="loadBranches")await panel.webview.postMessage({branchInfo:await helper.info(folder)});
+        else if(message.action==="switchBranch"){
+          await helper.switchBranch(folder,message);
+          changes=await readWorkingChanges(folder);expectedHead=(await git(folder,["rev-parse","HEAD"])).trim();files=makeFiles(changes);snapshot=changes.length?reviewSnapshot(changes,title,folder):null;
+          reviewSnapshots.delete(panel);if(snapshot)reviewSnapshots.set(panel,snapshot);committed=false;panel.title=title;render();
+        }else if(message.action==="preparePR")await panel.webview.postMessage({prInfo:await helper.prInfo(folder)});
+        else{const url=await helper.prUrl(folder,message);if(!await vscode.env.openExternal(vscode.Uri.parse(url)))throw new Error("Could not open the browser.");await panel.webview.postMessage({prOpened:true});}
+      }catch(error){await panel.webview.postMessage({[kind]:error.message});}finally{commitBusy=false;}return;
+    }
+    if(working && (message?.action==="preparePush"||message?.action==="pushChanges")){
+      if(commitBusy){await panel.webview.postMessage({pushError:"Another Git operation is running. Try again when it finishes."});return;}
+      commitBusy=true;
+      try{const helper=require("./git-push");if(message.action==="preparePush")await panel.webview.postMessage({pushInfo:await helper.info(folder)});else await panel.webview.postMessage({pushDone:await helper.push(folder,message)});}
+      catch(error){await panel.webview.postMessage({pushError:error.message});}finally{commitBusy=false;}return;
+    }
+    if (working && message?.action === "refresh") {
+      if(commitBusy||committed)return;commitBusy=true;
+      try {
+        const next=await readWorkingChanges(folder);
+        const head=(await git(folder,["rev-parse","HEAD"])).trim();
+        changes=next;expectedHead=head;files=makeFiles(changes);
+        snapshot=changes.length?reviewSnapshot(changes,title,folder):null;
+        reviewSnapshots.delete(panel);if(snapshot)reviewSnapshots.set(panel,snapshot);
+        render();
+      }catch(error){await panel.webview.postMessage({reviewRefreshError:error.message});}finally{commitBusy=false;}return;
+    }
     if (working && message?.action === "generateCommit") {
       if(commitBusy||committed)return;commitBusy=true;
       try {
+        if(!snapshot?.file_count)throw new Error("No text changes to send to AI. Enter the commit message manually.");
         const result=await vscode.commands.executeCommand("vertex.generateCommitMessage",snapshot,{summary:message.summary,description:message.description});
         if(!result)throw new Error("No commit message returned.");
+        if(result.error){await panel.webview.postMessage({commitError:result.error,...(result.generation?{commitGeneration:result.generation}:{})});return;}
         await panel.webview.postMessage({commitDraft:result});
-      }catch(error){await panel.webview.postMessage({commitError:error.message});}finally{commitBusy=false;}return;
+      }catch(error){await panel.webview.postMessage({commitError:error.message,...(error.generation?{commitGeneration:error.generation}:{})});}finally{commitBusy=false;}return;
     }
     if (working && message?.action === "commitChanges") {
       if(commitBusy||committed)return;commitBusy=true;
       try {
         const result=await require("./git-commit").commit(folder,expectedHead,changes,message);committed=true;
-        reviewSnapshots.delete(panel);panel.title="Commit "+result.hash;await panel.webview.postMessage({commitDone:result});
+        snapshot=null;reviewSnapshots.delete(panel);panel.title="Commit "+result.hash;await panel.webview.postMessage({commitDone:result});
         vscode.window.showInformationMessage("VERTEX: committed "+result.hash+(result.warning?". "+result.warning:""));
       }catch(error){await panel.webview.postMessage({commitError:error.message});}finally{commitBusy=false;}return;
     }
@@ -158,14 +197,15 @@ async function openCommit(vscode, folder, commit) {
     if (message.all) {
       // The whole commit: every file's blocks, numbered through, each naming its file.
       const blocks = [];
-      files.forEach(f => review.askContext(f.parts, null, f.after, "local", f.path).blocks.forEach(b => blocks.push({ ...b, file: f.path })));
+      files.filter(f => !f.binary).forEach(f => review.askContext(f.parts, null, f.after, "local", f.path).blocks.forEach(b => blocks.push({ ...b, file: f.path })));
       blocks.forEach((b, i) => { b.block = i + 1; });
       context = { system: "local", object: name, total: blocks.length, all: true, blocks };
     } else {
       const f = files.find(x => x.id === message.file);
-      if (!f) return;
+      if (!f || f.binary) return;
       context = review.askContext(f.parts, Number.isInteger(message.hunk) ? [message.hunk] : null, f.after, "local", name + " " + f.path);
     }
+    if(!context.blocks.length){vscode.window.showInformationMessage("No text changes to send to AI.");return;}
     await vscode.commands.executeCommand("vertex.askReviewBlock", context);
   });
 }
@@ -194,6 +234,7 @@ th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--vscode-panel
 th{position:sticky;top:0;background:var(--vscode-editor-background);color:var(--vscode-descriptionForeground);font-weight:600}
 tr:hover td{background:var(--vscode-list-hoverBackground)}
 td.hash{font-family:var(--vscode-editor-font-family);white-space:nowrap}td.hash a{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:none}td.hash a:hover{color:var(--vscode-textLink-activeForeground);text-decoration:underline}td.date{white-space:nowrap}
+${require("./code-review").controlsCss}
 </style></head><body>
 <h1>Git History</h1><div id="folder"></div><div id="error" role="alert"></div>
 <div id="filters" hidden><label>From <input id="from" placeholder="dd-mm-yyyy" aria-label="From date, dd-mm-yyyy" maxlength="10"></label><label>To <input id="to" placeholder="dd-mm-yyyy" aria-label="To date, dd-mm-yyyy" maxlength="10"></label><label>Month <select id="month"><option value="">Last 10 commits</option></select></label><label>Author <select id="author"><option value="">All authors</option></select></label></div>
