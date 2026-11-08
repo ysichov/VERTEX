@@ -77,7 +77,8 @@ public class LogsView extends PageView {
 	@Override
 	protected String initialLiteral() {
 		try {
-			return AssistantBridge.quote(readResource("resources/log-report.html")).replace("<", "\\u003c");
+			return AssistantBridge.quote(readResource("resources/log-report.html").replace("</head>",
+				"<style>" + super.readResource("resources/vertex-controls.css") + "</style></head>")).replace("<", "\\u003c");
 		} catch (IOException e) {
 			return AssistantBridge.quote("<p>" + describe(e) + "</p>");
 		}

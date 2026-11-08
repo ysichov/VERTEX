@@ -836,6 +836,20 @@ test("run_atc_check answers the assistant with the variant and the findings", as
     check: "Extended check", message: "Unused variable", line: 3 }]);
 });
 
+test("run_sap_select reads rows through ADT's data preview and refuses anything but SELECT", async () => {
+  const h = host(), asked = [];
+  h.api.query = async (sql, rows) => { asked.push([sql, rows]); return { columns: [{ name: "SPRAS" }, { name: "DESCRIPTION" }], values: [{ SPRAS: "E", DESCRIPTION: "Notification History" }] }; };
+  const answer = await h.tools.execute("run_sap_select", { sql: "SELECT spras, description FROM powl_type_t WHERE type = 'X'" });
+  assert.deepEqual(asked, [["SELECT spras, description FROM powl_type_t WHERE type = 'X'", 100]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(answer)), { columns: ["SPRAS", "DESCRIPTION"], rows: [{ SPRAS: "E", DESCRIPTION: "Notification History" }], row_count: 1 });
+  const capped = await h.tools.execute("run_sap_select", { sql: "select * from t000", max_rows: 1 });
+  assert.match(capped.note, /Stopped at max_rows \(1\)/);
+  await assert.rejects(h.tools.execute("run_sap_select", { sql: "DELETE FROM ztab" }), /runs one SELECT statement/);
+  const schema = h.tools.schemas.find(tool => tool.name === "run_sap_select");
+  assert.ok(schema.annotations.readOnlyHint);
+  assert.ok(schema.inputSchema.properties.system);
+});
+
 test("the two run tools are offered to the assistant, each taking a system", () => {
   const h = host();
   const named = name => h.tools.schemas.find(tool => tool.name === name);

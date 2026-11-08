@@ -648,6 +648,14 @@ function codexCommand(options, dir) {
           "mcp_servers." + SERVER + ".tools." + name + '.approval_mode="approve"');
       }
     }
+    // Codex asks before a tool that is not marked read-only, and exec cannot ask: it refuses at once. Tools of an
+    // MCP server VERTEX passes on (SAP ADT's carry no annotations at all) are approved here, as Claude Code runs
+    // them; their limits are the server's own - SAP's allowed destinations and packages, the access chosen in the
+    // start window for the others.
+    for (const name of options.externalTools || []) {
+      if (options.tools.includes(name) && /^[\w.-]+$/.test(name)) args.push("-c",
+        "mcp_servers." + SERVER + ".tools." + name + '.approval_mode="approve"');
+    }
   }
   if (options.model) {
     args.push("-m", options.model);

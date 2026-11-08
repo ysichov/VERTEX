@@ -73,8 +73,13 @@ test("clear selected conversations deletes only known logs and prevents pending 
   try {
     const active = logger.current(root, "claude", {});
     active.user("one");
+    const same = logger.current(root, "codex", {});
+    same.user("same conversation");
     const other = logger.create(root, "codex", "other", {});
     other.user("two");
+    // An older, unrelated file has no shared conversation id.
+    const unrelated = fs.readFileSync(other.file, "utf8").split("\n").filter(Boolean).map(line => { const record = JSON.parse(line); delete record.vertex_conversation; return JSON.stringify(record); }).join("\n");
+    fs.writeFileSync(other.file, unrelated);
     const recording = path.join(root, "run.vertex-debug.json");
     fs.writeFileSync(recording, "retained recording");
     const id = path.basename(active.file, ".jsonl");
@@ -86,8 +91,10 @@ test("clear selected conversations deletes only known logs and prevents pending 
     assert.equal(await report.clearConversations(vscode, [id]), 0);
     assert.ok(fs.existsSync(active.file));
     confirm = true;
-    assert.equal(await report.clearConversations(vscode, [id, id, "../outside"]), 1);
+    assert.equal(await report.clearConversations(vscode, [id, id, "../outside"]), 2);
     active.assistant({ text: "late answer" });
+    same.assistant({ text: "late second provider answer" });
+    assert.equal(fs.existsSync(same.file), false);
     assert.equal(fs.existsSync(active.file), false);
     assert.ok(fs.existsSync(other.file));
     assert.ok(fs.existsSync(recording));

@@ -387,6 +387,18 @@ test("Codex delegates only supplied local-tool approvals to VERTEX", async () =>
   assert.equal(after(args, "-s"), "read-only");
 });
 
+test("Codex runs the tools of an MCP server VERTEX passes on, and only those it was given", async () => {
+  const spawn = spawner(call => {
+    fs.writeFileSync(after(call.args, "-o"), JSON.stringify(PLAN));
+    call.child.emit("close", 0);
+  });
+  await assistant.ask(common(spawn, "codex", { tools: ["read_sap_object", "abap_objects_generator_list"],
+    externalTools: ["abap_objects_generator_list", "abap_not_offered", "bad name;rm"] }));
+  const args = spawn.calls[0].args;
+  assert.ok(args.includes('mcp_servers.vertex.tools.abap_objects_generator_list.approval_mode="approve"'));
+  assert.ok(!args.some(arg => /tools\.(read_sap_object|abap_not_offered|bad name)/.test(arg)), "nothing beyond the external tools of this request");
+});
+
 test("Codex receives no SAP MCP server when the chat has no SAP tools", async () => {
   const spawn = spawner(call => {
     fs.writeFileSync(after(call.args, "-o"), JSON.stringify({ answer: "ok", navigation: null }));

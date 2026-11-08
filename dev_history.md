@@ -1,3 +1,154 @@
+## 2026-11-08 — Restore green model answers
+
+Session Logs uses theme green for model answers. Model names retain the normal theme foreground; user messages remain blue.
+
+## 2026-11-08 — Continue conversations only from the end
+
+Removed per-answer Continue from here buttons. The existing conversation header button is the sole continuation action and always restores history through the end.
+
+## 2026-11-08 — Neutral model text in Session Logs
+
+Model answers and model names use the active theme foreground instead of green. User messages remain blue and provider names retain their distinct colour.
+
+## 2026-11-08 — Grouped conversation logs and continuation branches
+
+Session Logs groups files by conversation, totals usage and retains provider/model labels per prompt. Continue from here restores only the selected branch ancestry through that answer; later original answers remain available. Clear removes every file of a conversation. Session Logs loads shared VERTEX button styling in both hosts; prompt previews use the chat theme blue. Dates use DD-MM-YY HH:mm:ss, preceding provider and model labels with distinct theme colours.
+
+## 2026-11-08 — OpenRouter key limits in the usage line (0.9.71)
+
+The user had the free-model daily limit read from OpenRouter in another tool and asked for it in the panel's line under the answer. `keyLimits` in `vscode/openai-compatible.js` calls `GET /api/v1/key` after an OpenRouter answer (chat.js), `limitsText` turns `free_model_daily_requests`, `usage_daily` and `limit_remaining` into a second line that `usageLine` (sidebar.js) appends; `p.usage` got `white-space: pre-line`. A failed call shows "OpenRouter limits not reported: …" instead of nothing, and the result is written to the session log as `key_limits`. First attempt broke the panel script: a heredoc turned the `
+` into a real line break inside a string. The full test run also showed four older failures and a live Vercel test that fails with 401 without a key; none touch this change.
+
+## 2026-11-08 — Codex runs SAP ADT's tools; the model names the right system (0.9.71)
+
+Two failures from the user's RAP test. With Codex (gpt-5.6-sol), SAP ADT refused even the generator list: Codex's `approval policy is never`. All 33 SAP ADT tools have `annotations: null`, Codex asks before any tool not marked read-only, and `codex exec` cannot ask. `vscode/assistant.js` now adds `approval_mode="approve"` for each tool of the request that `chat.js` reports as external (`externalTools`, from `codeTools.external`), as it already did for the local file tools; names are checked against `[\w.-]+`. A test checks that only the external tools of the request are approved.
+
+With Claude Code the log (tool results are logged now) showed `abap_objects_generator_get_schema` called with destination `ALC` - the bare system id - and SAP's "Destination access denied ... destinationId 'ALC'", which the model reported as a missing permission and sent the user to Eclipse preferences. The settings were right: the logged-on destination was answered by the full id. Server entries get an optional `note` added to the model's instructions when the server is picked, and to `enable_toolset`'s answer for a toolset on it; SAP ADT's says to call `abap_destination_list` and pass that exact id, and that a refusal for any other id means a wrong id. The example id in it is an A4H one; this entry and the earlier ones of today were also cleared of the real destination name and local paths.
+
+## 2026-11-08 — API request limit leaves room for MCP tools (0.9.71)
+
+The user's screenshot: with SAP ADT picked and OpenRouter as provider, the first question after the plan answer failed with "VERTEX: request exceeds 64 KB". The guard in `requestJson` (`vscode/openai-compatible.js`) and `request` (`vscode/anthropic.js`) counts the whole request body, and SAP ADT's tool definitions alone are about 93 KB, so no request with that server could pass. The guard is meant for the conversation and context, which grow; the tool definitions are fixed, so their size is now added to the limit. `test/toolset-rounds.test.js` sends 100 KB of tool definitions and checks the request fits while the conversation keeps its 64 KB. Copilot has no such limit.
+
+## 2026-11-08 — Page copies made read-only; Session Logs changes restored (0.9.71)
+
+The user's screenshot of Session Logs still showed a table as pipes after installing the build. `vscode/resources/` is not a source: `copy-pages.js` (vscode:prepublish) copies the pages and libraries there from `org.vertex.abap.ui/resources/`, the Eclipse bundle, and the folder is git-ignored. The table rendering and the **Continue in chat** button had been written into the copy of `log-report.html`, so packaging overwrote them and neither reached the VSIX; the earlier previews read the copy and passed. Both changes are now in `org.vertex.abap.ui/resources/log-report.html`. That page is also Eclipse's, which has no chat to continue, so the button shows only when the host sets `window.vertexCanContinue`, which `vscode/log-report.js` injects with the page's nonce.
+
+To make the mistake fail where it is made, `copy-pages.js` leaves every copy read-only (it clears the flag before overwriting). The first build with that showed vsce storing each file's mode in the VSIX (`0444`), which would install read-only extension files, so `package.js` runs vsce with `VERTEX_PACKAGING=1`, under which the copies stay writable, and runs `copy-pages.js` again afterwards. Checked: no read-only entry under `extension/resources/` in the VSIX, the packaged `log-report.html` has the button and the tables, and the working copies are read-only (writing to one is refused). The removal of the copies after packaging was considered and set aside: `log-report.js`, `log-snapshot.js`, `model-config.js`, `tools-window.js`, `code-workbench.js` and `value-origin-view.js` read the copies with no fallback to the originals.
+
+## 2026-11-08 — Continue a conversation from Session Logs (0.9.71)
+
+The user asked whether a session could be resumed from the log, and then how logging works when the model changes on every question. The second answer shaped the first: `sessionLog.current` keys its file by provider, so a conversation that switches provider writes one file per provider, each holding only its own questions - resuming one file would lose the rest.
+
+- `vscode/session-log.js`: a conversation id (`vertex_conversation`) on every entry; `reset()` starts a new one, `reset(id)` keeps the id of a conversation continued from its log. Default file names got a random hex tail: the test showed that two conversations started in the same second appended to one file, which the continuation would then read as one.
+- `vscode/log-report.js`: `parseSession` records the conversation id and each prompt's operation; `conversationTurns` gathers every file with the session's id (or the file alone for logs written before ids), keeps Chat and Web search prompts in time order with their last logged answer, and refuses loudly when the questions or the answers were not logged (`[not logged]` counts as absent - the first try took it for an answer). The panel's `continueConversation` message runs `vertex.continueConversation`.
+- `vscode/sidebar.js`: that command opens the panel if needed, resets the log under the same id, calls `ask.restoreConversation` (`vscode/chat.js`: a new conversation whose history is the turns) and redraws the questions and answers with a first line saying where they came from and that tool results are not repeated. `vscode/resources/log-report.html`: a **Continue in chat** button on sessions that hold chat prompts.
+- `test/continue-conversation.test.js`: two providers and a commit file in one conversation, another conversation kept out, the continued conversation logging under its id; missing answers or questions refused; the chat taking the turns. Full suite: 1306 pass, the four old failures remain (the Vercel live test passed this time).
+
+## 2026-11-08 — Tables in chat answers and Session Logs (0.9.71)
+
+The user's screenshot of a SAP ADT answer showed a Markdown table as raw `| ... |` lines. Both renderers - `markdown()` in `vscode/sidebar.js` (inside the page template, so every backslash doubled) and its copy in the Session Logs page `log-report.html` - knew code blocks, lists, headings and inline marks but not tables. Both now read a pipe row followed by a separator row (`---`, with `:` for alignment) as a table: cells go through the same `inline()`, so code and bold work and no markup is injected; a `md-table` wrapper scrolls sideways; borders and header use `--vscode-panel-border` and `--vscode-editorWidget-background`. Checked in a page built from each file's own functions: the generator table from the screenshot and an aligned table rendered as tables.
+
+## 2026-11-08 — Toolsets: extra MCP tools on demand (0.9.71)
+
+The user asked whether VERTEX could orchestrate - switch on SAP's tools when RAP is needed - and said to do it after the design was laid out: VERTEX's tools stay the base, other servers become toolsets the model enables through one small tool.
+
+- `vscode/mcp-external.js`: starting a server is now `plan(entry)` - a key that says whether a running copy fits and a `start` - shared by the MCP-list server and toolsets. Toolsets: `enable_toolset` (offered only when a set exists for a server other than the one picked in the list), `enableToolset` starts or reuses the set's server, filters its tools by the set's glob patterns and errors when none match; enabled sets stay for the session and are stopped with the rest. The wrapper's `schemas` adds `enable_toolset` and the enabled tools (no duplicate names), `execute` routes them to their server, `external` covers them, `mcpNote` lists the sets.
+- `vscode/chat.js`: after `enable_toolset` the request's tool list gets the new tools; `vscode/anthropic.js`, `vscode/copilot.js` and `vscode/openai-compatible.js` read the tool list again at every step (the OpenAI-compatible one keeps `submit_vertex_answer` last and leaves a text-only or web-search request alone). Claude Code and Codex register the tools at the start of a request, so for them a set joins from the next question; the tool's description and result say so.
+- `vscode/package.json`: `vertex.chat.toolsets` with the default SAP RAP set (11 SAP tools, about 21 KB of descriptions against about 93 KB for the whole server) and a note telling the model to list destinations, name the one it uses and say which system it changed.
+- Tests: `test/mcp-toolsets.test.js` runs a miniature Streamable HTTP server (event-stream and JSON answers, session id, bearer token) through offering, enabling, routing, a set's unknown name and a refused token; `test/toolset-rounds.test.js` checks that an OpenAI-compatible request offers the new tools on the next step. `test/git-history.test.js` expected the small review icon on the Git waiting page, which the wide scene replaced earlier today; it now checks for the generation strip. Full suite: 1302 pass, the same four old failures and the Vercel live request without a key.
+- Checked live against SAP's server: enabling SAP RAP took about 0.1 s and `abap_objects_generator_list` returned the generators.
+
+## 2026-11-08 — SAP's ADT MCP Server in the MCP list (0.9.71)
+
+The user asked whether SAP's official MCP could be added and activated SAP's extension (sapse.adt-vscode 1.2.0). Its bundle registers `com.sap.adt/mcp` as an `McpHttpServerDefinition`: `http://localhost:<adt.mcpServer.port>/mcp` with `Authorization: Bearer <adt.mcpServer.token>`, the token written to user settings when the server starts, and the server run by its `adt-ls` once a system is logged on. Probed live: ADT MCP Server 3.62.0, 33 tools (about 93 KB of schemas: search, read, symbols, check, activate, unit, ATC with Joule fixes, create, RAP generators, transports, OData, feeds; no table preview or SQL), each taking a `destination`; the only one was `A4H_001_DEVELOPER_EN_1`. The first call was refused: access restrictions are on by default with no destination allowed. With the user's go-ahead, `adt.mcpServer.accessRestrictions.destinations` in their settings got that destination, and a search answered.
+
+- `vscode/mcp-external.js`: `startHttpClient`, a Streamable HTTP client - POST per request, JSON or event-stream answers, the `Mcp-Session-Id` carried on, a connection failure reported with the entry's `notRunning` hint and the cause, 401/403 as a refused token. An entry with `url` instead of `command` goes through `prepareHttp`: no VERTEX system, password or SNC check, `${adtMcpPort}` and `${adtMcpToken}` read from the `adt` settings.
+- `vscode/package.json`: the `SAP ADT` entry and `url`, `headers`, `notRunning` in the entry schema. `vscode/sidebar.js`: the start window says "Connecting to" for such a server instead of the npx download note.
+- Checked live: 33 SAP tools plus VERTEX's debugger, a search through the wrapper answered; a wrong port gave the not-running message with ECONNREFUSED.
+
+## 2026-11-08 — Each provider keeps its model (0.9.71)
+
+The user noticed models do not remember their last state when switching providers. `ask.setProvider` in `vscode/chat.js` cleared `vertex.ai.model` on every switch. Now it stores the outgoing provider's model in `globalState` (`vertex.ai.modelByProvider`, passed from `extension.js` as a new last argument of `chat.create`) and restores the incoming provider's; `ask.setModel` records the pick too. A provider with nothing recorded still gets an empty model, i.e. its default, as before. `test/chat-model-memory.test.js` switches between two subscription providers and back. The vsp paragraph in `vscode/README.md` also says now that PATH needs the file named `vsp`.
+
+## 2026-11-08 — Dialogs stand out in light themes (0.9.71)
+
+The user's screenshot of the commit dialog in a light theme: the dialog's near-white background met a white page with only a pale panel border. The dialogs now use `--vscode-widget-border` (falling back to `contrastBorder`, then the old border) and `box-shadow: 0 4px 18px var(--vscode-widget-shadow)`, as VS Code's own widgets do: in `vscode/code-review.js` (commit, push, PR, branch), `vscode/sidebar.js` (model details, MCP start) and `vscode/model-config.js`. Checked in a static preview with light-theme values.
+
+## 2026-11-08 — vibing-steampunk in the MCP list (0.9.71)
+
+The user asked for vibing-steampunk as another MCP. It is a Go executable, not an npm package. The machine had v2.30.0 and v2.37.0; with the user's go-ahead v2.61.0 was downloaded to a new file beside them and its SHA-256 matched the release's `checksums.txt`. Live on the development system: hyperfocused mode serves one `SAP` tool (focused 98) and starts in about 0.15 s; `SAP(action="query", target="SQL")` returned the POWL type texts in R, E and D.
+
+- vsp takes its switches from the environment as well as flags: `SAP_INSECURE` was confirmed (without it the self-signed certificate is refused), and with the user's permission a probe program `ZVX_VSP_PROBE` in `$TMP` showed `SAP_READ_ONLY=true` refusing the create ("blocked by safety configuration") and `false` allowing it; the probe was deleted and a search confirmed it gone. An earlier attempt to create the probe without asking was stopped by the permission check.
+- `vscode/mcp-external.js`: a `vspAccess` write option (found by `${vsp...}` placeholders), `${vspReadOnly}`, `${vspTransports}` and `${vspPath}`; `command` is filled like the arguments; an entry's `download` URL goes into the not-found error, which names `vertex.chat.vspPath` for an entry whose command is that placeholder. Servers start in `<globalStorage>/mcp-run`, an empty folder, because the extension host's working directory is arbitrary and vsp reads `./.env` and `./.vsp.json` - the user keeps a `.vsp.json` with profiles beside the executable.
+- `vscode/package.json`: the `vibing-steampunk` entry (`${vspPath} --mode hyperfocused`, the connection in `SAP_*`), `vertex.chat.vspAccess`, `vertex.chat.vspPath`, and `download` in the entry schema. A path setting rather than editing the entry's command: overriding `vertex.chat.mcpServers` in user settings replaces the whole default list.
+- The user's own settings got `vertex.chat.vspPath` pointing at the downloaded file.
+
+## 2026-11-08 — Tool results in the session log (0.9.71)
+
+The comparison of the four runs hit a wall: the log showed `run_sap_select` returning 148, 3,033 and 178 characters but not what, so the model's claim that only English texts exist could not be checked against the rows (a direct query had shown a Russian text for the POWL type). The user asked for results to be logged, under a setting if that is right. `vscode/session-log.js` gets the `toolResults` option and `resultContent`: the result parsed and passed through the same `sanitize` that strips source from arguments, or `sanitizeText` for a text result, cut at 20,000 characters with a marker. The first try read the setting but not the option filter in `options()`, so the log still said "not logged"; caught by writing a log and reading it back. A test in `test/session-log.test.js` covers rows logged, source replaced, and the summary without the option.
+
+## 2026-11-08 — The chat reads tables: run_sap_select (0.9.71)
+
+Comparing the same question across VERTEX, ARC-1 and mcp-abap-adt in the session logs: VERTEX had the smallest context (about 15 thousand tokens on the first step against 44 and 133 thousand) but only searched object names, while ARC-1 found the untranslated POWL text with SQL. The user pointed out that VERTEX already runs SELECTs through ADT (Run Select, SelecTor) - the chat simply had no tool for it. `vscode/code-workbench.js` adds `run_sap_select` (read-only annotation, the `system` parameter like the other SAP tools): it refuses a statement that does not start with SELECT and calls `repo.api.query`, the data preview `sap-code.js` already uses. The test in `test/code-workbench.test.js` covers the rows, the max_rows note, the refusal and the schema. Checked live on the development system: `powl_type_t` for `GRFN_NOTIFICATION_HIST` returned the E, D and R descriptions. The first writing turned `` in the guard into a backspace character through two levels of escaping; found by reading the line, fixed in place.
+
+## 2026-11-08 — Picked MCP server starts with VS Code (0.9.71)
+
+After a reload the picked server started only at the first chat question; the user suggested starting it automatically. `vscode/extension.js` calls `prepare()` at activation when the picked name is in `vertex.chat.mcpServers`, and shows an error message if it fails. The first try checked only that the pick was not VERTEX: the extension test's fake configuration answers every key with a number, so it named a server that does not exist and `servers()` crashed on a non-list. `servers()` now treats a non-list setting as no servers (a pick then fails loudly in `prepare()`), and the start checks the pick is listed. When no password is kept for the active system, the start asks for it at activation, as any first SAP request does.
+
+## 2026-11-08 — ARC-1 full access includes table preview and SQL (0.9.71)
+
+A chat answer through ARC-1 could not read POWL tables because ARC-1 had `allowDataPreview=false`; the user expected full access to include everything. Earlier I had kept free SQL and table preview off in every choice on my own judgement. Now `write` also sets `SAP_ALLOW_DATA_PREVIEW`, `SAP_ALLOW_FREE_SQL` and `SAP_ALLOW_GIT_WRITES` (names read from ARC-1 1.10.1's sources) through new placeholders; `read-only` and `write-tmp` keep them false. The window's label for `write` lists all of it. Checked live on the development system: with `write`, `SAPQuery` on T000 returned rows. Plugin execution flags stay unset: their effect was not looked into.
+
+## 2026-11-08 — Own scenes for PR and Push (0.9.71)
+
+The user asked how commit and PR differ visually: they did not, since PR generation reused the generation strip and Push the commit strip. `vscode/task-visual.js` gets `prWide` and `pushWide`, 1000x40 like the others, through `html("pr")` and `html("push")`; `vscode/code-review.js` uses them in the PR and Push dialogs. PR: commits on a feature branch pulse in turn and fly as small cards into a description card with a PR icon, whose title and lines are typed out; a dashed arrow then runs to the base branch, where a ring expands. Push: commits on the local branch pulse, three packets ride an arc that draws itself to a cloud, the cloud pulses with a ring, the remote branch grows by `stroke-dashoffset` and a check is drawn. All CSS, without `rotate()`. Checked in a static preview in dark and light colours; the scene tests pass.
+
+## 2026-11-08 — Wide scenes in the chat and Git waiting pages (0.9.71)
+
+The user had asked for the small icons to be replaced by the wide strips; the earlier passes changed only the dialogs, and the overview page of all five scenes showed the small ones still in use. `html("review", true)` now returns the generation strip in a host set to `data-operation="generate"`; `vscode/sidebar.js` paints the wide review and commit strips under a chat task's status (block, full width, no longer an absolute 44 px icon with a 52 px indent), and `vscode/code-review.js` puts the generation strip under the text of the Git waiting page and the review refresh. The small `review` and `commit` SVGs stay in `task-visual.js` but nothing uses them now. In a narrow chat panel the 25:1 strip is only about 15 px high: seen in the preview, not changed.
+
+## 2026-11-08 — PR description with AI; push and PR waiting scenes (0.9.71)
+
+The user pointed out that a PR description is not instant either, and agreed to a push scene.
+
+- `vscode/git-commit.js`: `prPrompt`, a title and Markdown description from a branch snapshot; `parse` is shared, so the description ends with the same `Generated by:` line.
+- `vscode/chat.js`: `generateCommitMessage` takes a purpose; `"pr"` swaps the prompt, instructions, log title and error wording and keeps the rest of the request (providers, usage, cost, retry).
+- `vscode/sidebar.js`: the `vertex.generatePullRequest` command beside `vertex.generateCommitMessage`.
+- `vscode/git-branches.js`: the shared PR checks moved into `checkPR`; `prSnapshot` reads `git log` and `git diff` from `refs/remotes/<remote>/<base>` to HEAD with a 64 MB buffer, since git-push's 1 MB one would fail on a large diff, and is cut at 180,000 characters with a marker as the commit snapshot is. A missing remote-tracking branch or an empty range is an error. `prUrl` adds `title` and `body` and refuses an address over 8,000 characters - checked before `ls-remote`. Trial on this repository: a missing base gave its error, the real range gave a truncated snapshot, a 9,000-character body was refused.
+- `vscode/code-review.js`: Title, Description and Generate with AI in the PR dialog, the generation strip while it runs; the commit strip in the Push dialog while pushing. `.git-dialog textarea` had no style and rendered as a small box beside its label in the first preview; it now shares the inputs' style.
+- The first writing of the new string literals lost one level of `
+` escaping and broke `git-commit.js`, `git-branches.js` and the webview script; fixed by hand. Full suite: 1296 of 1301, the same five failures as before. Both dialogs checked in a static preview with a dark theme.
+
+## 2026-11-08 — Low commit scene (0.9.71)
+
+The user asked for the commit scene too. `commitWide` in `vscode/task-visual.js` became a 1000x40 SVG, shown at 25:1 between 30 and 44 px like the generation scene; the 1000x100 version and its `commit-wide-*` keyframes are gone, while the install scene keeps its 10:1 strip. Effects, all CSS and without `rotate()`: a sheet stack with a green and a red mark that gathers, a branch drawn by `stroke-dashoffset` over `pathLength`, earlier commits on the main line blinking in turn, two packets travelling the branch, chevrons, two expanding rings and six sparks in theme and Git colours at the commit node, a check drawn in, and hash blocks and a head arrow beside it. Checked in a static preview in dark and light colours.
+
+## 2026-11-08 — Low review scene for commit message generation (0.9.71)
+
+The user found the review animation too tall and asked for more effects. The generation scene had shared the commit scene's 1000x100 SVG at 10:1 with a 72px minimum; it is now its own 1000x40 SVG (`reviewWide` in `vscode/task-visual.js`), shown at 25:1 between 30 and 44 px while `data-operation="generate"`, and the old `generate-process` group and its keyframes are gone. Effects, all CSS: a scan beam over three diff rows that light up in turn; the two `+` rows are written in green while the `-` row is struck through in red and fades, then the play repeats; dashed trails marching toward the merge node, six fragment dots in the added/deleted Git colours, a dashed orbit that runs round and a pulse ring (stroke offset, since the scenes test forbids `rotate()`), chevrons, the title and two lines typed out with a following blinking cursor, a shimmer clipped to the card and four twinkling stars. Checked in a static preview in dark and light colours at 900 and 420 px; the Eclipse copy of the file is synced at its next build.
+
+## 2026-11-08 — Write access chosen in the MCP start window (0.9.71)
+
+The user asked for each server's write settings in the start window itself: keep the default or tick another, and find it later in the ordinary settings.
+
+- `vscode/mcp-external.js`: a table of write settings, each found by the placeholder a server entry uses (`${arc1...}` for ARC-1, `${abapAdtPackage}` for mcp-abap-adt), so a server shows only its own; `writeOptions(name)` and `setWriteOption` validate and store the choice in user settings.
+- mcp-abap-adt: the first attempt passed `--exposition=readonly`, found in its sources; the live start refused it - `--exposition` is gone since 19.0.0, and the read-only tool set is the separate package `@mcp-abap-adt/core-ro`. The entry's package became `${abapAdtPackage}`, filled from `vertex.chat.abapAdtAccess` (new, `read-only` by default). Before this, mcp-abap-adt always offered its write tools.
+- `vscode/sidebar.js`: picking a server with write settings opens the window with one radio group per setting, the current value checked, a pointer to the settings and **Start**; Start stores the values and runs the existing install scene and start. A server without such settings starts at once as before.
+- Checked live on the development system: `core-ro` started with 75 tools and none that write, `core` with 273 of which 101 write; `GetPackage` answered on both.
+
+## 2026-11-08 — Chat SAP tools from ARC-1 or mcp-abap-adt (0.9.71)
+
+The request was to connect ARC-1 to VERTEX. The first guess was a user-scope entry in `~/.claude.json` beside the `vertex` server; it was written with a broken `npx.cmd` path (an escaping slip) and then removed, because the request was for the extension itself. The design settled with the user: an MCP list in the VERTEX panel choosing where the chat's SAP tools come from, servers listed in settings and started through `npx` rather than bundled in the VSIX (Node.js becomes a requirement for this choice only), and ARC-1's write access as a separate setting.
+
+- `vscode/mcp-external.js` (new): a newline-delimited JSON-RPC stdio client, the server registry over `vertex.chat.mcpServers`, `${...}` placeholders filled from the active system and the kept password, and a wrapper over VERTEX's chat tool set. With a server picked, its tools replace VERTEX's SAP tools; `debug_*` and the transpiler stay. The wrapper defines its members with `defineProperty`, because the extension test showed VERTEX's set holds read-only properties. On Windows the command is started through the shell as one quoted string, which avoids Node's DEP0190 warning for shell arguments. The command is checked on the PATH first (`where`/`which`), because cmd's "not recognized" arrives in the system language and in its code page.
+- mcp-abap-adt: version 16 and later no longer reads its connection from the environment, and 15.1.0 connected to its `mock` default, so 23.1.0 is pinned and gets a temporary `.env` (`envFile` in the entry, `--env-path=${envFile}`) in the extension's global storage, written readable by the user only, deleted when the server stops and swept at the next activation. It also needed `SAP_CONNECTION_TYPE=http`, and `--transport` is gone from its CLI.
+- `vscode/chat.js`: the picked server is started before the request lists its tools; a note in the instructions says VERTEX's tool names are not available then.
+- `vscode/extension.js`: the chat tool set is wrapped; the `/chat` endpoint's tools and instructions became getters so Claude Code and Codex see the current server's tools.
+- `vscode/sidebar.js`: the MCP list after the client list, and a start window with the install scene, the result, and **Get Node.js** when `npx` is missing.
+- `vscode/task-visual.js`: an `install` wide scene in the commit scene's style: a package travels from the registry into the server node, with a pulse and check; theme colours and reduced motion as before.
+- `vscode/package.json`: `vertex.chat.mcpServer`, `vertex.chat.mcpServers` (ARC-1 1.10.1 and mcp-abap-adt 23.1.0 by default), `vertex.chat.arc1Access`. A timeout setting was added and taken out again: nobody asked for it.
+- Checked live on the development system: ARC-1 `SAPSearch` and mcp-abap-adt `GetPackage` answered, and the temporary `.env` was gone after the stop. The install window was checked in a static preview in dark and light colours. The full test suite: 1296 of 1303 pass; four failures are the same on the unchanged HEAD, the fifth is a live Vercel request without a key.
+
 ## 2026-11-08 — Separate generation and commit scenes (0.9.70)
 
 Use distinct full-width waiting scenes: a lens inspects added/removed code fragments, which merge into a common review and draft message during AI generation; a document stack travels along a Git branch during commit. Add explanatory operation text below each scene.

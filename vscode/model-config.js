@@ -443,7 +443,7 @@ td.id { font-family: var(--vscode-editor-font-family); }
 #model-info-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .error { color: var(--vscode-errorForeground); white-space: pre-wrap; }
 a.error-link, #error-dialog a { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: underline; }
-#error-dialog, #model-info-dialog { color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-panel-border); padding: 14px 18px; width: min(760px,80vw); max-height: 80vh; overflow: auto; }
+#error-dialog, #model-info-dialog { color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-widget-border,var(--vscode-contrastBorder,var(--vscode-panel-border))); box-shadow: 0 4px 18px var(--vscode-widget-shadow,transparent); padding: 14px 18px; width: min(760px,80vw); max-height: 80vh; overflow: auto; }
 #error-dialog::backdrop, #model-info-dialog::backdrop { background: var(--vscode-widget-shadow,transparent); }
 #error-text { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; margin: 12px 0; }
 .capability { display: inline-block; margin-left: 5px; font-weight: normal; }

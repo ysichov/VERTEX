@@ -242,3 +242,25 @@ test("screenshots pasted with a question are saved beside the log with the quest
   assert.deepEqual(counted.vertex_screenshots, [{ media_type: "image/png" }]);
   assert.equal(nfs.existsSync(quiet.file.replace(/\.jsonl$/, "")), false, "no file without the questions option");
 });
+
+test("with toolResults a tool's result is logged as it went to the model, source still replaced", async () => {
+  const sessionLog = require("../session-log");
+  const read = async include => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-results-"));
+    const log = sessionLog.create(dir, "claude_compatible", "t1", include, "Chat");
+    log.toolResult(log.toolUse("run_sap_select", { sql: "SELECT * FROM t000" }),
+      { content: [{ type: "text", text: JSON.stringify({ rows: [{ SPRAS: "R", DESCRIPTION: "История" }] }) }] });
+    log.toolResult(log.toolUse("read_sap_object", { object_name: "ZX", object_type: "PROG" }),
+      { content: [{ type: "text", text: JSON.stringify({ object_name: "ZX", object_type: "PROG", source: "REPORT zx." }) }] });
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const folder = path.join(dir, "claude_compatible"), file = fs.readdirSync(folder).find(name => name.endsWith(".jsonl"));
+    return fs.readFileSync(path.join(folder, file), "utf8").split("\n").filter(line => line.includes("tool_result"))
+      .map(line => JSON.parse(line).message.content[0].content);
+  };
+  const [rows, source] = await read({ tools: true, toolResults: true });
+  assert.deepEqual(JSON.parse(rows), { rows: [{ SPRAS: "R", DESCRIPTION: "История" }] });
+  assert.doesNotMatch(source, /REPORT zx/);
+  assert.match(source, /not logged; open the referenced object/);
+  const [summary] = await read({ tools: true });
+  assert.match(summary, /"content":"not logged"/);
+});

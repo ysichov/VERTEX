@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.70**
+**Version: 0.9.71**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -16,7 +16,7 @@ VERTEX can work as an AI coding agent for an ordinary local Git repository: Pyth
 
 **Quick start:** open a local Git folder → open the VERTEX panel → choose a provider/model in **LLM Providers** → ask for a change → review the diff → **Apply**.
 
-While a regular chat task runs in VS Code, the VERTEX mark beside its answer rotates slowly (one turn in six seconds). Review requests instead show a moving magnifying lens over documents; commit-message tasks show documents collecting into a stack, joining a Git timeline node, then showing a check mark. These small vector scenes use the active theme and stop on completion or failure. The same review indicator appears immediately while Git prepares a diff, and the commit scene appears inside the composer during generation and commit. Reduced-motion settings keep these scenes static. It disappears on completion or error. Its fixed space keeps the answer from shifting; reduced-motion settings leave the mark static. Progress shows Working: step N and the operation name. Times in logs and execution windows use the 24-hour format. Usage metadata is recorded for every chat request, Web search, commit-message generation, model check and window assistant, independently of optional message-content logging. Model checks share a log and retain completed calls on Stop. ChatGPT/Codex token counters are read from CLI JSONL events; native per-model counters are deduplicated against run totals. If no log folder is selected, usage metadata uses private extension storage. The Vercel chat selector shows Vercel on its own row, with linked model-provider and model selectors below. The provider comes from the model-ID prefix and the model list includes the enabled models for that provider, cheapest first by input price then output price, with unknown prices last. Switching model providers remembers the last model used in each group during the session. The Vercel model table offers All models and By provider views. Groups use the model-ID prefix (openai/, google/, etc.), fold independently and retain selection and unavailable filtering. Each group has its own sort field and direction; Global order inherits the main table sort. Clicking a main column resets group overrides. Sorting retains the list scroll position. The $ icon in the VERTEX title bar opens Usage & Cost, with inclusive date/month/activity filters, activity and provider totals and per-model input/output/cache tokens and recorded actual USD. Missing costs remain unknown; subscription estimates are excluded. With Vercel selected, explicitly ask to search the web (for example “найди в интернете” or “search the web”) or verify current information to use Gateway/Perplexity before answering; there is no Web checkbox. Ordinary questions do not automatically search. This uses the active Vercel key and selected tool-capable model, with provider search charges; only the question and separate Web history are sent. SAP, local files, screenshots and review context are excluded. Source links open in the browser; unconfirmed searches do not produce a supposedly web-verified answer. OpenAI-compatible APIs negotiate tool support: an explicit unsupported-tools response overrides the catalog for that provider, key and model for 24 hours. Only an initially rejected request retries once as plain text, with no action replay; models without tools can answer from supplied context but cannot perform live actions. Failed API requests retain their model step and error even with answer logging disabled. The Commit button in Uncommitted changes opens editable Summary and Description fields. Its header shows the actual model, token usage and reported cost of the latest generation, including zero or unknown cost; failed generations retain reported charge details. Session Logs headers list models without opening the conversation. Refresh icons reload Session Logs and the uncommitted review; review refresh rereads disk changes and updates the AI context and commit snapshot. Answer footers, commit generation and usage reports show reported USD costs without display rounding, preserving small amounts and distinguishing zero, partial and unknown costs. Agent requests include the actual extension-host OS, architecture, shell and working directory; external build tools are explicitly unverified. Local commands run in the project folder; Windows uses PowerShell 5.1 syntax, with explicit guidance on shell parsing failures. Generate with AI drafts a message from the displayed diff using the selected model, with an explicit 4,096-token output budget for API providers, without tools or conversation history. A transient connection failure retries generation once; drafts remain editable if it fails. Commit creates a local commit of the reviewed files; staged changes outside the review are preserved. Reopen the review if files or HEAD have changed. Git History loads the latest ten commits by default; choosing a month or date range loads that period while retaining original commit numbers. The Author filter combines with the date period; without dates it shows the latest ten commits by that author. Git review uses a folder/file tree beside the selected file diff. Select a file to inspect its changes; folders fold independently. The tree starts with total files, text-line changes and blocks; binary files have no text counters. Text file entries and the selected-file header show line-change counts and changed-block counts. Each text file offers Compact (default, changed blocks with context) and Full (the complete file, loaded on demand). Review strips use shared compact VERTEX buttons, with information on the left and actions on the right. File references in AI answers open an existing review at that file, or open the workspace file in the editor when no matching review is open. A one-block file uses only the file toolbar, without a duplicate block ASK AI bar; insertion/deletion/modification labels are omitted while diff colors and AI context retain the change structure. Binary files are labelled without text counters and excluded from AI review and commit-generation context. The chat offers SAP / Folder context selection. SAP includes SAP editor and VERTEX debugger/analysis context; Folder includes local project and Git-review context. Models without tool calls can still read supplied context. Empty JSON objects are reported as incomplete answers; valid JSON answer wrappers are displayed as their answer text. Vercel model details identify the /models API source and show its description when provided; an ⓘ button before each model name opens the same complete model information as the panel’s $ button, from one shared formatter, without a paid model call. Both identify the API source and distinguish runtime observations from catalog declarations. Catalog declarations are cached for the provider/key session; Reload Window fetches anew. Model-table sort headers remain visible while scrolling. The toolbar orders ASK AI, Commit, Push, then PR. A branch selector shows the current local branch. New branch starts at the current commit and retains local edits; switching existing branches requires a clean working tree. Commit writes to the project’s current local branch. Push previews that branch, HEAD, remote and destination branch, and sends only committed changes after an explicit click, without force or branch switching. PR supports github.com remotes and opens GitHub’s comparison page with selected base and source branches after verifying the source contains the pushed current commit. Publish or merge explicitly on GitHub. The assistant’s temporary worktree uses detached HEAD; create a named task branch before committing when you want the resulting commits isolated from main. Git History and review buttons, modal dialogs and input fields follow the shared rounded VERTEX control style. Git previews start with files folded and shorten very long display lines; ASK AI retains the full source context. Session Logs show actual Vercel Gateway charges in USD per model step, prompt and session. Missing charges are shown as unknown, never as zero; partial totals are marked.
+While a regular chat task runs in VS Code, the VERTEX mark beside its answer rotates slowly (one turn in six seconds). Review requests instead show a wide strip where a beam scans `+`/`-` diff rows and a draft is typed out; commit-message tasks show a strip where packets ride a Git branch into a commit node with rings and a check. These vector strips use the active theme and stop on completion or failure. The same review indicator appears immediately while Git prepares a diff, and the commit scene appears inside the composer during generation and commit. Reduced-motion settings keep these scenes static. It disappears on completion or error. Its fixed space keeps the answer from shifting; reduced-motion settings leave the mark static. Progress shows Working: step N and the operation name. Times in logs and execution windows use the 24-hour format. Usage metadata is recorded for every chat request, Web search, commit-message generation, model check and window assistant, independently of optional message-content logging. Model checks share a log and retain completed calls on Stop. ChatGPT/Codex token counters are read from CLI JSONL events; native per-model counters are deduplicated against run totals. If no log folder is selected, usage metadata uses private extension storage. The Vercel chat selector shows Vercel on its own row, with linked model-provider and model selectors below. The provider comes from the model-ID prefix and the model list includes the enabled models for that provider, cheapest first by input price then output price, with unknown prices last. Switching model providers remembers the last model used in each group during the session. Switching between chat providers brings back the model last picked for each provider, across restarts; a provider never used starts on its default model. The Vercel model table offers All models and By provider views. Groups use the model-ID prefix (openai/, google/, etc.), fold independently and retain selection and unavailable filtering. Each group has its own sort field and direction; Global order inherits the main table sort. Clicking a main column resets group overrides. Sorting retains the list scroll position. The $ icon in the VERTEX title bar opens Usage & Cost, with inclusive date/month/activity filters, activity and provider totals and per-model input/output/cache tokens and recorded actual USD. Missing costs remain unknown; subscription estimates are excluded. With Vercel selected, explicitly ask to search the web (for example “найди в интернете” or “search the web”) or verify current information to use Gateway/Perplexity before answering; there is no Web checkbox. Ordinary questions do not automatically search. This uses the active Vercel key and selected tool-capable model, with provider search charges; only the question and separate Web history are sent. SAP, local files, screenshots and review context are excluded. Source links open in the browser; unconfirmed searches do not produce a supposedly web-verified answer. OpenAI-compatible APIs negotiate tool support: an explicit unsupported-tools response overrides the catalog for that provider, key and model for 24 hours. Only an initially rejected request retries once as plain text, with no action replay; models without tools can answer from supplied context but cannot perform live actions. Failed API requests retain their model step and error even with answer logging disabled. The Commit button in Uncommitted changes opens editable Summary and Description fields. Its header shows the actual model, token usage and reported cost of the latest generation, including zero or unknown cost; failed generations retain reported charge details. Session Logs headers list models without opening the conversation. Refresh icons reload Session Logs and the uncommitted review; review refresh rereads disk changes and updates the AI context and commit snapshot. Answer footers, commit generation and usage reports show reported USD costs without display rounding, preserving small amounts and distinguishing zero, partial and unknown costs. Agent requests include the actual extension-host OS, architecture, shell and working directory; external build tools are explicitly unverified. Local commands run in the project folder; Windows uses PowerShell 5.1 syntax, with explicit guidance on shell parsing failures. Generate with AI drafts a message from the displayed diff using the selected model, with an explicit 4,096-token output budget for API providers, without tools or conversation history. A transient connection failure retries generation once; drafts remain editable if it fails. Commit creates a local commit of the reviewed files; staged changes outside the review are preserved. Reopen the review if files or HEAD have changed. Git History loads the latest ten commits by default; choosing a month or date range loads that period while retaining original commit numbers. The Author filter combines with the date period; without dates it shows the latest ten commits by that author. Git review uses a folder/file tree beside the selected file diff. Select a file to inspect its changes; folders fold independently. The tree starts with total files, text-line changes and blocks; binary files have no text counters. Text file entries and the selected-file header show line-change counts and changed-block counts. Each text file offers Compact (default, changed blocks with context) and Full (the complete file, loaded on demand). Review strips use shared compact VERTEX buttons, with information on the left and actions on the right. File references in AI answers open an existing review at that file, or open the workspace file in the editor when no matching review is open. A one-block file uses only the file toolbar, without a duplicate block ASK AI bar; insertion/deletion/modification labels are omitted while diff colors and AI context retain the change structure. Binary files are labelled without text counters and excluded from AI review and commit-generation context. The chat offers SAP / Folder context selection. SAP includes SAP editor and VERTEX debugger/analysis context; Folder includes local project and Git-review context. Models without tool calls can still read supplied context. Empty JSON objects are reported as incomplete answers; valid JSON answer wrappers are displayed as their answer text. Vercel model details identify the /models API source and show its description when provided; an ⓘ button before each model name opens the same complete model information as the panel’s $ button, from one shared formatter, without a paid model call. Both identify the API source and distinguish runtime observations from catalog declarations. Catalog declarations are cached for the provider/key session; Reload Window fetches anew. Model-table sort headers remain visible while scrolling. The toolbar orders ASK AI, Commit, Push, then PR. A branch selector shows the current local branch. New branch starts at the current commit and retains local edits; switching existing branches requires a clean working tree. Commit writes to the project’s current local branch. Push previews that branch, HEAD, remote and destination branch, and sends only committed changes after an explicit click, without force or branch switching. Push shows its own scene while it sends: packets rise from the local branch into the remote cloud. PR supports github.com remotes and opens GitHub’s comparison page with selected base and source branches after verifying the source contains the pushed current commit; the dialog's Title and Description are filled in there. Generate with AI drafts them from the branch's commits and its diff against the remote-tracking base branch (fetch first), while a scene shows the branch's commits flying into one description card; a title and description too long for GitHub's page address are refused, not cut. Publish or merge explicitly on GitHub. The assistant’s temporary worktree uses detached HEAD; create a named task branch before committing when you want the resulting commits isolated from main. Git History and review buttons, modal dialogs and input fields follow the shared rounded VERTEX control style. Git previews start with files folded and shorten very long display lines; ASK AI retains the full source context. Session Logs show actual Vercel Gateway charges in USD per model step, prompt and session. Missing charges are shown as unknown, never as zero; partial totals are marked.
 
 In the agent chat, an open local REPORT/PROGRAM is the transpiler source when its declaration or filename matches the request, even if a SAP system is selected or named. SAP supplies dictionary or SELECT access; it does not replace that file. VERTEX checks visible source editors even when focus is on a webview. API 429 responses wait for Retry-After (up to about one minute) and retry the pending model request at most twice, without replaying completed tool calls.
 
@@ -80,7 +80,7 @@ Install Git and make the `git` executable available on the VS Code extension hos
 
 Check `git --version` in the environment where VERTEX runs, then fully restart VS Code after installing Git or changing `PATH`. On Windows, make Git available from other programs; on macOS/Linux, install Git through the system tools or package manager. With Remote SSH, WSL or a container, Git must be installed on that extension host, not only on the desktop computer.
 
-Ordinary API chat needs the configured provider credentials and network access; it does not require Git, SAP, Python or a separate Node.js installation. Claude Code, Codex and CodeMie modes require their installed client and authentication. Project builds/tests require that project's own toolchain. VERTEX local commands use Windows PowerShell 5.1 on Windows and `/bin/sh` elsewhere; commands and paths must match that host. The bundled Node runtime does not mean an external `node` command is installed.
+Ordinary API chat needs the configured provider credentials and network access; it does not require Git, SAP, Python or a separate Node.js installation. Claude Code, Codex and CodeMie modes require their installed client and authentication. Project builds/tests require that project's own toolchain. VERTEX local commands use Windows PowerShell 5.1 on Windows and `/bin/sh` elsewhere; commands and paths must match that host. The bundled Node runtime does not mean an external `node` command is installed. Taking the chat's SAP tools from ARC-1 or mcp-abap-adt (the panel's MCP list) needs Node.js installed, for `npx`; vibing-steampunk needs its `vsp` executable.
 
 
 Recommended companion extension:
@@ -756,8 +756,13 @@ every provider and does not capture raw HTTP payloads. Use **Choose log folder..
 Providers or the folder link beside `vertex.ai.logPath` in Settings; the gear opens the log settings.
 **Session Logs**, the scroll icon in the panel's title bar before the settings gear, opens the session report beside the active editor. It reads the
 configured log folder and shows sessions, prompts and token usage by day or across all dates.
+**Continue in chat** on a session opens that conversation in the VERTEX chat: its questions and answers become the
+history of the next question, which is logged with them. A conversation that switched provider is put back together
+from every provider's log file, in the order it was asked. Only the text comes back - the tools' results of that
+session are not repeated - and a conversation logged without its questions or answers (`vertex.ai.log.questions`,
+`vertex.ai.log.answers`) cannot be continued; VERTEX says which is missing.
 Filter by provider, model or prompt text; expand a session and its sections to inspect the content
-retained by the log settings. Sessions and their content sections start collapsed. A session of several prompts opens as one narrow line per prompt - its time of day and the start of the question - and a line opens that prompt's conversation; a session of one prompt opens on its conversation. Within a conversation **User**, **Model answer**, **Tools**, instructions and request context open independently. Three theme-aware accent colours distinguish user questions, plain model answers and technical details. JSON tool results are indented for reading. Each tool call starts collapsed under its name; expand it to inspect its arguments, matching result and links. The report has a refresh button and a log-folder picker. Each assistant transpiler call links to its recording when one exists. With tool logging enabled, SAP runs started by the assistant save observed stops to `vertex.debug.runPath` (or extension storage) and link to that recording; intermediate statements skipped by Continue are not recorded. Links open an offline replay without running the program again. Assistant transpiler recordings are kept in extension storage by default, so their links survive a restart; `vertex.transpiler.runPath` selects another folder.
+retained by the log settings. A tool result shows only its size unless `vertex.ai.log.toolResults` is on (with `vertex.ai.log.tools`): then it holds what the tool returned to the model, program source replaced by object references, cut after 20,000 characters. Sessions and their content sections start collapsed. A session of several prompts opens as one narrow line per prompt - its time of day and the start of the question - and a line opens that prompt's conversation; a session of one prompt opens on its conversation. Within a conversation **User**, **Model answer**, **Tools**, instructions and request context open independently. Three theme-aware accent colours distinguish user questions, plain model answers and technical details. JSON tool results are indented for reading. Each tool call starts collapsed under its name; expand it to inspect its arguments, matching result and links. The report has a refresh button and a log-folder picker. Each assistant transpiler call links to its recording when one exists. With tool logging enabled, SAP runs started by the assistant save observed stops to `vertex.debug.runPath` (or extension storage) and link to that recording; intermediate statements skipped by Continue are not recorded. Links open an offline replay without running the program again. Assistant transpiler recordings are kept in extension storage by default, so their links survive a restart; `vertex.transpiler.runPath` selects another folder.
 
 Request-context entries retain compact UML and metrics JSON snapshots. **Open recorded UML** and **Open recorded metrics** render the exact structure and values supplied to the assistant without reading SAP again. UML snapshots contain class/interface names, supplied method names and relationship endpoints; metrics snapshots contain the supplied columns, rows and totals, including any original truncation. **Open current object** opens today’s source, which may differ from the source used for that request. Program source snapshots remain part of separate execution recordings for offline replay, rather than the assistant JSONL log. Select conversation checkboxes and use **Clear selected conversations** to delete their JSONL logs after confirmation. Execution recordings remain in their own folders; pending responses do not recreate cleared conversations.
 
@@ -877,6 +882,8 @@ Model-loading errors in the sidebar appear below the model selector.
 
 ### Several systems
 
+The chat can also read table contents itself: its `run_sap_select` tool runs one SELECT through the same ADT data preview as Run Select, read only, and returns the rows (100 by default, at most 1,000) - for customizing, texts and repository tables.
+
 The panel's chat can reach every system in `vertex.systems`. Name one in the question — *copy
 ZCL_FOO from E19 to QAS* — and the SAP tools run against it; without a name they use the system
 chosen in the panel. A copy is a read in one system and a change in the other: it goes into the
@@ -956,6 +963,103 @@ The remote HTTP host is experimental and documented for future development only.
 
 MCP is how Claude Code and Codex are given tools in both cases. The difference is
 who connects them: the extension, for one request, or you, once.
+
+## Choose the chat's SAP tools
+
+The **MCP** list in the VERTEX panel, beside the SAP system and client, picks
+where the VERTEX chat's SAP tools come from:
+
+- **VERTEX** (default) - VERTEX's own tools.
+- **ARC-1** - the [ARC-1](https://github.com/arc-mcp/arc-1) SAP ADT MCP server.
+- **mcp-abap-adt** - fr0ster's [mcp-abap-adt](https://github.com/fr0ster/mcp-abap-adt) server.
+- **vibing-steampunk** - oisee's [vibing-steampunk](https://github.com/oisee/vibing-steampunk) (`vsp`),
+  started in its hyperfocused mode: one `SAP` tool instead of many.
+- **SAP ADT** - the ADT MCP Server of SAP's own
+  [ABAP Development Tools for VS Code](https://marketplace.visualstudio.com/items?itemName=SAPSE.adt-vscode).
+
+With an MCP server picked, its tools replace VERTEX's SAP read and write
+tools in the chat; the debugger and ABAP transpiler tools stay VERTEX's.
+
+Picking a server opens a window that first asks what the server may change in
+SAP; every choice is read-only by default, so pressing **Start** without a change
+keeps it read-only. The server then starts in the same window with an install
+scene. The choices are kept in the settings below and can be changed there later.
+A server left picked starts again in the background when VS Code starts; if it
+fails, an error message says why.
+The servers need nothing installed except [Node.js](https://nodejs.org): `npx`
+downloads the pinned package on its first start (this can take a few minutes)
+and takes it from npm's cache afterwards. Without Node.js the window says so and
+offers **Get Node.js**; a server that fails to start shows its error, and the
+chat does not fall back to other tools.
+
+vibing-steampunk is a single executable, not an npm package: download `vsp` for
+your platform from [its releases](https://github.com/oisee/vibing-steampunk/releases),
+then set `vertex.chat.vspPath` to the file's full path, or name it `vsp` (`vsp.exe` on Windows) and put its folder on PATH. VERTEX does
+not download it; when it is not found, the window says where to get it. Servers run
+in an empty folder of VERTEX's own, so a `.env` or `.vsp.json` you keep for the
+`vsp` command line is not read; the connection comes from VERTEX.
+
+The server works on the active SAP system with its url, user, client and the
+password VERTEX keeps in the OS credential store; nothing is entered again.
+mcp-abap-adt reads its connection only from a file, so VERTEX writes a temporary
+`.env` in its own storage while that server runs and deletes it when it stops.
+Systems that log on with SNC have no password to hand over and cannot use these
+servers.
+
+SAP ADT is different: SAP's extension runs that server itself and logs on with its
+own systems (destinations), so VERTEX hands over no system or password and asks for
+no write access - SAP's settings decide. To use it:
+
+1. Install ABAP Development Tools for VS Code and log on to a system there.
+2. Set `adt.mcpServer.enabled` to `true`; SAP's extension starts the server at
+   `http://localhost:2236/mcp` (`adt.mcpServer.port`) and keeps its token in
+   `adt.mcpServer.token`, which VERTEX reads.
+3. Allow the system in `adt.mcpServer.accessRestrictions` (`destinations`, for
+   example `MYSYS_*` or `*`); packages that may be changed go in
+   `packages-objectChanges`. Without this SAP refuses every tool call.
+
+The chat then works on the systems logged on in SAP's extension, which may differ
+from the system active in VERTEX; SAP's tools name their system in `destination`.
+If nothing answers, the start window says what to switch on.
+
+### Toolsets: extra tools on demand
+
+The MCP list replaces VERTEX's SAP tools with one server's. Toolsets add a few
+tools of another server only when a task needs them: the chat gets one small
+`enable_toolset` tool listing the sets, and the model enables a set when it sees
+a matching task - for example a RAP service to generate. The set's tools join from
+the next step (in Claude Code and Codex from the next question) and stay for the
+session; questions that need none do not carry their descriptions.
+
+The default set **SAP RAP** takes from the SAP ADT server its RAP generators (table,
+CDS view, behavior definition, service definition and binding in one go), the
+service-binding tools (publish, OData details), object actions, activation and the
+transport-request tools - about a fifth of that server's tool descriptions. It needs
+the SAP ADT server set up as above and works on SAP's extension's systems; the model
+is told to name the system it changes. Sets are defined in `vertex.chat.toolsets`:
+the server from `vertex.chat.mcpServers`, a short description for the model, tool
+names (`*` and `?` allowed) and a note. A failed start of a set's server is reported
+to the model and the user, not skipped.
+
+Settings:
+
+- `vertex.chat.arc1Access` - what ARC-1 may do: `read-only` (default),
+  `write-tmp` (writes and activation in `$TMP`) or `write` (everything: any
+  package, transports, table preview, free SQL and Git writes).
+- `vertex.chat.abapAdtAccess` - what mcp-abap-adt may change: `read-only`
+  (default; runs `@mcp-abap-adt/core-ro`, which has no write tools) or `write`
+  (runs `@mcp-abap-adt/core`, which creates, changes and activates objects).
+- `vertex.chat.vspAccess` - what vibing-steampunk may change: `read-only`
+  (default; every write refused) or `write` (create, change, delete, activate and
+  transports).
+- `vertex.chat.vspPath` - the `vsp` executable: `vsp` on PATH (default) or its
+  full path.
+- `vertex.chat.mcpServers` - the servers in the list: name, command, arguments
+  and environment, with `${sapUrl}`, `${sapUser}`, `${sapPassword}`,
+  `${sapClient}` and the other placeholders filled from the active system. Add an
+  entry to put another MCP server into the list.
+- `vertex.chat.mcpServer` - the server picked in the panel.
+- `vertex.chat.toolsets` - the sets the chat may enable on demand (default: SAP RAP).
 
 ## Review transports with Copilot, Claude Code or Codex
 
@@ -1682,6 +1786,8 @@ Batch model variants are excluded from compatible API model lists and checks bec
 
 OpenRouter actual request charges from usage.cost appear in response usage, session logs and Usage & Cost, including model checks. Zero costs remain zero; missing costs stay unknown, and incomplete totals are marked partial. No extra billing request is required.
 
+After each OpenRouter answer, the line under it shows a second line with OpenRouter's own account of the key: free-model requests left today (UTC), money spent today and the key's spending limit left. It comes from OpenRouter's `GET /api/v1/key`, which costs nothing and does not count as a request; when that call fails, the line says so.
+
 Model checks verify connectivity: a valid chat message can confirm availability even when its text is empty under the 16-output-token budget. Finish reason, answer-text length, reasoning-token usage and reported cost are recorded for diagnostics.
 
 Session Logs conversation entries share the surrounding session background in the active theme.
@@ -1695,3 +1801,5 @@ OpenRouter offers All / Available / Free model filters. Available excludes model
 The commit composer spans nearly the full review-window width. During generation and commit, a wide Git timeline scene runs above the status text; reduced-motion preferences keep it static.
 
 Generate with AI shows a lens inspecting colored diff fragments that merge into one review and flow into a draft message; Commit shows a Git timeline and commit node. Each scene fills the available width with an explanation below it and stops on completion or error.
+
+Session Logs groups provider files by conversation, with combined usage and each prompt’s provider and model. Clearing a selected conversation removes all its provider files and branches. Older logs without a conversation identifier remain separate. In VS Code, **Continue in chat** resumes the conversation from its end.

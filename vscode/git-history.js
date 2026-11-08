@@ -148,7 +148,7 @@ async function openCommit(vscode, folder, commit) {
   let commitBusy=false, committed=false;
   panel.webview.onDidReceiveMessage(async message => {
     if(message?.action==="fileView"){await review.sendFileView(panel,message,files.find(f=>f.id===message.file),true);return;}
-    if(working && ["loadBranches","switchBranch","preparePR","openPR"].includes(message?.action)){
+    if(working && ["loadBranches","switchBranch","preparePR","openPR","generatePR"].includes(message?.action)){
       const kind=message.action==="loadBranches"||message.action==="switchBranch"?"branchError":"prError";
       if(commitBusy){await panel.webview.postMessage({[kind]:"Another Git operation is running. Try again when it finishes."});return;}
       commitBusy=true;
@@ -160,6 +160,11 @@ async function openCommit(vscode, folder, commit) {
           changes=await readWorkingChanges(folder);expectedHead=(await git(folder,["rev-parse","HEAD"])).trim();files=makeFiles(changes);snapshot=changes.length?reviewSnapshot(changes,title,folder):null;
           reviewSnapshots.delete(panel);if(snapshot)reviewSnapshots.set(panel,snapshot);committed=false;panel.title=title;render();
         }else if(message.action==="preparePR")await panel.webview.postMessage({prInfo:await helper.prInfo(folder)});
+        else if(message.action==="generatePR"){
+          const result=await vscode.commands.executeCommand("vertex.generatePullRequest",await helper.prSnapshot(folder,message),{summary:message.title,description:message.body});
+          if(!result)throw new Error("No pull request description returned.");
+          await panel.webview.postMessage(result.error?{prError:result.error,prGeneration:result.generation||null}:{prDraft:result});
+        }
         else{const url=await helper.prUrl(folder,message);if(!await vscode.env.openExternal(vscode.Uri.parse(url)))throw new Error("Could not open the browser.");await panel.webview.postMessage({prOpened:true});}
       }catch(error){await panel.webview.postMessage({[kind]:error.message});}finally{commitBusy=false;}return;
     }

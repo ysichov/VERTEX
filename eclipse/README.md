@@ -1,6 +1,6 @@
 # Built-in Eclipse Assistant
 
-**Version: 0.9.70**
+**Version: 0.9.71**
 
 **Looking for the standalone AI Code Agent for local Git projects in any programming language?** Use the [VS Code extension](../vscode/README.md): that workflow reads, searches and edits an isolated working copy, with review and Apply, without a SAP connection. This document describes the Eclipse ADT plugin and its SAP workflows.
 
@@ -185,9 +185,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. The feature and bundle sources are at `0.9.70.qualifier`; the checked-in update site carries build `0.9.70.20261107220631`.
+then regenerate. The feature and bundle sources are at `0.9.71.qualifier`; the checked-in update site carries build `0.9.71.20261108093645`.
 
-The local install archive is version `0.9.70.20261107220631`. Install its ZIP through
+The local install archive is version `0.9.71.20261108093645`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:
@@ -311,3 +311,5 @@ For a method with no separate version directory, Diff uses the class history and
 Session logs render Markdown in questions, answers and reasoning; user text is blue, answers green and reasoning indigo.
 
 **Host scope:** VERTEX Code Agent (alpha), with native Claude Code tools and VERTEX file tools for the other providers, Git working-copy review and builds after Apply, is available in the VS Code extension. The Eclipse assistant continues to use its documented SAP workflow.
+
+Session Logs groups provider files by conversation, with combined usage and each prompt’s provider and model. Clearing a selected conversation removes all its provider files and branches. Older logs without a conversation identifier remain separate.

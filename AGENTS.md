@@ -8,6 +8,7 @@
   `org.vertex.abap.feature/feature.xml` and `org.vertex.abap.ui/META-INF/MANIFEST.MF`. Build
   both the VSIX and the Eclipse update site, and in the same landing write the release into
   the docs listed below (`history.md`, `dev_history.md`, and every page that states the version).
+  
 
 - Documentation lives in several places, and a change that users can see is written into each
   one it concerns, in the same landing: `README.md` (the repository on GitHub),

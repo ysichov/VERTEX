@@ -81,7 +81,7 @@ function parseSession(text, file) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
   const provider = name.replace(/_\d{8}_\d{6}(?:_[0-9a-f]+)?$/, "");
-  const session = { id: name, provider, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
+  const session = { id: name, provider, conversation: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
   const seen = new Set();
   const toolCalls = new Map();
   let current;
@@ -90,6 +90,7 @@ function parseSession(text, file) {
     let record;
     try { record = JSON.parse(line); } catch { continue; }
     const time = Date.parse(record.timestamp || "");
+    if (!session.conversation && typeof record.vertex_conversation === "string") session.conversation = record.vertex_conversation;
     if (Number.isFinite(time)) {
       session.start = session.start === null ? time : Math.min(session.start, time);
       session.end = session.end === null ? time : Math.max(session.end, time);
@@ -126,7 +127,8 @@ function parseSession(text, file) {
         ? content.filter(block => block?.type === "text").map(block => block.text || "").join("\n") : "";
       if (prompt.trim()) {
         current = { time: Number.isFinite(time) ? time : session.end, end: Number.isFinite(time) ? time : session.end,
-          text: prompt.trim(), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
+          key: name + ":" + session.prompts.length, provider, branch: record.vertex_branch || "main", parent: record.vertex_parent || null,
+          text: prompt.trim(), operation: String(record.vertex_operation || "Chat"), model: "", usage: emptyUsage(), details: [], objects: record.vertex_objects || [],
           screenshots: Array.isArray(record.vertex_screenshots) ? record.vertex_screenshots : [],
           // Model calls and tool calls in the order they happened.
           timeline: [] };
@@ -203,6 +205,7 @@ function parseSession(text, file) {
     if (reference) detail.recording = reference;
     else delete detail.recording;
   }
+  if (!session.conversation) session.conversation = "legacy:" + name;
   return session.start !== null ? session : null;
 }
 
@@ -220,11 +223,57 @@ function readSessions(root) {
   return { configured: true, folder, sessions };
 }
 
+/* The questions and answers of the conversation SESSION belongs to, in the order they were asked: every file that
+   carries its conversation id (one per provider it used), or the file alone when it was written before ids existed.
+   Commit and PR descriptions are separate operations, not turns of the chat. */
+function conversationTurns(report, sessionId, point) {
+  const session = report.sessions.find(item => item.id === sessionId);
+  if (!session) throw new Error("That session is no longer in the log folder.");
+  const files = session.conversation ? report.sessions.filter(item => item.conversation === session.conversation) : [session];
+  const all = files.flatMap(item => item.prompts.map(prompt => ({ ...prompt, provider: item.provider })))
+    .filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search")
+    .sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
+  const target = point ? all.find(prompt => prompt.key === point) : all[all.length - 1];
+  if (point && !target) throw new Error("That continuation point is no longer in the log folder.");
+  // Walk branch ancestry, cutting each ancestor at the recorded fork point.
+  const visiting = new Set();
+  function history(end) {
+    if (!end) return [];
+    if (visiting.has(end.key)) throw new Error("The conversation has a cyclic branch link.");
+    visiting.add(end.key);
+    const own = all.filter(p => p.branch === end.branch);
+    const parent = own[0]?.parent;
+    const ancestor = parent ? all.find(p => p.key === parent) : null;
+    if (parent && !ancestor) throw new Error("The parent of this branch is missing from the log folder.");
+    const result = [...history(ancestor), ...own.slice(0, own.indexOf(end) + 1)];
+    visiting.delete(end.key);
+    return result;
+  }
+  const prompts = history(target);
+  const notLogged = text => !text || /^\[[^\]]*not logged[^\]]*\]$/i.test(text.trim());
+  if (!prompts.length || prompts.every(prompt => notLogged(prompt.text))) {
+    throw new Error("This conversation was logged without its questions; turn on vertex.ai.log.questions for conversations to come.");
+  }
+  const turns = prompts.map(prompt => {
+    const answers = prompt.details.filter(detail => detail.type === "answer").map(detail => detail.text);
+    const answer = answers.length ? answers[answers.length - 1] : "";
+    return { question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time };
+  });
+  if (turns.every(turn => !turn.answer)) {
+    throw new Error("This conversation was logged without its answers; turn on vertex.ai.log.answers for conversations to come.");
+  }
+  const later = all.some(p => p.branch === target.branch && all.indexOf(p) > all.indexOf(target));
+  const branch = later ? { id: crypto.randomBytes(8).toString("hex"), parent: target.key }
+    : { id: target.branch, parent: target.parent };
+  return { conversation: session.conversation, files: files.length, turns, branch };
+}
+
 async function clearConversations(vscode, ids) {
   if (!Array.isArray(ids)) return 0;
   const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
   const report = readSessions(root), selected = new Set(ids.filter(id => typeof id === "string"));
-  const sessions = report.sessions.filter(session => selected.has(session.id));
+  const conversations = new Set(report.sessions.filter(s => selected.has(s.id) && s.conversation).map(s => s.conversation));
+  const sessions = report.sessions.filter(session => selected.has(session.id) || conversations.has(session.conversation));
   if (!sessions.length) return 0;
   const confirm = await vscode.window.showWarningMessage("Clear " + sessions.length + " selected conversation log(s)? Execution recordings are kept.",
     { modal: true }, "Clear selected conversations");
@@ -246,7 +295,10 @@ function open(vscode, options = {}) {
   panel = vscode.window.createWebviewPanel("vertex.logReport", "VERTEX: Session Logs", vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   const nonce = crypto.randomBytes(16).toString("hex");
-  panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce);
+  // The page is shared with Eclipse; only here can a conversation continue in the chat.
+  panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
+    .replace("</head>", () => "<style>" + fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8") + "</style></head>")
+    .replace("</head>", '<script nonce="' + nonce + '">window.vertexCanContinue = true;</script></head>');
   const refresh = () => {
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
@@ -259,6 +311,13 @@ function open(vscode, options = {}) {
     if (message?.action === "clearConversations") {
       try { await clearConversations(vscode, message.ids); await refresh(); }
       catch (error) { panel?.webview.postMessage({ action: "error", error: error.message }); }
+    }
+    if (message?.action === "continueConversation") {
+      try {
+        const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
+        const found = conversationTurns(readSessions(root), String(message.id || ""), message.point);
+        await vscode.commands.executeCommand("vertex.continueConversation", found);
+      } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openSnapshot") {
       try { __vertexRequire(3).open(vscode, message.snapshot); }
@@ -304,7 +363,7 @@ function register(vscode, context, options) {
   context.subscriptions.push(vscode.commands.registerCommand("vertex.showLogs", () => open(vscode, options)));
 }
 
-module.exports = { parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations };
+module.exports = { parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns };
 
 },
 function(module,exports,__vertexRequire){
@@ -339,6 +398,8 @@ function options(include) {
   const given = include || {};
   return { questions: given.questions === true, answers: given.answers === true,
     tools: given.tools === true,
+    // What each tool returned, not only its size; source still becomes object references.
+    toolResults: given.toolResults === true,
     request: given.request === true,
     // The text of Claude Code's changes to local project files (Edit, Write). Program source from SAP stays out.
     localCode: given.localCode === true };
@@ -351,12 +412,16 @@ function create(root, provider, session, include, operation = "Chat") {
   const on = options(include);
   const dir = path.join(root, "claude_compatible");
   const file = path.join(dir, String(provider || "assistant").replace(/[^\w.-]/g, "_") + "_"
-    + String(session || stamp(new Date())).replace(/[^\w.-]/g, "_") + ".jsonl");
+    // A random tail: two conversations started within one second must not share a file.
+    + String(session || stamp(new Date()) + "_" + ({ randomBytes: function (n) { var bytes = new Uint8Array(n); window.crypto.getRandomValues(bytes); return { toString: function () { return Array.prototype.map.call(bytes, function (b) { return (b < 16 ? '0' : '') + b.toString(16); }).join(''); } }; } }).randomBytes(3).toString("hex")).replace(/[^\w.-]/g, "_") + ".jsonl");
   let sequence = 0, discarded = false, screenshotCount = 0;
+  // Every file of one VS Code conversation carries its id: a conversation that changes provider writes one file per
+  // provider, and Session Logs puts them back together by it.
+  const conversation = conversationId, branch = branchId, parent = branchParent;
   const write = entry => {
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation }, entry)) + "\n", "utf8");
+    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch, ...(parent ? { vertex_parent: parent } : {}) }, entry)) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
@@ -466,7 +531,7 @@ function create(root, provider, session, include, operation = "Chat") {
       const objects = [];
       try { sanitize(JSON.parse(text(result)), objects); } catch (_) { /* a text result */ }
       write({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolId,
-        is_error: !!(result && result.isError), content: summarize(result), vertex_objects: objects,
+        is_error: !!(result && result.isError), content: on.toolResults ? resultContent(result, objects) : summarize(result), vertex_objects: objects,
         ...(result?.vertex_recording ? { vertex_recording: result.vertex_recording } : {}) }] } });
     }
   };
@@ -624,6 +689,16 @@ function summarize(result) {
   return JSON.stringify(Object.assign(keep, { result_characters: body.length, content: "not logged" }));
 }
 
+/* A tool's result as it went to the model, with the toolResults option: program source replaced by object
+   references as in every other log entry, and cut at RESULT_TEXT characters with the count of what was left out. */
+const RESULT_TEXT = 20000;
+function resultContent(result, objects) {
+  const body = text(result);
+  let shown;
+  try { shown = JSON.stringify(sanitize(JSON.parse(body), objects)); } catch (_) { shown = sanitizeText(body, objects); }
+  return shown.length > RESULT_TEXT ? shown.slice(0, RESULT_TEXT) + "\n[" + (shown.length - RESULT_TEXT) + " more characters not logged]" : shown;
+}
+
 /** Wraps a tool dispatcher so every call and its outcome is logged. */
 function tools(log, call) {
   if (!log) { return call; }
@@ -654,6 +729,8 @@ async function assistantTool(log, name, args, call) {
 }
 
 const shared = new Map();
+const newConversationId = () => stamp(new Date()) + "_" + ({ randomBytes: function (n) { var bytes = new Uint8Array(n); window.crypto.getRandomValues(bytes); return { toString: function () { return Array.prototype.map.call(bytes, function (b) { return (b < 16 ? '0' : '') + b.toString(16); }).join(''); } }; } }).randomBytes(4).toString("hex");
+let conversationId = newConversationId(), branchId = "main", branchParent = null;
 /** One log per folder, provider and choice for the life of the process: the VS Code chat is one conversation. */
 function current(root, provider, include) {
   root=resolveRoot(root);
@@ -663,9 +740,13 @@ function current(root, provider, include) {
   return shared.get(key);
 }
 
-/** Starts the next VS Code conversation in new files. */
-function reset() {
+/** Starts the next VS Code conversation in new files: a new conversation id, or the one given when a conversation
+    continues from its log. */
+function reset(continued, branch) {
   shared.clear();
+  branchId = branch?.id || "main";
+  branchParent = branch?.parent || null;
+  conversationId = typeof continued === "string" && /^[\w.:-]{1,320}$/.test(continued) ? continued : newConversationId();
 }
 
 function discardFiles(files) {
@@ -679,7 +760,7 @@ function discardFiles(files) {
 /** The log choices from the VS Code settings section vertex.ai. */
 function fromConfig(config) {
   return { questions: config.get("log.questions", false), answers: config.get("log.answers", false),
-    tools: config.get("log.tools", false),
+    tools: config.get("log.tools", false), toolResults: config.get("log.toolResults", false),
     request: config.get("log.request", false),
     localCode: config.get("log.localCode", true) };
 }

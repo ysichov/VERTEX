@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.70",
+  "version": "0.9.71",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -318,6 +318,238 @@
           "maximum": 65535,
           "markdownDescription": "[Add the VERTEX MCP server to Claude Code or Codex](command:vertex.mcpAddress) - copies what to paste: a command for Claude Code, a config section for Codex. Copilot finds the server by itself.\n\nLocal MCP port for Codex, Claude Code and Copilot. Reload the window after changing it. Use a different port for each simultaneous VERTEX window; 0 selects a temporary port. The bearer token is kept in VS Code SecretStorage."
         },
+        "vertex.chat.mcpServer": {
+          "type": "string",
+          "default": "VERTEX",
+          "markdownDescription": "Where the VERTEX chat's SAP tools come from: `VERTEX` (its own tools) or the `name` of a server in `#vertex.chat.mcpServers#`. Picked in the VERTEX panel, beside the SAP system. The debugger and ABAP transpiler tools stay VERTEX's either way."
+        },
+        "vertex.chat.mcpServers": {
+          "type": "array",
+          "markdownDescription": "MCP servers the VERTEX chat can take its SAP tools from. Each is started over stdio with `command` and `args`; `env` values may use `${sapUrl}`, `${sapUser}`, `${sapPassword}`, `${sapClient}`, `${sapInsecure}` (`true`/`false`), `${tlsRejectUnauthorized}` (`0`/`1`) from the active SAP system, `${arc1AllowWrites}`, `${arc1AllowTransportWrites}`, `${arc1AllowedPackages}`, `${arc1AllowDataPreview}`, `${arc1AllowFreeSql}`, `${arc1AllowGitWrites}` from `#vertex.chat.arc1Access#`, `${abapAdtPackage}` from `#vertex.chat.abapAdtAccess#`, `${vspReadOnly}` and `${vspTransports}` from `#vertex.chat.vspAccess#`, and `${vspPath}` (usable as `command`) from `#vertex.chat.vspPath#`. `download` names where to get a command that is not found. An entry with `url` instead of `command` is a server that already runs and is reached over Streamable HTTP, such as SAP's ADT MCP Server; its `url` and `headers` may use `${adtMcpPort}` and `${adtMcpToken}` from SAP's `adt.mcpServer` settings, and `notRunning` says what to switch on when nothing answers. For a server that reads its connection only from a file, `envFile` lists the lines of a temporary `.env` that VERTEX writes in its own storage while the server runs and deletes when it stops; `${envFile}` in `args` is that file's path. The password comes from the OS credential store and is never written to settings; it is on disk only in that temporary file. `npx` needs Node.js installed.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "command"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "envFile": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "download": {
+                "type": "string",
+                "description": "Where to get the command when it is not found; shown in the error."
+              },
+              "url": {
+                "type": "string",
+                "description": "For a server that already runs and is reached over Streamable HTTP, instead of command."
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "notRunning": {
+                "type": "string",
+                "description": "What to switch on when nothing answers at url; shown in the error."
+              },
+              "note": {
+                "type": "string",
+                "description": "What the model should know about this server; added to its instructions."
+              }
+            }
+          },
+          "default": [
+            {
+              "name": "ARC-1",
+              "command": "npx",
+              "args": [
+                "-y",
+                "arc-1@1.10.1"
+              ],
+              "env": {
+                "SAP_URL": "${sapUrl}",
+                "SAP_USER": "${sapUser}",
+                "SAP_PASSWORD": "${sapPassword}",
+                "SAP_CLIENT": "${sapClient}",
+                "SAP_INSECURE": "${sapInsecure}",
+                "SAP_ALLOW_WRITES": "${arc1AllowWrites}",
+                "SAP_ALLOW_TRANSPORT_WRITES": "${arc1AllowTransportWrites}",
+                "SAP_ALLOWED_PACKAGES": "${arc1AllowedPackages}",
+                "SAP_ALLOW_DATA_PREVIEW": "${arc1AllowDataPreview}",
+                "SAP_ALLOW_FREE_SQL": "${arc1AllowFreeSql}",
+                "SAP_ALLOW_GIT_WRITES": "${arc1AllowGitWrites}"
+              }
+            },
+            {
+              "name": "mcp-abap-adt",
+              "command": "npx",
+              "args": [
+                "-y",
+                "${abapAdtPackage}",
+                "--system-type=onprem",
+                "--env-path=${envFile}"
+              ],
+              "env": {
+                "NODE_TLS_REJECT_UNAUTHORIZED": "${tlsRejectUnauthorized}"
+              },
+              "envFile": {
+                "SAP_URL": "${sapUrl}",
+                "SAP_USERNAME": "${sapUser}",
+                "SAP_PASSWORD": "${sapPassword}",
+                "SAP_CLIENT": "${sapClient}",
+                "SAP_AUTH_TYPE": "basic",
+                "SAP_CONNECTION_TYPE": "http"
+              }
+            },
+            {
+              "name": "vibing-steampunk",
+              "command": "${vspPath}",
+              "args": [
+                "--mode",
+                "hyperfocused"
+              ],
+              "env": {
+                "SAP_URL": "${sapUrl}",
+                "SAP_USER": "${sapUser}",
+                "SAP_PASSWORD": "${sapPassword}",
+                "SAP_CLIENT": "${sapClient}",
+                "SAP_INSECURE": "${sapInsecure}",
+                "SAP_READ_ONLY": "${vspReadOnly}",
+                "SAP_ENABLE_TRANSPORTS": "${vspTransports}"
+              },
+              "download": "https://github.com/oisee/vibing-steampunk/releases"
+            },
+            {
+              "name": "SAP ADT",
+              "url": "http://localhost:${adtMcpPort}/mcp",
+              "headers": {
+                "Authorization": "Bearer ${adtMcpToken}",
+                "User-Agent": "vertex"
+              },
+              "notRunning": "It is the MCP server of SAP's ABAP Development Tools for VS Code: install that extension, set adt.mcpServer.enabled, log on to a system there, and allow that system in adt.mcpServer.accessRestrictions.",
+              "note": "SAP ADT names a system by its destination id as SAP's ABAP Development Tools show it, such as A4H_001_DEVELOPER_EN_1 - never the bare system id. Call abap_destination_list first and pass that exact id as destination in every call. \"Destination access denied\" for an id that abap_destination_list did not return means a wrong id, not a missing permission."
+            }
+          ]
+        },
+        "vertex.chat.toolsets": {
+          "type": "array",
+          "markdownDescription": "Toolsets the VERTEX chat may add on demand: a few tools of another MCP server from `#vertex.chat.mcpServers#`, offered to the model through one small `enable_toolset` tool and added only when it asks for them, so questions that need none do not carry that server's tool descriptions. An enabled toolset stays for the session. Each has a `name`, the `server`, a short `description` for the model, `tools` (names, `*` and `?` allowed) and an optional `note` the model reads when it enables the set. The default adds SAP's RAP generators and service-binding tools from the SAP ADT server, which works on the systems logged on in SAP's ABAP Development Tools.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "server",
+              "tools"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "server": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          },
+          "default": [
+            {
+              "name": "SAP RAP",
+              "server": "SAP ADT",
+              "description": "RAP generators (table, CDS view, behavior definition, service definition and binding in one go), service bindings: publish and OData service details, actions on objects",
+              "tools": [
+                "abap_destination_list",
+                "abap_objects_generator_*",
+                "abap_business_service_*",
+                "abap_object_list_actions",
+                "abap_object_run_action",
+                "abap_transport_get_request",
+                "abap_transport_create_request",
+                "abap_object_activate"
+              ],
+              "note": "SAP ADT works on the systems logged on in SAP's ABAP Development Tools, which may differ from the system VERTEX's own tools read: call abap_destination_list first, name the destination in every call, and tell the user which system was changed."
+            }
+          ]
+        },
+        "vertex.chat.arc1Access": {
+          "type": "string",
+          "enum": [
+            "read-only",
+            "write-tmp",
+            "write"
+          ],
+          "default": "read-only",
+          "enumDescriptions": [
+            "Reads only: no writes, no transports.",
+            "Writes and activation in $TMP only.",
+            "Everything: writes in any package, transport changes, table preview, free SQL and Git writes."
+          ],
+          "markdownDescription": "What ARC-1 may do in SAP when it supplies the chat's tools. Table preview, free SQL and Git writes are on only with `write`. Also asked in the window that opens when ARC-1 is chosen in the VERTEX panel."
+        },
+        "vertex.chat.abapAdtAccess": {
+          "type": "string",
+          "enum": [
+            "read-only",
+            "write"
+          ],
+          "default": "read-only",
+          "enumDescriptions": [
+            "Reads only: runs @mcp-abap-adt/core-ro, which has no write tools.",
+            "Create, change and activate objects: runs @mcp-abap-adt/core."
+          ],
+          "markdownDescription": "What mcp-abap-adt may change in SAP when it supplies the chat's tools; `${abapAdtPackage}` is the npm package that choice runs. Also asked in the window that opens when mcp-abap-adt is chosen in the VERTEX panel."
+        },
+        "vertex.chat.vspPath": {
+          "type": "string",
+          "default": "vsp",
+          "markdownDescription": "The vibing-steampunk executable: `vsp` when its folder is on PATH, otherwise the file's full path (for example `C:\\tools\\vsp.exe`). Get it from [its releases](https://github.com/oisee/vibing-steampunk/releases); VERTEX does not download it."
+        },
+        "vertex.chat.vspAccess": {
+          "type": "string",
+          "enum": [
+            "read-only",
+            "write"
+          ],
+          "default": "read-only",
+          "enumDescriptions": [
+            "Reads only: vsp refuses every write (SAP_READ_ONLY=true).",
+            "Everything: create, change, delete, activate and transports (SAP_ENABLE_TRANSPORTS=true)."
+          ],
+          "markdownDescription": "What vibing-steampunk (vsp) may change in SAP when it supplies the chat's tools; passed as `${vspReadOnly}` and `${vspTransports}`. Also asked in the window that opens when vibing-steampunk is chosen in the VERTEX panel."
+        },
         "vertex.systems": {
           "type": "array",
           "default": [],
@@ -549,6 +781,11 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Log tool calls, source-free arguments, result summaries and links to ABAP objects and recorded runs."
+        },
+        "vertex.ai.log.toolResults": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "With **Log tools**: also log what each VERTEX or MCP tool returned to the model - rows, search hits, messages - instead of only its size. Program source is replaced with object references; a result longer than 20,000 characters is cut, with the count of what was left out."
         },
         "vertex.ai.log.localCode": {
           "type": "boolean",

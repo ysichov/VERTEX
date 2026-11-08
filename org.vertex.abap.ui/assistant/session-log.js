@@ -28,6 +28,8 @@ function options(include) {
   const given = include || {};
   return { questions: given.questions === true, answers: given.answers === true,
     tools: given.tools === true,
+    // What each tool returned, not only its size; source still becomes object references.
+    toolResults: given.toolResults === true,
     request: given.request === true,
     // The text of Claude Code's changes to local project files (Edit, Write). Program source from SAP stays out.
     localCode: given.localCode === true };
@@ -40,12 +42,16 @@ function create(root, provider, session, include, operation = "Chat") {
   const on = options(include);
   const dir = path.join(root, "claude_compatible");
   const file = path.join(dir, String(provider || "assistant").replace(/[^\w.-]/g, "_") + "_"
-    + String(session || stamp(new Date())).replace(/[^\w.-]/g, "_") + ".jsonl");
+    // A random tail: two conversations started within one second must not share a file.
+    + String(session || stamp(new Date()) + "_" + require("crypto").randomBytes(3).toString("hex")).replace(/[^\w.-]/g, "_") + ".jsonl");
   let sequence = 0, discarded = false, screenshotCount = 0;
+  // Every file of one VS Code conversation carries its id: a conversation that changes provider writes one file per
+  // provider, and Session Logs puts them back together by it.
+  const conversation = conversationId, branch = branchId, parent = branchParent;
   const write = entry => {
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation }, entry)) + "\n", "utf8");
+    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch, ...(parent ? { vertex_parent: parent } : {}) }, entry)) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
@@ -155,7 +161,7 @@ function create(root, provider, session, include, operation = "Chat") {
       const objects = [];
       try { sanitize(JSON.parse(text(result)), objects); } catch (_) { /* a text result */ }
       write({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolId,
-        is_error: !!(result && result.isError), content: summarize(result), vertex_objects: objects,
+        is_error: !!(result && result.isError), content: on.toolResults ? resultContent(result, objects) : summarize(result), vertex_objects: objects,
         ...(result?.vertex_recording ? { vertex_recording: result.vertex_recording } : {}) }] } });
     }
   };
@@ -313,6 +319,16 @@ function summarize(result) {
   return JSON.stringify(Object.assign(keep, { result_characters: body.length, content: "not logged" }));
 }
 
+/* A tool's result as it went to the model, with the toolResults option: program source replaced by object
+   references as in every other log entry, and cut at RESULT_TEXT characters with the count of what was left out. */
+const RESULT_TEXT = 20000;
+function resultContent(result, objects) {
+  const body = text(result);
+  let shown;
+  try { shown = JSON.stringify(sanitize(JSON.parse(body), objects)); } catch (_) { shown = sanitizeText(body, objects); }
+  return shown.length > RESULT_TEXT ? shown.slice(0, RESULT_TEXT) + "\n[" + (shown.length - RESULT_TEXT) + " more characters not logged]" : shown;
+}
+
 /** Wraps a tool dispatcher so every call and its outcome is logged. */
 function tools(log, call) {
   if (!log) { return call; }
@@ -343,6 +359,8 @@ async function assistantTool(log, name, args, call) {
 }
 
 const shared = new Map();
+const newConversationId = () => stamp(new Date()) + "_" + require("crypto").randomBytes(4).toString("hex");
+let conversationId = newConversationId(), branchId = "main", branchParent = null;
 /** One log per folder, provider and choice for the life of the process: the VS Code chat is one conversation. */
 function current(root, provider, include) {
   root=resolveRoot(root);
@@ -352,9 +370,13 @@ function current(root, provider, include) {
   return shared.get(key);
 }
 
-/** Starts the next VS Code conversation in new files. */
-function reset() {
+/** Starts the next VS Code conversation in new files: a new conversation id, or the one given when a conversation
+    continues from its log. */
+function reset(continued, branch) {
   shared.clear();
+  branchId = branch?.id || "main";
+  branchParent = branch?.parent || null;
+  conversationId = typeof continued === "string" && /^[\w.:-]{1,320}$/.test(continued) ? continued : newConversationId();
 }
 
 function discardFiles(files) {
@@ -368,7 +390,7 @@ function discardFiles(files) {
 /** The log choices from the VS Code settings section vertex.ai. */
 function fromConfig(config) {
   return { questions: config.get("log.questions", false), answers: config.get("log.answers", false),
-    tools: config.get("log.tools", false),
+    tools: config.get("log.tools", false), toolResults: config.get("log.toolResults", false),
     request: config.get("log.request", false),
     localCode: config.get("log.localCode", true) };
 }

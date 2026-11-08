@@ -175,11 +175,20 @@ async function ask(options) {
   const imageBytes = (options.images || []).reduce((sum, image) => sum + Buffer.byteLength(image.data || "", "utf8") + 256, 0);
   let usage = null;
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
+    // A toolset the model enabled adds tools to options.tools during the request; they join before submit_vertex_answer.
+    if (tools.length && !options.webSearch && (options.tools || []).length + 1 > tools.length) {
+      const known = new Set(tools.map(tool => tool.function && tool.function.name));
+      const added = options.tools.filter(tool => !known.has(tool.name)).map(tool => ({ type: "function", function: {
+        name: tool.name, description: tool.description, parameters: tool.inputSchema } }));
+      tools = tools.slice(0, -1).concat(added, tools.slice(-1));
+    }
     options.onProgress?.({ status: "Model request " + (round + 1) });
     const send = () => rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
       model: options.model, messages, ...(tools.length ? { tools } : {}), ...(options.webSearch ? {tool_choice:"required"} : {}),
       ...(Number.isInteger(options.maxOutputTokens)&&options.maxOutputTokens>0 ? id==="openai-api"?{max_completion_tokens:options.maxOutputTokens}:{max_tokens:options.maxOutputTokens} : {}), stream: false
-    }, (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000)) + imageBytes), options);
+    // The limit is on the conversation and its context; the tool definitions are a fixed part on top of it -
+    // an MCP server's alone can pass 64 KB.
+    }, (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000)) + imageBytes + (tools.length ? Buffer.byteLength(JSON.stringify(tools), "utf8") : 0)), options);
     let response;
     try { response = await send(); }
     catch (error) {
@@ -294,4 +303,23 @@ async function ask(options) {
   throw new Error(PROVIDERS[id].label + " did not finish the VERTEX plan.");
 }
 
-module.exports = { PROVIDERS, secretKey, requestJson, models, ask, probe, rateLimitedRequest };
+// OpenRouter's own account of the key after an answer: free-model requests left today (UTC) and money spent.
+async function keyLimits(apiKey, request = requestJson) {
+  const data = (await request("openrouter-api", apiKey, "/key", undefined, 64000, 10000))?.data;
+  if (!data || typeof data !== "object") throw new Error("OpenRouter returned no key data.");
+  const free = data.free_model_daily_requests;
+  const num = value => typeof value === "number" && Number.isFinite(value) ? value : null;
+  return { free: free && typeof free === "object" ? { used: num(free.used), limit: num(free.limit), remaining: num(free.remaining) } : null,
+    usage_daily: num(data.usage_daily), limit_remaining: num(data.limit_remaining) };
+}
+function limitsText(limits) {
+  if (!limits) return "";
+  if (limits.error) return "OpenRouter limits not reported: " + limits.error;
+  const parts = [];
+  if (limits.free && limits.free.remaining !== null) parts.push("free today " + limits.free.remaining + " of " + limits.free.limit + " left");
+  if (limits.usage_daily !== null) parts.push("spent today $" + limits.usage_daily.toLocaleString("en-US", { maximumSignificantDigits: 21, useGrouping: false }));
+  if (limits.limit_remaining !== null) parts.push("key limit $" + limits.limit_remaining + " left");
+  return parts.length ? "OpenRouter: " + parts.join(" · ") : "OpenRouter limits not reported";
+}
+
+module.exports = { PROVIDERS, secretKey, requestJson, models, ask, probe, rateLimitedRequest, keyLimits, limitsText };

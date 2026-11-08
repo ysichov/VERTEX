@@ -36,6 +36,15 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
     properties: { object_name: { type: "string", description: "Exact SAP object name." },
       object_type: { type: "string", enum: ["CLAS", "PROG", "INTF", "FUNC"], description: "CLAS, PROG, INTF or FUNC." } } }
 }, {
+  name: "run_sap_select",
+  description: "Read table or view contents in SAP: run one Open SQL SELECT through ADT's data preview, as Eclipse's SQL console and VERTEX's Run Select do, and return the columns and rows. "
+    + "Use it to look up customizing, texts, repository tables (DD02L, TADIR, ...) or application data when the answer is in a table rather than in source code. "
+    + "Write a single SELECT in strict ABAP SQL syntax: comma-separated fields, WHERE with literals in single quotes, no INTO, no host variables, no trailing period. Read only; SAP refuses anything but SELECT.",
+  annotations: { readOnlyHint: true, destructiveHint: false },
+  inputSchema: { type: "object", additionalProperties: false, required: ["sql"],
+    properties: { sql: { type: "string", description: "One ABAP SQL SELECT statement, e.g. SELECT spras, type, description FROM powl_type_t WHERE type = 'X'." },
+      max_rows: { type: "integer", minimum: 1, maximum: 1000, description: "Most rows to return; default 100." } } }
+}, {
   name: "review_sap_changes",
   description: "Open review for manual edits in the active SAP source tab. Shows independently approvable hunks and an Approve all action. Does not save to SAP.",
   annotations: { readOnlyHint: true, destructiveHint: false },
@@ -2804,6 +2813,14 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     if (tool === "review_sap_changes") { return reviewActive(); }
     if (tool === "run_abap_unit") { return unitTestsOf(args); }
     if (tool === "run_atc_check") { return atcOf(args); }
+    if (tool === "run_sap_select") {
+      const sql = String(args.sql || "").trim();
+      if (!/^select\b/i.test(sql)) { throw new Error("run_sap_select runs one SELECT statement; got: " + sql.slice(0, 80)); }
+      const rows = Math.min(1000, Math.max(1, Number(args.max_rows) || 100));
+      const result = await repo.api.query(sql, rows);
+      return { columns: result.columns.map(column => column.name), rows: result.values, row_count: result.values.length,
+        ...(result.values.length >= rows ? { note: "Stopped at max_rows (" + rows + "); there may be more rows." } : {}) };
+    }
     const result = await repo.api.execute(tool, args);
     // A change to an existing object goes into its tab, unsaved, like an edit
     // of the user's own; saving it - Save & Activate or Review & Activate - is

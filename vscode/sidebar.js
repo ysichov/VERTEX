@@ -12,7 +12,7 @@ const ACTIONS = Object.freeze({
   system: "vertex.switchSystem"
 });
 
-function register(vscode, context, active, ask, systems, toolContext, clients = { set: async () => {}, onChange: () => ({ dispose() {} }) }) {
+function register(vscode, context, active, ask, systems, toolContext, clients = { set: async () => {}, onChange: () => ({ dispose() {} }) }, chatMcp = null) {
   let currentView, ready = false, nextRequest = 0;
   // ASK AI of a review: the blocks on the chip above the input, attached to the next question only when it is sent.
   let reviewAsk = null;
@@ -21,6 +21,33 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.generateCommitMessage", async (snapshot,draft) => {try{return await ask.generateCommitMessage(snapshot,draft);}catch(error){return {error:error.message,generation:error.generation};}}));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.generatePullRequest", async (snapshot,draft) => {try{return await ask.generateCommitMessage(snapshot,draft,"pr");}catch(error){return {error:error.message,generation:error.generation};}}));
+  // Continue a conversation from Session Logs: a new conversation in the panel whose history is the logged questions
+  // and answers; it keeps logging under the same conversation id, so its files stay together.
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.continueConversation", async found => {
+    if (!found || !Array.isArray(found.turns) || !found.turns.length) throw new Error("No questions to continue from.");
+    if (!currentView || !ready) {
+      await vscode.commands.executeCommand("vertex.launcher.focus");
+      for (let waited = 0; (!currentView || !ready) && waited < 5000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
+      if (!currentView || !ready) throw new Error("The VERTEX panel did not open; open it and try again.");
+    }
+    require("./session-log").reset(found.conversation || undefined, found.branch);
+    await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
+    const count = ask.restoreConversation(found.turns);
+    reviewAsk = null;
+    const view = currentView;
+    await view.webview.postMessage({ cleared: true });
+    const first = found.turns.find(turn => turn.time), when = first ? new Date(first.time).toLocaleString() : "";
+    await view.webview.postMessage({ chat: "VERTEX: Continued from the session log" + (when ? " of " + when : "") + ": " + count + " question" + (count === 1 ? "" : "s")
+      + (found.files > 1 ? " from " + found.files + " providers' logs" : "") + ". The next question carries them as history; the tools' results of that session are not repeated." });
+    for (const turn of found.turns) {
+      await view.webview.postMessage({ chat: "You: " + turn.question });
+      await view.webview.postMessage({ chat: "VERTEX: " + (turn.answer || "(no answer was logged)") });
+    }
+    await showReview();
+    view.show(true);
+    return count;
+  }));
   // The working copy goes when VS Code closes.
   context.subscriptions.push({ dispose: () => { if (typeof ask.dispose === "function") return ask.dispose(); } });
   // A message to the assistant that VERTEX sends itself - the reasons from a review - asked as the user's would be.
@@ -54,6 +81,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           // What the list shows: a system reached through SAP's extension says so beside its name.
           labels: systems().map(item => item.name),
           ai: ask.state(),
+          // Where the chat's SAP tools come from: VERTEX itself or an MCP server of vertex.chat.mcpServers.
+          mcp: chatMcp ? { servers: [chatMcp.VERTEX, ...chatMcp.servers().map(item => item.name)], selected: chatMcp.selected() } : null,
           effort: String(vscode.workspace.getConfiguration("vertex.ai").get("effort", "") || "")
         }).then(async () => {
           // The model list comes after: it may have to ask the provider.
@@ -183,6 +212,35 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             answer: "Request failed: " + error.message, done: true } }); }
           return;
         }
+        if (message.action === "mcp") {
+          if (!chatMcp) return;
+          const names = [chatMcp.VERTEX, ...chatMcp.servers().map(item => item.name)];
+          if (!names.includes(String(message.name))) { vscode.window.showErrorMessage("VERTEX: " + String(message.name) + " is not in vertex.chat.mcpServers."); void refresh(); return; }
+          await chatMcp.select(String(message.name));
+          if (String(message.name) === chatMcp.VERTEX) return;
+          // Its write settings are asked first, in the same window; the server starts when the user presses Start.
+          const options = chatMcp.writeOptions(String(message.name));
+          if (options.length) { await view.webview.postMessage({ mcpOptions: { name: String(message.name), options } }); return; }
+          message = { action: "mcpStart", name: String(message.name), values: {} };
+        }
+        if (message.action === "mcpStart") {
+          if (!chatMcp || String(message.name) !== chatMcp.selected()) return;
+          try {
+            for (const [setting, value] of Object.entries(message.values || {})) await chatMcp.setWriteOption(setting, String(value));
+          } catch (error) {
+            await view.webview.postMessage({ mcpDone: { name: String(message.name), error: error.message } });
+            return;
+          }
+          // Started in a window with the install scene: the first start downloads the package through npx.
+          await view.webview.postMessage({ mcpStart: { name: String(message.name), running: !!(chatMcp.servers().find(item => item.name === String(message.name)) || {}).url } });
+          try {
+            const started = await chatMcp.prepare();
+            await view.webview.postMessage({ mcpDone: { name: String(message.name), tools: started ? started.tools.length : 0 } });
+          } catch (error) {
+            await view.webview.postMessage({ mcpDone: { name: String(message.name), error: error.message, nodeMissing: !!error.nodeMissing } });
+          }
+          return;
+        }
         if (message.action === "client") {
           // Only a client of the active system's own list; the panel and the SAP Systems table show the same one.
           const chosen = active();
@@ -223,6 +281,10 @@ function costText(cost) {
   return " · ≈ $" + cost.toLocaleString("en-US", { maximumSignificantDigits: 21, useGrouping: false });
 }
 function usageLine(reply) {
+  const line = usageText(reply), limits = require("./openai-compatible").limitsText(reply.limits);
+  return limits ? (line ? line + "\n" : "") + limits : line;
+}
+function usageText(reply) {
   const usage = reply.usage;
   const actual = usage && usage.cost_usd;
   const cost = typeof actual === "number" && Number.isFinite(actual) && actual >= 0
@@ -271,12 +333,16 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #chat #review-chip button { flex: none; width: auto; margin: 0; padding: 0 6px; line-height: 18px; border-radius: 3px; background: transparent; color: var(--vscode-foreground); opacity: .7; }
 #chat #review-chip button:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); box-shadow: none; }
 #messages .copy-answer { margin: -0.6em 0 1em; padding: 2px 8px; font-size: 11px; }
-#messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; }
+#messages p.usage { font-size: 11px; opacity: .7; margin: -0.6em 0 1em; white-space: pre-line; }
 #messages p.tool-status { font-size: 11px; opacity: .8; }
 #messages p.you { color: var(--vscode-charts-blue); }
 #messages .vertex { color: var(--vscode-charts-green); white-space: normal; line-height: 1.5; margin: 1em 0; }
 /* Fixed logo slot: the existing VERTEX mark rotates slowly only while this request is active. */
 #messages .vertex.task { position: relative; padding-left: 42px; }
+#messages .md-table { overflow-x: auto; margin: 6px 0; }
+#messages .md-table table { border-collapse: collapse; font-size: inherit; }
+#messages .md-table th, #messages .md-table td { border: 1px solid var(--vscode-panel-border); padding: 3px 8px; text-align: left; vertical-align: top; }
+#messages .md-table th { background: var(--vscode-editorWidget-background,var(--vscode-sideBar-background)); font-weight: 600; }
 #messages .vertex.task::before { content: ""; position: absolute; left: 0; top: 2px; width: 32px; height: 32px; background: url("${LOGO}") center/contain no-repeat; transform-origin: center; }
 #messages .vertex.task:not(.working)::before { visibility: hidden; }
 #messages .vertex.task.working::before { animation: vertex-task-turn 6s linear infinite; }
@@ -284,9 +350,8 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 body.vscode-reduce-motion #messages .vertex.task.working::before { animation: none; }
 @media (prefers-reduced-motion: reduce) { #messages .vertex.task.working::before { animation: none; } }
 ${require(require("path").join(__dirname,"task-visual")).css}
-#messages .vertex.task[data-task-kind]{padding-left:52px}
 #messages .vertex.task[data-task-kind]::before{display:none}
-#messages .vertex.task .task-scene{position:absolute;left:0;top:0}
+#messages .vertex.task .task-scene{display:block;width:100%;margin-top:6px}
 #vercel-row-break { display:none; }
 body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="openrouter-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
 #subprovider-select[hidden] { display:none; }
@@ -296,8 +361,17 @@ body[data-provider="vercel-api"] .model-picker, body[data-provider="openrouter-a
 .model-picker #model-select { flex: 1 1 auto; min-width: 0; }
 .line #model-details-button[hidden] { display: none; }
 .line #model-details-button { flex: none; margin: 0; padding: 3px 8px; }
-#model-details-dialog { box-sizing: border-box; width: calc(100% - 24px); max-width: 560px; max-height: 80vh; overflow: auto; padding: 14px 18px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-panel-border); }
+#model-details-dialog { box-sizing: border-box; width: calc(100% - 24px); max-width: 560px; max-height: 80vh; overflow: auto; padding: 14px 18px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-widget-border,var(--vscode-contrastBorder,var(--vscode-panel-border))); box-shadow: 0 4px 18px var(--vscode-widget-shadow,transparent); }
 #model-details-dialog::backdrop { background: var(--vscode-widget-shadow,transparent); }
+#mcp-start-dialog { box-sizing: border-box; width: calc(100% - 24px); max-width: 560px; padding: 14px 18px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-widget-border,var(--vscode-contrastBorder,var(--vscode-panel-border))); box-shadow: 0 4px 18px var(--vscode-widget-shadow,transparent); }
+#mcp-start-dialog::backdrop { background: var(--vscode-widget-shadow,transparent); }
+#mcp-start-dialog .mcp-start-scene { display: block; margin: 10px 0; }
+#mcp-start-dialog .mcp-start-scene .vertex-task-visual { min-height: 48px; }
+#mcp-start-status { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+#mcp-start-dialog form { display: flex; gap: 8px; margin-top: 12px; }
+#mcp-start-options fieldset { margin: 10px 0 0; padding: 6px 10px; border: 1px solid var(--vscode-panel-border); }
+#mcp-start-options label { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+#mcp-start-options .mcp-start-hint { margin-top: 8px; color: var(--vscode-descriptionForeground); }
 #model-details-dialog .model-detail { margin: 8px 0; white-space: normal; overflow-wrap: anywhere; }
 #model-details-dialog form { margin-top: 12px; }
 #messages .streaming-answer { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -345,10 +419,12 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 #tools img { width: 40px; height: 40px; }
 ${require(require("path").join(__dirname,"code-review")).controlsCss}
 </style></head><body>
+<dialog id="mcp-start-dialog" aria-labelledby="mcp-start-title"><strong id="mcp-start-title">MCP server</strong><span class="mcp-start-scene" id="mcp-start-scene"></span><div id="mcp-start-status" role="status" aria-live="polite"></div><div id="mcp-start-options"></div><form method="dialog"><button type="button" class="secondary" id="mcp-start-go" hidden>Start</button><button type="button" class="secondary" id="mcp-start-node" hidden>Get Node.js</button><button class="secondary" id="mcp-start-close">Close</button></form></dialog>
 <dialog id="model-details-dialog" aria-labelledby="model-details-title"><strong id="model-details-title">Model details</strong><div id="model-capabilities"></div><form method="dialog"><button class="secondary">Close</button></form></dialog>
 <div class="line"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
+<span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select>
 </span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
@@ -442,6 +518,15 @@ document.querySelectorAll('button[data-action]').forEach(button => {
 document.getElementById('client-select').addEventListener('change', event => {
   api.postMessage({ action: 'client', name: document.getElementById('system-select').value, client: event.target.value });
 });
+document.getElementById('mcp-start-go').addEventListener('click', () => {
+  const box = document.getElementById('mcp-start-options'), values = {};
+  for (const input of box.querySelectorAll('input[type=radio]:checked')) values[input.name] = input.value;
+  api.postMessage({ action: 'mcpStart', name: box.dataset.server, values });
+});
+document.getElementById('mcp-start-node').addEventListener('click', () => api.postMessage({ action: 'openWebLink', url: 'https://nodejs.org' }));
+document.getElementById('mcp-select').addEventListener('change', event => {
+  api.postMessage({ action: 'mcp', name: event.target.value });
+});
 document.getElementById('system-select').addEventListener('change', event => {
   api.postMessage({ action: 'system', name: event.target.value });
 });
@@ -523,7 +608,8 @@ document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') copySelectedText(event);
 });
 const progressItems = new Map();
-const taskVisuals=${JSON.stringify({review:require(require("path").join(__dirname,"task-visual")).html("review"),commit:require(require("path").join(__dirname,"task-visual")).html("commit")})};
+const mcpInstallScene=${JSON.stringify(require(require("path").join(__dirname,"task-visual")).html("install"))};
+const taskVisuals=${JSON.stringify({review:require(require("path").join(__dirname,"task-visual")).html("review",true),commit:require(require("path").join(__dirname,"task-visual")).html("commit",true)})};
 function paintTaskScene(item,update){
       if(['review','commit'].includes(update.kind))item.dataset.taskKind=update.kind;
       let scene=item.querySelector('.task-scene');
@@ -641,6 +727,54 @@ window.addEventListener('message', event => {
     const clientSelect = document.getElementById('client-select'), clients = event.data.clients || [];
     clientSelect.hidden = clients.length < 2;
     clientSelect.replaceChildren(...clients.map(client => { const option = new Option(client, client); option.selected = client === event.data.client; return option; }));
+  }
+  if (event.data && event.data.mcpOptions) {
+    const dialog = document.getElementById('mcp-start-dialog'), name = event.data.mcpOptions.name, box = document.getElementById('mcp-start-options');
+    document.getElementById('mcp-start-title').textContent = name + ': write access';
+    document.getElementById('mcp-start-scene').innerHTML = '';
+    document.getElementById('mcp-start-status').textContent = 'Choose what ' + name + ' may change in SAP, or keep the default, then press Start.';
+    box.dataset.server = name;
+    box.replaceChildren(...event.data.mcpOptions.options.map(option => {
+      const set = document.createElement('fieldset'), legend = document.createElement('legend');
+      legend.textContent = option.label; set.append(legend);
+      for (const choice of option.choices) {
+        const label = document.createElement('label'), input = document.createElement('input');
+        input.type = 'radio'; input.name = option.setting; input.value = choice.value; input.checked = choice.value === option.value;
+        label.append(input, document.createTextNode(choice.label)); set.append(label);
+      }
+      return set;
+    }));
+    const hint = document.createElement('div'); hint.className = 'mcp-start-hint';
+    hint.textContent = 'Later: Settings > Extensions > VERTEX > Chat (' + event.data.mcpOptions.options.map(o => 'vertex.chat.' + o.setting).join(', ') + ').';
+    box.append(hint);
+    document.getElementById('mcp-start-go').hidden = false;
+    document.getElementById('mcp-start-node').hidden = true;
+    if (!dialog.open) dialog.showModal();
+  }
+  if (event.data && event.data.mcpStart) {
+    document.getElementById('mcp-start-options').replaceChildren();
+    document.getElementById('mcp-start-go').hidden = true;
+    const dialog = document.getElementById('mcp-start-dialog'), name = event.data.mcpStart.name;
+    document.getElementById('mcp-start-title').textContent = 'Starting ' + name;
+    document.getElementById('mcp-start-scene').innerHTML = mcpInstallScene;
+    document.getElementById('mcp-start-status').textContent = event.data.mcpStart.running ? 'Connecting to ' + name + '…' : 'Starting ' + name + '…\\nThe first start downloads the package through npx and can take a few minutes. Later starts take seconds.';
+    document.getElementById('mcp-start-node').hidden = true;
+    if (!dialog.open) dialog.showModal();
+  }
+  if (event.data && event.data.mcpDone) {
+    const done = event.data.mcpDone, dialog = document.getElementById('mcp-start-dialog');
+    document.getElementById('mcp-start-options').replaceChildren();
+    document.getElementById('mcp-start-go').hidden = true;
+    document.getElementById('mcp-start-scene').innerHTML = '';
+    document.getElementById('mcp-start-title').textContent = done.error ? done.name + ' did not start' : done.name + ' is ready';
+    document.getElementById('mcp-start-status').textContent = done.error || (done.name + ' now supplies the SAP tools of the chat: ' + done.tools + ' tools.');
+    document.getElementById('mcp-start-node').hidden = !done.nodeMissing;
+    if (!dialog.open) dialog.showModal();
+  }
+  if (event.data && event.data.mcp) {
+    const mcpSelect = document.getElementById('mcp-select');
+    mcpSelect.replaceChildren(...event.data.mcp.servers.map(name => { const option = new Option(name, name); option.selected = name === event.data.mcp.selected; return option; }));
+    mcpSelect.hidden = document.getElementById('mcp-label').hidden = false;
   }
   if (event.data && event.data.ai) {
     const select = document.getElementById('provider-select');
@@ -763,6 +897,24 @@ function markdown(text, target) {
       for (i++; i < lines.length && !/^\\s*\\x60\\x60\\x60/.test(lines[i]); i++) { code.push(lines[i]); }
       const pre = document.createElement('pre'), inner = document.createElement('code');
       inner.textContent = code.join('\\n'); pre.appendChild(inner); target.appendChild(pre);
+      list = paragraph = null; continue;
+    }
+    // A table: a row of cells between pipes, then a separator row of dashes (colons for alignment).
+    const cells = row => row.trim().replace(/^\\|/, '').replace(/\\|$/, '').split('|').map(cell => cell.trim());
+    if (/^\\s*\\|.*\\|\\s*$/.test(line) && i + 1 < lines.length && /^\\s*\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)*\\|?\\s*$/.test(lines[i + 1])) {
+      const align = cells(lines[i + 1]).map(cell => /^:-+:$/.test(cell) ? 'center' : /-:$/.test(cell) ? 'right' : '');
+      const wrap = document.createElement('div'), table = document.createElement('table');
+      wrap.className = 'md-table'; wrap.appendChild(table);
+      const add = (section, values, tag) => {
+        const tr = document.createElement('tr');
+        values.forEach((value, k) => { const cell = document.createElement(tag); if (align[k]) cell.style.textAlign = align[k]; inline(value, cell); tr.appendChild(cell); });
+        section.appendChild(tr);
+      };
+      const head = document.createElement('thead'), body = document.createElement('tbody');
+      add(head, cells(line), 'th');
+      for (i += 2; i < lines.length && /^\\s*\\|.*\\|\\s*$/.test(lines[i]); i++) add(body, cells(lines[i]), 'td');
+      i--;
+      table.append(head, body); target.appendChild(wrap);
       list = paragraph = null; continue;
     }
     const bullet = /^\\s*[-*]\\s+(.*)$/.exec(line), numbered = /^\\s*\\d+[.)]\\s+(.*)$/.exec(line);

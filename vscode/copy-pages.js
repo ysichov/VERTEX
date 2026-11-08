@@ -31,10 +31,20 @@ if (pages.length === 0) {
   process.exit(1);
 }
 
-pages.forEach(function (name) {
-  fs.copyFileSync(path.join(from, name), path.join(to, name));
-  console.log("copied " + name);
-});
+// Every copy is left read-only: an edit belongs in the original, and a change made to the copy would be
+// overwritten here without a word. A read-only file makes that mistake fail where it is made.
+// While vsce packages (package.js sets VERTEX_PACKAGING) the copies stay writable, because vsce stores each
+// file's mode in the VSIX and the installed extension must not be read-only; package.js runs this again after.
+const readOnly = process.env.VERTEX_PACKAGING !== "1";
+function copyReadOnly(name) {
+  const target = path.join(to, name);
+  if (fs.existsSync(target)) fs.chmodSync(target, 0o666);
+  fs.copyFileSync(path.join(from, name), target);
+  if (readOnly) fs.chmodSync(target, 0o444);
+  console.log("copied " + name + (readOnly ? " (read-only)" : ""));
+}
+
+pages.forEach(copyReadOnly);
 
 // A page is given to the webview as a string, so it has no address to load a
 // script from: what it needs, it asks the host for by name and gets as text.
@@ -47,8 +57,5 @@ if (libraries.length === 0) {
   process.exit(1);
 }
 
-libraries.forEach(function (name) {
-  fs.copyFileSync(path.join(from, name), path.join(to, name));
-  console.log("copied " + name);
-});
+libraries.forEach(copyReadOnly);
 

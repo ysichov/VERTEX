@@ -386,3 +386,15 @@ test('OpenRouter free classification uses explicit free routes or zero catalog p
  const data=[{id:'a:free'},{id:'openrouter/free'},{id:'zero',pricing:{prompt:'0',completion:'0'}},{id:'paid',pricing:{prompt:'0',completion:'0.01'}},{id:'unknown'},{id:'empty',pricing:{prompt:'',completion:''}},{id:'fee',pricing:{prompt:'0',completion:'0',request:'0.01'}}];
  const rows=await api.models('openrouter-api','k',async()=>({data}));assert.deepEqual(rows.filter(m=>m.free).map(m=>m.id).sort(),['a:free','openrouter/free','zero']);
 });
+
+test("OpenRouter key limits: free requests left and spend in the usage line", async () => {
+  const compatible = require("../openai-compatible");
+  const limits = await compatible.keyLimits("k", async (id, key, route) => {
+    assert.equal(route, "/key");
+    return { data: { usage_daily: 0.009, limit_remaining: null, free_model_daily_requests: { used: 25, limit: 50, remaining: 25 } } };
+  });
+  assert.equal(compatible.limitsText(limits), "OpenRouter: free today 25 of 50 left · spent today $0.009");
+  assert.equal(compatible.limitsText({ error: "HTTP 401" }), "OpenRouter limits not reported: HTTP 401");
+  const { usageLine } = require("../sidebar");
+  assert.match(usageLine({ model: "m", usage: { input_tokens: 1, output_tokens: 1 }, limits }), /\nOpenRouter: free today 25 of 50 left/);
+});

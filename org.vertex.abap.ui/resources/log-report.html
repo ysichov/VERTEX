@@ -28,6 +28,7 @@
   details.session { border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); margin-bottom: 6px; }
   details.session > summary { padding: 6px 8px; cursor: pointer; display: flex; gap: 8px; align-items: flex-start; }
   .session-heading { flex: 1; min-width: 0; }
+  .continue-session { flex: none; white-space: nowrap; }
   details.session > summary .preview { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .session-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 0.9em; }
   .provider { font-weight: 600; }
@@ -48,6 +49,9 @@
      Steps, a call in Tools) is separated from the one before by a thin rule above. */
   .entry .entry { margin: 0; border-top: 1px solid var(--vscode-panel-border); }
   .entry .entry > summary { font-weight: normal; color: var(--vscode-editor-foreground); }
+  .provider { color: var(--vscode-charts-purple, var(--vscode-textLink-foreground)); }
+  .session-models, .prompt-model { color: var(--vscode-editor-foreground); }
+  .preview, .prompt > summary { color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
   .entry.user { --entry-color: var(--vscode-charts-blue, var(--vscode-textLink-foreground)); }
   .entry.model { --entry-color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }
   .entry > summary { padding: 6px 8px; cursor: pointer; color: var(--entry-color); font-weight: 600; }
@@ -85,6 +89,10 @@
   .markdown pre { white-space: pre-wrap; background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); padding: 8px; }
   .markdown code { font-family: var(--vscode-editor-font-family); }
   .markdown ul, .markdown ol { margin: 4px 0; padding-left: 24px; }
+  .markdown .md-table { overflow-x: auto; margin: 6px 0; }
+  .markdown .md-table table { border-collapse: collapse; }
+  .markdown .md-table th, .markdown .md-table td { border: 1px solid var(--vscode-panel-border); padding: 3px 8px; text-align: left; vertical-align: top; }
+  .markdown .md-table th { background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); font-weight: 600; }
   .step-fields { margin: 0; padding: 4px 0; font-size: 0.9em; }
   .step-fields .step-line { font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; }
 </style>
@@ -146,6 +154,24 @@ function markdown(text, target) {
       inner.textContent = code.join('\n'); pre.appendChild(inner); target.appendChild(pre);
       list = paragraph = null; continue;
     }
+    // A table: a row of cells between pipes, then a separator row of dashes (colons for alignment).
+    const cells = row => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(lines[i + 1])) {
+      const align = cells(lines[i + 1]).map(cell => /^:-+:$/.test(cell) ? 'center' : /-:$/.test(cell) ? 'right' : '');
+      const wrap = document.createElement('div'), table = document.createElement('table');
+      wrap.className = 'md-table'; wrap.appendChild(table);
+      const add = (section, values, tag) => {
+        const tr = document.createElement('tr');
+        values.forEach((value, k) => { const cell = document.createElement(tag); if (align[k]) cell.style.textAlign = align[k]; inline(value, cell); tr.appendChild(cell); });
+        section.appendChild(tr);
+      };
+      const head = document.createElement('thead'), body = document.createElement('tbody');
+      add(head, cells(line), 'th');
+      for (i += 2; i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i]); i++) add(body, cells(lines[i]), 'td');
+      i--;
+      table.append(head, body); target.appendChild(wrap);
+      list = paragraph = null; continue;
+    }
     const bullet = /^\s*[-*]\s+(.*)$/.exec(line), numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
     if (bullet || numbered) {
       const kind = bullet ? 'UL' : 'OL';
@@ -172,13 +198,13 @@ function markdown(text, target) {
     return node;
   }
   function n(value) { return Number(value || 0).toLocaleString(); }
-  function time(value) { return value ? new Date(value).toLocaleString(undefined, {hourCycle:"h23"}) : ""; }
-  // A prompt's time of day; the date only when it differs from the session's, which the session line shows.
-  function promptTime(value, start) {
-    if (!value) return "";
-    var d = new Date(value);
-    return start && new Date(start).toDateString() === d.toDateString() ? d.toLocaleTimeString(undefined, {hourCycle:"h23"}) : d.toLocaleString(undefined, {hourCycle:"h23"});
+  function time(value) {
+    if (value == null) return "";
+    var d = new Date(value), pad = function (n) { return String(n).padStart(2, "0"); };
+    return pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getFullYear() % 100)
+      + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
   }
+  function promptTime(value) { return time(value); }
   function span(a, b) {
     if (!a || !b) return "";
     var s = Math.round((b - a) / 1000);
@@ -419,12 +445,37 @@ function markdown(text, target) {
     content.textContent = "";
     if (!report.configured) { status.className = "muted"; status.textContent = "No log folder is set. Choose a folder to read session logs from."; return; }
     if (!report.sessions.length) { status.className = "muted"; status.textContent = "No sessions in " + report.folder + "."; return; }
+    // Group at presentation time; keep original file ids for host actions.
+    var groups = new Map();
+    report.sessions.forEach(function (source) {
+      var key = source.conversation ? "conversation:" + source.conversation : "file:" + source.id;
+      var group = groups.get(key);
+      if (!group) {
+        group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {} };
+        groups.set(key, group);
+      }
+      group.fileIds.push(source.id);
+      group.start = Math.min(group.start, source.start); group.end = Math.max(group.end, source.end);
+      if (!group.providers.includes(source.provider)) group.providers.push(source.provider);
+      (source.models || []).forEach(function (model) { if (!group.models.includes(model)) group.models.push(model); });
+      group.prompts.push.apply(group.prompts, source.prompts.map(function (p, index) {
+        return Object.assign({}, p, { provider: source.provider, key: p.key || source.id + ":" + index });
+      }));
+      ["input", "output", "cacheRead", "cacheWrite", "cost", "costMissing"].forEach(function (k) {
+        if (source.usage[k] != null) group.usage[k] = (group.usage[k] || 0) + source.usage[k];
+      });
+    });
+    report = Object.assign({}, report, { sessions: Array.from(groups.values()).map(function (g) {
+      g.provider = g.providers.join(" · ");
+      g.prompts.sort(function (a, b) { return a.time - b.time || a.key.localeCompare(b.key); });
+      return g;
+    }).sort(function (a, b) { return b.end - a.end; }) });
     var total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     report.sessions.forEach(function (s) { ["input", "output", "cacheRead", "cacheWrite"].forEach(function(k){total[k] += s.usage[k] || 0;});
       if (s.usage.cost != null) total.cost = (total.cost || 0) + s.usage.cost;
       if (s.usage.costMissing) total.costMissing = (total.costMissing || 0) + s.usage.costMissing; });
     status.className = "muted";
-    status.textContent = report.sessions.length + " sessions in " + report.folder;
+    status.textContent = report.sessions.length + " conversations in " + report.folder;
     content.appendChild(el("div", "totals", "Total: " + usageText(total)));
 
     report.sessions.forEach(function (s) {
@@ -434,7 +485,7 @@ function markdown(text, target) {
       select.type = "checkbox";
       select.setAttribute("aria-label", "Select conversation " + s.provider + " " + time(s.start));
       select.onclick = function (event) { event.stopPropagation(); };
-      select.onchange = function () { if (select.checked) selected.add(s.id); else selected.delete(s.id); selectionChanged(); };
+      select.onchange = function () { s.fileIds.forEach(function (id) { if (select.checked) selected.add(id); else selected.delete(id); }); selectionChanged(); };
       head.appendChild(select);
       var heading = el("div", "session-heading");
       var preview = promptPreview(s.prompts);
@@ -442,15 +493,24 @@ function markdown(text, target) {
       excerpt.title = preview;
       heading.appendChild(excerpt);
       var meta = el("div", "session-meta");
+      meta.appendChild(el("span", "", time(s.end)));
       meta.appendChild(el("span", "provider", s.provider));
       var models=s.models||[...new Set(s.prompts.map(function(p){return p.model;}).filter(Boolean))];
       if(models.length){var modelNames=el("span","session-models",models.slice(0,3).join(", ")+(models.length>3?" +"+(models.length-3)+" models":""));modelNames.title=models.join(", ");meta.appendChild(modelNames);}
-      meta.appendChild(el("span", "", time(s.start)));
+
       meta.appendChild(el("span", "", span(s.start, s.end)));
       meta.appendChild(el("span", "", s.prompts.length + " prompts"));
       meta.appendChild(el("span", "", usageText(s.usage)));
       heading.appendChild(meta);
       head.appendChild(heading);
+      // Continue this conversation in the VERTEX chat, with all the files it wrote (one per provider it used).
+      // VS Code only: the host that has the chat says so; Eclipse's Session Logs show no button.
+      if (window.vertexCanContinue && s.prompts.some(function (p) { return p.operation === "Chat" || p.operation === "Web search"; })) {
+        var resume = el("button", "continue-session", "Continue in chat");
+        resume.title = "Open this conversation in the VERTEX chat and go on asking: its questions and answers become the history";
+        resume.onclick = function (event) { event.preventDefault(); event.stopPropagation(); vscode.postMessage({ action: "continueConversation", id: s.id }); };
+        head.appendChild(resume);
+      }
       box.appendChild(head);
 
       var table = el("table");
@@ -472,7 +532,12 @@ function markdown(text, target) {
           cell.appendChild(prompt);
         } else cell.appendChild(conversation(p));
         row.appendChild(cell);
-        row.appendChild(el("td", "", p.model));
+        var identity = el("td");
+        identity.appendChild(el("span", "provider", p.provider));
+        identity.appendChild(document.createTextNode(" · "));
+        identity.appendChild(el("span", "prompt-model", p.model));
+        if (p.branch && p.branch !== "main") identity.appendChild(el("div", "muted", "Branch " + p.branch));
+        row.appendChild(identity);
         row.appendChild(el("td", "num", n(p.usage.input)));
         row.appendChild(el("td", "num", n(p.usage.output)));
         row.appendChild(el("td", "num", n(p.usage.cacheRead)));

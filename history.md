@@ -1,3 +1,103 @@
+## 2026-11-08 — Restore green model answers
+
+Session Logs uses theme green for model answers. Model names retain the normal theme foreground; user messages remain blue.
+
+## 2026-11-08 — Continue conversations only from the end
+
+Removed per-answer Continue from here buttons. The existing conversation header button is the sole continuation action and always restores history through the end.
+
+## 2026-11-08 — Neutral model text in Session Logs
+
+Model answers and model names use the active theme foreground instead of green. User messages remain blue and provider names retain their distinct colour.
+
+## 2026-11-08 — Grouped conversation logs and continuation branches
+
+Session Logs groups files by conversation, totals usage and retains provider/model labels per prompt. Continue from here restores only the selected branch ancestry through that answer; later original answers remain available. Clear removes every file of a conversation. Session Logs loads shared VERTEX button styling in both hosts; prompt previews use the chat theme blue. Dates use DD-MM-YY HH:mm:ss, preceding provider and model labels with distinct theme colours.
+
+## 2026-11-08 — OpenRouter limits under the answer (0.9.71)
+
+The line under an OpenRouter answer now also shows free-model requests left today, money spent today and the key's limit left, as OpenRouter reports them for the key.
+
+## 2026-11-08 — Codex runs SAP ADT's tools; the model names the right system (0.9.71)
+
+Codex refused every SAP ADT tool ("approval policy is never"): those tools carry no read-only marks, and Codex asks before such a tool, which it cannot do when VERTEX runs it. VERTEX now tells Codex to run the tools of the MCP server it passes on, as Claude Code does; their limits stay the server's own. The model is also told that SAP ADT names a system by its full destination id from `abap_destination_list`, after a run where it passed the bare system id and took the refusal for a missing permission.
+
+## 2026-11-08 — API request limit leaves room for MCP tools (0.9.71)
+
+API providers (OpenAI-compatible ones such as OpenRouter, and Anthropic API) refused every question with SAP ADT picked: "request exceeds 64 KB". The 64 KB limit now applies to the conversation and its context; the tool definitions come on top of it.
+
+## 2026-11-08 — Continue a conversation from Session Logs (0.9.71)
+
+**Continue in chat** on a session in Session Logs opens that conversation in the VERTEX chat; the next question carries its questions and answers as history and is logged with them. A conversation that switched provider is gathered from every provider's log file in the order asked. Log entries now carry a conversation id, and log file names a random tail so two conversations started in one second do not share a file.
+
+## 2026-11-08 — Tables in chat answers and Session Logs (0.9.71)
+
+Markdown tables in model answers are drawn as tables, with theme borders and header background, in the VERTEX chat and in Session Logs; they used to show as lines of pipes.
+
+## 2026-11-08 — Toolsets: extra MCP tools on demand (0.9.71)
+
+The chat can add a few tools of another MCP server only when a task needs them. It gets one small `enable_toolset` tool listing the sets from `vertex.chat.toolsets`; a set the model enables joins from the next step (in Claude Code and Codex from the next question) and stays for the session. The default set **SAP RAP** brings SAP ADT's RAP generators, service-binding, object-action, activation and transport-request tools.
+
+## 2026-11-08 — SAP's ADT MCP Server in the MCP list (0.9.71)
+
+The panel's MCP list gets **SAP ADT**, the MCP server of SAP's ABAP Development Tools for VS Code. SAP's extension runs it and logs on with its own systems; VERTEX connects over HTTP with the port and token from `adt.mcpServer.*`. It needs `adt.mcpServer.enabled`, a system logged on in SAP's extension and that system allowed in `adt.mcpServer.accessRestrictions`; when nothing answers, the start window says so.
+
+## 2026-11-08 — Each provider keeps its model (0.9.71)
+
+Switching the chat's provider back and forth no longer loses the model: each provider gets back the model last picked for it, kept across restarts. A provider never used starts on its default model.
+
+## 2026-11-08 — Dialogs stand out in light themes (0.9.71)
+
+The Git dialogs (commit, push, PR, branch), the MCP start window, model details and the LLM Providers dialogs get the theme's widget border and shadow, so they no longer blend into a light background.
+
+## 2026-11-08 — vibing-steampunk in the MCP list (0.9.71)
+
+The panel's MCP list gets vibing-steampunk (`vsp`), started in hyperfocused mode with one `SAP` tool. Its executable is downloaded by hand from its releases and found on PATH or through the new `vertex.chat.vspPath`; when it is missing, the start window says where to get it. Write access is asked in the start window like for the other servers and kept in the new `vertex.chat.vspAccess` (read-only by default). MCP servers now run in an empty folder of VERTEX's own, so a `.env` or `.vsp.json` kept for a server's command line is not read.
+
+## 2026-11-08 — Tool results in the session log (0.9.71)
+
+New setting `vertex.ai.log.toolResults` (off by default, works with `vertex.ai.log.tools`): the session log keeps what each VERTEX or MCP tool returned to the model - rows, search hits, messages - instead of only its size. Program source is still replaced by object references; a result over 20,000 characters is cut with the count of what was left out.
+
+## 2026-11-08 — The chat reads tables: run_sap_select (0.9.71)
+
+VERTEX's own chat tools get `run_sap_select`: one SELECT through ADT's data preview, the same read-only path as Run Select, returning columns and rows (100 by default, at most 1,000). The chat can now answer questions whose answer is in a table - customizing, texts, repository tables.
+
+## 2026-11-08 — Picked MCP server starts with VS Code (0.9.71)
+
+An MCP server left picked in the panel starts in the background when the extension starts, instead of at the first chat question; a failed start shows an error message with its cause.
+
+## 2026-11-08 — ARC-1 full access includes table preview and SQL (0.9.71)
+
+`write` access for ARC-1 now turns on everything it offers on SAP: besides writes in any package and transports, table preview, free SQL and Git writes. `read-only` and `write-tmp` keep them off.
+
+## 2026-11-08 — Own scenes for PR and Push (0.9.71)
+
+PR description generation and Push no longer reuse the commit window's strips. While a PR description is generated, the branch's commits light up and fly into one description card that points at the base branch. While pushing, packets rise from the local branch along an arc into the remote cloud, whose branch grows and gets a check.
+
+## 2026-11-08 — Wide scenes in the chat and Git waiting pages (0.9.71)
+
+Review and commit tasks in the chat, the Git waiting page and the review refresh show the wide generation and commit strips instead of the small lens and stack icons.
+
+## 2026-11-08 — PR description with AI; push and PR waiting scenes (0.9.71)
+
+The PR dialog gets Title and Description, filled into GitHub's comparison page, and **Generate with AI**, which drafts them from the branch's commits and its diff against the remote-tracking base branch while the review scene plays. A title and description too long for the page address are refused with their length instead of being cut. Push shows the commit scene while it sends.
+
+## 2026-11-08 — Low commit scene (0.9.71)
+
+The commit waiting scene is the same low strip as the generation scene: the change sheets gather, two packets ride a Git branch that draws itself while earlier commits blink, and the commit node pulses with rings and sparks, draws its check and shows a hash and a head marker.
+
+## 2026-11-08 — Low review scene for commit message generation (0.9.71)
+
+The waiting scene of **Generate with AI** in the commit window is a low strip, about a third of its former height: a scan beam passes over the changed rows, `+` rows are written in green and the `-` row is struck through in red, the fragments stream into a spinning merge node, and the draft message is typed out with a cursor, a shimmer and sparkles. Theme colours and reduced motion as before.
+
+## 2026-11-08 — Write access chosen in the MCP start window (0.9.71)
+
+Picking ARC-1 or mcp-abap-adt in the panel's MCP list first asks, in the start window, what the server may change in SAP; read-only is preselected, and **Start** then starts the server. The choices are kept in `vertex.chat.arc1Access` and the new `vertex.chat.abapAdtAccess`. mcp-abap-adt is now read-only by default: it runs `@mcp-abap-adt/core-ro`, and `@mcp-abap-adt/core` only when writes are chosen.
+
+## 2026-11-08 — Chat SAP tools from ARC-1 or mcp-abap-adt (0.9.71)
+
+Add an MCP list to the VERTEX panel beside the SAP system and client: the chat's SAP tools come from VERTEX (default), ARC-1 or mcp-abap-adt, and more servers can be added in `vertex.chat.mcpServers`. The picked server starts at once in a window with an install scene; `npx` downloads the pinned package on first start, so Node.js is required, and a missing Node.js or a failed start is reported with its cause. The server uses the active system's url, user, client and kept password; mcp-abap-adt gets them through a temporary `.env` in VERTEX's storage that is deleted when it stops. ARC-1 is read-only by default; `vertex.chat.arc1Access` allows writes in `$TMP` or everywhere. The debugger and ABAP transpiler tools stay VERTEX's.
+
 ## 2026-11-08 — Separate generation and commit scenes (0.9.70)
 
 Use distinct full-width waiting scenes: a lens inspects added/removed code fragments, which merge into a common review and draft message during AI generation; a document stack travels along a Git branch during commit. Add explanatory operation text below each scene.

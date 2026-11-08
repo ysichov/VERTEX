@@ -870,7 +870,7 @@ function activate(context) {
   };
   const agentSourceQueue = require("./transpiler-tool").createRunQueue();
   const agentBuilds = new Map();
-  const chatTools = withDebugger(sapCode, debugTools, async args => {
+  const ownChatTools = withDebugger(sapCode, debugTools, async args => {
     const request = require("./transpiler-tool").validate(args);
     const localDocument = request.object_type === "PROG" ? require("./transpiler-tool").findLocalReport(vscode, request.object_name) : null;
     if (localDocument) return agentSourceQueue(() => {
@@ -887,6 +887,15 @@ function activate(context) {
       { agentRun: true, screenOnly: args.screen_only === true, entryLine: request.entryLine,
         selection: request.selection, interventions: request.interventions, history: transpilerHistory });
   }, transpilerHistory);
+  // The chat's SAP tools: VERTEX's own, or those of the MCP server picked in the VERTEX panel.
+  const chatMcp = require("./mcp-external").create({ vscode, active, password: system => auth.password(system),
+    storage: context.globalStorageUri && context.globalStorageUri.fsPath });
+  context.subscriptions.push({ dispose: () => chatMcp.stop() });
+  // A server picked earlier starts with the extension, in the background, so the first question does not wait for it.
+  if (chatMcp.servers().some(server => server.name === chatMcp.selected())) {
+    chatMcp.prepare().catch(error => vscode.window.showErrorMessage("VERTEX: MCP server " + chatMcp.selected() + " did not start: " + error.message));
+  }
+  const chatTools = chatMcp.wrap(ownChatTools);
   const toolsContextState = require("./tools-context-state").create();
   // What the VERTEX Smart Debugger panel shows - the record, and the flow of the analysis - for the chat to be given with a question.
   let latestDebugContext = null;
@@ -907,13 +916,15 @@ function activate(context) {
   };
   const port = vscode.workspace.getConfiguration("vertex").get("mcp.port", 37777);
   const chatSet = {
-      instructions: chatTools.instructions,
-      tools: chatTools.schemas.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-        annotations: tool.annotations
-      })),
+      get instructions() { return chatTools.instructions; },
+      get tools() {
+        return chatTools.schemas.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+          annotations: tool.annotations
+        }));
+      },
     call: async function (deps, name, args) {
       const config = vscode.workspace.getConfiguration("vertex.ai");
       const provider = config.get("provider", "codex-subscription") === "claude-subscription" ? "claude" : "codex";
@@ -922,7 +933,8 @@ function activate(context) {
         async function (_deps, toolName, toolArgs) {
           if (/^debug_/.test(toolName)) { return debugTools.call(_deps, toolName, toolArgs); }
           const result = await chatTools.execute(toolName, toolArgs);
-          return { content: [{ type: "text", text: JSON.stringify(result) }] };
+          // An MCP server's answer is already text; VERTEX's own results are JSON.
+          return { content: [{ type: "text", text: chatTools.external(toolName) ? result : JSON.stringify(result) }] };
         })(deps, name, args);
     }
   };
@@ -951,7 +963,7 @@ function activate(context) {
       setContext: (panel, value) => toolsContextState.update(panel, value),
       enrichContext: state => withShownDiff(context, state),
       debugger: dbg,
-      chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext()) }, initial);
+      chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext(), context.globalState) }, initial);
   // The normal source tab remains the sole code editor.  The debugger is a
   // docked panel, not another editor tab showing a second copy of that source.
   let dockedDebugView = null, dockedDebugSource = null, localDebugAdapter = null, sapDebugRunsPanel = null;
@@ -1809,9 +1821,9 @@ function activate(context) {
     vscode.commands.registerCommand("vertex.debugContinue", () => stepFromSource("continue"))
   );
   require("./sidebar").register(vscode, context, active,
-    require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext()), systems,
+    require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext(), context.globalState), systems,
     extra => withShownDiff(context, extra ? { ...(toolsContextState.current() || {}), ...extra } : toolsContextState.current()),
-    { set: auth.setClient, onChange: auth.onClientChange });
+    { set: auth.setClient, onChange: auth.onClientChange }, chatMcp);
   require("./log-report").register(vscode, context, { openObject: object => chatTools.execute("open_sap_object", object) });
   serveTools(context, tools);
   // External clients cannot trigger a VS Code MCP provider. Start on activation
