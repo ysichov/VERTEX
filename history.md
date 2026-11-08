@@ -1,3 +1,11 @@
+## 2026-11-08 — Separate generation and commit scenes (0.9.70)
+
+Use distinct full-width waiting scenes: a lens inspects added/removed code fragments, which merge into a common review and draft message during AI generation; a document stack travels along a Git branch during commit. Add explanatory operation text below each scene.
+
+## 2026-11-08 — Wide commit waiting scene (0.9.70)
+
+Expand the commit composer to nearly the full webview width. Show a full-width theme-aware SVG scene above status text: documents travel along a branching Git timeline toward a commit node, with a pulse and check. Preserve the existing waiting lifecycle and reduced-motion behavior.
+
 ## 2026-11-08 — Reliable Select all / Clear all (0.9.70)
 
 Determine bulk selection state using selectable models, excluding disabled unavailable rows. Clear all clears the target set even when unavailable rows are present; preserve filtered-out selections. Disable the button when nothing can be selected or cleared.

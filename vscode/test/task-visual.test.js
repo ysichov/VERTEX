@@ -26,8 +26,8 @@ test("commit waiting visual covers generation and commit, and stops after succes
  const node=id=>{if(!nodes.has(id))nodes.set(id,{value:"",hidden:id==="commit-working",setAttribute(name,value){this[name]=value;},addEventListener(){},focus(){},showModal(){},close(){}});return nodes.get(id);};
  const progress=node("progress");node("commit-status").parentElement=progress;
  const context={commitDialog:node("dialog"),refreshReview:node("refresh"),stored:{},api:{getState:()=>({}),setState(){},postMessage(){}},document:{getElementById:node,querySelector:()=>node("heading")},window:{addEventListener:(_,fn)=>listeners.push(fn)}};vm.runInNewContext(script.slice(start,end),context);
- node("commit-generate").onclick();assert.equal(node("commit-working").hidden,false);assert.equal(context.commitDialog['aria-busy'],"true");
+ node("commit-generate").onclick();assert.equal(node("commit-working")["data-operation"],"generate");assert.match(node("commit-status").textContent,/reviewing the diff fragments together/);assert.equal(node("commit-working").hidden,false);assert.equal(context.commitDialog['aria-busy'],"true");
  listeners[0]({data:{commitError:"Network error"}});assert.equal(node("commit-working").hidden,true);assert.equal(node("commit-close").disabled,false);
  node("commit-generate").onclick();listeners[0]({data:{commitDraft:{summary:"Update code",description:"Details"}}});assert.equal(node("commit-working").hidden,true);
- node("commit-form").onsubmit({preventDefault(){}});assert.equal(node("commit-working").hidden,false);listeners[0]({data:{commitDone:{hash:"abc"}}});assert.equal(node("commit-working").hidden,true);assert.equal(context.commitDialog['aria-busy'],"false");
+ node("commit-form").onsubmit({preventDefault(){}});assert.equal(node("commit-working")["data-operation"],"commit");assert.match(node("commit-status").textContent,/Creating a local Git commit/);assert.equal(node("commit-working").hidden,false);listeners[0]({data:{commitDone:{hash:"abc"}}});assert.equal(node("commit-working").hidden,true);assert.equal(context.commitDialog['aria-busy'],"false");
 });
