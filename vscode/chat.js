@@ -646,7 +646,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext)
         : id==="copilot" ? await copilot.ask(vscode,options) : await assistant.ask(options);
       if(!calls){const event={model:result.model,usage:result.usage,text:result.plan?.answer};collect(event);log?.assistant(event);}
       if(id==="codemie"&&typeof result.cost==="number"&&Number.isFinite(result.cost)){generation.cost_usd=result.cost;generation.partial=false;}
-      return {...helper.parse(result.plan?.answer),generation};
+      generation.model=result.model||generation.model;
+      return {...helper.parse(result.plan?.answer,generation.model),generation};
     }catch(error){
       if(!calls&&lastResponse?.usage){const u=require("./usage-report").normalize(lastResponse.usage);collect({model:lastResponse.model||model,usage:{input_tokens:u.input,output_tokens:u.output,cache_read_input_tokens:u.cacheRead,cache_creation_input_tokens:u.cacheWrite,cost_usd:u.cost}});}
       error.generation=generation;

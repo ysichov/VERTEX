@@ -212,3 +212,39 @@ test('unchecked selection is migrated to a persistent unavailable flag only once
  rows=config.rows(list,config.read(vscode,'vercel-api'),'vercel-api');
  assert.equal(rows[2].on,false);assert.equal(rows[2].available,undefined);
 });
+
+test('checks persist per key across windows, including failures and interrupted scans',async t=>{
+ const values=new Map();const secrets={get:async key=>values.get(key),store:async(key,value)=>values.set(key,value)};
+ const profiles=require('../key-profiles');await profiles.save(secrets,'openrouter-api','one','key-one');
+ const calls=[];let dispose;
+ t.mock.method(require('../model-detection'),'probe',async(_,__,id,model)=>{calls.push(model);if(model==='b')throw new Error('429');if(model==='c')dispose();});
+ const posts=[];let handler;
+ const vscode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(fn){dispose=fn;}})}};
+ const open=()=>require('../model-config').open(vscode,async()=>['a','b','c','d'].map(id=>({id})),()=>'',()=>{},secrets);
+ open();await handler({action:'detect',provider:'openrouter-api'});assert.deepEqual(calls,['a','b','c']);
+ assert.equal(posts.filter(p=>p.checkedRow).length,3);
+ open();await handler({action:'load',provider:'openrouter-api'});
+ const loaded=posts.at(-1).rows;assert.equal(loaded[0].checked,true);assert.equal(loaded[1].checked,true);assert.equal(loaded[1].available,false);
+ await handler({action:'detect',provider:'openrouter-api'});assert.deepEqual(calls,['a','b','c','d']);
+ await handler({action:'detect-model',provider:'openrouter-api',model:'a'});assert.deepEqual(calls,['a','b','c','d','a']);
+ await profiles.save(secrets,'openrouter-api','two','key-two');
+ await handler({action:'detect-model',provider:'openrouter-api',model:'b'});
+ await handler({action:'load',provider:'openrouter-api'});const other=posts.at(-1).rows;assert.notEqual(other[0].checked,true);assert.equal(other[1].checked,true);
+ await profiles.select(secrets,'openrouter-api','one');await handler({action:'load',provider:'openrouter-api'});assert.ok(posts.at(-1).rows.every(r=>r.checked===true));
+});
+
+test('group check probes only that model provider and returns its scope',async t=>{
+ let handler;const calls=[],posts=[];
+ t.mock.method(require('../model-detection'),'probe',async(_,__,id,model)=>calls.push(model));
+ const vscode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})}};
+ require('../model-config').open(vscode,async()=>[{id:'openai/a'},{id:'google/b'},{id:'openai/c'}],()=>'',()=>{},{});
+ await handler({action:'detect',provider:'openrouter-api',group:'openai'});
+ assert.deepEqual(calls,['openai/a','openai/c']);const result=posts.at(-1).detection.results[0];assert.equal(result.group,'openai');assert.equal(result.total,2);
+});
+
+test('OpenRouter Free group check never probes paid or known-unavailable models',async t=>{
+ let handler;const calls=[],posts=[];t.mock.method(require('../model-detection'),'probe',async(_,__,id,model)=>calls.push(model));
+ const vscode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})}};
+ require('../model-config').open(vscode,async()=>[{id:'openai/free',free:true},{id:'openai/paid',free:false},{id:'google/free',free:true},{id:'openai/unavailable',free:true,available:false}],()=>'',()=>{},{});
+ await handler({action:'detect',provider:'openrouter-api',group:'openai',filter:'free'});assert.deepEqual(calls,['openai/free']);assert.equal(posts.at(-1).detection.results[0].filtered,true);
+});

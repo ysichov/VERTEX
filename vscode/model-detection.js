@@ -28,11 +28,11 @@ async function detect(providers, list, check, report, cancelled = () => false) {
     let models;
     try { models = await list(provider.id); }
     catch (error) { results.push({ provider: provider.id, error: String(error.message || error), rows: null }); continue; }
-    const rows = models.map(model => ({ ...model, checked: model.available === true }));
+    const rows = models.map(model => ({ ...model, checked: model.checked === true || model.available === true }));
     let checked = 0, stopReason = "";
     for (const [index, model] of models.entries()) {
       if (cancelled()) break;
-      if (model.available === true) { checked++; continue; }
+      if (model.checked === true || model.available === true) { checked++; continue; }
       report({ provider: provider.id, model: model.label || model.id, index: index + 1, total: models.length });
       try { await check(provider.id, model.id); rows[index] = { ...model, on: true, available: true, checked: true }; }
       catch (error) {

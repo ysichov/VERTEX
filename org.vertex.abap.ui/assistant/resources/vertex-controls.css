@@ -5,6 +5,11 @@
  * - .vertex-segment-toggle / .active: one of mutually exclusive values
  *   (Diff-style Prev / Any, Tree / Diagram, Full / BSE).
  */
+/* Shared geometry for modal forms, including the commit composer. */
+dialog { border-radius: 6px; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea, select { border-radius: 4px; }
+
 .vertex-toggle {
   --accent: var(--vscode-focusBorder, #0a66c2);
   cursor: pointer;

@@ -27,7 +27,7 @@ test("LLM Providers offers an independent fold control for each model list", () 
   assert.match(panel.webview.html, /this is not an account sign-in check/);
   assert.match(panel.webview.html, /select-key/);
   assert.match(panel.webview.html, /all \? "Clear all" : "Select all"/);
-  assert.match(panel.webview.html, /s\.rows\.forEach\(r => \{ r\.on = next && r\.available !== false; \}\)/);
+  assert.match(panel.webview.html, /targets\.forEach\(r => \{ r\.on = next && r\.available !== false; \}\)/);
   assert.match(panel.webview.html, /Open logging settings/);
 });
 
@@ -131,10 +131,11 @@ test("Vercel AI Gateway lists only language models", async () => {
 });
 
 
-test("Vercel excludes batch variants by model id and display name", async () => {
+test("chat catalogs exclude batch variants by model id and display name", async () => {
   const data = [
     { id: "anthropic/claude-fable-5", name: "Claude Fable 5", type: "language" },
     { id: "anthropic/claude-fable-5-batch", type: "language" },
+    { id: "anthropic/claude-fable-5:batch", type: "language" },
     { id: "anthropic/claude-fable-5-batch-v2", type: "language" },
     { id: "anthropic/alias", name: "Claude Fable 5 (Batch)", type: "language" },
     { id: "anthropic/alias2", display_name: "Claude Fable 5 (BATCH)", type: "language" }
@@ -143,7 +144,7 @@ test("Vercel excludes batch variants by model id and display name", async () => 
   assert.deepEqual((await api.models("vercel-api", "k", request)).map(({id,label})=>({id,label})), [
     { id: "anthropic/claude-fable-5", label: "Claude Fable 5" }
   ]);
-  assert.equal((await api.models("openrouter-api", "k", request)).length, data.length);
+  for (const provider of ["openrouter-api", "openai-api", "mistral-api"]) assert.deepEqual((await api.models(provider, "k", request)).map(m=>m.id), ["anthropic/claude-fable-5"]);
 });
 
 
@@ -334,4 +335,54 @@ test('text-only JSON answer wrapper is unwrapped, empty JSON remains an accounta
  let logged;const options={assistant:'vercel-api',model:'text',apiKey:'test',prompt:'methods',instructions:'Reply',schema:{type:'object'},capabilities:{tools:false},onModelCall:event=>logged=event,request:async()=>({model:'text',usage:{prompt_tokens:10,completion_tokens:7,cost:0.0001},choices:[{message:{content},finish_reason:'stop'}]})};
  if(content==='{}')await assert.rejects(api.ask(options),/empty JSON object without an answer/);else assert.equal((await api.ask(options)).plan.answer,'Visible methods');assert.equal(logged.usage.cost_usd,0.0001);
  }
+});
+
+test('availability probe fails immediately on rate limits without sleeping or retries',async()=>{
+ let calls=0,sleeps=0;
+ const error=Object.assign(new Error('API returned 429'),{status:429,retryAfter:'60'});
+ await assert.rejects(()=>api.probe('openrouter-api','key','model',async(...args)=>{
+  calls++;assert.equal(args[5],10000);throw error;
+ },{sleep:async()=>{sleeps++;}}),e=>e===error);
+ assert.equal(calls,1);assert.equal(sleeps,0);
+});
+
+test('OpenRouter records response cost for chat and probes without billing lookups',async()=>{
+ for(const cost of [0,0.000000123456789,'0.0123',null,undefined,'',false,'invalid',-1]){
+  const expected=(typeof cost==='number'&&cost>=0||typeof cost==='string'&&cost==='0.0123')?Number(cost):null;
+  for(const probe of [false,true]){
+   let requests=0,record;
+   const request=async(id,key,route)=>{requests++;assert.equal(id,'openrouter-api');assert.equal(route,'/chat/completions');return {id:'gen_or',usage:{cost,prompt_tokens:10,completion_tokens:2,cost_details:{upstream_inference_cost:123}},choices:[{message:{content:'OK'}}]};};
+   const options={assistant:'openrouter-api',apiKey:'key',model:'x',prompt:'x',instructions:'x',textOnly:true,onModelCall:e=>record=e,request};
+   const result=probe?await api.probe('openrouter-api','key','x',request,options):await api.ask(options);
+   assert.equal(requests,1);assert.equal(record.usage.cost_usd,expected);
+   if(expected!==null)assert.equal(result.usage.cost_usd,expected);
+   else if(!probe)assert.equal(result.usage.cost_missing,1);
+  }
+ }
+});
+test('OpenRouter multi-round costs survive logs without double counting, including partial costs',async()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-or-cost-'));
+ try{
+ for(const second of [0.02,undefined]){
+  const log=require('../session-log').create(root,'openrouter-api','cost-'+String(second),{});log.user('Check costs');
+  let requests=0;
+  const result=await api.ask({assistant:'openrouter-api',apiKey:'key',model:'x',prompt:'x',instructions:'x',schema:{type:'object'},tools:[{name:'read',description:'read',inputSchema:{type:'object'}}],callTool:async()=>({ok:true}),onProviderResponse:e=>log.providerResponse(e),onModelCall:e=>log.assistant(e),request:async()=>{
+   requests++;return {id:'gen_'+requests,usage:{prompt_tokens:10,completion_tokens:2,cost:requests===1?0.01:second},choices:[{message:requests===1?{tool_calls:[{id:'call',function:{name:'read',arguments:'{}'}}]}:{tool_calls:[{id:'final',function:{name:'submit_vertex_answer',arguments:JSON.stringify({answer:'Done'})}}]}}]};
+  }});
+  const expected=second===undefined?0.01:0.03;assert.equal(requests,2);assert.equal(result.usage.cost_usd,expected);assert.equal(result.usage.cost_missing||0,second===undefined?1:0);
+  const session=require('../log-report').parseSession(fs.readFileSync(log.file,'utf8'),log.file);assert.equal(session.usage.cost,expected);assert.equal(session.prompts[0].usage.cost,expected);
+ }
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('probe accepts empty reasoning-only messages and retains billed usage and diagnostics',async()=>{
+ let call,event;
+ await api.probe('openrouter-api','key','reasoner',async()=>({id:'gen_empty',usage:{cost:0.00012,completion_tokens:16,completion_tokens_details:{reasoning_tokens:16}},choices:[{finish_reason:'length',message:{content:'',reasoning:'private reasoning'}}]}),{onModelCall:e=>call=e,onProviderResponse:e=>event=e});
+ assert.equal(call.usage.cost_usd,0.00012);assert.equal(call.usage.output_tokens,16);assert.equal(call.text,'');assert.equal(event.response.finish_reason,'length');assert.equal(event.response.message_diagnostics.content_characters,0);
+ const result=await api.probe('openrouter-api','key','array',async()=>({usage:{cost:0},choices:[{message:{content:[{type:'text',text:'OK'}]}}]}));assert.equal(result.usage.cost_usd,0);
+});
+
+test('OpenRouter free classification uses explicit free routes or zero catalog pricing, not unknown prices',async()=>{
+ const data=[{id:'a:free'},{id:'openrouter/free'},{id:'zero',pricing:{prompt:'0',completion:'0'}},{id:'paid',pricing:{prompt:'0',completion:'0.01'}},{id:'unknown'},{id:'empty',pricing:{prompt:'',completion:''}},{id:'fee',pricing:{prompt:'0',completion:'0',request:'0.01'}}];
+ const rows=await api.models('openrouter-api','k',async()=>({data}));assert.deepEqual(rows.filter(m=>m.free).map(m=>m.id).sort(),['a:free','openrouter/free','zero']);
 });

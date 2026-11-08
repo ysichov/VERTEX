@@ -53,6 +53,10 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
         } else { resolve(parsed); }
       });
     });
+    if (timeoutMs) {
+      const deadline = setTimeout(() => req.destroy(new Error(provider.label + " API timed out.")), timeoutMs);
+      req.on("close", () => clearTimeout(deadline));
+    }
     req.on("error", reject);
     req.setTimeout(timeoutMs || (payload ? 180000 : 60000), () => req.destroy(new Error(provider.label + " API timed out.")));
     req.end(payload || undefined);
@@ -62,11 +66,12 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
 async function models(id, apiKey, request = requestJson) {
   const response = await request(id, apiKey, "/models");
   if (!Array.isArray(response.data)) { throw new Error(PROVIDERS[id].label + " did not return a model list."); }
-  // Vercel also lists non-chat models and asynchronous batch variants.
-  const list = response.data.filter(item => item && item.id && (id !== "vercel-api" || (item.type === "language"
-    && !/(?:^|[-_/])batch(?:$|[-_/])/i.test(String(item.id))
-    && !/\bbatch\b/i.test(String(item.name || item.display_name || ""))))).map(item => ({
+  // Chat does not implement asynchronous batch variants; Vercel also lists non-chat models.
+  const list = response.data.filter(item => item && item.id && (id !== "vercel-api" || item.type === "language")
+    && !/(?:^|[-_/:])batch(?:$|[-_/:])/i.test(String(item.id))
+    && !/\bbatch\b/i.test(String(item.name || "") + " " + String(item.display_name || ""))).map(item => ({
     id: String(item.id), label: String(item.name || item.display_name || item.id),
+    ...(id === "openrouter-api" ? { free: /:free$/i.test(item.id) || item.id === "openrouter/free" || [item.pricing?.prompt,item.pricing?.completion].every(value => (typeof value === "number" || typeof value === "string" && value.trim() !== "") && Number(value) === 0) && Object.values(item.pricing || {}).every(value => Number(value) === 0) } : {}),
     ...(id === "vercel-api" ? require("./model-capabilities").metadata(item) : {})
   }));
   if (!list.length) { throw new Error(PROVIDERS[id].label + " returned no models for this key."); }
@@ -106,20 +111,28 @@ async function rateLimitedRequest(send, options = {}) {
 
 // One minimal paid generation request: no tool schemas, history or agent rounds.
 async function probe(id, apiKey, model, request = requestJson, options = {}) {
-  const response = await rateLimitedRequest(() => request(id, apiKey, "/chat/completions", {
+  const response = await request(id, apiKey, "/chat/completions", {
     model, messages: [{ role: "user", content: "Reply OK." }], stream: false,
     ...(id === "openai-api" ? { max_completion_tokens: 16 } : { max_tokens: 16 })
-  }),options);
-  options.onProviderResponse?.({provider:id,scope:"model_response",response});
+  }, 64000, 10000);
+  const message = response.choices?.[0]?.message;
+  const answer = typeof message?.content === "string" ? message.content.trim() : Array.isArray(message?.content) ? message.content.filter(part => part?.type === "text").map(part => part.text || "").join("\n").trim() : "";
+  options.onProviderResponse?.({provider:id,scope:"model_response",response:{...response,finish_reason:response.choices?.[0]?.finish_reason,
+    message_diagnostics:{content_characters:answer.length,reasoning_tokens:Number(response.usage?.completion_tokens_details?.reasoning_tokens||0)}}});
   const raw=response.usage||{},cached=Number(raw.prompt_tokens_details?.cached_tokens??raw.cache_read_input_tokens??0)||0,created=Number(raw.cache_creation_input_tokens||0);
-  const usage={input_tokens:raw.prompt_tokens==null?Number(raw.input_tokens||0):Math.max(0,Number(raw.prompt_tokens)-cached-created),output_tokens:Number(raw.completion_tokens??raw.output_tokens??0)||0,cache_read_input_tokens:cached,cache_creation_input_tokens:created,...(id==="vercel-api"?await generationCost(response,{...options,apiKey},request):{})};
-  options.onModelCall?.({model:response.model||model,usage,text:response.choices?.[0]?.message?.content||""});
-  if (!response.choices?.[0]?.message) throw new Error(PROVIDERS[id].label + " answered without a chat message.");
+  const usage={input_tokens:raw.prompt_tokens==null?Number(raw.input_tokens||0):Math.max(0,Number(raw.prompt_tokens)-cached-created),output_tokens:Number(raw.completion_tokens??raw.output_tokens??0)||0,cache_read_input_tokens:cached,cache_creation_input_tokens:created,...(["vercel-api","openrouter-api"].includes(id)?await generationCost(response,{...options,assistant:id,apiKey},request):{})};
+  options.onModelCall?.({model:response.model||model,usage,text:answer});
+  if (!message) throw new Error(PROVIDERS[id].label + " answered without a chat message.");
   return {model:response.model||model,usage};
 }
 
 // Actual Gateway debit, never an estimate from catalog token prices.
 async function generationCost(response, options, request) {
+  if (options.assistant === "openrouter-api") {
+    const value = response.usage?.cost;
+    const cost = (typeof value === "number" || typeof value === "string" && value.trim() !== "") && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
+    return { generation_id: response.id || null, cost_usd: cost };
+  }
   const gateway = response.providerMetadata?.gateway || response.provider_metadata?.gateway || response.choices?.[0]?.message?.provider_metadata?.gateway;
   const generationId = gateway?.generationId || response.id;
   const number = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
@@ -207,7 +220,7 @@ async function ask(options) {
       if (!usage) usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
       for (const key of Object.keys(next)) usage[key] = (usage[key] || 0) + next[key];
     }
-    if (id === "vercel-api") {
+    if (id === "vercel-api" || id === "openrouter-api") {
       roundUsage = { ...(roundUsage || {}), ...await generationCost(response, options, request) };
       if (roundUsage.cost_usd !== null) {
         if (!usage) usage = {};

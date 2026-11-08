@@ -22,8 +22,9 @@ const PROVIDERS = [
   { id: "copilot", setting: "copilot", label: "GitHub Copilot (VS Code)", short: "Copilot" },
   { id: "codemie", setting: "codemie", label: "EPAM CodeMie (CodeMie CLI)", short: "CodeMie" },
   { id: "vercel-api", setting: "vercel-api", label: "Vercel AI Gateway API (key)", short: "Vercel AI Gateway API" },
+  { id: "openrouter-api", setting: "openrouter-api", label: "OpenRouter API (key)", short: "OpenRouter API" },
   { id: "anthropic-api", setting: "anthropic-api", label: "Anthropic API (key)", short: "Anthropic API" },
-  ...Object.entries(compatible.PROVIDERS).filter(([id]) => id !== "vercel-api").map(([id, provider]) => ({
+  ...Object.entries(compatible.PROVIDERS).filter(([id]) => id !== "vercel-api" && id !== "openrouter-api").map(([id, provider]) => ({
     id, setting: id, label: provider.label + " API (key)", short: provider.label + " API"
   }))
 ];
@@ -135,6 +136,39 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
   const post = message => panel.webview.postMessage(message);
 
   const loadGeneration = new Map(), availableModels = new Map();
+  const checksByScope = new Map();
+  async function checkScope(id) {
+    const keyed = id === "anthropic-api" || compatible.PROVIDERS[id];
+    const key = keyed && secrets?.get ? (await keyProfiles.getActiveKey(secrets, id)).key : "";
+    const scope = "vertex.modelChecks." + id + "." + require("crypto").createHash("sha256").update(key || id).digest("hex");
+    if (!checksByScope.has(scope)) {
+      let saved;
+      try { saved = secrets?.get ? JSON.parse(await secrets.get(scope) || "{}") : {}; } catch (_) { saved = {}; }
+      checksByScope.set(scope, saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {});
+    }
+    return { scope, checks: checksByScope.get(scope) };
+  }
+  async function checkedRows(id, models) {
+    const { checks } = await checkScope(id);
+    return rows(models, read(vscode, id), id).map(row => {
+      const saved = Object.hasOwn(checks, row.id) ? checks[row.id] : null;
+      return saved && typeof saved.available === "boolean" ? { ...row, ...saved, checked: true,
+        ...(saved.available ? {} : { on: false }), availabilitySource: "probe" } : row;
+    });
+  }
+  async function checkModel(id, model) {
+    const { scope, checks } = await checkScope(id);
+    let error, result;
+    try {
+      await require("./model-detection").probe(vscode, secrets, id, model, extensionPath, executable);
+      result = { available: true, reason: "", checkedAt: new Date().toISOString() };
+    } catch (e) { error = e; result = { available: false, reason: String(e.message || e), checkedAt: new Date().toISOString() }; }
+    Object.defineProperty(checks, model, { value: result, enumerable: true, configurable: true, writable: true });
+    if (secrets?.store) await secrets.store(scope, JSON.stringify(checks));
+    post({ checkedRow: { provider: id, model, ...result } });
+    if (error) throw error;
+  }
+
   async function load(id, fresh = false) {
     const generation = loadGeneration.get(id) || 0;
     const send = message => { if (generation === (loadGeneration.get(id) || 0)) post(message); };
@@ -163,7 +197,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
           && !models.some(model => model.id === selected)) {
         await settings.update("model", "", vscode.ConfigurationTarget.Global);
       }
-      send({ provider: id, rows: rows(models, read(vscode, id), id), profiles, source, codemie });
+      send({ provider: id, rows: await checkedRows(id, models), profiles, source, codemie });
     } catch (e) {
       send({ provider: id, error: e.message, profiles, source, codemie });
     }
@@ -205,7 +239,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
       try {
         const models = await full(provider.id);
         if (!models.some(model => String(model.id) === message.model)) throw new Error("Model is not in this provider's list.");
-        await require("./model-detection").probe(vscode, secrets, provider.id, message.model, extensionPath, executable);
+        await checkModel(provider.id, message.model);
         if (!availableModels.has(provider.id)) availableModels.set(provider.id, new Set());
         availableModels.get(provider.id).add(message.model);
         post({ modelCheck: { provider: provider.id, model: message.model, available: true } });
@@ -221,9 +255,11 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
         const detection = require("./model-detection");
         const result = await detection.detect([provider], async id => {
           forget(id);
-          return rows(await full(id), read(vscode, id), id).map(row => availableModels.get(id)?.has(String(row.id))
-            ? { ...row, available: true, checked: true, on: true, reason: "", availabilitySource: "probe" } : row);
-        }, (id, model) => detection.probe(vscode, secrets, id, model, extensionPath, executable),
+          let models = await checkedRows(id, await full(id));
+          if(id==="openrouter-api"&&message.filter==="free")models=models.filter(model=>model.free===true&&model.available!==false);
+          if(id==="openrouter-api"&&message.filter==="available")models=models.filter(model=>model.available!==false);
+          return typeof message.group === "string" ? models.filter(model => (String(model.id).includes("/") ? String(model.id).split("/")[0] : "other") === message.group) : models;
+        }, (id, model) => checkModel(id, model),
         progress => post({ detectionProgress: progress }), () => cancelled);
         for (const checked of result.results) {
           if (!availableModels.has(checked.provider)) availableModels.set(checked.provider, new Set());
@@ -232,6 +268,8 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
             else if (row.checked) availableModels.get(checked.provider).delete(String(row.id));
           }
         }
+        if (typeof message.group === "string") result.results.forEach(item => { item.group = message.group; });
+        if(provider.id==="openrouter-api"&&["free","available"].includes(message.filter))result.results.forEach(item=>{item.filtered=true;});
         post({ detection: result });
       } catch (error) { post({ detectionError: error.message }); }
       finally { detecting = false; }
@@ -425,13 +463,13 @@ const sortModels = ${require("./model-capabilities").sortModels.toString()};
 const groupModels = ${require("./model-capabilities").groupModels.toString()};
 const detailLines = ${require("./model-capabilities").detailLines.toString()};
 let use = INIT.use;
-let apiExpanded = use.endsWith("-api") && use !== "vercel-api";
+let apiExpanded = use.endsWith("-api") && !["vercel-api", "openrouter-api"].includes(use);
 let scanning = false, scanningProvider = "";
 const checkStatus = {}, checkErrors = {};
 // Per provider: on, and its rows once read (null while loading or when it could not be read).
 const state = {};
 INIT.providers.forEach(p => { state[p.id] = { label: p.label, on: p.on, rows: null, profiles: null,
-  source: null, hideUnavailable: true, grouped: false, collapsedGroups: new Set(), groupSorts: new Map(), expanded: p.id === INIT.use }; });
+  source: null, hideUnavailable: true, filter: "available", grouped: false, collapsedGroups: new Set(), groupSorts: new Map(), expanded: p.id === INIT.use }; });
 const $ = id => document.getElementById(id);
 function say(text, kind) { $("said").textContent = text || ""; $("said").className = kind || "note"; }
 function el(tag, props) { return Object.assign(document.createElement(tag), props || {}); }
@@ -461,10 +499,13 @@ $("close-error").addEventListener("click", () => $("error-dialog").close());
 $("close-model-info").addEventListener("click",()=>$("model-info-dialog").close());
 function showModelInfo(model){$("model-info-title").textContent=model.label||model.id;const text=$("model-info-text");text.replaceChildren();detailLines(model,capabilityDefinitions,priceInfo).forEach(value=>text.appendChild(el("p",{textContent:value})));$("model-info-dialog").showModal();}
 function build() {
+  const page = document.scrollingElement;
+  const pageTop = page?.scrollTop || 0, pageLeft = page?.scrollLeft || 0;
+  const positions = INIT.providers.map(p => { const node = $("models-scroll-" + p.id); return [p.id, node?.scrollTop || 0, node?.scrollLeft || 0]; });
   const tree = $("tree"); tree.innerHTML = "";
   let apiBody;
   INIT.providers.forEach(p => {
-    const grouped = p.id.endsWith("-api") && p.id !== "vercel-api";
+    const grouped = p.id.endsWith("-api") && !["vercel-api", "openrouter-api"].includes(p.id);
     if (grouped && !apiBody) {
       const header = el("div", { className: "phead group-header" });
       const fold = el("button", { className: "fold", type: "button", textContent: apiExpanded ? "▾" : "▸",
@@ -499,7 +540,7 @@ function build() {
       title: "Test only this provider’s models with short requests; normal provider usage applies." });
     check.addEventListener("click", () => {
       scanning = true; scanningProvider = p.id; checkErrors[p.id] = ""; checkStatus[p.id] = "Reading model list…";
-      api.postMessage({ action: "detect", provider: p.id });
+      api.postMessage({ action: "detect", provider: p.id, ...(p.id==="openrouter-api"?{filter:s.filter}:{}) });
       build(); $("save").disabled = true; $("stop-detection").hidden = false;
       say("Checking " + p.label + "…");
     });
@@ -521,6 +562,8 @@ function build() {
     (grouped ? apiBody : tree).appendChild(box);
     fill(p.id);
   });
+  positions.forEach(([id, top, left]) => { const node = $("models-scroll-" + id); if (node) { node.scrollTop = top; node.scrollLeft = left; } });
+  if (page) { page.scrollTop = pageTop; page.scrollLeft = pageLeft; }
 }
 function fill(id) {
   const s = state[id], body = $("body-" + id), oldScroll=$("models-scroll-"+id), scrollTop=oldScroll?.scrollTop||0, scrollLeft=oldScroll?.scrollLeft||0; body.innerHTML = "";
@@ -600,27 +643,42 @@ function fill(id) {
     }
     return;
   }
+  const visibleRows = s.rows.filter(row=>id==="openrouter-api" ? s.filter==="all" || row.available!==false && (s.filter!=="free" || row.free===true) : !s.hideUnavailable || row.available!==false);
+  const targets = id==="openrouter-api" ? visibleRows : s.rows;
+  const count = el("span", { className: "note", role: "status", ariaLive: "polite" });
   const bulk = el("button", { type: "button" });
+  const allSelected = () => {
+    const selectable = targets.filter(r => r.available !== false);
+    return selectable.length ? selectable.every(r => r.on) : targets.some(r => r.on);
+  };
   const updateBulk = () => {
-    const all = s.rows.length > 0 && s.rows.every(r => r.on);
+    const all = allSelected();
+    bulk.disabled = !targets.some(r => r.available !== false || r.on);
+    count.textContent = "Models: " + s.rows.length + " · Shown: " + visibleRows.length + " · Selected: " + s.rows.filter(r => r.on).length;
     bulk.textContent = all ? "Clear all" : "Select all";
     bulk.title = all ? "Clear all models for this provider" : "Select all models for this provider";
   };
   bulk.addEventListener("click", () => {
-    const next = !s.rows.every(r => r.on);
-    s.rows.forEach(r => { r.on = next && r.available !== false; });
+    const next = !allSelected();
+    targets.forEach(r => { r.on = next && r.available !== false; });
     table.querySelectorAll('tbody input[type="checkbox"]').forEach(box => { box.checked = next && !box.disabled; });
     updateBulk(); say("");
   });
   updateBulk();
   const toolbar = el("div", { className: "row" }); toolbar.appendChild(bulk);
+  if(id==="openrouter-api"){
+    const filters=el("span",{className:"vertex-segment-toggle"});filters.setAttribute("role","group");filters.setAttribute("aria-label","OpenRouter model filter");
+    [["all","All"],["available","Available"],["free","Free"]].forEach(([value,label])=>{
+      const button=el("button",{type:"button",className:s.filter===value?"active":"",textContent:label,title:value==="free"?"Free models not marked unavailable":value==="available"?"Models not marked unavailable":"All models, including unavailable"});button.setAttribute("aria-pressed",String(s.filter===value));button.addEventListener("click",()=>{s.filter=value;fill(id);});filters.appendChild(button);
+    });toolbar.appendChild(filters);
+  }else{
   const hideLabel = el("label", { className: "row" });
   const hide = el("input", { type: "checkbox", checked: !!s.hideUnavailable, title: "Hide unavailable models" });
   hide.addEventListener("change", () => { s.hideUnavailable = hide.checked; fill(id); });
   hideLabel.appendChild(hide); hideLabel.appendChild(document.createTextNode("Hide unavailable"));
-  toolbar.appendChild(hideLabel);
-  if(id==="vercel-api"){
-    const modes=el("span",{className:"vertex-segment-toggle"});modes.setAttribute("role","group");modes.setAttribute("aria-label","Vercel model view");
+  toolbar.appendChild(hideLabel); } toolbar.appendChild(count);
+  if(["vercel-api","openrouter-api"].includes(id)){
+    const modes=el("span",{className:"vertex-segment-toggle"});modes.setAttribute("role","group");modes.setAttribute("aria-label",s.label+" model view");
     [[false,"All models"],[true,"By provider"]].forEach(([grouped,label])=>{
       const button=el("button",{type:"button",className:s.grouped===grouped?"active":"",textContent:label,title:grouped?"Group by model ID prefix: openai/, google/, anthropic/, etc.":"Show one sortable model list"});
       button.setAttribute("aria-pressed",String(s.grouped===grouped));button.addEventListener("click",()=>{s.grouped=grouped;fill(id);});modes.appendChild(button);
@@ -637,6 +695,7 @@ function fill(id) {
   columns.push({ key: "availability", label: "Check" });
   const head = el("thead"), headerRow = el("tr");
   columns.forEach(column => {
+    if(id==="openrouter-api"){headerRow.appendChild(el("th",{textContent:column.label,title:column.title||column.label}));return;}
     const selected = s.sort?.key === column.key;
     const th = el("th"); th.setAttribute("aria-sort", selected ? s.sort.down ? "descending" : "ascending" : "none");
     const label = el("span", { className: "model-sort", tabIndex: 0, textContent: column.label + (selected ? s.sort.down ? " ▼" : " ▲" : ""), title: (column.title || column.label) + " — click to sort; click again to reverse" });
@@ -645,8 +704,8 @@ function fill(id) {
     label.addEventListener("click", sort); label.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); sort(); } });
     th.appendChild(label);headerRow.appendChild(th);
   });
-  head.appendChild(headerRow);table.appendChild(head);
-  const groups=id==="vercel-api"&&s.grouped?groupModels(s.rows,s.sort?.key,s.sort?.down,s.hideUnavailable):[{id:"",models:sortModels(s.rows,s.sort?.key,s.sort?.down).filter(r=>!s.hideUnavailable||r.available!==false)}];
+  head.appendChild(headerRow);if(id!=="openrouter-api")table.appendChild(head);
+  const groups=["vercel-api","openrouter-api"].includes(id)&&s.grouped?groupModels(visibleRows,s.sort?.key,s.sort?.down,false):[{id:"",models:sortModels(visibleRows,s.sort?.key,s.sort?.down)}];
   groups.forEach(group=>{
   const ownSort=s.groupSorts.get(group.id);if(ownSort)group.models=sortModels(group.models,ownSort.key,ownSort.down);
   const tbody=el("tbody"),modelRows=[];let fold;
@@ -655,11 +714,15 @@ function fill(id) {
     fold=el("button",{type:"button",className:"fold",title:"Expand or collapse "+group.label});
     const paint=()=>{const collapsed=s.collapsedGroups.has(group.id);fold.textContent=collapsed?"▸":"▾";fold.setAttribute("aria-expanded",String(!collapsed));modelRows.forEach(row=>{row.hidden=collapsed;});};
     fold.addEventListener("click",()=>{if(s.collapsedGroups.has(group.id))s.collapsedGroups.delete(group.id);else s.collapsedGroups.add(group.id);paint();});
-    paint();th.appendChild(fold);th.appendChild(document.createTextNode(" "+group.label+" ("+group.models.length+")"));const controls=el("span",{className:"group-sort-controls"});controls.appendChild(document.createTextNode(" Sort "));
+    paint();th.appendChild(fold);th.appendChild(document.createTextNode(" "+group.label+" ("+group.models.length+")"));
+    const checkGroup=el("button",{type:"button",className:"check-models",textContent:"Check models",disabled:scanning,title:"Check untested models in "+group.label});
+    checkGroup.setAttribute("aria-label","Check models in "+group.label);
+    checkGroup.addEventListener("click",()=>{scanning=true;scanningProvider=id;checkErrors[id]="";checkStatus[id]="Checking "+group.label+"…";build();$("save").disabled=true;api.postMessage({action:"detect",provider:id,group:group.id,...(id==="openrouter-api"?{filter:s.filter}:{})});});th.appendChild(checkGroup);
+    if(id==="vercel-api"&&group.models.length>1){const controls=el("span",{className:"group-sort-controls"});controls.appendChild(document.createTextNode(" Sort "));
     const picker=el("select",{title:"Sort only "+group.label+"; Global order follows the table header"});picker.setAttribute("aria-label","Sort models in "+group.label);
     picker.appendChild(el("option",{value:"",textContent:"Global order"}));columns.forEach(column=>picker.appendChild(el("option",{value:column.key,textContent:column.title||column.label})));picker.value=ownSort?.key||"";
     picker.addEventListener("change",()=>{if(picker.value)s.groupSorts.set(group.id,{key:picker.value,down:ownSort?.down||false});else s.groupSorts.delete(group.id);fill(id);});controls.appendChild(picker);
-    const direction=el("button",{type:"button",textContent:(ownSort?ownSort.down:s.sort?.down)?"↓":"↑",disabled:!ownSort,title:"Reverse sorting in "+group.label});direction.setAttribute("aria-label","Reverse sorting in "+group.label);direction.addEventListener("click",()=>{if(ownSort){s.groupSorts.set(group.id,{...ownSort,down:!ownSort.down});fill(id);}});controls.appendChild(direction);th.appendChild(controls);tr.appendChild(th);tbody.appendChild(tr);
+    const direction=el("button",{type:"button",textContent:(ownSort?ownSort.down:s.sort?.down)?"↓":"↑",disabled:!ownSort,title:"Reverse sorting in "+group.label});direction.setAttribute("aria-label","Reverse sorting in "+group.label);direction.addEventListener("click",()=>{if(ownSort){s.groupSorts.set(group.id,{...ownSort,down:!ownSort.down});fill(id);}});controls.appendChild(direction);th.appendChild(controls);}tr.appendChild(th);tbody.appendChild(tr);
   }
   group.models.forEach(r => {
     const i = s.rows.indexOf(r);
@@ -699,7 +762,8 @@ function fill(id) {
       link.addEventListener("click", event => { event.preventDefault(); showError(s.label + " · " + (r.label || r.id) + " (" + r.id + ")\\n" + (r.reason || "The model is unavailable.")); });
       act.appendChild(link);
     }
-    if (r.available !== false && r.checked === false) act.appendChild(el("span", { className: "note", textContent: "Not checked" }));
+    if (r.available === true && r.checked === true) act.appendChild(el("span", { className: "note", textContent: "Checked", title: r.checkedAt || "Model check completed" }));
+    if (r.available !== false && r.checked !== true) act.appendChild(el("span", { className: "note", textContent: "Not checked" }));
     if (r.version) {
       const remove = el("button", { textContent: "Remove" });
       remove.addEventListener("click", () => { s.rows.splice(i, 1); fill(id); say("Removed - Save to keep it.", "note"); });
@@ -739,6 +803,12 @@ $("log-settings").addEventListener("click", () => api.postMessage({ action: "log
 $("choose-log-folder").addEventListener("click", () => api.postMessage({ action: "choose-log-folder" }));
 window.addEventListener("message", event => {
   const m = event.data;
+  if (m?.checkedRow) {
+    const result = m.checkedRow, s = state[result.provider];
+    const row = s?.rows?.find(row => String(row.id) === result.model);
+    if (row) { Object.assign(row, { checked: true, available: result.available, reason: result.reason || "", on: result.available, availabilitySource: "probe" }); fill(result.provider); }
+    return;
+  }
   if (m?.modelCheck) {
     const result = m.modelCheck, s = state[result.provider];
     scanning = false; scanningProvider = "";
@@ -767,7 +837,7 @@ window.addEventListener("message", event => {
           : working + " / " + result.rows.length + " working";
       checkErrors[result.provider] = result.stopReason || result.error || "";
       const s = state[result.provider];
-      if (result.rows) { s.rows = result.rows; s.error = null; if (!result.partial) s.on = result.rows.some(r => r.on); }
+      if (result.rows) { if(typeof result.group==="string"||result.filtered){const updated=new Map(result.rows.map(row=>[row.id,row]));s.rows=s.rows.map(row=>updated.get(row.id)||row);}else{s.rows=result.rows;if(!result.partial)s.on=result.rows.some(r=>r.on);} s.error=null; }
       else { s.error = result.error; s.on = false; }
     });
     if (m.detection.cancelled && !m.detection.results.length) checkStatus[checkedProvider] = "Stopped before checking models";

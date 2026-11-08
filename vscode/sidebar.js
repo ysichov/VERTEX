@@ -288,10 +288,10 @@ ${require(require("path").join(__dirname,"task-visual")).css}
 #messages .vertex.task[data-task-kind]::before{display:none}
 #messages .vertex.task .task-scene{position:absolute;left:0;top:0}
 #vercel-row-break { display:none; }
-body[data-provider="vercel-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
+body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="openrouter-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
 #subprovider-select[hidden] { display:none; }
-body[data-provider="vercel-api"] #subprovider-select { flex:0 1 150px; max-width:45%; }
-body[data-provider="vercel-api"] .model-picker { flex:1 1 170px; }
+body[data-provider="vercel-api"] #subprovider-select, body[data-provider="openrouter-api"] #subprovider-select { flex:0 1 150px; max-width:45%; }
+body[data-provider="vercel-api"] .model-picker, body[data-provider="openrouter-api"] .model-picker { flex:1 1 170px; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .model-picker #model-select { flex: 1 1 auto; min-width: 0; }
 .line #model-details-button[hidden] { display: none; }
@@ -352,7 +352,7 @@ ${require(require("path").join(__dirname,"code-review")).controlsCss}
 </span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Vercel model provider" title="Vercel model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
@@ -379,7 +379,7 @@ function vercelGroups(models){
 }
 function drawModelPickers(selected) {
   const model=document.getElementById('model-select'),sub=document.getElementById('subprovider-select');
-  const vercel=document.getElementById('provider-select').value==='vercel-api';sub.hidden=!vercel;
+  const vercel=['vercel-api','openrouter-api'].includes(document.getElementById('provider-select').value);sub.hidden=!vercel;
   const offered=modelCatalog.slice();
   if(selected&&!offered.some(m=>m.id===selected))offered.push({id:selected,label:selected+' (off)'});
   model.disabled=!offered.length;
@@ -389,7 +389,7 @@ function drawModelPickers(selected) {
     const groups=vercelGroups(offered),group=groups.find(g=>g.models.some(m=>m.id===chosen))||groups[0];
     sub.replaceChildren(...groups.map(g=>new Option(g.label,g.id)));sub.value=group.id;sub.disabled=false;
     model.replaceChildren(...group.models.map(m=>new Option(m.label,m.id)));model.value=chosen;
-    lastVercelModels.set(group.id,chosen);
+    lastVercelModels.set(document.getElementById('provider-select').value+':'+group.id,chosen);
   }else{
     sub.replaceChildren();sub.disabled=true;model.replaceChildren(...offered.map(m=>new Option(m.label,m.id)));model.value=chosen;
   }
@@ -397,7 +397,7 @@ function drawModelPickers(selected) {
 function chooseVercelProvider(){
   const sub=document.getElementById('subprovider-select');
   const group=vercelGroups(modelCatalog).find(g=>g.id===sub.value);if(!group)return;
-  const saved=lastVercelModels.get(group.id),selected=group.models.some(m=>m.id===saved)?saved:group.models[0].id;
+  const saved=lastVercelModels.get(document.getElementById('provider-select').value+':'+group.id),selected=group.models.some(m=>m.id===saved)?saved:group.models[0].id;
   drawModelPickers(selected);drawModelCapabilities();document.getElementById('model-status').textContent='';
   api.postMessage({action:'setModel',model:selected});
 }
@@ -432,7 +432,7 @@ document.getElementById('provider-select').addEventListener('change', event => {
   api.postMessage({ action: 'setProvider', provider: event.target.value });
 });
 document.getElementById('model-select').addEventListener('change', event => {
-  if(document.getElementById('provider-select').value==='vercel-api')lastVercelModels.set(document.getElementById('subprovider-select').value,event.target.value);
+  if(['vercel-api','openrouter-api'].includes(document.getElementById('provider-select').value))lastVercelModels.set(document.getElementById('provider-select').value+':'+document.getElementById('subprovider-select').value,event.target.value);
   drawModelCapabilities(); document.getElementById('model-status').textContent = '';
   api.postMessage({ action: 'setModel', model: event.target.value });
 });
