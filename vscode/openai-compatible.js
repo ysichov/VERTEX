@@ -78,6 +78,17 @@ async function models(id, apiKey, request = requestJson) {
   return list.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+async function retryWait(ms, options) {
+  let timer, cancel;
+  const cancelled = new Promise((resolve, reject) => {
+    cancel = () => { clearTimeout(timer); reject(new Error("This request was superseded.")); };
+  });
+  options.onRetryWait?.(cancel);
+  try {
+    await Promise.race([cancelled, options.sleep ? options.sleep(ms) : new Promise(resolve => { timer = setTimeout(resolve, ms); })]);
+  } finally { clearTimeout(timer); options.onRetryWait?.(null); }
+}
+
 async function rateLimitedRequest(send, options = {}) {
   let retry = 0, networkRetries = 0;
   for (;;) {
@@ -95,7 +106,11 @@ async function rateLimitedRequest(send, options = {}) {
         await (options.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms))))(1500);
         continue;
       }
-      if (!(error.status === 429 || /returned 429\b/.test(error.message || "")) || retry >= 2) throw error;
+      if (!(error.status === 429 || /returned 429\b/.test(error.message || ""))) throw error;
+      const limitState = await options.onRateLimit?.(error);
+      // A daily quota cannot recover during the short retry delay.
+      if (/free-models-per-day/i.test(error.message || "") || limitState?.retry === false) throw error;
+      if (retry >= 2) throw error;
       const hint = /retry\s+after\s+(\d+(?:\.\d+)?)\s*s/i.exec(error.message || "");
       let ms = Number.isFinite(Number(error.retryAfter)) && error.retryAfter !== undefined ? Number(error.retryAfter) * 1000
         : error.retryAfter && Number.isFinite(Date.parse(error.retryAfter)) ? Date.parse(error.retryAfter) - Date.now()
@@ -104,7 +119,7 @@ async function rateLimitedRequest(send, options = {}) {
       if (ms > 60250) throw error;
       retry++;
       options.onProgress?.({ status: "Rate limit reached. Waiting " + Math.ceil(ms / 1000) + " s before retrying the model request (" + retry + "/2)." });
-      await (options.sleep || (delay => new Promise(resolve => setTimeout(resolve, delay))))(ms);
+      await retryWait(ms, options);
     }
   }
 }

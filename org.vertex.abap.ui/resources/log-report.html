@@ -506,7 +506,7 @@ function markdown(text, target) {
       // Continue this conversation in the VERTEX chat, with all the files it wrote (one per provider it used).
       // VS Code only: the host that has the chat says so; Eclipse's Session Logs show no button.
       if (window.vertexCanContinue && s.prompts.some(function (p) { return p.operation === "Chat" || p.operation === "Web search"; })) {
-        var resume = el("button", "continue-session", "Continue in chat");
+        var resume = el("button", "continue-session", "Continue");
         resume.title = "Open this conversation in the VERTEX chat and go on asking: its questions and answers become the history";
         resume.onclick = function (event) { event.preventDefault(); event.stopPropagation(); vscode.postMessage({ action: "continueConversation", id: s.id }); };
         head.appendChild(resume);

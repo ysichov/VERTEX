@@ -110,6 +110,10 @@
     },
     "commands": [
       {
+        "command": "vertex.copyLink",
+        "title": "Copy Link"
+      },
+      {
         "command": "vertex.valueOrigin",
         "title": "VERTEX: Forward Usage Analysis"
       },
@@ -1003,12 +1007,21 @@
       ],
       "webview/context": [
         {
+          "command": "vertex.copyLink",
+          "group": "navigation@1",
+          "when": "webviewSection == vertex-link"
+        },
+        {
           "submenu": "vertex.tools.context",
           "group": "navigation@12",
           "when": "webviewSection == vertex-object"
         }
       ],
       "commandPalette": [
+        {
+          "command": "vertex.copyLink",
+          "when": "false"
+        },
         {
           "command": "vertex.launcher.focus",
           "when": "false"

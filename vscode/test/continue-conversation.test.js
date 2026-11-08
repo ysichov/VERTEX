@@ -75,3 +75,17 @@ test("the chat takes the turns as its history", () => {
   const ask = require("../chat").create(vscode, { schemas: [], execute: async () => "" }, null, {}, null, null, null);
   assert.equal(ask.restoreConversation([{ question: "q1", answer: "a1" }, { question: " ", answer: "dropped" }, { question: "q2", answer: "" }]), 2);
 });
+
+test('continuation excludes transport failures while preserving their diagnostic log', () => {
+  const logger=require('../session-log'), report=require('../log-report');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-failed-history-'));
+  try {
+    logger.reset();const log=logger.current(root,'openrouter-api',{questions:true,answers:true});
+    log.user('failed question');log.providerResponse({provider:'openrouter-api',scope:'request_error',response:{status:429,error:'free-models-per-day'}});
+    log.assistant({model:'free',text:'Request failed: free-models-per-day'});
+    log.user('successful question');log.assistant({model:'paid',text:'real answer'});
+    const read=report.readSessions(root), session=read.sessions[0];
+    assert.equal(session.prompts.length,2);
+    assert.deepEqual(report.conversationTurns(read,session.id).turns.map(t=>t.answer),['real answer']);
+  } finally {logger.reset();fs.rmSync(root,{recursive:true,force:true});}
+});

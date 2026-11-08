@@ -1,3 +1,15 @@
+## 2026-11-08 — No short retry for exhausted daily quota
+
+OpenRouter free-model daily quota errors stop immediately instead of waiting a minute. A reported zero daily remainder also prevents retries for free routes. Temporary rate limits retain bounded retries; paid models are not blocked by exhausted free quota.
+
+## 2026-11-08 — Keep transport failures out of model history
+
+A successful Vercel answer repeated an earlier OpenRouter 429 because the technical error was saved as an assistant turn. Failed requests remain in diagnostic logs but are excluded from live model history and Session Logs continuation.
+
+## 2026-11-08 — Model changes cancel rate-limit waits
+
+Switching model or provider while chat waits to retry a rate-limited API request cancels that wait and releases the request slot. Conversation history is preserved; the next submitted question uses the new selection. The old retry cannot run or replace a newer answer. OpenRouter remaining daily free requests also refresh during rate-limit waits and on request errors; missing counters remain explicitly unknown.
+
 ## 2026-11-08 — Restore green model answers
 
 Session Logs uses theme green for model answers. Model names retain the normal theme foreground; user messages remain blue.
@@ -17,6 +29,26 @@ Session Logs groups files by conversation, totals usage and retains provider/mod
 ## 2026-11-08 — OpenRouter limits under the answer (0.9.71)
 
 The line under an OpenRouter answer now also shows free-model requests left today, money spent today and the key's limit left, as OpenRouter reports them for the key.
+
+## 2026-11-08 — Links in chat answers open once; Copy Link (0.9.71)
+
+A web link in a chat answer opened in the browser at once and then asked VS Code's "open the external website?" as well. It now opens once, through that question (which offers Copy and trusted domains), and its context menu has **Copy Link**.
+
+## 2026-11-08 — The chat publishes service bindings (0.9.71)
+
+New chat tool `publish_sap_service_binding`: publishes or unpublishes an OData V2 or V4 service binding as ADT's Publish button does, after you confirm in VS Code, and answers with SAP's message and whether it is published afterwards. A refusal SAP sends inside a successful reply, such as publishing in a customizing client, is reported as a failure. The tool stays available when the chat's SAP tools come from an MCP server.
+
+## 2026-11-08 — Codex shows its steps (0.9.71)
+
+With Codex the chat showed "VERTEX is working…" until the answer. Each tool call Codex makes now shows as "Working: step N — tool", as with Claude Code and the API providers, and the waiting line reads "Working…" under the VERTEX label instead of repeating it.
+
+## 2026-11-08 — Settings of the picked MCP server from the panel (0.9.71)
+
+A **⚙** beside the panel's MCP list opens the settings of the server picked there: the write access of ARC-1, mcp-abap-adt or vibing-steampunk (and vibing-steampunk's path), SAP's `adt.mcpServer` settings for SAP ADT - allowed systems and packages, the source edit tool - or the chat's settings for VERTEX.
+
+## 2026-11-08 — Session Logs buttons in VERTEX's style (0.9.71)
+
+The buttons of Session Logs in VS Code use VERTEX's shared button style, as in Eclipse and the other views; **Continue in chat** is now **Continue**.
 
 ## 2026-11-08 — Codex runs SAP ADT's tools; the model names the right system (0.9.71)
 

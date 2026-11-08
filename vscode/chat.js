@@ -254,11 +254,19 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
   async function defaultModel(id) {
     return modelConfig.apply(vscode, id, await fullModels(id))[0].id;
   }
+  function cancelRetryForModelChange() {
+    const turn = activeRequest;
+    if (!turn?.cancelRetry) return;
+    conversationVersion++;
+    activeRequest = null;
+    turn.cancelRetry();
+    turn.dispose?.();
+  }
   const ask = async function ask(prompt, options = {}) {
     if (activeRequest) { throw new Error("VERTEX is still working on the previous request."); }
     if (typeof prompt !== "string" || !prompt.trim()) { return { answer: "" }; }
     const turn = {}, version = conversationVersion;
-    let localTools = null, endpoint = null;
+    let localTools = null, endpoint = null, unlisten = null;
     activeRequest = turn;
     try {
       if (options.state && Array.isArray(options.state.conversation)) {
@@ -280,7 +288,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         log?.user(prompt.trim());log?.request({instructions,prompt:webPrompt,tools:[{name:"vercel:perplexity_search"}],schema:null});
         options.onProgress?.({status:"Working: step 1 — Web search (Vercel / Perplexity)"});
         try{
-          const result=await compatible.ask({assistant:id,model,apiKey:(await keyProfiles.getActiveKey(secrets,id)).key,capabilities,webSearch:true,webQuery:prompt.trim(),prompt:webPrompt,instructions,tools:[],schema:RESULT_SCHEMA,maxRounds:1,maxInputBytes:256*1024,isActive:()=>!superseded(),
+          const result=await compatible.ask({assistant:id,model,apiKey:(await keyProfiles.getActiveKey(secrets,id)).key,capabilities,webSearch:true,webQuery:prompt.trim(),prompt:webPrompt,instructions,tools:[],schema:RESULT_SCHEMA,maxRounds:1,maxInputBytes:256*1024,isActive:()=>!superseded(),onRetryWait:cancel=>{turn.cancelRetry=cancel;},
             onProgress:update=>{if(!superseded())options.onProgress?.({...update,...(update.status?{status:"Working: step 1 — "+update.status}:{})});},onProviderResponse:event=>log?.providerResponse(event),onModelCall:event=>log?.assistant(event)});
           if(superseded())return replaced();
           webConversation.push({role:"user",content:prompt.trim()},{role:"assistant",content:result.plan.answer});
@@ -369,6 +377,20 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       const reportProgress = update => {
         if (!superseded() && typeof options.onProgress === "function") options.onProgress(update);
       };
+      const refreshLimits = async () => {
+        let limits;
+        try { limits = await compatible.keyLimits((await keyProfiles.getActiveKey(secrets, id)).key); }
+        catch (error) { limits = { error: error.message }; }
+        log?.providerResponse({ provider: id, scope: "key_limits", response: limits });
+        return limits;
+      };
+      // Codex and CodeMie do not report their steps; their tool calls do reach VERTEX's /chat endpoint, which tells us.
+      // Claude Code's own stream reports them (onStep), and API providers go through callTool.
+      if (id !== "claude" && !compatible.PROVIDERS[id] && id !== "anthropic-api" && id !== "copilot") {
+        unlisten = require("./chat-progress").listen(name => {
+          if (!superseded()) reportProgress({ status: "Working: step " + (++progressStep) + " — " + name });
+        });
+      }
       const onStep = step => {
         if (log && log.step) log.step(working ? inFolder(step, working) : step);
         if (step.kind === "use" && (!step.id || !progressIds.has(step.id))) {
@@ -379,7 +401,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       if (workDir && id !== "claude" && modelCapabilities?.tools !== false) {
         localTools = folderTools.create(vscode, { cwd: working ? working.cwd : workDir,
           reviewAfter: !!working, shellWithoutAsking: config.get("shellWithoutAsking", false) === true,
-          isActive: () => !superseded(), onStep });
+          onRetryWait: cancel => { turn.cancelRetry = cancel; },
+        isActive: () => !superseded(), onStep });
         toolSchemas.push(...localTools.schemas);
         turn.dispose = () => { localTools.dispose(); if (endpoint) endpoint.dispose(); };
       }
@@ -431,7 +454,14 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       };
       const requestOptions = {
         assistant: id,
+        onRateLimit: id === "openrouter-api" ? async () => {
+          const limits = await refreshLimits();
+          if (activeRequest === turn && !superseded()) reportProgress({ limits: compatible.limitsText(limits) });
+          const freeModel = /:free$/.test(model) || model === "openrouter/free";
+          return { retry: !(freeModel && limits.free?.remaining === 0) };
+        } : undefined,
         model,
+        onRetryWait: cancel => { turn.cancelRetry = cancel; },
         isActive: () => !superseded(),
         onProgress: typeof options.onProgress === "function"
           ? update => {
@@ -531,16 +561,15 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
           const pending = await working.changes();
           if (pending.length) { reviewProvider = id; showReview(pending, ""); }
         }
-        conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: "Request failed: " + error.message });
+        if (id === "openrouter-api") {
+          const limits = await refreshLimits();
+          if (superseded()) return replaced();
+          reportProgress({ limits: compatible.limitsText(limits) });
+        }
         throw error;
       });
       if (superseded()) return replaced();
-      let limits;
-      if (id === "openrouter-api") {
-        try { limits = await compatible.keyLimits((await keyProfiles.getActiveKey(secrets, id)).key); }
-        catch (error) { limits = { error: error.message }; }
-        if (log) log.providerResponse({ provider: id, scope: "key_limits", response: limits });
-      }
+      const limits = id === "openrouter-api" ? await refreshLimits() : undefined;
       if (working) reviewNote = "";
       conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: result.plan.answer });
       // The answer is done: whatever Claude changed in its working copy is reviewed now, all of a file's changes at once.
@@ -555,7 +584,10 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         cost: id === "codemie" && config.get("showCodemieCost", false) && typeof result.cost === "number"
           ? result.cost : undefined,
         navigation: result.plan.navigation ? objectTools.normalize(result.plan.navigation) : null };
-    } finally { if (localTools) localTools.dispose(); if (endpoint) endpoint.dispose(); if (activeRequest === turn) activeRequest = null; }
+    } catch (error) {
+      if (version !== conversationVersion) return { superseded: true, answer: "" };
+      throw error;
+    } finally { if (unlisten) unlisten(); if (localTools) localTools.dispose(); if (endpoint) endpoint.dispose(); if (activeRequest === turn) activeRequest = null; }
   };
   ask.newConversation = () => {
     conversationVersion++; conversation = []; webConversation = [];
@@ -634,6 +666,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
     }
     const current = config.get("provider", "");
     if (current !== setting) {
+      cancelRetryForModelChange();
       // Each provider gets back the model last picked for it; one never picked starts on its default.
       const models = { ...(memory && memory.get(MODEL_MEMORY) || {}) };
       if (current) models[current] = config.get("model", "");
@@ -645,6 +678,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
   };
   ask.setModel = async model => {
     const config = vscode.workspace.getConfiguration("vertex.ai"), provider = config.get("provider", "");
+    if (config.get("model", "") !== String(model || "")) cancelRetryForModelChange();
     if (memory && provider) await memory.update(MODEL_MEMORY, { ...(memory.get(MODEL_MEMORY) || {}), [provider]: String(model || "") });
     await config.update("model", String(model || ""), vscode.ConfigurationTarget.Global);
     return ask.state();

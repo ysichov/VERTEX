@@ -756,7 +756,7 @@ every provider and does not capture raw HTTP payloads. Use **Choose log folder..
 Providers or the folder link beside `vertex.ai.logPath` in Settings; the gear opens the log settings.
 **Session Logs**, the scroll icon in the panel's title bar before the settings gear, opens the session report beside the active editor. It reads the
 configured log folder and shows sessions, prompts and token usage by day or across all dates.
-**Continue in chat** on a session opens that conversation in the VERTEX chat: its questions and answers become the
+**Continue** on a session opens that conversation in the VERTEX chat: its questions and answers become the
 history of the next question, which is logged with them. A conversation that switched provider is put back together
 from every provider's log file, in the order it was asked. Only the text comes back - the tools' results of that
 session are not repeated - and a conversation logged without its questions or answers (`vertex.ai.log.questions`,
@@ -882,6 +882,11 @@ Model-loading errors in the sidebar appear below the model selector.
 
 ### Several systems
 
+The chat can publish an OData V2 or V4 service binding (`publish_sap_service_binding`), as the Publish button of
+ADT's binding editor does; VS Code asks you to confirm first, and the answer is SAP's own message. SAP refuses it in a
+customizing client. The tool works on the system and client active in VERTEX, also when the chat's SAP tools come from
+an MCP server, since none of them publishes.
+
 The chat can also read table contents itself: its `run_sap_select` tool runs one SELECT through the same ADT data preview as Run Select, read only, and returns the rows (100 by default, at most 1,000) - for customizing, texts and repository tables.
 
 The panel's chat can reach every system in `vertex.systems`. Name one in the question — *copy
@@ -977,6 +982,9 @@ where the VERTEX chat's SAP tools come from:
 - **SAP ADT** - the ADT MCP Server of SAP's own
   [ABAP Development Tools for VS Code](https://marketplace.visualstudio.com/items?itemName=SAPSE.adt-vscode).
 
+The **⚙** beside the list opens the settings of the picked server: its write access (ARC-1, mcp-abap-adt,
+vibing-steampunk and its path), SAP's `adt.mcpServer` settings for SAP ADT, or the chat's settings for VERTEX.
+
 With an MCP server picked, its tools replace VERTEX's SAP read and write
 tools in the chat; the debugger and ABAP transpiler tools stay VERTEX's.
 
@@ -1017,6 +1025,13 @@ no write access - SAP's settings decide. To use it:
 3. Allow the system in `adt.mcpServer.accessRestrictions` (`destinations`, for
    example `MYSYS_*` or `*`); packages that may be changed go in
    `packages-objectChanges`. Without this SAP refuses every tool call.
+4. For changes to existing sources (for example the fields of a new table), turn on
+   `adt.mcpServer.enableEditFileToolForABAPObjects`; without it SAP ADT can create
+   objects but not write their source.
+
+The **⚙** beside the MCP list opens these settings when SAP ADT is picked. After a
+change to them SAP's extension restarts its server and logs off: log on to the
+system there again.
 
 The chat then works on the systems logged on in SAP's extension, which may differ
 from the system active in VERTEX; SAP's tools name their system in `destination`.
@@ -1803,3 +1818,5 @@ The commit composer spans nearly the full review-window width. During generation
 Generate with AI shows a lens inspecting colored diff fragments that merge into one review and flow into a draft message; Commit shows a Git timeline and commit node. Each scene fills the available width with an explanation below it and stops on completion or error.
 
 Session Logs groups provider files by conversation, with combined usage and each prompt’s provider and model. Clearing a selected conversation removes all its provider files and branches. Older logs without a conversation identifier remain separate. In VS Code, **Continue in chat** resumes the conversation from its end.
+
+OpenRouter reports the remaining daily free requests after answers, during rate-limit waits and on failed requests when the API provides those counters. Changing the model or provider cancels a pending rate-limit wait while retaining conversation history. Exhausted daily free-model quotas stop immediately; short retry waits apply only to temporary limits.

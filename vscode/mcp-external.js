@@ -314,7 +314,8 @@ function create({ vscode, active, password, storage }) {
   /* VERTEX's own tool set wrapped: with an external server chosen, its tools replace VERTEX's SAP repository
      tools; the debugger (debug_*) and the ABAP transpiler stay VERTEX's. */
   function wrap(own) {
-    const kept = tool => /^debug_/.test(tool.name) || /abap_transpiler/.test(tool.name);
+    // Kept beside any server: the debugger, the transpiler, and publishing a service binding, which no MCP server here does.
+    const kept = tool => /^debug_/.test(tool.name) || /abap_transpiler/.test(tool.name) || tool.name === "publish_sap_service_binding";
     const current = () => running && running.name === selected() && running.client.alive() ? running : null;
     const asSchema = t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || { type: "object", properties: {} },
       ...(t.annotations ? { annotations: t.annotations } : {}) });
@@ -337,7 +338,7 @@ function create({ vscode, active, password, storage }) {
     Object.defineProperty(wrapped, "instructions", { get() {
       const ext = current();
       return ext ? (own.instructions || "") + "\n\nSAP repository tools for this chat come from the MCP server " + ext.name
-        + " (chosen in the VERTEX panel); VERTEX's own SAP read/write tools are not offered. The debugger and transpiler tools remain VERTEX's."
+        + " (chosen in the VERTEX panel); VERTEX's own SAP read/write tools are not offered. The debugger and transpiler tools remain VERTEX's, and so does publish_sap_service_binding, which works on the system and client active in VERTEX."
         + (ext.note ? "\n\n" + ext.note : "")
         + (ext.instructions ? "\n\n" + ext.name + " says:\n" + ext.instructions : "") : own.instructions;
     } });
@@ -363,6 +364,18 @@ function create({ vscode, active, password, storage }) {
     return wrapped;
   }
 
+  /* The Settings search that shows what server NAME is configured by: SAP's adt.mcpServer settings for a server
+     reached by URL from SAP's extension, the write settings a server's entry uses, the server list otherwise. */
+  function settingsQuery(name) {
+    if (name === VERTEX) return "vertex.chat";
+    const entry = servers().find(s => s.name === name);
+    if (!entry) return "vertex.chat.mcpServers";
+    if (entry.url && /\$\{adtMcp/.test(JSON.stringify(entry))) return "adt.mcpServer";
+    if (/\$\{vsp/.test(JSON.stringify(entry))) return "vertex.chat.vsp";
+    const option = WRITE_OPTIONS.find(o => o.uses.test(JSON.stringify(entry)));
+    return option ? "vertex.chat." + option.setting : "vertex.chat.mcpServers";
+  }
+
   /* The write settings server NAME depends on, each with its current value. */
   function writeOptions(name) {
     const entry = servers().find(s => s.name === name);
@@ -377,7 +390,7 @@ function create({ vscode, active, password, storage }) {
     await config().update(setting, value, vscode.ConfigurationTarget.Global);
   }
 
-  return { VERTEX, servers, selected, prepare, wrap, stop: () => { stop(); stopToolsets(); }, toolsets, writeOptions, setWriteOption,
+  return { VERTEX, servers, selected, prepare, wrap, stop: () => { stop(); stopToolsets(); }, toolsets, settingsQuery, writeOptions, setWriteOption,
     select: name => config().update("mcpServer", name, vscode.ConfigurationTarget.Global) };
 }
 

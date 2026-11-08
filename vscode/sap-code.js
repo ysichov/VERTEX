@@ -598,6 +598,47 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   const query = (sql, rows) => client.runQuery(dataPreviewLines(sql), rows, false).catch(error => {
     throw new Error(String(error.message || error) + "\nSQL: " + sql);
   });
+  // A service binding as ADT describes it: OData V2 or V4 (from its category link), its service version and
+  // whether it is published.
+  const bindingState = async name => {
+    const response = await client.httpClient.request("/sap/bc/adt/businessservices/bindings/" + encodeURIComponent(name.toLowerCase()),
+      { method: "GET", headers: { Accept: "application/*" } });
+    const body = String(response.body || "");
+    const odata = /rel="http:\/\/www\.sap\.com\/categories\/odatav4"/.test(body) ? "odatav4"
+      : /rel="http:\/\/www\.sap\.com\/categories\/odatav2"/.test(body) ? "odatav2" : "";
+    const version = (/srvb:version="(\d{4})"/.exec(body) || [])[1] || "";
+    return { odata, version, published: /srvb:published="true"/.test(body) };
+  };
+  // Publish or unpublish a service binding, as the Publish button of ADT's binding editor does: a job on the
+  // binding's service version, at the V2 or V4 address its type calls for; then the binding is read again, so the
+  // answer says what SAP did, not only what it was asked.
+  const publishBinding = async (binding, publish) => {
+    const name = String(binding || "").trim().toUpperCase();
+    if (!/^[A-Z0-9_/]{1,40}$/.test(name)) throw new Error("Name a service binding (SRVB), for example ZUI_TRAVEL_O4.");
+    const before = await bindingState(name);
+    if (!before.odata) throw new Error(name + " is not an OData V2 or V4 service binding, or ADT does not describe its type.");
+    if (!before.version) throw new Error(name + " names no service version; open it in ADT and add one.");
+    const job = publish ? "publishjobs" : "unpublishjobs";
+    const response = await client.httpClient.request("/sap/bc/adt/businessservices/" + before.odata + "/" + job
+      + "?servicename=" + encodeURIComponent(name) + "&serviceversion=" + encodeURIComponent(before.version),
+      { method: "POST", headers: { Accept: "application/*" },
+        body: '<adtcore:objectReferences xmlns:adtcore="http://www.sap.com/adt/core"><adtcore:objectReference adtcore:name="' + name + '"/></adtcore:objectReferences>' });
+    // A StatusMessage: SEVERITY, SHORT_TEXT, LONG_TEXT, read by element so an ERROR is never lost in parsing.
+    const body = String(response.body || "");
+    const field = tag => {
+      const found = new RegExp("<" + tag + ">([\\s\\S]*?)</" + tag + ">").exec(body);
+      return found ? found[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&").trim() : "";
+    };
+    const severity = field("SEVERITY"), message = [field("SHORT_TEXT"), field("LONG_TEXT")].filter(Boolean).join("\n");
+    const after = await bindingState(name);
+    // SAP answers 200 with an ERROR inside (a customizing client refuses, for one): that is a failure, said as one.
+    if (/^(?:E|ERROR|A|ABORT)$/i.test(severity) || after.published !== publish) {
+      throw new Error((publish ? "Publishing " : "Unpublishing ") + name + " failed" + (message ? ": " + message : "; SAP gave no reason.")
+        + " It is " + (after.published ? "published" : "not published") + " now.");
+    }
+    return { binding: name, odata_version: before.odata === "odatav4" ? "V4" : "V2", service_version: before.version,
+      published_before: before.published, published: after.published, severity, message };
+  };
   // ADT's revision feed of an object or include - what Eclipse's Revision History shows: each revision's number
   // (from its content address), author, time, transport and the transport's description, and the source address.
   const revisions = async (objectUrl, include) => {
@@ -644,7 +685,7 @@ function createRepository({ client, systemId, emit = () => {}, rfc = null }) {
   const classComponents = url => client.classComponents(adtPath(url));
   // ADT's object types with their descriptions, as the New Object wizard lists them: [{ name: "CLAS/OC", description }].
   const objectTypes = () => client.objectTypes();
-  return { classComponents, objectTypes, ddicVersions, ddicVersion, execute, apply, query, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, textElements, dataElement, discard: id => drafts.delete(id),
+  return { classComponents, objectTypes, ddicVersions, ddicVersion, execute, apply, query, publishBinding, bindingState, revisions, revisionSource, currentSource, canStore, storeReview, language: () => client.language, user: () => client.username, draft, analysisReader, packageObjects, objectNavigator, unitTests, atcCheck, whereUsed, documentation, elementInfo, elementDetails, definition, implementation, sourceAt, textElements, dataElement, discard: id => drafts.delete(id),
     dispose: async () => { drafts.clear(); await client.logout(); } };
 }
 module.exports = { createRepository, TYPES, revision, adtPath, sourcePath, dataPreviewLines };

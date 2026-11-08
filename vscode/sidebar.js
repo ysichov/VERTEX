@@ -48,6 +48,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     view.show(true);
     return count;
   }));
+  // Copy Link in the context menu of a link in a chat answer: the address, not the selected text.
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.copyLink", async target => {
+    let url;
+    try { url = new URL(String(target && target.url || "")); } catch (_) { throw new Error("This is not a link VERTEX can copy."); }
+    if (!["https:", "http:"].includes(url.protocol)) throw new Error("Only web links are copied.");
+    await vscode.env.clipboard.writeText(url.href);
+  }));
   // The working copy goes when VS Code closes.
   context.subscriptions.push({ dispose: () => { if (typeof ask.dispose === "function") return ask.dispose(); } });
   // A message to the assistant that VERTEX sends itself - the reasons from a review - asked as the user's would be.
@@ -185,7 +192,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           await view.webview.postMessage({ chat: "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "")
             + (images.length ? "  [" + images.length + " screenshot" + (images.length > 1 ? "s" : "") + "]" : "") });
           let taskKind=web?"":/коммит|commit/i.test(shown)?"commit":asked||require("./git-history").reviewContext()||/ревью|review|дифф|diff|проверь\s+(?:код|изменен)/i.test(shown)?"review":"";
-          await view.webview.postMessage({ progress: { id: requestId, kind:taskKind,status: taskKind==="review"?"Reviewing changes…":taskKind==="commit"?"Preparing commit message…":"VERTEX is working…" } });
+          await view.webview.postMessage({ progress: { id: requestId, kind:taskKind,status: taskKind==="review"?"Reviewing changes…":taskKind==="commit"?"Preparing commit message…":"Working…" } });
           try {
             const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
             const state = web ? {} : (await toolContext(scope)) || {};
@@ -210,6 +217,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           }
           catch (error) { await view.webview.postMessage({ progress: { id: requestId,
             answer: "Request failed: " + error.message, done: true } }); }
+          return;
+        }
+        // The gear beside the MCP list: the settings of the server picked there, where they live - VERTEX's own, or,
+        // for SAP ADT, those of SAP's ABAP Development Tools, which decide what that server may do.
+        if (message.action === "mcpSettings") {
+          if (!chatMcp) return;
+          await vscode.commands.executeCommand("workbench.action.openSettings", chatMcp.settingsQuery(String(message.name || "")));
           return;
         }
         if (message.action === "mcp") {
@@ -359,8 +373,8 @@ body[data-provider="vercel-api"] #subprovider-select, body[data-provider="openro
 body[data-provider="vercel-api"] .model-picker, body[data-provider="openrouter-api"] .model-picker { flex:1 1 170px; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .model-picker #model-select { flex: 1 1 auto; min-width: 0; }
-.line #model-details-button[hidden] { display: none; }
-.line #model-details-button { flex: none; margin: 0; padding: 3px 8px; }
+.line #model-details-button[hidden], .line #mcp-settings[hidden] { display: none; }
+.line #model-details-button, .line #mcp-settings { flex: none; margin: 0; padding: 3px 8px; }
 #model-details-dialog { box-sizing: border-box; width: calc(100% - 24px); max-width: 560px; max-height: 80vh; overflow: auto; padding: 14px 18px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-widget-border,var(--vscode-contrastBorder,var(--vscode-panel-border))); box-shadow: 0 4px 18px var(--vscode-widget-shadow,transparent); }
 #model-details-dialog::backdrop { background: var(--vscode-widget-shadow,transparent); }
 #mcp-start-dialog { box-sizing: border-box; width: calc(100% - 24px); max-width: 560px; padding: 14px 18px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-widget-border,var(--vscode-contrastBorder,var(--vscode-panel-border))); box-shadow: 0 4px 18px var(--vscode-widget-shadow,transparent); }
@@ -398,7 +412,7 @@ button:hover { background: var(--vscode-button-hoverBackground); }
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder));
   border-bottom: 2px solid var(--vscode-input-border, var(--vscode-panel-border, ButtonBorder)); }
 .secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
-.link { color: var(--vscode-textLink-foreground); text-decoration: none; }
+.link { color: var(--vscode-textLink-foreground); text-decoration: none; cursor: pointer; }
 .link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
 /* The AI and SAP logs are the view's title actions, beside the settings (the user's choice, for the space); the
    working folder stands in the SAP system line. */
@@ -424,7 +438,7 @@ ${require(require("path").join(__dirname,"code-review")).controlsCss}
 <div class="line"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
-<span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select>
+<span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button>
 </span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
@@ -524,6 +538,7 @@ document.getElementById('mcp-start-go').addEventListener('click', () => {
   api.postMessage({ action: 'mcpStart', name: box.dataset.server, values });
 });
 document.getElementById('mcp-start-node').addEventListener('click', () => api.postMessage({ action: 'openWebLink', url: 'https://nodejs.org' }));
+document.getElementById('mcp-settings').addEventListener('click', () => api.postMessage({ action: 'mcpSettings', name: document.getElementById('mcp-select').value }));
 document.getElementById('mcp-select').addEventListener('change', event => {
   api.postMessage({ action: 'mcp', name: event.target.value });
 });
@@ -673,7 +688,7 @@ window.addEventListener('message', event => {
         item.dataset.status = '';
       }
       if (typeof update.status === 'string') item.dataset.status = update.status;
-      if (!item.dataset.answer) body.textContent = 'VERTEX:\\n' + (item.dataset.status || 'VERTEX is working…');
+      if (!item.dataset.answer) body.textContent = 'VERTEX:\\n' + (item.dataset.status || 'Working…');
       let status = item.querySelector('.tool-status');
       if (item.dataset.answer && item.dataset.status && !update.done) {
         if (!status) { status = document.createElement('p'); status.className = 'tool-status'; item.appendChild(status); }
@@ -688,6 +703,12 @@ window.addEventListener('message', event => {
         }
         details.querySelector('pre').textContent = update.thinking;
       }
+      let limitsLine = item.querySelector('.limits');
+      if (typeof update.limits === 'string') {
+        if (!limitsLine) { limitsLine = document.createElement('p'); limitsLine.className = 'usage limits'; item.appendChild(limitsLine); }
+        limitsLine.textContent = update.limits;
+      }
+      if (update.done && update.usage && limitsLine) limitsLine.remove();
       if (update.done) {
         item.classList.remove('working');
         const answer = item.dataset.answer || '';
@@ -774,7 +795,7 @@ window.addEventListener('message', event => {
   if (event.data && event.data.mcp) {
     const mcpSelect = document.getElementById('mcp-select');
     mcpSelect.replaceChildren(...event.data.mcp.servers.map(name => { const option = new Option(name, name); option.selected = name === event.data.mcp.selected; return option; }));
-    mcpSelect.hidden = document.getElementById('mcp-label').hidden = false;
+    mcpSelect.hidden = document.getElementById('mcp-label').hidden = document.getElementById('mcp-settings').hidden = false;
   }
   if (event.data && event.data.ai) {
     const select = document.getElementById('provider-select');
@@ -878,7 +899,11 @@ function inline(text, parent) {
     const cite = /^\\[(run|session) ([0-9a-f-]{6,36}) step (\\d+)\\]$/.exec(token);
     // A cited step of a transpiler run: a link once the run is known (runLinks), plain text otherwise.
     const webLink = /^\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)$/.exec(token);
-    if(webLink){node=document.createElement('a');node.className='link';node.href=webLink[2];node.textContent=webLink[1];node.title=webLink[2];node.addEventListener('click',event=>{event.preventDefault();api.postMessage({action:'openWebLink',url:webLink[2]});});}
+    // A web link opens only through the host's openExternal, which asks for an untrusted domain. No href: VS Code
+    // opens an href of a webview itself, at once, and then the host's open asked a second time. Copy Link
+    // (vertex.copyLink) is in its context menu through data-vscode-context; Enter opens it from the keyboard.
+    if(webLink){node=document.createElement('a');node.className='link';node.setAttribute('role','link');node.tabIndex=0;node.textContent=webLink[1];node.title=webLink[2];node.setAttribute('data-vscode-context',JSON.stringify({webviewSection:'vertex-link',url:webLink[2]}));
+      const open=event=>{event.preventDefault();api.postMessage({action:'openWebLink',url:webLink[2]});};node.addEventListener('click',open);node.addEventListener('keydown',event=>{if(event.key==='Enter')open(event);});}
     else if (cite) { node = document.createElement('span'); node.className = 'run-cite'; node.dataset.kind = cite[1]; node.dataset.run = cite[2]; node.dataset.step = cite[3]; node.textContent = token; }
     else if (/^\\x60[^\\x60]+\\x60$/.test(token)) { node = document.createElement('code'); node.textContent = token.slice(1, -1); }
     else if (/^\\*\\*[^*]+\\*\\*$/.test(token)) { node = document.createElement('strong'); node.textContent = token.slice(2, -2); }

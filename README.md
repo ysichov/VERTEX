@@ -540,3 +540,5 @@ The commit composer spans nearly the full review-window width. During generation
 Generate with AI shows a lens inspecting colored diff fragments that merge into one review and flow into a draft message; Commit shows a Git timeline and commit node. Each scene fills the available width with an explanation below it and stops on completion or error.
 
 Session Logs groups provider files by conversation, with combined usage and each prompt’s provider and model. Clearing a selected conversation removes all its provider files and branches. Older logs without a conversation identifier remain separate. In VS Code, **Continue in chat** resumes the conversation from its end.
+
+OpenRouter reports the remaining daily free requests after answers, during rate-limit waits and on failed requests when the API provides those counters. Changing the model or provider cancels a pending rate-limit wait while retaining conversation history. Exhausted daily free-model quotas stop immediately; short retry waits apply only to temporary limits.

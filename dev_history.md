@@ -1,3 +1,15 @@
+## 2026-11-08 — No short retry for exhausted daily quota
+
+OpenRouter free-model daily quota errors stop immediately instead of waiting a minute. A reported zero daily remainder also prevents retries for free routes. Temporary rate limits retain bounded retries; paid models are not blocked by exhausted free quota.
+
+## 2026-11-08 — Keep transport failures out of model history
+
+A successful Vercel answer repeated an earlier OpenRouter 429 because the technical error was saved as an assistant turn. Failed requests remain in diagnostic logs but are excluded from live model history and Session Logs continuation.
+
+## 2026-11-08 — Model changes cancel rate-limit waits
+
+Switching model or provider while chat waits to retry a rate-limited API request cancels that wait and releases the request slot. Conversation history is preserved; the next submitted question uses the new selection. The old retry cannot run or replace a newer answer. OpenRouter remaining daily free requests also refresh during rate-limit waits and on request errors; missing counters remain explicitly unknown.
+
 ## 2026-11-08 — Restore green model answers
 
 Session Logs uses theme green for model answers. Model names retain the normal theme foreground; user messages remain blue.
@@ -18,6 +30,28 @@ Session Logs groups files by conversation, totals usage and retains provider/mod
 
 The user had the free-model daily limit read from OpenRouter in another tool and asked for it in the panel's line under the answer. `keyLimits` in `vscode/openai-compatible.js` calls `GET /api/v1/key` after an OpenRouter answer (chat.js), `limitsText` turns `free_model_daily_requests`, `usage_daily` and `limit_remaining` into a second line that `usageLine` (sidebar.js) appends; `p.usage` got `white-space: pre-line`. A failed call shows "OpenRouter limits not reported: …" instead of nothing, and the result is written to the session log as `key_limits`. First attempt broke the panel script: a heredoc turned the `
 ` into a real line break inside a string. The full test run also showed four older failures and a live Vercel test that fails with 401 without a key; none touch this change.
+
+## 2026-11-08 — Links in chat answers open once; Copy Link (0.9.71)
+
+The user's screenshots: a link to the published OData service opened in Chrome instantly and then VS Code asked whether to open the external website; the context menu offered only Cut/Copy/Paste. The anchor had an `href` and a click handler that prevented the default and asked the host to `openExternal` - but VS Code opens a webview's `href` links on its own, so both happened. A first fix dropped the handler and let VS Code open it; `test/sidebar-script.test.js` ("web citations create only HTTP links through host openExternal") showed that routing through the host is intended, so the handler stays and the `href` goes: the link is an `a` with `role="link"`, a tab stop, Enter and click both post `openWebLink`, the address in its title, and `cursor: pointer` as an href would give. Its `data-vscode-context` (`webviewSection: vertex-link`, `url`) puts **Copy Link** (`vertex.copyLink`, hidden from the palette, http/https only) in the webview's context menu, as `vertex-object` does in the Tools window. The test now checks no href, the context, click and Enter. Not tried in a live VS Code.
+
+## 2026-11-08 — The chat publishes service bindings (0.9.71)
+
+After the generated RAP service the model could not publish binding Z_VX2_API_SFLIGHT_O4: SAP ADT's MCP server leaves SRVB actions to the editor. `abap-adt-api` has `publishServiceBinding`, but with the OData V2 address fixed in it. `vscode/sap-code.js` gets `bindingState` (the binding's ADT document: OData V2 or V4 from its category link, `srvb:version`, `srvb:published`) and `publishBinding`, which posts `publishjobs` or `unpublishjobs` to the address of the binding's type and reads the binding again. Live on the development system: the first POST answered 200 with an ERROR inside - "(Un-)Publishing of SRVB ... in Customizing Client not allowed" - and the first parse (`fullParse` with the library's path) returned nothing, so the call looked like a quiet no-op; the StatusMessage is now read by element, and an ERROR, or a binding not in the state asked for, throws with SAP's words. In client 200 the binding was published ("published locally"); the published flag turned out to be per client. `vscode/code-workbench.js` adds the tool: a modal names the binding and system/user/client, a decline is an error to the model. It stays beside an MCP server's tools (`kept` in `mcp-external.js`) and Codex is told to run it, since VERTEX asks the user itself. Tests: `test/service-binding.test.js` (V4 address and version, ERROR inside 200, a bad name) and a `code-workbench` test for the confirmation and the call.
+
+## 2026-11-08 — Codex shows its steps (0.9.71)
+
+The user's screenshot: "VERTEX: VERTEX is working…" for the whole of a long Codex run. Claude Code's steps come from its stream-json events (`onStep`), the API providers' from `callTool`; `codex exec --json` gives VERTEX no tool events, but every tool call it makes goes to VERTEX's own `/chat` MCP endpoint. `vscode/chat-progress.js` (new) is a listener set: `extension.js`'s `/chat` handler reports each tool name, and `chat.js` listens for the length of a request for providers that are neither Claude Code nor an API provider (Codex, CodeMie), counting the step like the others, and stops in `finally`. The default status became "Working…": the label above it already says VERTEX. `test/chat-progress.test.js` covers listen/report/stop and a failing listener. `test/conversation-page.test.js`, added by the session that grouped Session Logs by conversation, looked for the old "Continue in chat" label and now looks for "Continue".
+
+In the same exchange the RAP test passed with Codex through SAP ADT after the user turned on SAP's source edit tool: table ZVX1_FLIGHT with audit fields, its draft table, root and projection CDS, behaviors, class, metadata extension, service definition and OData V4 binding, all active in $TMP - confirming that the generator had refused SFLIGHT itself.
+
+## 2026-11-08 — Settings of the picked MCP server from the panel (0.9.71)
+
+In the RAP test the model created table ZVX1_FLIGHT through SAP ADT but could not write its fields: SAP ADT's source edit tool is off until `adt.mcpServer.enableEditFileToolForABAPObjects` is set, a setting of SAP's extension. The user asked how users would find it and why VERTEX does not show it, and then for a settings icon beside the MCP list instead of a form. `vscode/sidebar.js`: a `⚙` button after the MCP list, the same `secondary` glyph button as the model's `$` and sharing its CSS rule, shown with the list; its `mcpSettings` message opens VS Code Settings with `chatMcp.settingsQuery(name)` (`vscode/mcp-external.js`): `adt.mcpServer` for a URL server on SAP's settings, `vertex.chat.vsp` for vibing-steampunk, the write setting an entry's placeholders use, `vertex.chat` for VERTEX, `vertex.chat.mcpServers` otherwise. `vscode/README.md` gets the edit-tool step and the relogon note. Checked in a page built from `html()`: light and dark, the button's message carries the picked server.
+
+## 2026-11-08 — Session Logs buttons in VERTEX's style (0.9.71)
+
+The user's screenshot: the new button was square and not the project's. `log-report.html` has its own square `button` rule, and Eclipse's `LogsView` injects `vertex-controls.css` over it, but `vscode/log-report.js` never did. It now injects the shared stylesheet before `</head>`, after the page's rules, as `tools-window.js` does, so every button of the page - Choose Folder, Log Settings, refresh, Clear, Continue - gets the rounded, outlined VERTEX button. The button is renamed **Continue**, at the user's word. Checked in a page built as `log-report.js` builds it: 6 px radius, solid border from the theme.
 
 ## 2026-11-08 — Codex runs SAP ADT's tools; the model names the right system (0.9.71)
 

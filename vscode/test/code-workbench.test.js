@@ -850,6 +850,22 @@ test("run_sap_select reads rows through ADT's data preview and refuses anything 
   assert.ok(schema.inputSchema.properties.system);
 });
 
+test("publish_sap_service_binding asks the user, then publishes through ADT and says what SAP did", async () => {
+  const h = host(), calls = [];
+  h.api.publishBinding = async (binding, publish) => { calls.push([binding, publish]);
+    return { binding, odata_version: "V4", service_version: "0001", published_before: false, published: publish, severity: "OK", message: binding + " published locally" }; };
+  const answer = await h.tools.execute("publish_sap_service_binding", { binding: "zui_travel_o4" });
+  assert.deepEqual(calls, [["ZUI_TRAVEL_O4", true]]);
+  assert.match(h.prompts.at(-1), /^Publish service binding ZUI_TRAVEL_O4 in DEV \/ USER \/ 100\?$/);
+  assert.equal(answer.published, true);
+  await h.tools.execute("publish_sap_service_binding", { binding: "ZUI_TRAVEL_O4", action: "unpublish" });
+  assert.deepEqual(calls.at(-1), ["ZUI_TRAVEL_O4", false]);
+  assert.match(h.prompts.at(-1), /^Unpublish service binding ZUI_TRAVEL_O4/);
+  const schema = h.tools.schemas.find(tool => tool.name === "publish_sap_service_binding");
+  assert.equal(schema.annotations.readOnlyHint, false);
+  assert.ok(schema.inputSchema.properties.system);
+});
+
 test("the two run tools are offered to the assistant, each taking a system", () => {
   const h = host();
   const named = name => h.tools.schemas.find(tool => tool.name === name);

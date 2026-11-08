@@ -100,6 +100,7 @@ function parseSession(text, file) {
     }
     const content = record.message?.content;
     if (record.type === "vertex_provider_response") {
+      if (current && record.scope === "request_error") current.failed = true;
       // A model call within the run is a step of the timeline: the events Claude Code sends for one message (its
       // text, then a tool call) share the message id and are one step. The run's total stays a detail of its own.
       if (current && record.scope === "model_response") {
@@ -231,7 +232,7 @@ function conversationTurns(report, sessionId, point) {
   if (!session) throw new Error("That session is no longer in the log folder.");
   const files = session.conversation ? report.sessions.filter(item => item.conversation === session.conversation) : [session];
   const all = files.flatMap(item => item.prompts.map(prompt => ({ ...prompt, provider: item.provider })))
-    .filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search")
+    .filter(prompt => !prompt.failed && (prompt.operation === "Chat" || prompt.operation === "Web search"))
     .sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
   const target = point ? all.find(prompt => prompt.key === point) : all[all.length - 1];
   if (point && !target) throw new Error("That continuation point is no longer in the log folder.");
@@ -298,7 +299,9 @@ function open(vscode, options = {}) {
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
     .replace("</head>", () => "<style>" + fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8") + "</style></head>")
-    .replace("</head>", '<script nonce="' + nonce + '">window.vertexCanContinue = true;</script></head>');
+    .replace("</head>", '<script nonce="' + nonce + '">window.vertexCanContinue = true;</script></head>')
+    // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
+    .replace("</head>", () => "<style>" + fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8") + "</style></head>");
   const refresh = () => {
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
@@ -315,7 +318,7 @@ function open(vscode, options = {}) {
     if (message?.action === "continueConversation") {
       try {
         const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
-        const found = conversationTurns(readSessions(root), String(message.id || ""), message.point);
+        const found = conversationTurns(readSessions(root), String(message.id || ""));
         await vscode.commands.executeCommand("vertex.continueConversation", found);
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }

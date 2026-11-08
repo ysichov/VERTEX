@@ -652,6 +652,10 @@ function codexCommand(options, dir) {
     // MCP server VERTEX passes on (SAP ADT's carry no annotations at all) are approved here, as Claude Code runs
     // them; their limits are the server's own - SAP's allowed destinations and packages, the access chosen in the
     // start window for the others.
+    // VERTEX's own tools that change SAP ask the user themselves (a modal in VS Code) before they do.
+    for (const name of ["publish_sap_service_binding"]) {
+      if (options.tools.includes(name)) args.push("-c", "mcp_servers." + SERVER + ".tools." + name + '.approval_mode="approve"');
+    }
     for (const name of options.externalTools || []) {
       if (options.tools.includes(name) && /^[\w.-]+$/.test(name)) args.push("-c",
         "mcp_servers." + SERVER + ".tools." + name + '.approval_mode="approve"');

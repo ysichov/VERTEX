@@ -45,6 +45,15 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
     properties: { sql: { type: "string", description: "One ABAP SQL SELECT statement, e.g. SELECT spras, type, description FROM powl_type_t WHERE type = 'X'." },
       max_rows: { type: "integer", minimum: 1, maximum: 1000, description: "Most rows to return; default 100." } } }
 }, {
+  name: "publish_sap_service_binding",
+  description: "Publish (or unpublish) an OData V2 or V4 service binding (SRVB) in SAP, as the Publish button of ADT's binding editor does, so its service can be called. "
+    + "The user confirms in VERTEX before anything changes. The answer says whether it is published afterwards and SAP's message; SAP refuses in a customizing client. "
+    + "Use it after a RAP service is generated or a binding is activated and the user wants the service available.",
+  annotations: { readOnlyHint: false, destructiveHint: false },
+  inputSchema: { type: "object", additionalProperties: false, required: ["binding"],
+    properties: { binding: { type: "string", description: "The service binding's name, for example ZUI_TRAVEL_O4." },
+      action: { type: "string", enum: ["publish", "unpublish"], description: "publish (default) or unpublish." } } }
+}, {
   name: "review_sap_changes",
   description: "Open review for manual edits in the active SAP source tab. Shows independently approvable hunks and an Approve all action. Does not save to SAP.",
   annotations: { readOnlyHint: true, destructiveHint: false },
@@ -2813,6 +2822,14 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     if (tool === "review_sap_changes") { return reviewActive(); }
     if (tool === "run_abap_unit") { return unitTestsOf(args); }
     if (tool === "run_atc_check") { return atcOf(args); }
+    if (tool === "publish_sap_service_binding") {
+      const publish = args.action !== "unpublish", binding = String(args.binding || "").trim().toUpperCase();
+      const verb = publish ? "Publish" : "Unpublish";
+      const yes = await vscode.window.showWarningMessage(verb + " service binding " + binding + " in " + repo.label + "?",
+        { modal: true, detail: publish ? "Its OData service becomes callable in this system." : "Its OData service stops being callable in this system." }, verb);
+      if (yes !== verb) throw new Error("The user did not confirm; " + binding + " was not " + (publish ? "published." : "unpublished."));
+      return repo.api.publishBinding(binding, publish);
+    }
     if (tool === "run_sap_select") {
       const sql = String(args.sql || "").trim();
       if (!/^select\b/i.test(sql)) { throw new Error("run_sap_select runs one SELECT statement; got: " + sql.slice(0, 80)); }

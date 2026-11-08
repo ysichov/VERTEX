@@ -524,3 +524,49 @@ test('explicit SAP and Folder modes select context, and text-only models can rea
  const folder=chat.create(vscode,tools,{},{get:async()=>null},()=>{throw Error('No SAP debugger in Folder mode');});
  await folder('список файлов',{contextMode:'folder',state:{vertex_view:{secret:'PRIVATE_SAP_VIEW'}}});assert.doesNotMatch(received.prompt,/PRIVATE_SAP_VIEW|VISIBLE_SAP_SOURCE/);assert.deepEqual(received.tools.map(x=>x.name),[]);
 });
+
+test('changing model or provider cancels a pending rate-limit retry without losing history', async t => {
+  t.mock.method(require('../model-config'), 'isOn', () => true);
+  for (const change of ['model','provider']) {
+    const settings={provider:'claude-subscription',model:'old'};
+    const vscode=fakeVscode(settings);
+    vscode.ConfigurationTarget={Global:1};
+    vscode.workspace.getConfiguration=()=>({get:(key,fallback)=>settings[key]??fallback,update:async(key,value)=>{settings[key]=value;}});
+    let waiting, calls=0; const ready=new Promise(resolve=>{waiting=resolve;}); const prompts=[];
+    t.mock.method(assistant,'ask',async options=>{
+      prompts.push(options.prompt);
+      if(options.prompt.endsWith('blocked question')) return compatible.rateLimitedRequest(async()=>{
+        calls++;throw Object.assign(new Error('rate limited'),{status:429,retryAfter:'60'});
+      },{...options,onRetryWait:cancel=>{options.onRetryWait(cancel);if(cancel)waiting();}});
+      return {plan:{answer:'kept answer'},model:'test',usage:null};
+    });
+    const ask=chat.create(vscode,{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+    await ask('first question');
+    const old=ask('blocked question');await ready;
+    if(change==='model')await ask.setModel('new');else await ask.setProvider('codex-subscription');
+    assert.equal((await old).superseded,true);
+    const next=await ask('next question',{model:'new'});
+    assert.equal(next.answer,'kept answer');assert.equal(calls,1);
+    assert.match(prompts.at(-1),/first question/);assert.match(prompts.at(-1),/kept answer/);
+    assert.doesNotMatch(prompts.at(-1),/blocked question/);
+    ask.dispose();
+  }
+});
+
+test('OpenRouter shows remaining daily requests when a request is rate limited', async t => {
+  t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+  t.mock.method(compatible,'models',async()=>[{id:'test',label:'Test'}]);
+  let checks=0;
+  t.mock.method(compatible,'keyLimits',async()=>{checks++;return {free:{used:50,limit:50,remaining:0},usage_daily:0,limit_remaining:null};});
+  t.mock.method(compatible,'ask',async options=>compatible.rateLimitedRequest(async()=>{throw Object.assign(new Error('Daily rate limit'),{status:429,retryAfter:'120'});},options));
+  const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'test'}),{schemas:[],instructions:'',editorContext:()=>null},null,{});
+  const progress=[];
+  await assert.rejects(ask('explain this',{onProgress:update=>progress.push(update)}),/Daily rate limit/);
+  assert.ok(checks>0);assert.ok(progress.some(update=>/free today 0 of 50 left/.test(update.limits||'')));
+  t.mock.method(compatible,'ask',async options=>{
+    assert.doesNotMatch(options.prompt,/Daily rate limit|Request failed:/);
+    return {plan:{answer:'new answer'},model:'test',usage:null};
+  });
+  assert.equal((await ask('next question')).answer,'new answer');
+  ask.dispose();
+});

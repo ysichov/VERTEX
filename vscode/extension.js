@@ -931,6 +931,7 @@ function activate(context) {
       const sessionLog = require("./session-log");
       return sessionLog.tools(sessionLog.current(config.get("logPath", ""), provider, sessionLog.fromConfig(config)),
         async function (_deps, toolName, toolArgs) {
+          require("./chat-progress").report(toolName);
           if (/^debug_/.test(toolName)) { return debugTools.call(_deps, toolName, toolArgs); }
           const result = await chatTools.execute(toolName, toolArgs);
           // An MCP server's answer is already text; VERTEX's own results are JSON.

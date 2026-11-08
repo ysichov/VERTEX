@@ -11,7 +11,7 @@ test('grouped page offers one continuation from the end and selects every provid
   const all=[]; const walk=n=>{all.push(n);(n.children||[]).forEach(walk);};walk(nodes.content);
   assert.equal(all.filter(n=>n.className==='session').length,1);
   assert.equal(all.filter(n=>n.textContent==='Continue from here').length,0);
-  const buttons=all.filter(n=>n.textContent==='Continue in chat');assert.equal(buttons.length,1);
+  const buttons=all.filter(n=>n.textContent==='Continue');assert.equal(buttons.length,1);
   buttons[0].onclick({preventDefault(){},stopPropagation(){}});
   assert.equal(messages.at(-1).action,'continueConversation');
   assert.equal(messages.at(-1).point,undefined);

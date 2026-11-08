@@ -398,3 +398,14 @@ test("OpenRouter key limits: free requests left and spend in the usage line", as
   const { usageLine } = require("../sidebar");
   assert.match(usageLine({ model: "m", usage: { input_tokens: 1, output_tokens: 1 }, limits }), /\nOpenRouter: free today 25 of 50 left/);
 });
+
+test('daily free quota exhaustion stops without sleeping or retrying', async () => {
+  let calls=0,sleeps=0;
+  const daily=Object.assign(new Error('API returned 429: free-models-per-day'),{status:429});
+  await assert.rejects(()=>api.rateLimitedRequest(async()=>{calls++;throw daily;},{sleep:async()=>{sleeps++;}}),error=>error===daily);
+  assert.equal(calls,1);assert.equal(sleeps,0);
+  const generic=Object.assign(new Error('API returned 429'),{status:429});
+  calls=0;
+  await assert.rejects(()=>api.rateLimitedRequest(async()=>{calls++;throw generic;},{onRateLimit:async()=>({retry:false}),sleep:async()=>{sleeps++;}}),error=>error===generic);
+  assert.equal(calls,1);assert.equal(sleeps,0);
+});
