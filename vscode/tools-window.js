@@ -340,9 +340,7 @@ function open(vscode, context, deps, initial) {
         if (deps.enrichContext) state = await deps.enrichContext(state);
         const result = await legacyChat()(args[2], {model:args[1],state});
         await panel.webview.postMessage({type:"assistant",payload:JSON.stringify({call:"ask",
-          plan:{answer:result.answer+(result.navigationError?"
-
-VERTEX could not open the object: "+result.navigationError:""),navigation:result.navigation||null},model:result.model,usage:result.usage,
+          plan:{answer:result.answer+(result.navigationError?"\\n\\nVERTEX could not open the object: "+result.navigationError:""),navigation:result.navigation||null},model:result.model,usage:result.usage,
           direct:result.direct,choices:result.choices||[]})}); return;
       }
       let payload;

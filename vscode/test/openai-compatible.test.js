@@ -25,7 +25,7 @@ test("local LM Studio and Ollama servers are reached over HTTP without a key", a
   api.setLocalBase("ollama-local", "http://127.0.0.1:" + server.address().port + "/v1");
   try {
     assert.deepEqual(await api.models("ollama-local", "local"), [{ id: "qwen2.5-coder:7b", label: "qwen2.5-coder:7b" }]);
-    assert.deepEqual(seen, [undefined]);
+    assert.deepEqual(seen, [undefined, undefined]);
     await new Promise(resolve => server.close(resolve));
     await assert.rejects(api.requestJson("ollama-local", "local", "/models"), /Ollama is (?:installed, but its server does not answer|not installed on this computer)/);
   } finally { api.setLocalBase("ollama-local", ""); }
@@ -450,6 +450,12 @@ test("a local context-length error says how to load the model with a larger cont
   api.setLocalBase("lmstudio-local", "http://127.0.0.1:" + server.address().port + "/v1");
   try { await assert.rejects(api.requestJson("lmstudio-local", "local", "/chat/completions", { model: "m" }), /larger Context Length/); }
   finally { api.setLocalBase("lmstudio-local", ""); server.close(); }
+  const full = http.createServer((req, res) => { res.statusCode = 400; res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ error: { message: "Model loading was stopped due to insufficient system resources. This model requires approximately 25.63 GB of memory." } })); });
+  await new Promise(resolve => full.listen(0, "127.0.0.1", resolve));
+  api.setLocalBase("lmstudio-local", "http://127.0.0.1:" + full.address().port + "/v1");
+  try { await assert.rejects(api.requestJson("lmstudio-local", "local", "/chat/completions", { model: "m" }), /Unload the others in LM Studio/); }
+  finally { api.setLocalBase("lmstudio-local", ""); full.close(); }
 });
 
 test("a local Qwen commit request opens with an empty think block and its reasoning reaches the log", async () => {
@@ -507,4 +513,26 @@ test("Uncommitted changes offers a vertex-toggle for hidden .md/.log files and s
   assert.doesNotMatch(on, /hidden \.md, \.log files/);
   const none = review.filesReviewHtml(files, { readonly: { title: "Uncommitted changes", commit: true, refresh: true, hidden: { exts: ["md", "log"], count: 0, shown: false } } });
   assert.doesNotMatch(none, /id="hidden-files"/);
+});
+
+test("a local server lists every model for LLM Providers and the panel offers only the loaded ones", async () => {
+  const lm = async (id, key, route) => route === "/models"
+    ? { data: [{ id: "qwen3.6-27b" }, { id: "nvidia/nemotron-3-nano-omni" }, { id: "text-embedding-nomic-embed-text-v1.5" }] }
+    : { data: [{ id: "nvidia/nemotron-3-nano-omni", state: "loaded", loaded_context_length: 8192 }, { id: "qwen3.6-27b", state: "not-loaded" }] };
+  const all = await api.models("lmstudio-local", "local", lm);
+  assert.deepEqual(all, [{ id: "nvidia/nemotron-3-nano-omni", label: "nvidia/nemotron-3-nano-omni · context 8192", loaded: true }, { id: "qwen3.6-27b", label: "qwen3.6-27b", loaded: false }]);
+  const vscode = { workspace: { getConfiguration: () => ({ get: (key, fallback) => fallback }) } };
+  assert.deepEqual(modelConfig.apply(vscode, "lmstudio-local", all), [{ id: "nvidia/nemotron-3-nano-omni", label: "nvidia/nemotron-3-nano-omni · context 8192" }]);
+  assert.throws(() => modelConfig.apply(vscode, "lmstudio-local", [{ id: "q", label: "q", loaded: false }]), /No model is loaded in LM Studio/);
+  const old = async (id, key, route) => { if (route === "/models") return { data: [{ id: "a" }] }; throw new Error("404"); };
+  assert.deepEqual(modelConfig.apply(vscode, "lmstudio-local", await api.models("lmstudio-local", "local", old)).map(m => m.id), ["a"]);
+  const ollama = async (id, key, route) => route === "/models" ? { data: [{ id: "qwen3:8b" }, { id: "llama3.1:8b" }] } : { models: [{ name: "qwen3:8b", context_length: 32768 }] };
+  assert.deepEqual(modelConfig.apply(vscode, "ollama-local", await api.models("ollama-local", "local", ollama)).map(m => m.label), ["qwen3:8b · context 32768"]);
+});
+
+test("checking a local model that is not started does not load it", async () => {
+  const sent = [];
+  const lm = async (id, key, route, body) => { sent.push(route); return route === "/models" ? { data: [{ id: "big" }] } : { data: [{ id: "big", state: "not-loaded" }] }; };
+  await assert.rejects(api.probe("lmstudio-local", "local", "big", lm), /big is not loaded in LM Studio\. Start it there/);
+  assert.ok(!sent.includes("/chat/completions"));
 });

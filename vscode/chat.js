@@ -252,7 +252,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
     if (fresh) full.delete(id);
     const apiKey = (id === "anthropic-api" || compatible.PROVIDERS[id]) && secrets
       ? (await keyProfiles.getActiveKey(secrets, id)).key : undefined;
-    if (!full.has(id) || full.get(id).key !== apiKey) {
+    // A local server's loaded models change outside VERTEX, so its list is read every time.
+    if (!full.has(id) || full.get(id).key !== apiKey || compatible.isLocal(id)) {
       const models = id === "anthropic-api"
         ? await anthropic.models(apiKey)
         : id === "copilot" ? await copilot.models(vscode)

@@ -208,9 +208,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
               onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId,
-              answer: reply.answer + (reply.navigationError ? "
-
-VERTEX could not open the object: " + reply.navigationError : ""),
+              answer: reply.answer + (reply.navigationError ? "\n\nVERTEX could not open the object: " + reply.navigationError : ""),
               done: true, usage: usageLine(reply), choices: reply.choices || [],
               runs: (await vscode.commands.executeCommand("vertex.knownEvidenceSessions")) || [] } });
             // The answer names a VERTEX function to run - a table's data, a

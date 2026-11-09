@@ -1,3 +1,13 @@
+## 2026-11-09 — Only running local models in the panel
+
+The VERTEX panel offers only the LM Studio or Ollama models that are running, with the context each was loaded with; LLM Providers still lists every downloaded model. VERTEX does not load models itself, and Check models does not start a model that is not running.
+
+Asked after selecting Nemotron (25.6 GB) failed with "insufficient system resources" because LM Studio JIT-loaded it next to the manually loaded Qwen (16 GB). `models()` for local ids reads LM Studio `/api/v0/models` (`state`, `loaded_context_length`) or Ollama `/api/ps`, through `/../api/...` on the `/v1` base, and marks each model `loaded`; if that endpoint fails the list stays unmarked. `model-config.apply` offers only loaded ones for local ids (no enabled/known catalog rule) and `news` reports nothing for them; `chat.fullModels` rereads a local list every time; `probe` refuses a model that is not loaded. Live: catalog qwen3.6-27b + nemotron, panel nemotron · context 8192.
+
+## 2026-11-09 — Navigation error line broke the panel and the Tools window
+
+"Preserve new and missing models in provider catalogs" (c927f31) put a raw line break inside a string literal where the navigation error is added to an answer: in `sidebar.js` that is host code, so the module did not load (SyntaxError) and with it the extension; in `tools-window.js` it is inside the page template, so the Tools window script failed in the browser while `node --check` passed. Both now use `\n\n`. Found by `test/tools.test.js` and the OpenRouter key limits test, which evaluate those scripts. Also: an LM Studio "insufficient system resources" error now adds that the other loaded models should be unloaded or a smaller model chosen.
+
 ## 2026-11-09 — No SAP navigation in Folder mode
 
 In Folder mode the assistant can no longer answer with a SAP object to open. A technical review asked in Folder mode was lost after it was written: the model added a navigation to a function module with the Review action, which does not exist, and the whole answer failed.

@@ -123,7 +123,7 @@ async function adoptOne(vscode, id, list) {
 // catalog added since the table was last saved, and whether the chosen model
 // is one the catalog no longer has.
 function news(vscode, id, list, chosen) {
-  if (id === "claude") return { newCount: 0, missing: "" };
+  if (id === "claude" || compatible.isLocal(id)) return { newCount: 0, missing: "" };
   const all = rows(list, read(vscode, id), id);
   return { newCount: all.filter(m => m.isNew).length,
            missing: chosen && all.some(m => m.missing && m.id === chosen) ? chosen : "" };
@@ -150,6 +150,13 @@ function migrateUnavailable(vscode, id, list) {
 
 /** What a model list offers: the switched-on rows. */
 function apply(vscode, id, list) {
+  // A local server offers exactly the models loaded in it now; LLM Providers lists all downloaded ones.
+  if (compatible.isLocal(id)) {
+    const running = list.filter(m => m.loaded !== false).map(({ loaded, ...model }) => model);
+    if (!running.length) throw new Error("No model is loaded in " + compatible.PROVIDERS[id].label + ". " + (id === "lmstudio-local"
+      ? "Load one there (select a model at the top of LM Studio, or run `lms load <model>`)." : "Run one there (`ollama run <model>`)."));
+    return running;
+  }
   const offered = rows(list, read(vscode, id), id).filter(m => m.on && m.available !== false && !m.missing).map(({ on, isNew, ...model }) => model);
   if (!offered.length) {
     throw new Error("No " + id + " model is switched on. Open Config models in the VERTEX panel.");

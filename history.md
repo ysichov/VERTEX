@@ -1,3 +1,11 @@
+## 2026-11-09 — Only running local models in the panel
+
+The VERTEX panel offers only the LM Studio or Ollama models that are running, with the context each was loaded with; LLM Providers still lists every downloaded model. VERTEX does not load models itself, and Check models does not start a model that is not running.
+
+## 2026-11-09 — Panel and Tools window load again
+
+The VERTEX panel and the Tools window failed to start after the navigation-error change; both load again. When LM Studio has too little memory for a model, the error says to unload the other loaded models or choose a smaller one.
+
 ## 2026-11-09 — No SAP navigation in Folder mode
 
 In Folder mode the assistant can no longer answer with a SAP object to open. A technical review asked in Folder mode was lost after it was written: the model added a navigation to a function module with the Review action, which does not exist, and the whole answer failed.

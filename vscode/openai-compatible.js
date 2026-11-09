@@ -76,6 +76,9 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
           const error = new Error(provider.label + " API returned " + res.statusCode + ": "
             + String(parsed && parsed.error && (parsed.error.message || parsed.error) || text).slice(0, 500));
           error.status = res.statusCode; error.retryAfter = res.headers?.["retry-after"];
+          if (provider.local && /insufficient system resources|requires approximately [\d.]+ ?GB|out of memory/i.test(error.message))
+            error.message += " — Not enough memory for this model next to the models already loaded. Unload the others in "
+              + provider.label + (id === "lmstudio-local" ? " (Developer tab, or `lms unload --all`)" : " (`ollama stop <model>`)") + ", or choose a smaller model.";
           if (provider.local && /context length|context window|n_ctx|exceeds the context/i.test(error.message))
             error.message += " — The model is loaded with too small a context. In " + provider.label
               + (id === "lmstudio-local" ? ", set a larger Context Length for the model (My Models → model settings, e.g. 32768 or more) and load it again."
@@ -111,7 +114,28 @@ async function models(id, apiKey, request = requestJson) {
     ...(id === "vercel-api" ? require("./model-capabilities").metadata(item) : {})
   }));
   if (!list.length) { throw new Error(PROVIDERS[id].label + " returned no models" + (PROVIDERS[id].local ? ". Download or load a model in " + PROVIDERS[id].label + " first." : " for this key.")); }
+  if (isLocal(id)) return loadedOnly(id, apiKey, list, request);
   return list.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// A local server lists every downloaded model (all of them go to LLM Providers); each is marked
+// loaded or not, with the context it was loaded with, so the panel can offer only the running ones.
+async function loadedOnly(id, apiKey, list, request) {
+  let loaded;
+  try {
+    if (id === "lmstudio-local") {
+      const state = await request(id, apiKey, "/../api/v0/models", undefined, 64000, 5000);
+      if (!Array.isArray(state?.data)) return list;
+      loaded = new Map(state.data.filter(m => m?.state === "loaded").map(m => [String(m.id), m.loaded_context_length]));
+    } else {
+      const state = await request(id, apiKey, "/../api/ps", undefined, 64000, 5000);
+      if (!Array.isArray(state?.models)) return list;
+      loaded = new Map(state.models.map(m => [String(m.name || m.model), m.context_length]));
+    }
+  } catch (_) { return list; }
+  return list.map(m => !loaded.has(m.id) ? { ...m, loaded: false }
+    : { ...m, loaded: true, ...(Number(loaded.get(m.id)) > 0 ? { label: m.label + " · context " + loaded.get(m.id) } : {}) })
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 async function retryWait(ms, options) {
@@ -162,6 +186,11 @@ async function rateLimitedRequest(send, options = {}) {
 
 // One minimal paid generation request: no tool schemas, history or agent rounds.
 async function probe(id, apiKey, model, request = requestJson, options = {}) {
+  // A check must not make a local server load a model the user has not started.
+  if (isLocal(id)) {
+    const found = (await models(id, apiKey, request)).find(m => m.id === model);
+    if (found && found.loaded === false) throw new Error(model + " is not loaded in " + PROVIDERS[id].label + ". Start it there, then check again.");
+  }
   const response = await request(id, apiKey, "/chat/completions", {
     model, messages: [{ role: "user", content: "Reply OK." }], stream: false,
     ...(id === "openai-api" ? { max_completion_tokens: 16 } : { max_tokens: 16 })
