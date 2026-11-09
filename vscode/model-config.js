@@ -24,7 +24,10 @@ const PROVIDERS = [
   { id: "vercel-api", setting: "vercel-api", label: "Vercel AI Gateway API (key)", short: "Vercel AI Gateway API" },
   { id: "openrouter-api", setting: "openrouter-api", label: "OpenRouter API (key)", short: "OpenRouter API" },
   { id: "anthropic-api", setting: "anthropic-api", label: "Anthropic API (key)", short: "Anthropic API" },
-  ...Object.entries(compatible.PROVIDERS).filter(([id]) => id !== "vercel-api" && id !== "openrouter-api").map(([id, provider]) => ({
+  ...Object.entries(compatible.PROVIDERS).filter(([, provider]) => provider.local).map(([id, provider]) => ({
+    id, setting: id, label: provider.label + " (local server)", short: provider.label
+  })),
+  ...Object.entries(compatible.PROVIDERS).filter(([id, provider]) => id !== "vercel-api" && id !== "openrouter-api" && !provider.local).map(([id, provider]) => ({
     id, setting: id, label: provider.label + " API (key)", short: provider.label + " API"
   }))
 ];

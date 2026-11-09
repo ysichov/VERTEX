@@ -96,7 +96,10 @@ function create(root, provider, session, include, operation = "Chat") {
       }
       write({ type: "vertex_provider_response", provider, scope, response: metadata });
     },
-    assistant({ model, usage, text }) {
+    assistant({ model, usage, text, reasoning }) {
+      // A model's own reasoning (reasoning_content), kept with the answers option as a thinking note.
+      if (on.answers && reasoning) write({ type: "assistant", vertex_step: "claude_note", message: { id: id("note"),
+        content: [{ type: "vertex_note", note: "thinking", text: sanitizeText(String(reasoning), []) }] } });
       const objects = [];
       const answer = on.answers ? sanitizeText(String(text || ""), objects) : NOT_LOGGED;
       write({ type: "assistant", vertex_objects: objects, message: { id: id("msg"), model: model || "", usage: {

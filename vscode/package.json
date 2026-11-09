@@ -711,10 +711,22 @@
             "cerebras-api",
             "openrouter-api",
             "nvidia-api",
-            "vercel-api"
+            "vercel-api",
+            "lmstudio-local",
+            "ollama-local"
           ],
           "default": "codex-subscription",
           "markdownDescription": "AI provider used by the VERTEX assistant. API keys are kept in SecretStorage."
+        },
+        "vertex.ai.lmstudioUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Address of the LM Studio local server (OpenAI-compatible). Empty uses `http://localhost:1234/v1`."
+        },
+        "vertex.ai.ollamaUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Address of the Ollama local server (OpenAI-compatible). Empty uses `http://localhost:11434/v1`."
         },
         "vertex.ai.model": {
           "type": "string",

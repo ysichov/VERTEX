@@ -26,6 +26,8 @@ async function readIndex(secrets, id) {
 }
 async function list(secrets, id) { return readIndex(secrets, id); }
 async function getActiveKey(secrets, id) {
+  // Local servers (LM Studio, Ollama) take no key; a placeholder lets the keyed paths run.
+  if (require("./openai-compatible").isLocal(id)) { return { name: "LOCAL", key: "local" }; }
   if (!secrets) { return { name: "", key: "" }; }
   const index = await readIndex(secrets, id);
   if (!index.active) { return { name: "", key: "" }; }

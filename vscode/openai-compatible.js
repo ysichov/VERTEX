@@ -1,6 +1,7 @@
 "use strict";
 
 const https = require("https");
+const http = require("http");
 const toolSupport = require("./tool-support");
 
 // Provider endpoints from ABAP-AI-Code's ZAICODE_PROVIDER seed list. The
@@ -13,23 +14,49 @@ const PROVIDERS = Object.freeze({
   "cerebras-api": { label: "Cerebras", base: "https://api.cerebras.ai/v1" },
   "openrouter-api": { label: "OpenRouter", base: "https://openrouter.ai/api/v1" },
   "nvidia-api": { label: "NVIDIA", base: "https://integrate.api.nvidia.com/v1" },
-  "vercel-api": { label: "Vercel AI Gateway", base: "https://ai-gateway.vercel.sh/v1" }
+  "vercel-api": { label: "Vercel AI Gateway", base: "https://ai-gateway.vercel.sh/v1" },
+  // Local servers on this computer: plain HTTP to localhost, no API key.
+  "lmstudio-local": { label: "LM Studio", base: "http://localhost:1234/v1", local: true },
+  "ollama-local": { label: "Ollama", base: "http://localhost:11434/v1", local: true }
 });
+
+function isLocal(id) { return PROVIDERS[id]?.local === true; }
+
+// Local reasoning models (Qwen3, QwQ, DeepSeek-R1) think through thousands of tokens before a commit
+// message; an empty think block opening the answer makes them write it at once. LM Studio ignores
+// enable_thinking and reasoning_effort for these models, but continues a final assistant message.
+function skipsThinking(id, model, options = {}) {
+  return isLocal(id) && options.noThinking === true && /qwen3|qwq|deepseek-r1/i.test(String(model || ""));
+}
+const EMPTY_THINK = { role: "assistant", content: "<think>\n\n</think>\n\n" };
+
+// A local server may run on another port: vertex.ai.lmstudioUrl / vertex.ai.ollamaUrl.
+const localOverrides = {};
+function setLocalBase(id, url) { if (url) localOverrides[id] = url; else delete localOverrides[id]; }
+function baseUrl(id) {
+  const provider = PROVIDERS[id];
+  if (!provider?.local) return provider?.base;
+  if (localOverrides[id]) return localOverrides[id];
+  let configured = "";
+  try { configured = require("vscode").workspace.getConfiguration("vertex.ai").get(id === "lmstudio-local" ? "lmstudioUrl" : "ollamaUrl", ""); } catch (_) {}
+  return String(configured || provider.base).trim().replace(/\/+$/, "");
+}
 
 function secretKey(id) { return "vertex.provider." + id + ".apiKey"; }
 
 function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
   const provider = PROVIDERS[id];
   if (!provider) { return Promise.reject(new Error("Unknown API provider: " + id)); }
-  if (!apiKey) { return Promise.reject(new Error("No " + provider.label + " API key is configured. Enter it in LLM Providers.")); }
+  if (!apiKey && !provider.local) { return Promise.reject(new Error("No " + provider.label + " API key is configured. Enter it in LLM Providers.")); }
   const payload = body == null ? null : JSON.stringify(body);
   if (payload && Buffer.byteLength(payload, "utf8") > maxBytes) {
     return Promise.reject(new Error("VERTEX: request exceeds " + (maxBytes === 64000 ? "64 KB" : (maxBytes / 1024) + " KiB") + "; narrow the context or start a new conversation."));
   }
-  const url = new URL(provider.base + route);
+  const base = baseUrl(id);
+  const url = new URL(base + route);
   return new Promise((resolve, reject) => {
-    const req = https.request(url, { method: payload ? "POST" : "GET", headers: {
-      authorization: "Bearer " + apiKey, ...(payload ? { "content-type": "application/json",
+    const req = (url.protocol === "http:" ? http : https).request(url, { method: payload ? "POST" : "GET", headers: {
+      ...(apiKey && !provider.local ? { authorization: "Bearer " + apiKey } : {}), ...(payload ? { "content-type": "application/json",
         "content-length": Buffer.byteLength(payload, "utf8") } : {})
     } }, res => {
       let text = "";
@@ -49,6 +76,10 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
           const error = new Error(provider.label + " API returned " + res.statusCode + ": "
             + String(parsed && parsed.error && (parsed.error.message || parsed.error) || text).slice(0, 500));
           error.status = res.statusCode; error.retryAfter = res.headers?.["retry-after"];
+          if (provider.local && /context length|context window|n_ctx|exceeds the context/i.test(error.message))
+            error.message += " — The model is loaded with too small a context. In " + provider.label
+              + (id === "lmstudio-local" ? ", set a larger Context Length for the model (My Models → model settings, e.g. 32768 or more) and load it again."
+                : ", raise the context, e.g. OLLAMA_CONTEXT_LENGTH=32768 before `ollama serve`.");
           reject(error);
         } else { resolve(parsed); }
       });
@@ -57,8 +88,12 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
       const deadline = setTimeout(() => req.destroy(new Error(provider.label + " API timed out.")), timeoutMs);
       req.on("close", () => clearTimeout(deadline));
     }
-    req.on("error", reject);
-    req.setTimeout(timeoutMs || (payload ? 180000 : 60000), () => req.destroy(new Error(provider.label + " API timed out.")));
+    req.on("error", error => reject(provider.local && error.code === "ECONNREFUSED"
+      ? Object.assign(new Error(require("./local-servers").installed(id)
+        ? provider.label + " is installed, but its server does not answer at " + base + ". Start its local server and load a model."
+        : provider.label + " is not installed on this computer (or its server does not answer at " + base + "). Download it from "
+          + require("./local-servers").SITES[id] + "."), { code: error.code }) : error));
+    req.setTimeout(timeoutMs || (provider.local ? 600000 : payload ? 180000 : 60000), () => req.destroy(new Error(provider.label + " API timed out.")));
     req.end(payload || undefined);
   });
 }
@@ -68,13 +103,14 @@ async function models(id, apiKey, request = requestJson) {
   if (!Array.isArray(response.data)) { throw new Error(PROVIDERS[id].label + " did not return a model list."); }
   // Chat does not implement asynchronous batch variants; Vercel also lists non-chat models.
   const list = response.data.filter(item => item && item.id && (id !== "vercel-api" || item.type === "language")
+    && !(isLocal(id) && /(?:^|[-_/.])embed(?:ding)?(?:$|[-_/.])|^text-embedding/i.test(String(item.id)))
     && !/(?:^|[-_/:])batch(?:$|[-_/:])/i.test(String(item.id))
     && !/\bbatch\b/i.test(String(item.name || "") + " " + String(item.display_name || ""))).map(item => ({
     id: String(item.id), label: String(item.name || item.display_name || item.id),
     ...(id === "openrouter-api" ? { free: /:free$/i.test(item.id) || item.id === "openrouter/free" || [item.pricing?.prompt,item.pricing?.completion].every(value => (typeof value === "number" || typeof value === "string" && value.trim() !== "") && Number(value) === 0) && Object.values(item.pricing || {}).every(value => Number(value) === 0) } : {}),
     ...(id === "vercel-api" ? require("./model-capabilities").metadata(item) : {})
   }));
-  if (!list.length) { throw new Error(PROVIDERS[id].label + " returned no models for this key."); }
+  if (!list.length) { throw new Error(PROVIDERS[id].label + " returned no models" + (PROVIDERS[id].local ? ". Download or load a model in " + PROVIDERS[id].label + " first." : " for this key.")); }
   return list.sort((a, b) => a.label.localeCompare(b.label));
 }
 
@@ -129,14 +165,15 @@ async function probe(id, apiKey, model, request = requestJson, options = {}) {
   const response = await request(id, apiKey, "/chat/completions", {
     model, messages: [{ role: "user", content: "Reply OK." }], stream: false,
     ...(id === "openai-api" ? { max_completion_tokens: 16 } : { max_tokens: 16 })
-  }, 64000, 10000);
+  }, 64000, isLocal(id) ? 180000 : 10000);
   const message = response.choices?.[0]?.message;
   const answer = typeof message?.content === "string" ? message.content.trim() : Array.isArray(message?.content) ? message.content.filter(part => part?.type === "text").map(part => part.text || "").join("\n").trim() : "";
   options.onProviderResponse?.({provider:id,scope:"model_response",response:{...response,finish_reason:response.choices?.[0]?.finish_reason,
     message_diagnostics:{content_characters:answer.length,reasoning_tokens:Number(response.usage?.completion_tokens_details?.reasoning_tokens||0)}}});
   const raw=response.usage||{},cached=Number(raw.prompt_tokens_details?.cached_tokens??raw.cache_read_input_tokens??0)||0,created=Number(raw.cache_creation_input_tokens||0);
   const usage={input_tokens:raw.prompt_tokens==null?Number(raw.input_tokens||0):Math.max(0,Number(raw.prompt_tokens)-cached-created),output_tokens:Number(raw.completion_tokens??raw.output_tokens??0)||0,cache_read_input_tokens:cached,cache_creation_input_tokens:created,...(["vercel-api","openrouter-api"].includes(id)?await generationCost(response,{...options,assistant:id,apiKey},request):{})};
-  options.onModelCall?.({model:response.model||model,usage,text:answer});
+  const reasoning=typeof message?.reasoning_content==="string"?message.reasoning_content:typeof message?.reasoning==="string"?message.reasoning:"";
+  options.onModelCall?.({model:response.model||model,usage,text:answer,...(reasoning?{reasoning}:{})});
   if (!message) throw new Error(PROVIDERS[id].label + " answered without a chat message.");
   return {model:response.model||model,usage};
 }
@@ -199,7 +236,7 @@ async function ask(options) {
     }
     options.onProgress?.({ status: "Model request " + (round + 1) });
     const send = () => rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
-      model: options.model, messages, ...(tools.length ? { tools } : {}), ...(options.webSearch ? {tool_choice:"required"} : {}),
+      model: options.model, messages: skipsThinking(id, options.model, options) && !tools.length ? messages.concat([EMPTY_THINK]) : messages, ...(tools.length ? { tools } : {}), ...(options.webSearch ? {tool_choice:"required"} : {}),
       ...(Number.isInteger(options.maxOutputTokens)&&options.maxOutputTokens>0 ? id==="openai-api"?{max_completion_tokens:options.maxOutputTokens}:{max_tokens:options.maxOutputTokens} : {}), stream: false
     // The limit is on the conversation and its context; the tool definitions are a fixed part on top of it -
     // an MCP server's alone can pass 64 KB.
@@ -231,6 +268,9 @@ async function ask(options) {
       reasoning_characters:typeof rawMessage?.reasoning_content==="string"?rawMessage.reasoning_content.length:typeof rawMessage?.reasoning==="string"?rawMessage.reasoning.length:0,
       reasoning_tokens:Number(response.usage?.completion_tokens_details?.reasoning_tokens||0),refusal:typeof rawMessage?.refusal==="string"?rawMessage.refusal.slice(0,500):null};
     if (options.onProviderResponse) options.onProviderResponse({ provider: id, scope: "model_response", response:{...response,finish_reason:choice?.finish_reason,message_diagnostics:diagnostics,...(options.webSearch?{gateway_tool_calls:webSearchCalls}:{})} });
+    // The model's reasoning goes to the session log with its answer.
+    const reasoningText=typeof rawMessage?.reasoning_content==="string"?rawMessage.reasoning_content:typeof rawMessage?.reasoning==="string"?rawMessage.reasoning:"";
+    const onModelCall=options.onModelCall&&(event=>options.onModelCall(reasoningText?{...event,reasoning:reasoningText}:event));
     let roundUsage = null;
     if (response.usage) {
       const raw = response.usage;
@@ -259,7 +299,7 @@ async function ask(options) {
     if(options.webSearch){
       roundUsage={...(roundUsage||{}),web_search_calls:webSearchCalls};
       if(!(webSearchCalls>0)){
-        options.onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"Web search execution was not confirmed; answer withheld."});
+        onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"Web search execution was not confirmed; answer withheld."});
         throw new Error("Vercel did not confirm a successful web search. No web-verified answer is available; try another model or retry.");
       }
       if(message.tool_calls?.length)throw new Error("Gateway returned client tool calls instead of executing web search. No SAP or file action was performed.");
@@ -271,7 +311,7 @@ async function ask(options) {
       let plan;
       try { plan = JSON.parse(final.function.arguments || "{}"); } catch (_) { throw new Error(PROVIDERS[id].label + " returned an invalid VERTEX plan."); }
       if (typeof plan.answer !== "string") { throw new Error(PROVIDERS[id].label + " returned a VERTEX plan without an answer."); }
-      if (options.onModelCall) options.onModelCall({ model: response.model || options.model, usage: roundUsage, text: plan.answer });
+      if (onModelCall) onModelCall({ model: response.model || options.model, usage: roundUsage, text: plan.answer });
       return { plan, model: options.model, usage };
     }
     if (!calls.length) {
@@ -281,14 +321,14 @@ async function ask(options) {
         try{const object=JSON.parse(answer.replace(/^```(?:json)?\s*|\s*```$/g,""));if(object&&typeof object.answer==="string"&&Object.keys(object).every(key=>["answer","navigation","build_command"].includes(key)))answer=object.answer.trim();}catch(_){}
       }
       if (answer && options.schema && /^\{\s*\}$/.test(answer)) {
-        options.onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"[The model returned an empty JSON object without an answer.]"});
+        onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"[The model returned an empty JSON object without an answer.]"});
         const error=new Error(PROVIDERS[id].label+" returned an empty JSON object without an answer. The supplied context was sent; try another model or generate again.");error.model_step=round+1;error.operation="Read model response";throw error;
       }
       if (answer) {
-        if (options.onModelCall) options.onModelCall({ model: response.model || options.model, usage: roundUsage, text: answer });
+        if (onModelCall) onModelCall({ model: response.model || options.model, usage: roundUsage, text: answer });
         return { plan: { answer, navigation: null }, model: options.model, usage };
       }
-      options.onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"[The model returned no final text.]"});
+      onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"[The model returned no final text.]"});
       const reason=diagnostics.refusal ? " refused to answer: "+diagnostics.refusal
         : choice?.finish_reason==="length" ? " reached its output limit before returning final text."
         : diagnostics.reasoning_tokens>0||diagnostics.reasoning_characters>0 ? " returned reasoning only, with no final text."
@@ -296,7 +336,7 @@ async function ask(options) {
       const error=new Error(PROVIDERS[id].label+reason+" Finish reason: "+(choice?.finish_reason||"not reported")+". Try generating again or select another model.");
       error.model_step=round+1;error.operation="Read model response";error.finish_reason=choice?.finish_reason;throw error;
     }
-    if (options.onModelCall) options.onModelCall({ model: response.model || options.model, usage: roundUsage,
+    if (onModelCall) onModelCall({ model: response.model || options.model, usage: roundUsage,
       text: typeof message.content === "string" ? message.content : "" });
     messages.push({ role: "assistant", content: message.content || null, tool_calls: calls });
     for (const call of calls) {
@@ -337,4 +377,4 @@ function limitsText(limits) {
   return parts.length ? "OpenRouter: " + parts.join(" · ") : "OpenRouter limits not reported";
 }
 
-module.exports = { PROVIDERS, secretKey, requestJson, models, ask, probe, rateLimitedRequest, keyLimits, limitsText };
+module.exports = { PROVIDERS, isLocal, setLocalBase, baseUrl, secretKey, requestJson, models, ask, probe, rateLimitedRequest, keyLimits, limitsText };

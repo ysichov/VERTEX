@@ -7,11 +7,29 @@ const assistant = require("../assistant");
 
 test("API provider catalog matches the ABAP-AI-Code key providers", () => {
   assert.deepEqual(Object.keys(api.PROVIDERS), ["openai-api", "mistral-api", "gemini-api", "groq-api",
-    "cerebras-api", "openrouter-api", "nvidia-api", "vercel-api"]);
+    "cerebras-api", "openrouter-api", "nvidia-api", "vercel-api", "lmstudio-local", "ollama-local"]);
   for (const id of Object.keys(api.PROVIDERS)) {
     assert.ok(modelConfig.PROVIDERS.some(provider => provider.id === id && provider.setting === id));
-    assert.match(api.PROVIDERS[id].base, /^https:\/\//);
+    assert.match(api.PROVIDERS[id].base, api.PROVIDERS[id].local ? /^http:\/\/localhost:\d+\/v1$/ : /^https:\/\//);
   }
+});
+
+test("local LM Studio and Ollama servers are reached over HTTP without a key", async () => {
+  const http = require("http");
+  const keyProfiles = require("../key-profiles");
+  assert.deepEqual(await keyProfiles.getActiveKey({ get: async () => "" }, "ollama-local"), { name: "LOCAL", key: "local" });
+  const seen = [];
+  const server = http.createServer((req, res) => { seen.push(req.headers.authorization); res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ data: [{ id: "qwen2.5-coder:7b" }, { id: "text-embedding-nomic-embed-text-v1.5" }, { id: "nomic-embed-text:latest" }] })); });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  api.setLocalBase("ollama-local", "http://127.0.0.1:" + server.address().port + "/v1");
+  try {
+    assert.deepEqual(await api.models("ollama-local", "local"), [{ id: "qwen2.5-coder:7b", label: "qwen2.5-coder:7b" }]);
+    assert.deepEqual(seen, [undefined]);
+    await new Promise(resolve => server.close(resolve));
+    await assert.rejects(api.requestJson("ollama-local", "local", "/models"), /Ollama is (?:installed, but its server does not answer|not installed on this computer)/);
+  } finally { api.setLocalBase("ollama-local", ""); }
+  assert.equal(api.baseUrl("ollama-local"), "http://localhost:11434/v1");
 });
 
 test("LLM Providers offers an independent fold control for each model list", () => {
@@ -315,11 +333,11 @@ test('Web mode never silently falls back to unsearched text',async()=>{
  await assert.rejects(()=>api.ask({assistant:'vercel-api',model:'web-zero',webSearch:true,prompt:'Q',instructions:'Search',request:async()=>({choices:[{message:{content:'Unverified',provider_metadata:{gateway:{gatewayToolCalls:0}}}}]})}),/did not confirm/);
 });
 
-test('reasoning-only response records usage and finish diagnostics without exposing reasoning as answer',async()=>{
+test('reasoning-only response records usage, finish diagnostics and the reasoning as a thinking note, not as the answer',async()=>{
  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-reasoning-only-'));
  try{const log=require('../session-log').create(root,'vercel-api','20261107_160000',{answers:true});log.user('Commit draft');let calls=0,recorded;
  await assert.rejects(()=>api.ask({assistant:'vercel-api',apiKey:'k',model:'nemotron-test',prompt:'Draft',instructions:'Plain message',capabilities:{tools:false},maxOutputTokens:4096,onProviderResponse:event=>log.providerResponse(event),onModelCall:event=>{recorded=event;log.assistant(event);},request:async(id,key,route,body)=>{calls++;assert.equal(body.max_tokens,4096);return {id:'gen_only_reasoning',model:'nemotron-test',usage:{prompt_tokens:36632,completion_tokens:284,completion_tokens_details:{reasoning_tokens:284},cost:0},choices:[{finish_reason:'stop',message:{content:null,reasoning_content:'PRIVATE_THINKING'}}]};}}),error=>/reasoning only/.test(error.message)&&/Finish reason: stop/.test(error.message)&&error.model_step===1&&!error.message.includes('PRIVATE_THINKING'));
- assert.equal(calls,1);assert.equal(recorded.usage.output_tokens,284);assert.equal(recorded.usage.cost_usd,0);const text=fs.readFileSync(log.file,'utf8');assert.ok(!text.includes('PRIVATE_THINKING'));assert.match(text,/"finish_reason":"stop"/);assert.match(text,/"reasoning_tokens":284/);
+ assert.equal(calls,1);assert.equal(recorded.usage.output_tokens,284);assert.equal(recorded.usage.cost_usd,0);const text=fs.readFileSync(log.file,'utf8');assert.match(text,/"note":"thinking","text":"[^"]*PRIVATE_THINKING/);assert.ok(!/"type":"text","text":"[^"]*PRIVATE_THINKING/.test(text));assert.match(text,/"finish_reason":"stop"/);assert.match(text,/"reasoning_tokens":284/);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 test('compatible API reads text content arrays and diagnoses truncated empty replies',async()=>{
@@ -408,4 +426,54 @@ test('daily free quota exhaustion stops without sleeping or retrying', async () 
   calls=0;
   await assert.rejects(()=>api.rateLimitedRequest(async()=>{calls++;throw generic;},{onRateLimit:async()=>({retry:false}),sleep:async()=>{sleeps++;}}),error=>error===generic);
   assert.equal(calls,1);assert.equal(sleeps,0);
+});
+
+test("a picked local server is diagnosed: missing, stopped, empty or ready", async () => {
+  const { diagnose } = require("../local-servers");
+  const down = async () => { throw Object.assign(new Error("refused"), { code: "ECONNREFUSED" }); };
+  assert.equal((await diagnose("lmstudio-local", { request: down, installed: () => false })).state, "missing");
+  assert.match((await diagnose("lmstudio-local", { request: down, installed: () => false })).text, /not installed.*lmstudio\.ai/);
+  assert.match((await diagnose("ollama-local", { request: down, installed: () => true })).text, /installed, but its server does not answer/);
+  assert.equal((await diagnose("ollama-local", { request: async () => ({ data: [] }) })).state, "empty");
+  const ready = await diagnose("ollama-local", { request: async () => ({ data: [{ id: "a" }, { id: "b" }] }) });
+  assert.equal(ready.state, "ready"); assert.match(ready.text, /2 models/);
+  const places = require("../local-servers").places("ollama-local", "/Users/me", {});
+  assert.ok(places.includes("/Applications/Ollama.app") && places.includes("/Users/me/.ollama"));
+});
+
+test("a local context-length error says how to load the model with a larger context", async () => {
+  const http = require("http");
+  const server = http.createServer((req, res) => { res.statusCode = 400; res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ error: { message: "The number of tokens to keep from the initial prompt is greater than the context length." } })); });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  api.setLocalBase("lmstudio-local", "http://127.0.0.1:" + server.address().port + "/v1");
+  try { await assert.rejects(api.requestJson("lmstudio-local", "local", "/chat/completions", { model: "m" }), /larger Context Length/); }
+  finally { api.setLocalBase("lmstudio-local", ""); server.close(); }
+});
+
+test("a local Qwen commit request opens with an empty think block and its reasoning reaches the log", async () => {
+  const bodies = [], calls = [];
+  const request = async (id, key, route, body) => { bodies.push(body); return { model: body.model, choices: [{ finish_reason: "stop",
+    message: { role: "assistant", content: "Fix typo\n\nCorrects README.", reasoning_content: "Let me think." } }], usage: { prompt_tokens: 5, completion_tokens: 3 } }; };
+  const base = { assistant: "lmstudio-local", apiKey: "local", model: "qwen3.6-27b", prompt: "diff", instructions: "x", schema: {}, tools: [],
+    capabilities: { tools: false }, textOnly: true, maxRounds: 1, request, onModelCall: event => calls.push(event) };
+  await api.ask({ ...base, noThinking: true });
+  assert.deepEqual(bodies[0].messages.at(-1), { role: "assistant", content: "<think>\n\n</think>\n\n" });
+  assert.equal(calls[0].reasoning, "Let me think.");
+  await api.ask({ ...base });
+  assert.equal(bodies[1].messages.at(-1).role, "user");
+  await api.ask({ ...base, noThinking: true, model: "gemma-3-12b" });
+  assert.equal(bodies[2].messages.at(-1).role, "user");
+  await api.ask({ ...base, noThinking: true, assistant: "openai-api" });
+  assert.equal(bodies[3].messages.at(-1).role, "user");
+});
+
+test("model reasoning is written to the session log as a thinking note", () => {
+  const fs = require("fs"), os = require("os"), path = require("path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-log-"));
+  const log = require("../session-log").create(dir, "lmstudio-local", "s1", { answers: true });
+  log.assistant({ model: "qwen3.6-27b", usage: {}, text: "Answer", reasoning: "Thinking it through" });
+  const text = fs.readdirSync(dir, { recursive: true }).filter(f => /\.jsonl$/.test(f)).map(f => fs.readFileSync(path.join(dir, f), "utf8")).join("");
+  assert.match(text, /"note":"thinking","text":"Thinking it through"/);
+  assert.match(text, /"text":"Answer"/);
 });
