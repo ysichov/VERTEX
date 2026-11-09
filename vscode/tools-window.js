@@ -11,8 +11,10 @@ function html(pages, initial) {
   const lens = read("vertex-lens.js");
   // What the Tools pages share is one file too, put where a page marks it (as PageView does in Eclipse).
   const shared = read("vertex-page.js");
+  // The waiting scenes are one file as well (the review build in Versions shows one).
+  const scenes = read("vertex-task-visual.js");
   for (const name of ["chat", "metrics", "versions", "table", "navigator"]) bundle[name] = read(name + ".html").replace("/*VERTEX_LENS*/", () => lens)
-    .replace("/*VERTEX_PAGE*/", () => shared)
+    .replace("/*VERTEX_PAGE*/", () => shared).replace("/*VERTEX_TASK_VISUAL*/", () => scenes)
     .replace("</head>", () => "<style>" + read("vertex-controls.css") + "</style></head>");
   return read("tools.html")
     .replace("/*INIT*/null/*INIT*/", () => JSON.stringify(initial || null).replace(/</g, "\\u003c"))

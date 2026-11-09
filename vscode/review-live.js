@@ -367,6 +367,26 @@ function pairOf(feed, numbers, open, copies) {
   return { fresh, old };
 }
 
+/* A program part the pair takes for created by the request - no older version to compare with - may be older than its
+   history: a function group include created years ago whose first version was written only when another request's
+   transports of copies passed through. TRDIR's creation date settles it (as ACE checks it): a part created before its
+   oldest version was not created by the request. If the request holds no version of it, the request did not change it
+   and it is not reviewed (SKIP); if it does, it is compared with the part's first version. Returns what was found, for
+   the log, or null when the pair stands as it is. */
+async function olderThanHistory(api, p, feed, pair, numbers) {
+  if (pair.old || pair.fresh.id === "00001" || p.ptype !== "REPS") { return null; }
+  const head = (await api.query("SELECT cdat FROM trdir WHERE name = " + sqlText(p.part), 1)).values[0];
+  const earliest = (await api.query("SELECT MIN( datum ) AS datum FROM vrsd WHERE objtype = 'REPS' AND objname = "
+    + sqlText(p.part), 1)).values[0];
+  const created = String(head && head.CDAT || "").replace(/\D/g, ""), oldest = String(earliest && earliest.DATUM || "").replace(/\D/g, "");
+  if (!created || !oldest || created >= oldest) { return null; }
+  const ordered = feed.filter(e => e.id !== "00000").sort((x, y) => Number(y.id) - Number(x.id));
+  const own = ordered.some(e => numbers.has(e.transport));
+  const first = ordered[ordered.length - 1];
+  pair.old = own && first && first !== pair.fresh ? first : null;
+  return { created, oldest, own };
+}
+
 // The transports of copies among a feed's versions (E070 TRFUNCTION T).
 async function copiesIn(api, feed) {
   const named = [...new Set(feed.map(e => e.transport).filter(Boolean))];
@@ -537,6 +557,13 @@ async function buildNow(api, request, progress, withBlame, keepGenerated, onPart
       feed.filter(e => e.id === "00000" || Number(e.id) >= floor)
         .forEach(e => log("  VER " + e.id + " " + (e.transport || "-") + " " + (e.author || "")));
       if (!pair) { throw new Error(noPair(open)); }
+      const older = await olderThanHistory(api, p, feed, pair, numbers);
+      if (older) {
+        log("  CREATED " + older.created + ", before the oldest version (" + older.oldest + "): not created by the request");
+        if (!older.own) { log("SKIP " + label + ": older than its versions, and the request holds no version of it"); continue; }
+        if (!pair.old) { log("SKIP " + label + ": older than its versions, and no first version to compare with"); continue; }
+        log("  compared with the first version " + pair.old.id);
+      }
       log("  PAIR new=" + pair.fresh.id + " (" + (pair.fresh.transport || "-") + ") old=" + (pair.old ? pair.old.id + " (" + (pair.old.transport || "-") + ")" : "none"));
       if (skip.pair(pair)) { log("SKIP " + label + ": SAP auto-generated code (author " + pair.fresh.author + ")"); continue; }
       const textOf = dictionary ? dictionary.textOf : async entry => {
@@ -676,6 +703,7 @@ async function staleness(api, request, saved, progress, keepGenerated, cancelled
       const feed = history.feed;
       const pair = pairOf(feed, numbers, open, where.cut && !history.method ? await copiesIn(api, feed) : null);
       if (!pair) { throw new Error(noPair(open)); }
+      if (await olderThanHistory(api, p, feed, pair, numbers) && !pair.old) { continue; }
       if (skip.pair(pair)) { continue; }
       const now = versnos(pair);
       const textOf = history.textOf || async function (entry) {

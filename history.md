@@ -1,3 +1,11 @@
+## 2026-11-09 — Review build waiting scene (0.9.72)
+
+While a transport review is built in Versions, the review waiting strip of the commit window runs under the toolbar in VS Code and Eclipse alike; the progress line and **Stop** stay as they were. The scenes now live once in the Eclipse bundle (`vertex-task-visual.js`), inlined into the page by both hosts.
+
+A program include that is older than its versions is no longer reviewed as created by the request. A function group include created years ago whose first versions came only from another request's transports of copies used to show whole, all lines inserted. When its TRDIR creation date is before its oldest version, it is left out of the review unless the request holds a version of it; then it is compared with its first version. The Build log names the dates.
+
+Function modules have their own group, **Function Modules**, in the review's object list instead of sharing **Programs**.
+
 ## 2026-11-08 — No short retry for exhausted daily quota
 
 OpenRouter free-model daily quota errors stop immediately instead of waiting a minute. A reported zero daily remainder also prevents retries for free routes. Temporary rate limits retain bounded retries; paid models are not blocked by exhausted free quota.

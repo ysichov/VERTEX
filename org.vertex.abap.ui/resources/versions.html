@@ -108,6 +108,7 @@
   .bar input { width: 240px; text-transform: uppercase; }
 
   /* What this system does not have, when a part of the window is left out. */
+  .review-scene { padding: 2px 10px; }
   .missing { padding: 4px 10px; color: var(--danger); background: var(--surface);
              border-bottom: 1px solid var(--line); }
 
@@ -459,6 +460,7 @@
     <button id="review-stop" type="button" hidden>Stop</button>
     <span class="status" id="status"></span>
   </div>
+  <div class="review-scene" id="review-scene" hidden></div>
   <div class="missing" id="missing" hidden></div>
   <div class="cards" id="cards"></div>
   <div class="panes">
@@ -559,6 +561,19 @@ var review_fresh = "";
 function reviewStopControl() {
   var button = document.getElementById("review-stop");
   button.hidden = !review_building || typeof sdeStopReview !== "function";
+  reviewScene();
+}
+/* While a review is built, the review waiting scene (the one the commit window shows for a generated review) runs under
+   the toolbar; it is drawn once and only shown or hidden after that. */
+function reviewScene() {
+  var box = document.getElementById("review-scene");
+  if (review_building && !box.firstChild) {
+    var style = document.createElement("style");
+    style.textContent = window.vertexTaskVisual.css;
+    document.head.appendChild(style);
+    box.innerHTML = window.vertexTaskVisual.html("review", true);
+  }
+  box.hidden = !review_building;
 }
 function stopReviewBuild() {
   if (!review_building || typeof sdeStopReview !== "function") { return; }
@@ -661,6 +676,7 @@ var review_from = "", review_from_of = "";
 var review_saved_at = "";
 
 /*VERTEX_PAGE*/
+/*VERTEX_TASK_VISUAL*/
 
 function loadParts(keepTrail) {
   // The type can change under a load - drilling in, going back, a plan - and

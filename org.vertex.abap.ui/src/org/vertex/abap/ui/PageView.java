@@ -639,10 +639,15 @@ public abstract class PageView extends ViewPart {
 		if (path.endsWith(".html") && text.contains(SHARED_PAGE)) {
 			text = text.replace(SHARED_PAGE, readEntry("resources/vertex-page.js"));
 		}
+		// The waiting scenes (resources/vertex-task-visual.js), shared with VS Code's task-visual.js the same way.
+		if (path.endsWith(".html") && text.contains(TASK_VISUAL)) {
+			text = text.replace(TASK_VISUAL, readEntry("resources/vertex-task-visual.js"));
+		}
 		return text;
 	}
 
 	private static final String SHARED_PAGE = "/*VERTEX_PAGE*/";
+	private static final String TASK_VISUAL = "/*VERTEX_TASK_VISUAL*/";
 
 	/**
 	 * The analysis worker as a page runs it: resources/eclipse-frontend.js with the VS Code analysis

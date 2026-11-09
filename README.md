@@ -12,7 +12,7 @@ Check `git --version` in the environment where VERTEX runs, then fully restart V
 Ordinary API chat needs the configured provider credentials and network access; it does not require Git, SAP, Python or a separate Node.js installation. Claude Code, Codex and CodeMie modes require their installed client and authentication. Project builds/tests require that project's own toolchain. VERTEX local commands use Windows PowerShell 5.1 on Windows and `/bin/sh` elsewhere; commands and paths must match that host. The bundled Node runtime does not mean an external `node` command is installed. Taking the chat's SAP tools from ARC-1 or mcp-abap-adt (the panel's MCP list) needs Node.js installed, for `npx`; vibing-steampunk needs its `vsp` executable.
 
 
-Current VS Code extension: **0.9.71**.
+Current VS Code extension: **0.9.72**.
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
@@ -113,7 +113,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.71.20261108093645**; the VS Code extension is **0.9.71**.
+**0.9.72.20261109090413**; the VS Code extension is **0.9.72**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -435,7 +435,7 @@ Building a review is here too, not only reading one. In VS Code a request with n
 built from ADT with **Build review** - opening only reads a saved one - every part it carries - on its own object list or in a task not yet released; an object taken out of the request after its task was released is left out - except code SAP generated (SAP*'s versions, `*_MPC`, `*_MPC_EXT`, `*_DPC`, `SAPL*`, comment-only new objects, empty class sections, includes the table maintenance generator (SE54) writes for SM30, and generator stamp lines) unless **Ignore SAP generated** is cleared, with the **Blame** toggle each changed line with the developer who wrote it, the pair of versions chosen by AVE's rule,
 diffed and cut into blocks by AVE's walk - each part appears as soon as it is read, and a changed line shows what changed
 inside it. Before it is built, Review lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's
-report does - with newly created objects in green and objects deleted since in red. In VS Code, **Stop** cancels a build before saving; a SAP call already in progress may finish. In the request list, a request number is a link to its review when one is saved in SAP or in files for the current system. **Copy log** copies the build diagnostics. In VS Code, the chat receives the open request review's object list and saved changed lines; it can explain the request without opening every object. Select text in a Tools page or the VS Code sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. **Rebuild from ADT** builds it again from
+report does - with newly created objects in green and objects deleted since in red. In VS Code, **Stop** cancels a build before saving; a SAP call already in progress may finish. While a review is built, the review waiting strip runs under the toolbar - a beam scans diff rows and a draft is typed out - beside the part being read. In the request list, a request number is a link to its review when one is saved in SAP or in files for the current system. **Copy log** copies the build diagnostics. In VS Code, the chat receives the open request review's object list and saved changed lines; it can explain the request without opening every object. Select text in a Tools page or the VS Code sidebar chat and use ⌘C on macOS or Ctrl+C on Windows/Linux to copy it. **Rebuild from ADT** builds it again from
 the request as it is now. A built review is saved at once, in `ZAVE_REVIEW` or in files as `vertex.review.storage` says,
 and a folded **Build log** tells why a part gave no block; approving,
 declining and commenting then change it the way AVE does. A saved review opens at once and is checked against the

@@ -53,6 +53,7 @@ const required = [
     "extension/resources/metrics.html",
     "extension/resources/versions.html",
     "extension/resources/vertex-page.js",
+    "extension/resources/vertex-task-visual.js",
     "extension/pages/visual-debug.html",
     "extension/node_modules/@mcp-abap-adt/auth-broker/package.json",
     "extension/node_modules/@mcp-abap-adt/auth-broker/COPYING",

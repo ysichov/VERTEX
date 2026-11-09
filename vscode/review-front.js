@@ -29,7 +29,7 @@ const list = value => Array.isArray(value) ? value : [];
 const TYPE_ORDER = { CLSD: 1, CPUB: 2, CPRO: 3, CPRI: 4, CINC: 5, CDEF: 6, METH: 7 };
 const CLASS_PARTS = ["CLSD", "CPUB", "CPRO", "CPRI", "CINC", "CDEF"];
 const catOrder = type => ({ TABD: 2, DOMD: 3, DTED: 3, DDLS: 4 })[type] || 1;
-const catLabel = type => ({ TABD: "Tables / Structures", DOMD: "Domains / Data Elements", DTED: "Domains / Data Elements", DDLS: "CDS Views" })[type] || "Programs";
+const catLabel = type => ({ TABD: "Tables / Structures", DOMD: "Domains / Data Elements", DTED: "Domains / Data Elements", DDLS: "CDS Views", FUNC: "Function Modules" })[type] || "Programs";
 function reportObjects(stats) {
   const keyed = list(stats).map((s, idx) => {
     let className = up(s.CLASS_NAME).trim();

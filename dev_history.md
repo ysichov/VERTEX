@@ -1,3 +1,11 @@
+## 2026-11-09 — Review build waiting scene (0.9.72)
+
+The Versions page showed only a text progress line while a review was built. The waiting scenes were VS Code-only (`vscode/task-visual.js`), and the Versions page is shared with Eclipse, so the scene could not simply be required there. Moved the file to `org.vertex.abap.ui/resources/vertex-task-visual.js` as a dual-mode script (CommonJS or `window.vertexTaskVisual`); `vscode/task-visual.js` is now a locator shim like `abap-control.js`. Pages mark `/*VERTEX_TASK_VISUAL*/`, filled by `PageView.readResource`, `extension.js` and `tools-window.js`. `reviewStopControl` shows the wide review strip while `review_building` is set. Built VSIX 0.9.72 and Eclipse 0.9.72.20261109090413.
+
+Same landing: LZHR_V_ACTORMSTRF01..F06 showed up whole in a review although nobody touched them, and AVE did not show them. Their only versions were another request's transports of copies (excluded as OLD) above a version 1 with no request, so `pairOf` read them as created by the request. ACE checks the real creation date; `olderThanHistory` does the same with TRDIR-CDAT against the oldest VRSD date for REPS parts, in the build and in the staleness check. First cut took the newest non-own version below as OLD; the user's rule replaced it: no version of the request means the request did not change it - skip; a version of the request means compare with version 1. Not verified against the system (it was unreachable); unit tests pass.
+
+Also: FUNC parts get their own group, Function Modules (`catLabel` in review-front.js), at the user's request.
+
 ## 2026-11-08 — No short retry for exhausted daily quota
 
 OpenRouter free-model daily quota errors stop immediately instead of waiting a minute. A reported zero daily remainder also prevents retries for free routes. Temporary rate limits retain bounded retries; paid models are not blocked by exhausted free quota.

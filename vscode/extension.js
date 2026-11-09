@@ -125,6 +125,7 @@ function pageHtml(service, initial) {
   let html = fs.readFileSync(path.join(PAGES, SERVICES[service].page), "utf8");
   // What the Tools pages share, where the page marks it (vertex-page.js; PageView does the same in Eclipse).
   html = html.replace("/*VERTEX_PAGE*/", () => fs.readFileSync(path.join(PAGES, "vertex-page.js"), "utf8"));
+  html = html.replace("/*VERTEX_TASK_VISUAL*/", () => fs.readFileSync(path.join(PAGES, "vertex-task-visual.js"), "utf8"));
   const controls = fs.readFileSync(path.join(PAGES, "vertex-controls.css"), "utf8");
   html = html.replace("</head>", "<style>" + controls + "</style></head>");
   html = html.replace("<script>", SHIM + String.fromCharCode(10) + "<script>");
