@@ -110,6 +110,8 @@ function reviewSnapshot(changes, title, folder, limit = 180000) {
     text: truncated ? text.slice(0, Math.max(0, limit - 50)) + "\n[Git review context truncated]" : text };
 }
 /* A commit of the history on VERTEX's review page, read only: ASK AI on a block, a file or the whole commit. */
+// Per folder for this session: whether the hidden extensions are shown on the Uncommitted changes page.
+const showHidden=new Map();
 async function openCommit(vscode, folder, commit) {
   const working = commit.working === true;
   const key = folder + "|" + (working ? "working" : commit.hash);
@@ -134,15 +136,23 @@ async function openCommit(vscode, folder, commit) {
   const makeFiles = changes => changes.map((c, i) => ({ id: "f" + (i + 1), path: c.file, label: path.basename(c.file), binary: c.binary,
     kind: c.status === "A" ? "new" : c.status === "D" ? "deleted" : "changed",
     parts: c.binary ? [] : review.hunks(c.before, c.after), before:c.before, after: c.after, abap: /\.abap$/i.test(c.file) }));
-  let files = makeFiles(changes);
+  // Files of the hidden extensions (vertex.git.hiddenExtensions, .md and .log by default) are left out of the
+  // page and of the AI snapshot until "Show" is on; the commit still takes every change.
+  const hiddenExts=()=>{const list=vscode.workspace?.getConfiguration?vscode.workspace.getConfiguration("vertex.git",vscode.Uri?.file?vscode.Uri.file(folder):undefined).get("hiddenExtensions",["md","log"]):["md","log"];
+    return (Array.isArray(list)?list:[]).map(x=>String(x).trim().replace(/^\*?\./,"").toLowerCase()).filter(Boolean);};
+  const isHidden=file=>working&&hiddenExts().includes(path.extname(file).slice(1).toLowerCase());
+  const visible=()=>showHidden.get(folder)?changes:changes.filter(c=>!isHidden(c.file));
+  const hiddenCount=()=>changes.filter(c=>isHidden(c.file)).length;
+  let files = makeFiles(visible());
   untrackLinks = require("./file-links").register(panel,()=>files.map(f=>({id:f.id,path:path.resolve(folder,f.path),relative:f.path})));
-  let snapshot = changes.length ? reviewSnapshot(changes, title, folder) : null;
+  const shownChanges=()=>visible();
+  let snapshot = shownChanges().length ? reviewSnapshot(shownChanges(), title, folder) : null;
   if(snapshot)reviewSnapshots.set(panel, snapshot);
   panel.onDidChangeViewState(event => {
     if (event.webviewPanel.active) { reviewSnapshots.delete(panel); if(snapshot)reviewSnapshots.set(panel, snapshot); }
   });
   const render = () => { panel.webview.html = review.filesReviewHtml(files, { readonly: { title: title + (working ? "" : " · " + (commit.subject || "")),
-    commit: working && files.length > 0, refresh: working, subtitle: working ? folder + " · HEAD → working folder (including staged and untracked files)" : [commit.author, formatDate(commit.date), commit.hash].filter(Boolean).join(" · ") } }); };
+    commit: working && changes.length > 0, refresh: working, hidden: working ? { exts: hiddenExts(), count: hiddenCount(), shown: showHidden.get(folder) === true } : null, subtitle: working ? folder + " · HEAD → working folder (including staged and untracked files)" : [commit.author, formatDate(commit.date), commit.hash].filter(Boolean).join(" · ") } }); };
   render();
   const name = working ? "uncommitted changes" : "commit " + commit.short;
   let commitBusy=false, committed=false;
@@ -157,7 +167,7 @@ async function openCommit(vscode, folder, commit) {
         if(message.action==="loadBranches")await panel.webview.postMessage({branchInfo:await helper.info(folder)});
         else if(message.action==="switchBranch"){
           await helper.switchBranch(folder,message);
-          changes=await readWorkingChanges(folder);expectedHead=(await git(folder,["rev-parse","HEAD"])).trim();files=makeFiles(changes);snapshot=changes.length?reviewSnapshot(changes,title,folder):null;
+          changes=await readWorkingChanges(folder);expectedHead=(await git(folder,["rev-parse","HEAD"])).trim();files=makeFiles(visible());snapshot=visible().length?reviewSnapshot(visible(),title,folder):null;
           reviewSnapshots.delete(panel);if(snapshot)reviewSnapshots.set(panel,snapshot);committed=false;panel.title=title;render();
         }else if(message.action==="preparePR")await panel.webview.postMessage({prInfo:await helper.prInfo(folder)});
         else if(message.action==="generatePR"){
@@ -174,13 +184,18 @@ async function openCommit(vscode, folder, commit) {
       try{const helper=require("./git-push");if(message.action==="preparePush")await panel.webview.postMessage({pushInfo:await helper.info(folder)});else await panel.webview.postMessage({pushDone:await helper.push(folder,message)});}
       catch(error){await panel.webview.postMessage({pushError:error.message});}finally{commitBusy=false;}return;
     }
+    if (working && message?.action === "toggleHidden") {
+      showHidden.set(folder,!showHidden.get(folder));files=makeFiles(visible());
+      snapshot=visible().length?reviewSnapshot(visible(),title,folder):null;
+      reviewSnapshots.delete(panel);if(snapshot)reviewSnapshots.set(panel,snapshot);render();return;
+    }
     if (working && message?.action === "refresh") {
       if(commitBusy||committed)return;commitBusy=true;
       try {
         const next=await readWorkingChanges(folder);
         const head=(await git(folder,["rev-parse","HEAD"])).trim();
-        changes=next;expectedHead=head;files=makeFiles(changes);
-        snapshot=changes.length?reviewSnapshot(changes,title,folder):null;
+        changes=next;expectedHead=head;files=makeFiles(visible());
+        snapshot=visible().length?reviewSnapshot(visible(),title,folder):null;
         reviewSnapshots.delete(panel);if(snapshot)reviewSnapshots.set(panel,snapshot);
         render();
       }catch(error){await panel.webview.postMessage({reviewRefreshError:error.message});}finally{commitBusy=false;}return;
@@ -240,6 +255,7 @@ button:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 0 6px -
 .fold { padding: 1px 6px; margin-right: 6px; }
 .description { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 3px; color: var(--vscode-descriptionForeground); }
 #error{color:var(--vscode-errorForeground)}
+.history-head{display:flex;align-items:center;gap:8px}.history-head h1{margin-right:4px}
 table{border-collapse:collapse;width:100%}
 th,td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--vscode-panel-border,transparent);vertical-align:top}
 th{position:sticky;top:0;background:var(--vscode-editor-background);color:var(--vscode-descriptionForeground);font-weight:600}
@@ -247,13 +263,13 @@ tr:hover td{background:var(--vscode-list-hoverBackground)}
 td.hash{font-family:var(--vscode-editor-font-family);white-space:nowrap}td.hash a{color:var(--vscode-textLink-foreground);cursor:pointer;text-decoration:none}td.hash a:hover{color:var(--vscode-textLink-activeForeground);text-decoration:underline}td.date{white-space:nowrap}
 ${require("./code-review").controlsCss}
 </style></head><body>
-<h1>Git History</h1><div id="folder"></div><div id="error" role="alert"></div>
+<header class="history-head"><h1>Git History</h1><button id="refresh" title="Refresh Git history" aria-label="Refresh Git history">↻</button></header><div id="folder"></div><div id="error" role="alert"></div>
 <div id="filters" hidden><label>From <input id="from" placeholder="dd-mm-yyyy" aria-label="From date, dd-mm-yyyy" maxlength="10"></label><label>To <input id="to" placeholder="dd-mm-yyyy" aria-label="To date, dd-mm-yyyy" maxlength="10"></label><label>Month <select id="month"><option value="">Last 10 commits</option></select></label><label>Author <select id="author"><option value="">All authors</option></select></label></div>
 <table hidden><thead><tr><th>#</th><th>Commit</th><th>Date</th><th>Author</th><th>Message</th></tr></thead><tbody></tbody></table>
 <script nonce="${nonce}">
 const vscode=acquireVsCodeApi();
 const formatDate=${formatDate.toString()};
-let commits=[];
+let commits=[],dirty=true;
 const expandedDescriptions=new Set();
 const from=document.getElementById("from"),to=document.getElementById("to"),month=document.getElementById("month"),author=document.getElementById("author"),error=document.getElementById("error");
 function parseDate(input){
@@ -266,10 +282,10 @@ function parseDate(input){
 }
 function render(){
   const table=document.querySelector("table"),body=table.querySelector("tbody");body.replaceChildren();
-  const row=document.createElement("tr"),cell=document.createElement("td"),link=document.createElement("a");
+  if(dirty){const row=document.createElement("tr"),cell=document.createElement("td"),link=document.createElement("a");
   cell.colSpan=5;cell.className="hash";link.textContent="Uncommitted changes";link.tabIndex=0;link.title="Review staged, unstaged and untracked changes";
   const go=()=>vscode.postMessage({action:"commit",commit:{working:true}});
-  link.onclick=go;link.onkeydown=e=>{if(e.key==="Enter")go();};cell.appendChild(link);row.appendChild(cell);body.appendChild(row);
+  link.onclick=go;link.onkeydown=e=>{if(e.key==="Enter")go();};cell.appendChild(link);row.appendChild(cell);body.appendChild(row);}
   const start=parseDate(from),end=parseDate(to);
   from.setAttribute("aria-invalid",String(start===null));to.setAttribute("aria-invalid",String(end===null));
   if(start===null||end===null){error.textContent="Enter dates as dd-mm-yyyy.";return;}
@@ -314,6 +330,7 @@ window.addEventListener("message",e=>{
   const m=e.data||{};
   if(document.getElementById("folder").textContent!==m.folder){expandedDescriptions.clear();from.value="";to.value="";month.value="";author.value="";}
   document.getElementById("folder").textContent=m.folder||"";
+  dirty=m.dirty!==false;
   commits=(m.commits||[]).map((c,i)=>({...c,number:c.number ?? m.commits.length-i}));
   document.querySelector("table").hidden=!m.commits;
   document.getElementById("filters").hidden=!m.commits;
@@ -328,6 +345,7 @@ window.addEventListener("message",e=>{
   if(m.error){error.textContent=m.error;return;}
   render();
 });
+document.getElementById("refresh").onclick=()=>vscode.postMessage({action:"refresh"});
 vscode.postMessage({action:"ready"});
 </script></body></html>`;
 }
@@ -336,12 +354,16 @@ let panel, shown = "";
 function open(vscode, folder) {
   shown = String(folder || "");
   if (!shown) throw new Error("Choose a folder first.");
-  let refreshId = 0;
-  const refresh = async (filter = {}) => {
+  let refreshId = 0, lastFilter = {};
+  const refresh = async (filter = lastFilter) => {
+    lastFilter = filter;
     const id = ++refreshId, folder = shown;
     try {
       const commits = await readCommits(folder, filter);
-      if (id === refreshId && folder === shown) await panel?.webview.postMessage({ folder, commits, months: commits.months, authors: commits.authors });
+      // The Uncommitted changes row is offered only when the folder has some.
+      let dirty = true;
+      try { dirty = (await git(folder, ["status", "--porcelain", "--untracked-files=normal", "--", "."])).trim() !== ""; } catch (_) {}
+      if (id === refreshId && folder === shown) await panel?.webview.postMessage({ folder, commits, dirty, months: commits.months, authors: commits.authors });
     }
     catch (error) { await panel?.webview.postMessage({ folder: shown, error: error.message }); }
   };
@@ -349,8 +371,9 @@ function open(vscode, folder) {
   panel = vscode.window.createWebviewPanel("vertex.gitHistory", "VERTEX: Git History", vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
   panel.webview.html = page(crypto.randomBytes(16).toString("hex"));
+  panel.onDidChangeViewState?.(event => { if (event.webviewPanel.visible) refresh(); });
   panel.webview.onDidReceiveMessage(async message => {
-    if (message?.action === "ready") refresh();
+    if (message?.action === "ready" || message?.action === "refresh") refresh();
     if (message?.action === "filter") refresh({from:message.from,to:message.to,author:message.author});
     if (message?.action === "commit" && message.commit) {
       try { await openCommit(vscode, shown, message.commit); }

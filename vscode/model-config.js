@@ -43,7 +43,9 @@ function read(vscode, id) {
   return { hidden: Array.isArray(own.hidden) ? own.hidden : [],
            enabled: Array.isArray(own.enabled) ? own.enabled : null,
            versions: Array.isArray(own.versions) ? own.versions.filter(v => v && v.id) : [],
-           off: own.off === true,
+           // A local server (LM Studio, Ollama) starts switched off unless it is the provider in use.
+           off: own.off === true || compatible.isLocal(id) && own.off !== false
+             && vscode.workspace.getConfiguration("vertex.ai").get("provider", "") !== id,
            unavailable: own.unavailable && typeof own.unavailable === "object" ? own.unavailable : {},
            availabilityMigrated: own.availabilityMigrated === true };
 }
@@ -59,7 +61,7 @@ async function write(vscode, id, config) {
   const next = config.models === false ? Object.assign({}, all[id] || {})
     : { ...(all[id] || {}), ...(id === "claude" ? { enabled: config.enabled, versions: config.versions } : { hidden: config.hidden }),
         ...(config.unavailable ? { unavailable: config.unavailable } : {}) };
-  if (config.off) { next.off = true; } else { delete next.off; }
+  if (config.off) { next.off = true; } else if (compatible.isLocal(id)) { next.off = false; } else { delete next.off; }
   all[id] = next;
   await settings.update("modelConfig", all, vscode.ConfigurationTarget.Global);
 }

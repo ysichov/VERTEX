@@ -477,3 +477,33 @@ test("model reasoning is written to the session log as a thinking note", () => {
   assert.match(text, /"note":"thinking","text":"Thinking it through"/);
   assert.match(text, /"text":"Answer"/);
 });
+
+test("local servers start switched off in LLM Providers unless switched on or in use", async () => {
+  let stored = {}, provider = "codex-subscription";
+  const vscode = { ConfigurationTarget: { Global: 1 }, workspace: { getConfiguration: () => ({
+    get: (key, fallback) => key === "modelConfig" ? stored : key === "provider" ? provider : fallback,
+    update: async (key, value) => { if (key === "modelConfig") stored = value; } }) } };
+  assert.equal(modelConfig.isOn(vscode, "lmstudio-local"), false);
+  assert.equal(modelConfig.isOn(vscode, "ollama-local"), false);
+  assert.equal(modelConfig.isOn(vscode, "openai-api"), true);
+  assert.ok(!modelConfig.offered(vscode).some(p => p.id === "ollama-local"));
+  provider = "lmstudio-local";
+  assert.equal(modelConfig.isOn(vscode, "lmstudio-local"), true);
+  provider = "codex-subscription";
+  stored = { "ollama-local": { off: false } };
+  assert.equal(modelConfig.isOn(vscode, "ollama-local"), true);
+});
+
+test("Uncommitted changes offers a vertex-toggle for hidden .md/.log files and says they are still committed", () => {
+  const review = require("../code-review");
+  const files = [{ id: "f1", path: "a.js", label: "a.js", kind: "changed", parts: review.hunks("x\n", "y\n"), before: "x\n", after: "y\n" }];
+  const html = review.filesReviewHtml(files, { readonly: { title: "Uncommitted changes", commit: true, refresh: true, hidden: { exts: ["md", "log"], count: 3, shown: false } } });
+  assert.match(html, /id="hidden-files" class="vertex-toggle" aria-pressed="false"[^>]*>\.md, \.log \(3\)</);
+  assert.match(html, /plus 3 hidden \.md, \.log files \(not sent to AI\)/);
+  assert.match(html, /action:'toggleHidden'/);
+  const on = review.filesReviewHtml(files, { readonly: { title: "Uncommitted changes", commit: true, refresh: true, hidden: { exts: ["md", "log"], count: 3, shown: true } } });
+  assert.match(on, /class="vertex-toggle on" aria-pressed="true"/);
+  assert.doesNotMatch(on, /hidden \.md, \.log files/);
+  const none = review.filesReviewHtml(files, { readonly: { title: "Uncommitted changes", commit: true, refresh: true, hidden: { exts: ["md", "log"], count: 0, shown: false } } });
+  assert.doesNotMatch(none, /id="hidden-files"/);
+});

@@ -718,6 +718,13 @@
           "default": "codex-subscription",
           "markdownDescription": "AI provider used by the VERTEX assistant. API keys are kept in SecretStorage."
         },
+        "vertex.git.hiddenExtensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["md", "log"],
+          "scope": "resource",
+          "markdownDescription": "File extensions left out of the **Uncommitted changes** page and of the AI commit message request until their toggle is switched on. The commit still includes them. Can be set per workspace or folder."
+        },
         "vertex.ai.lmstudioUrl": {
           "type": "string",
           "default": "",

@@ -13,7 +13,7 @@ function fixture(){
   setAttribute(){}
   querySelector(){return body;}
  }
- const body=new Element(),table=new Element(),ids=Object.fromEntries(['from','to','month','author','error','folder','filters'].map(k=>[k,new Element()]));
+ const body=new Element(),table=new Element(),ids=Object.fromEntries(['from','to','month','author','error','folder','filters','refresh'].map(k=>[k,new Element()]));
  vm.runInNewContext(html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1],{document:{getElementById:id=>ids[id],querySelector:()=>table,createElement:()=>new Element()},window:{addEventListener(name,fn){receive=fn;}},setTimeout:()=>0,clearTimeout(){},acquireVsCodeApi:()=>({postMessage(){}}),Option:function(text,value){this.text=text;this.value=value;}});
  receive({data:{folder:'.',commits:[{short:'c',date:'2024-03-01T00:00:00+02:00'},{short:'b',date:'2024-02-29T23:59:59-08:00'},{short:'a',date:'2024-02-01T00:00:00Z'}]}});
  close();return {ids,body,receive};
@@ -121,4 +121,36 @@ test('uncommitted refresh updates the same panel and clears obsolete review cont
  const opening=history.openCommit(vscode,folder,{working:true});assert.match(html,/data-operation="generate"/);assert.match(html,/generate-scene/);assert.match(html,/Reading files and preparing/);await opening;assert.match(html,/id="review-refresh"/);assert.match(html,/first/);
  fs.writeFileSync(path.join(folder,'a.txt'),'second');await receive({action:'refresh'});assert.match(html,/second/);assert.equal(panels,1);
  git('checkout','--','a.txt');await receive({action:'refresh'});assert.match(html,/0 files/);assert.doesNotMatch(html,/id="commit-open"/);assert.match(html,/id="review-refresh"/);
+});
+test('uncommitted .md and .log files are hidden until toggled, left out of the AI snapshot, and still committed',async t=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');
+ const folder=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-hidden-'));let close,receive,html;
+ t.after(()=>{close?.();fs.rmSync(folder,{recursive:true,force:true});});
+ const git=(...args)=>execFileSync('git',args,{cwd:folder,windowsHide:true}).toString();
+ git('init');git('config','user.name','Test');git('config','user.email','test@example.test');
+ fs.writeFileSync(path.join(folder,'a.js'),'base');git('add','.');git('commit','-m','base');
+ fs.writeFileSync(path.join(folder,'a.js'),'changed');fs.writeFileSync(path.join(folder,'NOTES.md'),'notes');fs.writeFileSync(path.join(folder,'run.log'),'log');
+ const vscode={ViewColumn:{Active:1},window:{createWebviewPanel(){return {webview:{set html(v){html=v;},onDidReceiveMessage(fn){receive=fn;},postMessage(){}},onDidDispose(fn){close=fn;},onDidChangeViewState(){}};}}};
+ await history.openCommit(vscode,folder,{working:true});
+ assert.match(html,/1 file ·/);assert.match(html,/\.md, \.log \(2\)/);assert.doesNotMatch(html,/NOTES\.md<\//);
+ await receive({action:"generateCommit"}).catch(()=>{});
+ await receive({action:'toggleHidden'});assert.match(html,/3 files ·/);assert.match(html,/class="vertex-toggle on"/);
+ await receive({action:'toggleHidden'});assert.match(html,/1 file ·/);
+ await receive({action:'commitChanges',summary:'All'});
+ assert.match(git('show','--name-only','--format=','HEAD'),/NOTES\.md[\s\S]*a\.js|a\.js[\s\S]*NOTES\.md/);
+ assert.match(git('show','--name-only','--format=','HEAD'),/run\.log/);
+});
+test('Git History offers the Uncommitted changes row only when the folder has changes',async t=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');
+ const folder=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-dirty-'));t.after(()=>fs.rmSync(folder,{recursive:true,force:true}));
+ const git=(...args)=>execFileSync('git',args,{cwd:folder,windowsHide:true});
+ git('init');git('config','user.name','Test');git('config','user.email','test@example.test');fs.writeFileSync(path.join(folder,'a.txt'),'base');git('add','.');git('commit','-m','base');
+ delete require.cache[require.resolve('../git-history')];const fresh=require('../git-history');
+ const sent=[];let receive,html;
+ fresh.open({ViewColumn:{Beside:2},window:{createWebviewPanel(){return {webview:{set html(v){html=v;},onDidReceiveMessage(fn){receive=fn;},postMessage(m){sent.push(m);}},onDidDispose(){},onDidChangeViewState(){}};}}},folder);
+ const next=async()=>{const n=sent.length;for(let i=0;i<200&&sent.length===n;i++)await new Promise(r=>setTimeout(r,10));return sent.at(-1);};
+ receive({action:'ready'});assert.equal((await next()).dirty,false);
+ fs.writeFileSync(path.join(folder,'a.txt'),'changed');receive({action:'ready'});assert.equal((await next()).dirty,true);
+ assert.match(html,/if\(dirty\)\{/);assert.match(html,/<button id="refresh" title="Refresh Git history"[^>]*>↻<\/button>/);
+ fs.writeFileSync(path.join(folder,'a.txt'),'base');receive({action:'refresh'});assert.equal((await next()).dirty,false);
 });
