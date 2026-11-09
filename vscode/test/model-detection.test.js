@@ -132,7 +132,7 @@ test("model-specific 403 does not stop checking other models", async () => {
 test('Copy error writes the complete text and URL to the host clipboard',async()=>{
  let handler,copied;
  const posts=[];
- const vscode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})},
+ const vscode={ViewColumn:{Active:1},ConfigurationTarget:{Global:1},workspace:{getConfiguration:(()=>{const v={};return()=>({get:(k,f)=>k in v?v[k]:f,update:async(k,x)=>{v[k]=x;}});})()},
   env:{clipboard:{async writeText(text){copied=text;}}},
   window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})} };
  require('../model-config').open(vscode,async()=>[],()=>'',()=>{},{});
@@ -165,7 +165,7 @@ test('payment and insufficient credits errors do not auto-stop without a credit 
 test('single model check probes only the requested model',async t=>{
  let handler;const calls=[],posts=[];
  t.mock.method(require('../model-detection'),'probe',async(_,__,id,model)=>{calls.push([id,model]);});
- const vscode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})},
+ const vscode={ViewColumn:{Active:1},ConfigurationTarget:{Global:1},workspace:{getConfiguration:(()=>{const v={};return()=>({get:(k,f)=>k in v?v[k]:f,update:async(k,x)=>{v[k]=x;}});})()},
   window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})}};
  require('../model-config').open(vscode,async()=>[{id:'a'},{id:'b'}],()=>'',()=>{},{});
  await handler({action:'detect-model',provider:'vercel-api',model:'b'});
@@ -183,7 +183,7 @@ test('bulk discovery skips already available models',async()=>{
 test('repeated bulk checks reuse successful checks, including a single-model check',async t=>{
  let handler;const calls=[];
  t.mock.method(require('../model-detection'),'probe',async(_,__,id,model)=>calls.push(model));
- const vscode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})},
+ const vscode={ViewColumn:{Active:1},ConfigurationTarget:{Global:1},workspace:{getConfiguration:(()=>{const v={};return()=>({get:(k,f)=>k in v?v[k]:f,update:async(k,x)=>{v[k]=x;}});})()},
  window:{createWebviewPanel:()=>({webview:{postMessage(){},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})}};
  require('../model-config').open(vscode,async()=>[{id:'a'},{id:'b'}],()=>'',()=>{},{});
  await handler({action:'detect-model',provider:'vercel-api',model:'a'});
@@ -195,20 +195,38 @@ test('repeated bulk checks reuse successful checks, including a single-model che
 });
 
 
+test('new catalog models arrive off, a dropped one stays as not in catalog',()=>{
+ const config=require('../model-config');
+ const read={enabled:['a','gone'],known:['a','b','gone'],hidden:[],versions:[],unavailable:{}};
+ const rows=config.rows([{id:'a'},{id:'b'},{id:'c'}],read,'codex');
+ assert.deepEqual(rows.map(r=>[r.id,r.on,!!r.isNew,!!r.missing]),[['a',true,false,false],['b',false,false,false],['c',false,true,false],['gone',true,false,true]]);
+});
+
+test('adopting every provider at once loses none of them',async()=>{
+ const config=require('../model-config');
+ let all={codex:{hidden:['x']},'vercel-api':{hidden:[]}};
+ const settings={get:(key,fallback)=>key==='modelConfig'?all:fallback,async update(key,value){await new Promise(r=>setTimeout(r,5));all=value;}};
+ const vscode={ConfigurationTarget:{Global:1},workspace:{getConfiguration:()=>settings}};
+ await Promise.all([config.adopt(vscode,'codex',[{id:'x'},{id:'y'}]),config.adopt(vscode,'vercel-api',[{id:'v'}])]);
+ assert.deepEqual(all.codex.enabled,['y']);assert.deepEqual(all['vercel-api'].enabled,['v']);
+});
+
 test('unchecked selection is migrated to a persistent unavailable flag only once',async()=>{
  const config=require('../model-config');
  let all={'vercel-api':{hidden:['old-off']}};let updates=0;
  const settings={get:(key,fallback)=>key==='modelConfig'?all:fallback,async update(key,value){assert.equal(key,'modelConfig');all=value;updates++;}};
  const vscode={ConfigurationTarget:{Global:1},workspace:{getConfiguration:()=>settings}};
  const list=[{id:'old-off',label:'Old off'},{id:'selected',label:'Selected'},{id:'later-off',label:'Later off'}];
+ await config.adopt(vscode,'vercel-api',list);
+ assert.deepEqual(all['vercel-api'].enabled,['selected','later-off']);assert.equal(all['vercel-api'].hidden,undefined);
  await config.migrateUnavailable(vscode,'vercel-api',list);
  assert.equal(all['vercel-api'].unavailable['old-off'].source,'probe');
  let rows=config.rows(list,config.read(vscode,'vercel-api'),'vercel-api');
  assert.equal(rows[0].available,false);assert.equal(rows[0].on,false);assert.equal(rows[1].available,undefined);
  assert.equal(rows[0].reason,'Unavailable');assert.equal(rows[0].checked,true);
- all['vercel-api'].hidden.push('later-off');
+ all['vercel-api'].enabled=['selected'];
  await config.migrateUnavailable(vscode,'vercel-api',list);
- assert.equal(updates,1);assert.equal(all['vercel-api'].unavailable['later-off'],undefined);
+ assert.equal(updates,2);assert.equal(all['vercel-api'].unavailable['later-off'],undefined);
  rows=config.rows(list,config.read(vscode,'vercel-api'),'vercel-api');
  assert.equal(rows[2].on,false);assert.equal(rows[2].available,undefined);
 });
@@ -219,7 +237,7 @@ test('checks persist per key across windows, including failures and interrupted 
  const calls=[];let dispose;
  t.mock.method(require('../model-detection'),'probe',async(_,__,id,model)=>{calls.push(model);if(model==='b')throw new Error('429');if(model==='c')dispose();});
  const posts=[];let handler;
- const vscode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(fn){dispose=fn;}})}};
+ const vscode={ViewColumn:{Active:1},ConfigurationTarget:{Global:1},workspace:{getConfiguration:(()=>{const v={};return()=>({get:(k,f)=>k in v?v[k]:f,update:async(k,x)=>{v[k]=x;}});})()},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(fn){dispose=fn;}})}};
  const open=()=>require('../model-config').open(vscode,async()=>['a','b','c','d'].map(id=>({id})),()=>'',()=>{},secrets);
  open();await handler({action:'detect',provider:'openrouter-api'});assert.deepEqual(calls,['a','b','c']);
  assert.equal(posts.filter(p=>p.checkedRow).length,3);
@@ -236,7 +254,7 @@ test('checks persist per key across windows, including failures and interrupted 
 test('group check probes only that model provider and returns its scope',async t=>{
  let handler;const calls=[],posts=[];
  t.mock.method(require('../model-detection'),'probe',async(_,__,id,model)=>calls.push(model));
- const vscode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})}};
+ const vscode={ViewColumn:{Active:1},ConfigurationTarget:{Global:1},workspace:{getConfiguration:(()=>{const v={};return()=>({get:(k,f)=>k in v?v[k]:f,update:async(k,x)=>{v[k]=x;}});})()},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})}};
  require('../model-config').open(vscode,async()=>[{id:'openai/a'},{id:'google/b'},{id:'openai/c'}],()=>'',()=>{},{});
  await handler({action:'detect',provider:'openrouter-api',group:'openai'});
  assert.deepEqual(calls,['openai/a','openai/c']);const result=posts.at(-1).detection.results[0];assert.equal(result.group,'openai');assert.equal(result.total,2);
@@ -244,7 +262,7 @@ test('group check probes only that model provider and returns its scope',async t
 
 test('OpenRouter Free group check never probes paid or known-unavailable models',async t=>{
  let handler;const calls=[],posts=[];t.mock.method(require('../model-detection'),'probe',async(_,__,id,model)=>calls.push(model));
- const vscode={ViewColumn:{Active:1},workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})}};
+ const vscode={ViewColumn:{Active:1},ConfigurationTarget:{Global:1},workspace:{getConfiguration:(()=>{const v={};return()=>({get:(k,f)=>k in v?v[k]:f,update:async(k,x)=>{v[k]=x;}});})()},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})}};
  require('../model-config').open(vscode,async()=>[{id:'openai/free',free:true},{id:'openai/paid',free:false},{id:'google/free',free:true},{id:'openai/unavailable',free:true,available:false}],()=>'',()=>{},{});
  await handler({action:'detect',provider:'openrouter-api',group:'openai',filter:'free'});assert.deepEqual(calls,['openai/free']);assert.equal(posts.at(-1).detection.results[0].filtered,true);
 });

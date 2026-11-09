@@ -87,7 +87,7 @@ test("LLM Providers selects the Codex installation before loading its models", a
   await receive({ action: "load", provider: "codex" });
   assert.equal(forgotten, "codex");
   assert.equal(calls, 2);
-  assert.equal(values.model, "", "a removed CLI model is no longer selected");
+  assert.equal(values.model, "gpt-5.2", "a model the catalog dropped stays chosen; the VERTEX panel reports it");
   assert.doesNotMatch(panel.webview.html, /Refresh models/);
 });
 
@@ -179,7 +179,8 @@ test('Vercel metadata distinguishes declared support, no image input and unknown
  assert.deepEqual(result[0].capabilities,{tools:true,json:true,reasoning:true,vision:false,web:null});
  assert.equal(result[0].contextWindow,1000000);assert.equal(result[0].description,'Specialized extraction model');
  const unknown=require('../model-capabilities').metadata({});assert.equal(unknown.capabilities.vision,null);
- const vscode={workspace:{getConfiguration:()=>({get:(_,fallback)=>fallback})}};
+ const vscode={ConfigurationTarget:{Global:1},workspace:{getConfiguration:(()=>{const v={};return()=>({get:(k,f)=>k in v?v[k]:f,update:async(k,x)=>{v[k]=x;}});})()}};
+ await modelConfig.adopt(vscode,'vercel-api',result);
  assert.deepEqual(modelConfig.apply(vscode,'vercel-api',result)[0].capabilities,result[0].capabilities);
 });
 

@@ -78,7 +78,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       const nonce = require("crypto").randomBytes(24).toString("hex");
       view.webview.options = { enableScripts: true, localResourceRoots: [] };
       view.webview.html = html(nonce);
-      const refresh = () => {
+      const refresh = (fresh = false) => {
         const chosen = active();
         return view.webview.postMessage({
           system: chosen.error ? "" : chosen.system.name,
@@ -93,7 +93,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           effort: String(vscode.workspace.getConfiguration("vertex.ai").get("effort", "") || "")
         }).then(async () => {
           // The model list comes after: it may have to ask the provider.
-          try { await view.webview.postMessage({ models: await ask.listModels() }); }
+          try { await view.webview.postMessage({ models: await ask.listModels(fresh) }); }
           catch (error) { await view.webview.postMessage({ models: { error: error.message } }); }
         });
       };
@@ -106,11 +106,12 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "ready") {
           ready = true;
           await showFolder();
-          await refresh();
+          await refresh(true);
           await showReview();
           return;
         }
         if(message.action==="setContextMode"){try{await view.webview.postMessage({ai:await ask.setContextMode(message.mode)});await showFolder();}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
+        if (message.action === "configModels") { ask.configModels(); return; }
         if (message.action === "clearReview") {
           reviewAsk = null;
           await showReview();
@@ -206,7 +207,10 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
               ...(images.length ? { images } : {}),
               onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
-            await view.webview.postMessage({ progress: { id: requestId, answer: reply.answer,
+            await view.webview.postMessage({ progress: { id: requestId,
+              answer: reply.answer + (reply.navigationError ? "
+
+VERTEX could not open the object: " + reply.navigationError : ""),
               done: true, usage: usageLine(reply), choices: reply.choices || [],
               runs: (await vscode.commands.executeCommand("vertex.knownEvidenceSessions")) || [] } });
             // The answer names a VERTEX function to run - a table's data, a
@@ -676,9 +680,10 @@ window.addEventListener('message', event => {
     }
     if (item && update.remove) { item.remove(); progressItems.delete(update.id); }
     else if (item) {
-      paintTaskScene(item,update);
+      // The text first, the waiting scene right under it.
       let body = item.querySelector('.progress-body');
       if (!body) { body = document.createElement('div'); body.className = 'progress-body streaming-answer'; item.appendChild(body); }
+      paintTaskScene(item,update);
       const previous = item.dataset.answer || '';
       if (typeof update.answer === 'string' && (update.answer || !previous)) {
         const answer = update.answer;
@@ -819,7 +824,15 @@ window.addEventListener('message', event => {
     } else {
       select.title = 'Model';
       const status = document.getElementById('model-status');
-      if (status) status.textContent = '';
+      if (status) {
+        status.replaceChildren();
+        if (data.missing) status.textContent = data.missing + ' is no longer in the provider catalog. Choose another model.';
+        else if (data.newCount) {
+          const open = document.createElement('a'); open.href = '#'; open.textContent = 'Open LLM Providers';
+          open.addEventListener('click', e => { e.preventDefault(); api.postMessage({ action: 'configModels' }); });
+          status.append(data.newCount + ' new model' + (data.newCount === 1 ? '' : 's') + ' in the catalog, switched off. ', open);
+        }
+      }
       // The configured model selects its Vercel subprovider automatically; off models stay visible.
       modelCatalog = data.models;drawModelPickers(data.model);drawModelCapabilities();
     }

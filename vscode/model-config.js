@@ -3,11 +3,15 @@
 // Which models VERTEX offers, per provider: the ones a person switched off are
 // left out of every model list, and a Claude version checked by its full id is
 // added to Claude's. Kept in the setting vertex.ai.modelConfig as
-//   { "<provider>": { hidden: [...], enabled: [...], versions: [{ id, label }], off: true } }
-// Codex and the Anthropic API list their own models; for them hidden is
-// stored, so a model they add later is offered until switched off. Claude's
-// list is VERTEX's own (CLAUDE_VERSIONS): until it is saved once, the models
-// marked on are on; after that, enabled says which.
+//   { "<provider>": { enabled: [...], known: [...], versions: [{ id, label }], off: true } }
+// Only the models in enabled are offered: a model a provider adds to its
+// catalog later is not in known, shows in the table as new and stays off until
+// the person ticks it. A ticked model the catalog no longer has stays in the
+// table as not in catalog and is not offered. A setting saved before enabled
+// was kept for every provider holds hidden instead; adopt() turns it into
+// enabled once, from the catalog read at that moment. Claude's list is
+// VERTEX's own (CLAUDE_VERSIONS): until it is saved once, the models marked on
+// are on; after that, enabled says which.
 
 const assistant = require("./assistant");
 const compatible = require("./openai-compatible");
@@ -42,6 +46,7 @@ function read(vscode, id) {
   const own = all[id] || {};
   return { hidden: Array.isArray(own.hidden) ? own.hidden : [],
            enabled: Array.isArray(own.enabled) ? own.enabled : null,
+           known: Array.isArray(own.known) ? own.known : null,
            versions: Array.isArray(own.versions) ? own.versions.filter(v => v && v.id) : [],
            // A local server (LM Studio, Ollama) starts switched off unless it is the provider in use.
            off: own.off === true || compatible.isLocal(id) && own.off !== false
@@ -59,8 +64,9 @@ async function write(vscode, id, config) {
   const settings = vscode.workspace.getConfiguration("vertex.ai");
   const all = Object.assign({}, settings.get("modelConfig", {}) || {});
   const next = config.models === false ? Object.assign({}, all[id] || {})
-    : { ...(all[id] || {}), ...(id === "claude" ? { enabled: config.enabled, versions: config.versions } : { hidden: config.hidden }),
+    : { ...(all[id] || {}), ...(id === "claude" ? { enabled: config.enabled, versions: config.versions } : { enabled: config.enabled, known: config.known }),
         ...(config.unavailable ? { unavailable: config.unavailable } : {}) };
+  if (config.models !== false && id !== "claude") delete next.hidden;
   if (config.off) { next.off = true; } else if (compatible.isLocal(id)) { next.off = false; } else { delete next.off; }
   all[id] = next;
   await settings.update("modelConfig", all, vscode.ConfigurationTarget.Global);
@@ -75,13 +81,52 @@ function rows(list, config, id) {
     return { ...model, available: false, reason: stored.reason || "Marked unavailable.", availabilitySource: stored.source || "probe",
       ...(stored.source === "migration" ? {} : { checked: true }) };
   };
-  if (id !== "claude") return list.map(m => decorate({ ...m, on: config.hidden.indexOf(m.id) < 0 }));
+  if (id !== "claude") {
+    if (!config.enabled) throw new Error("The " + id + " model table has not been taken over from its old form yet.");
+    const listed = list.map(m => decorate({ ...m, on: config.enabled.indexOf(m.id) >= 0,
+      ...(config.known && config.known.indexOf(m.id) < 0 ? { isNew: true } : {}) }));
+    config.enabled.forEach(model => {
+      if (!list.some(m => m.id === model)) listed.push({ id: model, label: model, on: true, missing: true });
+    });
+    return listed;
+  }
   const listed = list.map(m => ({ ...m, on: !!m.on }));
   config.versions.forEach(v => {
     if (!listed.some(m => m.id === v.id)) listed.push({ id: v.id, label: v.label || v.id, version: true, on: true });
   });
   if (config.enabled) listed.forEach(m => { m.on = config.enabled.indexOf(m.id) >= 0; });
   return listed.map(decorate);
+}
+// The one-time move from hidden to enabled: what was offered stays offered,
+// everything the catalog adds later arrives switched off.
+// The table loads every provider at once, and each move rewrites the whole
+// modelConfig setting: one at a time, each reading what the one before wrote.
+let adoptQueue = Promise.resolve();
+function adopt(vscode, id, list) {
+  const job = adoptQueue.then(() => adoptOne(vscode, id, list));
+  adoptQueue = job.catch(() => {});
+  return job;
+}
+async function adoptOne(vscode, id, list) {
+  if (id === "claude" || read(vscode, id).enabled) return;
+  const settings = vscode.workspace.getConfiguration("vertex.ai");
+  const all = Object.assign({}, settings.get("modelConfig", {}) || {});
+  const own = Object.assign({}, all[id] || {});
+  const hidden = Array.isArray(own.hidden) ? own.hidden : [];
+  own.enabled = list.map(m => String(m.id)).filter(model => hidden.indexOf(model) < 0);
+  own.known = list.map(m => String(m.id));
+  delete own.hidden;
+  all[id] = own;
+  await settings.update("modelConfig", all, vscode.ConfigurationTarget.Global);
+}
+// What the panel says about the list beside the offered models: how many the
+// catalog added since the table was last saved, and whether the chosen model
+// is one the catalog no longer has.
+function news(vscode, id, list, chosen) {
+  if (id === "claude") return { newCount: 0, missing: "" };
+  const all = rows(list, read(vscode, id), id);
+  return { newCount: all.filter(m => m.isNew).length,
+           missing: chosen && all.some(m => m.missing && m.id === chosen) ? chosen : "" };
 }
 let migrationQueue = Promise.resolve();
 function migrateUnavailable(vscode, id, list) {
@@ -105,7 +150,7 @@ function migrateUnavailable(vscode, id, list) {
 
 /** What a model list offers: the switched-on rows. */
 function apply(vscode, id, list) {
-  const offered = rows(list, read(vscode, id), id).filter(m => m.on && m.available !== false).map(({ on, ...model }) => model);
+  const offered = rows(list, read(vscode, id), id).filter(m => m.on && m.available !== false && !m.missing).map(({ on, isNew, ...model }) => model);
   if (!offered.length) {
     throw new Error("No " + id + " model is switched on. Open Config models in the VERTEX panel.");
   }
@@ -154,6 +199,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     return { scope, checks: checksByScope.get(scope) };
   }
   async function checkedRows(id, models) {
+    await adopt(vscode, id, models);
     const { checks } = await checkScope(id);
     return rows(models, read(vscode, id), id).map(row => {
       const saved = Object.hasOwn(checks, row.id) ? checks[row.id] : null;
@@ -195,13 +241,8 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     try {
       if (fresh) { forget(id); availableModels.delete(id); }
       const models = await full(id);
+      await adopt(vscode, id, models);
       await migrateUnavailable(vscode, id, models);
-      const settings = vscode.workspace.getConfiguration("vertex.ai");
-      const selected = settings.get("model", "");
-      if (settings.get("provider", "") === PROVIDERS.find(p => p.id === id).setting && selected
-          && !models.some(model => model.id === selected)) {
-        await settings.update("model", "", vscode.ConfigurationTarget.Global);
-      }
       send({ provider: id, rows: await checkedRows(id, models), profiles, source, codemie });
     } catch (e) {
       send({ provider: id, error: e.message, profiles, source, codemie });
@@ -370,7 +411,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
         if (!known) { fail("Unknown provider."); return; }
         // At least one model stays on: an empty list would leave the provider
         // with nothing to ask.
-      if (p.on && Array.isArray(p.rows) && !p.rows.some(r => r && r.on)) {
+      if (p.on && Array.isArray(p.rows) && !p.rows.some(r => r && r.on && !r.missing)) {
           fail(known.label + ": keep at least one model switched on."); return;
         }
       }
@@ -379,8 +420,8 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
         // A provider that could not be read keeps its model settings; only its switch is saved.
         await write(vscode, p.id, list ? {
           off: !p.on,
-          hidden: list.filter(r => r && !r.on).map(r => String(r.id)),
           enabled: list.filter(r => r && r.on).map(r => String(r.id)),
+          known: list.filter(r => r && !r.missing).map(r => String(r.id)),
           unavailable: Object.fromEntries(list.filter(r => r && r.available === false).map(r => [String(r.id), {
             reason: String(r.reason || "Marked unavailable."), source: r.availabilitySource || "probe"
           }])),
@@ -738,6 +779,8 @@ function fill(id) {
     const nameCell=tr.appendChild(el("td"));
     if(id==="vercel-api"){const info=el("button",{type:"button",textContent:"ⓘ",title:"Model description from Vercel API",className:"model-info"});info.setAttribute("aria-label","Model information: "+(r.label||r.id));info.addEventListener("click",()=>showModelInfo(r));nameCell.appendChild(info);nameCell.appendChild(document.createTextNode(" "));}
     nameCell.appendChild(document.createTextNode(r.label||r.id));
+    if(r.isNew)nameCell.appendChild(el("span",{className:"note",textContent:" · new",title:"Added to the provider's catalog since the table was last saved. Tick it to offer it."}));
+    if(r.missing)nameCell.appendChild(el("span",{className:"note",textContent:" · not in catalog",title:"Ticked earlier, but the provider's catalog no longer lists it. It is not offered; untick it and save to drop it."}));
     tr.appendChild(el("td", { className: "id", textContent: r.id === "" ? "(default)" : r.id }));
     const price = priceInfo(r);
     if (hasMetadata) {
@@ -753,7 +796,7 @@ function fill(id) {
       tr.appendChild(el("td", { className: "numeric", textContent: (price?.output || "—") + (price?.variable ? " *" : ""), title: price?.title || "Price not reported" }));
     }
     const act = tr.appendChild(el("td"));
-    const checkOne = el("button", { type: "button", textContent: "✓", disabled: scanning,
+    const checkOne = el("button", { type: "button", textContent: "✓", disabled: scanning || !!r.missing,
       title: "Check only this model with one short paid request (Reply OK, up to 16 output tokens)" });
     checkOne.setAttribute("aria-label", "Check model " + (r.label || r.id));
     checkOne.addEventListener("click", () => {
@@ -879,4 +922,4 @@ INIT.providers.forEach(p => api.postMessage({ action: "load", provider: p.id }))
 </script></body></html>`;
 }
 
-module.exports = { PROVIDERS, shortLabel, read, rows, apply, open, isOn, offered, chooseLogFolder, migrateUnavailable };
+module.exports = { PROVIDERS, shortLabel, read, rows, apply, open, isOn, offered, chooseLogFolder, migrateUnavailable, adopt, news };

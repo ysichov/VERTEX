@@ -25,6 +25,19 @@ const RESULT_SCHEMA = {
     build_command: { type: "string", description: "Only when working in a working copy of a local project and files were changed: the one shell command, run from the folder's root, that the project's rules or build files say builds or tests it after a change (for example npm test, mvn -q package, dotnet build, ./build.ps1). Empty when there is none or nothing changed. On Windows it runs in PowerShell." } }
 };
 
+// Folder mode has no SAP object to open: the schema itself allows only null, so a model that ignores
+// "Do not navigate to SAP objects" cannot return one.
+const FOLDER_RESULT_SCHEMA = { ...RESULT_SCHEMA, properties: { ...RESULT_SCHEMA.properties,
+  navigation: { type: "null", description: "Always null in Folder mode." } } };
+
+// A navigation the model got wrong (an action the object type has not) does not cost the answer it came
+// with: the answer is kept and the error is said beside it; nothing else is opened in its place.
+function navigationOf(value) {
+  if (!value) return { navigation: null };
+  try { return { navigation: objectTools.normalize(value) }; }
+  catch (error) { return { navigation: null, navigationError: error.message }; }
+}
+
 function subscriptionProvider(vscode) {
   const selected = vscode.workspace.getConfiguration("vertex.ai").get("provider", "codex-subscription");
   if (selected === "claude-subscription") { return "claude"; }
@@ -235,7 +248,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
   const full = new Map();
   // Every model the provider has, asked once per provider; the switched-off
   // ones are left out each time, so a change in Config models counts at once.
-  async function fullModels(id) {
+  async function fullModels(id, fresh = false) {
+    if (fresh) full.delete(id);
     const apiKey = (id === "anthropic-api" || compatible.PROVIDERS[id]) && secrets
       ? (await keyProfiles.getActiveKey(secrets, id)).key : undefined;
     if (!full.has(id) || full.get(id).key !== apiKey) {
@@ -246,6 +260,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         : await assistant.models({ assistant: id, extensionPath: extensionPath(vscode, id),
           executable: await assistantExecutable(vscode, id), profile: assistant.profileFor(vscode, id) });
       if (!models.length) { throw new Error("The " + id + " model list is empty."); }
+      await modelConfig.adopt(vscode, id, models);
       full.set(id, { key: apiKey, models });
     }
     return full.get(id).models.map(item => compatible.PROVIDERS[id] ? require("./tool-support").model(id, apiKey, item) : item);
@@ -520,7 +535,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
             : "\nNo local project folder was resolved for this request.")
           + "\n\nOpen editor tabs (titles and paths only; only the active ABAP document above supplies source):\n" + JSON.stringify(openTabs(vscode).filter(tab=>mode==="sap"?tab.sap:mode==="folder"?!tab.sap:true))
           // The request comes last: a weaker model answers whatever block it read last.
-          + "\n\nRequest:\n" + prompt.trim(), schema: RESULT_SCHEMA,
+          + "\n\nRequest:\n" + prompt.trim(), schema: mode==="folder" ? FOLDER_RESULT_SCHEMA : RESULT_SCHEMA,
         tools: toolSchemas.map(tool => tool.name),
         // A debugging run waits for the user to log on to WebGUI and for the
         // program to reach its breakpoints; three minutes are too few for that.
@@ -583,7 +598,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         // Claude Code's estimate from list prices, not CodeMie's bill, so it is shown on request only.
         cost: id === "codemie" && config.get("showCodemieCost", false) && typeof result.cost === "number"
           ? result.cost : undefined,
-        navigation: result.plan.navigation ? objectTools.normalize(result.plan.navigation) : null };
+        ...navigationOf(result.plan.navigation) };
     } catch (error) {
       if (version !== conversationVersion) return { superseded: true, answer: "" };
       throw error;
@@ -652,10 +667,11 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
     return ask.state();
   };
   // For the model list in the VERTEX panel: what is switched on, and which is chosen.
-  ask.listModels = async () => {
+  // fresh reads the provider's catalog again instead of the one kept since it was first asked.
+  ask.listModels = async (fresh = false) => {
     const id = subscriptionProvider(vscode);
-    return { models: modelConfig.apply(vscode, id, await fullModels(id)),
-             model: vscode.workspace.getConfiguration("vertex.ai").get("model", "") };
+    const list = await fullModels(id, fresh), model = vscode.workspace.getConfiguration("vertex.ai").get("model", "");
+    return { models: modelConfig.apply(vscode, id, list), model, ...modelConfig.news(vscode, id, list, model) };
   };
   // Switching provider from the VERTEX panel's list. A model chosen for the
   // other provider means nothing here, so the choice starts over; the API
@@ -750,4 +766,4 @@ const MODEL_MEMORY = "vertex.ai.modelByProvider";
 /** The folder the chat's next request would work in, for the panel to show: "" when none. */
 const currentWorkingFolder = vscode => workingFolder(vscode, subscriptionProvider(vscode));
 
-module.exports = { create, debugFlowSection, originFlowSection, localAbapContext, workingFolder, currentWorkingFolder, inFolder };
+module.exports = { create, debugFlowSection, originFlowSection, localAbapContext, workingFolder, currentWorkingFolder, inFolder, navigationOf };

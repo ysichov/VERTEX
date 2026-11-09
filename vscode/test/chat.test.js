@@ -11,7 +11,9 @@ test.beforeEach(t => { t.mock.method(assistant, "resolveAssistant", async (vscod
 
 function fakeVscode(settings) {
   return {
-    workspace: { getConfiguration: () => ({ get: (key, fallback) => (key in settings ? settings[key] : fallback) }) },
+    ConfigurationTarget: { Global: 1 },
+    workspace: { getConfiguration: () => ({ get: (key, fallback) => (key in settings ? settings[key] : fallback),
+      update: async (key, value) => { settings[key] = value; } }) },
     extensions: { getExtension: () => ({ extensionPath: "/ext" }) },
     window: { tabGroups: { all: [{ isActive: true, tabs: [{ label: "z_calc.prog.abap", isActive: true, isDirty: false,
       input: { uri: { scheme: "file", fsPath: "C:\\git\\z_calc.prog.abap" } } }] }] } }
@@ -569,4 +571,12 @@ test('OpenRouter shows remaining daily requests when a request is rate limited',
   });
   assert.equal((await ask('next question')).answer,'new answer');
   ask.dispose();
+});
+
+test("a wrong navigation keeps the answer and names the error", () => {
+  const { navigationOf } = require("../chat");
+  assert.deepEqual(navigationOf({ type: "FUNC", name: "Z_F", action: "review", part: null }),
+    { navigation: null, navigationError: "Review is unavailable for Function module" });
+  assert.equal(navigationOf({ type: "FUNC", name: "Z_F", action: "metrics", part: null }).navigation.action, "metrics");
+  assert.deepEqual(navigationOf(null), { navigation: null });
 });

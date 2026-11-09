@@ -1,3 +1,11 @@
+## 2026-11-09 — No SAP navigation in Folder mode
+
+In Folder mode the assistant can no longer answer with a SAP object to open. A technical review asked in Folder mode was lost after it was written: the model added a navigation to a function module with the Review action, which does not exist, and the whole answer failed.
+
+## 2026-11-09 — New catalog models arrive switched off
+
+A provider offers in chat only the models ticked in LLM Providers. A model added to a provider's catalog later used to be offered at once; it now shows in the table marked **new** and stays off until ticked, and the VERTEX panel says how many new models are waiting, with a link to LLM Providers. A ticked model the catalog no longer lists stays in the table marked **not in catalog** and is not offered; when it is the chosen model, the panel says so instead of the selection being cleared silently. The catalog is read again each time the VERTEX panel opens, so the panel no longer offers a model from a catalog read before a provider updated (a ChatGPT panel kept offering GPT-5.5 after Codex had dropped it). Existing tables are taken over once: what was offered stays offered.
+
 ## 2026-11-09 — Hide .md and .log files from Uncommitted changes
 
 Changed `.md` and `.log` files are hidden on the Uncommitted changes page and left out of the AI commit message request until the **.md, .log (N)** toggle is switched on. The commit still includes them; its dialog counts them. The list of extensions is the `vertex.git.hiddenExtensions` setting, which can be set per workspace. Git History shows the **Uncommitted changes** row only while the folder has uncommitted changes; a **↻** button beside its title reloads the list with the current filter.
