@@ -12,7 +12,7 @@ Check `git --version` in the environment where VERTEX runs, then fully restart V
 Ordinary API chat needs the configured provider credentials and network access; it does not require Git, SAP, Python or a separate Node.js installation. Claude Code, Codex and CodeMie modes require their installed client and authentication. Project builds/tests require that project's own toolchain. VERTEX local commands use Windows PowerShell 5.1 on Windows and `/bin/sh` elsewhere; commands and paths must match that host. The bundled Node runtime does not mean an external `node` command is installed. Taking the chat's SAP tools from ARC-1 or mcp-abap-adt (the panel's MCP list) needs Node.js installed, for `npx`; vibing-steampunk needs its `vsp` executable.
 
 
-Current VS Code extension: **0.9.73**.
+Current VS Code extension: **0.9.74**.
 
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
@@ -115,7 +115,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.73.20261109173010**; the VS Code extension is **0.9.73**.
+**0.9.73.20261109173010**; the VS Code extension is **0.9.74**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -401,6 +401,9 @@ window that opens on picking one asks for its write access, kept in `vertex.chat
 `vertex.chat.abapAdtAccess` and `vertex.chat.vspAccess`; more servers are added in
 `vertex.chat.mcpServers`. Details: [vscode/README.md](vscode/README.md#choose-the-chats-sap-tools).
 
+
+In **VERTEX Orchestrator**, a separate planning model prepares an execution plan, relevant context and completion checks before the model selected in chat runs the task. The default planner is **ChatGPT subscription / GPT-5.6-Sol / medium**. Use the gear beside the MCP list while Orchestrator is selected, or **VERTEX: Configure Orchestrator Planner**, to choose its provider, model and effort independently. The settings are `vertex.chat.orchestratorProvider`, `vertex.chat.orchestratorModel` and `vertex.chat.orchestratorEffort`; an empty provider disables planning. Plans and review verdicts are validated against direct object schemas; invalid output gets at most one format retry. Each plan step has an ID, action, available tool names, preceding dependencies, success criteria and a failure action; invalid dependencies and unknown tool names are rejected. The planner has no action tools, its advice must be verified against actual results, and its usage is logged separately as **Orchestrator planning**. Stop also cancels planning. A failed plan is reported before the executor starts. Repeated failed tool calls trigger corrective planning with recent results; an identical failed call without new successful evidence is blocked before execution. Recovery is limited to two interventions. After an intervention, proposed answers are checked against the evidence; API and Copilot executors can revise a rejected answer, while a CLI run is stopped rather than replayed. Successful execution adds no periodic supervisor calls.
+
 ### Other assistants over MCP
 
 The extension serves two MCP servers, and an assistant can take either.
@@ -550,3 +553,5 @@ Generate with AI shows a lens inspecting colored diff fragments that merge into 
 Session Logs groups provider files by conversation, with combined usage and each prompt’s provider and model. Clearing a selected conversation removes all its provider files and branches. Older logs without a conversation identifier remain separate. In VS Code, **Continue in chat** resumes the conversation from its end.
 
 OpenRouter reports the remaining daily free requests after answers, during rate-limit waits and on failed requests when the API provides those counters. Changing the model or provider cancels a pending rate-limit wait while retaining conversation history. Exhausted daily free-model quotas stop immediately; short retry waits apply only to temporary limits.
+
+While an AI response is running in the VERTEX panel, use **■ Stop** beside the message field to cancel the response and pending retries. Received text stays visible and completed conversation history is retained. Operations already performed are not undone.

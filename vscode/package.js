@@ -42,6 +42,8 @@ const required = [
     "extension/folder-approval.js",
     "extension/agent-worktree.js",
     "extension/worktree-review.js",
+    "extension/orchestrator-plan.js",
+    "extension/orchestrator-supervisor.js",
     "extension/build-runner.js",
     "extension/log-snapshot.js",
     "extension/resources/mermaid.min.js",

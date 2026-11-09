@@ -102,3 +102,18 @@ test("Anthropic reads multiple SAP objects sequentially through one session", as
   assert.equal(result.plan.answer, "Both classes read.");
   assert.deepEqual(requests[1].messages[2].content.map(item => JSON.parse(item.content).object_name), ["ZCL_A", "ZCL_B"]);
 });
+
+
+test('Anthropic withholds a rejected answer and continues with review feedback',async t=>{
+ const bodies=[],shown=[],replies=[{content:[{type:'text',text:'unfinished'}]},{content:[{type:'tool_use',id:'final',name:'submit_vertex_answer',input:{answer:'verified',navigation:null}}]}];let checks=0;
+ t.mock.method(https,'request',(_options,callback)=>{const req=new EventEmitter();req.setTimeout=()=>{};req.end=payload=>{bodies.push(JSON.parse(payload));const res=new EventEmitter();res.statusCode=200;res.setEncoding=()=>{};callback(res);res.emit('data',JSON.stringify(replies.shift()));res.emit('end');};return req;});
+ const result=await anthropic.ask({apiKey:'fake',model:'test',instructions:'rules',prompt:'task',tools:[],schema:{},onBeforeAnswer:async()=>++checks===1?'Finish the available task':null,onModelCall:event=>{if(!event.withheld)shown.push(event.text);}});
+ assert.equal(result.plan.answer,'verified');assert.equal(checks,2);assert.match(JSON.stringify(bodies[1].messages),/Finish the available task/);assert.deepEqual(shown,['verified']);
+});
+
+
+test('Anthropic planner is forced to return fields through the root result tool schema',async t=>{
+ const schema=require('../orchestrator-plan').PLAN_SCHEMA,plan={goal:'task',context:[],steps:[{id:1,action:'read',tools:[],depends_on:[],success_criteria:['evidence'],on_failure:'inspect error'}],recovery:[],completion_checks:['verify']};
+ t.mock.method(https,'request',(_options,callback)=>{const req=new EventEmitter();req.setTimeout=()=>{};req.end=payload=>{const body=JSON.parse(payload);assert.deepEqual(body.tool_choice,{type:'tool',name:'submit_vertex_answer'});assert.deepEqual(body.tools[0].input_schema,schema);assert.equal(body.tools.length,1);const res=new EventEmitter();res.statusCode=200;res.setEncoding=()=>{};callback(res);res.emit('data',JSON.stringify({content:[{type:'tool_use',id:'result',name:'submit_vertex_answer',input:plan}]}));res.emit('end');};return req;});
+ const result=await anthropic.ask({apiKey:'fake',model:'test',prompt:'task',instructions:'Plan',schema,structuredResult:true,textOnly:true,tools:[]});assert.deepEqual(result.plan,plan);
+});

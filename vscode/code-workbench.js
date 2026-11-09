@@ -39,7 +39,7 @@ const schemas = require("./schemas/sap-code-tools.json").concat([{
   name: "run_sap_select",
   description: "Read table or view contents in SAP: run one Open SQL SELECT through ADT's data preview, as Eclipse's SQL console and VERTEX's Run Select do, and return the columns and rows. "
     + "Use it to look up customizing, texts, repository tables (DD02L, TADIR, ...) or application data when the answer is in a table rather than in source code. "
-    + "Write a single SELECT in strict ABAP SQL syntax: comma-separated fields, WHERE with literals in single quotes, no INTO, no host variables, no trailing period. Read only; SAP refuses anything but SELECT.",
+    + "Write a single SELECT in strict ABAP SQL syntax: comma-separated fields, WHERE with literals in single quotes, no INTO, no host variables, no trailing period. Use ORDER BY field DESCENDING, not DESC; limit rows with max_rows rather than UP TO. Verify unknown table fields through DD03L before guessing. Read only; SAP refuses anything but SELECT.",
   annotations: { readOnlyHint: true, destructiveHint: false },
   inputSchema: { type: "object", additionalProperties: false, required: ["sql"],
     properties: { sql: { type: "string", description: "One ABAP SQL SELECT statement, e.g. SELECT spras, type, description FROM powl_type_t WHERE type = 'X'." },

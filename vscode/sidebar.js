@@ -13,13 +13,14 @@ const ACTIONS = Object.freeze({
 });
 
 function register(vscode, context, active, ask, systems, toolContext, clients = { set: async () => {}, onChange: () => ({ dispose() {} }) }, chatMcp = null) {
-  let currentView, ready = false, nextRequest = 0;
+  let currentView, ready = false, nextRequest = 0, pendingChat = null;
   // ASK AI of a review: the blocks on the chip above the input, attached to the next question only when it is sent.
   let reviewAsk = null;
   const review = require("./code-review");
   const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", draft: reviewAsk && reviewAsk.question || "" }) : undefined;
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.configureOrchestrator", async () => {try{const planner=await ask.configOrchestrator();if(currentView)await currentView.webview.postMessage({planner});return planner;}catch(error){vscode.window.showErrorMessage("VERTEX planner: "+error.message);}}));
   if (chatMcp) context.subscriptions.push(vscode.commands.registerCommand("vertex.mcpServers", () => require("./mcp-window").open(vscode, chatMcp)));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.generateCommitMessage", async (snapshot,draft) => {try{return await ask.generateCommitMessage(snapshot,draft);}catch(error){return {error:error.message,generation:error.generation};}}));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.generatePullRequest", async (snapshot,draft) => {try{return await ask.generateCommitMessage(snapshot,draft,"pr");}catch(error){return {error:error.message,generation:error.generation};}}));
@@ -92,6 +93,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           // Where the chat's SAP tools come from: VERTEX itself or an MCP server of vertex.chat.mcpServers.
           mcp: chatMcp ? { servers: chatMcp.choices(), selected: chatMcp.selected(),
             updates: chatMcp.overview().filter(s => Array.isArray(s.update) && s.update.length).map(s => s.name) } : null,
+          planner: ask.plannerState(),
           effort: String(vscode.workspace.getConfiguration("vertex.ai").get("effort", "") || "")
         }).then(async () => {
           // The model list comes after: it may have to ask the provider.
@@ -110,6 +112,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           await showFolder();
           await refresh(true);
           await showReview();
+          await view.webview.postMessage({chatRunning:!!pendingChat});
           return;
         }
         if(message.action==="setContextMode"){try{await view.webview.postMessage({ai:await ask.setContextMode(message.mode)});await showFolder();}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
@@ -181,7 +184,16 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
         }
+        if (message.action === "stopChat") {
+          if (pendingChat && !pendingChat.cancelled) {
+            pendingChat.cancelled = true;
+            ask.stop();
+            await view.webview.postMessage({ progress: { id: pendingChat.id, status: "Stopping…" } });
+          }
+          return;
+        }
         if (message.action === "chat") {
+          if (pendingChat) return;
           const requestId = ++nextRequest;
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
           const web=message.web===true||require("./web-intent").requested(message.text);
@@ -192,14 +204,16 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           const shown = String(message.text || "").trim() || (asked ? "What does this change do, and is there a real problem with it?"
             : images.length ? "What is in this screenshot?" : "");
           if (!shown) { return; }
+          const pending = pendingChat = { id: requestId, cancelled: false };
+          try {
           await view.webview.postMessage({ chat: "You: " + shown + (asked ? "  [" + review.askLabel(asked) + "]" : "")
             + (images.length ? "  [" + images.length + " screenshot" + (images.length > 1 ? "s" : "") + "]" : "") });
           let taskKind=web?"":/коммит|commit/i.test(shown)?"commit":asked||require("./git-history").reviewContext()||/ревью|review|дифф|diff|проверь\s+(?:код|изменен)/i.test(shown)?"review":"";
           await view.webview.postMessage({ progress: { id: requestId, kind:taskKind,status: taskKind==="review"?"Reviewing changes…":taskKind==="commit"?"Preparing commit message…":"Working…" } });
-          try {
             const scope = asked ? { review_ask: { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) } } : undefined;
             const state = web ? {} : (await toolContext(scope)) || {};
             if(!web&&!taskKind&&(state.review_source||state.vertex_view?.view==="review")){taskKind="review";await view.webview.postMessage({progress:{id:requestId,kind:taskKind,status:"Reading review context…"}});}
+            if (pending.cancelled) { await view.webview.postMessage({progress:{id:requestId,stopped:true,done:true}}); return; }
             if (asked) {
               state.review_ask = { object: asked.object, all: asked.all, blocks: asked.blocks.map(block => block.block) };
               delete state.review_source;
@@ -207,11 +221,12 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             }
             const reply = await ask(asked ? review.askRequest(message.text, asked) : shown, {model: message.model, state, web,contextMode:asked?.system==="local"?"folder":ask.state().contextMode,
               ...(images.length ? { images } : {}),
-              onProgress: update => { Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
+              onProgress: update => { if(pending.cancelled)return; Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
+            if (pending.cancelled || reply.stopped) { await view.webview.postMessage({progress:{id:requestId,stopped:true,done:true}}); return; }
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId,
               answer: reply.answer + (reply.navigationError ? "\n\nVERTEX could not open the object: " + reply.navigationError : ""),
-              done: true, usage: usageLine(reply), choices: reply.choices || [],
+              done: true, usage: usageLine(reply)+(reply.planner?" · Planner: "+usageLine(reply.planner):""), choices: reply.choices || [],
               runs: (await vscode.commands.executeCommand("vertex.knownEvidenceSessions")) || [] } });
             // The answer names a VERTEX function to run - a table's data, a
             // class's diff - and the panel has no view of its own for it, so
@@ -220,7 +235,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             if (reply.navigation) { await vscode.commands.executeCommand("vertex.tools", reply.navigation); }
           }
           catch (error) { await view.webview.postMessage({ progress: { id: requestId,
-            answer: "Request failed: " + error.message, done: true } }); }
+            ...(pending.cancelled ? {stopped:true} : {answer: "Request failed: " + error.message}), done: true } }); }
+          finally { if(pendingChat===pending)pendingChat=null; }
           return;
         }
         // The gear beside the MCP list: the settings of the server picked there, where they live - VERTEX's own, or,
@@ -228,6 +244,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "mcpServers") { await vscode.commands.executeCommand("vertex.mcpServers"); return; }
         if (message.action === "mcpSettings") {
           if (!chatMcp) return;
+          if(String(message.name)===chatMcp.ORCHESTRATOR){await vscode.commands.executeCommand("vertex.configureOrchestrator");return;}
           await vscode.commands.executeCommand("workbench.action.openSettings", chatMcp.settingsQuery(String(message.name || "")));
           return;
         }
@@ -410,6 +427,9 @@ textarea { width: 100%; resize: vertical; padding: 8px; }
 #prompt { min-height: 5.5em; max-height: 14em; overflow-y: auto; padding-right: 30px; }
 #prompt.expanded { min-height: 60vh; max-height: 70vh; }
 .prompt-box { position: relative; }
+.chat-actions{display:flex;justify-content:flex-end;padding-top:6px}
+#chat #chat-stop{display:inline-flex;align-items:center;gap:6px;width:auto;margin:0}
+#chat #chat-stop[hidden]{display:none}
 #chat #expand-prompt { position: absolute; top: 4px; right: 4px; width: auto; margin: 0; padding: 0 6px; font-size: 14px; line-height: 20px; opacity: .75; }
 #chat #expand-prompt:hover { opacity: 1; }
 button { margin: 8px 0; padding: 8px 12px; border: 0; border-radius: 4px; cursor: pointer; font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
@@ -447,11 +467,11 @@ ${require(require("path").join(__dirname,"code-review")).controlsCss}
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
-</span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
+</span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
-<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div></form>
+<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
 <script nonce="${nonce}">
@@ -557,6 +577,7 @@ document.getElementById('system-select').addEventListener('change', event => {
 });
 document.getElementById('chat').addEventListener('submit', event => {
   event.preventDefault();
+  if(chatRunning)return;
   const field = document.getElementById('prompt');
   const text = field.value.trim();
   // With a review's blocks on the chip an empty question asks the default one.
@@ -564,6 +585,7 @@ document.getElementById('chat').addEventListener('submit', event => {
   if(document.getElementById('model-select').disabled){document.getElementById('model-status').textContent='Wait for the model list to load.';return;}
   const selected = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
   if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
+  setChatRunning(true);
   api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value,
     images: images.map(image => ({ media_type: image.media_type, data: image.data })) });
   field.value = '';
@@ -600,6 +622,10 @@ document.getElementById('prompt').addEventListener('paste', event => {
   });
 });
 // The message field grows with what is typed or pasted, up to a few lines; ⤢ lets it take most of the panel.
+let chatRunning = false, chatStopping = false;
+const stopChat = document.getElementById('chat-stop');
+function setChatRunning(value) { chatRunning=value;if(!value)chatStopping=false;stopChat.hidden=!value;stopChat.disabled=chatStopping; }
+stopChat.addEventListener('click',()=>{chatStopping=true;stopChat.disabled=true;api.postMessage({action:'stopChat'});});
 const promptField = document.getElementById('prompt'), expandPrompt = document.getElementById('expand-prompt');
 function fitPrompt() { promptField.style.height = 'auto'; promptField.style.height = promptField.scrollHeight + 2 + 'px'; }
 promptField.addEventListener('input', fitPrompt);
@@ -641,7 +667,11 @@ function paintTaskScene(item,update){
       else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}if(scene.dataset.kind!==item.dataset.taskKind){scene.dataset.kind=item.dataset.taskKind;scene.innerHTML=taskVisuals[item.dataset.taskKind];}}
       item.setAttribute('aria-busy',String(!update.done));
 }
+let plannerSettings=null,orchestratorSelected=false;
+function showPlanner(){const node=document.getElementById('planner-info');node.hidden=!orchestratorSelected||!plannerSettings;node.textContent=plannerSettings?(plannerSettings.provider?'Planner: '+plannerSettings.model+' · '+(plannerSettings.effort||'default effort'):'Planner disabled'):'';}
 window.addEventListener('message', event => {
+  if(event.data.planner){plannerSettings=event.data.planner;showPlanner();}
+  if(typeof event.data.chatRunning==='boolean')setChatRunning(event.data.chatRunning);
   const selectedContext=event.data.contextMode||event.data.ai?.contextMode;if(selectedContext){contextMode=selectedContext;document.querySelectorAll('[data-context]').forEach(button=>{const selected=button.dataset.context===contextMode;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));});document.getElementById('sap-context-controls').hidden=contextMode!=='sap';if(contextMode==='sap')document.getElementById('folder-line').hidden=true;}
   if(event.data.localFiles){projectFileAliases=new Set(event.data.localFiles);document.querySelectorAll('.vertex').forEach(linkProjectFiles);}
   if (event.data && typeof event.data.send === 'string') {
@@ -670,9 +700,11 @@ window.addEventListener('message', event => {
     hint.textContent = 'Ask anything — about SAP or any project in your folder. You can paste screenshots here too.';
     box.appendChild(hint);
     progressItems.clear();
+    setChatRunning(false);
   }
   if (event.data && event.data.progress) {
     const update = event.data.progress;
+    setChatRunning(!update.done&&!update.remove);
     if (update.toolSupport && document.getElementById('provider-select').value === update.toolSupport.provider) {
       const model = modelCatalog.find(m => m.id === update.toolSupport.model);
       if (model) { model.capabilities = { ...model.capabilities, tools:false }; model.toolSupportEvidence = update.toolSupport.evidence; drawModelCapabilities(); }
@@ -690,6 +722,7 @@ window.addEventListener('message', event => {
       if (!body) { body = document.createElement('div'); body.className = 'progress-body streaming-answer'; item.appendChild(body); }
       paintTaskScene(item,update);
       const previous = item.dataset.answer || '';
+      if(update.stopped)update.answer=previous+(previous?'\\n\\n':'')+'Stopped.';
       if (typeof update.answer === 'string' && (update.answer || !previous)) {
         const answer = update.answer;
         if (answer.startsWith(previous) && previous) body.textContent += answer.slice(previous.length);
@@ -814,9 +847,11 @@ window.addEventListener('message', event => {
     else result();
   }
   if (event.data && event.data.mcp) {
+    orchestratorSelected=event.data.mcp.selected==='VERTEX Orchestrator';showPlanner();
     const mcpSelect = document.getElementById('mcp-select');
     mcpSelect.replaceChildren(...event.data.mcp.servers.map(name => { const option = new Option(name, name); option.selected = name === event.data.mcp.selected; return option; }));
     mcpSelect.hidden = document.getElementById('mcp-label').hidden = document.getElementById('mcp-settings').hidden = document.getElementById('mcp-servers').hidden = false;
+    document.getElementById('mcp-settings').title=document.getElementById('mcp-settings').ariaLabel=orchestratorSelected?'Configure orchestrator planner':'Settings of the selected MCP server';
     const waiting = event.data.mcp.updates || [], update = document.getElementById('mcp-update');
     update.hidden = !waiting.length; update.title = waiting.length ? 'A newer version is out for ' + waiting.join(', ') + '. Opens MCP Servers, where you update it.' : '';
   }

@@ -527,7 +527,7 @@ async function ask(options) {
       }
     } : null;
     const result = await collect(options.spawn, file, command.args,
-                                 { cwd: options.workDir || dir, env: env, input: command.input, timeout: timeout, onData });
+                                 { cwd: options.workDir || dir, env: env, input: command.input, timeout: timeout, onData, signal: options.signal });
     if (streaming && pending.trim()) {
       try { const last = JSON.parse(pending.trim()); if (last.type === "result") resultEvent = last; }
       catch (_) { /* An interrupted NDJSON line is not a completed result. */ }
@@ -550,7 +550,7 @@ async function ask(options) {
       : readCodex(result, command.answerFile,options.model);
     if(options.assistant==="codex"&&answer.usage&&options.onModelCall){
       const responses=codexUsage(result,options.model).responses;
-      responses.forEach((response,index)=>{const raw=response.usage,cached=Number(raw.cached_input_tokens||0);options.onModelCall({model:response.model||answer.model,usage:{input_tokens:Math.max(0,Number(raw.input_tokens||0)-cached),output_tokens:Number(raw.output_tokens||0),cache_read_input_tokens:cached,cache_creation_input_tokens:0,generation_id:response.id},text:index===responses.length-1?answer.plan?.answer||"":""});});
+      responses.forEach((response,index)=>{const raw=response.usage,cached=Number(raw.cached_input_tokens||0);options.onModelCall({model:response.model||answer.model,usage:{input_tokens:Math.max(0,Number(raw.input_tokens||0)-cached),output_tokens:Number(raw.output_tokens||0),cache_read_input_tokens:cached,cache_creation_input_tokens:0,generation_id:response.id},text:index===responses.length-1?(options.structuredResult?JSON.stringify(answer.plan):answer.plan?.answer||""):""});});
     }
     return answer;
   } finally {
@@ -774,8 +774,8 @@ function readCodex(result, answerFile, configuredModel) {
   try {
     return { plan: JSON.parse(text), model: model, ...(parsed.usage?{usage:parsed.usage}:{}) };
   } catch (e) {
-    throw named(new Error("Codex answered with something that is not a plan: "
-                          + text.substring(0, 300)), model);
+    throw Object.assign(named(new Error("Codex answered with something that is not a plan: "
+                          + text.substring(0, 300)), model),{code:"STRUCTURED_FORMAT"});
   }
 }
 
@@ -823,7 +823,7 @@ function collect(spawn, file, args, options) {
     if (/\.js$/i.test(file)) { args = [file].concat(args); file = "node"; }
     try {
       child = (spawn || childProcess.spawn)(file, args, {
-        cwd: options.cwd, env: options.env, windowsHide: true
+        cwd: options.cwd, env: options.env, windowsHide: true, ...(options.signal ? { signal: options.signal } : {})
       });
     } catch (e) {
       resolve({ code: -1, stdout: "", stderr: e.message, timedOut: false });

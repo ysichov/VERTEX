@@ -5,6 +5,7 @@ const assistant = require("../assistant");
 const chat = require("../chat");
 const copilot = require("../copilot");
 const compatible = require("../openai-compatible");
+const rawCompatibleAsk = compatible.ask;
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 
 test.beforeEach(t => { t.mock.method(assistant, "resolveAssistant", async (vscode, id) => "/ext/" + id); });
@@ -579,4 +580,178 @@ test("a wrong navigation keeps the answer and names the error", () => {
     { navigation: null, navigationError: "Review is unavailable for Function module" });
   assert.equal(navigationOf({ type: "FUNC", name: "Z_F", action: "metrics", part: null }).navigation.action, "metrics");
   assert.deepEqual(navigationOf(null), { navigation: null });
+});
+
+
+test('Stop aborts the active provider, suppresses late tools and retains completed conversation', async t => {
+  let ready, blockedOptions; const started=new Promise(resolve=>ready=resolve),prompts=[];
+  t.mock.method(assistant,'ask',async options=>{
+    prompts.push(options.prompt);
+    if(options.prompt.endsWith('blocked turn')) {
+      blockedOptions=options;ready();
+      await new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}));
+    }
+    return {plan:{answer:'kept answer'},model:'test',usage:null};
+  });
+  const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+  assert.equal(ask.stop(),false);
+  await ask('completed turn');
+  const blocked=ask('blocked turn');await started;
+  assert.equal(ask.stop(),true);assert.equal(ask.stop(),false);
+  assert.equal(blockedOptions.signal.aborted,true);
+  assert.equal(blockedOptions.isActive(),false);
+  assert.equal((await blocked).stopped,true);
+  await ask('next turn');
+  assert.match(prompts.at(-1),/completed turn/);assert.match(prompts.at(-1),/kept answer/);assert.doesNotMatch(prompts.at(-1),/blocked turn/);
+  ask.dispose();
+});
+
+test('Stop wakes a rate-limit retry without sending another request', async t => {
+  let ready,calls=0;const waiting=new Promise(resolve=>ready=resolve);
+  t.mock.method(assistant,'ask',options=>compatible.rateLimitedRequest(async()=>{
+    calls++;throw Object.assign(new Error('rate limited'),{status:429,retryAfter:'60'});
+  },{...options,onRetryWait:cancel=>{options.onRetryWait(cancel);if(cancel)ready();}}));
+  const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+  const blocked=ask('please explain this blocked request');await waiting;ask.stop();
+  assert.equal((await blocked).stopped,true);assert.equal(calls,1);ask.dispose();
+});
+
+
+const executionPlan={goal:'Answer the actual task',context:['Assumption: verify identifiers'],steps:[{id:1,action:'Discover schemas, then query evidence',tools:['read_evidence'],depends_on:[],success_criteria:['Evidence belongs to the requested entity'],on_failure:'Read the actual schema'}],recovery:['Inspect the error and change the request'],completion_checks:['Prove the result belongs to the requested entity']};
+function plannerTools(orchestrator=true){return {orchestrator:()=>orchestrator,schemas:[{name:'read_evidence',description:'Read evidence',inputSchema:{type:'object',properties:{id:{type:'string'}}}}],instructions:'Available tool constraints',editorContext:()=>null};}
+test('Orchestrator plans with ChatGPT Sol medium before a separate executor without changing its model',async t=>{
+ const events=[],prompts=[];
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(assistant,'ask',async options=>{
+  events.push('planner');assert.equal(options.assistant,'codex');assert.equal(options.model,'gpt-5.6-sol');assert.equal(options.effort,'medium');assert.deepEqual(options.tools,[]);
+  assert.equal(options.workDir,undefined);assert.equal(options.url,undefined);assert.equal(options.callTool,undefined);
+  assert.match(options.prompt,/read_evidence/);assert.match(options.prompt,/user question/);
+  return {plan:executionPlan,model:'gpt-5.6-sol',usage:{input_tokens:10,output_tokens:20}};
+ });
+ t.mock.method(compatible,'ask',async options=>{
+  events.push('executor');prompts.push(options.prompt);assert.equal(options.assistant,'openrouter-api');assert.equal(options.model,'weak');assert.match(options.prompt,/Orchestrator execution plan/);assert.match(options.prompt,/Prove the result belongs/);
+  return {plan:{answer:'verified answer'},model:'weak',usage:null};
+ });
+ const settings={provider:'openrouter-api',model:'weak'},ask=chat.create(fakeVscode(settings),plannerTools(),null,{});
+ const result=await ask('user question');assert.deepEqual(events,['planner','executor']);assert.equal(result.answer,'verified answer');assert.equal(result.planner.model,'gpt-5.6-sol');assert.equal(settings.model,'weak');ask.dispose();
+});
+test('Orchestrator settings are independent, planning stays off in other modes and when disabled',async t=>{
+ let planners=0,executors=0;
+ t.mock.method(assistant,'ask',async()=>{planners++;throw new Error('unexpected planner');});
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(compatible,'ask',async()=>{executors++;return {plan:{answer:'done'},model:'weak',usage:null};});
+ for(const [mode,disabled] of [[false,false],[true,true]]){
+  const settings={provider:'openrouter-api',model:'weak',...(disabled?{orchestratorProvider:''}:{})};
+  const ask=chat.create(fakeVscode(settings),plannerTools(mode),null,{});await ask('user question');ask.dispose();
+ }
+ assert.equal(planners,0);assert.equal(executors,2);
+});
+test('Invalid planner output or planner failure never silently runs the weak executor',async t=>{
+ let executions=0;
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(compatible,'ask',async()=>{executions++;return {plan:{answer:'unexpected'}};});
+ for(const invalid of ['not JSON','{"goal":"Guess","context":[],"steps":[],"recovery":[],"completion_checks":[]}']){
+  t.mock.method(assistant,'ask',async()=>({plan:{answer:invalid},model:'gpt-5.6-sol',usage:null}));
+  const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak'}),plannerTools(),null,{});
+  await assert.rejects(ask('user question'),/Orchestrator planning failed/);ask.dispose();
+ }
+ assert.equal(executions,0);
+});
+test('Stop during orchestration cancels the planner and never starts the executor',async t=>{
+ let ready,executions=0;const started=new Promise(resolve=>ready=resolve);
+ t.mock.method(assistant,'ask',async options=>{ready();await new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}));});
+ t.mock.method(compatible,'ask',async()=>{executions++;return {plan:{answer:'unexpected'}};});
+ const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak'}),plannerTools(),null,{});
+ const pending=ask('user question');await started;ask.stop();assert.equal((await pending).stopped,true);assert.equal(executions,0);ask.dispose();
+});
+
+
+test('Planner pickers save provider, exact model and effort without altering executor settings',async t=>{
+ const modelConfig=require('../model-config'),ai={provider:'openrouter-api',model:'weak',effort:'low'},planning={},titles=[];
+ t.mock.method(modelConfig,'offered',()=>[{id:'codex',setting:'codex-subscription',label:'ChatGPT subscription'}]);
+ t.mock.method(modelConfig,'adopt',async()=>{});t.mock.method(modelConfig,'apply',(_v,_id,list)=>list);
+ t.mock.method(assistant,'models',async()=>[{id:'gpt-5.6-sol',label:'GPT-5.6-Sol'},{id:'',label:'Codex default'}]);
+ const vscode=fakeVscode(ai),picks=[{id:'codex-subscription'},{id:'gpt-5.6-sol'},{id:'medium'}];
+ vscode.workspace.getConfiguration=section=>({get:(key,fallback)=>(section==='vertex.chat'?planning:ai)[key]??fallback,update:async(key,value)=>{(section==='vertex.chat'?planning:ai)[key]=value;}});
+ vscode.window.showQuickPick=async(items,options)=>{titles.push(options.title);assert.ok(items.every(item=>item.id!==undefined));if(options.title.endsWith('model'))assert.ok(items.every(item=>item.id));return picks.shift();};
+ const ask=chat.create(vscode,plannerTools(),null,{});await ask.configOrchestrator();
+ assert.deepEqual(planning,{orchestratorModel:'gpt-5.6-sol',orchestratorEffort:'medium',orchestratorProvider:'codex-subscription'});
+ assert.equal(ai.provider,'openrouter-api');assert.equal(ai.model,'weak');assert.equal(ai.effort,'low');assert.equal(titles.length,3);ask.dispose();
+});
+test('Planner can use a configured API provider and effort independently',async t=>{
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(require('../anthropic'),'ask',async options=>{
+  assert.equal(options.model,'strong-planner');assert.equal(options.effort,'high');assert.equal(options.apiKey,'test');assert.deepEqual(options.tools,[]);
+  return {plan:executionPlan,model:'strong-planner',usage:null};
+ });
+ t.mock.method(compatible,'ask',async options=>{assert.equal(options.model,'weak');return {plan:{answer:'done'},model:'weak',usage:null};});
+ const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak',orchestratorProvider:'anthropic-api',orchestratorModel:'strong-planner',orchestratorEffort:'high'}),plannerTools(),null,{});
+ const result=await ask('user question');assert.equal(result.planner.provider,'anthropic-api');assert.equal(result.model,'weak');ask.dispose();
+});
+
+
+test('Orchestrator recovers from a failed duplicate, preserves evidence and rejects an unfinished API answer',async t=>{
+ const apiAsk=rawCompatibleAsk;let plannerCalls=0,actions=0,requests=0;const bodies=[],stream=[];
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(assistant,'ask',async options=>{
+  plannerCalls++;assert.match(options.prompt,/next model step in this same request/);
+  if(plannerCalls===1)return {plan:executionPlan,model:'gpt-5.6-sol',usage:{input_tokens:1}};
+  if(plannerCalls===2){assert.match(options.prompt,/Repeated failed call blocked/);return {plan:{...executionPlan,steps:[{...executionPlan.steps[0],action:'Use read_evidence with id good'}]},model:'gpt-5.6-sol',usage:{input_tokens:2}};}
+  assert.match(options.prompt,/verified result/);return {plan:plannerCalls===3?{accept:false,feedback:'You have evidence; finish the answer yourself'}:{accept:true,feedback:''},model:'gpt-5.6-sol',usage:{input_tokens:3}};
+ });
+ const replies=[{tool_calls:[{id:'1',type:'function',function:{name:'read_evidence',arguments:'{"id":"bad"}'}}]},
+ {tool_calls:[{id:'2',type:'function',function:{name:'read_evidence',arguments:'{"id":"bad"}'}}]},
+ {tool_calls:[{id:'3',type:'function',function:{name:'read_evidence',arguments:'{"id":"good"}'}}]},
+ {content:'Please run the read tool yourself'},{content:'The verified result is 42'}];
+ t.mock.method(compatible,'ask',options=>apiAsk({...options,request:async(_id,_key,_route,body)=>{requests++;bodies.push(JSON.parse(JSON.stringify(body)));return {choices:[{message:replies.shift()}],usage:{prompt_tokens:10,completion_tokens:2}};}}));
+ const tools=plannerTools();tools.execute=async(_name,args)=>{actions++;if(args.id==='bad')throw new Error('invalid field');return {value:42,evidence:'verified result'};};
+ const ask=chat.create(fakeVscode({provider:'openai-api',model:'weak'}),tools,null,{});
+ const result=await ask('user question',{onProgress:update=>{if(update.answer)stream.push(update.answer);}});
+ assert.equal(result.answer,'The verified result is 42');assert.equal(plannerCalls,4);assert.equal(actions,2);assert.equal(requests,5);assert.equal(result.planner.usage.input_tokens,9);
+ assert.match(JSON.stringify(bodies[2].messages),/Orchestrator recovery advice/);assert.match(JSON.stringify(bodies[4].messages),/finish the answer yourself/);
+ assert.ok(!stream.includes('Please run the read tool yourself'));assert.ok(!stream.some(text=>text.includes('Draft withheld')));ask.dispose();
+});
+
+
+test('CLI orchestrator tool endpoint uses the same recovery guard without replaying the request',async t=>{
+ let endpoint,actions=0,executions=0,disposed=0;
+ t.mock.method(assistant,'ask',async options=>{
+  if(options.instructions.startsWith('You are the planning model'))return {plan:executionPlan,model:'gpt-5.6-sol',usage:null};
+  if(options.instructions.startsWith('Review the executor'))return {plan:{accept:true,feedback:''},model:'gpt-5.6-sol',usage:null};
+  executions++;assert.match(options.url,/scoped/);
+  await assert.rejects(endpoint.call(null,'read_evidence',{id:'bad'}),/bad field/);
+  await assert.rejects(endpoint.call(null,'read_evidence',{id:'bad'}),/Orchestrator recovery advice/);
+  await endpoint.call(null,'read_evidence',{id:'good'});
+  return {plan:{answer:'supported result'},model:'executor',usage:null};
+ });
+ const tools=plannerTools();tools.execute=async(_name,args)=>{actions++;if(args.id==='bad')throw new Error('bad field');return {result:'supported result'};};
+ const server={start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'test',registerTools:options=>{endpoint=options;return {route:'/scoped',dispose(){disposed++;}};}};
+ const ask=chat.create(fakeVscode({provider:'codex-subscription',model:'executor'}),tools,server,{});
+ const result=await ask('user question');assert.equal(result.answer,'supported result');assert.equal(actions,2);assert.equal(executions,1);assert.equal(disposed,1);ask.dispose();
+});
+
+
+test('Planner output is schema-bound and one malformed response gets exactly one format retry',async t=>{
+ let calls=0,executions=0;
+ t.mock.method(assistant,'ask',async options=>{
+  calls++;assert.equal(options.structuredResult,true);assert.equal(options.schema.additionalProperties,false);assert.equal(options.schema.properties.answer,undefined);assert.ok(options.schema.properties.goal);assert.deepEqual(options.tools,[]);
+  return {plan:calls===1?{answer:'nested malformed JSON'}:executionPlan,model:'gpt-5.6-sol',usage:{input_tokens:7}};
+ });
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(compatible,'ask',async()=>{executions++;return {plan:{answer:'done'},model:'weak'};});
+ const ask=chat.create(fakeVscode({provider:'openai-api',model:'weak'}),plannerTools(),null,{});const result=await ask('user question');assert.equal(calls,2);assert.equal(executions,1);assert.equal(result.planner.usage.input_tokens,14);ask.dispose();
+});
+test('Planner retries are limited to format failures, never transport failures',async t=>{
+ let calls=0;t.mock.method(assistant,'ask',async()=>{calls++;throw Object.assign(new Error('connection reset'),{code:'ECONNRESET'});});
+ const ask=chat.create(fakeVscode({provider:'openai-api',model:'weak'}),plannerTools(),null,{});await assert.rejects(ask('user question'),/connection reset/);assert.equal(calls,1);ask.dispose();
+});
+
+
+test('Malformed native output still accounts reported usage before the bounded retry',async t=>{
+ let calls=0;t.mock.method(assistant,'ask',async options=>{
+  if(++calls===1){options.onProviderResponse({scope:'model_response',response:{model:'gpt-5.6-sol',usage:{input_tokens:10,cached_input_tokens:3,output_tokens:2}}});throw Object.assign(new Error('invalid native JSON'),{code:'STRUCTURED_FORMAT'});}
+  return {plan:executionPlan,model:'gpt-5.6-sol',usage:{input_tokens:4,output_tokens:1}};
+ });
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));t.mock.method(compatible,'ask',async()=>({plan:{answer:'done'},model:'weak'}));
+ const ask=chat.create(fakeVscode({provider:'openai-api',model:'weak'}),plannerTools(),null,{});const result=await ask('user question');assert.equal(calls,2);assert.equal(result.planner.usage.input_tokens,11);assert.equal(result.planner.usage.cache_read_input_tokens,3);assert.equal(result.planner.usage.output_tokens,3);ask.dispose();
 });

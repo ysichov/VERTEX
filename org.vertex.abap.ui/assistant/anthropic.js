@@ -34,7 +34,7 @@ function models(apiKey) {
   });
 }
 
-function request(apiKey, body, maxBytes = 64000) {
+function request(apiKey, body, maxBytes = 64000, signal) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     // Enforce at the transport boundary, including history, schemas and tool
@@ -43,7 +43,7 @@ function request(apiKey, body, maxBytes = 64000) {
       reject(new Error("VERTEX: request exceeds " + (maxBytes === 64000 ? "64 KB" : (maxBytes / 1024) + " KiB") + "; nothing was sent to Anthropic. Start a new conversation or narrow the context."));
       return;
     }
-    const req = https.request({ hostname: "api.anthropic.com", path: "/v1/messages", method: "POST", headers: {
+    const req = https.request({ hostname: "api.anthropic.com", path: "/v1/messages", signal, method: "POST", headers: {
       "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json",
       "content-length": Buffer.byteLength(payload) } }, res => {
       let text = ""; res.setEncoding("utf8"); res.on("data", part => { text += part; });
@@ -58,18 +58,23 @@ function request(apiKey, body, maxBytes = 64000) {
 async function ask(options) {
   if (!options.apiKey) { throw new Error("No Anthropic API key is configured. Choose Anthropic API again and enter a key."); }
   // Read again each step: a toolset the model enabled adds tools to options.tools during the request.
-  const toolsNow = () => options.textOnly ? [] : (options.tools || []).map(tool => ({ name: tool.name, description: tool.description,
+  const toolsNow = () => options.structuredResult ? [{name:"submit_vertex_answer",description:"Return the required structured result directly.",input_schema:options.schema}] : options.textOnly ? [] : (options.tools || []).map(tool => ({ name: tool.name, description: tool.description,
     input_schema: tool.inputSchema })).concat([{ name: "submit_vertex_answer",
       description: "Submit the final VERTEX answer and navigation plan.", input_schema: options.schema }]);
   let apiTools = toolsNow();
   const messages = [{ role: "user", content: options.prompt }];
+  async function retryAnswer(plan){
+    const feedback=await options.onBeforeAnswer?.(plan);
+    if(!feedback)return false;
+    messages.push({role:"assistant",content:plan.answer||""},{role:"user",content:feedback});return true;
+  }
   let usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     apiTools = toolsNow();
     const response = await request(options.apiKey, { model: options.model, max_tokens: options.maxOutputTokens || 16000,
-      system: options.instructions, messages, ...(apiTools.length ? {tools:apiTools} : {}) },
+      system: options.instructions, messages, ...(options.structuredResult?{tool_choice:{type:"tool",name:"submit_vertex_answer"}}:{}), ...(apiTools.length ? {tools:apiTools} : {}) },
       // The limit is on the conversation and its context; the tool definitions come on top of it.
-      (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000)) + (apiTools.length ? Buffer.byteLength(JSON.stringify(apiTools), "utf8") : 0));
+      (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 64000)) + (apiTools.length ? Buffer.byteLength(JSON.stringify(apiTools), "utf8") : 0), options.signal);
     let answer;
     try { answer = JSON.parse(response.text); } catch (_) { answer = null; }
     if (answer && options.onProviderResponse) options.onProviderResponse({
@@ -83,28 +88,38 @@ async function ask(options) {
     const calls = (answer.content || []).filter(block => block.type === "tool_use");
     const final = calls.find(call => call.name === "submit_vertex_answer");
     if (final) {
-      if (options.onModelCall) options.onModelCall({ model: answer.model || options.model, usage: roundUsage, text: final.input?.answer || "" });
+      if(await retryAnswer(final.input)){options.onModelCall?.({model:answer.model||options.model,usage:roundUsage,text:"[Draft withheld by orchestrator review]",withheld:true});continue;}
+      if (options.onModelCall) options.onModelCall({ model: answer.model || options.model, usage: roundUsage, text: options.structuredResult?JSON.stringify(final.input):final.input?.answer || "" });
       return { plan: final.input, model: options.model, usage };
     }
     const responseText = (answer.content || []).filter(block => block.type === "text")
       .map(block => block.text || "").join("\n").trim();
-    if (options.onModelCall) options.onModelCall({ model: answer.model || options.model, usage: roundUsage, text: responseText });
+    if (!calls.length && options.structuredResult){
+      options.onModelCall?.({model:answer.model||options.model,usage:roundUsage,text:responseText});
+      if(answer.stop_reason==="refusal")throw new Error("Anthropic refused the structured request.");
+      let structured;try{structured=JSON.parse(responseText);}catch(_){throw Object.assign(new Error("Anthropic returned invalid structured JSON."),{code:"STRUCTURED_FORMAT"});}
+      return {plan:structured,model:options.model,usage};
+    }
     if (!calls.length) {
       // The Messages API is allowed to answer with text even when tools were
       // offered. A concise explanation of a supplied method is already a
       // useful completed answer; only navigation is absent in that case.
+      if(responseText&&await retryAnswer({answer:responseText,navigation:null})){options.onModelCall?.({model:answer.model||options.model,usage:roundUsage,text:"[Draft withheld by orchestrator review]",withheld:true});continue;}
+      if (options.onModelCall) options.onModelCall({ model: answer.model || options.model, usage: roundUsage, text: responseText });
       if (responseText) { return { plan: { answer: responseText, navigation: null }, model: options.model, usage }; }
       throw new Error("Anthropic API answered without text or a VERTEX plan.");
     }
+    if (options.onModelCall) options.onModelCall({ model: answer.model || options.model, usage: roundUsage, text: responseText });
     messages.push({ role: "assistant", content: answer.content });
     const results = [];
     for (const call of calls) {
+      options.signal?.throwIfAborted();
       if (!(options.tools || []).some(tool => tool.name === call.name)) {
         throw new Error("Anthropic requested an unavailable tool: " + call.name);
       }
       let content, isError = false;
       try { content = JSON.stringify(await options.callTool(call.name, call.input || {})); }
-      catch (error) { content = JSON.stringify({ error: error.message }); isError = true; }
+      catch (error) { if(error.orchestratorFatal||options.signal?.aborted)throw error;content = JSON.stringify({ error: error.message }); isError = true; }
       if (Buffer.byteLength(content, "utf8") > 24000) {
         content = "Result too large for chat. Ask the user to open the relevant method in VERTEX; the full source was not sent.";
         isError = true;

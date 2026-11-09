@@ -44,7 +44,7 @@ function baseUrl(id) {
 
 function secretKey(id) { return "vertex.provider." + id + ".apiKey"; }
 
-function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
+function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs, signal) {
   const provider = PROVIDERS[id];
   if (!provider) { return Promise.reject(new Error("Unknown API provider: " + id)); }
   if (!apiKey && !provider.local) { return Promise.reject(new Error("No " + provider.label + " API key is configured. Enter it in LLM Providers.")); }
@@ -55,7 +55,7 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs) {
   const base = baseUrl(id);
   const url = new URL(base + route);
   return new Promise((resolve, reject) => {
-    const req = (url.protocol === "http:" ? http : https).request(url, { method: payload ? "POST" : "GET", headers: {
+    const req = (url.protocol === "http:" ? http : https).request(url, { signal, method: payload ? "POST" : "GET", headers: {
       ...(apiKey && !provider.local ? { authorization: "Bearer " + apiKey } : {}), ...(payload ? { "content-type": "application/json",
         "content-length": Buffer.byteLength(payload, "utf8") } : {})
     } }, res => {
@@ -241,19 +241,25 @@ function searchCallCount(response) {
 }
 async function ask(options) {
   const id = options.assistant;
-  const request = options.request || requestJson;
+  const request = (id,key,route,body,maxBytes,timeout) => (options.request || requestJson)(id,key,route,body,maxBytes,timeout,options.signal);
   if (options.images?.length && options.capabilities?.vision === false) throw new Error("This model does not accept screenshots. Choose a Vision model or remove the images.");
   if(options.webSearch && id!=="vercel-api")throw new Error("Web mode currently requires Vercel AI Gateway.");
   if(options.webSearch && (options.capabilities?.tools===false || toolSupport.rejection(id,options.apiKey,options.model)))throw new Error("This model cannot use Gateway search tools. Choose another Vercel model for Web mode.");
-  let tools = options.webSearch ? [{type:"vercel:perplexity_search",config:{query:options.webQuery || options.prompt,max_results:5}}] : options.capabilities?.tools === false || toolSupport.rejection(id, options.apiKey, options.model) ? [] : (options.tools || []).map(tool => ({ type: "function", function: {
+  let tools = options.structuredResult ? [] : options.webSearch ? [{type:"vercel:perplexity_search",config:{query:options.webQuery || options.prompt,max_results:5}}] : options.capabilities?.tools === false || toolSupport.rejection(id, options.apiKey, options.model) ? [] : (options.tools || []).map(tool => ({ type: "function", function: {
     name: tool.name, description: tool.description, parameters: tool.inputSchema
   } })).concat([{ type: "function", function: { name: "submit_vertex_answer",
     description: "Submit the final VERTEX answer and navigation plan.", parameters: options.schema } }]);
   const content = options.images?.length ? [{ type: "text", text: options.prompt },
     ...options.images.map(image => ({ type: "image_url", image_url: { url: "data:" + image.media_type + ";base64," + image.data } }))] : options.prompt;
   const textOnly = "Tools are unavailable for this request. Reply directly as plain text from supplied context, not through submit_vertex_answer or JSON. Do not claim to read files, search, run commands, modify objects or perform live actions. The supplied source, review and debugger context are available for reading and analysis. Do not say that this supplied context is unavailable. Mention tool limitations only when the actual requested action needs unavailable tools.";
-  const messages = [{ role: "system", content: options.instructions + (!tools.length ? "\n" + textOnly : "") }, { role: "user", content }];
+  const messages = [{ role: "system", content: options.instructions + (options.structuredResult?"\nReturn a root JSON object matching this schema, with no answer wrapper: "+JSON.stringify(options.schema):!tools.length?"\n"+textOnly:"") }, { role: "user", content }];
   const imageBytes = (options.images || []).reduce((sum, image) => sum + Buffer.byteLength(image.data || "", "utf8") + 256, 0);
+  async function retryAnswer(plan){
+    const feedback=await options.onBeforeAnswer?.(plan);
+    if(!feedback)return false;
+    messages.push({role:"assistant",content:plan.answer||""},{role:"user",content:feedback});
+    return true;
+  }
   let usage = null;
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     // A toolset the model enabled adds tools to options.tools during the request; they join before submit_vertex_answer.
@@ -265,6 +271,7 @@ async function ask(options) {
     }
     options.onProgress?.({ status: "Model request " + (round + 1) });
     const send = () => rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
+      ...(options.structuredResult&&!options.structuredFallback?{response_format:{type:"json_schema",json_schema:{name:"vertex_result",strict:true,schema:options.schema}}}:{}),
       model: options.model, messages: skipsThinking(id, options.model, options) && !tools.length ? messages.concat([EMPTY_THINK]) : messages, ...(tools.length ? { tools } : {}), ...(options.webSearch ? {tool_choice:"required"} : {}),
       ...(Number.isInteger(options.maxOutputTokens)&&options.maxOutputTokens>0 ? id==="openai-api"?{max_completion_tokens:options.maxOutputTokens}:{max_tokens:options.maxOutputTokens} : {}), stream: false
     // The limit is on the conversation and its context; the tool definitions are a fixed part on top of it -
@@ -340,12 +347,19 @@ async function ask(options) {
       let plan;
       try { plan = JSON.parse(final.function.arguments || "{}"); } catch (_) { throw new Error(PROVIDERS[id].label + " returned an invalid VERTEX plan."); }
       if (typeof plan.answer !== "string") { throw new Error(PROVIDERS[id].label + " returned a VERTEX plan without an answer."); }
+      if(await retryAnswer(plan)){onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"[Draft withheld by orchestrator review]",withheld:true});continue;}
       if (onModelCall) onModelCall({ model: response.model || options.model, usage: roundUsage, text: plan.answer });
       return { plan, model: options.model, usage };
     }
     if (!calls.length) {
       let answer = typeof message.content === "string" ? message.content.trim() : Array.isArray(message.content)
         ? message.content.filter(part=>part && ["text","output_text"].includes(part.type)&&typeof part.text==="string").map(part=>part.text).join("\n").trim() : "";
+      if(options.structuredResult){
+        onModelCall?.({model:response.model||options.model,usage:roundUsage,text:answer});
+        if(diagnostics.refusal)throw new Error(PROVIDERS[id].label+" refused the structured request: "+diagnostics.refusal);
+        let structured;try{structured=JSON.parse(answer);}catch(_){throw Object.assign(new Error("Provider returned invalid structured JSON."),{code:"STRUCTURED_FORMAT"});}
+        return {plan:structured,model:response.model||options.model,usage};
+      }
       if(answer&&options.schema){
         try{const object=JSON.parse(answer.replace(/^```(?:json)?\s*|\s*```$/g,""));if(object&&typeof object.answer==="string"&&Object.keys(object).every(key=>["answer","navigation","build_command"].includes(key)))answer=object.answer.trim();}catch(_){}
       }
@@ -354,6 +368,7 @@ async function ask(options) {
         const error=new Error(PROVIDERS[id].label+" returned an empty JSON object without an answer. The supplied context was sent; try another model or generate again.");error.model_step=round+1;error.operation="Read model response";throw error;
       }
       if (answer) {
+        if(await retryAnswer({answer,navigation:null})){onModelCall?.({model:response.model||options.model,usage:roundUsage,text:"[Draft withheld by orchestrator review]",withheld:true});continue;}
         if (onModelCall) onModelCall({ model: response.model || options.model, usage: roundUsage, text: answer });
         return { plan: { answer, navigation: null }, model: options.model, usage };
       }
@@ -377,7 +392,7 @@ async function ask(options) {
       try {
         const args = JSON.parse(call.function.arguments || "{}");
         content = JSON.stringify(await options.callTool(name, args));
-      } catch (error) { content = JSON.stringify({ error: error.message }); }
+      } catch (error) { if(error.orchestratorFatal||options.signal?.aborted)throw error; content = JSON.stringify({ error: error.message }); }
       if (Buffer.byteLength(content, "utf8") > 24000) {
         content = "Result too large for chat. Ask the user to narrow the request; the full result was not sent.";
       }

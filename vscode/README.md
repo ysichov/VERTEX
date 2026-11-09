@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.73**
+**Version: 0.9.74**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -1077,6 +1077,9 @@ debugger); ARC-1 and vibing-steampunk are one set each. A set may take tools fro
 server's newer version as long as their names match its patterns; a tool no set
 matches is listed as in no toolset.
 
+
+In **VERTEX Orchestrator**, a separate planning model prepares an execution plan, relevant context and completion checks before the model selected in chat runs the task. The default planner is **ChatGPT subscription / GPT-5.6-Sol / medium**. Use the gear beside the MCP list while Orchestrator is selected, or **VERTEX: Configure Orchestrator Planner**, to choose its provider, model and effort independently. The settings are `vertex.chat.orchestratorProvider`, `vertex.chat.orchestratorModel` and `vertex.chat.orchestratorEffort`; an empty provider disables planning. Plans and review verdicts are validated against direct object schemas; invalid output gets at most one format retry. Each plan step has an ID, action, available tool names, preceding dependencies, success criteria and a failure action; invalid dependencies and unknown tool names are rejected. The planner has no action tools, its advice must be verified against actual results, and its usage is logged separately as **Orchestrator planning**. Stop also cancels planning. A failed plan is reported before the executor starts. Repeated failed tool calls trigger corrective planning with recent results; an identical failed call without new successful evidence is blocked before execution. Recovery is limited to two interventions. After an intervention, proposed answers are checked against the evidence; API and Copilot executors can revise a rejected answer, while a CLI run is stopped rather than replayed. Successful execution adds no periodic supervisor calls.
+
 ### MCP Servers window
 
 The ⓘ button beside the MCP list opens **VERTEX: MCP Servers**: every server with
@@ -1861,3 +1864,5 @@ Generate with AI shows a lens inspecting colored diff fragments that merge into 
 Session Logs groups provider files by conversation, with combined usage and each prompt’s provider and model. Clearing a selected conversation removes all its provider files and branches. Older logs without a conversation identifier remain separate. In VS Code, **Continue in chat** resumes the conversation from its end.
 
 OpenRouter reports the remaining daily free requests after answers, during rate-limit waits and on failed requests when the API provides those counters. Changing the model or provider cancels a pending rate-limit wait while retaining conversation history. Exhausted daily free-model quotas stop immediately; short retry waits apply only to temporary limits.
+
+While an AI response is running in the VERTEX panel, use **■ Stop** beside the message field to cancel the response and pending retries. Received text stays visible and completed conversation history is retained. Operations already performed are not undone.

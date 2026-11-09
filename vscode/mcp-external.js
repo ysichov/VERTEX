@@ -372,7 +372,7 @@ function create({ vscode, active, password, storage, catalog = null, fetchLatest
     if (!tools.length) throw new Error("MCP server " + set.server + " offers none of the tools of toolset " + name + " (" + set.tools.join(", ") + ").");
     enabled.set(name, { server: set.server, run, tools });
     return { enabled: name, server: set.server, tools: tools.map(t => t.name),
-      note: "These tools are offered from the next step on (in Claude Code and Codex, from the next question)" + (set.note ? ". " + set.note : ".") + (entry.note ? " " + entry.note : "") };
+      note: "API and Copilot executors receive these tools on the next step of this same request; Claude Code and Codex receive them from the next question" + (set.note ? ". " + set.note : ".") + (entry.note ? " " + entry.note : "") };
   }
   const enabledTools = () => [...enabled.values()].filter(e => e.server !== selected() && e.run.client.alive()).flatMap(e => e.tools.map(tool => ({ tool, run: e.run })));
 
@@ -388,7 +388,7 @@ function create({ vscode, active, password, storage, catalog = null, fetchLatest
     const toolsetSchema = () => {
       const sets = offered();
       return sets.length ? [{ name: "enable_toolset", annotations: { readOnlyHint: true, destructiveHint: false },
-        description: "Add extra SAP tools from another MCP server when the task needs them; they are offered from the next step on (in Claude Code and Codex from the next question) and stay for the session. "
+        description: "Add extra SAP tools from another MCP server when the task needs them; API and Copilot executors can use them on the next step in this same request; Claude Code and Codex get them from the next question. They stay for the session. Call this tool yourself when needed, do not ask the user to invoke it. "
           + "Enable one only for what the other tools cannot do. Toolsets: " + sets.map(t => t.name + " (" + t.server + ")"
             + (selected() === ORCHESTRATOR ? "" : ": " + (t.description || t.tools.join(", ")))).join("; ") + "."
             + (selected() === ORCHESTRATOR ? " What each one does is in the MCP server catalog of the instructions." : ""),
@@ -412,6 +412,7 @@ function create({ vscode, active, password, storage, catalog = null, fetchLatest
     // Defined, not assigned: VERTEX's own set may hold these as read-only properties, which assignment would refuse.
     const define = (key, value) => Object.defineProperty(wrapped, key, { value, enumerable: true });
     define("prepare", prepare);
+    define("orchestrator", () => selected() === ORCHESTRATOR);
     const fromToolset = name => enabledTools().find(e => e.tool.name === name);
     define("external", name => { const ext = current(); return !!(ext && ext.tools.some(t => t.name === name)) || !!fromToolset(name); });
     define("mcpNote", () => { const ext = current(); return (ext ? "SAP tools come from the MCP server " + ext.name
@@ -495,7 +496,7 @@ function create({ vscode, active, password, storage, catalog = null, fetchLatest
     return "Your own VERTEX SAP tools come first and answer most questions: search_sap_objects and read_sap_object / read_sap_method "
       + "find and read code; run_sap_select reads any table - transports and their objects (E070, E071), object versions (VRSD), "
       + "the object directory (TADIR), the dictionary (DD02L, DD03L) and application data. Use them before anything below.\n"
-      + "Enable a toolset only for what your own tools cannot do. In Claude Code and Codex an enabled toolset arrives with the next "
+      + "Enable a toolset only for what your own tools cannot do. API providers and Copilot receive enabled tools on the next step in the same request. In Claude Code and Codex an enabled toolset arrives with the next "
       + "question: then still answer now with your own tools when they can, and say that the toolset is ready for the next question. "
       + "Never answer that you have no tools for a task you have not tried with your own tools.\n"
       + "The user switches the chat to one server in the VERTEX panel; you cannot.\n"

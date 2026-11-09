@@ -183,6 +183,7 @@ test("started servers stay up together: switching away and back, or enabling a t
     assert.equal(await mcp.prepare(), null);
     settings["vertex.chat.mcpServer"] = "VERTEX Orchestrator";
     const tools = mcp.wrap({ schemas: [], instructions: "", execute: async () => "" });
+    assert.equal(tools.orchestrator(),settings["vertex.chat.mcpServer"]==="VERTEX Orchestrator");
     const answer = await tools.execute("enable_toolset", { toolset: "SAP RAP" });
     assert.deepEqual(answer.tools, ["abap_objects_generator_list"]);
     settings["vertex.chat.mcpServer"] = "SAP ADT";

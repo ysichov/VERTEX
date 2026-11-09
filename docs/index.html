@@ -273,6 +273,7 @@ In VS Code, the <b>SNC</b> checkbox beside the SAP system selector switches betw
   (Node.js, or the vsp executable for vibing-steampunk), or from the MCP server of SAP's
   ABAP Development Tools for VS Code;
   each is read-only unless its write access is chosen when it is picked.
+  In VS Code, VERTEX Orchestrator uses a separate planning provider and model before the chat model executes the task. Its default is ChatGPT / GPT-5.6-Sol / medium; the gear beside the MCP list configures the planner independently. Plans and review verdicts use validated object schemas with at most one format retry. Individual steps include dependencies, tool names, success criteria and failure actions. Plans contain context, steps and completion checks and must be verified by the executor. Repeated tool failures trigger bounded corrective planning with the actual results; after an intervention, unsupported proposed answers are withheld. Successful steps add no periodic supervisor calls.
   Its LLM Providers window has independently collapsible model lists and API-key
   providers for Anthropic, OpenAI, Mistral, Gemini, Groq, Cerebras, OpenRouter, NVIDIA and Vercel AI Gateway, and local models through LM Studio or Ollama.
   Each provider's model list has a Clear all / Select all control.

@@ -1,3 +1,23 @@
+## 2026-11-09 — Direct schemas for orchestrator results (0.9.73)
+
+Planner and recovery results use a direct root object schema with goal, context, steps, recovery and completion_checks; answer review uses a separate accept/feedback schema. Each step is an object with id, action, tools, depends_on, success_criteria and on_failure. Available tool names constrain its schema dynamically; local validation rejects forward/cyclic dependencies, wrong numbering, unknown tools and missing per-step criteria. JSON strings nested in answer are rejected. Codex receives the root schema through --output-schema, compatible APIs use strict JSON Schema response_format, and Anthropic/Copilot use a schema-bearing result-only tool. Both contracts are validated locally, with at most one retry for a format error or explicit unsupported structured-output mode; ordinary network errors, explicit refusals and invalid schema definitions are not format retries. All reported model usage, including malformed attempts, is accounted for.
+
+## 2026-11-09 — Recover from repeated executor errors (0.9.73)
+
+The orchestrator returns repeated tool failures to its planning model with recent arguments and results. Identical failed calls without new successful evidence are blocked before execution. Two corrective interventions are allowed; an unresolved loop stops explicitly. After intervention, proposed final answers are checked against evidence and unavailable work is not claimed as complete. API and Copilot executors continue from review feedback without replaying successful tools; native CLI answers can be withheld without restarting their tool run. Successful steps trigger no periodic supervisor calls. Planner usage includes all consultations, and recovery/review logs have their own operation labels. Toolset instructions distinguish API/Copilot next-step availability from native CLI next-question availability. The SQL tool description spells out ABAP DESCENDING and schema discovery.
+
+## 2026-11-09 — Independent orchestrator planner (0.9.73)
+
+VERTEX Orchestrator prepares each normal model-backed request with a separate planning provider and model, defaulting to ChatGPT subscription / GPT-5.6-Sol / medium. The existing MCP settings gear opens native provider, model and effort pickers; the executor selection is preserved. The planner receives bounded context and tool schemas without action tools, returns validated steps, context, recovery advice and completion checks, and is logged separately with its own usage. Stop cancels planning. Invalid or failed plans do not silently fall back to unplanned execution. Other MCP modes and dedicated direct-search/Web paths keep their existing behavior.
+
+## 2026-11-09 — Stop an AI response (0.9.73)
+
+The VS Code chat offers a theme-aware Stop button beside the message field while a response runs. Stop cancels API requests, Copilot streams, CLI processes and retry waits, prevents further tool calls and retains received text and completed history.
+
+## 2026-11-09 — Clear operation feedback (0.9.73)
+
+Review, commit, push, pull request and branch workflows display operation feedback in prominent theme-aware panels with distinct icons for progress, success, warnings and errors. Empty feedback is hidden; long messages wrap and screen readers receive complete status updates.
+
 ## 2026-11-09 — MCP servers stay up together (0.9.73)
 
 A started MCP server keeps running for the VS Code session: switching the chat to another server, to VERTEX or to the orchestrator, and back, no longer starts it again. The server chosen in the panel and the servers whose toolsets the orchestrator enabled run side by side, one process each. The orchestrator's catalog now starts with what VERTEX's own tools reach (code search and reading; any table through run_sap_select, transports and versions included) and tells the model to answer with them while a toolset it enabled waits for the next question.

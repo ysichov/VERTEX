@@ -106989,40 +106989,6 @@ function build(sf,mode){
         var rules=w.control||(control&&control.classifyStatement({text:w.text}));
         if(!rules)throw new Error('Shared ABAP statement rules are required for Diagram.');
         if(!rules.logic&&!(sites[w.name+":"+w.line]||[]).length&&!atEnd(w))return;
-      }
-      var branch=/^(WHEN|ELSE|ELSEIF)$/.test(word);
-      if(branch)while(blocks.length&&blocks[blocks.length-1].branch)blocks.pop();
-      var node={id:id(),key:"o|"+w.name+":"+w.line,text:w.text.length>100?w.text.slice(0,97)+"…":w.text,location:scope,owner:n.klass,source:src(w),
-        group:scope,line:w.aceLine,aceLocation:w.location,stack:depth,type:"operation",bse:!!w.included,branch:branch,closes:opened?opened.id:undefined};
-      diagramRow.nodeId=node.id;nodes.push(node);edges.push({from:blocks.length?blocks[blocks.length-1].id:container.id,to:node.id,label:String(w.line)});
-      if(!blocks.length&&!firstOf[scope])firstOf[scope]=node.id;
-      if(branch||/^(IF|CASE|LOOP|DO|WHILE|SELECT)$/.test(word))blocks.push({id:node.id,branch:branch});
-      if(atEnd(w)){stopped=true;return;}
-      // FLOW contains source statements and nested routines; parameter bindings belong to data analysis.
-      var callParent=node;
-      (sites[w.name+":"+w.line]||[]).forEach(function(c){callee(c,callParent,String(w.line),depth+1);});
-    });
-    var execution=control.executionEdges(diagramRows);routineFlows.push({header:container.id,entry:execution.entry,edges:execution.edges});
-  }
-  // Among classes the program's own routines are its root, so what they call stands one call below it.
-  entries.forEach(function(x){emit(x,mode==="classes"?{}:{id:"bseroot"},"",mode==="classes"&&at(x).klass===sf.name?0:1);});
-  var unreached=sf.stopAt?[]:order.filter(function(x){return !seen[x];}),said=[];
-  var named=function(list){return list.slice(0,3).map(function(x){return x.replace("→","=>");}).join(", ")+(list.length>3?", …":"");};
-  if(unreached.length)said.push("Not drawn: "+unreached.length+" routine"+(unreached.length===1?"":"s")+" of the flow that no call the analysis can follow reaches ("+named(unreached)+").");
-  if(stubs.length)said.push("Called, with no statement of theirs in the flow: "+named(stubs)+".");
-  var byId={};nodes.forEach(function(x){byId[x.id]=x;});
-  rows.forEach(function(w){if(!w.included)return;var n=at(w.scope);
-    if(klassNode[n.klass])klassNode[n.klass].bse=true;if(unit[w.scope])unit[w.scope].bse=true;});
-  for(var again=true;again;){again=false;edges.forEach(function(e){var from=byId[e.from],to=byId[e.to];if(from&&to&&to.bse&&!from.bse){from.bse=true;again=true;}});}
-  var idOf={},deepest=0;nodes.forEach(function(x){idOf[x.key]=x.id;if(x.stack>deepest)deepest=x.stack;});
-  var diagramEdges=edges.filter(function(edge){var target=byId[edge.to];return target&&['method','class','program'].indexOf(target.type)>=0;});routineFlows.forEach(function(flow){if(flow.entry)diagramEdges.push({from:flow.header,to:flow.entry,label:''});diagramEdges=diagramEdges.concat(flow.edges);});
-  // A WHEN is said on the line from its CASE, not drawn again as a box: the line takes the box's way on, the box is left out of the diagram (the tree keeps it).
-  nodes.forEach(function(n){if(!n.branch||!/^WHEN[\s.]/i.test(n.text))return;var into=diagramEdges.filter(function(e){return e.to===n.id;});if(!into.length)return;n.diagramHidden=true;var out=diagramEdges.filter(function(e){return e.from===n.id;});diagramEdges=diagramEdges.filter(function(e){return e.to!==n.id&&e.from!==n.id;});into.forEach(function(e){out.forEach(function(o){diagramEdges.push({from:e.from,to:o.to,label:e.label||o.label});});});});
-  return {nodes:[],edges:[],formula:{nodes:[],edges:[]},bseFlow:{nodes:nodes,edges:edges,palette:palette,diagramEdges:diagramEdges,grouped:mode==="steps"||mode==="logic"},originTitle:"",maxStack:deepest,maxLevel:0,bseFlowHtml:"",sequence:sequence,ids:idOf,said:said};
-}
-var api={build:build,palette:palette,routineColor:routineColor};
-if(typeof module!=="undefined"&&module.exports){module.exports=api;}else{root.vertexFlowGraph=api;}
-})(typeof window!=="undefined"?window:this);
 
 },
 function(module,exports,__vertexRequire){

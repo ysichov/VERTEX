@@ -57,3 +57,17 @@ test('Copilot commit generation omits all tools including submit_vertex_answer',
  const result=await copilot.ask(vscode,{model:'copilot-test',instructions:'Draft only',prompt:'Diff',textOnly:true,tools:[]});
  assert.equal(result.plan.answer,'Improve review');assert.deepEqual(requests[0].options,{});
 });
+
+
+test('Copilot revises a rejected final answer instead of displaying it',async()=>{
+ const {vscode,requests}=fixture([[new TextPart('unfinished')],[new ToolCallPart('final','submit_vertex_answer',{answer:'verified',navigation:null})]]);let checks=0;const shown=[];
+ const result=await copilot.ask(vscode,{model:'copilot-test',instructions:'rules',prompt:'task',tools:[],schema:{},onBeforeAnswer:async()=>++checks===1?'Complete the available task':null,onModelCall:event=>shown.push(event.text)});
+ assert.equal(result.plan.answer,'verified');assert.equal(checks,2);assert.match(JSON.stringify(requests[1].messages),/Complete the available task/);assert.deepEqual(shown,['verified']);
+});
+
+
+test('Copilot planner receives the direct root schema without action tools',async()=>{
+ const schema=require('../orchestrator-plan').PLAN_SCHEMA,plan={goal:'task',context:[],steps:[{id:1,action:'read',tools:[],depends_on:[],success_criteria:['evidence'],on_failure:'inspect error'}],recovery:[],completion_checks:['verify']};
+ const {vscode,requests}=fixture([[new ToolCallPart('result','submit_vertex_answer',plan)]]);
+ const result=await copilot.ask(vscode,{model:'copilot-test',prompt:'task',instructions:'Plan',schema,structuredResult:true,textOnly:true,tools:[]});assert.deepEqual(result.plan,plan);assert.deepEqual(requests[0].options.tools[0].inputSchema,schema);assert.equal(requests[0].options.tools.length,1);
+});
