@@ -890,8 +890,12 @@ function activate(context) {
   }, transpilerHistory);
   // The chat's SAP tools: VERTEX's own, or those of the MCP server picked in the VERTEX panel.
   const chatMcp = require("./mcp-external").create({ vscode, active, password: system => auth.password(system),
-    storage: context.globalStorageUri && context.globalStorageUri.fsPath });
+    storage: context.globalStorageUri && context.globalStorageUri.fsPath,
+    // The version and tool list of each server, read the last time it started: the catalog and the MCP Servers window use them.
+    catalog: { get: () => context.globalState.get("vertex.mcpCatalog", {}), update: value => context.globalState.update("vertex.mcpCatalog", value) } });
   context.subscriptions.push({ dispose: () => chatMcp.stop() });
+  // Once per window load: newer npm versions of the servers' packages, shown as Update; nothing is installed here.
+  chatMcp.checkUpdates().catch(() => {});
   // A server picked earlier starts with the extension, in the background, so the first question does not wait for it.
   if (chatMcp.servers().some(server => server.name === chatMcp.selected())) {
     chatMcp.prepare().catch(error => vscode.window.showErrorMessage("VERTEX: MCP server " + chatMcp.selected() + " did not start: " + error.message));

@@ -1,3 +1,19 @@
+## 2026-11-09 — MCP servers stay up together (0.9.73)
+
+A started MCP server keeps running for the VS Code session: switching the chat to another server, to VERTEX or to the orchestrator, and back, no longer starts it again. The server chosen in the panel and the servers whose toolsets the orchestrator enabled run side by side, one process each. The orchestrator's catalog now starts with what VERTEX's own tools reach (code search and reading; any table through run_sap_select, transports and versions included) and tells the model to answer with them while a toolset it enabled waits for the next question.
+
+## 2026-11-09 — Install and start scenes for MCP servers (0.9.73)
+
+The window that starts an MCP server tells installing from starting. While npx downloads a package, gears fly from the registry into a container; a server already installed is an orbiter on the runway with the server's name on its hull, its plasma flame flaring now and then. When the server is up, the container closes or the orbiter takes off past trees and clouds that run back faster and faster, with a check, and then the result shows. The MCP Servers window checks npm for updates each time it opens.
+
+## 2026-11-09 — VERTEX Orchestrator and the MCP Servers window (0.9.73)
+
+**VERTEX Orchestrator** is the last choice of the MCP server list in the VERTEX panel. The chat keeps VERTEX's own SAP tools and gets a catalog of every configured MCP server: what it is for, its version and its toolsets. The model enables the one toolset a task needs instead of carrying a whole server's tools. mcp-abap-adt, with over 250 tools, is split into twelve toolsets (read objects, search and where-used, versions, data and SQL, change code, change DDIC and CDS, change RAP, packages, tests and checks, transports, run and runtime analysis, debugger); ARC-1 and vibing-steampunk are one toolset each. Each server in `vertex.chat.mcpServers` can have a `description`; the four default servers have one. In the other choices only toolsets marked `always` are offered, as SAP RAP was before.
+
+**VERTEX: MCP Servers** (the ⓘ button beside the MCP server list) shows every server with its description, version, toolsets and a table of its tools: which toolset each is in and whether it may change SAP. Versions and tool lists are kept from each server's last start, so the window and the catalog need no server running; **Read tools** starts one to read them. After VS Code loads, and each time the MCP Servers window opens, VERTEX asks npm whether a newer ARC-1 or mcp-abap-adt is out; then **Update** appears in the VERTEX panel and in the window. Nothing is installed until you press it: the newer version goes into `vertex.chat.mcpVersions`, the server starts on it and its tool list is kept. A failed check is shown as such.
+
+A wrong navigation in an answer (an action the object type has not) no longer loses the answer: it is shown, with a line saying which object could not be opened. The waiting scene of a review or commit message request is drawn under the status text instead of above it. While no answer has come yet, VERTEX: and the status share one line. The changed-file list of a review has a splitter: drag it to widen the list when file names are cut.
+
 ## 2026-11-09 — Only running local models in the panel
 
 The VERTEX panel offers only the LM Studio or Ollama models that are running, with the context each was loaded with; LLM Providers still lists every downloaded model. VERTEX does not load models itself, and Check models does not start a model that is not running.

@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.72",
+  "version": "0.9.73",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -294,6 +294,10 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "vertex.mcpServers",
+        "title": "VERTEX: MCP Servers"
+      },
+      {
         "command": "vertex.showLog",
         "title": "Show Connection Log",
         "category": "VERTEX"
@@ -361,6 +365,10 @@
                   "type": "string"
                 }
               },
+              "description": {
+                "type": "string",
+                "description": "What the server is for and what it is strong at, in two or three sentences. The VERTEX Orchestrator shows it to the model in its catalog, and VERTEX: MCP Servers shows it to you."
+              },
               "download": {
                 "type": "string",
                 "description": "Where to get the command when it is not found; shown in the error."
@@ -388,6 +396,7 @@
           "default": [
             {
               "name": "ARC-1",
+              "description": "Nine broad tools (SAPRead, SAPSearch, SAPNavigate, SAPContext, SAPLint, SAPDiagnose, SAPManage, SAPTransport, SAPGit), each with several actions. Strong at understanding an object with its dependency contracts, local abaplint checks, system capability probes and abapGit; writes are gated by package and by what vertex.chat.arc1Access allows.",
               "command": "npx",
               "args": [
                 "-y",
@@ -409,6 +418,7 @@
             },
             {
               "name": "mcp-abap-adt",
+              "description": "Over 250 narrow ADT tools, one per object type and operation: read, create, change, delete, activate and syntax-check classes, programs, function modules, DDIC, CDS and RAP objects; versions and diffs; ABAP Unit and ATC; transports; table contents and SQL; profiler traces and dumps; the ABAP and AMDP debugger. The read-only package serves only the reading tools.",
               "command": "npx",
               "args": [
                 "-y",
@@ -430,6 +440,7 @@
             },
             {
               "name": "vibing-steampunk",
+              "description": "One SAP tool with actions (read, edit, create, delete, search, query, grep, test, analyze, debug, rfc, revisions, lint). Strong at editing a single method with automatic lock and activation, package boundary analysis, and calling RFC function modules through the classic gateway.",
               "command": "${vspPath}",
               "args": [
                 "--mode",
@@ -448,6 +459,7 @@
             },
             {
               "name": "SAP ADT",
+              "description": "SAP's own MCP server inside ABAP Development Tools for VS Code; works on the systems logged on there. Strong at RAP: generators that create table, CDS view, behavior definition, service definition and binding in one go, publishing service bindings, and object actions as ADT offers them.",
               "url": "http://localhost:${adtMcpPort}/mcp",
               "headers": {
                 "Authorization": "Bearer ${adtMcpToken}",
@@ -486,6 +498,10 @@
               },
               "note": {
                 "type": "string"
+              },
+              "always": {
+                "type": "boolean",
+                "description": "Offer this toolset with every chosen server, not only in the VERTEX Orchestrator."
               }
             }
           },
@@ -493,7 +509,8 @@
             {
               "name": "SAP RAP",
               "server": "SAP ADT",
-              "description": "RAP generators (table, CDS view, behavior definition, service definition and binding in one go), service bindings: publish and OData service details, actions on objects",
+              "description": "Generates a RAP application (table, CDS view, behavior definition, service definition and binding) in one go, publishes service bindings and shows their OData details, and runs the actions ADT offers on an object.",
+              "always": true,
               "tools": [
                 "abap_destination_list",
                 "abap_objects_generator_*",
@@ -505,8 +522,200 @@
                 "abap_object_activate"
               ],
               "note": "SAP ADT works on the systems logged on in SAP's ABAP Development Tools, which may differ from the system VERTEX's own tools read: call abap_destination_list first, name the destination in every call, and tell the user which system was changed."
+            },
+            {
+              "name": "ARC-1",
+              "server": "ARC-1",
+              "description": "All nine ARC-1 tools.",
+              "tools": [
+                "*"
+              ]
+            },
+            {
+              "name": "vibing-steampunk",
+              "server": "vibing-steampunk",
+              "description": "Its one SAP tool.",
+              "tools": [
+                "*"
+              ]
+            },
+            {
+              "name": "ADT: read objects",
+              "server": "mcp-abap-adt",
+              "description": "Read the source and metadata of classes, programs, includes, interfaces, function groups and modules, DDIC, CDS, RAP objects, message classes, packages and transactions.",
+              "tools": [
+                "GetClass",
+                "GetProgram",
+                "GetInclude*",
+                "GetInterface",
+                "GetFunction*",
+                "ListFunction*",
+                "GetTable",
+                "GetStructure*",
+                "GetDdl",
+                "GetDataElement",
+                "GetDomain",
+                "GetTableType",
+                "GetBehavior*",
+                "GetMetadataExtension",
+                "GetService*",
+                "GetMessageClass*",
+                "GetPackage*",
+                "GetLocal*",
+                "GetObjectStructure",
+                "GetObjectInfo",
+                "GetTypeInfo",
+                "GetTransaction",
+                "GetEnhancement*",
+                "GetMainPrograms",
+                "GetObjectsList",
+                "GetObjectsByType",
+                "DescribeByList",
+                "GetAdtTypes",
+                "GetObjectNodeFromCache"
+              ]
+            },
+            {
+              "name": "ADT: search and where-used",
+              "server": "mcp-abap-adt",
+              "description": "Find objects and source text, where-used lists, and the ABAP syntax tree and semantic analysis of a source.",
+              "tools": [
+                "SearchObject",
+                "SearchSource",
+                "GetWhereUsed",
+                "GetAbapAST",
+                "GetAbapSemanticAnalysis",
+                "GetAbapSystemSymbols"
+              ]
+            },
+            {
+              "name": "ADT: versions",
+              "server": "mcp-abap-adt",
+              "description": "Version history of an object, the source of a version and the diff between versions.",
+              "tools": [
+                "*Versions",
+                "*VersionSource",
+                "*VersionDiff"
+              ]
+            },
+            {
+              "name": "ADT: data and SQL",
+              "server": "mcp-abap-adt",
+              "description": "Table contents and free SQL queries.",
+              "tools": [
+                "GetTableContents",
+                "GetSqlQuery"
+              ]
+            },
+            {
+              "name": "ADT: change code",
+              "server": "mcp-abap-adt",
+              "description": "Create, change, delete, check and activate classes (with local types and test classes), programs, includes, interfaces, function groups and modules.",
+              "tools": [
+                "*Class",
+                "*Program",
+                "*Include",
+                "*Interface",
+                "*FunctionGroup",
+                "*FunctionModule",
+                "*FunctionInclude",
+                "*LocalTestClass",
+                "*LocalTypes",
+                "*LocalDefinitions",
+                "*LocalMacros",
+                "UpdateIncludeMetadata",
+                "ActivateObjects",
+                "GetInactiveObjects"
+              ]
+            },
+            {
+              "name": "ADT: change DDIC and CDS",
+              "server": "mcp-abap-adt",
+              "description": "Create, change, delete, check and activate tables, structures, data elements, domains, table types, CDS views and message classes.",
+              "tools": [
+                "*Table",
+                "*Structure",
+                "*DataElement",
+                "*Domain",
+                "*TableType",
+                "*Ddl",
+                "*MessageClass",
+                "*MessageClassMessage",
+                "ActivateObjects",
+                "GetInactiveObjects"
+              ]
+            },
+            {
+              "name": "ADT: change RAP",
+              "server": "mcp-abap-adt",
+              "description": "Create, change, delete, check and activate behavior definitions and implementations, metadata extensions, service definitions and bindings.",
+              "tools": [
+                "*BehaviorDefinition",
+                "*BehaviorImplementation",
+                "*MetadataExtension",
+                "*ServiceDefinition",
+                "*ServiceBinding",
+                "ListServiceBindingTypes",
+                "GetServiceBindingPreviewUrl",
+                "ActivateObjects",
+                "GetInactiveObjects"
+              ]
+            },
+            {
+              "name": "ADT: packages",
+              "server": "mcp-abap-adt",
+              "description": "Create, change, delete and check packages and read their contents.",
+              "tools": [
+                "*Package",
+                "GetPackageContents",
+                "GetPackageTree"
+              ]
+            },
+            {
+              "name": "ADT: tests and checks",
+              "server": "mcp-abap-adt",
+              "description": "ABAP Unit and CDS unit tests (create, change, run, results), ATC runs and findings, syntax checks.",
+              "tools": [
+                "*UnitTest*",
+                "RunAbapUnit",
+                "*ATC*",
+                "Check*"
+              ]
+            },
+            {
+              "name": "ADT: transports",
+              "server": "mcp-abap-adt",
+              "description": "Read, create and change transport requests and tasks, their objects and action log.",
+              "tools": [
+                "*Transport*"
+              ]
+            },
+            {
+              "name": "ADT: run and runtime analysis",
+              "server": "mcp-abap-adt",
+              "description": "Run a class or program, background runs, profiler traces, short dumps, feeds, system messages and the gateway error log.",
+              "tools": [
+                "Runtime*",
+                "*BackgroundRun*"
+              ]
+            },
+            {
+              "name": "ADT: debugger",
+              "server": "mcp-abap-adt",
+              "description": "The ABAP and AMDP debugger: listener, breakpoints, watchpoints, stepping, stack, variables and memory snapshots.",
+              "tools": [
+                "Debug*",
+                "Amdp*",
+                "Memory*"
+              ]
             }
           ]
+        },
+        "vertex.chat.mcpVersions": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {},
+          "markdownDescription": "Versions of MCP server npm packages that replace the ones named in `#vertex.chat.mcpServers#` (and `${abapAdtPackage}`), such as `{ \"arc-1\": \"1.11.0\" }`. Written by **Update** in VERTEX: MCP Servers, which appears when npm has a newer version."
         },
         "vertex.chat.arc1Access": {
           "type": "string",
@@ -1163,6 +1372,10 @@
         },
         {
           "command": "vertex.openModelSettings",
+          "when": "false"
+        },
+        {
+          "command": "vertex.mcpServers",
           "when": "false"
         }
       ],

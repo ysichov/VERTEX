@@ -4,7 +4,7 @@ const visual=require("../task-visual"),review=require("../code-review");
 
 test("review and commit scenes are distinct, theme-aware and static under reduced motion",()=>{
  assert.match(visual.html("review"),/review-lens/);assert.match(visual.html("commit"),/commit-link/);
- assert.doesNotMatch(visual.css,/rotate\(|filter:/);assert.match(visual.css,/prefers-reduced-motion/);assert.match(visual.css,/vscode-reduce-motion/);assert.match(visual.css,/var\(--vscode-/);
+ assert.doesNotMatch(visual.css,/filter:/);assert.match(visual.css,/prefers-reduced-motion/);assert.match(visual.css,/vscode-reduce-motion/);assert.match(visual.css,/var\(--vscode-/);
  const failed=review.waitingHtml("Review","Could not read changes",true);assert.doesNotMatch(failed,/<svg/);assert.match(failed,/aria-busy="false"/);
 });
 

@@ -11,6 +11,9 @@ const path = require("path");
 const crypto = require("crypto");
 
 const VERTEX = "VERTEX";
+/* VERTEX's own tools plus a catalog of every configured server: each one's description and toolsets, which
+   the model enables one at a time. The last choice in the VERTEX panel. */
+const ORCHESTRATOR = "VERTEX Orchestrator";
 const ACCESS = {
   "read-only": { allowWrites: "false", allowTransportWrites: "false", allowedPackages: "$TMP", allowDataPreview: "false", allowFreeSql: "false", allowGitWrites: "false" },
   "write-tmp": { allowWrites: "true", allowTransportWrites: "false", allowedPackages: "$TMP", allowDataPreview: "false", allowFreeSql: "false", allowGitWrites: "false" },
@@ -114,7 +117,7 @@ function startClient(entry, env, timeoutMs, cleanup, cwd) {
         tools.push(...(page.tools || []));
         cursor = page.nextCursor;
       } while (cursor);
-      return { instructions: init && init.instructions || "", tools };
+      return { instructions: init && init.instructions || "", tools, version: String(init && init.serverInfo && init.serverInfo.version || "") };
     },
     call: (name, args) => request("tools/call", { name, arguments: args || {} }),
     alive: () => !exited,
@@ -163,7 +166,7 @@ function startHttpClient(entry, timeoutMs) {
         tools.push(...(page.tools || []));
         cursor = page.nextCursor;
       } while (cursor);
-      return { instructions: init && init.instructions || "", tools };
+      return { instructions: init && init.instructions || "", tools, version: String(init && init.serverInfo && init.serverInfo.version || "") };
     },
     call: (name, args) => request("tools/call", { name, arguments: args || {} }),
     alive: () => !stopped,
@@ -202,16 +205,70 @@ function fill(value, values) {
   return String(value).replace(/\$\{(\w+)\}/g, (all, key) => Object.hasOwn(values, key) ? values[key] : all);
 }
 
-function create({ vscode, active, password, storage }) {
+/* An npm package spec in a server's command line: name@version, scoped names included. */
+function npmSpec(arg) {
+  const m = /^(@[^@/\s]+\/[^@\s]+|[^@\s/][^@\s]*)@(\d[^\s]*)$/.exec(String(arg));
+  return m ? { name: m[1], version: m[2] } : null;
+}
+
+async function latestOnNpm(name) {
+  const response = await fetch("https://registry.npmjs.org/" + name.replace("/", "%2F") + "/latest", { signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw new Error("npm answered HTTP " + response.status + " for " + name + ".");
+  const body = await response.json();
+  if (!body || typeof body.version !== "string") throw new Error("npm sent no version for " + name + ".");
+  return body.version;
+}
+
+/* catalog keeps, per server, the version and tool list read the last time it started: { get(), update(value) }.
+   fetchLatest(name) answers the newest version npm has of a package. */
+function create({ vscode, active, password, storage, catalog = null, fetchLatest = latestOnNpm }) {
   clearEnvFiles(storage);
-  let running = null;   // { key, name, client, instructions, tools }
-  let starting = null;
+  const runs = new Map();       // server name -> { key, name, note, client, instructions, tools, version }
+  const starting = new Map();   // server name -> { key, promise } while it starts
   const config = () => vscode.workspace.getConfiguration("vertex.chat");
   // A setting that is not a list names no servers; picking one then fails loudly in prepare().
-  const servers = () => { const list = config().get("mcpServers"); return (Array.isArray(list) ? list : []).filter(s => s && s.name && (s.command || s.url) && s.name !== VERTEX); };
+  const servers = () => { const list = config().get("mcpServers"); return (Array.isArray(list) ? list : []).filter(s => s && s.name && (s.command || s.url) && s.name !== VERTEX && s.name !== ORCHESTRATOR); };
   const selected = () => String(config().get("mcpServer", VERTEX) || VERTEX);
+  // What the VERTEX panel offers, in its order: VERTEX first, the orchestrator last.
+  const choices = () => [VERTEX, ...servers().map(s => s.name), ORCHESTRATOR];
 
-  function stop() { if (running) running.client.stop(); running = null; }
+  /* Versions the user updated to (vertex.chat.mcpVersions, package -> version) replace the ones a server's
+     command line names. */
+  const versions = () => { const v = config().get("mcpVersions"); return v && typeof v === "object" ? v : {}; };
+  const pinned = arg => { const spec = npmSpec(arg); const own = spec && versions()[spec.name]; return own ? spec.name + "@" + own : arg; };
+  // The npm packages a server runs, with the version it runs now.
+  function packagesOf(entry) {
+    if (entry.url) return [];
+    const abapAdtPackage = ABAP_ADT_ACCESS[config().get("abapAdtAccess", "read-only")] || ABAP_ADT_ACCESS["read-only"];
+    return (entry.args || []).map(a => npmSpec(pinned(fill(a, { abapAdtPackage })))).filter(Boolean);
+  }
+  /* Whether npx will download server NAME's package on its next start: true when a package it runs is not in npx's
+     cache at that version. npx keeps each install in <npm cache>/_npx/<hash>/node_modules; that layout is npm's,
+     not documented, so a cache it no longer matches reads as not installed - the install scene, nothing worse.
+     A server reached by URL or run from its own executable never installs here. */
+  function needsInstall(name) {
+    const entry = servers().find(s => s.name === name);
+    if (!entry || entry.command !== "npx") return false;
+    const cache = process.env.npm_config_cache
+      || (process.platform === "win32" && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "npm-cache") : path.join(require("os").homedir(), ".npm"));
+    let dirs = [];
+    try { dirs = fs.readdirSync(path.join(cache, "_npx")); } catch (_) { return true; }
+    const have = spec => dirs.some(dir => {
+      try { return JSON.parse(fs.readFileSync(path.join(cache, "_npx", dir, "node_modules", ...spec.name.split("/"), "package.json"), "utf8")).version === spec.version; }
+      catch (_) { return false; }
+    });
+    return packagesOf(entry).some(spec => !have(spec));
+  }
+  const stored = () => { const value = catalog && catalog.get(); return value && typeof value === "object" ? value : {}; };
+  async function remember(name, opened) {
+    if (!catalog) return;
+    const tools = (opened.tools || []).map(t => ({ name: t.name, description: String(t.description || "").split(/\n\s*\n/)[0].slice(0, 400),
+      readOnly: !!(t.annotations && t.annotations.readOnlyHint) }));
+    await catalog.update({ ...stored(), [name]: { version: opened.version || "", tools, savedAt: new Date().toISOString() } });
+  }
+
+  // Stops every server VERTEX started: when the extension ends.
+  function stop() { for (const run of runs.values()) run.client.stop(); runs.clear(); enabled.clear(); }
 
   /* How to reach ENTRY: the key that says whether a running copy still fits, and how to start one. A server
      reached by URL (SAP's ADT MCP Server) runs on its own and logs on with its own systems, so VERTEX hands over
@@ -256,7 +313,7 @@ function create({ vscode, active, password, storage }) {
         values.envFile = envFile;
       }
       const removeEnvFile = () => { if (envFile) { try { fs.unlinkSync(envFile); } catch (_) { } envFile = null; } };
-      const resolved = { ...entry, command: fill(entry.command, values), args: (entry.args || []).map(a => fill(a, values)),
+      const resolved = { ...entry, command: fill(entry.command, values), args: (entry.args || []).map(a => pinned(fill(a, values))),
         ...(/\$\{vspPath\}/.test(entry.command) ? { pathSetting: "vertex.chat.vspPath" } : {}) };
       if (!commandExists(resolved.command, env)) { removeEnvFile(); throw missingCommand(resolved); }
       let cwd;
@@ -266,41 +323,50 @@ function create({ vscode, active, password, storage }) {
     } };
   }
 
+  /* Server NAME running for the active system: the copy already running when it still fits (same entry, system,
+     user, access), started otherwise. A started server stays up for the VS Code session, whether it was chosen in
+     the panel or a toolset of it was enabled, so switching back to it does not start it again. */
+  async function ensure(name) {
+    const entry = servers().find(s => s.name === name);
+    if (!entry) throw new Error("MCP server " + name + " is not in vertex.chat.mcpServers. Pick a server in the VERTEX panel.");
+    const { key, start } = plan(entry);
+    const run = runs.get(name);
+    if (run && run.key === key && run.client.alive()) return run;
+    const pending = starting.get(name);
+    if (pending && pending.key === key) return pending.promise;
+    if (run) { run.client.stop(); runs.delete(name); dropEnabled(name); }
+    const promise = (async () => {
+      const started = { key, name, note: entry.note || "", ...(await start()) };
+      runs.set(name, started);
+      await remember(name, started);
+      return started;
+    })();
+    starting.set(name, { key, promise });
+    try { return await promise; } finally { if (starting.get(name) && starting.get(name).key === key) starting.delete(name); }
+  }
+
   /* The chosen server for the active system, started when needed; null for VERTEX's own tools. */
   async function prepare() {
     const name = selected();
-    if (name === VERTEX) { stop(); return null; }
-    const entry = servers().find(s => s.name === name);
-    if (!entry) throw new Error("vertex.chat.mcpServer names " + name + ", which is not in vertex.chat.mcpServers. Pick a server in the VERTEX panel.");
-    const { key, start } = plan(entry);
-    if (running && running.key === key && running.client.alive()) return running;
-    if (starting && starting.key === key) return starting.promise;
-    stop();
-    const promise = (async () => { running = { key, name, note: entry.note || "", ...(await start()) }; return running; })();
-    starting = { key, promise };
-    try { return await promise; } finally { if (starting && starting.key === key) starting = null; }
+    if (name === VERTEX || name === ORCHESTRATOR) return null;
+    return ensure(name);
   }
 
   /* Toolsets: a few tools of another MCP server, offered to the model by one small enable_toolset tool and added
      only when it asks for them - so a question that needs none does not carry those servers' schemas. An
      enabled toolset stays for the rest of the session. */
   const toolsets = () => { const list = config().get("toolsets"); return (Array.isArray(list) ? list : []).filter(t => t && t.name && t.server && Array.isArray(t.tools)); };
-  const toolsetRuns = new Map();   // server name -> { key, client, instructions, tools }
   const enabled = new Map();       // toolset name -> { server, run, tools }
+  const dropEnabled = name => { for (const [set, e] of enabled) if (e.server === name) enabled.delete(set); };
   const pattern = glob => new RegExp("^" + String(glob).replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
-  const offered = () => toolsets().filter(t => t.server !== selected());
+  // The orchestrator offers every toolset; a single server's mode only those marked always, of other servers.
+  const offered = () => selected() === ORCHESTRATOR ? toolsets() : toolsets().filter(t => t.always === true && t.server !== selected());
   async function enableToolset(name) {
     const set = offered().find(t => t.name === name);
     if (!set) throw new Error("No toolset " + name + ". Toolsets: " + (offered().map(t => t.name).join(", ") || "none") + ".");
     const entry = servers().find(s => s.name === set.server);
     if (!entry) throw new Error("Toolset " + name + " names MCP server " + set.server + ", which is not in vertex.chat.mcpServers.");
-    const { key, start } = plan(entry);
-    let run = toolsetRuns.get(set.server);
-    if (!run || run.key !== key || !run.client.alive()) {
-      if (run) run.client.stop();
-      run = { key, ...(await start()) };
-      toolsetRuns.set(set.server, run);
-    }
+    const run = await ensure(set.server);
     const wanted = set.tools.map(pattern);
     const tools = run.tools.filter(t => wanted.some(w => w.test(t.name)));
     if (!tools.length) throw new Error("MCP server " + set.server + " offers none of the tools of toolset " + name + " (" + set.tools.join(", ") + ").");
@@ -309,14 +375,13 @@ function create({ vscode, active, password, storage }) {
       note: "These tools are offered from the next step on (in Claude Code and Codex, from the next question)" + (set.note ? ". " + set.note : ".") + (entry.note ? " " + entry.note : "") };
   }
   const enabledTools = () => [...enabled.values()].filter(e => e.server !== selected() && e.run.client.alive()).flatMap(e => e.tools.map(tool => ({ tool, run: e.run })));
-  function stopToolsets() { for (const run of toolsetRuns.values()) run.client.stop(); toolsetRuns.clear(); enabled.clear(); }
 
   /* VERTEX's own tool set wrapped: with an external server chosen, its tools replace VERTEX's SAP repository
      tools; the debugger (debug_*) and the ABAP transpiler stay VERTEX's. */
   function wrap(own) {
     // Kept beside any server: the debugger, the transpiler, and publishing a service binding, which no MCP server here does.
     const kept = tool => /^debug_/.test(tool.name) || /abap_transpiler/.test(tool.name) || tool.name === "publish_sap_service_binding";
-    const current = () => running && running.name === selected() && running.client.alive() ? running : null;
+    const current = () => { const run = runs.get(selected()); return run && run.client.alive() ? run : null; };
     const asSchema = t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || { type: "object", properties: {} },
       ...(t.annotations ? { annotations: t.annotations } : {}) });
     const wrapped = Object.create(own);
@@ -324,7 +389,9 @@ function create({ vscode, active, password, storage }) {
       const sets = offered();
       return sets.length ? [{ name: "enable_toolset", annotations: { readOnlyHint: true, destructiveHint: false },
         description: "Add extra SAP tools from another MCP server when the task needs them; they are offered from the next step on (in Claude Code and Codex from the next question) and stay for the session. "
-          + "Enable one only for what the other tools cannot do. Toolsets: " + sets.map(t => t.name + " (" + t.server + "): " + (t.description || t.tools.join(", "))).join("; ") + ".",
+          + "Enable one only for what the other tools cannot do. Toolsets: " + sets.map(t => t.name + " (" + t.server + ")"
+            + (selected() === ORCHESTRATOR ? "" : ": " + (t.description || t.tools.join(", ")))).join("; ") + "."
+            + (selected() === ORCHESTRATOR ? " What each one does is in the MCP server catalog of the instructions." : ""),
         inputSchema: { type: "object", additionalProperties: false, required: ["toolset"],
           properties: { toolset: { type: "string", enum: sets.map(t => t.name) } } } }] : [];
     };
@@ -349,7 +416,8 @@ function create({ vscode, active, password, storage }) {
     define("external", name => { const ext = current(); return !!(ext && ext.tools.some(t => t.name === name)) || !!fromToolset(name); });
     define("mcpNote", () => { const ext = current(); return (ext ? "SAP tools come from the MCP server " + ext.name
       + "; the VERTEX tool names mentioned elsewhere (read_sap_object, read_sap_method, ...) are not available - use " + ext.name + "'s tools instead.\n" : "")
-      + (offered().length ? "More SAP tools can be added with enable_toolset when the task needs them: " + offered().map(t => t.name + " - " + (t.description || t.tools.join(", ")) + (t.note ? " " + t.note : "")).join("; ") + ".\n" : ""); });
+      + (selected() === ORCHESTRATOR ? catalogText()
+        : offered().length ? "More SAP tools can be added with enable_toolset when the task needs them: " + offered().map(t => t.name + " - " + (t.description || t.tools.join(", ")) + (t.note ? " " + t.note : "")).join("; ") + ".\n" : ""); });
     define("execute", async (name, args) => {
       if (name === "enable_toolset") return enableToolset(String(args && args.toolset || ""));
       const ext = current();
@@ -362,6 +430,80 @@ function create({ vscode, active, password, storage }) {
       return text;
     });
     return wrapped;
+  }
+
+  /* Newer npm versions of the servers' packages, checked once after the window loads: server -> [{ name,
+     installed, latest }] or { error }. Nothing is installed here; update() does it when the user asks. */
+  let updates = {};
+  const listeners = new Set();
+  // Called when what checkUpdates() or update() found changes: the VERTEX panel redraws its Update button.
+  const onUpdates = fn => { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; };
+  const told = () => { for (const fn of listeners) fn(); };
+  async function checkUpdates() {
+    const next = {};
+    for (const entry of servers()) {
+      const packages = packagesOf(entry);
+      if (!packages.length) continue;
+      try {
+        next[entry.name] = [];
+        for (const spec of packages) {
+          const latest = await fetchLatest(spec.name);
+          if (latest !== spec.version) next[entry.name].push({ name: spec.name, installed: spec.version, latest });
+        }
+      } catch (error) { next[entry.name] = { error: "Could not check for a newer version: " + error.message }; }
+    }
+    updates = next;
+    told();
+    return updates;
+  }
+  /* The user's Update: the newer versions go into vertex.chat.mcpVersions, the server starts on them, and the
+     tool list it gives is kept with its version. A server that does not start is the error of this call. */
+  async function update(name) {
+    const found = updates[name];
+    if (!servers().some(s => s.name === name) || !Array.isArray(found) || !found.length) throw new Error("No update is waiting for MCP server " + name + ".");
+    await config().update("mcpVersions", { ...versions(), ...Object.fromEntries(found.map(u => [u.name, u.latest])) }, vscode.ConfigurationTarget.Global);
+    await refresh(name);
+    delete updates[name];
+    told();
+  }
+  /* Starts server NAME once to read and keep its tool list; the chosen server is restarted instead. */
+  async function refresh(name) {
+    const old = runs.get(name);
+    if (old) { old.client.stop(); runs.delete(name); dropEnabled(name); }
+    await ensure(name);
+  }
+  /* Every server with what is kept of it: the info window's rows and the orchestrator's catalog. */
+  function overview() {
+    const kept = stored();
+    return servers().map(entry => {
+      const own = kept[entry.name];
+      const sets = toolsets().filter(t => t.server === entry.name).map(t => ({ name: t.name, description: t.description || "", always: t.always === true,
+        tools: own ? own.tools.filter(tool => t.tools.map(pattern).some(w => w.test(tool.name))).map(tool => tool.name) : [] }));
+      const inSet = new Set(sets.flatMap(t => t.tools));
+      return { name: entry.name, description: entry.description || "", version: own ? own.version : "", savedAt: own ? own.savedAt : "",
+        packages: packagesOf(entry), update: updates[entry.name] || null, toolsets: sets,
+        tools: own ? own.tools.map(tool => ({ ...tool, toolsets: sets.filter(t => t.tools.includes(tool.name)).map(t => t.name) })) : null,
+        outside: own ? own.tools.filter(tool => !inSet.has(tool.name)).length : 0 };
+    });
+  }
+  // The orchestrator's catalog for the model: what each server is for and the toolsets it can enable.
+  /* A measured run showed the catalog alone pulling a model away from its own tools: asked for an object's last
+     transport, it read "ADT: versions" and "ADT: transports" here, decided only those could answer, and - with a
+     toolset arriving only from the next question in Claude Code and Codex - answered that it had no tools, without
+     trying run_sap_select. So the catalog says first what the own tools reach, and forbids that dead end. */
+  function catalogText() {
+    return "Your own VERTEX SAP tools come first and answer most questions: search_sap_objects and read_sap_object / read_sap_method "
+      + "find and read code; run_sap_select reads any table - transports and their objects (E070, E071), object versions (VRSD), "
+      + "the object directory (TADIR), the dictionary (DD02L, DD03L) and application data. Use them before anything below.\n"
+      + "Enable a toolset only for what your own tools cannot do. In Claude Code and Codex an enabled toolset arrives with the next "
+      + "question: then still answer now with your own tools when they can, and say that the toolset is ready for the next question. "
+      + "Never answer that you have no tools for a task you have not tried with your own tools.\n"
+      + "The user switches the chat to one server in the VERTEX panel; you cannot.\n"
+      + "MCP servers whose toolsets enable_toolset adds:\n" + overview().map(server =>
+      "- " + server.name + (server.version ? " " + server.version : "") + ": " + (server.description || "no description configured.")
+      + (server.toolsets.length ? "\n  Toolsets: " + server.toolsets.map(t => t.name + " - " + (t.description || "no description")
+        + (server.tools ? " (" + t.tools.length + (t.tools.length === 1 ? " tool)" : " tools)") : "")).join("; ") + "." : "\n  No toolsets are configured for it in vertex.chat.toolsets.")
+      + (server.tools ? (server.outside ? "\n  " + server.outside + " of its tools are in no toolset." : "") : "\n  Its tool list has not been read yet: it has not started in VERTEX.")).join("\n") + "\n";
   }
 
   /* The Settings search that shows what server NAME is configured by: SAP's adt.mcpServer settings for a server
@@ -390,8 +532,8 @@ function create({ vscode, active, password, storage }) {
     await config().update(setting, value, vscode.ConfigurationTarget.Global);
   }
 
-  return { VERTEX, servers, selected, prepare, wrap, stop: () => { stop(); stopToolsets(); }, toolsets, settingsQuery, writeOptions, setWriteOption,
+  return { VERTEX, ORCHESTRATOR, choices, needsInstall, checkUpdates, onUpdates, update, refresh, overview, servers, selected, prepare, wrap, stop, toolsets, settingsQuery, writeOptions, setWriteOption,
     select: name => config().update("mcpServer", name, vscode.ConfigurationTarget.Global) };
 }
 
-module.exports = { create, startClient, startHttpClient, VERTEX, ACCESS, ABAP_ADT_ACCESS, fill };
+module.exports = { create, startClient, startHttpClient, VERTEX, ORCHESTRATOR, ACCESS, ABAP_ADT_ACCESS, fill, npmSpec };

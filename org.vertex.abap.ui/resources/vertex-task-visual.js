@@ -19,11 +19,43 @@ const prWide = `<svg class="pr-scene" viewBox="0 0 1000 40" focusable="false" ar
 // A push: commits on the local branch rise as packets along an arc into the remote cloud, whose branch grows and checks.
 const pushWide = `<svg class="push-scene" viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path opacity=".5" d="M20 32H330"/><circle class="ph-c ph-c-0" cx="60" cy="32" r="3.6" fill="var(--task-paper)"/><circle class="ph-c ph-c-1" cx="140" cy="32" r="3.6" fill="var(--task-paper)"/><circle class="ph-c ph-c-2" cx="220" cy="32" r="3.6" fill="var(--task-paper)"/><circle class="ph-c ph-c-3" cx="300" cy="32" r="3.6" fill="var(--task-paper)"/><path opacity=".22" stroke-dasharray="3 7" d="M300 32C420 32 470 8 600 8H760"/><path class="ph-arc" pathLength="100" stroke-dasharray="100" d="M300 32C420 32 470 8 600 8H760"/><g class="ph-pk ph-pk-0"><rect x="294" y="27" width="12" height="10" rx="2" fill="var(--task-paper)"/><path stroke-width="1.2" d="m297 33 3-3 3 3"/></g><g class="ph-pk ph-pk-1"><rect x="294" y="27" width="12" height="10" rx="2" fill="var(--task-paper)"/><path stroke-width="1.2" d="m297 33 3-3 3 3"/></g><g class="ph-pk ph-pk-2"><rect x="294" y="27" width="12" height="10" rx="2" fill="var(--task-paper)"/><path stroke-width="1.2" d="m297 33 3-3 3 3"/></g><path class="ph-chevrons" d="m700 3 5 5-5 5m-8-10 5 5-5 5"/><g class="ph-cloud"><path fill="var(--task-paper)" d="M790 30a10 10 0 0 1 3-19 15 15 0 0 1 28 2 9 9 0 0 1 3 17z"/></g><circle class="ph-ring" cx="808" cy="20" r="14"/><path opacity=".22" d="M840 32H980"/><path class="ph-remote" pathLength="100" stroke-dasharray="100" d="M840 32H950"/><circle class="ph-tip" cx="950" cy="32" r="3.6" fill="var(--task-paper)"/><path class="ph-check" stroke="var(--vscode-testing-iconPassed,currentColor)" stroke-width="2.4" pathLength="10" stroke-dasharray="10" d="m802 20 4 4 7-8"/></g></svg>`;
 
-// An MCP server being fetched and started: a package travels from the registry along the line into the server node.
-const installWide = `<svg viewBox="0 0 1000 100" focusable="false" aria-hidden="true"><g class="install-process" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path opacity=".22" d="M95 60H965"/><g opacity=".45"><circle cx="965" cy="60" r="5"/></g><g fill="var(--task-paper)"><path d="M40 52a18 18 0 0 1 8-33 24 24 0 0 1 44 6 15 15 0 0 1 3 29z"/><path opacity=".6" d="M55 40h28M55 47h18"/></g><path class="install-wide-line" d="M95 60H800"/><g class="install-wide-box" fill="var(--task-paper)"><path d="M100 48l16-8 16 8v18l-16 8-16-8z"/><path opacity=".65" d="M100 48l16 8 16-8M116 56v18"/></g><g class="install-wide-packet"><path d="m140 52 8 8-8 8m-10-16 8 8-8 8"/></g><circle class="install-wide-ring" cx="830" cy="60" r="24"/><g fill="var(--task-paper)"><rect class="install-wide-node" x="812" y="40" width="36" height="40" rx="4"/></g><path opacity=".65" d="M820 50h20M820 58h20M820 66h12"/><path class="install-wide-check" stroke="var(--vscode-testing-iconPassed,currentColor)" stroke-width="3" d="m864 40 6 6 11-13"/></g></svg>`;
+// An MCP server package being installed through npx: gears fly from the registry along an arc, turning, and drop
+// into an open container, whose lid closes. Its end frame (.scene-done) shows the closed container and the check.
+const installGears = `<svg class="install-gears" viewBox="0 0 1000 100" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path opacity=".22" d="M100 72H965"/><g fill="var(--task-paper)"><path d="M40 52a18 18 0 0 1 8-33 24 24 0 0 1 44 6 15 15 0 0 1 3 29z"/><path opacity=".6" d="M55 40h28M55 47h18"/></g><path opacity=".14" stroke-dasharray="2 8" d="M95 40C300 -10 600 -10 835 52"/><g class="ig-fly ig-1"><g class="ig-turn"><path fill="var(--task-paper)" fill-rule="evenodd" d="M9.2 -2.2L12.9 -1.6L12.9 1.6L9.2 2.2L8.1 5.0L10.3 8.0L8.0 10.3L5.0 8.1L2.2 9.2L1.6 12.9L-1.6 12.9L-2.2 9.2L-5.0 8.1L-8.0 10.3L-10.3 8.0L-8.1 5.0L-9.2 2.2L-12.9 1.6L-12.9 -1.6L-9.2 -2.2L-8.1 -5.0L-10.3 -8.0L-8.0 -10.3L-5.0 -8.1L-2.2 -9.2L-1.6 -12.9L1.6 -12.9L2.2 -9.2L5.0 -8.1L8.0 -10.3L10.3 -8.0L8.1 -5.0ZM4.0 0a4 4 0 1 0 -8 0a4 4 0 1 0 8 0Z"/></g></g><g class="ig-fly ig-2"><g class="ig-turn"><path fill="var(--task-paper)" fill-rule="evenodd" d="M6.7 -2.2L9.4 -1.6L9.4 1.6L6.7 2.2L5.2 4.7L6.1 7.3L3.3 8.9L1.5 6.8L-1.5 6.8L-3.3 8.9L-6.1 7.3L-5.2 4.7L-6.7 2.2L-9.4 1.6L-9.4 -1.6L-6.7 -2.2L-5.2 -4.7L-6.1 -7.3L-3.3 -8.9L-1.5 -6.8L1.5 -6.8L3.3 -8.9L6.1 -7.3L5.2 -4.7ZM3.0 0a3 3 0 1 0 -6 0a3 3 0 1 0 6 0Z"/></g></g><g class="ig-fly ig-3"><g class="ig-turn"><path fill="var(--task-paper)" fill-rule="evenodd" d="M11.8 -2.2L15.9 -1.6L15.9 1.6L11.8 2.2L10.9 5.1L13.8 8.1L11.9 10.7L8.2 8.7L5.8 10.5L6.4 14.6L3.4 15.6L1.5 11.9L-1.5 11.9L-3.4 15.6L-6.4 14.6L-5.8 10.5L-8.2 8.7L-11.9 10.7L-13.8 8.1L-10.9 5.1L-11.8 2.2L-15.9 1.6L-15.9 -1.6L-11.8 -2.2L-10.9 -5.1L-13.8 -8.1L-11.9 -10.7L-8.2 -8.7L-5.8 -10.5L-6.4 -14.6L-3.4 -15.6L-1.5 -11.9L1.5 -11.9L3.4 -15.6L6.4 -14.6L5.8 -10.5L8.2 -8.7L11.9 -10.7L13.8 -8.1L10.9 -5.1ZM5.0 0a5 5 0 1 0 -10 0a5 5 0 1 0 10 0Z"/></g></g><g fill="var(--task-paper)"><path opacity=".55" d="M800 52l35-14 35 14"/></g><g fill="var(--task-paper)"><path d="M800 52v30l35 14 35-14V52l-35 14z"/><path opacity=".6" d="M835 66v30"/></g><g class="ig-lid" fill="var(--task-paper)"><path d="M800 52l35-14 35 14-35 14z"/></g><circle class="ig-ring" cx="835" cy="66" r="30"/><path class="ig-check" stroke="var(--vscode-testing-iconPassed,currentColor)" stroke-width="3" d="m890 40 7 7 13-15"/></g></svg>`;
 
-function html(kind, wide = false) {
-  if (kind === "install") return `<span class="vertex-task-visual task-install task-commit-wide" aria-hidden="true">${installWide}</span>`;
+// An MCP server starting: an orbiter on the runway with the server's name on its hull revs its engines now and then.
+// Once the server has started (.scene-done) the orbiter stays put while the runway, its lights and the trees run back
+// faster and faster and the clouds slower; it lifts off at speed and flies out to the right.
+const escapeXml = text => String(text).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function startScene(name) {
+  const tree = x => `<path d="M${x} 112v-8"/><path fill="var(--task-paper)" d="M${x - 7} 105q7-22 14 0z"/>`;
+  const cloud = (x, y, k) => `<path fill="var(--task-paper)" opacity=".8" d="M${x} ${y}a${8 * k} ${8 * k} 0 0 1 ${10 * k}-${8 * k}a${11 * k} ${11 * k} 0 0 1 ${20 * k} ${2 * k}a${7 * k} ${7 * k} 0 0 1 ${4 * k} ${12 * k}H${x}z"/>`;
+  const trees = [], lights = [], clouds = [];
+  for (let x = 40; x < 3200; x += 90 + (x * 7) % 50) trees.push(tree(x));
+  for (let x = 20; x < 3200; x += 60) lights.push(`<circle cx="${x}" cy="116" r="2.2"/>`);
+  for (let x = 60; x < 2600; x += 230) clouds.push(cloud(x, 30 + (x % 3) * 9, 0.8 + (x % 5) * 0.12));
+  const label = String(name || "");
+  return `<svg class="start-cruise" viewBox="0 0 1000 140" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">`
+    + `<g class="sc-clouds">${clouds.join("")}</g><path opacity=".5" d="M0 120H1000"/>`
+    + `<g class="sc-ground"><g opacity=".7">${trees.join("")}</g><g fill="currentColor" stroke="none" opacity=".6">${lights.join("")}</g><path opacity=".3" stroke-dasharray="18 14" d="M0 128H3200"/></g>`
+    + `<g class="sc-craft"><g transform="translate(60 33)">`
+    // the flame: a plume tapering away from the nozzles, with a bright core; it is scaled along its length from the nozzles
+    + `<g class="sc-flame" stroke="none"><path class="sc-flame-outer" d="M105 54C88 55 58 59 26 64C58 69 88 73 105 74z"/><path class="sc-flame-mid" d="M105 57C90 58 70 61 46 64C70 67 90 70 105 71z"/><path class="sc-flame-core" d="M105 60C96 61 84 62 70 64C84 66 96 67 105 68z"/></g>`
+    + `<path opacity=".6" d="M146 74v12M222 72v14"/><circle cx="146" cy="87" r="2"/><circle cx="222" cy="87" r="2"/>`
+    + `<g fill="var(--task-paper)"><path d="M122 55L112 24h12l28 31z"/><path d="M114 56l-9-3v8l9-1zM114 62l-9-1v7l9-1zM114 68l-9 0v7l9-2z"/>`
+    + `<path d="M114 57l6-3h96q26 0 36 10-8 8-26 8H120l-6-2z"/><path d="M152 68h36l20 2-56 12h-22z"/><path d="M120 54q14-5 30 0"/></g>`
+    + `<path d="M222 58h9l5 4h-14z"/><path opacity=".45" d="M130 58h82"/><path stroke-width="3.5" opacity=".85" d="M152 72h74q14 0 22-6"/>`
+    + `<text x="130" y="68.5" font-size="8.5" font-weight="700" letter-spacing=".4" fill="currentColor" stroke="none"`
+    + (label.length > 11 ? ` textLength="80" lengthAdjust="spacingAndGlyphs"` : "") + `>${escapeXml(label)}</text>`
+    + `</g></g>`
+    + `<path class="sc-check" stroke="var(--vscode-testing-iconPassed,currentColor)" stroke-width="3.5" d="m900 50 8 8 15-17"/>`
+    + `</g></svg>`;
+}
+
+// name is the MCP server's, written on the hull in the start scene.
+function html(kind, wide = false, name = "") {
+  if (kind === "install") return `<span class="vertex-task-visual task-install" aria-hidden="true">${installGears}</span>`;
+  if (kind === "start") return `<span class="vertex-task-visual task-start" aria-hidden="true">${startScene(name)}</span>`;
   // The wide review is the generation strip: the commit strip's host set to its generate operation.
   if (kind === "review" && wide) return `<span class="task-wide-host" data-operation="generate"><span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${commitWide}${reviewWide}</span></span>`;
   if (kind === "pr") return `<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${prWide}</span>`;
@@ -166,18 +198,43 @@ const css = `
 @keyframes vertex-ph-ring{0%,58%{transform:scale(.8);opacity:0}62%{opacity:.7}82%,100%{transform:scale(1.9);opacity:0}}
 @keyframes vertex-ph-remote{0%,60%{stroke-dashoffset:100;opacity:.3}78%,94%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:.3}}
 @keyframes vertex-ph-check{0%,64%{stroke-dashoffset:10;opacity:0}66%{opacity:1}74%,92%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
-.install-wide-box{animation:vertex-install-wide-box 5.4s ease-in-out infinite}
-.install-wide-packet{animation:vertex-install-wide-packet 5.4s ease-in-out infinite}
-.install-wide-line{animation:vertex-install-wide-line 5.4s ease-in-out infinite}
-.install-wide-ring{transform-origin:830px 60px;animation:vertex-install-wide-ring 5.4s ease-out infinite}
-.install-wide-check{animation:vertex-install-wide-check 5.4s ease-in-out infinite}
-@keyframes vertex-install-wide-box{0%,8%{transform:translateX(0);opacity:.35}18%{opacity:1}68%,80%{transform:translateX(690px);opacity:1}90%,100%{transform:translateX(690px);opacity:0}}
-@keyframes vertex-install-wide-packet{0%,15%{transform:translateX(0);opacity:0}25%{opacity:1}66%{transform:translateX(640px);opacity:1}76%,100%{transform:translateX(640px);opacity:0}}
-@keyframes vertex-install-wide-line{0%,20%,100%{opacity:.15}45%,70%{opacity:.8}}
-@keyframes vertex-install-wide-ring{0%,60%{transform:scale(.7);opacity:0}72%{transform:scale(1);opacity:.7}95%,100%{transform:scale(1.5);opacity:0}}
-@keyframes vertex-install-wide-check{0%,70%,100%{opacity:0}80%,92%{opacity:1}}
 body.vscode-reduce-motion .vertex-task-visual *{animation:none!important}
 @media(prefers-reduced-motion:reduce){.vertex-task-visual *{animation:none!important}}
+
+.task-install,.task-start{display:block;width:100%;height:auto}
+.task-install{aspect-ratio:10/1}.task-start{aspect-ratio:1000/140}
+.task-install svg,.task-start svg{width:100%;height:100%}
+.task-install svg{overflow:visible}.task-start svg{overflow:hidden}
+.ig-fly{offset-path:path("M95 40C300 -10 600 -10 835 58");offset-rotate:0deg;animation:vertex-ig-fly 4.8s cubic-bezier(.45,.05,.55,.95) infinite}
+.ig-2{animation-delay:.55s}.ig-3{animation-delay:1.1s}
+.ig-turn{animation:vertex-ig-turn 1.6s linear infinite}
+.ig-2 .ig-turn{animation-duration:1.1s;animation-direction:reverse}.ig-3 .ig-turn{animation-duration:2.2s}
+.ig-lid{transform-box:fill-box;transform-origin:0% 50%;animation:vertex-ig-lid 4.8s ease-in-out infinite}
+.ig-ring{transform-box:fill-box;transform-origin:center;animation:vertex-ig-ring 4.8s ease-out infinite}
+.ig-check,.sc-check{opacity:0}
+@keyframes vertex-ig-fly{0%{offset-distance:0%;opacity:0;transform:scale(.6)}8%{opacity:1;transform:scale(1)}62%{offset-distance:100%;opacity:1;transform:scale(.8)}70%,100%{offset-distance:100%;opacity:0;transform:scale(.5)}}
+@keyframes vertex-ig-turn{to{transform:rotate(360deg)}}
+@keyframes vertex-ig-lid{0%,72%{transform:translate(-6px,-26px) rotate(-38deg)}82%,94%{transform:none}100%{transform:translate(-6px,-26px) rotate(-38deg)}}
+@keyframes vertex-ig-ring{0%,80%{transform:scale(.7);opacity:0}86%{transform:scale(1);opacity:.6}98%,100%{transform:scale(1.4);opacity:0}}
+.scene-done .ig-fly{animation:none;opacity:0}.scene-done .ig-lid{animation:none;transform:none}.scene-done .ig-ring{animation:none;opacity:0}
+.scene-done .ig-check,.scene-done .sc-check{opacity:1;transition:opacity .25s}
+.sc-flame{transform-box:fill-box;transform-origin:100% 50%;transform:scaleX(.22);opacity:.6;animation:vertex-sc-rev 3.2s ease-out infinite}
+/* Plasma, in the theme's chart colours: a violet glow, a blue body and a bright yellow core at the nozzles. */
+.sc-flame-outer{fill:var(--vscode-charts-purple,currentColor);opacity:.45}
+.sc-flame-mid{fill:var(--vscode-charts-blue,currentColor);opacity:.8}
+.sc-flame-core{fill:var(--vscode-charts-yellow,var(--vscode-editorWarning-foreground,currentColor))}
+@keyframes vertex-sc-rev{0%,18%{transform:scaleX(.22);opacity:.6}24%{transform:scaleX(.7) scaleY(1.05);opacity:1}36%,58%{transform:scaleX(.28);opacity:.7}64%{transform:scaleX(.95) scaleY(1.08);opacity:1}70%{transform:scaleX(.6)}76%{transform:scaleX(.9) scaleY(1.05)}88%,100%{transform:scaleX(.22);opacity:.6}}
+.scene-done .sc-flame{animation:vertex-sc-burn .09s linear infinite alternate}
+@keyframes vertex-sc-burn{from{transform:scaleX(1.55);opacity:.9}to{transform:scaleX(1.8) scaleY(1.1);opacity:1}}
+.sc-craft{transform-box:fill-box;transform-origin:50% 50%;animation:vertex-sc-shake 3.2s linear infinite}
+@keyframes vertex-sc-shake{0%,22%,34%,62%,80%,100%{transform:none}24%,28%,32%,64%,68%,72%,76%{transform:translateY(-.6px)}26%,30%,66%,70%,74%,78%{transform:translateY(.6px)}}
+.scene-done .sc-ground{animation:vertex-sc-ground 3.2s cubic-bezier(.6,0,.9,.6) forwards}
+.scene-done .sc-clouds{animation:vertex-sc-clouds 3.2s cubic-bezier(.6,0,.9,.6) forwards}
+.scene-done .sc-craft{animation:vertex-sc-lift 3.2s linear forwards}
+.scene-done .sc-check{transition-delay:2.6s}
+@keyframes vertex-sc-ground{from{transform:none}to{transform:translateX(-2100px)}}
+@keyframes vertex-sc-clouds{from{transform:none}to{transform:translateX(-700px)}}
+@keyframes vertex-sc-lift{0%,62%{transform:none;animation-timing-function:cubic-bezier(.4,0,.7,1)}100%{transform:translate(900px,-70px) rotate(-10deg)}}
 `;
 const api = { html, css };
 if (typeof module !== "undefined" && module.exports) module.exports = api; else window.vertexTaskVisual = api;

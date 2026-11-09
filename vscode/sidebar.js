@@ -20,6 +20,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", draft: reviewAsk && reviewAsk.question || "" }) : undefined;
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
+  if (chatMcp) context.subscriptions.push(vscode.commands.registerCommand("vertex.mcpServers", () => require("./mcp-window").open(vscode, chatMcp)));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.generateCommitMessage", async (snapshot,draft) => {try{return await ask.generateCommitMessage(snapshot,draft);}catch(error){return {error:error.message,generation:error.generation};}}));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.generatePullRequest", async (snapshot,draft) => {try{return await ask.generateCommitMessage(snapshot,draft,"pr");}catch(error){return {error:error.message,generation:error.generation};}}));
   // Continue a conversation from Session Logs: a new conversation in the panel whose history is the logged questions
@@ -89,7 +90,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           labels: systems().map(item => item.name),
           ai: ask.state(),
           // Where the chat's SAP tools come from: VERTEX itself or an MCP server of vertex.chat.mcpServers.
-          mcp: chatMcp ? { servers: [chatMcp.VERTEX, ...chatMcp.servers().map(item => item.name)], selected: chatMcp.selected() } : null,
+          mcp: chatMcp ? { servers: chatMcp.choices(), selected: chatMcp.selected(),
+            updates: chatMcp.overview().filter(s => Array.isArray(s.update) && s.update.length).map(s => s.name) } : null,
           effort: String(vscode.workspace.getConfiguration("vertex.ai").get("effort", "") || "")
         }).then(async () => {
           // The model list comes after: it may have to ask the provider.
@@ -223,6 +225,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         // The gear beside the MCP list: the settings of the server picked there, where they live - VERTEX's own, or,
         // for SAP ADT, those of SAP's ABAP Development Tools, which decide what that server may do.
+        if (message.action === "mcpServers") { await vscode.commands.executeCommand("vertex.mcpServers"); return; }
         if (message.action === "mcpSettings") {
           if (!chatMcp) return;
           await vscode.commands.executeCommand("workbench.action.openSettings", chatMcp.settingsQuery(String(message.name || "")));
@@ -230,10 +233,10 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "mcp") {
           if (!chatMcp) return;
-          const names = [chatMcp.VERTEX, ...chatMcp.servers().map(item => item.name)];
+          const names = chatMcp.choices();
           if (!names.includes(String(message.name))) { vscode.window.showErrorMessage("VERTEX: " + String(message.name) + " is not in vertex.chat.mcpServers."); void refresh(); return; }
           await chatMcp.select(String(message.name));
-          if (String(message.name) === chatMcp.VERTEX) return;
+          if (String(message.name) === chatMcp.VERTEX || String(message.name) === chatMcp.ORCHESTRATOR) return;
           // Its write settings are asked first, in the same window; the server starts when the user presses Start.
           const options = chatMcp.writeOptions(String(message.name));
           if (options.length) { await view.webview.postMessage({ mcpOptions: { name: String(message.name), options } }); return; }
@@ -247,8 +250,10 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             await view.webview.postMessage({ mcpDone: { name: String(message.name), error: error.message } });
             return;
           }
-          // Started in a window with the install scene: the first start downloads the package through npx.
-          await view.webview.postMessage({ mcpStart: { name: String(message.name), running: !!(chatMcp.servers().find(item => item.name === String(message.name)) || {}).url } });
+          // Installing when npx does not have the package yet; starting (the orbiter with the name on its hull) otherwise.
+          const installing = chatMcp.needsInstall(String(message.name));
+          await view.webview.postMessage({ mcpStart: { name: String(message.name), running: !!(chatMcp.servers().find(item => item.name === String(message.name)) || {}).url,
+            installing, scene: require("./task-visual").html(installing ? "install" : "start", false, String(message.name)) } });
           try {
             const started = await chatMcp.prepare();
             await view.webview.postMessage({ mcpDone: { name: String(message.name), tools: started ? started.tools.length : 0 } });
@@ -280,7 +285,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       const folderWatch = [vscode.window.onDidChangeActiveTextEditor(() => { void showFolder(); }),
         vscode.workspace.onDidChangeWorkspaceFolders(() => { void showFolder(); })];
       const clientSwitch = clients.onChange(() => { void refresh(); });
-      view.onDidDispose(() => { currentView = undefined; ready = false; messages.dispose(); changes.dispose(); folderWatch.forEach(watch => watch.dispose()); clientSwitch.dispose(); });
+      const mcpUpdates = chatMcp ? chatMcp.onUpdates(() => { void refresh(); }) : { dispose() {} };
+      view.onDidDispose(() => { currentView = undefined; ready = false; messages.dispose(); changes.dispose(); folderWatch.forEach(watch => watch.dispose()); clientSwitch.dispose(); mcpUpdates.dispose(); });
     }
   };
   // The panel holds the chat: switching to Explorer and back must not wipe the conversation on screen.
@@ -375,8 +381,8 @@ body[data-provider="vercel-api"] #subprovider-select, body[data-provider="openro
 body[data-provider="vercel-api"] .model-picker, body[data-provider="openrouter-api"] .model-picker { flex:1 1 170px; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .model-picker #model-select { flex: 1 1 auto; min-width: 0; }
-.line #model-details-button[hidden], .line #mcp-settings[hidden] { display: none; }
-.line #model-details-button, .line #mcp-settings { flex: none; margin: 0; padding: 3px 8px; }
+.line #model-details-button[hidden], .line #mcp-settings[hidden], .line #mcp-servers[hidden], .line #mcp-update[hidden] { display: none; }
+.line #model-details-button, .line #mcp-settings, .line #mcp-servers, .line #mcp-update { flex: none; margin: 0; padding: 3px 8px; }
 #model-details-dialog { box-sizing: border-box; width: calc(100% - 24px); max-width: 560px; max-height: 80vh; overflow: auto; padding: 14px 18px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-widget-border,var(--vscode-contrastBorder,var(--vscode-panel-border))); box-shadow: 0 4px 18px var(--vscode-widget-shadow,transparent); }
 #model-details-dialog::backdrop { background: var(--vscode-widget-shadow,transparent); }
 #mcp-start-dialog { box-sizing: border-box; width: calc(100% - 24px); max-width: 560px; padding: 14px 18px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background,var(--vscode-editor-background)); border: 1px solid var(--vscode-widget-border,var(--vscode-contrastBorder,var(--vscode-panel-border))); box-shadow: 0 4px 18px var(--vscode-widget-shadow,transparent); }
@@ -440,7 +446,7 @@ ${require(require("path").join(__dirname,"code-review")).controlsCss}
 <div class="line"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
-<span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button>
+<span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
 </span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
@@ -541,6 +547,8 @@ document.getElementById('mcp-start-go').addEventListener('click', () => {
 });
 document.getElementById('mcp-start-node').addEventListener('click', () => api.postMessage({ action: 'openWebLink', url: 'https://nodejs.org' }));
 document.getElementById('mcp-settings').addEventListener('click', () => api.postMessage({ action: 'mcpSettings', name: document.getElementById('mcp-select').value }));
+document.getElementById('mcp-servers').addEventListener('click', () => api.postMessage({ action: 'mcpServers' }));
+document.getElementById('mcp-update').addEventListener('click', () => api.postMessage({ action: 'mcpServers' }));
 document.getElementById('mcp-select').addEventListener('change', event => {
   api.postMessage({ action: 'mcp', name: event.target.value });
 });
@@ -625,7 +633,6 @@ document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') copySelectedText(event);
 });
 const progressItems = new Map();
-const mcpInstallScene=${JSON.stringify(require(require("path").join(__dirname,"task-visual")).html("install"))};
 const taskVisuals=${JSON.stringify({review:require(require("path").join(__dirname,"task-visual")).html("review",true),commit:require(require("path").join(__dirname,"task-visual")).html("commit",true)})};
 function paintTaskScene(item,update){
       if(['review','commit'].includes(update.kind))item.dataset.taskKind=update.kind;
@@ -691,7 +698,8 @@ window.addEventListener('message', event => {
         item.dataset.status = '';
       }
       if (typeof update.status === 'string') item.dataset.status = update.status;
-      if (!item.dataset.answer) body.textContent = 'VERTEX:\\n' + (item.dataset.status || 'Working…');
+      // While there is no answer yet, the status shares the VERTEX: line.
+      if (!item.dataset.answer) body.textContent = 'VERTEX: ' + (item.dataset.status || 'Working…');
       let status = item.querySelector('.tool-status');
       if (item.dataset.answer && item.dataset.status && !update.done) {
         if (!status) { status = document.createElement('p'); status.className = 'tool-status'; item.appendChild(status); }
@@ -779,26 +787,38 @@ window.addEventListener('message', event => {
     document.getElementById('mcp-start-options').replaceChildren();
     document.getElementById('mcp-start-go').hidden = true;
     const dialog = document.getElementById('mcp-start-dialog'), name = event.data.mcpStart.name;
-    document.getElementById('mcp-start-title').textContent = 'Starting ' + name;
-    document.getElementById('mcp-start-scene').innerHTML = mcpInstallScene;
-    document.getElementById('mcp-start-status').textContent = event.data.mcpStart.running ? 'Connecting to ' + name + '…' : 'Starting ' + name + '…\\nThe first start downloads the package through npx and can take a few minutes. Later starts take seconds.';
+    // Installing when npx does not have the package yet, starting otherwise; the scene comes from the extension.
+    const installing = !!event.data.mcpStart.installing, scene = document.getElementById('mcp-start-scene');
+    document.getElementById('mcp-start-title').textContent = (installing ? 'Installing ' : 'Starting ') + name;
+    scene.innerHTML = event.data.mcpStart.scene || '';
+    scene.dataset.kind = installing ? 'install' : 'start';
+    document.getElementById('mcp-start-status').textContent = event.data.mcpStart.running ? 'Connecting to ' + name + '…'
+      : installing ? 'Installing ' + name + ' through npx: the first start downloads the package and can take a few minutes.' : 'Starting ' + name + '…';
     document.getElementById('mcp-start-node').hidden = true;
     if (!dialog.open) dialog.showModal();
   }
   if (event.data && event.data.mcpDone) {
-    const done = event.data.mcpDone, dialog = document.getElementById('mcp-start-dialog');
+    const done = event.data.mcpDone, dialog = document.getElementById('mcp-start-dialog'), scene = document.getElementById('mcp-start-scene');
     document.getElementById('mcp-start-options').replaceChildren();
     document.getElementById('mcp-start-go').hidden = true;
-    document.getElementById('mcp-start-scene').innerHTML = '';
-    document.getElementById('mcp-start-title').textContent = done.error ? done.name + ' did not start' : done.name + ' is ready';
-    document.getElementById('mcp-start-status').textContent = done.error || (done.name + ' now supplies the SAP tools of the chat: ' + done.tools + ' tools.');
-    document.getElementById('mcp-start-node').hidden = !done.nodeMissing;
-    if (!dialog.open) dialog.showModal();
+    const result = () => {
+      scene.innerHTML = '';
+      document.getElementById('mcp-start-title').textContent = done.error ? done.name + ' did not start' : done.name + ' is ready';
+      document.getElementById('mcp-start-status').textContent = done.error || (done.name + ' now supplies the SAP tools of the chat: ' + done.tools + ' tools.');
+      document.getElementById('mcp-start-node').hidden = !done.nodeMissing;
+      if (!dialog.open) dialog.showModal();
+    };
+    // A start that worked plays its end - the lid closes, or the orbiter takes off - with the check, then the result.
+    const visual = !done.error && dialog.open && scene.firstElementChild;
+    if (visual) { visual.classList.add('scene-done'); setTimeout(result, scene.dataset.kind === 'install' ? 2000 : 3600); }
+    else result();
   }
   if (event.data && event.data.mcp) {
     const mcpSelect = document.getElementById('mcp-select');
     mcpSelect.replaceChildren(...event.data.mcp.servers.map(name => { const option = new Option(name, name); option.selected = name === event.data.mcp.selected; return option; }));
-    mcpSelect.hidden = document.getElementById('mcp-label').hidden = document.getElementById('mcp-settings').hidden = false;
+    mcpSelect.hidden = document.getElementById('mcp-label').hidden = document.getElementById('mcp-settings').hidden = document.getElementById('mcp-servers').hidden = false;
+    const waiting = event.data.mcp.updates || [], update = document.getElementById('mcp-update');
+    update.hidden = !waiting.length; update.title = waiting.length ? 'A newer version is out for ' + waiting.join(', ') + '. Opens MCP Servers, where you update it.' : '';
   }
   if (event.data && event.data.ai) {
     const select = document.getElementById('provider-select');

@@ -214,6 +214,6 @@ same edit as the version bump below.
 
 ## Versions
 
-The Eclipse bundle and VS Code extension use version **0.9.72**. Update both hosts together and build both archives.
-The Eclipse source bundle and feature use `0.9.72.qualifier`; packaging replaces the qualifier with the build timestamp, so each export is a distinct update-site version. The current checked-in build is documented in `README.md`, `eclipse/README.md` and `docs/index.html`.
+The Eclipse bundle and VS Code extension use version **0.9.73**. Update both hosts together and build both archives.
+The Eclipse source bundle and feature use `0.9.73.qualifier`; packaging replaces the qualifier with the build timestamp, so each export is a distinct update-site version. The current checked-in build is documented in `README.md`, `eclipse/README.md` and `docs/index.html`.
 The built-in Assistant is available in both hosts; Eclipse uses a Node bridge and the window’s ADT session.

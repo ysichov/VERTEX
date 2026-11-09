@@ -43,7 +43,7 @@ test('review tree nests folders and binary files have no text counters',()=>{
  assert.ok(html.indexOf('id="askall"')<html.indexOf('id="commit-open"'));assert.ok(html.indexOf('id="commit-open"')<html.indexOf('id="push-open"'));
  assert.match(html,/<nav class="review-tree"/);assert.doesNotMatch(html,/<table class="ave groups"/);assert.match(html,/<summary>docs<\/summary>[\s\S]*?<summary>nested<\/summary>/);
  const row=html.match(/<div class="tree-file"><button[^>]*data-open="b"[\s\S]*?<\/div>/)[0];assert.match(row,/>Binary<\/span>/);assert.doesNotMatch(row,/tree-count/);
- assert.match(html,/function selectFile/);assert.match(html,/grid-template-columns:minmax/);assert.match(html,/border-radius:3px;color:white;cursor:pointer/);
+ assert.match(html,/function selectFile/);assert.match(html,/grid-template-columns:var\(--tree-width,minmax/);assert.match(html,/id="tree-split"/);assert.match(html,/border-radius:3px;color:white;cursor:pointer/);
  const script=html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1];assert.doesNotThrow(()=>new (require('node:vm').Script)(script));
 });
 
