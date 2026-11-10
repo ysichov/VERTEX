@@ -338,6 +338,13 @@ function markdown(text, target) {
   }
   function conversation(p) {
     var body = el("div", "conversation");
+    if (window.vertexCanContinue && p.decision) {
+      var resumeDecision=el("button","continue-session","Continue");
+      resumeDecision.type="button";
+      resumeDecision.title="Restore this Jev step's context and questions without running it";
+      resumeDecision.onclick=function(event){event.preventDefault();event.stopPropagation();vscode.postMessage({action:"continueDecision",key:p.key});};
+      body.appendChild(resumeDecision);
+    }
     var user = section("User" + ((p.screenshots || []).length ? " · " + p.screenshots.length + " screenshot" + (p.screenshots.length === 1 ? "" : "s") : ""), "user", p.text);
     objectLinks(user, p.objects);
     (p.screenshots || []).forEach(function (shot, i) {

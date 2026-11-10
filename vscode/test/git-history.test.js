@@ -1,6 +1,21 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm');
 const history=require('../git-history');
+
+test('large untracked files open their disk URI in the standard editor',async t=>{
+ const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');
+ const folder=await fs.mkdtemp(path.join(os.tmpdir(),'vertex-large-editor-')),close=[],receive=[];
+ t.after(async()=>{close.forEach(fn=>fn());await fs.rm(folder,{recursive:true,force:true});});
+ const git=(...args)=>execFileSync('git',args,{cwd:folder,windowsHide:true});git('init');git('config','user.email','test@example.test');git('config','user.name','Test');
+ await fs.writeFile(path.join(folder,'base.txt'),'base');git('add','.');git('commit','-m','base');
+ await fs.writeFile(path.join(folder,'large.json'),Array.from({length:1002},(_,i)=>String(i)).join('\n'));
+ const panel={webview:{html:'',postMessage(){},onDidReceiveMessage:fn=>{receive.push(fn);return {dispose(){}};}},onDidDispose:fn=>close.push(fn),onDidChangeViewState(){}};
+ let opened,shown;const vscode={ViewColumn:{Active:1,Beside:2},Uri:{file:fsPath=>({fsPath})},workspace:{openTextDocument:async uri=>{opened=uri;return {uri};}},window:{createWebviewPanel:()=>panel,showTextDocument:async(doc,options)=>{shown={doc,options};}}};
+ await history.openCommit(vscode,folder,{working:true});
+ const id=panel.webview.html.match(/data-file="([^"]+)" data-editor="true"/)[1];
+ for(const handler of receive)await handler({action:'openEditor',file:id});
+ assert.equal(opened.fsPath,path.join(folder,'large.json'));assert.equal(shown.options.viewColumn,2);assert.equal(shown.options.preview,true);
+});
 function fixture(){
  let html,receive,close;
  history.open({ViewColumn:{Beside:2},window:{createWebviewPanel(){return {webview:{set html(v){html=v;},onDidReceiveMessage(){},postMessage(){}},onDidDispose(fn){close=fn;}}}}},'.');
@@ -56,9 +71,9 @@ test('working diff includes staged, unstaged, deleted and untracked files within
  assert.equal(changes.find(c=>c.file==='staged').after,'staged');
  assert.equal(changes.find(c=>c.file==='deleted').status,'D');
  assert.equal(changes.find(c=>c.file==='new file').status,'A');
- let dispose,viewChange;
+ const disposals=[];let viewChange;
  const panel={visible:true,active:true,webview:{html:'',onDidReceiveMessage(){}},
-   onDidDispose(fn){dispose=fn;},onDidChangeViewState(fn){viewChange=fn;}};
+   onDidDispose(fn){disposals.push(fn);},onDidChangeViewState(fn){viewChange=fn;}};
  const vscode={ViewColumn:{Active:1},window:{createWebviewPanel(){return panel;}}};
  await history.openCommit(vscode,path.join(folder,'sub'),{working:true});
  const snapshot=history.reviewContext();
@@ -68,7 +83,12 @@ test('working diff includes staged, unstaged, deleted and untracked files within
  assert.equal(history.reviewContext().text,snapshot.text,'the context stays the rendered snapshot');
  panel.visible=false;viewChange({webviewPanel:panel});assert.equal(history.reviewContext(),null);
  panel.visible=true;viewChange({webviewPanel:panel});assert.equal(history.reviewContext(),snapshot);
- dispose();assert.equal(history.reviewContext(),null);
+ disposals.forEach(fn=>fn());assert.equal(history.reviewContext(),null);
+ const cleanupFrom=disposals.length;
+ t.mock.method(require('../code-review'),'hunks',()=>{throw new Error('Synthetic diff allocation failure');});
+ await assert.rejects(history.openCommit(vscode,path.join(folder,'sub'),{working:true}),/Synthetic diff allocation failure/);
+ assert.match(panel.webview.html,/Synthetic diff allocation failure/);assert.match(panel.webview.html,/aria-busy="false"/);
+ disposals.slice(cleanupFrom).forEach(fn=>fn());
 
 });
 

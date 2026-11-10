@@ -135,6 +135,7 @@ function open(vscode, context, deps, initial) {
   const legacyChat = () => ask || (ask = deps.chat());
   const bridge = `<script>
     const host = ${deps.panel ? '({postMessage:message=>parent.postMessage({vertexLogicRequest:message},"*")})' : 'acquireVsCodeApi()'}; let pending;
+    (${require("./review-jev").bridge.toString()})(host);
     // The embedded chat may offer the direct Anthropic provider in VS Code.
     // Eclipse hosts the same HTML but deliberately does not define this flag.
     window.sdeAnthropicApi=()=>true;
@@ -171,6 +172,7 @@ function open(vscode, context, deps, initial) {
       if(e.data.type==="localFolder"&&typeof sdeLocalFolderReady==="function")sdeLocalFolderReady(e.data.payload);
     });
   <\/script>`;
+  require("./review-jev").bind(vscode,panel,message=>message.context);
   panel.webview.html = html(deps.pages, local ? { ...initial, localSession: undefined, local: true } : initial).replace("<script>", bridge + "<script>");
   // The chat here offers what the VERTEX panel does: its provider, the models
   // Config models switched on, and the chosen one - one setting for both.

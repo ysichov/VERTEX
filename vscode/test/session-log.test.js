@@ -25,6 +25,20 @@ test("no folder, no log", () => {
   assert.equal(sessionLog.create("", "claude"), null);
 });
 
+test("Jev continuation saves each explicit input only with question logging",()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-jev-resume-'));
+ try{
+  const input={provider:'typesafe-api',model:'jev-latest',state:'First context',questions:{q:{type:'noul',instructions:'Safe?'}}};
+  const quiet=sessionLog.create(root,'typesafe-api','quiet',{});quiet.user('Jev evaluation');quiet.decision(input);
+  assert.doesNotMatch(fs.readFileSync(quiet.file,'utf8'),/First context|vertex_decision/);
+  const log=sessionLog.create(root,'typesafe-api','steps',{questions:true},'Jev evaluation');
+  log.user('Step one');log.decision(input);input.state='Second context';log.user('Step two');log.decision(input);
+  const parsed=require('../log-report').parseSession(fs.readFileSync(log.file,'utf8'),log.file);
+  assert.equal(parsed.prompts.length,2);assert.equal(parsed.prompts[0].decision.state,'First context');assert.equal(parsed.prompts[1].decision.state,'Second context');
+  assert.notEqual(parsed.prompts[0].key,parsed.prompts[1].key);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test("full VERTEX instructions and context are logged only when requested", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-request-log-"));
   try {

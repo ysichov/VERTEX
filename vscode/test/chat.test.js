@@ -21,6 +21,32 @@ function fakeVscode(settings) {
   };
 }
 
+test("API model catalogs survive restart, coalesce loads and refresh only explicitly",async t=>{
+ const settings={provider:'openrouter-api',model:'vendor/a',modelConfig:{'openrouter-api':{enabled:['vendor/a'],known:['vendor/a','vendor/b']}}};
+ const saved=new Map(),memory={get:k=>saved.get(k),update:async(k,v)=>{saved.set(k,JSON.parse(JSON.stringify(v)));}};
+ let calls=0,key='private-test-key';t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key}));
+ t.mock.method(compatible,'models',async()=>{calls++;await new Promise(r=>setTimeout(r,10));return [{id:'vendor/a',label:'Model A',revision:calls},{id:'vendor/b',label:'Model B',revision:calls}];});
+ const create=()=>chat.create(fakeVscode(settings),{schemas:[],instructions:'',editorContext:()=>null},null,{},null,null,memory);
+ const first=create();await Promise.all([first.listModels(),first.listModels()]);assert.equal(calls,1);
+ const restarted=create();assert.equal((await restarted.listModels()).models[0].label,'Model A');assert.equal(calls,1,'restart reads the persisted catalog');
+ settings.modelConfig['openrouter-api'].enabled=['vendor/b'];assert.equal((await restarted.listModels()).models[0].id,'vendor/b');assert.equal(calls,1,'selection changes use the saved full catalog');
+ let load,forget;t.mock.method(require('../model-config'),'open',(_v,full,_e,invalidate)=>{load=full;forget=invalidate;});
+ restarted.configModels();await load('openrouter-api');assert.equal(calls,1,'opening settings does not rebuild catalogs');
+ forget('openrouter-api');await load('openrouter-api');assert.equal(calls,2,'settings refresh explicitly rebuilds the catalog');
+ await restarted.listModels(true);assert.equal(calls,3);
+ assert.equal((await first.listModels()).models[0].revision,3,'other panels see the explicitly rebuilt shared catalog');assert.equal(calls,3);
+ key='another-private-key';await restarted.listModels();assert.equal(calls,4,'a new credential scope needs its own catalog');
+ key='private-test-key';await restarted.listModels();assert.equal(calls,4,'returning to a cached credential scope uses its catalog');
+ assert.doesNotMatch(JSON.stringify([...saved]),/private-test-key|another-private-key/);
+});
+
+test("local loaded-model lists remain live instead of using persisted catalogs",async t=>{
+ let calls=0;t.mock.method(compatible,'models',async()=>{calls++;return [{id:'local',loaded:true}];});
+ const memory={get(){throw Error('Local catalog must not use persistent cache');},update(){throw Error('Local catalog must not be saved');}};
+ const ask=chat.create(fakeVscode({provider:'lmstudio-local'}),{schemas:[]},null,null,null,null,memory);
+ await ask.listModels();await ask.listModels();assert.equal(calls,2);
+});
+
 test("the VS Code chat sends the conversation so far, and a new conversation starts empty", async (t) => {
   const prompts = [];
   let instructions = "";
@@ -445,6 +471,13 @@ test("ChatGPT subscription forwards screenshots to Codex", async t => {
   assert.equal((await ask("Explain this screenshot", { images })).answer, "Screenshot received");
   assert.equal(received.assistant, "codex");
   assert.deepEqual(received.images, images);
+  await ask("Identify the application from my first screenshot");
+  assert.deepEqual(received.images, images, "follow-up retains the original screenshot");
+  assert.match(received.prompt, /"screenshots": 1/);
+  assert.doesNotMatch(received.prompt, /iVBORw0KGgo=/, "image bytes are attachments, not prompt text");
+  ask.newConversation();
+  await ask("A separate question");
+  assert.equal(received.images, undefined, "new conversations do not inherit screenshots");
 });
 
 
@@ -483,6 +516,11 @@ test('Vercel Vision chat forwards images and removes tools when the model cannot
  assert.equal((await ask('Explain screenshot',{images})).answer,'Image described');
  assert.deepEqual(received.images,images);assert.deepEqual(received.tools,[]);
  assert.match(received.instructions,/cannot call tools/);
+ const next=[{media_type:'image/jpeg',data:'efgh'}];
+ await ask('Compare with this screenshot',{images:next});
+ assert.deepEqual(received.images,[...images,...next]);
+ await ask('What application was in the first screenshot?');
+ assert.deepEqual(received.images,[...images,...next], 'retained images are neither dropped nor duplicated');
 });
 
 test('commit message generation is isolated and supplies no action tools',async t=>{

@@ -15,6 +15,10 @@ const PROVIDERS = Object.freeze({
   "openrouter-api": { label: "OpenRouter", base: "https://openrouter.ai/api/v1" },
   "nvidia-api": { label: "NVIDIA", base: "https://integrate.api.nvidia.com/v1" },
   "vercel-api": { label: "Vercel AI Gateway", base: "https://ai-gateway.vercel.sh/v1" },
+  "opencode-api": { label: "OpenCode Console", base: "https://opencode.ai/inference", routes: {
+    "/models": "/v1/models", "/chat/completions": "/openai/v1/chat/completions"
+  } },
+  "typesafe-api": { label: "TypeSafe Jev", base: "https://api.typesafe.ai/v1", decisionOnly: true },
   // Local servers on this computer: plain HTTP to localhost, no API key.
   "lmstudio-local": { label: "LM Studio", base: "http://localhost:1234/v1", local: true },
   "ollama-local": { label: "Ollama", base: "http://localhost:11434/v1", local: true }
@@ -53,7 +57,7 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs, signa
     return Promise.reject(new Error("VERTEX: request exceeds " + (maxBytes === 64000 ? "64 KB" : (maxBytes / 1024) + " KiB") + "; narrow the context or start a new conversation."));
   }
   const base = baseUrl(id);
-  const url = new URL(base + route);
+  const url = new URL(base + (provider.routes?.[route] || route));
   return new Promise((resolve, reject) => {
     const req = (url.protocol === "http:" ? http : https).request(url, { signal, method: payload ? "POST" : "GET", headers: {
       ...(apiKey && !provider.local ? { authorization: "Bearer " + apiKey } : {}), ...(payload ? { "content-type": "application/json",
@@ -103,12 +107,22 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs, signa
 
 async function models(id, apiKey, request = requestJson) {
   const response = await request(id, apiKey, "/models");
+  if (id === "typesafe-api") {
+    if (!Array.isArray(response.models) || !response.models.length) throw new Error("TypeSafe returned no decision models.");
+    const list = response.models.filter(item => typeof item?.name === "string" && item.name.trim()).map(item => ({
+      id: item.name, label: item.name + " (Decision API)", modelKind: "decision", modelProvider: "typesafe",
+      description: item.description || "", metadataSource: "TypeSafe /models API",
+      capabilities: { tools: false, json: true, reasoning: false, vision: null, web: false }
+    }));
+    if (!list.length) throw new Error("TypeSafe returned no valid model names.");
+    return list;
+  }
   if (!Array.isArray(response.data)) { throw new Error(PROVIDERS[id].label + " did not return a model list."); }
   // Chat does not implement asynchronous batch variants; Vercel also lists non-chat models.
   const list = response.data.filter(item => item && item.id && (id !== "vercel-api" || item.type === "language")
     && !(isLocal(id) && /(?:^|[-_/.])embed(?:ding)?(?:$|[-_/.])|^text-embedding/i.test(String(item.id)))
     && !/(?:^|[-_/:])batch(?:$|[-_/:])/i.test(String(item.id))
-    && !/\bbatch\b/i.test(String(item.name || "") + " " + String(item.display_name || ""))).map(item => ({
+    && !/\bbatch\b/i.test(String(item.name || "") + " " + String(item.display_name || ""))).map(item => id === "opencode-api" ? require("./opencode-models").decorate(item) : ({
     id: String(item.id), label: String(item.name || item.display_name || item.id),
     ...(id === "openrouter-api" ? { free: /:free$/i.test(item.id) || item.id === "openrouter/free" || [item.pricing?.prompt,item.pricing?.completion].every(value => (typeof value === "number" || typeof value === "string" && value.trim() !== "") && Number(value) === 0) && Object.values(item.pricing || {}).every(value => Number(value) === 0) } : {}),
     ...(id === "vercel-api" ? require("./model-capabilities").metadata(item) : {})
@@ -186,6 +200,21 @@ async function rateLimitedRequest(send, options = {}) {
 
 // One minimal paid generation request: no tool schemas, history or agent rounds.
 async function probe(id, apiKey, model, request = requestJson, options = {}) {
+  if (id === "typesafe-api" || id === "opencode-api" && require("./opencode-models").isDecision(model)) {
+    const response = await request(id, apiKey, id === "typesafe-api" ? "/systemone" : "/systemone/v1/systemone", {
+      model, state: "Synthetic connectivity check: the test passed.",
+      questions: { passed: { type: "noul", instructions: "Did the test pass?" } }
+    }, 64000, 10000, options.signal);
+    options.onProviderResponse?.({ provider: id, scope: "model_response", response });
+    const raw = response.usage || {};
+    const cost = raw.cost;
+    const usage = { input_tokens: Number(raw.input_tokens ?? raw.prompt_tokens ?? 0), output_tokens: Number(raw.output_tokens ?? raw.completion_tokens ?? 0),
+      ...(cost !== null && cost !== undefined && cost !== "" && Number.isFinite(Number(cost)) && Number(cost) >= 0 ? { cost_usd: Number(cost) } : {}) };
+    options.onModelCall?.({ model: response.model || model, usage, text: JSON.stringify(response.answers || {}) });
+    const value = response.answers?.passed?.noul;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) throw new Error(PROVIDERS[id].label + " returned no valid Jev decision probability.");
+    return { model: response.model || model, usage };
+  }
   // A check must not make a local server load a model the user has not started.
   if (isLocal(id)) {
     const found = (await models(id, apiKey, request)).find(m => m.id === model);
@@ -200,7 +229,7 @@ async function probe(id, apiKey, model, request = requestJson, options = {}) {
   options.onProviderResponse?.({provider:id,scope:"model_response",response:{...response,finish_reason:response.choices?.[0]?.finish_reason,
     message_diagnostics:{content_characters:answer.length,reasoning_tokens:Number(response.usage?.completion_tokens_details?.reasoning_tokens||0)}}});
   const raw=response.usage||{},cached=Number(raw.prompt_tokens_details?.cached_tokens??raw.cache_read_input_tokens??0)||0,created=Number(raw.cache_creation_input_tokens||0);
-  const usage={input_tokens:raw.prompt_tokens==null?Number(raw.input_tokens||0):Math.max(0,Number(raw.prompt_tokens)-cached-created),output_tokens:Number(raw.completion_tokens??raw.output_tokens??0)||0,cache_read_input_tokens:cached,cache_creation_input_tokens:created,...(["vercel-api","openrouter-api"].includes(id)?await generationCost(response,{...options,assistant:id,apiKey},request):{})};
+  const usage={input_tokens:raw.prompt_tokens==null?Number(raw.input_tokens||0):Math.max(0,Number(raw.prompt_tokens)-cached-created),output_tokens:Number(raw.completion_tokens??raw.output_tokens??0)||0,cache_read_input_tokens:cached,cache_creation_input_tokens:created,...(["vercel-api","openrouter-api","opencode-api"].includes(id)?await generationCost(response,{...options,assistant:id,apiKey},request):{})};
   const reasoning=typeof message?.reasoning_content==="string"?message.reasoning_content:typeof message?.reasoning==="string"?message.reasoning:"";
   options.onModelCall?.({model:response.model||model,usage,text:answer,...(reasoning?{reasoning}:{})});
   if (!message) throw new Error(PROVIDERS[id].label + " answered without a chat message.");
@@ -209,7 +238,7 @@ async function probe(id, apiKey, model, request = requestJson, options = {}) {
 
 // Actual Gateway debit, never an estimate from catalog token prices.
 async function generationCost(response, options, request) {
-  if (options.assistant === "openrouter-api") {
+  if (["openrouter-api", "opencode-api"].includes(options.assistant)) {
     const value = response.usage?.cost;
     const cost = (typeof value === "number" || typeof value === "string" && value.trim() !== "") && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
     return { generation_id: response.id || null, cost_usd: cost };
@@ -241,6 +270,7 @@ function searchCallCount(response) {
 }
 async function ask(options) {
   const id = options.assistant;
+  if (PROVIDERS[id]?.decisionOnly || id === "opencode-api" && require("./opencode-models").isDecision(options.model)) throw new Error("Jev is a decision model. Use Check models in LLM Providers to test its Decision API; choose a language model for chat.");
   const request = (id,key,route,body,maxBytes,timeout) => (options.request || requestJson)(id,key,route,body,maxBytes,timeout,options.signal);
   if (options.images?.length && options.capabilities?.vision === false) throw new Error("This model does not accept screenshots. Choose a Vision model or remove the images.");
   if(options.webSearch && id!=="vercel-api")throw new Error("Web mode currently requires Vercel AI Gateway.");
@@ -320,7 +350,7 @@ async function ask(options) {
       if (!usage) usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
       for (const key of Object.keys(next)) usage[key] = (usage[key] || 0) + next[key];
     }
-    if (id === "vercel-api" || id === "openrouter-api") {
+    if (["vercel-api", "openrouter-api", "opencode-api"].includes(id)) {
       roundUsage = { ...(roundUsage || {}), ...await generationCost(response, options, request) };
       if (roundUsage.cost_usd !== null) {
         if (!usage) usage = {};

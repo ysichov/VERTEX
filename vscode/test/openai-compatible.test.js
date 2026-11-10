@@ -7,7 +7,7 @@ const assistant = require("../assistant");
 
 test("API provider catalog matches the ABAP-AI-Code key providers", () => {
   assert.deepEqual(Object.keys(api.PROVIDERS), ["openai-api", "mistral-api", "gemini-api", "groq-api",
-    "cerebras-api", "openrouter-api", "nvidia-api", "vercel-api", "lmstudio-local", "ollama-local"]);
+    "cerebras-api", "openrouter-api", "nvidia-api", "vercel-api", "opencode-api", "typesafe-api", "lmstudio-local", "ollama-local"]);
   for (const id of Object.keys(api.PROVIDERS)) {
     assert.ok(modelConfig.PROVIDERS.some(provider => provider.id === id && provider.setting === id));
     assert.match(api.PROVIDERS[id].base, api.PROVIDERS[id].local ? /^http:\/\/localhost:\d+\/v1$/ : /^https:\/\//);

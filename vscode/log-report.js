@@ -75,6 +75,10 @@ function parseSession(text, file) {
         text: prettyJson({ provider: record.provider, response: record.response }) });
       continue;
     }
+    if (record.type === "vertex_decision") {
+      if (current && record.input) current.decision = record.input;
+      continue;
+    }
     if (record.type === "vertex_request") {
       if (current && record.request) {
         current.details.push({ type: "VERTEX instructions", text: String(record.request.instructions || "") });
@@ -284,6 +288,14 @@ function open(vscode, options = {}) {
         const found = conversationTurns(readSessions(root), String(message.id || ""));
         await vscode.commands.executeCommand("vertex.continueConversation", found);
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "continueDecision") {
+      try {
+        const report=readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
+        const step=report.sessions.flatMap(session=>session.prompts).find(prompt=>prompt.key===message.key);
+        if(!step?.decision)throw new Error("This step has no saved Jev input. Enable question logging for future runs.");
+        await vscode.commands.executeCommand("vertex.continueDecision",step.decision);
+      } catch(error){vscode.window.showErrorMessage("VERTEX: "+error.message);}
     }
     if (message?.action === "openSnapshot") {
       try { require("./log-snapshot").open(vscode, message.snapshot); }

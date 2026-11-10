@@ -1,6 +1,31 @@
 "use strict";
 const test = require('node:test'), assert = require('node:assert/strict'), vm = require('node:vm');
 const { reviewHtml } = require('../code-review');
+
+test('editor-only new files retain review actions but do not embed source or mode toggles',()=>{
+ const r=require('../code-review'),file={id:'new',label:'large.json',path:'large.json',kind:'new',openInEditor:true,before:'',after:'PRIVATE_NEW_FILE',parts:r.hunks('','PRIVATE_NEW_FILE')};
+ const html=r.filesReviewHtml([file],{readonly:{title:'Changes'}});
+ assert.match(html,/data-editor="true"/);assert.match(html,/Open in editor/);assert.doesNotMatch(html,/PRIVATE_NEW_FILE|data-view="full"/);assert.match(html,/ASK AI/);
+});
+
+test('large Git previews are lazy, paginated and new files are shown without whole-file diff colour',async()=>{
+ const review=require('../code-review'),after=Array.from({length:65000},(_,i)=>'unique_row_'+i).join('\n');
+ const file={id:'large',path:'catalog.json',label:'catalog.json',kind:'new',before:'',after,parts:review.hunks('',after)};
+ const shell=review.filesReviewHtml([file],{readonly:{title:'Large preview'}});assert.doesNotMatch(shell,/unique_row_100/);
+ const page=review.fileDiffHtml(file,false,true,1);assert.equal((page.match(/<tr class=/g)||[]).length,1000);assert.match(page,/unique_row_1000</);assert.doesNotMatch(page,/unique_row_999</);assert.doesNotMatch(page,/<tr class="added"/);assert.match(page,/Page 2 \/ 65/);
+ let response;await review.sendFileView({webview:{postMessage:m=>{response=m;}}},{file:'large',view:'compact',page:64},file,true);
+ assert.equal(response.fileView.view,'compact');assert.equal(response.fileView.page,64);assert.match(response.fileView.html,/unique_row_64999</);assert.doesNotMatch(response.fileView.html,/unique_row_63999</);
+});
+
+test('large additions, deletions and unrelated replacements have bounded diff memory and exact results',()=>{
+ const {hunks,reviewedSource}=require('../code-review');
+ const large=Array.from({length:30000},(_,i)=>'row '+i).join('\n');
+ for(const [before,after] of [['',large],[large,''],[large,large.replace(/row/g,'new row')]]){
+  const parts=hunks(before,after);assert.equal(parts.length,1);assert.equal(reviewedSource(before,parts,[0]),after);assert.equal(reviewedSource(before,parts,[]),before);
+ }
+ const a='same\n'+large+'\ntail',b='same\n'+large.replace(/row/g,'new row')+'\ntail';
+ const parts=hunks(a,b);assert.equal(parts[0].beforeFrom,1);assert.equal(parts[0].beforeTo,30001);assert.equal(reviewedSource(a,parts,[0]),b);
+});
 test('review escapes source and metadata, uses nonce CSP and emits valid script', () => {
   const hostile = '</script><img src=x onerror="alert(1)">';
   const html = reviewHtml([{ beforeFrom: 0, beforeTo: 1, afterFrom: 0, afterTo: 1,

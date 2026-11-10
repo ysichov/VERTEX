@@ -78,6 +78,10 @@ function reviewQueue(vscode) {
   const open = () => {
     panel = vscode.window.createWebviewPanel("vertex.fileReview", "Review assistant changes",
       vscode.ViewColumn.Beside, { enableScripts: true });
+    require("./review-jev").bind(vscode,panel,message=>{
+      const item=shownFiles.get(message.file);if(!item||!Number.isInteger(message.hunk))return null;
+      return review.askContext(item.parts,[message.hunk],item.seen.after,"local",item.seen.file);
+    });
     const untrackLinks=require("./file-links").register(panel,()=>[...shownFiles].map(([id,f])=>({id,path:f.seen.file,relative:path.basename(f.seen.file)})));
     panel.webview.onDidReceiveMessage(async message => {
       if(message?.action==="fileView"){const f=shownFiles.get(message.file);await review.sendFileView(panel,message,f?{parts:f.parts,after:f.seen.after,before:f.seen.before,abap:/\.abap$/i.test(f.seen.file)}:null);return;}
@@ -85,7 +89,7 @@ function reviewQueue(vscode) {
       if (message.action === "ask" && shownFiles.has(message.file)) {
         const item = shownFiles.get(message.file);
         await vscode.commands.executeCommand("vertex.askReviewBlock",
-          review.askContext(item.parts, null, item.seen.after, "local", item.seen.file));
+          review.askContext(item.parts, Number.isInteger(message.hunk)?[message.hunk]:null, item.seen.after, "local", item.seen.file));
       } else if (message.action === "deny") {
         settle([...pending.keys()], item => deny("The user denied this change of " + item.seen.file + "."));
         await panel.webview.postMessage({ action: "denied" });

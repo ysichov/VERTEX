@@ -1,3 +1,101 @@
+## 2026-11-10 — Large new files in the editor (VS Code 0.9.77)
+
+Git marks large non-binary additions as editor-only (over 1,000 lines or 256K characters). Explicit tree selection sends the mapped file ID to the extension host, which opens the disk URI for working changes or an untitled content snapshot for historical additions. The review retains status/counts and AI actions but has no source table or Compact/Full controls for these files. Initial page loading does not open an editor automatically. Smaller additions and existing-file changes retain previews. Only VS Code 0.9.77 is rebuilt; installation remains the user's action.
+
+Validation: 47 focused review/sidebar tests passed. Headless Edge checked a 65,000-line new file: selecting it emitted exactly one openEditor action, no fileView request, no diff rows and no JavaScript errors. A temporary Git repository test verifies classification of a large untracked file and opening its disk URI beside the review. The universal VSIX is rebuilt and changed sources verified.
+
+## 2026-11-10 — Paged large Git previews (VS Code 0.9.77)
+
+The diff itself completed, but rendering 67,000 table rows stalled the webview. Read-only Git previews now defer large compact bodies until selection and bound Compact/Full pages to 1,000 rows. Highlighting runs only for visible page rows; new files use neutral rows. Existing fileView messages carry view/page and reuse the file controls. Selecting another file unloads hidden large bodies. Full source, block scope and decisions are unchanged. Only VS Code 0.9.77 is rebuilt, without installation.
+
+Validation: 45 focused review/sidebar tests passed. Headless Edge checked 65,000 lines, Next page contents, 1,000 rendered rows, no added-row colour for a new file, zero hidden large rows after switching files and no JavaScript errors. The two-file initial shell was 66,457 bytes. Unit tests cover lazy markup, page boundaries and last-page access. The universal VSIX is rebuilt and its source verified.
+
+## 2026-11-10 — Bounded Git diff memory (VS Code 0.9.77)
+
+Uncommitted changes in my_video_tv included large untracked JSON catalogs. Myers tracing copied a full vector at every edit depth even for entirely added files, exhausting ArrayBuffers. Equal-prefix/suffix scanning identifies pure insertions/deletions immediately. A 16 MiB trace budget groups complex regions into one exact reversible block. A preparation failure wrapper replaces the waiting page even if the failure occurs after reading files. Only VS Code 0.9.77 is rebuilt; installation stays with the user.
+
+Validation: 34 focused review tests passed. Large 30,000-line additions, deletions and replacements retain exact Apply/Decline semantics. The actual project was read without changes and its 22-file diff rendered to HTML in 661 ms under a 256 MiB heap limit (172 MiB RSS). Tests also cover an injected diff-preparation failure replacing the busy page. The universal VSIX is rebuilt and its changed sources verified.
+
+## 2026-11-10 — Persistent API model catalogs (VS Code 0.9.77)
+
+Panel ready no longer forces a fresh catalog. Remote API catalogs are stored in extension globalState under provider plus a SHA-256 credential fingerprint; only model metadata is persisted. Opening LLM Providers uses the saved catalog, while explicit settings rebuild invalidates it. Concurrent requests share a pending load and catalog adoption no longer starts duplicate fetches. Current model selections filter the cached full list. Local loaded-model queries stay live. Only VS Code is bumped to 0.9.77; Eclipse remains 0.9.75. The VSIX is built and verified without installation.
+
+Validation: 73 chat, sidebar, provider grouping, Jev and TypeSafe tests passed. Catalog tests cover restart reuse, concurrent request coalescing, immediate selection changes, settings refresh, other panels observing refreshed metadata, credential isolation without stored plaintext keys and live local-server queries. The universal 0.9.77 VSIX is rebuilt and packaged sources are compared against the workspace.
+
+## 2026-11-10 — Continue each Jev step (VS Code 0.9.76)
+
+Jev evaluation and ASK Jev record their explicit input under question logging. Session parsing attaches it to the individual prompt key; Continue resolves that key from disk and opens the provider/model and editable Jev cards without calling evaluation. Object-valued review context stays structured until edited. Reruns create independent log records; originals are never rewritten. Old records without input have no Continue control. Eclipse is not rebuilt; VSIX is built and verified only, with installation left to the user.
+
+Validation: 96 relevant chat, Jev, log, sidebar and accounting tests passed. Headless Edge rendered two Jev steps and verified that the second Continue emits only the second prompt key, with no JavaScript errors. Panel tests cover all question types, restored structured state, editing and no inference on restore. The universal 0.9.76 VSIX is rebuilt and packaged sources are compared with the workspace.
+
+## 2026-11-10 — Readable Jev log answers (VS Code 0.9.76)
+
+The native Jev callback now formats the Model answer with submitted question and criteria labels, Yes/No probabilities, confidence and scale distributions, using the chat's percentage rounding. Both standalone evaluation and review use this path; usage accounting and raw provider-response metadata remain unchanged. Missing answers are labeled invalid. No historical log files are rewritten. Eclipse is not rebuilt.
+
+Validation: 27 Jev, review, TypeSafe and session-log tests passed, including label mapping, zero confidence and malformed response accounting. The universal 0.9.76 VSIX is rebuilt and its packaged Jev source is checked against the workspace.
+
+## 2026-11-10 — Screenshots in chat follow-ups (VS Code 0.9.76)
+
+The chat retained only text after a screenshot turn, so a follow-up could not inspect the original image. Active conversation user turns now retain their images, and provider calls attach them in chronological order together with current images. The textual history contains screenshot counts rather than base64. Logs record only newly attached images, and New conversation clears retained attachments. Tests cover Codex follow-up access, API image order, no duplicate attachments and isolation of new conversations. Eclipse is not rebuilt.
+
+Validation: 105 selected chat, API and sidebar tests passed. Two unrelated local-server detection tests were excluded after failures involving a reset Ollama connection and a macOS path expectation on Windows. The universal VSIX is rebuilt at 0.9.76 and its packaged chat source is checked against the workspace.
+
+## 2026-11-10 — ASK Jev connection visibility fix (VS Code 0.9.76)
+
+The saved TypeSafe key and enabled Jev models were present, but the button was hidden because no successful model-probe record existed. Visibility now requires only a saved active key, an enabled provider and an enabled Jev model; no extra paid check is required. Focused tests cover absent credentials, disabled models/provider and first use without probe history (13 passed). Rebuilt the VS Code VSIX at the same version; Eclipse is not rebuilt.
+
+## 2026-11-10 — ASK Jev for diff blocks (VS Code 0.9.76)
+
+Git/file, ABAP editor and SAP transport review offer ASK Jev next to ASK AI when the active TypeSafe key has a enabled model. Each block sends four typed questions in one native request: change category, review priority, context sufficiency and advisory acceptance recommendation. Only that block and nearby lines are sent. Results and errors stay with the block; duplicate requests and stale result delivery are guarded, and closing the view aborts requests. Approval, decline, apply and activation remain user actions. Successful standalone Jev runs also establish the connection. Eclipse remains at 0.9.75 and was not rebuilt, at the user’s explicit request.
+
+Validation: 192 selected regression tests passed. One unrelated pre-existing versions-chat navigation expectation (five arguments versus the current nine) was excluded. The Git history test fixture now supports multiple disposal listeners, matching VS Code events. Headless Edge previews checked native and transport block placement, connection visibility and light/dark rendering; native VS Code UI access was unavailable. A synthetic ABAP diff returned all four answers in one live Jev request (286 ms, 815 input / 183 output tokens); no project source was sent. Packaging uses the verified universal VSIX workflow.
+
+## 2026-11-10 — Installation links before detailed documentation (0.9.75)
+
+The repository README opens its Install section with the VS Code Marketplace and Eclipse update-site links. Git and external-tool requirements follow the overview, while TypeSafe/OpenCode instructions live under the VS Code provider documentation. The Marketplace README keeps those provider details in its Providers section.
+
+## 2026-11-10 — Larger Jev context and responsive results (0.9.75)
+
+The Jev context field starts at twelve rows with a larger minimum height and reuses the chat expand/shrink control. Wide results have stable column widths and unbroken headings; narrow results become labeled cards with the question and probabilities across the full width. All surfaces and borders inherit the active theme.
+
+Validation: 15 focused Jev and sidebar tests passed. The sidebar was rendered at widths 360, 760 and 1040 in light and dark theme previews, with no horizontal overflow or JavaScript errors. The 360-pixel result used card layout; wider views retained the table. Context expansion increased its height from 208 to 660 pixels in the 1100-pixel viewport and collapsed again successfully.
+
+## 2026-11-10 — Jev question builder without JSON (0.9.75)
+
+The Jev panel accepts plain-text context and editable question cards with Yes / No, Choose an option and Rate on a scale. Answer options or scale levels are entered one per line; cards can be added or removed. VERTEX generates internal request identifiers and typed criteria. Results use original question and option labels with percentage probabilities; raw JSON is not displayed. Submitted labels are preserved even if a draft is edited while a request runs.
+
+Validation: builder serialization, invalid or incomplete options, submitted-label snapshots and draft preservation are covered by tests. The actual sidebar HTML was rendered with the question constructor in isolated headless Edge in light and dark themes, with no JavaScript errors. The existing native evaluate handler and stored-key transport are unchanged.
+
+## 2026-11-10 — Adaptive Jev decision interface (0.9.75)
+
+Selecting a Jev model switches the VS Code panel from chat to explicit State and Questions JSON inputs. State supports Text or JSON. Run Jev uses the stored provider key and the native decision endpoint; Stop aborts it. Results show typed values, confidence, probability distributions, full JSON, elapsed time and reported usage/cost. Invalid questions are rejected before inference. No conversation, tools, review, SAP or folder context is added. Drafts remain intact across mode changes; ordinary chat and planner behavior remain separate.
+
+Validation: input/response validation, cancellation, one-request concurrency, provider/model selection and draft preservation are covered by focused tests. The sidebar HTML was rendered in isolated headless Edge with light and dark VS Code theme variables; there were no JavaScript errors and the decision form replaced chat. A live synthetic request through the new evaluate handler returned Jev 1.14.0, billing probability 0.97 and department billing in 380 ms (350 input / 54 output tokens); no cost was reported. Native extension-window visual QA remains unavailable because computer-use access was previously denied.
+
+## 2026-11-10 — Direct TypeSafe Jev API key section (0.9.75)
+
+VS Code LLM Providers has a separate TypeSafe Jev API section with named SecretStorage keys, the native /v1/models alias catalog and a synthetic /v1/systemone decision check. Decision-only providers cannot be selected as ordinary chat providers. No gateway credentials are reused.
+
+Validation: 100 focused tests passed, including native TypeSafe catalog parsing, decision validation, usage callbacks, chat exclusion and isolated key profiles. Live TypeSafe checks wait for the user to enter the new key in VERTEX.
+
+## 2026-11-10 — Read the actual OpenCode catalog (0.9.75)
+
+OpenCode catalog type chat is normalized to a language model, so enabled chat models are not dropped by the panel. Canonical maker IDs, context, capabilities and USD-per-million prices are read from the live metadata. Free includes zero-price models without a -free suffix and rejects paid pricing tiers. Missing Jev entries are not invented.
+
+Validation: 97 focused tests passed, including the real catalog shape and no-Jev case. A real read with the saved OpenCode key returned 41 chat models, 12 with zero prices, and no Jev. Synthetic System One calls returned 451 Endpoint is unavailable for jev-1.13-free and 402 Insufficient account funds for jev-1.13; neither returned a decision. Credentials remained in memory and only synthetic data was sent.
+
+## 2026-11-10 — OpenCode provider catalog and Jev checks (0.9.75)
+
+OpenCode Console is a separate VS Code LLM provider beside Vercel and OpenRouter. Named keys use SecretStorage; live discovery retains original model IDs and groups their makers. The catalog supports All / Available / Free filters, group sorting and checks, and folding all groups. Enabled language models work in chat; Jev uses a synthetic System One decision probe and stays out of chat/planner model choices. Provider errors remain scoped to OpenCode, with no credential fallback or client impersonation. Reported usage and costs are retained; absent prices and costs remain unknown.
+
+Validation: 95 focused catalog, Jev, grouping, profile, chat, sidebar and planner tests passed, plus 46 compatible-provider regression tests. The full compatible-provider run retained two local Ollama failures on this Windows environment (closed-port ECONNRESET and macOS installation paths); these unrelated tests were excluded from the 46-test targeted run. Universal VSIX 0.9.75 was rebuilt through the checked packaging wrapper; its OpenCode transport, catalog adapter, UI, grouping and manifest sources match the workspace. No live call with the new OpenCode key or native VS Code visual check was performed; prior computer-use access to VS Code was denied.
+
+## 2026-11-10 — Fold all model-provider groups (0.9.75)
+
+The By provider view in LLM Providers offers Collapse all and Expand all for Vercel and OpenRouter. Both actions include groups hidden by filters and preserve model selections and sorting.
+
+Validation: 22 focused model tests passed. Universal VSIX 0.9.75 was rebuilt and verified, with packaged model-config.js matching the source. Eclipse update site 0.9.75.20261110091710 compiled and its install archive passed packaging checks. Native VS Code visual QA was denied by the computer-use access control.
+
 ## 2026-11-09 — Direct schemas for orchestrator results (0.9.73)
 
 Planner and recovery results use a direct root object schema with goal, context, steps, recovery and completion_checks; answer review uses a separate accept/feedback schema. Each step is an object with id, action, tools, depends_on, success_criteria and on_failure. Available tool names constrain its schema dynamically; local validation rejects forward/cyclic dependencies, wrong numbering, unknown tools and missing per-step criteria. JSON strings nested in answer are rejected. Codex receives the root schema through --output-schema, compatible APIs use strict JSON Schema response_format, and Anthropic/Copilot use a schema-bearing result-only tool. Both contracts are validated locally, with at most one retry for a format error or explicit unsupported structured-output mode; ordinary network errors, explicit refusals and invalid schema definitions are not format retries. All reported model usage, including malformed attempts, is accounted for.

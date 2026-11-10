@@ -15,6 +15,10 @@ function open(vscode, copy, changes, onDone, options = {}) {
   const panel = vscode.window.createWebviewPanel("vertex.worktreeReview", "Review assistant changes",
     vscode.ViewColumn.Beside, { enableScripts: true });
   const byId = new Map(changes.map((change, i) => ["f" + (i + 1), change]));
+  require("./review-jev").bind(vscode,panel,message=>{
+    const change=byId.get(message.file);if(!change||change.binary||!Number.isInteger(message.hunk))return null;
+    return review.askContext(review.hunks(change.before,change.after),[message.hunk],change.after,"local",change.path);
+  });
   panel.webview.html = review.filesReviewHtml([...byId].map(([id, change]) => ({
     id, path: change.path, label: path.basename(change.file), conflict: change.conflict, merged: change.merged, binary: change.binary,
     kind: change.status === "added" ? "new" : change.status === "deleted" ? "deleted" : "changed",
@@ -39,7 +43,7 @@ function open(vscode, copy, changes, onDone, options = {}) {
     if (message.action === "ask" && byId.has(message.file)) {
       const change = byId.get(message.file);
       await vscode.commands.executeCommand("vertex.askReviewBlock",
-        review.askContext(review.hunks(change.before, change.after), null, change.after, "local", change.path));
+        review.askContext(review.hunks(change.before, change.after), Number.isInteger(message.hunk)?[message.hunk]:null, change.after, "local", change.path));
       return;
     }
     if (finished) return;

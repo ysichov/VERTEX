@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.74",
+  "version": "0.9.77",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -343,6 +343,7 @@
             "codemie",
             "vercel-api",
             "openrouter-api",
+            "opencode-api",
             "anthropic-api",
             "openai-api",
             "mistral-api",
@@ -962,6 +963,8 @@
             "groq-api",
             "cerebras-api",
             "openrouter-api",
+            "opencode-api",
+            "typesafe-api",
             "nvidia-api",
             "vercel-api",
             "lmstudio-local",

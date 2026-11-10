@@ -50,6 +50,22 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     view.show(true);
     return count;
   }));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.continueDecision",async input=>{
+    if(pendingChat)throw new Error("Wait for the active request to finish before restoring a Jev step.");
+    require("./jev").validate(input?.state,input?.questions);
+    if(!["typesafe-api","opencode-api"].includes(input.provider)||typeof input.model!=="string")throw new Error("Invalid Jev provider or model in this step.");
+    if(!currentView||!ready){
+      await vscode.commands.executeCommand("vertex.launcher.focus");
+      for(let waited=0;(!currentView||!ready)&&waited<5000;waited+=100)await new Promise(resolve=>setTimeout(resolve,100));
+      if(!currentView||!ready)throw new Error("Open the VERTEX panel and try again.");
+    }
+    const state=await ask.setProvider(input.provider);
+    if(state.provider!==input.provider)throw new Error("Select the Jev provider and try again.");
+    await ask.setModel(input.model);
+    const models=await ask.listModels();
+    await currentView.webview.postMessage({ai:ask.state(),models,decisionDraft:input});
+    currentView.show(true);
+  }));
   // Copy Link in the context menu of a link in a chat answer: the address, not the selected text.
   context.subscriptions.push(vscode.commands.registerCommand("vertex.copyLink", async target => {
     let url;
@@ -110,7 +126,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "ready") {
           ready = true;
           await showFolder();
-          await refresh(true);
+          await refresh();
           await showReview();
           await view.webview.postMessage({chatRunning:!!pendingChat});
           return;
@@ -188,8 +204,19 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           if (pendingChat && !pendingChat.cancelled) {
             pendingChat.cancelled = true;
             ask.stop();
-            await view.webview.postMessage({ progress: { id: pendingChat.id, status: "Stopping…" } });
+            await view.webview.postMessage(pendingChat.kind === "decision" ? {decisionStatus:"Stopping…"} : { progress: { id: pendingChat.id, status: "Stopping…" } });
           }
+          return;
+        }
+        if(message.action === "decision") {
+          if(pendingChat)return;
+          const pending=pendingChat={id:++nextRequest,cancelled:false,kind:"decision"};
+          try{
+            await view.webview.postMessage({decisionRunning:true});
+            const result=await ask.evaluate({model:message.model,state:message.state,questions:message.questions});
+            await view.webview.postMessage(pending.cancelled||result.stopped?{decisionStatus:"Stopped."}:{decisionResult:result});
+          }catch(error){await view.webview.postMessage({decisionStatus:pending.cancelled?"Stopped.":"Request failed: "+error.message});}
+          finally{if(pendingChat===pending)pendingChat=null;await view.webview.postMessage({decisionRunning:false});}
           return;
         }
         if (message.action === "chat") {
@@ -392,10 +419,10 @@ ${require(require("path").join(__dirname,"task-visual")).css}
 #messages .vertex.task[data-task-kind]::before{display:none}
 #messages .vertex.task .task-scene{display:block;width:100%;margin-top:6px}
 #vercel-row-break { display:none; }
-body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="openrouter-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
+body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="opencode-api"] #vercel-row-break, body[data-provider="openrouter-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
 #subprovider-select[hidden] { display:none; }
-body[data-provider="vercel-api"] #subprovider-select, body[data-provider="openrouter-api"] #subprovider-select { flex:0 1 150px; max-width:45%; }
-body[data-provider="vercel-api"] .model-picker, body[data-provider="openrouter-api"] .model-picker { flex:1 1 170px; }
+body[data-provider="vercel-api"] #subprovider-select, body[data-provider="opencode-api"] #subprovider-select, body[data-provider="openrouter-api"] #subprovider-select { flex:0 1 150px; max-width:45%; }
+body[data-provider="vercel-api"] .model-picker, body[data-provider="opencode-api"] .model-picker, body[data-provider="openrouter-api"] .model-picker { flex:1 1 170px; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .model-picker #model-select { flex: 1 1 auto; min-width: 0; }
 .line #model-details-button[hidden], .line #mcp-settings[hidden], .line #mcp-servers[hidden], .line #mcp-update[hidden] { display: none; }
@@ -460,10 +487,11 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 #tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 6px; font-size: 1.7em; font-weight: 600; }
 #tools img { width: 40px; height: 40px; }
 ${require(require("path").join(__dirname,"code-review")).controlsCss}
+${require(require("path").join(__dirname,"jev-panel")).css}
 </style></head><body>
 <dialog id="mcp-start-dialog" aria-labelledby="mcp-start-title"><strong id="mcp-start-title">MCP server</strong><span class="mcp-start-scene" id="mcp-start-scene"></span><div id="mcp-start-status" role="status" aria-live="polite"></div><div id="mcp-start-options"></div><form method="dialog"><button type="button" class="secondary" id="mcp-start-go" hidden>Start</button><button type="button" class="secondary" id="mcp-start-node" hidden>Get Node.js</button><button class="secondary" id="mcp-start-close">Close</button></form></dialog>
 <dialog id="model-details-dialog" aria-labelledby="model-details-title"><strong id="model-details-title">Model details</strong><div id="model-capabilities"></div><form method="dialog"><button class="secondary">Close</button></form></dialog>
-<div class="line"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
+<div class="line" id="context-controls"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
@@ -471,6 +499,7 @@ ${require(require("path").join(__dirname,"code-review")).controlsCss}
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+${require(require("path").join(__dirname,"jev-panel")).html}
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
 <button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
 </div>
@@ -497,7 +526,7 @@ function vercelGroups(models){
 }
 function drawModelPickers(selected) {
   const model=document.getElementById('model-select'),sub=document.getElementById('subprovider-select');
-  const vercel=['vercel-api','openrouter-api'].includes(document.getElementById('provider-select').value);sub.hidden=!vercel;
+  const vercel=['vercel-api','openrouter-api','opencode-api'].includes(document.getElementById('provider-select').value);sub.hidden=!vercel;
   const offered=modelCatalog.slice();
   if(selected&&!offered.some(m=>m.id===selected))offered.push({id:selected,label:selected+' (off)'});
   model.disabled=!offered.length;
@@ -521,6 +550,7 @@ function chooseVercelProvider(){
 }
 document.getElementById('subprovider-select').addEventListener('change',chooseVercelProvider);
 function drawModelCapabilities() {
+  drawDecisionMode();
   const target = document.getElementById('model-capabilities'); target.replaceChildren();
   const dialog = document.getElementById('model-details-dialog'); if (dialog.open) dialog.close();
   const model = modelCatalog.find(m => m.id === document.getElementById('model-select').value);
@@ -550,7 +580,7 @@ document.getElementById('provider-select').addEventListener('change', event => {
   api.postMessage({ action: 'setProvider', provider: event.target.value });
 });
 document.getElementById('model-select').addEventListener('change', event => {
-  if(['vercel-api','openrouter-api'].includes(document.getElementById('provider-select').value))lastVercelModels.set(document.getElementById('provider-select').value+':'+document.getElementById('subprovider-select').value,event.target.value);
+  if(['vercel-api','openrouter-api','opencode-api'].includes(document.getElementById('provider-select').value))lastVercelModels.set(document.getElementById('provider-select').value+':'+document.getElementById('subprovider-select').value,event.target.value);
   drawModelCapabilities(); document.getElementById('model-status').textContent = '';
   api.postMessage({ action: 'setModel', model: event.target.value });
 });
@@ -668,8 +698,13 @@ function paintTaskScene(item,update){
       item.setAttribute('aria-busy',String(!update.done));
 }
 let plannerSettings=null,orchestratorSelected=false;
+${require(require("path").join(__dirname,"jev-panel")).script}
 function showPlanner(){const node=document.getElementById('planner-info');node.hidden=!orchestratorSelected||!plannerSettings;node.textContent=plannerSettings?(plannerSettings.provider?'Planner: '+plannerSettings.model+' · '+(plannerSettings.effort||'default effort'):'Planner disabled'):'';}
 window.addEventListener('message', event => {
+  if(event.data.decisionDraft)restoreJevDraft(event.data.decisionDraft);
+  if(typeof event.data.decisionRunning==='boolean')setDecisionRunning(event.data.decisionRunning);
+  if(typeof event.data.decisionStatus==='string')document.getElementById('jev-status').textContent=event.data.decisionStatus;
+  if(event.data.decisionResult)showDecisionResult(event.data.decisionResult);
   if(event.data.planner){plannerSettings=event.data.planner;showPlanner();}
   if(typeof event.data.chatRunning==='boolean')setChatRunning(event.data.chatRunning);
   const selectedContext=event.data.contextMode||event.data.ai?.contextMode;if(selectedContext){contextMode=selectedContext;document.querySelectorAll('[data-context]').forEach(button=>{const selected=button.dataset.context===contextMode;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));});document.getElementById('sap-context-controls').hidden=contextMode!=='sap';if(contextMode==='sap')document.getElementById('folder-line').hidden=true;}

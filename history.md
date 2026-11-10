@@ -1,3 +1,71 @@
+## 2026-11-10 — Large new files in the editor (VS Code 0.9.77)
+
+Selecting a large new file in Git review opens the standard VS Code editor beside the review, without rendering its source as a diff table. The threshold is over 1,000 lines or 256K characters. Uncommitted additions open the disk file; historical additions open their recorded content. Counts and AI actions remain in the review; small new files and existing-file changes keep their preview. Eclipse is not rebuilt.
+
+## 2026-11-10 — Paged large Git previews (VS Code 0.9.77)
+
+Large Git files load when selected and show 1,000 rows per page in Compact and Full. Previous/Next retains access to all rows; hidden large previews are unloaded. New files no longer colour every row green. File status, counts and full AI block context remain unchanged. Eclipse is not rebuilt.
+
+## 2026-11-10 — Bounded Git diff memory (VS Code 0.9.77)
+
+Large added JSON files no longer build a quadratic edit-path history. Pure additions/deletions use direct blocks; complex comparisons have a 16 MiB trace budget and fall back to one exact block without dropping lines. Git preparation failures replace the loading page with an error. Eclipse is not rebuilt.
+
+## 2026-11-10 — Persistent API model catalogs (VS Code 0.9.77)
+
+Remote API catalogs survive VS Code restarts and provider switches. They are fetched on first use and rebuilt explicitly from LLM Providers, rather than fetched again when the panel opens. Enabled-model changes filter the saved catalog immediately; concurrent initial loads share one request. Catalogs are isolated by provider and credential fingerprint. Local loaded-model lists remain live. Eclipse remains at 0.9.75 and is not rebuilt.
+
+## 2026-11-10 — Continue each Jev step (VS Code 0.9.76)
+
+Each Jev step with saved input has Continue in Session Logs. It restores provider, model, context and question cards for editing, without inference. Run Jev creates another step and leaves the original unchanged. Explicit Jev input is retained only with question logging enabled; old answer-only logs cannot be restored. Eclipse is not rebuilt.
+
+## 2026-11-10 — Readable Jev log answers (VS Code 0.9.76)
+
+New Jev Model answer records show question text, readable answers, confidence and labeled probabilities instead of raw answer JSON and internal option IDs. Applies to standalone evaluation and ASK Jev review. Existing records are unchanged. Eclipse is not rebuilt.
+
+## 2026-11-10 — Screenshots in chat follow-ups (VS Code 0.9.76)
+
+Screenshots remain attached to their user turn and are sent again with follow-up questions in the same active chat. VERTEX no longer drops the first screenshot while retaining only the text of that turn. New conversation clears the images. Eclipse is not rebuilt.
+
+## 2026-11-10 — ASK Jev visibility fix (VS Code 0.9.76)
+
+ASK Jev appears with a saved active TypeSafe key and an enabled Jev model. A separate successful model check is no longer required. Eclipse is not rebuilt.
+
+## 2026-11-10 — ASK Jev for diff blocks (VS Code 0.9.76)
+
+Git/file, ABAP editor and SAP transport review offer ASK Jev next to ASK AI when the active TypeSafe key has a enabled model. Each block sends four typed questions in one native request: change category, review priority, context sufficiency and advisory acceptance recommendation. Only that block and nearby lines are sent. Results and errors stay with the block; duplicate requests and stale result delivery are guarded, and closing the view aborts requests. Approval, decline, apply and activation remain user actions. Successful standalone Jev runs also establish the connection. Eclipse remains at 0.9.75 and was not rebuilt, at the user’s explicit request.
+
+## 2026-11-10 — Installation links before detailed documentation (0.9.75)
+
+The repository README opens its Install section with the VS Code Marketplace and Eclipse update-site links. Git and external-tool requirements follow the overview, while TypeSafe/OpenCode instructions live under the VS Code provider documentation. The Marketplace README keeps those provider details in its Providers section.
+
+## 2026-11-10 — Larger Jev context and responsive results (0.9.75)
+
+The Jev context field starts at twelve rows with a larger minimum height and reuses the chat expand/shrink control. Wide results have stable column widths and unbroken headings; narrow results become labeled cards with the question and probabilities across the full width. All surfaces and borders inherit the active theme.
+
+## 2026-11-10 — Jev question builder without JSON (0.9.75)
+
+The Jev panel accepts plain-text context and editable question cards with Yes / No, Choose an option and Rate on a scale. Answer options or scale levels are entered one per line; cards can be added or removed. VERTEX generates internal request identifiers and typed criteria. Results use original question and option labels with percentage probabilities; raw JSON is not displayed. Submitted labels are preserved even if a draft is edited while a request runs.
+
+## 2026-11-10 — Adaptive Jev decision interface (0.9.75)
+
+Selecting a Jev model switches the VS Code panel from chat to explicit State and Questions JSON inputs. State supports Text or JSON. Run Jev uses the stored provider key and the native decision endpoint; Stop aborts it. Results show typed values, confidence, probability distributions, full JSON, elapsed time and reported usage/cost. Invalid questions are rejected before inference. No conversation, tools, review, SAP or folder context is added. Drafts remain intact across mode changes; ordinary chat and planner behavior remain separate.
+
+## 2026-11-10 — Direct TypeSafe Jev API key section (0.9.75)
+
+VS Code LLM Providers has a separate TypeSafe Jev API section with named SecretStorage keys, the native /v1/models alias catalog and a synthetic /v1/systemone decision check. Decision-only providers cannot be selected as ordinary chat providers. No gateway credentials are reused.
+
+## 2026-11-10 — Read the actual OpenCode catalog (0.9.75)
+
+OpenCode catalog type chat is normalized to a language model, so enabled chat models are not dropped by the panel. Canonical maker IDs, context, capabilities and USD-per-million prices are read from the live metadata. Free includes zero-price models without a -free suffix and rejects paid pricing tiers. Missing Jev entries are not invented.
+
+## 2026-11-10 — OpenCode provider catalog and Jev checks (0.9.75)
+
+OpenCode Console is a separate VS Code LLM provider beside Vercel and OpenRouter. Named keys use SecretStorage; live discovery retains original model IDs and groups their makers. The catalog supports All / Available / Free filters, group sorting and checks, and folding all groups. Enabled language models work in chat; Jev uses a synthetic System One decision probe and stays out of chat/planner model choices. Provider errors remain scoped to OpenCode, with no credential fallback or client impersonation. Reported usage and costs are retained; absent prices and costs remain unknown.
+
+## 2026-11-10 — Fold all model-provider groups (0.9.75)
+
+The By provider view in LLM Providers offers Collapse all and Expand all for Vercel and OpenRouter. Both actions include groups hidden by filters and preserve model selections and sorting.
+
 ## 2026-11-09 — Direct schemas for orchestrator results (0.9.73)
 
 Planner and recovery results use a direct root object schema with goal, context, steps, recovery and completion_checks; answer review uses a separate accept/feedback schema. Each step is an object with id, action, tools, depends_on, success_criteria and on_failure. Available tool names constrain its schema dynamically; local validation rejects forward/cyclic dependencies, wrong numbering, unknown tools and missing per-step criteria. JSON strings nested in answer are rejected. Codex receives the root schema through --output-schema, compatible APIs use strict JSON Schema response_format, and Anthropic/Copilot use a schema-bearing result-only tool. Both contracts are validated locally, with at most one retry for a format error or explicit unsupported structured-output mode; ordinary network errors, explicit refusals and invalid schema definitions are not format retries. All reported model usage, including malformed attempts, is accounted for.

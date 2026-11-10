@@ -95,6 +95,8 @@
   table.diff tr.block button[data-act="A"] { background: #307345; }
   table.diff tr.block button[data-act="D"] { background: #963e33; }
   button.ask { background: #7940a0; }
+  .jev-block-result{padding:10px 12px;border:1px solid var(--vscode-panel-border,var(--border));border-radius:4px;background:var(--vscode-editorWidget-background,transparent);color:var(--vscode-editor-foreground,inherit);white-space:normal;overflow-wrap:anywhere}
+  .jev-block-result p{margin:3px 0;line-height:1.5}
   table.diff tr.block button[data-act="A"]:hover, table.diff tr.block button[data-act="D"]:hover, button.ask:hover { filter: brightness(1.15); }
 
   .app { display: flex; flex-direction: column; height: 100%; }
@@ -1914,6 +1916,28 @@ function blockRow(b, scope) {
     askOne.title = "Put this block on the chat's chip, for the question you write there";
     askOne.addEventListener("click", function () { askReview([b], scope); });
     askSpan.appendChild(askOne);
+    if(typeof sdeJevReview==="function"){
+      var jev=document.createElement("button");jev.className="ask";jev.textContent="ASK Jev";jev.hidden=true;
+      var jevResult=document.createElement("div");jevResult.setAttribute("role","status");jevResult.className="jev-block-result";
+      sdeJevReview(null,function(state){jev.hidden=!state.available;});
+      jev.addEventListener("click",function(){
+        if(jev.disabled)return;
+        if(!jevResult.parentNode){
+          var resultRow=document.createElement("tr"),resultCell=document.createElement("td");resultCell.colSpan=3;resultRow.className="jev-result-row";resultCell.appendChild(jevResult);resultRow.appendChild(resultCell);
+          var tail=tr;while(tail.nextElementSibling&&!tail.nextElementSibling.classList.contains("block"))tail=tail.nextElementSibling;
+          tail.parentNode.insertBefore(resultRow,tail.nextSibling);
+        }
+        jev.disabled=true;jevResult.textContent="Assessing this block…";
+        sdeJevReview(reviewAskContext([b],scope),function(reply){
+          if(reply.status){jevResult.textContent=reply.status;return;}
+          jev.disabled=false;jevResult.replaceChildren();
+          if(reply.error){jevResult.textContent="ASK Jev: "+reply.error;return;}
+          (reply.result.rows||[]).forEach(function(row){var line=document.createElement("p");line.textContent=row.label+": "+row.answer+(typeof row.probability==="number"?" ("+Math.round(row.probability*100)+"%)":"");jevResult.appendChild(line);});
+          var note=document.createElement("p");note.textContent="Advisory assessment of this fragment only. Approve / Decline remains your decision.";jevResult.appendChild(note);
+        });
+      });
+      askSpan.appendChild(jev);
+    }
     td.appendChild(askSpan);
   }
 

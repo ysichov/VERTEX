@@ -498,6 +498,10 @@ function connect(child,service,generation){
   // A transport review's Open: the block's code in the editor, in any window - not only one bound to an editor.
   if(service!=="chat"&&typeof sdeOpenToolSource==="function")child.sdeOpenReviewSource=value=>sdeOpenToolSource(JSON.stringify(value));
   if(service!=="chat")child.sdeReviewAsk=json=>{if(live()&&typeof window.sdeReviewAsk==="function")window.sdeReviewAsk(json);};
+  if(service!=="chat"&&typeof window.sdeJevReview==="function")child.sdeJevReview=(selection,callback)=>{
+    if(!live())return;const release=window.sdeJevReview(selection,reply=>{if(live())callback(reply);});
+    if(typeof release==="function")child.addEventListener("unload",release,{once:true});
+  };
   if(service==="versions")child.sdePromptFile=(kind,operation,content)=>{
     if(!live()||typeof window.sdePromptFile!=="function")return false;
     const id=++nextPromptFileId;

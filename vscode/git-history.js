@@ -113,6 +113,14 @@ function reviewSnapshot(changes, title, folder, limit = 180000) {
 // Per folder for this session: whether the hidden extensions are shown on the Uncommitted changes page.
 const showHidden=new Map();
 async function openCommit(vscode, folder, commit) {
+  try{return await openCommitReview(vscode,folder,commit);}
+  catch(error){
+    const key=folder+"|"+(commit.working===true?"working":commit.hash),view=commitPanels.get(key);
+    if(view)view.webview.html=require('./code-review').waitingHtml(commit.working===true?'Uncommitted changes':'Commit '+commit.short,error.message,true);
+    throw error;
+  }
+}
+async function openCommitReview(vscode, folder, commit) {
   const working = commit.working === true;
   const key = folder + "|" + (working ? "working" : commit.hash);
   if (commitPanels.has(key)) {
@@ -135,6 +143,7 @@ async function openCommit(vscode, folder, commit) {
   if(disposed)return;
   const makeFiles = changes => changes.map((c, i) => ({ id: "f" + (i + 1), path: c.file, label: path.basename(c.file), binary: c.binary,
     kind: c.status === "A" ? "new" : c.status === "D" ? "deleted" : "changed",
+    openInEditor: c.status === "A" && !c.binary && (c.after.length>256*1024 || c.after.split('\n').length>1000),
     parts: c.binary ? [] : review.hunks(c.before, c.after), before:c.before, after: c.after, abap: /\.abap$/i.test(c.file) }));
   // Files of the hidden extensions (vertex.git.hiddenExtensions, .md and .log by default) are left out of the
   // page and of the AI snapshot until "Show" is on; the commit still takes every change.
@@ -144,6 +153,10 @@ async function openCommit(vscode, folder, commit) {
   const visible=()=>showHidden.get(folder)?changes:changes.filter(c=>!isHidden(c.file));
   const hiddenCount=()=>changes.filter(c=>isHidden(c.file)).length;
   let files = makeFiles(visible());
+  require("./review-jev").bind(vscode,panel,message=>{
+    const file=files.find(item=>item.id===message.file);if(!file||file.binary||!Number.isInteger(message.hunk))return null;
+    return review.askContext(file.parts,[message.hunk],file.after,"local",file.path);
+  });
   untrackLinks = require("./file-links").register(panel,()=>files.map(f=>({id:f.id,path:path.resolve(folder,f.path),relative:f.path})));
   const shownChanges=()=>visible();
   let snapshot = shownChanges().length ? reviewSnapshot(shownChanges(), title, folder) : null;
@@ -157,6 +170,14 @@ async function openCommit(vscode, folder, commit) {
   const name = working ? "uncommitted changes" : "commit " + commit.short;
   let commitBusy=false, committed=false;
   panel.webview.onDidReceiveMessage(async message => {
+    if(message?.action==='openEditor'){
+      const file=files.find(f=>f.id===message.file);if(!file?.openInEditor)return;
+      try{
+        const document=await vscode.workspace.openTextDocument(working?vscode.Uri.file(path.resolve(folder,file.path)):{content:file.after});
+        await vscode.window.showTextDocument(document,{viewColumn:vscode.ViewColumn.Beside,preview:true});
+      }catch(error){vscode.window.showErrorMessage('VERTEX: '+error.message);}
+      return;
+    }
     if(message?.action==="fileView"){await review.sendFileView(panel,message,files.find(f=>f.id===message.file),true);return;}
     if(working && ["loadBranches","switchBranch","preparePR","openPR","generatePR"].includes(message?.action)){
       const kind=message.action==="loadBranches"||message.action==="switchBranch"?"branchError":"prError";

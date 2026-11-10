@@ -15,7 +15,7 @@ function begin(vscode,provider,model,operation="Model check"){
   onProviderResponse:event=>{if(event.scope==="model_response")hadResponses=true;last=event.response;log?.providerResponse({...event,provider,response:{...event.response,model:event.response?.model||model}});},
   onModelCall:event=>{calls++;log?.assistant({...event,model:event.model||model});}
  };
- return {callbacks,
+ return {callbacks, decision(input){log?.decision?.(input);},
   finish(result){if(!calls&&!hadResponses){const usage=result?.usage||last?.usage||(last?.modelUsage?Object.values(last.modelUsage).reduce((u,m)=>({input_tokens:u.input_tokens+(m.inputTokens||0),output_tokens:u.output_tokens+(m.outputTokens||0),cache_read_input_tokens:u.cache_read_input_tokens+(m.cacheReadInputTokens||0),cache_creation_input_tokens:u.cache_creation_input_tokens+(m.cacheCreationInputTokens||0)}),{input_tokens:0,output_tokens:0,cache_read_input_tokens:0,cache_creation_input_tokens:0}):{});log?.assistant({model:result?.model||model,usage:{...usage,...(provider==="codemie"&&Number.isFinite(result?.cost)?{cost_usd:result.cost}:{})},text:result?.plan?.answer||"OK"});}},
   fail(error){log?.providerResponse({provider,scope:"request_error",response:{model,is_error:true,error:error.message,code:error.code,status:error.status,operation}});if(!calls&&!hadResponses)log?.assistant({model,usage:{cost_usd:null},text:"Request failed: "+error.message});}
  };

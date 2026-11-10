@@ -828,6 +828,7 @@ function withDebugger(sapCode, debugTools, runTranspiler, transpilerHistory) {
 }
 
 function activate(context) {
+  require("./review-jev").configure(context.secrets);
   require("./session-log").configureAccounting(context);
   require("./tool-support").configure(context.globalState);
   require("./usage-report").register(vscode,context);

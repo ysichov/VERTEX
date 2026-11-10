@@ -27,11 +27,13 @@ const PROVIDERS = [
   { id: "codemie", setting: "codemie", label: "EPAM CodeMie (CodeMie CLI)", short: "CodeMie" },
   { id: "vercel-api", setting: "vercel-api", label: "Vercel AI Gateway API (key)", short: "Vercel AI Gateway API" },
   { id: "openrouter-api", setting: "openrouter-api", label: "OpenRouter API (key)", short: "OpenRouter API" },
+  { id: "opencode-api", setting: "opencode-api", label: "OpenCode Console API (key)", short: "OpenCode API" },
+  { id: "typesafe-api", setting: "typesafe-api", label: "TypeSafe Jev API (key)", short: "TypeSafe Jev", decisionOnly: true },
   { id: "anthropic-api", setting: "anthropic-api", label: "Anthropic API (key)", short: "Anthropic API" },
   ...Object.entries(compatible.PROVIDERS).filter(([, provider]) => provider.local).map(([id, provider]) => ({
     id, setting: id, label: provider.label + " (local server)", short: provider.label
   })),
-  ...Object.entries(compatible.PROVIDERS).filter(([id, provider]) => id !== "vercel-api" && id !== "openrouter-api" && !provider.local).map(([id, provider]) => ({
+  ...Object.entries(compatible.PROVIDERS).filter(([id, provider]) => !["vercel-api", "openrouter-api", "opencode-api", "typesafe-api"].includes(id) && !provider.local).map(([id, provider]) => ({
     id, setting: id, label: provider.label + " API (key)", short: provider.label + " API"
   }))
 ];
@@ -58,7 +60,7 @@ function read(vscode, id) {
 // A provider switched off keeps its model ticks; it is only left out of every
 // provider choice. The one in use cannot be switched off.
 function isOn(vscode, id) { return !read(vscode, id).off; }
-function offered(vscode) { return PROVIDERS.filter(p => isOn(vscode, p.id)); }
+function offered(vscode, includeDecisions = false) { return PROVIDERS.filter(p => (includeDecisions || !p.decisionOnly) && isOn(vscode, p.id)); }
 
 async function write(vscode, id, config) {
   const settings = vscode.workspace.getConfiguration("vertex.ai");
@@ -149,7 +151,7 @@ function migrateUnavailable(vscode, id, list) {
 }
 
 /** What a model list offers: the switched-on rows. */
-function apply(vscode, id, list) {
+function apply(vscode, id, list, includeDecisions = false) {
   // A local server offers exactly the models loaded in it now; LLM Providers lists all downloaded ones.
   if (compatible.isLocal(id)) {
     const running = list.filter(m => m.loaded !== false).map(({ loaded, ...model }) => model);
@@ -157,8 +159,9 @@ function apply(vscode, id, list) {
       ? "Load one there (select a model at the top of LM Studio, or run `lms load <model>`)." : "Run one there (`ollama run <model>`)."));
     return running;
   }
-  const offered = rows(list, read(vscode, id), id).filter(m => m.on && m.available !== false && !m.missing).map(({ on, isNew, ...model }) => model);
+  const offered = rows(list, read(vscode, id), id).filter(m => m.on && m.available !== false && !m.missing && (!m.modelKind || m.modelKind === "language" || includeDecisions && m.modelKind === "decision")).map(({ on, isNew, ...model }) => model);
   if (!offered.length) {
+    if (id === "opencode-api" && list.some(m => m.modelKind === "decision")) throw new Error("No OpenCode chat model is enabled. Jev is tested in LLM Providers through the Decision API; enable a language model for chat.");
     throw new Error("No " + id + " model is switched on. Open Config models in the VERTEX panel.");
   }
   return offered;
@@ -189,7 +192,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
   const nonce = require("crypto").randomBytes(24).toString("hex");
   const active = PROVIDERS.find(p => p.setting === vscode.workspace.getConfiguration("vertex.ai").get("provider", ""));
   panel.webview.html = html(nonce, active ? active.id : PROVIDERS[0].id,
-    PROVIDERS.map(p => ({ id: p.id, label: p.label, on: isOn(vscode, p.id) })));
+    PROVIDERS.map(p => ({ id: p.id, label: p.label, on: isOn(vscode, p.id), decisionOnly: !!p.decisionOnly })));
   const post = message => panel.webview.postMessage(message);
 
   const loadGeneration = new Map(), availableModels = new Map();
@@ -309,9 +312,9 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
         const result = await detection.detect([provider], async id => {
           forget(id);
           let models = await checkedRows(id, await full(id));
-          if(id==="openrouter-api"&&message.filter==="free")models=models.filter(model=>model.free===true&&model.available!==false);
-          if(id==="openrouter-api"&&message.filter==="available")models=models.filter(model=>model.available!==false);
-          return typeof message.group === "string" ? models.filter(model => (String(model.id).includes("/") ? String(model.id).split("/")[0] : "other") === message.group) : models;
+          if(["openrouter-api","opencode-api"].includes(id)&&message.filter==="free")models=models.filter(model=>model.free===true&&model.available!==false);
+          if(["openrouter-api","opencode-api"].includes(id)&&message.filter==="available")models=models.filter(model=>model.available!==false);
+          return typeof message.group === "string" ? models.filter(model => (model.modelProvider || (String(model.id).includes("/") ? String(model.id).split("/")[0] : "other")) === message.group) : models;
         }, (id, model) => checkModel(id, model),
         progress => post({ detectionProgress: progress }), () => cancelled);
         for (const checked of result.results) {
@@ -322,7 +325,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
           }
         }
         if (typeof message.group === "string") result.results.forEach(item => { item.group = message.group; });
-        if(provider.id==="openrouter-api"&&["free","available"].includes(message.filter))result.results.forEach(item=>{item.filtered=true;});
+        if(["openrouter-api","opencode-api"].includes(provider.id)&&["free","available"].includes(message.filter))result.results.forEach(item=>{item.filtered=true;});
         post({ detection: result });
       } catch (error) { post({ detectionError: error.message }); }
       finally { detecting = false; }
@@ -516,7 +519,7 @@ const sortModels = ${require("./model-capabilities").sortModels.toString()};
 const groupModels = ${require("./model-capabilities").groupModels.toString()};
 const detailLines = ${require("./model-capabilities").detailLines.toString()};
 let use = INIT.use;
-let apiExpanded = use.endsWith("-api") && !["vercel-api", "openrouter-api"].includes(use);
+let apiExpanded = use.endsWith("-api") && !["vercel-api", "openrouter-api", "opencode-api", "typesafe-api"].includes(use);
 let scanning = false, scanningProvider = "";
 const checkStatus = {}, checkErrors = {};
 // Per provider: on, and its rows once read (null while loading or when it could not be read).
@@ -558,7 +561,7 @@ function build() {
   const tree = $("tree"); tree.innerHTML = "";
   let apiBody;
   INIT.providers.forEach(p => {
-    const grouped = p.id.endsWith("-api") && !["vercel-api", "openrouter-api"].includes(p.id);
+    const grouped = p.id.endsWith("-api") && !["vercel-api", "openrouter-api", "opencode-api", "typesafe-api"].includes(p.id);
     if (grouped && !apiBody) {
       const header = el("div", { className: "phead group-header" });
       const fold = el("button", { className: "fold", type: "button", textContent: apiExpanded ? "▾" : "▸",
@@ -585,7 +588,7 @@ function build() {
     head.appendChild(el("span", { className: "provider-name", textContent: p.label, title: p.label }));
     const useLabel = el("label", { className: "use" });
     const radio = el("input", { type: "radio", name: "use", checked: use === p.id, disabled: !s.on,
-      title: s.on ? "Use this provider" : "Switch the provider on first" });
+      title: !s.on ? "Switch the provider on first" : p.decisionOnly ? "Use the Jev decision interface" : "Use this provider" });
     radio.addEventListener("change", () => { use = p.id; say(""); build(); });
     useLabel.appendChild(radio); useLabel.appendChild(document.createTextNode("In use"));
     head.appendChild(useLabel);
@@ -593,7 +596,7 @@ function build() {
       title: "Test only this provider’s models with short requests; normal provider usage applies." });
     check.addEventListener("click", () => {
       scanning = true; scanningProvider = p.id; checkErrors[p.id] = ""; checkStatus[p.id] = "Reading model list…";
-      api.postMessage({ action: "detect", provider: p.id, ...(p.id==="openrouter-api"?{filter:s.filter}:{}) });
+      api.postMessage({ action: "detect", provider: p.id, ...(["openrouter-api","opencode-api"].includes(p.id)?{filter:s.filter}:{}) });
       build(); $("save").disabled = true; $("stop-detection").hidden = false;
       say("Checking " + p.label + "…");
     });
@@ -696,8 +699,8 @@ function fill(id) {
     }
     return;
   }
-  const visibleRows = s.rows.filter(row=>id==="openrouter-api" ? s.filter==="all" || row.available!==false && (s.filter!=="free" || row.free===true) : !s.hideUnavailable || row.available!==false);
-  const targets = id==="openrouter-api" ? visibleRows : s.rows;
+  const visibleRows = s.rows.filter(row=>["openrouter-api","opencode-api"].includes(id) ? s.filter==="all" || row.available!==false && (s.filter!=="free" || row.free===true) : !s.hideUnavailable || row.available!==false);
+  const targets = ["openrouter-api","opencode-api"].includes(id) ? visibleRows : s.rows;
   const count = el("span", { className: "note", role: "status", ariaLive: "polite" });
   const bulk = el("button", { type: "button" });
   const allSelected = () => {
@@ -719,8 +722,8 @@ function fill(id) {
   });
   updateBulk();
   const toolbar = el("div", { className: "row" }); toolbar.appendChild(bulk);
-  if(id==="openrouter-api"){
-    const filters=el("span",{className:"vertex-segment-toggle"});filters.setAttribute("role","group");filters.setAttribute("aria-label","OpenRouter model filter");
+  if(["openrouter-api","opencode-api"].includes(id)){
+    const filters=el("span",{className:"vertex-segment-toggle"});filters.setAttribute("role","group");filters.setAttribute("aria-label",s.label+" model filter");
     [["all","All"],["available","Available"],["free","Free"]].forEach(([value,label])=>{
       const button=el("button",{type:"button",className:s.filter===value?"active":"",textContent:label,title:value==="free"?"Free models not marked unavailable":value==="available"?"Models not marked unavailable":"All models, including unavailable"});button.setAttribute("aria-pressed",String(s.filter===value));button.addEventListener("click",()=>{s.filter=value;fill(id);});filters.appendChild(button);
     });toolbar.appendChild(filters);
@@ -730,14 +733,26 @@ function fill(id) {
   hide.addEventListener("change", () => { s.hideUnavailable = hide.checked; fill(id); });
   hideLabel.appendChild(hide); hideLabel.appendChild(document.createTextNode("Hide unavailable"));
   toolbar.appendChild(hideLabel); } toolbar.appendChild(count);
-  if(["vercel-api","openrouter-api"].includes(id)){
+  if(["vercel-api","openrouter-api","opencode-api"].includes(id)){
     const modes=el("span",{className:"vertex-segment-toggle"});modes.setAttribute("role","group");modes.setAttribute("aria-label",s.label+" model view");
     [[false,"All models"],[true,"By provider"]].forEach(([grouped,label])=>{
-      const button=el("button",{type:"button",className:s.grouped===grouped?"active":"",textContent:label,title:grouped?"Group by model ID prefix: openai/, google/, anthropic/, etc.":"Show one sortable model list"});
+      const button=el("button",{type:"button",className:s.grouped===grouped?"active":"",textContent:label,title:grouped?"Group models by provider":"Show one sortable model list"});
       button.setAttribute("aria-pressed",String(s.grouped===grouped));button.addEventListener("click",()=>{s.grouped=grouped;fill(id);});modes.appendChild(button);
     });toolbar.appendChild(modes);
+    if(s.grouped){
+      [[true,"Collapse all"],[false,"Expand all"]].forEach(([collapsed,label])=>{
+        const button=el("button",{type:"button",textContent:label,title:label+" provider groups"});
+        button.addEventListener("click",()=>{
+          if(collapsed)groupModels(s.rows,undefined,false,false).forEach(group=>s.collapsedGroups.add(group.id));
+          else s.collapsedGroups.clear();
+          fill(id);
+        });toolbar.appendChild(button);
+      });
+    }
   }
   body.appendChild(toolbar);
+  if(id==="typesafe-api")body.appendChild(el("div",{className:"note",textContent:"Direct TypeSafe API. Add your TypeSafe key, then use Check models for a small synthetic decision request. These models return probabilities and choices, not chat text. Normal TypeSafe usage charges apply."}));
+  if(id==="opencode-api")body.appendChild(el("div",{className:"note",textContent:"Free models may require the OpenCode client; Check models verifies API access for this key. Jev (Decision API) is available here for checks; choose a language model for chat."}));
   const table = el("table", { className: "models-table" });
   const hasMetadata = s.rows.some(row => row.capabilities || row.pricing || row.contextWindow);
   const columns = [{ key: "on", label: "On" }, { key: "label", label: "Model" }, { key: "id", label: "ID" }];
@@ -758,7 +773,7 @@ function fill(id) {
     th.appendChild(label);headerRow.appendChild(th);
   });
   head.appendChild(headerRow);if(id!=="openrouter-api")table.appendChild(head);
-  const groups=["vercel-api","openrouter-api"].includes(id)&&s.grouped?groupModels(visibleRows,s.sort?.key,s.sort?.down,false):[{id:"",models:sortModels(visibleRows,s.sort?.key,s.sort?.down)}];
+  const groups=["vercel-api","openrouter-api","opencode-api"].includes(id)&&s.grouped?groupModels(visibleRows,s.sort?.key,s.sort?.down,false):[{id:"",models:sortModels(visibleRows,s.sort?.key,s.sort?.down)}];
   groups.forEach(group=>{
   const ownSort=s.groupSorts.get(group.id);if(ownSort)group.models=sortModels(group.models,ownSort.key,ownSort.down);
   const tbody=el("tbody"),modelRows=[];let fold;
@@ -770,8 +785,8 @@ function fill(id) {
     paint();th.appendChild(fold);th.appendChild(document.createTextNode(" "+group.label+" ("+group.models.length+")"));
     const checkGroup=el("button",{type:"button",className:"check-models",textContent:"Check models",disabled:scanning,title:"Check untested models in "+group.label});
     checkGroup.setAttribute("aria-label","Check models in "+group.label);
-    checkGroup.addEventListener("click",()=>{scanning=true;scanningProvider=id;checkErrors[id]="";checkStatus[id]="Checking "+group.label+"…";build();$("save").disabled=true;api.postMessage({action:"detect",provider:id,group:group.id,...(id==="openrouter-api"?{filter:s.filter}:{})});});th.appendChild(checkGroup);
-    if(id==="vercel-api"&&group.models.length>1){const controls=el("span",{className:"group-sort-controls"});controls.appendChild(document.createTextNode(" Sort "));
+    checkGroup.addEventListener("click",()=>{scanning=true;scanningProvider=id;checkErrors[id]="";checkStatus[id]="Checking "+group.label+"…";build();$("save").disabled=true;api.postMessage({action:"detect",provider:id,group:group.id,...(["openrouter-api","opencode-api"].includes(id)?{filter:s.filter}:{})});});th.appendChild(checkGroup);
+    if(["vercel-api","opencode-api"].includes(id)&&group.models.length>1){const controls=el("span",{className:"group-sort-controls"});controls.appendChild(document.createTextNode(" Sort "));
     const picker=el("select",{title:"Sort only "+group.label+"; Global order follows the table header"});picker.setAttribute("aria-label","Sort models in "+group.label);
     picker.appendChild(el("option",{value:"",textContent:"Global order"}));columns.forEach(column=>picker.appendChild(el("option",{value:column.key,textContent:column.title||column.label})));picker.value=ownSort?.key||"";
     picker.addEventListener("change",()=>{if(picker.value)s.groupSorts.set(group.id,{key:picker.value,down:ownSort?.down||false});else s.groupSorts.delete(group.id);fill(id);});controls.appendChild(picker);

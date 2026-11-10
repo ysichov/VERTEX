@@ -27,6 +27,12 @@ test('Vercel grouped view folds groups and preserves selection through layout ch
  walk(body()).find(n=>n.textContent==='All models').events.click();assert.equal(walk(body()).find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody').length,1);
  walk(body()).find(n=>n.textContent==='By provider').events.click();const again=walk(body()).find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody')[0];assert.equal(again.children[1].hidden,true);assert.equal(again.children[1].children[0].children[0].checked,true);
  const grouped=()=>walk(body()).find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody');
+ walk(body()).find(n=>n.textContent==='Collapse all').events.click();
+ assert.ok(grouped().every(group=>group.children.slice(1).every(row=>row.hidden)));
+ assert.ok(grouped().every(group=>group.children[0].children[0].children[0]['aria-expanded']==='false'));
+ walk(body()).find(n=>n.textContent==='Expand all').events.click();
+ assert.ok(grouped().every(group=>group.children.slice(1).every(row=>!row.hidden)));
+ assert.equal(counts().textContent,'Models: 4 · Shown: 4 · Selected: 4');
  const picker=tbody=>walk(tbody.children[0]).find(n=>n.tag==='select');
  const order=tbody=>tbody.children.slice(1).map(row=>row.children[2].textContent);
  const nameCell=grouped()[1].children[1].children[1];assert.equal(nameCell.children[0].className,'model-info');
@@ -50,10 +56,33 @@ test('Vercel grouped view folds groups and preserves selection through layout ch
  orNodes().find(n=>n.textContent==='By provider').events.click();assert.equal(orNodes().find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody').length,1);
  assert.equal(orNodes().some(n=>n.className==='group-sort-controls'),false);
  orNodes().find(n=>n.textContent==='All').events.click();assert.equal(orNodes().find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody').length,2);
+ orNodes().find(n=>n.textContent==='Free').events.click();
+ orNodes().find(n=>n.textContent==='Collapse all').events.click();
+ orNodes().find(n=>n.textContent==='All').events.click();
+ const orGroups=()=>orNodes().find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody');
+ assert.ok(orGroups().every(group=>group.children.slice(1).every(row=>row.hidden)));
+ orNodes().find(n=>n.textContent==='Expand all').events.click();
+ assert.ok(orGroups().every(group=>group.children.slice(1).every(row=>!row.hidden)));
  orNodes().find(n=>n.textContent==='Clear all').events.click();assert.ok(orRows.every(r=>!r.on));
  orNodes().find(n=>n.textContent==='Select all').events.click();assert.equal(orRows[0].on,true);assert.equal(orRows[1].on,false);assert.equal(orRows[2].on,true);
  orNodes().find(n=>n.textContent==='Clear all').events.click();assert.ok(orRows.every(r=>!r.on));
  orNodes().find(n=>n.textContent==='Free').events.click();orNodes().find(n=>n.textContent==='Select all').events.click();assert.equal(orRows[0].on,true);assert.equal(orRows[2].on,false);orNodes().find(n=>n.textContent==='Clear all').events.click();assert.ok(orRows.every(r=>!r.on));
+
+ const ocRows=[{id:'jev-1.13-free',label:'Jev (Decision API)',modelProvider:'typesafe',modelKind:'decision',free:true,on:true},{id:'gpt-6-sol',label:'GPT',modelProvider:'openai',on:false,free:false}];
+ receive({data:{provider:'opencode-api',rows:ocRows}});
+ const ocNodes=()=>walk(ids.get('body-opencode-api'));
+ assert.ok(ocNodes().some(n=>n.textContent==='By provider'));
+ ocNodes().find(n=>n.textContent==='By provider').events.click();
+ assert.equal(ocNodes().filter(n=>n.className==='fold').length,2);
+ assert.ok(ocNodes().some(n=>n.textContent===' TypeSafe AI (1)'));
+ ocNodes().find(n=>n.textContent==='Collapse all').events.click();
+ const ocGroups=()=>ocNodes().find(n=>n.tag==='table').children.filter(n=>n.tag==='tbody');
+ assert.ok(ocGroups().every(group=>group.children.slice(1).every(row=>row.hidden)));
+ ocNodes().find(n=>n.textContent==='Expand all').events.click();
+ assert.ok(ocGroups().every(group=>group.children.slice(1).every(row=>!row.hidden)));
+ ocNodes().find(n=>n.textContent==='Free').events.click();assert.equal(ocGroups().length,1);
+ ocNodes().find(n=>n.textContent==='All models').events.click();
+ assert.equal(ocNodes().some(n=>n.textContent==='Collapse all'),false);
 
 });
 
@@ -64,6 +93,6 @@ test('OpenRouter follows Vercel and offers the shared grouping controls outside 
  const script=panel.webview.html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1];
  const init=JSON.parse(script.match(/const INIT = (.*);/)[1]);
  const index=init.providers.findIndex(p=>p.id==='vercel-api');assert.equal(init.providers[index+1].id,'openrouter-api');assert.equal(init.providers.filter(p=>p.id==='openrouter-api').length,1);
- assert.match(script,/\["vercel-api", "openrouter-api"\]\.includes\(p.id\)/);
- assert.match(script,/\["vercel-api","openrouter-api"\]\.includes\(id\)&&s.grouped/);
+ assert.match(script,/\["vercel-api", "openrouter-api", "opencode-api", "typesafe-api"\]\.includes\(p.id\)/);
+ assert.match(script,/\["vercel-api","openrouter-api","opencode-api"\]\.includes\(id\)&&s.grouped/);
 });

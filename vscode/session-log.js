@@ -8,7 +8,8 @@
 //   answers   - the text of the assistant's answers
 //   tools     - SAP tool calls with their arguments and a summary of the result
 //   request   - VERTEX instructions and model context, with source bodies omitted
-// Source bodies are always replaced with object references, including legacy code:true settings.
+// Automatic source bodies are replaced with object references, including legacy code:true settings.
+// Explicit Jev inputs are saved with question logging so each decision can be restored.
 
 const fs = require("fs");
 const path = require("path");
@@ -56,6 +57,10 @@ function create(root, provider, session, include, operation = "Chat") {
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
     file,
+    // Explicit Jev input is retained only when question logging is enabled.
+    decision(input) {
+      if (on.questions) write({ type: "vertex_decision", input: JSON.parse(JSON.stringify(input)) });
+    },
     setOperation(value){operation=String(value||"Chat");},
     discard() { discarded = true; },
     /* A question; screenshots pasted with it are part of it: with the questions option each is saved as a file in

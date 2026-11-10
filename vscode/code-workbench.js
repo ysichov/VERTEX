@@ -2113,6 +2113,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     if (!parts.length) { return { opened: false, message: "There are no changes to review." }; }
     const panel = vscode.window.createWebviewPanel("vertex.review", "Review " + entry.data.object_name,
       vscode.ViewColumn.Beside, { enableScripts: true });
+    require("./review-jev").bind(vscode,panel,message=>Number.isInteger(message.hunk)?askContext(parts,[message.hunk],after,entry.repo.label,entry.data.object_name):null);
     panel.webview.html = require('./code-review').reviewHtml(parts, { before: entry.data.source,
       after: editor.document.getText(), objectName: entry.data.object_name, objectType: entry.data.object_type,
       system: entry.repo.label, ai: !!prepared });
