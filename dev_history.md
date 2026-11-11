@@ -1,3 +1,25 @@
+## 2026-11-11 — Marketplace page trimmed to features and setup (0.9.81)
+
+Sessions since 0.9.67 had appended what each change did to the nearest paragraph of `vscode/README.md`: the paragraph after Quick start had grown to 8,700 characters (animation timings, sort keeps the scroll, migration notes), Git review notes sat in the ABAP local-folder section with a duplicated line, and a tail of notes followed the Licence. The page now has one short **Code Agent and Git** section, and the long Providers, Jev, logging, Path to This Line, Run Select, transport overview, Orchestrator and recordings paragraphs were cut down to what the feature is and how to set it up. The Eclipse update-site page `docs/index.html` had the same drift, worse: a block of VS Code notes stood before the install instructions, lines were duplicated, a feature list still said what the diagram "no longer" does, and four paragraphs sat after the closing script. Its body is rewritten as what the site is, how to install, what the plugin does, the optional ABAP side and a short pointer to VS Code. `eclipse/README.md` lost its logging note and its three longest paragraphs were cut down. The GitHub `README.md` got the same treatment: the long paragraphs at the top and the notes after its documentation pointer are gone, the feature paragraphs cut to a line or two each.
+
+While reviewing these README changes, ASK AI on vscode/README.md failed with "Web mode currently requires Vercel AI Gateway". The sidebar decides web mode from the typed question, but `chat.js` checked again on the whole request - and the README blocks contain "ask explicitly to search the web". `chat.js` now takes the caller's decision when one is passed and checks the prompt only when none is. The narrative stays here and in history.md only.
+
+## 2026-11-11 — Prompts for Git review (0.9.81)
+
+Asked: prompt management for Git review as SAP transport review has it, with separate prompts for the commit message, technical review, business review with pasted requirements, technical documentation, plus whatever else is useful; then whether Jev helps. Chosen with the user: test plan and release notes added; the pull request text made editable too; Jev used for sorting and requirement hints, not as verdicts in the prompt; the checkbox right in the review bar, only while Jev is connected.
+
+Found: Git review had no instruction of its own - ASK AI sent DEFAULT_QUESTION from code-review.js, which says "this ABAP change" for any file, and commit/PR generation had fixed texts in git-commit.js.
+
+Done: prompt-files.js knows seven git-* kinds. git-commit.js splits COMMIT_INSTRUCTION / PR_INSTRUCTION from the data part and chat.js passes the user file when it exists. git-prompts.js holds the five built-in texts, the requirements list, Jev triage (one jev.evaluate per block with priority, change kind and one yes/partial/no question per requirement), the sort and the coverage hint. git-prompt-bar.js is the bar and the Prompts… dialog, reusing the SAP dialog's markup and classes and vertex-segment-toggle. git-history.js prepares the context for ASK AI and copyPrompt and answers promptFile. code-review.js askRequest sends the kind's instruction when the question is empty; a typed question keeps the old format tail. Raw Jev labels are not put in the prompt: they would anchor the model on "routine".
+
+First test by the user, on an ABAP commit with a planted regex bug: Claude found it, Codex did not, Jev (sorting on) marked the block "Needs focused review" 64% and could say no more. The logs showed neither model had received the Technical review prompt: the user typed a question, and a typed question replaced the prompt. Wrong design - the user supplements a prompt, not replaces it. Now the kind's instruction is always sent and the typed text follows it as the reader's addition; the old format tail stays only for asks without a prompt kind.
+
+The built-in Technical review became the bug-hunting text written after that test (assume a defect, five checks in order, trace patterns by hand on a boundary input, every defect with its triggering input), at the user's word.
+
+Version 0.9.81 on both hosts at the user's request; VSIX and Eclipse update site 0.9.81.20261111155403 built, docs/ refreshed. Not committed: the user tests and commits.
+
+Validation: test/git-prompts.test.js, 11 tests pass. Full suite 1431 tests, 1423 pass; the six failures are the same as on the clean tree. The bar was not checked visually in VS Code: the browser pane shows a local file only as a static snapshot; page scripts parse.
+
 ## 2026-11-11 — 0.9.80: the galaxy icon back, and the landings that stayed behind
 
 The work below stayed uncommitted on one machine while 0.9.78 and 0.9.79 were pushed from another. Stashed, fast-forwarded to origin/main, unstashed; history.md, dev_history.md and sidebar-script.test.js conflicted and were resolved by keeping both sides.

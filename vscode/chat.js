@@ -311,7 +311,7 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       const history = conversation.slice();
       const superseded = () => version !== conversationVersion;
       const replaced = () => turn.cancelled ? { stopped: true, answer: "" } : { superseded: true, answer: "" };
-      if(options.web||require("./web-intent").requested(prompt)){
+      if(typeof options.web==="boolean"?options.web:require("./web-intent").requested(prompt)){
         const id=options.assistant||subscriptionProvider(vscode);
         if(id!=="vercel-api")throw new Error("Web mode currently requires Vercel AI Gateway.");
         if(options.images?.length)throw new Error("Web mode searches your typed question. Remove screenshots before sending.");
@@ -841,7 +841,8 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
     const helper=require("./git-commit"), id=subscriptionProvider(vscode);
     const config=vscode.workspace.getConfiguration("vertex.ai"), model=config.get("model", "") || await defaultModel(id);
     const log=sessionLog.create(config.get("logPath", ""),id,sessionLog.stamp(new Date())+"_"+require("crypto").randomBytes(3).toString("hex"),sessionLog.fromConfig(config),pr?"Pull request description":"Commit message");
-    const prompt=pr?helper.prPrompt(snapshot,draft):helper.prompt(snapshot,draft);
+    const custom=await require("./prompt-files").promptFile(pr?"git-pr":"git-commit","read");
+    const prompt=pr?helper.prPrompt(snapshot,draft,custom.exists?custom.text:undefined):helper.prompt(snapshot,draft,custom.exists?custom.text:undefined);
     const instructions="Generate only a draft "+what+" from the supplied snapshot. Tools, filesystem access and Git actions are unavailable. Never commit, push or claim to have done so. "
       + (compatible.PROVIDERS[id]||id==="anthropic-api"||id==="copilot" ? "Reply as plain text only: one "+(pr?"Title":"Summary")+" line, blank line, then Description. No JSON, answer-field wrapper, labels or commentary."
         : "Put the entire "+what+" in the answer field of the required result schema. Return navigation null and build_command empty.");

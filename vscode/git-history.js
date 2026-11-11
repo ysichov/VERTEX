@@ -258,9 +258,14 @@ async function openCommitReview(vscode, folder, commit) {
         vscode.window.showInformationMessage("VERTEX: committed "+result.hash+(result.warning?". "+result.warning:""));
       }catch(error){await panel.webview.postMessage({commitError:error.message});}finally{commitBusy=false;}return;
     }
-    if (!message || message.action !== "ask") return;
+    if (message?.action === "promptFile") {
+      let answer;try{answer=await require("./git-prompt-bar").promptFileAnswer(message);}catch(error){answer={error:error.message};}
+      await panel.webview.postMessage({promptFile:answer});return;
+    }
+    if (!message || (message.action !== "ask" && message.action !== "copyPrompt")) return;
+    const copying = message.action === "copyPrompt";
     let context;
-    if (message.all) {
+    if (message.all || copying) {
       // The whole commit: every file's blocks, numbered through, each naming its file.
       const blocks = [];
       files.filter(f => !f.binary).forEach(f => review.askContext(f.parts, null, f.after, "local", f.path).blocks.forEach(b => blocks.push({ ...b, file: f.path })));
@@ -272,6 +277,16 @@ async function openCommitReview(vscode, folder, commit) {
       context = review.askContext(f.parts, Number.isInteger(message.hunk) ? [message.hunk] : null, f.after, "local", name + " " + f.path);
     }
     if(!context.blocks.length){vscode.window.showInformationMessage("No text changes to send to AI.");return;}
+    const status=(text,state)=>panel.webview.postMessage({promptStatus:{text,state}});
+    try{
+      if(message.jev===true)await status("Sorting "+context.blocks.length+" block"+(context.blocks.length===1?"":"s")+" with Jev…","working");
+      context=await require("./git-prompts").prepare(vscode,context,message,{progress:(n,total)=>{void status("Jev: block "+n+" of "+total+"…","working");}});
+    }catch(error){await status((message.jev===true?"Jev sorting failed, nothing was sent: ":"Prompt: ")+error.message,"error");return;}
+    if(copying){
+      await vscode.env.clipboard.writeText(require("./git-prompts").copyText(context.instruction,context));
+      await status(context.prompt_label+" prompt copied with "+context.blocks.length+" block"+(context.blocks.length===1?"":"s")+(message.jev===true?", sorted by Jev":"")+".","success");return;
+    }
+    if(message.jev===true)await status("Blocks sorted by Jev and sent to the chat.","success");
     await vscode.commands.executeCommand("vertex.askReviewBlock", context);
   });
 }

@@ -229,7 +229,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           if (asked) { reviewAsk = null; await showReview(); }
           const images = (Array.isArray(message.images) ? message.images : []).filter(image => image
             && /^image\/(png|jpeg|gif|webp)$/.test(image.media_type) && typeof image.data === "string" && image.data);
-          const shown = String(message.text || "").trim() || (asked ? "What does this change do, and is there a real problem with it?"
+          const shown = String(message.text || "").trim() || (asked ? (asked.prompt_label ? asked.prompt_label + " (VERTEX prompt)" : "What does this change do, and is there a real problem with it?")
             : images.length ? "What is in this screenshot?" : "");
           if (!shown) { return; }
           const pending = pendingChat = { id: requestId, cancelled: false };

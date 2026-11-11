@@ -1,11 +1,8 @@
 # Built-in Eclipse Assistant
 
-**Version: 0.9.80**
+**Version: 0.9.81**
 
 **Looking for the standalone AI Code Agent for local Git projects in any programming language?** Use the [VS Code extension](../vscode/README.md): that workflow reads, searches and edits an isolated working copy, with review and Apply, without a SAP connection. This document describes the Eclipse ADT plugin and its SAP workflows.
-
-The assistant JSONL log omits program bodies from tool arguments and results; object names and result summaries are retained. Source-code logging has no separate option.
-
 
 SelecTor offers **Technical names / Text** for selection labels and table headers. The choice is remembered.
 
@@ -18,8 +15,7 @@ data preview once the plugin is built from the current repository. Versions and 
 transport read ADT too, as in VS Code: the version history from ADT's revision feed, the review built
 from it in the window. VERTEX's own ABAP, `src/`, is needed to save a review to SAP and, where ADT keeps no versions of
 data elements, domains and tables, to read theirs. The AVE
-repository itself is not needed. Notes below that name a backend route describe the build they were
-written for.
+repository itself is not needed.
 
 ## Forward and Backward Usage Analysis
 
@@ -86,7 +82,7 @@ on the one you pick. Recorded diagram and metrics context opens in the window. *
 conversations** deletes their log files after asking. Recorded transpiler runs and SAP debug sessions
 open in VS Code only.
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
-Opening VERTEX Tools from the VERTEX submenu of an ADT class or program editor selects that object and follows the editor's cursor. A method in a UML diagram opens its class at that method; a plain click reuses the editor the previous plain click opened (closing it unless it holds unsaved changes, and never one you had open already), Ctrl+click opens the class in a tab of its own. Opened from Project Explorer or by **Window → Show View → VERTEX → VERTEX Tools**, Tools shows the object type and name fields - from Show View filled with the active editor's object - - a name or a mask such as `ZV*LAB` finds any object - and the Parts list, where Logic diagram takes its method. VERTEX Tools, the assistant and the VERTEX functions open docked right of the editors, half the width, all in one stack - the editor and VERTEX side by side, nothing covering the screen. A window already open is only brought to the front, wherever you moved or dragged it. Opening it also reveals hidden containing layout areas in the current perspective.
+Opened from the VERTEX submenu of an ADT editor, VERTEX Tools selects that object and follows the cursor; opened from Project Explorer or **Window → Show View → VERTEX → VERTEX Tools**, it shows object type and name fields (a mask such as `ZV*LAB` works) and the Parts list. A method in UML opens its class at that method; Ctrl+click opens it in a tab of its own. VERTEX windows open docked to the right of the editors.
 
 ## Versions and code review
 
@@ -102,7 +98,7 @@ code.
 the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's walk - each part appears as soon as
 it is read, the status line says which, and a changed line shows what changed inside it. Before it is built, Review
 lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's report does - with objects deleted
-since in red; newly created objects are green. In the request list, request numbers link to reviews saved in SAP or in this project’s review files. Review ignores spacing and case outside literals - indentation, trailing blanks and the Pretty Printer's upper or lower case - while preserving changes inside literals. **Expand all** in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together, grouped by class/object, with **Approved**, **Declined**, **Not processed**, **Comments only**, **Expand all / Collapse all** and **AI prompt diff/full** controls. A class opened from the review has the same filter. **Approve**, **Decline**, **Comment** and **Undo** change only their block; the page keeps its scroll. **Ask AI** beside a review block asks about that block only; **Ask AI** above the object asks about all its changed blocks. **Copy log** copies the build diagnostics, including reasons for skipped parts. Selected text in Tools pages can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
+since in red; newly created objects are green. Review ignores spacing and case outside literals. **Approve**, **Decline**, **Comment** and **Undo** act on one block; filters show approved, declined, not processed or commented blocks, also per developer or reviewer. **Ask AI** asks about a block or a whole object. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
 gave no block. **Technical documentation** in the saved transport summary opens all changed objects. There,
 **Code review / Technical documentation** selects the prompt copied by **AI prompt diff / full**, and on a single object's page the one copied by **Copy prompt: diff / full**;
 developer and reviewer views have the same choice. The documentation prompt keeps created objects (sent whole, described as they are) apart from modified ones, and ends with
@@ -186,9 +182,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. `.gitattributes` marks them `linguist-generated`, so GitHub collapses them in diffs and VERTEX Git review lists them without their diff. The feature and bundle sources are at `0.9.80.qualifier`; the checked-in update site carries build `0.9.80.20261111150707`.
+then regenerate. `.gitattributes` marks them `linguist-generated`, so GitHub collapses them in diffs and VERTEX Git review lists them without their diff. The feature and bundle sources are at `0.9.81.qualifier`; the checked-in update site carries build `0.9.81.20261111155403`.
 
-The local install archive is version `0.9.80.20261111150707`. Install its ZIP through
+The local install archive is version `0.9.81.20261111155403`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:
@@ -286,7 +282,7 @@ UML, metrics, Calls, Logic, Parts and Value Origin use standard ADT source reads
 and the shared abaplint analysis engine. The SAP connection belongs to the
 selected Eclipse project. See Versions and code review above for review storage.
 Package Metrics has an **Expand all / Collapse all** button above Objects for the unit tables.
-Package Metrics includes classes, interfaces and programs. **Visual** sizes each object by the selected metric and subdivides it into methods, forms and events. Double-click a unit or press Enter to open its source; click the object header to open its unit table. A program's forms and events, including those in its INCLUDEs, count toward its program. Indicators without fixed risk thresholds use one relative colour scale for all visible units in the package. The Visual Objects filter can hide classes, programs, interfaces or individual objects without rerunning analysis. The map heading shows the sum of the selected indicator for visible objects, such as total LOC.
+Package Metrics includes classes, interfaces and programs. **Visual** draws each object as a tile sized by the selected metric and split into its methods, forms and events; double-click a unit to open its source.
 For a class or program, Metrics switches between **Table** and **Visual**. In Visual, tile area scales with the selected indicator and each tile shows its unit name and value. CC and MI colours follow the table's risk grades; other indicators use a relative ranking within the object. Single-click a tile to select it; double-click or press Enter to open its ADT source.
 Visual has a 2–300% scale control and a Fit button that fits the whole map into the pane. Fit and the ± buttons animate scale changes; Ctrl+wheel changes scale immediately, as in UML, while ordinary scrolling moves around the map. Zoom changes tile space and reveals more labels without enlarging text.
 UML and Metrics show the current analysis stage, object count and elapsed time while a package is processed.

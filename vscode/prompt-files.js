@@ -4,7 +4,10 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
 
-const names = Object.freeze({ review: "code-review.txt", technical: "technical-documentation.txt" });
+const names = Object.freeze({ review: "code-review.txt", technical: "technical-documentation.txt",
+  "git-review": "git-review.txt", "git-business": "git-business-review.txt", "git-docs": "git-technical-documentation.txt",
+  "git-tests": "git-test-plan.txt", "git-release": "git-release-notes.txt", "git-commit": "git-commit-message.txt",
+  "git-pr": "git-pull-request.txt" });
 
 async function promptFile(kind, operation, content = "", home = os.homedir()) {
   if (!Object.hasOwn(names, kind)) throw new Error("Unknown prompt kind.");

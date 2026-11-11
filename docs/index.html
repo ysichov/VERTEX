@@ -74,47 +74,14 @@
   </div>
 </header>
 
-<section aria-labelledby="local-agent-title">
-<p>In VS Code Jev mode, New conversation clears context, question cards and results and starts a separate conversation in Session Logs. It keeps the selected provider and model and is unavailable while a request runs. Each Run clears the previous displayed result before validation; if no model is ready, the form reports that no request was sent. Answer options and scale levels use separate labeled fields with Add, Remove and up/down ordering controls. Scale levels run from lowest to highest, starting at 0. Switching question types preserves entered options; Continue restores them as editable rows.</p>
-<p>In the active VS Code chat, attached screenshots remain available for follow-up questions with a Vision model. New conversation clears those attachments.</p>
-<p>Jev answers in VS Code Session Logs show question text, readable answers, confidence and labeled probabilities.</p>
-<p>With question logging enabled, each saved Jev step offers Continue to restore its provider, model, context and question cards. Edit the draft and use Run Jev to create a new step; restoring does not run inference. Older records without saved input cannot be restored.</p>
-<p>VS Code 0.9.78 saves remote API model catalogs locally after their first load. Switching providers and restarting VS Code reuse that catalog; explicit rebuilding in LLM Providers updates it. Local servers retain live loaded-model lists.</p>
-<p>Git review bounds diff-search memory, compares complete additions/deletions directly and preserves all changed lines when a difficult comparison is grouped into a larger block. Preparation failures appear in the review window.</p>
-<p>Large Git previews load on selection and display 1,000 rows per page. Previous/Next exposes all rows; hidden large previews are unloaded. New files use plain text rows while retaining added status in the file tree.</p>
-<p>Git review lists files marked generated in <code>.gitattributes</code> (<code>linguist-generated</code>) by name in the AI context and leaves their diff out, so copies and bundles rebuilt from other sources are not read as new changes.</p>
-<p>Large new Git files (over 1,000 lines or 256K characters) open in the standard VS Code editor when selected. Small new files and changes to existing files keep the review preview.</p>
-<h2 id="local-agent-title">Standalone AI Code Agent for any local Git project — VS Code</h2>
-<p>VERTEX is also an AI coding agent for local repositories in any programming language: Python, JavaScript, TypeScript, Java, C#, Go, ABAP and more. This workflow needs no SAP connection or ABAP project.</p>
-<p>Open a Git project folder in VS Code, choose a tool-capable model in <strong>LLM Providers</strong>, and ask the VERTEX chat to explain or change code. The agent reads, searches and edits files in an isolated Git working copy. Review the diff, approve files and Apply them; run your project's build or tests afterwards and return failures for correction.</p>
-<p><strong>VS Code prerequisites:</strong> Git History, diffs, commits and isolated local Git history/working copies require a real <code>git</code> executable on the extension host’s <code>PATH</code>, even for folders initially without <code>.git</code>. Check <code>git --version</code> and fully restart VS Code after installation or PATH changes. For Remote SSH, WSL or containers, install Git in that host. Local Git needs no GitHub account or remote. Ordinary API chat needs provider credentials and network access; project builds need their own toolchain. CLI providers need their installed client and authentication. Windows local commands use PowerShell 5.1; other hosts use <code>/bin/sh</code>. <a href="https://github.com/ysichov/VERTEX/blob/main/INSTALL.md">Installation prerequisites</a>.</p>
-<p>Use Claude Code, Codex / ChatGPT subscription, EPAM CodeMie, GitHub Copilot or a supported API provider. <a href="https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap">Install the VS Code extension</a> · <a href="https://github.com/ysichov/VERTEX/blob/main/vscode/README.md">Code Agent setup and usage</a>.</p>
-<p>In VS Code, review requests show a wide strip where a beam scans diff rows and a draft is typed out; commit-message requests show a strip where packets ride a Git branch into a commit node. Review loading appears immediately while Git prepares the diff, and the commit composer shows its own waiting scene during generation and commit. The scenes use the active theme, stop after completion or failure, and remain static under reduced-motion settings. Ordinary chat keeps the slow VERTEX mark. Reduced-motion settings keep it static. Progress shows Working: step N and the operation name. Times in logs and execution windows use the 24-hour format. Usage metadata is recorded for every chat request, Web search, commit-message generation, model check and window assistant, independently of optional message-content logging. Model checks share a log and retain completed calls on Stop. ChatGPT/Codex token counters are read from CLI JSONL events; native per-model counters are deduplicated against run totals. If no log folder is selected, usage metadata uses private extension storage. The Vercel chat selector shows Vercel on its own row, with linked model-provider and model selectors below. The provider comes from the model-ID prefix and the model list includes the enabled models for that provider, cheapest first by input price then output price, with unknown prices last. Switching model providers remembers the last model used in each group during the session. The Vercel model table offers All models and By provider views. Groups use the model-ID prefix (openai/, google/, etc.), fold independently and retain selection and unavailable filtering. Collapse all and Expand all control all provider groups in the grouped view. Each group has its own sort field and direction; Global order inherits the main table sort. Clicking a main column resets group overrides. Sorting retains the list scroll position. The $ icon in the VERTEX title bar opens Usage & Cost, with inclusive date/month/activity filters, activity and provider totals and per-model input/output/cache tokens and recorded actual USD. Missing costs remain unknown; subscription estimates are excluded. With Vercel selected, explicitly ask to search the web (for example “найди в интернете” or “search the web”) or verify current information to use Gateway/Perplexity before answering; there is no Web checkbox. Ordinary questions do not automatically search. This uses the active Vercel key and selected tool-capable model, with provider search charges; only the question and separate Web history are sent. SAP, local files, screenshots and review context are excluded. Source links open in the browser; unconfirmed searches do not produce a supposedly web-verified answer. OpenAI-compatible APIs negotiate tool support: an explicit unsupported-tools response overrides the catalog for that provider, key and model for 24 hours. Only an initially rejected request retries once as plain text, with no action replay; models without tools can answer from supplied context but cannot perform live actions. Failed API requests retain their model step and error even with answer logging disabled. The Commit button in Uncommitted changes opens editable Summary and Description fields. Its header shows the actual model, token usage and reported cost of the latest generation, including zero or unknown cost; failed generations retain reported charge details. Session Logs headers list models without opening the conversation. Refresh icons reload Session Logs and the uncommitted review; review refresh rereads disk changes and updates the AI context and commit snapshot. Answer footers, commit generation and usage reports show reported USD costs without display rounding, preserving small amounts and distinguishing zero, partial and unknown costs. Agent requests include the actual extension-host OS, architecture, shell and working directory; external build tools are explicitly unverified. Local commands run in the project folder; Windows uses PowerShell 5.1 syntax, with explicit guidance on shell parsing failures. Generate with AI drafts a message from the displayed diff using the selected model, with an explicit 4,096-token output budget for API providers, without tools or conversation history. A transient connection failure retries generation once; drafts remain editable if it fails. Commit creates a local commit of the reviewed files; staged changes outside the review are preserved. Reopen the review if files or HEAD have changed. Git History loads the latest ten commits by default; choosing a month or date range loads that period while retaining original commit numbers. The Author filter combines with the date period; without dates it shows the latest ten commits by that author. Git review uses a folder/file tree beside the selected file diff. Select a file to inspect its changes; folders fold independently. The tree starts with total files, text-line changes and blocks; binary files have no text counters. Text file entries and the selected-file header show line-change counts and changed-block counts. Each text file offers Compact (default, changed blocks with context) and Full (the complete file, loaded on demand). Review strips use shared compact VERTEX buttons, with information on the left and actions on the right. File references in AI answers open an existing review at that file, or open the workspace file in the editor when no matching review is open. A one-block file uses only the file toolbar, without a duplicate block ASK AI bar; insertion/deletion/modification labels are omitted while diff colors and AI context retain the change structure. Binary files are labelled without text counters and excluded from AI review and commit-generation context. The chat offers SAP / Folder context selection. SAP includes SAP editor and VERTEX debugger/analysis context; Folder includes local project and Git-review context. Models without tool calls can still read supplied context. Empty JSON objects are reported as incomplete answers; valid JSON answer wrappers are displayed as their answer text. Vercel model details identify the /models API source and show its description when provided; an ⓘ button before each model name opens the same complete model information as the panel’s $ button, from one shared formatter, without a paid model call. Both identify the API source and distinguish runtime observations from catalog declarations. Catalog declarations are cached for the provider/key session; Reload Window fetches anew. Model-table sort headers remain visible while scrolling. The toolbar orders ASK AI, Commit, Push, then PR. A branch selector shows the current local branch. New branch starts at the current commit and retains local edits; switching existing branches requires a clean working tree. Commit writes to the project’s current local branch. Push previews that branch, HEAD, remote and destination branch, and sends only committed changes after an explicit click, without force or branch switching. PR supports github.com remotes and opens GitHub’s comparison page with selected base and source branches after verifying the source contains the pushed current commit. Publish or merge explicitly on GitHub. The assistant’s temporary worktree uses detached HEAD; create a named task branch before committing when you want the resulting commits isolated from main. Git History and review buttons, modal dialogs and input fields follow the shared rounded VERTEX control style. Git previews start with files folded and shorten very long display lines; ASK AI retains the full source context. Session Logs show actual Vercel Gateway charges in USD per model step, prompt and session. Missing charges are shown as unknown, never as zero; partial totals are marked.</p>
-<p>In VS Code, <strong>Uncommitted changes</strong> hides changed <code>.md</code> and <code>.log</code> files and leaves them out of <strong>Generate with AI</strong> until the <strong>.md, .log (N)</strong> toggle beside Expand all / Collapse all is switched on; Commit still includes them, and its dialog says how many. Set the extensions in <code>vertex.git.hiddenExtensions</code>, in User settings for all projects or in Workspace settings (<code>.vscode/settings.json</code>) for one project, e.g. <code>["md", "log", "json", "lock"]</code>.</p>
-</section>
-
 <p>
   This address is an <strong>Eclipse update site</strong>, not a page to read.
-  There is nothing here for a browser, which is why you landed on it. Copy it
-  and hand it to Eclipse:
+  Copy it and hand it to Eclipse:
 </p>
 
 <div class="url">https://ysichov.github.io/VERTEX/</div>
 
-<p>
-  <img class="architecture" src="architecture2.png" alt="VERTEX architecture: VS Code and Eclipse ADT, AI assistants and LLM providers, a VERTEX MCP server, seven Web UI tools, client-side libraries, and SAP ADT">
-</p>
-
-<p>Opening a VERTEX window in Eclipse reveals its containing layout in the current perspective, including areas hidden in a saved layout.</p>
-<p>A saved transport review copies a Code review or Technical documentation prompt for one object, a developer, a reviewer or all changed objects; the documentation prompt ends with <code>TR Details: &lt;request&gt;</code>.</p>
-<p>The <strong>Prompts…</strong> button lets you view and edit both instructions. User files in <code>~/.vertex/prompts/</code> take priority over the built-in prompts.</p>
-
-<p>In VS Code, importing SAP systems offers Eclipse workspaces that still contain ABAP projects or logon settings; a remembered path to a removed workspace is not offered. On macOS it also reads SAP GUI for Java connections from <code>~/Library/Preferences/SAP/SAPGUILandscape.xml</code> (also <code>SAPUILandscape.xml</code> and <code>SAPUILandscapeGlobal.xml</code>). Choose <b>No Eclipse workspace</b> to import from SAP GUI alone; client and user are requested. If a connection has no system ID field, its name must be an exact three-character SAP system ID.</p>
-
-<p>In VS Code, LLM Providers lists OpenCode Console after OpenRouter. Add a named OpenCode API key there; it is stored in SecretStorage. The live catalog offers All models / By provider, All / Available / Free filters, per-group sorting, Collapse all / Expand all, and individual or group checks. Enabled language models are available in chat with a model-provider selector. Only models returned by the live catalog are listed. If Jev is present, it appears under TypeSafe AI as Decision API and uses the adaptive decision form and System One rather than ordinary chat. The Free filter uses declared zero catalog rates, with the -free ID suffix as a fallback when prices are absent. Free catalog entries may require the OpenCode client, so use Check models to verify API access with your key.</p>
-<p>TypeSafe Jev API is a separate decision-model section in VS Code LLM Providers. Add a named TypeSafe API key with Add key; it stays in SecretStorage. The section reads the account model aliases directly from TypeSafe and Check models sends a small synthetic System One question. Normal TypeSafe charges apply. Select TypeSafe Jev in the panel provider list, then a Jev model: the panel switches to a decision form with plain-text context, a question builder (Yes / No, Choose an option, Rate on a scale), Run Jev and Stop. Results show typed answers, confidence, probabilities, elapsed time, token usage. Only the entered context, questions and answer options are sent, without chat history or automatic SAP/folder context. The context field has a larger default height and an expand control. Results switch from a table to labeled cards in a narrow panel. Switching back to a language model restores the ordinary chat and preserves drafts. Jev remains excluded from planner model choices.</p>
-<p>In VS Code code review, ASK Jev appears beside ASK AI for each diff block only when the TypeSafe provider has a saved active key and an enabled Jev model. No separate model check is required. One click sends the selected before/after block and nearby lines with four checks: change type, review priority, context sufficiency and an advisory acceptance recommendation. Results stay below that block; errors do not change review decisions. ASK Jev never approves, declines, applies or activates changes. It is available in Git/file review, ABAP editor review and the SAP transport-review view.</p>
-<p class="build">Latest build <b>0.9.80.20261111150707</b>.</p>
+<p class="build">Latest build <b>0.9.81.20261111155403</b>.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -122,258 +89,68 @@
   <li>Tick the category <strong>ABAP VERTEX Tools</strong>, then <strong>Next</strong> and <strong>Finish</strong>.</li>
   <li>Restart Eclipse when it asks.</li>
 </ol>
-
 <p>
   Then <strong>Window &rarr; Show View &rarr; Other… &rarr; VERTEX</strong>, or
   right-click an object in the Project Explorer or an ADT editor and open the <strong>VERTEX</strong>
-  submenu, beside GitHub and Team: VERTEX Tools, Path to This Line, Run Select, VERTEX Smart Debugger, Review &amp; Activate, VERTEX Assistant and Session Logs.
+  submenu: VERTEX Tools, Path to This Line, Run Select, VERTEX Smart Debugger, Review &amp; Activate, VERTEX Assistant and Session Logs.
 </p>
-<p>Switching a diagram between Top-down and Left-right automatically fits the new drawing after rendering.</p>
-<p>The Main toggle shows or hides the debugger’s entire top control panel, including Clear, help and diagnostics. In VS Code, Reload Window reconnects the debugger to its last source and restores the entered Program field without starting the program; in-memory execution state is not resumed.</p>
-
 <div class="note">
   <strong>ADT has to be installed first.</strong> The feature declares the SAP
   bundles as prerequisites rather than shipping them, so p2 refuses the install
-  on an Eclipse without ADT instead of leaving a plugin that cannot resolve.
+  on an Eclipse without ADT.
 </div>
 
+<p>
+  <img class="architecture" src="architecture2.png" alt="VERTEX architecture: VS Code and Eclipse ADT, AI assistants and LLM providers, a VERTEX MCP server, seven Web UI tools, client-side libraries, and SAP ADT">
+</p>
+
 <h2>What it does</h2>
-
 <ul class="news">
-  <li><b>Path to This Line.</b> The conditions under which the line at the cursor runs inside its
-      METHOD or FORM, from the editor's text, coloured as Logic's Code is; a click on another line of the editor builds that
-      line's path, and <i>Value sources</i> shows where the values of the conditions come from.
-      <i>Window &rarr; Preferences &rarr; VERTEX Path to This Line</i> numbers lines from the METHOD or FORM.</li>
-  <li><b>Session Logs.</b> The assistant's conversations from the log folder: prompts, answers,
-      models, token usage and the objects they named, which open in ADT.</li>
-  <li><b>SelecTor field labels.</b> A <i>Technical names / Text</i> toggle for the selection and the result headers, remembered between sessions.</li>
-  <li><b>Value Origin.</b> Inspect FLOW, Formula and Expression analysis; the experimental BSE client
-      uses ADT source and bundled abaplint.</li>
-  <li><b>One Parts list for the object.</b> The VERTEX Tools window keeps the parts of a class
-      or a program - sections, methods, events, forms - at its left. The Logic
-      diagram shows the method picked there and the Calls diagram starts its walk from the event or
-      form picked there; Metrics and UML draw the whole object and show no list. Switching
-      between the two neither redraws the list nor loses the choice. Nothing is picked for you:
-      without a named part, an object opens whole.</li>
-  <li><b>Versions laid out as AVE's.</b> The parts, the versions of the chosen part under them,
-      and the diff beside. Pin any version as the base and compare the others with it
-      (<i>Prev | Any</i>); show the change in one column or two (<i>Inline | 2 pane</i>).
-      AVE's switches are back: <i>TOCs</i>, <i>Dups</i> and <i>Case/ind</i>. The diff is a
-      shortest edit script over whole lines with nothing on top: Eclipse's own Text Compare in
-      Eclipse, and in VS Code VERTEX's own line differ (Myers), written from the published algorithm
-      because Eclipse's comparer is under the EPL and VERTEX is MIT.</li>
-  <li><b>Calls, Logic and UML diagrams.</b> The flow of a program is now the <i>Calls
-      diagram</i> and the branch scheme of one method the <i>Logic diagram</i>. Calls starts
-      from the event or form picked in Parts, as a double-click in ACE's tree does, and draws
-      one block per method or per class. Clicking one of those methods draws its Diagram
-      inside the same canvas, joined to the block it came from, so the call and what it does
-      are read as one picture; the open block is marked in the theme's focus colour and follows
-      the <i>Top-down</i> / <i>Left-right</i> choice. The Diagram no longer drops what
-      follows the last branch of a method, and no longer emits a node for a statement whose text
-      is left with nothing to show &mdash; one such empty node failed the whole diagram. Blocks and
-      decisions follow the editor's theme, and the magnifier is the explicit <i>Lens off</i> /
-      <i>Lens on</i> toggle in the toolbar (Shift and the touchpad set its strength), rather than
-      a rule that measured the text on screen and flickered as the diagram was zoomed.</li>
-  <li><b>Help on every metric.</b> The <i>?</i> in Code Explorer explains what ACE counts,
-      its formula, and which values are good.</li>
-  <li><b>Claude models by version.</b> The Assistant offers the newest Claude model of each
-      family by full id, and <i>Specify version…</i> checks any other id with one request
-      before keeping it. If a provider returns no model entries, the VS Code provider panel
-      explains that instead of leaving a blank table.</li>
+  <li><b>Versions and code review.</b> Version history of an object, the diff between any two versions,
+      and the review of a whole transport request: every changed part cut into blocks, with approve,
+      decline and comments, and the author of each block. <i>Prompts…</i> edits the code review and
+      technical documentation prompts copied for an AI assistant.</li>
+  <li><b>Code Explorer.</b> Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an
+      object and the Logic diagram of one method, event or form.</li>
+  <li><b>Value Origin.</b> How a value is computed, down from a line across calls (Forward Usage
+      Analysis), and where a routine's values go in its callers (Backward Usage Analysis).</li>
+  <li><b>Path to This Line.</b> The conditions under which the line at the cursor runs inside its METHOD or FORM.</li>
+  <li><b>Data Explorer (SelecTor).</b> Tables, views and CDS with select-options, joins and pivots;
+      <i>Run Select</i> runs the SELECT at the cursor.</li>
+  <li><b>VERTEX Assistant and Session Logs.</b> An AI chat over the SAP system and the log of its conversations.</li>
 </ul>
-
 <p>
-  Settings are in <strong>Window &rarr; Preferences &rarr; VERTEX Assistant</strong>.
-  The chat needs Node.js 22 or newer and one of: Claude Code or Codex installed and signed in
-  (your Claude or ChatGPT subscription, which has no public API and works only through the
-  vendor's own client), the EPAM CodeMie CLI after <code>codemie setup</code>, or an Anthropic
-  API key entered on that preference page and kept in Eclipse secure storage.
+  Assistant settings are in <strong>Window &rarr; Preferences &rarr; VERTEX Assistant</strong>.
+  The chat needs Node.js 22 or newer and one of: Claude Code or Codex installed and signed in,
+  the EPAM CodeMie CLI after <code>codemie setup</code>, or an Anthropic API key.
 </p>
 
-<h2>The other half is ABAP</h2>
-
+<h2>The ABAP side is optional</h2>
 <p>
-  Not all of VERTEX waits for it. The editor, the debugger and the assistant work
-  over ADT alone, and so do Code Explorer, Value Origin and SelecTor. In VS Code Versions and the
-  review of a transport do too, in VS Code and in Eclipse; the hub is needed only to save a review
-  to SAP, and without it reviews are saved to files.
+  Everything works over ADT alone. Only saving a transport review to SAP needs VERTEX's own ABAP:
+  pull the <a href="https://github.com/ysichov/VERTEX">repository's</a> <code>src/</code> folder into the
+  system with abapGit and activate it. Reviews are then kept in the <code>ZAVE_REVIEW</code> table, the
+  one AVE uses; without it they are saved to files (<i>Window &rarr; Preferences &rarr; VERTEX Code Review</i>).
 </p>
-
-<table class="needs">
-  <tr><th>Tool</th><th>What it does</th><th>ABAP backend</th></tr>
-  <tr><td><b>Enhanced Code Editor</b> (VS Code)</td><td>Hover with a data element's domain resolved, Go to (F12) with SAP-resolved interface method implementations, Outline, Save &amp; Activate and block-by-block Review &amp; Activate, ABAP Unit into the Test Explorer (Ctrl+Shift+F10), ATC into Problems (Ctrl+Shift+F2), where-used (Shift+F12), SAP's keyword documentation (F1)</td><td>not needed</td></tr>
-  <tr><td><b>AI-driven ADT debugger</b> (VS Code)</td><td>Breakpoints with conditions SAP evaluates, real ADT variable watchpoints with optional value conditions, the run started in WebGUI, the stops, a short dump reported instead of silence, a verdict naming the line and the values</td><td>not needed</td></tr>
-  <tr><td><b>VERTEX Smart Debugger</b> (VS Code; Eclipse in test)</td><td>The same session on screen: source, breakpoints, stack, every variable, tables as grids, the flow chart of a recorded run and its player. The first recorded SAP stop includes Globals such as selection-screen values. VS Code's SAP &amp; Transpiler Logs lists SAP recordings and available transpiler runs by date, type, program and step count. Rows open replays; either type can be selected and deleted, and SAP recordings can be renamed. The assistant can cite steps from an open recording.</td><td>not needed</td></tr>
-  <tr><td><b>Value Origin</b></td><td><i>Forward Usage Analysis</i>: how a value is computed, down from a line across calls - the static call stack, the derivation as <i>FLOW</i>, <i>Formula</i> or <i>Expression</i>, each as a tree or a diagram. <i>Backward Usage Analysis</i>: where the values of a routine go in its callers, by SAP's where-used</td><td>not needed</td></tr>
-  <tr><td><b>Path to This Line</b></td><td>VS Code: the conditions inside a METHOD or FORM under which the line at the cursor runs - enclosing branches, earlier branches that must be false or must not be taken because they leave, CHECKs - written as in the code, parsed locally, rebuilt for each line clicked in the source; in the Diagram the Reachability toggle lights up that path for a clicked node; lines can be numbered from the METHOD or FORM statement, as in SAP GUI; the Value sources toggle colours the conditions' variables and shows where each gets its value</td><td>not needed</td></tr>
-  <tr><td><b>Block folding</b></td><td>VS Code: IF, CASE, LOOP, TRY, METHOD, FORM and other ABAP blocks and their branches fold by the code's structure, so unformatted code folds too</td><td>not needed</td></tr>
-  <tr><td><b>AI Assistant</b></td><td>Chat over the SAP system: reads, explains and changes code &mdash; the change is reviewed block by block before activation &mdash; runs the tests and ATC on an object, and drives the debugger</td><td>not needed</td></tr>
-  <tr><td><b>Versions / Reviewer</b></td><td>Version history, the diff between two versions, the review of a whole transport with approve, decline and comments, each block's author and, with <i>Blame</i>, the developer who wrote each changed line</td><td>to save reviews in SAP</td></tr>
-  <tr><td><b>Code Explorer</b></td><td>Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an object and the Logic diagram of one method, report event, FORM or MODULE; a method opened from Calls draws its Logic diagram in the same picture</td><td>not needed</td></tr>
-  <tr><td><b>Data Explorer (SelecTor)</b></td><td>Tables, views and CDS with select-options, a join built from the dictionary's foreign keys, a pivot over either. Run Select shows SELECT, WHERE, JOIN ON and ORDER BY fields together in the result; WHERE host values are not result columns; the selection panel starts folded and grouped queries retain their pivot shape.</td><td>not needed</td></tr>
-</table>
-
-<p>
-  There is one thing to pull
-  into the system with abapGit and activate:
-  <a href="https://github.com/ysichov/VERTEX">VERTEX</a> itself, its <code>src/</code>
-  folder — the hub, the resource that saves a review (<code>ZCL_VX_ADT_RES_STORE</code>), the
-  <code>ZAVE_REVIEW</code> table reviews are saved in.
-</p>
-
 <p>
   <a href="https://github.com/ysichov/Simple-Data-Explorer">Simple Data Explorer</a>,
   <a href="https://github.com/ysichov/ACE">ACE</a>,
   <a href="https://github.com/ysichov/AVE">AVE</a> and the other projects VERTEX grew out of are
-  where its tools' ideas were worked out first. VERTEX does not depend on them: none of them has to
-  be installed, and none of their code is called. Code Explorer, Value Origin and VERTEX Smart Debugger read
-  ADT source and analyse it with abaplint in the editor; SelecTor builds its statements and reads
-  them through ADT's standard data preview; in VS Code the version history comes from ADT's revision feed and the review of a transport is
-  built from it in the window, with AVE's rules; saving it to SAP needs VERTEX's own <code>src/</code>,
-  which writes it into the <code>ZAVE_REVIEW</code> table AVE uses too. The AVE repository itself is not needed.
-</p>
-
-<p>
-  Building a code review is part of it, not only reading one. In VS Code and Eclipse a request with no saved
-  review is built from ADT with <i>Build review</i> - opening only reads a saved one - every part it changed except code SAP generated (unless <i>Ignore SAP generated</i> is cleared), with the <i>Blame</i> toggle each changed line with the developer who wrote it, the pair of versions chosen
-  by AVE's rule, diffed and cut into blocks - each part appears as soon as it is read, and a changed line shows what
-  changed inside it. Before it is built, Review lists the request's objects as AVE's report does, objects deleted since
-  in red and newly created objects in green. In VS Code, <b>Stop</b> cancels a build before saving; a SAP call already in progress may finish. While a review is built, the review waiting strip runs under the toolbar - a beam scans diff rows and a draft is typed out - beside the part being read. In the request list, request numbers link to reviews saved in SAP or in the current system’s review files. Review ignores indentation and trailing-space changes while preserving changes inside literals. <b>Expand all</b> in the saved request summary opens all changed blocks with their code, even for a single class. Opening a developer or reviewer shows their changed blocks together with status/comment filters, Expand all / Collapse all and AI prompt diff/full controls. <b>Ask AI</b> beside a review block asks about that block only; the button above the object asks about all its changed blocks. <b>Copy log</b> copies the build diagnostics. In VS Code, chat receives the open request review’s object list and saved changed lines. Selected text in Tools pages and the VS Code sidebar chat can be copied with ⌘C on macOS or Ctrl+C on Windows/Linux. <i>Rebuild from ADT</i> builds it again from the request as it is now; a built review is saved at once, in
-  <code>ZAVE_REVIEW</code> or in files as <code>vertex.review.storage</code> says, and a folded <i>Build log</i> tells why
-  a part gave no block. Data elements, domains and tables that ADT keeps no versions of are read through VERTEX's ABAP; approving, declining and commenting then change it the way AVE does, so AVE and VERTEX read
-  the same review. A saved review opens at once; when an open request changed after it was saved, the page names what moved,
-  found by each part's versions meanwhile; developers and reviewers are listed as in AVE, each opening the objects they wrote or reviewed; a released request is not checked. <i>Rebuild from ADT</i>, under
-  the line that says who saved the review and when, replaces it with one built from the request as
-  it is now and drops its verdicts. A review kept both in <code>ZAVE_REVIEW</code> and in a file
-  shows both copies with a <i>Table | File</i> switch; a change goes back to the copy shown. In
-  Eclipse, where reviews are kept is set in Window &rarr; Preferences &rarr; VERTEX Code Review.
-</p>
-
-<p>
-  Pulling it is the whole step — there is nothing to register by hand. A window
-  opened before the ABAP is there tells you the same thing.
+  where its ideas were worked out first. VERTEX does not depend on them.
 </p>
 
 <h2>VS Code</h2>
-
-<p>When VERTEX chat finds one SAP object by name, its answer links the object and its package to their SAP tabs.</p>
-<p>The chat's question box grows with what you type or paste and then scrolls. In VS Code the chat is only in the VERTEX panel; <b>ASK AI</b> inside a review opens it with the selection on a chip.</p>
-
 <p>
-  The same three pages run under a VS Code extension, from the same files:
+  The same pages run in a VS Code extension, which adds an ABAP editor with review before activation,
+  ABAP Unit and ATC, an AI-driven debugger, the VERTEX Smart Debugger, local ABAP execution, an MCP server
+  for Copilot, Claude Code and Codex, and an AI code agent for any local Git project:
   <a href="https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap">VERTEX ABAP on the Marketplace</a>.
 </p>
-
 <p>
-In VS Code, the <b>SNC</b> checkbox beside the SAP system selector switches between SNC single sign-on and password authentication without deleting or re-importing the system. Turning SNC back on requires its saved SNC partner name and RFC server details. VERTEX reaches SNC systems through its direct RFC connection (<code>authType: "snc"</code>). It builds on <a href="https://github.com/ysichov/VERTEX/pull/1">fr0ster-forks' auth-broker PR</a> and carries ADT requests over RFC through <code>sap-rfc-lite</code> and <code>SADT_REST_RFC_ENDPOINT</code>, without SAP ADT for VS Code. The 0.9.11 VSIX includes Windows and macOS native bindings, searches for an installed SAP RFC library on Windows, and imports SNC settings from SAP Logon. The SAP library and Secure Login Client remain local prerequisites; the RFC route offers Run in SAP and the debugger.
-</p>
-<p>
-  Acknowledgements: VERTEX's direct SNC transport uses fr0ster's <a href="https://github.com/fr0ster/mcp-abap-connection">connection library</a> and <a href="https://github.com/ysichov/VERTEX/pull/1">auth-broker integration</a>. <a href="https://github.com/enricoandreoli/adt-rfc-bridge">Enrico Andreoli's adt-rfc-bridge</a> documents an independent Python bridge and helped identify the installed SAP RFC library search path. VERTEX does not bundle that bridge.
+  Acknowledgements: the direct SNC transport uses fr0ster's <a href="https://github.com/fr0ster/mcp-abap-connection">connection library</a>;
+  the diagrams and analysis use <a href="https://github.com/abaplint/abaplint">abaplint</a>.
 </p>
 
-<p>
-  The ABAP editor and the AI-driven debugger
-  remain VS Code only by design, while the explorer pages are shared between
-  the two hosts. The VS Code extension also runs ABAP tests and ATC checks from chat, integrates
-  test results with Test Explorer and Problems, provides where-used and SAP keyword documentation,
-  and includes LLM Providers and Tools windows. The extension also hands transport
-  reviews to the AI assistants in the editor &mdash; Copilot, Claude Code, Codex
-  &mdash; over MCP. In VS Code, the built-in VERTEX Assistant can also use a
-  signed-in GitHub Copilot model through the VS Code Language Model API.
-  The panel's MCP list gives the VERTEX chat its SAP tools from VERTEX itself, ARC-1,
-  mcp-abap-adt or vibing-steampunk, started on the active system with its kept password
-  (Node.js, or the vsp executable for vibing-steampunk), or from the MCP server of SAP's
-  ABAP Development Tools for VS Code;
-  each is read-only unless its write access is chosen when it is picked.
-  In VS Code, VERTEX Orchestrator uses a separate planning provider and model before the chat model executes the task. Its default is ChatGPT / GPT-5.6-Sol / medium; the gear beside the MCP list configures the planner independently. Plans and review verdicts use validated object schemas with at most one format retry. Individual steps include dependencies, tool names, success criteria and failure actions. Plans contain context, steps and completion checks and must be verified by the executor. Repeated tool failures trigger bounded corrective planning with the actual results; after an intervention, unsupported proposed answers are withheld. Successful steps add no periodic supervisor calls.
-  Its LLM Providers window has independently collapsible model lists and API-key
-  providers for Anthropic, OpenAI, Mistral, Gemini, Groq, Cerebras, OpenRouter, NVIDIA and Vercel AI Gateway, and local models through LM Studio or Ollama.
-  Each provider's model list has a Clear all / Select all control.
-  Model-loading errors in the VS Code sidebar appear below the model selector.
-  Start the VERTEX chat by naming the package or program to inspect; a single match opens in Object Navigator.
-  The assistant can compare several transpiler selections in one request, using each run's recorded history as evidence.
-  With a local .abap file active, the chat can explain its current editor text without a SAP connection.
-  Local ABAP programs and classes also support Outline, definition navigation, UML, metrics,
-  Logic and Calls diagrams, and forward/backward usage analysis. VERTEX: Run with ABAP Transpiler on a local ABAP file asks the selection screen in a popup and shows the program's output; with a breakpoint set the same panel is the debugger, which stops there and steps on. For SAP programs, the selection screen uses selection texts and text symbols maintained in SAP. VERTEX Smart Debugger opens the whole panel for analysis. After a run, Formula and Expression of a chosen value keep only the path the run took, with the recorded values in brackets. VERTEX bundles the transpiler and runtime and generates a temporary project configuration when needed. Version history and SAP execution require a system.
-  ABAP Unit in CI is another use case for transpiler-compatible code: a GitHub Actions Node.js job can install the project's npm dependencies, transpile the sources and run the generated tests on each push without SAP. <a href="https://github.com/open-abap/open-abap-core/blob/main/package.json">open-abap-core</a> provides a working example; tests requiring SAP services need substitutes or a SAP-backed job.
-  In VS Code, Analyze Local ABAP Package on an Explorer folder shows UML and aggregate metrics for its .abap files, including subfolders.
-  An abapGit folder tree can contain subpackages. Source lookup prefers the opened file's folder and reports duplicate object names in a selected tree.
-  The command also runs from the VS Code Command Palette and then asks for the folder.
-  The main VS Code VERTEX Tools window also offers Local Folder in its type list, with UML and Metrics in the same window.
-  UML and Metrics show the current analysis stage, object count and elapsed time. Local folder analysis reuses parsed source when switching views until a file changes.
-  UML and Metrics show the current analysis stage, object count and elapsed time. Local folder analysis reuses parsed source when switching views until a file changes.
-  In package Metrics, Expand all / Collapse all above Objects opens or closes every object's unit table.
-  Package Metrics includes classes, interfaces and programs. Visual sizes each object by the selected metric and subdivides it into methods, forms and events. Double-click a unit or press Enter to open its source; click the object header to open its unit table. A program's forms and events, including those in its INCLUDEs, count toward its program. Indicators without fixed risk thresholds use one relative colour scale for all visible units in the package. The Visual Objects filter can hide classes, programs, interfaces or individual objects without rerunning analysis. The map heading shows the sum of the selected indicator for visible objects, such as total LOC.
-  For a class or program, Metrics switches between Table and Visual. In Visual, tile area scales with the selected indicator and each tile shows its unit name and value. CC and MI colours follow the table's risk grades; other indicators use a relative ranking within the object. Single-click a tile to select it; double-click or press Enter to open its source.
-  Visual has a 2–300% scale control and a Fit button that fits the whole map into the pane. Fit and the ± buttons animate scale changes; Ctrl+wheel changes scale immediately, as in UML, while ordinary scrolling moves around the map. Zoom changes tile space and reveals more labels without enlarging text.
-  Click a method in UML to open its source in the editor.
-  In VS Code, the source opens beside UML without switching focus.
-  Metrics method links in VS Code behave the same way, including package tables.
-  UML also lists interface methods in the classes that implement them.
-  FLOW and Value Origin diagrams support graphs with more than 500 edges in both hosts.
-  In Eclipse, Tools selects the active ADT class or program when opened from its editor.
-  Each provider can keep multiple named API keys; the user selects the active one.
-  For API-key providers, the VS Code chat displays token counts reported by the API across the complete answer.
-  With vertex.ai.logPath set, the VS Code assistant writes an Anthropic-compatible JSONL log for any provider. Direct API and Copilot model calls are recorded individually; CLI subscriptions are recorded per VERTEX invocation. LLM Providers has a folder picker and a gear for log settings.
-  The <b>📜 AI</b> button on the VERTEX panel opens a session report with filters for date, provider, model and prompt text, plus token totals and saved answer or tool details. Sessions and content sections start collapsed; user questions, plain model answers and technical details use three theme-aware accent colours. Tools, instructions and context open independently. Each tool call starts collapsed under its name; expand it to inspect its arguments, matching result and links. Program bodies are omitted from assistant logs and replaced by links to current objects. Assistant execution calls link to transpiler or SAP debug recordings. UML and metrics snapshots render from the logged JSON context, without rereading SAP. Select conversations and use <b>Clear selected conversations</b> to remove their JSONL logs while keeping execution recordings. The <b>📜 SAP</b> button opens the separate execution list with replay and deletion for SAP and transpiler recordings.
-  VERTEX registers ABAP itself; opening SAP source does not require another ABAP extension.
-  Claude Code works through its VS Code extension or a native CLI in PATH or
-  ~/.local/bin. When both are found, VERTEX asks which to use and saves the
-  choice in vertex.ai.claudeSource; change it in Settings to switch.
-  LLM Providers shows the active installation and offers a selector when both
-  are available.
-  Restart VS Code after installing the CLI.
-  LLM Providers checks Claude availability before offering models and reports a
-  missing executable when settings are opened.
-  Codex also detects a standalone native CLI, the executable in ChatGPT.app on
-  macOS or its global npm native executable through PATH. When the extension
-  and CLI are both present, VERTEX asks which to use and saves the choice in
-  vertex.ai.codexSource. Restart VS Code after installing a CLI.
-  The choice is also shown and changeable in LLM Providers.
-  Windows detection also checks %APPDATA%/npm.
-  MCP setup offers Codex or Claude Code and copies both review and debugger
-  registrations together. Every Welcome step includes an Info button explaining
-  system import, connection testing, assistant choice or MCP capabilities.
-  Open Welcome with VERTEX: Get Started in the Command Palette.
-  Recommended optional VS Code companion:
-  <a href="https://marketplace.visualstudio.com/items?itemName=larshp.vscode-abap">ABAP (larshp.vscode-abap)</a>.
-  The two transport-review MCP tools use standard ADT without VERTEX ABAP classes:
-  they read saved reviews from ZAVE_REVIEW through data preview, or build unsaved
-  reviews from version history. They cannot save or approve reviews.
-</p>
-
-<p>
-  In VS Code an assistant can also debug ABAP by itself: it sets breakpoints with conditions
-  that SAP evaluates, starts the program in WebGUI, reads what the program held where it
-  stopped, and ends with a verdict naming the line and the values. It changes no variable and
-  no code. The VERTEX chat has it built in; Claude Code and Codex connect to it over MCP.
-  <a href="https://github.com/ysichov/VERTEX/blob/main/vscode/README.md#debug-with-an-assistant">How it works</a>.
-</p>
-
-<p>
-  <b>VERTEX Smart Debugger</b> (VS Code, pilot) puts the same debugger on screen: the source with
-  breakpoints set by a click, the current line, the stack, every variable at once and tables in
-  grids. It is one session with the assistant's, so what either does, the other sees. A recorded run is drawn as a top-down chart of the calls and replayed stop by stop.
-  In a VERTEX source tab, <b>VERTEX Smart Debugger</b> reveals a right-hand panel for the
-  current object without replacing the source, and highlights its stopped line; F5-F8 step that same session.
-  Recorded SAP steps have a session ID from the first stop, so chat citations can open them before or after Save session.
-  A run started here with the ABAP Transpiler is registered in transpiler history and passed to chat with its run ID, so citations open its recorded steps.
-  Ordinary diagram nodes have transparent backgrounds, and their clickable labels keep the editor text color.
-  The editor's <b>VERTEX: Run SAP in web GUI</b> opens a program or a class/function module test screen without requiring a breakpoint.
-  <a href="https://github.com/ysichov/VERTEX/blob/main/vscode/README.md#visual-debug-the-debugger-on-screen-pilot">Details</a>.
-</p>
-
-<p>
-  In Eclipse, <b>VERTEX: Open VERTEX Smart Debugger</b> (it replaces Debug Monitor) shows the same page over
-  ADT's own debug session: stepping, frames, variables, tables and breakpoints are ADT's, and Run
-  opens the object in Eclipse's embedded SAP GUI. Eclipse navigates the source on live stops; Visual
-  Debug does not open another class tab on every step. It is in a local test build only, not on this
-  update site yet, and has not been checked on a live session.
-  <a href="https://github.com/ysichov/VERTEX/blob/main/eclipse/README.md#visual-debug-replaces-debug-monitor">Details</a>.
-</p>
-
-<p>Session logs render Markdown in questions, answers and reasoning, with blue user text, green answers and indigo reasoning.</p>
-<p><strong>VERTEX Code Agent (alpha) — VS Code.</strong> Claude Code uses its native file and command tools; other providers use the corresponding VERTEX tools. All providers share the review, build and logging workflow. Git working copies keep changes for file-by-file review; declined changes can be sent back with a reason. Builds run after Apply, failures return to the assistant, and optional session logs record the tools and review decisions. Local projects can use any language; the selected model must support tool calls. Outside Git, writes wait for review.</p>
 <footer>
   <a href="https://github.com/ysichov/VERTEX">Repository</a>
   <a href="https://github.com/ysichov/VERTEX#readme">README</a>
@@ -389,9 +166,5 @@ In VS Code, the <b>SNC</b> checkbox beside the SAP system selector switches betw
   link.href = document.getElementById("logo").src;
   document.head.appendChild(link);
 </script>
-<p>In VS Code, Vercel model rows show catalog capability icons: ⚒ tools, {} structured JSON, 💭 reasoning, ▣ image input, 🌐 provider web search, and ▤ context size. Hover or focus an icon for its meaning. × means explicitly unsupported; ? means the catalog does not report it. These declarations are separate from the paid connectivity check and do not rate quality. A model explicitly lacking image input cannot send screenshots; the prompt and pasted image remain available to switch models. Vision-capable compatible APIs receive actual image content. Models explicitly lacking tool calling receive text-only requests without VERTEX tools. Provider web-search metadata is separate from the prompt-triggered Gateway/Perplexity search tool. Catalog base prices appear as input/output USD per million tokens in the settings table. In the chat, the $ button, available only for Vercel, next to the model selector opens all capability explanations, context size, input/output rates and cache/tier notes in one dialog. These rates are not the cost of an individual request. In LLM Providers these values are separate table columns. Click a column heading to sort, and click again to reverse; unknown values stay last. Sorting preserves model selections and the Hide unavailable filter. Availability is saved separately from selection. Previously unchecked Vercel models are imported as unavailable once, based on their prior checks; other providers are unaffected and later unchecking does not imply unavailability. Narrow panes scroll the table horizontally.</p>
-<p>In VS Code, LLM Providers offers Check models beside each provider: short requests test only that provider’s listed models, with progress and the working-model count beside that provider’s button. Save keeps failed models out of chat choices. Stop in the provider header ends the scan after its current request. Normal provider usage applies; no SAP source is sent. Method Diff can use the class history when a separate method version directory is empty, with a notice.</p>
-<p>Session Logs groups provider files by conversation, with combined usage and provider/model labels per prompt. VS Code offers one Continue in chat button per conversation, continuing from its end. User text uses the chat’s theme blue, and buttons use the shared VERTEX controls.</p>
-<p>OpenRouter daily free-request counters appear after answers, during rate-limit waits and on failures when reported by the API. Switching model or provider cancels a pending retry wait and retains chat history. Exhausted daily free-model quotas stop without a short retry wait.</p>
 </body>
 </html>
