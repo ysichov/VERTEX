@@ -103,3 +103,20 @@ button:disabled {
   opacity: .45;
   cursor: default;
 }
+
+/* VS Code's vertex.animations set to off (motion.js puts the class on the page): nothing on the page moves. */
+body.vertex-motion-off *, body.vertex-motion-off *::before, body.vertex-motion-off *::after { animation: none !important; }
+
+/* Waiting: the VERTEX logo turns before a line that says what is being waited for, as it turns in the chat and before
+   the debugger's progress. .vertex-busy puts it before an element's text; .vertex-logo-turn is the logo as an element of
+   its own, 32 px as in the chat. The host fills VERTEX_LOGO with the extension's icon (VS Code: vertex-logo.js; Eclipse: PageView). Without
+   motion - VS Code's vertex.animations off, or auto when the system asks for reduced motion - it is not shown. */
+:root { --vertex-logo: url("/*VERTEX_LOGO*/"); }
+.vertex-busy::before, .vertex-logo-turn { content: ""; display: inline-block; flex: none; width: 32px; height: 32px; vertical-align: -11px;
+  background: var(--vertex-logo) center / contain no-repeat; animation: vertex-logo-turn 6s linear infinite; }
+.vertex-busy::before { margin-right: 8px; }
+@keyframes vertex-logo-turn { to { transform: rotate(360deg); } }
+body.vscode-reduce-motion:not(.vertex-motion-on) .vertex-busy::before, body.vscode-reduce-motion:not(.vertex-motion-on) .vertex-logo-turn { display: none; }
+@media (prefers-reduced-motion: reduce) { body:not(.vertex-motion-on) .vertex-busy::before, body:not(.vertex-motion-on) .vertex-logo-turn { display: none; } }
+body.vertex-motion-off .vertex-busy::before, body.vertex-motion-off .vertex-logo-turn { display: none; }
+

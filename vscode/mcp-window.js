@@ -39,7 +39,7 @@ function open(vscode, chatMcp) {
 
 function html(nonce) {
   const fs = require("fs"), path = require("path");
-  const controls = fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8");
+  const controls = require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8"));
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>

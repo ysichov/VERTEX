@@ -116,6 +116,40 @@ async function open(folder, options = {}) {
       }
       return result;
     },
+    /** Brings what the user changed in the folder since the copy last saw it into the copy, before the assistant
+        works again: otherwise the assistant reads and edits a version the user has already replaced. A file the
+        assistant has not changed takes the folder's version; one whose change still waits for review is merged
+        with the folder's, and where the two overlap the turn stops - the user decides that review first.
+        Returns the files brought over. */
+    async refresh() {
+      const listed = new Set();
+      const add = out => out.split("\0").filter(Boolean).forEach(file => listed.add(file));
+      // Changed in the folder against the starting commit, new in it, dirty when the copy was made, decided since.
+      add(await git(top, ["diff", "--name-only", "-z", "--no-renames", head]));
+      add(await git(top, ["ls-files", "--others", "--exclude-standard", "-z"]));
+      add(await git(dir, ["diff", "--name-only", "-z", "--no-renames", head, baseline]));
+      for (const file of bases.keys()) listed.add(file);
+      const brought = [];
+      for (const file of listed) {
+        const folderNow = await blobIn(top, file, true), base = await baseBlob(file);
+        if (folderNow === base) continue;
+        const copyNow = await blobIn(dir, file);
+        if (copyNow !== folderNow) {
+          if (copyNow === base) write(dir, file, read(top, file));
+          else {
+            const joined = await merge(file, base);
+            if (!joined) {
+              throw new Error(file + " changed in your folder while the assistant's change to it still waits for review, "
+                + "and the two overlap. Decide that review first, so the assistant works on your version.");
+            }
+            write(dir, file, joined);
+          }
+          brought.push(file);
+        }
+        bases.set(file, folderNow);
+      }
+      return brought;
+    },
     /** Carries the assistant's version - merged with the folder's when both changed it - into the user's folder. */
     async apply(change) {
       if (change.conflict) throw new Error(change.file + ": your change and the assistant's overlap; it was not overwritten.");

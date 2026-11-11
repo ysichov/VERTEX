@@ -29,7 +29,7 @@ var require=__vertexRequire;
 "use strict";
 // What the Eclipse Session Logs page calls as window.vertexLogs: VS Code's log reading (log-report.js), its snapshot
 // page (log-snapshot.js) and its reading of a logged object (session-log.js). Java reads and deletes the files.
-module.exports = { parseSession: __vertexRequire(1).parseSession, snapshotHtml: __vertexRequire(3).html,
+module.exports = { parseSession: __vertexRequire(1).parseSession, snapshotHtml: __vertexRequire(4).html,
   objectReference: __vertexRequire(2).objectReference };
 
 },
@@ -302,10 +302,10 @@ function open(vscode, options = {}) {
   const nonce = crypto.randomBytes(16).toString("hex");
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
-    .replace("</head>", () => "<style>" + fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8") + "</style></head>")
+    .replace("</head>", () => "<style>" + __vertexRequire(3).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
     .replace("</head>", '<script nonce="' + nonce + '">window.vertexCanContinue = true;</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
-    .replace("</head>", () => "<style>" + fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8") + "</style></head>");
+    .replace("</head>", () => "<style>" + __vertexRequire(3).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   const refresh = () => {
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
@@ -335,7 +335,7 @@ function open(vscode, options = {}) {
       } catch(error){vscode.window.showErrorMessage("VERTEX: "+error.message);}
     }
     if (message?.action === "openSnapshot") {
-      try { __vertexRequire(3).open(vscode, message.snapshot); }
+      try { __vertexRequire(4).open(vscode, message.snapshot); }
       catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openScreenshot") {
@@ -790,6 +790,24 @@ function fromConfig(config) {
 }
 
 module.exports = { configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+/* The VERTEX logo as a page needs it: vscode/images/logo.png, the transparent VERTEX mark, put in as a data URL where a
+   page or vertex-controls.css marks VERTEX_LOGO. Eclipse's PageView does the same from the copy in its bundle. */
+const fs = (new Proxy({}, {get:()=>()=>{throw new Error("Node fs is unavailable in browser analysis");}}));
+const path = (new Proxy({}, {get:()=>()=>{throw new Error("Node path is unavailable in browser analysis");}}));
+
+let url = "";
+function dataUrl() {
+  if (!url) url = "data:image/png;base64," + fs.readFileSync(path.join(__dirname, "images", "logo.png")).toString("base64");
+  return url;
+}
+function fill(text) { return String(text).split("/*VERTEX_LOGO*/").join(dataUrl()); }
+
+module.exports = { dataUrl, fill };
 
 },
 function(module,exports,__vertexRequire){

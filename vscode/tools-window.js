@@ -1,5 +1,5 @@
 "use strict";
-const fs = require("fs"), path = require("path");
+const fs = require("fs"), path = require("path"), motion = require("./motion"), logo = require("./vertex-logo");
 // Object Navigator is VS Code's: the page and the reading of ADT's trees are this host's. First in the picker and what a package, request, class or interface opens on.
 const NAVIGATOR = ["navigator", "Object Navigator", ["CLAS", "INTF", "DEVC", "TR", "PROG", "INCL", "FUNC"],
   "Object Navigator (action navigator) is the SE80 tree of a package, transport request, program, include (its program's tree), function module (its group), class or interface; each entry opens its source.", ["CLAS", "INTF", "DEVC", "TR", "PROG", "FUNC"]];
@@ -15,8 +15,9 @@ function html(pages, initial) {
   const scenes = read("vertex-task-visual.js");
   for (const name of ["chat", "metrics", "versions", "table", "navigator"]) bundle[name] = read(name + ".html").replace("/*VERTEX_LENS*/", () => lens)
     .replace("/*VERTEX_PAGE*/", () => shared).replace("/*VERTEX_TASK_VISUAL*/", () => scenes)
-    .replace("</head>", () => "<style>" + read("vertex-controls.css") + "</style></head>");
-  return read("tools.html")
+    .replace("</head>", () => "<style>" + logo.fill(read("vertex-controls.css")) + "</style></head>");
+  for (const name of Object.keys(bundle)) bundle[name] = motion.apply(bundle[name]);
+  return motion.apply(read("tools.html"))
     .replace("/*INIT*/null/*INIT*/", () => JSON.stringify(initial || null).replace(/</g, "\\u003c"))
     .replace("/*OBJECT_MODEL*/", () => read("object-tools.js") + "\nVertexObjects.enable(..." + JSON.stringify(NAVIGATOR) + ");")
     .replace("/*TOOL_ROUTES*/", () => read("tool-routes.js"))
@@ -26,7 +27,7 @@ function html(pages, initial) {
 // stays in the normal VS Code editor next to it; unlike Tools it has no object
 // picker, chat or duplicate source tab.
 function debugHtml(initial, generation) {
-  const controls = fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8");
+  const controls = logo.fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8"));
   // Every message carries the number of the page that sent it. A request of the page before, still on its way when the
   // page was written again, reaches the host after the new page is up; answered by the time it arrived, its answer went
   // to the new page, stood in the place of that page's first answer, and every answer after it was one off.
@@ -69,7 +70,10 @@ function debugHtml(initial, generation) {
     .replace("</head>", "<style>" + controls + "</style></head>")
     .replace("/*INIT*/null/*INIT*/", () => JSON.stringify(initial || null).replace(/</g, "\\u003c"))
     .replace("/*SELECTION-SCREEN-UI*/", () => fs.readFileSync(path.join(__dirname, "pages", "selection-screen-ui.js"), "utf8"))
+    // The extension's own icon, turning beside the progress of an analysis as it turns in the chat.
+    .replace("/*VERTEX_LOGO*/", () => logo.dataUrl())
     .replace("<body>", "<body class=\"vertex-docked-debug\">")
+    .replace(/^[\s\S]*$/, page => motion.apply(page))
     .replace("<script>", bridge + "<script>");
 }
 function allowed(resource, body) {

@@ -133,7 +133,8 @@ document.getElementById("chat-split").addEventListener("mousedown",e=>{
   const up=()=>{split.classList.remove("dragging");document.body.classList.remove("dragging");document.removeEventListener("mousemove",move);document.removeEventListener("mouseup",up);};
   document.addEventListener("mousemove",move);document.addEventListener("mouseup",up);
 });
-function notice(text){document.getElementById("notice").textContent=text;}
+// waiting: the line says what is being waited for, and the VERTEX logo turns before it until the next notice.
+function notice(text,waiting){const box=document.getElementById("notice");box.textContent=text;box.classList.toggle("vertex-busy",!!waiting);}
 VertexObjects.objects.forEach(o=>typeBox.add(new Option(o[1],o[0])));
 if(typeof sdeLocalFolder==="function"&&!initial?.boundObject)typeBox.add(new Option("Local Folder","LOCAL_FOLDER"),typeBox.querySelector('option[value="TR"]'));
 function fields(){
@@ -672,7 +673,7 @@ function searchMask(exact){
   const typed=nameBox.value.trim().toUpperCase(),mask=exact?typed+"*":typed,kind=ADT_TYPES[typeBox.value];
   if(!kind){notice("A mask is not searched for this type.");return;}
   if(!/^[A-Z0-9_/$*+]{1,40}$/.test(mask)){notice("Use letters, digits, _ / $ and the wildcards * and +.");return;}
-  notice("Searching "+mask+"...");
+  notice("Searching "+mask+"...",true);
   enqueue({path:"/sap/bc/adt/repository/informationsystem/search?operation=quickSearch&maxResults=100&objectType="+encodeURIComponent(kind)+"&query="+encodeURIComponent(mask)},raw=>{
     if(String(raw).startsWith("ERROR:")){notice(String(raw).slice(6));return;}
     const doc=new DOMParser().parseFromString(String(raw),"application/xml"),found=[];

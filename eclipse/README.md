@@ -1,6 +1,6 @@
 # Built-in Eclipse Assistant
 
-**Version: 0.9.79**
+**Version: 0.9.80**
 
 **Looking for the standalone AI Code Agent for local Git projects in any programming language?** Use the [VS Code extension](../vscode/README.md): that workflow reads, searches and edits an isolated working copy, with review and Apply, without a SAP connection. This document describes the Eclipse ADT plugin and its SAP workflows.
 
@@ -28,7 +28,8 @@ Neither has a menu item of its own; both work inside VERTEX Smart Debugger, as i
 - **Forward** - *Analyze flow path* on a breakpoint: how the value chosen in Variables is computed,
   down from that line across calls, as FLOW, Formula or Expression. A breakpoint the flow reaches
   stops it and asks: stop the analysis there, continue to the next breakpoint, or ignore
-  breakpoints; Escape is Stop, and what was found so far is shown.
+  breakpoints; Escape is Stop, and what was found so far is shown. While it runs, the VERTEX logo
+  turns at the start of its progress line.
 - **Backward** - *Where used* on a breakpoint: where the value chosen in Variables, or with none the
   routine's parameters and the attributes it uses, goes in its callers, up through theirs, followed
   through SAP's where-used. Customer code is walked with no depth limit; standard SAP code is where
@@ -185,9 +186,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. `.gitattributes` marks them `linguist-generated`, so GitHub collapses them in diffs and VERTEX Git review lists them without their diff. The feature and bundle sources are at `0.9.79.qualifier`; the checked-in update site carries build `0.9.79.20261111133601`.
+then regenerate. `.gitattributes` marks them `linguist-generated`, so GitHub collapses them in diffs and VERTEX Git review lists them without their diff. The feature and bundle sources are at `0.9.80.qualifier`; the checked-in update site carries build `0.9.80.20261111150707`.
 
-The local install archive is version `0.9.79.20261111133601`. Install its ZIP through
+The local install archive is version `0.9.80.20261111150707`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

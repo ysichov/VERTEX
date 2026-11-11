@@ -367,7 +367,7 @@ function usageText(reply) {
 
 // The extension's own mark, inline: the view loads nothing from disk.
 const LOGO = "data:image/png;base64,"
-  + require("fs").readFileSync(require("path").join(__dirname, "images", "icon.png")).toString("base64");
+  + require("fs").readFileSync(require("path").join(__dirname, "images", "logo.png")).toString("base64");
 
 function html(nonce) {
   return `<!DOCTYPE html>
@@ -414,14 +414,22 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages .vertex.task:not(.working)::before { visibility: hidden; }
 #messages .vertex.task.working::before { animation: vertex-task-turn 6s linear infinite; }
 @keyframes vertex-task-turn { to { transform: rotate(360deg); } }
-body.vscode-reduce-motion #messages .vertex.task.working::before { animation: none; }
-@media (prefers-reduced-motion: reduce) { #messages .vertex.task.working::before { animation: none; } }
+/* Without motion - vertex.animations off, or auto when Windows or VS Code ask for reduced motion - the turning logo
+   and the waiting scenes are not shown at all: a still one says nothing. */
+body.vscode-reduce-motion:not(.vertex-motion-on) #messages .vertex.task::before { display: none; }
+body.vscode-reduce-motion:not(.vertex-motion-on) #messages .vertex.task { padding-left: 0; }
+@media (prefers-reduced-motion: reduce) { body:not(.vertex-motion-on) #messages .vertex.task::before { display: none; } body:not(.vertex-motion-on) #messages .vertex.task { padding-left: 0; } }
+body.vertex-motion-off #messages .vertex.task::before { display: none; }
+body.vertex-motion-off #messages .vertex.task { padding-left: 0; }
+body.vertex-motion-off *, body.vertex-motion-off *::before, body.vertex-motion-off *::after { animation: none !important; }
 ${require(require("path").join(__dirname,"task-visual")).css}
 #messages .vertex.task[data-task-kind]::before{display:none}
 #messages .vertex.task .task-scene{display:block;width:100%;margin-top:6px}
 #vercel-row-break { display:none; }
 body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="opencode-api"] #vercel-row-break, body[data-provider="openrouter-api"] #vercel-row-break { display:block; flex-basis:100%; height:0; }
 #subprovider-select[hidden] { display:none; }
+/* No provider offered (none ticked in LLM Providers): there is nothing to choose, so the choice is not shown. */
+body.no-providers #provider-select, body.no-providers #vercel-row-break, body.no-providers #subprovider-select, body.no-providers .model-picker, body.no-providers #effort-select, body.no-providers #model-status { display:none !important; }
 body[data-provider="vercel-api"] #subprovider-select, body[data-provider="opencode-api"] #subprovider-select, body[data-provider="openrouter-api"] #subprovider-select { flex:0 1 150px; max-width:45%; }
 body[data-provider="vercel-api"] .model-picker, body[data-provider="opencode-api"] .model-picker, body[data-provider="openrouter-api"] .model-picker { flex:1 1 170px; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
@@ -492,7 +500,7 @@ body.vscode-reduce-motion #tools .tools-logo::before { animation: none; }
 @media (prefers-reduced-motion: reduce) { #tools .tools-logo::before { animation: none; } }
 ${require(require("path").join(__dirname,"code-review")).controlsCss}
 ${require(require("path").join(__dirname,"jev-panel")).css}
-</style></head><body>
+</style></head><body class="${require(require("path").join(__dirname,"motion")).mode()==="auto"?"":"vertex-motion-"+require(require("path").join(__dirname,"motion")).mode()}">
 <dialog id="mcp-start-dialog" aria-labelledby="mcp-start-title"><strong id="mcp-start-title">MCP server</strong><span class="mcp-start-scene" id="mcp-start-scene"></span><div id="mcp-start-status" role="status" aria-live="polite"></div><div id="mcp-start-options"></div><form method="dialog"><button type="button" class="secondary" id="mcp-start-go" hidden>Start</button><button type="button" class="secondary" id="mcp-start-node" hidden>Get Node.js</button><button class="secondary" id="mcp-start-close">Close</button></form></dialog>
 <dialog id="model-details-dialog" aria-labelledby="model-details-title"><strong id="model-details-title">Model details</strong><div id="model-capabilities"></div><form method="dialog"><button class="secondary">Close</button></form></dialog>
 <div class="line" id="context-controls"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
@@ -901,6 +909,7 @@ window.addEventListener('message', event => {
     const select = document.getElementById('provider-select');
     const previousProvider=select.value;
     select.replaceChildren(...(event.data.ai.providers || []).map(p => new Option(p.short, p.setting)));
+    document.body.classList.toggle('no-providers', !select.options.length);
     select.value = event.data.ai.provider;
     document.body.dataset.provider = select.value;
     if(previousProvider!==select.value){modelCatalog=[];drawModelPickers('');drawModelCapabilities();}

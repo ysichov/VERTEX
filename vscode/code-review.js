@@ -4,7 +4,7 @@
 const { randomBytes } = require("crypto");
 const taskVisual=require("./task-visual");
 const controlsPath=require("path").join(__dirname,"resources","vertex-controls.css");
-const CONTROLS=require("fs").readFileSync(require("fs").existsSync(controlsPath)?controlsPath:require("path").join(__dirname,"..","org.vertex.abap.ui","resources","vertex-controls.css"),"utf8");
+const CONTROLS=require("./vertex-logo").fill(require("fs").readFileSync(require("fs").existsSync(controlsPath)?controlsPath:require("path").join(__dirname,"..","org.vertex.abap.ui","resources","vertex-controls.css"),"utf8"));
 const OPERATION_STATUS_CSS = `/* Operation feedback uses the review status surface in every workflow. */
 #status,#commit-status,#push-status,#pr-status,#branch-status,#branch-message{--status-color:var(--vscode-textLink-foreground,var(--blue));position:relative;display:block;margin:12px 0;padding:12px 14px 12px 42px;border:1px solid var(--vscode-panel-border,var(--border));border-left:4px solid var(--status-color);border-radius:5px;background:var(--vscode-editorWidget-background,var(--header));color:var(--vscode-editor-foreground,var(--fg));font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left}
 #status:empty,#commit-status:empty,#push-status:empty,#pr-status:empty,#branch-status:empty,#branch-message:empty{display:none}
@@ -13,6 +13,10 @@ const OPERATION_STATUS_CSS = `/* Operation feedback uses the review status surfa
 [data-operation-status="error"]{--status-color:var(--vscode-errorForeground,var(--red))!important}
 [data-operation-status="warning"]{--status-color:var(--vscode-editorWarning-foreground,var(--blue))!important}
 [data-operation-status="working"]{border-left-style:dashed!important}
+/* Work in progress turns the VERTEX logo in the icon's place (vertex-controls.css); without motion the clock glyph stays. */
+[data-operation-status="working"]::before{content:"";top:6px;left:5px;width:32px;height:32px;background:var(--vertex-logo) center/contain no-repeat;animation:vertex-logo-turn 6s linear infinite}
+body.vscode-reduce-motion:not(.vertex-motion-on) [data-operation-status="working"]::before,body.vertex-motion-off [data-operation-status="working"]::before{content:attr(data-status-icon);top:10px;width:auto;height:auto;background:none;animation:none}
+@media (prefers-reduced-motion:reduce){body:not(.vertex-motion-on) [data-operation-status="working"]::before{content:attr(data-status-icon);top:10px;width:auto;height:auto;background:none;animation:none}}
 #commit-form #commit-status{margin:12px 0}`;
 const OPERATION_STATUS_SCRIPT = `function operationStatus(node,text,state='info'){
  node.textContent=text;
@@ -377,7 +381,7 @@ if(denyButton)denyButton.onclick=()=>{if(busy||done)return;busy=true;paint();api
 document.getElementById('apply').onclick=()=>{if(busy||done)return;const ids=files.map(f=>f.dataset.file);busy=true;paint();operationStatus(document.getElementById('status'),worktree?'Applying your decisions…':'Handing your decisions to the assistant…','working');const declined=ids.filter(id=>decisions[id]==='declined');api.postMessage({action:'apply',approved:ids.filter(id=>decisions[id]==='approved'),declined:worktree?declined.map(id=>({id,reason:reasonOf(id)})):declined});};
 const buildBar=document.getElementById('build-bar');
 if(buildBar){const run=remember=>{document.getElementById('build-run').disabled=document.getElementById('build-remember').disabled=true;api.postMessage({action:'build',remember});};document.getElementById('build-run').onclick=()=>run(false);document.getElementById('build-remember').onclick=()=>run(true);
-window.addEventListener('message',event=>{const m=event.data;if(!m)return;if(m.action==='offerBuild'&&m.command){document.getElementById('build-command').textContent=m.command;buildBar.hidden=false;document.getElementById('build-run').disabled=document.getElementById('build-remember').disabled=false;}else if(m.action==='buildStatus'){operationStatus(document.getElementById('status'),m.message,'info');}});}
+window.addEventListener('message',event=>{const m=event.data;if(!m)return;if(m.action==='offerBuild'&&m.command){document.getElementById('build-command').textContent=m.command;buildBar.hidden=false;document.getElementById('build-run').disabled=document.getElementById('build-remember').disabled=false;}else if(m.action==='buildStatus'){operationStatus(document.getElementById('status'),m.message,m.state||'info');}});}
 window.addEventListener('message',event=>{const m=event.data;if(!m)return;if(m.action==='saved'||m.action==='denied'){done=true;busy=false;operationStatus(document.getElementById('status'),m.action==='denied'?'Denied: the assistant writes none of these files.':worktree?(m.message||'Done: approved files are in your folder.'):'Done: the assistant writes the approved files; declined ones were refused.',m.action==='denied'?'warning':'success');paint();}else if(m.action==='error'){busy=false;paint();operationStatus(document.getElementById('status'),m.message,'error');}});paint();
 </script></body></html>`;
 }

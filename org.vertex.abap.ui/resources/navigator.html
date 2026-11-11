@@ -97,11 +97,11 @@ function item(node) {
 }
 function show(state) {
   loading = true;
-  status.textContent = "Reading " + state.name + "…";
+  status.textContent = "Reading " + state.name + "…"; status.classList.add("vertex-busy");
   document.getElementById("tree").replaceChildren();
   publishContext();
   load(state.name, state.type, (data, error) => {
-    loading = false;
+    loading = false; status.classList.remove("vertex-busy");
     if (error) { status.textContent = error; publishContext(); return; }
     // SAP's tree may have nothing under the object: said, not shown as a bare root.
     status.textContent = data.length ? "" : "SAP's tree has nothing under " + state.name + ".";

@@ -1,3 +1,65 @@
+## 2026-11-11 — 0.9.80: the galaxy icon back, and the landings that stayed behind
+
+The work below stayed uncommitted on one machine while 0.9.78 and 0.9.79 were pushed from another. Stashed, fast-forwarded to origin/main, unstashed; history.md, dev_history.md and sidebar-script.test.js conflicted and were resolved by keeping both sides.
+
+The 0.9.78 commit carried the regenerated transparent icon.png, which replaced the galaxy as the Marketplace icon; the user wanted the galaxy back. icon.png served both as the Marketplace icon and as the turning logo, so the files are split: images/icon.png is the galaxy again (from fcf7007), images/logo.png is the transparent mark, read by sidebar.js, vertex-logo.js and eclipse/prepare.js. icon.js still paints the transparent mark, now for logo.png (node images/icon.js images/logo.png).
+
+The stash pop wrote the files back with CRLF (core.autocrlf=true); vertex-page.test.js cuts functions at "
+}
+" and failed until they were returned to LF. The first 0.9.80 VSIX still said "Version: 0.9.79" in its README; fixed and rebuilt. Installed, VS Code went on showing the transparent icon on the extension page though the installed images/icon.png is the galaxy byte for byte: the page takes the icon from the Marketplace listing (0.9.79) or its cache.
+
+Validation: 1420 VS Code tests, 1414 pass; the six failures are the ones listed for the turning-logo landing (no keys or local servers, rounding, spacing, review plan). VSIX 0.9.80 carries images/icon.png = the galaxy and images/logo.png. Eclipse update site 0.9.80.20261111150707 built and copied into docs/.
+
+## 2026-11-11 — The turning logo for every wait, and a timer beside the scenes (0.9.80)
+
+Asked: every wait and every progress line with the new turning logo, and a digital timer beside the review scene, then also beside commit, push, MCP start and install.
+
+The logo became shared, 32 px as in the chat (first 16 px, which the user found too small in Metrics): vertex-controls.css declares --vertex-logo as url("/*VERTEX_LOGO*/") and two classes, .vertex-busy (the logo before an element's text) and .vertex-logo-turn (the logo as an element), with their own no-motion rules. VS Code fills the marker through vertex-logo.js wherever it reads vertex-controls.css (tools window and its bundle, debugger, extension.js pages and the controls asset, code-review pages, log report, MCP window, LLM Providers, Path to This Line); Eclipse's PageView now fills it in .css as well as .html, so every view that reads the stylesheet through readResource has it.
+
+Where it is used: metrics.html's .analysis-spinner and #diagram .hint.busy draw the logo instead of a bordered circle; visual-debug's .empty.loading too, and its #state line takes .vertex-busy through waitState() for the five waiting texts, kept by a MutationObserver until anything else is written there; navigator.html while it reads a node; tools.html notice(text, true) for the object search; versions.html status() and note() for any message ending in " ..." (all of its waiting texts do), and every line of build progress; code-review.js draws the logo in place of the clock glyph of the "working" operation status (commit, push, PR, branch and now the build after Apply, which worktree-review.js sends as working, then success or error), keeping the glyph without motion.
+
+The timer is part of vertex-task-visual.js: html() wraps every wide scene (install, start, wide review and commit, pr, push) with the timer beside it. It counts by CSS alone - two integer custom properties registered with @property, stepped each second and each minute by animations, shown through counters as mm:ss - so the scenes stay free of script timers; it pauses when the scene inside gets .scene-done (:has) and hides with the scene without motion. Approved from a browser preview of all six scenes in both themes.
+
+Writes to a few files failed with Errno 22 now and then (the files briefly held by another process); retried, nothing half-written.
+
+Validation: the whole VS Code suite, 1412 tests: 1404 pass once vertex-page.test.js was fixed (pageHtml now requires motion.js and vertex-logo.js; its sandbox got a require). Six fail for reasons outside this landing: Vercel 401 without a key, Ollama and LM Studio not running (two tests), a cost rounded to five digits, an ABAP spacing case, and the versions-chat review plan test, which fails the same on the committed versions.html. The logo lines and the timer were checked in a browser in Dark+ and Light+. Not seen inside VS Code or Eclipse.
+
+## 2026-11-11 — Animations setting (0.9.80)
+
+On a Windows VDI no animation turned. Checked there in the webview console: prefers-reduced-motion matched and body.vscode-reduce-motion did not - Windows had its animations off, as remote desktops do, and every VERTEX animation stops under reduced motion. Offered auto/on/off or a plain off; the user chose auto/on/off, and then asked that a scene without motion is not shown at all rather than frozen.
+
+motion.js reads vertex.animations and puts vertex-motion-on or vertex-motion-off on a page's first <body> (auto adds nothing); it falls back to auto where there is no vscode module (tests). It is applied to the sidebar, every page of the Tools window and its bundle, VERTEX Smart Debugger, and extension.js pageHtml pages. The reduced-motion rules now read body:not(.vertex-motion-on) and hide instead of stopping: the chat's turning logo (its slot padding goes too), every vertex-task-visual scene, the debugger's logo. Off hides them and stops any other animation (vertex-controls.css, sidebar). metrics.html's one JS animation checks the classes too. The setting takes effect when a view is opened again; no live reload.
+
+Validation: motion.test.js (classes, unknown value, the hiding rules), sidebar, task-visual and visual-debug page tests passed - 71 in all; the old sidebar test that required the logo to freeze was rewritten for hiding. Not tried on the VDI.
+
+## 2026-11-11 — No provider choice without a provider (VS Code 0.9.80)
+
+With every provider unticked in LLM Providers, the sidebar still drew the provider select, "no models" and Effort. modelConfig.offered() returns nothing then, so the sidebar now marks body.no-providers when the provider select gets no options and hides the provider, subprovider, model picker, effort select and model status; New conversation stays.
+
+Validation: a sidebar-script test checks the rule and the toggle; 11 sidebar tests passed. Not seen in VS Code.
+
+## 2026-11-11 — The assistant's copy follows your own edits (VS Code 0.9.80)
+
+Found in a session log (a free-model conversation on a C# player): gpt-5-nano broke channels.json in the agent working copy and left it undecided; the user fixed the file by hand in the folder, and could not apply the review (apply rightly refused a file changed during the review). Every later model - nano, codex-max, qwen - kept reading the broken copy ("the file starts with 1:", which the user denied), and codex-max "fixed" that copy by dropping CatalogKey and Headers, which the broken version no longer had. The copy was made once per conversation and never saw the folder again.
+
+agent-worktree.js gains refresh(): the files changed in the folder against the starting commit, new in it, dirty at the start or decided since are compared, by blob id, with their base. A file the copy has not changed takes the folder's version; one with a change waiting for review is merged with git merge-file as apply already does; an overlap throws, naming the file, and leaves the copy untouched - the user decides the review first. The base moves to the folder's version, so the review measures the assistant's change against what the user now has. chat.js calls refresh() right after copyFor() on every turn and tells the model, in the review note, which files to read again.
+
+The first writing of this put a real newline and a NUL byte into the code (escapes passed through a Python here-string); node --check caught the first, the NUL turned agent-worktree.js binary - both repaired before testing.
+
+Validation: two new agent-worktree tests (an untouched file and a new file brought over; a waiting change merged, then an overlap refused with the copy unchanged); 15 working-copy tests and the chat test files passed. Not tried in a live conversation.
+
+## 2026-11-11 — Turning logo during flow analysis, plain links in the flow tree (0.9.80)
+
+The analysis gave only a status line for its 30-50 seconds. A long series of chat demos went nowhere in the end: a dashed busy frame with diagram edges drawn afterwards; a plane, a review beam and a value-path strip in the shared scenes; waves, spirals, mazes, fractals; a growing fractal tree on a canvas (built and packaged, then replaced); and a BSE strip copied from the commit window's generation scene (bse in vertex-task-visual.js with a taskVisual asset in both hosts, built and packaged, with an end frame and a check), finally dropped too. Timer-bound pictures were rejected because the analysis reports no remaining time; fast cycles read as flicker; the strip took more room than the panel has. All of that code is reverted.
+
+What stays is the chat's own sign of work: its logo, vscode/images/icon.png, 32 px, a 6 s turn (vertex-task-turn in sidebar.js), as #notice.busy:before at the start of the progress line while analyzePath runs - set inside analyzePath with a counter, since choosing a value again or moving the range starts an analysis without the button and at first showed no logo (first placed on the right; the user moved it to the left, before the text). A generated 48 px copy and a monochrome mask of activity.svg were tried and refused: the logo is the one file. The page marks it with VERTEX_LOGO; VS Code's tools-window.js puts in the file as a data URL; eclipse/prepare.js copies it into the bundle as assistant/vertex-logo.png (git-ignored) and PageView.readResource puts it in the same way.
+
+In the shared flow view (vertex-flow.js) button.location - every statement and routine in the tree - drew the page's framed button. It is now a plain link: no border, background or shadow, underlined on hover.
+
+On a light theme the icon was a dark tile turning on white, its corners swinging. A transparent background was tried as is and was pale on white, because the arms were light added to a dark sky. icon.js now paints for any background: no tile, sky, halo or stars; deep arm colours whose glow is opacity; an amber core in place of the white one; arms mixed by weight where they meet (painted one over another, the last cut the one beneath - the user saw a broken arm); and a smooth fade before the image's edge, which the tile used to hide. logo.png is generated from it: the chat's turning logo and the debugger's change together; the Marketplace icon is the galaxy in icon.png (see 0.9.80).
+
+Validation: 55 visual-debug page tests and 25 flow view tests passed. The new icon was checked at 32 and 128 px on dark and light in a browser preview before regenerating. The logo was checked turning in a browser demo in Dark+ and Light+ with the original file; neither change was seen inside VS Code or Eclipse.
+
 ## 2026-11-11 — Jev option and scale editors (VS Code 0.9.78)
 
 Choose an option and Rate on a scale use a compact one-line row per category or level: a labeled field with up, down and remove icon buttons on the same line, plus Add below. At least two rows are required by the Jev API. Scale levels are numbered from 0 in ascending order. Entered values survive question-type changes and saved inputs restored with Continue. Empty rows and excess levels are rejected before sending. Existing shared secondary buttons, question field styling and theme colors are reused. Eclipse is not rebuilt for this VS Code-only change.

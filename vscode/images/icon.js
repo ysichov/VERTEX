@@ -1,12 +1,15 @@
 "use strict";
 
-// Draws the extension icon and writes it as a PNG, with nothing installed:
+// Draws the transparent VERTEX mark (images/logo.png, the turning logo; the
+// Marketplace icon is the galaxy in images/icon.png) and writes it as a PNG, with nothing installed:
 // Node's own zlib does the compression and the rest is a few hundred bytes of
-// chunk headers. The field is smooth, so 2x2 supersampling is only there for
-// the rounded corner.
+// chunk headers. 2x2 supersampling smooths the arms' edges.
 //
 // The mark is a spiral galaxy - a vertex is where things meet, and everything
 // here spirals into one core. Three arms, one per tool: Data, Code, Version.
+// The background is transparent, so the same icon reads on a dark and a light
+// theme: the arms are deep colours with their glow as opacity, not light added
+// to a dark sky, which on white faded to nothing.
 
 const fs = require("fs");
 const zlib = require("zlib");
@@ -15,32 +18,21 @@ const path = require("path");
 const SIZE = Number(process.argv[3]) || 256;
 const SS = 2;
 
-const SPACE = [0x14, 0x18, 0x22];               // the dark between the arms
-const CORE = [0xff, 0xf3, 0xd8];                // the core, warm white
+const CORE = [0xe0, 0x8a, 0x1e];                // the core, warm amber
+const HEART = [0xff, 0xd0, 0x70];               // its bright centre
 const ARMS = [
-  [0x5a, 0xa9, 0xe6],                           // Data
-  [0x6c, 0xc0, 0x7a],                           // Code
-  [0xe0, 0xb3, 0x41]                            // Version
+  [0x1f, 0x6f, 0xc0],                           // Data
+  [0x2e, 0x93, 0x46],                           // Code
+  [0xc9, 0x86, 0x0c]                            // Version
 ];
 
-const RADIUS = 0.22;        // corner radius of the tile, fraction of the side
 const TWIST = 2.6;          // how tightly the arms wind: bigger is tighter
 const ARM_WIDTH = 0.098;    // half width of an arm at the rim
-const CORE_RADIUS = 0.105;
+const CORE_RADIUS = 0.11;
+const HEART_RADIUS = 0.05;
 const DISC = 0.62;          // the arms fade out by here
-
-function insideRoundedSquare(u, v) {
-  const r = RADIUS;
-  const dx = Math.max(r - u, 0, u - (1 - r));
-  const dy = Math.max(r - v, 0, v - (1 - r));
-  return Math.hypot(dx, dy) <= r;
-}
-
-/** Deterministic noise in [0,1), so the stars are the same in every build. */
-function hash(x, y) {
-  const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
-  return n - Math.floor(n);
-}
+const EDGE = 0.98;          // and are gone before the image's edge, measured from the centre
+const EDGE_FADE = 0.3;
 
 function wrapAngle(a) {
   while (a > Math.PI) { a -= 2 * Math.PI; }
@@ -48,46 +40,37 @@ function wrapAngle(a) {
   return a;
 }
 
-/** Light at one sample, as r/g/b in 0..255, or null outside the tile. */
-function sample(u, v) {
-  if (!insideRoundedSquare(u, v)) {
-    return null;
-  }
+/** Paint one layer over what is there: colour and coverage, premultiplied. */
+function over(pixel, colour, alpha) {
+  const a = Math.max(0, Math.min(1, alpha));
+  for (let c = 0; c < 3; c++) { pixel[c] = colour[c] * a + pixel[c] * (1 - a); }
+  pixel[3] = a + pixel[3] * (1 - a);
+}
 
+/** One sample as premultiplied r/g/b (0..255) and coverage (0..1). */
+function sample(u, v) {
   // Centre the disc and tilt it a little: a galaxy seen exactly face on looks
   // like a logo of a fan, and one seen edge on is a line.
   const x = (u - 0.5) * 2;
   const y = (v - 0.5) * 2 / 0.82;
-
   const r = Math.hypot(x, y);
   const theta = Math.atan2(y, x);
+  const pixel = [0, 0, 0, 0];
 
-  let red = SPACE[0];
-  let green = SPACE[1];
-  let blue = SPACE[2];
-
-  // A faint halo, so the tile is not flat black where no arm reaches.
-  const halo = Math.exp(-(r * r) / (2 * 0.42 * 0.42)) * 0.30;
-  red += 0x2a * halo;
-  green += 0x33 * halo;
-  blue += 0x4d * halo;
-
-  // Stars, thinner towards the core where the light drowns them.
-  const sx = Math.floor(u * 190);
-  const sy = Math.floor(v * 190);
-  const star = hash(sx, sy);
-  if (star > 0.9975 && r > 0.30) {
-    const twinkle = 0.45 + 0.55 * hash(sy, sx);
-    red += 0xd0 * twinkle;
-    green += 0xdc * twinkle;
-    blue = Math.min(255, blue + 0xff * twinkle);
-  }
+  // Near the image's edge the arms fade out smoothly rather than being cut off by it.
+  const e = Math.max(0, Math.min(1, (EDGE - Math.hypot(u - 0.5, v - 0.5) * 2) / EDGE_FADE));
+  const edge = e * e * (3 - 2 * e);
 
   // The arms. A logarithmic spiral has theta = phi + TWIST * ln(r), so the
   // distance across an arm is the angular gap times the radius - which keeps
-  // the arm about as wide near the core as at the rim.
+  // the arm about as wide near the core as at the rim. Where arms meet, their
+  // colours mix by weight and their coverage adds up: painted one over another,
+  // the last arm cut the one beneath it.
   if (r > 0.02) {
     const spiral = TWIST * Math.log(r);
+    const mixed = [0, 0, 0];
+    let weight = 0;
+    let clear = 1;
     for (let k = 0; k < ARMS.length; k++) {
       const phi = (2 * Math.PI * k) / ARMS.length;
       const across = Math.abs(wrapAngle(theta - (phi + spiral))) * r;
@@ -96,41 +79,39 @@ function sample(u, v) {
       const along = Math.exp(-(r * r) / (2 * DISC * DISC)) * Math.min(1, r / 0.16);
       // A little over one keeps the arms legible where the icon is drawn at
       // forty-odd pixels, which is the size that actually gets looked at.
-      const glow = Math.min(1, 1.25 * Math.exp(-(across * across) / (2 * width * width))) * along;
-      red += ARMS[k][0] * glow;
-      green += ARMS[k][1] * glow;
-      blue += ARMS[k][2] * glow;
+      const glow = Math.min(1, 1.25 * Math.exp(-(across * across) / (2 * width * width))) * along * edge;
+      for (let c = 0; c < 3; c++) { mixed[c] += ARMS[k][c] * glow; }
+      weight += glow;
+      clear *= 1 - Math.min(1, glow * 1.1);
+    }
+    if (weight > 0) {
+      pixel[3] = 1 - clear;
+      for (let c = 0; c < 3; c++) { pixel[c] = (mixed[c] / weight) * pixel[3]; }
     }
   }
 
   // The core last, so it sits on top of where the arms converge.
-  const core = Math.exp(-(r * r) / (2 * CORE_RADIUS * CORE_RADIUS));
-  red += CORE[0] * core;
-  green += CORE[1] * core;
-  blue += CORE[2] * core;
-
-  return [Math.min(255, red), Math.min(255, green), Math.min(255, blue)];
+  over(pixel, CORE, 1.2 * Math.exp(-(r * r) / (2 * CORE_RADIUS * CORE_RADIUS)));
+  over(pixel, HEART, Math.exp(-(r * r) / (2 * HEART_RADIUS * HEART_RADIUS)));
+  return pixel;
 }
 
 function render() {
   const pixels = Buffer.alloc(SIZE * SIZE * 4);
+  const n = SS * SS;
   for (let py = 0; py < SIZE; py++) {
     for (let px = 0; px < SIZE; px++) {
-      let r = 0, g = 0, b = 0, covered = 0;
+      const sum = [0, 0, 0, 0];
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const c = sample((px + (sx + 0.5) / SS) / SIZE, (py + (sy + 0.5) / SS) / SIZE);
-          if (c) {
-            r += c[0]; g += c[1]; b += c[2]; covered++;
-          }
+          const s = sample((px + (sx + 0.5) / SS) / SIZE, (py + (sy + 0.5) / SS) / SIZE);
+          for (let c = 0; c < 4; c++) { sum[c] += s[c]; }
         }
       }
-      const n = SS * SS;
+      const alpha = sum[3] / n;
       const i = (py * SIZE + px) * 4;
-      pixels[i] = covered ? Math.round(r / covered) : 0;
-      pixels[i + 1] = covered ? Math.round(g / covered) : 0;
-      pixels[i + 2] = covered ? Math.round(b / covered) : 0;
-      pixels[i + 3] = Math.round((covered / n) * 255);
+      for (let c = 0; c < 3; c++) { pixels[i + c] = alpha ? Math.round(sum[c] / n / alpha) : 0; }
+      pixels[i + 3] = Math.round(alpha * 255);
     }
   }
   return pixels;

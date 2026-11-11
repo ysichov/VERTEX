@@ -464,7 +464,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
 }
 
 function html(nonce, selected, providers) {
-  const controls = require("fs").readFileSync(require("path").join(__dirname, "resources", "vertex-controls.css"), "utf8");
+  const controls = require("./vertex-logo").fill(require("fs").readFileSync(require("path").join(__dirname, "resources", "vertex-controls.css"), "utf8"));
   const init = JSON.stringify({ use: selected, providers }).replace(/</g, "\\u003c");
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">

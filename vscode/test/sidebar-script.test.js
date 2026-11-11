@@ -98,11 +98,11 @@ test("sidebar selection uses the VS Code clipboard for macOS Copy", () => {
   assert.equal(sent[0].text, "Selected answer");
 });
 
-test("task logo animation is disabled only by reduced-motion rules",()=>{
+test("task logo turns, and is hidden only without motion unless vertex.animations is on",()=>{
  const source=fs.readFileSync(path.join(__dirname,"..","sidebar.js"),"utf8");
  assert.match(source,/#messages \.vertex\.task\.working::before \{ animation: vertex-task-turn 6s linear infinite;/);
  assert.doesNotMatch(source,/^#messages \.vertex\.task\.working::before \{ animation: none;/m);
- assert.match(source,/body\.vscode-reduce-motion #messages \.vertex\.task\.working::before \{ animation: none;/);
+ assert.match(source,/body\.vscode-reduce-motion:not\(\.vertex-motion-on\) #messages \.vertex\.task::before \{ display: none; \}/);
 });
 
 test('web citations create only HTTP links through host openExternal',()=>{
@@ -145,4 +145,10 @@ test('focused model selector copies the exact model ID rather than its display l
  handlers.keydown({key:'c',ctrlKey:true,preventDefault(){},stopPropagation(){}});
  assert.equal(sent.at(-1).text,'claude-fable-5-2');assert.equal(sent.at(-1).action,'copyAnswer');
  field.value='';handlers.keydown({key:'c',metaKey:true});assert.equal(sent.length,1);
+});
+
+test("with no provider offered the provider, model and effort choice is hidden", () => {
+  const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "sidebar.js"), "utf8");
+  assert.match(source, /body\.no-providers #provider-select,[^{]*body\.no-providers \.model-picker,[^{]*body\.no-providers #effort-select[^{]*\{ display:none !important; \}/);
+  assert.match(source, /document\.body\.classList\.toggle\('no-providers', !select\.options\.length\);/);
 });

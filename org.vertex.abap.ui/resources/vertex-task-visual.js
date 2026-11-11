@@ -53,14 +53,18 @@ function startScene(name) {
 }
 
 // name is the MCP server's, written on the hull in the start scene.
+/* A digital timer beside a wide scene: minutes and seconds since the scene was put on the page, counted by CSS alone
+   (two integer custom properties stepped by animations and shown through counters), so the scenes stay timer-free. The
+   end frame (.scene-done) stops it at the time the work took. */
+const timed = scene => `<span class="task-timed">${scene}<span class="task-timer" aria-hidden="true"></span></span>`;
 function html(kind, wide = false, name = "") {
-  if (kind === "install") return `<span class="vertex-task-visual task-install" aria-hidden="true">${installGears}</span>`;
-  if (kind === "start") return `<span class="vertex-task-visual task-start" aria-hidden="true">${startScene(name)}</span>`;
+  if (kind === "install") return timed(`<span class="vertex-task-visual task-install" aria-hidden="true">${installGears}</span>`);
+  if (kind === "start") return timed(`<span class="vertex-task-visual task-start" aria-hidden="true">${startScene(name)}</span>`);
   // The wide review is the generation strip: the commit strip's host set to its generate operation.
-  if (kind === "review" && wide) return `<span class="task-wide-host" data-operation="generate"><span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${commitWide}${reviewWide}</span></span>`;
-  if (kind === "pr") return `<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${prWide}</span>`;
-  if (kind === "push") return `<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${pushWide}</span>`;
-  if (kind === "commit" && wide) return `<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${commitWide}${reviewWide}</span>`;
+  if (kind === "review" && wide) return timed(`<span class="task-wide-host" data-operation="generate"><span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${commitWide}${reviewWide}</span></span>`);
+  if (kind === "pr") return timed(`<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${prWide}</span>`);
+  if (kind === "push") return timed(`<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${pushWide}</span>`);
+  if (kind === "commit" && wide) return timed(`<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${commitWide}${reviewWide}</span>`);
   return `<span class="vertex-task-visual task-${kind === "commit" ? "commit" : "review"}" aria-hidden="true">${kind === "commit" ? commit : review}</span>`;
 }
 const css = `
@@ -198,8 +202,24 @@ const css = `
 @keyframes vertex-ph-ring{0%,58%{transform:scale(.8);opacity:0}62%{opacity:.7}82%,100%{transform:scale(1.9);opacity:0}}
 @keyframes vertex-ph-remote{0%,60%{stroke-dashoffset:100;opacity:.3}78%,94%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:.3}}
 @keyframes vertex-ph-check{0%,64%{stroke-dashoffset:10;opacity:0}66%{opacity:1}74%,92%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
-body.vscode-reduce-motion .vertex-task-visual *{animation:none!important}
-@media(prefers-reduced-motion:reduce){.vertex-task-visual *{animation:none!important}}
+.task-timed{display:flex;align-items:center;gap:12px;width:100%}
+.task-timed>.vertex-task-visual,.task-timed>.task-wide-host{flex:1 1 auto;min-width:0}
+@property --task-min{syntax:"<integer>";inherits:false;initial-value:0}
+@property --task-sec{syntax:"<integer>";inherits:false;initial-value:0}
+.task-timer{flex:none;padding:2px 7px;border:1px solid var(--vscode-focusBorder,currentColor);border-radius:4px;color:var(--vscode-focusBorder,var(--vscode-textLink-foreground,Highlight));
+  font:600 13px/1 Consolas,"Cascadia Mono","Courier New",monospace;letter-spacing:.08em;font-variant-numeric:tabular-nums;
+  animation:vertex-task-min 3600s steps(60,end) infinite,vertex-task-sec 60s steps(60,end) infinite;counter-reset:task-min var(--task-min) task-sec var(--task-sec)}
+.task-timer::after{content:counter(task-min,decimal-leading-zero) ":" counter(task-sec,decimal-leading-zero)}
+@keyframes vertex-task-min{from{--task-min:0}to{--task-min:60}}
+@keyframes vertex-task-sec{from{--task-sec:0}to{--task-sec:60}}
+.task-timed:has(.scene-done) .task-timer,.task-timed.scene-done .task-timer{animation-play-state:paused}
+/* Without motion (vertex.animations off, or auto with reduced motion asked for) a scene is not shown: a still one says nothing. */
+body.vscode-reduce-motion:not(.vertex-motion-on) .task-timed{display:none!important}
+@media(prefers-reduced-motion:reduce){body:not(.vertex-motion-on) .task-timed{display:none!important}}
+body.vertex-motion-off .task-timed{display:none!important}
+body.vscode-reduce-motion:not(.vertex-motion-on) .vertex-task-visual{display:none!important}
+@media(prefers-reduced-motion:reduce){body:not(.vertex-motion-on) .vertex-task-visual{display:none!important}}
+body.vertex-motion-off .vertex-task-visual{display:none!important}
 
 .task-install,.task-start{display:block;width:100%;height:auto}
 .task-install{aspect-ratio:10/1}.task-start{aspect-ratio:1000/140}

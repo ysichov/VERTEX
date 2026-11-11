@@ -23,6 +23,19 @@ button:disabled{opacity:.45;cursor:default}
 #runline #why{overflow:hidden;text-overflow:ellipsis}
 #notice{flex:none;padding:4px 8px;display:none;color:var(--vscode-charts-green,#23794a);border-bottom:1px solid var(--vscode-panel-border,GrayText);white-space:pre-wrap}
 #notice.on{display:block}
+/* While a flow path is analysed, the VERTEX logo turns at the start of the progress line, before its text, as the chat's
+   logo turns while a request runs: the same icon (vscode/images/logo.png, put in by the host where VERTEX_LOGO marks
+   it), the same 32 px and 6 s turn. */
+#notice.busy.on{display:flex;align-items:center}
+#notice.busy:before{content:"";flex:none;margin-right:8px;width:32px;height:32px;background:url("/*VERTEX_LOGO*/") center/contain no-repeat;animation:vertex-task-turn 6s linear infinite}
+@keyframes vertex-task-turn{to{transform:rotate(360deg)}}
+/* Without motion (vertex.animations off, or auto with reduced motion asked for) the logo is not shown: a still one says nothing. */
+body.vscode-reduce-motion:not(.vertex-motion-on) #notice.busy:before{display:none}
+@media (prefers-reduced-motion:reduce){body:not(.vertex-motion-on) #notice.busy:before{display:none}}
+body.vertex-motion-off #notice.busy:before{display:none}
+body.vscode-reduce-motion:not(.vertex-motion-on) .empty.loading:before{display:none}
+@media (prefers-reduced-motion:reduce){body:not(.vertex-motion-on) .empty.loading:before{display:none}}
+body.vertex-motion-off .empty.loading:before{display:none}
 .vscode-dark #notice,.vscode-high-contrast #notice{color:var(--vscode-charts-green,#6fcf97)}
 main{flex:1;display:flex;min-height:0}
 #left{flex:1;display:flex;flex-direction:column;min-width:200px}
@@ -124,7 +137,7 @@ button.data-composed.vx-empty,.rf-empty button.data-composed,.rf-empty,.rf-empty
 .rf-assigned{color:var(--vscode-testing-iconPassed,var(--vscode-charts-green))}.rf-pending{color:var(--vscode-testing-iconFailed,var(--vscode-errorForeground))}
 .empty{padding:4px 8px;color:var(--vscode-descriptionForeground,GrayText);font-family:system-ui,sans-serif}
 .empty.loading{display:flex;align-items:center;gap:8px}
-.empty.loading:before{content:"";width:12px;height:12px;border:2px solid var(--vscode-panel-border,GrayText);border-top-color:var(--vscode-focusBorder,#0a66c2);border-radius:50%;animation:vertex-spin .8s linear infinite}
+.empty.loading:before{content:"";flex:none;width:32px;height:32px;background:var(--vertex-logo) center/contain no-repeat;animation:vertex-logo-turn 6s linear infinite}
 @keyframes vertex-spin{to{transform:rotate(360deg)}}
 #filter{width:110px}
 table.vars{border-collapse:collapse;width:100%;table-layout:fixed}
@@ -421,6 +434,11 @@ function sdeOriginReady(raw){
 function ask(send,raw){return new Promise(function(ok,fail){queued.push({ok:ok,fail:fail,raw:raw===true,send:send});sdeNext();});}
 function debug(command,args){if(typeof sdeDebug!=="function")return Promise.reject(new Error("VERTEX Smart Debugger needs the VS Code host."));return ask(function(){sdeDebug(command,args||{});});}
 // A run that failed stays said: clearing the notice brings it back until another run starts.
+/* A state line that says what is being waited for turns the logo before it (vertex-controls.css .vertex-busy) until
+   anything else is written there. */
+var stateWaitText="";
+function waitState(text){stateWaitText=text;$("state").textContent=text;}
+new MutationObserver(function(){var line=$("state");line.classList.toggle("vertex-busy",!!stateWaitText&&line.textContent===stateWaitText);}).observe($("state"),{childList:true,characterData:true,subtree:true});
 function notice(text){var n=$("notice");text=text||(typeof runFailure!=="undefined"?runFailure:"");n.textContent=text||"";n.classList.toggle("on",!!text);}
 /* How the run ended. SAP ends a program the same way whether it finished or
    died of a short dump, so the counter of endings cannot tell them apart -
@@ -692,7 +710,14 @@ function pathUrl(w,b){
   if(String(w.type).toUpperCase()==="CLAS")return "/sap/bc/adt/oo/classes/"+encodeURIComponent(String(w.name).toLowerCase())+"/source/main";
   return String(w.name).toUpperCase()===String(b.name).toUpperCase()?b.url:"/sap/bc/adt/programs/programs/"+encodeURIComponent(String(w.name).toLowerCase())+"/source/main";
 }
+/* Every analysis of a path - from its button, a value chosen again, a range dragged - turns the logo before its
+   progress line while it runs; with two at once it stops when the last one settles. */
+var pathAnalyses=0;
 function analyzePath(b){
+  pathAnalyses++;$("notice").classList.add("busy");
+  return analyzePathNow(b).finally(function(){if(--pathAnalyses===0)$("notice").classList.remove("busy");});
+}
+function analyzePathNow(b){
   if(typeof sdeOrigin!=="function")return Promise.reject(new Error("This host cannot run the analysis."));
   var type=String(b.objectType||"").toUpperCase();
   if(type!=="PROG"&&type!=="CLAS")return Promise.reject(new Error("The path is analysed from a point in a program, an include or a class for now."));
@@ -927,7 +952,7 @@ Object.keys(STEP).forEach(function(id){$(id).onclick=function(){
     // The record ends before the target: the paused program runs on to it.
     if(from<last)replay(last);
     var kind={into:"into",over:"over",out:"out",cont:"continue"}[id];
-    localFetching=true;$("state").textContent="Running to the next stop.";
+    localFetching=true;waitState("Running to the next stop.");
     debug("step",{kind:kind,live:true}).then(function(result){
       if(result.error)throw new Error(result.error);
       if(result.picture)picture=result.picture;
@@ -2541,7 +2566,7 @@ $("run").onclick=function(){
     var given=document.querySelectorAll('#local-selection [data-parameter]');if(given.length){selection.$parameters={};
       given.forEach(function(input){selection.$parameters[input.getAttribute("data-parameter")]=input.type==="checkbox"?(input.checked?"X":""):input.value;});}
     flow={edges:{},nodes:{},order:[]};flowPath=[];localVarCache={};recordedOpen={};recordedPages={};replayAt=null;recKey="";localEnded=false;localFetching=false;drawPos();
-    $("stats").textContent="";$("state").textContent="Transpiling and running to the first breakpoint.";$("bse-workspace").hidden=true;
+    $("stats").textContent="";waitState("Transpiling and running to the first breakpoint.");$("bse-workspace").hidden=true;
     notice("");debug("run",{selection:selection}).then(function(result){
       if(runId!==localRunSequence)return;
       localResult(result);
@@ -2568,7 +2593,7 @@ function sapRun(){
   var p=$("program").hidden?String(INITIAL.name):$("program").value.trim();
   // A program is run itself: the empty field opens a test screen only for a class or a function module.
   if(!p&&["PROG","REPS"].indexOf(String(INITIAL.type||"").toUpperCase())>=0)p=String(INITIAL.name);
-  $("state").textContent="Starting "+(p||INITIAL.name)+" in SAP...";
+  waitState("Starting "+(p||INITIAL.name)+" in SAP...");
   // An empty field for a class or a function module: its own test screen,
   // SE24 or SE37 with the name filled in; the test is started there with F8.
   if(!p){notice("");debug("run",{program:INITIAL.name,test:INITIAL.type}).then(function(){
@@ -3368,7 +3393,7 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
     if(INITIAL.sapBuild){var built=INITIAL.sapBuild.builtAt?new Date(INITIAL.sapBuild.builtAt).toLocaleString(undefined, {hourCycle:"h23"}):"";
       $("run").title="Run the last build of "+INITIAL.sapBuild.name+(built?", read from SAP "+built:"")+" - Recompile takes SAP's code as it is now";
       $("recompile").hidden=false;$("recompile").title="Read "+INITIAL.sapBuild.name+" and what it uses from SAP again and transpile it"+(built?" (this build: "+built+")":"");
-      $("recompile").onclick=function(){runFailure="";notice("");$("state").textContent="Recompiling "+INITIAL.sapBuild.name+" from SAP.";
+      $("recompile").onclick=function(){runFailure="";notice("");waitState("Recompiling "+INITIAL.sapBuild.name+" from SAP.");
         debug("sapRecompile").catch(function(error){$("state").textContent="Recompile failed.";failed(error);});};
       if(built)$("state").textContent="Build of "+built+".";}
     variablesStarted=true;$("initials").classList.add("on");
@@ -3399,7 +3424,7 @@ $("split").addEventListener("mousedown",function(e){if(e.button!==0)return;e.pre
   // Not in Eclipse yet: its host has no transpiler run.
   if(!window.vertexDebugHost&&!INITIAL.local&&["PROG","CLAS","FUNC"].indexOf(String(INITIAL.type).toUpperCase())>=0&&document.body.classList.contains("vertex-docked-debug")){
     $("sapTranspile").hidden=false;
-    $("sapTranspile").onclick=function(){runFailure="";notice("");$("state").textContent="Reading the program and what it uses from SAP.";debug("sapTranspile").catch(function(error){$("state").textContent="Transpiler run failed.";failed(error);});};
+    $("sapTranspile").onclick=function(){runFailure="";notice("");waitState("Reading the program and what it uses from SAP.");debug("sapTranspile").catch(function(error){$("state").textContent="Transpiler run failed.";failed(error);});};
   }
   // Run with ABAP Transpiler runs at once: the selection screen first, if the program has one, then to the first
   // breakpoint, or to the end with the output when there is none.

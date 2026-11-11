@@ -448,7 +448,8 @@ test("the names of the page's global regular expressions are not declared twice"
 });
 
 test("Analyze flow path: from a point in a program or a class to the next checked point the flow meets, wherever it is, else to the end", async () => {
-  const context = vm.createContext({ window: { vertexFlowGraph: flowGraph }, chosenValue: null, sdeOrigin: () => {}, notice: text => { context.said = text; }, drawBreakpoints: () => {}, bpPaths: {},
+  const busy = new Set(), noticeBox = { classList: { add: n => busy.add(n), remove: n => busy.delete(n) } };
+  const context = vm.createContext({ $: id => id === "notice" ? noticeBox : null, window: { vertexFlowGraph: flowGraph }, chosenValue: null, sdeOrigin: () => {}, notice: text => { context.said = text; }, drawBreakpoints: () => {}, bpPaths: {},
     setPane: (id, on) => { context.opened = id; }, showFlow: () => { context.shown = true; }, staticFlow: null, paneOn: () => false, drawVars: () => {},
     autoVariables: () => {}, pointFocus: null, publishDebugContext: () => {}, flowByValue: {},
     picture: { breakpoints: [{ id: "1", name: "ZREP", objectType: "PROG", line: 10, active: true }, { id: "2", name: "ZREP", objectType: "PROG", line: 16, active: false },
@@ -463,6 +464,11 @@ test("Analyze flow path: from a point in a program or a class to the next checke
   vm.runInContext(part("function staticFlowGraph(mode,quiet){", "function sharedFlowGraph(mode){"), context);
   vm.runInContext(part("function pathUrl(w,b){", "function drawBreakpoints(){"), context);
   const run = b => vm.runInContext("analyzePath(" + JSON.stringify(b) + ")", context);
+  // The logo turns while an analysis runs, whichever way it was started, and stops when it settles.
+  const turning = run({ id: "1", name: "ZREP", objectType: "PROG", line: 10, url: "u" });
+  assert.equal(busy.has("busy"), true, "turning while it runs");
+  await turning.catch(() => {});
+  assert.equal(busy.has("busy"), false, "stopped once it settled");
   const bp = { id: "1", name: "ZREP", objectType: "PROG", line: 10, url: "u" };
   await assert.rejects(run({ ...bp, objectType: "FUNC" }), /program, an include or a class/);
   context.picture.breakpoints = context.picture.breakpoints.filter(p => p.id === "1");

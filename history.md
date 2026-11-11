@@ -1,3 +1,27 @@
+## 2026-11-11 — 0.9.80: the galaxy icon back on the Marketplace
+
+The extension's Marketplace icon is the galaxy again: the 0.9.78 landing had replaced it with the transparent mark. The transparent mark stays as the turning logo in the chat, on the pages and in the Eclipse debugger, now in its own file. This release also carries the landings below that had stayed on another machine. Both host versions are 0.9.80; Eclipse update site build 0.9.80.20261111150707.
+
+## 2026-11-11 — The turning logo for every wait, and a timer beside the scenes (0.9.80)
+
+Every line that says what is being waited for now has the turning VERTEX logo before it, at the chat's size (32 px), in place of the round spinners: Metrics' analysis progress and diagram hints, the debugger's variable loading and its state line (running, starting, recompiling, reading from SAP), Object Navigator, the Tools object search, Versions and the transport review (building, reading, saving, the progress of a build), and the working status of the review, commit, push, pull request and branch pages. The wide waiting scenes - review generation, commit, pull request, push, MCP install and start - have a digital mm:ss timer on their right, which stops when the scene ends. Without motion (the animations setting off, or auto with reduced motion) the logo and the scenes are not shown; the working status keeps its clock sign.
+
+## 2026-11-11 — Animations setting (0.9.80)
+
+New setting `vertex.animations`: `auto` follows Windows and VS Code, `on` shows the animations even when Windows asks for reduced motion (as a remote desktop or VDI usually does, so they stood still there), `off` shows none. Without motion the turning logo and the waiting scenes are no longer shown frozen - they are not shown. Eclipse has no setting and follows the system, as `auto` does.
+
+## 2026-11-11 — No provider choice without a provider (VS Code 0.9.80)
+
+When no provider is switched on in LLM Providers, the chat panel no longer shows an empty provider choice with "no models" and an effort list; the provider, model and effort controls are hidden. Eclipse is not rebuilt.
+
+## 2026-11-11 — The assistant's copy follows your own edits (VS Code 0.9.80)
+
+What you change by hand in a git folder now reaches the assistant's working copy before its next turn. A file it has not changed takes your version; a file whose change still waits for review gets your change merged in; when the two overlap, the request stops and asks you to decide that review first. The assistant is told which files you changed, so it reads them again. Eclipse is not rebuilt.
+
+## 2026-11-11 — Turning logo during flow analysis, plain links in the flow tree (0.9.80)
+
+While Analyze flow path runs, the VERTEX logo turns at the start of the progress line, before its text, as it turns in the chat while a request runs - whichever way the analysis started: its button, a value chosen again, a range changed. In the flow tree, statements and routines are plain text links instead of framed buttons. The turning VERTEX logo - in the chat and here - now has a transparent background with deeper arms, so it reads on light themes as well as dark.
+
 ## 2026-11-11 — 0.9.79: generated files outside the Git review AI context
 
 Files the repository marks generated in `.gitattributes` (`linguist-generated`) are listed by name in the Git review AI context, under a note that they are copies or bundles rebuilt from other sources, and their diff is left out. ASK AI and Generate with AI no longer present an Eclipse sync of existing VS Code code as new features, and the space goes to the real changes. The repository now marks `org.vertex.abap.ui/assistant/`, `resources/vertex-frontend.js` and `resources/abaplint-MIT.txt`, which `eclipse/prepare.js` rebuilds. Both host versions are 0.9.79; Eclipse update site build 0.9.79.20261111133601.

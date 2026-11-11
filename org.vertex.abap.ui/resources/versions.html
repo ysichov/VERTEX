@@ -607,10 +607,17 @@ function vertexProgress(text) {
     return;
   }
   status(text);
+  // A line of progress is work still going: the logo turns before it as before any other waiting line.
+  document.getElementById("status").classList.add("vertex-busy");
 }
 
+/* A message that ends in " ..." says what is being waited for: the VERTEX logo turns before it (vertex-controls.css)
+   until the next message replaces it. */
+function waiting(text) { return / \.\.\.$/.test(String(text || "")); }
 function status(text) {
-  document.getElementById("status").textContent = text || "";
+  var line = document.getElementById("status");
+  line.textContent = text || "";
+  line.classList.toggle("vertex-busy", waiting(text));
 }
 
 function message(text) {
@@ -621,7 +628,7 @@ function message(text) {
 
 function note(text) {
   var root = document.getElementById("root");
-  root.className = "note";
+  root.className = "note" + (waiting(text) ? " vertex-busy" : "");
   root.textContent = text;
 }
 

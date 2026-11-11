@@ -257,9 +257,11 @@
   .analysis-progress{display:flex;align-items:center;gap:9px;padding:6px 10px;color:var(--vscode-descriptionForeground,var(--fg));font-size:12px}
   .analysis-progress[hidden]{display:none}
   body.analysis-active #diagram .hint.busy{display:none}
-  .analysis-spinner,#diagram .hint.busy::before{display:inline-block;width:13px;height:13px;flex:none;border:2px solid var(--vscode-focusBorder,#0a66c2);border-right-color:transparent;border-radius:50%;animation:analysis-spin .8s linear infinite}
-  #diagram .hint.busy::before{content:"";margin-right:8px;vertical-align:-2px}
-  @keyframes analysis-spin{to{transform:rotate(360deg)}}
+  /* Waiting turns the VERTEX logo (vertex-controls.css), as everywhere else. */
+  .analysis-spinner,#diagram .hint.busy::before{display:inline-block;width:32px;height:32px;flex:none;background:var(--vertex-logo) center/contain no-repeat;animation:vertex-logo-turn 6s linear infinite}
+  body.vscode-reduce-motion:not(.vertex-motion-on) .analysis-spinner,body.vscode-reduce-motion:not(.vertex-motion-on) #diagram .hint.busy::before,body.vertex-motion-off .analysis-spinner,body.vertex-motion-off #diagram .hint.busy::before{display:none}
+  @media (prefers-reduced-motion:reduce){body:not(.vertex-motion-on) .analysis-spinner,body:not(.vertex-motion-on) #diagram .hint.busy::before{display:none}}
+  #diagram .hint.busy::before{content:"";margin-right:8px;vertical-align:-11px}
   #diagram .failed { color: #a5292a; white-space: pre-wrap;
                      font-family: Consolas, monospace; }
   /* ACE marks a node it can open in the source window. Here there is no
@@ -1070,7 +1072,7 @@ function renderMetricMap(){
  });
  if(scene){try{threeRenderer=new THREE.WebGLRenderer({alpha:true,antialias:true});threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));threeRenderer.setSize(width,height);var camera=new THREE.OrthographicCamera(0,width,height,0,.1,10);camera.position.z=5;threeRenderer.render(scene,camera);root.prepend(threeRenderer.domElement);}catch(error){status("Three.js renderer unavailable: "+error.message);root.querySelectorAll(".metric-map-tile").forEach(function(tile){tile.style.background=tile.dataset.fallbackFill;});}finally{scene.traverse(function(node){if(node.material)node.material.dispose();});geometry.dispose();}}
  applyMetricMapScale(root);
- if(root.animate&&!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches))root.animate([{opacity:.65},{opacity:1}],{duration:180,easing:"ease-out"});
+ if(root.animate&&!document.body.classList.contains("vertex-motion-off")&&(document.body.classList.contains("vertex-motion-on")||!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)))root.animate([{opacity:.65},{opacity:1}],{duration:180,easing:"ease-out"});
  publishContext();
 }
 function refreshMetricMapChoices(){

@@ -265,10 +265,10 @@ function open(vscode, options = {}) {
   const nonce = crypto.randomBytes(16).toString("hex");
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
-    .replace("</head>", () => "<style>" + fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8") + "</style></head>")
+    .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
     .replace("</head>", '<script nonce="' + nonce + '">window.vertexCanContinue = true;</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
-    .replace("</head>", () => "<style>" + fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8") + "</style></head>");
+    .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   const refresh = () => {
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");

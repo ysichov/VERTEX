@@ -41,6 +41,8 @@ const required = [
     "extension/folder-tools.js",
     "extension/folder-approval.js",
     "extension/agent-worktree.js",
+    "extension/motion.js",
+    "extension/vertex-logo.js",
     "extension/worktree-review.js",
     "extension/orchestrator-plan.js",
     "extension/orchestrator-supervisor.js",

@@ -42,7 +42,9 @@ test("VS Code's Tools window carries every page with the shared code put in", ()
 test("VS Code's single-page window puts the shared code in, as extension.js reads a page", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "extension.js"), "utf8");
   const body = name => { const start = source.indexOf("function " + name + "("); return source.slice(start, source.indexOf("\n}\n", start) + 2); };
-  const context = vm.createContext({ fs, path, PAGES: RESOURCES, SHIM: "", SERVICES: require(path.join(RESOURCES, "tool-routes.js")).SERVICES, JSON, String });
+  // pageHtml requires the extension's own modules (motion.js, vertex-logo.js) by relative path.
+  const context = vm.createContext({ fs, path, PAGES: RESOURCES, SHIM: "", SERVICES: require(path.join(RESOURCES, "tool-routes.js")).SERVICES, JSON, String,
+    require: id => require(id.startsWith(".") ? path.join(__dirname, "..", id) : id) });
   vm.runInContext(body("pageHtml") + body("initialLiteral"), context);
   for (const service of ["table", "metrics", "versions"]) {
     const page = context.pageHtml(service, null);

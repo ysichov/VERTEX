@@ -438,7 +438,7 @@ async function backward(api, resource, progress = () => {}, cancelled = () => fa
   if (!/^\/sap\/bc\/adt\//.test(start.url)) throw new Error('Backward Usage Analysis needs the ADT source of the object.');
   const breakpoints = String(params.get('breakpoints') || '').split(',').filter(Boolean).map(Number);
   const { parseSource } = __vertexRequire(23);
-  const { customerObject } = __vertexRequire(1559);
+  const { customerObject } = __vertexRequire(1560);
   const sources = new Map();
   const sourceOf = (url, name, type) => {
     if (!sources.has(url)) {
@@ -463,13 +463,13 @@ async function backward(api, resource, progress = () => {}, cancelled = () => fa
     return { places, skipped };
   };
   const first = await sourceOf(start.url, start.name, start.type);
-  const result = await __vertexRequire(1560).analyze({ source: first, line: Number(params.get('line')) || 1, variable: upper(params.get('variable')) }, {
+  const result = await __vertexRequire(1561).analyze({ source: first, line: Number(params.get('line')) || 1, variable: upper(params.get('variable')) }, {
     callers: routine => whereUsed(routine.source, routine.line, routine.column),
     uses: attribute => whereUsed(attribute.source, attribute.line, attribute.column),
     breakpointAt: (id, line) => id === start.url && breakpoints.includes(line),
     ask: points => api.askBreakpoint(points)
   });
-  return { backward: result, page: __vertexRequire(1560).page(result) };
+  return { backward: result, page: __vertexRequire(1561).page(result) };
 }
 
 // A reviewer's action or the save of a review built from ADT, for a host that sends every request here (Eclipse's
@@ -479,7 +479,7 @@ async function write(api, resource, body, progress) {
   // Run Select: the SELECT at the cursor of the editor's text, decided as VS Code decides it (select-query.run).
   if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/runselect') {
     const command = JSON.parse(String(body));
-    return __vertexRequire(1561).run(api, String(command.text), Number(command.offset));
+    return __vertexRequire(1562).run(api, String(command.text), Number(command.offset));
   }
   if (new URL(resource, 'https://sap.invalid').pathname === '/sap/bc/adt/vertex/reach') {
     const command = JSON.parse(String(body));
@@ -107603,7 +107603,7 @@ function register(vscode, context) {
       id: uri, name: document.fileName, objectType: /\.clas\.|\/CLAS\//i.test(uri) ? 'CLAS' : 'PROG',
       relative: vscode.workspace.getConfiguration('vertex').get('pathToLine.methodRelativeLines', false),
       nonce: (new Proxy({}, {get:()=>()=>{throw new Error("Node crypto is unavailable in browser analysis");}})).randomBytes(18).toString('hex'), cspSource: panel.webview.cspSource || '',
-      controls: (new Proxy({}, {get:()=>()=>{throw new Error("Node fs is unavailable in browser analysis");}})).readFileSync((new Proxy({}, {get:()=>()=>{throw new Error("Node path is unavailable in browser analysis");}})).join(__dirname, 'resources', 'vertex-controls.css'), 'utf8') });
+      controls: __vertexRequire(1559).fill((new Proxy({}, {get:()=>()=>{throw new Error("Node fs is unavailable in browser analysis");}})).readFileSync((new Proxy({}, {get:()=>()=>{throw new Error("Node path is unavailable in browser analysis");}})).join(__dirname, 'resources', 'vertex-controls.css'), 'utf8')) });
     if (shown.warnings.length) vscode.window.showWarningMessage('VERTEX: the parser did not understand some statements; the path may miss conditions there: ' + shown.warnings.join('; '));
     if (shown.sourcesError) vscode.window.showWarningMessage('VERTEX: abaplint could not find where the condition values come from: ' + shown.sourcesError);
     return shown;
@@ -107652,6 +107652,24 @@ var require=__vertexRequire;
 const escapeHtml = value => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 module.exports = { escapeHtml };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+/* The VERTEX logo as a page needs it: vscode/images/logo.png, the transparent VERTEX mark, put in as a data URL where a
+   page or vertex-controls.css marks VERTEX_LOGO. Eclipse's PageView does the same from the copy in its bundle. */
+const fs = (new Proxy({}, {get:()=>()=>{throw new Error("Node fs is unavailable in browser analysis");}}));
+const path = (new Proxy({}, {get:()=>()=>{throw new Error("Node path is unavailable in browser analysis");}}));
+
+let url = "";
+function dataUrl() {
+  if (!url) url = "data:image/png;base64," + fs.readFileSync(path.join(__dirname, "images", "logo.png")).toString("base64");
+  return url;
+}
+function fill(text) { return String(text).split("/*VERTEX_LOGO*/").join(dataUrl()); }
+
+module.exports = { dataUrl, fill };
 
 },
 function(module,exports,__vertexRequire){
@@ -108401,18 +108419,18 @@ var require=__vertexRequire;
 'use strict';
 // Adapter only: parsing, source closure, BSE, FLOW and formulas are the VS Code modules.
 const {parseSource} = __vertexRequire(23);
-const origin = __vertexRequire(1559);
-const points = __vertexRequire(1563);
-const {collect} = __vertexRequire(1564);
-const {formula} = __vertexRequire(1566);
-const panes = __vertexRequire(1567);
+const origin = __vertexRequire(1560);
+const points = __vertexRequire(1564);
+const {collect} = __vertexRequire(1565);
+const {formula} = __vertexRequire(1567);
+const panes = __vertexRequire(1568);
 let lastSources = [], lastGraph = null;
 const upper = value => String(value || '').toUpperCase();
 
 async function request(api, request, progress = () => {}) {
   // Formula and Expression of a recorded run, and the analysed path as that run took it: the same readings VS Code uses.
-  if (request.recordFormula) return __vertexRequire(1568).build(request.recordFormula);
-  if (request.pathFormula) return __vertexRequire(1569).pathFormula(lastGraph, request.pathFormula.executed);
+  if (request.recordFormula) return __vertexRequire(1569).build(request.recordFormula);
+  if (request.pathFormula) return __vertexRequire(1570).pathFormula(lastGraph, request.pathFormula.executed);
   if (request.open) {
     const source = lastSources.find(s => s.id === request.open.source);
     if (!source) throw new Error('Run the analysis again: this source is no longer in its result.');
@@ -108659,7 +108677,7 @@ var require=__vertexRequire;
    own way - VS Code through its ADT client, Eclipse through the ABAP project's session - so each hands in only how to
    read an object (load) and a part of a class (loadPart). How much is read is not theirs to choose: the two once
    diverged, Eclipse reading every customer object the source named while VS Code read only what the slice needed. */
-const { collectDemandSources } = __vertexRequire(1565);
+const { collectDemandSources } = __vertexRequire(1566);
 
 const MAX_SOURCES = 240;
 
@@ -109416,7 +109434,7 @@ var require=__vertexRequire;
    field chains of its sources, and each of those is derived the same way, back through the record. The result has the
    shape of the analysis's formula - nodes and edges for the diagram, a tree for the panes - so the view draws either. */
 
-const { escape } = __vertexRequire(1567);
+const { escape } = __vertexRequire(1568);
 
 const upper = value => String(value || "").toUpperCase();
 const signature = value => value === undefined ? undefined : JSON.stringify(value);
@@ -110044,8 +110062,8 @@ var require=__vertexRequire;
    hold - or a SELECT that ran and found nothing, sy-subrc not 0 (red). Definitions of one value that ran - every
    modifier of a pipeline - are steps in the order the run made them, given to the formula as its pipeline.
    executed: [{ object, line, subrc }] in the order the record holds them; subrc is SY-SUBRC read after a SELECT. */
-const { formula } = __vertexRequire(1566);
-const paneHtml = __vertexRequire(1567);
+const { formula } = __vertexRequire(1567);
+const paneHtml = __vertexRequire(1568);
 
 function pathFormula(graph, executed, sourceOf = node => "origin:" + node.source + "|" + (node.location || "")) {
   if (!graph) throw new Error("No path was analysed: use Analyze flow path first.");
@@ -110067,4 +110085,4 @@ function pathFormula(graph, executed, sourceOf = node => "origin:" + node.source
 
 module.exports = { pathFormula };
 
-}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(0);window.vertexDebugAnalysis=load(1562);})();
+}],cache={};function load(id){if(!cache[id]){var m={exports:{}};cache[id]=m;try{modules[id](m,m.exports,load);}catch(error){delete cache[id];throw error;}}return cache[id].exports;}window.vertexFrontend=load(0);window.vertexDebugAnalysis=load(1563);})();

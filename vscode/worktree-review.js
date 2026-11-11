@@ -32,9 +32,9 @@ function open(vscode, copy, changes, onDone, options = {}) {
     if(message?.action==="fileView"){const change=byId.get(message.file);await review.sendFileView(panel,message,change?{parts:change.binary?[]:review.hunks(change.before,change.after),before:change.before,after:change.after,binary:change.binary,abap:/\.abap$/i.test(change.file)}:null);return;}
     if (message && message.action === "build" && finished && offered && !built && typeof options.onBuild === "function") {
       built = true;
-      await panel.webview.postMessage({ action: "buildStatus", message: "Building in your folder: " + offered + " - output in VERTEX Build." });
+      await panel.webview.postMessage({ action: "buildStatus", state: "working", message: "Building in your folder: " + offered + " - output in VERTEX Build." });
       const result = await options.onBuild(offered, message.remember === true);
-      await panel.webview.postMessage({ action: "buildStatus", message: result && result.code === 0
+      await panel.webview.postMessage({ action: "buildStatus", state: result && result.code === 0 ? "success" : "error", message: result && result.code === 0
         ? "Build passed." : "Build failed (exit " + (result ? result.code : "?") + "); its output went to the assistant." });
       return;
     }

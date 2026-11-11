@@ -121,3 +121,38 @@ test("a folder outside git has no copy", async () => {
   made.push(plain);
   assert.equal(await worktree.open(plain), null);
 });
+
+test("refresh: what the user changed in the folder reaches the copy before the assistant works again", async () => {
+  const dir = repo();
+  const copy = await worktree.open(dir);
+  try {
+    assert.deepEqual(await copy.refresh(), [], "nothing changed yet");
+    // A file the assistant has not touched takes the folder's version.
+    fs.writeFileSync(path.join(dir, "a.txt"), "one\nby hand\n");
+    fs.writeFileSync(path.join(dir, "new.txt"), "made by hand\n");
+    assert.deepEqual((await copy.refresh()).sort(), ["a.txt", "new.txt"]);
+    assert.equal(fs.readFileSync(path.join(copy.dir, "a.txt"), "utf8"), "one\nby hand\n");
+    assert.equal(fs.readFileSync(path.join(copy.dir, "new.txt"), "utf8"), "made by hand\n");
+    assert.deepEqual(await copy.changes(), [], "the user's own edits are not the assistant's changes");
+    assert.deepEqual(await copy.refresh(), [], "brought once");
+  } finally { await copy.remove(); }
+});
+
+test("refresh: a change still waiting for review is merged with the user's, and an overlap stops the turn", async () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, "a.txt"), "one\ntwo\nthree\nfour\nfive\n");
+  execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "five"], { cwd: dir });
+  const copy = await worktree.open(dir);
+  try {
+    fs.writeFileSync(path.join(copy.dir, "a.txt"), "ONE\ntwo\nthree\nfour\nfive\n");     // the assistant, undecided
+    fs.writeFileSync(path.join(dir, "a.txt"), "one\ntwo\nthree\nfour\nFIVE\n");          // the user, by hand
+    assert.deepEqual(await copy.refresh(), ["a.txt"]);
+    assert.equal(fs.readFileSync(path.join(copy.dir, "a.txt"), "utf8"), "ONE\ntwo\nthree\nfour\nFIVE\n");
+    const [change] = await copy.changes();
+    assert.equal(change.conflict, false);
+    assert.equal(change.before, "one\ntwo\nthree\nfour\nFIVE\n", "measured against the user's version");
+    fs.writeFileSync(path.join(dir, "a.txt"), "uno\ntwo\nthree\nfour\nFIVE\n");          // overlaps the assistant's line
+    await assert.rejects(copy.refresh(), /a\.txt changed in your folder .* overlap/);
+    assert.equal(fs.readFileSync(path.join(copy.dir, "a.txt"), "utf8"), "ONE\ntwo\nthree\nfour\nFIVE\n", "the copy is left as it was");
+  } finally { await copy.remove(); }
+});

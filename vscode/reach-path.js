@@ -317,7 +317,7 @@ function register(vscode, context) {
       id: uri, name: document.fileName, objectType: /\.clas\.|\/CLAS\//i.test(uri) ? 'CLAS' : 'PROG',
       relative: vscode.workspace.getConfiguration('vertex').get('pathToLine.methodRelativeLines', false),
       nonce: require('crypto').randomBytes(18).toString('hex'), cspSource: panel.webview.cspSource || '',
-      controls: require('fs').readFileSync(require('path').join(__dirname, 'resources', 'vertex-controls.css'), 'utf8') });
+      controls: require('./vertex-logo').fill(require('fs').readFileSync(require('path').join(__dirname, 'resources', 'vertex-controls.css'), 'utf8')) });
     if (shown.warnings.length) vscode.window.showWarningMessage('VERTEX: the parser did not understand some statements; the path may miss conditions there: ' + shown.warnings.join('; '));
     if (shown.sourcesError) vscode.window.showWarningMessage('VERTEX: abaplint could not find where the condition values come from: ' + shown.sourcesError);
     return shown;

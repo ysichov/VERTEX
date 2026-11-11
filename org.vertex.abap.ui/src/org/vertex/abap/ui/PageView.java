@@ -643,11 +643,23 @@ public abstract class PageView extends ViewPart {
 		if (path.endsWith(".html") && text.contains(TASK_VISUAL)) {
 			text = text.replace(TASK_VISUAL, readEntry("resources/vertex-task-visual.js"));
 		}
+		// The VERTEX logo (vscode/images/icon.png, copied into the bundle by eclipse/prepare.js), as VS Code's
+		// tools-window.js puts it in.
+		if ((path.endsWith(".html") || path.endsWith(".css")) && text.contains(LOGO)) {
+			text = text.replace(LOGO, "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(readBytes("assistant/vertex-logo.png")));
+		}
 		return text;
 	}
 
 	private static final String SHARED_PAGE = "/*VERTEX_PAGE*/";
 	private static final String TASK_VISUAL = "/*VERTEX_TASK_VISUAL*/";
+	private static final String LOGO = "/*VERTEX_LOGO*/";
+
+	private byte[] readBytes(String path) throws IOException {
+		URL entry = FrameworkUtil.getBundle(getClass()).getEntry(path);
+		if (entry == null) throw new IOException("The bundle has no " + path + ".");
+		try (InputStream in = entry.openStream()) { return in.readAllBytes(); }
+	}
 
 	/**
 	 * The analysis worker as a page runs it: resources/eclipse-frontend.js with the VS Code analysis

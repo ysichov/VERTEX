@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.79**
+**Version: 0.9.80**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -253,7 +253,10 @@ changes overlap the file can only be declined, so your change is never overwritt
 reason, the assistant gets your version in its copy and redoes its change on top of it. Approve and
 Decline only mark a file - the status line counts what is left until **Apply** - and closing the page
 with marks but without Apply asks whether to apply them; files not decided stay for the next review. Closing the
-page decides nothing: the files come up again after the next answer. The copy lasts for the
+page decides nothing: the files come up again after the next answer. What you change in your folder
+yourself reaches the copy before the assistant's next turn: a file it has not changed takes your version,
+one whose change still waits for review gets your change merged in, and when the two overlap the request
+stops and asks you to decide that review first. The copy lasts for the
 conversation; **New conversation** removes it, with any change not yet applied. Builds and tests in
 the copy lack ignored files (`node_modules`, build output) and can fail there.
 
@@ -330,6 +333,13 @@ a review - reads SAP over ADT and needs no backend.
 ## Settings
 
 In the VERTEX panel's title, the server icon opens the **SAP Systems** table, the sparkle opens **LLM Providers**, and the gear opens every VERTEX setting in the Settings editor.
+
+### Animations
+
+`vertex.animations` sets the turning VERTEX logo and the waiting scenes (chat, VERTEX Smart Debugger, Tools):
+`auto` (default) follows Windows and VS Code - when they ask for reduced motion, the animations are not shown;
+`on` shows them even then, which a remote desktop or VDI usually needs, since Windows animations are off there;
+`off` shows none. A view already open takes the change when it is opened again.
 
 ### Connecting
 
@@ -901,7 +911,8 @@ in one click; after clearing, tick the models you want before saving. Only the
 ticked models appear in the model lists; with no model
 chosen, the first enabled model is used. A provider switched off
 keeps its model ticks but is left out of every provider choice; the one in use cannot be switched
-off - choose another first. Save refuses a provider with no model ticked, and resets a chosen
+off - choose another first. With no provider switched on, the chat panel shows no provider, model or
+effort choice. Save refuses a provider with no model ticked, and resets a chosen
 model that is no longer offered. The choice is kept in `vertex.ai.modelConfig`.
 If a provider has no model entries, the panel explains that instead of showing a blank table.
 Model-loading errors in the sidebar appear below the model selector.
@@ -1503,7 +1514,8 @@ The start may be in a program, an include or a class; the end statement is the l
 Methods and Statements, Full or BSE, as the record is drawn. With a value chosen in Variables the statements its
 slice reaches are marked; without one the flow is drawn alone. A recorded run does not replace it: the analysed path stays whole, with every dependency of the chosen value, however
 far the run has gone; with no path analysed the diagram is drawn from the record. With no other checked
-point on the way - none set, or none the flow meets - the path runs to the end of the flow.
+point on the way - none set, or none the flow meets - the path runs to the end of the flow. While the analysis
+runs, the VERTEX logo turns at the start of its progress line.
 
 **Where used.** Beside *Analyze flow path* (forward), a point carries *Where used* (backward): it opens the point's line
 and runs **VERTEX: Backward Usage Analysis** there for the value chosen in Variables - wherever it is named in the

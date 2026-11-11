@@ -5,7 +5,7 @@
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
-Current VS Code extension: **0.9.79**.
+Current VS Code extension: **0.9.80**.
 
 For VS Code, the recommended companion is
 [ABAP Syntax Highlighting by Lars Hvam](https://marketplace.visualstudio.com/items?itemName=larshp.vscode-abap)
@@ -71,7 +71,7 @@ GitHub Copilot model, EPAM CodeMie through the CodeMie CLI or API keys for Anthr
 Cerebras, OpenRouter, NVIDIA and Vercel AI Gateway, or a local model served by LM Studio or Ollama. With the active editor on a file of an open workspace folder (or no editor open and one folder in the
 workspace), the selected assistant works in that folder: in a git folder it works in its own working copy and, when its answer
 is done, its changes are reviewed file by file in one VERTEX review page (approved files are copied in,
-declined ones go back to it with your reason); outside git each file edit waits for review before it is written, and each shell command (a build, a test) waits for **Allow** in a VS Code dialog. Provider model lists can be collapsed independently.
+declined ones go back to it with your reason; what you change in the folder yourself reaches its copy before its next turn); outside git each file edit waits for review before it is written, and each shell command (a build, a test) waits for **Allow** in a VS Code dialog. Provider model lists can be collapsed independently.
 Each list has a Clear all / Select all control for its model checkboxes.
 If a provider returns no models, LLM Providers displays an explicit empty-state message.
 In the VS Code sidebar, model-loading errors appear below the model selector.
@@ -105,7 +105,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.79.20261111133601**; the VS Code extension is **0.9.79**.
+**0.9.80.20261111150707**; the VS Code extension is **0.9.80**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.

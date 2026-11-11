@@ -407,6 +407,10 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       const toolSchemas = codeTools.schemas.filter(tool => hasSap ? sapDebugger || !/^debug_/.test(tool.name) : /abap_transpiler/.test(tool.name));
       if (log) { log.user(prompt.trim(), currentImages); }
       const working = workDir ? await copyFor(workDir) : null;
+      // What the user changed in the folder meanwhile goes into the copy first, and Claude is told: what it read
+      // of those files before is out of date.
+      const brought = working ? await working.refresh() : [];
+      if (brought.length) reviewNote += (reviewNote ? " " : "") + "The user changed these files in their folder since you last worked; your working copy now holds their version, so read them again before relying on them: " + brought.join(", ") + ".";
       if (superseded()) return replaced();
       let progressStep = 0;
       const progressIds = new Set();

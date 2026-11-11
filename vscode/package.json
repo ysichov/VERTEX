@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.79",
+  "version": "0.9.80",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -1104,6 +1104,17 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Run the Code Agent's shell commands in its git working copy without asking. Off by default. The working copy keeps file changes for review, but a command can still reach outside it: an absolute path into your folder, git commands on the shared repository (commit, branch, reset, stash, push), the network. A folder outside git always asks."
+        },
+        "vertex.animations": {
+          "type": "string",
+          "enum": ["auto", "on", "off"],
+          "enumDescriptions": [
+            "Follow Windows and VS Code: when they ask for reduced motion, the animations are not shown.",
+            "Show the animations even when Windows asks for reduced motion - as a remote desktop or VDI usually does.",
+            "Show no animations."
+          ],
+          "default": "auto",
+          "markdownDescription": "The turning VERTEX logo and the waiting scenes (chat, VERTEX Smart Debugger, Tools). A view already open takes a change when it is opened again."
         },
         "vertex.review.storage": {
           "type": "string",
