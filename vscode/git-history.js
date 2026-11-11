@@ -112,7 +112,9 @@ function reviewContext() {
 
 function reviewSnapshot(changes, title, folder, limit = 180000) {
   const review = require("./code-review");
-  changes = changes.filter(c => !c.binary);
+  // Code before documentation: when the snapshot is cut at LIMIT, prose is what is lost, not a program change.
+  const prose = c => /\.(?:md|markdown|txt|rst|adoc)$/i.test(c.file);
+  changes = changes.filter(c => !c.binary).map((c, i) => ({ c, i })).sort((x, y) => prose(x.c) - prose(y.c) || x.i - y.i).map(x => x.c);
   const manifest = changes.map(c => c.status + " " + c.file + (c.generated ? " (generated)" : "")).join("\n");
   const generated = changes.filter(c => c.generated);
   const sections = changes.filter(c => !c.generated).map(c => {

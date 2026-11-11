@@ -1,10 +1,14 @@
+## 2026-11-11 — 0.9.82 (VS Code): code first in Git snapshots, shorter documentation
+
+Generate with AI and ASK AI on a whole Git review put program files before documentation (.md, .txt and similar) in the diff they send, so when a large change is cut to fit, the documentation is cut and a code change is not lost.
+
+The Marketplace page, the GitHub README, the Eclipse README and the update-site page were cut down to what each feature is and how to set it up. The three longest parts of the Marketplace page - debugging with an assistant, commands and local ABAP execution - moved to vscode/docs/debugging.md, commands.md and local-execution.md; the page keeps a short summary and a link for each. VS Code only; the Eclipse update site stays at build 0.9.81.20261111155403 and was not rebuilt.
+
 ## 2026-11-11 — 0.9.81: prompts for Git review
 
 Git review (a commit or Uncommitted changes) has a prompt bar like SAP transport review: Technical review, Business review with a Requirements field, Documentation, Test plan and Release notes, used by ASK AI and by the new Copy prompt; a question typed in the chat is added to the chosen prompt. The built-in Technical review is a bug hunt: it walks edge cases, traces patterns and offsets by hand on concrete inputs including one at the limit, and names each defect with the input that triggers it. Prompts… edits these texts and those of the commit message and pull request generators as user files in ~/.vertex/prompts. The built-in Git review text no longer calls every change ABAP. With Jev connected, Sort blocks with Jev orders the blocks by Jev's assessment and, for a business review, points at the blocks that likely implement each requirement; a Jev failure sends nothing. Both host versions are 0.9.81; Eclipse update site build 0.9.81.20261111155403 (no Eclipse change).
 
-Fixed: ASK AI on review blocks failed with "Web mode currently requires Vercel AI Gateway" when the blocks themselves contained words like "search the web"; whether to search the web is now decided only from the typed question.
-
-The VS Code Marketplace page, the GitHub README, the Eclipse README and the update-site page were cut down to what each feature is and how to set it up.
+Fixed: ASK AI on review blocks failed with "Web mode currently requires Vercel AI Gateway" when the blocks contained words like "search the web"; web search is decided from the typed question only.
 
 ## 2026-11-11 — 0.9.80: the galaxy icon back on the Marketplace
 
