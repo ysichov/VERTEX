@@ -7,6 +7,24 @@ const path = require("node:path");
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+test("sidebar history groups chat files, keeps the latest failed question and excludes utility operations", () => {
+  const {conversationList}=require('../log-report');
+  const prompt=(key,time,text,operation='Chat')=>({key,time,text,operation});
+  const report={sessions:[
+    {id:'a',conversation:'one',provider:'claude',prompts:[prompt('a:0',10,'First question')]},
+    {id:'b',conversation:'one',provider:'codex',prompts:[{...prompt('b:0',30,'Last screenshot question'),failed:true}]},
+    {id:'jev',conversation:'one',provider:'typesafe-api',prompts:[prompt('j:0',40,'Review block','Review block with Jev')]},
+    {id:'other',conversation:'two',provider:'claude',prompts:[prompt('o:0',20,'Another chat')]}
+  ]};
+  const items=conversationList(report);
+  assert.equal(items.length,2);
+  assert.equal(items[0].id,'b');
+  assert.equal(items[0].count,2);
+  assert.equal(items[0].title,'First question');
+  assert.equal(items[0].lastQuestion,'Last screenshot question');
+  assert.equal(items[0].providers,'claude · codex');
+});
+
 test("a conversation that changed provider is continued from all its files, in order", async () => {
   const sessionLog = require("../session-log"), report = require("../log-report");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "vx-continue-"));
@@ -76,7 +94,7 @@ test("the chat takes the turns as its history", () => {
   assert.equal(ask.restoreConversation([{ question: "q1", answer: "a1" }, { question: " ", answer: "dropped" }, { question: "q2", answer: "" }]), 2);
 });
 
-test('continuation excludes transport failures while preserving their diagnostic log', () => {
+test('continuation preserves failed questions without treating diagnostic errors as answers', () => {
   const logger=require('../session-log'), report=require('../log-report');
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-failed-history-'));
   try {
@@ -86,6 +104,30 @@ test('continuation excludes transport failures while preserving their diagnostic
     log.user('successful question');log.assistant({model:'paid',text:'real answer'});
     const read=report.readSessions(root), session=read.sessions[0];
     assert.equal(session.prompts.length,2);
-    assert.deepEqual(report.conversationTurns(read,session.id).turns.map(t=>t.answer),['real answer']);
+    const turns=report.conversationTurns(read,session.id).turns;
+    assert.deepEqual(turns.map(t=>t.question),['failed question','successful question']);
+    assert.deepEqual(turns.map(t=>t.answer),['','real answer']);
+    assert.equal(turns[0].failed,true);
+  } finally {logger.reset();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('Continue restores the latest screenshot after quota failure even without a completed answer', () => {
+  const logger=require('../session-log'), report=require('../log-report');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-quota-screenshot-'));
+  try {
+    logger.reset();const log=logger.current(root,'claude',{questions:true,answers:true});
+    const image={media_type:'image/png',data:Buffer.from('test screenshot').toString('base64')};
+    log.user('What is in this screenshot?',[image]);
+    log.providerResponse({provider:'claude',scope:'request_error',response:{error:'Session limit reached'}});
+    const read=report.readSessions(root), found=report.conversationTurns(read,read.sessions[0].id);
+    assert.equal(found.turns.length,1);
+    assert.equal(found.turns[0].answer,'');
+    assert.deepEqual(found.turns[0].images.map(({file,...content})=>content),[image]);
+    assert.ok(found.turns[0].images[0].file);
+    const shot=read.sessions[0].prompts[0].screenshots[0];
+    shot.file=path.join(root,'outside.png');fs.writeFileSync(shot.file,'private file');
+    const unsafe=report.conversationTurns(read,read.sessions[0].id).turns[0];
+    assert.equal(unsafe.images,undefined);
+    assert.equal(unsafe.missingScreenshots,1);
   } finally {logger.reset();fs.rmSync(root,{recursive:true,force:true});}
 });

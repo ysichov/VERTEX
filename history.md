@@ -1,3 +1,67 @@
+## 2026-11-12 — Offscreen chat and log layout
+
+Long VS Code conversations skip offscreen message layout during resizing and scrolling. Session Logs similarly skips offscreen sessions. Inactive review frames do not receive theme synchronization. Version remains 0.9.83.
+
+## 2026-11-12 — Stable Session Logs table layout
+
+Session Logs uses fixed table column sizing and horizontal scrolling in narrow panels, avoiding content-based column redistribution while dragging the editor splitter. Version remains 0.9.83.
+
+## 2026-11-12 — Historical screenshot references
+
+VS Code sends only current-message screenshots as image inputs. Historical screenshots become saved-file references, with turn/image references when logging is disabled. Continue preserves saved references. Reattach an older image to inspect it again. Version remains 0.9.83.
+
+## 2026-11-12 — 0.9.83: debugger session references
+
+Version 0.9.83 on both hosts. VS Code automatic debugger context contains only the session reference, without recorded steps, variables, source snapshots or static analysis. Full recordings remain in VERTEX.
+
+## 2026-11-12 — Codex SAP staging and Session Logs columns
+
+The built-in VS Code Codex integration permits offered SAP source tools to stage unsaved edits and object drafts without an unavailable CLI approval prompt. Saving and activation still use VERTEX UI actions. Session Logs gives prompt text more room and truncates model labels with full-value tooltips. Version remains 0.9.82.
+
+## 2026-11-11 — Credential protection for AI context and recordings
+
+VS Code masks credential-named fields, explicit authorization values and private-key blocks in VERTEX-supplied AI context, MCP responses, conversation logs and SAP recording writes. Markers preserve type, length, emptiness and opaque equality identity; known duplicate values are masked across the same context. Project-specific names and wildcard patterns are available through vertex.ai.context.secretFields. Live SAP data is unchanged; old files are not rewritten and image contents are outside the text filter. Version remains 0.9.82.
+
+## 2026-11-11 — Automatic SAP debugger recording persistence
+
+VS Code VERTEX Smart Debugger automatically checkpoints recorded SAP steps, late variable/watch reads and source snapshots to one stable session file. Closing its view no longer discards steps already received by the host. SAP & Transpiler Logs refreshes when recordings are saved. Manual Save session updates the same session file. Transpiler runs and offline SAP replay retain their own behavior. Version remains 0.9.82.
+
+## 2026-11-11 — SAP object-name navigation after screenshots
+
+In SAP mode an object name now opens the matching SAP object even when the conversation contains older screenshots. Only a screenshot attached to the current message routes the name to the model. Direct navigation questions and answers are retained in the configured conversation log. VS Code remains 0.9.82.
+
+## 2026-11-11 — Discuss review results in Main
+
+Each AI Review answer has Discuss in Main. It switches to Main and attaches the selected result, review requirements and reviewed change snapshot to the next question without sending it. The attachment can be inspected or removed; the existing Main draft is preserved. Review findings are supplied as claims to verify, not automatic edit instructions. Version remains 0.9.82.
+
+## 2026-11-11 — Session Logs: render details on expansion
+
+Closed conversations and prompts no longer build all their hidden answers, technical records and Markdown in advance. Details render on first expansion and are reused afterwards. Model names stay on one line in the horizontally scrollable table. VS Code remains 0.9.82; the shared Eclipse page source is updated without rebuilding its update site.
+
+## 2026-11-11 — On-demand Main / AI Review navigation
+
+The English-only Main / AI Review switch appears only after ASK AI requests a review, in the same header row as SAP / Folder and the project. Main preserves the review for later; Close review cancels active review work, closes it and returns to Main with the switch hidden. Version remains 0.9.82.
+
+## 2026-11-11 — Work and AI Review modes in the sidebar
+
+The left chat panel switches between Работа and AI Review. ASK AI attaches the selected changes to the review mode while the diff stays open on the right. Both modes keep separate histories and drafts with shared model settings. Review has an independent conversation identifier in logs, linked separately to the work conversation; older review-only log files are displayed separately too. Requirements are entered explicitly instead of using the first question of the work chat. Markdown replies render with formatting. Version remains 0.9.82.
+
+## 2026-11-11 — Conversation history in the left chat panel
+
+The VS Code chat has a collapsible Conversations list below the project selector, with search, dates, providers and question counts. Selecting a conversation continues it in the same panel, including saved screenshots and unanswered questions. Logs from different providers are grouped by conversation; utility operations are excluded. Version remains 0.9.82.
+
+## 2026-11-11 — Continue keeps unanswered screenshot questions
+
+Continue from VS Code Session Logs restores questions whose requests failed or reached a session limit, together with saved screenshots. Diagnostic errors are excluded from assistant answers. Missing screenshot files are reported. Version remains 0.9.82.
+
+## 2026-11-11 — Separate AI Review for assistant changes
+
+VS Code Assistant changes has ASK AI for all changes, a file or a block, opening an independent AI Review tab. Its conversation excludes the main chat history; the initial task is an explicit optional requirement. Git review prompts, follow-up questions, Stop, stale-snapshot feedback and Check again are available. The changes tree starts at the project root and Jev feedback appears above the diff. Version remains 0.9.82.
+
+## 2026-11-11 — Session Logs: prompt duration
+
+Session Logs has a Duration column for each prompt: the elapsed time from the question to its last recorded assistant response, in minutes and seconds. Pauses before later questions are excluded. VS Code remains 0.9.82.
+
 ## 2026-11-11 — 0.9.82 (VS Code): code first in Git snapshots, shorter documentation
 
 Generate with AI and ASK AI on a whole Git review put program files before documentation (.md, .txt and similar) in the diff they send, so when a large change is cut to fit, the documentation is cut and a code change is not lost.

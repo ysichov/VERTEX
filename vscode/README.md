@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.82**
+**Version: 0.9.83**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -413,7 +413,19 @@ edits (up to 24,000 characters). It can explain that source without a configured
 with no SAP system in VERTEX, UML, Metrics, Logic and Calls in the editor's **VERTEX Tools** menu analyse
 another extension's source from its text, as they do a local file;
 SAP search, changes, tests and debugger actions require a system.
-Set `vertex.ai.logPath` to keep a JSONL log of each conversation; `vertex.ai.log.questions`, `.answers`, `.tools` and `.request` choose what is kept. Program source from SAP is never logged. **Session Logs** (the scroll icon in the panel's title) shows sessions, prompts, steps and token usage by day, with filters; **Continue** reopens a conversation in the chat, and selected conversations can be deleted.
+Set `vertex.ai.logPath` to keep a JSONL log of each conversation; `vertex.ai.log.questions`, `.answers`, `.tools` and `.request` choose what is kept. Program source from SAP is never logged. **Session Logs** (the scroll icon in the panel's title) shows sessions, prompts, steps and token usage by day, with filters. **Duration** shows the time from each question to its last recorded assistant response in minutes and seconds, excluding pauses before later questions. **Continue** reopens a conversation in the chat, and selected conversations can be deleted. **Continue** also restores unanswered questions and saved screenshots after a failed or quota-limited request; missing screenshot files are reported. The left chat panel also has **Conversations · Continue a chat** below the project selector: expand it, search saved conversations, and select one to restore it. **Refresh** reloads the list from the configured log folder. Conversation details are rendered when expanded; closed entries keep the report compact. The Conversation column prioritizes prompt text; Model is compact, with the full provider and model available on hover. Table columns retain stable sizing in narrow panels; scroll horizontally to see additional columns. In SAP mode, entering an object name alone searches SAP and opens a unique match without a model request; screenshots from earlier messages do not change this. A screenshot attached to the current message keeps it as a question for the model. In VS Code, SAP debug steps recorded by VERTEX Smart Debugger are saved automatically as they arrive, with recorded values and source snapshots. They appear in **SAP & Transpiler Logs** without requiring **Save session**; closing the debugger does not discard saved steps.
+
+**Context protection.** VERTEX masks credential fields such as `I_APIKEY`, `PASSWORD`, `ACCESS_TOKEN` and `AUTHORIZATION`, plus explicit Bearer/Basic credentials and private-key blocks, before AI context and tool responses are sent and before conversation logs or SAP recordings are written. A marker retains type, value length, empty status and an opaque identity so equal values can still be compared. Known copies of a detected value in the same context are masked too; arbitrary random strings are not classified as secrets.
+
+Additional field names and case-insensitive `*` patterns can be configured per project in VS Code settings:
+
+```json
+"vertex.ai.context.secretFields": ["Z_PRIVATE_*", "I_MY_CREDENTIAL"]
+```
+
+Live debugger values and SAP source are unchanged. Existing SAP recordings are protected when loaded, but existing files are not rewritten automatically. The filter does not inspect screenshots or other binary content, and cannot intercept an external agent's own filesystem tools.
+
+The left chat panel has **Main / AI Review** modes. **Main / AI Review** appears only after a review is requested. **Close review** closes it and returns to Main; switching to **Main** keeps the review available. **ASK AI** in Assistant changes switches to AI Review with the selected block, file or all changes attached. Both modes retain their own conversation, draft and scroll position; provider and model settings are shared. Review uses its own log identity and excludes the main chat history. Enter optional requirements under **Requirements for this review** and select **Include review requirements** to send them. The same review prompts as Git review are available. **Check again** refreshes the snapshot and starts a new review. Reviewing does not apply or edit files. The file tree starts at the selected project root; ASK Jev results appear above the diff. **Discuss in Main** under a review answer attaches that result and its reviewed snapshot to the next Main question. Expand **Attached review result** to inspect it, or remove it with the attachment’s × button. Your Main draft is preserved; nothing is sent until you submit the question.
 
 Local ABAP programs and classes also have VERTEX navigation in the editor: Outline,
 Go to Definition for local method and class calls, and Back. The **VERTEX Tools** context
@@ -895,3 +907,11 @@ What changed in each version: [history.md](https://github.com/ysichov/VERTEX/blo
 ## Licence
 
 MIT. See [the project](https://github.com/ysichov/VERTEX).
+
+Codex in the built-in VS Code chat can stage SAP source edits and new-object drafts through VERTEX tools. Save, apply and activation remain explicit VERTEX UI actions.
+
+Automatic AI context from VERTEX Smart Debugger contains only a session reference. Recorded steps, source, values and analysis are not attached automatically; provide a relevant fragment explicitly when needed.
+
+Only screenshots attached to the current message are sent as images. Earlier screenshots are represented by saved-file references (or turn/image references when no log file exists); reattach an earlier screenshot to inspect it again. Continue restores these references without automatically resending old image contents.
+
+Long chat histories keep earlier messages available while deferring offscreen layout. Session Logs defers offscreen session layout as well, reducing resize and scrolling work.

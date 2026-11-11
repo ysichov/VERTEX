@@ -48,6 +48,7 @@ function debugHtml(initial, generation) {
     });
     window.sdeOrigin=request=>host.postMessage({call:"origin",args:[JSON.stringify(request||{})]});
     window.sdeDebugContext=payload=>host.postMessage({call:"debugContext",args:[String(payload||"null")]});
+    window.sdeSaveDebugRecord=record=>host.postMessage({call:"autoSaveDebugRecord",args:[typeof record==="string"?record:JSON.stringify(record)]});
     window.addEventListener("message",event=>{
       const logic=document.getElementById("logic-tools-frame");
       if(event.data.vertexLogicRequest&&logic&&event.source===logic.contentWindow){host.postMessage({call:"inlineLogic",payload:event.data.vertexLogicRequest});return;}

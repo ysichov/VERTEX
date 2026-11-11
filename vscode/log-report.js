@@ -54,6 +54,7 @@ function parseSession(text, file) {
     try { record = JSON.parse(line); } catch { continue; }
     const time = Date.parse(record.timestamp || "");
     if (!session.conversation && typeof record.vertex_conversation === "string") session.conversation = record.vertex_conversation;
+    if (typeof record.vertex_related_conversation === "string") session.relatedConversation = record.vertex_related_conversation;
     if (Number.isFinite(time)) {
       session.start = session.start === null ? time : Math.min(session.start, time);
       session.end = session.end === null ? time : Math.max(session.end, time);
@@ -173,6 +174,10 @@ function parseSession(text, file) {
     if (reference) detail.recording = reference;
     else delete detail.recording;
   }
+  if (session.prompts.length && session.prompts.every(prompt => prompt.operation === "AI Review") && !session.relatedConversation) {
+    session.relatedConversation = session.conversation;
+    session.conversation = "review:legacy:" + name;
+  }
   if (!session.conversation) session.conversation = "legacy:" + name;
   return session.start !== null ? session : null;
 }
@@ -194,12 +199,32 @@ function readSessions(root) {
 /* The questions and answers of the conversation SESSION belongs to, in the order they were asked: every file that
    carries its conversation id (one per provider it used), or the file alone when it was written before ids existed.
    Commit and PR descriptions are separate operations, not turns of the chat. */
+function conversationList(report) {
+  const groups = new Map();
+  for (const session of report.sessions) {
+    const prompts = session.prompts.filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search");
+    if (!prompts.length) continue;
+    const key = session.conversation || session.id;
+    if (!groups.has(key)) groups.set(key, { prompts: [], providers: new Set() });
+    const group = groups.get(key);
+    group.providers.add(session.provider);
+    group.prompts.push(...prompts.map(prompt => ({ ...prompt, sessionId: session.id })));
+  }
+  return [...groups.values()].map(group => {
+    group.prompts.sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
+    const first = group.prompts[0], last = group.prompts[group.prompts.length - 1];
+    const preview = text => String(text || "").replace(/\s+/g, " ").slice(0, 180);
+    return { id: last.sessionId, title: preview(first.text), lastQuestion: preview(last.text),
+      time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · ") };
+  }).sort((a, b) => (b.time || 0) - (a.time || 0));
+}
+
 function conversationTurns(report, sessionId, point) {
   const session = report.sessions.find(item => item.id === sessionId);
   if (!session) throw new Error("That session is no longer in the log folder.");
   const files = session.conversation ? report.sessions.filter(item => item.conversation === session.conversation) : [session];
-  const all = files.flatMap(item => item.prompts.map(prompt => ({ ...prompt, provider: item.provider })))
-    .filter(prompt => !prompt.failed && (prompt.operation === "Chat" || prompt.operation === "Web search"))
+  const all = files.flatMap(item => item.prompts.map(prompt => ({ ...prompt, provider: item.provider, logId: item.id })))
+    .filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search")
     .sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
   const target = point ? all.find(prompt => prompt.key === point) : all[all.length - 1];
   if (point && !target) throw new Error("That continuation point is no longer in the log folder.");
@@ -224,10 +249,27 @@ function conversationTurns(report, sessionId, point) {
   }
   const turns = prompts.map(prompt => {
     const answers = prompt.details.filter(detail => detail.type === "answer").map(detail => detail.text);
-    const answer = answers.length ? answers[answers.length - 1] : "";
-    return { question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time };
+    const answer = !prompt.failed && answers.length ? answers[answers.length - 1] : "";
+    const images = [], missing = [];
+    for (const shot of prompt.screenshots || []) {
+      try {
+        const extension = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[shot.media_type];
+        if (!report.folder || !extension || !shot.file) throw new Error("Screenshot unavailable");
+        const directory = fs.realpathSync(path.join(report.folder, prompt.logId));
+        const file = fs.realpathSync(shot.file);
+        // Logs are untrusted: only attachments actually stored beside this prompt's log may be restored.
+        const root = fs.realpathSync(report.folder), relative = path.relative(root, directory);
+        if (relative.startsWith("..") || path.isAbsolute(relative) || path.dirname(file) !== directory
+          || !new RegExp("^screenshot-\\d+\\." + extension + "$", "i").test(path.basename(file))) throw new Error("Invalid screenshot path");
+        const size = fs.statSync(file).size;
+        if (!size || size > 20 * 1024 * 1024) throw new Error("Screenshot size is unsupported");
+        images.push({ media_type: shot.media_type, data: fs.readFileSync(file).toString("base64"), file });
+      } catch (_) { missing.push(shot); }
+    }
+    return { question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time,
+      ...(prompt.failed ? { failed: true } : {}), ...(images.length ? { images } : {}), ...(missing.length ? { missingScreenshots: missing.length } : {}) };
   });
-  if (turns.every(turn => !turn.answer)) {
+  if (turns.every(turn => !turn.answer) && !prompts.some(prompt => prompt.failed)) {
     throw new Error("This conversation was logged without its answers; turn on vertex.ai.log.answers for conversations to come.");
   }
   const later = all.some(p => p.branch === target.branch && all.indexOf(p) > all.indexOf(target));
@@ -341,4 +383,4 @@ function register(vscode, context, options) {
   context.subscriptions.push(vscode.commands.registerCommand("vertex.showLogs", () => open(vscode, options)));
 }
 
-module.exports = { parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns };
+module.exports = { parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList };

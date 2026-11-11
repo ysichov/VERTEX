@@ -37,7 +37,7 @@ function options(include) {
 }
 
 /** Null when no folder is configured. `session` names the file and stays fixed for a conversation. */
-function create(root, provider, session, include, operation = "Chat") {
+function create(root, provider, session, include, operation = "Chat", scope = null) {
   root=resolveRoot(root);
   if (!root) { return null; }
   const on = options(include);
@@ -48,11 +48,13 @@ function create(root, provider, session, include, operation = "Chat") {
   let sequence = 0, discarded = false, screenshotCount = 0;
   // Every file of one VS Code conversation carries its id: a conversation that changes provider writes one file per
   // provider, and Session Logs puts them back together by it.
-  const conversation = conversationId, branch = branchId, parent = branchParent;
+  const conversation = scope?.conversation || conversationId, branch = scope ? "main" : branchId, parent = scope ? null : branchParent;
+  const protection = require("./context-protection").create();
   const write = entry => {
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch, ...(parent ? { vertex_parent: parent } : {}) }, entry)) + "\n", "utf8");
+    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch,
+      ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}), ...(parent ? { vertex_parent: parent } : {}) }, protection.protect(entry))) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
@@ -67,7 +69,7 @@ function create(root, provider, session, include, operation = "Chat") {
        the conversation's folder beside the log (<log name>/screenshot-<n>.<ext>), without it only counted. */
     user(text, images) {
       const objects = [];
-      const content = on.questions ? sanitizeText(String(text || ""), objects) : NOT_LOGGED;
+      const content = on.questions ? sanitizeText(protection.text(text), objects) : NOT_LOGGED;
       const pasted = Array.isArray(images) ? images.filter(image => image && typeof image.data === "string" && image.data) : [];
       let screenshots;
       if (pasted.length && on.questions) {
@@ -81,9 +83,11 @@ function create(root, provider, session, include, operation = "Chat") {
         });
       } else if (pasted.length) screenshots = pasted.map(image => ({ media_type: image.media_type || "image/png" }));
       write({ type: "user", message: { role: "user", content }, vertex_objects: objects, ...(screenshots ? { vertex_screenshots: screenshots } : {}) });
+      return screenshots || [];
     },
     request({ instructions, prompt, tools, schema }) {
       if (!on.request) { return; }
+      ({ instructions, prompt, tools, schema } = protection.protect({ instructions, prompt, tools, schema }));
       const objects = [], snapshots = [];
       const request = { instructions: sanitizeText(String(instructions || ""), objects, snapshots),
         prompt: sanitizeText(String(prompt || ""), objects, snapshots),
@@ -102,6 +106,7 @@ function create(root, provider, session, include, operation = "Chat") {
       write({ type: "vertex_provider_response", provider, scope, response: metadata });
     },
     assistant({ model, usage, text, reasoning }) {
+      ({ text, reasoning } = protection.protect({ text, reasoning }));
       // A model's own reasoning (reasoning_content), kept with the answers option as a thinking note.
       if (on.answers && reasoning) write({ type: "assistant", vertex_step: "claude_note", message: { id: id("note"),
         content: [{ type: "vertex_note", note: "thinking", text: sanitizeText(String(reasoning), []) }] } });
@@ -120,6 +125,7 @@ function create(root, provider, session, include, operation = "Chat") {
     },
     toolUse(name, args) {
       if (!on.tools) { return null; }
+      args = protection.protect(args);
       const toolId = id("tool");
       const objects = [];
       const input = sanitize(args || {}, objects, name === "read_sap_method" ? { object_type: "CLAS" } : {});
@@ -131,6 +137,7 @@ function create(root, provider, session, include, operation = "Chat") {
        or wrote is not logged - only where and how much - as for SAP tools; a command and its output are. */
     step(step) {
       if (!step || !step.id) { return; }
+      step = protection.protect(step);
       // What Claude says or thinks between its steps is model text, kept with the answers option.
       if (step.kind === "note") {
         if (!on.answers) { return; }
@@ -151,6 +158,7 @@ function create(root, provider, session, include, operation = "Chat") {
     /* The user's review of Claude Code's working copy: each file's decision, with a link to the file in the folder. */
     review(outcome) {
       if (!on.tools || !outcome) { return; }
+      outcome = protection.protect(outcome);
       const objects = [], reviewId = id("review");
       const files = [];
       const add = (file, decision, extra) => {
@@ -167,6 +175,7 @@ function create(root, provider, session, include, operation = "Chat") {
     },
     toolResult(toolId, result) {
       if (!on.tools || !toolId) { return; }
+      result = protection.protect(result);
       const objects = [];
       try { sanitize(JSON.parse(text(result)), objects); } catch (_) { /* a text result */ }
       write({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolId,
@@ -246,6 +255,7 @@ function addReference(objects, reference) {
 function omitted(value) { return "[" + String(value || "").length + " characters, not logged; open the referenced object]"; }
 
 function sanitize(value, objects, inherited = {}, parentKey = "", snapshots = []) {
+  if (!parentKey) value = require("./context-protection").protect(value);
   if (Array.isArray(value)) return value.map(item => sanitize(item, objects, inherited, parentKey, snapshots));
   if (!value || typeof value !== "object") return typeof value === "string" ? sanitizeText(value, objects, snapshots) : value;
   const reference = objectReference(value, inherited);
@@ -274,7 +284,7 @@ function sanitize(value, objects, inherited = {}, parentKey = "", snapshots = []
 }
 
 function sanitizeText(text, objects = [], snapshots = []) {
-  let result = String(text || "");
+  let result = require("./context-protection").create().text(String(text || ""));
   // Context is composed of labelled JSON blocks. Parse complete blocks rather
   // than line regexes so nested and escaped source strings are removed too.
   let output = "", cursor = 0;
@@ -369,6 +379,7 @@ async function assistantTool(log, name, args, call) {
 
 const shared = new Map();
 const newConversationId = () => stamp(new Date()) + "_" + require("crypto").randomBytes(4).toString("hex");
+function independentScope() { return { conversation: newConversationId(), relatedConversation: conversationId }; }
 let conversationId = newConversationId(), branchId = "main", branchParent = null;
 /** One log per folder, provider and choice for the life of the process: the VS Code chat is one conversation. */
 function current(root, provider, include) {
@@ -404,4 +415,4 @@ function fromConfig(config) {
     localCode: config.get("log.localCode", true) };
 }
 
-module.exports = { configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference };
+module.exports = { configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference, independentScope };

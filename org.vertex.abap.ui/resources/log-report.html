@@ -25,7 +25,7 @@
   .muted { color: var(--vscode-descriptionForeground); }
   .error { color: var(--vscode-errorForeground); }
   .totals { margin: 6px 0 12px; }
-  details.session { border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); margin-bottom: 6px; }
+  details.session { content-visibility: auto; contain-intrinsic-size: auto 110px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editorWidget-background); margin-bottom: 6px; }
   details.session > summary { padding: 6px 8px; cursor: pointer; display: flex; gap: 8px; align-items: flex-start; }
   .session-heading { flex: 1; min-width: 0; }
   .continue-session { flex: none; white-space: nowrap; }
@@ -33,12 +33,17 @@
   .session-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 2px; color: var(--vscode-descriptionForeground); font-size: 0.9em; }
   .provider { font-weight: 600; }
   table { border-collapse: collapse; width: 100%; }
+  table.prompt-table { min-width: 1140px; table-layout: fixed; }
   th, td { text-align: left; padding: 4px 8px; border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border)); vertical-align: top; }
   th { color: var(--vscode-descriptionForeground); font-weight: 600; }
   td.num, th.num { text-align: right; white-space: nowrap; }
+  td.prompt-cell { overflow: hidden; }
+  td.identity { white-space: nowrap; }
+  .identity-label { width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.identity > .muted { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
   .conversation { min-width: 240px; }
   /* The prompt's time takes only the width it needs: the date is in the session line above. */
-  td.time, th.time { width: 1%; white-space: nowrap; }
+  td.time, th.time { white-space: nowrap; }
   /* A session of several prompts opens as one narrow line per prompt; a line opens its conversation. */
   details.prompt > summary { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; min-width: 100%; }
   details.prompt > summary:hover { background: var(--vscode-list-hoverBackground); }
@@ -224,7 +229,14 @@ function markdown(text, target) {
   function section(label, cls, text) {
     var box = el("details", "entry " + cls);
     box.appendChild(el("summary", "", label));
-    if (text !== undefined) box.appendChild(cls === "user" || cls === "model" ? richText(text) : el("div", "detail", text));
+    if (text !== undefined) {
+      var loaded = false;
+      box.addEventListener("toggle", function () {
+        if (!box.open || loaded) return;
+        loaded = true;
+        box.appendChild(cls === "user" || cls === "model" ? richText(text) : el("div", "detail", text));
+      });
+    }
     return box;
   }
   function objectLinks(parent, objects) {
@@ -322,7 +334,15 @@ function markdown(text, target) {
     }
     if (name === "Review") {
       if (input.folder) line(target, "Folder", input.folder);
-      var table = el("table");
+      var table = el("table", "prompt-table");
+      // Fixed non-prompt columns avoid content-based table sizing on every splitter move.
+      var columns = el("colgroup");
+      [null, 166, 75, 75, 100, 90, 90, 160].forEach(function (width) {
+        var column = el("col");
+        if (width) column.style.width = width + "px";
+        columns.appendChild(column);
+      });
+      table.appendChild(columns);
       var head = el("tr"); ["File", "Decision", "Reason"].forEach(function (h) { head.appendChild(el("th", "", h)); }); table.appendChild(head);
       (input.files || []).forEach(function (f) {
         var row = el("tr");
@@ -358,10 +378,15 @@ function markdown(text, target) {
     var answers = p.details.filter(function (d) { return d.type === "answer"; });
     if (answers.length) {
       var answer = section("Model answer", "model");
-      answers.forEach(function (d, i) {
-        if (answers.length > 1) answer.appendChild(el("div", "kind", "Response " + (i + 1)));
-        answer.appendChild(richText(d.text));
-        objectLinks(answer, d.objects);
+      var answersLoaded = false;
+      answer.addEventListener("toggle", function () {
+        if (!answer.open || answersLoaded) return;
+        answersLoaded = true;
+        answers.forEach(function (d, i) {
+          if (answers.length > 1) answer.appendChild(el("div", "kind", "Response " + (i + 1)));
+          answer.appendChild(richText(d.text));
+          objectLinks(answer, d.objects);
+        });
       });
       body.appendChild(answer);
     }
@@ -520,41 +545,55 @@ function markdown(text, target) {
       }
       box.appendChild(head);
 
+      var sessionLoaded = false;
+      box.addEventListener("toggle", function () {
+      if (!box.open || sessionLoaded) return;
+      sessionLoaded = true;
       var table = el("table");
       var hr = el("tr");
-      ["Conversation", "Model", "In", "Out", "Cache read", "Cost USD", "Time"].forEach(function (h, i) { hr.appendChild(el("th", i === 5 ? "time" : i > 1 ? "num" : "", h)); });
+      ["Conversation", "Model", "In", "Out", "Cache read", "Cost USD", "Duration", "Time"].forEach(function (h, i) { hr.appendChild(el("th", i >= 6 ? "time" : i > 1 ? "num" : "", h)); });
       table.appendChild(hr);
       var several = s.prompts.length > 1;
       s.prompts.forEach(function (p) {
         var row = el("tr", several ? "compact" : "");
-        var cell = el("td");
+        var cell = el("td", "prompt-cell");
         if (several) {
           // One narrow line per prompt; its conversation opens under the line.
           var prompt = el("details", "prompt");
           var line = el("summary", "", promptPreview([p]) || "(no prompt text)");
           line.title = promptPreview([p]);
           prompt.appendChild(line);
-          prompt.appendChild(conversation(p));
-          prompt.ontoggle = function () { row.className = prompt.open ? "" : "compact"; };
+          var promptLoaded = false;
+          prompt.ontoggle = function () {
+            row.className = prompt.open ? "" : "compact";
+            if (prompt.open && !promptLoaded) { promptLoaded = true; prompt.appendChild(conversation(p)); }
+          };
           cell.appendChild(prompt);
         } else cell.appendChild(conversation(p));
         row.appendChild(cell);
-        var identity = el("td");
-        identity.appendChild(el("span", "provider", p.provider));
-        identity.appendChild(document.createTextNode(" · "));
-        identity.appendChild(el("span", "prompt-model", p.model));
+        var identity = el("td", "identity");
+        var modelLabel = el("div", "identity-label");
+        modelLabel.title = p.provider + " · " + p.model;
+        modelLabel.appendChild(el("span", "provider", p.provider));
+        modelLabel.appendChild(document.createTextNode(" · "));
+        modelLabel.appendChild(el("span", "prompt-model", p.model));
+        identity.appendChild(modelLabel);
         if (p.branch && p.branch !== "main") identity.appendChild(el("div", "muted", "Branch " + p.branch));
         row.appendChild(identity);
         row.appendChild(el("td", "num", n(p.usage.input)));
         row.appendChild(el("td", "num", n(p.usage.output)));
         row.appendChild(el("td", "num", n(p.usage.cacheRead)));
         row.appendChild(el("td", "num", costText(p.usage)));
+        var duration = el("td", "time", span(p.time, p.end) || "—");
+        duration.title = "Elapsed time from the prompt to its last recorded assistant response";
+        row.appendChild(duration);
         row.appendChild(el("td", "time", promptTime(p.time, s.start)));
         table.appendChild(row);
       });
       var scroll = el("div", "table-scroll");
       scroll.appendChild(table);
       box.appendChild(scroll);
+      });
       content.appendChild(box);
     });
   }

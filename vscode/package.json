@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.82",
+  "version": "0.9.83",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -1054,6 +1054,12 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Log the text of the assistant's answers."
+        },
+        "vertex.ai.context.secretFields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional secret field or variable names to redact from VERTEX AI context and recordings. Matching ignores case; * matches any characters. Built-in credential rules remain active. Screenshots are not inspected."
         },
         "vertex.ai.log.tools": {
           "type": "boolean",

@@ -27,6 +27,7 @@ function draw(){const wanted=document.getElementById("filter").value.trim().toLo
 document.getElementById("filter").addEventListener("input",draw);
 document.getElementById("refresh").onclick=()=>vscode.postMessage({action:"refresh"});
 document.getElementById("delete-selected").onclick=()=>vscode.postMessage({action:"deleteSelected",keys:Array.from(selected)});
-window.addEventListener("message",event=>{if(event.data.type==="runs"){runs=event.data.runs||[];selected=new Set([...selected].filter(key=>runs.some(run=>run.key===key)));selectionChanged();draw();}});
+let refreshTimer=null;
+window.addEventListener("message",event=>{if(event.data.type==="recordingsChanged"){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>vscode.postMessage({action:"refresh"}),500);}if(event.data.type==="runs"){runs=event.data.runs||[];selected=new Set([...selected].filter(key=>runs.some(run=>run.key===key)));selectionChanged();draw();}});
 vscode.postMessage({action:"ready"});
 </script></body></html>

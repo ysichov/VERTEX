@@ -170,6 +170,33 @@ test("log Markdown renders formatting while keeping HTML and code inert", () => 
   assert.equal(all.some(item => item.tagName === "SCRIPT" || item.tagName === "IMG"), false);
 });
 
+test("closed log sessions and prompts do not render their conversation bodies", () => {
+  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+  const node=(tag,cls='',text='')=>({tag,cls,text,children:[],events:{},
+    appendChild(child){this.children.push(child);return child;},setAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
+  const content=node('main');let rendered=0;
+  const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,
+    document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,costText:()=>'',promptTime:String,
+    usageText:()=>'',promptPreview:prompts=>prompts[0]?.text||'',conversation(){rendered++;return node('div','conversation');}};
+  vm.createContext(context);
+  vm.runInContext(page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
+  const prompt=i=>({key:'p'+i,time:i,text:'Question '+i,usage:{}});
+  context.render({configured:true,folder:'logs',sessions:[{id:'s',provider:'claude',start:1,end:2,models:[],usage:{},prompts:[prompt(1),prompt(2)]}]});
+  const session=content.children.find(child=>child.cls==='session');
+  assert.equal(rendered,0);
+  assert.equal(session.children.length,1,'only its summary exists while the session is closed');
+  session.open=true;session.events.toggle();
+  assert.equal(rendered,0,'opening a session shows prompt rows, not all hidden answers');
+  const all=[];const walk=item=>{all.push(item);(item.children||[]).forEach(walk);};walk(session);
+  const selectedPrompt=all.find(child=>child.cls==='prompt');
+  selectedPrompt.open=true;selectedPrompt.ontoggle();
+  assert.equal(rendered,1);
+  selectedPrompt.open=false;selectedPrompt.ontoggle();selectedPrompt.open=true;selectedPrompt.ontoggle();
+  assert.equal(rendered,1,'reopening reuses the previously rendered body');
+  session.open=false;session.events.toggle();session.open=true;session.events.toggle();
+  assert.equal(session.children.length,2,'reopening does not duplicate the prompt table');
+});
+
 test('session header model list collects actual models without duplicate aggregate labels',()=>{
  const rows=[{type:'user',message:{content:'Generate commit'}},{type:'vertex_provider_response',scope:'model_response',response:{id:'a',model:'inclusionai/ling-3.0-flash'}},{type:'assistant',message:{id:'b',model:'inclusionai/ling-3.0-flash',usage:{input_tokens:1}}},{type:'vertex_provider_response',scope:'request_error',response:{model:'nvidia/free'}}].map(r=>({timestamp:'2026-11-07T12:00:00Z',...r}));
  const parsed=report.parseSession(rows.map(JSON.stringify).join('\n'),'vercel-api_20261107_120000.jsonl');assert.deepEqual(parsed.models,['inclusionai/ling-3.0-flash','nvidia/free']);

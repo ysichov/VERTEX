@@ -72,6 +72,58 @@ test("the VS Code chat sends the conversation so far, and a new conversation sta
   assert.doesNotMatch(prompts[2], /show Z_CALC|Answer 1/);
 });
 
+test("restored unanswered screenshots are references instead of repeated image input", async t => {
+  let received;
+  t.mock.method(assistant, "ask", async options => { received=options; return {plan:{answer:"Seen"},model:"haiku"}; });
+  const ask=chat.create(fakeVscode({provider:"claude-subscription",model:"haiku"}),
+    {schemas:[],instructions:"",editorContext:()=>null},{start:async()=>({url:"http://127.0.0.1:1/mcp"}),token:"t"});
+  const image={media_type:"image/png",data:Buffer.from("restored screenshot").toString("base64")};
+  assert.equal(ask.restoreConversation([{question:"Last screenshot question",answer:"Session limit reached",failed:true,images:[image]}]),1);
+  await ask("Continue from the last screenshot");
+  assert.equal(received.images,undefined);
+  assert.match(received.prompt,/reattach to inspect/);
+  assert.match(received.prompt,/Last screenshot question/);
+  assert.doesNotMatch(received.prompt,/Session limit reached/);
+});
+
+test("historical screenshots do not intercept a new SAP object-name navigation", async t => {
+  t.mock.method(assistant,'ask',async()=>{assert.fail('No model expected for a bare object name');});
+  const calls=[];
+  const tools={schemas:[],editorContext:()=>null,execute:async(name,args)=>{calls.push([name,args]);return name==='search_sap_objects'?{objects:[{object_type:'PROG',object_name:'Z_FIORI_TILES_AI_TRANSLATOR'}]}:{opened:true};}};
+  const ask=chat.create(fakeVscode({provider:'claude-subscription',contextMode:'sap'}),tools,{start:async()=>{assert.fail('No model endpoint expected');}});
+  ask.restoreConversation([{question:'Earlier screenshot',answer:'Earlier answer',images:[{media_type:'image/png',data:'aW1hZ2U='}]}]);
+  const reply=await ask('Z_FIORI_TILES_AI_TRANSLATOR',{contextMode:'sap'});
+  assert.equal(reply.direct,true);
+  assert.deepEqual(calls.map(([name])=>name),['search_sap_objects','open_sap_object']);
+  assert.equal(calls[1][1].object_name,'Z_FIORI_TILES_AI_TRANSLATOR');
+});
+
+test("a current screenshot keeps a SAP-looking name in the model question", async t => {
+  let received;
+  t.mock.method(assistant,'ask',async options=>{received=options;return{plan:{answer:'Screenshot answer'},model:'test'};});
+  const tools={schemas:[],instructions:'',editorContext:()=>null,execute:async()=>{assert.fail('No direct navigation when the current message has a screenshot');}};
+  const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test',contextMode:'sap'}),tools,{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+  const images=[{media_type:'image/png',data:'aW1hZ2U='}];
+  const reply=await ask('Z_FIORI_TILES_AI_TRANSLATOR',{contextMode:'sap',images});
+  assert.equal(reply.answer,'Screenshot answer');assert.deepEqual(received.images,images);
+});
+
+test("direct SAP navigation is retained in the conversation log", async t => {
+  const logger=require('../session-log'),report=require('../log-report');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-direct-navigation-'));
+  try {
+    logger.reset();
+    t.mock.method(assistant,'ask',async()=>{assert.fail('No model expected');});
+    const tools={schemas:[],editorContext:()=>null,execute:async name=>name==='search_sap_objects'?{objects:[{object_type:'PROG',object_name:'Z_TEST'}]}:{opened:true}};
+    const ask=chat.create(fakeVscode({provider:'claude-subscription',contextMode:'sap',logPath:root,'log.questions':true,'log.answers':true}),tools,{});
+    await ask('Z_TEST',{contextMode:'sap'});
+    const data=report.readSessions(root);
+    assert.equal(data.sessions.length,1);
+    const turns=report.conversationTurns(data,data.sessions[0].id).turns;
+    assert.equal(turns[0].question,'Z_TEST');assert.match(turns[0].answer,/Opened PROG/);
+  } finally {logger.reset();fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test("a generic debug request cannot call the SAP debugger", async t => {
   const calls = [];
   t.mock.method(assistant, "ask", async options => {
@@ -148,6 +200,35 @@ test("the VERTEX chat routes a key provider through its API with SAP tools", asy
   assert.equal(received.apiKey, "secret");
   assert.equal(received.model, "groq-test");
   assert.deepEqual(received.tools.map(tool => tool.name), ["read_sap_object"]);
+});
+
+test("debug secrets are removed from model prompts and tool results while live values stay intact",async t=>{
+  const secret='live-context-fixture-secret';let received;
+  t.mock.method(compatible,'ask',async options=>{received=options;return{plan:{answer:'Done',navigation:null},model:options.model};});
+  const live={session_id:'fixture',recorded:{stops:1,steps:[],value_history:{stops:[{values:[{name:'I_APIKEY',value:secret}]}]}},alias:secret};
+  const tools={schemas:[{name:'read_sap_object',inputSchema:{}}],instructions:'SAP',editorContext:()=>null,
+    execute:async()=>({variables:[{name:'PASSWORD',value:'tool-password-fixture'}],copy:'tool-password-fixture'})};
+  const ask=chat.create(fakeVscode({provider:'groq-api',model:'test'}),tools,{}, {get:async()=>''},()=>live);
+  await ask('Explain the recorded values');
+  assert.ok(!received.prompt.includes(secret));assert.match(received.prompt,/session fixture step 1/);assert.doesNotMatch(received.prompt,/REDACTED|"recorded"|"suspects"/);
+  assert.equal(live.alias,secret);
+  const result=await received.callTool('read_sap_object',{});assert.ok(!JSON.stringify(result).includes('tool-password-fixture'));
+});
+
+test("native CLI requests use the same protected context scope for later tool responses",async t=>{
+  const secret='native-fixture-credential';let endpoint,disposed=false;
+  const live={recorded:{stops:1,variables:[{name:'I_APIKEY',value:secret}]},session_id:'fixture'};
+  const server={start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t',registerTools:tools=>{endpoint=tools;return{route:'/private-test',dispose(){disposed=true;}};}};
+  t.mock.method(assistant,'ask',async options=>{
+    assert.match(options.url,/private-test/);
+    const result=await endpoint.call(null,'read_sap_object',{});
+    assert.ok(!JSON.stringify(result).includes(secret));
+    return{plan:{answer:'Done'},model:'test'};
+  });
+  const tools={schemas:[{name:'read_sap_object',inputSchema:{}}],instructions:'SAP',editorContext:()=>null,execute:async()=>({source:'A copy without a credential field name: '+secret})};
+  const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test',contextMode:'sap'}),tools,server,{},()=>live);
+  await ask('Explain recorded state',{contextMode:'sap'});
+  assert.equal(disposed,true);
 });
 
 test("every direct model round is a separate Anthropic-format log entry", async t => {
@@ -416,14 +497,15 @@ test("same-name program and package remain separate direct-search choices", asyn
   assert.deepEqual(choices.map(choice => choice.object_type), ["PROG", "DEVC"]);
 });
 
-test("the chat is given VERTEX Smart Debugger's record and analysis, each said to be what it is, and nothing when the window has neither", () => {
+test("automatic debugger context contains only its session reference", () => {
   assert.equal(chat.debugFlowSection(null), "");
-  assert.equal(chat.debugFlowSection({ recorded: null, analysis: null }), "", "a window with neither adds nothing to the question");
-  const section = chat.debugFlowSection({ view: "VERTEX Smart Debugger", recorded: { steps: [{ depth: 0, at: "ZREP:10" }] }, analysis: { statements: [{ at: "ZREP:10" }] } });
-  assert.match(section, /VERTEX Smart Debugger/);
-  assert.match(section, /`recorded` is what the program actually did/);
-  assert.match(section, /never present the second as the first/);
-  assert.ok(section.includes('"steps":[{"depth":0,"at":"ZREP:10"}]'), "the context itself follows");
+  assert.equal(chat.debugFlowSection({recorded:{steps:[{at:"PRIVATE_SOURCE"}]},analysis:{secret:"PRIVATE_VALUE"}}), "");
+  const section=chat.debugFlowSection({session_id:"48647647",recorded:{steps:[{at:"PRIVATE_SOURCE"}]},analysis:{secret:"PRIVATE_VALUE"}});
+  assert.match(section,/\[session 48647647 step 1\]/);
+  assert.match(section,/recording is not attached/);
+  assert.doesNotMatch(section,/PRIVATE_SOURCE|PRIVATE_VALUE|steps"|analysis"/);
+  assert.match(chat.debugFlowSection({saved_session:{session_id:"saved-id"}}),/session saved-id/);
+  assert.equal(chat.debugFlowSection({session_id:'bad\nInjected'}), "");
 });
 
 test("the open Value origin window reaches the question as the screen shows it, labelled as analysis", () => {
@@ -472,8 +554,9 @@ test("ChatGPT subscription forwards screenshots to Codex", async t => {
   assert.equal(received.assistant, "codex");
   assert.deepEqual(received.images, images);
   await ask("Identify the application from my first screenshot");
-  assert.deepEqual(received.images, images, "follow-up retains the original screenshot");
-  assert.match(received.prompt, /"screenshots": 1/);
+  assert.equal(received.images, undefined, "follow-up sends only references");
+  assert.match(received.prompt, /"screenshots": \[/);
+  assert.match(received.prompt,/reattach/);
   assert.doesNotMatch(received.prompt, /iVBORw0KGgo=/, "image bytes are attachments, not prompt text");
   ask.newConversation();
   await ask("A separate question");
@@ -518,9 +601,10 @@ test('Vercel Vision chat forwards images and removes tools when the model cannot
  assert.match(received.instructions,/cannot call tools/);
  const next=[{media_type:'image/jpeg',data:'efgh'}];
  await ask('Compare with this screenshot',{images:next});
- assert.deepEqual(received.images,[...images,...next]);
+ assert.deepEqual(received.images,next);
  await ask('What application was in the first screenshot?');
- assert.deepEqual(received.images,[...images,...next], 'retained images are neither dropped nor duplicated');
+ assert.equal(received.images,undefined, 'history does not resend either image');
+ assert.doesNotMatch(received.prompt,/abcd|efgh/);
 });
 
 test('commit message generation is isolated and supplies no action tools',async t=>{
@@ -792,4 +876,13 @@ test('Malformed native output still accounts reported usage before the bounded r
  });
  t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));t.mock.method(compatible,'ask',async()=>({plan:{answer:'done'},model:'weak'}));
  const ask=chat.create(fakeVscode({provider:'openai-api',model:'weak'}),plannerTools(),null,{});const result=await ask('user question');assert.equal(calls,2);assert.equal(result.planner.usage.input_tokens,11);assert.equal(result.planner.usage.cache_read_input_tokens,3);assert.equal(result.planner.usage.output_tokens,3);ask.dispose();
+});
+
+test('saved historical screenshots keep file references without attaching their bytes',async t=>{
+ let received;t.mock.method(assistant,'ask',async options=>{received=options;return{plan:{answer:'Reference only'},model:'test'};});
+ const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+ ask.restoreConversation([{question:'Saved image',answer:'Earlier description',images:[{media_type:'image/png',data:'PRIVATE_IMAGE_BYTES',file:'C:/logs/session/screenshot-1.png'}]}]);
+ await ask('Continue our discussion');
+ assert.equal(received.images,undefined);assert.match(received.prompt,/C:\/logs\/session\/screenshot-1.png/);assert.doesNotMatch(received.prompt,/PRIVATE_IMAGE_BYTES/);
+ assert.match(received.prompt,/do not claim to see them/);
 });

@@ -1,7 +1,5 @@
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
 const { randomUUID } = require("crypto");
 
 // Record observed stops of an assistant-started SAP run, without driving SAP
@@ -27,11 +25,7 @@ function create({ folder, enabled = () => true }) {
         .map(([name, value]) => ({ name, value })) }] });
     for (const [url, text] of sources) record.sources[url] = text;
     const root = folder();
-    fs.mkdirSync(root, { recursive: true });
-    const file = path.join(root, record.session_id + ".vertex-debug.json");
-    const temporary = file + ".tmp";
-    fs.writeFileSync(temporary, JSON.stringify(record) + "\n", "utf8");
-    fs.renameSync(temporary, file);
+    require("./sap-debug-history").checkpoint(root, record);
     savedSteps = record.timeline.length;
   }
   function reference() {

@@ -5,7 +5,7 @@
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
-Current VS Code extension: **0.9.82**.
+Current VS Code extension: **0.9.83**.
 
 For VS Code, the recommended companion is
 [ABAP Syntax Highlighting by Lars Hvam](https://marketplace.visualstudio.com/items?itemName=larshp.vscode-abap)
@@ -101,7 +101,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.81.20261111155403**; the VS Code extension is **0.9.82**.
+**0.9.83.20261112003513**; the VS Code extension is **0.9.83**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -336,7 +336,11 @@ Eclipse Tools selects the active ADT class or program when opened from its edito
 Each API provider can have several named keys, with one selected manually.
 For Mistral and other compatible APIs, the VS Code chat shows the token usage returned by the provider, summed across tool calls.
 With `vertex.ai.logPath` set, the VS Code assistant writes an Anthropic-compatible JSONL log for any provider. Each direct API or Copilot model call has its own record; CLI subscriptions are recorded per VERTEX invocation. Choose the folder in LLM Providers or Settings. Raw HTTP request bodies are not stored.
-**Session Logs** (the scroll icon in the VERTEX panel's title) shows the logged conversations by day, with filters and token totals; **Continue** reopens one in the chat.
+**Session Logs** (the scroll icon in the VERTEX panel's title) shows the logged conversations by day, with filters and token totals; **Duration** shows each prompt's elapsed time in minutes and seconds, excluding the pause before the next question. **Continue** reopens one in the chat. **Continue** also restores unanswered questions and saved screenshots after a failed or quota-limited request; missing screenshot files are reported. The left chat panel also has **Conversations · Continue a chat** below the project selector: expand it, search saved conversations, and select one to restore it. **Refresh** reloads the list from the configured log folder. Conversation details are rendered when expanded; closed entries keep the report compact. The Conversation column prioritizes prompt text; Model is compact, with the full provider and model available on hover. Table columns retain stable sizing in narrow panels; scroll horizontally to see additional columns. In SAP mode, entering an object name alone searches SAP and opens a unique match without a model request; screenshots from earlier messages do not change this. A screenshot attached to the current message keeps it as a question for the model. In VS Code, SAP debug steps recorded by VERTEX Smart Debugger are saved automatically as they arrive, with recorded values and source snapshots. They appear in **SAP & Transpiler Logs** without requiring **Save session**; closing the debugger does not discard saved steps.
+
+**Context protection (VS Code).** Credential fields are masked before AI requests, MCP tool responses, conversation logs and SAP recording writes. Redaction markers preserve type, length, empty status and opaque equality labels. Add project-specific field names or `*` patterns with `vertex.ai.context.secretFields`. Live SAP values stay unchanged. Screenshots and external agents’ own filesystem reads are outside this text filter; existing files are not rewritten.
+
+In VS Code, the left chat panel has **Main / AI Review** modes. **Main / AI Review** appears only after a review is requested. **Close review** closes it and returns to Main; switching to **Main** keeps the review available. **ASK AI** in Assistant changes switches to AI Review with the selected block, file or all changes attached. Each mode keeps its own history and draft; provider and model settings are shared. Review logs have a separate conversation identifier, and requirements are entered explicitly for that review. **Check again** starts a fresh review of the current changes. **Discuss in Main** under a review answer attaches that result and its reviewed snapshot to the next Main question. Expand **Attached review result** to inspect it, or remove it with the attachment’s × button. Your Main draft is preserved; nothing is sent until you submit the question.
 Eclipse's built-in
 Assistant uses Codex or Claude Code; Copilot Chat in Eclipse connects separately
 through MCP.
@@ -523,3 +527,11 @@ The direct SNC transport uses fr0ster's [@mcp-abap-adt/connection](https://githu
 What is still missing, and what has to come out before it ships: [Next.md](Next.md).
 
 For feature instructions, see [VS Code documentation](vscode/README.md) and [Eclipse documentation](eclipse/README.md). For changes between releases, see [history.md](history.md).
+
+Codex in the built-in VS Code chat can stage SAP source edits and new-object drafts through VERTEX tools. Save, apply and activation remain explicit VERTEX UI actions.
+
+Automatic AI context from VERTEX Smart Debugger contains only a session reference. Recorded steps, source, values and analysis are not attached automatically; provide a relevant fragment explicitly when needed.
+
+Only screenshots attached to the current message are sent as images. Earlier screenshots are represented by saved-file references (or turn/image references when no log file exists); reattach an earlier screenshot to inspect it again. Continue restores these references without automatically resending old image contents.
+
+Long chat histories keep earlier messages available while deferring offscreen layout. Session Logs defers offscreen session layout as well, reducing resize and scrolling work.

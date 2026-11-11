@@ -502,6 +502,7 @@ function debugSet(dbg) {
 /* The review tools, unless a caller names another set: the standalone server
    calls dispatch with two arguments and serves the review alone. */
 const REVIEW = { tools: TOOLS, call: callTool };
+const responseProtections = new WeakMap();
 
 async function dispatch(deps, message, set) {
   const served = set || REVIEW;
@@ -519,6 +520,9 @@ async function dispatch(deps, message, set) {
   if (method === "ping") { return {}; }
   if (method === "tools/list") { return { tools: served.tools }; }
   if (method === "tools/call") {
+    const owner = deps && typeof deps === "object" ? deps : served;
+    let protection = responseProtections.get(owner);
+    if (!protection) { protection = require("./context-protection").create(); responseProtections.set(owner, protection); }
     const params = message.params || {};
     if (!served.tools.some(function (t) { return t.name === params.name; })) {
       const error = new Error("Unknown tool: " + params.name);
@@ -526,11 +530,11 @@ async function dispatch(deps, message, set) {
       throw error;
     }
     try {
-      return await served.call(deps, params.name, params.arguments || {});
+      return protection.protect(await served.call(deps, params.name, params.arguments || {}));
     } catch (e) {
       // A tool that fails is an answer, not a broken protocol: the model is
       // told what went wrong and can try something else.
-      return fail(e && e.message ? e.message : String(e));
+      return protection.protect(fail(e && e.message ? e.message : String(e)));
     }
   }
 

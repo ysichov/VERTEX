@@ -768,7 +768,7 @@ test("a live SAP recording keeps one session ID until a new run starts", () => {
   let next = 0;
   const context = vm.createContext({ INITIAL: { local: false }, flow: { nodes: {}, edges: {}, order: [] }, flowPath: [], maps: {},
     sessionId: null, crypto: { randomUUID: () => "session-" + ++next }, callerFrames: () => 0,
-    unitOf: frame => ({ name: frame.program }), note: () => {}, picture: { ended: 0 } });
+    unitOf: frame => ({ name: frame.program }), note: () => {}, picture: { ended: 0 }, autoSaveRecord() {} });
   vm.runInContext(part("function record(frames){", "/* The statements of the routine"), context);
   const frame = [{ program: "ZREP", line: 10, label: "ZREP" }];
   context.record(frame);
@@ -782,7 +782,7 @@ test("a live SAP recording keeps one session ID until a new run starts", () => {
 test("the followed value read with the step is used without asking again", async () => {
   const asked = [];
   const context = vm.createContext({ flow: { timeline: [{ stack: [{ line: 46, program: "Z_CALC" }], cur: null }] },
-    chosenValue: { name: "lv_total" }, sliceAt: () => null,
+    chosenValue: { name: "lv_total" }, sliceAt: () => null, autoSaveRecord() {},
     debug: (command, args) => { asked.push(command); return Promise.resolve({ variables: [{ name: "LV_TOTAL", value: "1" }] }); } });
   vm.runInContext(part("function readChosenValue(pre){", "function valueTrail(){"), context);
   await vm.runInContext('readChosenValue({ names: ["LV_TOTAL"], read: [{ name: "LV_TOTAL", value: "700.00", type: "P" }] })', context);

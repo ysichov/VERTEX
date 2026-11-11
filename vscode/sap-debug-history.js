@@ -8,7 +8,20 @@ function save(file, record) {
   if (!record || record.format !== 1 || !Array.isArray(record.timeline) || !record.timeline.length)
     throw new Error("There are no recorded SAP debug steps to save.");
   record.session_id = record.session_id || randomUUID();
-  fs.writeFileSync(file, JSON.stringify(record, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
+  fs.writeFileSync(file, JSON.stringify(require("./context-protection").protect(record), null, 2) + "\n", { encoding: "utf8", flag: "wx" });
+  return file;
+}
+
+function checkpoint(folder, record) {
+  if (!record || record.format !== 1 || !Array.isArray(record.timeline) || !record.timeline.length
+    || !record.meta || !record.sources || typeof record.sources !== "object"
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(record.session_id || ""))
+    throw new Error("Invalid SAP debug checkpoint.");
+  fs.mkdirSync(folder, { recursive: true });
+  const file = path.join(folder, record.session_id + ".vertex-debug.json");
+  const temporary = file + ".tmp";
+  fs.writeFileSync(temporary, JSON.stringify(require("./context-protection").protect(record)) + "\n", "utf8");
+  fs.renameSync(temporary, file);
   return file;
 }
 
@@ -19,6 +32,7 @@ function load(file) {
   if (!record || record.format !== 1 || !record.meta || !Array.isArray(record.timeline) || !record.timeline.length
     || !record.sources || typeof record.sources !== "object")
     throw new Error("This is not a VERTEX SAP debug recording.");
+  record = require("./context-protection").protect(record);
   if (!record.session_id) {
     record.session_id = randomUUID();
     const temporary = file + ".tmp";
@@ -61,4 +75,4 @@ function remove(folder, file) {
   fs.unlinkSync(containedFile(folder, file));
 }
 
-module.exports = { save, load, list, rename, remove };
+module.exports = { save, checkpoint, load, list, rename, remove };

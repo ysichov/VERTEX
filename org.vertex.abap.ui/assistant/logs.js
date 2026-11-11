@@ -29,7 +29,7 @@ var require=__vertexRequire;
 "use strict";
 // What the Eclipse Session Logs page calls as window.vertexLogs: VS Code's log reading (log-report.js), its snapshot
 // page (log-snapshot.js) and its reading of a logged object (session-log.js). Java reads and deletes the files.
-module.exports = { parseSession: __vertexRequire(1).parseSession, snapshotHtml: __vertexRequire(4).html,
+module.exports = { parseSession: __vertexRequire(1).parseSession, snapshotHtml: __vertexRequire(5).html,
   objectReference: __vertexRequire(2).objectReference };
 
 },
@@ -91,6 +91,7 @@ function parseSession(text, file) {
     try { record = JSON.parse(line); } catch { continue; }
     const time = Date.parse(record.timestamp || "");
     if (!session.conversation && typeof record.vertex_conversation === "string") session.conversation = record.vertex_conversation;
+    if (typeof record.vertex_related_conversation === "string") session.relatedConversation = record.vertex_related_conversation;
     if (Number.isFinite(time)) {
       session.start = session.start === null ? time : Math.min(session.start, time);
       session.end = session.end === null ? time : Math.max(session.end, time);
@@ -210,6 +211,10 @@ function parseSession(text, file) {
     if (reference) detail.recording = reference;
     else delete detail.recording;
   }
+  if (session.prompts.length && session.prompts.every(prompt => prompt.operation === "AI Review") && !session.relatedConversation) {
+    session.relatedConversation = session.conversation;
+    session.conversation = "review:legacy:" + name;
+  }
   if (!session.conversation) session.conversation = "legacy:" + name;
   return session.start !== null ? session : null;
 }
@@ -231,12 +236,32 @@ function readSessions(root) {
 /* The questions and answers of the conversation SESSION belongs to, in the order they were asked: every file that
    carries its conversation id (one per provider it used), or the file alone when it was written before ids existed.
    Commit and PR descriptions are separate operations, not turns of the chat. */
+function conversationList(report) {
+  const groups = new Map();
+  for (const session of report.sessions) {
+    const prompts = session.prompts.filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search");
+    if (!prompts.length) continue;
+    const key = session.conversation || session.id;
+    if (!groups.has(key)) groups.set(key, { prompts: [], providers: new Set() });
+    const group = groups.get(key);
+    group.providers.add(session.provider);
+    group.prompts.push(...prompts.map(prompt => ({ ...prompt, sessionId: session.id })));
+  }
+  return [...groups.values()].map(group => {
+    group.prompts.sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
+    const first = group.prompts[0], last = group.prompts[group.prompts.length - 1];
+    const preview = text => String(text || "").replace(/\s+/g, " ").slice(0, 180);
+    return { id: last.sessionId, title: preview(first.text), lastQuestion: preview(last.text),
+      time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · ") };
+  }).sort((a, b) => (b.time || 0) - (a.time || 0));
+}
+
 function conversationTurns(report, sessionId, point) {
   const session = report.sessions.find(item => item.id === sessionId);
   if (!session) throw new Error("That session is no longer in the log folder.");
   const files = session.conversation ? report.sessions.filter(item => item.conversation === session.conversation) : [session];
-  const all = files.flatMap(item => item.prompts.map(prompt => ({ ...prompt, provider: item.provider })))
-    .filter(prompt => !prompt.failed && (prompt.operation === "Chat" || prompt.operation === "Web search"))
+  const all = files.flatMap(item => item.prompts.map(prompt => ({ ...prompt, provider: item.provider, logId: item.id })))
+    .filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search")
     .sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
   const target = point ? all.find(prompt => prompt.key === point) : all[all.length - 1];
   if (point && !target) throw new Error("That continuation point is no longer in the log folder.");
@@ -261,10 +286,27 @@ function conversationTurns(report, sessionId, point) {
   }
   const turns = prompts.map(prompt => {
     const answers = prompt.details.filter(detail => detail.type === "answer").map(detail => detail.text);
-    const answer = answers.length ? answers[answers.length - 1] : "";
-    return { question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time };
+    const answer = !prompt.failed && answers.length ? answers[answers.length - 1] : "";
+    const images = [], missing = [];
+    for (const shot of prompt.screenshots || []) {
+      try {
+        const extension = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[shot.media_type];
+        if (!report.folder || !extension || !shot.file) throw new Error("Screenshot unavailable");
+        const directory = fs.realpathSync(path.join(report.folder, prompt.logId));
+        const file = fs.realpathSync(shot.file);
+        // Logs are untrusted: only attachments actually stored beside this prompt's log may be restored.
+        const root = fs.realpathSync(report.folder), relative = path.relative(root, directory);
+        if (relative.startsWith("..") || path.isAbsolute(relative) || path.dirname(file) !== directory
+          || !new RegExp("^screenshot-\\d+\\." + extension + "$", "i").test(path.basename(file))) throw new Error("Invalid screenshot path");
+        const size = fs.statSync(file).size;
+        if (!size || size > 20 * 1024 * 1024) throw new Error("Screenshot size is unsupported");
+        images.push({ media_type: shot.media_type, data: fs.readFileSync(file).toString("base64"), file });
+      } catch (_) { missing.push(shot); }
+    }
+    return { question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time,
+      ...(prompt.failed ? { failed: true } : {}), ...(images.length ? { images } : {}), ...(missing.length ? { missingScreenshots: missing.length } : {}) };
   });
-  if (turns.every(turn => !turn.answer)) {
+  if (turns.every(turn => !turn.answer) && !prompts.some(prompt => prompt.failed)) {
     throw new Error("This conversation was logged without its answers; turn on vertex.ai.log.answers for conversations to come.");
   }
   const later = all.some(p => p.branch === target.branch && all.indexOf(p) > all.indexOf(target));
@@ -302,10 +344,10 @@ function open(vscode, options = {}) {
   const nonce = crypto.randomBytes(16).toString("hex");
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
-    .replace("</head>", () => "<style>" + __vertexRequire(3).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
+    .replace("</head>", () => "<style>" + __vertexRequire(4).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
     .replace("</head>", '<script nonce="' + nonce + '">window.vertexCanContinue = true;</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
-    .replace("</head>", () => "<style>" + __vertexRequire(3).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
+    .replace("</head>", () => "<style>" + __vertexRequire(4).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   const refresh = () => {
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
@@ -335,7 +377,7 @@ function open(vscode, options = {}) {
       } catch(error){vscode.window.showErrorMessage("VERTEX: "+error.message);}
     }
     if (message?.action === "openSnapshot") {
-      try { __vertexRequire(4).open(vscode, message.snapshot); }
+      try { __vertexRequire(5).open(vscode, message.snapshot); }
       catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
     }
     if (message?.action === "openScreenshot") {
@@ -378,7 +420,7 @@ function register(vscode, context, options) {
   context.subscriptions.push(vscode.commands.registerCommand("vertex.showLogs", () => open(vscode, options)));
 }
 
-module.exports = { parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns };
+module.exports = { parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList };
 
 },
 function(module,exports,__vertexRequire){
@@ -422,7 +464,7 @@ function options(include) {
 }
 
 /** Null when no folder is configured. `session` names the file and stays fixed for a conversation. */
-function create(root, provider, session, include, operation = "Chat") {
+function create(root, provider, session, include, operation = "Chat", scope = null) {
   root=resolveRoot(root);
   if (!root) { return null; }
   const on = options(include);
@@ -433,11 +475,13 @@ function create(root, provider, session, include, operation = "Chat") {
   let sequence = 0, discarded = false, screenshotCount = 0;
   // Every file of one VS Code conversation carries its id: a conversation that changes provider writes one file per
   // provider, and Session Logs puts them back together by it.
-  const conversation = conversationId, branch = branchId, parent = branchParent;
+  const conversation = scope?.conversation || conversationId, branch = scope ? "main" : branchId, parent = scope ? null : branchParent;
+  const protection = __vertexRequire(3).create();
   const write = entry => {
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch, ...(parent ? { vertex_parent: parent } : {}) }, entry)) + "\n", "utf8");
+    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch,
+      ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}), ...(parent ? { vertex_parent: parent } : {}) }, protection.protect(entry))) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
@@ -452,7 +496,7 @@ function create(root, provider, session, include, operation = "Chat") {
        the conversation's folder beside the log (<log name>/screenshot-<n>.<ext>), without it only counted. */
     user(text, images) {
       const objects = [];
-      const content = on.questions ? sanitizeText(String(text || ""), objects) : NOT_LOGGED;
+      const content = on.questions ? sanitizeText(protection.text(text), objects) : NOT_LOGGED;
       const pasted = Array.isArray(images) ? images.filter(image => image && typeof image.data === "string" && image.data) : [];
       let screenshots;
       if (pasted.length && on.questions) {
@@ -466,9 +510,11 @@ function create(root, provider, session, include, operation = "Chat") {
         });
       } else if (pasted.length) screenshots = pasted.map(image => ({ media_type: image.media_type || "image/png" }));
       write({ type: "user", message: { role: "user", content }, vertex_objects: objects, ...(screenshots ? { vertex_screenshots: screenshots } : {}) });
+      return screenshots || [];
     },
     request({ instructions, prompt, tools, schema }) {
       if (!on.request) { return; }
+      ({ instructions, prompt, tools, schema } = protection.protect({ instructions, prompt, tools, schema }));
       const objects = [], snapshots = [];
       const request = { instructions: sanitizeText(String(instructions || ""), objects, snapshots),
         prompt: sanitizeText(String(prompt || ""), objects, snapshots),
@@ -487,6 +533,7 @@ function create(root, provider, session, include, operation = "Chat") {
       write({ type: "vertex_provider_response", provider, scope, response: metadata });
     },
     assistant({ model, usage, text, reasoning }) {
+      ({ text, reasoning } = protection.protect({ text, reasoning }));
       // A model's own reasoning (reasoning_content), kept with the answers option as a thinking note.
       if (on.answers && reasoning) write({ type: "assistant", vertex_step: "claude_note", message: { id: id("note"),
         content: [{ type: "vertex_note", note: "thinking", text: sanitizeText(String(reasoning), []) }] } });
@@ -505,6 +552,7 @@ function create(root, provider, session, include, operation = "Chat") {
     },
     toolUse(name, args) {
       if (!on.tools) { return null; }
+      args = protection.protect(args);
       const toolId = id("tool");
       const objects = [];
       const input = sanitize(args || {}, objects, name === "read_sap_method" ? { object_type: "CLAS" } : {});
@@ -516,6 +564,7 @@ function create(root, provider, session, include, operation = "Chat") {
        or wrote is not logged - only where and how much - as for SAP tools; a command and its output are. */
     step(step) {
       if (!step || !step.id) { return; }
+      step = protection.protect(step);
       // What Claude says or thinks between its steps is model text, kept with the answers option.
       if (step.kind === "note") {
         if (!on.answers) { return; }
@@ -536,6 +585,7 @@ function create(root, provider, session, include, operation = "Chat") {
     /* The user's review of Claude Code's working copy: each file's decision, with a link to the file in the folder. */
     review(outcome) {
       if (!on.tools || !outcome) { return; }
+      outcome = protection.protect(outcome);
       const objects = [], reviewId = id("review");
       const files = [];
       const add = (file, decision, extra) => {
@@ -552,6 +602,7 @@ function create(root, provider, session, include, operation = "Chat") {
     },
     toolResult(toolId, result) {
       if (!on.tools || !toolId) { return; }
+      result = protection.protect(result);
       const objects = [];
       try { sanitize(JSON.parse(text(result)), objects); } catch (_) { /* a text result */ }
       write({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolId,
@@ -631,6 +682,7 @@ function addReference(objects, reference) {
 function omitted(value) { return "[" + String(value || "").length + " characters, not logged; open the referenced object]"; }
 
 function sanitize(value, objects, inherited = {}, parentKey = "", snapshots = []) {
+  if (!parentKey) value = __vertexRequire(3).protect(value);
   if (Array.isArray(value)) return value.map(item => sanitize(item, objects, inherited, parentKey, snapshots));
   if (!value || typeof value !== "object") return typeof value === "string" ? sanitizeText(value, objects, snapshots) : value;
   const reference = objectReference(value, inherited);
@@ -659,7 +711,7 @@ function sanitize(value, objects, inherited = {}, parentKey = "", snapshots = []
 }
 
 function sanitizeText(text, objects = [], snapshots = []) {
-  let result = String(text || "");
+  let result = __vertexRequire(3).create().text(String(text || ""));
   // Context is composed of labelled JSON blocks. Parse complete blocks rather
   // than line regexes so nested and escaped source strings are removed too.
   let output = "", cursor = 0;
@@ -754,6 +806,7 @@ async function assistantTool(log, name, args, call) {
 
 const shared = new Map();
 const newConversationId = () => stamp(new Date()) + "_" + ({ randomBytes: function (n) { var bytes = new Uint8Array(n); window.crypto.getRandomValues(bytes); return { toString: function () { return Array.prototype.map.call(bytes, function (b) { return (b < 16 ? '0' : '') + b.toString(16); }).join(''); } }; } }).randomBytes(4).toString("hex");
+function independentScope() { return { conversation: newConversationId(), relatedConversation: conversationId }; }
 let conversationId = newConversationId(), branchId = "main", branchParent = null;
 /** One log per folder, provider and choice for the life of the process: the VS Code chat is one conversation. */
 function current(root, provider, include) {
@@ -789,7 +842,158 @@ function fromConfig(config) {
     localCode: config.get("log.localCode", true) };
 }
 
-module.exports = { configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference };
+module.exports = { configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference, independentScope };
+
+},
+function(module,exports,__vertexRequire){
+var require=__vertexRequire;
+"use strict";
+
+// Protect structured debugger data without mutating the live SAP values.
+const SENSITIVE = /(?:^|[_./~>\-])(?:API_?KEY|API_?TOKEN|PASSWORD|PASSWD|PWD|ACCESS_?TOKEN|REFRESH_?TOKEN|AUTH_?TOKEN|ID_?TOKEN|CLIENT_?SECRET|SECRET|SECRET_?KEY|PRIVATE_?KEY|AUTHORIZATION|COOKIE|SET_COOKIE)$/i;
+const VALUE_FIELDS = /^(?:value|val|content|children|data)$/i;
+const MARKER = /^\[REDACTED secret-\d+ type=\w+ length=\d+ initial=(?:true|false)\]$/;
+const BEARER = /\b(?:Bearer|Basic)\s+([A-Za-z0-9._~+\/-]{6,}=*)/gi;
+const PRIVATE_KEY = /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )?PRIVATE KEY-----/g;
+const ASSIGNMENT = /(\b([A-Z][A-Z0-9_.\/~>\-]*)(?:["'])?\s*[:=]\s*)(?:"((?:\\.|[^"\\\r\n])*)"|'((?:''|\\.|[^'\\\r\n])*)'|([^\s&;,"'<>()]{4,}))/gi;
+const CREDENTIAL_HEADER = /\b(?:Authorization|Proxy-Authorization|Cookie|Set-Cookie)\s*:\s*([^\r\n]+)/gi;
+let extraFields = [];
+const normalize = value => String(value || "").replace(/\s+/g, "_");
+const sensitiveName = value => SENSITIVE.test(normalize(value)) || extraFields.some(pattern => pattern.test(normalize(value)));
+function configure(names = []) {
+  extraFields = (Array.isArray(names) ? names : []).filter(name => typeof name === "string" && name.trim()).map(name =>
+    new RegExp("^" + normalize(name.trim()).split("*").map(part => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "i"));
+}
+
+// Same labelled-JSON-block convention as session-log.sanitizeText, retaining
+// source for analysis here rather than dropping it as the conversation log does.
+function blocks(text, onText, onJson) {
+  let output = "", cursor = 0, match;
+  const start = /(^|\n)[ \t]*[\[{]/g;
+  while ((match = start.exec(text))) {
+    const at = match.index + match[0].length - 1;
+    let depth = 0, quoted = false, escaped = false, end = at;
+    for (; end < text.length; end++) {
+      const c = text[end];
+      if (quoted) { if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === '"') quoted = false; }
+      else if (c === '"') quoted = true;
+      else if (c === "{" || c === "[") depth++;
+      else if ((c === "}" || c === "]") && --depth === 0) { end++; break; }
+    }
+    let parsed;
+    try { parsed = JSON.parse(text.slice(at, end)); } catch (_) { continue; }
+    output += onText(text.slice(cursor, at)) + onJson(parsed, text.slice(at, end));
+    cursor = end; start.lastIndex = end;
+  }
+  return output + onText(text.slice(cursor));
+}
+
+function create() {
+  const secrets = new Map();
+  let serial = 0;
+  const raw = value => typeof value === "string" ? value : value == null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  function marker(value) {
+    const text = raw(value);
+    if (MARKER.test(text)) return text;
+    if (!secrets.has(text)) secrets.set(text, { id: ++serial, replace: typeof value === "string" && text.length >= 4 });
+    else if (typeof value === "string" && text.length >= 4) secrets.get(text).replace = true;
+    const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+    return "[REDACTED secret-" + secrets.get(text).id + " type=" + type + " length=" + text.length + " initial=" + (value == null || value === false || value === 0 || text.trim().length === 0) + "]";
+  }
+  function secretParts(value) {
+    if (!value || typeof value !== "object") {
+      marker(value);
+      if (typeof value === "string" && !MARKER.test(value)) {
+        const trimmed = value.trim();
+        if (trimmed.length >= 4 && trimmed !== value) marker(trimmed);
+        const quoted = /^(['"])([\s\S]*)\1$/.exec(trimmed);
+        if (quoted && quoted[2].length >= 4) marker(quoted[2]);
+      }
+      return;
+    }
+    if (Array.isArray(value)) { value.forEach(secretParts); return; }
+    for (const [key, item] of Object.entries(value)) if (!/^(?:name|type|technical|meta_type|id)$/i.test(key)) secretParts(item);
+  }
+  function assignments(text, replace) {
+    ASSIGNMENT.lastIndex = 0;
+    let match, output = "", cursor = 0;
+    while ((match = ASSIGNMENT.exec(text))) {
+      const [whole, prefix, name, doubleQuoted, singleQuoted, plain] = match;
+      if (!sensitiveName(name)) { ASSIGNMENT.lastIndex = match.index + prefix.length; continue; }
+      if (plain && (/^(?:Bearer|Basic)$/i.test(plain) || plain === "[REDACTED" || /^(?:[a-z]v|p|i|e|c|r)_\w+\.$/i.test(plain) || /^\s*\(/.test(text.slice(match.index + whole.length)))) continue;
+      const quote = doubleQuoted !== undefined ? '"' : singleQuoted !== undefined ? "'" : "";
+      const encoded = quote ? doubleQuoted ?? singleQuoted : plain;
+      let value = encoded;
+      if (quote === '"') { try { value = JSON.parse('"' + encoded + '"'); } catch (_) { /* keep the displayed value */ } }
+      if (quote === "'") value = encoded.replace(/''/g, "'").replace(/\\'/g, "'");
+      const hidden = marker(value);
+      if (encoded !== value && encoded.length >= 4) marker(encoded);
+      if (replace) { output += text.slice(cursor, match.index) + prefix + quote + hidden + quote; cursor = match.index + whole.length; }
+    }
+    return replace ? output + text.slice(cursor) : text;
+  }
+  function discover(value, seen = new WeakSet(), depth = 0) {
+    if (depth > 40) return;
+    if (typeof value === "string") {
+      if (MARKER.test(value)) return;
+      assignments(value, false);
+      value.replace(CREDENTIAL_HEADER, (_, credential) => { marker(credential); return ""; });
+      value.replace(BEARER, (_, token) => { marker(token); return ""; });
+      value.replace(PRIVATE_KEY, key => { marker(key); return ""; });
+      blocks(value, () => "", parsed => { discover(parsed, seen, depth + 1); return ""; });
+      return;
+    }
+    if (!value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    const media = /^(?:image|audio)$/.test(value.type || "") || /^(?:image|audio)\//.test(value.mimeType || "");
+    const named = sensitiveName(value.name || value.NAME || value.variable_name || value.field_name || value.full);
+    for (const [key, item] of Object.entries(value)) {
+      if (media && key === "data") continue;
+      if (sensitiveName(key) || named && VALUE_FIELDS.test(key)) secretParts(item);
+      discover(item, seen, depth + 1);
+    }
+  }
+  function replaceKnown(text) {
+    const entries = [...secrets].filter(([, item]) => item.replace).sort((a, b) => b[0].length - a[0].length);
+    return text.split(/(\[REDACTED secret-\d+ type=\w+ length=\d+ initial=(?:true|false)\])/).map(part => {
+      if (MARKER.test(part)) return part;
+      for (const [secret] of entries) part = part.split(secret).join(marker(secret));
+      return part;
+    }).join("");
+  }
+  function plain(text) {
+    text = text.replace(CREDENTIAL_HEADER, (whole, credential) => whole.slice(0, whole.indexOf(credential)) + marker(credential));
+    text = assignments(text, true);
+    text = text.replace(BEARER, (whole, token) => whole.slice(0, whole.indexOf(token)) + marker(token));
+    text = text.replace(PRIVATE_KEY, key => marker(key));
+    return replaceKnown(text);
+  }
+  function walk(value, seen = new WeakMap(), depth = 0) {
+    if (typeof value === "string") {
+      if (MARKER.test(value)) return value;
+      if (depth > 40) return plain(value);
+      return blocks(value, plain, (parsed, original) => {
+        const safe = walk(parsed, seen, depth + 1);
+        return JSON.stringify(safe) === JSON.stringify(parsed) ? original : JSON.stringify(safe, null, 2);
+      });
+    }
+    if (!value || typeof value !== "object") return value;
+    if (seen.has(value)) return seen.get(value);
+    const result = Array.isArray(value) ? [] : {};
+    seen.set(value, result);
+    const media = /^(?:image|audio)$/.test(value.type || "") || /^(?:image|audio)\//.test(value.mimeType || "");
+    const named = sensitiveName(value.name || value.NAME || value.variable_name || value.field_name || value.full);
+    for (const [key, item] of Object.entries(value)) {
+      const hidden = sensitiveName(key) || named && VALUE_FIELDS.test(key);
+      Object.defineProperty(result, key, { value: media && key === "data" ? item : hidden ? (key.toLowerCase() === "children" ? [] : marker(item)) : walk(item, seen, depth + 1), enumerable: true, configurable: true, writable: true });
+    }
+    return result;
+  }
+  function protect(value) { discover(value); return walk(value); }
+  return { protect, text: value => protect(String(value || "")) };
+}
+
+module.exports = { create, protect: value => create().protect(value), sensitiveName, configure };
 
 },
 function(module,exports,__vertexRequire){

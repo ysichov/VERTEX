@@ -9,6 +9,25 @@ const worktree = require("../agent-worktree");
 const reviewer = require("../worktree-review");
 
 const made = [];
+test("assistant ASK AI opens an independent review for all changes and uses a project-relative tree", async () => {
+  const page = { posted: [] }, commands = [], vscode = fakeVscode(page);
+  vscode.commands.executeCommand = async (...args) => commands.push(args);
+  const folder = path.join(os.tmpdir(), "project");
+  const changes = [{ file: "src/a.txt", path: path.join(folder, "src", "a.txt"), before: "old", after: "new" },
+    { file: "b.txt", path: path.join(folder, "b.txt"), before: "", after: "added" }];
+  reviewer.open(vscode, { folder, changes: async () => changes }, changes, () => {}, { task: "Original task" });
+  assert.match(page.html, /id="askall"/);
+  const tree = page.html.slice(page.html.indexOf('<nav class="review-tree"'), page.html.indexOf('</nav>'));
+  assert.match(tree, /<summary>project<\/summary>/);
+  assert.doesNotMatch(tree, /<summary>[A-Z]:/);
+  await page.send({ action: "ask", all: true });
+  assert.equal(commands[0][0], "vertex.openAiReview");
+  assert.equal(commands[0][1].blocks.length, 2);
+  assert.equal(await commands[0][1].isCurrent(), true);
+  assert.equal(commands[0][1].task, "Original task");
+  await page.send({ action: "ask", file: "f1" });
+  assert.deepEqual(commands[1][1].files, ["src/a.txt"]);
+});
 test.after(() => made.forEach(dir => fs.rmSync(dir, { recursive: true, force: true })));
 function repo() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-repo-"));

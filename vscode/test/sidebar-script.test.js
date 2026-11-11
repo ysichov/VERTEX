@@ -30,6 +30,29 @@ test("sidebar HTML contains an executable chat script", () => {
   assert.doesNotMatch(html, /system-snc/);
 });
 
+test("conversation history searches saved chats and continues the selected conversation", () => {
+  const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
+  vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.renderForTest=html;',sandbox);
+  const html=sandbox.module.exports.renderForTest('test');
+  const script=html.slice(html.indexOf('<script nonce="test">')+21,html.indexOf('</script>'));
+  const nodes=new Map(),events=[],posted=[];
+  const make=()=>({value:'',children:[],append(...children){this.children.push(...children);},appendChild(child){this.children.push(child);},replaceChildren(){this.children=[];}});
+  const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
+  const context={document:{getElementById:get,createElement:make},window:{addEventListener:(_,fn)=>events.push(fn)},api:{postMessage:m=>posted.push(m)},chatRunning:false};
+  vm.runInNewContext(script.slice(script.indexOf('let historyItems='),script.indexOf("document.querySelectorAll('[data-context]')")),context);
+  get('conversation-history').open=true;get('conversation-history').ontoggle();
+  assert.equal(posted.pop().action,'conversationHistory');
+  const receive=events[0];
+  receive({data:{conversationHistory:{items:[{id:'a',title:'Translator',lastQuestion:'last screenshot',providers:'claude',count:3,time:1},{id:'b',title:'Other chat',lastQuestion:'hello',providers:'codex',count:1,time:2}]}}});
+  assert.equal(get('history-list').children.length,2);
+  get('history-search').value='screenshot';get('history-search').oninput();
+  assert.equal(get('history-list').children.length,1);
+  get('history-list').children[0].onclick();
+  assert.equal(posted.at(-1).action,'continueHistory');assert.equal(posted.at(-1).id,'a');
+  receive({data:{historyContinued:true}});
+  assert.equal(get('conversation-history').open,false);
+});
+
 test("run and saved SAP-session citations link only when their session is known", () => {
   const folder = path.join(__dirname, "..");
   const source = fs.readFileSync(path.join(folder, "sidebar.js"), "utf8");

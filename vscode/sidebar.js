@@ -13,11 +13,12 @@ const ACTIONS = Object.freeze({
 });
 
 function register(vscode, context, active, ask, systems, toolContext, clients = { set: async () => {}, onChange: () => ({ dispose() {} }) }, chatMcp = null) {
-  let currentView, ready = false, nextRequest = 0, pendingChat = null;
+  let currentView, ready = false, nextRequest = 0, pendingChat = null, continuing = false;
+  let reviewSurface = null, viewNonce = "";
   // ASK AI of a review: the blocks on the chip above the input, attached to the next question only when it is sent.
   let reviewAsk = null;
   const review = require("./code-review");
-  const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", draft: reviewAsk && reviewAsk.question || "" }) : undefined;
+  const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", reviewResult: reviewAsk?.review_result ? { ...reviewAsk.review_result, files: reviewAsk.files } : null, draft: reviewAsk && reviewAsk.question || "" }) : undefined;
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.configureOrchestrator", async () => {try{const planner=await ask.configOrchestrator();if(currentView)await currentView.webview.postMessage({planner});return planner;}catch(error){vscode.window.showErrorMessage("VERTEX planner: "+error.message);}}));
@@ -27,7 +28,10 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   // Continue a conversation from Session Logs: a new conversation in the panel whose history is the logged questions
   // and answers; it keeps logging under the same conversation id, so its files stay together.
   context.subscriptions.push(vscode.commands.registerCommand("vertex.continueConversation", async found => {
+    if (pendingChat || continuing) throw new Error("Stop or finish the current request before continuing another conversation.");
     if (!found || !Array.isArray(found.turns) || !found.turns.length) throw new Error("No questions to continue from.");
+    continuing = true;
+    try {
     if (!currentView || !ready) {
       await vscode.commands.executeCommand("vertex.launcher.focus");
       for (let waited = 0; (!currentView || !ready) && waited < 5000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
@@ -43,12 +47,17 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     await view.webview.postMessage({ chat: "VERTEX: Continued from the session log" + (when ? " of " + when : "") + ": " + count + " question" + (count === 1 ? "" : "s")
       + (found.files > 1 ? " from " + found.files + " providers' logs" : "") + ". The next question carries them as history; the tools' results of that session are not repeated." });
     for (const turn of found.turns) {
-      await view.webview.postMessage({ chat: "You: " + turn.question });
-      await view.webview.postMessage({ chat: "VERTEX: " + (turn.answer || "(no answer was logged)") });
+      await view.webview.postMessage({ chat: "You: " + turn.question
+        + (turn.images?.length ? "  [" + turn.images.length + " screenshot(s) restored]" : "")
+        + (turn.missingScreenshots ? "  [" + turn.missingScreenshots + " screenshot(s) unavailable]" : "") });
+      await view.webview.postMessage({ chat: "VERTEX: " + (turn.answer || (turn.failed
+        ? "(request did not complete; your question and available screenshots were restored for the next request)" : "(no answer was logged)")) });
     }
+    await view.webview.postMessage({ historyContinued: true });
     await showReview();
     view.show(true);
     return count;
+    } finally { continuing = false; }
   }));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.continueDecision",async input=>{
     if(pendingChat)throw new Error("Wait for the active request to finish before restoring a Jev step.");
@@ -89,11 +98,54 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     await vscode.commands.executeCommand("vertex.launcher.focus");
     await showReview();
   }));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.discussAiReview", async attachment => {
+    if (!currentView || !ready || !attachment?.review_result || !Array.isArray(attachment.blocks)) return;
+    reviewAsk = attachment;
+    await currentView.webview.postMessage({ discussReview: true });
+    await showReview();
+    currentView.show(true);
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.openAiReview", async reviewContext => {
+    await vscode.commands.executeCommand("vertex.launcher.focus");
+    for (let waited = 0; (!currentView || !ready) && waited < 5000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
+    if (!currentView || !ready) throw new Error("Open the VERTEX chat and try ASK AI again.");
+    reviewSurface?.dispose();
+    const receive = new Set(), dispose = new Set(), queue = [];
+    const id = require("crypto").randomBytes(12).toString("hex");
+    let active = true, childReady = false;
+    const surface = {
+      embedding: { id, nonce: viewNonce },
+      webview: {
+        set html(html) { childReady = false; queue.length = 0; if (active) void currentView?.webview.postMessage({ reviewPage: { id, html } }); },
+        onDidReceiveMessage(fn) { receive.add(fn); return { dispose: () => receive.delete(fn) }; },
+        async postMessage(message) {
+          if (!active) return;
+          if (message.turn || message.done) await currentView?.webview.postMessage({ reviewBusy: !!message.turn });
+          if (childReady) return currentView?.webview.postMessage({ reviewUpdate: { id, message } });
+          queue.push(message);
+        }
+      },
+      onDidDispose(fn) { dispose.add(fn); },
+      async receive(message) {
+        if (!active) return;
+        if (message.action === "ready") {
+          childReady = true;
+          for (const update of queue.splice(0)) await currentView?.webview.postMessage({ reviewUpdate: { id, message: update } });
+        }
+        for (const fn of receive) await fn(message);
+      },
+      dispose() { active = false; for (const fn of dispose) fn(); }
+    };
+    reviewSurface = surface;
+    require("./ai-review").open(vscode, reviewContext, (prompt, options) => ask.reviewChanges(prompt, options), surface);
+  }));
+  context.subscriptions.push({ dispose: () => reviewSurface?.dispose() });
   const provider = {
     resolveWebviewView(view) {
       currentView = view;
       ready = false;
       const nonce = require("crypto").randomBytes(24).toString("hex");
+      viewNonce = nonce;
       view.webview.options = { enableScripts: true, localResourceRoots: [] };
       view.webview.html = html(nonce);
       const refresh = (fresh = false) => {
@@ -123,12 +175,40 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       const showFolder = async () => {if(!ready)return;await view.webview.postMessage({folder:ask.state().contextFolder??require("./chat").currentWorkingFolder(vscode),contextMode:ask.state().contextMode});await updateFileLinks();};
       const messages = view.webview.onDidReceiveMessage(async message => {
         if (!message || typeof message !== "object") { return; }
+        if (message.action === "closeAiReview") {
+          if (message.id === reviewSurface?.embedding.id) {
+            reviewSurface.dispose(); reviewSurface = null;
+            await view.webview.postMessage({ reviewClosed: message.id });
+          }
+          return;
+        }
+        if (message.action === "aiReviewMessage") {
+          if (message.id === reviewSurface?.embedding.id && message.message && typeof message.message === "object") await reviewSurface.receive(message.message);
+          return;
+        }
         if (message.action === "ready") {
           ready = true;
           await showFolder();
           await refresh();
           await showReview();
           await view.webview.postMessage({chatRunning:!!pendingChat});
+          return;
+        }
+        if (message.action === "conversationHistory") {
+          try {
+            const report = require("./log-report").readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
+            await view.webview.postMessage({ conversationHistory: { items: require("./log-report").conversationList(report),
+              message: report.configured ? "" : "Choose a log folder in Session Logs to save and continue conversations." } });
+          } catch (error) { await view.webview.postMessage({ conversationHistory: { items: [], message: error.message } }); }
+          return;
+        }
+        if (message.action === "continueHistory") {
+          try {
+            if (pendingChat) throw new Error("Stop or finish the current request first.");
+            const logs = require("./log-report");
+            const report = logs.readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
+            await vscode.commands.executeCommand("vertex.continueConversation", logs.conversationTurns(report, String(message.id || "")));
+          } catch (error) { await view.webview.postMessage({ historyError: error.message }); }
           return;
         }
         if(message.action==="setContextMode"){try{await view.webview.postMessage({ai:await ask.setContextMode(message.mode)});await showFolder();}catch(error){vscode.window.showWarningMessage("VERTEX: "+error.message);}return;}
@@ -167,7 +247,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "newConversation") {
-          if (pendingChat) return;
+          if (pendingChat || continuing) return;
           // A new conversation writes to a new log file.
           require("./session-log").reset();
           await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
@@ -221,6 +301,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "chat") {
+          if (continuing) return;
           if (pendingChat) return;
           const requestId = ++nextRequest;
           // The window shows the question as written; the review's blocks go to the model with it, unseen.
@@ -229,7 +310,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           if (asked) { reviewAsk = null; await showReview(); }
           const images = (Array.isArray(message.images) ? message.images : []).filter(image => image
             && /^image\/(png|jpeg|gif|webp)$/.test(image.media_type) && typeof image.data === "string" && image.data);
-          const shown = String(message.text || "").trim() || (asked ? (asked.prompt_label ? asked.prompt_label + " (VERTEX prompt)" : "What does this change do, and is there a real problem with it?")
+          const shown = String(message.text || "").trim() || (asked ? (asked.review_result ? "Check the attached review findings against the code and explain which are valid." : asked.prompt_label ? asked.prompt_label + " (VERTEX prompt)" : "What does this change do, and is there a real problem with it?")
             : images.length ? "What is in this screenshot?" : "");
           if (!shown) { return; }
           const pending = pendingChat = { id: requestId, cancelled: false };
@@ -247,7 +328,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
               delete state.review_source;
               delete state.selected_fragment;
             }
-            const reply = await ask(asked ? review.askRequest(message.text, asked) : shown, {model: message.model, state, web,contextMode:asked?.system==="local"?"folder":ask.state().contextMode,
+            const reply = await ask(asked ? review.askRequest(asked.review_result ? shown : message.text, asked) : shown, {model: message.model, state, web,contextMode:asked?.system==="local"?"folder":ask.state().contextMode,
               ...(images.length ? { images } : {}),
               onProgress: update => { if(pending.cancelled)return; Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
             if (pending.cancelled || reply.stopped) { await view.webview.postMessage({progress:{id:requestId,stopped:true,done:true}}); return; }
@@ -331,7 +412,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         vscode.workspace.onDidChangeWorkspaceFolders(() => { void showFolder(); })];
       const clientSwitch = clients.onChange(() => { void refresh(); });
       const mcpUpdates = chatMcp ? chatMcp.onUpdates(() => { void refresh(); }) : { dispose() {} };
-      view.onDidDispose(() => { currentView = undefined; ready = false; messages.dispose(); changes.dispose(); folderWatch.forEach(watch => watch.dispose()); clientSwitch.dispose(); mcpUpdates.dispose(); });
+      view.onDidDispose(() => { reviewSurface?.dispose(); reviewSurface=null; currentView = undefined; ready = false; messages.dispose(); changes.dispose(); folderWatch.forEach(watch => watch.dispose()); clientSwitch.dispose(); mcpUpdates.dispose(); });
     }
   };
   // The panel holds the chat: switching to Explorer and back must not wipe the conversation on screen.
@@ -373,14 +454,16 @@ function html(nonce) {
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'self'; img-src data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <style nonce="${nonce}">
 html, body { height: 100%; margin: 0; }
-body { box-sizing: border-box; display: flex; flex-direction: column; padding: 16px 16px 8px; color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+body { background:var(--vscode-editor-background); box-sizing: border-box; display: flex; flex-direction: column; padding: 16px 16px 8px; color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
 h2 { font-size: 12px; text-transform: uppercase; margin: 8px 0 12px; }
 p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #system { overflow-wrap: anywhere; margin-bottom: 16px; }
 #messages { flex: 1 1 auto; min-height: 80px; overflow-y: auto; white-space: pre-wrap; }
+/* Reuse the review view's offscreen containment: old answers need no layout on every resize. */
+#messages > .vertex, #messages > .you { content-visibility: auto; contain-intrinsic-size: auto 180px; }
 /* The question box and VERTEX Tools stay at the bottom; the answers scroll. */
 .dock { flex: none; }
 /* The attached review context: a quiet tag above the input, its name cut with an ellipsis, × to drop it. */
@@ -388,6 +471,9 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
   padding: 2px 2px 2px 8px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-left: 3px solid var(--vscode-focusBorder);
   border-radius: 4px; background: var(--vscode-editorWidget-background, var(--vscode-input-background)); color: var(--vscode-foreground); font-size: 12px; }
 #review-chip[hidden] { display: none; }
+#review-result-preview{max-height:220px;overflow:auto;margin:4px 0 8px;padding:6px 8px;border:1px solid var(--vscode-panel-border);background:var(--vscode-editorWidget-background)}
+#review-result-preview[hidden]{display:none!important}
+#review-result-preview>summary{cursor:pointer}
 /* Pasted screenshots: the review chip's tag, one per image, a thumbnail and × to drop it. */
 #image-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 #image-chips[hidden] { display: none; }
@@ -493,6 +579,22 @@ body.vscode-dark[data-provider="codemie"] #tools:hover, body.vscode-light[data-p
 body[data-provider="codemie"] #provider-select option { color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); }
 .chat-head { margin-bottom: 4px; }
 #new-conversation { margin-left: auto; }
+#chat-modes{flex:none;align-self:center}
+#chat-header{flex:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#review-navigation{flex:none}#review-navigation[hidden]{display:none!important}
+#ai-review-frame{flex:1 1 auto;min-height:100px;width:100%;border:0;background:var(--vscode-editor-background)}
+#review-empty{flex:1 1 auto}
+body[data-chat-mode="review"] #context-controls,body[data-chat-mode="review"] #conversation-history,body[data-chat-mode="review"] #messages,body[data-chat-mode="review"] #work-composer,body[data-chat-mode="review"] #new-conversation{display:none!important}
+body:not([data-chat-mode="review"]) #ai-review-frame,body:not([data-chat-mode="review"]) #review-empty,body:not([data-chat-mode="review"]) #new-review{display:none!important}
+#new-review{margin-left:auto}
+#conversation-history{flex:none;margin:6px 0;border-bottom:1px solid var(--vscode-panel-border)}
+#conversation-history>summary{cursor:pointer;padding:6px 0;color:var(--vscode-foreground)}
+.history-controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
+#history-search{flex:1;min-width:100px;font:inherit;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));padding:5px}
+#history-list{max-height:30vh;overflow:auto;margin:4px 0}
+button.history-item{display:block;width:100%;text-align:left;margin:3px 0;padding:7px 9px}
+.history-title,.history-meta{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-title{font-weight:600}.history-meta,#history-status{font-size:.9em;color:var(--vscode-descriptionForeground)}
 #tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 6px; font-size: 1.7em; font-weight: 600; }
 #tools .tools-logo { position: relative; flex: none; width: 40px; height: 40px; }
 #tools .tools-logo::before { content: ""; position: absolute; inset: 0; background: url("${LOGO}") center/contain no-repeat; transform-origin: center; animation: vertex-task-turn 18s linear infinite; }
@@ -503,21 +605,66 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 </style></head><body class="${require(require("path").join(__dirname,"motion")).mode()==="auto"?"":"vertex-motion-"+require(require("path").join(__dirname,"motion")).mode()}">
 <dialog id="mcp-start-dialog" aria-labelledby="mcp-start-title"><strong id="mcp-start-title">MCP server</strong><span class="mcp-start-scene" id="mcp-start-scene"></span><div id="mcp-start-status" role="status" aria-live="polite"></div><div id="mcp-start-options"></div><form method="dialog"><button type="button" class="secondary" id="mcp-start-go" hidden>Start</button><button type="button" class="secondary" id="mcp-start-node" hidden>Get Node.js</button><button class="secondary" id="mcp-start-close">Close</button></form></dialog>
 <dialog id="model-details-dialog" aria-labelledby="model-details-title"><strong id="model-details-title">Model details</strong><div id="model-capabilities"></div><form method="dialog"><button class="secondary">Close</button></form></dialog>
+<div id="chat-header"><div class="line" id="review-navigation" hidden><div class="vertex-segment-toggle" id="chat-modes" role="group" aria-label="Chat mode"><button type="button" data-chat-mode="work" class="active" aria-pressed="true">Main</button><button type="button" data-chat-mode="review" aria-pressed="false">AI Review<span id="review-running" hidden> · …</span></button></div><button type="button" class="secondary" id="review-close" title="Close this review and return to Main">Close review</button></div>
 <div class="line" id="context-controls"><span class="vertex-segment-toggle" id="context-mode" role="group" aria-label="Context source"><button type="button" data-context="sap" class="active">SAP</button><button type="button" data-context="folder">Folder</button></span><span id="sap-context-controls"><span>SAP system</span>
 <select id="system-select" aria-label="SAP system"><option>Loading…</option></select>
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
-</span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
+</span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div></div>
+<details id="conversation-history"><summary>Conversations · Continue a chat</summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
+<p id="review-empty">Select ASK AI on assistant changes to attach a file, a block or all changes to this review chat.</p>
+<iframe id="ai-review-frame" title="AI Review chat" hidden></iframe>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model · Ctrl+C / Cmd+C copies the model ID"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div id="work-composer">
 ${require(require("path").join(__dirname,"jev-panel")).html}
-<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
+<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
 <button class="secondary" data-action="tools" id="tools"><span class="tools-logo" aria-hidden="true"></span>VERTEX Tools</button>
+</div>
 </div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
+let reviewPageId='',reviewLoaded=false;
+const reviewFrame=document.getElementById('ai-review-frame');
+function chatMode(mode){document.body.dataset.chatMode=mode;document.querySelectorAll('[data-chat-mode]').forEach(button=>{const active=button.dataset.chatMode===mode;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});if(mode==='review'&&reviewPageId&&reviewLoaded)api.postMessage({action:'aiReviewMessage',id:reviewPageId,message:{action:'ready'}});}
+document.querySelectorAll('[data-chat-mode]').forEach(button=>button.onclick=()=>chatMode(button.dataset.chatMode));
+document.getElementById('review-close').onclick=()=>{if(reviewPageId)api.postMessage({action:'closeAiReview',id:reviewPageId});};
+function reviewTheme(){if(!reviewPageId||reviewFrame.hidden)return;try{const target=reviewFrame.contentDocument?.documentElement;if(!target)return;const styles=getComputedStyle(document.body);for(let i=0;i<styles.length;i++){const name=styles[i];if(name.startsWith('--vscode-'))target.style.setProperty(name,styles.getPropertyValue(name));}reviewFrame.contentDocument.body.className=document.body.className.replace('review-mode','');}catch(_){}}
+reviewFrame.onload=reviewTheme;
+new MutationObserver(reviewTheme).observe(document.body,{attributes:true,attributeFilter:['class','style']});
+new MutationObserver(reviewTheme).observe(document.documentElement,{attributes:true,attributeFilter:['class','style']});
+window.addEventListener('message',event=>{const data=event.data||{};
+ if(event.source===reviewFrame.contentWindow&&data.reviewClient===reviewPageId){if(data.message?.action==='ready')reviewLoaded=true;api.postMessage({action:'aiReviewMessage',id:reviewPageId,message:data.message});return;}
+ if(data.reviewPage){document.getElementById('review-navigation').hidden=false;document.getElementById('review-running').hidden=true;reviewLoaded=false;reviewPageId=data.reviewPage.id;reviewFrame.hidden=false;document.getElementById('review-empty').hidden=true;reviewFrame.srcdoc=data.reviewPage.html;chatMode('review');}
+ if(data.discussReview)chatMode('work');
+ if(data.reviewClosed===reviewPageId){reviewPageId='';reviewLoaded=false;chatMode('work');document.getElementById('review-navigation').hidden=true;document.getElementById('review-running').hidden=true;reviewFrame.removeAttribute('srcdoc');reviewFrame.hidden=true;}
+ if(data.reviewUpdate?.id===reviewPageId)reviewFrame.contentWindow?.postMessage(data.reviewUpdate.message,'*');
+ if(typeof data.reviewBusy==='boolean')document.getElementById('review-running').hidden=!data.reviewBusy;
+});
 let contextMode="sap";
+let historyItems=[],historyLoading=false,historyOpening=false;
+const historyBox=document.getElementById('conversation-history'),historyStatus=document.getElementById('history-status');
+function renderHistory(){
+ document.getElementById('new-conversation').disabled=chatRunning||historyOpening;
+ const list=document.getElementById('history-list');list.replaceChildren();
+ const query=document.getElementById('history-search').value.trim().toLocaleLowerCase();
+ const matches=historyItems.filter(item=>(item.title+' '+item.lastQuestion+' '+item.providers).toLocaleLowerCase().includes(query));
+ for(const item of matches){const button=document.createElement('button');button.type='button';button.className='secondary history-item';button.disabled=chatRunning||historyOpening;button.title=item.lastQuestion;
+ const title=document.createElement('span');title.className='history-title';title.textContent=item.title||'(no prompt text)';
+ const meta=document.createElement('span');meta.className='history-meta';meta.textContent=(item.time?new Date(item.time).toLocaleString()+' · ':'')+item.count+' questions · '+item.providers;
+ button.append(title,meta);button.onclick=()=>{if(chatRunning||historyOpening)return;historyOpening=true;historyStatus.textContent='Restoring conversation…';renderHistory();api.postMessage({action:'continueHistory',id:item.id});};list.appendChild(button);}
+ if(!historyLoading&&!historyOpening)historyStatus.textContent=matches.length?'Select a conversation to continue.':query?'No matching conversations.':'No saved conversations.';
+}
+function loadHistory(){if(historyLoading||historyOpening)return;historyLoading=true;historyStatus.textContent='Loading conversations…';api.postMessage({action:'conversationHistory'});}
+historyBox.ontoggle=()=>{if(historyBox.open)loadHistory();};
+document.getElementById('history-refresh').onclick=loadHistory;
+document.getElementById('history-search').oninput=renderHistory;
+window.addEventListener('message',event=>{const data=event.data||{};
+ if(data.conversationHistory){historyLoading=false;historyItems=data.conversationHistory.items||[];renderHistory();if(data.conversationHistory.message)historyStatus.textContent=data.conversationHistory.message;}
+ if(data.historyContinued){historyOpening=false;historyBox.open=false;renderHistory();}
+ if(data.historyError){historyOpening=false;renderHistory();historyStatus.textContent=data.historyError;}
+});
 let projectFileAliases=new Set();
 document.querySelectorAll('[data-context]').forEach(button=>button.addEventListener('click',()=>api.postMessage({action:'setContextMode',mode:button.dataset.context})));
 const findFileReferences=${require(require("path").join(__dirname,"file-links")).references.toString()};
@@ -619,7 +766,7 @@ document.getElementById('system-select').addEventListener('change', event => {
 });
 document.getElementById('chat').addEventListener('submit', event => {
   event.preventDefault();
-  if(chatRunning)return;
+  if(chatRunning||historyOpening)return;
   const field = document.getElementById('prompt');
   const text = field.value.trim();
   // With a review's blocks on the chip an empty question asks the default one.
@@ -666,7 +813,7 @@ document.getElementById('prompt').addEventListener('paste', event => {
 // The message field grows with what is typed or pasted, up to a few lines; ⤢ lets it take most of the panel.
 let chatRunning = false, chatStopping = false;
 const stopChat = document.getElementById('chat-stop');
-function setChatRunning(value) { chatRunning=value;if(!value)chatStopping=false;stopChat.hidden=!value;stopChat.disabled=chatStopping; }
+function setChatRunning(value) { chatRunning=value;if(!value)chatStopping=false;stopChat.hidden=!value;stopChat.disabled=chatStopping;renderHistory(); }
 stopChat.addEventListener('click',()=>{chatStopping=true;stopChat.disabled=true;api.postMessage({action:'stopChat'});});
 const promptField = document.getElementById('prompt'), expandPrompt = document.getElementById('expand-prompt');
 function fitPrompt() { promptField.style.height = 'auto'; promptField.style.height = promptField.scrollHeight + 2 + 'px'; }
@@ -738,8 +885,10 @@ window.addEventListener('message', event => {
     chip.hidden = !event.data.review;
     document.getElementById('review-label').textContent = event.data.review;
     chip.title = event.data.review;
+    const preview=document.getElementById('review-result-preview'),body=document.getElementById('review-result-body');body.replaceChildren();preview.hidden=!event.data.reviewResult;
+    if(event.data.reviewResult){const result=event.data.reviewResult;const files=document.createElement('p');files.textContent=(result.files||[]).join(', ');body.appendChild(files);markdown(result.answer,body);if(result.requirements){const requirements=document.createElement('p');requirements.textContent='Review requirements: '+result.requirements;body.appendChild(requirements);}}
     const field = document.getElementById('prompt');
-    field.placeholder = event.data.review ? 'Ask about this change… (Enter with nothing typed: what it does and any real problem)' : 'Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)';
+    field.placeholder = event.data.reviewResult ? 'Ask about the attached review… (Enter to send)' : event.data.review ? 'Ask about this change… (Enter with nothing typed: what it does and any real problem)' : 'Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)';
     if (event.data.review) field.focus();
   }
   if (event.data && event.data.cleared) {
@@ -1078,6 +1227,7 @@ function markdown(text, target) {
     inline(line, paragraph);
   }
 }
+window.vertexReviewMarkdown=markdown;
 api.postMessage({ action: 'ready' });
 </script></body></html>`;
 }

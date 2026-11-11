@@ -384,7 +384,7 @@ test("SY-SUBRC read after a SELECT is kept with the SELECT's stop and reaches th
   const html = fs.readFileSync(path.join(__dirname, "..", "pages", "visual-debug.html"), "utf8");
   const part = (from, to) => { const text = html.replace(/\r\n/g, "\n"); return text.slice(text.indexOf(from), text.indexOf(to, text.indexOf(from))); };
   const context = { flow: { timeline: [{ at: { url: "z.abap", line: 2 }, stack: [{ program: "Z" }], cur: { owner: "Z", name: "RUN" } }, { at: { url: "z.abap", line: 3 }, stack: [{ program: "Z" }], cur: { owner: "Z", name: "RUN" } }] },
-    asked: null, debug(command, args) { context.asked = [command, args]; return Promise.resolve({ variables: [{ name: "SY-SUBRC", value: "4 " }] }); } };
+    asked: null, autoSaveRecord() {}, debug(command, args) { context.asked = [command, args]; return Promise.resolve({ variables: [{ name: "SY-SUBRC", value: "4 " }] }); } };
   vm.runInNewContext(part("function readSubrc(index){", "\n}\n") + "\n}\n" + part("function recordSteps(){", "function withRecordFormula(data){"), context);
   await context.readSubrc(0);
   assert.equal(JSON.stringify(context.asked), JSON.stringify(["vars", { names: ["SY-SUBRC"] }]));

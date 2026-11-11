@@ -7,6 +7,48 @@ const os = require("node:os");
 const path = require("node:path");
 const history = require("../sap-debug-history");
 
+test("live SAP page checkpoints immediately, updates late values and deduplicates unchanged state", () => {
+  const vm=require('vm');
+  const page=fs.readFileSync(path.join(__dirname,'../pages/visual-debug.html'),'utf8');
+  const source=page.slice(page.indexOf('var recordCreated=null'),page.indexOf('$("saveRecord").onclick='));
+  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-sap-page-save-'));
+  try {
+    let writes=0;
+    const context={INITIAL:{autoSaveSapRecording:true,local:false},sessionId:'48647647-1234-4567-8901-123456789abc',
+      object:{name:'ZREP',type:'PROG'},flow:{timeline:[{at:{line:10}}]},texts:{'/source':['REPORT zrep.']},
+      $:()=>({getAttribute:()=> 'values'}),notice:message=>assert.fail(message),
+      sdeSaveDebugRecord:payload=>{writes++;history.checkpoint(folder,JSON.parse(payload));}};
+    vm.createContext(context);vm.runInContext(source,context);
+    context.autoSaveRecord();assert.equal(writes,1,'no timer or debugger command queue before saving');
+    context.autoSaveRecord();assert.equal(writes,1);
+    context.flow.timeline[0].watch={read:[{name:'LV',value:'2'}]};
+    context.autoSaveRecord();assert.equal(writes,2);
+    const saved=history.load(history.list(folder)[0].file);assert.equal(saved.timeline[0].watch.read[0].value,'2');
+    assert.equal(saved.sources['/source'],'REPORT zrep.');
+    context.INITIAL.local=true;context.autoSaveRecord();assert.equal(writes,2);
+    context.INITIAL.local=false;context.INITIAL.savedRecord=saved;context.autoSaveRecord();assert.equal(writes,2,'offline replay is read-only');
+  } finally {fs.rmSync(folder,{recursive:true,force:true});}
+});
+
+test("automatic SAP checkpoints persist the latest steps and values under one stable recording", () => {
+  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-sap-checkpoint-'));
+  try {
+    const record={format:1,session_id:'48647647-1234-4567-8901-123456789abc',meta:{name:'ZREP',type:'PROG',created:'2026-11-11T20:00:00Z'},timeline:[{at:{line:10}}],sources:{'/sap/source':'REPORT zrep.'}};
+    const file=history.checkpoint(folder,record);
+    assert.equal(history.list(folder)[0].steps,1);
+    record.timeline[0].watch={read:[{name:'LV',value:'2'}]};
+    record.timeline.push({at:{line:11}});
+    assert.equal(history.checkpoint(folder,record),file);
+    assert.equal(history.list(folder).length,1);
+    const replay=history.load(file);
+    assert.equal(replay.timeline.length,2);assert.equal(replay.timeline[0].watch.read[0].value,'2');
+    assert.equal(replay.meta.created,'2026-11-11T20:00:00Z');
+    assert.equal(replay.sources['/sap/source'],'REPORT zrep.');
+    assert.throws(()=>history.checkpoint(folder,{...record,session_id:'../escape'}),/Invalid/);
+    assert.equal(history.load(file).timeline.length,2);
+  } finally {fs.rmSync(folder,{recursive:true,force:true});}
+});
+
 test("saved SAP debug recordings have stable session IDs, including legacy files", () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-debug-history-"));
   const record = { format: 1, meta: { name: "ZTEST", type: "PROG", created: "2026-10-20T00:00:00.000Z" },

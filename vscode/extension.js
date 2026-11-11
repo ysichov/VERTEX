@@ -831,6 +831,11 @@ function withDebugger(sapCode, debugTools, runTranspiler, transpilerHistory) {
 
 function activate(context) {
   require("./review-jev").configure(context.secrets);
+  const configureContextProtection = () => require("./context-protection").configure(vscode.workspace.getConfiguration("vertex.ai").get("context.secretFields", []));
+  configureContextProtection();
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+    if (event.affectsConfiguration("vertex.ai.context.secretFields")) configureContextProtection();
+  }));
   require("./session-log").configureAccounting(context);
   require("./tool-support").configure(context.globalState);
   require("./usage-report").register(vscode,context);
@@ -975,7 +980,7 @@ function activate(context) {
       chat: () => require("./chat").create(vscode, chatTools, tools, context.secrets, debugContextForChat, () => require("./value-origin-view").originContext(), context.globalState) }, initial);
   // The normal source tab remains the sole code editor.  The debugger is a
   // docked panel, not another editor tab showing a second copy of that source.
-  let dockedDebugView = null, dockedDebugSource = null, localDebugAdapter = null, sapDebugRunsPanel = null;
+  let dockedDebugView = null, dockedDebugSource = null, localDebugAdapter = null, sapDebugRunsPanel = null, sapAutoSaveFailed = false;
   const localHistoryMark = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
     backgroundColor: new vscode.ThemeColor("editor.stackFrameHighlightBackground"),
@@ -1020,6 +1025,7 @@ function activate(context) {
     // The whole selection screen with its texts, which the panel draws.
     screen: dockedDebugSource.local ? require("./local-run").screenFor(dockedDebugSource.document) : null,
     savedRecord: dockedDebugSource.storedDebugRecord || null,
+    autoSaveSapRecording: true,
     replayStep: dockedDebugSource.replayStep || null
   };
   // A transpiler run of an SAP program works on copies of its sources; the reader works in the SAP tabs. These turn one
@@ -1193,6 +1199,17 @@ function activate(context) {
             try { latestDebugContext = JSON.parse(String((message.args || [])[0] || "null")); } catch (error) { latestDebugContext = null; }
             return;
           }
+          if (message.call === "autoSaveDebugRecord") {
+            try {
+              const record = JSON.parse(String((message.args || [])[0] || "null"));
+              const folder = String(vscode.workspace.getConfiguration("vertex").get("debug.runPath", "") || "").trim()
+                || path.join(context.globalStorageUri.fsPath, "sap-debug-runs");
+              require("./sap-debug-history").checkpoint(folder, record);
+              sapAutoSaveFailed = false;
+              if (sapDebugRunsPanel) await sapDebugRunsPanel.webview.postMessage({ type: "recordingsChanged" });
+            } catch (error) { if (!sapAutoSaveFailed) vscode.window.showErrorMessage("SAP recording could not be saved automatically: " + error.message); sapAutoSaveFailed = true; }
+            return;
+          }
           if (message.call === "clear") {
             // Clear: the panel starts again for its object, as a new open does; breakpoints and a SAP session stay.
             if (dockedDebugSource) openVisualDebug(dockedDebugSource.runOnly === true, { ...dockedDebugSource, autoRun: false });
@@ -1272,11 +1289,9 @@ function activate(context) {
             const folder = String(vscode.workspace.getConfiguration("vertex").get("debug.runPath", "") || "").trim()
               || path.join(context.globalStorageUri.fsPath, "sap-debug-runs");
             fs.mkdirSync(folder, { recursive: true });
-            const safeName = String(commandArgs.meta?.name || "SAP").replace(/[^A-Za-z0-9_-]/g, "_");
-            const now = new Date(), pad = value => String(value).padStart(2, "0");
-            const stamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
-            const file = path.join(folder, stamp + "_" + safeName + ".vertex-debug.json");
-            require("./sap-debug-history").save(file, commandArgs);
+            commandArgs.session_id = commandArgs.session_id || crypto.randomUUID();
+            const file = require("./sap-debug-history").checkpoint(folder, commandArgs);
+            if (sapDebugRunsPanel) await sapDebugRunsPanel.webview.postMessage({ type: "recordingsChanged" });
             await replyTo(JSON.stringify({ path: file }));
             return;
           }

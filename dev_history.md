@@ -1,3 +1,121 @@
+## 2026-11-12 — Offscreen chat and log layout
+
+Profiled both panels in standalone Chromium using the actual 60+ prompt conversation. Reused content-visibility:auto and remembered intrinsic sizing already used in code-review.js. Chat keeps DOM/text/copy/link handlers while Chromium skips offscreen answers during resize. Session cards use the same mechanism. Added an early guard before theme synchronization when no review frame is active.
+
+Validation: actual-data Chromium comparison, 80 alternating body widths: chat 1013ms to 143ms (maximum single layout 26.3ms to 4.8ms); logs 935ms to 78.5ms (23.3ms to 1.4ms). DOM counts unchanged (1916 chat / 3526 logs), no JavaScript errors. These are local benchmark timings, not a guarantee for the VS Code host. 22 sidebar/log tests pass.
+
+## 2026-11-12 — Stable Session Logs table layout
+
+Checked log-report.js and shared log-report.html: no resize listener, observer or view-state refresh rereads the report. Reused the existing table-scroll container; applied fixed table layout, explicit non-prompt colgroup widths and a minimum table width so splitter movement does not repeatedly calculate column widths from every row. Prompt text receives remaining space on wider panels.
+
+Validation: 9 log-report tests pass. Standalone Chromium with actual local log data verified unchanged table width, per-column widths and DOM count across eight viewport changes from 500 to 1000px, under both color-scheme settings. No refresh messages were emitted.
+
+## 2026-11-12 — Historical screenshot references
+
+Reused the existing conversation images, session-log screenshot files and validated Continue attachment reader. session-log.user returns saved references; chat retains file metadata and serializes only historical references, never old image bytes. Current images remain normal vision inputs. Restored attachment paths retain existing realpath containment validation. Tests cover both CLI and API follow-ups, saved references, unanswered restored turns and current-message image forwarding.
+
+Validation: 73 chat, Continue and log-report tests pass. Eclipse 0.9.83.20261112003513 built successfully; local update-site artifacts refreshed.
+
+## 2026-11-12 — 0.9.83: debugger session references
+
+Reused debugFlowSection and the existing session-link syntax after searching VS Code, Eclipse and shared resources. Replaced automatic debugger JSON with a validated session reference. Context without a session adds nothing. Tests cover nested saved-session references, invalid IDs and exclusion of record/analysis data. Updated credential-protection test to expect no debugger payload at all. Bumped VS Code package, Eclipse feature and bundle to 0.9.83.
+
+Validation: 65 chat and credential-context tests pass. Eclipse update site 0.9.83.20261112002858 compiled with Java release 21 and passed archive path/artifact checks; local docs p2 artifacts updated to the built site. Full debugger state remains local. VSIX 0.9.83 passed package verification; archived chat.js and package version were checked. Additional Eclipse bridge/host checks: 8 pass, 3 fail (bridge fixture expects missing content; host coverage expectations disagree on sdeQuietDebugViews and VS Code-only sdeSaveDebugRecord). These checks are not reported as passing.
+
+## 2026-11-12 — Codex SAP staging and Session Logs columns
+
+Reused the existing per-tool Codex MCP approval overrides for modify_sap_object and create_sap_object, only when offered. These tools stage unsaved editor changes/drafts; existing save/apply/activation controls retain SAP persistence. The Codex read-only sandbox and other tool approval policies remain intact. Reused shared Session Logs table cells with a 320px minimum prompt column and a 150px ellipsized model label plus full tooltip. No SAP business source was changed.
+
+Validation: 21 focused Codex, draft/staging and log tests pass. The broader 137-test run has 134 passes, two skips and one unrelated pre-existing cost-display expectation (0.0031 versus 0.00312). Universal VSIX 0.9.82 rebuilt and passed package verification; archived assistant.js and shared log-report.html match their sources. No live SAP operation was performed.
+
+## 2026-11-11 — Context credential protection
+
+Searched both hosts and shared resources: session-log sanitization omitted source but had no reusable credential redactor. Added context-protection.js with two-pass discovery/redaction for credential field names (including ABAP parameter prefixes), nested JSON text/labelled blocks, quoted assignments, Bearer/Basic values and private-key blocks. Known values are removed from aliases and source copies; normal counters, business keys, unchanged JSON formatting and live objects are preserved. Markers carry type, representation length, initial status and opaque per-scope equality IDs; escaped quotes and empty values are covered. Custom field patterns are configured through vertex.ai.context.secretFields and extend built-ins. Binary media is left untouched.
+
+Applied protection at model-prompt, tool-response and persistence boundaries: main chat, Web query, AI Review, generated commit/PR prompts, MCP dispatch, conversation logging, SAP history save/checkpoint/load and assistant-driven SAP recordings. Native CLI requests reuse the per-request registered tool route so later MCP results share the same known-secret scope. Live debugger values and actual tool operations are not mutated. Legacy SAP recordings are protected on read; existing files are not rewritten. Native external-agent filesystem tools and screenshot pixels are outside this boundary.
+
+Validation: 172 context, chat, MCP, logging, SAP history and visual debugger tests pass outside the Windows sandbox. Tests prove no fixture credential remains in model prompts, MCP responses or new log/recording files; verify aliases before definitions, repeat values across replies, JSON nesting, quote escapes, custom names, safe legacy reads and unchanged live data. No real SAP operation or provider call was made.
+
+Additional cases cover encoded credential query parameters and complete Cookie headers. Universal VSIX 0.9.82 rebuilt and passed package verification; all eight changed runtime/config files match their archived copies.
+
+## 2026-11-11 — Persist manual SAP recordings without Save session
+
+The user closed an unsaved live SAP recording; its chat links had opened the in-memory session, while the recordings list only read disk files. The available history folder had only the October 28 SAP recording. No complete recoverable recording of session 48647647 was found in accessible files or logged debug context.
+
+Reused sap-debug-history atomic-file behavior and the existing Save session payload, and added a validated stable-UUID checkpoint writer. The VS Code page sends immediate one-way checkpoints outside the debugger command queue on each recorded stop and after asynchronous variable/watch/SY-SUBRC updates; context publication supplements source snapshots. Unchanged payloads are deduplicated. Late values update the same file; source, timeline and original session creation time are retained. Auto-save capability is enabled only by the VS Code host, with guards for transpiler and saved-record replay. Disk errors are visible and deduplicated. The recordings list refreshes after saves.
+
+Validation: 74 SAP history, assistant-recording and visual debugger tests pass outside the Windows sandbox after a sandbox rename restriction; tests cover immediate host persistence, stable IDs, incremental late values, source preservation, deduplication, path rejection and read-only replay/transpiler guards. No live SAP execution was started.
+
+Universal VSIX 0.9.82 rebuilt and passed package verification; the five modified runtime/page files match their archived copies.
+
+## 2026-11-11 — Historical images blocked direct SAP navigation
+
+The real log shows Z_FIORI_TILES_AI_TRANSLATOR reaching Claude and triggering five SAPRead calls instead of direct opening. chat.js tested the combined historical/current image list before directSearch; it now checks currentImages only, while retaining historical images for model follow-ups. Reused direct-search and the existing logger; successful direct questions/answers are now logged so Continue preserves them. Both host implementations and resources were previously inspected; this change is in the VS Code chat only.
+
+Log audit: no request/tool failures in the latest program-name turn. An earlier Bash command generating the AI translator program XML timed out; the same file was subsequently written with Write and the work reached Review. An older request hit Claude’s five-hour quota. No new SAP debug run or program edit was performed during this audit. Validation: all 61 chat/continuation tests pass, including historical-image navigation, current-image inference and direct-navigation log restoration.
+
+Universal VSIX 0.9.82 rebuilt and passed package verification; the archived chat.js matches the corrected source.
+
+## 2026-11-11 — Review-to-Main handoff
+
+Reused the Main review-context chip, safe Markdown renderer and scoped askRequest serialization. The AI Review controller keeps host-side attachments by random answer ID; Discuss resolves the chosen completed answer and its cloned snapshot, requirements and review identity. It switches the sidebar to Main and stages the attachment without a model request or overwriting the Main draft. The existing × action clears it; a native details preview shows its answer, files and requirements. Check again invalidates old answer IDs. The Main request includes the result as untrusted review data and explicitly asks for verification against current source.
+
+Validation: 36 AI Review, sidebar, scope and Git-prompt tests pass. The handoff test verifies selected-answer identity, source snapshot serialization, no implicit model call and invalidation after restart. Local Chromium QA verifies the button/bridge, Main switch, preserved draft, expandable formatted attachment and absence of automatic chat submission in both themes.
+
+Universal VSIX 0.9.82 rebuilt and passed package verification; archived ai-review.js, sidebar.js and code-review.js match the source.
+
+## 2026-11-11 — Session Logs DOM performance
+
+Inspected both hosts and reused the existing details/toggle lazy-render pattern from review views in the shared log page. Session tables are built on first session expansion, prompt conversations on first prompt expansion, and rich-text/plain technical bodies on section expansion. Model answer Markdown is also deferred. Built bodies are reused; selection, Continue and recording links keep their existing behavior. Added nowrap to model identity cells to avoid tall rows caused by wrapping model names.
+
+Read-only local profiling: 278 files, 664 prompts, 5,164 details, 43.2 MB report. Chromium comparison on the same report: 76,133 DOM nodes and 1,445 ms before, 2,799 nodes and 411 ms after. Repeated prompt expansion was checked not to duplicate the conversation body. All 15 log-report/continuation tests pass, including a new lazy rendering regression test. Eclipse update site is not rebuilt.
+
+Universal VSIX 0.9.82 rebuilt and passed package verification; the archived log page matches the optimized shared source.
+
+## 2026-11-11 — On-demand English review navigation
+
+Renamed the sidebar Work label to Main. The shared segment control is wrapped in a hidden navigation row, revealed only when a review is attached. Reused the sidebar secondary button for Close review; the host disposes the review surface (aborting its controller), and the client clears the embedded document and hides the navigation while preserving the main conversation and draft. Matching review IDs guard against closing a newer review.
+
+The review navigation and context controls share one flex header; narrow panels may wrap instead of overflowing. Validation: 20 sidebar/AI Review tests pass; local Chromium QA verifies hidden initial navigation, Main labeling, switching/draft preservation, closing and return to Main, plus both themes. No model request was made.
+
+Chromium also checks alignment of review navigation with SAP / Folder and the project in the shared header. Universal VSIX 0.9.82 rebuilt and passed package verification; the archived sidebar matches the source.
+
+## 2026-11-11 — Separate sidebar review mode and log identity
+
+Reused the shared vertex-segment-toggle and existing AI Review controller/page inside the sidebar rather than opening another editor panel. An embedded, nonce-matched surface routes messages by frame identity and review token; it retains its document and draft across Work/Review switches. Main chat messages and composer remain mounted separately. Model/provider controls are shared. Theme variables and safe Markdown rendering reuse the parent sidebar. Mode selection uses a data attribute so host theme-class replacement cannot reset it.
+
+session-log.create accepts an explicit independent scope without resetting the main logger. All turns of one review share that scope; Check again creates a new one. vertex_related_conversation records provenance separately. Review-only legacy files are grouped independently at read time. Removed first-user-message task inference; requirements are blank, editable and opt-in.
+
+Validation: 86 AI Review, sidebar, chat, continuation and log-report tests pass. Local Chromium QA with the generated sidebar and embedded review verifies CSP/nonce execution, frame routing, independent drafts, main-chat scroll preservation, explicit requirements, safe Markdown and light/dark theme propagation; no model request is made. Universal VSIX 0.9.82 rebuilt and passed package verification; the five changed runtime modules match their archived copies. A live VS Code extension-host session was not exercised.
+
+## 2026-11-11 — Sidebar conversation history
+
+Searched both host chat pages and shared Session Logs for existing history controls; reused native details/summary, shared secondary buttons, theme variables, log-report parsing/grouping and vertex.continueConversation instead of a second restore implementation. The sidebar lazily loads a compact conversation list only when expanded, searches first/last questions and provider names locally, and restores the chosen conversation using fresh logs. Utility operations stay out; failed questions count as chat turns. The list is height-bounded, collapses after successful continuation and prevents switching during active requests. No Eclipse host change.
+
+Validation: all 27 sidebar-script, continuation and log-report tests pass, including DOM search/select, grouped provider logs, latest failed question and screenshot restore. Live host theme rendering was not verified.
+
+Universal VSIX 0.9.82 rebuilt and passed package verification; archived sidebar.js and log-report.js match the updated source.
+
+## 2026-11-11 — Restore the last question after session quota failure
+
+The actual conversation had 35 questions, but conversationTurns filtered out the last screenshot question because request_error marked it failed. Continue now retains failed questions with no assistant answer, restores saved screenshots from the owning log attachment folder, and passes those attachments to the next provider request through restoreConversation. Paths, file types and sizes are checked; missing attachments are reported. Failed diagnostic text is never replayed as a model answer, and a conversation with only an unanswered failed question can be resumed.
+
+Validation: 65 continuation, chat and log-report tests pass, including quota failure with a screenshot, attachment path rejection, and the restored image reaching the next provider request. Read-only validation on the actual log now returns 35 turns and the last screenshot (one restored, zero missing).
+
+Universal VSIX 0.9.82 rebuilt and passed package verification; archived log-report.js, chat.js and sidebar.js match the corrected source. No live provider request was made.
+
+## 2026-11-11 — Isolated assistant-change review chat
+
+Reused git-prompt-bar, git-prompts, code-review contexts and shared theme controls after searching both hosts and shared resources. Added ai-review.js for a separate review panel and explicit review-only history. chat.reviewChanges uses the existing provider dispatch with no tools, working directory or main conversation. Assistant-change ASK AI scopes one block, one file or all text changes (including deletions); task inclusion is explicit and only the initial user request is offered. Check again refreshes the snapshot and resets review history; cancellation aborts provider work and closed panels discard late replies. Worktree file trees use project-relative paths; Jev feedback is inserted below the block toolbar. Eclipse is not rebuilt or changed by this VS Code feature.
+
+Validation: 87 relevant chat, Git prompt, Jev, code-review and worktree tests passed; the final nine AI Review/worktree tests (including the new all-files integration test) passed outside the sandbox after sandbox Git config writes were denied. Universal VSIX 0.9.82 rebuilt and verified; all five changed runtime modules match their archived copies. UI script syntax and HTML escaping checked. An isolated VS Code preview launch did not expose a targetable window to computer-use, so live host/light/dark rendering and real provider replies remain unverified.
+
+## 2026-11-11 — Prompt duration in Session Logs
+
+Searched the VS Code and Eclipse log report implementations and shared resources for duration handling. Reused the shared page's span formatter and the parser's existing prompt time/end timestamps; added a Duration column with the existing time-cell theme styling. No new helper or styles. VS Code version stays 0.9.82; Eclipse source uses the shared page, without rebuilding its update site.
+
+Validation: all eight log-report tests pass. Universal VSIX 0.9.82 rebuilt and passed package verification; the archived report contains the Duration column and prompt time/end calculation. Live host/theme rendering was not checked.
+
 ## 2026-11-11 — Code before prose in the Git snapshot (0.9.82)
 
 The user saw commit messages that described only documentation and suspected the code change drowned in it. In that case there was no code change - the chat.js fix had gone into 7aca057 - but the log showed the real risk: the snapshot lists files alphabetically and is cut at 180,000 characters, and three new docs files filled it before vscode/package.json. `reviewSnapshot` in git-history.js now puts .md/.markdown/.txt/.rst/.adoc files after everything else (the file tree on the page keeps its order), so a cut takes prose first. test/git-snapshot-order.test.js checks it.

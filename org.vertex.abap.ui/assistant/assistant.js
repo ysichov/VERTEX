@@ -653,7 +653,9 @@ function codexCommand(options, dir) {
     // them; their limits are the server's own - SAP's allowed destinations and packages, the access chosen in the
     // start window for the others.
     // VERTEX's own tools that change SAP ask the user themselves (a modal in VS Code) before they do.
-    for (const name of ["publish_sap_service_binding"]) {
+    // Source tools stage an unsaved editor change/draft. SAP persistence is
+    // still performed by VERTEX's explicit save/apply/activation UI.
+    for (const name of ["modify_sap_object", "create_sap_object", "publish_sap_service_binding"]) {
       if (options.tools.includes(name)) args.push("-c", "mcp_servers." + SERVER + ".tools." + name + '.approval_mode="approve"');
     }
     for (const name of options.externalTools || []) {

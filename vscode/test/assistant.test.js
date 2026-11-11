@@ -399,6 +399,15 @@ test("Codex runs the tools of an MCP server VERTEX passes on, and only those it 
   assert.ok(!args.some(arg => /tools\.(read_sap_object|abap_not_offered|bad name)/.test(arg)), "nothing beyond the external tools of this request");
 });
 
+test("Codex may stage offered SAP source changes while keeping its read-only sandbox", async () => {
+  const spawn=spawner(call=>{fs.writeFileSync(after(call.args,'-o'),JSON.stringify(PLAN));call.child.emit('close',0);});
+  await assistant.ask(common(spawn,'codex',{tools:['read_sap_object','modify_sap_object','create_sap_object']}));
+  const args=spawn.calls[0].args;
+  for(const name of ['modify_sap_object','create_sap_object'])assert.ok(args.includes('mcp_servers.vertex.tools.'+name+'.approval_mode="approve"'));
+  assert.equal(after(args,'-s'),'read-only');
+  assert.ok(!args.some(arg=>/tools\.(read_sap_object|delete_sap_object|publish_sap_service_binding)\.approval_mode/.test(arg)));
+});
+
 test("Codex receives no SAP MCP server when the chat has no SAP tools", async () => {
   const spawn = spawner(call => {
     fs.writeFileSync(after(call.args, "-o"), JSON.stringify({ answer: "ok", navigation: null }));

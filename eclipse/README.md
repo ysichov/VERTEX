@@ -80,9 +80,9 @@ each session with its prompts - several as one narrow line each, which opens the
 open in ADT - on the system the log names when the workspace has a project of that name, otherwise
 on the one you pick. Recorded diagram and metrics context opens in the window. **Clear selected
 conversations** deletes their log files after asking. Recorded transpiler runs and SAP debug sessions
-open in VS Code only.
+open in VS Code only. The **Duration** column shows the elapsed time from each prompt to its last recorded assistant response in minutes and seconds.
 The FLOW and Value Origin diagrams can render large graphs with more than 500 edges.
-Opened from the VERTEX submenu of an ADT editor, VERTEX Tools selects that object and follows the cursor; opened from Project Explorer or **Window → Show View → VERTEX → VERTEX Tools**, it shows object type and name fields (a mask such as `ZV*LAB` works) and the Parts list. A method in UML opens its class at that method; Ctrl+click opens it in a tab of its own. VERTEX windows open docked to the right of the editors.
+Opened from the VERTEX submenu of an ADT editor, VERTEX Tools selects that object and follows the cursor; opened from Project Explorer or **Window → Show View → VERTEX → VERTEX Tools**, it shows object type and name fields (a mask such as `ZV*LAB` works) and the Parts list. A method in UML opens its class at that method; Ctrl+click opens it in a tab of its own. VERTEX windows open docked to the right of the editors. Conversation details are rendered when expanded. Offscreen session layout is deferred by the browser. The Conversation column prioritizes prompt text; Model is compact, with the full provider and model available on hover. Table columns retain stable sizing in narrow panels; scroll horizontally to see additional columns.
 
 ## Versions and code review
 
@@ -182,9 +182,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. `.gitattributes` marks them `linguist-generated`, so GitHub collapses them in diffs and VERTEX Git review lists them without their diff. The feature and bundle sources are at `0.9.81.qualifier`; the checked-in update site carries build `0.9.81.20261111155403`.
+then regenerate. `.gitattributes` marks them `linguist-generated`, so GitHub collapses them in diffs and VERTEX Git review lists them without their diff. The feature and bundle sources are at `0.9.83.qualifier`; the checked-in update site carries build `0.9.83.20261112003513`.
 
-The local install archive is version `0.9.81.20261111155403`. Install its ZIP through
+The local install archive is version `0.9.83.20261112003513`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

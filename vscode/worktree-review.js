@@ -8,6 +8,16 @@
 const path = require("path");
 const review = require("./code-review");
 
+function aiContext(changes, folder, task = "", scope = null) {
+  const selected = scope ? changes.filter(change => change.file === scope.file) : changes;
+  const blocks = selected.filter(change => !change.binary).flatMap(change =>
+    review.askContext(review.hunks(change.before, change.after), scope && Number.isInteger(scope.hunk) ? [scope.hunk] : null,
+      change.after, "local", change.file).blocks.map(block => ({ ...block, file: change.file })));
+  blocks.forEach((block, i) => { block.block = i + 1; });
+  return { system: "local", object: scope ? scope.file : path.basename(folder), all: true, total: blocks.length,
+    blocks, files: selected.map(change => change.file), task };
+}
+
 /** Opens the review of CHANGES (from agent-worktree's changes()); ONDONE gets the outcome after Apply. */
 /* OPTIONS.build: { command } the assistant proposed for building the folder after a change; offered on the page
    once something was applied. OPTIONS.onBuild(command, remember) runs it; the page shows how it ended. */
@@ -20,11 +30,11 @@ function open(vscode, copy, changes, onDone, options = {}) {
     return review.askContext(review.hunks(change.before,change.after),[message.hunk],change.after,"local",change.path);
   });
   panel.webview.html = review.filesReviewHtml([...byId].map(([id, change]) => ({
-    id, path: change.path, label: path.basename(change.file), conflict: change.conflict, merged: change.merged, binary: change.binary,
+    id, path: change.path, treePath: change.file, label: path.basename(change.file), conflict: change.conflict, merged: change.merged, binary: change.binary,
     kind: change.status === "added" ? "new" : change.status === "deleted" ? "deleted" : "changed",
     parts: change.binary || change.status === "deleted" ? [] : review.hunks(change.before, change.after),
     after: change.after, abap: /\.abap$/i.test(change.file)
-  })), { worktree: true });
+  })), { worktree: true, rootLabel: path.basename(copy.folder || copy.top) });
   const untrackLinks=require("./file-links").register(panel,()=>[...byId].map(([id,change])=>({id,path:change.path,relative:path.relative(copy.folder||copy.top,change.path)})));
   let finished = false, built = false;
   const offered = options.build && typeof options.build.command === "string" ? options.build.command.trim() : "";
@@ -40,10 +50,17 @@ function open(vscode, copy, changes, onDone, options = {}) {
     }
     if (!message) return;
     // ASK AI stays open after Apply: the reader may still ask about a change already decided.
-    if (message.action === "ask" && byId.has(message.file)) {
-      const change = byId.get(message.file);
-      await vscode.commands.executeCommand("vertex.askReviewBlock",
-        review.askContext(review.hunks(change.before, change.after), Number.isInteger(message.hunk)?[message.hunk]:null, change.after, "local", change.path));
+    if (message.action === "ask" && (message.all || byId.has(message.file))) {
+      const scope = message.all ? null : { file: byId.get(message.file).file, hunk: message.hunk };
+      const folder = copy.folder || copy.top;
+      const buildContext = snapshot => {
+        const context = aiContext(snapshot, folder, options.task || "", scope);
+        const fingerprint = JSON.stringify(context.blocks);
+        context.isCurrent = async () => fingerprint === JSON.stringify(aiContext(await copy.changes(), folder, options.task || "", scope).blocks);
+        context.refresh = async () => buildContext(await copy.changes());
+        return context;
+      };
+      await vscode.commands.executeCommand("vertex.openAiReview", buildContext(changes));
       return;
     }
     if (finished) return;
@@ -125,4 +142,4 @@ function report(outcome) {
   return lines.join("\n");
 }
 
-module.exports = { open, report, summary };
+module.exports = { open, report, summary, aiContext };

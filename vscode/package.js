@@ -44,6 +44,8 @@ const required = [
     "extension/motion.js",
     "extension/vertex-logo.js",
     "extension/worktree-review.js",
+    "extension/ai-review.js",
+    "extension/context-protection.js",
     "extension/orchestrator-plan.js",
     "extension/orchestrator-supervisor.js",
     "extension/build-runner.js",

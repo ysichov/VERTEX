@@ -1317,7 +1317,7 @@ function readSubrc(index){
   return debug("vars",{names:["SY-SUBRC"]}).then(function(d){
     var v=(d.variables||[])[0],t=flow.timeline&&flow.timeline[index];if(!t)return;
     if(v)t.subrc=String(v.value).trim();else t.subrcError="SY-SUBRC was not read";
-  }).catch(function(e){var t=flow.timeline&&flow.timeline[index];if(t)t.subrcError=e&&e.message||String(e);});
+  }).catch(function(e){var t=flow.timeline&&flow.timeline[index];if(t)t.subrcError=e&&e.message||String(e);}).then(function(){autoSaveRecord();});
 }
 function snapshot(captured,pre){
   var tl=flow.timeline,at=tl[tl.length-1];
@@ -1348,7 +1348,7 @@ function snapshot(captured,pre){
           group.children.push({name:old.name,deleted:true});});
         localVarCache[routine]=next;at.vars=deltas;at.varsDelta=true;
       });
-  }).catch(function(e){at.vars={error:e.message};});
+  }).catch(function(e){at.vars={error:e.message};}).then(function(){autoSaveRecord();});
 }
 /* The values the player shows at a recorded stop: those read there, or the
    last ones read in the same routine before it. */
@@ -1440,7 +1440,7 @@ function recordStop(p){
 }
 /* The stack against the one before: each level added below the common part is a call. */
 function record(frames){
-  if(!INITIAL.local&&!(flow.timeline||[]).length)sessionId=crypto.randomUUID();
+  if(!INITIAL.local&&!(flow.timeline||[]).length){sessionId=crypto.randomUUID();recordCreated=new Date().toISOString();}
   // The caller's frames - SE37's or SE24's test frame, the screen - are not the flow.
   var path=frames.slice(0,frames.length-callerFrames(frames)).reverse().filter(function(f){return !f.system;}).map(unitOf);
   var same=0;while(same<path.length&&same<flowPath.length&&path[same].name===flowPath[same].name)same++;
@@ -1458,6 +1458,7 @@ function record(frames){
   (flow.timeline=flow.timeline||[]).push({upto:(flow.events||[]).length,cur:path[path.length-1]||null,
     at:top?{url:top.url,line:top.line,ord:ord,name:String(top.label||"")}:null,
     stack:frames.map(function(f){return {label:f.label,unitType:f.unitType,unit:f.unit,program:f.program,include:f.include,line:f.line};})});
+  autoSaveRecord();
 }
 /* The statements of the routine a statement is in, its end included. */
 function routine(list,at){
@@ -1784,15 +1785,16 @@ function readChosenValue(pre){
   if(!names.length)return Promise.resolve();
   // Read with the step: used when it holds every name wanted here; a place of the slice may want its operands too.
   if(pre&&names.every(function(n){return (pre.names||[]).indexOf(String(n).toUpperCase())>=0;})){
-    if(pre.error){at.watch={names:names,error:pre.error};return Promise.resolve();}
+    if(pre.error){at.watch={names:names,error:pre.error};autoSaveRecord();return Promise.resolve();}
     var got=(pre.read||[]).map(function(v){return {name:v.name,value:v.value,type:v.type};});
     at.watch=got.length?{read:got,value:got[0].value,name:got[0].name}:{names:names,missing:true};
+    autoSaveRecord();
     return Promise.resolve();
   }
   return debug("vars",{names:names}).then(function(d){
     var read=(d.variables||[]).map(function(v){return {name:v.name,value:v.value,type:v.type};});
     at.watch=read.length?{read:read,value:read[0].value,name:read[0].name}:{names:names,missing:true};
-  }).catch(function(e){at.watch={names:names,error:e&&e.message||String(e)};});
+  }).catch(function(e){at.watch={names:names,error:e&&e.message||String(e)};}).then(function(){autoSaveRecord();});
 }
 function valueTrail(){
   if(!chosenValue)return {why:"Choose a value in Variables to follow it."};
@@ -2377,8 +2379,17 @@ function showStop(i){
     document.querySelectorAll("#code .line.here").forEach(function(r){r.classList.remove("here");});
     var h=$("l"+t.at.line);if(h)h.classList.add("here");});
 }
-$("saveRecord").onclick=function(){var sources={};Object.keys(texts).forEach(function(key){sources[key]=texts[key].join("\n");});
-  debug("saveRecord",{format:1,session_id:sessionId,meta:{name:object.name,type:object.type,created:new Date().toISOString(),recording:$('[data-rec].active')&&$('[data-rec].active').getAttribute('data-rec')||"steps"},timeline:flow.timeline||[],flow:{nodes:flow.nodes||{},edges:flow.edges||{},order:flow.order||[]},sources:sources})
+var recordCreated=null,autoSaveFailure=false,autoSaveSignature="";
+function debugRecord(){var sources={};Object.keys(texts).forEach(function(key){sources[key]=texts[key].join("\n");});
+  return {format:1,session_id:sessionId,meta:{name:object.name,type:object.type,created:recordCreated||(recordCreated=new Date().toISOString()),recording:$('[data-rec].active')&&$('[data-rec].active').getAttribute('data-rec')||"steps"},timeline:flow.timeline||[],flow:{nodes:flow.nodes||{},edges:flow.edges||{},order:flow.order||[]},sources:sources};}
+function autoSaveRecord(){
+  if(!INITIAL.autoSaveSapRecording||INITIAL.local||INITIAL.savedRecord||!sessionId||!(flow.timeline||[]).length)return;
+  // Send the checkpoint immediately; closing the webview must not be the event that starts saving it.
+  try{var payload=JSON.stringify(debugRecord());if(payload===autoSaveSignature)return;if(typeof sdeSaveDebugRecord!=="function")throw new Error("The recording host is unavailable");sdeSaveDebugRecord(payload);autoSaveSignature=payload;autoSaveFailure=false;}
+  catch(error){if(!autoSaveFailure){autoSaveFailure=true;notice("SAP recording could not be saved automatically: "+(error.message||error));}}
+}
+$("saveRecord").onclick=function(){
+  debug("saveRecord",debugRecord())
     .then(function(result){notice("SAP debug recording saved: "+result.path);}).catch(failed);};
 function replay(i){var n=stops();if(!n)return;if(typeof annotateSoon==="function")annotateSoon();replayAt=INITIAL.local||INITIAL.savedRecord?Math.min(n-1,Math.max(0,i)):(i>=n-1?null:Math.max(0,i));drawPos();
   if(replayAt==null){markNow(liveCur());drawStack();drawVars();var f=currentFrame();if(f)show(f.url,null,f.line).catch(failed);}else showStop(replayAt).catch(failed);
@@ -3089,7 +3100,7 @@ function debugContext(){
 var contextTimer=null;
 function publishDebugContext(){
   clearTimeout(contextTimer);
-  contextTimer=setTimeout(function(){if(typeof sdeDebugContext==="function")sdeDebugContext(JSON.stringify(debugContext()));},600);
+  contextTimer=setTimeout(function(){if(typeof sdeDebugContext==="function")sdeDebugContext(JSON.stringify(debugContext()));autoSaveRecord();},600);
 }
 function drawVars(){
   syncVarSwitches();
