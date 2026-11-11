@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.78**
+**Version: 0.9.79**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -811,7 +811,7 @@ switch between UML diagram and Metrics in the function list.
 **Git History** beside it opens **VERTEX: Git History**, a separate window with the folder's commits
 as a table: number, commit, date, author and message. A **▸** icon beside the message appears when the commit has a description; click it to expand or collapse the full description. When the folder has uncommitted changes, the first row, **Uncommitted changes**, opens a read-only diff against HEAD, including staged changes, working files and untracked files. Changed `.md` and `.log` files are hidden there and left out of **Generate with AI** until the **.md, .log (N)** toggle beside Expand all / Collapse all is switched on; **Commit** still includes them, and its dialog says how many. The extensions are set in `vertex.git.hiddenExtensions`: in **User** settings for all projects, or in **Workspace** settings (`.vscode/settings.json` in the project) for one project, which overrides User — for example `"vertex.git.hiddenExtensions": ["md", "log", "json", "lock"]`. An empty list shows every file. It remains above the commits when dates are filtered, and disappears once everything is committed (the list rechecks when Git History comes back into view, or with the **↻** button beside its title, which keeps the current filter). While a Git diff page is visible, ordinary chat questions include that displayed diff automatically, so you can ask for a commit description directly. ASK AI on selected blocks limits the question to those blocks. Numbers start at 1 for the oldest commit and stay unchanged when filtering. Dates use **dd-mm-yyyy**. Use **From** and **To** for an inclusive date range, or select **Month** for a whole month; **All dates** clears the filter. The VERTEX panel has the same **Git History** button
 beside **Folder**, for the folder the assistant works in. A commit hash in the table opens that commit
-on the review page, read only: its files and changed blocks, with **ASK AI** on a block, on a file, or on the whole commit.
+on the review page, read only: its files and changed blocks, with **ASK AI** on a block, on a file, or on the whole commit. Files the repository marks generated in `.gitattributes` (`linguist-generated`), such as copies and bundles rebuilt from other sources, are listed by name in the AI context for **ASK AI** and **Generate with AI**, without their diff.
 Both views show analysis progress, the object count and elapsed time. Switching views reuses parsed local source until a file changes.
 Both views show analysis progress, the object count and elapsed time. Switching views reuses parsed local source until a file changes.
 In package Metrics, **Expand all / Collapse all** above Objects opens or closes every object's unit table.

@@ -174,3 +174,15 @@ test('Git History offers the Uncommitted changes row only when the folder has ch
  assert.match(html,/if\(dirty\)\{/);assert.match(html,/<button id="refresh" title="Refresh Git history"[^>]*>↻<\/button>/);
  fs.writeFileSync(path.join(folder,'a.txt'),'base');receive({action:'refresh'});assert.equal((await next()).dirty,false);
 });
+
+test("review snapshot names generated files and leaves their diff out", () => {
+  const { reviewSnapshot } = require("../git-history");
+  const s = reviewSnapshot([
+    { file: "vscode/a.js", status: "M", before: "x=1\n", after: "x=2\n" },
+    { file: "org.vertex.abap.ui/assistant/a.js", status: "M", generated: true, before: "COPY_BEFORE\n", after: "COPY_AFTER\n" }
+  ], "t", "/f");
+  assert.match(s.text, /M org\.vertex\.abap\.ui\/assistant\/a\.js \(generated\)/);
+  assert.match(s.text, /Generated files[^]*M org\.vertex\.abap\.ui\/assistant\/a\.js/);
+  assert.doesNotMatch(s.text, /COPY_AFTER/);
+  assert.match(s.text, /x=2/);
+});

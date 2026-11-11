@@ -1,0 +1,6 @@
+# Files eclipse/prepare.js rebuilds from sources elsewhere in the repository: copies of vscode/ and eclipse/
+# modules and bundles of them. Edit the sources, not these. VERTEX's Git review lists them by name and leaves
+# their diff out of the AI context; GitHub collapses them in diffs.
+org.vertex.abap.ui/assistant/** linguist-generated=true
+org.vertex.abap.ui/resources/vertex-frontend.js linguist-generated=true
+org.vertex.abap.ui/resources/abaplint-MIT.txt linguist-generated=true

@@ -6466,3 +6466,9 @@ The user's documentation described the program well and left the new classes out
 ## 2026-11-11 — Slowly turning VERTEX Tools logo (VS Code 0.9.78)
 
 The logo on the VERTEX Tools button in the VS Code sidebar uses the same transparent VERTEX mark as the chat and turns slowly, one revolution per 18 seconds, three times slower than in chat. It stays still when VS Code or the system requests reduced motion. Eclipse is not rebuilt.
+
+## 2026-11-11 — 0.9.79: generated files outside the Git review AI context
+
+Files the repository marks generated in `.gitattributes` (`linguist-generated`) are listed by name in the Git review AI context, under a note that they are copies or bundles rebuilt from other sources, and their diff is left out. ASK AI and Generate with AI no longer present an Eclipse sync of existing VS Code code as new features, and the space goes to the real changes. The repository now marks `org.vertex.abap.ui/assistant/`, `resources/vertex-frontend.js` and `resources/abaplint-MIT.txt`, which `eclipse/prepare.js` rebuilds. Both host versions are 0.9.79; Eclipse update site build 0.9.79.20261111133601.
+
+Implementation: `markGenerated` in `vscode/git-history.js` asks `git check-attr -z linguist-generated` for the changed files (in chunks of 200; a failing call leaves files unmarked) and is applied by both `readCommitChanges` and `readWorkingChanges`; `reviewSnapshot` marks them `(generated)` in the manifest, lists them in a separate section and skips their blocks. On commit 0a9ee7a the snapshot fell from over the 180,000-character limit (truncated) to 100,601 characters, complete. Validation: git-history and git-commit tests pass, including a new snapshot test. VSIX 0.9.79 built and verified. Eclipse: prepare.js, javac --release 21 against ~/.p2/pool, update site packaged by a portable port of eclipse/package.ps1; bundle manifest, Java 21 class files, assistant copy, artifact sizes and SHA-256 checksums checked.

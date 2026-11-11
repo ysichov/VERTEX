@@ -57,6 +57,7 @@ async function readCommitChanges(folder, hash) {
     const after = status === "D" ? "" : await show(hash, file);
     changes.push({ file, status, binary: before === null || after === null, before: before || "", after: after || "" });
   }
+  await markGenerated(folder, changes);
   return changes;
 }
 
@@ -82,6 +83,22 @@ async function readWorkingChanges(folder) {
       digest: crypto.createHash("sha256").update(before).update("\0").update(after).digest("hex"), afterDigest: crypto.createHash("sha256").update(after).digest("hex"),
       binary: before.includes(0) || after.includes(0), before: before.toString("utf8"), after: after.toString("utf8") });
   }
+  await markGenerated(folder, changes);
+  return changes;
+}
+
+/* Files the repository marks generated (.gitattributes linguist-generated): a copy or bundle of sources that sit
+   elsewhere. Their diff only repeats those sources, so the review snapshot names them instead of showing it. */
+async function markGenerated(folder, changes) {
+  const files = changes.map(c => c.file);
+  for (let i = 0; i < files.length; i += 200) {
+    let out = "";
+    try { out = await git(folder, ["check-attr", "-z", "linguist-generated", "--", ...files.slice(i, i + 200)]); } catch { return changes; }
+    const parts = out.split("\0");
+    for (let j = 0; j + 2 < parts.length; j += 3) {
+      if (parts[j + 2] === "true" || parts[j + 2] === "set") { const c = changes.find(x => x.file === parts[j]); if (c) c.generated = true; }
+    }
+  }
   return changes;
 }
 
@@ -96,14 +113,16 @@ function reviewContext() {
 function reviewSnapshot(changes, title, folder, limit = 180000) {
   const review = require("./code-review");
   changes = changes.filter(c => !c.binary);
-  const manifest = changes.map(c => c.status + " " + c.file + (c.binary ? " (binary)" : "")).join("\n");
-  const sections = changes.map(c => {
+  const manifest = changes.map(c => c.status + " " + c.file + (c.generated ? " (generated)" : "")).join("\n");
+  const generated = changes.filter(c => c.generated);
+  const sections = changes.filter(c => !c.generated).map(c => {
     const header = c.status + " " + c.file;
     if (c.binary) return header + "\nBinary file; no text diff.";
     const blocks = review.askContext(review.hunks(c.before, c.after), null, c.after, "local", c.file).blocks;
     return header + "\n" + JSON.stringify(blocks);
   });
   const text = title + "\nFolder: " + folder + "\nFiles:\n" + manifest
+    + (generated.length ? "\n\nGenerated files (marked linguist-generated in .gitattributes): copies or bundles rebuilt from sources elsewhere in the repository. Their diff is omitted; a change here repeats its sources and is not a new feature by itself:\n" + generated.map(c => c.status + " " + c.file).join("\n") : "")
     + "\n\nChanged blocks (before = removed, after = added; context_before/context_after = unchanged):\n" + sections.join("\n\n");
   const truncated = text.length > limit;
   return { title, folder, file_count: changes.length, truncated,
@@ -404,4 +423,4 @@ function open(vscode, folder) {
   panel.onDidDispose(() => { panel = undefined; });
 }
 
-module.exports = { open, readCommits, readCommitChanges, readWorkingChanges, openCommit, reviewContext, reviewSnapshot };
+module.exports = { open, markGenerated, readCommits, readCommitChanges, readWorkingChanges, openCommit, reviewContext, reviewSnapshot };
