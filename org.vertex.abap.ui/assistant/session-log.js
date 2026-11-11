@@ -8,7 +8,8 @@
 //   answers   - the text of the assistant's answers
 //   tools     - SAP tool calls with their arguments and a summary of the result
 //   request   - VERTEX instructions and model context, with source bodies omitted
-// Source bodies are always replaced with object references, including legacy code:true settings.
+// Automatic source bodies are replaced with object references, including legacy code:true settings.
+// Explicit Jev inputs are saved with question logging so each decision can be restored.
 
 const fs = require("fs");
 const path = require("path");
@@ -56,6 +57,10 @@ function create(root, provider, session, include, operation = "Chat") {
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
   return {
     file,
+    // Explicit Jev input is retained only when question logging is enabled.
+    decision(input) {
+      if (on.questions) write({ type: "vertex_decision", input: JSON.parse(JSON.stringify(input)) });
+    },
     setOperation(value){operation=String(value||"Chat");},
     discard() { discarded = true; },
     /* A question; screenshots pasted with it are part of it: with the questions option each is saved as a file in
@@ -109,6 +114,7 @@ function create(root, provider, session, include, operation = "Chat") {
         cache_read_input_tokens: usage && usage.cache_read_input_tokens || 0,
         ...(usage && Object.prototype.hasOwnProperty.call(usage,"web_search_calls") ? {web_search_calls:usage.web_search_calls} : {}),
         ...(usage?.generation_id ? {generation_id:usage.generation_id} : {}),
+        ...(usage?.estimated_cost_usd !== undefined ? { estimated_cost_usd: usage.estimated_cost_usd, input_usd_per_million: usage.input_usd_per_million } : {}),
         ...(usage && Object.prototype.hasOwnProperty.call(usage, "cost_usd") ? { cost_usd: usage.cost_usd } : {})
       }, content: [{ type: "text", text: answer }] } });
     },

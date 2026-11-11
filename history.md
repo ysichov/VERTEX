@@ -1,3 +1,31 @@
+## 2026-11-11 — Slowly turning VERTEX Tools logo (VS Code 0.9.78)
+
+The logo on the VERTEX Tools button in the VS Code sidebar uses the same transparent VERTEX mark as the chat and turns slowly, one revolution per 18 seconds, three times slower than in chat. It stays still when VS Code or the system requests reduced motion. Eclipse is not rebuilt.
+
+## 2026-11-11 — Jev option and scale editors (VS Code 0.9.78)
+
+Choose an option and Rate on a scale use a compact one-line row per category or level: a labeled field with up, down and remove icon buttons on the same line, plus Add below. At least two rows are required by the Jev API. Scale levels are numbered from 0 in ascending order. Entered values survive question-type changes and saved inputs restored with Continue. Empty rows and excess levels are rejected before sending. Existing shared secondary buttons, question field styling and theme colors are reused. Eclipse is not rebuilt for this VS Code-only change.
+
+## 2026-11-11 — Jev input-token cost estimate (VS Code 0.9.78)
+
+Direct TypeSafe Jev calls without a reported charge show estimated USD at $0.042 per million input tokens, with output free, following the official TypeSafe pricing checked on November 11. API-reported charges, including zero, take precedence. Estimates are recorded separately in usage metadata and readable logged answers, and are not counted as reported actual charges. Gateway calls do not inherit TypeSafe direct pricing. Eclipse is not rebuilt for this change.
+
+## 2026-11-11 — 0.9.78: New conversation for Jev
+
+The shared New conversation button is available in VS Code Jev mode. It clears context, question cards, results and restored input, and starts a fresh logged conversation while retaining the selected provider and model. It is disabled during Jev requests. A new Run clears the previous displayed result even when validation prevents sending. Model readiness uses the selected catalog entry rather than a stale disabled selector flag; missing models explicitly report that no request was sent. This release also includes GitHub HTTPS authentication guidance, model-name/ID copying and retained successful Check and add status for Claude Code. Both host versions are 0.9.78.
+
+## 2026-11-11 — Checked status for added Claude models (VS Code 0.9.77)
+
+A successful Claude Code Check and add marks the model Checked immediately and retains the successful availability result when LLM Providers is reopened. Previously the added row lacked the check flags and reported Not checked despite its successful probe. Existing added models can use their row check to record availability. Eclipse is not rebuilt.
+
+## 2026-11-11 — Copy model names and IDs (VS Code 0.9.77)
+
+Selected names and IDs in LLM Providers copy through the VS Code clipboard with Ctrl+C / Cmd+C. In chat, focus the model selector and use the same shortcut to copy the selected model ID. Eclipse is not rebuilt.
+
+## 2026-11-11 — GitHub HTTPS authentication guidance (VS Code 0.9.77)
+
+GitHub HTTPS failures reporting disabled username/password prompts include terminal commands for GitHub CLI browser sign-in and Git credential setup, followed by retry instructions. Remote extension hosts are identified explicitly. Other Git errors keep their original text. Eclipse is not rebuilt.
+
 ## 2026-11-10 — Large new files in the editor (VS Code 0.9.77)
 
 Selecting a large new file in Git review opens the standard VS Code editor beside the review, without rendering its source as a diff table. The threshold is over 1,000 lines or 256K characters. Uncommitted additions open the disk file; historical additions open their recorded content. Counts and AI actions remain in the review; small new files and existing-file changes keep their preview. Eclipse is not rebuilt.

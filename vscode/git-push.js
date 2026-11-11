@@ -1,7 +1,12 @@
 "use strict";
 const { execFile } = require("node:child_process");
+function gitError(message){
+  const text=String(message).trim();
+  if(!/could not read (?:Username|Password) for ['"]https:\/\/github\.com(?:[/'"]|$)/i.test(text)||!/terminal prompts disabled/i.test(text))return new Error(text);
+  return new Error(text+"\n\nGitHub HTTPS authentication is required. VERTEX runs Git without interactive credential prompts.\nIn a terminal on the same machine as the VS Code extension host (the remote host for SSH, WSL or containers), run:\n  gh auth login --hostname github.com --git-protocol https --web\n  gh auth setup-git --hostname github.com\nComplete the browser sign-in, then retry the operation in VERTEX.\nIf gh is unavailable, install GitHub CLI or configure a Git credential manager for GitHub HTTPS. A GitHub account password cannot be used for Git authentication.");
+}
 function git(folder,args){
-  return new Promise((resolve,reject)=>execFile("git",args,{cwd:folder,windowsHide:true,timeout:120000,maxBuffer:1024*1024,env:{...process.env,GIT_TERMINAL_PROMPT:"0"}},(error,out,err)=>error?reject(new Error(String(err||error.message).trim())):resolve(String(out).trim())));
+  return new Promise((resolve,reject)=>execFile("git",args,{cwd:folder,windowsHide:true,timeout:120000,maxBuffer:1024*1024,env:{...process.env,GIT_TERMINAL_PROMPT:"0"}},(error,out,err)=>error?reject(gitError(err||error.message)):resolve(String(out).trim())));
 }
 async function info(folder){
   const branch=await git(folder,["symbolic-ref","--quiet","--short","HEAD"]).catch(()=>"");
@@ -23,4 +28,4 @@ async function push(folder,request){
   await git(folder,["push","--",request.remote,current.head+":refs/heads/"+request.targetBranch]);
   return {head:current.head,remote:request.remote,branch:request.targetBranch};
 }
-module.exports={git,info,push};
+module.exports={git,gitError,info,push};

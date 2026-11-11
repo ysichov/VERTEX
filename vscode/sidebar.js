@@ -167,6 +167,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "newConversation") {
+          if (pendingChat) return;
           // A new conversation writes to a new log file.
           require("./session-log").reset();
           await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
@@ -485,7 +486,10 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 .chat-head { margin-bottom: 4px; }
 #new-conversation { margin-left: auto; }
 #tools { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border-radius: 6px; font-size: 1.7em; font-weight: 600; }
-#tools img { width: 40px; height: 40px; }
+#tools .tools-logo { position: relative; flex: none; width: 40px; height: 40px; }
+#tools .tools-logo::before { content: ""; position: absolute; inset: 0; background: url("${LOGO}") center/contain no-repeat; transform-origin: center; animation: vertex-task-turn 18s linear infinite; }
+body.vscode-reduce-motion #tools .tools-logo::before { animation: none; }
+@media (prefers-reduced-motion: reduce) { #tools .tools-logo::before { animation: none; } }
 ${require(require("path").join(__dirname,"code-review")).controlsCss}
 ${require(require("path").join(__dirname,"jev-panel")).css}
 </style></head><body>
@@ -498,10 +502,10 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 </span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <div class="dock">
-<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
+<div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model · Ctrl+C / Cmd+C copies the model ID"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 ${require(require("path").join(__dirname,"jev-panel")).html}
 <form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
-<button class="secondary" data-action="tools" id="tools"><img src="${LOGO}" alt="">VERTEX Tools</button>
+<button class="secondary" data-action="tools" id="tools"><span class="tools-logo" aria-hidden="true"></span>VERTEX Tools</button>
 </div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
@@ -676,7 +680,9 @@ document.getElementById('prompt').addEventListener('keydown', event => {
 let lastCopy = null;
 function copySelectedText(event) {
   const field = document.activeElement;
-  const text = field && typeof field.selectionStart === 'number' && field.selectionEnd > field.selectionStart
+  const text = field && field.id === 'model-select'
+    ? String(field.value || '')
+    : field && typeof field.selectionStart === 'number' && field.selectionEnd > field.selectionStart
     ? String(field.value).slice(field.selectionStart, field.selectionEnd)
     : String(window.getSelection ? window.getSelection() || '' : '');
   if (!text) return;
@@ -729,6 +735,7 @@ window.addEventListener('message', event => {
     if (event.data.review) field.focus();
   }
   if (event.data && event.data.cleared) {
+    resetJevDraft();
     const box = document.getElementById('messages');
     box.textContent = '';
     const hint = document.createElement('p');

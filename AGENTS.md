@@ -1,5 +1,7 @@
 # Project rules
 
+- Before creating anything new (a control, an icon or image, a style, an animation, a helper, a module), search the project for an existing solution that already does the job - in both hosts, `vscode/`, `org.vertex.abap.ui/` and its `resources/` - and reuse it. Create something new only when nothing suitable exists, and say what you searched.
+
 - Before adding or restyling an interface control, find the same working control already used in the project and reuse its markup, behavior, and theme styling. Do not invent a separate variant for the same action. Check the result in its actual host and theme.
 
 - After fixes or changes to the VS Code extension, always rebuild and verify the VSIX before handing off. Keep the current version unless the user requests a version change.

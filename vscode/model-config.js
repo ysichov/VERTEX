@@ -271,6 +271,11 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
       } catch (error) { post({ errorCopied: false, copyError: error.message }); }
       return;
     }
+    if (message.action === "copy-selection") {
+      try { await vscode.env.clipboard.writeText(String(message.text || "")); }
+      catch (error) { post({ error: "Could not copy text: " + error.message }); }
+      return;
+    }
     if (message.action === "copy-error") {
       try {
         await vscode.env.clipboard.writeText(String(message.text || ""));
@@ -397,7 +402,11 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
                                                executable: executable ? await executable("claude") : undefined,
                                                model: message.model });
         audit.finish(probed);
-        post({ provider: id, probed: probed });
+        const { scope, checks } = await checkScope(id);
+        const result = { available: true, reason: "", checkedAt: new Date().toISOString() };
+        Object.defineProperty(checks, probed.id, { value: result, enumerable: true, configurable: true, writable: true });
+        if (secrets?.store) await secrets.store(scope, JSON.stringify(checks));
+        post({ provider: id, probed: { ...probed, ...result } });
       } catch (e) {
         audit.fail(e);
         post({ provider: id, probeError: e.message });
@@ -513,6 +522,20 @@ a.error-link, #error-dialog a { color: var(--vscode-textLink-foreground); cursor
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
 const INIT = ${init};
+// Match the chat panel: copy through the extension host, since webview clipboard access varies by host.
+function copySelectedText(event) {
+  const field = document.activeElement;
+  const text = field && typeof field.selectionStart === 'number' && field.selectionEnd > field.selectionStart
+    ? String(field.value).slice(field.selectionStart, field.selectionEnd)
+    : String(window.getSelection ? window.getSelection() || '' : '');
+  if (!text) return;
+  event.preventDefault(); event.stopPropagation();
+  api.postMessage({ action: 'copy-selection', text });
+}
+document.addEventListener?.('copy', copySelectedText);
+document.addEventListener?.('keydown', event => {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') copySelectedText(event);
+});
 const capabilityDefinitions = ${JSON.stringify(require("./model-capabilities").definitions)};
 const priceInfo = ${require("./model-capabilities").priceInfo.toString()};
 const sortModels = ${require("./model-capabilities").sortModels.toString()};
@@ -932,7 +955,7 @@ window.addEventListener("message", event => {
   if (m.rows) { s.error = null; s.rows = m.rows; fill(m.provider); return; }
   if (m.source) { s.error = null; s.rows = null; fill(m.provider); return; }
   if (m.probed) {
-    s.rows.push({ id: m.probed.id, label: m.probed.label, version: true, on: true }); fill(m.provider);
+    s.rows.push({ id: m.probed.id, label: m.probed.label, version: true, on: true, checked: true, available: true, reason: "", checkedAt: m.probed.checkedAt, availabilitySource: "probe" }); fill(m.provider);
     say(m.probed.label + " answered - Save to keep it.", "ok"); return;
   }
   if (m.probeError) { const c = $("check"); if (c) { c.disabled = false; } say(m.probeError, "error"); return; }

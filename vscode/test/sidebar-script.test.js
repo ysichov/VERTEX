@@ -135,3 +135,14 @@ test("answer footer preserves actual Vercel cost precision, zero and missing cos
  reply.usage.cost_missing=1;assert.match(usageLine(reply),/partial/);
  delete reply.usage.cost_usd;assert.match(usageLine(reply),/cost not reported/);
 });
+
+test('focused model selector copies the exact model ID rather than its display label',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../sidebar.js'),'utf8'),sent=[],handlers={};
+ const field={id:'model-select',value:'claude-fable-5-2'};
+ vm.runInNewContext(source.slice(source.indexOf('let lastCopy = null;'),source.indexOf('const progressItems')),{
+  api:{postMessage:m=>sent.push(m)},window:{getSelection:()=>''},document:{activeElement:field,addEventListener:(name,fn)=>{handlers[name]=fn;}}
+ });
+ handlers.keydown({key:'c',ctrlKey:true,preventDefault(){},stopPropagation(){}});
+ assert.equal(sent.at(-1).text,'claude-fable-5-2');assert.equal(sent.at(-1).action,'copyAnswer');
+ field.value='';handlers.keydown({key:'c',metaKey:true});assert.equal(sent.length,1);
+});

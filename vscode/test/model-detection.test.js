@@ -139,6 +139,7 @@ test('Copy error writes the complete text and URL to the host clipboard',async()
  const text='Vercel · model\n403 require credit card\nhttps://vercel.com/account/billing?next=models&source=check';
  await handler({action:'copy-error',text});
  assert.equal(copied,text);assert.deepEqual(posts.at(-1),{errorCopied:true});
+ await handler({action:'copy-selection',text:'claude-fable-5-2'});assert.equal(copied,'claude-fable-5-2');
  vscode.env.clipboard.writeText=async()=>{throw new Error('Clipboard unavailable');};
  await handler({action:'copy-error',text});
  assert.deepEqual(posts.at(-1),{errorCopied:false,copyError:'Clipboard unavailable'});
@@ -265,4 +266,30 @@ test('OpenRouter Free group check never probes paid or known-unavailable models'
  const vscode={ViewColumn:{Active:1},ConfigurationTarget:{Global:1},workspace:{getConfiguration:(()=>{const v={};return()=>({get:(k,f)=>k in v?v[k]:f,update:async(k,x)=>{v[k]=x;}});})()},window:{createWebviewPanel:()=>({webview:{postMessage(m){posts.push(m);},onDidReceiveMessage(fn){handler=fn;}},onDidDispose(){}})}};
  require('../model-config').open(vscode,async()=>[{id:'openai/free',free:true},{id:'openai/paid',free:false},{id:'google/free',free:true},{id:'openai/unavailable',free:true,available:false}],()=>'',()=>{},{});
  await handler({action:'detect',provider:'openrouter-api',group:'openai',filter:'free'});assert.deepEqual(calls,['openai/free']);assert.equal(posts.at(-1).detection.results[0].filtered,true);
+});
+
+test('LLM Providers selection copies names and input selections through the host',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),source=fs.readFileSync(require.resolve('../model-config'),'utf8');
+ const sent=[],handlers={},document={activeElement:null,addEventListener:(name,fn)=>{handlers[name]=fn;}};
+ const start=source.indexOf('function copySelectedText(event)'),end=source.indexOf('const capabilityDefinitions',start);
+ vm.runInNewContext(source.slice(start,end),{document,window:{getSelection:()=> 'Claude Fable 5.2'},api:{postMessage:m=>sent.push(m)}});
+ const event={key:'c',metaKey:true,preventDefault(){},stopPropagation(){}};
+ handlers.keydown(event);assert.equal(sent.at(-1).action,'copy-selection');assert.equal(sent.at(-1).text,'Claude Fable 5.2');
+ document.activeElement={value:'claude-fable-5-2',selectionStart:0,selectionEnd:16};
+ handlers.copy(event);assert.equal(sent.at(-1).text,'claude-fable-5-2');
+});
+
+test('Check and add retains successful Claude availability across reopening',async t=>{
+ let handler;const posts=[],saved=new Map();
+ t.mock.method(require('../assistant'),'probe',async()=>({id:'claude-fable-5-2',label:'Claude Fable 5.2'}));
+ const vscode={ViewColumn:{Active:1},ConfigurationTarget:{Global:1},workspace:{getConfiguration:()=>({get:(_,f)=>f,update:async()=>{}})},
+ window:{createWebviewPanel:()=>({webview:{postMessage:m=>posts.push(m),onDidReceiveMessage:fn=>{handler=fn;}},onDidDispose(){}})}};
+ const secrets={get:async k=>saved.get(k),store:async(k,v)=>saved.set(k,v)};
+ const open=()=>require('../model-config').open(vscode,async()=>[{id:'claude-fable-5-2'}],()=>'',()=>{},secrets);
+ open();await handler({action:'check',provider:'claude',model:'claude-fable-5-2'});
+ const result=posts.find(m=>m.probed);assert.ok(result);assert.equal(result.probed.available,true);
+ assert.ok([...saved.values()].some(v=>JSON.parse(v)['claude-fable-5-2']?.available===true));
+ open();await handler({action:'load',provider:'claude'});
+ const loaded=posts.filter(m=>m.rows).at(-1);assert.ok(loaded);
+ assert.equal(loaded.rows.find(r=>r.id==='claude-fable-5-2').checked,true);
 });

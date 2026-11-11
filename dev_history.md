@@ -1,3 +1,37 @@
+## 2026-11-11 — Jev option and scale editors (VS Code 0.9.78)
+
+Choose an option and Rate on a scale use a compact one-line row per category or level: a labeled field with up, down and remove icon buttons on the same line, plus Add below. At least two rows are required by the Jev API. Scale levels are numbered from 0 in ascending order. Entered values survive question-type changes and saved inputs restored with Continue. Empty rows and excess levels are rejected before sending. Existing shared secondary buttons, question field styling and theme colors are reused. Eclipse is not rebuilt for this VS Code-only change.
+
+Validation: Jev/sidebar/session-log/review tests cover ordered row serialization, incomplete rows, level limits, switching, reset, restored inputs and submitted answer labels. A browser harness using the sidebar markup, CSS and Jev script verified adding, editing, moving and removing rows and switching to a scale in light/dark themes, with no console errors. VSIX 0.9.78 rebuilt and packaged sources verified. Live VS Code host rendering was not exercised.
+
+## 2026-11-11 — Jev input-token cost estimate (VS Code 0.9.78)
+
+Direct TypeSafe Jev calls without a reported charge show estimated USD at $0.042 per million input tokens, with output free, following the official TypeSafe pricing checked on November 11. API-reported charges, including zero, take precedence. Estimates are recorded separately in usage metadata and readable logged answers, and are not counted as reported actual charges. Gateway calls do not inherit TypeSafe direct pricing. Eclipse is not rebuilt for this change.
+
+## 2026-11-11 — 0.9.78: New conversation for Jev
+
+The shared New conversation button is available in VS Code Jev mode. It clears context, question cards, results and restored input, and starts a fresh logged conversation while retaining the selected provider and model. It is disabled during Jev requests. A new Run clears the previous displayed result even when validation prevents sending. Model readiness uses the selected catalog entry rather than a stale disabled selector flag; missing models explicitly report that no request was sent. This release also includes GitHub HTTPS authentication guidance, model-name/ID copying and retained successful Check and add status for Claude Code. Both host versions are 0.9.78.
+
+Removed the Jev selector that hid the existing chat control and connected the existing cleared event to a Jev draft reset. The host refuses conversation resets while a request is pending. Validation: 38 Jev, sidebar and model-detection tests passed. VSIX built and packaged source equality checked. Eclipse resources regenerated, Java compiled with --release 21 against the local ADT bundle pool, and update site 0.9.78.20261111100524 built via the portable equivalent of eclipse/package.ps1. JAR CRCs, Java class versions and p2 artifact sizes/checksums verified. No installation or remote publication.
+
+## 2026-11-11 — Checked status for added Claude models (VS Code 0.9.77)
+
+A successful Claude Code Check and add marks the model Checked immediately and retains the successful availability result when LLM Providers is reopened. Previously the added row lacked the check flags and reported Not checked despite its successful probe. Existing added models can use their row check to record availability. Eclipse is not rebuilt.
+
+Validation: 21 model-detection tests passed, including persisted Check and add availability after reopening. The universal VSIX is rebuilt at the current version and changed sources verified.
+
+## 2026-11-11 — Copy model names and IDs (VS Code 0.9.77)
+
+LLM Providers reuses the chat selection-copy behavior and routes selected text through the extension-host clipboard. The existing chat copy handler recognizes the focused model selector and copies its ID. No controls or styles are added. Repository and Marketplace instructions explain both shortcuts. Eclipse is not rebuilt.
+
+Validation: 31 sidebar/provider tests passed, including selection copying, input selection, exact model ID and host clipboard handling. The universal 0.9.77 VSIX is rebuilt and packaged sources verified.
+
+## 2026-11-11 — GitHub HTTPS authentication guidance (VS Code 0.9.77)
+
+The shared Git runner used by Push and PR appends recovery instructions to GitHub HTTPS disabled-credential-prompt errors while retaining the original diagnostic. Guidance uses GitHub CLI browser sign-in and setup-git on the extension host, including SSH, WSL and containers, with a credential-manager alternative. Existing themed error presentation is reused without adding controls. Repository and Marketplace instructions describe authentication prerequisites. Eclipse is not rebuilt.
+
+Validation: all 15 Git push/branch and review tests passed, including simulated runner failure, username/password detection, unrelated errors and lookalike-host exclusion. The universal VSIX is rebuilt at the existing version and verified by the packaging checks and comparison of changed sources.
+
 ## 2026-11-10 — Large new files in the editor (VS Code 0.9.77)
 
 Git marks large non-binary additions as editor-only (over 1,000 lines or 256K characters). Explicit tree selection sends the mapped file ID to the extension host, which opens the disk URI for working changes or an untitled content snapshot for historical additions. The review retains status/counts and AI actions but has no source table or Compact/Full controls for these files. Initial page loading does not open an editor automatically. Smaller additions and existing-file changes retain previews. Only VS Code 0.9.77 is rebuilt; installation remains the user's action.
@@ -6428,3 +6462,7 @@ The user asked to see the objects taken out of the request, in red behind a chec
 ## 2026-11-04 — New classes in the documentation prompt
 
 The user's documentation described the program well and left the new classes out. A class reaches the review as parts - sections and methods - and a method's DISPLAY_NAME is the method alone (review-live: p.unit), so the prompt said 'NEW object RUN', 'NEW object ZCL_X=======CU', with nothing to tie a method to its class. promptPartName now names a method CLASS=>METHOD and a section 'CLASS, public section' (others keep their include name under the class), and the built-in documentation prompt says a class comes in parts, is one object, and a created one is documented method by method. Not confirmed against the user's request: whether the model also skipped the classes for the prompt's size is not known. Test added. Rebuilt 0.9.58.
+
+## 2026-11-11 — Slowly turning VERTEX Tools logo (VS Code 0.9.78)
+
+The logo on the VERTEX Tools button in the VS Code sidebar uses the same transparent VERTEX mark as the chat and turns slowly, one revolution per 18 seconds, three times slower than in chat. It stays still when VS Code or the system requests reduced motion. Eclipse is not rebuilt.

@@ -15,3 +15,27 @@ test("Push previews the actual branch and pushes only after explicit invocation,
   await assert.rejects(helper.push(folder,{remote:"origin",targetBranch:"topic",expectedHead:info.head,expectedBranch:info.branch}),/HEAD or branch changed/);
   assert.equal(git(remote,"rev-parse","refs/heads/topic"),info.head);
 });
+test("GitHub disabled credential prompts explain authentication on the extension host",()=>{
+  for(const field of ["Username","Password"]){
+    const original="fatal: could not read "+field+" for 'https://github.com': terminal prompts disabled";
+    const message=helper.gitError(original).message;
+    assert.ok(message.startsWith(original));
+    assert.match(message,/gh auth login --hostname github.com --git-protocol https --web/);
+    assert.match(message,/gh auth setup-git --hostname github.com/);
+    assert.match(message,/remote host for SSH, WSL or containers/);
+    assert.match(message,/retry the operation/i);
+  }
+  for(const message of ["fatal: could not read Username for 'https://gitlab.com': terminal prompts disabled","fatal: could not read Username for 'https://github.com.evil.test': terminal prompts disabled","fatal: Authentication failed","fatal: rejected non-fast-forward"]){
+    assert.equal(helper.gitError(message).message,message);
+  }
+});
+test("Git runner surfaces authentication guidance from failed Git commands",async()=>{
+  const vm=require("node:vm"),module={exports:{}};
+  vm.runInNewContext(fs.readFileSync(require.resolve("../git-push"),"utf8"),{module,process:{env:{}},require:name=>{
+    assert.equal(name,"node:child_process");return {execFile(command,args,options,done){
+      assert.equal(options.env.GIT_TERMINAL_PROMPT,"0");
+      done(new Error("exit 128"),"","fatal: could not read Username for 'https://github.com': terminal prompts disabled");
+    }};
+  }});
+  await assert.rejects(module.exports.git("/project",["push"]),/gh auth setup-git --hostname github.com/);
+});

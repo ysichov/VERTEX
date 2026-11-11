@@ -56,14 +56,20 @@ test("Jev builder creates typed questions without exposing request syntax",()=>{
 });
 test("Jev panel builds questions, preserves drafts and displays human answer labels",()=>{
  class Node{constructor(){this.value='';this.events={};this.children=[];}focus(){}setAttribute(k,v){this[k]=v;}addEventListener(k,fn){this.events[k]=fn;}replaceChildren(){this.children=[];}appendChild(x){this.children.push(x);return x;}append(...items){this.children.push(...items);}}
- const ids=Object.fromEntries(['jev-panel','jev-expand-context','provider-select','model-select','subprovider-select','jev-state','jev-questions','jev-add-question','jev-run','jev-stop','jev-status','jev-result'].map(id=>[id,new Node()]));
+ const ids=Object.fromEntries(['new-conversation','jev-panel','jev-expand-context','provider-select','model-select','subprovider-select','jev-state','jev-questions','jev-add-question','jev-run','jev-stop','jev-status','jev-result'].map(id=>[id,new Node()]));
  ids['provider-select'].value='typesafe-api';ids['model-select'].value='jev-latest';
  const sent=[],context={document:{body:{dataset:{}},getElementById:id=>ids[id],createElement:()=>new Node()},modelCatalog:[{id:'jev-latest',modelKind:'decision'}],chatRunning:false,api:{postMessage:m=>sent.push(m)}};
  vm.runInNewContext(require('../jev-panel').script,context);context.drawDecisionMode();assert.equal(ids['jev-panel'].hidden,false);
- ids['jev-state'].value='Ticket';const card=ids['jev-questions'].children[0],type=card.children[1].children[0],options=card.children[4];
+ ids['jev-state'].value='Ticket';const card=ids['jev-questions'].children[0],type=card.children[1].children[0],options=card.children[3];
  type.value='choice';type.events.change();ids['jev-panel'].events.submit({preventDefault(){}});assert.equal(sent.length,0);
- options.value='Billing\nSupport';options.events.input();ids['jev-panel'].events.submit({preventDefault(){}});assert.equal(sent[0].action,'decision');assert.equal(sent[0].questions.question_1.criteria.option_2,'Support');
- options.value='Different\nLabels';options.events.input();context.showDecisionResult({model:'jev',elapsedMs:100,answers:{question_1:{type:'choice',choice:'option_2',confidence:1,probabilities:{option_1:0,option_2:1}}}});
+ options.children[1].children[1].value='Billing';options.children[1].children[1].events.input();options.children[2].children[1].value='Support';options.children[2].children[1].events.input();ids['jev-panel'].events.submit({preventDefault(){}});assert.equal(sent[0].action,'decision');assert.equal(sent[0].questions.question_1.criteria.option_2,'Support');
+ options.children[1].children[1].value='Different';options.children[1].children[1].events.input();context.showDecisionResult({model:'jev',elapsedMs:100,answers:{question_1:{type:'choice',choice:'option_2',confidence:1,probabilities:{option_1:0,option_2:1}}}});
+ options.children[2].children[2].events.click();
+ assert.equal(options.children[1].children[1].value,'Support');
+ type.value='score';type.events.change();assert.equal(options.children[1].children[0].textContent,'Level 0');
+ assert.equal(options.children[1].children[1].value,'Support');
+ type.value='noul';type.events.change();assert.equal(options.hidden,true);
+ type.value='choice';type.events.change();assert.equal(options.children[1].children[1].value,'Support');
  assert.equal(ids['jev-result'].children[0].children[1].children[1].textContent,'Support');assert.match(ids['jev-status'].textContent,/cost not reported/);
  context.setDecisionRunning(false);ids['provider-select'].value='openai-api';context.modelCatalog=[{id:'jev-latest',modelKind:'language'}];context.drawDecisionMode();assert.equal(ids['jev-panel'].hidden,true);assert.equal(ids['jev-state'].value,'Ticket');
  const saved={state:{code:'METHOD test. ENDMETHOD.',requirements:['Independent total']},questions:{question_4:{type:'noul',instructions:'Repeated call safe?'},question_7:{type:'choice',instructions:'Decision?',criteria:{fix:'Fix',accept:'Accept'}},rating:{type:'score',instructions:'Risk?',criteria:['Low','High']}}};
@@ -73,4 +79,38 @@ test("Jev panel builds questions, preserves drafts and displays human answer lab
  assert.deepEqual(sent[1].state,saved.state);assert.equal(sent[1].questions.question_7.criteria.option_1,'Fix');
  context.setDecisionRunning(false);ids['jev-state'].value='Changed context';ids['jev-panel'].events.submit({preventDefault(){}});assert.equal(sent[2].state,'Changed context');
  context.setDecisionRunning(false);ids['jev-add-question'].events.click();assert.equal(ids['jev-questions'].children[3].children[0].textContent,'Question 4');
+ assert.equal(ids['new-conversation'].disabled,false);
+ context.setDecisionRunning(true);assert.equal(ids['new-conversation'].disabled,true);
+ context.setDecisionRunning(false);context.resetJevDraft();
+ assert.equal(ids['jev-state'].value,'');assert.equal(ids['jev-result'].children.length,0);assert.equal(ids['jev-status'].textContent,'');
+ assert.equal(ids['jev-questions'].children.length,1);assert.equal(ids['jev-questions'].children[0].children[2].value,'');
+ ids['jev-add-question'].events.click();assert.equal(ids['jev-questions'].children.length,2);
+ assert.doesNotMatch(require('../jev-panel').css,/body\[data-decision="true"\] #new-conversation/);
+ context.restoreJevDraft(saved);context.modelCatalog=[{id:'jev-latest',modelKind:'decision'}];
+ ids['model-select'].disabled=true;ids['jev-panel'].events.submit({preventDefault(){}});
+ assert.equal(sent.length,4,'a loaded selected model remains runnable despite stale disabled UI state');
+ context.setDecisionRunning(false);context.showDecisionResult({model:'jev',elapsedMs:1,answers:{}});
+ context.modelCatalog=[];ids['jev-panel'].events.submit({preventDefault(){}});
+ assert.equal(sent.length,4);assert.equal(ids['jev-result'].children.length,0);assert.match(ids['jev-status'].textContent,/No request was sent/);
+
+
+});
+
+test('Jev estimates only direct TypeSafe input costs, preserving reported zero and missing counts',()=>{
+ assert.equal(jev.priceUsage('typesafe-api',{input_tokens:1000000,output_tokens:999999}).estimated_cost_usd,0.042);
+ assert.equal(jev.priceUsage('typesafe-api',{input_tokens:535}).estimated_cost_usd,0.00002247);
+ assert.equal(jev.priceUsage('typesafe-api',{input_tokens:0}).estimated_cost_usd,0);
+ assert.equal(jev.priceUsage('typesafe-api',{input_tokens:50,cost:0}).cost_usd,0);
+ assert.equal(jev.priceUsage('typesafe-api',{input_tokens:50,cost_usd:0.1}).estimated_cost_usd,undefined);
+ for(const input_tokens of [undefined,null,-1,NaN,Infinity,'50'])assert.equal(jev.priceUsage('typesafe-api',{input_tokens}).estimated_cost_usd,undefined);
+ assert.equal(jev.priceUsage('opencode-api',{input_tokens:50}).estimated_cost_usd,undefined);
+});
+
+test('Jev row editor builds ordered criteria and rejects empty or excessive rows',()=>{
+ const make=(type,criteriaEntries)=>[{id:'q',type,instructions:'Review?',criteriaEntries}];
+ assert.deepEqual(jevPanel().buildQuestions(make('choice',['Automatic','Manual','AI'])).questions.q.criteria,{option_1:'Automatic',option_2:'Manual',option_3:'AI'});
+ assert.deepEqual(jevPanel().buildQuestions(make('score',['Low','Medium','High'])).questions.q.criteria,['Low','Medium','High']);
+ assert.throws(()=>jevPanel().buildQuestions(make('choice',['One',''])),/Fill in each/);
+ assert.throws(()=>jevPanel().buildQuestions(make('score',Array(11).fill('Level'))),/2–10/);
+ function jevPanel(){return require('../jev-panel');}
 });

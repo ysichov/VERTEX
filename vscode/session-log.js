@@ -114,6 +114,7 @@ function create(root, provider, session, include, operation = "Chat") {
         cache_read_input_tokens: usage && usage.cache_read_input_tokens || 0,
         ...(usage && Object.prototype.hasOwnProperty.call(usage,"web_search_calls") ? {web_search_calls:usage.web_search_calls} : {}),
         ...(usage?.generation_id ? {generation_id:usage.generation_id} : {}),
+        ...(usage?.estimated_cost_usd !== undefined ? { estimated_cost_usd: usage.estimated_cost_usd, input_usd_per_million: usage.input_usd_per_million } : {}),
         ...(usage && Object.prototype.hasOwnProperty.call(usage, "cost_usd") ? { cost_usd: usage.cost_usd } : {})
       }, content: [{ type: "text", text: answer }] } });
     },

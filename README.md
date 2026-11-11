@@ -5,7 +5,7 @@
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
-Current VS Code extension: **0.9.77**.
+Current VS Code extension: **0.9.78**.
 
 For VS Code, the recommended companion is
 [ABAP Syntax Highlighting by Lars Hvam](https://marketplace.visualstudio.com/items?itemName=larshp.vscode-abap)
@@ -105,7 +105,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.75.20261110091710**; the VS Code extension is **0.9.77**.
+**0.9.78.20261111100524**; the VS Code extension is **0.9.78**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -130,7 +130,15 @@ further; everything new happens here.
 
 ### Git and external tools (VS Code)
 
-Install Git and make the `git` executable available on the VS Code extension host's `PATH` for Git History, diffs, commits and isolated local Git history/working copies. Isolated storage is still real Git: a folder without `.git` does not remove this dependency. GitHub access, a remote repository and publishing are not required for local Git operations.
+Install Git and make the `git` executable available on the VS Code extension host's `PATH` for Git History, diffs, commits and isolated local Git history/working copies. Isolated storage is still real Git: a folder without `.git` does not remove this dependency. Direct TypeSafe Jev requests without a reported API cost show an estimated USD cost from input tokens at $0.042 per million; output is free. The estimate is retained with the logged answer and usage metadata, separately from reported actual charges. Gateway requests retain their own billing.
+
+For Claude Code, **Check and add** verifies an explicit model ID and marks a successful result **Checked**; **Save** keeps the model in the list.
+
+In VS Code Jev mode, **New conversation** clears context, question cards and results and starts a separate conversation in Session Logs. It keeps the selected provider and model and is unavailable while a request runs. Each Run clears the previous displayed result before validation; if no model is ready, the form reports that no request was sent. Answer options and scale levels use separate labeled fields with Add, Remove and up/down ordering controls. Scale levels run from lowest to highest, starting at 0. Switching question types preserves entered options; Continue restores them as editable rows.
+
+Model names and IDs in LLM Providers can be selected and copied with Ctrl+C / Cmd+C. Focus the chat model selector and press Ctrl+C / Cmd+C to copy its selected model ID.
+
+GitHub access, a remote repository and publishing are not required for local Git operations. For GitHub HTTPS operations, authenticate on the VS Code extension host (including the remote host for SSH, WSL or containers): run `gh auth login --hostname github.com --git-protocol https --web`, complete browser sign-in, then run `gh auth setup-git --hostname github.com`. Retry the operation in VERTEX. Install GitHub CLI first if `gh` is unavailable, or configure a Git credential manager. VERTEX runs Git without interactive credential prompts; GitHub account passwords are not accepted for Git authentication.
 
 Check `git --version` in the environment where VERTEX runs, then fully restart VS Code after installing Git or changing `PATH`. On Windows, make Git available from other programs; on macOS/Linux, install Git through the system tools or package manager. With Remote SSH, WSL or a container, Git must be installed on that extension host, not only on the desktop computer.
 

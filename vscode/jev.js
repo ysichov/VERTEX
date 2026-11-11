@@ -25,6 +25,18 @@ function formatAnswers(questions, answers) {
       + (probabilities ? "\nProbabilities: " + probabilities : "");
   }).join("\n\n");
 }
+// TypeSafe published rate, verified 2026-11-11:
+// https://help.typesafe.ai/articles/5187202169-how-much-does-jev-cost
+function priceUsage(provider, usage = {}) {
+  const result = { ...usage };
+  const reported = [usage.cost_usd, usage.cost].find(v => typeof v === "number" && Number.isFinite(v) && v >= 0);
+  if (reported !== undefined) result.cost_usd = reported;
+  else if (provider === "typesafe-api" && typeof usage.input_tokens === "number" && Number.isFinite(usage.input_tokens) && usage.input_tokens >= 0) {
+    result.estimated_cost_usd = usage.input_tokens * 42 / 1000000000;
+    result.input_usd_per_million = 0.042;
+  }
+  return result;
+}
 async function evaluate(provider, key, model, state, questions, options = {}) {
   validate(state, questions);
   const api = require("./openai-compatible");
@@ -32,8 +44,8 @@ async function evaluate(provider, key, model, state, questions, options = {}) {
   const started = Date.now();
   const response = await (options.request || api.requestJson)(provider, key, provider === "typesafe-api" ? "/systemone" : "/systemone/v1/systemone", {model, state, questions}, 262144, 60000, options.signal);
   options.onProviderResponse?.({provider, scope:"model_response", response});
-  const usage = response.usage || {};
-  options.onModelCall?.({model:response.model || model, usage, text:formatAnswers(questions, response.answers)});
+  const usage = priceUsage(provider, response.usage || {});
+  options.onModelCall?.({model:response.model || model, usage, text:formatAnswers(questions, response.answers) + (usage.estimated_cost_usd !== undefined ? "\n\nEstimated cost: $" + usage.estimated_cost_usd + " (input tokens × $0.042 / 1M; output free)" : "")});
   for (const [name, q] of Object.entries(questions)) {
     const a = response.answers?.[name];
     const probability = v => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
@@ -43,4 +55,4 @@ async function evaluate(provider, key, model, state, questions, options = {}) {
   }
   return {model:response.model || model, answers:response.answers, usage, elapsedMs:Date.now()-started};
 }
-module.exports = { validate, evaluate, formatAnswers };
+module.exports = { validate, evaluate, formatAnswers, priceUsage };
