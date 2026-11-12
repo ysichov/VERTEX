@@ -149,6 +149,21 @@ public class ToolsView extends ChatView {
                 Matcher line=Pattern.compile("\"line\"\\s*:\\s*(\\d+)").matcher(request);
                 int requested=line.find()?Integer.parseInt(line.group(1)):0;
                 boolean newTab=Pattern.compile("\"newTab\"\\s*:\\s*true").matcher(request).find();
+                // A review part: a class's local include at a line, or a line counted from a METHOD or SECTION line.
+                String classInclude=jsonText(request,"classInclude").toLowerCase(),section=jsonText(request,"section").toUpperCase();
+                Matcher offsetMatch=Pattern.compile("\"offset\"\\s*:\\s*(\\d+)").matcher(request);
+                int offset=offsetMatch.find()?Integer.parseInt(offsetMatch.group(1)):-1;
+                if(!classInclude.isEmpty()){
+                    browser.getDisplay().asyncExec(()->{
+                        if(browser.isDisposed())return;
+                        sourceNavigationUntil=System.currentTimeMillis()+700;
+                        try{navigateInclude(name,classInclude,Math.max(1,requested));}
+                        catch(RuntimeException e){
+                            navigationDiagnostic("open CLAS " + name + " include " + classInclude + " failed: " + describe(e));
+                            MessageDialog.openError(browser.getShell(),"VERTEX",describe(e));
+                        }
+                    });return null;
+                }
                 browser.getDisplay().asyncExec(()->{
                     if(browser.isDisposed())return;
                     sourceNavigationUntil=System.currentTimeMillis()+700;
@@ -176,6 +191,11 @@ public class ToolsView extends ChatView {
                         navigationDiagnostic("open " + type + " " + name + " requested=" + requested + " has no document");return;
                     }
                     int target=requested;
+                    if(target<1&&!section.isEmpty()){
+                        String[] rows=document.get().split("\\r?\\n");
+                        Pattern heading=Pattern.compile("^\\s*"+Pattern.quote(section)+"\\s+SECTION\\b",Pattern.CASE_INSENSITIVE);
+                        for(int i=0;i<rows.length;i++)if(heading.matcher(rows[i]).find()){target=i+1;break;}
+                    }
                     if(target<1&&!method.isEmpty()){
                         String[] rows=document.get().split("\\r?\\n");
                         Pattern declaration=Pattern.compile("^\\s*(METHOD|FORM|FUNCTION|MODULE)\\s+"+Pattern.quote(method)+"(?:\\s|\\.)",Pattern.CASE_INSENSITIVE);
@@ -184,6 +204,15 @@ public class ToolsView extends ChatView {
                             Pattern signature=Pattern.compile("^\\s*(?:CLASS-)?METHODS\\s+"+Pattern.quote(method)+"(?:\\s|\\.)",Pattern.CASE_INSENSITIVE);
                             for(int i=0;i<rows.length;i++)if(signature.matcher(rows[i]).find()){target=i+1;break;}
                         }
+                    }
+                    if(offset>=0&&requested<1&&(!section.isEmpty()||!method.isEmpty())){
+                        // Without its METHOD or SECTION line the counted line has no anchor: say so, open nowhere else.
+                        if(target<1){
+                            String missing=section.isEmpty()?"METHOD "+method:section+" SECTION";
+                            navigationDiagnostic("open " + type + " " + name + " found no " + missing);
+                            MessageDialog.openError(browser.getShell(),"VERTEX","No "+missing+" in "+name+".");return;
+                        }
+                        target+=offset;
                     }
                     try{
                         int editorTarget=Math.max(1,Math.min(document.getNumberOfLines(),target));
@@ -287,6 +316,22 @@ public class ToolsView extends ChatView {
             .navigate(abapProject(), reference, true);
         if (editor == null) throw new IllegalStateException("ADT did not open " + name + ".");
         return editor;
+    }
+    /* A class's local include (definitions, implementations, macros, testclasses) at LINE: ADT opens the class editor
+       on that include's page and selects the line from the reference's #start fragment. */
+    protected void navigateInclude(String name, String include, int line) {
+        if (!name.matches("[A-Z0-9_/]{1,40}")) throw new IllegalArgumentException("Invalid object name.");
+        if (!include.matches("definitions|implementations|macros|testclasses")) throw new IllegalArgumentException("Unknown class include.");
+        String[] object = adtObject(name, "CLAS");
+        com.sap.adt.tools.core.model.adtcore.IAdtObjectReference reference =
+            com.sap.adt.tools.core.model.adtcore.IAdtCoreFactory.eINSTANCE.createAdtObjectReference();
+        reference.setUri(object[0] + "/includes/" + include + "#start=" + line + ",0");
+        reference.setName(name);
+        reference.setType(object[1]);
+        IEditorPart editor = com.sap.adt.tools.core.ui.navigation.AdtNavigationServiceFactory.createNavigationService()
+            .navigate(abapProject(), reference, true);
+        if (editor == null) throw new IllegalStateException("ADT did not open " + name + " " + include + ".");
+        navigationDiagnostic("open CLAS " + name + " include " + include + " line=" + line + " editor=" + editor.getTitle());
     }
     private static String jsonText(String request,String key){
         Matcher match=Pattern.compile("\""+Pattern.quote(key)+"\"\\s*:\\s*\"([^\"]*)\"").matcher(request);

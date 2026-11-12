@@ -278,3 +278,11 @@ test("with toolResults a tool's result is logged as it went to the model, source
   const [summary] = await read({ tools: true });
   assert.match(summary, /"content":"not logged"/);
 });
+
+test('a FORM or METHOD line in a review block is omitted but is not taken for an object', () => {
+  const objects = [];
+  const text = require('../session-log.js').sanitizeText(JSON.stringify({ blocks: [{ after: ['FORM short_form USING pv_text.', 'METHOD run.', 'REPORT z_x.'] }] }), objects);
+  assert.deepEqual(objects, [{ object_name: 'Z_X', object_type: 'PROG' }]);
+  assert.ok(!text.includes('short_form'));
+});
+test('routing metadata respects question-logging privacy',()=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-topic-private-'));try{const log=sessionLog.create(root,'test','routing-private',{questions:false,answers:false});log.routing({status:'routed',basis:'manual',topic:{id:'topic_0001',label:'PRIVATE_TASK_LABEL',scope:'PRIVATE_PROJECT_PATH'},topics:[{lastQuestion:'PRIVATE_QUESTION'}],usage:{input_tokens:4}});const file=fs.readFileSync(log.file,'utf8');assert.doesNotMatch(file,/PRIVATE_TASK_LABEL|PRIVATE_PROJECT_PATH|PRIVATE_QUESTION/);assert.match(file,/topic_0001/);}finally{fs.rmSync(root,{recursive:true,force:true});}});

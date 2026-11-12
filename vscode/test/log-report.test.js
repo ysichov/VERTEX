@@ -61,8 +61,9 @@ test("the panel's scroll title action opens the theme-aware report from the conf
   assert.deepEqual(executed.slice(1), [["vertex.openTranspilerRun", { run_id: "run-1", step: 1 }], ["vertex.openDebugSession", { session_id: "sap-1", step: 1 }]]);
   assert.match(panel.webview.html, /var\(--vscode-editor-background\)/);
   assert.match(panel.webview.html, /\.session-meta \{[^}]*font-size: 0\.9em/);
-  assert.ok(panel.webview.html.indexOf('heading.appendChild(excerpt)') < panel.webview.html.indexOf('heading.appendChild(meta)'),
-    "the prompt preview precedes the smaller session metadata");
+  assert.ok(panel.webview.html.indexOf('main.appendChild(title)') < panel.webview.html.indexOf('main.appendChild(actions)')
+    && panel.webview.html.indexOf('main.appendChild(actions)') < panel.webview.html.indexOf('"num prompt-count"'),
+    "a conversation row reads: its question, its buttons, then its figures");
   assert.doesNotMatch(panel.webview.html, /\{\{NONCE\}\}/);
   new vm.Script(panel.webview.html.match(/<script nonce="[a-f0-9]+">([\s\S]*?)<\/script>/)[1]);
 });
@@ -170,34 +171,70 @@ test("log Markdown renders formatting while keeping HTML and code inert", () => 
   assert.equal(all.some(item => item.tagName === "SCRIPT" || item.tagName === "IMG"), false);
 });
 
-test("closed log sessions and prompts do not render their conversation bodies", () => {
+test("closed log conversations and prompts do not render their bodies; search and the technical kind checkboxes filter rows", () => {
   const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
-  const node=(tag,cls='',text='')=>({tag,cls,text,children:[],events:{},
-    appendChild(child){this.children.push(child);return child;},setAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
+  const node=(tag,cls='',text='')=>({tag,cls,text,value:'',children:[],events:{},style:{},classList:{toggle(){},add(){},remove(){}},
+    appendChild(child){this.children.push(child);return child;},setAttribute(){},removeAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
   const content=node('main');let rendered=0;
-  const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,
+  const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},
     document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,costText:()=>'',promptTime:String,
     usageText:()=>'',promptPreview:prompts=>prompts[0]?.text||'',conversation(){rendered++;return node('div','conversation');}};
   vm.createContext(context);
-  vm.runInContext(page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
-  const prompt=i=>({key:'p'+i,time:i,text:'Question '+i,usage:{}});
-  context.render({configured:true,folder:'logs',sessions:[{id:'s',provider:'claude',start:1,end:2,models:[],usage:{},prompts:[prompt(1),prompt(2)]}]});
-  const session=content.children.find(child=>child.cls==='session');
-  assert.equal(rendered,0);
-  assert.equal(session.children.length,1,'only its summary exists while the session is closed');
-  session.open=true;session.events.toggle();
-  assert.equal(rendered,0,'opening a session shows prompt rows, not all hidden answers');
-  const all=[];const walk=item=>{all.push(item);(item.children||[]).forEach(walk);};walk(session);
+  vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
+  const prompt=(i,operation='Chat')=>({key:'p'+i,time:i,text:'Question '+i,usage:{},operation});
+  const records=context.render({configured:true,folder:'logs',sessions:[
+    {id:'s',provider:'claude',start:1,end:2,models:[],usage:{},prompts:[prompt(1),prompt(2)]},
+    {id:'t',provider:'typesafe-api',start:3,end:4,models:[],usage:{},prompts:[{...prompt(3,'Topic tagging'),text:'Topic tagging with Jev'}]}]});
+  const record=records.find(r=>r.item.id==='s'),body=record.rows[1].children[0];
+  assert.equal(body.children.length,0,'nothing of a closed conversation is built');
+  record.toggle();
+  assert.equal(record.rows[1].hidden,false);
+  assert.equal(rendered,0,'opening a conversation shows prompt rows, not all hidden answers');
+  const all=[];const walk=item=>{all.push(item);(item.children||[]).forEach(walk);};walk(body);
   const selectedPrompt=all.find(child=>child.cls==='prompt');
   selectedPrompt.open=true;selectedPrompt.ontoggle();
   assert.equal(rendered,1);
   selectedPrompt.open=false;selectedPrompt.ontoggle();selectedPrompt.open=true;selectedPrompt.ontoggle();
   assert.equal(rendered,1,'reopening reuses the previously rendered body');
-  session.open=false;session.events.toggle();session.open=true;session.events.toggle();
-  assert.equal(session.children.length,2,'reopening does not duplicate the prompt table');
+  record.toggle();record.toggle();
+  assert.equal(body.children.length,1,'reopening does not duplicate the prompt table');
+  const technical=records.find(r=>r.item.id==='t');
+  assert.equal(technical.technical,true);
+  const tools=content.children.find(child=>child.cls==='list-tools'),search=tools.children[0],hide=tools.children[1].children[0];
+  search.value='question 2';search.events.input();
+  assert.equal(record.rows[0].hidden,false);assert.equal(technical.rows[0].hidden,true);
+  assert.match(tools.children[1].children[1].text,/Topic tagging \(1\)/);search.value='';search.events.input();hide.checked=false;hide.events.change();
+  assert.equal(record.rows[0].hidden,false);assert.equal(technical.rows[0].hidden,true);
+  assert.match(context.status.textContent,/^1 of 2 conversations/);
 });
 
 test('session header model list collects actual models without duplicate aggregate labels',()=>{
  const rows=[{type:'user',message:{content:'Generate commit'}},{type:'vertex_provider_response',scope:'model_response',response:{id:'a',model:'inclusionai/ling-3.0-flash'}},{type:'assistant',message:{id:'b',model:'inclusionai/ling-3.0-flash',usage:{input_tokens:1}}},{type:'vertex_provider_response',scope:'request_error',response:{model:'nvidia/free'}}].map(r=>({timestamp:'2026-11-07T12:00:00Z',...r}));
  const parsed=report.parseSession(rows.map(JSON.stringify).join('\n'),'vercel-api_20261107_120000.jsonl');assert.deepEqual(parsed.models,['inclusionai/ling-3.0-flash','nvidia/free']);
+});
+
+test("a Jev answer reads as a table: what each question was about, the answer, confidence and odds", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const node = (tag, cls = "", text) => ({ tag, cls, text, children: [], appendChild(child) { this.children.push(child); return child; } });
+  const jevTable = new Function("el", page.slice(page.indexOf("  function jevTable("), page.indexOf("  function section(")) + ";return jevTable")(node);
+  const questions = { topic_of_2: { type: "choice", instructions: "Which topic does exchange 2 belong to?", criteria: { new: "Starts a new topic", clarify: "Unclear" } } };
+  const decision = { state: { exchanges: [{ n: 2, question: "Why does Z_REPORT dump?" }] }, questions };
+  const text = require("../jev.js").formatAnswers(questions, { topic_of_2: { type: "choice", choice: "new", confidence: 0.9, probabilities: { new: 0.95, clarify: 0.05 } } }) + "\n\nEstimated cost: $0.0001";
+  const box = jevTable(text, decision);
+  const rows = box.children[0].children[0].children;
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[1].children.slice(0, 4).map(cell => cell.text), ["1", "Why does Z_REPORT dump?", "Starts a new topic", "90%"]);
+  assert.equal(rows[1].children[4].children.find(line => line.cls === "chosen").text, "Starts a new topic: 95%");
+  assert.equal(box.children[1].text, "Estimated cost: $0.0001");
+  assert.equal(jevTable("A plain model answer", decision), null);
+});
+
+test("the list sent to the page leaves each prompt's details, steps and Jev input on the host", () => {
+  const { listReport } = require("../log-report.js");
+  const report = { configured: true, folder: "logs", sessions: [{ id: "s", prompts: [{ key: "s:0", text: "Q", usage: {}, details: [{ type: "answer", text: "A".repeat(1000) }], timeline: [{ kind: "model" }], decision: { questions: {} } }] }] };
+  const prompt = listReport(report).sessions[0].prompts[0];
+  assert.equal(prompt.lazy, true);
+  assert.equal(prompt.text, "Q");
+  assert.equal("details" in prompt || "timeline" in prompt || "decision" in prompt, false);
+  assert.equal(report.sessions[0].prompts[0].details.length, 1, "the host keeps the full record");
 });

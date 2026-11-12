@@ -39,7 +39,10 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     }
     require("./session-log").reset(found.conversation || undefined, found.branch);
     await vscode.commands.executeCommand("vertex.resetTranspilerRunNumbers");
-    const count = ask.restoreConversation(found.turns);
+    const selectedTopic=found.turns.find(turn=>turn.topic?.id===found.topicId)?.topic;
+    const count = ask.restoreConversation(found.turns,{topic:selectedTopic});
+    if(selectedTopic)await vscode.workspace.getConfiguration("vertex.ai").update("context.routeTopics",true,vscode.ConfigurationTarget.Global);
+    const restoredTopics=ask.topics?.()||[],restoredLabels=new Map(restoredTopics.map(topic=>[topic.id,topic.label]));
     reviewAsk = null;
     const view = currentView;
     await view.webview.postMessage({ cleared: true });
@@ -47,13 +50,14 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
     await view.webview.postMessage({ chat: "VERTEX: Continued from the session log" + (when ? " of " + when : "") + ": " + count + " question" + (count === 1 ? "" : "s")
       + (found.files > 1 ? " from " + found.files + " providers' logs" : "") + ". The next question carries them as history; the tools' results of that session are not repeated." });
     for (const turn of found.turns) {
-      await view.webview.postMessage({ chat: "You: " + turn.question
+      await view.webview.postMessage({ ...(turn.topic?{topic:{...turn.topic,label:restoredLabels.get(turn.topic.id)||turn.topic.label}}:{}), chat: "You: " + turn.question
         + (turn.images?.length ? "  [" + turn.images.length + " screenshot(s) restored]" : "")
         + (turn.missingScreenshots ? "  [" + turn.missingScreenshots + " screenshot(s) unavailable]" : "") });
-      await view.webview.postMessage({ chat: "VERTEX: " + (turn.answer || (turn.failed
+      await view.webview.postMessage({ ...(turn.topic?{topic:{...turn.topic,label:restoredLabels.get(turn.topic.id)||turn.topic.label}}:{}), chat: "VERTEX: " + (turn.answer || (turn.failed
         ? "(request did not complete; your question and available screenshots were restored for the next request)" : "(no answer was logged)")) });
     }
-    await view.webview.postMessage({ historyContinued: true });
+    // Continue on a topic's last question: the whole conversation comes back, and the next question continues that topic.
+    await view.webview.postMessage({ historyContinued: true,...(selectedTopic?{routeTopics:true}:{}),topicList:restoredTopics });
     await showReview();
     view.show(true);
     return count;
@@ -158,6 +162,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           // What the list shows: a system reached through SAP's extension says so beside its name.
           labels: systems().map(item => item.name),
           ai: ask.state(),
+          jevOn: require("./model-config").isOn(vscode, "typesafe-api"),
           // Where the chat's SAP tools come from: VERTEX itself or an MCP server of vertex.chat.mcpServers.
           mcp: chatMcp ? { servers: chatMcp.choices(), selected: chatMcp.selected(),
             updates: chatMcp.overview().filter(s => Array.isArray(s.update) && s.update.length).map(s => s.name) } : null,
@@ -165,8 +170,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           effort: String(vscode.workspace.getConfiguration("vertex.ai").get("effort", "") || "")
         }).then(async () => {
           // The model list comes after: it may have to ask the provider.
-          try { await view.webview.postMessage({ models: await ask.listModels(fresh) }); }
-          catch (error) { await view.webview.postMessage({ models: { error: error.message } }); }
+          try { const models = await ask.listModels(fresh); require("./ai-availability").set(!models?.error && Array.isArray(models?.models) && models.models.length > 0); await view.webview.postMessage({ models }); }
+          catch (error) { require("./ai-availability").set(false); await view.webview.postMessage({ models: { error: error.message } }); }
         });
       };
       // The folder Claude works in, under the SAP system, so the panel does not read as SAP-only.
@@ -188,10 +193,16 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "ready") {
           ready = true;
+          await view.webview.postMessage({jevOn:require("./model-config").isOn(vscode,"typesafe-api"),topicList:ask.topics?.()||[],routeTopics:vscode.workspace.getConfiguration("vertex.ai").get("context.routeTopics",false),optimizeContext:vscode.workspace.getConfiguration("vertex.ai").get("context.optimize",false)});
           await showFolder();
           await refresh();
           await showReview();
           await view.webview.postMessage({chatRunning:!!pendingChat});
+          return;
+        }
+        if(message.action==="setRouteTopics"){await vscode.workspace.getConfiguration("vertex.ai").update("context.routeTopics",!!message.value,vscode.ConfigurationTarget.Global);return;}
+        if (message.action === "setOptimizeContext") {
+          await vscode.workspace.getConfiguration("vertex.ai").update("context.optimize",!!message.value,vscode.ConfigurationTarget.Global);
           return;
         }
         if (message.action === "conversationHistory") {
@@ -311,7 +322,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           const images = (Array.isArray(message.images) ? message.images : []).filter(image => image
             && /^image\/(png|jpeg|gif|webp)$/.test(image.media_type) && typeof image.data === "string" && image.data);
           const shown = String(message.text || "").trim() || (asked ? (asked.review_result ? "Check the attached review findings against the code and explain which are valid." : asked.prompt_label ? asked.prompt_label + " (VERTEX prompt)" : "What does this change do, and is there a real problem with it?")
-            : images.length ? "What is in this screenshot?" : "");
+            : images.length ? "Inspect the screenshot and identify the likely problem or task from visible evidence. If unclear, ask a specific clarifying question." : "");
           if (!shown) { return; }
           const pending = pendingChat = { id: requestId, cancelled: false };
           try {
@@ -328,15 +339,16 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
               delete state.review_source;
               delete state.selected_fragment;
             }
-            const reply = await ask(asked ? review.askRequest(asked.review_result ? shown : message.text, asked) : shown, {model: message.model, state, web,contextMode:asked?.system==="local"?"folder":ask.state().contextMode,
+            const reply = await ask(asked ? review.askRequest(asked.review_result ? shown : message.text, asked) : shown, {model: message.model, state, web,optimizeContext:false,routeTopics:!!message.routeTopics,contextMode:asked?.system==="local"?"folder":asked?"sap":ask.state().contextMode,
               ...(images.length ? { images } : {}),
               onProgress: update => { if(pending.cancelled)return; Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
             if (pending.cancelled || reply.stopped) { await view.webview.postMessage({progress:{id:requestId,stopped:true,done:true}}); return; }
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId,
               answer: reply.answer + (reply.navigationError ? "\n\nVERTEX could not open the object: " + reply.navigationError : ""),
-              done: true, usage: usageLine(reply)+(reply.planner?" · Planner: "+usageLine(reply.planner):""), choices: reply.choices || [],
+              done: true, ...(reply.topic?{topic:reply.topic}:{}), usage: usageLine(reply)+(reply.planner?" · Planner: "+usageLine(reply.planner):""), choices: reply.choices || [],
               runs: (await vscode.commands.executeCommand("vertex.knownEvidenceSessions")) || [] } });
+            await view.webview.postMessage({topicList:ask.topics?.()||[]});
             // The answer names a VERTEX function to run - a table's data, a
             // class's diff - and the panel has no view of its own for it, so
             // a Tools window opens on it, on the panel's system.
@@ -457,6 +469,9 @@ function html(nonce) {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'self'; img-src data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <style nonce="${nonce}">
 html, body { height: 100%; margin: 0; }
+/* Native checkboxes follow the theme: a dark scheme in dark and high-contrast themes, the focus colour when ticked (as in SAP Systems). */
+body.vscode-dark, body.vscode-high-contrast { color-scheme: dark; }
+input[type=checkbox] { accent-color: var(--vscode-focusBorder); }
 body { background:var(--vscode-editor-background); box-sizing: border-box; display: flex; flex-direction: column; padding: 16px 16px 8px; color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
 h2 { font-size: 12px; text-transform: uppercase; margin: 8px 0 12px; }
 p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
@@ -516,6 +531,7 @@ body[data-provider="vercel-api"] #vercel-row-break, body[data-provider="opencode
 #subprovider-select[hidden] { display:none; }
 /* No provider offered (none ticked in LLM Providers): there is nothing to choose, so the choice is not shown. */
 body.no-providers #provider-select, body.no-providers #vercel-row-break, body.no-providers #subprovider-select, body.no-providers .model-picker, body.no-providers #effort-select, body.no-providers #model-status { display:none !important; }
+body.no-choice #provider-select, body.no-choice #vercel-row-break, body.no-choice #subprovider-select, body.no-choice .model-picker, body.no-choice #effort-select { display:none !important; }
 body[data-provider="vercel-api"] #subprovider-select, body[data-provider="opencode-api"] #subprovider-select, body[data-provider="openrouter-api"] #subprovider-select { flex:0 1 150px; max-width:45%; }
 body[data-provider="vercel-api"] .model-picker, body[data-provider="opencode-api"] .model-picker, body[data-provider="openrouter-api"] .model-picker { flex:1 1 170px; }
 .model-picker { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
@@ -587,6 +603,7 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 body[data-chat-mode="review"] #context-controls,body[data-chat-mode="review"] #conversation-history,body[data-chat-mode="review"] #messages,body[data-chat-mode="review"] #work-composer,body[data-chat-mode="review"] #new-conversation{display:none!important}
 body:not([data-chat-mode="review"]) #ai-review-frame,body:not([data-chat-mode="review"]) #review-empty,body:not([data-chat-mode="review"]) #new-review{display:none!important}
 #new-review{margin-left:auto}
+.topic-badge{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--vscode-badge-background);color:var(--vscode-badge-foreground);font-size:11px;margin:4px 0 8px}#topic-picker{max-width:100%}#topic-picker-label{display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;vertical-align:middle}#topic-picker-label[hidden]{display:none}
 #conversation-history{flex:none;margin:6px 0;border-bottom:1px solid var(--vscode-panel-border)}
 #conversation-history>summary{cursor:pointer;padding:6px 0;color:var(--vscode-foreground)}
 .history-controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
@@ -619,12 +636,24 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model · Ctrl+C / Cmd+C copies the model ID"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <div id="work-composer">
 ${require(require("path").join(__dirname,"jev-panel")).html}
-<form id="chat"><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
+<form id="chat"><span id="topic-picker-label" title="Which earlier exchanges go with the question: all of them or the ones Jev routes to its topic. Shown while TypeSafe Jev is on." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select></span><span id="context-optimization-status" class="note" role="status"></span><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
 <button class="secondary" data-action="tools" id="tools"><span class="tools-logo" aria-hidden="true"></span>VERTEX Tools</button>
 </div>
 </div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
+
+/* Full history or Auto (Jev) is kept as the setting; a topic is a choice for the next questions only. */
+let routeMode='full';
+function drawTopicPicker(wanted){const picker=document.getElementById('topic-picker'),chosen=wanted||picker.value||routeMode;picker.replaceChildren();for(const t of [{id:'full',label:'Full history'},{id:'auto',label:'Auto (Jev)'}]){const option=document.createElement('option');option.value=t.id;option.textContent=/^topic_/.test(t.id)?t.id+' · '+t.label:t.label;picker.append(option);}picker.value=Array.from(picker.options).some(x=>x.value===chosen)?chosen:routeMode;paintHistory();}
+/* The toggle shows the choice the hidden list holds: Full history, Auto (Jev), or the topic chosen by hand. */
+function paintHistory(){const value=document.getElementById('topic-picker').value;document.querySelectorAll('[data-history]').forEach(button=>{const on=button.dataset.history===value;button.classList.toggle('active',on);button.setAttribute('aria-pressed',String(on));});}
+document.querySelectorAll('[data-history="full"],[data-history="auto"]').forEach(button=>button.addEventListener('click',()=>{const picker=document.getElementById('topic-picker');picker.value=button.dataset.history;picker.onchange({target:picker});paintHistory();}));
+document.getElementById('topic-picker').onchange=event=>{const value=event.target.value;if(value==='full'||value==='auto'){routeMode=value;api.postMessage({action:'setRouteTopics',value:value==='auto'});}};
+let topicCatalog=[];
+function setTopic(item,topic){if(!topic||!/^topic_\\d{4,8}$/.test(topic.id))return;const canonical=typeof topicCatalog!=='undefined'&&topicCatalog.find(t=>t.id===topic.id);if(canonical)topic={...topic,label:canonical.label};item.dataset.topicId=topic.id;const colors=['blue','green','orange','purple','red','yellow'];const color='var(--vscode-charts-'+colors[Number(topic.id.slice(6))%colors.length]+',var(--vscode-focusBorder))';item.style.borderLeft='3px solid '+color;let badge=item.querySelector('.topic-badge');if(!badge){badge=document.createElement('span');badge.className='topic-badge';item.insertBefore(badge,item.firstChild);}badge.textContent=topic.id+' · '+topic.label;badge.title=topic.label+(topic.dependencies?.length?' · Dependencies: '+topic.dependencies.join(', '):'');}
+window.addEventListener('message',event=>{const d=event.data||{};if(d.progress?.topic&&!topicCatalog.some(t=>t.id===d.progress.topic.id)){topicCatalog=[...topicCatalog,d.progress.topic];drawTopicPicker();}if(typeof d.routeTopics==='boolean'){const picker=document.getElementById('topic-picker');routeMode=d.routeTopics?'auto':'full';drawTopicPicker(routeMode);}if(typeof d.jevOn==='boolean'){/* Jev switched off in LLM Providers: no history choice, the whole history goes. */document.getElementById('topic-picker-label').hidden=!d.jevOn;if(!d.jevOn)drawTopicPicker('full');}if(Array.isArray(d.topicList)){topicCatalog=d.topicList;drawTopicPicker();for(const item of document.querySelectorAll('[data-topic-id]')){const topic=topicCatalog.find(t=>t.id===item.dataset.topicId);if(topic)setTopic(item,topic);}} if(d.progress?.topicRouting){const r=d.progress.topicRouting;document.getElementById('context-optimization-status').textContent=r.topic?'Topic '+r.topic.id+(r.basis==='manual'?' · manual':' · Jev')+(r.exchangesTotal?' · '+r.exchangesKept+' of '+r.exchangesTotal+' exchanges'+(r.savedPercent>=1?' · history '+Math.round(r.savedPercent)+'% shorter':''):''):'Full history: '+r.reason;}});
+window.addEventListener('message',event=>{const value=event.data?.progress?.contextOptimization;if(value)document.getElementById('context-optimization-status').textContent=value.status==='optimized'?'History: '+Math.round(value.savedPercent)+'% less text ('+value.savedCharacters+' characters)':'Full history'+(value.reason?': '+value.reason:'');});
 let reviewPageId='',reviewLoaded=false;
 const reviewFrame=document.getElementById('ai-review-frame');
 function chatMode(mode){document.body.dataset.chatMode=mode;document.querySelectorAll('[data-chat-mode]').forEach(button=>{const active=button.dataset.chatMode===mode;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});if(mode==='review'&&reviewPageId&&reviewLoaded)api.postMessage({action:'aiReviewMessage',id:reviewPageId,message:{action:'ready'}});}
@@ -776,6 +805,7 @@ document.getElementById('chat').addEventListener('submit', event => {
   if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
   setChatRunning(true);
   api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value,
+    optimizeContext:false,routeTopics:!document.getElementById('topic-picker-label').hidden&&document.getElementById('topic-picker').value==='auto',
     images: images.map(image => ({ media_type: image.media_type, data: image.data })) });
   field.value = '';
   images = []; drawImages();
@@ -892,6 +922,7 @@ window.addEventListener('message', event => {
     if (event.data.review) field.focus();
   }
   if (event.data && event.data.cleared) {
+    topicCatalog=[];drawTopicPicker(routeMode);document.getElementById('context-optimization-status').textContent='';
     resetJevDraft();
     const box = document.getElementById('messages');
     box.textContent = '';
@@ -916,6 +947,7 @@ window.addEventListener('message', event => {
     }
     if (item && update.remove) { item.remove(); progressItems.delete(update.id); }
     else if (item) {
+      if(update.topic){setTopic(item,update.topic);let prior=item.previousElementSibling;if(prior?.classList.contains('you'))setTopic(prior,update.topic);}
       // The text first, the waiting scene right under it.
       let body = item.querySelector('.progress-body');
       if (!body) { body = document.createElement('div'); body.className = 'progress-body streaming-answer'; item.appendChild(body); }
@@ -1071,11 +1103,14 @@ window.addEventListener('message', event => {
     if (data.error) {
       modelCatalog = [];drawModelPickers('');drawModelCapabilities();
       select.replaceChildren(new Option('no models', ''));
+      // Nothing to choose: the provider in use has no models. Its error stays in model-status; LLM Providers switches provider.
+      document.body.classList.add('no-choice');
       select.title = data.error;
       const status = document.getElementById('model-status');
       if (status) status.textContent = data.error;
     } else {
       select.title = 'Model';
+      document.body.classList.remove('no-choice');
       const status = document.getElementById('model-status');
       if (status) {
         status.replaceChildren();
@@ -1095,6 +1130,7 @@ window.addEventListener('message', event => {
     const item = document.createElement(mine ? 'p' : 'div');
     item.className = mine ? 'you' : 'vertex';
     if (mine) { item.textContent = event.data.chat; } else { markdown(event.data.chat, item); }
+    if(event.data.topic)setTopic(item,event.data.topic);
     // Each found object is a link: a click opens it, as a single match is opened.
     if (!mine) { links(item, event.data.choices || []);linkProjectFiles(item); }
     let copy = null;
@@ -1159,6 +1195,7 @@ function runLinks(item, runs) {
 }
 // Markdown built as DOM nodes with textContent only, so an answer cannot inject markup.
 function inline(text, parent) {
+  // Bold and italic hold inline text of their own: code inside bold is bold code, not bold backticks.
   text.split(/(\\[[^\\]\\n]+\\]\\(https?:\\/\\/[^\\s)]+\\)|\\[(?:run|session) [0-9a-f-]{6,36} step \\d+\\]|\\x60[^\\x60]+\\x60|\\*\\*[^*]+\\*\\*|\\*[^*\\s][^*]*\\*)/).forEach(token => {
     if (!token) return;
     let node;
@@ -1172,8 +1209,8 @@ function inline(text, parent) {
       const open=event=>{event.preventDefault();api.postMessage({action:'openWebLink',url:webLink[2]});};node.addEventListener('click',open);node.addEventListener('keydown',event=>{if(event.key==='Enter')open(event);});}
     else if (cite) { node = document.createElement('span'); node.className = 'run-cite'; node.dataset.kind = cite[1]; node.dataset.run = cite[2]; node.dataset.step = cite[3]; node.textContent = token; }
     else if (/^\\x60[^\\x60]+\\x60$/.test(token)) { node = document.createElement('code'); node.textContent = token.slice(1, -1); }
-    else if (/^\\*\\*[^*]+\\*\\*$/.test(token)) { node = document.createElement('strong'); node.textContent = token.slice(2, -2); }
-    else if (/^\\*[^*\\s][^*]*\\*$/.test(token)) { node = document.createElement('em'); node.textContent = token.slice(1, -1); }
+    else if (/^\\*\\*[^*]+\\*\\*$/.test(token)) { node = document.createElement('strong'); inline(token.slice(2, -2), node); }
+    else if (/^\\*[^*\\s][^*]*\\*$/.test(token)) { node = document.createElement('em'); inline(token.slice(1, -1), node); }
     else { node = document.createTextNode(token); }
     parent.appendChild(node);
   });

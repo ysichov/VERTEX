@@ -8,6 +8,7 @@ const zlib = require("node:zlib");
 const { spawnSync } = require("node:child_process");
 const targets = ["universal", "win32-x64", "darwin-arm64"];
 const required = [
+    "extension/topic-routing.js",
     "extension/THIRD-PARTY-NOTICES.md",
     "extension/package.json",
     "extension/node_modules/abap-adt-api/package.json",
@@ -46,6 +47,7 @@ const required = [
     "extension/worktree-review.js",
     "extension/ai-review.js",
     "extension/context-protection.js",
+    "extension/context-optimizer.js",
     "extension/orchestrator-plan.js",
     "extension/orchestrator-supervisor.js",
     "extension/build-runner.js",

@@ -2,14 +2,14 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const test = require('node:test'), assert = require('node:assert/strict');
 test('grouped page offers one continuation from the end and selects every provider file', () => {
   const page = fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
-  const node = tag => ({tagName:tag,children:[],dataset:{},textContent:'',appendChild(c){this.children.push(c);return c;},setAttribute(){}});
+  const node = tag => ({tagName:tag,children:[],dataset:{},style:{},textContent:'',classList:{add(){},remove(){},toggle(){}},appendChild(c){this.children.push(c);return c;},setAttribute(){},removeAttribute(){},addEventListener(){}});
   const nodes = {}, messages = []; let receive;
   const ctx = {document:{createElement:node,createTextNode:text=>({textContent:text}),getElementById:id=>nodes[id] ||= node('div')},window:{vertexCanContinue:true,addEventListener:(type,fn)=>{receive=fn;}},acquireVsCodeApi:()=>({postMessage:m=>messages.push(m)})};
   vm.runInNewContext(page.match(/<script nonce="\{\{NONCE\}\}">([\s\S]*?)<\/script>/)[1],ctx);
   const session = (id,provider,time) => ({id,provider,conversation:'shared',models:[provider+'-model'],start:time,end:time+1000,usage:{input:3,output:1},prompts:[{key:id+':0',branch:'main',time,end:time+1000,text:'Question '+id,operation:'Chat',model:provider+'-model',usage:{input:3,output:1},details:[{type:'answer',text:'Answer'}],timeline:[]}]});
   receive({data:{action:'data',report:{configured:true,folder:'fixture',sessions:[session('a','claude',10000),session('b','codex',20000)]}}});
   const all=[]; const walk=n=>{all.push(n);(n.children||[]).forEach(walk);};walk(nodes.content);
-  assert.equal(all.filter(n=>n.className==='session').length,1);
+  assert.equal(all.filter(n=>n.className==='conversation-row').length,1,'two provider files of one conversation are one row');
   assert.equal(all.filter(n=>n.textContent==='Continue from here').length,0);
   const buttons=all.filter(n=>n.textContent==='Continue');assert.equal(buttons.length,1);
   buttons[0].onclick({preventDefault(){},stopPropagation(){}});

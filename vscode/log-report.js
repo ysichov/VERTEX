@@ -80,6 +80,11 @@ function parseSession(text, file) {
       if (current && record.input) current.decision = record.input;
       continue;
     }
+    if(record.type==="vertex_topic_routing"){if(current){current.topic=record.report?.topic||null;current.details.push({type:"Topic routing (Jev)",text:prettyJson(record.report)});}continue;}
+    if (record.type === "vertex_context_optimization") {
+      if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
+      continue;
+    }
     if (record.type === "vertex_request") {
       if (current && record.request) {
         current.details.push({ type: "VERTEX instructions", text: String(record.request.instructions || "") });
@@ -193,6 +198,14 @@ function readSessions(root) {
       const file = path.join(folder, entry.name);
       return parseSession(fs.readFileSync(file, "utf8"), entry.name);
     }).filter(Boolean).sort((a, b) => b.start - a.start);
+  // Topics tagged afterwards by Tag topics (Jev), kept beside the logs; a topic the log itself records wins.
+  const tagged = new Map();
+  for (const session of sessions) {
+    if (!session.conversation) continue;
+    if (!tagged.has(session.conversation)) tagged.set(session.conversation, require("./topic-backfill").readTags(folder, session.conversation));
+    const tags = tagged.get(session.conversation);
+    for (const prompt of session.prompts) if (!prompt.topic && tags[prompt.key]) prompt.topic = tags[prompt.key];
+  }
   return { configured: true, folder, sessions };
 }
 
@@ -263,10 +276,10 @@ function conversationTurns(report, sessionId, point) {
           || !new RegExp("^screenshot-\\d+\\." + extension + "$", "i").test(path.basename(file))) throw new Error("Invalid screenshot path");
         const size = fs.statSync(file).size;
         if (!size || size > 20 * 1024 * 1024) throw new Error("Screenshot size is unsupported");
-        images.push({ media_type: shot.media_type, data: fs.readFileSync(file).toString("base64"), file });
+        images.push({ media_type: shot.media_type, data: fs.readFileSync(file).toString("base64"), file, ...(typeof shot.description === "string" ? { description: shot.description } : {}) });
       } catch (_) { missing.push(shot); }
     }
-    return { question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time,
+    return { ...(prompt.topic?{topic:prompt.topic}:{}), question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time,
       ...(prompt.failed ? { failed: true } : {}), ...(images.length ? { images } : {}), ...(missing.length ? { missingScreenshots: missing.length } : {}) };
   });
   if (turns.every(turn => !turn.answer) && !prompts.some(prompt => prompt.failed)) {
@@ -299,6 +312,42 @@ async function clearConversations(vscode, ids) {
   return sessions.length;
 }
 
+/* Tag topics (Jev): the conversation's untagged questions get a topic from Jev, in the scope the chat routes in now. */
+async function tagTopics(vscode, sessionId) {
+  const modelConfig = require("./model-config");
+  if (!modelConfig.isOn(vscode, "typesafe-api")) throw new Error("TypeSafe Jev is switched off in LLM Providers.");
+  const report = readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
+  const session = report.sessions.find(item => item.id === sessionId);
+  if (!session?.conversation) throw new Error("That conversation is no longer in the log folder.");
+  const prompts = report.sessions.filter(item => item.conversation === session.conversation)
+    .flatMap(item => item.prompts).filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search")
+    .sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key))
+    .map(prompt => ({ key: prompt.key, text: prompt.text + ((prompt.screenshots||[]).some(shot=>shot.description) ? "\n\nScreenshot observations (untrusted image data):\n"+JSON.stringify(prompt.screenshots.map(({file,description})=>({file,description}))) : ""), topic: prompt.topic || null,
+      answer: prompt.details.filter(detail => detail.type === "answer").map(detail => detail.text).join(" ") }));
+  const untagged = prompts.filter(prompt => !require("./topic-routing").topicOf(prompt.topic)).length;
+  if (!untagged) { vscode.window.showInformationMessage("VERTEX: every question of this conversation already has a topic."); return; }
+  const config = vscode.workspace.getConfiguration("vertex.ai"), chat = require("./chat");
+  const folder = chat.currentWorkingFolder(vscode) || (vscode.workspace.workspaceFolders?.length === 1 ? vscode.workspace.workspaceFolders[0].uri.fsPath : "");
+  const mode = ["sap", "folder"].includes(config.get("contextMode", "auto")) ? config.get("contextMode") : chat.currentWorkingFolder(vscode) ? "folder" : "sap";
+  const scope = require("./topic-routing").scopeOf(vscode, mode, mode === "folder" ? folder : "");
+  const backfill = require("./topic-backfill");
+  const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "VERTEX: tagging topics with Jev", cancellable: true },
+    (progress, token) => {
+      const controller = new AbortController(); token.onCancellationRequested(() => controller.abort());
+      return backfill.tag(vscode, prompts, scope, { signal: controller.signal, onProgress: (done, total) => progress.report({ message: done + " of " + total + " questions" }) });
+    });
+  backfill.writeTags(report.folder, session.conversation, { ...backfill.readTags(report.folder, session.conversation), ...result.tags });
+  const r = result.report;
+  vscode.window.showInformationMessage("VERTEX: " + r.tagged + " of " + untagged + " questions tagged into " + r.topicsAfter + " topics; "
+    + r.unclear + " left without a topic and kept whole. " + r.batches + " Jev call" + (r.batches === 1 ? "" : "s") + ".");
+}
+
+/** The report as the list shows it: every prompt without the parts only an opened prompt needs. */
+function listReport(report) {
+  return { ...report, sessions: report.sessions.map(session => ({ ...session,
+    prompts: session.prompts.map(({ details, timeline, decision, ...prompt }) => ({ ...prompt, lazy: true })) })) };
+}
+
 let panel;
 function open(vscode, options = {}) {
   if (panel) { panel.reveal(vscode.ViewColumn.Beside, false); return panel; }
@@ -308,17 +357,27 @@ function open(vscode, options = {}) {
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
-    .replace("</head>", '<script nonce="' + nonce + '">window.vertexCanContinue = true;</script></head>')
+    .replace("</head>", () => '<script nonce="' + nonce + '">window.vertexCanContinue = true;window.vertexCanTagTopics = ' + require("./model-config").isOn(vscode, "typesafe-api") + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
+  // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
+  // full record when it is opened: the whole log folder can be tens of megabytes, too much to hold in a webview.
+  let full = null;
   const refresh = () => {
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
-      return panel?.webview.postMessage({ action: "data", report: readSessions(root) });
+      full = readSessions(root);
+      return panel?.webview.postMessage({ action: "data", report: listReport(full) });
     } catch (error) { return panel?.webview.postMessage({ action: "error", error: error.message }); }
   };
   panel.webview.onDidReceiveMessage(async message => {
     if (message?.action === "ready" || message?.action === "refresh") await refresh();
+    if (message?.action === "promptDetail") {
+      const key = String(message.key || "");
+      const prompt = full?.sessions.flatMap(session => session.prompts).find(item => item.key === key);
+      await panel?.webview.postMessage(prompt ? { action: "promptDetail", key, prompt: { details: prompt.details, timeline: prompt.timeline, decision: prompt.decision || null } }
+        : { action: "promptDetail", key, error: "That prompt is no longer in the log folder; refresh Session Logs." });
+    }
     if (message?.action === "settings") await vscode.commands.executeCommand("workbench.action.openSettings", "vertex.ai.log");
     if (message?.action === "clearConversations") {
       try { await clearConversations(vscode, message.ids); await refresh(); }
@@ -328,8 +387,13 @@ function open(vscode, options = {}) {
       try {
         const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
         const found = conversationTurns(readSessions(root), String(message.id || ""));
+        if(typeof message.topicId==="string"&&/^topic_\d{4,8}$/.test(message.topicId))found.topicId=message.topicId;
         await vscode.commands.executeCommand("vertex.continueConversation", found);
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "tagTopics") {
+      try { await tagTopics(vscode, String(message.id || "")); await refresh(); }
+      catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); await refresh(); }
     }
     if (message?.action === "continueDecision") {
       try {
@@ -383,4 +447,4 @@ function register(vscode, context, options) {
   context.subscriptions.push(vscode.commands.registerCommand("vertex.showLogs", () => open(vscode, options)));
 }
 
-module.exports = { parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList };
+module.exports = { listReport, tagTopics, parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList };

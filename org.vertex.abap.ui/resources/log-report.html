@@ -61,12 +61,41 @@
   .entry.model { --entry-color: var(--vscode-charts-green, var(--vscode-textLink-foreground)); }
   .entry > summary { padding: 6px 8px; cursor: pointer; color: var(--entry-color); font-weight: 600; }
   .entry > summary:hover { background: var(--vscode-list-hoverBackground); }
+  table.jev-table { width: 100%; margin: 4px 0; }
+  table.jev-table td { vertical-align: top; }
+  td.jev-about { max-width: 420px; overflow-wrap: anywhere; }
+  td.jev-answer { font-weight: 600; }
+  td.jev-odds { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
+  td.jev-odds .chosen { color: var(--vscode-foreground); font-weight: 600; }
+  .topic-cell { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topic-continue { font-weight: 600; padding: 0 8px; }
+  .prompt-count { font-weight: 600; color: var(--vscode-foreground); }
   summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
   .detail { margin: 0; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--vscode-editor-foreground); }
   .technical .detail { background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
   .entry-body { padding: 0 8px 4px; }
   .kind { padding: 4px 8px; color: var(--entry-color); font-size: 0.9em; }
   .table-scroll { overflow-x: auto; }
+  table.session-table { table-layout: fixed; width: max(100%, 1000px); }
+  /* At least the fixed columns plus room for the question: below that the pane scrolls instead of hiding it. */
+  table.conversation-table { table-layout: fixed; width: max(100%, 1260px); }
+  table.conversation-table th { position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.conversation-title { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-textLink-foreground); }
+  td.conversation-body { padding: 0 0 8px 24px; }
+  td.actions { white-space: nowrap; }
+  td.actions button + button { margin-left: 6px; }
+  tr.conversation-row.technical > td { opacity: 0.6; }
+  .list-tools { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 8px 0; }
+  .kind-filter { color: var(--vscode-descriptionForeground); white-space: nowrap; }
+  .log-search { flex: 1; max-width: 420px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
+  table.session-table th { position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  th.sortable { cursor: pointer; }
+  tr.technical > td { opacity: 0.6; }
+  tr.technical > td.topic-cell { font-weight: normal; font-style: italic; overflow: hidden; text-overflow: ellipsis; }
+  th.sorted { color: var(--vscode-foreground); }
+  .col-grip { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; }
+  .col-grip:hover { background: var(--vscode-focusBorder); }
+  body.dragging { cursor: col-resize; user-select: none; }
   /* Claude Code's steps: an edit as removed and added lines, in the theme's diff colours; each model call a line. */
   .step-diff { margin: 0; padding: 4px 0; font-family: var(--vscode-editor-font-family); font-size: 0.9em; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); }
   .step-diff .del, .step-diff .add { display: block; padding: 0 8px; }
@@ -216,14 +245,84 @@ function markdown(text, target) {
     return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + (s % 60) + "s";
   }
   function costText(u) {
-    return u.cost == null ? "-" : "$" + Number(u.cost).toLocaleString("en-US", {maximumSignificantDigits:21, useGrouping:false}) + (u.costMissing ? " (partial)" : "");
+    // Up to ten-thousandths of a dollar: finer digits are float noise, not cost.
+    var shown = Number(u.cost).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4, useGrouping: false });
+    return u.cost == null ? "-" : "$" + shown + (u.costMissing ? " (partial)" : "");
   }
   function usageText(u) {
     return "in " + n(u.input) + " · out " + n(u.output) + " · cache read " + n(u.cacheRead) + " · cache write " + n(u.cacheWrite) + (u.cost != null ? " - cost " + costText(u) : u.costMissing ? " - cost unavailable" : "");
   }
+  // A row shows the start of its question: a review prompt can be hundreds of thousands of characters, and a row
+  // holding all of them makes every layout - a filter, a splitter move - lay that text out again. Search reads the
+  // full text; an opened question shows it whole.
   function promptPreview(prompts) {
     if (!prompts.length || !prompts[0].text) return "";
-    return String(prompts[0].text).replace(/\s+/g, " ").trim();
+    var text = String(prompts[0].text).slice(0, 600).replace(/\s+/g, " ").trim();
+    return text.length > 300 ? text.slice(0, 300) + "…" : text;
+  }
+
+  /* A Jev answer as a table: one row per question - what it was about (taken from the saved Jev input), the answer,
+     the confidence and each option's probability. TEXT is jev.js formatAnswers' output; null when it is not. */
+  function jevTable(text, decision) {
+    var parts = String(text || "").split(/\n\n(?=Question \d+: |Estimated cost: )/);
+    var keys = Object.keys(decision.questions || {}), state = decision.state || {};
+    var subject = function (key) {
+      var found = null;
+      Object.keys(state).forEach(function (field) {
+        if (found || !Array.isArray(state[field])) return;
+        state[field].forEach(function (o) {
+          if (found || !o || typeof o !== "object") return;
+          if (o.id === key || "topic_of_" + o.n === key || "need_" + o.id === key) found = o.question || o.label || o.lastQuestion || o.id;
+        });
+      });
+      return found || (key === "route" && state.question) || "";
+    };
+    var table = el("table", "jev-table"), head = el("tr"), rows = 0, cost = "";
+    ["#", "About", "Answer", "Confidence", "Probabilities"].forEach(function (h) { head.appendChild(el("th", h === "#" || h === "Confidence" ? "num" : "", h)); });
+    table.appendChild(head);
+    for (var i = 0; i < parts.length; i++) {
+      var part = parts[i];
+      if (/^Estimated cost: /.test(part)) { cost = part; continue; }
+      var m = /^Question (\d+): ([\s\S]*?)\nAnswer: (.*)\nConfidence: (.*?)(?:\nProbabilities: ([\s\S]*))?$/.exec(part);
+      if (!m) return null;
+      var key = keys[Number(m[1]) - 1] || "";
+      var tr = el("tr");
+      var number = el("td", "num", m[1]); number.title = m[2]; tr.appendChild(number);
+      var about = el("td", "jev-about", subject(key) || key); about.title = m[2]; tr.appendChild(about);
+      tr.appendChild(el("td", "jev-answer", m[3]));
+      tr.appendChild(el("td", "num", m[4]));
+      var odds = el("td", "jev-odds");
+      String(m[5] || "").split("\n").filter(Boolean).forEach(function (line) {
+        var row = el("div", line.indexOf(m[3] + ":") === 0 ? "chosen" : "", line);
+        odds.appendChild(row);
+      });
+      tr.appendChild(odds);
+      table.appendChild(tr);
+      rows++;
+    }
+    if (!rows) return null;
+    var box = el("div", "jev-answers");
+    var scroll = el("div", "table-scroll"); scroll.appendChild(table); box.appendChild(scroll);
+    if (cost) box.appendChild(el("div", "muted", cost));
+    return box;
+  }
+
+  /* VS Code sends the list without each prompt's details (lazy); an opened prompt asks the host for its record.
+     Eclipse parses the logs in the page, so its prompts are complete and render at once. */
+  var waitingDetail = {};
+  function lazyConversation(p) {
+    var holder = el("div", "conversation-holder");
+    var show = function () { holder.appendChild(conversation(p)); };
+    if (!p.lazy) { show(); return holder; }
+    holder.appendChild(el("div", "muted", "Loading…"));
+    if (!waitingDetail[p.key]) { waitingDetail[p.key] = []; vscode.postMessage({ action: "promptDetail", key: p.key }); }
+    waitingDetail[p.key].push(function (reply) {
+      holder.textContent = "";
+      if (reply.error) { holder.appendChild(el("div", "error", reply.error)); return; }
+      p.details = reply.prompt.details || []; p.timeline = reply.prompt.timeline || []; p.decision = reply.prompt.decision || undefined; p.lazy = false;
+      show();
+    });
+    return holder;
   }
 
   function section(label, cls, text) {
@@ -365,7 +464,7 @@ function markdown(text, target) {
       resumeDecision.onclick=function(event){event.preventDefault();event.stopPropagation();vscode.postMessage({action:"continueDecision",key:p.key});};
       body.appendChild(resumeDecision);
     }
-    var user = section("User" + ((p.screenshots || []).length ? " · " + p.screenshots.length + " screenshot" + (p.screenshots.length === 1 ? "" : "s") : ""), "user", p.text);
+    var user = section("User" + (p.topic && p.topic.label ? " · topic: " + p.topic.label : "") + ((p.screenshots || []).length ? " · " + p.screenshots.length + " screenshot" + (p.screenshots.length === 1 ? "" : "s") : ""), "user", p.text);
     objectLinks(user, p.objects);
     (p.screenshots || []).forEach(function (shot, i) {
       if (!shot.file) { user.appendChild(el("div", "kind", "Screenshot " + (i + 1) + " (not saved: questions are not logged)")); return; }
@@ -384,7 +483,8 @@ function markdown(text, target) {
         answersLoaded = true;
         answers.forEach(function (d, i) {
           if (answers.length > 1) answer.appendChild(el("div", "kind", "Response " + (i + 1)));
-          answer.appendChild(richText(d.text));
+          var decided = p.decision ? jevTable(d.text, p.decision) : null;
+          answer.appendChild(decided || richText(d.text));
           objectLinks(answer, d.objects);
         });
       });
@@ -415,10 +515,22 @@ function markdown(text, target) {
         objectLinks(target, d.objects);
       }
       var byId = new Map(calls.map(function (d) { return [d.tool_id, d]; }));
+      // A call's arguments and result are built when it opens: a long run has hundreds, mostly never opened.
+      function later(entry, d) {
+        if (!entry.waiting) {
+          entry.waiting = [];
+          entry.addEventListener("toggle", function () {
+            if (!entry.open || !entry.waiting) return;
+            var waiting = entry.waiting; entry.waiting = null;
+            waiting.forEach(function (item) { appendEntry(entry, item); });
+          });
+        }
+        if (entry.waiting) entry.waiting.push(d); else appendEntry(entry, d);
+      }
       function addCall(d, into) {
         var entry = section(stepTitle(d), "technical");
         if (d.tool_id) entries.set(d.tool_id, entry);
-        appendEntry(entry, d);
+        later(entry, d);
         (into || toolBox).appendChild(entry);
       }
       if (steps) {
@@ -451,7 +563,7 @@ function markdown(text, target) {
       tools.filter(function (d) { return d.type === "tool result"; }).forEach(function (d) {
         var entry = d.tool_id && entries.get(d.tool_id);
         if (!entry) { entry = section("Tool result", "technical"); toolBox.appendChild(entry); }
-        appendEntry(entry, d);
+        later(entry, d);
       });
       body.appendChild(toolBox);
     }
@@ -472,6 +584,55 @@ function markdown(text, target) {
     return body;
   }
 
+  /* A table whose headings sort it (as in Metrics: a click, again to reverse, the arrow shows which) and whose
+     columns widen by dragging a heading's right edge. ROWS are { item, rows: [tr...] } - the trs move together. A column
+     with nosort is neither sorted nor marked. */
+  function sortableHead(table, columns, rows) {
+    var colgroup = el("colgroup"), ordering = null, hr = el("tr");
+    columns.forEach(function (column, index) {
+      var col = el("col");
+      if (column.width) col.style.width = column.width + "px";
+      colgroup.appendChild(col);
+      var th = el("th", column.cls + (column.nosort ? "" : " sortable"), column.name);
+      var sort = function () {
+        var down = ordering && ordering.index === index ? !ordering.down : !!column.num;
+        ordering = { index: index, down: down };
+        rows.sort(function (a, b) {
+          var x = column.value(a.item), y = column.value(b.item);
+          return (x < y ? -1 : x > y ? 1 : 0) * (down ? -1 : 1) || (a.item.time || a.item.end || 0) - (b.item.time || b.item.end || 0);
+        });
+        rows.forEach(function (r) { r.rows.forEach(function (tr) { table.appendChild(tr); }); });
+        Array.prototype.forEach.call(hr.children, function (cell, i) {
+          cell.textContent = columns[i].name + (i === index ? (down ? " ▼" : " ▲") : "");
+          cell.classList.toggle("sorted", i === index);
+          if (i === index) cell.setAttribute("aria-sort", down ? "descending" : "ascending"); else cell.removeAttribute("aria-sort");
+          cell.appendChild(cell.grip);
+        });
+      };
+      if (!column.nosort) {
+        th.tabIndex = 0;
+        th.addEventListener("click", sort);
+        th.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sort(); } });
+      }
+      var grip = el("span", "col-grip");
+      grip.title = "Drag to change the column's width";
+      grip.addEventListener("click", function (e) { e.stopPropagation(); });
+      grip.addEventListener("mousedown", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var startX = e.clientX, startWidth = th.offsetWidth;
+        document.body.classList.add("dragging");
+        var move = function (m) { col.style.width = Math.max(28, startWidth + m.clientX - startX) + "px"; };
+        var up = function () { document.body.classList.remove("dragging"); window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+        window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+      });
+      th.grip = grip;
+      th.appendChild(grip);
+      hr.appendChild(th);
+    });
+    table.appendChild(colgroup);
+    table.appendChild(hr);
+  }
+  var lastReport = null, listState = { query: "", hiddenKinds: {} };
   function render(report) {
     selected.clear(); selectionChanged();
     content.textContent = "";
@@ -510,97 +671,229 @@ function markdown(text, target) {
     status.textContent = report.sessions.length + " conversations in " + report.folder;
     content.appendChild(el("div", "totals", "Total: " + usageText(total)));
 
+    // One row per conversation; Search and Hide technical filter them, the headings sort, the edges widen.
+    var tools = el("div", "list-tools");
+    var search = el("input", "log-search");
+    search.type = "search"; search.placeholder = "Search questions, providers, models"; search.value = listState.query;
+    search.setAttribute("aria-label", "Search conversations");
+    tools.appendChild(search);
+    content.appendChild(tools);
+    var chat = function (p) { return p.operation === "Chat" || p.operation === "Web search"; };
+    // Technical conversations by kind (topic tagging, context optimization...): a checkbox each shows or hides that kind.
+    var kindOf = function (s) { return String((s.prompts[0] && s.prompts[0].operation) || "Technical").replace(/ with Jev.*$/, ""); };
+    var kinds = {};
+    report.sessions.forEach(function (s) { if (!s.prompts.some(chat)) kinds[kindOf(s)] = (kinds[kindOf(s)] || 0) + 1; });
+    var kindBoxes = {};
+    Object.keys(kinds).sort().forEach(function (kind) {
+      var box = el("input"); box.type = "checkbox"; box.checked = !listState.hiddenKinds[kind];
+      var label = el("label", "kind-filter");
+      label.title = "Show the " + kinds[kind] + " technical conversation(s) of this kind";
+      label.appendChild(box); label.appendChild(document.createTextNode(" " + kind + " (" + kinds[kind] + ")"));
+      tools.appendChild(label);
+      kindBoxes[kind] = box;
+    });
+    var anyCost = report.sessions.some(function (s) { return s.usage.cost != null; });
+    var columns = [
+      { name: "", cls: "select-cell", width: 34, nosort: true },
+      { name: "Conversation", cls: "", width: null, value: function (s) { return String(promptPreview(s.prompts) || "").toLowerCase(); } },
+      { name: "", cls: "actions", width: 190, nosort: true },
+      { name: "Prompts", cls: "num", width: 70, num: true, value: function (s) { return s.prompts.length; } },
+      { name: "Providers", cls: "", width: 170, value: function (s) { return s.provider + " " + (s.models || []).join(" "); } },
+      { name: "In", cls: "num", width: 75, num: true, value: function (s) { return s.usage.input || 0; } },
+      { name: "Out", cls: "num", width: 70, num: true, value: function (s) { return s.usage.output || 0; } },
+      { name: "Cache read", cls: "num", width: 90, num: true, value: function (s) { return s.usage.cacheRead || 0; } },
+      { name: "Cost USD", cls: "num", width: 80, num: true, value: function (s) { return s.usage.cost || 0; } },
+      { name: "Duration", cls: "time", width: 75, num: true, value: function (s) { return (s.end || 0) - (s.start || 0); } },
+      { name: "Time", cls: "time", width: 125, num: true, value: function (s) { return s.end || 0; } }];
+    if (!anyCost) columns = columns.filter(function (column) { return column.name !== "Cost USD"; });
+    var list = el("table", "conversation-table"), records = [];
+    sortableHead(list, columns, records);
     report.sessions.forEach(function (s) {
-      var box = el("details", "session");
-      var head = el("summary");
+      var main = el("tr", "conversation-row"), detail = el("tr", "conversation-detail");
+      var technical = !s.prompts.some(chat);
+      if (technical) main.classList.add("technical");
+      var pick = el("td", "select-cell");
       var select = el("input", "select-session");
       select.type = "checkbox";
       select.setAttribute("aria-label", "Select conversation " + s.provider + " " + time(s.start));
-      select.onclick = function (event) { event.stopPropagation(); };
       select.onchange = function () { s.fileIds.forEach(function (id) { if (select.checked) selected.add(id); else selected.delete(id); }); selectionChanged(); };
-      head.appendChild(select);
-      var heading = el("div", "session-heading");
+      pick.appendChild(select);
+      main.appendChild(pick);
       var preview = promptPreview(s.prompts);
-      var excerpt = el("span", "preview", preview || "(no prompt text)");
-      excerpt.title = preview;
-      heading.appendChild(excerpt);
-      var meta = el("div", "session-meta");
-      meta.appendChild(el("span", "", time(s.end)));
-      meta.appendChild(el("span", "provider", s.provider));
-      var models=s.models||[...new Set(s.prompts.map(function(p){return p.model;}).filter(Boolean))];
-      if(models.length){var modelNames=el("span","session-models",models.slice(0,3).join(", ")+(models.length>3?" +"+(models.length-3)+" models":""));modelNames.title=models.join(", ");meta.appendChild(modelNames);}
-
-      meta.appendChild(el("span", "", span(s.start, s.end)));
-      meta.appendChild(el("span", "", s.prompts.length + " prompts"));
-      meta.appendChild(el("span", "", usageText(s.usage)));
-      heading.appendChild(meta);
-      head.appendChild(heading);
+      var title = el("td", "conversation-title");
+      var caret = el("span", "caret", "▸");
+      title.appendChild(caret);
+      title.appendChild(el("span", "preview", " " + (preview || "(no prompt text)")));
+      title.title = preview;
+      title.tabIndex = 0;
+      main.appendChild(title);
+      var actions = el("td", "actions");
+      main.appendChild(actions);
+      main.appendChild(el("td", "num prompt-count", String(s.prompts.length)));
+      var models = s.models || [];
+      var who = el("td", "identity");
+      var whoLabel = el("div", "identity-label");
+      whoLabel.title = s.provider + (models.length ? " · " + models.join(", ") : "");
+      whoLabel.appendChild(el("span", "provider", s.provider));
+      if (models.length) { whoLabel.appendChild(document.createTextNode(" · ")); whoLabel.appendChild(el("span", "session-models", models.join(", "))); }
+      who.appendChild(whoLabel);
+      main.appendChild(who);
+      main.appendChild(el("td", "num", n(s.usage.input)));
+      main.appendChild(el("td", "num", n(s.usage.output)));
+      main.appendChild(el("td", "num", n(s.usage.cacheRead)));
+      if (anyCost) main.appendChild(el("td", "num", s.usage.cost != null ? costText(s.usage) : s.usage.costMissing ? "unavailable" : "-"));
+      main.appendChild(el("td", "time", span(s.start, s.end) || "—"));
+      main.appendChild(el("td", "time", time(s.end)));
       // Continue this conversation in the VERTEX chat, with all the files it wrote (one per provider it used).
       // VS Code only: the host that has the chat says so; Eclipse's Session Logs show no button.
-      if (window.vertexCanContinue && s.prompts.some(function (p) { return p.operation === "Chat" || p.operation === "Web search"; })) {
+      if (window.vertexCanContinue && s.prompts.some(chat)) {
         var resume = el("button", "continue-session", "Continue");
         resume.title = "Open this conversation in the VERTEX chat and go on asking: its questions and answers become the history";
         resume.onclick = function (event) { event.preventDefault(); event.stopPropagation(); vscode.postMessage({ action: "continueConversation", id: s.id }); };
-        head.appendChild(resume);
+        actions.appendChild(resume);
+        // Tag topics (Jev): questions logged without a topic get one, so Route topics can leave unrelated ones out.
+        var untagged = s.prompts.filter(function (p) { return chat(p) && !p.topic; }).length;
+        if (window.vertexCanTagTopics && untagged) {
+          var tagTopics = el("button", "continue-session", "Tag topics (Jev)");
+          tagTopics.title = "Ask Jev which topic each of the " + untagged + " questions without one belongs to; unclear ones stay untagged and are kept whole";
+          tagTopics.onclick = function (event) { event.preventDefault(); event.stopPropagation(); vscode.postMessage({ action: "tagTopics", id: s.id }); };
+          actions.appendChild(tagTopics);
+        }
       }
-      box.appendChild(head);
-
-      var sessionLoaded = false;
-      box.addEventListener("toggle", function () {
-      if (!box.open || sessionLoaded) return;
-      sessionLoaded = true;
-      var table = el("table");
-      var hr = el("tr");
-      ["Conversation", "Model", "In", "Out", "Cache read", "Cost USD", "Duration", "Time"].forEach(function (h, i) { hr.appendChild(el("th", i >= 6 ? "time" : i > 1 ? "num" : "", h)); });
-      table.appendChild(hr);
-      var several = s.prompts.length > 1;
-      s.prompts.forEach(function (p) {
-        var row = el("tr", several ? "compact" : "");
-        var cell = el("td", "prompt-cell");
-        if (several) {
-          // One narrow line per prompt; its conversation opens under the line.
-          var prompt = el("details", "prompt");
-          var line = el("summary", "", promptPreview([p]) || "(no prompt text)");
-          line.title = promptPreview([p]);
-          prompt.appendChild(line);
-          var promptLoaded = false;
-          prompt.ontoggle = function () {
-            row.className = prompt.open ? "" : "compact";
-            if (prompt.open && !promptLoaded) { promptLoaded = true; prompt.appendChild(conversation(p)); }
-          };
-          cell.appendChild(prompt);
-        } else cell.appendChild(conversation(p));
-        row.appendChild(cell);
-        var identity = el("td", "identity");
-        var modelLabel = el("div", "identity-label");
-        modelLabel.title = p.provider + " · " + p.model;
-        modelLabel.appendChild(el("span", "provider", p.provider));
-        modelLabel.appendChild(document.createTextNode(" · "));
-        modelLabel.appendChild(el("span", "prompt-model", p.model));
-        identity.appendChild(modelLabel);
-        if (p.branch && p.branch !== "main") identity.appendChild(el("div", "muted", "Branch " + p.branch));
-        row.appendChild(identity);
-        row.appendChild(el("td", "num", n(p.usage.input)));
-        row.appendChild(el("td", "num", n(p.usage.output)));
-        row.appendChild(el("td", "num", n(p.usage.cacheRead)));
-        row.appendChild(el("td", "num", costText(p.usage)));
-        var duration = el("td", "time", span(p.time, p.end) || "—");
-        duration.title = "Elapsed time from the prompt to its last recorded assistant response";
-        row.appendChild(duration);
-        row.appendChild(el("td", "time", promptTime(p.time, s.start)));
-        table.appendChild(row);
-      });
-      var scroll = el("div", "table-scroll");
-      scroll.appendChild(table);
-      box.appendChild(scroll);
-      });
-      content.appendChild(box);
+      var body = el("td", "conversation-body");
+      body.colSpan = columns.length;
+      detail.appendChild(body);
+      detail.hidden = true;
+      var record = { item: s, rows: [main, detail], technical: technical, kind: technical ? kindOf(s) : "", open: false, loaded: false,
+        text: (s.prompts.map(function (p) { return p.text || ""; }).join(" ") + " " + s.provider + " " + models.join(" ")).toLowerCase() };
+      // The questions' table is built the first time the conversation opens, and kept.
+      record.toggle = function () {
+        record.open = !record.open;
+        caret.textContent = record.open ? "▾" : "▸";
+        if (record.open && !record.loaded) { record.loaded = true; body.appendChild(promptTable(s)); }
+        detail.hidden = !record.open;
+      };
+      title.addEventListener("click", record.toggle);
+      title.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); record.toggle(); } });
+      records.push(record);
+      list.appendChild(main); list.appendChild(detail);
     });
+    var filter = function () {
+      listState.query = search.value;
+      Object.keys(kindBoxes).forEach(function (kind) { if (kindBoxes[kind].checked) delete listState.hiddenKinds[kind]; else listState.hiddenKinds[kind] = true; });
+      var q = String(search.value || "").trim().toLowerCase(), shown = 0;
+      records.forEach(function (r) {
+        var show = (!q || r.text.indexOf(q) >= 0) && !(r.technical && listState.hiddenKinds[r.kind]);
+        if (show) shown++;
+        r.rows[0].hidden = !show; r.rows[1].hidden = !show || !r.open;
+      });
+      status.textContent = (shown === records.length ? records.length : shown + " of " + records.length) + " conversations in " + report.folder;
+    };
+    search.addEventListener("input", filter);
+    Object.keys(kindBoxes).forEach(function (kind) { kindBoxes[kind].addEventListener("change", filter); });
+    var scroll = el("div", "table-scroll");
+    scroll.appendChild(list);
+    content.appendChild(scroll);
+    filter();
+    return records;
   }
+
+  /* A conversation's questions: one row each, its answer opening under it. */
+  function promptTable(s) {
+    var table = el("table", "session-table");
+    // Columns: a click on a heading sorts by it (as in Metrics), the grip on its right edge drags its width.
+    var columns = [
+      { name: "Conversation", cls: "", width: null, value: function (p) { return String(p.text || "").toLowerCase(); } },
+      { name: "Topic", cls: "", width: 70, value: function (p) { return p.topic && p.topic.id ? Number(p.topic.id.slice(6)) : 0; }, num: true },
+      { name: "Model", cls: "", width: 150, value: function (p) { return (p.provider || "") + " " + (p.model || ""); } },
+      { name: "In", cls: "num", width: 70, value: function (p) { return p.usage.input || 0; }, num: true },
+      { name: "Out", cls: "num", width: 65, value: function (p) { return p.usage.output || 0; }, num: true },
+      { name: "Cache read", cls: "num", width: 90, value: function (p) { return p.usage.cacheRead || 0; }, num: true },
+      { name: "Cost USD", cls: "num", width: 90, value: function (p) { return p.usage.cost || 0; }, num: true },
+      { name: "Duration", cls: "time", width: 90, value: function (p) { return (p.end || 0) - (p.time || 0); }, num: true },
+      { name: "Time", cls: "time", width: 125, value: function (p) { return p.time || 0; }, num: true }];
+    // A conversation whose models report no cost (a subscription) has no Cost column: it would be all dashes.
+    var hasCost = s.prompts.some(function (p) { return p.usage && p.usage.cost != null; });
+    if (!hasCost) columns = columns.filter(function (column) { return column.name !== "Cost USD"; });
+    var rows = [];
+    sortableHead(table, columns, rows);
+    var several = s.prompts.length > 1;
+    s.prompts.forEach(function (p) {
+      var row = el("tr", several ? "compact" : "");
+      var cell = el("td", "prompt-cell");
+      if (several) {
+        // One narrow line per prompt; its conversation opens under the line.
+        var prompt = el("details", "prompt");
+        var line = el("summary", "", promptPreview([p]) || "(no prompt text)");
+        line.title = promptPreview([p]);
+        prompt.appendChild(line);
+        var promptLoaded = false;
+        prompt.ontoggle = function () {
+          row.className = prompt.open ? "" : "compact";
+          if (prompt.open && !promptLoaded) { promptLoaded = true; prompt.appendChild(lazyConversation(p)); }
+        };
+        cell.appendChild(prompt);
+      } else cell.appendChild(lazyConversation(p));
+      row.appendChild(cell);
+      // Its topic, coloured as the chat colours it, so the topics of a conversation can be told apart at a glance.
+      var topicCell = el("td", "topic-cell");
+      if (p.topic && /^topic_\d{4,8}$/.test(p.topic.id)) {
+        var colors = ["blue", "green", "orange", "purple", "red", "yellow"];
+        var color = "var(--vscode-charts-" + colors[Number(p.topic.id.slice(6)) % colors.length] + ", var(--vscode-focusBorder))";
+        cell.style.borderLeft = "3px solid " + color;
+        topicCell.style.color = color;
+        topicCell.textContent = "T" + Number(p.topic.id.slice(6));
+        topicCell.title = p.topic.id + " · " + (p.topic.label || "");
+        var later=s.prompts.slice(s.prompts.indexOf(p)+1).some(function(q){return q.topic&&q.topic.id===p.topic.id;});
+        if(window.vertexCanContinue&&!later){
+          var topicId=p.topic.id;
+          var resumeTopic=el("button","continue-session topic-continue","T"+Number(topicId.slice(6)));
+          resumeTopic.style.color=color;
+          resumeTopic.title="Continue "+topicCell.title+"; subsequent requests are classified by Jev";
+          resumeTopic.onclick=function(event){event.preventDefault();event.stopPropagation();vscode.postMessage({action:"continueConversation",id:s.id,topicId:topicId});};
+          topicCell.textContent="";topicCell.appendChild(resumeTopic);
+        }
+
+
+      }
+      // A technical request (a commit message, a PR description, a decision...) is not a chat question: muted,
+      // with its operation where a topic would be. Continue and Tag topics leave it out.
+      if (p.operation && p.operation !== "Chat" && p.operation !== "Web search") {
+        row.classList.add("technical");
+        topicCell.textContent = p.operation;
+        topicCell.title = "Technical request: " + p.operation + " - not a chat question";
+      }
+      row.appendChild(topicCell);
+      var identity = el("td", "identity");
+      var modelLabel = el("div", "identity-label");
+      modelLabel.title = p.provider + " · " + p.model;
+      modelLabel.appendChild(el("span", "provider", p.provider));
+      modelLabel.appendChild(document.createTextNode(" · "));
+      modelLabel.appendChild(el("span", "prompt-model", p.model));
+      identity.appendChild(modelLabel);
+      if (p.branch && p.branch !== "main") identity.appendChild(el("div", "muted", "Branch " + p.branch));
+      row.appendChild(identity);
+      row.appendChild(el("td", "num", n(p.usage.input)));
+      row.appendChild(el("td", "num", n(p.usage.output)));
+      row.appendChild(el("td", "num", n(p.usage.cacheRead)));
+      if (hasCost) row.appendChild(el("td", "num", costText(p.usage)));
+      var duration = el("td", "time", span(p.time, p.end) || "—");
+      duration.title = "Elapsed time from the prompt to its last recorded assistant response";
+      row.appendChild(duration);
+      row.appendChild(el("td", "time", promptTime(p.time, s.start)));
+      rows.push({ item: p, rows: [row] });
+      table.appendChild(row);
+    });
+    var scroll = el("div", "table-scroll");
+    scroll.appendChild(table);
+    return scroll;
+  }
+
 
   window.addEventListener("message", function (event) {
     var m = event.data || {};
-    if (m.action === "data") render(m.report);
+    if (m.action === "data") { lastReport = m.report; render(m.report); }
+    if (m.action === "promptDetail") { var waiting = waitingDetail[m.key] || []; delete waitingDetail[m.key]; waiting.forEach(function (done) { done(m); }); }
     if (m.action === "error") { status.className = "error"; status.textContent = m.error; }
   });
   vscode.postMessage({ action: "ready" });

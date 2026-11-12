@@ -1,3 +1,59 @@
+## 2026-11-12 — VS Code 0.9.87
+
+Bumped vscode/package.json and root lockfile package metadata to 0.9.87. Deleted vscode/history.md and vscode/dev_history.md (duplicate JavaScript, no runtime references); excluded these names from VSIX packaging. Root histories remain authoritative. Updated documentation rules by document purpose and the VS Code version labels. Per user instruction, Eclipse sources and update site are unchanged. Rebuild and archive verification cover the VSIX version, required runtime entries and absence of the erroneous histories.
+
+## 2026-11-12 — Resume topics without pinning
+
+Restored the existing T continuation buttons on the last question of each topic in Session Logs. A topic continuation opens Auto (Jev) and supplies the selected topic as starting evidence for one request only. Jev still classifies that request and all subsequent requests afresh; all archived topics remain available. The panel retains exactly Full history and Auto (Jev), and its topic badges remain informational. Version remains 0.9.86.
+
+## 2026-11-12 — Remove manual topic selection
+
+Chat history has only Full history and Auto (Jev). Topic badges are informational; clicking a badge or continuing a saved conversation cannot pin a topic. Manual topic routing is removed from the chat and router. Version remains 0.9.86.
+
+## 2026-11-12 — Repair saved topic badge labels
+
+Reused the existing sidebar setTopic/drawTopicPicker and ask.topics catalog instead of adding a new badge or style. Continue resolves saved topic IDs to canonical labels before rendering either user or assistant messages. topicList updates repaint existing badges; setTopic resolves incoming stale labels against the same catalog so progress cannot regress them. Missing screenshot descriptions fall back to Screenshot instead of displaying serialized observations. Regression runs exercise existing badge refresh and manual continuation with a stale saved label. No log file is rewritten.
+
+## 2026-11-12 — Preserve screenshot topic evidence across follow-ups
+
+Reused the existing topic-routing input/catalog/apply flow after searching screenshot observation and summary handling in both hosts. Added an observation decoder in that module because no existing decoder was available: it parses saved observation JSON or image reference metadata before clipping, prioritizes visible titles/errors/identifiers and supplies bounded visualEvidence separately. Catalog repairs old wrapper-based labels, retains visual evidence through later short questions and includes a bounded lastAnswer. New screenshot labels use the scene rather than the JSON prefix. Routing/dependency instructions explicitly consider screenshot evidence for success/failure reactions; decisions remain Jev choices, with no confidence/probability threshold or forced route. Regression fixtures cover the logged failure shape and restoration. Live classification quality is not inferred from offline tests.
+
+Validation: 128 focused tests pass. Offline replay of the saved 21:56:01 routing input now exposes the Launchpad Content Manager scene and Ukrainian tile title in both the topic catalog and previous visual evidence; reconstructed request is 14,849 bytes. Universal VSIX 0.9.86 rebuilt and verified, and archived routing source matches the working file. No live Jev call was made.
+
+## 2026-11-12 — Screenshot descriptions before Jev routing
+
+The saved misroute exposed that topic routing received typed text but no image observations. Reused existing provider dispatch, ai-accounting independent scope, session-log screenshot storage and conversation restoration; searched screenshot/vision handling in both VS Code and Eclipse runtimes. Each current image gets a separate context-free, tool-free recognition request using the selected image-capable provider/model. Recognized text enriches the request before Jev; the main call receives references and descriptions only. History stores no image bytes. Session Logs persist descriptions with question logging and restore them into routing context. Screenshot-only submissions use problem-identification instructions instead of asking merely to describe the picture. Recognition errors stop the request before routing. The existing Eclipse chat has no attachment pipeline; no new Eclipse screenshot support is claimed. No confidence/probability selection threshold was added. Fixture tests cover isolation, routing enrichment, reference-only follow-ups and recognition failure; no live recognition/classification quality is claimed.
+
+Validation: 125 focused tests pass, including context-free recognition, screenshot-only requests, Jev enrichment, reference-only history, log continuation and failure handling. Universal VSIX 0.9.86 rebuilt and verified; six changed runtime files match the archived sources. A broader suite was stopped after hanging in unrelated auth/HTTP checks; an independently reproduced assistant cost-format test expects $0.0031 while the existing formatter returns $0.00312. No live model-quality claim.
+
+## 2026-11-12 — Jev topic routing and manual continuation in VS Code
+
+Reused review-jev connection, jev evaluation, independent ai-accounting/session scopes, context-protection, exchange grouping and Context selection view after searching both hosts for an existing router. New topic-routing.js builds a bounded compact catalog and previous-exchange excerpt, retains explicit dependencies and preserves the archive. Scope separates projects/SAP systems. Stable topic metadata survives Session Logs Continue. Manual selection uses no decision API call, checks current scope and retains recorded dependencies. Native checkbox/select/button styles and VS Code theme variables implement the controls and labels. The former Optimize context checkbox is removed; legacy backend selection remains available to existing integrations. Routing metadata obeys question-logging privacy. No provider-native persistent sessions or cross-turn raw MCP-result replay is introduced; cache benefit remains unmeasured. Tests cover isolation, dependency inclusion, manual routing, fallback, privacy and restoration; VSIX is rebuilt at the existing 0.9.85 version.
+
+## 2026-11-12 — Open the code at a line from reviews
+
+The user asked for AVE-style links from review lines to the real code window. versions.html openBlock sent a line only for programs and function modules; class parts opened the class with no line. blockTarget now maps METH and CPUB/CPRO/CPRI to method/section plus offset (the block line counts in the part's own version text, from its METHOD or SECTION line) and CINC to classInclude plus line (suffix after the 30-character padded class name). VS Code openToolSource opens the class include as its own vertex-sap document and adds the offset to the METHOD/SECTION row, failing with a message when that anchor is missing; tools-window keeps such requests off its "same object in SAP's editor" shortcut. Eclipse ToolsView does the same for section/offset and opens a local include through an ADT reference to /includes/<name>#start=line,0. New-side line numbers in diffTable are links where a review object is known (not in the plain version compare, not side by side). Git review: hunkSections takes openable (only the read-only Git history review), adds Open to the block header and data-line to new-side numbers; git-history.js opens the working file or a git: URI of the commit through VS Code's Git extension. Single-block files show no block header, so there only the line numbers open. Not tried against a live SAP system or in Eclipse: METH/section version texts are assumed to start at their METHOD/SECTION line, and ADT honouring #start on an include reference is unverified.
+
+## 2026-11-12 — Object selection for transport review prompts
+
+versions.html objectGroups gets a checkbox column and group-heading checkboxes (native checkboxes, as in buildOptions) when the review is saved; the choice lives in promptPick, keyed objtype~obj_name, reset when the request changes. renderPersonParts filters the "A:" parts by it, so the person view, its ASK AI and personPrompt all see the same subset; none ticked keeps the old all-objects behaviour, which the user confirmed. The user then asked where ASK AI with the prompt type was: ASK AI in the transport review never carried promptKind. askWithPrompt now loads the prompt file and sets instruction / prompt_kind / prompt_label on the context, the same fields the Git review chip already uses in code-review.js askRequest, so VS Code needed no host change. Eclipse chat.html had its own copy of the chip without instruction support; it now builds the request, label and merge rule as askRequest / askLabel / mergeAsk do. Block-level ASK AI passes no kind and keeps the short default question. New test in review-person-view.test.js; the existing summary test slice now starts at promptPick. Version remains 0.9.84; VSIX and Eclipse update site rebuilt.
+
+## 2026-11-12 — Question-first bounded Jev selection
+
+The actual TypeSafe failure log sent 131,189 state characters plus 56,235 question-instruction characters (228,669 UTF-8 request bytes), returning HTTP 400 max_tokens_exceeded. Verified official https://docs.typesafe.ai/models: default 64k per request and 32k for state plus one question. Reworked context-optimizer.js into question-only first-pass classification and optional brief-extract clarification for unclear/short questions. Extracts are explicitly incomplete deterministic prose selections, not generated semantic summaries; full answers stay local. Reused exchange grouping, independent accounting, shared Jev evaluation and fallback. Greedy packing measures complete JSON including model/state/questions under 24,000 UTF-8 bytes; long requests may be single-item batches and oversized questions are retained. Recent request excerpts are bounded and truncation is logged. Every batch has independent related accounting; report aggregates actual usage and records phase/size/errors. No unchanged over-limit request is retried. Batch calls share one independent related conversation per selection, so their accounting does not create main-chat turns. Existing colors reflect effective retention, with basis and exact clarification extract available on expansion. Progress text identifies JEV and the current pass/portion, then resets to Working before the main model.
+
+Validation: 107 fixture-only tests pass. Added tests proving no assistant answer/image payload in the initial pass, bounded brief clarification, byte-bounded packing down to single long requests, oversized-request retention and aggregate usage. Offline payload-only replay of the actual failed log (decisions mocked, no API call) shapes the first pass into 19,528- and 23,930-byte requests instead of 228,669 bytes. Local browser monitor still passes in light/dark themes. No real provider or SAP call was made. Universal VSIX 0.9.84 rebuilt and passed package verification; seven modified runtime files match their archived sources.
+
+## 2026-11-12 — Context optimization progress
+
+Main chat shows "JEV is optimizing context…" while the history selector runs, then restores "Working…" before the main provider request. Version remains 0.9.84.
+
+## 2026-11-12 — 0.9.84: optional Jev context selection
+
+Searched existing Jev, review-jev, ai-accounting, chat history serialization and shared log display before adding context-optimizer.js. Reused review-jev.connection, jev.validate/evaluate, credential protection, ai-accounting callbacks and independentScope. Never sends image data to Jev. Selection runs once per ordinary Main chat provider request; no evaluation is needed without eligible old answers. Current request/system instructions and at least the last three exchanges/six messages are protected. Jev judges whole older exchanges and their active requirements/dependencies from neighboring context; both question and answer are removed together only with confidence and skip probability >=0.9. Missing/invalid/oversized responses or provider errors retain complete history. Only the outgoing history is filtered; stored conversation remains intact. Original message indices keep screenshot references stable after filtering. Included the existing shared context-protection runtime in Eclipse preparation so its copied logger/MCP modules resolve their dependency. Added native checkbox and persisted setting, composer result text and structured log-report details. Independent Jev log cannot pollute Main Continue; usage is reported separately, without invented net-cost/token savings. Reused code-review theme controls, offscreen containment and native details for context-selection.js: read-only live strips, keep/omit/protected colors and labels, lazy expansion, escaped embedded JSON and secret-protected text; image bytes are never included. Context… in Main opens the monitor and later selections refresh it. Bumped both host versions to 0.9.84.
+
+Validation: 105 fixture-only tests pass across optimizer, Main integration, independent accounting, Jev, logging, sidebar and viewer. Tests include a fifty-exchange UI5 topic switch, conservative uncertain/error/oversize fallback, unchanged stored history, image-byte exclusion, separate linked accounting and embedded-script safety. Local Chromium verified checkbox persistence/submit/status, strip colors, lazy expansion, confidence and light/dark themes. No real provider or SAP call was made. Eclipse 0.9.84.20261112075320 built and its archive path/artifact checks passed; required shared logger credential protection was smoke-tested. Local docs p2 artifacts refreshed. Final universal VSIX 0.9.84 passed package verification; seven changed runtime sources match the archive. Eclipse archive contains compiled classes and its context-protection dependency matches source.
+
 ## 2026-11-12 — Offscreen chat and log layout
 
 Profiled both panels in standalone Chromium using the actual 60+ prompt conversation. Reused content-visibility:auto and remembered intrinsic sizing already used in code-review.js. Chat keeps DOM/text/copy/link handlers while Chromium skips offscreen answers during resize. Session cards use the same mechanism. Added an early guard before theme synchronization when no review frame is active.
@@ -6682,3 +6738,103 @@ The logo on the VERTEX Tools button in the VS Code sidebar uses the same transpa
 Files the repository marks generated in `.gitattributes` (`linguist-generated`) are listed by name in the Git review AI context, under a note that they are copies or bundles rebuilt from other sources, and their diff is left out. ASK AI and Generate with AI no longer present an Eclipse sync of existing VS Code code as new features, and the space goes to the real changes. The repository now marks `org.vertex.abap.ui/assistant/`, `resources/vertex-frontend.js` and `resources/abaplint-MIT.txt`, which `eclipse/prepare.js` rebuilds. Both host versions are 0.9.79; Eclipse update site build 0.9.79.20261111133601.
 
 Implementation: `markGenerated` in `vscode/git-history.js` asks `git check-attr -z linguist-generated` for the changed files (in chunks of 200; a failing call leaves files unmarked) and is applied by both `readCommitChanges` and `readWorkingChanges`; `reviewSnapshot` marks them `(generated)` in the manifest, lists them in a separate section and skips their blocks. On commit 0a9ee7a the snapshot fell from over the 180,000-character limit (truncated) to 100,601 characters, complete. Validation: git-history and git-commit tests pass, including a new snapshot test. VSIX 0.9.79 built and verified. Eclipse: prepare.js, javac --release 21 against ~/.p2/pool, update site packaged by a portable port of eclipse/package.ps1; bundle manifest, Java 21 class files, assistant copy, artifact sizes and SHA-256 checksums checked.
+
+## 2026-11-12 — Code review link in the transport summary
+
+The saved transport summary has a **Code review** link beside **Technical documentation**: it opens the ticked objects (or all) with the code review prompt chosen, so its ASK AI and prompt copies send a review without going through a developer. Both hosts. Version remains 0.9.84. The link mirrors the Technical documentation one (sets promptKind, opens the combined A: view).
+
+## 2026-11-12 — Transport review asks: SAP context, no routines taken for objects
+
+ASK AI from an SAP transport review now always runs in SAP context, whichever context mode the chat has selected; a local Git review keeps Folder. Session logs no longer list a FORM or METHOD found in a review block as a referenced program or class. The status line above a review is left-aligned, so the turning logo and the text stay in place. Version remains 0.9.84. Found from a review log: a Folder-mode ask got worktree instructions and no SAP access, and FORM short_form/long_form appeared as PROG references. A suspected encoding fault turned out to be the console used to read the log.
+
+## 2026-11-12 — 0.9.85: no AI choice without models
+
+When the only provider offered has no models (for example Codex is not installed), the VERTEX panel hides the provider, model and effort lists and keeps the error. While no provider with models is available, ASK AI buttons on transport, Git and assistant-change reviews are hidden; the prompt buttons stay. VS Code 0.9.85; the Eclipse update site is rebuilt at 0.9.85 with no Eclipse change of its own. A new vscode/ai-availability.js holds the state: the AI panel sets it when it lists models, review panels attach and toggle a no-ai class that hides button.ask. Unknown state hides nothing.
+
+## 2026-11-12 — Open from the class view of a transport review
+
+In a transport review opened on a class, Open on a block and a diff line number now open that class at the part and line; they failed with "Invalid object_name". Both hosts. Version remains 0.9.85. The class view built its parts without class_name, and its block rows had no scope, so blockTarget sent an empty name; parts now carry the class name, Open falls back to the block's part, and the diff gets the part for its line links.
+
+## 2026-11-12 — Theme-coloured checkboxes in the VERTEX panel
+
+The checkboxes of the VERTEX panel (Route topics, Optimize context) follow the VS Code theme instead of showing a white box in a dark theme. Version remains 0.9.85. color-scheme: dark on body.vscode-dark / vscode-high-contrast, accent-color as in system-table.js.
+
+## 2026-11-12 — No AI choice when the provider in use has no models
+
+The VERTEX panel hides the provider, model and effort lists whenever the provider in use has no models, not only when it is the only one offered; LLM Providers switches provider. A block's ASK AI in the editor change review is now hidden with the others while no AI is available. Version remains 0.9.85. The review CSS forced .hunk-tools [data-action="ask"] visible with a more specific !important rule, beating .no-ai button.ask; availability now also needs a non-empty model list.
+
+## 2026-11-12 — Route topics only with Jev on
+
+The VERTEX panel shows **Route topics (Jev)** only while TypeSafe Jev is switched on in LLM Providers, and a chat never routes topics with Jev off. Version remains 0.9.85. The panel gets jevOn with its state and on ready; chat.js checks isOn("typesafe-api") before routing.
+
+## 2026-11-12 — Tag topics (Jev) for older conversations
+
+Session Logs has **Tag topics (Jev)** beside **Continue** for a conversation with questions that have no topic. Jev assigns each to an existing topic, a new one, or the topic of the question before it, in bounded batches; unclear questions stay untagged and keep going whole. Tags are kept in `topic-tags/` beside the logs, and **Continue** brings them into the chat so Route topics can leave unrelated history out. VS Code only. Version remains 0.9.85. Asked for a 60+ question log: routing kept untagged history whole, so an old conversation never narrowed. New vscode/topic-backfill.js reuses topic-routing (topicOf, LIMIT, MAX_TOPICS), review-jev.connection, jev.evaluate and ai-accounting; one choice question per exchange (existing topic, previous, new, clarify), packed under the 24,000-byte routing limit. readSessions applies the tags file; a topic the log itself records wins. Tags use the scope of the chat at tagging time - a question tagged in another scope is left out when routing there.
+
+## 2026-11-12 — Topic column in Session Logs
+
+The questions of a conversation in Session Logs have a **Topic** column, coloured as the chat colours topics, with the same colour on the question's left edge. Version remains 0.9.85. Asked after tagging a 65-question log (64 tagged into 4 topics): the topic was visible only inside an opened question. Colours reuse the chat's setTopic palette (vscode-charts-*).
+
+## 2026-11-12 — Continue a topic from Session Logs
+
+The last question of each topic in Session Logs has a **Continue** button in the Topic column: it brings the whole conversation into the chat with that topic chosen, so the next question continues it. Version remains 0.9.85. continueConversation carries topicId; the panel selects it in the topic picker after the topic list arrives (selectTopic), which routes manually without a Jev call.
+
+## 2026-11-12 — Topics independent of the context mode
+
+Topic routing no longer separates topics by SAP or Folder mode: a topic started or tagged in one mode continues in the other, and questions tagged in Folder are routed in SAP too. Version remains 0.9.85. Before, catalog() skipped and apply() dropped a topic of another scope, so switching the panel to SAP silently left out a whole Folder-tagged history. The scope stays recorded on a topic as where it started; existing tags need no change.
+
+## 2026-11-12 — Session Logs: prompt count first, sort, short topics
+
+A conversation in Session Logs shows its prompt count first, and **Latest / Most prompts** sorts the list. The Topic column shows T1, T2…, with the topic's name on hover, so the question text keeps its room. Version remains 0.9.85. The sort uses the shared vertex-segment-toggle; the full topic label squeezed the Conversation column.
+
+## 2026-11-12 — Session Logs: sortable, resizable question columns
+
+In a conversation's question table, a heading click sorts by that column and a drag on its right edge changes its width. Cost USD is left out for a conversation with no reported cost. Version remains 0.9.85. Sorting follows the Metrics table pattern (heading click, ▼/▲, aria-sort, keyboard); no column resize existed in the project, so the grip follows the pane splitters (col-resize, body.dragging) on a fixed-layout colgroup.
+
+## 2026-11-12 — Technical requests marked in Session Logs
+
+Requests that are not chat questions (commit messages, PR descriptions and the like) are muted in a conversation's table and show their operation in the Topic column. Version remains 0.9.85. A row whose operation is not Chat or Web search gets tr.technical; the Topic cell shows the operation.
+
+## 2026-11-12 — Session Logs as a sortable, searchable table
+
+Session Logs lists conversations as table rows: prompts, providers and models, tokens, cost when any was reported, duration and time, with Continue and Tag topics on the right. Headings sort, heading edges drag a column's width, a search box filters by the questions' text, providers and models, and **Hide technical** hides conversations made only of technical requests. A conversation opens its questions under its row. Version remains 0.9.85. The heading sort and column grip moved into one sortableHead() helper shared by both tables; the Latest / Most prompts toggle went, since the Time and Prompts headings sort the same way. The page test now drives the conversation rows, search and Hide technical.
+
+## 2026-11-12 — Session Logs table: question column, buttons, cost rounding
+
+The conversation's question shows again in the Session Logs table, with Continue and Tag topics right after it. Costs are rounded to ten-thousandths of a dollar. Version remains 0.9.85. The Conversation column had no width in a fixed-layout table whose other columns filled it, so it collapsed to nothing; it now gets the room above a 1550px minimum. costText printed up to 21 significant digits, showing float noise.
+
+## 2026-11-12 — Session Logs: show or hide technical conversations by kind
+
+Hide technical became a checkbox per kind of technical conversation, with its count - Topic tagging, Context optimization and so on - so Jev logs can be hidden while other kinds stay. A long operation name no longer runs over the Model column. Version remains 0.9.85. A kind is the first prompt's operation without its " with Jev: <model>" tail; the hidden kinds survive a refresh in listState. The Topic cell clips its text, which a long operation name had spilled over Model.
+
+## 2026-11-12 — Jev answers as a table; quicker question opening in Session Logs
+
+In Session Logs a Jev answer is a table: what each question was about, the answer, confidence and the odds of each option, with the chosen one in bold; the question asked of Jev is on hover. Opening a question no longer builds every tool call's arguments and results at once - each call fills when it is opened. Version remains 0.9.85. The table parses jev.js formatAnswers output (VERTEX's own fixed format) and takes each question's subject from the logged Jev input (state arrays by id, topic_of_<n>, need_<id>); text in any other shape stays as text. Steps opened by default built every tool call's arguments and result at once; a call now fills on its first open.
+
+## 2026-11-12 — Context protection keeps code readable; lighter Session Logs
+
+Context protection no longer masks code that builds a credential: a header written as an expression (Authorization:'Bearer '+key), the scheme word alone and empty values stay as written, so a review sees the code. Variables named like TOKEN, JWT, BEARER or CREDENTIALS and any JSON Web Token are now hidden, in debugger data too. The model is told that a [REDACTED secret-N] marker is a value VERTEX hid. Session Logs loads only the list and fetches a question's details when it is opened, so a large log folder no longer slows the machine. Version remains 0.9.85. Found in a Git review log: CREDENTIAL_HEADER took the rest of a JS line after "Authorization:" (371 characters of code), the literal 'Bearer ' was registered and then replaced across the whole text, and password='' got a marker. The model, not knowing VERTEX masks, told the user the diff viewer had done it - the instructions now say what a marker is. Session Logs posted the whole parsed folder (53 MB over 303 files) to the webview on every open and refresh; the list is now 1.7 MB and a prompt's details come from the host when it is opened.
+
+## 2026-11-12 — More credential names hidden in debugger data
+
+Variables named like AUTH, AUTH_HEADER, AUTH_KEY, ACCESS_KEY, CLIENT_KEY and SUBSCRIPTION_KEY (LV_AUTH, GV_ACCESS_KEY...) are now hidden from AI context, logs and recordings, as TOKEN and JWT names already are. Version remains 0.9.85. Traced from the 65-question log: a debugger recording sent LV_AUTH, a 32-character Mistral key beside LV_URL https://api.mistral.ai/..., to the model in clear; it stayed in two VERTEX log files (not in the Claude Code or Codex transcripts). AUTHORIZATION was listed, AUTH was not.
+
+## 2026-11-12 — Code inside bold text in the VERTEX panel
+
+In chat answers, code inside bold or italic text (a bold file name in backticks) shows as code instead of literal backticks. Version remains 0.9.85. inline() set strong/em textContent, so backticks inside bold showed literally; it now recurses. The sidebar script lives in a template literal, so a backtick in a comment there breaks the whole panel - the sidebar-script test caught it.
+
+## 2026-11-12 — Context selection hint; topic labels on their own lines
+
+An empty Context selection window now says to turn on Route topics (Jev) or choose a topic, instead of the removed Optimize context checkbox. In the VERTEX panel, Route topics (Jev) and Continue topic sit on one line with a gap between them. Version remains 0.9.85. The empty-state text still pointed at the removed Optimize context checkbox.
+
+## 2026-11-12 — Session Logs fit a narrow pane
+
+The Session Logs tables need less width: figure columns are narrower and the question column keeps the rest, so the questions stay in view beside other panels. Columns still widen by dragging. Version remains 0.9.85. Minimum widths were 1550 and 1200 px, so in a side pane the question column scrolled out of view; narrower figure columns and 1260/1000 px minimums - the fixed columns plus room for the question, since a lower minimum let the question column collapse to nothing.
+
+## 2026-11-12 — Context… window removed; the count moves to the status line
+
+The Context… button and its Context selection window are gone. The line under the question box now counts what went with a routed question: the topic, manual or Jev, kept exchanges of all, and how much shorter the history became. Version remains 0.9.85. With topics the window mostly restated the chosen topic and its legend still spoke of per-exchange Jev decisions; the user asked to drop it and keep only the recount. vscode/context-selection.js and its test are gone; chat.js passes exchangesKept, exchangesTotal and savedPercent with topicRouting progress.
+
+## 2026-11-12 — History list replaces Route topics
+
+The Route topics (Jev) checkbox and the New topic choice are gone. While TypeSafe Jev is on, the chat has one history toggle, without a caption: Full history (the default), Auto (Jev) for the user to switch on, and a third segment for a topic chosen by hand (T1, T2...). Without Jev there is no list and the whole history goes. Version remains 0.9.85. The user found three ways to say one thing (checkbox, Auto, New topic) and asked for either Auto or Full, only with Jev, opted into by the user. New topic went: New conversation does that. routeMode keeps full/auto as the vertex.ai.context.routeTopics setting; a topic is a choice for the next questions only.

@@ -2,13 +2,18 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const protection=require('../context-protection');
 
-test('named secret values and their copies are removed without changing live data',()=>{
+// Only structured data is protected: a field or a debugger variable named like a credential has its value hidden.
+// Code, diffs and other text go as written - a key written into code is the code's problem, not VERTEX's.
+
+test('named secret values are hidden without changing live data; other fields stay',()=>{
   const secret='fixture-credential-123456';
   const input={earlier_copy:secret,vars:[{name:'I_APIKEY',type:'C(32)',value:secret},{NAME:'PASSWORD',VALUE:'different-password'}],source:'api credential '+secret,n:2};
-  const output=protection.protect(input),serialized=JSON.stringify(output);
-  assert.ok(!serialized.includes(secret));assert.ok(!serialized.includes('different-password'));
+  const output=protection.protect(input);
   assert.match(output.vars[0].value,/length=25 initial=false/);
+  assert.match(output.vars[1].VALUE,/REDACTED/);
   assert.equal(output.vars[0].type,'C(32)');assert.equal(output.n,2);
+  assert.equal(output.source,'api credential '+secret,'text is not searched for copies');
+  assert.equal(output.earlier_copy,secret,'a field with an ordinary name keeps its value');
   assert.equal(input.vars[0].value,secret);
   assert.deepEqual(protection.protect(output),output,'already protected data stays stable');
 });
@@ -28,30 +33,30 @@ test('secret identity permits equality comparisons without persisting raw values
   assert.notEqual(p.protect({name:'I_APIKEY',value:'second-fixture-key'}).value,first);
 });
 
-test('nested JSON tool text and labelled context blocks are protected before serialization',()=>{
+test('debugger variables inside JSON text and labelled context blocks are protected',()=>{
   const key='nested-fixture-secret';
-  const input={content:[{type:'text',text:JSON.stringify({variables:[{name:'PARAMS/I_APIKEY',value:key}],alias:key})}]};
+  const input={content:[{type:'text',text:JSON.stringify({variables:[{name:'PARAMS/I_APIKEY',value:key}]})}]};
   const output=protection.protect(input);assert.ok(!JSON.stringify(output).includes(key));
   assert.match(JSON.parse(output.content[0].text).variables[0].value,/REDACTED/);
-  const context='Context:\n'+JSON.stringify({changed:{I_APIKEY:key},copied:key},null,2)+'\nAnother copy: '+key;
+  const context='Context:\n'+JSON.stringify({changed:{I_APIKEY:key}},null,2);
   assert.ok(!protection.create().text(context).includes(key));
   const ordinary='History:\n[\n  {"screenshots": 1}\n]';
   assert.equal(protection.create().text(ordinary),ordinary);
 });
 
-test('explicit credentials and private keys are hidden; ordinary code and IDs remain available',()=>{
-  const raw='Authorization: Bearer abcdefghijkl1234\nI_APIKEY = "quoted-credential"\nPASSWORD=\'\'\n-----BEGIN PRIVATE KEY-----\nprivate-key-body\n-----END PRIVATE KEY-----';
-  const output=protection.create().text(raw);
-  for(const value of ['abcdefghijkl1234','quoted-credential','private-key-body'])assert.ok(!output.includes(value));
-  assert.match(output,/initial=true/);
-  const code='i_apikey = get_key( ).\ni_apikey = p_key.\nREAD TABLE rows INDEX 2.';
-  assert.equal(protection.create().text(code),code);
-  const escaped=protection.create().text('PASSWORD="first\\"second"\nI_APIKEY = \'first\'\'second\'.');
-  assert.ok(!escaped.includes('second'));
-  const headers=protection.create().text('https://example.invalid/?api_key=fixture%40password&mode=test\nCookie: session=private-cookie; refresh=another-private-cookie');
-  assert.ok(!headers.includes('fixture%40password'));assert.ok(!headers.includes('private-cookie'));
-  assert.ok(headers.includes('mode=test'));
-  assert.ok(!protection.create().text('PASSWORD=literal-password.').includes('literal-password'));
+test('code and other text go exactly as written',()=>{
+  for(const code of [
+    "headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body\nif(response.ok)return response;\ninput.password='';",
+    'Authorization: Bearer abcdefghijkl1234\nI_APIKEY = "quoted-credential"\nPASSWORD=literal-password.',
+    'symbol = |{ CONV i( ls_index-index ) }|.\ni_apikey = get_key( ).',
+    'value eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U end'])
+    assert.equal(protection.create().text(code),code);
+});
+
+test('credential-like variable names of the debugger are hidden',()=>{
+  for(const name of ['LV_TOKEN','LV_AUTH','GV_AUTH_HEADER','LV_ACCESS_KEY','LV_SUBSCRIPTION_KEY','I_APIKEY'])
+    assert.match(protection.create().protect({name,value:'Abc123def456ghi789jkl012mno345pq'}).value,/^\[REDACTED secret-/,name);
+  assert.equal(protection.create().protect({name:'LV_AUTHOR',value:'SYCHOV'}).value,'SYCHOV','a name that only starts like AUTH is not one');
 });
 
 test('project-specific field patterns extend built-in rules',()=>{
@@ -63,25 +68,25 @@ test('project-specific field patterns extend built-in rules',()=>{
   } finally {protection.configure([]);}
 });
 
-test('MCP model-facing responses are protected, including nested JSON text',async()=>{
+test('MCP model-facing responses hide named debugger values, including nested JSON text',async()=>{
   const mcp=require('../mcp');
   const result=await mcp.dispatch({}, {method:'tools/call',params:{name:'read_values',arguments:{}}}, {
-    tools:[{name:'read_values'}],call:async()=>({content:[{type:'text',text:JSON.stringify({name:'I_APIKEY',value:'tool-private-value',copy:'tool-private-value'})}]})
+    tools:[{name:'read_values'}],call:async()=>({content:[{type:'text',text:JSON.stringify({name:'I_APIKEY',value:'tool-private-value'})}]})
   });
   assert.ok(!JSON.stringify(result).includes('tool-private-value'));
   assert.match(result.content[0].text,/REDACTED/);
 });
 
-test('checkpoint and conversation log files contain no captured credential value',()=>{
+test('checkpoint and conversation log files contain no captured debugger credential',()=>{
   const fs=require('fs'),os=require('os'),path=require('path'),history=require('../sap-debug-history'),logger=require('../session-log');
   const folder=fs.mkdtempSync(path.join(os.tmpdir(),'vx-protected-files-'));
   const secret='persisted-fixture-secret';
   try {
-    const record={format:1,session_id:'48647647-1234-4567-8901-123456789abc',meta:{name:'ZREP'},timeline:[{vars:[{name:'I_APIKEY',value:secret}],alias:secret}],sources:{'/src':'key='+secret}};
+    const record={format:1,session_id:'48647647-1234-4567-8901-123456789abc',meta:{name:'ZREP'},timeline:[{vars:[{name:'I_APIKEY',value:secret}]}],sources:{}};
     const file=history.checkpoint(folder,record);
     assert.ok(!fs.readFileSync(file,'utf8').includes(secret));assert.equal(record.timeline[0].vars[0].value,secret);
     const log=logger.create(folder,'claude','protection',{questions:true,answers:true,request:true});
-    log.user('I_APIKEY = "'+secret+'"');log.request({prompt:'Debug:\n'+JSON.stringify(record)});log.assistant({text:'Value was '+secret});
+    log.request({prompt:'Debug:\n'+JSON.stringify(record)});
     assert.ok(!fs.readFileSync(log.file,'utf8').includes(secret));
     const legacy=path.join(folder,'legacy.vertex-debug.json');fs.writeFileSync(legacy,JSON.stringify(record));
     assert.ok(!JSON.stringify(history.load(legacy)).includes(secret),'legacy recordings are protected on read');

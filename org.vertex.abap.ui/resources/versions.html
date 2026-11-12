@@ -103,7 +103,7 @@
   .bar { padding: 6px 10px; background: var(--surface);
          border-bottom: 1px solid var(--border); display: flex;
          align-items: center; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; }
-  .bar .status { margin-left: auto; color: var(--muted); }
+  .bar .status { color: var(--muted); }
   .bar select, .bar input { font: inherit; padding: 2px 4px; color: var(--fg);
                             background: var(--field-bg);
                             border: 1px solid var(--field-border); border-radius: 4px; }
@@ -319,6 +319,8 @@
   table.diff td { border: none; padding: 0 8px; vertical-align: top; }
   table.diff td.ln { text-align: right; color: var(--faint); user-select: none;
                      width: 1%; }
+  table.diff td.ln.jump { cursor: pointer; }
+  table.diff td.ln.jump:hover { color: var(--vscode-textLink-foreground, LinkText); text-decoration: underline; }
   table.diff td.mk { width: 1%; user-select: none; }
   table.diff tr { background: none; }
   table.diff tr:hover { background: none; }
@@ -1542,7 +1544,7 @@ function showMask(ops) {
    BLOCKS is the review's, and optional: a plain diff has none. Where one
    begins, its row goes in ahead of the line. The diff is drawn by this one
    function either way, so a block and its lines cannot drift apart. */
-function diffTable(ops, blocks, offset) {
+function diffTable(ops, blocks, offset, object) {
   var show = compact ? showMask(ops) : null;
   var tbody = document.createElement("tbody");
   var line = offset || 0;
@@ -1601,6 +1603,12 @@ function diffTable(ops, blocks, offset) {
     var ln = document.createElement("td");
     ln.className = "ln";
     ln.textContent = o.op === "-" ? "" : String(line);
+    // A line number opens the code at that line in the editor, as AVE's does.
+    if (o.op !== "-" && (object || blocks) && typeof sdeOpenReviewSource === "function") {
+      var at = line;
+      ln.classList.add("jump"); ln.title = "Open the code at line " + at;
+      ln.addEventListener("click", function () { openLine(at, object); });
+    }
 
     var mk = document.createElement("td");
     mk.className = "mk";
@@ -1909,7 +1917,7 @@ function blockRow(b, scope) {
     var open = document.createElement("button");
     open.textContent = "Open";
     open.title = "Open this block's code in the editor";
-    open.addEventListener("click", function () { openBlock(b, scope && scope.object); });
+    open.addEventListener("click", function () { openBlock(b, (scope && scope.object) || b.part); });
     openSpan.appendChild(open);
     td.appendChild(openSpan);
   }
@@ -1977,7 +1985,18 @@ function reviewAskContext(chosen, scope) {
     object_type: review_part ? review_part.objtype : "", object: review_part ? (review_part.display_name || review_part.obj_name) : "",
     total: placed.length, all: all, blocks: blocks };
 }
-function askReview(chosen, scope) { sdeReviewAsk(JSON.stringify(reviewAskContext(chosen, scope))); }
+function askReview(chosen, scope, kind) { askWithPrompt(reviewAskContext(chosen, scope), kind); }
+/* ASK AI beside the Code review / Technical documentation choice sends that prompt as the chip's instruction, as a Git
+   review's prompt kind does (code-review.js askRequest); a block's own ASK AI, with no KIND, keeps the short question. */
+function askWithPrompt(context, kind) {
+  if (!kind) { sdeReviewAsk(JSON.stringify(context)); return; }
+  loadPrompt(kind).then(function () {
+    context.instruction = promptOpening(kind) + promptEnding(kind);
+    context.prompt_kind = kind;
+    context.prompt_label = PROMPT_CHOICES[kind === "technical" ? 1 : 0][0];
+    sdeReviewAsk(JSON.stringify(context));
+  }, function (error) { status("Prompt file: " + error.message); });
+}
 
 /* AVE's AI prompt diff / AI prompt full: a prompt to paste into any chat, where no AI is set up here. Diff is the
    changed blocks with five lines around each; full is the whole source with the changes marked. */
@@ -2143,15 +2162,25 @@ function copyText(text, button) {
   said("This window has no clipboard.");
 }
 
-/* The block in the editor, at its line: a program at the line, a method of a class in its class. */
-function openBlock(b, object) {
+/* The block in the editor, at its line. A part's line counts in its own version text: a program's or a function
+   module's from its first line, a method's from its METHOD line, a section's from its SECTION line, a local class
+   include's from the include's first line - so a class part opens in its class with the line counted from there. */
+var CLASS_INCLUDES = { CCDEF: "definitions", CCIMP: "implementations", CCMAC: "macros", CCAU: "testclasses" };
+var CLASS_SECTIONS = { CPUB: "PUBLIC", CPRO: "PROTECTED", CPRI: "PRIVATE" };
+function blockTarget(line, object) {
   var p = object || review_part || {};
-  var type = String(p.objtype || "").toUpperCase();
-  var target = type === "METH" ? { name: p.class_name, type: "CLAS", method: p.obj_name }
-    : p.class_name ? { name: p.class_name, type: "CLAS" }
-    : { name: p.obj_name, type: type === "FUNC" ? "FUNC" : "PROG", line: b.start_line };
-  sdeOpenReviewSource(target);
+  var type = String(p.objtype || "").toUpperCase(), offset = Math.max(0, (line || 1) - 1);
+  if (type === "METH") return { name: p.class_name, type: "CLAS", method: p.obj_name, offset: offset };
+  if (CLASS_SECTIONS[type]) return { name: p.class_name, type: "CLAS", section: CLASS_SECTIONS[type], offset: offset };
+  if (type === "CINC") {
+    var include = CLASS_INCLUDES[String(p.obj_name || "").slice(30).toUpperCase()];
+    return include ? { name: p.class_name, type: "CLAS", classInclude: include, line: line || 1 } : { name: p.class_name, type: "CLAS" };
+  }
+  if (p.class_name) return { name: p.class_name, type: "CLAS" };
+  return { name: p.obj_name, type: type === "FUNC" ? "FUNC" : "PROG", line: line || 1 };
 }
+function openBlock(b, object) { sdeOpenReviewSource(blockTarget(b.start_line, object)); }
+function openLine(line, object) { sdeOpenReviewSource(blockTarget(line, object)); }
 
 /* What was said about a block: one row per message, each naming who and when,
    with the words in a box of their own. A decline is coloured like one.
@@ -2370,7 +2399,8 @@ function renderReviewClass(data) {
   root.appendChild(bar);
   var shown = 0, total = 0;
   (data.sections || []).forEach(function (s) {
-    var part = { obj_name: s.obj_name, objtype: s.objtype, display_name: s.display_name };
+    // The class name goes with each part: Open on a block or a line opens the class at that part.
+    var part = { obj_name: s.obj_name, objtype: s.objtype, display_name: s.display_name, class_name: data.class_name };
     (s.blocks || []).forEach(function (b) { b.part = part; });
     total += (s.blocks || []).length;
     // Filtered, a part shows only its matching blocks, each on its own as in a person's view; a part with none is left out.
@@ -2391,7 +2421,7 @@ function renderReviewClass(data) {
       matching.forEach(function (b) { root.appendChild(blockCard(b, { ops: s.ops || [], ddic_needs: s.ddic_needs })); });
       return;
     }
-    root.appendChild(sideBySide ? sideTable(s.ops || [], true, s.blocks || []) : diffTable(s.ops || [], s.blocks || []));
+    root.appendChild(sideBySide ? sideTable(s.ops || [], true, s.blocks || []) : diffTable(s.ops || [], s.blocks || [], 0, part));
   });
   if (classFilter !== "all") {
     if (!shown) { var none = document.createElement("p"); none.textContent = "No blocks match this filter."; root.appendChild(none); }
@@ -2447,8 +2477,8 @@ function renderReviewPart(data) {
     var askAll = document.createElement("button");
     askAll.className = "ask";
     askAll.textContent = "ASK AI";
-    askAll.title = "Put every block of this object on the chat's chip";
-    askAll.addEventListener("click", function () { askReview(null); });
+    askAll.title = "Put every block of this object on the chat's chip with the chosen prompt";
+    askAll.addEventListener("click", function () { askReview(null, null, promptKind); });
     bar.appendChild(askAll);
   }
   // Which prompt Copy prompt takes for this one object: a review, or technical documentation of it alone.
@@ -2988,13 +3018,19 @@ function askPersonReview() {
       object: context.object, object_key: context.object_key, object_type: context.object_type })); });
   });
   if (!blocks.length) return;
-  sdeReviewAsk(JSON.stringify({ system: "", request: objectName(), scope: "person", filter: personView.filter,
+  askWithPrompt({ system: "", request: objectName(), scope: "person", filter: personView.filter,
     object: personView.title.replace(/^Review: |^Reviewed by /, "") + " · " + personView.filter,
-    object_key: personView.selector + "|" + personView.filter, total: blocks.length, all: true, blocks: blocks }));
+    object_key: personView.selector + "|" + personView.filter, total: blocks.length, all: true, blocks: blocks }, promptKind);
 }
 function renderPersonParts(data) {
   if (!personView || data.selector !== personView.selector || data.request !== objectName().toLowerCase()) return;
   personView.parts = data.parts || [];
+  // The whole request narrows to the ticked objects, when any are ticked.
+  var picked = personView.selector === "A:" && promptPick.request === objectName() ? promptPick.keys : {};
+  if (Object.keys(picked).length) {
+    personView.parts = personView.parts.filter(function (p) { return picked[pickKey(p.object)]; });
+    personView.title = "Review: " + objectName() + " · " + personView.parts.length + " selected objects";
+  }
   review_saved_at = data.saved_at || "";
   review_part = null;
   review_live = false;
@@ -3024,7 +3060,7 @@ function blockCard(block, body, scope) {
     while (from > 0 && block.op_from - 1 - from < 3 && body.ops[from - 1].op === "=") from--;
     while (to < body.ops.length && to - block.op_to < 3 && body.ops[to].op === "=") to++;
     var offset = body.ops.slice(0, from).filter(function (op) { return op.op !== "-"; }).length;
-    card.appendChild(diffTable(body.ops.slice(from, to), null, offset));
+    card.appendChild(diffTable(body.ops.slice(from, to), null, offset, scope && scope.object));
   } else {
     var note = document.createElement("p"); note.textContent = body.ddic_needs || "This block cannot be located in the saved line diff."; card.appendChild(note);
   }
@@ -3044,7 +3080,7 @@ function drawPersonView() {
   var back = document.createElement("button"); back.textContent = "← Review"; back.onclick = loadReview; bar.appendChild(back);
   if (typeof sdeReviewAsk === "function") {
     var askPerson = document.createElement("button"); askPerson.className = "ask"; askPerson.textContent = "ASK AI";
-    askPerson.title = "Put the blocks matching this person's current filter on the sidebar chat chip";
+    askPerson.title = "Put the blocks matching the current filter on the chat's chip with the chosen prompt";
     askPerson.onclick = askPersonReview; bar.appendChild(askPerson);
   }
   bar.appendChild(blockFilterControl(personView.filter, function (filter) { personView.filter = filter; drawPersonView(); }));
@@ -3087,7 +3123,7 @@ function drawPersonView() {
     if (typeof sdeReviewAsk === "function") {
       var ask = document.createElement("button"); ask.className = "ask"; ask.textContent = "ASK AI";
       ask.title = "Ask about this person's blocks in this object";
-      ask.onclick = function () { askReview(blocks, scope); }; section.appendChild(ask);
+      ask.onclick = function () { askReview(blocks, scope, promptKind); }; section.appendChild(ask);
     }
     blocks.forEach(function (block) { section.appendChild(blockCard(block, body, scope)); });
   });
@@ -3160,8 +3196,36 @@ function developerTable(objects, developers) {
 
 /* The objects, a group per kind - programs, a class with its parts - each folding under its caret, with its total.
    A row opens the object's blocks. */
+/* Which objects the combined view - Expand all, Technical documentation - and its prompts take: none ticked means all.
+   The choice lasts while this request is open. */
+var promptPick = { request: "", keys: {} };
+function pickKey(o) { return o.objtype + "~" + o.obj_name; }
+function pickedKeys() { return Object.keys(promptPick.keys); }
 function objectGroups(objects) {
   var box = document.createElement("div");
+  if (promptPick.request !== objectName()) { promptPick = { request: objectName(), keys: {} }; }
+  var canPick = Boolean(review && review.saved === true && !review_live && !review_building && objects.length);
+  var allKeys = objects.map(pickKey);
+  Object.keys(promptPick.keys).forEach(function (k) { if (allKeys.indexOf(k) < 0) delete promptPick.keys[k]; });
+  var groupBoxes = [], rowBoxes = [], counter = document.createElement("span");
+  var refreshPick = function () {
+    rowBoxes.forEach(function (r) { r.box.checked = Boolean(promptPick.keys[r.key]); });
+    groupBoxes.forEach(function (g) {
+      var on = g.keys.filter(function (k) { return promptPick.keys[k]; }).length;
+      g.box.checked = on > 0 && on === g.keys.length; g.box.indeterminate = on > 0 && on < g.keys.length;
+    });
+    var n = pickedKeys().length;
+    counter.textContent = n ? "Selected: " + n + " of " + allKeys.length : "Selected: all " + allKeys.length;
+  };
+  var pickBox = function (keys, label) {
+    var input = document.createElement("input"); input.type = "checkbox"; input.setAttribute("aria-label", label); input.title = label;
+    input.addEventListener("click", function (e) { e.stopPropagation(); });
+    input.addEventListener("change", function () {
+      keys.forEach(function (k) { if (input.checked) promptPick.keys[k] = true; else delete promptPick.keys[k]; });
+      refreshPick();
+    });
+    return input;
+  };
   var groups = [], byName = {};
   objects.forEach(function (o) {
     var name = o.class_name ? "Class: " + o.class_name : (o.group || "Objects");
@@ -3182,6 +3246,13 @@ function objectGroups(objects) {
   });
   if (review && review.saved === true && !review_live && !review_building) {
     links.appendChild(document.createTextNode("  ·  "));
+    var codeReview = document.createElement("span");
+    codeReview.className = "lnk";
+    codeReview.textContent = "Code review";
+    codeReview.title = "Open the changed objects (the ticked ones, or all) with the code review prompt";
+    codeReview.addEventListener("click", function () { promptKind = "review"; renderPerson("Review: " + objectName(), null, "A:"); });
+    links.appendChild(codeReview);
+    links.appendChild(document.createTextNode("  ·  "));
     var documentation = document.createElement("span");
     documentation.className = "lnk";
     documentation.textContent = "Technical documentation";
@@ -3189,12 +3260,31 @@ function objectGroups(objects) {
     documentation.addEventListener("click", function () { promptKind = "technical"; renderPerson("Review: " + objectName(), null, "A:"); });
     links.appendChild(documentation);
   }
+  if (canPick) {
+    links.appendChild(document.createTextNode("  ·  "));
+    counter.title = "The objects Expand all, Code review and Technical documentation open and put in the prompt; none ticked means all";
+    links.appendChild(counter);
+    [["All", true], ["None", false]].forEach(function (choice) {
+      links.appendChild(document.createTextNode("  ·  "));
+      var a = document.createElement("span"); a.className = "lnk"; a.textContent = choice[0];
+      a.title = choice[1] ? "Tick every object" : "Clear the selection (all objects are taken)";
+      a.addEventListener("click", function () {
+        promptPick.keys = {}; if (choice[1]) allKeys.forEach(function (k) { promptPick.keys[k] = true; });
+        refreshPick();
+      });
+      links.appendChild(a);
+    });
+  }
   if (groups.length > 1 || objects.length && review && review.saved === true && !review_live && !review_building) { box.appendChild(links); }
   groups.forEach(function (name) {
     var rows = byName[name];
     var h = document.createElement("h3"); h.className = "grp";
     var caret = document.createElement("span"); caret.className = "caret"; caret.textContent = "\u25be";
     h.appendChild(caret);
+    if (canPick) {
+      var groupKeys = rows.map(pickKey), groupBox = pickBox(groupKeys, "Select every object of " + name);
+      groupBoxes.push({ box: groupBox, keys: groupKeys }); h.appendChild(document.createTextNode(" ")); h.appendChild(groupBox);
+    }
     // A class's heading opens all its changes at once, as AVE's "Class:" link does.
     if (rows[0] && rows[0].class_name && name === "Class: " + rows[0].class_name) {
       h.appendChild(document.createTextNode(" Class: "));
@@ -3207,8 +3297,13 @@ function objectGroups(objects) {
       h.appendChild(document.createTextNode(" "));
     } else { h.appendChild(document.createTextNode(" " + name + " ")); }
     var n = document.createElement("span"); n.className = "grpcnt"; n.textContent = "(" + rows.length + ")"; h.appendChild(n);
-    var t = aveTable(["Type", "Object", "Owner", "Rows +/~/-", "Blocks", "Approved", "Declined", "%"], [0, 0, 0, 1, 1, 1, 1, 1],
+    var t = aveTable((canPick ? [""] : []).concat(["Type", "Object", "Owner", "Rows +/~/-", "Blocks", "Approved", "Declined", "%"]),
+      (canPick ? [0] : []).concat([0, 0, 0, 1, 1, 1, 1, 1]),
       function (tr, o) {
+        if (canPick) {
+          var pickTd = document.createElement("td"), rowBox = pickBox([pickKey(o)], "Select " + (o.display_name || o.obj_name));
+          rowBoxes.push({ box: rowBox, key: pickKey(o) }); pickTd.appendChild(rowBox); tr.appendChild(pickTd);
+        }
         // While the review is still being built a row cannot open: the host answers one request at a time.
         if (!review_building) {
           tr.className = "pick";
@@ -3226,7 +3321,7 @@ function objectGroups(objects) {
         shareCell(tr, o.declined, o.hunks);
         percentCell(tr, o.approved, o.hunks);
       }, rows, function (tr) {
-        var td = document.createElement("td"); td.colSpan = 3; td.textContent = "Total"; tr.appendChild(td);
+        var td = document.createElement("td"); td.colSpan = canPick ? 4 : 3; td.textContent = "Total"; tr.appendChild(td);
         rowsCell(tr, sum(rows, "inserted"), sum(rows, "modified"), sum(rows, "deleted"));
         count(tr, sum(rows, "hunks"));
         shareCell(tr, sum(rows, "approved"), sum(rows, "hunks"));
@@ -3236,7 +3331,7 @@ function objectGroups(objects) {
     // Every group is its own table: the same column widths in each keep their columns under one another.
     t.className += " groups";
     var cols = document.createElement("colgroup");
-    ["7%", "31%", "18%", "12%", "7%", "9%", "9%", "7%"].forEach(function (w) {
+    (canPick ? ["3%", "7%", "28%", "18%", "12%", "7%", "9%", "9%", "7%"] : ["7%", "31%", "18%", "12%", "7%", "9%", "9%", "7%"]).forEach(function (w) {
       var col = document.createElement("col"); col.style.width = w; cols.appendChild(col);
     });
     t.insertBefore(cols, t.firstChild);
@@ -3245,6 +3340,7 @@ function objectGroups(objects) {
     tables.push(t);
     box.appendChild(h); box.appendChild(t);
   });
+  refreshPick();
   return box;
 }
 

@@ -146,6 +146,8 @@ function open(vscode, context, deps, initial) {
     window.sdeAnthropicApi=()=>true;
     window.sdeFrontendAnalysis=()=>true;
     window.sdeSidebarChat=()=>true;
+    ${require("./ai-availability").pageScript()}
+    document.head.insertAdjacentHTML("beforeend","<style>${require("./ai-availability").PAGE_CSS}</style>");
     window.sdeReviewAsk=json=>host.postMessage({call:"reviewAsk",args:[json]});
     window.sdeSidebarSelection=(question,fragment,view)=>host.postMessage({call:"reviewSelection",args:[question,fragment,view]});
     window.sdeCancelWorkspace=lane=>host.postMessage({call:"cancelWorkspace",args:[lane||"main"]});
@@ -179,6 +181,7 @@ function open(vscode, context, deps, initial) {
   <\/script>`;
   require("./review-jev").bind(vscode,panel,message=>message.context);
   panel.webview.html = html(deps.pages, local ? { ...initial, localSession: undefined, local: true } : initial).replace("<script>", bridge + "<script>");
+  require("./ai-availability").attach(panel);
   // The chat here offers what the VERTEX panel does: its provider, the models
   // Config models switched on, and the chosen one - one setting for both.
   let chatWho = "";
@@ -278,7 +281,7 @@ function open(vscode, context, deps, initial) {
         // Nothing waits for an answer to a click, so a failure is said here, not posted to a page that drops it.
         const asked=JSON.parse(String(args[0]||"{}")),open=local ? local.openSource : deps.openToolSource;
         // A line of the window's own object, opened from a source VERTEX does not hold (SAP's extension): that editor.
-        if(sourceUri&&!local&&!/^vertex-/.test(vscode.Uri.parse(sourceUri).scheme)&&Number.isInteger(asked.line)&&!asked.method
+        if(sourceUri&&!local&&!/^vertex-/.test(vscode.Uri.parse(sourceUri).scheme)&&Number.isInteger(asked.line)&&!asked.method&&!asked.classInclude
             &&String(asked.name).toUpperCase()===String(initial.name).toUpperCase()){
           const document=await vscode.workspace.openTextDocument(vscode.Uri.parse(sourceUri));
           const shown=(vscode.window.visibleTextEditors||[]).find(editor=>editor.document===document);

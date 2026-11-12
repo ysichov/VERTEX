@@ -10,3 +10,7 @@ test/**
 dev_rfc*.log
 *.log
 package.ps1
+
+# Histories belong in the repository root, not in the extension.
+history.md
+dev_history.md

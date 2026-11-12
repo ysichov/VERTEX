@@ -66,6 +66,12 @@ test("run and saved SAP-session citations link only when their session is known"
   const posted = [], parent = node("p");
   const context = { document: { createElement: node, createTextNode: text => ({ text }) }, api: { postMessage: m => posted.push(m) } };
   vm.runInNewContext(pick("inline") + pick("runLinks"), context);
+  const bold = node("p");
+  context.inline("**`anthropic.test.js`**: see *`ZDEMO` too*", bold);
+  const strong = bold.children.find(child => child.tag === "strong");
+  assert.equal(strong.children[0].tag, "code", "bold text holds the code, not literal backticks");
+  assert.equal(strong.children[0].textContent, "anthropic.test.js");
+  assert.equal(bold.children.find(child => child.tag === "em").children[0].tag, "code");
   context.inline("both read 4712 [run d6c436b8 step 13], [session a1b2c3d4 step 4] and [session 99999999 step 2]", parent);
   const cites = parent.children.filter(child => child.className === "run-cite");
   assert.deepEqual(cites.map(c => [c.dataset.kind, c.dataset.run, c.dataset.step]),
@@ -174,4 +180,22 @@ test("with no provider offered the provider, model and effort choice is hidden",
   const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "sidebar.js"), "utf8");
   assert.match(source, /body\.no-providers #provider-select,[^{]*body\.no-providers \.model-picker,[^{]*body\.no-providers #effort-select[^{]*\{ display:none !important; \}/);
   assert.match(source, /document\.body\.classList\.toggle\('no-providers', !select\.options\.length\);/);
+});
+test('topic badges accept numeric IDs and expose manual continuation using theme variables',()=>{const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.renderForTest=html;',sandbox);const page=sandbox.module.exports.renderForTest('topic-test');assert.doesNotMatch(page,/id="optimize-context"/);assert.doesNotMatch(page,/id="route-topics"/);assert.match(page,/<option value="full">Full history<\/option><option value="auto">Auto \(Jev\)<\/option>/);assert.match(page,/class="vertex-segment-toggle" id="history-mode"/);assert.doesNotMatch(page,/New topic/);const start=page.indexOf('function setTopic('),end=page.indexOf("window.addEventListener('message'",start);const item={dataset:{},style:{},firstChild:null,querySelector:()=>null,insertBefore(value){this.badge=value;}};vm.runInNewContext(page.slice(start,end)+'\nsetTopic(item,{id:"topic_0001",label:"Code",dependencies:["topic_0002"]});',{item,document:{createElement:()=>({})}});assert.equal(item.dataset.topicId,'topic_0001');assert.match(item.style.borderLeft,/var\(--vscode-charts-/);assert.equal(item.badge.textContent,'topic_0001 · Code');assert.equal(item.badge.onclick,undefined);assert.match(item.badge.title,/topic_0002/);});
+
+
+test('topic catalog refresh updates existing badges and stale incoming labels use the canonical title',()=>{
+ const folder=path.join(__dirname,'..'),sandbox={module:{exports:{}},require,__dirname:folder};
+ vm.runInNewContext(fs.readFileSync(path.join(folder,'sidebar.js'),'utf8')+'\nmodule.exports.renderForTest=html;',sandbox);
+ const page=sandbox.module.exports.renderForTest('badge-test'),start=page.indexOf('function setTopic('),eventStart=page.indexOf("window.addEventListener('message'",start),end=page.indexOf("window.addEventListener('message'",eventStart+1);
+ const item={dataset:{},style:{},firstChild:null,querySelector(){return this.badge||null;},insertBefore(badge){this.badge=badge;}},events=[];
+ const picker={value:'full',options:[],append(option){this.options.push(option);}},prompt={focus(){this.focused=true;}};
+ const context={item,window:{addEventListener:(_name,fn)=>events.push(fn)},document:{createElement:()=>({}),querySelectorAll:()=>[item],getElementById:id=>id==='topic-picker'?picker:prompt},drawTopicPicker(){},paintHistory(){}};
+ vm.createContext(context);vm.runInContext('let topicCatalog=[];'+page.slice(start,end),context);
+ vm.runInContext('setTopic(item,{id:"topic_0006",label:"что это Screenshot observations Visible facts"});',context);
+ events[0]({data:{topicList:[{id:'topic_0006',label:'Launchpad Content Manager — SAP_GRC_RM'}]}});
+ assert.equal(item.badge.textContent,'topic_0006 · Launchpad Content Manager — SAP_GRC_RM');
+ vm.runInContext('setTopic(item,{id:"topic_0006",label:"stale Screenshot observations"});',context);
+ assert.equal(item.badge.textContent,'topic_0006 · Launchpad Content Manager — SAP_GRC_RM');
+ assert.equal(item.badge.onclick,undefined);assert.equal(picker.value,'full');assert.equal(picker.options.length,0);
 });

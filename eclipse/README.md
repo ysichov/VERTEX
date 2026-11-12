@@ -99,7 +99,7 @@ the pair of versions chosen by AVE's rule, diffed and cut into blocks by AVE's w
 it is read, the status line says which, and a changed line shows what changed inside it. Before it is built, Review
 lists the request's objects - type, class, kind, authors, tasks and dates, as AVE's report does - with objects deleted
 since in red; newly created objects are green. Review ignores spacing and case outside literals. **Approve**, **Decline**, **Comment** and **Undo** act on one block; filters show approved, declined, not processed or commented blocks, also per developer or reviewer. **Ask AI** asks about a block or a whole object. A built review is saved at once where reviews are kept, and a folded **Build log** tells why a part
-gave no block. **Technical documentation** in the saved transport summary opens all changed objects. There,
+gave no block. **Code review** and **Technical documentation** in the saved transport summary open all changed objects with that prompt chosen. Tick objects in the summary (a row, or a group heading for the whole group) to narrow **Expand all**, **Code review**, **Technical documentation** and their prompts to them; **All / None** set or clear the ticks, and none ticked means all objects. In a transport review, **Open** on a block and a line number in its diff open the code in the editor at that line, class parts included. **ASK AI** beside that choice puts the blocks on the chat chip with the chosen prompt as its instruction; a question typed in the chat adds to it. A single block's **ASK AI** keeps the short question. There,
 **Code review / Technical documentation** selects the prompt copied by **AI prompt diff / full**, and on a single object's page the one copied by **Copy prompt: diff / full**;
 developer and reviewer views have the same choice. The documentation prompt keeps created objects (sent whole, described as they are) apart from modified ones, and ends with
 `TR Details: <request>`. The **Prompts…** button shows and edits both prompt texts. **Save user file** writes
@@ -182,9 +182,9 @@ If a CLI is missing, configure its executable here and log in externally first.
 Build: run `node eclipse/prepare.js` before PDE export. The generated
 `org.vertex.abap.ui/assistant/` files are committed so an ordinary Eclipse export
 also includes the runtime. Edit their originals in `vscode/` and `eclipse/`,
-then regenerate. `.gitattributes` marks them `linguist-generated`, so GitHub collapses them in diffs and VERTEX Git review lists them without their diff. The feature and bundle sources are at `0.9.83.qualifier`; the checked-in update site carries build `0.9.83.20261112003513`.
+then regenerate. `.gitattributes` marks them `linguist-generated`, so GitHub collapses them in diffs and VERTEX Git review lists them without their diff. The feature and bundle sources are at `0.9.84.qualifier`; the checked-in update site carries build `0.9.85.20261112152534`.
 
-The local install archive is version `0.9.83.20261112003513`. Install its ZIP through
+The local install archive is version `0.9.85.20261112152534`. Install its ZIP through
 Help → Install New Software → Add → Archive.
 
 For a local installable archive without replacing the published `docs/` site:

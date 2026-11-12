@@ -299,7 +299,9 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
   }
   async function openToolSource(args, searched = new Set()) {
     const repo = await repository();
-    const entry = [...opened.values()].find(item=>item.repo===repo&&item.document&&!item.document.isClosed&&String(item.data.object_name).toUpperCase()===String(args.name).toUpperCase())
+    // A class's local include (definitions, implementations, macros, testclasses) is its own document.
+    const entry = args.classInclude ? await sourceDocument(repo, { object_name: args.name, object_type: 'CLAS', include: String(args.classInclude) })
+      : [...opened.values()].find(item=>item.repo===repo&&item.document&&!item.document.isClosed&&String(item.data.object_name).toUpperCase()===String(args.name).toUpperCase())
       || await sourceDocument(repo, { object_name: args.name, object_type: args.type || 'CLAS' });
     const lines = entry.document.getText().split(/\r?\n/);
     const routine = String(args.method || '').toUpperCase(), included = String(args.include || '').toUpperCase();
@@ -360,6 +362,15 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
       const match = /^\s*(?:CLASS-)?METHODS\s+([^\s.(]+)/i.exec(text);
       return match && match[1].toUpperCase() === routine;
     });
+    // A class section (a review part CPUB/CPRO/CPRI): its SECTION line.
+    const section = String(args.section || '').toUpperCase();
+    if (section) row = lines.findIndex(text => new RegExp('^\\s*' + section + '\\s+SECTION\\b', 'i').test(text));
+    /* OFFSET counts from the routine's or section's first line: a review block's line in a method's or section's own
+       version text. Without that anchor there is no honest line, and the open fails rather than land elsewhere. */
+    if (Number.isInteger(args.offset) && (routine || section)) {
+      if (row < 0) throw new Error('No ' + (routine ? 'METHOD ' + routine : section + ' SECTION') + ' in ' + args.name + '.');
+      row += args.offset;
+    }
     const at = new vscode.Position(Math.max(0,Math.min(entry.document.lineCount-1,Number.isInteger(args.line)?args.line-1:row)),0);
     await revealSource(entry.document, at, args.preserveFocus, args.beside);
   }
@@ -2113,6 +2124,7 @@ function register(vscode, context, { active, auth, pin, pinned, systems }) {
     if (!parts.length) { return { opened: false, message: "There are no changes to review." }; }
     const panel = vscode.window.createWebviewPanel("vertex.review", "Review " + entry.data.object_name,
       vscode.ViewColumn.Beside, { enableScripts: true });
+    require("./ai-availability").attach(panel);
     require("./review-jev").bind(vscode,panel,message=>Number.isInteger(message.hunk)?askContext(parts,[message.hunk],after,entry.repo.label,entry.data.object_name):null);
     panel.webview.html = require('./code-review').reviewHtml(parts, { before: entry.data.source,
       after: editor.document.getText(), objectName: entry.data.object_name, objectType: entry.data.object_type,

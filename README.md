@@ -5,7 +5,7 @@
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
-Current VS Code extension: **0.9.83**.
+Current VS Code extension: **0.9.87**.
 
 For VS Code, the recommended companion is
 [ABAP Syntax Highlighting by Lars Hvam](https://marketplace.visualstudio.com/items?itemName=larshp.vscode-abap)
@@ -28,7 +28,7 @@ VERTEX can work as an AI coding agent for an ordinary local Git repository: Pyth
 
 **Quick start:** open a local Git folder → open the VERTEX panel → choose a provider/model in **LLM Providers** → ask for a change → review the diff → **Apply**.
 
-**Git** (VS Code): Git History of the folder, review of a commit or of uncommitted changes as a file tree with diffs, **ASK AI** with ready prompts (technical review, business review against pasted requirements, documentation, test plan, release notes), commit with an AI-drafted message, branches, push and GitHub pull requests. See [the VS Code documentation](vscode/README.md#code-agent-and-git).
+**Git** (VS Code): Git History of the folder, review of a commit or of uncommitted changes as a file tree with diffs (Open and line numbers jump to the file), **ASK AI** with ready prompts (technical review, business review against pasted requirements, documentation, test plan, release notes), commit with an AI-drafted message, branches, push and GitHub pull requests. See [the VS Code documentation](vscode/README.md#code-agent-and-git).
 
 **Serverless, in VS Code** - the ABAP transpiler runs ABAP on your machine:
 
@@ -101,7 +101,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.83.20261112003513**; the VS Code extension is **0.9.83**.
+**0.9.85.20261112152534**; the VS Code extension is **0.9.87**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -281,7 +281,7 @@ Without a variable under the cursor, Forward Usage Analysis offers FLOW with Ful
 
 Both Value Origin windows show an **Analysis log** above the flow.
 
-For a saved transport review, **Technical documentation** opens all changed objects. Its **Code review / Technical documentation** choice sets the prompt copied by **AI prompt diff / full**; the same choice is in developer and reviewer views, and on a single object's page for **Copy prompt: diff / full**. The documentation prompt keeps created objects (sent whole, described as they are) apart from modified ones, and ends with `TR Details: <request>`.
+For a saved transport review, **Code review** and **Technical documentation** open all changed objects with that prompt chosen. Its **Code review / Technical documentation** choice sets the prompt copied by **AI prompt diff / full**; the same choice is in developer and reviewer views, and on a single object's page for **Copy prompt: diff / full**. The documentation prompt keeps created objects (sent whole, described as they are) apart from modified ones, and ends with `TR Details: <request>`. Tick objects in the summary (a row, or a group heading for the whole group) to narrow **Expand all**, **Code review**, **Technical documentation** and their prompts to them; **All / None** set or clear the ticks, and none ticked means all objects. In a transport review, **Open** on a block and a line number in its diff open the code in the editor at that line, class parts included. **ASK AI** beside that choice puts the blocks on the chat chip with the chosen prompt as its instruction; a question typed in the chat adds to it. A single block's **ASK AI** keeps the short question.
 **Prompts…** lets you view and edit both instructions. User files in `~/.vertex/prompts/` take priority over the built-in texts and are reread when a prompt is copied.
 
 **Experimental client BSE.** In a VERTEX ABAP source tab, select the same variable and run **VERTEX: BSE — only ADT + linter** beside **VERTEX: Forward Usage Analysis**. The new command loads source through standard ADT, parses it locally with bundled `@abaplint/core`, and opens a separate window labelled **ADT + abaplint**. It does not request the SAP ACE origin index. It uses open editor buffers, including unsaved edits; compare saved, activated code to give both engines the same input. Source loading follows the selected value: main files first, external dependencies and local class includes only when needed, with metadata and source cached within each analysis. Full FLOW shows the loaded source closure. Interface-qualified method names are supported. The implementation shares the existing slice algorithm and reports unsupported statements. Alias analysis, dynamic dispatch and source closure are still experimental.
@@ -349,7 +349,7 @@ through MCP.
 
 ### VS Code 
 
-Screenshots attached in the active chat remain available for follow-up questions. Choose a Vision model to inspect them. **New conversation** clears those attachments.
+In VS Code chat, each newly attached screenshot is recognized independently by the selected Vision-capable model, without conversation history, workspace context or tools. Jev identifies screenshot topics by the recognized scene and retains visual evidence and the latest answer when assessing follow-ups. Jev and the answering model receive its factual description; conversation context retains only a file reference and description. You can send a screenshot without text: the assistant identifies the visible problem or asks a specific clarifying question. Recognition is a separate model request with its own usage accounting. **New conversation** clears the chat context.
 
 Remote API model catalogs are saved locally after the first load and reused when switching providers or restarting VS Code. Rebuild a catalog explicitly in LLM Providers to discover changes. Model selections apply immediately to the saved catalog. Each API credential has its own catalog; local servers keep a live list of loaded models.
 
@@ -532,6 +532,23 @@ Codex in the built-in VS Code chat can stage SAP source edits and new-object dra
 
 Automatic AI context from VERTEX Smart Debugger contains only a session reference. Recorded steps, source, values and analysis are not attached automatically; provide a relevant fragment explicitly when needed.
 
-Only screenshots attached to the current message are sent as images. Earlier screenshots are represented by saved-file references (or turn/image references when no log file exists); reattach an earlier screenshot to inspect it again. Continue restores these references without automatically resending old image contents.
+Screenshot bytes are sent only to independent recognition. The main request and later questions use file references and descriptions. With question logging enabled, Continue restores saved descriptions and references; older screenshots without descriptions remain marked as unavailable descriptions. Reattach an image only when a new visual inspection is needed.
 
 Long chat histories keep earlier messages available while deferring offscreen layout. Session Logs defers offscreen session layout as well, reducing resize and scrolling work.
+
+**Optimize context (VS Code Main chat).** Enable the checkbox above the message field, or `vertex.ai.context.optimize`, to run the configured TypeSafe Jev model before each ordinary AI chat request with older exchanges. Save a TypeSafe key and enable a Jev model in LLM Providers first. The first pass sends only the current question and older user requests to TypeSafe, never full assistant answers or screenshots. Short/unclear requests can receive a second pass with a bounded first/concluding prose extract from their answer (not a model-generated summary; code blocks are omitted). Normal Jev charges apply.
+
+The current question, system instructions and at least the last three exchanges/six messages stay in context. Jev classifies older user questions for the current task, recent user requests, active requirements and dependencies; the associated answer follows the question. Payloads are packed into bounded portions, down to individual requests for long inputs. Each serialized request stays under 24,000 UTF-8 bytes as a conservative guard, not an exact token count. Requests that still do not fit are retained without assessment. A whole exchange may be omitted only when both Jev confidence and skip probability are at least 90%; uncertain decisions keep it. This is a model judgment and may miss a relevant older detail. Full history is retained in the chat and used if Jev is unavailable, errors, or its input limit is exceeded. Disable the checkbox to send full history again. Web mode, direct navigation and the independent AI Review chat retain their own context policies.
+
+Session Logs shows **Context optimization (Jev)** under the main question: selected exchange index ranges, probabilities, latency, Jev usage, and before/after history characters. Jev calls are grouped in a separate related conversation per selection, so Continue does not restore it as a user question. The composer reports history text reduction or a full-history fallback. Character reduction is not a guaranteed token or money saving: Jev adds latency and usage, and changed context may affect the main provider's cache. Compare total provider usage and answer quality in separate baseline/optimized runs for a real A/B evaluation. Question/request logging controls whether full decision inputs and model prompts are saved.
+
+After a topic is chosen, the line under the question box says which topic, how many earlier exchanges went with the question and how much shorter the history became - for example `Topic topic_0001 · Jev · 17 of 60 exchanges · history 65% shorter`. Nothing is deleted from the conversation; Session Logs shows each question's topic.
+
+The progress line says **JEV is optimizing context…**, including the current pass and portion. Log details include pass/batch sizes and aggregated Jev usage. In the monitor, **Basis** distinguishes question-only decisions from brief-answer clarification; the expanded strip shows the actual brief extract used. Full context is retained on errors.
+
+
+### Topic histories (VS Code, experimental)
+
+While TypeSafe Jev is switched on and has a key in **VERTEX: LLM Providers**, the chat shows a history toggle. **Full history**, the default, sends every earlier exchange. **Auto (Jev)**, which you switch on yourself, has Jev give each question a stable topic ID and sends only that topic's history and its explicit dependencies. Topic labels are informational and do not change the history mode. Without Jev there is no toggle, and the whole history goes. Routing usage is logged separately; failures retain full history. This does not guarantee token-cost savings, answer correctness or provider cache hits. Current editor/review context and live tools still follow the current request; old tool outputs are not automatically replayed between turns.
+
+New conversation clears the topic catalog; Continue restores saved topic IDs when question logging was enabled. Legacy untagged history remains available. The Optimize context checkbox and the Route topics checkbox are gone; routing does not delete stored messages. Colors follow the active VS Code theme.

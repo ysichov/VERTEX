@@ -151,6 +151,7 @@ async function openCommitReview(vscode, folder, commit) {
   const path = require("path"), review = require("./code-review");
   const title = working ? "Uncommitted changes" : "Commit " + commit.short;
   const panel = vscode.window.createWebviewPanel("vertex.commitReview", title, vscode.ViewColumn.Active, { enableScripts: true });
+  require("./ai-availability").attach(panel);
   let disposed=false,untrackLinks=()=>{};
   commitPanels.set(key,panel);
   panel.onDidDispose(()=>{disposed=true;untrackLinks();if(commitPanels.get(key)===panel)commitPanels.delete(key);reviewSnapshots.delete(panel);});
@@ -191,6 +192,19 @@ async function openCommitReview(vscode, folder, commit) {
   const name = working ? "uncommitted changes" : "commit " + commit.short;
   let commitBusy=false, committed=false;
   panel.webview.onDidReceiveMessage(async message => {
+    // Open / a line number: the file at that line - the working file, or the file as this commit has it (read-only,
+    // through VS Code's Git extension).
+    if(message?.action==='openCode'){
+      const file=files.find(f=>f.id===message.file),line=Number(message.line);
+      if(!file||!Number.isSafeInteger(line)||line<1)return;
+      try{
+        const absolute=path.resolve(folder,file.path);
+        const uri=working?vscode.Uri.file(absolute):vscode.Uri.file(absolute).with({scheme:'git',query:JSON.stringify({path:absolute,ref:commit.hash})});
+        const at=new vscode.Position(line-1,0);
+        await vscode.commands.executeCommand('vscode.open',uri,{viewColumn:vscode.ViewColumn.Beside,selection:new vscode.Range(at,at),preview:true});
+      }catch(error){vscode.window.showErrorMessage('VERTEX: cannot open '+file.path+' at line '+line+': '+error.message);}
+      return;
+    }
     if(message?.action==='openEditor'){
       const file=files.find(f=>f.id===message.file);if(!file?.openInEditor)return;
       try{

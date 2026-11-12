@@ -105,7 +105,7 @@ test("a current screenshot keeps a SAP-looking name in the model question", asyn
   const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test',contextMode:'sap'}),tools,{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
   const images=[{media_type:'image/png',data:'aW1hZ2U='}];
   const reply=await ask('Z_FIORI_TILES_AI_TRANSLATOR',{contextMode:'sap',images});
-  assert.equal(reply.answer,'Screenshot answer');assert.deepEqual(received.images,images);
+  assert.equal(reply.answer,'Screenshot answer');assert.equal(received.images,undefined);
 });
 
 test("direct SAP navigation is retained in the conversation log", async t => {
@@ -207,12 +207,12 @@ test("debug secrets are removed from model prompts and tool results while live v
   t.mock.method(compatible,'ask',async options=>{received=options;return{plan:{answer:'Done',navigation:null},model:options.model};});
   const live={session_id:'fixture',recorded:{stops:1,steps:[],value_history:{stops:[{values:[{name:'I_APIKEY',value:secret}]}]}},alias:secret};
   const tools={schemas:[{name:'read_sap_object',inputSchema:{}}],instructions:'SAP',editorContext:()=>null,
-    execute:async()=>({variables:[{name:'PASSWORD',value:'tool-password-fixture'}],copy:'tool-password-fixture'})};
+    execute:async()=>({variables:[{name:'PASSWORD',value:'tool-password-fixture'}],source:'DATA lv_text TYPE string.'})};
   const ask=chat.create(fakeVscode({provider:'groq-api',model:'test'}),tools,{}, {get:async()=>''},()=>live);
   await ask('Explain the recorded values');
   assert.ok(!received.prompt.includes(secret));assert.match(received.prompt,/session fixture step 1/);assert.doesNotMatch(received.prompt,/REDACTED|"recorded"|"suspects"/);
   assert.equal(live.alias,secret);
-  const result=await received.callTool('read_sap_object',{});assert.ok(!JSON.stringify(result).includes('tool-password-fixture'));
+  const result=await received.callTool('read_sap_object',{});assert.ok(!JSON.stringify(result).includes('tool-password-fixture'));assert.match(JSON.stringify(result),/DATA lv_text TYPE string\./,'code in a tool result goes as written');
 });
 
 test("native CLI requests use the same protected context scope for later tool responses",async t=>{
@@ -225,7 +225,7 @@ test("native CLI requests use the same protected context scope for later tool re
     assert.ok(!JSON.stringify(result).includes(secret));
     return{plan:{answer:'Done'},model:'test'};
   });
-  const tools={schemas:[{name:'read_sap_object',inputSchema:{}}],instructions:'SAP',editorContext:()=>null,execute:async()=>({source:'A copy without a credential field name: '+secret})};
+  const tools={schemas:[{name:'read_sap_object',inputSchema:{}}],instructions:'SAP',editorContext:()=>null,execute:async()=>({variables:[{name:'I_APIKEY',value:secret}]})};
   const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test',contextMode:'sap'}),tools,server,{},()=>live);
   await ask('Explain recorded state',{contextMode:'sap'});
   assert.equal(disposed,true);
@@ -552,11 +552,11 @@ test("ChatGPT subscription forwards screenshots to Codex", async t => {
     { start: async () => ({ url: "http://127.0.0.1:1/mcp" }), token: "t" });
   assert.equal((await ask("Explain this screenshot", { images })).answer, "Screenshot received");
   assert.equal(received.assistant, "codex");
-  assert.deepEqual(received.images, images);
+  assert.equal(received.images, undefined);
   await ask("Identify the application from my first screenshot");
   assert.equal(received.images, undefined, "follow-up sends only references");
   assert.match(received.prompt, /"screenshots": \[/);
-  assert.match(received.prompt,/reattach/);
+  assert.match(received.prompt,/Screenshot received/);
   assert.doesNotMatch(received.prompt, /iVBORw0KGgo=/, "image bytes are attachments, not prompt text");
   ask.newConversation();
   await ask("A separate question");
@@ -597,11 +597,11 @@ test('Vercel Vision chat forwards images and removes tools when the model cannot
  const ask=chat.create(fakeVscode({provider:'vercel-api',model:'vision'}),{schemas:[{name:'read_sap_object'}],instructions:'',editorContext:()=>null},{},{get:async()=>null});
  const images=[{media_type:'image/png',data:'abcd'}];
  assert.equal((await ask('Explain screenshot',{images})).answer,'Image described');
- assert.deepEqual(received.images,images);assert.deepEqual(received.tools,[]);
+ assert.equal(received.images,undefined);assert.deepEqual(received.tools,[]);
  assert.match(received.instructions,/cannot call tools/);
  const next=[{media_type:'image/jpeg',data:'efgh'}];
  await ask('Compare with this screenshot',{images:next});
- assert.deepEqual(received.images,next);
+ assert.equal(received.images,undefined);
  await ask('What application was in the first screenshot?');
  assert.equal(received.images,undefined, 'history does not resend either image');
  assert.doesNotMatch(received.prompt,/abcd|efgh/);
@@ -884,5 +884,84 @@ test('saved historical screenshots keep file references without attaching their 
  ask.restoreConversation([{question:'Saved image',answer:'Earlier description',images:[{media_type:'image/png',data:'PRIVATE_IMAGE_BYTES',file:'C:/logs/session/screenshot-1.png'}]}]);
  await ask('Continue our discussion');
  assert.equal(received.images,undefined);assert.match(received.prompt,/C:\/logs\/session\/screenshot-1.png/);assert.doesNotMatch(received.prompt,/PRIVATE_IMAGE_BYTES/);
- assert.match(received.prompt,/do not claim to see them/);
+ assert.match(received.prompt,/Do not claim to see image pixels/);
+});
+test('Main chat uses the selected history without changing its stored conversation, and logs the selection',async t=>{
+ const optimizer=require('../context-optimizer'),logs=require('../session-log'),report=require('../log-report');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-context-selection-'));logs.reset();
+ let received,calls=0;const original=[];
+ for(let i=0;i<6;i++)original.push({question:'User constraint '+i,answer:'Earlier answer '+i});
+ t.mock.method(optimizer,'optimize',async(_v,question,history)=>{calls++;assert.equal(question,'Explain current behavior');return{history:history.map((m,i)=>i===1?{role:'assistant',content:'[selected history marker]'}:m),report:{status:'optimized',beforeCharacters:1000,afterCharacters:700,savedCharacters:300,savedPercent:30,decisions:[{index:1,action:'omit'}]}};});
+ t.mock.method(assistant,'ask',async options=>{received=options;return{plan:{answer:'Done'},model:'test'};});
+ const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test','logPath':root,'log.questions':true,'log.answers':true}),{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+ try{ask.restoreConversation(original);await ask('Explain current behavior',{optimizeContext:true});assert.equal(calls,1);assert.match(received.prompt,/selected history marker/);assert.doesNotMatch(received.prompt,/Earlier answer 0/);assert.match(received.prompt,/User constraint 0/);
+ const parsed=report.readSessions(root);assert.ok(parsed.sessions[0].prompts[0].details.some(d=>d.type==='Context optimization (Jev)'&&d.text.includes('300')));
+ await ask('Show the earlier reasoning',{optimizeContext:false});assert.equal(calls,1);assert.match(received.prompt,/Earlier answer 0/);
+ }finally{await ask.dispose();logs.reset();fs.rmSync(root,{recursive:true,force:true});}
+});
+test('stale manual topic options cannot override Full history',async t=>{
+ let received;t.mock.method(assistant,'ask',async options=>{received=options;return {plan:{answer:'Answer'},model:'test'};});
+ t.mock.method(require('../topic-routing'),'route',()=>assert.fail('Full history must not route'));
+ const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+ ask.restoreConversation([{question:'First task',answer:'FIRST_MARKER'},{question:'Other task',answer:'OTHER_MARKER'}]);
+ await ask('New question',{topicId:'topic_0006',routeTopics:false});assert.match(received.prompt,/FIRST_MARKER/);assert.match(received.prompt,/OTHER_MARKER/);
+});
+
+test('screenshot-only task is recognized without history and enriches Jev and future context with references',async t=>{
+ const calls=[],routing=require('../topic-routing');let routed;
+ t.mock.method(assistant,'ask',async options=>{calls.push(options);return {plan:{answer:options.images?'Save selected failed: Z_TILE_TRANSLATOR, missing transport':'Helpful answer'},model:'test'};});
+ t.mock.method(require('../model-config'),'isOn',()=>true);
+ t.mock.method(routing,'route',async(_v,question,history)=>{routed=question;return {history:[],topic:null,report:{status:'fallback',reason:'fixture'}};});
+ const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],instructions:'PRIVATE_SAP_INSTRUCTIONS',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+ ask.restoreConversation([{question:'PRIVATE_OLD_MISTRAL_TASK',answer:'PRIVATE_OLD_ANSWER'}]);
+ await ask('',{images:[{media_type:'image/png',data:'aW1hZ2U='}],routeTopics:true});
+ assert.equal(calls.length,2);assert.equal(calls[0].images.length,1);assert.deepEqual(calls[0].tools,[]);
+ assert.doesNotMatch(calls[0].prompt+calls[0].instructions,/PRIVATE_OLD|PRIVATE_SAP|Previous conversation|workspace/);
+ assert.match(routed,/Save selected failed: Z_TILE_TRANSLATOR/);assert.equal(calls[1].images,undefined);
+ assert.match(calls[1].prompt,/Current screenshot references and descriptions/);assert.doesNotMatch(calls[1].prompt,/aW1hZ2U=/);
+ await ask('What failed?');assert.equal(calls.length,3);assert.equal(calls[2].images,undefined);
+ assert.match(calls[2].prompt,/Save selected failed: Z_TILE_TRANSLATOR/);assert.match(calls[2].prompt,/screenshot\.png/);
+ assert.doesNotMatch(calls[2].prompt,/aW1hZ2U=/);
+});
+
+test('failed screenshot recognition stops before routing or answering from old history',async t=>{
+ let calls=0;t.mock.method(assistant,'ask',async()=>{calls++;throw Error('Vision unavailable');});
+ t.mock.method(require('../topic-routing'),'route',async()=>assert.fail('Do not route an unread screenshot'));
+ const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],instructions:'',editorContext:()=>null},{});
+ await assert.rejects(ask('',{images:[{media_type:'image/png',data:'aW1hZ2U='}],routeTopics:true}),/Vision unavailable/);assert.equal(calls,1);
+});
+
+
+test('Session Logs continuation restores screenshot descriptions into Jev input without image bytes',async t=>{
+ const logger=require('../session-log'),report=require('../log-report'),routing=require('../topic-routing');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-image-description-'));logger.reset();
+ let routed;
+ t.mock.method(assistant,'ask',async options=>({plan:{answer:options.images?'Visible tile save error Z_TILE_SAVE':'Answer'},model:'test'}));
+ const settings={provider:'claude-subscription',model:'test',logPath:root,'log.questions':true,'log.answers':true};
+ const vscode=fakeVscode(settings),tools={schemas:[],instructions:'',editorContext:()=>null},server={start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'};
+ try {
+  const ask=chat.create(vscode,tools,server);await ask('',{images:[{media_type:'image/png',data:'aW1hZ2U='}]});
+  const parsed=report.readSessions(root),session=parsed.sessions.find(s=>s.prompts.some(p=>p.operation==='Chat'));
+  assert.ok(session);const restored=report.conversationTurns(parsed,session.id).turns;
+  assert.equal(restored[0].images[0].description,'Visible tile save error Z_TILE_SAVE');
+  const next=chat.create(vscode,tools,server);next.restoreConversation(restored);
+  t.mock.method(require('../model-config'),'isOn',()=>true);
+  t.mock.method(routing,'route',async(_v,_q,history)=>{routed=history;return {history,topic:null,report:{status:'fallback',reason:'fixture'}};});
+  await next('Continue saving',{routeTopics:true});
+  assert.match(routed[0].content,/Visible tile save error Z_TILE_SAVE/);assert.ok(routed[0].images[0].file);
+  assert.equal(routed[0].images[0].data,undefined);assert.doesNotMatch(JSON.stringify(routed),/aW1hZ2U=/);
+ } finally {logger.reset();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+
+test('resuming a topic gives Jev a one-request starting context and reclassifies subsequent requests',async t=>{
+ const routing=require('../topic-routing'),calls=[],topics=[{id:'topic_0001',label:'Translations',scope:'sap'},{id:'topic_0002',label:'HR',scope:'sap'}];
+ t.mock.method(require('../model-config'),'isOn',()=>true);
+ t.mock.method(routing,'route',async(_v,question,history,_scope,options)=>{calls.push({question,history,options});return {history:[],topic:topics[1],report:{status:'routed',basis:'jev',keptIndices:[]}};});
+ t.mock.method(assistant,'ask',async()=>({plan:{answer:'HR answer'},model:'test'}));
+ const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
+ ask.restoreConversation([{question:'Translate tiles',answer:'Translation context',topic:topics[0]},{question:'Employee card',answer:'HR context',topic:topics[1]}],{topic:topics[0]});
+ const first=await ask('Show employee HR data',{routeTopics:true});assert.equal(first.topic.id,'topic_0002');assert.equal(calls[0].options.continuationTopic,'topic_0001');
+ await ask('Another HR question',{routeTopics:true});assert.equal(calls.length,2);assert.equal(calls[1].options.continuationTopic,null);
+ assert.ok(calls[1].history.some(m=>m.content==='Translate tiles'),'archive remains available to the router');
 });

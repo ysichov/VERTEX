@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.83**
+**Version: 0.9.87**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -93,7 +93,7 @@ Open Welcome with **VERTEX: Get Started** in the Command Palette.
 
 **Git History** (VERTEX panel, beside **Folder**) lists the folder's commits with date, author and message, filtered by date range, month or author. **Uncommitted changes** at the top opens the working changes against HEAD.
 
-**Git review.** A commit or the uncommitted changes open as a file tree beside the diff of the selected file, in **Compact** (changed blocks) or **Full** view. **ASK AI** asks about a block, a file or the whole change; **ASK Jev** gives a quick advisory assessment of a block. Files hidden by `vertex.git.hiddenExtensions` (by default `.md`, `.log`) and files marked `linguist-generated` in `.gitattributes` are kept out of the AI context.
+**Git review.** A commit or the uncommitted changes open as a file tree beside the diff of the selected file, in **Compact** (changed blocks) or **Full** view. **Open** on a block, or a line number in the diff, opens the file at that line: the working file for uncommitted changes, the file as the commit has it (read-only) for a commit. **ASK AI** asks about a block, a file or the whole change; **ASK Jev** gives a quick advisory assessment of a block. Files hidden by `vertex.git.hiddenExtensions` (by default `.md`, `.log`) and files marked `linguist-generated` in `.gitattributes` are kept out of the AI context.
 
 **Review prompts.** A prompt bar above the blocks chooses what **ASK AI** and **Copy prompt** ask for: **Technical review** (bug hunt), **Business review** (against requirements pasted one per line), **Documentation**, **Test plan** or **Release notes**. A question typed in the chat refines the chosen prompt. With TypeSafe Jev set up, **Sort blocks with Jev** puts the most significant blocks first and, for a business review, points at the blocks that likely implement each requirement. **Prompts…** edits all prompt texts, including the commit message and pull request generators; user versions are saved in `~/.vertex/prompts/`.
 
@@ -392,7 +392,7 @@ says what was read and where it stopped.
 
 ## VERTEX chat
 
-Screenshots attached in the active chat remain available for follow-up questions. Choose a Vision model to inspect them. **New conversation** clears those attachments.
+In VS Code chat, each newly attached screenshot is recognized independently by the selected Vision-capable model, without conversation history, workspace context or tools. Jev identifies screenshot topics by the recognized scene and retains visual evidence and the latest answer when assessing follow-ups. Jev and the answering model receive its factual description; conversation context retains only a file reference and description. You can send a screenshot without text: the assistant identifies the visible problem or asks a specific clarifying question. Recognition is a separate model request with its own usage accounting. **New conversation** clears the chat context.
 
 Remote API model catalogs are saved locally after the first load and reused when switching providers or restarting VS Code. Rebuild a catalog explicitly in LLM Providers to discover changes. Model selections apply immediately to the saved catalog. Each API credential has its own catalog; local servers keep a live list of loaded models.
 
@@ -415,7 +415,7 @@ another extension's source from its text, as they do a local file;
 SAP search, changes, tests and debugger actions require a system.
 Set `vertex.ai.logPath` to keep a JSONL log of each conversation; `vertex.ai.log.questions`, `.answers`, `.tools` and `.request` choose what is kept. Program source from SAP is never logged. **Session Logs** (the scroll icon in the panel's title) shows sessions, prompts, steps and token usage by day, with filters. **Duration** shows the time from each question to its last recorded assistant response in minutes and seconds, excluding pauses before later questions. **Continue** reopens a conversation in the chat, and selected conversations can be deleted. **Continue** also restores unanswered questions and saved screenshots after a failed or quota-limited request; missing screenshot files are reported. The left chat panel also has **Conversations · Continue a chat** below the project selector: expand it, search saved conversations, and select one to restore it. **Refresh** reloads the list from the configured log folder. Conversation details are rendered when expanded; closed entries keep the report compact. The Conversation column prioritizes prompt text; Model is compact, with the full provider and model available on hover. Table columns retain stable sizing in narrow panels; scroll horizontally to see additional columns. In SAP mode, entering an object name alone searches SAP and opens a unique match without a model request; screenshots from earlier messages do not change this. A screenshot attached to the current message keeps it as a question for the model. In VS Code, SAP debug steps recorded by VERTEX Smart Debugger are saved automatically as they arrive, with recorded values and source snapshots. They appear in **SAP & Transpiler Logs** without requiring **Save session**; closing the debugger does not discard saved steps.
 
-**Context protection.** VERTEX masks credential fields such as `I_APIKEY`, `PASSWORD`, `ACCESS_TOKEN` and `AUTHORIZATION`, plus explicit Bearer/Basic credentials and private-key blocks, before AI context and tool responses are sent and before conversation logs or SAP recordings are written. A marker retains type, value length, empty status and an opaque identity so equal values can still be compared. Known copies of a detected value in the same context are masked too; arbitrary random strings are not classified as secrets.
+**Context protection.** VERTEX masks credential fields such as `I_APIKEY`, `PASSWORD`, `ACCESS_TOKEN`, `LV_TOKEN`, `LV_AUTH`, `ACCESS_KEY`, `JWT` and `AUTHORIZATION`, plus explicit Bearer/Basic credentials, JSON Web Tokens and private-key blocks, before AI context and tool responses are sent and before conversation logs or SAP recordings are written. A marker retains type, value length, empty status and an opaque identity so equal values can still be compared. Known copies of a detected value in the same context are masked too; arbitrary random strings are not classified as secrets. Code that builds a credential - a header written as an expression such as `Authorization:'Bearer '+key`, a scheme word alone, an empty value - stays readable, so a review sees it.
 
 Additional field names and case-insensitive `*` patterns can be configured per project in VS Code settings:
 
@@ -530,7 +530,7 @@ ticked models appear in the model lists; with no model
 chosen, the first enabled model is used. A provider switched off
 keeps its model ticks but is left out of every provider choice; the one in use cannot be switched
 off - choose another first. With no provider switched on, the chat panel shows no provider, model or
-effort choice. Save refuses a provider with no model ticked, and resets a chosen
+effort choice; the same holds when the provider in use has no models - its error stays in the panel, and **VERTEX: LLM Providers** switches to another. While no provider with models is available, review pages hide their **ASK AI** buttons and keep the prompt buttons. Save refuses a provider with no model ticked, and resets a chosen
 model that is no longer offered. The choice is kept in `vertex.ai.modelConfig`.
 If a provider has no model entries, the panel explains that instead of showing a blank table.
 Model-loading errors in the sidebar appear below the model selector.
@@ -907,11 +907,3 @@ What changed in each version: [history.md](https://github.com/ysichov/VERTEX/blo
 ## Licence
 
 MIT. See [the project](https://github.com/ysichov/VERTEX).
-
-Codex in the built-in VS Code chat can stage SAP source edits and new-object drafts through VERTEX tools. Save, apply and activation remain explicit VERTEX UI actions.
-
-Automatic AI context from VERTEX Smart Debugger contains only a session reference. Recorded steps, source, values and analysis are not attached automatically; provide a relevant fragment explicitly when needed.
-
-Only screenshots attached to the current message are sent as images. Earlier screenshots are represented by saved-file references (or turn/image references when no log file exists); reattach an earlier screenshot to inspect it again. Continue restores these references without automatically resending old image contents.
-
-Long chat histories keep earlier messages available while deferring offscreen layout. Session Logs defers offscreen session layout as well, reducing resize and scrolling work.

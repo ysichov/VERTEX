@@ -81,7 +81,7 @@
 
 <div class="url">https://ysichov.github.io/VERTEX/</div>
 
-<p class="build">Latest build <b>0.9.83.20261112003513</b>.</p>
+<p class="build">Latest build <b>0.9.85.20261112152534</b>.</p>
 
 <ol>
   <li>In Eclipse, <strong>Help &rarr; Install New Software…</strong></li>
@@ -109,7 +109,7 @@
   <li><b>Versions and code review.</b> Version history of an object, the diff between any two versions,
       and the review of a whole transport request: every changed part cut into blocks, with approve,
       decline and comments, and the author of each block. <i>Prompts…</i> edits the code review and
-      technical documentation prompts copied for an AI assistant.</li>
+      technical documentation prompts copied for an AI assistant. Checkboxes in the transport summary choose which objects go into the combined prompt.</li>
   <li><b>Code Explorer.</b> Metrics (McCabe, Halstead, maintainability), UML, the Calls diagram of an
       object and the Logic diagram of one method, event or form.</li>
   <li><b>Value Origin.</b> How a value is computed, down from a line across calls (Forward Usage
@@ -117,7 +117,7 @@
   <li><b>Path to This Line.</b> The conditions under which the line at the cursor runs inside its METHOD or FORM.</li>
   <li><b>Data Explorer (SelecTor).</b> Tables, views and CDS with select-options, joins and pivots;
       <i>Run Select</i> runs the SELECT at the cursor.</li>
-  <li><b>VERTEX Assistant and Session Logs.</b> An AI chat over the SAP system and the log of its conversations, with each prompt's duration in minutes and seconds. Details render when expanded; offscreen session layout is deferred. Prompt text has a wider column; compact model labels show their full value on hover. Narrow panels use stable table columns with horizontal scrolling.</li>
+  <li><b>VERTEX Assistant and Session Logs.</b> An AI chat over the SAP system and the log of its conversations, with each prompt's duration in minutes and seconds. Details render when expanded; offscreen session layout is deferred. VS Code Main chat offers optional Jev context selection and a read-only color strip monitor for retained and omitted question/answer exchanges. Prompt text has a wider column; compact model labels show their full value on hover. Narrow panels use stable table columns with horizontal scrolling.</li>
 </ul>
 <p>
   Assistant settings are in <strong>Window &rarr; Preferences &rarr; VERTEX Assistant</strong>.
@@ -166,5 +166,6 @@
   link.href = document.getElementById("logo").src;
   document.head.appendChild(link);
 </script>
+<section id="topic-histories"><h2>Topic histories in VS Code (experimental)</h2><p>Enable <strong>Route topics (Jev)</strong> in chat with a configured TypeSafe key. Questions receive stable topic IDs; selected histories and explicit dependencies go to the model. Choose Auto (Jev), New topic, or an existing ID in Continue topic. Clicking a colored topic label selects it for continuation without a routing call. Context… shows included exchanges. Continue restores logged IDs; untagged legacy history is retained. Routing does not delete messages and does not guarantee cache hits, cost savings or correctness. This experimental control is available in the VS Code host.</p></section>
 </body>
 </html>

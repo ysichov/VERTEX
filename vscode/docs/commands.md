@@ -130,12 +130,12 @@ Breakpoints set through VERTEX Smart Debugger or MCP appear as native VS Code po
   **Collapse all** fold them - a class's heading opens the changes of the whole class, part after part,
   each with its blocks - and **Reviewers** - each reviewer with a verdict or a comment, their
   approved, declined and total; a reviewer opens the objects they reviewed. A row opens the object's blocks; going back to the summary keeps where it was scrolled. There each block has **Open** (its code
-  in the editor), **ASK AI** (the block on the chat's chip) and, on a saved review, **Approve**,
+  in the editor at the block's line, a class part counted inside its method, section or local include; a line number in the diff opens that line), **ASK AI** (the block on the chat's chip) and, on a saved review, **Approve**,
   **Decline** and **Comment**; beside the object's name **ASK AI** takes all its blocks, and **Copy
   prompt: diff** / **Copy prompt: full** put a ready prompt on the clipboard - the blocks with five
   lines around each, or the whole source with the changes marked - for a chat where no AI is set up here.
   Beside them **Code review / Technical documentation** picks the prompt for that one object. In a developer's or reviewer's view, and in all changed objects
-  (**Technical documentation** in the saved transport summary), the same choice sets the prompt for **AI prompt diff / full**. The documentation prompt uses only the visible diff, lists created and modified objects apart - a created object goes whole and is described as it is, a modified one by what changed - and ends with `TR Details: <request>`.
+  (**Technical documentation** in the saved transport summary), the same choice sets the prompt for **AI prompt diff / full**. Tick objects in the summary (a row, or a group heading for the whole group) to narrow **Expand all**, **Code review**, **Technical documentation** and their prompts to them; **All / None** set or clear the ticks, and none ticked means all objects. **ASK AI** beside that choice puts the blocks on the chat chip with the chosen prompt as its instruction; a question typed in the chat adds to it. A single block's **ASK AI** keeps the short question. The documentation prompt uses only the visible diff, lists created and modified objects apart - a created object goes whole and is described as it is, a modified one by what changed - and ends with `TR Details: <request>`.
   **Prompts…** shows and edits both prompt texts. **Save user file** writes `~/.vertex/prompts/code-review.txt`
   or `~/.vertex/prompts/technical-documentation.txt`; these files take priority over the built-in texts and are
   read again when copying. **Use built-in** removes the selected user file.

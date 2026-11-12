@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.83",
+  "version": "0.9.87",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -109,7 +109,11 @@
       ]
     },
     "commands": [
-      {"command":"vertex.configureOrchestrator","title":"Configure Orchestrator Planner","category":"VERTEX"},
+      {
+        "command": "vertex.configureOrchestrator",
+        "title": "Configure Orchestrator Planner",
+        "category": "VERTEX"
+      },
       {
         "command": "vertex.copyLink",
         "title": "Copy Link"
@@ -757,7 +761,9 @@
         },
         "vertex.chat.mcpVersions": {
           "type": "object",
-          "additionalProperties": { "type": "string" },
+          "additionalProperties": {
+            "type": "string"
+          },
           "default": {},
           "markdownDescription": "Versions of MCP server npm packages that replace the ones named in `#vertex.chat.mcpServers#` (and `${abapAdtPackage}`), such as `{ \"arc-1\": \"1.11.0\" }`. Written by **Update** in VERTEX: MCP Servers, which appears when npm has a newer version."
         },
@@ -975,8 +981,13 @@
         },
         "vertex.git.hiddenExtensions": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["md", "log"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "md",
+            "log"
+          ],
           "scope": "resource",
           "markdownDescription": "File extensions left out of the **Uncommitted changes** page and of the AI commit message request until their toggle is switched on. The commit still includes them. Can be set per workspace or folder."
         },
@@ -1057,7 +1068,9 @@
         },
         "vertex.ai.context.secretFields": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Additional secret field or variable names to redact from VERTEX AI context and recordings. Matching ignores case; * matches any characters. Built-in credential rules remain active. Screenshots are not inspected."
         },
@@ -1113,7 +1126,11 @@
         },
         "vertex.animations": {
           "type": "string",
-          "enum": ["auto", "on", "off"],
+          "enum": [
+            "auto",
+            "on",
+            "off"
+          ],
           "enumDescriptions": [
             "Follow Windows and VS Code: when they ask for reduced motion, the animations are not shown.",
             "Show the animations even when Windows asks for reduced motion - as a remote desktop or VDI usually does.",
@@ -1167,6 +1184,16 @@
           ],
           "default": "auto",
           "description": "Context source for the VERTEX chat. SAP uses SAP editors and VERTEX analysis/debugger views; Folder uses local project files and Git reviews. Auto initially selects from the active editor; the panel offers SAP / Folder."
+        },
+        "vertex.ai.context.optimize": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use configured TypeSafe Jev before ordinary chat requests to select whole older question/answer exchanges. Preserves recent exchanges and asks Jev to retain relevant requirements and dependencies. Falls back to full history on errors. Jev usage is billed separately; savings are measured in characters."
+        },
+        "vertex.ai.context.routeTopics": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental: use TypeSafe Jev to route ordinary chat requests into stable topic histories with explicit dependencies. The chat panel uses topic routing instead of legacy exchange pruning. Topic IDs and routing usage are logged and restored by Continue. Untagged legacy history is retained; errors use full history. No savings or cache-hit guarantee."
         }
       }
     },

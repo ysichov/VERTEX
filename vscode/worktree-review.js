@@ -24,6 +24,7 @@ function aiContext(changes, folder, task = "", scope = null) {
 function open(vscode, copy, changes, onDone, options = {}) {
   const panel = vscode.window.createWebviewPanel("vertex.worktreeReview", "Review assistant changes",
     vscode.ViewColumn.Beside, { enableScripts: true });
+  require("./ai-availability").attach(panel);
   const byId = new Map(changes.map((change, i) => ["f" + (i + 1), change]));
   require("./review-jev").bind(vscode,panel,message=>{
     const change=byId.get(message.file);if(!change||change.binary||!Number.isInteger(message.hunk))return null;

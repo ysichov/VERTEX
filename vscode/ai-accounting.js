@@ -1,14 +1,14 @@
 "use strict";
 const logs=require("./session-log"),crypto=require("crypto");
 const checks=new Map();
-function begin(vscode,provider,model,operation="Model check"){
+function begin(vscode,provider,model,operation="Model check",scope=null){
  const config=vscode.workspace.getConfiguration("vertex.ai"),root=logs.resolveRoot(config.get("logPath",""));
  const key=JSON.stringify([root,provider,operation]);
  let log;
  if(operation==="Model check"){
   if(!checks.has(key)||!checks.get(key)?.file||!require("fs").existsSync(checks.get(key).file))checks.set(key,logs.create(root,provider,logs.stamp(new Date())+"_"+crypto.randomBytes(3).toString("hex"),logs.fromConfig(config),operation));
   log=checks.get(key);
- }else log=logs.create(root,provider,logs.stamp(new Date())+"_"+crypto.randomBytes(3).toString("hex"),logs.fromConfig(config),operation);
+ }else log=logs.create(root,provider,logs.stamp(new Date())+"_"+crypto.randomBytes(3).toString("hex"),logs.fromConfig(config),operation,scope);
  log?.user(operation+": "+model);
  let calls=0,last,hadResponses=false;
  const callbacks={

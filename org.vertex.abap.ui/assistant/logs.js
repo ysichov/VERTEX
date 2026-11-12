@@ -117,6 +117,11 @@ function parseSession(text, file) {
       if (current && record.input) current.decision = record.input;
       continue;
     }
+    if(record.type==="vertex_topic_routing"){if(current){current.topic=record.report?.topic||null;current.details.push({type:"Topic routing (Jev)",text:prettyJson(record.report)});}continue;}
+    if (record.type === "vertex_context_optimization") {
+      if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
+      continue;
+    }
     if (record.type === "vertex_request") {
       if (current && record.request) {
         current.details.push({ type: "VERTEX instructions", text: String(record.request.instructions || "") });
@@ -303,7 +308,7 @@ function conversationTurns(report, sessionId, point) {
         images.push({ media_type: shot.media_type, data: fs.readFileSync(file).toString("base64"), file });
       } catch (_) { missing.push(shot); }
     }
-    return { question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time,
+    return { ...(prompt.topic?{topic:prompt.topic}:{}), question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time,
       ...(prompt.failed ? { failed: true } : {}), ...(images.length ? { images } : {}), ...(missing.length ? { missingScreenshots: missing.length } : {}) };
   });
   if (turns.every(turn => !turn.answer) && !prompts.some(prompt => prompt.failed)) {
@@ -521,6 +526,8 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
         tools: sanitize(tools || [], objects), schema: sanitize(schema || null, objects) };
       write({ type: "vertex_request", request, vertex_objects: objects, vertex_snapshots: snapshots });
     },
+    routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
+    optimization(report) { write({type:"vertex_context_optimization",report}); },
     providerResponse({ provider, scope, response }) {
       // Preserve provider counters verbatim, before normalization. These records
       // are diagnostic evidence, never assistant records (no double counting).
@@ -738,7 +745,8 @@ function sanitizeText(text, objects = [], snapshots = []) {
     !language.trim() || /abap|source/i.test(language) ? omitted(block) : block);
   const program = /(^|\n)[ \t]*(?:REPORT|PROGRAM|CLASS|INTERFACE|FUNCTION|METHOD|FORM)\s+([A-Z0-9_/$~]+)[^\n]*\.[ \t]*(?:\n|$)/i.exec(result);
   if (program) {
-    addReference(objects, { object_name: program[2].toUpperCase(), object_type: /\b(?:CLASS|METHOD)\b/i.test(program[0]) ? "CLAS" : /\bFUNCTION\b/i.test(program[0]) ? "FUNC" : "PROG" });
+    // A FORM or METHOD names a routine inside an object, not an object: the line is still omitted, but no reference.
+    if (!/^\s*(?:FORM|METHOD)\b/i.test(program[0])) addReference(objects, { object_name: program[2].toUpperCase(), object_type: /\bCLASS\b/i.test(program[0]) ? "CLAS" : /\bFUNCTION\b/i.test(program[0]) ? "FUNC" : "PROG" });
     result = result.slice(0, program.index) + "\n" + omitted(result.slice(program.index));
   }
   return result;

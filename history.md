@@ -1,3 +1,155 @@
+## 2026-11-12 — VS Code 0.9.87
+
+VS Code 0.9.87 packages the screenshot-topic and continuation fixes. Session Logs topic continuation provides a one-request starting context without pinning later questions; the panel retains Full history and Auto (Jev). Removed the two erroneous history files from the extension package; the extension README remains its user documentation. Eclipse is not rebuilt in this release.
+
+## 2026-11-12 — Resume topics without pinning
+
+Restored the existing T continuation buttons on the last question of each topic in Session Logs. A topic continuation opens Auto (Jev) and supplies the selected topic as starting evidence for one request only. Jev still classifies that request and all subsequent requests afresh; all archived topics remain available. The panel retains exactly Full history and Auto (Jev), and its topic badges remain informational. Version remains 0.9.86.
+
+## 2026-11-12 — Remove manual topic selection
+
+Chat history has only Full history and Auto (Jev). Topic badges are informational; clicking a badge or continuing a saved conversation cannot pin a topic. Manual topic routing is removed from the chat and router. Version remains 0.9.86.
+
+## 2026-11-12 — Repair saved topic badge labels
+
+Restored chat messages and topic badges use the repaired topic catalog labels. Catalog updates refresh already rendered badges, and later progress messages cannot replace the repaired label with an old saved label. Screenshot topics without recoverable descriptions use a plain Screenshot label. Version remains 0.9.86.
+
+## 2026-11-12 — Preserve screenshot topic evidence across follow-ups
+
+Screenshot topics use the recognized scene as their label. Jev receives visual evidence separately from the typed question and the topic’s latest answer, preserving visible titles and results across follow-ups. Existing screenshot topics with truncated service text are repaired from their stored observations. Version remains 0.9.86.
+
+## 2026-11-12 — Screenshot descriptions before Jev routing
+
+VS Code chat recognizes each new screenshot independently before choosing a topic. Jev and the main model receive the description; current and historical screenshot context contains references and descriptions instead of image bytes. Screenshot-only requests ask the model to identify the visible problem or ask a targeted question. Descriptions survive Session Logs continuation. Explicit task corrections take priority in the routing prompt. Version remains 0.9.86.
+
+## 2026-11-12 — History list replaces Route topics
+
+The Route topics (Jev) checkbox and the New topic choice are gone. While TypeSafe Jev is on, the chat has one history toggle, without a caption: Full history (the default), Auto (Jev) for the user to switch on, and a third segment for a topic chosen by hand (T1, T2...). Without Jev there is no list and the whole history goes. Version remains 0.9.85.
+
+## 2026-11-12 — Context… window removed; the count moves to the status line
+
+The Context… button and its Context selection window are gone. The line under the question box now counts what went with a routed question: the topic, manual or Jev, kept exchanges of all, and how much shorter the history became. Version remains 0.9.85.
+
+## 2026-11-12 — Session Logs fit a narrow pane
+
+The Session Logs tables need less width: figure columns are narrower and the question column keeps the rest, so the questions stay in view beside other panels. Columns still widen by dragging. Version remains 0.9.85.
+
+## 2026-11-12 — Context selection hint; topic labels on their own lines
+
+An empty Context selection window now says to turn on Route topics (Jev) or choose a topic, instead of the removed Optimize context checkbox. In the VERTEX panel, Route topics (Jev) and Continue topic sit on one line with a gap between them. Version remains 0.9.85.
+
+## 2026-11-12 — Code inside bold text in the VERTEX panel
+
+In chat answers, code inside bold or italic text (a bold file name in backticks) shows as code instead of literal backticks. Version remains 0.9.85.
+
+## 2026-11-12 — More credential names hidden in debugger data
+
+Variables named like AUTH, AUTH_HEADER, AUTH_KEY, ACCESS_KEY, CLIENT_KEY and SUBSCRIPTION_KEY (LV_AUTH, GV_ACCESS_KEY...) are now hidden from AI context, logs and recordings, as TOKEN and JWT names already are. Version remains 0.9.85.
+
+## 2026-11-12 — Context protection keeps code readable; lighter Session Logs
+
+Context protection no longer masks code that builds a credential: a header written as an expression (Authorization:'Bearer '+key), the scheme word alone and empty values stay as written, so a review sees the code. Variables named like TOKEN, JWT, BEARER or CREDENTIALS and any JSON Web Token are now hidden, in debugger data too. The model is told that a [REDACTED secret-N] marker is a value VERTEX hid. Session Logs loads only the list and fetches a question's details when it is opened, so a large log folder no longer slows the machine. Version remains 0.9.85.
+
+## 2026-11-12 — Jev answers as a table; quicker question opening in Session Logs
+
+In Session Logs a Jev answer is a table: what each question was about, the answer, confidence and the odds of each option, with the chosen one in bold; the question asked of Jev is on hover. Opening a question no longer builds every tool call's arguments and results at once - each call fills when it is opened. Version remains 0.9.85.
+
+## 2026-11-12 — Session Logs: show or hide technical conversations by kind
+
+Hide technical became a checkbox per kind of technical conversation, with its count - Topic tagging, Context optimization and so on - so Jev logs can be hidden while other kinds stay. A long operation name no longer runs over the Model column. Version remains 0.9.85.
+
+## 2026-11-12 — Session Logs table: question column, buttons, cost rounding
+
+The conversation's question shows again in the Session Logs table, with Continue and Tag topics right after it. Costs are rounded to ten-thousandths of a dollar. Version remains 0.9.85.
+
+## 2026-11-12 — Session Logs as a sortable, searchable table
+
+Session Logs lists conversations as table rows: prompts, providers and models, tokens, cost when any was reported, duration and time, with Continue and Tag topics on the right. Headings sort, heading edges drag a column's width, a search box filters by the questions' text, providers and models, and **Hide technical** hides conversations made only of technical requests. A conversation opens its questions under its row. Version remains 0.9.85.
+
+## 2026-11-12 — Technical requests marked in Session Logs
+
+Requests that are not chat questions (commit messages, PR descriptions and the like) are muted in a conversation's table and show their operation in the Topic column. Version remains 0.9.85.
+
+## 2026-11-12 — Session Logs: sortable, resizable question columns
+
+In a conversation's question table, a heading click sorts by that column and a drag on its right edge changes its width. Cost USD is left out for a conversation with no reported cost. Version remains 0.9.85.
+
+## 2026-11-12 — Topic label as the Continue button
+
+On the last question of each topic in Session Logs, its T label is the button that continues the topic, in the topic's colour. Version remains 0.9.85.
+
+## 2026-11-12 — Session Logs: prompt count first, sort, short topics
+
+A conversation in Session Logs shows its prompt count first, and **Latest / Most prompts** sorts the list. The Topic column shows T1, T2…, with the topic's name on hover, so the question text keeps its room. Version remains 0.9.85.
+
+## 2026-11-12 — Topics independent of the context mode
+
+Topic routing no longer separates topics by SAP or Folder mode: a topic started or tagged in one mode continues in the other, and questions tagged in Folder are routed in SAP too. Version remains 0.9.85.
+
+## 2026-11-12 — Continue a topic from Session Logs
+
+The last question of each topic in Session Logs has a **Continue** button in the Topic column: it brings the whole conversation into the chat with that topic chosen, so the next question continues it. Version remains 0.9.85.
+
+## 2026-11-12 — Topic column in Session Logs
+
+The questions of a conversation in Session Logs have a **Topic** column, coloured as the chat colours topics, with the same colour on the question's left edge. Version remains 0.9.85.
+
+## 2026-11-12 — Tag topics (Jev) for older conversations
+
+Session Logs has **Tag topics (Jev)** beside **Continue** for a conversation with questions that have no topic. Jev assigns each to an existing topic, a new one, or the topic of the question before it, in bounded batches; unclear questions stay untagged and keep going whole. Tags are kept in `topic-tags/` beside the logs, and **Continue** brings them into the chat so Route topics can leave unrelated history out. VS Code only. Version remains 0.9.85.
+
+## 2026-11-12 — Route topics only with Jev on
+
+The VERTEX panel shows **Route topics (Jev)** only while TypeSafe Jev is switched on in LLM Providers, and a chat never routes topics with Jev off. Version remains 0.9.85.
+
+## 2026-11-12 — No AI choice when the provider in use has no models
+
+The VERTEX panel hides the provider, model and effort lists whenever the provider in use has no models, not only when it is the only one offered; LLM Providers switches provider. A block's ASK AI in the editor change review is now hidden with the others while no AI is available. Version remains 0.9.85.
+
+## 2026-11-12 — Theme-coloured checkboxes in the VERTEX panel
+
+The checkboxes of the VERTEX panel (Route topics, Optimize context) follow the VS Code theme instead of showing a white box in a dark theme. Version remains 0.9.85.
+
+## 2026-11-12 — Open from the class view of a transport review
+
+In a transport review opened on a class, Open on a block and a diff line number now open that class at the part and line; they failed with "Invalid object_name". Both hosts. Version remains 0.9.85.
+
+## 2026-11-12 — VS Code 0.9.85: experimental topic histories
+
+Added optional Jev topic routing with stable IDs, scoped histories and explicit dependencies. Manual topic selection and clickable theme-colored labels continue a subtopic without a routing call. Routing decisions and usage are logged separately; Continue restores topic metadata. Untagged legacy history and failed routing retain full context. Removed Optimize context from the chat panel; Context… shows inclusion. Existing version retained; Eclipse runtime is unchanged.
+
+## 2026-11-12 — 0.9.85: no AI choice without models
+
+When the only provider offered has no models (for example Codex is not installed), the VERTEX panel hides the provider, model and effort lists and keeps the error. While no provider with models is available, ASK AI buttons on transport, Git and assistant-change reviews are hidden; the prompt buttons stay. VS Code 0.9.85; the Eclipse update site is rebuilt at 0.9.85 with no Eclipse change of its own.
+
+## 2026-11-12 — Transport review asks: SAP context, no routines taken for objects
+
+ASK AI from an SAP transport review now always runs in SAP context, whichever context mode the chat has selected; a local Git review keeps Folder. Session logs no longer list a FORM or METHOD found in a review block as a referenced program or class. The status line above a review is left-aligned, so the turning logo and the text stay in place. Version remains 0.9.84.
+
+## 2026-11-12 — Code review link in the transport summary
+
+The saved transport summary has a **Code review** link beside **Technical documentation**: it opens the ticked objects (or all) with the code review prompt chosen, so its ASK AI and prompt copies send a review without going through a developer. Both hosts. Version remains 0.9.84.
+
+## 2026-11-12 — Open the code at a line from reviews
+
+Transport review: Open on a block now lands on the block's line for every object type - class methods, sections and local class includes (CCIMP, CCDEF, CCMAC, CCAU) included, where it used to open the class at the top - and the line numbers in a block's diff open the code at that line. Both hosts. Git review (VS Code): each block has Open, and the new-side line numbers are links; uncommitted changes open the working file, a commit opens its version of the file read-only. Version remains 0.9.84.
+
+## 2026-11-12 — Object selection for transport review prompts
+
+The saved transport review summary has a checkbox on each object and on each group heading. Ticked objects narrow Expand all, Technical documentation and the AI prompts copied there; All / None set or clear the ticks, and with none ticked every object is taken as before. ASK AI on an object page and in the combined or per-person view now sends the chosen Code review / Technical documentation prompt (user prompt files included) as the chat instruction; a typed question refines it. The chip shows the prompt name. A single block's ASK AI is unchanged. Both hosts. Version remains 0.9.84.
+
+## 2026-11-12 — Question-first bounded Jev selection
+
+Jev context selection now starts with user requests only. Full assistant answers are excluded from the initial selector input. Short or unclear requests may be clarified with a bounded first/concluding answer excerpt, without code blocks. Adaptive request packing enforces a conservative 24,000-byte UTF-8 JSON guard and can send long requests individually; oversized items are retained. Logs include pass/batch sizes and total Jev usage, and the strip monitor shows decision basis and clarification excerpts. Progress reads JEV is optimizing context… and returns to Working… before the main provider. Version remains 0.9.84.
+
+## 2026-11-12 — Context optimization progress
+
+Main chat shows "JEV is optimizing context…" while the history selector runs, then restores "Working…" before the main provider request. Version remains 0.9.84.
+
+## 2026-11-12 — 0.9.84: optional Jev context selection
+
+Version 0.9.84 on both hosts. VS Code Main chat has an opt-in Optimize context checkbox using configured TypeSafe Jev. It preserves the current question, system instructions and recent exchanges; high-confidence irrelevant older question/answer pairs can be omitted together. Active requirements and dependencies are part of Jev relevance assessment. Errors, missing configuration and oversized inputs fall back to full history. Session Logs records choices, probability/confidence, Jev overhead and measured history-character reduction. Jev accounting has a separate related conversation. Context… opens a live read-only strip monitor: green kept exchanges, gray omitted exchanges and blue protected/fallback exchanges, with lazy expansion for text, confidence and probabilities. Character reduction is not claimed as token or monetary savings; controlled A/B quality comparisons remain separate experiments.
+
 ## 2026-11-12 — Offscreen chat and log layout
 
 Long VS Code conversations skip offscreen message layout during resizing and scrolling. Session Logs similarly skips offscreen sessions. Inactive review frames do not receive theme synchronization. Version remains 0.9.83.

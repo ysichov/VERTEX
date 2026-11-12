@@ -78,6 +78,7 @@ function reviewQueue(vscode) {
   const open = () => {
     panel = vscode.window.createWebviewPanel("vertex.fileReview", "Review assistant changes",
       vscode.ViewColumn.Beside, { enableScripts: true });
+    require("./ai-availability").attach(panel);
     require("./review-jev").bind(vscode,panel,message=>{
       const item=shownFiles.get(message.file);if(!item||!Number.isInteger(message.hunk))return null;
       return review.askContext(item.parts,[message.hunk],item.seen.after,"local",item.seen.file);
