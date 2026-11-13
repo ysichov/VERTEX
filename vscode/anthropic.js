@@ -76,6 +76,19 @@ async function ask(options) {
   let usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
     apiTools = toolsNow();
+    // The budget entered for this model in LLM Providers: wait rather than earn a rate limit.
+    if (options.budget > 0 || options.callBudget > 0) {
+      const budgets = require("./model-budget");
+      const size = budgets.estimateTokens({ messages, tools: apiTools, system: options.instructions });
+      const wait = budgets.waitFor("anthropic-api", options.model, size, options.budget, Date.now(), options.callBudget || 0);
+      if (wait > 0) {
+        options.onProgress?.({ status: "Model rate limit reached. Waiting "
+          + Math.ceil(wait / 1000) + " s before the next request…" });
+        await new Promise(resolve => setTimeout(resolve, wait));
+        if (options.signal?.aborted) throw new Error("This request was stopped.");
+      }
+      budgets.record("anthropic-api", options.model, size);
+    }
     const response = await request(options.apiKey, { model: options.model, max_tokens: options.maxOutputTokens || 16000,
       system: options.instructions, messages, ...(options.structuredResult?{tool_choice:{type:"tool",name:"submit_vertex_answer"}}:{}), ...(apiTools.length ? {tools:apiTools} : {}) },
       // The limit is on the conversation and its context; the tool definitions come on top of it.
@@ -121,11 +134,14 @@ async function ask(options) {
     const results = [];
     for (const call of calls) {
       options.signal?.throwIfAborted();
-      if (!(options.tools || []).some(tool => tool.name === call.name)) {
-        throw new Error("Anthropic requested an unavailable tool: " + call.name);
-      }
       let content, isError = false;
-      try { content = require("./tool-result").bound(await options.callTool(call.name, call.input || {})); }
+      try {
+        if (!(options.tools || []).some(tool => tool.name === call.name)) {
+          const error=new Error("Anthropic requested an unavailable tool: " + call.name + ". Only supplied functions are available; report the missing capability.");
+          if(!options.recoverUnavailableTools)throw Object.assign(error,{orchestratorFatal:true});
+          throw error;
+        }
+        content = require("./tool-result").bound(await options.callTool(call.name, call.input || {})); }
       catch (error) { if(error.orchestratorFatal||options.signal?.aborted)throw error;content = JSON.stringify({ error: error.message }); isError = true; }
       results.push({ type: "tool_result", tool_use_id: call.id, is_error: isError, content });
     }

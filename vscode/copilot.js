@@ -61,11 +61,14 @@ async function ask(vscode, options) {
     const results = [];
     for (const call of calls) {
       options.signal?.throwIfAborted();
-      if (!(options.tools || []).some(tool => tool.name === call.name)) {
-        throw new Error("Copilot requested an unavailable tool: " + call.name);
-      }
       let content;
-      try { content = require("./tool-result").bound(await options.callTool(call.name, call.input || {})); }
+      try {
+        if (!(options.tools || []).some(tool => tool.name === call.name)) {
+          const error=new Error("Copilot requested an unavailable tool: " + call.name + ". Only supplied functions are available; report the missing capability.");
+          if(!options.recoverUnavailableTools)throw Object.assign(error,{orchestratorFatal:true});
+          throw error;
+        }
+        content = require("./tool-result").bound(await options.callTool(call.name, call.input || {})); }
       catch (error) { if(error.orchestratorFatal||options.signal?.aborted)throw error;content = JSON.stringify({ error: error.message }); }
       results.push(new vscode.LanguageModelToolResultPart(call.callId, [new vscode.LanguageModelTextPart(content)]));
     }

@@ -68,40 +68,24 @@ test("a toolset is offered by enable_toolset and its tools join only when enable
   } finally { fake.server.close(); }
 });
 
-test("the orchestrator is the last choice, offers every toolset and describes each server", async () => {
-  const fake = await fakeServer();
-  try {
-    let kept = {};
-    const settings = {
-      "vertex.chat.mcpServer": "VERTEX",
-      "vertex.chat.mcpServers": [{ name: "SAP ADT", description: "SAP's own server, strong at RAP.", url: "http://127.0.0.1:${adtMcpPort}/mcp", headers: { Authorization: "Bearer ${adtMcpToken}" } },
-        { name: "Other", command: "nothing-here" }],
-      "vertex.chat.toolsets": [{ name: "SAP RAP", server: "SAP ADT", description: "RAP generators", tools: ["abap_objects_generator_*"] },
-        { name: "Services", server: "SAP ADT", description: "Service bindings", tools: ["abap_business_service_*"] }],
-      "adt.mcpServer.port": fake.port, "adt.mcpServer.token": "t0k"
-    };
-    const vscode = { workspace: { getConfiguration: section => ({ get: (key, fallback) => settings[section + "." + key] ?? fallback }) } };
-    const mcp = require("../mcp-external").create({ vscode, active: () => ({ error: "not used" }), password: async () => "", storage: null,
-      catalog: { get: () => kept, update: async value => { kept = value; } } });
-    assert.deepEqual(mcp.choices(), ["VERTEX", "SAP ADT", "Other", "VERTEX Orchestrator"]);
-    const tools = mcp.wrap({ schemas: [{ name: "read_sap_object" }], instructions: "own", execute: async () => "" });
-    assert.deepEqual(tools.schemas.map(t => t.name), ["read_sap_object"], "a single server's mode offers only toolsets marked always");
-
-    settings["vertex.chat.mcpServer"] = "VERTEX Orchestrator";
-    assert.equal(await mcp.prepare(), null, "the orchestrator keeps VERTEX's own tools");
-    assert.deepEqual(tools.schemas.map(t => t.name), ["read_sap_object", "enable_toolset"]);
-    let note = tools.mcpNote();
-    assert.match(note, /- SAP ADT: SAP's own server, strong at RAP\.\n  Toolsets: SAP RAP - RAP generators; Services - Service bindings\.\n  Its tool list has not been read yet/);
-    assert.match(note, /- Other: no description configured\.\n  No toolsets are configured/);
-
-    await tools.execute("enable_toolset", { toolset: "SAP RAP" });
-    assert.deepEqual(kept["SAP ADT"].tools.map(t => t.name), ["abap_objects_generator_list", "abap_business_service_list", "abap_object_read_file"], "a start keeps the tool list");
-    note = tools.mcpNote();
-    assert.match(note, /SAP RAP - RAP generators \(1 tool\); Services - Service bindings \(1 tool\)\.\n  1 of its tools are in no toolset\./);
-    const row = mcp.overview().find(s => s.name === "SAP ADT");
-    assert.deepEqual(row.tools.find(t => t.name === "abap_object_read_file").toolsets, []);
-    mcp.stop();
-  } finally { fake.server.close(); }
+test("the orchestrator catalogs only VERTEX and ARC-1 and never enables other toolsets", async () => {
+ const fake=await fakeServer();
+ try {
+  const settings={"vertex.chat.mcpServer":"VERTEX Orchestrator","vertex.chat.mcpServers":[{name:"ARC-1",url:"http://127.0.0.1:${adtMcpPort}/mcp",headers:{Authorization:"Bearer ${adtMcpToken}"}},{name:"Other",command:"must-not-start"}],"vertex.chat.toolsets":[{name:"Other",server:"Other",tools:["*"]}],"adt.mcpServer.port":fake.port,"adt.mcpServer.token":"t0k"};
+  const vscode={workspace:{getConfiguration:section=>({get:(key,fallback)=>settings[section+"."+key]??fallback})}};
+  const mcp=require('../mcp-external').create({vscode,active:()=>({error:'not used'}),password:async()=>'',storage:null});
+  const own={schemas:[{name:'read_sap_object'}],instructions:'own',execute:async()=> 'own'};
+  const tools=mcp.wrap(own);
+  assert.deepEqual(tools.schemas,own.schemas);
+  const catalog=await tools.orchestratorTools();
+  assert.equal(catalog.length,4);assert.ok(!catalog.some(t=>t.name==='enable_toolset'));
+  assert.match(tools.mcpNote(),/Jev selects tools from VERTEX and ARC-1/);
+  assert.equal(tools.external('abap_object_read_file'),true);
+  assert.equal(await tools.execute('abap_object_read_file',{}),'ran abap_object_read_file');
+  await assert.rejects(tools.execute('enable_toolset',{toolset:'Other'}),/unavailable/);
+  await assert.rejects(tools.execute('other_tool',{}),/unavailable/);
+  assert.deepEqual(fake.calls.map(t=>t.name),['abap_object_read_file']);mcp.stop();
+ } finally {fake.server.close();}
 });
 
 test("Update is offered for a newer npm version and installs nothing until asked", async () => {
@@ -173,7 +157,7 @@ test("started servers stay up together: switching away and back, or enabling a t
     const settings = {
       "vertex.chat.mcpServer": "SAP ADT",
       "vertex.chat.mcpServers": [{ name: "SAP ADT", url: "http://127.0.0.1:${adtMcpPort}/mcp", headers: { Authorization: "Bearer ${adtMcpToken}" } }],
-      "vertex.chat.toolsets": [{ name: "SAP RAP", server: "SAP ADT", description: "RAP generators", tools: ["abap_objects_generator_*"] }],
+      "vertex.chat.toolsets": [{ name: "SAP RAP", server: "SAP ADT", description: "RAP generators", tools: ["abap_objects_generator_*"], always: true }],
       "adt.mcpServer.port": fake.port, "adt.mcpServer.token": "t0k"
     };
     const vscode = { workspace: { getConfiguration: section => ({ get: (key, fallback) => settings[section + "." + key] ?? fallback }) } };
@@ -184,6 +168,7 @@ test("started servers stay up together: switching away and back, or enabling a t
     settings["vertex.chat.mcpServer"] = "VERTEX Orchestrator";
     const tools = mcp.wrap({ schemas: [], instructions: "", execute: async () => "" });
     assert.equal(tools.orchestrator(),settings["vertex.chat.mcpServer"]==="VERTEX Orchestrator");
+    settings["vertex.chat.mcpServer"] = "VERTEX";
     const answer = await tools.execute("enable_toolset", { toolset: "SAP RAP" });
     assert.deepEqual(answer.tools, ["abap_objects_generator_list"]);
     settings["vertex.chat.mcpServer"] = "SAP ADT";

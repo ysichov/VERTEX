@@ -171,9 +171,23 @@ async function retryWait(ms, options) {
 }
 
 async function rateLimitedRequest(send, options = {}) {
-  let retry = 0, networkRetries = 0;
+  let retry = 0, networkRetries = 0, paced = false;
   for (;;) {
     if (options.isActive && !options.isActive()) throw new Error("This request was superseded.");
+    // The budget entered for this model in LLM Providers: wait rather than earn a rate limit.
+    // Reactive recovery below stays as it is; this only keeps us from provoking it.
+    if (!paced && (options.budget > 0 || options.callBudget > 0)) {
+      const budgets = require("./model-budget");
+      const wait = budgets.waitFor(options.assistant, options.model, options.budgetSize, options.budget, Date.now(), options.callBudget || 0);
+      if (wait > 0) {
+        options.onProgress?.({ status: "Model rate limit reached. Waiting "
+          + Math.ceil(wait / 1000) + " s before the next request…" });
+        await (options.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms))))(wait);
+        if (options.isActive && !options.isActive()) throw new Error("This request was superseded.");
+      }
+      budgets.record(options.assistant, options.model, options.budgetSize);
+      paced = true;
+    }
     try { return await send(); }
     catch (error) {
       const transient = ["ECONNRESET", "EPIPE", "ECONNREFUSED", "EAI_AGAIN"].includes(error.code)
@@ -300,12 +314,12 @@ async function ask(options) {
   }
   let usage = null;
   for (let round = 0; round < (options.maxRounds || 12); round += 1) {
-    // A toolset the model enabled adds tools to options.tools during the request; they join before submit_vertex_answer.
-    if (tools.length && !options.webSearch && (options.tools || []).length + 1 > tools.length) {
-      const known = new Set(tools.map(tool => tool.function && tool.function.name));
-      const added = options.tools.filter(tool => !known.has(tool.name)).map(tool => ({ type: "function", function: {
-        name: tool.name, description: tool.description, parameters: tool.inputSchema } }));
-      tools = tools.slice(0, -1).concat(added, tools.slice(-1));
+    // A stage may replace tools without changing their count, or narrow an existing schema.
+    if (tools.length && !options.structuredResult && !options.webSearch) {
+      tools = (options.tools || []).map(tool => ({type:"function",function:{
+        name:tool.name,description:tool.description,parameters:tool.inputSchema
+      }})).concat([{type:"function",function:{name:"submit_vertex_answer",
+        description:"Submit the final VERTEX answer and navigation plan.",parameters:options.schema}}]);
     }
     options.onProgress?.({ status: "Model request " + (round + 1) });
     const send = () => rateLimitedRequest(() => request(id, options.apiKey, "/chat/completions", {
@@ -314,7 +328,8 @@ async function ask(options) {
       ...(Number.isInteger(options.maxOutputTokens)&&options.maxOutputTokens>0 ? id==="openai-api"?{max_completion_tokens:options.maxOutputTokens}:{max_tokens:options.maxOutputTokens} : {}), stream: false
     // The limit is on the conversation and its context; the tool definitions are a fixed part on top of it -
     // an MCP server's alone can pass 64 KB.
-    }, (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 128000)) + imageBytes + (tools.length ? Buffer.byteLength(JSON.stringify(tools), "utf8") : 0)), options);
+    }, (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 128000)) + imageBytes + (tools.length ? Buffer.byteLength(JSON.stringify(tools), "utf8") : 0)),
+      { ...options, budgetSize: options.budget > 0 || options.callBudget > 0 ? require("./model-budget").estimateTokens({ messages, tools }) : 0 });
     let response;
     try { response = await send(); }
     catch (error) {
@@ -423,11 +438,13 @@ async function ask(options) {
     messages.push({ role: "assistant", content: message.content || null, tool_calls: calls });
     for (const call of calls) {
       const name = call.function && call.function.name;
-      if (!(options.tools || []).some(tool => tool.name === name)) {
-        throw new Error(PROVIDERS[id].label + " requested an unavailable tool: " + name);
-      }
       let content;
       try {
+        if (!(options.tools || []).some(tool => tool.name === name)) {
+          const error=new Error(PROVIDERS[id].label + " requested an unavailable tool: " + name + ". Only supplied function schemas are available; use them or report the missing capability.");
+          if(!options.recoverUnavailableTools)throw Object.assign(error,{orchestratorFatal:true});
+          throw error;
+        }
         const args = JSON.parse(call.function.arguments || "{}");
         content = toolResult.bound(await options.callTool(name, args));
       } catch (error) { if(error.orchestratorFatal||options.signal?.aborted)throw error; content = JSON.stringify({ error: error.message }); }

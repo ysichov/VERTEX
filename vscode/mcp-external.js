@@ -11,8 +11,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const VERTEX = "VERTEX";
-/* VERTEX's own tools plus a catalog of every configured server: each one's description and toolsets, which
-   the model enables one at a time. The last choice in the VERTEX panel. */
+/* Jev selects a task-specific subset of VERTEX and ARC-1 tools before execution. */
 const ORCHESTRATOR = "VERTEX Orchestrator";
 const ACCESS = {
   "read-only": { allowWrites: "false", allowTransportWrites: "false", allowedPackages: "$TMP", allowDataPreview: "false", allowFreeSql: "false", allowGitWrites: "false" },
@@ -389,8 +388,8 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
   const enabled = new Map();       // toolset name -> { server, run, tools }
   const dropEnabled = name => { for (const [set, e] of enabled) if (e.server === name) enabled.delete(set); };
   const pattern = glob => new RegExp("^" + String(glob).replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
-  // The orchestrator offers every toolset; a single server's mode only those marked always, of other servers.
-  const offered = () => selected() === ORCHESTRATOR ? toolsets() : toolsets().filter(t => t.always === true && t.server !== selected());
+  // Jev orchestration does not expose toolset enabling; other modes keep always-marked sets.
+  const offered = () => selected() === ORCHESTRATOR ? [] : toolsets().filter(t => t.always === true && t.server !== selected());
   async function enableToolset(name) {
     const set = offered().find(t => t.name === name);
     if (!set) throw new Error("No toolset " + name + ". Toolsets: " + (offered().map(t => t.name).join(", ") || "none") + ".");
@@ -415,6 +414,20 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
     const asSchema = t => ({ name: t.name, description: t.description || "", inputSchema: t.inputSchema || { type: "object", properties: {} },
       ...(t.annotations ? { annotations: t.annotations } : {}) });
     const wrapped = Object.create(own);
+    let orchestratorRun = null;
+    defineOrchestratorTools();
+    function defineOrchestratorTools() {
+      Object.defineProperty(wrapped, "orchestratorTools", {value:async () => {
+        orchestratorRun = null;
+        const entry = servers().find(server => server.name === "ARC-1");
+        if (!entry) throw new Error("Configure the ARC-1 MCP server before using VERTEX Orchestrator.");
+        const run = await ensure(entry.name);
+        orchestratorRun = run;
+        const names = new Set(own.schemas.map(tool=>tool.name));
+        if (run.tools.some(tool=>names.has(tool.name))) throw new Error("VERTEX and ARC-1 have conflicting tool names.");
+        return own.schemas.concat(run.tools.map(asSchema));
+      }});
+    }
     const toolsetSchema = () => {
       const sets = offered();
       return sets.length ? [{ name: "enable_toolset", annotations: { readOnlyHint: true, destructiveHint: false },
@@ -426,6 +439,7 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
           properties: { toolset: { type: "string", enum: sets.map(t => t.name) } } } }] : [];
     };
     Object.defineProperty(wrapped, "schemas", { get() {
+      if (selected() === ORCHESTRATOR) return own.schemas;
       const ext = current();
       const base = ext ? own.schemas.filter(kept).concat(ext.tools.map(asSchema)) : own.schemas;
       const names = new Set(base.map(t => t.name));
@@ -444,12 +458,21 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
     define("prepare", prepare);
     define("orchestrator", () => selected() === ORCHESTRATOR);
     const fromToolset = name => enabledTools().find(e => e.tool.name === name);
-    define("external", name => { const ext = current(); return !!(ext && ext.tools.some(t => t.name === name)) || !!fromToolset(name); });
+    define("external", name => { if(selected() === ORCHESTRATOR) return !!orchestratorRun?.tools.some(t=>t.name===name); const ext = current(); return !!(ext && ext.tools.some(t => t.name === name)) || !!fromToolset(name); });
     define("mcpNote", () => { const ext = current(); return (ext ? "SAP tools come from the MCP server " + ext.name
       + "; the VERTEX tool names mentioned elsewhere (read_sap_object, read_sap_method, ...) are not available - use " + ext.name + "'s tools instead.\n" : "")
-      + (selected() === ORCHESTRATOR ? catalogText()
+      + (selected() === ORCHESTRATOR ? "Jev selects tools from VERTEX and ARC-1 before execution. No other MCP servers or toolset enabling are available in this mode.\n"
         : offered().length ? "More SAP tools can be added with enable_toolset when the task needs them: " + offered().map(t => t.name + " - " + (t.description || t.tools.join(", ")) + (t.note ? " " + t.note : "")).join("; ") + ".\n" : ""); });
     define("execute", async (name, args) => {
+      if (selected() === ORCHESTRATOR) {
+        if (name === "enable_toolset") throw new Error("Toolset enabling is unavailable in Jev orchestration.");
+        if (own.schemas.some(tool=>tool.name===name)) return own.execute(name,args);
+        if (!orchestratorRun?.client.alive() || !orchestratorRun.tools.some(tool=>tool.name===name)) throw new Error("Tool is unavailable in VERTEX Orchestrator: " + name);
+        const result=await orchestratorRun.client.call(name,args);
+        const text=(result?.content || []).map(c=>c.type === "text" ? c.text : JSON.stringify(c)).join("\n");
+        if(result?.isError)throw new Error(text || name + " failed.");
+        return text;
+      }
       if (name === "enable_toolset") return enableToolset(String(args && args.toolset || ""));
       const ext = current();
       const mine = !!(ext && ext.tools.some(t => t.name === name));
@@ -517,26 +540,6 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
         outside: own ? own.tools.filter(tool => !inSet.has(tool.name)).length : 0 };
     });
   }
-  // The orchestrator's catalog for the model: what each server is for and the toolsets it can enable.
-  /* A measured run showed the catalog alone pulling a model away from its own tools: asked for an object's last
-     transport, it read "ADT: versions" and "ADT: transports" here, decided only those could answer, and - with a
-     toolset arriving only from the next question in Claude Code and Codex - answered that it had no tools, without
-     trying run_sap_select. So the catalog says first what the own tools reach, and forbids that dead end. */
-  function catalogText() {
-    return "Your own VERTEX SAP tools come first and answer most questions: search_sap_objects and read_sap_object / read_sap_method "
-      + "find and read code; run_sap_select reads any table - transports and their objects (E070, E071), object versions (VRSD), "
-      + "the object directory (TADIR), the dictionary (DD02L, DD03L) and application data. Use them before anything below.\n"
-      + "Enable a toolset only for what your own tools cannot do. API providers and Copilot receive enabled tools on the next step in the same request. In Claude Code and Codex an enabled toolset arrives with the next "
-      + "question: then still answer now with your own tools when they can, and say that the toolset is ready for the next question. "
-      + "Never answer that you have no tools for a task you have not tried with your own tools.\n"
-      + "The user switches the chat to one server in the VERTEX panel; you cannot.\n"
-      + "MCP servers whose toolsets enable_toolset adds:\n" + overview().map(server =>
-      "- " + server.name + (server.version ? " " + server.version : "") + ": " + (server.description || "no description configured.")
-      + (server.toolsets.length ? "\n  Toolsets: " + server.toolsets.map(t => t.name + " - " + (t.description || "no description")
-        + (server.tools ? " (" + t.tools.length + (t.tools.length === 1 ? " tool)" : " tools)") : "")).join("; ") + "." : "\n  No toolsets are configured for it in vertex.chat.toolsets.")
-      + (server.tools ? (server.outside ? "\n  " + server.outside + " of its tools are in no toolset." : "") : "\n  Its tool list has not been read yet: it has not started in VERTEX.")).join("\n") + "\n";
-  }
-
   /* The Settings search that shows what server NAME is configured by: SAP's adt.mcpServer settings for a server
      reached by URL from SAP's extension, the write settings a server's entry uses, the server list otherwise. */
   function settingsQuery(name) {

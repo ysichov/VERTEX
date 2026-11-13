@@ -1,3 +1,21 @@
+## 2026-11-14 — VS Code 0.9.91: comparable input counts
+
+Session Logs now includes cache creation in New in for conversation and prompt rows, including sorting. Existing logs are recalculated when opened; the original usage counters and cache-write details are preserved. Eclipse version and build are unchanged.
+
+## 2026-11-13 — Release 0.9.90: Jev selects orchestrator tools
+
+Jev now chooses the execution mode together with the function set in one request. Direct execution is the default and runs the whole task without preliminary planning or limiting a five-function task to a small stage set. Staged execution remains available when Jev finds a substantial context or discovery benefit. Logs record the mode. Fixed a repeated operation field that made Codex reject the staged-plan schema before any SAP action.
+
+Stage boundaries now restrict operations as well as function names. Each stage stops after six actions or three consecutive failures. Successful identical reads are reused, including across stages, and cached attempts still count toward the stage budget. Missing capabilities get one bounded recovery; incomplete evidence remains explicit. The plan receives the configured SAP identity, and the log labels counts as tool calls.
+
+VERTEX Orchestrator requires a JSON plan before execution. The host runs its narrow stages in order, keeping SQL SELECT and code reading as a baseline, with at most one specialized VERTEX/ARC-1 function selected by Jev for each stage. Jev uses a compact catalog; the executor receives only selected full schemas and relevant dependency summaries, without full prior stage conversations. Stage results are JSON-validated; blocked or invalid stages do not advance. Original authorization remains fixed, including prohibitions on checks and writes. Logs show the JSON plan, stage results, decisions, deferred tools and usage. Other MCP servers remain excluded.
+
+Every model can now be given its tier's rate limits by hand, in its own row of the model table in LLM Providers: input tokens per minute, requests per minute, or both. Providers state different ones - Gemini's free tier refused a decision with "limit: 50000 input tokens per minute", while a provider that counts calls needs the requests field - so each model carries both numbers and a request waits for whichever is not ready. VERTEX keeps requests for that model inside its limits instead of provoking a rate limit, so the model finishes the work. Each model counts its own minute: one model's spending never delays another, and nothing crosses between providers. It applies to decision models and ordinary chat models alike. An empty cell means that limit is not enforced. A rate limit that states its own delay is still waited out once and asked again, within a minute's cap. Every wait is shown while it runs and recorded with the request, so a measurement can subtract it.
+
+What a budget cannot promise: VERTEX counts only what it spent itself. Another window, another tool or another machine on the same key spends the same quota unseen, a provider may also cap requests per minute or per day, and a restart starts the minute empty. The provider's own answer remains the last word.
+
+A task sent without a configured Jev decision model is now refused at once, before the ARC-1 MCP server is started, instead of after the wait that starting it costs. A model that a failed check marked unavailable is no longer hidden for good: a successful re-check clears the mark, so a decision model an earlier build probed through the wrong endpoint - Gemini Decision 1 among them - returns to Auto (Jev) without editing settings by hand.
+
 ## 2026-11-13 — Release 0.9.89
 
 Continuing a log now keeps each answer’s Copy button and usage line inside that answer, so topic filtering hides the whole message. Continue opens the full conversation; continuing a topic shows that topic. The empty-chat hint disappears when restored messages arrive.

@@ -134,6 +134,7 @@ function parseSession(text, file) {
       continue;
     }
     // The report travels whole as well as prettified: the page reads Jev's answers as a table from it.
+    if(record.type==="vertex_tool_selection"){if(current)current.details.push({type:"Orchestrator tool selection",text:prettyJson(record.report)});continue;}
     if(record.type==="vertex_topic_routing"){if(current){current.topic=record.report?.topic||null;current.details.push({type:"Topic routing (Jev)",routing:record.report&&typeof record.report==="object"?record.report:null,text:prettyJson(record.report)});}continue;}
     if (record.type === "vertex_context_optimization") {
       if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
@@ -804,6 +805,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
         tools: sanitize(tools || [], objects), schema: sanitize(schema || null, objects) };
       write({ type: "vertex_request", request, contextSize, vertex_objects: objects, vertex_snapshots: snapshots });
     },
+    toolSelection(report) { write({type:"vertex_tool_selection",report:on.questions?report:{elapsedMs:report.elapsedMs,selected:report.selected}}); },
     routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
     providerResponse({ provider, scope, response }) {
       // Preserve provider counters verbatim, before normalization. These records

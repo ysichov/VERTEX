@@ -5,7 +5,7 @@
 **[VS Code — the Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap)**
 · **[Eclipse ADT — the update site](https://ysichov.github.io/VERTEX/)**
 
-Current VS Code extension: **0.9.89**.
+Current VS Code extension: **0.9.91**.
 
 For VS Code, the recommended companion is
 [ABAP Syntax Highlighting by Lars Hvam](https://marketplace.visualstudio.com/items?itemName=larshp.vscode-abap)
@@ -101,7 +101,7 @@ ADT is the editor: there is no VERTEX tab for it to write into, and the debugger
 See [eclipse/README.md](eclipse/README.md).
 
 ² The explorer pages are shared between both hosts. The Eclipse update site carries build
-**0.9.89.20261113165315**; the VS Code extension is **0.9.89**.
+**0.9.90.20261113185846**; the VS Code extension is **0.9.91**.
 
 ³ In Eclipse, VERTEX Smart Debugger drives ADT's own debug session instead of a second debugger, and Run
 opens the object in Eclipse's embedded SAP GUI. It is on the update site and has not been checked on a live ADT session.
@@ -418,8 +418,7 @@ or the ADT MCP Server of SAP's ABAP Development Tools for VS Code, which logs on
 Toolsets (`vertex.chat.toolsets`) add a few tools of another server only when a task needs them: the
 chat enables, for example, SAP's RAP generators and service-binding tools through `enable_toolset`
 when asked for a RAP service, and other questions do not carry them. The last choice, **VERTEX Orchestrator**,
-keeps VERTEX's own tools and gives the model a catalog of every server and its toolsets (mcp-abap-adt's 250-plus
-tools split into twelve), so it enables only what a task needs. The ⓘ button opens **VERTEX: MCP Servers**: each
+asks Jev once to select needed VERTEX/ARC-1 functions and choose direct or staged execution. Direct is the default, with no preliminary planning call or small-set cap. SQL SELECT and source reading stay available; only tasks that benefit from separate contexts use JSON stages and dependency summaries. Original inspection-only constraints still block execution and writes. The ⓘ button opens **VERTEX: MCP Servers**: each
 server's description, version, toolsets and tools, kept from its last start; npm is asked after VS Code loads and each time the window opens, and **Update** appears when npm has a newer
 ARC-1 or mcp-abap-adt, and nothing is installed until you press it.
 The picked server is started with the active system's url, user, client and kept password; `npx`
@@ -430,7 +429,7 @@ window that opens on picking one asks for its write access, kept in `vertex.chat
 `vertex.chat.mcpServers`. Details: [vscode/README.md](vscode/README.md#choose-the-chats-sap-tools).
 
 
-In **VERTEX Orchestrator**, a separate planning model prepares a plan and completion checks before the chat's model runs the task. Choose the planner with the gear beside the MCP list or **VERTEX: Configure Orchestrator Planner**.
+Choose the shared Jev decision model with the gear beside the MCP list or **VERTEX: Configure Orchestrator Jev Model**. Session Logs shows a separate **Orchestrator tool selection** type with each stage, per-tool decisions, probabilities and the selected set. Missing configuration or failed selection stops execution.
 
 ### Other assistants over MCP
 

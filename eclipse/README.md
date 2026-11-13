@@ -1,6 +1,6 @@
 # Built-in Eclipse Assistant
 
-**Version: 0.9.89**
+**Version: 0.9.90**
 
 **Looking for the standalone AI Code Agent for local Git projects in any programming language?** Use the [VS Code extension](../vscode/README.md): that workflow reads, searches and edits an isolated working copy, with review and Apply, without a SAP connection. This document describes the Eclipse ADT plugin and its SAP workflows.
 

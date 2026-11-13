@@ -6,6 +6,8 @@
 
 - After fixes or changes to the VS Code extension, always rebuild and verify the VSIX before handing off. Keep the current version unless the user requests a version change.
 
+- A full `npm test` in `vscode/` is about 1530 tests with a process per file and takes roughly five minutes. Run it **once** into a file, then read both the `ℹ tests/pass/fail` counters and the `✖` names out of that file. Never put two `npm test` runs in one command to collect the two separately - it doubles the wait for nothing. Compare the `✖` names against a baseline captured before the change: the claim to make is "no new failure", not a raw failure count.
+
 - When the user names a new version, bump it on both hosts together: `vscode/package.json`,
   `org.vertex.abap.feature/feature.xml` and `org.vertex.abap.ui/META-INF/MANIFEST.MF`. Build
   both the VSIX and the Eclipse update site, and in the same landing write the release into

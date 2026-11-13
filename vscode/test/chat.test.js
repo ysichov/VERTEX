@@ -740,143 +740,37 @@ test('Stop wakes a rate-limit retry without sending another request', async t =>
 });
 
 
-const executionPlan={goal:'Answer the actual task',context:['Assumption: verify identifiers'],steps:[{id:1,action:'Discover schemas, then query evidence',tools:['read_evidence'],depends_on:[],success_criteria:['Evidence belongs to the requested entity'],on_failure:'Read the actual schema'}],recovery:['Inspect the error and change the request'],completion_checks:['Prove the result belongs to the requested entity']};
-function plannerTools(orchestrator=true){return {orchestrator:()=>orchestrator,schemas:[{name:'read_evidence',description:'Read evidence',inputSchema:{type:'object',properties:{id:{type:'string'}}}}],instructions:'Available tool constraints',editorContext:()=>null};}
-test('Orchestrator plans with ChatGPT Sol medium before a separate executor without changing its model',async t=>{
- const events=[],prompts=[];
+function routingTools(orchestrator=true){const schemas=[{name:'read_evidence',description:'Read evidence',inputSchema:{type:'object',properties:{}}},{name:'write_evidence',description:'Write evidence',inputSchema:{type:'object',properties:{}}}];return {orchestrator:()=>orchestrator,orchestratorTools:async()=>schemas,schemas,instructions:'Available tools',editorContext:()=>null};}
+function jsonPlan(task='user question'){return {goal:task,stages:[{id:1,task,operation:"read",depends_on:[],completion_checks:['Evidence obtained']}]};}
+function stageReport(answer,id=1){return {answer,navigation:null,build_command:'',stage_id:id,stage_status:'complete',evidence:['Verified result'],remaining:[]};}
+test('Jev chooses direct execution and functions in one request without a planning model call',async t=>{
+ const router=require('../orchestrator-plan'),events=[];
+ t.mock.method(router,'connect',async()=>({provider:'typesafe-api',model:'jev-latest',key:'test'}));
  t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
- t.mock.method(assistant,'ask',async options=>{
-  events.push('planner');assert.equal(options.assistant,'codex');assert.equal(options.model,'gpt-5.6-sol');assert.equal(options.effort,'medium');assert.deepEqual(options.tools,[]);
-  assert.equal(options.workDir,undefined);assert.equal(options.url,undefined);assert.equal(options.callTool,undefined);
-  assert.match(options.prompt,/read_evidence/);assert.match(options.prompt,/user question/);
-  return {plan:executionPlan,model:'gpt-5.6-sol',usage:{input_tokens:10,output_tokens:20}};
- });
- t.mock.method(compatible,'ask',async options=>{
-  events.push('executor');prompts.push(options.prompt);assert.equal(options.assistant,'openrouter-api');assert.equal(options.model,'weak');assert.match(options.prompt,/Orchestrator execution plan/);assert.match(options.prompt,/Prove the result belongs/);
-  return {plan:{answer:'verified answer'},model:'weak',usage:null};
- });
- const settings={provider:'openrouter-api',model:'weak'},ask=chat.create(fakeVscode(settings),plannerTools(),null,{});
- const result=await ask('user question');assert.deepEqual(events,['planner','executor']);assert.equal(result.answer,'verified answer');assert.equal(result.planner.model,'gpt-5.6-sol');assert.equal(settings.model,'weak');ask.dispose();
+ t.mock.method(router,'select',async(_v,task,_c,tools,options)=>{events.push('jev');assert.ok(options.decideMode);assert.equal(task,'user question');return {tools:tools.filter(t=>t.name==='read_evidence'),executionMode:'direct',model:'jev-latest',provider:'typesafe-api',permissions:{write:false,execute:false},usage:{input_tokens:10}};});
+ t.mock.method(compatible,'ask',async options=>{events.push('execute');assert.ok(!options.structuredResult);assert.equal(options.schema.properties.stage_id,undefined);assert.deepEqual(options.tools.map(t=>t.name),['read_evidence']);await assert.rejects(async()=>options.callTool('write_evidence',{}),/unavailable/);return {plan:{answer:'done',navigation:null,build_command:''},model:'weak'};});
+ const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak'}),routingTools(),null,{});
+ const result=await ask('user question');assert.deepEqual(events,['jev','execute']);assert.equal(result.answer,'done');assert.equal(result.planner.usage.input_tokens,10);ask.dispose();
 });
-test('Orchestrator settings are independent, planning stays off in other modes and when disabled',async t=>{
- let planners=0,executors=0;
- t.mock.method(assistant,'ask',async()=>{planners++;throw new Error('unexpected planner');});
+test('Jev failure blocks execution and Stop cancels initial selection after the JSON plan',async t=>{
  t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
- t.mock.method(compatible,'ask',async()=>{executors++;return {plan:{answer:'done'},model:'weak',usage:null};});
- for(const [mode,disabled] of [[false,false],[true,true]]){
-  const settings={provider:'openrouter-api',model:'weak',...(disabled?{orchestratorProvider:''}:{})};
-  const ask=chat.create(fakeVscode(settings),plannerTools(mode),null,{});await ask('user question');ask.dispose();
- }
- assert.equal(planners,0);assert.equal(executors,2);
-});
-test('Invalid planner output or planner failure never silently runs the weak executor',async t=>{
- let executions=0;
- t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
- t.mock.method(compatible,'ask',async()=>{executions++;return {plan:{answer:'unexpected'}};});
- for(const invalid of ['not JSON','{"goal":"Guess","context":[],"steps":[],"recovery":[],"completion_checks":[]}']){
-  t.mock.method(assistant,'ask',async()=>({plan:{answer:invalid},model:'gpt-5.6-sol',usage:null}));
-  const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak'}),plannerTools(),null,{});
-  await assert.rejects(ask('user question'),/Orchestrator planning failed/);ask.dispose();
- }
- assert.equal(executions,0);
-});
-test('Stop during orchestration cancels the planner and never starts the executor',async t=>{
- let ready,executions=0;const started=new Promise(resolve=>ready=resolve);
- t.mock.method(assistant,'ask',async options=>{ready();await new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}));});
- t.mock.method(compatible,'ask',async()=>{executions++;return {plan:{answer:'unexpected'}};});
- const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak'}),plannerTools(),null,{});
+ const router=require('../orchestrator-plan');let executions=0,ready;
+ t.mock.method(router,'connect',async()=>({provider:'typesafe-api',model:'jev-latest',key:'test'}));
+ t.mock.method(compatible,'ask',async options=>{if(options.structuredResult)return {plan:jsonPlan()};executions++;return {plan:stageReport('unexpected')};});
+ t.mock.method(router,'select',async()=>{throw new Error('decision unavailable');});
+ let ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak'}),routingTools(),null,{});
+ await assert.rejects(ask('user question'),/decision unavailable/);ask.dispose();
+ const started=new Promise(resolve=>ready=resolve);
+ t.mock.method(router,'select',async(_v,_q,_c,_t,options)=>{ready();await new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('stopped')),{once:true}));});
+ ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak'}),routingTools(),null,{});
  const pending=ask('user question');await started;ask.stop();assert.equal((await pending).stopped,true);assert.equal(executions,0);ask.dispose();
 });
-
-
-test('Planner pickers save provider, exact model and effort without altering executor settings',async t=>{
- const modelConfig=require('../model-config'),ai={provider:'openrouter-api',model:'weak',effort:'low'},planning={},titles=[];
- t.mock.method(modelConfig,'offered',()=>[{id:'codex',setting:'codex-subscription',label:'ChatGPT subscription'}]);
- t.mock.method(modelConfig,'adopt',async()=>{});t.mock.method(modelConfig,'apply',(_v,_id,list)=>list);
- t.mock.method(assistant,'models',async()=>[{id:'gpt-5.6-sol',label:'GPT-5.6-Sol'},{id:'',label:'Codex default'}]);
- const vscode=fakeVscode(ai),picks=[{id:'codex-subscription'},{id:'gpt-5.6-sol'},{id:'medium'}];
- vscode.workspace.getConfiguration=section=>({get:(key,fallback)=>(section==='vertex.chat'?planning:ai)[key]??fallback,update:async(key,value)=>{(section==='vertex.chat'?planning:ai)[key]=value;}});
- vscode.window.showQuickPick=async(items,options)=>{titles.push(options.title);assert.ok(items.every(item=>item.id!==undefined));if(options.title.endsWith('model'))assert.ok(items.every(item=>item.id));return picks.shift();};
- const ask=chat.create(vscode,plannerTools(),null,{});await ask.configOrchestrator();
- assert.deepEqual(planning,{orchestratorModel:'gpt-5.6-sol',orchestratorEffort:'medium',orchestratorProvider:'codex-subscription'});
- assert.equal(ai.provider,'openrouter-api');assert.equal(ai.model,'weak');assert.equal(ai.effort,'low');assert.equal(titles.length,3);ask.dispose();
-});
-test('Planner can use a configured API provider and effort independently',async t=>{
+test('Other MCP modes do not invoke JSON planning or Jev selection',async t=>{
+ t.mock.method(require('../orchestrator-plan'),'select',async()=>{throw Error('unexpected routing');});
  t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
- t.mock.method(require('../anthropic'),'ask',async options=>{
-  assert.equal(options.model,'strong-planner');assert.equal(options.effort,'high');assert.equal(options.apiKey,'test');assert.deepEqual(options.tools,[]);
-  return {plan:executionPlan,model:'strong-planner',usage:null};
- });
- t.mock.method(compatible,'ask',async options=>{assert.equal(options.model,'weak');return {plan:{answer:'done'},model:'weak',usage:null};});
- const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak',orchestratorProvider:'anthropic-api',orchestratorModel:'strong-planner',orchestratorEffort:'high'}),plannerTools(),null,{});
- const result=await ask('user question');assert.equal(result.planner.provider,'anthropic-api');assert.equal(result.model,'weak');ask.dispose();
-});
-
-
-test('Orchestrator recovers from a failed duplicate, preserves evidence and rejects an unfinished API answer',async t=>{
- const apiAsk=rawCompatibleAsk;let plannerCalls=0,actions=0,requests=0;const bodies=[],stream=[];
- t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
- t.mock.method(assistant,'ask',async options=>{
-  plannerCalls++;assert.match(options.prompt,/next model step in this same request/);
-  if(plannerCalls===1)return {plan:executionPlan,model:'gpt-5.6-sol',usage:{input_tokens:1}};
-  if(plannerCalls===2){assert.match(options.prompt,/Repeated failed call blocked/);return {plan:{...executionPlan,steps:[{...executionPlan.steps[0],action:'Use read_evidence with id good'}]},model:'gpt-5.6-sol',usage:{input_tokens:2}};}
-  assert.match(options.prompt,/verified result/);return {plan:plannerCalls===3?{accept:false,feedback:'You have evidence; finish the answer yourself'}:{accept:true,feedback:''},model:'gpt-5.6-sol',usage:{input_tokens:3}};
- });
- const replies=[{tool_calls:[{id:'1',type:'function',function:{name:'read_evidence',arguments:'{"id":"bad"}'}}]},
- {tool_calls:[{id:'2',type:'function',function:{name:'read_evidence',arguments:'{"id":"bad"}'}}]},
- {tool_calls:[{id:'3',type:'function',function:{name:'read_evidence',arguments:'{"id":"good"}'}}]},
- {content:'Please run the read tool yourself'},{content:'The verified result is 42'}];
- t.mock.method(compatible,'ask',options=>apiAsk({...options,request:async(_id,_key,_route,body)=>{requests++;bodies.push(JSON.parse(JSON.stringify(body)));return {choices:[{message:replies.shift()}],usage:{prompt_tokens:10,completion_tokens:2}};}}));
- const tools=plannerTools();tools.execute=async(_name,args)=>{actions++;if(args.id==='bad')throw new Error('invalid field');return {value:42,evidence:'verified result'};};
- const ask=chat.create(fakeVscode({provider:'openai-api',model:'weak'}),tools,null,{});
- const result=await ask('user question',{onProgress:update=>{if(update.answer)stream.push(update.answer);}});
- assert.equal(result.answer,'The verified result is 42');assert.equal(plannerCalls,4);assert.equal(actions,2);assert.equal(requests,5);assert.equal(result.planner.usage.input_tokens,9);
- assert.match(JSON.stringify(bodies[2].messages),/Orchestrator recovery advice/);assert.match(JSON.stringify(bodies[4].messages),/finish the answer yourself/);
- assert.ok(!stream.includes('Please run the read tool yourself'));assert.ok(!stream.some(text=>text.includes('Draft withheld')));ask.dispose();
-});
-
-
-test('CLI orchestrator tool endpoint uses the same recovery guard without replaying the request',async t=>{
- let endpoint,actions=0,executions=0,disposed=0;
- t.mock.method(assistant,'ask',async options=>{
-  if(options.instructions.startsWith('You are the planning model'))return {plan:executionPlan,model:'gpt-5.6-sol',usage:null};
-  if(options.instructions.startsWith('Review the executor'))return {plan:{accept:true,feedback:''},model:'gpt-5.6-sol',usage:null};
-  executions++;assert.match(options.url,/scoped/);
-  await assert.rejects(endpoint.call(null,'read_evidence',{id:'bad'}),/bad field/);
-  await assert.rejects(endpoint.call(null,'read_evidence',{id:'bad'}),/Orchestrator recovery advice/);
-  await endpoint.call(null,'read_evidence',{id:'good'});
-  return {plan:{answer:'supported result'},model:'executor',usage:null};
- });
- const tools=plannerTools();tools.execute=async(_name,args)=>{actions++;if(args.id==='bad')throw new Error('bad field');return {result:'supported result'};};
- const server={start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'test',registerTools:options=>{endpoint=options;return {route:'/scoped',dispose(){disposed++;}};}};
- const ask=chat.create(fakeVscode({provider:'codex-subscription',model:'executor'}),tools,server,{});
- const result=await ask('user question');assert.equal(result.answer,'supported result');assert.equal(actions,2);assert.equal(executions,1);assert.equal(disposed,1);ask.dispose();
-});
-
-
-test('Planner output is schema-bound and one malformed response gets exactly one format retry',async t=>{
- let calls=0,executions=0;
- t.mock.method(assistant,'ask',async options=>{
-  calls++;assert.equal(options.structuredResult,true);assert.equal(options.schema.additionalProperties,false);assert.equal(options.schema.properties.answer,undefined);assert.ok(options.schema.properties.goal);assert.deepEqual(options.tools,[]);
-  return {plan:calls===1?{answer:'nested malformed JSON'}:executionPlan,model:'gpt-5.6-sol',usage:{input_tokens:7}};
- });
- t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
- t.mock.method(compatible,'ask',async()=>{executions++;return {plan:{answer:'done'},model:'weak'};});
- const ask=chat.create(fakeVscode({provider:'openai-api',model:'weak'}),plannerTools(),null,{});const result=await ask('user question');assert.equal(calls,2);assert.equal(executions,1);assert.equal(result.planner.usage.input_tokens,14);ask.dispose();
-});
-test('Planner retries are limited to format failures, never transport failures',async t=>{
- let calls=0;t.mock.method(assistant,'ask',async()=>{calls++;throw Object.assign(new Error('connection reset'),{code:'ECONNRESET'});});
- const ask=chat.create(fakeVscode({provider:'openai-api',model:'weak'}),plannerTools(),null,{});await assert.rejects(ask('user question'),/connection reset/);assert.equal(calls,1);ask.dispose();
-});
-
-
-test('Malformed native output still accounts reported usage before the bounded retry',async t=>{
- let calls=0;t.mock.method(assistant,'ask',async options=>{
-  if(++calls===1){options.onProviderResponse({scope:'model_response',response:{model:'gpt-5.6-sol',usage:{input_tokens:10,cached_input_tokens:3,output_tokens:2}}});throw Object.assign(new Error('invalid native JSON'),{code:'STRUCTURED_FORMAT'});}
-  return {plan:executionPlan,model:'gpt-5.6-sol',usage:{input_tokens:4,output_tokens:1}};
- });
- t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));t.mock.method(compatible,'ask',async()=>({plan:{answer:'done'},model:'weak'}));
- const ask=chat.create(fakeVscode({provider:'openai-api',model:'weak'}),plannerTools(),null,{});const result=await ask('user question');assert.equal(calls,2);assert.equal(result.planner.usage.input_tokens,11);assert.equal(result.planner.usage.cache_read_input_tokens,3);assert.equal(result.planner.usage.output_tokens,3);ask.dispose();
+ t.mock.method(compatible,'ask',async options=>{assert.ok(!options.structuredResult);return {plan:{answer:'done'}};});
+ const ask=chat.create(fakeVscode({provider:'openrouter-api',model:'weak'}),routingTools(false),null,{});
+ assert.equal((await ask('user question')).answer,'done');ask.dispose();
 });
 
 test('saved historical screenshots keep file references without attaching their bytes',async t=>{
@@ -972,4 +866,61 @@ test('untyped SAP links resolve exact objects and disambiguate types before open
  await ask.openObject({object_name:'Z_AVE'});
  assert.deepEqual(calls[1],['open_sap_object',{object_type:'DEVC',object_name:'Z_AVE'}]);
  await assert.rejects(ask.openObject({object_name:'not a name'}),/exact SAP object/);
+});
+
+test('CLI planning has no endpoint or action tools; execution receives only the selected function',async t=>{
+ t.mock.method(require('../orchestrator-plan'),'connect',async()=>({provider:'typesafe-api',model:'jev-latest',key:'test'}));
+ t.mock.method(require('../orchestrator-plan'),'select',async(_v,_q,_c,tools)=>({tools:tools.filter(t=>t.name==='read_evidence'),executionMode:'direct',model:'jev-latest',provider:'typesafe-api',permissions:{write:false,execute:false},usage:{input_tokens:2}}));
+ let endpointTools;const tools=routingTools();tools.instructions='RAW_SERVER_GUIDANCE write_evidence';tools.execute=async name=>'result:'+name;
+ const server={token:'t',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:options=>{endpointTools=options;return {route:'/selected',dispose(){}};}};
+ t.mock.method(assistant,'ask',async options=>{if(options.structuredResult){assert.deepEqual(options.tools,[]);assert.equal(options.url,undefined);assert.equal(options.workDir,undefined);return {plan:jsonPlan()};}assert.doesNotMatch(options.instructions,/RAW_SERVER_GUIDANCE|write_evidence/);assert.deepEqual(options.tools,['read_evidence']);assert.deepEqual(endpointTools.tools.map(t=>t.name),['read_evidence']);assert.equal((await endpointTools.call(null,'read_evidence',{})).content[0].text,'"result:read_evidence"');await assert.rejects(endpointTools.call(null,'write_evidence',{}),/unavailable/);return {plan:stageReport('done'),model:'test'};});
+ const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test'}),tools,server,{});assert.equal((await ask('user question')).answer,'done');ask.dispose();
+});
+for(const native of [false,true])test((native?'CLI':'API')+' follows the JSON stages without model-controlled transitions',async t=>{
+ const routing=require('../orchestrator-plan');let selections=0,served,toolCalls=[];
+ t.mock.method(routing,'connect',async()=>({provider:'typesafe-api',model:'jev-latest',key:'test'}));
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ const schemas=[{name:'read_evidence',inputSchema:{type:'object'}},{name:'read_dependencies',inputSchema:{type:'object'}},{name:'run_atc_check',annotations:{readOnlyHint:true},inputSchema:{type:'object'}}];
+ const tools={schemas,instructions:'',editorContext:()=>null,orchestrator:()=>true,orchestratorTools:async()=>schemas,execute:async(name,args)=>{toolCalls.push({name,args});return {id:'ZCL_TEST'};}};
+ t.mock.method(routing,'select',async(_v,task,context,candidates,options)=>{if(options.decideMode)return {tools:[],executionMode:'staged',permissions:{write:false,execute:false},model:'jev-latest',provider:'typesafe-api',usage:{input_tokens:1}};selections++;if(selections===2){assert.equal(task,'Inspect dependencies of ZCL_TEST');assert.match(JSON.stringify(context),/ZCL_TEST/);assert.deepEqual(options.permissions,{write:false,execute:false});}return {tools:[candidates[selections===1?0:1],candidates[2]],permissions:{write:false,execute:false},model:'jev-latest',provider:'typesafe-api',usage:{input_tokens:3}};});
+ const server={token:'t',start:async()=>({url:'http://127.0.0.1:1/mcp'}),registerTools:set=>{served=set;return {route:'/planned',dispose(){}};}};
+ const execute=async options=>{
+  if(options.structuredResult && options.schema.properties.stages)return {plan:{goal:'Investigate changes',stages:[{id:1,task:'Find the changed object',operation:'discover',depends_on:[],completion_checks:['Object identified']},{id:2,task:'Inspect dependencies of ZCL_TEST',operation:'inspect',depends_on:[1],completion_checks:['Dependencies verified']}]}};
+  if(options.structuredResult){assert.deepEqual(options.tools,[]);assert.match(options.prompt,/Found ZCL_TEST/);assert.match(options.prompt,/Dependencies verified/);return {plan:{answer:'Dependencies verified',navigation:null,build_command:''}};}
+  const stage=options.schema.properties.stage_id.enum[0];
+  const call=native?async(name,args)=>JSON.parse((await served.call(null,name,args)).content[0].text):options.callTool;
+  const name=stage===1?'read_evidence':'read_dependencies';
+  assert.deepEqual((native?options.tools:options.tools.map(t=>t.name)),[name]);
+  if(stage===2)assert.match(options.prompt,/ZCL_TEST/);
+  await call(name,{});await assert.rejects(call('run_atc_check',{}),/unavailable/);
+  return {plan:stageReport(stage===1?'Found ZCL_TEST':'Dependencies verified',stage),model:'test'};
+ };
+ t.mock.method(native?assistant:compatible,'ask',execute);
+ const ask=chat.create(fakeVscode({provider:native?'claude-subscription':'openrouter-api',model:'test'}),tools,server,{});
+ const result=await ask('Investigate changes without executing anything');assert.equal(selections,2);assert.deepEqual(toolCalls.map(t=>t.name),['read_evidence','read_dependencies']);assert.equal(result.planner.usage.input_tokens,7);assert.equal(result.answer,'Dependencies verified');ask.dispose();
+});
+
+test('Textual stage announcements cannot start Jev or execute actions without a JSON plan',async t=>{
+ const routing=require('../orchestrator-plan');let decisions=0;
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(routing,'connect',async()=>({provider:'typesafe-api',model:'jev-latest',key:'test'}));
+ t.mock.method(routing,'select',async(_v,_q,_c,_t,options)=>{decisions++;assert.ok(options.decideMode);return {tools:[],executionMode:'staged',permissions:{write:false,execute:false},model:'jev-latest',provider:'typesafe-api'};});
+ t.mock.method(compatible,'ask',async options=>{assert.deepEqual(options.tools,[]);return {plan:{answer:'First I will find transports, then compare versions'}};});
+ const ask=chat.create(fakeVscode({provider:'openai-api',model:'test'}),routingTools(),null,{});
+ await assert.rejects(ask('Investigate changes'),/valid JSON stage plan/);assert.equal(decisions,1);ask.dispose();
+});
+
+test('A stage exceeding six actions is cancelled and summarized as blocked instead of continuing to the next stage',async t=>{
+ const routing=require('../orchestrator-plan');let actions=0,selections=0;
+ t.mock.method(routing,'connect',async()=>({provider:'typesafe-api',model:'jev-latest',key:'test'}));
+ t.mock.method(require('../key-profiles'),'getActiveKey',async()=>({key:'test'}));
+ t.mock.method(routing,'select',async(_v,_task,_context,tools,options)=>{if(options.decideMode)return {tools:[],executionMode:'staged',permissions:{write:false,execute:false},model:'jev-latest',provider:'typesafe-api'};selections++;return {tools:[tools[0]],permissions:{write:false,execute:false},model:'jev-latest',provider:'typesafe-api',usage:{input_tokens:1}};});
+ const tools=routingTools();tools.execute=async()=>{actions++;return 'read result';};
+ t.mock.method(compatible,'ask',async options=>{
+  if(options.structuredResult && options.schema.properties.stages)return {plan:jsonPlan()};
+  if(options.structuredResult)return {plan:{answer:'Stopped at the stage action limit',navigation:null,build_command:''}};
+  for(let i=0;i<7;i++)await options.callTool('read_evidence',{i});
+  return {plan:stageReport('must not reach')};
+ });
+ const ask=chat.create(fakeVscode({provider:'openai-api',model:'test'}),tools,null,{});const result=await ask('Investigate changes');assert.equal(actions,6);assert.equal(selections,1);assert.match(result.answer,/action limit/);ask.dispose();
 });

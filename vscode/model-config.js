@@ -54,6 +54,8 @@ function read(vscode, id) {
            off: own.off === true || compatible.isLocal(id) && own.off !== false
              && vscode.workspace.getConfiguration("vertex.ai").get("provider", "") !== id,
            unavailable: own.unavailable && typeof own.unavailable === "object" ? own.unavailable : {},
+           limits: own.limits && typeof own.limits === "object" && !Array.isArray(own.limits) ? own.limits : {},
+           calls: own.calls && typeof own.calls === "object" && !Array.isArray(own.calls) ? own.calls : {},
            availabilityMigrated: own.availabilityMigrated === true };
 }
 
@@ -67,7 +69,9 @@ async function write(vscode, id, config) {
   const all = Object.assign({}, settings.get("modelConfig", {}) || {});
   const next = config.models === false ? Object.assign({}, all[id] || {})
     : { ...(all[id] || {}), ...(id === "claude" ? { enabled: config.enabled, versions: config.versions } : { enabled: config.enabled, known: config.known }),
-        ...(config.unavailable ? { unavailable: config.unavailable } : {}) };
+        ...(config.unavailable ? { unavailable: config.unavailable } : {}),
+        ...(config.limits ? { limits: config.limits } : {}),
+        ...(config.calls ? { calls: config.calls } : {}) };
   if (config.models !== false && id !== "claude") delete next.hidden;
   if (config.off) { next.off = true; } else if (compatible.isLocal(id)) { next.off = false; } else { delete next.off; }
   all[id] = next;
@@ -86,6 +90,8 @@ function rows(list, config, id) {
   if (id !== "claude") {
     if (!config.enabled) throw new Error("The " + id + " model table has not been taken over from its old form yet.");
     const listed = list.map(m => decorate({ ...m, on: config.enabled.indexOf(m.id) >= 0,
+      ...(Number((config.limits||{})[m.id]) > 0 ? { limit: Number(config.limits[m.id]) } : {}),
+      ...(Number((config.calls||{})[m.id]) > 0 ? { callLimit: Number(config.calls[m.id]) } : {}),
       ...(config.known && config.known.indexOf(m.id) < 0 ? { isNew: true } : {}) }));
     config.enabled.forEach(model => {
       if (!list.some(m => m.id === model)) listed.push({ id: model, label: model, on: true, missing: true });
@@ -129,6 +135,19 @@ function news(vscode, id, list, chosen) {
   const all = rows(list, read(vscode, id), id);
   return { newCount: all.filter(m => m.isNew).length,
            missing: chosen && all.some(m => m.missing && m.id === chosen) ? chosen : "" };
+}
+/* A successful check must not leave the old failure behind. The stored mark hides the model
+   from every list, and a model hidden by it can never be used, so it can never heal through use:
+   a re-check is the only moment the mark can be cleared. */
+async function clearUnavailable(vscode, id, model) {
+  const settings = vscode.workspace.getConfiguration("vertex.ai");
+  const all = { ...(settings.get("modelConfig", {}) || {}) }, own = all[id];
+  if (!own || !own.unavailable || !Object.hasOwn(own.unavailable, model)) return false;
+  const unavailable = { ...own.unavailable };
+  delete unavailable[model];
+  all[id] = { ...own, unavailable };
+  await settings.update("modelConfig", all, vscode.ConfigurationTarget.Global);
+  return true;
 }
 let migrationQueue = Promise.resolve();
 function migrateUnavailable(vscode, id, list) {
@@ -226,6 +245,7 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
     } catch (e) { error = e; result = { available: false, reason: String(e.message || e), checkedAt: new Date().toISOString() }; }
     Object.defineProperty(checks, model, { value: result, enumerable: true, configurable: true, writable: true });
     if (secrets?.store) await secrets.store(scope, JSON.stringify(checks));
+    if (!error) await clearUnavailable(vscode, id, model).catch(() => {});
     post({ checkedRow: { provider: id, model, ...result } });
     if (error) throw error;
   }
@@ -444,6 +464,8 @@ function open(vscode, full, extensionPath, forget, secrets, executable) {
           unavailable: Object.fromEntries(list.filter(r => r && r.available === false).map(r => [String(r.id), {
             reason: String(r.reason || "Marked unavailable."), source: r.availabilitySource || "probe"
           }])),
+          limits: Object.fromEntries(list.filter(r => r && Number(r.limit) > 0).map(r => [String(r.id), Math.round(Number(r.limit))])),
+          calls: Object.fromEntries(list.filter(r => r && Number(r.callLimit) > 0).map(r => [String(r.id), Math.round(Number(r.callLimit))])),
           versions: p.id === "claude"
             ? list.filter(r => r && r.version).map(r => ({ id: String(r.id), label: String(r.label || r.id) }))
             : []
@@ -495,6 +517,7 @@ table { border-collapse: collapse; margin: 6px 0; min-width: 420px; }
 th, td { border-bottom: 1px solid var(--vscode-panel-border); padding: 4px 8px; text-align: left; }
 th { background: var(--vscode-keybindingTable-headerBackground, transparent); }
 .model-table-scroll { max-height: 65vh; overflow: auto; }
+.models-table .limit-input { width: 6.5em; }
 .models-table thead th { position: sticky; top: 0; z-index: 2; background: var(--vscode-keybindingTable-headerBackground, var(--vscode-editor-background)); }
 .group-sort-controls { display:inline-flex; align-items:center; gap:4px; margin-left:14px; font-weight:normal; }
 .group-sort-controls select { padding:1px 6px; }
@@ -783,6 +806,8 @@ function fill(id) {
     capabilityDefinitions.forEach(d => columns.push({ key: "cap." + d.key, label: d.icon, title: d.label }));
     columns.push({ key: "contextWindow", label: "Context" }, { key: "inputPrice", label: "In $/1M" }, { key: "outputPrice", label: "Out $/1M" });
   }
+  columns.push({ key: "limit", label: "In tok/min", title: "Input tokens per minute this model is allowed, entered by hand from the tier's own conditions. VERTEX waits rather than exceed it. Empty means no budget." });
+  columns.push({ key: "callLimit", label: "Calls/min", title: "Requests per minute this model is allowed, entered by hand from the tier's own conditions. VERTEX waits rather than exceed it. Empty means no limit." });
   columns.push({ key: "availability", label: "Check" });
   const head = el("thead"), headerRow = el("tr");
   columns.forEach(column => {
@@ -841,6 +866,18 @@ function fill(id) {
       tr.appendChild(el("td", { className: "numeric", textContent: (price?.input || "—") + (price?.variable ? " *" : ""), title: price?.title || "Price not reported" }));
       tr.appendChild(el("td", { className: "numeric", textContent: (price?.output || "—") + (price?.variable ? " *" : ""), title: price?.title || "Price not reported" }));
     }
+    const limitCell = tr.appendChild(el("td", { className: "numeric" }));
+    const limitBox = el("input", { type: "number", min: "0", step: "1000", className: "limit-input", value: r.limit ? String(r.limit) : "",
+      title: "Input tokens per minute allowed for " + (r.label || r.id) + ". VERTEX waits rather than exceed it. Empty means no budget." });
+    limitBox.setAttribute("aria-label", "Input tokens per minute for " + (r.label || r.id));
+    limitBox.addEventListener("change", () => { const value = Number(limitBox.value); r.limit = Number.isFinite(value) && value > 0 ? Math.round(value) : 0; if (!r.limit) limitBox.value = ""; say(""); });
+    limitCell.appendChild(limitBox);
+    const callCell = tr.appendChild(el("td", { className: "numeric" }));
+    const callBox = el("input", { type: "number", min: "0", step: "1", className: "limit-input", value: r.callLimit ? String(r.callLimit) : "",
+      title: "Requests per minute allowed for " + (r.label || r.id) + ". VERTEX waits rather than exceed it. Empty means no limit." });
+    callBox.setAttribute("aria-label", "Requests per minute for " + (r.label || r.id));
+    callBox.addEventListener("change", () => { const value = Number(callBox.value); r.callLimit = Number.isFinite(value) && value > 0 ? Math.round(value) : 0; if (!r.callLimit) callBox.value = ""; say(""); });
+    callCell.appendChild(callBox);
     const act = tr.appendChild(el("td"));
     const checkOne = el("button", { type: "button", textContent: "✓", disabled: scanning || !!r.missing,
       title: "Check only this model with one short paid request (Reply OK, up to 16 output tokens)" });
@@ -968,4 +1005,4 @@ INIT.providers.forEach(p => api.postMessage({ action: "load", provider: p.id }))
 </script></body></html>`;
 }
 
-module.exports = { PROVIDERS, shortLabel, read, rows, apply, open, isOn, offered, chooseLogFolder, migrateUnavailable, adopt, news };
+module.exports = { PROVIDERS, shortLabel, read, rows, apply, open, isOn, offered, chooseLogFolder, migrateUnavailable, clearUnavailable, adopt, news };

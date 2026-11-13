@@ -20,6 +20,45 @@ function selection(vscode) {
   return own && ["typesafe-api","gemini-api","opencode-api"].includes(own.provider) && typeof own.model === "string"
     ? {provider:own.provider,model:own.model} : {provider:"typesafe-api",model:"jev-latest"};
 }
+/* Only exhaustion and outage, never a rejected request: a malformed decision input or an
+   invalid answer must fail where it happened, not be asked again of another model. */
+const SUBSTITUTABLE=new RegExp("\\b(429|503|529)\\b|rate limit|rate-limit|quota|exhausted|resource_exhausted|overloaded|temporarily unavailable|service unavailable|timed out|timeout","i");
+function substitutable(error) {
+  return SUBSTITUTABLE.test(String(error && error.message || error || ""));
+}
+/* The preferred model is usually the free one, so exhaustion is worth waiting out rather than
+   paying another provider: when it says how long, and that is within the cap, it gets a second turn.
+   Reuses the retry-after shape openai-compatible already parses; no header means no wait. */
+const WAIT_CAP_MS=60250;
+function retryDelay(error) {
+  const after=error && error.retryAfter;
+  if (after !== undefined && Number.isFinite(Number(after))) return Number(after)*1000;
+  if (after && Number.isFinite(Date.parse(after))) return Date.parse(after)-Date.now();
+  const hint=new RegExp("retry(?: again)?(?: in| after)\\s+(\\d+(?:\\.\\d+)?)\\s*(m?s|seconds?|minutes?)?","i")
+    .exec(String(error && error.message || ""));
+  if (!hint) return 0;
+  const value=Number(hint[1]), unit=(hint[2]||"s").toLowerCase();
+  return unit === "ms" ? value : unit.startsWith("m") && unit !== "ms" ? value*60000 : value*1000;
+}
+function sleep(ms, options) {
+  return new Promise((resolve,reject) => {
+    const timer=setTimeout(resolve,ms);
+    options.signal?.addEventListener?.("abort",()=>{clearTimeout(timer);reject(new Error("Decision stopped."));},{once:true});
+  });
+}
+/* Decision requests are paced by the same per-model budget as every other model; the budget itself
+   is entered in LLM Providers beside the model. Kept here as thin wrappers so the decision call
+   sites do not each have to name the provider and model twice. */
+const budgets=require("./model-budget");
+function estimateTokens(state, questions) { return budgets.estimateTokens({state, questions}); }
+function substitutable(error) { return budgets.retryable(error); }
+function retryDelay(error) { return budgets.retryDelay(error); }
+function budget(vscode, connection) { return budgets.budget(vscode, connection.provider, connection.model); }
+function callBudget(vscode, connection) { return budgets.callBudget(vscode, connection.provider, connection.model); }
+async function paced(vscode, connection, size, run, options={}) {
+  return budgets.paced(vscode, connection.provider, connection.model, size, run, options);
+}
+function correct(connection, estimated, actual) { return budgets.correct(connection.provider, connection.model, estimated, actual); }
 function selectedProvider(vscode) { return selection(vscode).provider; }
 function enabled(vscode) { return require("./model-config").isOn(vscode,selectedProvider(vscode)); }
 async function connection(vscode) {
@@ -29,8 +68,8 @@ async function connection(vscode) {
   if (!key) return null;
   const config=require("./model-config").read(vscode,provider);
   if (config.enabled && !config.enabled.includes(model)) return null;
-  const valid=provider === "typesafe-api" ? /^jev[-\w.]*$/.test(model)
-    : provider === "gemini-api" ? model.replace(/^models\//, "") === "gemini-decision-1" : require("./opencode-models").isDecision(model);
+  const valid=provider === "typesafe-api" ? new RegExp("^jev[-\\w.]*$").test(model)
+    : provider === "gemini-api" ? model.replace(new RegExp("^models/"), "") === "gemini-decision-1" : require("./opencode-models").isDecision(model);
   return valid?{provider,key,model}:null;
 }
 function validateContext(context) {
@@ -94,4 +133,4 @@ function bridge(host) {
     callback(update);if(!update.status)pending.delete(update.id);
   });
 }
-module.exports={selection,selectedProvider,enabled,configure,connection,rememberSuccess,questions,assess,bind,bridge};
+module.exports={selection,substitutable,retryDelay,budget,callBudget,estimateTokens,correct,paced,selectedProvider,enabled,configure,connection,rememberSuccess,questions,assess,bind,bridge};

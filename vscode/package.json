@@ -25,7 +25,7 @@
     "codex",
     "reviewer"
   ],
-  "version": "0.9.89",
+  "version": "0.9.91",
   "publisher": "YuriiSychov",
   "engines": {
     "vscode": "^1.85.0"
@@ -111,7 +111,7 @@
     "commands": [
       {
         "command": "vertex.configureOrchestrator",
-        "title": "Configure Orchestrator Planner",
+        "title": "Configure Orchestrator Jev Model",
         "category": "VERTEX"
       },
       {
@@ -335,49 +335,6 @@
           "type": "string",
           "default": "VERTEX",
           "markdownDescription": "Where the VERTEX chat's SAP tools come from: `VERTEX` (its own tools) or the `name` of a server in `#vertex.chat.mcpServers#`. Picked in the VERTEX panel, beside the SAP system. The debugger and ABAP transpiler tools stay VERTEX's either way."
-        },
-        "vertex.chat.orchestratorProvider": {
-          "type": "string",
-          "default": "codex-subscription",
-          "enum": [
-            "",
-            "claude-subscription",
-            "codex-subscription",
-            "copilot",
-            "codemie",
-            "vercel-api",
-            "openrouter-api",
-            "opencode-api",
-            "anthropic-api",
-            "openai-api",
-            "mistral-api",
-            "gemini-api",
-            "groq-api",
-            "cerebras-api",
-            "nvidia-api",
-            "lmstudio-local",
-            "ollama-local"
-          ],
-          "markdownDescription": "Planning provider used only in **VERTEX Orchestrator**. Prepares a plan and context before the chat model executes the task. Empty disables planning. Choose provider and model with **VERTEX: Configure Orchestrator Planner**."
-        },
-        "vertex.chat.orchestratorModel": {
-          "type": "string",
-          "default": "gpt-5.6-sol",
-          "markdownDescription": "Exact model ID for the orchestrator planner. Independent of the executor model selected in the chat. Configure with **VERTEX: Configure Orchestrator Planner**."
-        },
-        "vertex.chat.orchestratorEffort": {
-          "type": "string",
-          "default": "medium",
-          "enum": [
-            "",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max"
-          ],
-          "description": "Reasoning effort for the orchestrator planner, independent of the executor effort."
         },
         "vertex.chat.mcpServers": {
           "type": "array",
@@ -1187,9 +1144,27 @@
         },
         "vertex.ai.decisionModel": {
           "type": "object",
-          "default": {"provider":"typesafe-api","model":"jev-latest"},
-          "properties": {"provider":{"type":"string","enum":["typesafe-api","gemini-api","opencode-api"]},"model":{"type":"string"}},
-          "required": ["provider","model"],
+          "default": {
+            "provider": "typesafe-api",
+            "model": "jev-latest"
+          },
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": [
+                "typesafe-api",
+                "gemini-api",
+                "opencode-api"
+              ]
+            },
+            "model": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "model"
+          ],
           "additionalProperties": false,
           "description": "Decision provider/model used by Auto routing, topic tagging and ASK Jev. Choose from enabled decision models beside Auto. Independent of the chat model. Gemini cost is shown only when returned by the API."
         },

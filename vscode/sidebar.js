@@ -21,7 +21,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   const showReview = () => currentView && ready ? currentView.webview.postMessage({ review: reviewAsk ? review.askLabel(reviewAsk) : "", reviewResult: reviewAsk?.review_result ? { ...reviewAsk.review_result, files: reviewAsk.files } : null, draft: reviewAsk && reviewAsk.question || "" }) : undefined;
   // Beside the gear in the panel's title: LLM providers (the SAP Systems table is extension.js's).
   context.subscriptions.push(vscode.commands.registerCommand("vertex.openModelSettings", () => ask.configModels()));
-  context.subscriptions.push(vscode.commands.registerCommand("vertex.configureOrchestrator", async () => {try{const planner=await ask.configOrchestrator();if(currentView)await currentView.webview.postMessage({planner});return planner;}catch(error){vscode.window.showErrorMessage("VERTEX planner: "+error.message);}}));
+  context.subscriptions.push(vscode.commands.registerCommand("vertex.configureOrchestrator", async () => {try{const planner=await ask.configOrchestrator();if(currentView)await currentView.webview.postMessage({planner});return planner;}catch(error){vscode.window.showErrorMessage("VERTEX orchestrator: "+error.message);}}));
   if (chatMcp) context.subscriptions.push(vscode.commands.registerCommand("vertex.mcpServers", () => require("./mcp-window").open(vscode, chatMcp)));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.generateCommitMessage", async (snapshot,draft) => {try{return await ask.generateCommitMessage(snapshot,draft);}catch(error){return {error:error.message,generation:error.generation};}}));
   context.subscriptions.push(vscode.commands.registerCommand("vertex.generatePullRequest", async (snapshot,draft) => {try{return await ask.generateCommitMessage(snapshot,draft,"pr");}catch(error){return {error:error.message,generation:error.generation};}}));
@@ -373,7 +373,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
             if (reply.superseded) { await view.webview.postMessage({ progress: { id: requestId, remove: true } }); return; }
             await view.webview.postMessage({ progress: { id: requestId,
               answer: reply.answer + (reply.navigationError ? "\n\nVERTEX could not open the object: " + reply.navigationError : ""),
-              done: true, ...(reply.topic?{topic:reply.topic}:{}), usage: usageLine(reply)+(reply.planner?" · Planner: "+usageLine(reply.planner):""), choices: reply.choices || [],
+              done: true, ...(reply.topic?{topic:reply.topic}:{}), usage: usageLine(reply)+(reply.planner?" · Jev tools: "+usageLine(reply.planner):""), choices: reply.choices || [],
               runs: (await vscode.commands.executeCommand("vertex.knownEvidenceSessions")) || [] } });
             await view.webview.postMessage({topicList:ask.topics?.()||[]});
             // The answer names a VERTEX function to run - a table's data, a
@@ -950,7 +950,7 @@ function paintTaskScene(item,update){
 }
 let plannerSettings=null,orchestratorSelected=false;
 ${require(require("path").join(__dirname,"jev-panel")).script}
-function showPlanner(){const node=document.getElementById('planner-info');node.hidden=!orchestratorSelected||!plannerSettings;node.textContent=plannerSettings?(plannerSettings.provider?'Planner: '+plannerSettings.model+' · '+(plannerSettings.effort||'default effort'):'Planner disabled'):'';}
+function showPlanner(){const node=document.getElementById('planner-info');node.hidden=!orchestratorSelected||!plannerSettings;node.textContent=plannerSettings?(plannerSettings.provider?'Jev tools: '+plannerSettings.model:'Planner disabled'):'';}
 window.addEventListener('message', event => {
   if(event.data.decisionDraft)restoreJevDraft(event.data.decisionDraft);
   if(typeof event.data.decisionRunning==='boolean')setDecisionRunning(event.data.decisionRunning);
@@ -1143,7 +1143,7 @@ window.addEventListener('message', event => {
     const mcpSelect = document.getElementById('mcp-select');
     mcpSelect.replaceChildren(...event.data.mcp.servers.map(name => { const option = new Option(name, name); option.selected = name === event.data.mcp.selected; return option; }));
     mcpSelect.hidden = document.getElementById('mcp-label').hidden = document.getElementById('mcp-settings').hidden = document.getElementById('mcp-servers').hidden = false;
-    document.getElementById('mcp-settings').title=document.getElementById('mcp-settings').ariaLabel=orchestratorSelected?'Configure orchestrator planner':'Settings of the selected MCP server';
+    document.getElementById('mcp-settings').title=document.getElementById('mcp-settings').ariaLabel=orchestratorSelected?'Configure orchestrator Jev model':'Settings of the selected MCP server';
     const waiting = event.data.mcp.updates || [], update = document.getElementById('mcp-update');
     update.hidden = !waiting.length; update.title = waiting.length ? 'A newer version is out for ' + waiting.join(', ') + '. Opens MCP Servers, where you update it.' : '';
   }

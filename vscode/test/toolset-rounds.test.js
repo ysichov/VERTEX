@@ -32,8 +32,8 @@ test("an OpenAI-compatible request offers tools added during the request from th
 
 test("the Anthropic request offers tools added during the request from the next step", async () => {
   const anthropic = require("../anthropic");
-  assert.match(require("node:fs").readFileSync(require.resolve("../anthropic"), "utf8"), /apiTools = toolsNow\(\);\r?\n    const response = await request\(/,
-    "the tool list is rebuilt at the start of every step");
+  assert.match(require("node:fs").readFileSync(require.resolve("../anthropic"), "utf8"), /apiTools = toolsNow\(\);[\s\S]{0,1500}?const response = await request\(/,
+    "the tool list is rebuilt at the start of every step, before that step's request");
   assert.equal(typeof anthropic.ask, "function");
 });
 
@@ -52,4 +52,26 @@ test("the request limit counts the conversation, not the tool definitions", asyn
   assert.ok(sent > 100000, "the request carries the large tool definitions");
   assert.ok(limit >= sent, "and still fits the limit: " + limit + " >= " + sent);
   assert.ok(limit - Buffer.byteLength(JSON.stringify(tools), "utf8") < 140000, "the conversation keeps its own 128 KB");
+});
+
+test('API transport rebuilds schemas after a staged selection in the same request',async()=>{
+ const router=require('../orchestrator-plan'),compatible=require('../openai-compatible'),tools=[],candidates=[{name:'read_object',inputSchema:{type:'object'}},{name:'read_dependencies',inputSchema:{type:'object'}}];
+ let selections=0,round=0;const offered=[],ran=[];
+ const session=router.createSession({vscode:{},task:'inspect',context:{},tools:candidates,schemas:tools,choose:async()=>({tools:[candidates[selections++]],permissions:{write:false,execute:false}})});await session.start();
+ const request=async(_id,_key,_route,body)=>{offered.push(body.tools.map(t=>t.function.name));round++;const call=round===1?{name:router.STEP,arguments:JSON.stringify({subtask:'Inspect dependencies',evidence:'Object supplied'})}:round===2?{name:'read_dependencies',arguments:'{}'}:{name:'submit_vertex_answer',arguments:JSON.stringify({answer:'done'})};return {choices:[{message:{role:'assistant',tool_calls:[{id:'s'+round,type:'function',function:call}]}}]};};
+ const result=await compatible.ask({assistant:'openai-api',model:'test',apiKey:'test',prompt:'inspect',instructions:'stages',schema:{type:'object'},tools,request,maxRounds:4,callTool:(name,args)=>session.run(name,args,async n=>{ran.push(n);return 'deps';})});
+ assert.equal(result.plan.answer,'done');assert.equal(selections,2);assert.ok(offered[0].includes('read_object'));assert.ok(!offered[0].includes('read_dependencies'));assert.ok(offered[1].includes('read_dependencies'));assert.ok(!offered[1].includes('read_object'));assert.deepEqual(ran,['read_dependencies']);
+});
+
+test('A hidden tool hallucination returns an error to the model and staged recovery completes without invoking it',async()=>{
+ const api=require('../openai-compatible'),router=require('../orchestrator-plan'),schemas=[];let selections=0,round=0;const ran=[];
+ const catalog=[{name:'SAPRead',description:'Read source',inputSchema:{type:'object'}},{name:'SAPContext',description:'Inspect dependencies',inputSchema:{type:'object'}}];
+ const session=router.createSession({vscode:{},task:'inspect',context:{},tools:catalog,schemas,choose:async()=>({tools:[catalog[selections++]],permissions:{write:false,execute:false}})});await session.start();
+ const request=async(_p,_k,_r,body)=>{
+   round++;if(round===2)assert.match(body.messages.filter(m=>m.role==='tool').at(-1).content,/missing capability/);
+   const f=round===1?{name:'SAPContext',arguments:'{}'}:round===2?{name:router.STEP,arguments:JSON.stringify({subtask:'Inspect dependencies',evidence:'Need the dependency capability'})}:round===3?{name:'SAPContext',arguments:'{}'}:{name:'submit_vertex_answer',arguments:'{"answer":"done"}'};
+   return {choices:[{message:{role:'assistant',tool_calls:[{id:'r'+round,type:'function',function:f}]}}]};
+ };
+ const result=await api.ask({assistant:'vercel-api',apiKey:'test',model:'test',prompt:'inspect',instructions:'stages',schema:{type:'object'},tools:schemas,request,maxRounds:5,recoverUnavailableTools:true,callTool:(n,a)=>session.run(n,a,async name=>{ran.push(name);return 'dependency evidence';})});
+ assert.equal(result.plan.answer,'done');assert.deepEqual(ran,['SAPContext']);assert.equal(selections,2);
 });

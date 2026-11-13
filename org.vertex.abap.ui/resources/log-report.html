@@ -262,6 +262,9 @@ function markdown(text, target) {
     var shown = Number(u.cost).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4, useGrouping: false });
     return u.cost == null ? "-" : (u.costEstimated ? "≈ $" : "$") + shown + (u.costMissing ? " (partial)" : "");
   }
+  function newInput(u) {
+    return Number(u.input || 0) + Number(u.cacheWrite || 0);
+  }
   function usageText(u) {
     return "in " + n(u.input) + " · out " + n(u.output) + " · cache read " + n(u.cacheRead) + " · cache write " + n(u.cacheWrite) + (u.cost != null ? " - cost " + costText(u) : u.costMissing ? " - cost unavailable" : "");
   }
@@ -315,6 +318,7 @@ function markdown(text, target) {
     var parts = String(text || "").split(/\n\n(?=Question \d+: |Estimated cost: )/);
     var keys = Object.keys(decision.questions || {}), state = decision.state || {};
     var subject = function (key) {
+      if (/^tool_\d+$/.test(key) && state.tools) return state.tools[Number(key.slice(5))]?.name || key;
       var found = null;
       Object.keys(state).forEach(function (field) {
         if (found || !Array.isArray(state[field])) return;
@@ -555,7 +559,7 @@ function markdown(text, target) {
       var calls = tools.filter(function (d) { return d.type === "tool"; });
       // One timeline when the log has the model's calls: each model step with its tokens, then the tools it called.
       var steps = modelSteps.length > 0;
-      var toolBox = section(steps ? "Steps (" + modelSteps.length + " model call" + (modelSteps.length === 1 ? "" : "s") + ", " + calls.length + " tool" + (calls.length === 1 ? "" : "s") + ")"
+      var toolBox = section(steps ? "Steps (" + modelSteps.length + " model call" + (modelSteps.length === 1 ? "" : "s") + ", " + calls.length + " tool call" + (calls.length === 1 ? "" : "s") + ")"
         : "Tools (" + calls.length + " calls)", "technical");
       var stepsLoaded=false;
       var entries = new Map();
@@ -671,7 +675,7 @@ function markdown(text, target) {
       colgroup.appendChild(col);
       var th = el("th", column.cls + (column.nosort ? "" : " sortable"), column.name);
       if (column.name === "Context ≈tok") th.title = "Estimated prepared context before sending, not cumulative usage. Hover a value for exact character count and limitations.";
-      if (column.name === "New in") th.title = "Uncached input tokens summed across model calls; cached input is shown separately.";
+      if (column.name === "New in") th.title = "New input tokens, including cache creation, summed across model calls; cache reads are shown separately.";
       var sort = function () {
         var down = ordering && ordering.index === index ? !ordering.down : !!column.num;
         ordering = { index: index, down: down };
@@ -805,7 +809,7 @@ function markdown(text, target) {
     report.sessions.forEach(function (s) { if (!s.prompts.some(chat) && !internal(s)) kinds[kindOf(s)] = (kinds[kindOf(s)] || 0) + 1; });
     var kindBoxes = {};
     Object.keys(kinds).sort().forEach(function (kind) {
-      if (!Object.prototype.hasOwnProperty.call(listState.hiddenKinds, kind)) listState.hiddenKinds[kind] = kind !== "Jev evaluation";
+      if (!Object.prototype.hasOwnProperty.call(listState.hiddenKinds, kind)) listState.hiddenKinds[kind] = kind !== "Jev evaluation" && kind !== "Orchestrator tool selection";
       var box = el("input"); box.type = "checkbox"; box.checked = !listState.hiddenKinds[kind];
       var label = el("label", "kind-filter");
       label.title = "Show the " + kinds[kind] + " technical conversation(s) of this kind";
@@ -847,7 +851,7 @@ function markdown(text, target) {
       { name: "Conversation", cls: "", width: null, value: function (s) { return String(promptPreview(s.prompts) || "").toLowerCase(); } },
       { name: "Prompts", cls: "num", width: 70, num: true, value: function (s) { return s.prompts.filter(chat).length || s.prompts.length; } },
       { name: "Providers", cls: "", width: 170, value: function (s) { return s.provider + " " + (s.models || []).join(" "); } },
-      { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return s.usage.input || 0; } },
+      { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return newInput(s.usage); } },
       { name: "Out", cls: "num", width: 70, num: true, value: function (s) { return s.usage.output || 0; } },
       { name: "Cache read", cls: "num", width: 90, num: true, value: function (s) { return s.usage.cacheRead || 0; } },
       { name: "Cost USD", cls: "num", width: 80, num: true, value: function (s) { return s.usage.cost || 0; } },
@@ -893,7 +897,7 @@ function markdown(text, target) {
       if (models.length) { whoLabel.appendChild(document.createTextNode(" · ")); whoLabel.appendChild(el("span", "session-models", models.join(", "))); }
       who.appendChild(whoLabel);
       main.appendChild(who);
-      main.appendChild(el("td", "num", n(s.usage.input)));
+      main.appendChild(el("td", "num", n(newInput(s.usage))));
       main.appendChild(el("td", "num", n(s.usage.output)));
       main.appendChild(el("td", "num", n(s.usage.cacheRead)));
       if (anyCost) main.appendChild(el("td", "num", s.usage.cost != null ? costText(s.usage) : s.usage.costMissing ? "unavailable" : "-"));
@@ -942,7 +946,7 @@ function markdown(text, target) {
       var q = String(search.value || "").trim().toLowerCase(), shown = 0, want = listState.context || "";
       records.forEach(function (r) {
         var here = !want || (want === "none" ? !r.context : r.context === want);
-        var show = here && (!q || r.text.indexOf(q) >= 0) && !(r.technical && (Object.prototype.hasOwnProperty.call(listState.hiddenKinds, r.kind) ? listState.hiddenKinds[r.kind] : r.kind !== "Jev evaluation"));
+        var show = here && (!q || r.text.indexOf(q) >= 0) && !(r.technical && (Object.prototype.hasOwnProperty.call(listState.hiddenKinds, r.kind) ? listState.hiddenKinds[r.kind] : r.kind !== "Jev evaluation" && r.kind !== "Orchestrator tool selection"));
         if (show) shown++;
         r.rows[0].hidden = !show; r.rows[1].hidden = !show || !r.open;
       });
@@ -970,7 +974,7 @@ function markdown(text, target) {
       { name: "Topic", cls: "", width: 70, value: function (p) { return p.topic && p.topic.id ? Number(p.topic.id.slice(6)) : 0; }, num: true },
       { name: "Model", cls: "", width: 150, value: function (p) { return (p.provider || "") + " " + (p.model || ""); } },
       { name: "Context ≈tok", cls: "num", width: 105, value: function (p) { return p.contextSize ? p.contextSize.estimatedTokens : -1; }, num: true },
-      { name: "New in", cls: "num", width: 70, value: function (p) { return p.usage.input || 0; }, num: true },
+      { name: "New in", cls: "num", width: 70, value: function (p) { return newInput(p.usage); }, num: true },
       { name: "Out", cls: "num", width: 65, value: function (p) { return p.usage.output || 0; }, num: true },
       { name: "Cache read", cls: "num", width: 90, value: function (p) { return p.usage.cacheRead || 0; }, num: true },
       { name: "Cost USD", cls: "num", width: 90, value: function (p) { return p.usage.cost || 0; }, num: true },
@@ -1058,7 +1062,7 @@ function markdown(text, target) {
       context.title = p.contextSize ? "Prepared context before sending: " + n(p.contextSize.characters) + " characters. Approximate tokens = characters / 4; not model-tokenizer counts. Includes instructions, history, current prompt, tools and answer schema. Excludes provider-added wrappers, binary images and later tool steps."
         : "Context size was not recorded in this log. Cumulative usage cannot reconstruct it.";
       row.appendChild(context);
-      row.appendChild(el("td", "num", n(p.usage.input)));
+      row.appendChild(el("td", "num", n(newInput(p.usage))));
       row.appendChild(el("td", "num", n(p.usage.output)));
       row.appendChild(el("td", "num", n(p.usage.cacheRead)));
       if (hasCost) row.appendChild(el("td", "num", costText(p.usage)));

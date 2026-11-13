@@ -113,7 +113,7 @@ test('Anthropic withholds a rejected answer and continues with review feedback',
 
 
 test('Anthropic planner is forced to return fields through the root result tool schema',async t=>{
- const schema=require('../orchestrator-plan').PLAN_SCHEMA,plan={goal:'task',context:[],steps:[{id:1,action:'read',tools:[],depends_on:[],success_criteria:['evidence'],on_failure:'inspect error'}],recovery:[],completion_checks:['verify']};
+ const schema={type:'object',properties:{goal:{type:'string'}}},plan={goal:'task',context:[],steps:[{id:1,action:'read',tools:[],depends_on:[],success_criteria:['evidence'],on_failure:'inspect error'}],recovery:[],completion_checks:['verify']};
  t.mock.method(https,'request',(_options,callback)=>{const req=new EventEmitter();req.setTimeout=()=>{};req.end=payload=>{const body=JSON.parse(payload);assert.deepEqual(body.tool_choice,{type:'tool',name:'submit_vertex_answer'});assert.deepEqual(body.tools[0].input_schema,schema);assert.equal(body.tools.length,1);const res=new EventEmitter();res.statusCode=200;res.setEncoding=()=>{};callback(res);res.emit('data',JSON.stringify({content:[{type:'tool_use',id:'result',name:'submit_vertex_answer',input:plan}]}));res.emit('end');};return req;});
  const result=await anthropic.ask({apiKey:'fake',model:'test',prompt:'task',instructions:'Plan',schema,structuredResult:true,textOnly:true,tools:[]});assert.deepEqual(result.plan,plan);
 });

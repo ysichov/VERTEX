@@ -110,6 +110,17 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
         tools: sanitize(tools || [], objects), schema: sanitize(schema || null, objects) };
       write({ type: "vertex_request", request, contextSize, vertex_objects: objects, vertex_snapshots: snapshots });
     },
+    orchestration(report) {
+      const saved={kind:report.kind,stage:report.stage};
+      for(const key of ["tool","source_stage","reason","calls","mode","requested_mode"])if(report[key]!==undefined)saved[key]=report[key];
+      if(on.questions && report.missing)saved.missing=report.missing;
+      if(on.questions && report.tools)saved.tools=report.tools;
+      if(on.questions && report.plan)saved.plan=report.plan;
+      if(on.questions && report.task){saved.task=report.task;saved.total=report.total;}
+      if(report.report){saved.status=report.report.stage_status;if(on.answers)saved.report=report.report;}
+      write({type:"vertex_orchestration",report:saved});
+    },
+    toolSelection(report) { write({type:"vertex_tool_selection",report:on.questions?report:{elapsedMs:report.elapsedMs,selected:report.selected}}); },
     routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
     providerResponse({ provider, scope, response }) {
       // Preserve provider counters verbatim, before normalization. These records

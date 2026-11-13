@@ -176,7 +176,7 @@ test("closed log conversations and prompts do not render their bodies; search an
     appendChild(child){this.children.push(child);return child;},setAttribute(){},removeAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
   const content=node('main');let rendered=0;
   const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},
-    document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,costText:()=>'',promptTime:String,
+    document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,
     usageText:()=>'',promptPreview:prompts=>prompts[0]?.text||'',conversation(){rendered++;return node('div','conversation');}};
   vm.createContext(context);
   vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
@@ -267,7 +267,7 @@ test('conversations can be filtered by the folder or SAP system they were held i
     appendChild(child){this.children.push(child);return child;},setAttribute(){},removeAttribute(){},addEventListener(name,fn){this.events[name]=fn;}});
   const content=node('main');
   const context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{},context:''},
-    document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,costText:()=>'',promptTime:String,
+    document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,
     usageText:()=>'',promptPreview:prompts=>prompts[0]?.text||'',conversation(){return node('div','conversation');}};
   vm.createContext(context);
   vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
@@ -340,7 +340,7 @@ test('continuing an older conversation without a place gives the whole conversat
 test('internal routing, tagging and recognition join their parent with totals, files and lazy details intact',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
  const node=(tag,cls='',text='')=>({tag,cls,text,value:'',children:[],events:{},style:{},classList:{toggle(){},add(){},remove(){}},appendChild(c){this.children.push(c);return c;},setAttribute(){},removeAttribute(){},addEventListener(n,f){this.events[n]=f;}});
- const content=node('main'),context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,costText:()=>'',promptTime:String,usageText:()=>'',promptPreview:p=>p.find(x=>x.operation==='Chat')?.text||p[0]?.text||'',conversation:()=>node('div')};
+ const content=node('main'),context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,newInput:u=>Number(u.input||0)+Number(u.cacheWrite||0),costText:()=>'',promptTime:String,usageText:()=>'',promptPreview:p=>p.find(x=>x.operation==='Chat')?.text||p[0]?.text||'',conversation:()=>node('div')};
  vm.createContext(context);vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
  const session=(id,operation,related)=>({id,conversation:id,relatedConversation:related,provider:id,start:1,end:3,usage:{input:10,cost:0.01},prompts:[{key:id+':0',operation,text:id,time:1,usage:{input:10,cost:0.01}}]});
  const parent=session('parent','Chat');parent.context={mode:'folder',folder:'C:/project'};
@@ -368,4 +368,50 @@ test('Jev estimates enter report usage once and are marked estimated',()=>{
  const records=[{type:'user',message:{content:'Routing'}},{type:'assistant',message:{id:'a',usage:{input_tokens:100,output_tokens:2,estimated_cost_usd:0.0000042},content:[]}}];
  const s=report.parseSession(records.map(r=>JSON.stringify({timestamp:'2026-11-13T14:00:00Z',...r})).join('\n'),'typesafe-api_20261113_160000.jsonl');
  assert.equal(s.usage.cost,0.0000042);assert.equal(s.usage.costEstimated,1);assert.equal(s.prompts[0].usage.cost,0.0000042);
+});
+
+test('Orchestrator selection log retains the task, decisions, probabilities and selected set without doubling usage',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-orchestrator-log-'));
+ try {
+  const logs=require('../session-log'),router=require('../orchestrator-plan'),jev=require('../jev');
+  const log=logs.create(root,'typesafe-api','fixture',{questions:true,answers:true},router.OPERATION,logs.independentScope());
+  const request=router.input('Read the source',{},[{name:'read_sap_method',description:'Read source',inputSchema:{type:'object'}}]);
+  const answers={tool_0:{type:'choice',choice:'include',confidence:0.9,probabilities:{include:0.95,exclude:0.05}}};
+  log.user('Read the source');log.decision(request);
+  log.assistant({model:'jev-latest',usage:{input_tokens:20},text:jev.formatAnswers(request.questions,answers)});
+  log.toolSelection({selected:['read_sap_method'],elapsedMs:12,answers});
+  const parsed=report.readSessions(root).sessions[0],prompt=parsed.prompts[0];
+  assert.equal(prompt.operation,router.OPERATION);assert.equal(prompt.text,'Read the source');assert.equal(prompt.decision.questions.tool_0.type,'choice');
+  assert.ok(prompt.details.some(d=>d.type===router.OPERATION && /read_sap_method/.test(d.text) && /0.95/.test(d.text)));
+  assert.equal(parsed.usage.input,20);
+ } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('Structured orchestrator plan and stage results appear as log details and respect answer logging',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-json-plan-log-'));
+ try {
+  const logs=require('../session-log');
+  const log=logs.create(root,'test','planned',{questions:true,answers:false});
+  log.user('Investigate changes');log.orchestration({kind:'plan',plan:{goal:'Investigate',stages:[{id:1,task:'Find transports',depends_on:[]}]}});
+  log.orchestration({kind:'stage_result',stage:1,report:{stage_status:'complete',answer:'SECRET_MODEL_BODY',evidence:['SECRET_EVIDENCE']}});
+  const text=fs.readFileSync(log.file,'utf8');assert.doesNotMatch(text,/SECRET_MODEL_BODY|SECRET_EVIDENCE/);
+  const parsed=report.readSessions(root).sessions[0].prompts[0];assert.ok(parsed.details.some(d=>d.type==='Orchestrator JSON plan' && /Find transports/.test(d.text)));assert.ok(parsed.details.some(d=>d.type==='Orchestrator stage' && /complete/.test(d.text)));
+ } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+
+test("New in includes historical Claude cache creation and preserves Codex counts", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../../org.vertex.abap.ui/resources/log-report.html"), "utf8");
+  const source = page.match(/function newInput\(u\) \{[\s\S]*?\n  \}/)[0];
+  const newInput = vm.runInNewContext("(" + source + ")");
+  const claude = report.parseSession(JSON.stringify({ timestamp: "2026-11-14T00:55:19Z", type: "user", message: {content: "Historical question"} }) + "\n" + JSON.stringify({ timestamp: "2026-11-14T00:56:31Z", type: "assistant", message: { id: "old", usage: { input_tokens: 76, cache_creation_input_tokens: 54339, cache_read_input_tokens: 331350 }, content: [] } }), "claude_20261114_005519.jsonl");
+  assert.equal(newInput(claude.usage), 54415);
+  assert.equal(claude.usage.input, 76);
+  assert.equal(claude.usage.cacheRead, 331350);
+  assert.equal(newInput({ input: 76054, cacheWrite: 0 }), 76054);
+  assert.equal(newInput({}), 0);
+  assert.match(page, /return newInput\(s.usage\)/);
+  assert.match(page, /return newInput\(p.usage\)/);
+  assert.match(page, /n\(newInput\(s.usage\)\)/);
+  assert.match(page, /n\(newInput\(p.usage\)\)/);
 });

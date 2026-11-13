@@ -67,7 +67,7 @@ test('Copilot revises a rejected final answer instead of displaying it',async()=
 
 
 test('Copilot planner receives the direct root schema without action tools',async()=>{
- const schema=require('../orchestrator-plan').PLAN_SCHEMA,plan={goal:'task',context:[],steps:[{id:1,action:'read',tools:[],depends_on:[],success_criteria:['evidence'],on_failure:'inspect error'}],recovery:[],completion_checks:['verify']};
+ const schema={type:'object',properties:{goal:{type:'string'}}},plan={goal:'task',context:[],steps:[{id:1,action:'read',tools:[],depends_on:[],success_criteria:['evidence'],on_failure:'inspect error'}],recovery:[],completion_checks:['verify']};
  const {vscode,requests}=fixture([[new ToolCallPart('result','submit_vertex_answer',plan)]]);
  const result=await copilot.ask(vscode,{model:'copilot-test',prompt:'task',instructions:'Plan',schema,structuredResult:true,textOnly:true,tools:[]});assert.deepEqual(result.plan,plan);assert.deepEqual(requests[0].options.tools[0].inputSchema,schema);assert.equal(requests[0].options.tools.length,1);
 });

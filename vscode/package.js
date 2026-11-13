@@ -48,7 +48,6 @@ const required = [
     "extension/ai-review.js",
     "extension/context-protection.js",
     "extension/orchestrator-plan.js",
-    "extension/orchestrator-supervisor.js",
     "extension/build-runner.js",
     "extension/log-snapshot.js",
     "extension/resources/mermaid.min.js",

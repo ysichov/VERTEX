@@ -1,6 +1,6 @@
 # SAP ABAP VERTEX Tools
 
-**Version: 0.9.89**
+**Version: 0.9.91**
 
 
 [**VERTEX**](https://github.com/ysichov/VERTEX) is a new set of plugins for VS Code and Eclipse ADT.
@@ -513,6 +513,8 @@ switches at once and clears the chosen model (`vertex.ai.provider`, `vertex.ai.m
 
 Choose **Auto (Jev)** in the chat to show the decision-model list beside it. It groups all enabled decision models by provider; choose the exact model, for example **Gemini → Gemini Decision 1** or **TypeSafe → jev-preview**. This selection is saved independently of the chat model and is used for topic routing, Tag topics, ASK Jev and block sorting. Add the corresponding key in LLM Providers and enable the model there first. The **◇** marker appears only in LLM Providers. Decision models are excluded from ordinary chat model lists; TypeSafe is excluded from the ordinary chat provider menu. Gemini Decision 1 uses Google's native Decisions API. Gemini cost is shown only when the API reports it; no list-price estimate is added. Free quota depends on the Google project.
 
+Each model row in **LLM Providers** has two rate cells you fill in by hand from that tier's own conditions: **In tok/min** (input tokens per minute) and **Calls/min** (requests per minute). Providers state different ones - Gemini's free tier refuses a decision with "limit: 50000 input tokens per minute", while a provider that counts calls needs the second cell - so fill in whichever your tier publishes, or both. VERTEX keeps requests for that model inside them and waits instead of exceeding them, so the model finishes the work rather than failing on a rate limit. One orchestrator tool selection costs roughly 26000 input tokens, so a 50000 token budget allows about two per minute. Each model counts its own minute, and nothing crosses between models or providers. An empty cell means that limit is not enforced. While VERTEX waits, the chat says so and for how long. The counters see only what VERTEX itself spends - another window or tool on the same key spends the same quota unseen, and tiers may also cap requests per day.
+
 #### TypeSafe Jev API
 
 TypeSafe Jev is a decision model, not a chat. Add a TypeSafe API key in LLM Providers, then pick TypeSafe Jev and a Jev model in the panel: it turns into a form with a context, questions (Yes / No, Choose an option, Rate on a scale) and **Run Jev**. Answers come with confidence and probabilities. Only the entered context and questions are sent. Jev is also used by **ASK Jev** in reviews and **Sort blocks with Jev** in Git review.
@@ -731,19 +733,37 @@ the server from `vertex.chat.mcpServers`, a short description for the model, too
 names (`*` and `?` allowed) and a note. A failed start of a set's server is reported
 to the model and the user, not skipped.
 
-In every choice but one, only sets marked `always` are offered (by default SAP
-RAP). The last choice of the MCP list, **VERTEX Orchestrator**, keeps VERTEX's own
-SAP tools and offers every set: the model gets a catalog of the configured servers -
-what each is for, its version and its toolsets - and enables only the set a task
-needs. mcp-abap-adt, which has over 250 tools, is split into twelve sets (read
-objects, search and where-used, versions, data and SQL, change code, change DDIC and
-CDS, change RAP, packages, tests and checks, transports, run and runtime analysis,
-debugger); ARC-1 and vibing-steampunk are one set each. A set may take tools from a
-server's newer version as long as their names match its patterns; a tool no set
-matches is listed as in no toolset.
+Outside **VERTEX Orchestrator**, only toolsets marked `always` are offered (by default SAP RAP).
 
+Choose **VERTEX Orchestrator** in the MCP list. A single Jev request selects the functions
+needed for the task and chooses `direct` or `staged`. Its catalog contains short descriptions,
+actions and schema sizes rather than full parameter schemas. Only VERTEX and ARC-1 participate.
+SQL SELECT and code reading remain the read-only baseline. Raw server-wide guides and excluded
+function references are hidden from the executor.
 
-In **VERTEX Orchestrator**, a separate planning model prepares a plan and completion checks before the chat's model runs the task, and steps in when tool calls keep failing. Choose the planner with the gear beside the MCP list or **VERTEX: Configure Orchestrator Planner** (`vertex.chat.orchestratorProvider`, `…Model`, `…Effort`); an empty provider turns planning off.
+**Direct is the default.** The executor receives the whole task and all selected function schemas,
+without a planning-model call or an arbitrary two/three-function cap. A task needing five functions
+or ten actions is not split merely because it has several steps. Explicit Jev exclusions are
+respected; `maybe` retains a plausible fallback. An uncertain staged decision defaults to direct.
+
+Jev chooses **staged** only when separate contexts or dependent discovery materially justify it.
+Only then does the chat model create a validated JSON plan of 1–6 stages. The host runs stages in
+order, passing relevant dependency reports instead of full prior conversations. Each stage keeps
+the SQL/code baseline plus at most one specialized function and must return a matching JSON report.
+Invalid or unresolved blocked stages do not advance; one missing-capability retry stays within
+the same authorization and remaining stage budget.
+
+Direct tasks have a 32-action budget; staged execution has six actions per stage. Both stop after
+three consecutive tool failures. Repeated successful reads reuse actual results in the same system
+and question; cached attempts still count toward the budget. Failures are not cached, and writes
+invalidate previous results. Authorization is fixed by the initial Jev decision: inspection-only
+tasks cannot run new ATC/Unit/syntax checks or write data. Existing host access and review rules apply.
+
+The gear beside the MCP list, or **VERTEX: Configure Orchestrator Jev Model**, selects the shared
+Jev decision model used by Auto (Jev) and review assessments. Enable that model and its key in
+**LLM Providers** first. ARC-1 must be configured and reachable. A missing model or invalid decision stops before execution; a failed staged selection does not advance the plan.
+
+In **Session Logs**, **Orchestrator tool selection** is visible by default. The log shows the selected execution mode and function set. JSON plans and stage reports appear only for staged runs. Each Jev stage records its subtask, decisions and probabilities, selected and deferred tools, authorization exclusions, time and usage. Detailed inputs require question logging; stage result bodies respect answer logging.
 
 ### MCP Servers window
 
