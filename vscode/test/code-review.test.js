@@ -89,3 +89,21 @@ test('Compact is default, Full is lazy and preserves all unchanged file context'
  const html=review.filesReviewHtml([file],{readonly:{title:'Review'}});assert.match(html,/data-view="compact" class="active"/);assert.match(html,/<div class="full-view" hidden><\/div>/);assert.match(html,/Total: 1 files/);assert.match(html,/.vertex-segment-toggle button/);assert.match(html,/.hunk-actions\{display:flex/);
  assert.ok(html.indexOf('class="file-name"')<html.indexOf('class="hunk-actions"'));
 });
+
+
+test('new SAP and folder files use neutral rows while existing file additions stay highlighted', () => {
+ const r=require('../code-review');
+ const after='REPORT demo.\nWRITE 1.',parts=r.hunks('',after);
+ const sap=r.reviewHtml(parts,{before:'',after,objectName:'DEMO',objectType:'PROG',system:'TEST'});
+ const folder=r.filesReviewHtml([{id:'new',path:'demo.abap',label:'demo.abap',before:'',after,parts,abap:true}]);
+ for(const html of [sap,folder]){
+  assert.doesNotMatch(html,/<tr class="added"|<mark>/);
+  assert.match(html,/<tr class="context"/);
+  assert.match(html,/data-action="approve"/);
+  assert.match(html,/data-action="ask"/);
+ }
+ const before='REPORT demo.',updated=before+'\nWRITE 1.';
+ const changed=r.fileDiffHtml({before,after:updated,parts:r.hunks(before,updated),abap:true});
+ assert.match(changed,/<tr class="added"/);
+ assert.equal(r.reviewedSource('',parts,[0]),after);
+});

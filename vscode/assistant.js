@@ -442,8 +442,15 @@ async function ask(options) {
       const name = String(block.name || "").replace(/^mcp__vertex__/, "");
       const object = args && typeof args === "object"
         ? [args.object_type, args.object_name, args.method_name].filter(Boolean).join(" ") : "";
-      const status = "Using " + (name || "a SAP tool") + (object ? ": " + object : "") + "…";
-      if (status !== lastStatus) { lastStatus = status; options.onProgress({ status }); }
+      // Bash has no waiting scene; it says what it runs instead, as the chat's step stream does for the other hosts.
+      const command = name === "Bash" && args && typeof args.command === "string"
+        ? ": " + args.command.replace(/\s+/g, " ").trim().slice(0, 120) : "";
+      const status = "Using " + (name || "a SAP tool") + (object ? ": " + object : "") + command + "…";
+      const scene = require("./chat-progress").scene(name);
+      if (status !== lastStatus) {
+        lastStatus = status;
+        options.onProgress({ status, ...(scene ? { kind: scene } : {}) });
+      }
     };
     const onData = streaming ? function (chunk) {
       pending += chunk;

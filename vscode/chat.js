@@ -358,11 +358,14 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         if (superseded()) return replaced();
       }
       if (request && text !== null) {
-        conversation.push({ role: "user", content: prompt.trim() }, { role: "assistant", content: text });
+        const directTopic=require("./topic-routing").topicOf(history.findLast(message=>message.topic)?.topic);
+        conversation.push({ role: "user", content: prompt.trim(),...(directTopic?{topic:directTopic}:{}) }, { role: "assistant", content: text,...(directTopic?{topic:directTopic}:{}) });
         const config = vscode.workspace.getConfiguration("vertex.ai");
         const log = sessionLog.current(config.get("logPath", ""), options.assistant || subscriptionProvider(vscode), sessionLog.fromConfig(config));
-        log?.setOperation("Chat"); log?.user(prompt.trim()); log?.assistant({ text, model: "", usage: null });
-        return { answer: text, model: "", usage: null, direct: true, navigation, choices };
+        log?.setOperation("Chat"); log?.user(prompt.trim());
+        if(directTopic)log?.routing({status:"routed",basis:"navigation",topic:directTopic});
+        log?.assistant({ text, model: "", usage: null });
+        return { answer: text, model: "", usage: null, direct: true, navigation, choices,...(directTopic?{topic:directTopic}:{}) };
       }
       const id = options.assistant || subscriptionProvider(vscode);
       const model = options.model || vscode.workspace.getConfiguration("vertex.ai").get("model", "") || await defaultModel(id);
@@ -466,14 +469,21 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
       // Claude Code's own stream reports them (onStep), and API providers go through callTool.
       if (id !== "claude" && !compatible.PROVIDERS[id] && id !== "anthropic-api" && id !== "copilot") {
         unlisten = require("./chat-progress").listen(name => {
-          if (!superseded()) reportProgress({ status: "Working: step " + (++progressStep) + " — " + name });
+          if (superseded()) return;
+          const scene = require("./chat-progress").scene(name);
+          reportProgress({ status: "Working: step " + (++progressStep) + " — " + name, ...(scene ? { kind: scene } : {}) });
         });
       }
       const onStep = step => {
         if (log && log.step) log.step(working ? inFolder(step, working) : step);
         if (step.kind === "use" && (!step.id || !progressIds.has(step.id))) {
           if (step.id) progressIds.add(step.id);
-          reportProgress({ status: "Working: step " + (++progressStep) + " — " + String(step.name || "Operation").replace(/^mcp__vertex__/, "") });
+          const tool = String(step.name || "Operation").replace(/^mcp__vertex__/, "");
+          const progress = require("./chat-progress");
+          const scene = progress.scene(tool);
+          // The scene says what kind of work this is; the line says on what - the file, the pattern, the command.
+          reportProgress({ status: "Working: step " + (++progressStep) + " — " + tool + progress.detail(tool, step.input),
+            ...(scene ? { kind: scene } : {}) });
         }
       };
       if (workDir && id !== "claude" && modelCapabilities?.tools !== false) {
@@ -490,7 +500,10 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         if (superseded()) throw new Error("This request was superseded by a new conversation.");
         if (!toolSchemas.some(tool => tool.name === name)) throw new Error("Tool is unavailable for this request: " + name);
         if (localTools && localTools.schemas.some(tool => tool.name === name)) return Promise.resolve(localTools.call(name, args)).then(result => contextProtection.protect(result));
-        reportProgress({ status: "Working: step " + (++progressStep) + " — " + name });
+        // The API providers run SAP tools here, not through onStep: this step needs its scene and object named too.
+        const progress = require("./chat-progress"), sceneHere = progress.scene(name);
+        reportProgress({ status: "Working: step " + (++progressStep) + " — " + name + progress.detail(name, args),
+          ...(sceneHere ? { kind: sceneHere } : {}) });
         const result = sessionLog.assistantTool(log, name, args, async (toolName, toolArgs) => contextProtection.protect(await codeTools.execute(toolName, toolArgs)));
         // A toolset the model enabled joins this request's tools: the API providers read the list again each step.
         return name !== "enable_toolset" ? result : Promise.resolve(result).then(answer => {
@@ -547,7 +560,9 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
         const kept=new Set(selection.report.keptIndices||history.map((_,i)=>i)),before=require("./context-optimizer").serialize(history).length,after=require("./context-optimizer").serialize(selection.history).length;
         // The panel's status line counts what went: exchanges kept of all, and how much shorter the history became.
         const exchanges=require("./context-optimizer").exchangesOf(history),keptExchanges=exchanges.filter(x=>kept.has(x.start)).length;
-        options.onProgress?.({status:selection.topic?"Topic "+selection.topic.id+" — "+selection.topic.label:"Full history: "+selection.report.reason,topic:selection.topic,topicRouting:{...selection.report,exchangesKept:keptExchanges,exchangesTotal:exchanges.length,savedPercent:before?100*(before-after)/before:0}});
+        const topicWords=selection.topic?.label.trim().split(/\s+/).slice(0,6).join(" ")||"";
+        const topicCaption=selection.topic?"T"+Number(selection.topic.id.slice(6))+(topicWords?" · "+topicWords+(topicWords.length<selection.topic.label.trim().length?"…":""):""):"";
+        options.onProgress?.({status:selection.topic?topicCaption:"Full history: "+selection.report.reason,topic:selection.topic,topicRouting:{...selection.report,exchangesKept:keptExchanges,exchangesTotal:exchanges.length,savedPercent:before?100*(before-after)/before:0}});
       } else if (options.optimizeContext ?? config.get("context.optimize", false)) {
         options.onProgress?.({status:"JEV is optimizing context…"});
         const selection = await require("./context-optimizer").optimize(vscode, contextProtection.text(prompt), contextProtection.protect(history), {signal:turn.controller.signal,onProgress:update=>options.onProgress?.({status:"JEV is optimizing context… ("+(update.stage==="questions"?"questions":"brief conclusions")+" "+update.batch+"/"+update.total+")"})});
@@ -800,7 +815,16 @@ function create(vscode, codeTools, server, secrets, debugContext, originContext,
   };
   ask.dispose = () => { conversationVersion++; if (activeRequest) { activeRequest.controller.abort(); activeRequest.cancelRetry?.(); activeRequest.dispose?.(); } dropReview(); if (copy) { const old = copy; copy = null; return old.remove(); } };
   // A name in a list of found objects, clicked: opened as a single match is.
-  ask.openObject = object => codeTools.execute("open_sap_object", { object_type: object.object_type, object_name: object.object_name });
+  ask.openObject = async object => {
+    if(object.object_type)return codeTools.execute("open_sap_object",object);
+    const name=String(object.object_name||"").trim().toUpperCase();
+    if(!/^[A-Z0-9_/$]{3,40}$/.test(name))throw Error("Use an exact SAP object name.");
+    const found=await codeTools.execute("search_sap_objects",{query:name,limit:50});
+    const matches=(found.objects||[]).filter(item=>String(item.object_name).toUpperCase()===name);
+    if(!matches.length)throw Error("SAP object not found: "+name);
+    const selected=matches.length===1?matches[0]:(await vscode.window.showQuickPick(matches.map(item=>({label:item.object_type+" "+item.object_name,description:item.description||"",object:item})),{title:"Open SAP object "+name}))?.object;
+    if(selected)return codeTools.execute("open_sap_object",{object_type:selected.object_type,object_name:selected.object_name});
+  };
   ask.topics=()=>{const state=ask.state(),routing=require("./topic-routing");return routing.catalog(conversation,routing.scopeOf(vscode,state.contextMode,state.contextMode==="folder"?state.contextFolder:"")).map(routing.topicOf);};
   ask.state = () => {
     const config = vscode.workspace.getConfiguration("vertex.ai");

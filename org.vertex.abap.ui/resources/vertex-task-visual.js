@@ -4,7 +4,8 @@
 (function () {
 "use strict";
 
-// Small vector scenes: CSS animation only, no timers, filters or remote assets.
+// Small vector scenes: no filters or remote assets, and CSS animation alone except for the edit scene, whose random
+// cuts and insertions are driven by drive() - see the comment there for why a CSS loop will not do.
 const review = `<svg viewBox="0 0 64 64" focusable="false" aria-hidden="true"><g class="task-paper" fill="var(--task-paper)" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path opacity=".45" d="M13 9h24l9 9v32H13z"/><path d="M20 14h23l8 8v34H20z"/><path opacity=".55" d="M25 24h17M25 30h17M25 36h11M25 43h15"/></g><g class="review-lens" fill="var(--task-paper)" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="35" cy="32" r="11" fill-opacity=".88"/><path d="m43 40 10 10"/><path class="review-scan" opacity=".55" stroke-width="1.5" d="M29 30h12M29 34h8"/></g></svg>`;
 const commit = `<svg viewBox="0 0 64 64" focusable="false" aria-hidden="true"><g fill="var(--task-paper)" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path opacity=".45" d="M12 10v45"/><circle opacity=".65" cx="12" cy="13" r="3"/><circle opacity=".65" cx="12" cy="54" r="3"/><g class="commit-stack"><path class="commit-sheet-back" opacity=".35" d="M19 15h26v35H19z"/><path class="commit-sheet-middle" opacity=".6" d="M23 11h26v35H23z"/><path d="M27 7h23l7 7v29H27z"/><path opacity=".5" d="M33 17h16M33 23h16M33 29h8"/></g><path class="commit-link" d="M12 39h15"/><circle class="commit-node" cx="12" cy="39" r="4.7"/><path class="commit-check" fill="none" stroke-width="2.5" d="m39 36 4 4 9-10"/></g></svg>`;
 
@@ -57,11 +58,195 @@ function startScene(name) {
    (two integer custom properties stepped by animations and shown through counters), so the scenes stay timer-free. The
    end frame (.scene-done) stops it at the time the work took. */
 const timed = scene => `<span class="task-timed">${scene}<span class="task-timer" aria-hidden="true"></span></span>`;
+
+/* The chat's step stream has three scenes, all in the review strip's proportions. They speak one language - bits and
+   bytes - so that a reader tells them apart by what moves, not by a legend.
+   search: a lens runs along a chain of zeros and ones; what it finds stays lit.
+   mcp:    the LLM cloud and the SAP system exchange packets both ways.
+   edit:   a double helix built from the bits themselves; pairs are cut out and spliced in.
+   The first two are CSS alone. The helix is not: its cuts and insertions must fall at random, and a fixed loop reads
+   as a blink every few seconds when a request is long, so drive() below moves it from JS. */
+const BITS = "1011010010110011010011011001";
+const bitGlyph = (one, x) => one
+  ? `<path d="M${x} 14v12M${x - 3} 16.5l3-2.5"/>`
+  : `<ellipse cx="${x}" cy="20" rx="4" ry="6"/>`;
+const searchWide = (() => {
+  const step = 28, x0 = 26, count = 34, hits = [13, 26];
+  let bits = "";
+  for (let i = 0; i < count; i++) {
+    bits += `<g class="sw-bit${hits.indexOf(i) < 0 ? "" : " sw-hit"}" style="animation-delay:${(i * 0.133).toFixed(2)}s">`
+      + bitGlyph(BITS[i % BITS.length] === "1", x0 + i * step) + `</g>`;
+  }
+  return `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">${bits}<g class="sw-lens"><circle cx="26" cy="20" r="14" fill="currentColor" fill-opacity=".06" stroke-width="2.2"/><path stroke-width="2.6" d="m36.5 29.5 7 7"/></g></g></svg>`;
+})();
+const mcpWide = `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><g class="mw-stage" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path class="mw-cloud" fill="var(--task-paper)" d="M40 34C26 34 22 22 33 17 31 6 48 1 57 9 64-1 84 1 86 12 100 6 114 16 108 25 118 28 116 34 106 34Z"/><text class="mw-label" x="68" y="28" text-anchor="middle" stroke="none">LLM</text><path class="mw-lane" d="M132 12H828"/><path class="mw-lane" d="M828 28H132"/><path stroke-opacity=".5" d="m822 8 5 4-5 4"/><path stroke-opacity=".5" d="m138 24-5 4 5 4"/><path class="mw-ask" d="M132 12H828"/><path class="mw-answer" d="M828 28H132"/><g class="mw-packets"></g><rect x="846" y="3" width="134" height="34" rx="4" fill="var(--task-paper)" stroke-opacity=".55"/><rect class="mw-glow" x="846" y="3" width="134" height="34" rx="4" fill="var(--task-ok)" stroke="none"/><circle class="mw-led" cx="860" cy="11" r="2.2" fill="var(--task-ok)" stroke="none"/><circle class="mw-led" cx="860" cy="20" r="2.2" fill="var(--task-ok)" stroke="none"/><circle class="mw-led" cx="860" cy="29" r="2.2" fill="var(--task-ok)" stroke="none"/><path stroke-opacity=".3" d="M872 7v26"/><text class="mw-label" x="930" y="26" text-anchor="middle" stroke="none">SAP</text><path class="mw-arc" d="M886 9l7 7-5 2 6 9"/><path class="mw-arc mw-arc2" d="M968 10l-6 7 5 2-7 8"/></g></svg>`;
+const HX_STEP = 70, HX_X0 = 40, HX_KEEP = 21;
+const hxColumn = (one, ph, x) => `<g class="hx-col" style="transform:translateX(${x}px)"><path class="hx-r hx-p${ph}" d="M0 9V31"/><text class="hx-n hx-p${ph}" x="0" y="20">${one ? 1 : 0}</text><text class="hx-n hx-p${(ph + 4) % 8}" x="0" y="20">${one ? 0 : 1}</text></g>`;
+const editWide = (() => {
+  let row = "";
+  for (let i = 0; i < HX_KEEP; i++) row += hxColumn(BITS[i % BITS.length] === "1", i % 8, HX_X0 + i * HX_STEP);
+  return `<svg viewBox="0 0 1000 40" focusable="false" aria-hidden="true"><defs><clipPath id="vx-hx-clip"><rect x="0" y="0" width="1000" height="40"/></clipPath></defs><g clip-path="url(#vx-hx-clip)"><g class="hx-row" text-anchor="middle" dominant-baseline="central">${row}</g></g></svg>`;
+})();
+
+/* Starts the edit scene's random cuts and insertions on a scene already on the page, and returns the function that
+   stops it. Called again on the same row it does nothing. Without this call the helix still turns - it simply never
+   changes - so a host that cannot run it loses the edits, not the scene. It also stops by itself once the scene is
+   taken off the page, so a caller that forgets to stop it leaks no timer. */
+function drive(root) {
+  if (!root || !root.querySelector) return () => {};
+  const stops = [driveHelix(root.querySelector(".hx-row")), driveExchange(root.querySelector(".mw-stage"))];
+  return () => stops.forEach(stop => stop());
+}
+
+/* One round of the MCP exchange: the question goes out, the system thinks with its arcs, and what comes back is a
+   packet of real bits - a different count of them each time, which is the point a CSS loop cannot make. */
+function driveExchange(stage) {
+  if (!stage || stage.getAttribute("data-driven")) return () => {};
+  stage.setAttribute("data-driven", "1");
+  stage.classList.add("mw-driven");
+  const NS = "http://www.w3.org/2000/svg";
+  const packets = stage.querySelector(".mw-packets");
+  if (!packets) return () => {};
+  const node = (name, attrs, text) => {
+    const made = document.createElementNS(NS, name);
+    for (const key in attrs) made.setAttribute(key, attrs[key]);
+    if (text != null) made.textContent = text;
+    return made;
+  };
+  let stopped = false;
+  const timers = new Set();
+  const wait = (run, ms) => { const id = setTimeout(() => { timers.delete(id); if (!stopped) run(); }, ms); timers.add(id); };
+  const replay = (name, ms) => {
+    stage.classList.remove(name);
+    void stage.getBoundingClientRect();
+    stage.classList.add(name);
+    wait(() => stage.classList.remove(name), ms);
+  };
+  const answer = () => {
+    const count = 4 + Math.floor(Math.random() * 15);
+    const width = 16 + count * 12;
+    const left = 828 - width;
+    const carrier = node("g", { class: "mw-packet" });
+    carrier.appendChild(node("rect", { x: left, y: 21, width, height: 14, rx: 3,
+      fill: "var(--task-paper)", stroke: "var(--task-ok)", "stroke-width": 1.4 }));
+    for (let i = 0; i < count; i++) {
+      carrier.appendChild(node("text", { class: "mw-bitlet", x: left + 10 + i * 12, y: 28 }, Math.random() < 0.5 ? "0" : "1"));
+    }
+    packets.appendChild(carrier);
+    const travel = left - 134;
+    /* The packet has to be laid out where it starts before it is told where to go, or the browser has nothing to
+       move from and it simply appears at the far end: hence the explicit start, the forced layout read, and the
+       second frame. */
+    carrier.style.transform = "translateX(0px)";
+    void carrier.getBoundingClientRect();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!stopped) carrier.style.transform = `translateX(${-travel}px)`;
+    }));
+    wait(() => { carrier.classList.add("mw-landed"); replay("mw-echo", 500); }, 1680);
+    wait(() => { carrier.remove(); round(); }, 2100 + Math.random() * 700);
+  };
+  const round = () => {
+    if (!stage.isConnected) { stop(); return; }
+    replay("mw-sending", 1700);
+    wait(() => { replay("mw-busy", 720); wait(answer, 640); }, 1660);
+  };
+  const stop = () => { stopped = true; timers.forEach(clearTimeout); timers.clear(); };
+  round();
+  return stop;
+}
+
+function driveHelix(row) {
+  if (!row || row.getAttribute("data-driven")) return () => {};
+  row.setAttribute("data-driven", "1");
+  const NS = "http://www.w3.org/2000/svg";
+  const at = i => HX_X0 + i * HX_STEP;
+  const node = (name, attrs, text) => {
+    const made = document.createElementNS(NS, name);
+    for (const key in attrs) made.setAttribute(key, attrs[key]);
+    if (text != null) made.textContent = text;
+    return made;
+  };
+  const cols = [];
+  const existing = row.querySelectorAll(".hx-col");
+  for (let i = 0; i < existing.length; i++) cols.push({ g: existing[i], ph: i % 8 });
+  if (!cols.length) return () => {};
+  const layout = () => { for (let i = 0; i < cols.length; i++) cols[i].g.style.transform = `translateX(${at(i)}px)`; };
+  const bit = () => Math.random() < 0.5;
+  const make = (one, ph, x) => {
+    const g = node("g", { class: "hx-col" });
+    g.style.transform = `translateX(${x}px)`;
+    g.appendChild(node("path", { class: `hx-r hx-p${ph}`, d: "M0 9V31" }));
+    g.appendChild(node("text", { class: `hx-n hx-p${ph}`, x: 0, y: 20 }, one ? "1" : "0"));
+    g.appendChild(node("text", { class: `hx-n hx-p${(ph + 4) % 8}`, x: 0, y: 20 }, one ? "0" : "1"));
+    return { g, ph };
+  };
+  let timer = null, stopped = false;
+  const later = (run, wait) => { const id = setTimeout(run, wait); return id; };
+  const dustAt = x => {
+    const count = 6 + Math.floor(Math.random() * 3);
+    for (let d = 0; d < count; d++) {
+      const angle = Math.random() * Math.PI * 2, reach = 5 + Math.random() * 9;
+      const dot = node("circle", { class: "hx-dust",
+        cx: (x + (Math.random() - 0.5) * 15).toFixed(1),
+        cy: (10 + Math.random() * 20).toFixed(1),
+        r: (1 + Math.random() * 0.9).toFixed(2) });
+      dot.style.setProperty("--hx-dx", `${(Math.cos(angle) * reach).toFixed(1)}px`);
+      dot.style.setProperty("--hx-dy", `${(Math.sin(angle) * reach).toFixed(1)}px`);
+      dot.style.animationDelay = `${(Math.random() * 0.45).toFixed(2)}s`;
+      row.appendChild(dot);
+      later(() => dot.remove(), 1800);
+    }
+  };
+  const cut = () => {
+    const span = 3 + Math.floor(Math.random() * 4);
+    const start = 1 + Math.floor(Math.random() * Math.max(1, 13 - span));
+    const doomed = cols.slice(start, start + span);
+    if (!doomed.length) return;
+    doomed.forEach((column, i) => { column.g.classList.add("hx-dying"); dustAt(at(start + i)); });
+    later(() => {
+      if (stopped) return;
+      doomed.forEach(column => column.g.remove());
+      cols.splice(start, doomed.length);
+      for (let i = 0; i < doomed.length; i++) {
+        const made = make(bit(), (cols[cols.length - 1].ph + 1) % 8, at(cols.length));
+        row.appendChild(made.g); cols.push(made);
+      }
+      layout();
+    }, 520);
+  };
+  const paste = () => {
+    const span = 1 + Math.floor(Math.random() * 2);
+    const pos = 2 + Math.floor(Math.random() * 9);
+    for (let i = 0; i < span; i++) {
+      const made = make(bit(), (cols[pos + i - 1].ph + 1) % 8, at(pos + i));
+      made.g.classList.add("hx-born");
+      row.appendChild(made.g);
+      cols.splice(pos + i, 0, made);
+      later(() => made.g.classList.remove("hx-born"), 2600);
+    }
+    for (let i = 0; i < span; i++) cols.pop().g.remove();
+    layout();
+  };
+  const tick = () => {
+    timer = later(() => {
+      if (stopped) return;
+      if (!row.isConnected) { stop(); return; }
+      (Math.random() < 0.55 ? cut : paste)();
+      tick();
+    }, 2200 + Math.random() * 3600);
+  };
+  const stop = () => { stopped = true; if (timer) clearTimeout(timer); timer = null; };
+  tick();
+  return stop;
+}
 function html(kind, wide = false, name = "") {
   if (kind === "install") return timed(`<span class="vertex-task-visual task-install" aria-hidden="true">${installGears}</span>`);
   if (kind === "start") return timed(`<span class="vertex-task-visual task-start" aria-hidden="true">${startScene(name)}</span>`);
   // The wide review is the generation strip: the commit strip's host set to its generate operation.
   if (kind === "review" && wide) return timed(`<span class="task-wide-host" data-operation="generate"><span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${commitWide}${reviewWide}</span></span>`);
+  if (kind === "search") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${searchWide}</span>`);
+  if (kind === "mcp") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${mcpWide}</span>`);
+  if (kind === "edit") return timed(`<span class="vertex-task-visual task-band" aria-hidden="true">${editWide}</span>`);
   if (kind === "pr") return timed(`<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${prWide}</span>`);
   if (kind === "push") return timed(`<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${pushWide}</span>`);
   if (kind === "commit" && wide) return timed(`<span class="vertex-task-visual task-commit task-commit-wide" aria-hidden="true">${commitWide}${reviewWide}</span>`);
@@ -255,7 +440,95 @@ body.vertex-motion-off .vertex-task-visual{display:none!important}
 @keyframes vertex-sc-ground{from{transform:none}to{transform:translateX(-2100px)}}
 @keyframes vertex-sc-clouds{from{transform:none}to{transform:translateX(-700px)}}
 @keyframes vertex-sc-lift{0%,62%{transform:none;animation-timing-function:cubic-bezier(.4,0,.7,1)}100%{transform:translate(900px,-70px) rotate(-10deg)}}
+
+/* The chat's step scenes share the review strip's band: full width, 25:1, never taller than the message line. */
+.vertex-task-visual.task-band{width:100%;height:auto;aspect-ratio:25/1;min-height:30px;max-height:44px}
+.vertex-task-visual{--task-ok:var(--vscode-testing-iconPassed,var(--vscode-charts-green,currentColor));
+  --task-cut:var(--vscode-gitDecoration-deletedResourceForeground,var(--vscode-errorForeground,currentColor));
+  --task-new:var(--vscode-gitDecoration-addedResourceForeground,var(--vscode-testing-iconPassed,currentColor))}
+.task-band *{transform-box:fill-box}
+
+.sw-bit{transform-origin:center;opacity:.38;animation:vertex-sw-bit 4.8s ease-in-out infinite}
+.sw-hit{animation-name:vertex-sw-hit}
+.sw-hit ellipse,.sw-hit path{stroke:var(--task-ok)}
+.sw-lens{animation:vertex-sw-lens 4.8s linear infinite}
+@keyframes vertex-sw-bit{0%{transform:scale(1);opacity:.38}4%{transform:scale(1.4);opacity:1}11%,100%{transform:scale(1);opacity:.38}}
+@keyframes vertex-sw-hit{0%{transform:scale(1);opacity:.38}4%{transform:scale(1.45);opacity:1}11%,93%{transform:scale(1.15);opacity:1}100%{transform:scale(1);opacity:.38}}
+@keyframes vertex-sw-lens{0%{transform:translateX(0);opacity:0}4%{opacity:1}88%{transform:translateX(924px);opacity:1}100%{transform:translateX(980px);opacity:0}}
+
+.mw-label{fill:currentColor;font:500 16px/1 var(--vscode-font-family,sans-serif);letter-spacing:.06em}
+.mw-lane{stroke:currentColor;stroke-opacity:.22;stroke-dasharray:4 6}
+/* The exchange is not symmetric: the question that leaves is one short pulse, what the system sends back is a long,
+   heavier one. Each is a single dash running along its lane; the gap is longer than the lane, so only one pulse is
+   ever on the wire and there is no wrap at the ends. */
+/* Without the driver the exchange still runs, as one CSS loop: a short question out, a long answer back. With it
+   (.mw-driven) each round is played instead - question, the system thinking, then a packet of actual bits whose
+   length is different every time, which is what no CSS loop can do. */
+.mw-ask,.mw-answer{stroke-linecap:round;animation:vertex-mw-pulse 2.8s linear infinite}
+.mw-ask{stroke:currentColor;stroke-width:2.2;stroke-dasharray:40 784}
+.mw-answer{stroke:var(--task-ok);stroke-width:4.4;stroke-dasharray:190 634;animation-delay:2.4s}
+@keyframes vertex-mw-pulse{from{stroke-dashoffset:0}to{stroke-dashoffset:-824}}
+.mw-glow{opacity:0;transform-origin:center;animation:vertex-mw-hit 2.8s ease-out infinite}
+.mw-led{animation:vertex-mw-led 2.8s ease-out infinite}
+.mw-arc{stroke:var(--task-ok);stroke-width:1.6;stroke-dasharray:26;stroke-dashoffset:26;opacity:0;
+  animation:vertex-mw-arc 2.8s ease-out infinite}
+.mw-arc2{animation-delay:.07s}
+@keyframes vertex-mw-hit{0%,82%{opacity:0;transform:scale(.96)}86%{opacity:.22;transform:scale(1)}100%{opacity:0;transform:scale(1.05)}}
+@keyframes vertex-mw-led{0%,83%{opacity:.5}87%{opacity:1}100%{opacity:.5}}
+@keyframes vertex-mw-arc{0%,83%{stroke-dashoffset:26;opacity:0}86%{opacity:1}90%{stroke-dashoffset:0;opacity:1}96%,100%{stroke-dashoffset:0;opacity:0}}
+
+.mw-driven .mw-ask,.mw-driven .mw-glow,.mw-driven .mw-led,.mw-driven .mw-arc{animation:none}
+.mw-driven .mw-answer{display:none}
+.mw-driven .mw-glow{opacity:0}
+.mw-driven .mw-arc{opacity:0;stroke-dashoffset:26}
+.mw-driven.mw-sending .mw-ask{animation:vertex-mw-out 1.7s linear forwards}
+.mw-driven.mw-busy .mw-glow{animation:vertex-mw-think .72s ease-out}
+.mw-driven.mw-busy .mw-led{animation:vertex-mw-flare .72s ease-out}
+.mw-driven.mw-busy .mw-arc{animation:vertex-mw-strike .72s ease-out}
+.mw-driven.mw-busy .mw-arc2{animation-delay:.1s}
+.mw-driven.mw-echo .mw-cloud{animation:vertex-mw-echo .5s ease-out}
+.mw-cloud{transform-origin:center}
+@keyframes vertex-mw-out{from{stroke-dashoffset:0}to{stroke-dashoffset:-824}}
+@keyframes vertex-mw-think{0%{opacity:0;transform:scale(.96)}25%{opacity:.24;transform:scale(1)}100%{opacity:0;transform:scale(1.05)}}
+@keyframes vertex-mw-flare{0%{opacity:.5}20%{opacity:1}100%{opacity:.5}}
+@keyframes vertex-mw-strike{0%{stroke-dashoffset:26;opacity:0}15%{opacity:1}45%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+@keyframes vertex-mw-echo{0%{transform:scale(1)}35%{transform:scale(1.06)}100%{transform:scale(1)}}
+.mw-packet{transition:transform 1.6s cubic-bezier(.3,0,.5,1)}
+.mw-packet.mw-landed{opacity:0;transition:transform 1.6s cubic-bezier(.3,0,.5,1),opacity .35s ease-in}
+.mw-bitlet{font:600 9px/1 var(--vscode-editor-font-family,Consolas,monospace);fill:var(--task-ok);stroke:none;
+  text-anchor:middle;dominant-baseline:central}
+
+.hx-n{font:600 20px/1 var(--vscode-editor-font-family,Consolas,monospace);fill:currentColor;transition:fill .9s;
+  transform-origin:center;animation:vertex-hx-turn 5.6s linear infinite}
+.hx-r{stroke:var(--vscode-focusBorder,currentColor);stroke-width:1.8;opacity:.3;fill:none;transition:stroke .9s;
+  transform-origin:center;animation:vertex-hx-rung 5.6s linear infinite}
+.hx-p0{animation-delay:0s}.hx-p1{animation-delay:-.7s}.hx-p2{animation-delay:-1.4s}.hx-p3{animation-delay:-2.1s}
+.hx-p4{animation-delay:-2.8s}.hx-p5{animation-delay:-3.5s}.hx-p6{animation-delay:-4.2s}.hx-p7{animation-delay:-4.9s}
+.hx-col{transition:transform .6s cubic-bezier(.4,0,.3,1)}
+.hx-col.hx-dying{opacity:0;transition:transform .6s cubic-bezier(.4,0,.3,1),opacity .5s ease-in}
+.hx-dying .hx-n{fill:var(--task-cut);transition:fill .12s}
+.hx-born .hx-n{fill:var(--task-new)}
+.hx-born .hx-r{stroke:var(--task-new)}
+.hx-born{animation:vertex-hx-born .55s ease-out}
+.hx-dust{fill:var(--task-cut);opacity:0;animation:vertex-hx-dust 1.15s ease-out forwards}
+@keyframes vertex-hx-born{from{opacity:0}to{opacity:1}}
+@keyframes vertex-hx-dust{0%{transform:translate(0,0);opacity:0}12%{opacity:.95}
+  100%{transform:translate(var(--hx-dx),var(--hx-dy));opacity:0}}
+@keyframes vertex-hx-turn{
+0%{transform:translateY(0) scale(1.15);opacity:1}
+12.5%{transform:translateY(7.1px) scale(1.09);opacity:.92}
+25%{transform:translateY(10px) scale(.98);opacity:.68}
+37.5%{transform:translateY(7.1px) scale(.86);opacity:.45}
+50%{transform:translateY(0) scale(.8);opacity:.36}
+62.5%{transform:translateY(-7.1px) scale(.86);opacity:.45}
+75%{transform:translateY(-10px) scale(.98);opacity:.68}
+87.5%{transform:translateY(-7.1px) scale(1.09);opacity:.92}
+100%{transform:translateY(0) scale(1.15);opacity:1}}
+@keyframes vertex-hx-rung{
+0%{transform:scaleY(0)}12.5%{transform:scaleY(.71)}25%{transform:scaleY(1)}37.5%{transform:scaleY(.71)}
+50%{transform:scaleY(0)}62.5%{transform:scaleY(.71)}75%{transform:scaleY(1)}87.5%{transform:scaleY(.71)}
+100%{transform:scaleY(0)}}
 `;
-const api = { html, css };
+const api = { html, css, drive };
 if (typeof module !== "undefined" && module.exports) module.exports = api; else window.vertexTaskVisual = api;
 })();

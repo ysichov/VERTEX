@@ -299,9 +299,10 @@ test("Claude names the SAP object being read and does not restart the answer", a
     call.child.emit("close", 0);
   });
   await assistant.ask(common(spawn, "claude", { onProgress: update => updates.push(update) }));
+  // Each step also names its waiting scene: everything the SAP side offers is the one conversation scene.
   assert.deepEqual(updates, [
-    { status: "Using read_sap_object…" },
-    { status: "Using read_sap_object: CLAS ZCL_CALC…" },
+    { status: "Using read_sap_object…", kind: "mcp" },
+    { status: "Using read_sap_object: CLAS ZCL_CALC…", kind: "mcp" },
     { answer: "Hello" }, { answer: "Hello world" }
   ]);
 });
@@ -318,8 +319,9 @@ test("Claude streams reasoning and the current tool name separately from the ans
     call.child.emit("close", 0);
   });
   await assistant.ask(common(spawn, "claude", { onProgress: update => updates.push(update) }));
+  // A SAP tool call also names the waiting scene the panel should show while it runs.
   assert.deepEqual(updates, [{ thinking: "Checking the run" }, { status: "Claude is thinking…" },
-    { status: "Using run_abap_transpiler…" }]);
+    { status: "Using run_abap_transpiler…", kind: "mcp" }]);
 });
 
 test("an empty thinking delta does not claim visible reasoning", async () => {

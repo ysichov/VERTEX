@@ -113,7 +113,7 @@ async function prepare(vscode, context, message, options = {}) {
   }
   const labels = { "git-review": "Technical review", "git-business": "Business review", "git-docs": "Documentation", "git-tests": "Test plan", "git-release": "Release notes" };
   return { ...context, blocks, prompt_kind: kind, prompt_label: labels[kind],
-    instruction: instruction(await opening(kind, options.home), kind, requirements, triageResults, context.blocks) };
+    instruction: instruction(typeof options.instructionText === "string" ? options.instructionText : await opening(kind, options.home), kind, requirements, triageResults, context.blocks) };
 }
 
 module.exports = { BUILT_IN, KINDS, opening, requirementList, triageQuestions, triage, sortBlocks, coverage, instruction, copyText, prepare };

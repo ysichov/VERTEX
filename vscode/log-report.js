@@ -85,6 +85,14 @@ function parseSession(text, file) {
       if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
       continue;
     }
+    if (record.type === "vertex_context_size" || record.type === "vertex_request") {
+      const size = record.contextSize;
+      if (current && !current.contextSize && Number.isSafeInteger(size?.characters) && size.characters >= 0
+        && Number.isSafeInteger(size?.estimatedTokens) && size.estimatedTokens >= 0 && size.method === "characters/4") {
+        current.contextSize = { characters: size.characters, estimatedTokens: size.estimatedTokens, method: size.method };
+      }
+      if (record.type === "vertex_context_size") continue;
+    }
     if (record.type === "vertex_request") {
       if (current && record.request) {
         current.details.push({ type: "VERTEX instructions", text: String(record.request.instructions || "") });
@@ -345,7 +353,10 @@ async function tagTopics(vscode, sessionId) {
 /** The report as the list shows it: every prompt without the parts only an opened prompt needs. */
 function listReport(report) {
   return { ...report, sessions: report.sessions.map(session => ({ ...session,
-    prompts: session.prompts.map(({ details, timeline, decision, ...prompt }) => ({ ...prompt, lazy: true })) })) };
+    prompts: session.prompts.map(({ details, timeline, decision, ...prompt }) => ({ ...prompt, text: require("./topic-routing").observations(prompt.text).question.slice(0,2000),
+      sections: ["User",...(details?.some(d=>d.type==="answer")?["Model answer"]:[]),
+        ...(details?.some(d=>d.type==="tool"||d.type==="tool result")||timeline?.some(t=>t.kind==="model")?["Steps"]:[]),
+        ...(details||[]).filter(d=>!["answer","tool","tool result"].includes(d.type)).map(d=>d.snapshot?(d.snapshot.kind==="uml"?"Recorded UML":"Recorded metrics"):d.type==="Model request and context"?"Request and context":d.type)], lazy: true })) })) };
 }
 
 let panel;
@@ -362,11 +373,12 @@ function open(vscode, options = {}) {
     .replace("</head>", () => "<style>" + require("./vertex-logo").fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
   // full record when it is opened: the whole log folder can be tens of megabytes, too much to hold in a webview.
-  let full = null;
+  let full = null, promptIndex = new Map();
   const refresh = () => {
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
       full = readSessions(root);
+      promptIndex = new Map(full.sessions.flatMap(session => session.prompts).map(prompt => [prompt.key,prompt]));
       return panel?.webview.postMessage({ action: "data", report: listReport(full) });
     } catch (error) { return panel?.webview.postMessage({ action: "error", error: error.message }); }
   };
@@ -374,8 +386,8 @@ function open(vscode, options = {}) {
     if (message?.action === "ready" || message?.action === "refresh") await refresh();
     if (message?.action === "promptDetail") {
       const key = String(message.key || "");
-      const prompt = full?.sessions.flatMap(session => session.prompts).find(item => item.key === key);
-      await panel?.webview.postMessage(prompt ? { action: "promptDetail", key, prompt: { details: prompt.details, timeline: prompt.timeline, decision: prompt.decision || null } }
+      const prompt = promptIndex.get(key);
+      await panel?.webview.postMessage(prompt ? { action: "promptDetail", key, prompt: { text: prompt.text, details: prompt.details, timeline: prompt.timeline, decision: prompt.decision || null } }
         : { action: "promptDetail", key, error: "That prompt is no longer in the log folder; refresh Session Logs." });
     }
     if (message?.action === "settings") await vscode.commands.executeCommand("workbench.action.openSettings", "vertex.ai.log");

@@ -11,4 +11,6 @@ const file = fs.existsSync(original) ? original : packaged;
 if (!fs.existsSync(file)) {
   throw new Error("vertex-task-visual.js was found neither at " + original + " nor at " + packaged + ".");
 }
-module.exports = require(file);
+/* source() hands the file's own text to a webview that has to run the scenes itself: the edit scene is driven from
+   JS, so the page needs the module, not only its markup and styles. */
+module.exports = Object.assign({}, require(file), { source: () => fs.readFileSync(file, "utf8") });

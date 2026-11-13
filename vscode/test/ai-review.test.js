@@ -43,7 +43,7 @@ test("embedded review reuses the sidebar surface instead of creating an editor w
   review.open(vscode,{...aiContext(changes,'project'),task:'Unrelated first main question'},async(text,o)=>{prompt=text;options=o;return{answer:'Done'};},surface);
   assert.match(html,/nonce="parent-nonce"/);
   assert.doesNotMatch(html,/Unrelated first main question/);
-  await receive({action:'send',text:'Review this',includeTask:true,task:'Current requirements'});
+  await receive({action:'send',text:'Review this',task:'Current requirements'});
   assert.match(prompt,/Current requirements/);
   assert.doesNotMatch(prompt,/Unrelated first main question/);
   assert.ok(options.logScope.conversation);
@@ -150,4 +150,27 @@ test("AI Review provider request has no tools, working directory or main convers
     assert.equal(received.workDir, undefined);
     assert.equal(received.signal, signal);
   } finally { compatible.ask = savedAsk; keys.getActiveKey = savedKey; }
+});
+
+
+test("prompt drafts never run the review and edited text replaces the selected template", async () => {
+ let receive;const sent=[],runs=[],copied=[];
+ const panel={webview:{onDidReceiveMessage:fn=>receive=fn,postMessage:async m=>sent.push(m)},onDidDispose(){}};
+ const vscode={ViewColumn:{Beside:2},window:{createWebviewPanel:()=>panel},env:{clipboard:{writeText:async text=>copied.push(text)}}};
+ review.open(vscode,aiContext(changes,'project'),async prompt=>{runs.push(prompt);return{answer:'Done'};});
+ await receive({action:'ready'});
+ await receive({action:'draftPrompt',kind:'git-tests',id:7});
+ assert.equal(runs.length,0);
+ assert.equal(sent.at(-1).draftPrompt.id,7);
+ assert.equal(sent.at(-1).draftPrompt.text,await require('../git-prompts').opening('git-tests'));
+ await receive({action:'copyPrompt',kind:'git-tests',text:'Only check the deletion path'});
+ assert.equal(runs.length,0);
+ assert.match(copied[0],/^Only check the deletion path/);
+ await receive({action:'send',kind:'git-tests',text:'Only check the deletion path'});
+ assert.match(runs[0],/^Only check the deletion path/);
+ assert.doesNotMatch(runs[0],/Generate a test plan|The reader adds to this prompt/);
+ assert.match(runs[0],/old.js/);
+ await receive({action:'send',kind:'git-tests',text:'Explain your second finding'});
+ assert.match(runs[1],/^Explain your second finding/);
+ assert.match(runs[1],/Only check the deletion path/);
 });

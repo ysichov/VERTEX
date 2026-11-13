@@ -34,7 +34,7 @@ function open(vscode, copy, changes, onDone, options = {}) {
     id, path: change.path, treePath: change.file, label: path.basename(change.file), conflict: change.conflict, merged: change.merged, binary: change.binary,
     kind: change.status === "added" ? "new" : change.status === "deleted" ? "deleted" : "changed",
     parts: change.binary || change.status === "deleted" ? [] : review.hunks(change.before, change.after),
-    after: change.after, abap: /\.abap$/i.test(change.file)
+    before: change.before, after: change.after, abap: /\.abap$/i.test(change.file)
   })), { worktree: true, rootLabel: path.basename(copy.folder || copy.top) });
   const untrackLinks=require("./file-links").register(panel,()=>[...byId].map(([id,change])=>({id,path:change.path,relative:path.relative(copy.folder||copy.top,change.path)})));
   let finished = false, built = false;

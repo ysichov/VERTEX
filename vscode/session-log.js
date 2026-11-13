@@ -86,13 +86,17 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       return screenshots || [];
     },
     request({ instructions, prompt, tools, schema }) {
-      if (!on.request) { return; }
+      // Measure the prepared request before source bodies are omitted from the log.
+      const characters = String(instructions || "").length + String(prompt || "").length
+        + JSON.stringify(tools || []).length + JSON.stringify(schema || null).length;
+      const contextSize = { characters, estimatedTokens: Math.ceil(characters / 4), method: "characters/4", scope: "prepared_request" };
+      if (!on.request) { write({ type: "vertex_context_size", contextSize }); return; }
       ({ instructions, prompt, tools, schema } = protection.protect({ instructions, prompt, tools, schema }));
       const objects = [], snapshots = [];
       const request = { instructions: sanitizeText(String(instructions || ""), objects, snapshots),
         prompt: sanitizeText(String(prompt || ""), objects, snapshots),
         tools: sanitize(tools || [], objects), schema: sanitize(schema || null, objects) };
-      write({ type: "vertex_request", request, vertex_objects: objects, vertex_snapshots: snapshots });
+      write({ type: "vertex_request", request, contextSize, vertex_objects: objects, vertex_snapshots: snapshots });
     },
     routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
     optimization(report) { write({type:"vertex_context_optimization",report}); },

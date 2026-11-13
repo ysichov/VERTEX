@@ -286,11 +286,12 @@ async function openCommitReview(vscode, folder, commit) {
       const blocks = [];
       files.filter(f => !f.binary).forEach(f => review.askContext(f.parts, null, f.after, "local", f.path).blocks.forEach(b => blocks.push({ ...b, file: f.path })));
       blocks.forEach((b, i) => { b.block = i + 1; });
-      context = { system: "local", object: name, total: blocks.length, all: true, blocks };
+      context = { system: "local", object: name, total: blocks.length, all: true, blocks, files: files.filter(f => !f.binary).map(f => f.path) };
     } else {
       const f = files.find(x => x.id === message.file);
       if (!f || f.binary) return;
       context = review.askContext(f.parts, Number.isInteger(message.hunk) ? [message.hunk] : null, f.after, "local", name + " " + f.path);
+      context.files = [f.path];
     }
     if(!context.blocks.length){vscode.window.showInformationMessage("No text changes to send to AI.");return;}
     const status=(text,state)=>panel.webview.postMessage({promptStatus:{text,state}});

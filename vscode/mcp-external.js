@@ -221,11 +221,34 @@ async function latestOnNpm(name) {
 
 /* catalog keeps, per server, the version and tool list read the last time it started: { get(), update(value) }.
    fetchLatest(name) answers the newest version npm has of a package. */
-function create({ vscode, active, password, storage, catalog = null, fetchLatest = latestOnNpm }) {
+function create({ vscode, active, password, storage, catalog = null, access = null, fetchLatest = latestOnNpm }) {
   clearEnvFiles(storage);
   const runs = new Map();       // server name -> { key, name, note, client, instructions, tools, version }
   const starting = new Map();   // server name -> { key, promise } while it starts
   const config = () => vscode.workspace.getConfiguration("vertex.chat");
+
+  /* What a server may change in SAP is answered once per server AND per system and client, not once for good: the
+     same server against a sandbox and against a production system are two different permissions. The answers live
+     in a map, server|system|client -> value; the vertex.chat.*Access setting stays as the default for a triple
+     nobody has answered yet, which is also what Settings shows. */
+  const accessStore = access || { get: () => ({}), update: async () => {} };
+  const accessKey = serverName => {
+    let chosen;
+    try { chosen = active(); } catch (_) { return null; }
+    if (!chosen || chosen.error || !chosen.system) return null;
+    return serverName + "|" + (chosen.system.name || "") + "|" + (chosen.system.client || "");
+  };
+  const storedAccess = (serverName, setting) => {
+    const key = accessKey(serverName);
+    const saved = key && (accessStore.get() || {})[key];
+    return saved && typeof saved[setting] === "string" ? saved[setting] : null;
+  };
+  const accessValue = (serverName, setting) => storedAccess(serverName, setting) || String(config().get(setting, "read-only"));
+  /** True when this system and client have already answered every write question this server asks. */
+  const accessRemembered = serverName => {
+    const asked = writeOptions(serverName);
+    return asked.length > 0 && asked.every(option => storedAccess(serverName, option.setting));
+  };
   // A setting that is not a list names no servers; picking one then fails loudly in prepare().
   const servers = () => { const list = config().get("mcpServers"); return (Array.isArray(list) ? list : []).filter(s => s && s.name && (s.command || s.url) && s.name !== VERTEX && s.name !== ORCHESTRATOR); };
   const selected = () => String(config().get("mcpServer", VERTEX) || VERTEX);
@@ -290,9 +313,9 @@ function create({ vscode, active, password, storage, catalog = null, fetchLatest
     if (chosen.error) throw new Error(chosen.error);
     const system = chosen.system;
     if (system.authType !== "basic") throw new Error("MCP server " + name + " needs a user and password, and " + system.name + " logs on with SNC. Use VERTEX's own tools for this system.");
-    const access = ACCESS[config().get("arc1Access", "read-only")] || ACCESS["read-only"];
-    const abapAdtPackage = ABAP_ADT_ACCESS[config().get("abapAdtAccess", "read-only")] || ABAP_ADT_ACCESS["read-only"];
-    const vsp = VSP_ACCESS[config().get("vspAccess", "read-only")] || VSP_ACCESS["read-only"];
+    const access = ACCESS[accessValue(name, "arc1Access")] || ACCESS["read-only"];
+    const abapAdtPackage = ABAP_ADT_ACCESS[accessValue(name, "abapAdtAccess")] || ABAP_ADT_ACCESS["read-only"];
+    const vsp = VSP_ACCESS[accessValue(name, "vspAccess")] || VSP_ACCESS["read-only"];
     const vspPath = String(config().get("vspPath", "vsp") || "vsp");
     return { key: JSON.stringify([entry, system.name, system.url, system.client, system.user, access, abapAdtPackage, vsp, vspPath]), async start() {
       const pw = await password(system);
@@ -346,6 +369,12 @@ function create({ vscode, active, password, storage, catalog = null, fetchLatest
   }
 
   /* The chosen server for the active system, started when needed; null for VERTEX's own tools. */
+  /** Whether this server is up right now - a scene for a start that is not happening would be a lie. */
+  function isRunning(name) {
+    const run = runs.get(name);
+    return !!(run && run.client && run.client.alive());
+  }
+
   async function prepare() {
     const name = selected();
     if (name === VERTEX || name === ORCHESTRATOR) return null;
@@ -525,15 +554,22 @@ function create({ vscode, active, password, storage, catalog = null, fetchLatest
     if (!entry) return [];
     const text = JSON.stringify(entry);
     return WRITE_OPTIONS.filter(o => o.uses.test(text)).map(o => ({ setting: o.setting, label: o.label, choices: o.choices,
-      value: String(config().get(o.setting, "read-only")) }));
+      value: accessValue(name, o.setting) }));
   }
   async function setWriteOption(setting, value) {
     const option = WRITE_OPTIONS.find(o => o.setting === setting);
     if (!option || !option.choices.some(c => c.value === value)) throw new Error("VERTEX: " + value + " is not a choice of vertex.chat." + setting + ".");
+    // Answered for this system and client; the setting keeps the answer as the default for systems not yet answered.
+    const key = accessKey(selected());
+    if (key) {
+      const all = { ...(accessStore.get() || {}) };
+      all[key] = { ...(all[key] || {}), [setting]: value };
+      await accessStore.update(all);
+    }
     await config().update(setting, value, vscode.ConfigurationTarget.Global);
   }
 
-  return { VERTEX, ORCHESTRATOR, choices, needsInstall, checkUpdates, onUpdates, update, refresh, overview, servers, selected, prepare, wrap, stop, toolsets, settingsQuery, writeOptions, setWriteOption,
+  return { VERTEX, ORCHESTRATOR, choices, needsInstall, checkUpdates, onUpdates, update, refresh, overview, servers, selected, prepare, wrap, stop, toolsets, settingsQuery, writeOptions, setWriteOption, accessRemembered, isRunning,
     select: name => config().update("mcpServer", name, vscode.ConfigurationTarget.Global) };
 }
 

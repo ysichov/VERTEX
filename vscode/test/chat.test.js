@@ -965,3 +965,23 @@ test('resuming a topic gives Jev a one-request starting context and reclassifies
  await ask('Another HR question',{routeTopics:true});assert.equal(calls.length,2);assert.equal(calls[1].options.continuationTopic,null);
  assert.ok(calls[1].history.some(m=>m.content==='Translate tiles'),'archive remains available to the router');
 });
+
+
+test('direct SAP navigation retains the preceding topic without a model call',async t=>{
+ t.mock.method(assistant,'ask',async()=>{assert.fail('No LLM for navigation');});
+ const tools={schemas:[],editorContext:()=>null,execute:async name=>name==='search_sap_objects'?{objects:[{object_type:'DEVC',object_name:'Z_ABAP_AI'}]}:{opened:true}};
+ const ask=chat.create(fakeVscode({provider:'claude-subscription',contextMode:'sap'}),tools,{start:async()=>{assert.fail('No model endpoint');}});
+ const topic={id:'topic_0001',label:'Packages created by user',scope:'sap'};
+ ask.restoreConversation([{question:'Which packages?',answer:'Z_ABAP_AI',topic}]);
+ const reply=await ask('Z_ABAP_AI',{contextMode:'sap'});
+ assert.equal(reply.direct,true);assert.deepEqual(reply.topic,topic);
+});
+
+test('untyped SAP links resolve exact objects and disambiguate types before opening',async()=>{
+ const vscode=fakeVscode({provider:'claude-subscription',contextMode:'sap'}),calls=[];
+ vscode.window.showQuickPick=async items=>items.find(item=>item.object.object_type==='DEVC');
+ const ask=chat.create(vscode,{schemas:[],execute:async(name,args)=>{calls.push([name,args]);return name==='search_sap_objects'?{objects:[{object_type:'PROG',object_name:'Z_AVE'},{object_type:'DEVC',object_name:'Z_AVE'},{object_type:'DEVC',object_name:'Z_AVE_OTHER'}]}:{opened:true};}},{start:async()=>{}});
+ await ask.openObject({object_name:'Z_AVE'});
+ assert.deepEqual(calls[1],['open_sap_object',{object_type:'DEVC',object_name:'Z_AVE'}]);
+ await assert.rejects(ask.openObject({object_name:'not a name'}),/exact SAP object/);
+});

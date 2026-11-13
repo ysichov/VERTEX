@@ -780,7 +780,7 @@
             "Writes and activation in $TMP only.",
             "Everything: writes in any package, transport changes, table preview, free SQL and Git writes."
           ],
-          "markdownDescription": "What ARC-1 may do in SAP when it supplies the chat's tools. Table preview, free SQL and Git writes are on only with `write`. Also asked in the window that opens when ARC-1 is chosen in the VERTEX panel."
+          "markdownDescription": "What ARC-1 may do in SAP when it supplies the chat's tools. Table preview, free SQL and Git writes are on only with `write`. The default for a SAP system and client that has not answered yet; the answer itself is kept per system and client. Asked in the window that opens when ARC-1 is chosen in the VERTEX panel, and again when it is chosen while already selected."
         },
         "vertex.chat.abapAdtAccess": {
           "type": "string",
@@ -793,7 +793,7 @@
             "Reads only: runs @mcp-abap-adt/core-ro, which has no write tools.",
             "Create, change and activate objects: runs @mcp-abap-adt/core."
           ],
-          "markdownDescription": "What mcp-abap-adt may change in SAP when it supplies the chat's tools; `${abapAdtPackage}` is the npm package that choice runs. Also asked in the window that opens when mcp-abap-adt is chosen in the VERTEX panel."
+          "markdownDescription": "What mcp-abap-adt may change in SAP when it supplies the chat's tools; `${abapAdtPackage}` is the npm package that choice runs. The default for a SAP system and client that has not answered yet; the answer itself is kept per system and client. Asked in the window that opens when mcp-abap-adt is chosen in the VERTEX panel, and again when it is chosen while already selected."
         },
         "vertex.chat.vspPath": {
           "type": "string",
@@ -811,7 +811,7 @@
             "Reads only: vsp refuses every write (SAP_READ_ONLY=true).",
             "Everything: create, change, delete, activate and transports (SAP_ENABLE_TRANSPORTS=true)."
           ],
-          "markdownDescription": "What vibing-steampunk (vsp) may change in SAP when it supplies the chat's tools; passed as `${vspReadOnly}` and `${vspTransports}`. Also asked in the window that opens when vibing-steampunk is chosen in the VERTEX panel."
+          "markdownDescription": "What vibing-steampunk (vsp) may change in SAP when it supplies the chat's tools; passed as `${vspReadOnly}` and `${vspTransports}`. The default for a SAP system and client that has not answered yet; the answer itself is kept per system and client. Asked in the window that opens when vibing-steampunk is chosen in the VERTEX panel, and again when it is chosen while already selected."
         },
         "vertex.systems": {
           "type": "array",

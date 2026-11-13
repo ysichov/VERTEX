@@ -286,3 +286,23 @@ test('a FORM or METHOD line in a review block is omitted but is not taken for an
   assert.ok(!text.includes('short_form'));
 });
 test('routing metadata respects question-logging privacy',()=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-topic-private-'));try{const log=sessionLog.create(root,'test','routing-private',{questions:false,answers:false});log.routing({status:'routed',basis:'manual',topic:{id:'topic_0001',label:'PRIVATE_TASK_LABEL',scope:'PRIVATE_PROJECT_PATH'},topics:[{lastQuestion:'PRIVATE_QUESTION'}],usage:{input_tokens:4}});const file=fs.readFileSync(log.file,'utf8');assert.doesNotMatch(file,/PRIVATE_TASK_LABEL|PRIVATE_PROJECT_PATH|PRIVATE_QUESTION/);assert.match(file,/topic_0001/);}finally{fs.rmSync(root,{recursive:true,force:true});}});
+
+
+test('prepared context size is recorded without logging private request text and survives report parsing',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'vertex-context-size-'));
+ try{
+  const payload={instructions:'PRIVATE_INSTRUCTIONS',prompt:'PRIVATE_CONTEXT'.repeat(100),tools:[{name:'fixture'}],schema:{type:'object'}};
+  const expected=payload.instructions.length+payload.prompt.length+JSON.stringify(payload.tools).length+JSON.stringify(payload.schema).length;
+  for(const request of [false,true]){
+   const log=sessionLog.create(root,'codex','size_'+request,{request});log.user('Question');log.request(payload);
+   const raw=fs.readFileSync(log.file,'utf8'),records=raw.trim().split('\n').map(JSON.parse);
+   assert.equal(records[1].contextSize.characters,expected);
+   const report=require('../log-report'),parsed=report.parseSession(raw,log.file);
+   assert.equal(parsed.prompts[0].contextSize.estimatedTokens,Math.ceil(expected/4));
+   assert.equal(report.listReport({sessions:[parsed]}).sessions[0].prompts[0].contextSize.characters,expected);
+   if(!request)assert.doesNotMatch(raw,/PRIVATE_INSTRUCTIONS|PRIVATE_CONTEXT|fixture/);
+  }
+  const legacy=require('../log-report').parseSession(JSON.stringify({timestamp:'2026-11-13T10:00:00Z',type:'user',message:{content:'Old question'}})+'\n'+JSON.stringify({timestamp:'2026-11-13T10:00:01Z',type:'assistant',message:{usage:{input_tokens:10000,cache_read_input_tokens:9000},content:[]}}),'old.jsonl');
+  assert.equal(legacy.prompts[0].contextSize,undefined);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});

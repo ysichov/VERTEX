@@ -1,3 +1,55 @@
+## 2026-11-13 — Topic views, SAP links and deferred log sections
+
+The main chat shows the current topic by default, with a display-only selector for other topics or the full conversation. SAP identifiers in answers can be opened by clicking; exact-name lookup resolves the object type when needed. Direct SAP navigation keeps the existing topic without an LLM call. Expanding a log question now shows only section titles; the full record is fetched after an inner section is opened.
+
+## 2026-11-13 — Compact log actions and paged conversations
+
+Session Logs now shows Continue and Tag topics once for the conversation being opened, above the table. Removing the per-row action column frees room for data. Long conversations show 30 questions per page; sorting covers every page. AI Review collapses settings when a request starts, leaving a compact follow-up field and more room to read the answer.
+
+## 2026-11-13 — Give review answers more reading space
+
+AI Review collapses requirements and prompt controls when a request starts, leaving room to read the answer. A compact follow-up field stays below the result; Review settings reopens the saved controls. New answers open at their beginning.
+
+## 2026-11-13 — Stable log actions and lightweight resizing
+
+Session Logs keeps full Continue and Tag topics buttons on one line and reserves the table’s initial column widths. Resizing now shows a guide while dragging and applies the new width on release, avoiding continuous layout of expanded logs. The active topic status shows its short title beside T1/T2 instead of the internal topic identifier.
+
+## 2026-11-13 — Recover topics and keep log tables responsive
+
+Jev can now continue an earlier exchange that has no topic after a routing failure, establishing its topic instead of repeatedly falling back. Session Logs column resizing preserves neighbouring widths, and action buttons stay inside their cells. Opening conversations and questions no longer renders all model steps; expand Steps when needed.
+
+## 2026-11-13 — Route reviews by filenames without diff bodies
+
+Jev topic routing receives the reader’s question and attached review filenames, without diff bodies. This also applies to earlier review questions in the topic catalog. The full diff remains available to the model performing the review.
+
+## 2026-11-13 — Prepared context size in session logs
+
+Session Logs adds Context ≈tok for each question: the prepared request size before sending, estimated from its character count. Hover shows the exact character count and scope. In is renamed New in to distinguish cumulative uncached usage. Older logs without the measurement show a dash; usage totals remain unchanged.
+
+## 2026-11-13 — Combine question and screenshot in topic names
+
+Topic names now combine the user’s question with screenshot context from the same turn. An explicit task stays first instead of being replaced by the screenshot’s visual description. Restored topics are rebuilt the same way when their screenshot observations are available.
+
+## 2026-11-13 — Edit review prompts before sending
+
+ASK AI attaches the selected changes to AI Review without running a request. The chosen review prompt is visible and editable in the chat input before Send; the reader can extend it or replace it with their own question. Follow-up questions remain in the same review conversation. Fixed clipping of the working-status logo at the bottom of the main chat.
+
+## 2026-11-13 — Review controls and new-file backgrounds
+
+AI Review now keeps requirements, review type and Send together below the scrolling conversation. Filled requirements are included automatically; the extra checkbox is removed. Scrollbars follow the active theme. Entirely new files in SAP and Folder review use a neutral code background; additions to existing files remain highlighted.
+
+## 2026-11-13 — Write access remembered per system, topic named once
+
+A server picked earlier now shows its start: when the panel opens and that server is still coming up, the same start scene plays as when Start is pressed, and a server already serving shows nothing. Each step also names what it works on — the file read or written, the pattern searched for, the command run, the SAP object opened.
+
+The window asking what an MCP server may change in SAP now appears once per system and client, not on every pick: answer it for ARC-1 on one system and the next pick there starts the server straight away, showing only the start scene. The answer is kept separately for each system and client, so a permission given on a sandbox is not carried to another system. To change it, choose the server again while it is already selected and the window opens. The setting in Settings stays as the default for a system that has not answered yet.
+
+Topics are named once. The badge on every chat message is gone and the topic now shows in the Conversations header as its number and the first words of its label; the coloured stripe still marks which messages belong together, and the line shown while the answer is being prepared carries the number alone. Waiting scenes also appear for providers that run SAP tools through the API, which previously showed the step as text only. Version remains 0.9.87.
+
+## 2026-11-13 — Waiting scenes for the chat's steps
+
+The VS Code chat panel now shows what the assistant is doing while it works, not only a line of text. Three scenes join the existing review and commit ones, all in the same strip: a lens running along a chain of bits while the folder is searched (Read, Glob, Grep); a short question pulsing from an LLM cloud to the SAP system, which lights up and strikes arcs while it thinks and then sends back a packet of zeros and ones, a different length each time (every SAP and MCP tool); and a double helix built from the bits themselves, whose pairs are cut out in red dust and spliced in green while files are changed (Edit, Write). The scene follows the tool the assistant actually calls, so it can change during one answer. Bash has no scene and names the command it runs instead. Version remains 0.9.87.
+
 ## 2026-11-12 — VS Code 0.9.87
 
 VS Code 0.9.87 packages the screenshot-topic and continuation fixes. Session Logs topic continuation provides a one-request starting context without pinning later questions; the panel retains Full history and Auto (Jev). Removed the two erroneous history files from the extension package; the extension README remains its user documentation. Eclipse is not rebuilt in this release.

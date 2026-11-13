@@ -76,15 +76,23 @@
   .entry-body { padding: 0 8px 4px; }
   .kind { padding: 4px 8px; color: var(--entry-color); font-size: 0.9em; }
   .table-scroll { overflow-x: auto; }
-  table.session-table { table-layout: fixed; width: max(100%, 1000px); }
+  table.session-table { table-layout: fixed; width:100%; }
   /* At least the fixed columns plus room for the question: below that the pane scrolls instead of hiding it. */
-  table.conversation-table { table-layout: fixed; width: max(100%, 1260px); }
+  table.conversation-table { table-layout: fixed; width:100%; }
   table.conversation-table th { position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   td.conversation-title { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-textLink-foreground); }
   td.conversation-body { padding: 0 0 8px 24px; }
-  td.actions { white-space: nowrap; }
+  .conversation-actions{position:sticky;top:0;z-index:3;padding:6px 0;background:var(--vscode-editor-background);border-bottom:1px solid var(--vscode-panel-border)}
+  .conversation-actions[hidden]{display:none}
+  .conversation-actions>.list-tools{margin:0;gap:6px}
+  .action-conversation{max-width:min(50%,450px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  td.actions { white-space:nowrap; overflow:hidden; }
+  td.actions button { vertical-align:middle; }
+  table.conversation-table > tr > td:not(.conversation-body),table.session-table > tr > td:not(.prompt-cell) { overflow:hidden; text-overflow:ellipsis; }
+  .conversation-holder { contain:layout style; }
   td.actions button + button { margin-left: 6px; }
   tr.conversation-row.technical > td { opacity: 0.6; }
+  .list-tools[hidden]{display:none}
   .list-tools { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 8px 0; }
   .kind-filter { color: var(--vscode-descriptionForeground); white-space: nowrap; }
   .log-search { flex: 1; max-width: 420px; padding: 3px 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
@@ -95,7 +103,8 @@
   th.sorted { color: var(--vscode-foreground); }
   .col-grip { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; }
   .col-grip:hover { background: var(--vscode-focusBorder); }
-  body.dragging { cursor: col-resize; user-select: none; }
+  body.dragging, body.dragging * { cursor: col-resize!important; user-select:none!important; }
+  .column-guide { position:fixed;top:0;bottom:0;width:2px;background:var(--vscode-focusBorder);pointer-events:none;z-index:1000; }
   /* Claude Code's steps: an edit as removed and added lines, in the theme's diff colours; each model call a line. */
   .step-diff { margin: 0; padding: 4px 0; font-family: var(--vscode-editor-font-family); font-size: 0.9em; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background)); }
   .step-diff .del, .step-diff .add { display: block; padding: 0 8px; }
@@ -314,13 +323,24 @@ function markdown(text, target) {
     var holder = el("div", "conversation-holder");
     var show = function () { holder.appendChild(conversation(p)); };
     if (!p.lazy) { show(); return holder; }
-    holder.appendChild(el("div", "muted", "Loading…"));
-    if (!waitingDetail[p.key]) { waitingDetail[p.key] = []; vscode.postMessage({ action: "promptDetail", key: p.key }); }
-    waitingDetail[p.key].push(function (reply) {
-      holder.textContent = "";
-      if (reply.error) { holder.appendChild(el("div", "error", reply.error)); return; }
-      p.details = reply.prompt.details || []; p.timeline = reply.prompt.timeline || []; p.decision = reply.prompt.decision || undefined; p.lazy = false;
-      show();
+    var loading=false;
+    (p.sections||["User","Model answer","Steps"]).forEach(function(label){
+      var entry=section(label,label==="User"?"user":label==="Model answer"?"model":"technical");
+      entry.addEventListener("toggle",function(){
+        if(!entry.open||loading)return;loading=true;
+        var requestDetail=!waitingDetail[p.key];if(requestDetail)waitingDetail[p.key]=[];
+        var pending=el("div","muted","Loading…");entry.appendChild(pending);
+        waitingDetail[p.key].push(function(reply){
+          loading=false;
+          if(reply.error){pending.textContent=reply.error;return;}
+          if(typeof reply.prompt.text==="string")p.text=reply.prompt.text;
+          p.details=reply.prompt.details||[];p.timeline=reply.prompt.timeline||[];p.decision=reply.prompt.decision||undefined;p.lazy=false;
+          holder.textContent="";show();
+          var target=Array.prototype.find.call(holder.querySelectorAll("details.entry"),function(box){return box.querySelector("summary").textContent.indexOf(label)===0;});
+          if(target)target.open=true;
+        });
+        if(requestDetail)vscode.postMessage({action:"promptDetail",key:p.key});
+      });holder.appendChild(entry);
     });
     return holder;
   }
@@ -498,7 +518,7 @@ function markdown(text, target) {
       var steps = modelSteps.length > 0;
       var toolBox = section(steps ? "Steps (" + modelSteps.length + " model call" + (modelSteps.length === 1 ? "" : "s") + ", " + calls.length + " tool" + (calls.length === 1 ? "" : "s") + ")"
         : "Tools (" + calls.length + " calls)", "technical");
-      if (steps) toolBox.open = true;
+      var stepsLoaded=false;
       var entries = new Map();
       function appendEntry(target, d) {
         if (d.type === "tool" && d.step && drawStep(target, d)) { objectLinks(target, d.objects); return; }
@@ -533,6 +553,9 @@ function markdown(text, target) {
         later(entry, d);
         (into || toolBox).appendChild(entry);
       }
+      toolBox.addEventListener("toggle",function(){
+        if(!toolBox.open||stepsLoaded)return;
+        stepsLoaded=true;
       if (steps) {
         // Each model call is a group: its line on top, the tools it called indented under it.
         var k = 0, placed = new Set(), group = null;
@@ -554,7 +577,7 @@ function markdown(text, target) {
           } else if (t.kind === "note") {
             var note = el("div", "step-note " + t.note);
             note.appendChild(el("span", "label", t.note === "thinking" ? "Thinking" : "Claude"));
-            note.appendChild(richText(t.text));
+            note.appendChild(section(t.note === "thinking" ? "Thinking" : "Claude", "model", t.text));
             (group || toolBox).appendChild(note);
           }
         });
@@ -564,6 +587,7 @@ function markdown(text, target) {
         var entry = d.tool_id && entries.get(d.tool_id);
         if (!entry) { entry = section("Tool result", "technical"); toolBox.appendChild(entry); }
         later(entry, d);
+      });
       });
       body.appendChild(toolBox);
     }
@@ -587,17 +611,21 @@ function markdown(text, target) {
   /* A table whose headings sort it (as in Metrics: a click, again to reverse, the arrow shows which) and whose
      columns widen by dragging a heading's right edge. ROWS are { item, rows: [tr...] } - the trs move together. A column
      with nosort is neither sorted nor marked. */
-  function sortableHead(table, columns, rows) {
+  function sortableHead(table, columns, rows, onSort) {
     var colgroup = el("colgroup"), ordering = null, hr = el("tr");
+    table.style.minWidth=columns.reduce(function(sum,column){return sum+(column.width||250);},0)+"px";
     columns.forEach(function (column, index) {
       var col = el("col");
       if (column.width) col.style.width = column.width + "px";
       colgroup.appendChild(col);
       var th = el("th", column.cls + (column.nosort ? "" : " sortable"), column.name);
+      if (column.name === "Context ≈tok") th.title = "Estimated prepared context before sending, not cumulative usage. Hover a value for exact character count and limitations.";
+      if (column.name === "New in") th.title = "Uncached input tokens summed across model calls; cached input is shown separately.";
       var sort = function () {
         var down = ordering && ordering.index === index ? !ordering.down : !!column.num;
         ordering = { index: index, down: down };
-        rows.sort(function (a, b) {
+        if(onSort)onSort(column,down);
+        else rows.sort(function (a, b) {
           var x = column.value(a.item), y = column.value(b.item);
           return (x < y ? -1 : x > y ? 1 : 0) * (down ? -1 : 1) || (a.item.time || a.item.end || 0) - (b.item.time || b.item.end || 0);
         });
@@ -606,7 +634,7 @@ function markdown(text, target) {
           cell.textContent = columns[i].name + (i === index ? (down ? " ▼" : " ▲") : "");
           cell.classList.toggle("sorted", i === index);
           if (i === index) cell.setAttribute("aria-sort", down ? "descending" : "ascending"); else cell.removeAttribute("aria-sort");
-          cell.appendChild(cell.grip);
+          if(cell.grip)cell.appendChild(cell.grip);
         });
       };
       if (!column.nosort) {
@@ -614,19 +642,29 @@ function markdown(text, target) {
         th.addEventListener("click", sort);
         th.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sort(); } });
       }
+      if(!column.fixed){
       var grip = el("span", "col-grip");
       grip.title = "Drag to change the column's width";
       grip.addEventListener("click", function (e) { e.stopPropagation(); });
       grip.addEventListener("mousedown", function (e) {
         e.preventDefault(); e.stopPropagation();
-        var startX = e.clientX, startWidth = th.offsetWidth;
+        var startX = e.clientX, widths = Array.prototype.map.call(hr.children,function(cell){return cell.getBoundingClientRect().width;}), startWidth = widths[index];
+        var tableWidth = widths.reduce(function(sum,width){return sum+width;},0);
+        var width=startWidth,edge=th.getBoundingClientRect().right;
+        var guide=el("div","column-guide");guide.style.left=edge+"px";document.body.appendChild(guide);
         document.body.classList.add("dragging");
-        var move = function (m) { col.style.width = Math.max(28, startWidth + m.clientX - startX) + "px"; };
-        var up = function () { document.body.classList.remove("dragging"); window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+        var move = function (m) { width=Math.max(28,startWidth+m.clientX-startX);guide.style.transform="translateX("+(width-startWidth)+"px)"; };
+        var up = function () {
+          document.body.classList.remove("dragging");guide.remove();
+          Array.prototype.forEach.call(colgroup.children,function(item,i){item.style.width=(i===index?width:widths[i])+"px";});
+          table.style.minWidth="0";table.style.width=(tableWidth+width-startWidth)+"px";
+          window.removeEventListener("mousemove", move);window.removeEventListener("mouseup", up);
+        };
         window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
       });
       th.grip = grip;
       th.appendChild(grip);
+      }
       hr.appendChild(th);
     });
     table.appendChild(colgroup);
@@ -678,6 +716,8 @@ function markdown(text, target) {
     search.setAttribute("aria-label", "Search conversations");
     tools.appendChild(search);
     content.appendChild(tools);
+    var actionPanel=el("div","list-tools conversation-actions");actionPanel.hidden=true;
+    actionPanel.setAttribute("aria-label","Actions for the selected conversation");content.appendChild(actionPanel);
     var chat = function (p) { return p.operation === "Chat" || p.operation === "Web search"; };
     // Technical conversations by kind (topic tagging, context optimization...): a checkbox each shows or hides that kind.
     var kindOf = function (s) { return String((s.prompts[0] && s.prompts[0].operation) || "Technical").replace(/ with Jev.*$/, ""); };
@@ -696,10 +736,9 @@ function markdown(text, target) {
     var columns = [
       { name: "", cls: "select-cell", width: 34, nosort: true },
       { name: "Conversation", cls: "", width: null, value: function (s) { return String(promptPreview(s.prompts) || "").toLowerCase(); } },
-      { name: "", cls: "actions", width: 190, nosort: true },
       { name: "Prompts", cls: "num", width: 70, num: true, value: function (s) { return s.prompts.length; } },
       { name: "Providers", cls: "", width: 170, value: function (s) { return s.provider + " " + (s.models || []).join(" "); } },
-      { name: "In", cls: "num", width: 75, num: true, value: function (s) { return s.usage.input || 0; } },
+      { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return s.usage.input || 0; } },
       { name: "Out", cls: "num", width: 70, num: true, value: function (s) { return s.usage.output || 0; } },
       { name: "Cache read", cls: "num", width: 90, num: true, value: function (s) { return s.usage.cacheRead || 0; } },
       { name: "Cost USD", cls: "num", width: 80, num: true, value: function (s) { return s.usage.cost || 0; } },
@@ -727,8 +766,7 @@ function markdown(text, target) {
       title.title = preview;
       title.tabIndex = 0;
       main.appendChild(title);
-      var actions = el("td", "actions");
-      main.appendChild(actions);
+      var actions = el("div", "list-tools");
       main.appendChild(el("td", "num prompt-count", String(s.prompts.length)));
       var models = s.models || [];
       var who = el("td", "identity");
@@ -768,6 +806,8 @@ function markdown(text, target) {
         text: (s.prompts.map(function (p) { return p.text || ""; }).join(" ") + " " + s.provider + " " + models.join(" ")).toLowerCase() };
       // The questions' table is built the first time the conversation opens, and kept.
       record.toggle = function () {
+        actionPanel.textContent="";actionPanel.hidden=!actions.children.length;
+        if(actions.children.length){var selectedTitle=el("span","action-conversation",preview);selectedTitle.title=preview;actionPanel.appendChild(selectedTitle);actionPanel.appendChild(actions);}
         record.open = !record.open;
         caret.textContent = record.open ? "▾" : "▸";
         if (record.open && !record.loaded) { record.loaded = true; body.appendChild(promptTable(s)); }
@@ -806,7 +846,8 @@ function markdown(text, target) {
       { name: "Conversation", cls: "", width: null, value: function (p) { return String(p.text || "").toLowerCase(); } },
       { name: "Topic", cls: "", width: 70, value: function (p) { return p.topic && p.topic.id ? Number(p.topic.id.slice(6)) : 0; }, num: true },
       { name: "Model", cls: "", width: 150, value: function (p) { return (p.provider || "") + " " + (p.model || ""); } },
-      { name: "In", cls: "num", width: 70, value: function (p) { return p.usage.input || 0; }, num: true },
+      { name: "Context ≈tok", cls: "num", width: 105, value: function (p) { return p.contextSize ? p.contextSize.estimatedTokens : -1; }, num: true },
+      { name: "New in", cls: "num", width: 70, value: function (p) { return p.usage.input || 0; }, num: true },
       { name: "Out", cls: "num", width: 65, value: function (p) { return p.usage.output || 0; }, num: true },
       { name: "Cache read", cls: "num", width: 90, value: function (p) { return p.usage.cacheRead || 0; }, num: true },
       { name: "Cost USD", cls: "num", width: 90, value: function (p) { return p.usage.cost || 0; }, num: true },
@@ -816,9 +857,18 @@ function markdown(text, target) {
     var hasCost = s.prompts.some(function (p) { return p.usage && p.usage.cost != null; });
     if (!hasCost) columns = columns.filter(function (column) { return column.name !== "Cost USD"; });
     var rows = [];
-    sortableHead(table, columns, rows);
+    var source=s.prompts.slice(),pageNumber=0,pageSize=30;
+    var navigation=el("div","list-tools"),pageLabel=el("span","muted");
+    var previousPage=el("button","continue-session","Previous"),nextPage=el("button","continue-session","Next");
+    previousPage.type=nextPage.type="button";
+    navigation.appendChild(previousPage);navigation.appendChild(pageLabel);navigation.appendChild(nextPage);
+    previousPage.onclick=function(){pageNumber--;renderPage();};nextPage.onclick=function(){pageNumber++;renderPage();};
+    sortableHead(table,columns,rows,function(column,down){
+      source.sort(function(a,b){var x=column.value(a),y=column.value(b);return(x<y?-1:x>y?1:0)*(down?-1:1)||(a.time||0)-(b.time||0);});
+      pageNumber=0;renderPage();
+    });
     var several = s.prompts.length > 1;
-    s.prompts.forEach(function (p) {
+    function renderPrompt(p) {
       var row = el("tr", several ? "compact" : "");
       var cell = el("td", "prompt-cell");
       if (several) {
@@ -873,6 +923,10 @@ function markdown(text, target) {
       identity.appendChild(modelLabel);
       if (p.branch && p.branch !== "main") identity.appendChild(el("div", "muted", "Branch " + p.branch));
       row.appendChild(identity);
+      var context = el("td", "num", p.contextSize ? "≈" + n(p.contextSize.estimatedTokens) : "—");
+      context.title = p.contextSize ? "Prepared context before sending: " + n(p.contextSize.characters) + " characters. Approximate tokens = characters / 4; not model-tokenizer counts. Includes instructions, history, current prompt, tools and answer schema. Excludes provider-added wrappers, binary images and later tool steps."
+        : "Context size was not recorded in this log. Cumulative usage cannot reconstruct it.";
+      row.appendChild(context);
       row.appendChild(el("td", "num", n(p.usage.input)));
       row.appendChild(el("td", "num", n(p.usage.output)));
       row.appendChild(el("td", "num", n(p.usage.cacheRead)));
@@ -883,9 +937,17 @@ function markdown(text, target) {
       row.appendChild(el("td", "time", promptTime(p.time, s.start)));
       rows.push({ item: p, rows: [row] });
       table.appendChild(row);
-    });
+    }
+    function renderPage(){
+      rows.forEach(function(record){record.rows.forEach(function(row){row.remove();});});rows.length=0;
+      var start=pageNumber*pageSize,end=Math.min(start+pageSize,source.length);
+      source.slice(start,end).forEach(renderPrompt);
+      navigation.hidden=source.length<=pageSize;previousPage.disabled=pageNumber===0;nextPage.disabled=end>=source.length;
+      pageLabel.textContent=(start+1)+"–"+end+" of "+source.length+" questions";
+    }
+    renderPage();
     var scroll = el("div", "table-scroll");
-    scroll.appendChild(table);
+    scroll.appendChild(navigation);scroll.appendChild(table);
     return scroll;
   }
 

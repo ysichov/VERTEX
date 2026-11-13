@@ -900,12 +900,21 @@ function activate(context) {
   const chatMcp = require("./mcp-external").create({ vscode, active, password: system => auth.password(system),
     storage: context.globalStorageUri && context.globalStorageUri.fsPath,
     // The version and tool list of each server, read the last time it started: the catalog and the MCP Servers window use them.
-    catalog: { get: () => context.globalState.get("vertex.mcpCatalog", {}), update: value => context.globalState.update("vertex.mcpCatalog", value) } });
+    catalog: { get: () => context.globalState.get("vertex.mcpCatalog", {}), update: value => context.globalState.update("vertex.mcpCatalog", value) },
+    // What each server may change, answered per system and client: server|system|client -> { setting: value }.
+    access: { get: () => context.globalState.get("vertex.mcpAccess", {}), update: value => context.globalState.update("vertex.mcpAccess", value) } });
   context.subscriptions.push({ dispose: () => chatMcp.stop() });
   // Once per window load: newer npm versions of the servers' packages, shown as Update; nothing is installed here.
   chatMcp.checkUpdates().catch(() => {});
-  // A server picked earlier starts with the extension, in the background, so the first question does not wait for it.
-  if (chatMcp.servers().some(server => server.name === chatMcp.selected())) {
+  /* A server picked earlier starts with the extension, in the background, so the first question does not wait for
+     it - but not in folder context, where the chat may never ask SAP anything and the start would log on, and ask
+     for a password, for nothing. There the first SAP question starts it. */
+  const sapContext = () => {
+    const mode = vscode.workspace.getConfiguration("vertex.ai").get("contextMode", "auto");
+    // "auto" is folder context whenever a working folder is open - the same reading the chat itself makes.
+    return mode === "sap" ? true : mode === "folder" ? false : !require("./chat").currentWorkingFolder(vscode);
+  };
+  if (sapContext() && chatMcp.servers().some(server => server.name === chatMcp.selected())) {
     chatMcp.prepare().catch(error => vscode.window.showErrorMessage("VERTEX: MCP server " + chatMcp.selected() + " did not start: " + error.message));
   }
   const chatTools = chatMcp.wrap(ownChatTools);

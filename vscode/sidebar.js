@@ -198,6 +198,24 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           await refresh();
           await showReview();
           await view.webview.postMessage({chatRunning:!!pendingChat});
+          /* A server picked earlier starts with the window, without anyone pressing Start. Show that start the
+             same way the manual one is shown, so the wait is visible rather than silent - but only while it is
+             actually coming up: a server already serving gets no scene. In folder context the chat may never ask
+             SAP anything, so neither the start nor its scene is wanted here; the first SAP question starts it. */
+          if (chatMcp && ask.state?.().contextMode !== "folder") {
+            const name = chatMcp.selected();
+            if (name && name !== chatMcp.VERTEX && name !== chatMcp.ORCHESTRATOR && !chatMcp.isRunning(name)
+                && chatMcp.servers().some(server => server.name === name)) {
+              await view.webview.postMessage({ mcpStart: { name, running: false, installing: chatMcp.needsInstall(name),
+                scene: require("./task-visual").html(chatMcp.needsInstall(name) ? "install" : "start", false, name) } });
+              try {
+                const started = await chatMcp.prepare();
+                await view.webview.postMessage({ mcpDone: { name, tools: started ? started.tools.length : 0 } });
+              } catch (error) {
+                await view.webview.postMessage({ mcpDone: { name, error: error.message, nodeMissing: !!error.nodeMissing } });
+              }
+            }
+          }
           return;
         }
         if(message.action==="setRouteTopics"){await vscode.workspace.getConfiguration("vertex.ai").update("context.routeTopics",!!message.value,vscode.ConfigurationTarget.Global);return;}
@@ -288,7 +306,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           return;
         }
         if (message.action === "openObject") {
-          try { await ask.openObject({ object_type: String(message.object_type), object_name: String(message.object_name) }); }
+          try { await ask.openObject({ object_type: String(message.object_type||""), object_name: String(message.object_name) }); }
           catch (error) { await view.webview.postMessage({ chat: "VERTEX: " + error.message }); }
           return;
         }
@@ -373,11 +391,17 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           if (!chatMcp) return;
           const names = chatMcp.choices();
           if (!names.includes(String(message.name))) { vscode.window.showErrorMessage("VERTEX: " + String(message.name) + " is not in vertex.chat.mcpServers."); void refresh(); return; }
+          // Picked again while already selected: that is the way back to the write question.
+          const reselected = chatMcp.selected() === String(message.name);
           await chatMcp.select(String(message.name));
           if (String(message.name) === chatMcp.VERTEX || String(message.name) === chatMcp.ORCHESTRATOR) return;
-          // Its write settings are asked first, in the same window; the server starts when the user presses Start.
+          /* Its write settings are asked first, in the same window; the server starts when the user presses Start.
+             Asked once per system and client: when this one has already answered, the server starts straight away
+             and only the start scene is shown. Picking the server that is already selected asks again, which is
+             how the answer is changed. */
           const options = chatMcp.writeOptions(String(message.name));
-          if (options.length) { await view.webview.postMessage({ mcpOptions: { name: String(message.name), options } }); return; }
+          const asked = options.length && (reselected || !chatMcp.accessRemembered(String(message.name)));
+          if (asked) { await view.webview.postMessage({ mcpOptions: { name: String(message.name), options } }); return; }
           message = { action: "mcpStart", name: String(message.name), values: {} };
         }
         if (message.action === "mcpStart") {
@@ -506,7 +530,9 @@ p { line-height: 1.5; color: var(--vscode-descriptionForeground); }
 #messages p.you { color: var(--vscode-charts-blue); }
 #messages .vertex { color: var(--vscode-charts-green); white-space: normal; line-height: 1.5; margin: 1em 0; }
 /* Fixed logo slot: the existing VERTEX mark rotates slowly only while this request is active. */
-#messages .vertex.task { position: relative; padding-left: 42px; }
+#messages .vertex.task { position: relative; min-height:36px; padding-left: 42px; }
+/* Active status and its 32px logo must be laid out before scrolling to the bottom. */
+#messages > .vertex.task.working { content-visibility:visible; }
 #messages .md-table { overflow-x: auto; margin: 6px 0; }
 #messages .md-table table { border-collapse: collapse; font-size: inherit; }
 #messages .md-table th, #messages .md-table td { border: 1px solid var(--vscode-panel-border); padding: 3px 8px; text-align: left; vertical-align: top; }
@@ -600,10 +626,11 @@ body[data-provider="codemie"] #provider-select option { color: var(--vscode-drop
 #review-navigation{flex:none}#review-navigation[hidden]{display:none!important}
 #ai-review-frame{flex:1 1 auto;min-height:100px;width:100%;border:0;background:var(--vscode-editor-background)}
 #review-empty{flex:1 1 auto}
-body[data-chat-mode="review"] #context-controls,body[data-chat-mode="review"] #conversation-history,body[data-chat-mode="review"] #messages,body[data-chat-mode="review"] #work-composer,body[data-chat-mode="review"] #new-conversation{display:none!important}
+body[data-chat-mode="review"] #topic-view,body[data-chat-mode="review"] #context-controls,body[data-chat-mode="review"] #conversation-history,body[data-chat-mode="review"] #messages,body[data-chat-mode="review"] #work-composer,body[data-chat-mode="review"] #new-conversation{display:none!important}
 body:not([data-chat-mode="review"]) #ai-review-frame,body:not([data-chat-mode="review"]) #review-empty,body:not([data-chat-mode="review"]) #new-review{display:none!important}
 #new-review{margin-left:auto}
-.topic-badge{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--vscode-badge-background);color:var(--vscode-badge-foreground);font-size:11px;margin:4px 0 8px}#topic-picker{max-width:100%}#topic-picker-label{display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;vertical-align:middle}#topic-picker-label[hidden]{display:none}
+#topic-view{flex:none}#topic-view[hidden]{display:none}#topic-view-select{flex:1;min-width:0;max-width:100%}
+#topic-now{color:var(--vscode-descriptionForeground,var(--vscode-foreground));font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#topic-picker{max-width:100%}#topic-picker-label{display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;vertical-align:middle}#topic-picker-label[hidden]{display:none}
 #conversation-history{flex:none;margin:6px 0;border-bottom:1px solid var(--vscode-panel-border)}
 #conversation-history>summary{cursor:pointer;padding:6px 0;color:var(--vscode-foreground)}
 .history-controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
@@ -628,7 +655,8 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
 </span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div></div>
-<details id="conversation-history"><summary>Conversations · Continue a chat</summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
+<details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
+<div id="topic-view" class="line" hidden><label for="topic-view-select">Show conversation</label><select id="topic-view-select" aria-label="Visible conversation topic"><option value="current">Current topic</option><option value="all">All topics</option></select></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <p id="review-empty">Select ASK AI on assistant changes to attach a file, a block or all changes to this review chat.</p>
 <iframe id="ai-review-frame" title="AI Review chat" hidden></iframe>
@@ -651,7 +679,23 @@ function paintHistory(){const value=document.getElementById('topic-picker').valu
 document.querySelectorAll('[data-history="full"],[data-history="auto"]').forEach(button=>button.addEventListener('click',()=>{const picker=document.getElementById('topic-picker');picker.value=button.dataset.history;picker.onchange({target:picker});paintHistory();}));
 document.getElementById('topic-picker').onchange=event=>{const value=event.target.value;if(value==='full'||value==='auto'){routeMode=value;api.postMessage({action:'setRouteTopics',value:value==='auto'});}};
 let topicCatalog=[];
-function setTopic(item,topic){if(!topic||!/^topic_\\d{4,8}$/.test(topic.id))return;const canonical=typeof topicCatalog!=='undefined'&&topicCatalog.find(t=>t.id===topic.id);if(canonical)topic={...topic,label:canonical.label};item.dataset.topicId=topic.id;const colors=['blue','green','orange','purple','red','yellow'];const color='var(--vscode-charts-'+colors[Number(topic.id.slice(6))%colors.length]+',var(--vscode-focusBorder))';item.style.borderLeft='3px solid '+color;let badge=item.querySelector('.topic-badge');if(!badge){badge=document.createElement('span');badge.className='topic-badge';item.insertBefore(badge,item.firstChild);}badge.textContent=topic.id+' · '+topic.label;badge.title=topic.label+(topic.dependencies?.length?' · Dependencies: '+topic.dependencies.join(', '):'');}
+let topicViewMode='current';
+function refreshTopicView(){
+ const box=document.getElementById('messages'),control=document.getElementById('topic-view'),select=document.getElementById('topic-view-select');
+ const messages=[...box.children].filter(item=>item.classList.contains('you')||item.classList.contains('vertex'));
+ const topics=new Map();for(const item of messages){const id=item.dataset.topicId;if(id)topics.set(id,topicCatalog.find(t=>t.id===id)?.label||id);}
+ control.hidden=!topics.size;
+ select.replaceChildren();for(const [value,label] of [['current','Current topic'],['all','All topics'],['unassigned','Without a topic'],...Array.from(topics,([id,label])=>[id,'T'+Number(id.slice(6))+' · '+label.slice(0,65)])]){const option=document.createElement('option');option.value=value;option.textContent=label;select.appendChild(option);}
+ if(!['current','all','unassigned'].includes(topicViewMode)&&!topics.has(topicViewMode))topicViewMode='current';select.value=topicViewMode;
+ const selected=topicViewMode==='current'?(messages.at(-1)?.dataset.topicId||''):topicViewMode==='unassigned'?'':topicViewMode;
+ for(const item of messages)item.hidden=topicViewMode!=='all'&&(item.dataset.topicId||'')!==selected;
+}
+document.getElementById('topic-view-select').onchange=e=>{topicViewMode=e.target.value;refreshTopicView();};
+window.addEventListener('message',e=>{const d=e.data||{};if(d.chat||d.cleared||d.topicList||d.progress?.topic||d.progress?.done)queueMicrotask(refreshTopicView);});
+function setTopic(item,topic){if(!topic||!/^topic_\\d{4,8}$/.test(topic.id))return;const canonical=typeof topicCatalog!=='undefined'&&topicCatalog.find(t=>t.id===topic.id);if(canonical)topic={...topic,label:canonical.label};item.dataset.topicId=topic.id;const colors=['blue','green','orange','purple','red','yellow'];const color='var(--vscode-charts-'+colors[Number(topic.id.slice(6))%colors.length]+',var(--vscode-focusBorder))';item.style.borderLeft='3px solid '+color;/* The topic is named once, in the Conversations header. A badge on every message said it twice per exchange and the
+   working status said it a third time, all repeating the question standing right there; the coloured stripe on the
+   left still groups the pair. */
+const now=document.getElementById('topic-now');if(now){const words=topic.label.split(/\\s+/).filter(Boolean).slice(0,6).join(' ');now.textContent=' · '+topic.id+(words?' · '+words+(words.length<topic.label.trim().length?'…':''):'');now.title=topic.label+(topic.dependencies?.length?' · Dependencies: '+topic.dependencies.join(', '):'');}}
 window.addEventListener('message',event=>{const d=event.data||{};if(d.progress?.topic&&!topicCatalog.some(t=>t.id===d.progress.topic.id)){topicCatalog=[...topicCatalog,d.progress.topic];drawTopicPicker();}if(typeof d.routeTopics==='boolean'){const picker=document.getElementById('topic-picker');routeMode=d.routeTopics?'auto':'full';drawTopicPicker(routeMode);}if(typeof d.jevOn==='boolean'){/* Jev switched off in LLM Providers: no history choice, the whole history goes. */document.getElementById('topic-picker-label').hidden=!d.jevOn;if(!d.jevOn)drawTopicPicker('full');}if(Array.isArray(d.topicList)){topicCatalog=d.topicList;drawTopicPicker();for(const item of document.querySelectorAll('[data-topic-id]')){const topic=topicCatalog.find(t=>t.id===item.dataset.topicId);if(topic)setTopic(item,topic);}} if(d.progress?.topicRouting){const r=d.progress.topicRouting;document.getElementById('context-optimization-status').textContent=r.topic?'Topic '+r.topic.id+(r.basis==='manual'?' · manual':' · Jev')+(r.exchangesTotal?' · '+r.exchangesKept+' of '+r.exchangesTotal+' exchanges'+(r.savedPercent>=1?' · history '+Math.round(r.savedPercent)+'% shorter':''):''):'Full history: '+r.reason;}});
 window.addEventListener('message',event=>{const value=event.data?.progress?.contextOptimization;if(value)document.getElementById('context-optimization-status').textContent=value.status==='optimized'?'History: '+Math.round(value.savedPercent)+'% less text ('+value.savedCharacters+' characters)':'Full history'+(value.reason?': '+value.reason:'');});
 let reviewPageId='',reviewLoaded=false;
@@ -880,12 +924,15 @@ document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && String(event.key).toLowerCase() === 'c') copySelectedText(event);
 });
 const progressItems = new Map();
-const taskVisuals=${JSON.stringify({review:require(require("path").join(__dirname,"task-visual")).html("review",true),commit:require(require("path").join(__dirname,"task-visual")).html("commit",true)})};
+const taskVisuals=${JSON.stringify(["review", "commit", "search", "mcp", "edit"].reduce((all, kind) =>
+  Object.assign(all, { [kind]: require(require("path").join(__dirname, "task-visual")).html(kind, true) }), {}))};
 function paintTaskScene(item,update){
-      if(['review','commit'].includes(update.kind))item.dataset.taskKind=update.kind;
+      if(['review','commit','search','mcp','edit'].includes(update.kind))item.dataset.taskKind=update.kind;
       let scene=item.querySelector('.task-scene');
       if(update.done){if(scene)scene.remove();}
-      else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}if(scene.dataset.kind!==item.dataset.taskKind){scene.dataset.kind=item.dataset.taskKind;scene.innerHTML=taskVisuals[item.dataset.taskKind];}}
+      else if(taskVisuals[item.dataset.taskKind]){if(!scene){scene=document.createElement('span');scene.className='task-scene';scene.setAttribute('aria-hidden','true');item.appendChild(scene);}if(scene.dataset.kind!==item.dataset.taskKind){scene.dataset.kind=item.dataset.taskKind;scene.innerHTML=taskVisuals[item.dataset.taskKind];
+        // The edit and MCP scenes change at random, which CSS cannot do: they need their driver on the node drawn.
+        if(window.vertexTaskVisual)window.vertexTaskVisual.drive(scene);}}
       item.setAttribute('aria-busy',String(!update.done));
 }
 let plannerSettings=null,orchestratorSelected=false;
@@ -990,7 +1037,7 @@ window.addEventListener('message', event => {
         body.classList.remove('streaming-answer'); body.replaceChildren();
         markdown('VERTEX:\\n' + (answer || 'No answer returned.'), body);
         if (status) status.remove();
-        links(item, update.choices || []);linkProjectFiles(item);
+        links(item, update.choices || []);linkProjectFiles(item);linkSapNames(item);
         runLinks(item, update.runs || []);
         const copy = document.createElement('button');
         copy.className = 'secondary copy-answer'; copy.textContent = 'Copy'; copy.title = 'Copy this answer to the clipboard';
@@ -1132,7 +1179,7 @@ window.addEventListener('message', event => {
     if (mine) { item.textContent = event.data.chat; } else { markdown(event.data.chat, item); }
     if(event.data.topic)setTopic(item,event.data.topic);
     // Each found object is a link: a click opens it, as a single match is opened.
-    if (!mine) { links(item, event.data.choices || []);linkProjectFiles(item); }
+    if (!mine) { links(item, event.data.choices || []);linkProjectFiles(item);linkSapNames(item); }
     let copy = null;
     if (!mine) {
       copy = document.createElement('button');
@@ -1170,6 +1217,12 @@ function links(item, choices) {
     link.addEventListener('click', event => { event.preventDefault(); api.postMessage({ action: 'openObject', object_type: object.object_type, object_name: object.object_name }); });
     name.replaceWith(link);
   });
+}
+function linkSapNames(item){
+ if(contextMode!=='sap')return;
+ const nodes=[];const walk=node=>{if(node.nodeType===3){nodes.push(node);return;}if(node.nodeType!==1||['A','PRE','SCRIPT','STYLE','BUTTON'].includes(node.tagName))return;[...node.childNodes].forEach(walk);};walk(item);
+ for(const node of nodes){const text=node.textContent;const pattern=/[/][A-Z0-9_]+[/][A-Z][A-Z0-9_/$]+|[ZY][A-Z0-9_]{2,39}/g;const candidates=node.parentElement?.tagName==='CODE'&&/^[A-Z][A-Z0-9_/$]{2,39}$/.test(text)?[{0:text,index:0}]:[...text.matchAll(pattern)];const matches=candidates.filter(m=>!(m.index&&/[A-Z0-9_/$]/.test(text[m.index-1]))&&!/[A-Z0-9_/$*]/.test(text[m.index+m[0].length]||''));if(!matches.length)continue;
+ const fragment=document.createDocumentFragment();let start=0;for(const match of matches){fragment.appendChild(document.createTextNode(text.slice(start,match.index)));const link=document.createElement('a');link.href='#';link.className='link';link.textContent=match[0];link.title='Find and open SAP object '+match[0];link.onclick=e=>{e.preventDefault();api.postMessage({action:'openObject',object_type:'',object_name:match[0]});};fragment.appendChild(link);start=match.index+match[0].length;}fragment.appendChild(document.createTextNode(text.slice(start)));node.replaceWith(fragment);}
 }
 function linkProjectFiles(item){
  if(!projectFileAliases.size)return;
@@ -1264,9 +1317,13 @@ function markdown(text, target) {
     inline(line, paragraph);
   }
 }
-window.vertexReviewMarkdown=markdown;
+window.vertexReviewMarkdown=(text,body)=>{markdown(text,body);linkSapNames(body);linkProjectFiles(body);};
 api.postMessage({ action: 'ready' });
-</script></body></html>`;
+</script>
+<!-- The scenes' own module, after the page's script so that extracting that script by its tag still finds it: the
+     edit scene is driven from JS, so the page needs the module itself, not only its markup and styles. -->
+<script nonce="${nonce}">${require(require("path").join(__dirname,"task-visual")).source()}</script>
+</body></html>`;
 }
 
 module.exports = { register, usageLine };
