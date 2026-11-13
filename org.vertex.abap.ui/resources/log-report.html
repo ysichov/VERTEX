@@ -670,7 +670,7 @@ function markdown(text, target) {
     table.appendChild(colgroup);
     table.appendChild(hr);
   }
-  var lastReport = null, listState = { query: "", hiddenKinds: {} };
+  var lastReport = null, listState = { query: "", hiddenKinds: {}, allContexts: false };
   function render(report) {
     selected.clear(); selectionChanged();
     content.textContent = "";
@@ -682,9 +682,11 @@ function markdown(text, target) {
       var key = source.conversation ? "conversation:" + source.conversation : "file:" + source.id;
       var group = groups.get(key);
       if (!group) {
-        group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {} };
+        group = { id: source.id, start: source.start, end: source.end, relevant: false, contexts: [], fileIds: [], providers: [], models: [], prompts: [], usage: {} };
         groups.set(key, group);
       }
+      group.relevant = group.relevant || source.relevant;
+      group.contexts.push.apply(group.contexts, source.contexts || []);
       group.fileIds.push(source.id);
       group.start = Math.min(group.start, source.start); group.end = Math.max(group.end, source.end);
       if (!group.providers.includes(source.provider)) group.providers.push(source.provider);
@@ -712,9 +714,19 @@ function markdown(text, target) {
     // One row per conversation; Search and Hide technical filter them, the headings sort, the edges widen.
     var tools = el("div", "list-tools");
     var search = el("input", "log-search");
-    search.type = "search"; search.placeholder = "Search questions, providers, models"; search.value = listState.query;
+    search.type = "search"; search.placeholder = "Search questions, providers, models, folders, systems"; search.value = listState.query;
     search.setAttribute("aria-label", "Search conversations");
     tools.appendChild(search);
+    var scope = null;
+    if (report.contextFiltered) {
+      scope = el("span", "vertex-segment-toggle"); scope.setAttribute("role", "group"); scope.setAttribute("aria-label", "Conversation scope");
+      [false, true].forEach(function (all) {
+        var button = el("button", listState.allContexts === all ? "active" : "", all ? "All" : "Relevant"); button.type = "button";
+        button.setAttribute("aria-pressed", String(listState.allContexts === all));
+        button.addEventListener("click", function () { listState.allContexts = all; Array.from(scope.children).forEach(function (child) { var active = child === button; child.classList.toggle("active", active); child.setAttribute("aria-pressed", String(active)); }); filter(); });
+        scope.appendChild(button);
+      }); tools.appendChild(scope);
+    }
     content.appendChild(tools);
     var actionPanel=el("div","list-tools conversation-actions");actionPanel.hidden=true;
     actionPanel.setAttribute("aria-label","Actions for the selected conversation");content.appendChild(actionPanel);
@@ -803,7 +815,7 @@ function markdown(text, target) {
       detail.appendChild(body);
       detail.hidden = true;
       var record = { item: s, rows: [main, detail], technical: technical, kind: technical ? kindOf(s) : "", open: false, loaded: false,
-        text: (s.prompts.map(function (p) { return p.text || ""; }).join(" ") + " " + s.provider + " " + models.join(" ")).toLowerCase() };
+        text: (s.prompts.map(function (p) { return p.text || ""; }).join(" ") + " " + s.provider + " " + models.join(" ") + " " + (s.contexts || []).map(function (context) { return [context.folder, context.system, context.client].filter(Boolean).join(" "); }).join(" ")).toLowerCase() };
       // The questions' table is built the first time the conversation opens, and kept.
       record.toggle = function () {
         actionPanel.textContent="";actionPanel.hidden=!actions.children.length;
@@ -823,7 +835,7 @@ function markdown(text, target) {
       Object.keys(kindBoxes).forEach(function (kind) { if (kindBoxes[kind].checked) delete listState.hiddenKinds[kind]; else listState.hiddenKinds[kind] = true; });
       var q = String(search.value || "").trim().toLowerCase(), shown = 0;
       records.forEach(function (r) {
-        var show = (!q || r.text.indexOf(q) >= 0) && !(r.technical && listState.hiddenKinds[r.kind]);
+        var show = (!report.contextFiltered || listState.allContexts || r.item.relevant) && (!q || r.text.indexOf(q) >= 0) && !(r.technical && listState.hiddenKinds[r.kind]);
         if (show) shown++;
         r.rows[0].hidden = !show; r.rows[1].hidden = !show || !r.open;
       });

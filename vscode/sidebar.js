@@ -226,7 +226,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         if (message.action === "conversationHistory") {
           try {
             const report = require("./log-report").readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
-            await view.webview.postMessage({ conversationHistory: { items: require("./log-report").conversationList(report),
+            await view.webview.postMessage({ conversationHistory: { all: !!message.all, items: require("./log-report").conversationList(report, message.all ? null : require("./session-log").contextOf(vscode)),
               message: report.configured ? "" : "Choose a log folder in Session Logs to save and continue conversations." } });
           } catch (error) { await view.webview.postMessage({ conversationHistory: { items: [], message: error.message } }); }
           return;
@@ -655,7 +655,7 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 <select id="client-select" aria-label="SAP client" title="SAP client" hidden></select>
 <span id="mcp-label" hidden>MCP</span><select id="mcp-select" aria-label="Chat MCP server" title="Where the chat's SAP tools come from" hidden></select><button type="button" class="secondary" id="mcp-settings" title="Settings of the selected MCP server" aria-label="Settings of the selected MCP server" hidden>⚙</button><button type="button" class="secondary" id="mcp-servers" title="MCP servers: descriptions, versions, toolsets and tools" aria-label="MCP servers: descriptions, versions, toolsets and tools" hidden>ⓘ</button><button type="button" class="secondary" id="mcp-update" hidden>Update</button>
 </span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div></div>
-<details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
+<details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><span class="vertex-segment-toggle" id="history-scope" role="group" aria-label="Conversation scope"><button type="button" data-all="false" class="active" aria-pressed="true">Relevant</button><button type="button" data-all="true" aria-pressed="false">All</button></span><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
 <div id="topic-view" class="line" hidden><label for="topic-view-select">Show conversation</label><select id="topic-view-select" aria-label="Visible conversation topic"><option value="current">Current topic</option><option value="all">All topics</option></select></div>
 <main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <p id="review-empty">Select ASK AI on assistant changes to attach a file, a block or all changes to this review chat.</p>
@@ -725,16 +725,19 @@ function renderHistory(){
  const matches=historyItems.filter(item=>(item.title+' '+item.lastQuestion+' '+item.providers).toLocaleLowerCase().includes(query));
  for(const item of matches){const button=document.createElement('button');button.type='button';button.className='secondary history-item';button.disabled=chatRunning||historyOpening;button.title=item.lastQuestion;
  const title=document.createElement('span');title.className='history-title';title.textContent=item.title||'(no prompt text)';
- const meta=document.createElement('span');meta.className='history-meta';meta.textContent=(item.time?new Date(item.time).toLocaleString()+' · ':'')+item.count+' questions · '+item.providers;
+ const meta=document.createElement('span');meta.className='history-meta';meta.textContent=(item.time?new Date(item.time).toLocaleString()+' · ':'')+item.count+' questions · '+item.providers+' · '+(item.contexts||[]).map(context=>context.folder||[context.system,context.client].filter(Boolean).join(' / ')).filter(Boolean).join(' · ');
  button.append(title,meta);button.onclick=()=>{if(chatRunning||historyOpening)return;historyOpening=true;historyStatus.textContent='Restoring conversation…';renderHistory();api.postMessage({action:'continueHistory',id:item.id});};list.appendChild(button);}
  if(!historyLoading&&!historyOpening)historyStatus.textContent=matches.length?'Select a conversation to continue.':query?'No matching conversations.':'No saved conversations.';
 }
-function loadHistory(){if(historyLoading||historyOpening)return;historyLoading=true;historyStatus.textContent='Loading conversations…';api.postMessage({action:'conversationHistory'});}
+let historyAll=false;
+document.querySelectorAll('#history-scope button').forEach(button=>button.onclick=()=>{historyAll=button.dataset.all==='true';document.querySelectorAll('#history-scope button').forEach(item=>{const active=item===button;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active));});loadHistory();});
+function loadHistory(){if(historyLoading||historyOpening)return;historyLoading=true;historyStatus.textContent='Loading conversations…';api.postMessage({action:'conversationHistory',all:historyAll});}
 historyBox.ontoggle=()=>{if(historyBox.open)loadHistory();};
 document.getElementById('history-refresh').onclick=loadHistory;
 document.getElementById('history-search').oninput=renderHistory;
 window.addEventListener('message',event=>{const data=event.data||{};
- if(data.conversationHistory){historyLoading=false;historyItems=data.conversationHistory.items||[];renderHistory();if(data.conversationHistory.message)historyStatus.textContent=data.conversationHistory.message;}
+ if(data.conversationHistory){historyLoading=false;if(data.conversationHistory.all!==undefined&&data.conversationHistory.all!==historyAll){loadHistory();return;}historyItems=data.conversationHistory.items||[];renderHistory();if(data.conversationHistory.message)historyStatus.textContent=data.conversationHistory.message;}
+ if((data.folder!==undefined||data.ai?.contextMode)&&historyBox.open)loadHistory();
  if(data.historyContinued){historyOpening=false;historyBox.open=false;renderHistory();}
  if(data.historyError){historyOpening=false;renderHistory();historyStatus.textContent=data.historyError;}
 });

@@ -836,7 +836,11 @@ function activate(context) {
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
     if (event.affectsConfiguration("vertex.ai.context.secretFields")) configureContextProtection();
   }));
-  require("./session-log").configureAccounting(context);
+  require("./session-log").configureAccounting(context, vscode, () => require("./chat").currentWorkingFolder(vscode),
+    (mode, folder) => {
+      const system = mode === "sap" ? active().system : null;
+      return [mode, folder, system?.name || "", system?.client || "", system?.url || ""];
+    });
   require("./tool-support").configure(context.globalState);
   require("./usage-report").register(vscode,context);
   auth = require("./auth/clients").createAuth({ vscode, context, logger: outputLogger });

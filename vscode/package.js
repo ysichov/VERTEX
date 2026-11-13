@@ -236,7 +236,7 @@ function main(args) {
                 fs.rmSync(item, { recursive: true, force: true });
             }
         }
-        run("npx", ["--yes", "@vscode/vsce", "package", "--out", process.platform === "win32" ? path.basename(candidate) : candidate, ...(target === "universal" ? [] : ["--target", target])],
+        run("npx", ["--yes", "@vscode/vsce", "package", "--no-gitHubIssueLinking", "--no-gitLabIssueLinking", "--out", process.platform === "win32" ? path.basename(candidate) : candidate, ...(target === "universal" ? [] : ["--target", target])],
             { env: { ...process.env, VERTEX_PACKAGING: "1" } });
         // The copies went into the VSIX writable; in the working folder they are made read-only again.
         run(process.execPath, [path.join(__dirname, "copy-pages.js")]);

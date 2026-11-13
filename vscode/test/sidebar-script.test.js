@@ -38,7 +38,8 @@ test("conversation history searches saved chats and continues the selected conve
   const nodes=new Map(),events=[],posted=[];
   const make=()=>({value:'',children:[],append(...children){this.children.push(...children);},appendChild(child){this.children.push(child);},replaceChildren(){this.children=[];}});
   const get=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
-  const context={document:{getElementById:get,createElement:make},window:{addEventListener:(_,fn)=>events.push(fn)},api:{postMessage:m=>posted.push(m)},chatRunning:false};
+  const scopeButtons=[false,true].map(all=>({dataset:{all:String(all)},classList:{toggle(){}},setAttribute(){}}));
+  const context={document:{getElementById:get,createElement:make,querySelectorAll:()=>scopeButtons},window:{addEventListener:(_,fn)=>events.push(fn)},api:{postMessage:m=>posted.push(m)},chatRunning:false};
   vm.runInNewContext(script.slice(script.indexOf('let historyItems='),script.indexOf("document.querySelectorAll('[data-context]')")),context);
   get('conversation-history').open=true;get('conversation-history').ontoggle();
   assert.equal(posted.pop().action,'conversationHistory');
@@ -51,6 +52,7 @@ test("conversation history searches saved chats and continues the selected conve
   assert.equal(posted.at(-1).action,'continueHistory');assert.equal(posted.at(-1).id,'a');
   receive({data:{historyContinued:true}});
   assert.equal(get('conversation-history').open,false);
+  scopeButtons[1].onclick();assert.equal(posted.at(-1).all,true);
 });
 
 test("run and saved SAP-session citations link only when their session is known", () => {

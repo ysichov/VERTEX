@@ -655,3 +655,33 @@ test('Codex JSONL reports exact tokens and original counters without treating su
  const result=await assistant.ask(common(spawn,'codex',{model:'gpt-test',onProviderResponse:event=>events.push(event),onModelCall:event=>calls.push(event)}));
  assert.ok(spawn.calls[0].args.includes('--json'));assert.equal(result.usage.input_tokens,40);assert.equal(result.usage.cache_read_input_tokens,60);assert.equal(result.usage.output_tokens,5);assert.equal(result.model,'gpt-test');assert.equal(events[0].response.usage.input_tokens,100);assert.equal(calls[0].usage.generation_id,'thread-cost:1');assert.equal(calls[0].usage.cost_usd,undefined);
 });
+
+
+test("macOS GUI MCP environment finds NVM node and npx without replacing PATH choices", () => {
+  if (WIN) return;
+  const root = folder("vertex-nvm-");
+  const bin = path.join(root, "versions", "node", "v26.13.0", "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.symlinkSync(process.execPath, path.join(bin, "node"));
+  fs.writeFileSync(path.join(bin, "npx"), "#!/usr/bin/env node\nprocess.stdout.write('npx-ready');\n", { mode: 0o755 });
+  const base = { PATH: "/usr/bin:/bin", NVM_DIR: root, VERTEX_TEST: "kept" };
+  const env = assistant.nodeEnv(base, "darwin");
+  assert.ok(env.PATH.startsWith(base.PATH + ":"));
+  assert.ok(env.PATH.split(":").includes(bin));
+  assert.equal(base.PATH, "/usr/bin:/bin"); assert.equal(env.VERTEX_TEST, "kept");
+  const result = require("node:child_process").spawnSync("npx", [], { env, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr); assert.equal(result.stdout, "npx-ready");
+  assert.deepEqual(assistant.nodeEnv(base, "win32"), base);
+  assert.deepEqual(assistant.nodeEnv(base, "linux"), base);
+});
+
+test("macOS NVM discovery sorts versions numerically and ignores unusable node installations", () => {
+  if (WIN) return;
+  const root = folder("vertex-nvm-order-");
+  for (const version of ["v9.9.0", "v26.2.0", "v26.13.0", "v99.0.0"]) {
+    const bin = path.join(root, "versions", "node", version, "bin"); fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(bin, "node"), "#!/bin/sh\n", { mode: version === "v99.0.0" ? 0o644 : 0o755 });
+  }
+  const paths = assistant.nodeEnv({ PATH: "/usr/bin:/bin", NVM_DIR: root }, "darwin").PATH.split(":").filter(p => p.startsWith(root));
+  assert.deepEqual(paths.map(p => path.basename(path.dirname(p))), ["v26.13.0", "v26.2.0", "v9.9.0"]);
+});

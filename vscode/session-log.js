@@ -15,8 +15,25 @@ const fs = require("fs");
 const path = require("path");
 
 const NOT_LOGGED = "[not logged]";
-let accountingRoot="";
-function configureAccounting(context){accountingRoot=context?.globalStorageUri?.fsPath?path.join(context.globalStorageUri.fsPath,"ai-logs"):"";}
+let accountingRoot="", contextHost, contextFolder, contextScope;
+function contextOf(vscode = contextHost) {
+  if (!vscode) return null;
+  const ai = vscode.workspace.getConfiguration("vertex.ai");
+  const workingFolder = contextFolder?.() || "";
+  const folder = workingFolder || (vscode.workspace.workspaceFolders?.length === 1 ? vscode.workspace.workspaceFolders[0].uri.fsPath : "");
+  const selected = ai.get("contextMode", "auto") || "auto";
+  const mode = selected === "auto" ? (workingFolder ? "folder" : "sap") : selected;
+  const [ , , system, client, url] = contextScope?.(mode, folder) || [];
+  return { mode, folder: mode === "folder" ? folder : "", system: system || "", client: String(client || ""), url: url || "" };
+}
+function matchesContext(contexts, current) {
+  if (!current) return true;
+  const folderKey = value => { const key = String(value || "").replace(/\\/g, "/").replace(/\/+$/, ""); return /^[a-z]:/i.test(key) ? key.toLowerCase() : key; };
+  return (contexts || []).some(context => context.mode === current.mode && (current.mode === "folder"
+    ? !!current.folder && folderKey(context.folder) === folderKey(current.folder)
+    : !!current.system && context.system === current.system && String(context.client || "") === String(current.client || "") && context.url === current.url));
+}
+function configureAccounting(context, vscode, folder, scope){contextHost=vscode;contextFolder=folder;contextScope=scope;accountingRoot=context?.globalStorageUri?.fsPath?path.join(context.globalStorageUri.fsPath,"ai-logs"):"";}
 function resolveRoot(root){return root||accountingRoot;}
 
 function stamp(date) {
@@ -40,7 +57,7 @@ function options(include) {
 function create(root, provider, session, include, operation = "Chat", scope = null) {
   root=resolveRoot(root);
   if (!root) { return null; }
-  const on = options(include);
+  const on = options(include), logContext = contextOf();
   const dir = path.join(root, "claude_compatible");
   const file = path.join(dir, String(provider || "assistant").replace(/[^\w.-]/g, "_") + "_"
     // A random tail: two conversations started within one second must not share a file.
@@ -53,7 +70,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
   const write = entry => {
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch,
+    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch, vertex_context: logContext,
       ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}), ...(parent ? { vertex_parent: parent } : {}) }, protection.protect(entry))) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
@@ -392,7 +409,7 @@ let conversationId = newConversationId(), branchId = "main", branchParent = null
 function current(root, provider, include) {
   root=resolveRoot(root);
   if (!root) { return null; }
-  const key = [root, provider, JSON.stringify(options(include))].join("\n");
+  const key = [root, provider, JSON.stringify(options(include)), JSON.stringify(contextOf())].join("\n");
   if (!shared.has(key)) { shared.set(key, create(root, provider, undefined, include)); }
   return shared.get(key);
 }
@@ -422,4 +439,4 @@ function fromConfig(config) {
     localCode: config.get("log.localCode", true) };
 }
 
-module.exports = { configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference, independentScope };
+module.exports = { contextOf, matchesContext, configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference, independentScope };

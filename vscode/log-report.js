@@ -44,7 +44,7 @@ function parseSession(text, file) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
   const provider = name.replace(/_\d{8}_\d{6}(?:_[0-9a-f]+)?$/, "");
-  const session = { id: name, provider, conversation: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
+  const session = { id: name, provider, conversation: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [], contexts: [] };
   const seen = new Set();
   const toolCalls = new Map();
   let current;
@@ -53,6 +53,8 @@ function parseSession(text, file) {
     let record;
     try { record = JSON.parse(line); } catch { continue; }
     const time = Date.parse(record.timestamp || "");
+    const context = record.vertex_context;
+    if (context && ["folder", "sap"].includes(context.mode) && !session.contexts.some(item => JSON.stringify(item) === JSON.stringify(context))) session.contexts.push(context);
     if (!session.conversation && typeof record.vertex_conversation === "string") session.conversation = record.vertex_conversation;
     if (typeof record.vertex_related_conversation === "string") session.relatedConversation = record.vertex_related_conversation;
     if (Number.isFinite(time)) {
@@ -220,23 +222,24 @@ function readSessions(root) {
 /* The questions and answers of the conversation SESSION belongs to, in the order they were asked: every file that
    carries its conversation id (one per provider it used), or the file alone when it was written before ids existed.
    Commit and PR descriptions are separate operations, not turns of the chat. */
-function conversationList(report) {
+function conversationList(report, context = null) {
   const groups = new Map();
   for (const session of report.sessions) {
     const prompts = session.prompts.filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search");
     if (!prompts.length) continue;
     const key = session.conversation || session.id;
-    if (!groups.has(key)) groups.set(key, { prompts: [], providers: new Set() });
+    if (!groups.has(key)) groups.set(key, { prompts: [], providers: new Set(), contexts: [] });
     const group = groups.get(key);
     group.providers.add(session.provider);
+    group.contexts.push(...(session.contexts || []));
     group.prompts.push(...prompts.map(prompt => ({ ...prompt, sessionId: session.id })));
   }
-  return [...groups.values()].map(group => {
+  return [...groups.values()].filter(group => require("./session-log").matchesContext(group.contexts, context)).map(group => {
     group.prompts.sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
     const first = group.prompts[0], last = group.prompts[group.prompts.length - 1];
     const preview = text => String(text || "").replace(/\s+/g, " ").slice(0, 180);
     return { id: last.sessionId, title: preview(first.text), lastQuestion: preview(last.text),
-      time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · ") };
+      contexts: group.contexts, time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · ") };
   }).sort((a, b) => (b.time || 0) - (a.time || 0));
 }
 
@@ -379,7 +382,9 @@ function open(vscode, options = {}) {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
       full = readSessions(root);
       promptIndex = new Map(full.sessions.flatMap(session => session.prompts).map(prompt => [prompt.key,prompt]));
-      return panel?.webview.postMessage({ action: "data", report: listReport(full) });
+      const context = require("./session-log").contextOf(vscode), report = listReport(full);
+      return panel?.webview.postMessage({ action: "data", report: { ...report, contextFiltered: true,
+        sessions: report.sessions.map(session => ({ ...session, relevant: require("./session-log").matchesContext(session.contexts, context) })) } });
     } catch (error) { return panel?.webview.postMessage({ action: "error", error: error.message }); }
   };
   panel.webview.onDidReceiveMessage(async message => {

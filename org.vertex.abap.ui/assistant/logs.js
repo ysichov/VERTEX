@@ -81,7 +81,7 @@ function parseSession(text, file) {
   // The file's name without folder or extension, read as text: Eclipse parses logs in its browser, without Node's path.
   const name = String(file).replace(/^.*[\\/]/, "").replace(/\.jsonl$/, "");
   const provider = name.replace(/_\d{8}_\d{6}(?:_[0-9a-f]+)?$/, "");
-  const session = { id: name, provider, conversation: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [] };
+  const session = { id: name, provider, conversation: null, start: null, end: null, usage: emptyUsage(), prompts: [], models: [], contexts: [] };
   const seen = new Set();
   const toolCalls = new Map();
   let current;
@@ -90,6 +90,8 @@ function parseSession(text, file) {
     let record;
     try { record = JSON.parse(line); } catch { continue; }
     const time = Date.parse(record.timestamp || "");
+    const context = record.vertex_context;
+    if (context && ["folder", "sap"].includes(context.mode) && !session.contexts.some(item => JSON.stringify(item) === JSON.stringify(context))) session.contexts.push(context);
     if (!session.conversation && typeof record.vertex_conversation === "string") session.conversation = record.vertex_conversation;
     if (typeof record.vertex_related_conversation === "string") session.relatedConversation = record.vertex_related_conversation;
     if (Number.isFinite(time)) {
@@ -121,6 +123,14 @@ function parseSession(text, file) {
     if (record.type === "vertex_context_optimization") {
       if(current) current.details.push({type:"Context optimization (Jev)",text:prettyJson(record.report)});
       continue;
+    }
+    if (record.type === "vertex_context_size" || record.type === "vertex_request") {
+      const size = record.contextSize;
+      if (current && !current.contextSize && Number.isSafeInteger(size?.characters) && size.characters >= 0
+        && Number.isSafeInteger(size?.estimatedTokens) && size.estimatedTokens >= 0 && size.method === "characters/4") {
+        current.contextSize = { characters: size.characters, estimatedTokens: size.estimatedTokens, method: size.method };
+      }
+      if (record.type === "vertex_context_size") continue;
     }
     if (record.type === "vertex_request") {
       if (current && record.request) {
@@ -235,29 +245,38 @@ function readSessions(root) {
       const file = path.join(folder, entry.name);
       return parseSession(fs.readFileSync(file, "utf8"), entry.name);
     }).filter(Boolean).sort((a, b) => b.start - a.start);
+  // Topics tagged afterwards by Tag topics (Jev), kept beside the logs; a topic the log itself records wins.
+  const tagged = new Map();
+  for (const session of sessions) {
+    if (!session.conversation) continue;
+    if (!tagged.has(session.conversation)) tagged.set(session.conversation, (new Proxy({}, {get: () => () => {throw new Error('Topic tagging belongs to the host');}})).readTags(folder, session.conversation));
+    const tags = tagged.get(session.conversation);
+    for (const prompt of session.prompts) if (!prompt.topic && tags[prompt.key]) prompt.topic = tags[prompt.key];
+  }
   return { configured: true, folder, sessions };
 }
 
 /* The questions and answers of the conversation SESSION belongs to, in the order they were asked: every file that
    carries its conversation id (one per provider it used), or the file alone when it was written before ids existed.
    Commit and PR descriptions are separate operations, not turns of the chat. */
-function conversationList(report) {
+function conversationList(report, context = null) {
   const groups = new Map();
   for (const session of report.sessions) {
     const prompts = session.prompts.filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search");
     if (!prompts.length) continue;
     const key = session.conversation || session.id;
-    if (!groups.has(key)) groups.set(key, { prompts: [], providers: new Set() });
+    if (!groups.has(key)) groups.set(key, { prompts: [], providers: new Set(), contexts: [] });
     const group = groups.get(key);
     group.providers.add(session.provider);
+    group.contexts.push(...(session.contexts || []));
     group.prompts.push(...prompts.map(prompt => ({ ...prompt, sessionId: session.id })));
   }
-  return [...groups.values()].map(group => {
+  return [...groups.values()].filter(group => __vertexRequire(2).matchesContext(group.contexts, context)).map(group => {
     group.prompts.sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key));
     const first = group.prompts[0], last = group.prompts[group.prompts.length - 1];
     const preview = text => String(text || "").replace(/\s+/g, " ").slice(0, 180);
     return { id: last.sessionId, title: preview(first.text), lastQuestion: preview(last.text),
-      time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · ") };
+      contexts: group.contexts, time: last.time, count: group.prompts.length, providers: [...group.providers].join(" · ") };
   }).sort((a, b) => (b.time || 0) - (a.time || 0));
 }
 
@@ -305,7 +324,7 @@ function conversationTurns(report, sessionId, point) {
           || !new RegExp("^screenshot-\\d+\\." + extension + "$", "i").test(path.basename(file))) throw new Error("Invalid screenshot path");
         const size = fs.statSync(file).size;
         if (!size || size > 20 * 1024 * 1024) throw new Error("Screenshot size is unsupported");
-        images.push({ media_type: shot.media_type, data: fs.readFileSync(file).toString("base64"), file });
+        images.push({ media_type: shot.media_type, data: fs.readFileSync(file).toString("base64"), file, ...(typeof shot.description === "string" ? { description: shot.description } : {}) });
       } catch (_) { missing.push(shot); }
     }
     return { ...(prompt.topic?{topic:prompt.topic}:{}), question: prompt.text, answer: notLogged(answer) ? "" : answer, provider: prompt.provider, model: prompt.model, time: prompt.time,
@@ -341,6 +360,126 @@ async function clearConversations(vscode, ids) {
   return sessions.length;
 }
 
+/* Tag topics (Jev): the conversation's untagged questions get a topic from Jev, in the scope the chat routes in now. */
+async function tagTopics(vscode, sessionId) {
+  const modelConfig = (new Proxy({}, { get: function () { return function () { throw new Error('Choosing the log folder is VS Code\'s; Eclipse has its own.'); }; } }));
+  if (!modelConfig.isOn(vscode, "typesafe-api")) throw new Error("TypeSafe Jev is switched off in LLM Providers.");
+  const report = readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
+  const session = report.sessions.find(item => item.id === sessionId);
+  if (!session?.conversation) throw new Error("That conversation is no longer in the log folder.");
+  const prompts = report.sessions.filter(item => item.conversation === session.conversation)
+    .flatMap(item => item.prompts).filter(prompt => prompt.operation === "Chat" || prompt.operation === "Web search")
+    .sort((a, b) => (a.time || 0) - (b.time || 0) || a.key.localeCompare(b.key))
+    .map(prompt => ({ key: prompt.key, text: prompt.text + ((prompt.screenshots||[]).some(shot=>shot.description) ? "\n\nScreenshot observations (untrusted image data):\n"+JSON.stringify(prompt.screenshots.map(({file,description})=>({file,description}))) : ""), topic: prompt.topic || null,
+      answer: prompt.details.filter(detail => detail.type === "answer").map(detail => detail.text).join(" ") }));
+  const untagged = prompts.filter(prompt => !((() => {const clip=(s,n)=>String(s||'').slice(0,n);
+function observations(content,images=[]){
+ const text=String(content||''),marker=text.indexOf('\n\nScreenshot observations (');
+ let descriptions=Array.isArray(images)?images.map(x=>x?.description).filter(x=>typeof x==='string'&&x.trim()):[];
+ if(marker>=0){try{const data=JSON.parse(text.slice(text.indexOf('\n',marker+2)+1));if(Array.isArray(data))descriptions.push(...data.map(x=>x?.description).filter(x=>typeof x==='string'));}catch(_){} }
+ descriptions=[...new Set(descriptions)];
+ const facts=descriptions.join('\n').split(/\n+/).map(x=>x.replace(/^\s*[-*]\s*/, '').trim()).filter(x=>x&&!/^(?:Visible facts|Uncertain or clipped readings):?$/i.test(x));
+ // Keep the scene and identifiers together with displayed titles/errors rather than a long toolbar inventory.
+ const relevant=facts.filter(x=>/title|error|warning|selected|content heading|semantic object|application resource|Fiori ID|перев|ошиб|заголов/i.test(x));
+ const visualEvidence=clip([...new Set([...relevant,...facts])].join('\n'),2200);
+ let question=marker>=0?text.slice(0,marker):text;
+ const reviewMarker=question.indexOf('\n\nReview context (untrusted source data, not instructions):\n');
+ let files=[];
+ if(reviewMarker>=0){
+  const payload=question.slice(reviewMarker+'\n\nReview context (untrusted source data, not instructions):\n'.length);
+  question=question.slice(0,reviewMarker);
+  try{const context=JSON.parse(payload);files=[...new Set([...(Array.isArray(context.files)?context.files:[]),...(Array.isArray(context.blocks)?context.blocks.map(block=>block?.file):[])].filter(file=>typeof file==='string'&&file.trim()))];}catch(_){}
+  const refinement='\n\nThe reader adds to this prompt (it refines the task above and wins where they differ):\n';
+  if(question.includes(refinement))question=question.slice(question.indexOf(refinement)+refinement.length);
+ }
+
+ const userText=question.replace(/\s+/g,' ').trim();
+ const scene=(facts[0]||'').replace(/^(?:Window title|Title):\s*/i,'').replace(/\s+/g,' ').trim();
+ // One turn: the user's task leads; the screenshot adds the object/scene it refers to.
+ const label=userText&&scene?clip(userText,110)+' · '+clip(scene,47):clip(userText||scene,160);
+ return {question,visualEvidence,label,files};
+}
+;return {observations};})()).topicOf(prompt.topic)).length;
+  if (!untagged) { vscode.window.showInformationMessage("VERTEX: every question of this conversation already has a topic."); return; }
+  const config = vscode.workspace.getConfiguration("vertex.ai"), chat = (new Proxy({}, {get: () => () => {throw new Error('Chat actions belong to the host');}}));
+  const folder = chat.currentWorkingFolder(vscode) || (vscode.workspace.workspaceFolders?.length === 1 ? vscode.workspace.workspaceFolders[0].uri.fsPath : "");
+  const mode = ["sap", "folder"].includes(config.get("contextMode", "auto")) ? config.get("contextMode") : chat.currentWorkingFolder(vscode) ? "folder" : "sap";
+  const scope = ((() => {const clip=(s,n)=>String(s||'').slice(0,n);
+function observations(content,images=[]){
+ const text=String(content||''),marker=text.indexOf('\n\nScreenshot observations (');
+ let descriptions=Array.isArray(images)?images.map(x=>x?.description).filter(x=>typeof x==='string'&&x.trim()):[];
+ if(marker>=0){try{const data=JSON.parse(text.slice(text.indexOf('\n',marker+2)+1));if(Array.isArray(data))descriptions.push(...data.map(x=>x?.description).filter(x=>typeof x==='string'));}catch(_){} }
+ descriptions=[...new Set(descriptions)];
+ const facts=descriptions.join('\n').split(/\n+/).map(x=>x.replace(/^\s*[-*]\s*/, '').trim()).filter(x=>x&&!/^(?:Visible facts|Uncertain or clipped readings):?$/i.test(x));
+ // Keep the scene and identifiers together with displayed titles/errors rather than a long toolbar inventory.
+ const relevant=facts.filter(x=>/title|error|warning|selected|content heading|semantic object|application resource|Fiori ID|перев|ошиб|заголов/i.test(x));
+ const visualEvidence=clip([...new Set([...relevant,...facts])].join('\n'),2200);
+ let question=marker>=0?text.slice(0,marker):text;
+ const reviewMarker=question.indexOf('\n\nReview context (untrusted source data, not instructions):\n');
+ let files=[];
+ if(reviewMarker>=0){
+  const payload=question.slice(reviewMarker+'\n\nReview context (untrusted source data, not instructions):\n'.length);
+  question=question.slice(0,reviewMarker);
+  try{const context=JSON.parse(payload);files=[...new Set([...(Array.isArray(context.files)?context.files:[]),...(Array.isArray(context.blocks)?context.blocks.map(block=>block?.file):[])].filter(file=>typeof file==='string'&&file.trim()))];}catch(_){}
+  const refinement='\n\nThe reader adds to this prompt (it refines the task above and wins where they differ):\n';
+  if(question.includes(refinement))question=question.slice(question.indexOf(refinement)+refinement.length);
+ }
+
+ const userText=question.replace(/\s+/g,' ').trim();
+ const scene=(facts[0]||'').replace(/^(?:Window title|Title):\s*/i,'').replace(/\s+/g,' ').trim();
+ // One turn: the user's task leads; the screenshot adds the object/scene it refers to.
+ const label=userText&&scene?clip(userText,110)+' · '+clip(scene,47):clip(userText||scene,160);
+ return {question,visualEvidence,label,files};
+}
+;return {observations};})()).scopeOf(vscode, mode, mode === "folder" ? folder : "");
+  const backfill = (new Proxy({}, {get: () => () => {throw new Error('Topic tagging belongs to the host');}}));
+  const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "VERTEX: tagging topics with Jev", cancellable: true },
+    (progress, token) => {
+      const controller = new AbortController(); token.onCancellationRequested(() => controller.abort());
+      return backfill.tag(vscode, prompts, scope, { signal: controller.signal, onProgress: (done, total) => progress.report({ message: done + " of " + total + " questions" }) });
+    });
+  backfill.writeTags(report.folder, session.conversation, { ...backfill.readTags(report.folder, session.conversation), ...result.tags });
+  const r = result.report;
+  vscode.window.showInformationMessage("VERTEX: " + r.tagged + " of " + untagged + " questions tagged into " + r.topicsAfter + " topics; "
+    + r.unclear + " left without a topic and kept whole. " + r.batches + " Jev call" + (r.batches === 1 ? "" : "s") + ".");
+}
+
+/** The report as the list shows it: every prompt without the parts only an opened prompt needs. */
+function listReport(report) {
+  return { ...report, sessions: report.sessions.map(session => ({ ...session,
+    prompts: session.prompts.map(({ details, timeline, decision, ...prompt }) => ({ ...prompt, text: ((() => {const clip=(s,n)=>String(s||'').slice(0,n);
+function observations(content,images=[]){
+ const text=String(content||''),marker=text.indexOf('\n\nScreenshot observations (');
+ let descriptions=Array.isArray(images)?images.map(x=>x?.description).filter(x=>typeof x==='string'&&x.trim()):[];
+ if(marker>=0){try{const data=JSON.parse(text.slice(text.indexOf('\n',marker+2)+1));if(Array.isArray(data))descriptions.push(...data.map(x=>x?.description).filter(x=>typeof x==='string'));}catch(_){} }
+ descriptions=[...new Set(descriptions)];
+ const facts=descriptions.join('\n').split(/\n+/).map(x=>x.replace(/^\s*[-*]\s*/, '').trim()).filter(x=>x&&!/^(?:Visible facts|Uncertain or clipped readings):?$/i.test(x));
+ // Keep the scene and identifiers together with displayed titles/errors rather than a long toolbar inventory.
+ const relevant=facts.filter(x=>/title|error|warning|selected|content heading|semantic object|application resource|Fiori ID|перев|ошиб|заголов/i.test(x));
+ const visualEvidence=clip([...new Set([...relevant,...facts])].join('\n'),2200);
+ let question=marker>=0?text.slice(0,marker):text;
+ const reviewMarker=question.indexOf('\n\nReview context (untrusted source data, not instructions):\n');
+ let files=[];
+ if(reviewMarker>=0){
+  const payload=question.slice(reviewMarker+'\n\nReview context (untrusted source data, not instructions):\n'.length);
+  question=question.slice(0,reviewMarker);
+  try{const context=JSON.parse(payload);files=[...new Set([...(Array.isArray(context.files)?context.files:[]),...(Array.isArray(context.blocks)?context.blocks.map(block=>block?.file):[])].filter(file=>typeof file==='string'&&file.trim()))];}catch(_){}
+  const refinement='\n\nThe reader adds to this prompt (it refines the task above and wins where they differ):\n';
+  if(question.includes(refinement))question=question.slice(question.indexOf(refinement)+refinement.length);
+ }
+
+ const userText=question.replace(/\s+/g,' ').trim();
+ const scene=(facts[0]||'').replace(/^(?:Window title|Title):\s*/i,'').replace(/\s+/g,' ').trim();
+ // One turn: the user's task leads; the screenshot adds the object/scene it refers to.
+ const label=userText&&scene?clip(userText,110)+' · '+clip(scene,47):clip(userText||scene,160);
+ return {question,visualEvidence,label,files};
+}
+;return {observations};})()).observations(prompt.text).question.slice(0,2000),
+      sections: ["User",...(details?.some(d=>d.type==="answer")?["Model answer"]:[]),
+        ...(details?.some(d=>d.type==="tool"||d.type==="tool result")||timeline?.some(t=>t.kind==="model")?["Steps"]:[]),
+        ...(details||[]).filter(d=>!["answer","tool","tool result"].includes(d.type)).map(d=>d.snapshot?(d.snapshot.kind==="uml"?"Recorded UML":"Recorded metrics"):d.type==="Model request and context"?"Request and context":d.type)], lazy: true })) })) };
+}
+
 let panel;
 function open(vscode, options = {}) {
   if (panel) { panel.reveal(vscode.ViewColumn.Beside, false); return panel; }
@@ -350,17 +489,30 @@ function open(vscode, options = {}) {
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
     .replace("</head>", () => "<style>" + __vertexRequire(4).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
-    .replace("</head>", '<script nonce="' + nonce + '">window.vertexCanContinue = true;</script></head>')
+    .replace("</head>", () => '<script nonce="' + nonce + '">window.vertexCanContinue = true;window.vertexCanTagTopics = ' + (new Proxy({}, { get: function () { return function () { throw new Error('Choosing the log folder is VS Code\'s; Eclipse has its own.'); }; } })).isOn(vscode, "typesafe-api") + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
     .replace("</head>", () => "<style>" + __vertexRequire(4).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
+  // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
+  // full record when it is opened: the whole log folder can be tens of megabytes, too much to hold in a webview.
+  let full = null, promptIndex = new Map();
   const refresh = () => {
     try {
       const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
-      return panel?.webview.postMessage({ action: "data", report: readSessions(root) });
+      full = readSessions(root);
+      promptIndex = new Map(full.sessions.flatMap(session => session.prompts).map(prompt => [prompt.key,prompt]));
+      const context = __vertexRequire(2).contextOf(vscode), report = listReport(full);
+      return panel?.webview.postMessage({ action: "data", report: { ...report, contextFiltered: true,
+        sessions: report.sessions.map(session => ({ ...session, relevant: __vertexRequire(2).matchesContext(session.contexts, context) })) } });
     } catch (error) { return panel?.webview.postMessage({ action: "error", error: error.message }); }
   };
   panel.webview.onDidReceiveMessage(async message => {
     if (message?.action === "ready" || message?.action === "refresh") await refresh();
+    if (message?.action === "promptDetail") {
+      const key = String(message.key || "");
+      const prompt = promptIndex.get(key);
+      await panel?.webview.postMessage(prompt ? { action: "promptDetail", key, prompt: { text: prompt.text, details: prompt.details, timeline: prompt.timeline, decision: prompt.decision || null } }
+        : { action: "promptDetail", key, error: "That prompt is no longer in the log folder; refresh Session Logs." });
+    }
     if (message?.action === "settings") await vscode.commands.executeCommand("workbench.action.openSettings", "vertex.ai.log");
     if (message?.action === "clearConversations") {
       try { await clearConversations(vscode, message.ids); await refresh(); }
@@ -370,8 +522,13 @@ function open(vscode, options = {}) {
       try {
         const root = vscode.workspace.getConfiguration("vertex.ai").get("logPath", "");
         const found = conversationTurns(readSessions(root), String(message.id || ""));
+        if(typeof message.topicId==="string"&&/^topic_\d{4,8}$/.test(message.topicId))found.topicId=message.topicId;
         await vscode.commands.executeCommand("vertex.continueConversation", found);
       } catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); }
+    }
+    if (message?.action === "tagTopics") {
+      try { await tagTopics(vscode, String(message.id || "")); await refresh(); }
+      catch (error) { vscode.window.showErrorMessage("VERTEX: " + error.message); await refresh(); }
     }
     if (message?.action === "continueDecision") {
       try {
@@ -425,7 +582,7 @@ function register(vscode, context, options) {
   context.subscriptions.push(vscode.commands.registerCommand("vertex.showLogs", () => open(vscode, options)));
 }
 
-module.exports = { parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList };
+module.exports = { listReport, tagTopics, parseSession, readSessions, register, open, prettyJson, prettyRequest, recordingReference, clearConversations, conversationTurns, conversationList };
 
 },
 function(module,exports,__vertexRequire){
@@ -447,8 +604,25 @@ const fs = (new Proxy({}, {get:()=>()=>{throw new Error("Node fs is unavailable 
 const path = (new Proxy({}, {get:()=>()=>{throw new Error("Node path is unavailable in browser analysis");}}));
 
 const NOT_LOGGED = "[not logged]";
-let accountingRoot="";
-function configureAccounting(context){accountingRoot=context?.globalStorageUri?.fsPath?path.join(context.globalStorageUri.fsPath,"ai-logs"):"";}
+let accountingRoot="", contextHost, contextFolder, contextScope;
+function contextOf(vscode = contextHost) {
+  if (!vscode) return null;
+  const ai = vscode.workspace.getConfiguration("vertex.ai");
+  const workingFolder = contextFolder?.() || "";
+  const folder = workingFolder || (vscode.workspace.workspaceFolders?.length === 1 ? vscode.workspace.workspaceFolders[0].uri.fsPath : "");
+  const selected = ai.get("contextMode", "auto") || "auto";
+  const mode = selected === "auto" ? (workingFolder ? "folder" : "sap") : selected;
+  const [ , , system, client, url] = contextScope?.(mode, folder) || [];
+  return { mode, folder: mode === "folder" ? folder : "", system: system || "", client: String(client || ""), url: url || "" };
+}
+function matchesContext(contexts, current) {
+  if (!current) return true;
+  const folderKey = value => { const key = String(value || "").replace(/\\/g, "/").replace(/\/+$/, ""); return /^[a-z]:/i.test(key) ? key.toLowerCase() : key; };
+  return (contexts || []).some(context => context.mode === current.mode && (current.mode === "folder"
+    ? !!current.folder && folderKey(context.folder) === folderKey(current.folder)
+    : !!current.system && context.system === current.system && String(context.client || "") === String(current.client || "") && context.url === current.url));
+}
+function configureAccounting(context, vscode, folder, scope){contextHost=vscode;contextFolder=folder;contextScope=scope;accountingRoot=context?.globalStorageUri?.fsPath?path.join(context.globalStorageUri.fsPath,"ai-logs"):"";}
 function resolveRoot(root){return root||accountingRoot;}
 
 function stamp(date) {
@@ -472,7 +646,7 @@ function options(include) {
 function create(root, provider, session, include, operation = "Chat", scope = null) {
   root=resolveRoot(root);
   if (!root) { return null; }
-  const on = options(include);
+  const on = options(include), logContext = contextOf();
   const dir = path.join(root, "claude_compatible");
   const file = path.join(dir, String(provider || "assistant").replace(/[^\w.-]/g, "_") + "_"
     // A random tail: two conversations started within one second must not share a file.
@@ -485,7 +659,7 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
   const write = entry => {
     if (discarded) return;
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch,
+    fs.appendFileSync(file, JSON.stringify(Object.assign({ timestamp: new Date().toISOString(), vertex_operation: operation, vertex_conversation: conversation, vertex_branch: branch, vertex_context: logContext,
       ...(scope?.relatedConversation ? { vertex_related_conversation: scope.relatedConversation } : {}), ...(parent ? { vertex_parent: parent } : {}) }, protection.protect(entry))) + "\n", "utf8");
   };
   const id = kind => kind + "_" + Date.now() + "_" + (++sequence);
@@ -511,20 +685,24 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
           const ext = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[image.media_type] || "png";
           const target = path.join(folder, "screenshot-" + (++screenshotCount) + "." + ext);
           fs.writeFileSync(target, Buffer.from(image.data, "base64"));
-          return { file: target, media_type: image.media_type || "image/png" };
+          return { file: target, media_type: image.media_type || "image/png", ...(typeof image.description === "string" ? { description: protection.text(image.description) } : {}) };
         });
       } else if (pasted.length) screenshots = pasted.map(image => ({ media_type: image.media_type || "image/png" }));
       write({ type: "user", message: { role: "user", content }, vertex_objects: objects, ...(screenshots ? { vertex_screenshots: screenshots } : {}) });
       return screenshots || [];
     },
     request({ instructions, prompt, tools, schema }) {
-      if (!on.request) { return; }
+      // Measure the prepared request before source bodies are omitted from the log.
+      const characters = String(instructions || "").length + String(prompt || "").length
+        + JSON.stringify(tools || []).length + JSON.stringify(schema || null).length;
+      const contextSize = { characters, estimatedTokens: Math.ceil(characters / 4), method: "characters/4", scope: "prepared_request" };
+      if (!on.request) { write({ type: "vertex_context_size", contextSize }); return; }
       ({ instructions, prompt, tools, schema } = protection.protect({ instructions, prompt, tools, schema }));
       const objects = [], snapshots = [];
       const request = { instructions: sanitizeText(String(instructions || ""), objects, snapshots),
         prompt: sanitizeText(String(prompt || ""), objects, snapshots),
         tools: sanitize(tools || [], objects), schema: sanitize(schema || null, objects) };
-      write({ type: "vertex_request", request, vertex_objects: objects, vertex_snapshots: snapshots });
+      write({ type: "vertex_request", request, contextSize, vertex_objects: objects, vertex_snapshots: snapshots });
     },
     routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
     optimization(report) { write({type:"vertex_context_optimization",report}); },
@@ -820,7 +998,7 @@ let conversationId = newConversationId(), branchId = "main", branchParent = null
 function current(root, provider, include) {
   root=resolveRoot(root);
   if (!root) { return null; }
-  const key = [root, provider, JSON.stringify(options(include))].join("\n");
+  const key = [root, provider, JSON.stringify(options(include)), JSON.stringify(contextOf())].join("\n");
   if (!shared.has(key)) { shared.set(key, create(root, provider, undefined, include)); }
   return shared.get(key);
 }
@@ -850,21 +1028,18 @@ function fromConfig(config) {
     localCode: config.get("log.localCode", true) };
 }
 
-module.exports = { configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference, independentScope };
+module.exports = { contextOf, matchesContext, configureAccounting, resolveRoot, create, current, reset, discardFiles, tools, assistantTool, redactArgs, summarize, stamp, fromConfig, sanitize, sanitizeText, objectReference, independentScope };
 
 },
 function(module,exports,__vertexRequire){
 var require=__vertexRequire;
 "use strict";
 
-// Protect structured debugger data without mutating the live SAP values.
-const SENSITIVE = /(?:^|[_./~>\-])(?:API_?KEY|API_?TOKEN|PASSWORD|PASSWD|PWD|ACCESS_?TOKEN|REFRESH_?TOKEN|AUTH_?TOKEN|ID_?TOKEN|CLIENT_?SECRET|SECRET|SECRET_?KEY|PRIVATE_?KEY|AUTHORIZATION|COOKIE|SET_COOKIE)$/i;
+// Protect structured debugger data without mutating the live SAP values. Code, diffs and other text are not touched:
+// a review must see the code exactly as written.
+const SENSITIVE = /(?:^|[_./~>\-])(?:API_?KEY|API_?TOKEN|PASSWORD|PASSWD|PWD|ACCESS_?TOKEN|REFRESH_?TOKEN|AUTH_?TOKEN|ID_?TOKEN|TOKEN|JWT|BEARER|CREDENTIALS?|AUTH|AUTH_?HEADER|AUTH_?KEY|ACCESS_?KEY|CLIENT_?KEY|SUBSCRIPTION_?KEY|CLIENT_?SECRET|SECRET|SECRET_?KEY|PRIVATE_?KEY|AUTHORIZATION|COOKIE|SET_COOKIE)$/i;
 const VALUE_FIELDS = /^(?:value|val|content|children|data)$/i;
 const MARKER = /^\[REDACTED secret-\d+ type=\w+ length=\d+ initial=(?:true|false)\]$/;
-const BEARER = /\b(?:Bearer|Basic)\s+([A-Za-z0-9._~+\/-]{6,}=*)/gi;
-const PRIVATE_KEY = /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )?PRIVATE KEY-----/g;
-const ASSIGNMENT = /(\b([A-Z][A-Z0-9_.\/~>\-]*)(?:["'])?\s*[:=]\s*)(?:"((?:\\.|[^"\\\r\n])*)"|'((?:''|\\.|[^'\\\r\n])*)'|([^\s&;,"'<>()]{4,}))/gi;
-const CREDENTIAL_HEADER = /\b(?:Authorization|Proxy-Authorization|Cookie|Set-Cookie)\s*:\s*([^\r\n]+)/gi;
 let extraFields = [];
 const normalize = value => String(value || "").replace(/\s+/g, "_");
 const sensitiveName = value => SENSITIVE.test(normalize(value)) || extraFields.some(pattern => pattern.test(normalize(value)));
@@ -922,32 +1097,10 @@ function create() {
     if (Array.isArray(value)) { value.forEach(secretParts); return; }
     for (const [key, item] of Object.entries(value)) if (!/^(?:name|type|technical|meta_type|id)$/i.test(key)) secretParts(item);
   }
-  function assignments(text, replace) {
-    ASSIGNMENT.lastIndex = 0;
-    let match, output = "", cursor = 0;
-    while ((match = ASSIGNMENT.exec(text))) {
-      const [whole, prefix, name, doubleQuoted, singleQuoted, plain] = match;
-      if (!sensitiveName(name)) { ASSIGNMENT.lastIndex = match.index + prefix.length; continue; }
-      if (plain && (/^(?:Bearer|Basic)$/i.test(plain) || plain === "[REDACTED" || /^(?:[a-z]v|p|i|e|c|r)_\w+\.$/i.test(plain) || /^\s*\(/.test(text.slice(match.index + whole.length)))) continue;
-      const quote = doubleQuoted !== undefined ? '"' : singleQuoted !== undefined ? "'" : "";
-      const encoded = quote ? doubleQuoted ?? singleQuoted : plain;
-      let value = encoded;
-      if (quote === '"') { try { value = JSON.parse('"' + encoded + '"'); } catch (_) { /* keep the displayed value */ } }
-      if (quote === "'") value = encoded.replace(/''/g, "'").replace(/\\'/g, "'");
-      const hidden = marker(value);
-      if (encoded !== value && encoded.length >= 4) marker(encoded);
-      if (replace) { output += text.slice(cursor, match.index) + prefix + quote + hidden + quote; cursor = match.index + whole.length; }
-    }
-    return replace ? output + text.slice(cursor) : text;
-  }
   function discover(value, seen = new WeakSet(), depth = 0) {
     if (depth > 40) return;
     if (typeof value === "string") {
       if (MARKER.test(value)) return;
-      assignments(value, false);
-      value.replace(CREDENTIAL_HEADER, (_, credential) => { marker(credential); return ""; });
-      value.replace(BEARER, (_, token) => { marker(token); return ""; });
-      value.replace(PRIVATE_KEY, key => { marker(key); return ""; });
       blocks(value, () => "", parsed => { discover(parsed, seen, depth + 1); return ""; });
       return;
     }
@@ -961,21 +1114,7 @@ function create() {
       discover(item, seen, depth + 1);
     }
   }
-  function replaceKnown(text) {
-    const entries = [...secrets].filter(([, item]) => item.replace).sort((a, b) => b[0].length - a[0].length);
-    return text.split(/(\[REDACTED secret-\d+ type=\w+ length=\d+ initial=(?:true|false)\])/).map(part => {
-      if (MARKER.test(part)) return part;
-      for (const [secret] of entries) part = part.split(secret).join(marker(secret));
-      return part;
-    }).join("");
-  }
-  function plain(text) {
-    text = text.replace(CREDENTIAL_HEADER, (whole, credential) => whole.slice(0, whole.indexOf(credential)) + marker(credential));
-    text = assignments(text, true);
-    text = text.replace(BEARER, (whole, token) => whole.slice(0, whole.indexOf(token)) + marker(token));
-    text = text.replace(PRIVATE_KEY, key => marker(key));
-    return replaceKnown(text);
-  }
+  function plain(text) { return text; }
   function walk(value, seen = new WeakMap(), depth = 0) {
     if (typeof value === "string") {
       if (MARKER.test(value)) return value;

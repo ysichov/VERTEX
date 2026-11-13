@@ -1,3 +1,11 @@
+## 2026-11-13 — Find Node.js for MCP on macOS (0.9.87)
+
+MCP servers now find Node.js/npm/npx in NVM and Homebrew installations when VS Code is opened from the Dock without the shell PATH. Existing PATH choices keep priority. Missing-command messages no longer assume Node.js is not installed.
+
+## 2026-11-13 — Context-aware conversation logs (0.9.87)
+
+VS Code logs now retain the Folder project or SAP system and client. Chat history and Session Logs show relevant conversations by default; All includes other projects, systems and older untagged logs. Eclipse and VS Code source versions are aligned at 0.9.87.
+
 ## 2026-11-13 — Topic views, SAP links and deferred log sections
 
 The main chat shows the current topic by default, with a display-only selector for other topics or the full conversation. SAP identifiers in answers can be opened by clicking; exact-name lookup resolves the object type when needed. Direct SAP navigation keeps the existing topic without an LLM call. Expanding a log question now shows only section titles; the full record is fetched after an inner section is opened.

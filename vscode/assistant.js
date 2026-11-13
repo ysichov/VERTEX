@@ -173,16 +173,30 @@ async function resolveClaude(vscode, extensionPath) {
 /* The CodeMie CLI is an npm package: its commands lie in npm's global bin - on PATH, or in nvm's
    folders when VS Code was started from the Dock without the shell's PATH. On Windows npm's .cmd
    shim cannot be spawned without a shell, so the package's own script is run with node. */
-function codemieFolders() {
+function codemieFolders(env = process.env) {
   const home = os.homedir();
-  const folders = (process.env.PATH || process.env.Path || "").split(path.delimiter)
+  const folders = (env.PATH || env.Path || "").split(path.delimiter)
     .concat([path.join(home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin"]);
-  const nvm = path.join(process.env.NVM_DIR || path.join(home, ".nvm"), "versions", "node");
+  const nvm = path.join(env.NVM_DIR || path.join(home, ".nvm"), "versions", "node");
   try {
-    fs.readdirSync(nvm).sort().reverse().forEach(version => folders.push(path.join(nvm, version, "bin")));
+    fs.readdirSync(nvm).sort((a, b) => b.localeCompare(a, undefined, { numeric: true })).forEach(version => folders.push(path.join(nvm, version, "bin")));
   } catch (_) { /* No nvm. */ }
-  if (process.platform === "win32" && process.env.APPDATA) { folders.push(path.join(process.env.APPDATA, "npm")); }
+  if (process.platform === "win32" && env.APPDATA) { folders.push(path.join(env.APPDATA, "npm")); }
   return folders.filter(Boolean).map(folder => folder.replace(/^"|"$/g, ""));
+}
+
+// GUI-launched macOS hosts may lack the shell's NVM/Homebrew PATH. Keep explicit PATH choices
+// first and only add installations with an executable node, so npm/npx shebangs can run too.
+function nodeEnv(base = process.env, platform = process.platform) {
+  const env = { ...base };
+  if (platform !== "darwin") return env;
+  const folders = codemieFolders(base).filter(folder => {
+    try { const node = path.join(folder, "node"); fs.accessSync(node, fs.constants.X_OK); return fs.statSync(node).isFile(); }
+    catch (_) { return false; }
+  });
+  const current = (env.PATH || env.Path || "").split(":").filter(Boolean);
+  env.PATH = [...new Set([...current, ...folders])].join(":");
+  return env;
 }
 
 function codemieBinary(command) {
@@ -893,5 +907,6 @@ exports.configuredCodexModel = configuredCodexModel;
 exports.codexError = codexError;
 
 exports.codemieEnv = codemieEnv;
+exports.nodeEnv = nodeEnv;
 
 exports.EFFORTS = EFFORTS;

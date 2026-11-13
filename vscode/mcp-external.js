@@ -46,8 +46,8 @@ function commandExists(command, env) {
   return found.status === 0;
 }
 function missingCommand(entry) {
-  const error = new Error("MCP server " + entry.name + " could not be started: " + entry.command + " was not found."
-    + (entry.command === "npx" ? " Install Node.js (https://nodejs.org), which brings npx, and restart VS Code."
+  const error = new Error("MCP server " + entry.name + " could not be started: " + entry.command + " was not found in the executable search path."
+    + (entry.command === "npx" ? " VERTEX also checks NVM and Homebrew installations on macOS. If Node.js is installed, check that its bin folder contains node and npx and is on PATH. Otherwise install Node.js (https://nodejs.org), which brings npm and npx, and restart VS Code."
       : entry.download ? " Download it from " + entry.download + ", then put its folder on PATH or set " + (entry.pathSetting || "this entry's command in vertex.chat.mcpServers") + " to the file's full path." : ""));
   error.nodeMissing = entry.command === "npx";
   return error;
@@ -70,7 +70,7 @@ function startClient(entry, env, timeoutMs, cleanup, cwd) {
     const tail = stderr.trim().split(/\r?\n/).slice(-8).join("\n");
     const missing = /not recognized|ENOENT|command not found/i.test(tail + " " + (exited && exited.message || ""));
     return new Error("MCP server " + entry.name + " " + (missing
-      ? "could not be started: " + entry.command + " was not found. Install Node.js (https://nodejs.org), which brings npx, and reload VS Code."
+      ? "could not be started: " + entry.command + " or one of its required executables was not found. Check the Node.js/npm/npx installation and the MCP process PATH."
       : "stopped" + (exited && exited.code !== undefined ? " (exit code " + exited.code + ")" : "") + (tail ? ":\n" + tail : ".")));
   };
   child.stdout.setEncoding("utf8");
@@ -326,8 +326,9 @@ function create({ vscode, active, password, storage, catalog = null, access = nu
         arc1AllowWrites: access.allowWrites, arc1AllowTransportWrites: access.allowTransportWrites,
         arc1AllowedPackages: access.allowedPackages, arc1AllowDataPreview: access.allowDataPreview, arc1AllowFreeSql: access.allowFreeSql, arc1AllowGitWrites: access.allowGitWrites, abapAdtPackage,
         vspReadOnly: vsp.readOnly, vspTransports: vsp.transports, vspPath };
-      const env = { ...process.env };
+      let env = { ...process.env };
       for (const [k, v] of Object.entries(entry.env || {})) env[k] = fill(v, values);
+      env = require("./assistant").nodeEnv(env);
       let envFile = null;
       if (entry.envFile) {
         const lines = {};

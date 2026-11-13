@@ -306,3 +306,40 @@ test('prepared context size is recorded without logging private request text and
   assert.equal(legacy.prompts[0].contextSize,undefined);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+
+test("log context stays with the request while folder and SAP selection change", () => {
+  const logs = require("../session-log"), report = require("../log-report");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vertex-context-"));
+  let mode = "folder", folder = "/projects/one", system = "DEV", client = "100";
+  const vscode = { workspace: { getConfiguration: () => ({ get: (key, fallback) => key === "contextMode" ? mode : fallback }) } };
+  logs.configureAccounting(undefined, vscode, () => folder, (mode, folder) => [mode, folder, mode === "sap" ? system : "", mode === "sap" ? client : "", mode === "sap" ? "https://sap.example" : ""]);
+  try {
+    const first = logs.current(root, "test", { questions: true }); first.user("Folder one");
+    folder = "/projects/two";
+    first.assistant({ text: "Late reply" });
+    assert.equal(report.readSessions(root).sessions[0].contexts[0].folder, "/projects/one");
+    const second = logs.current(root, "test", { questions: true }); second.user("Folder two");
+    assert.notEqual(first.file, second.file);
+    mode = "sap";
+    const sap = logs.current(root, "test", { questions: true }); sap.user("SAP");
+    const parsed = report.readSessions(root), context = logs.contextOf();
+    assert.equal(context.system, "DEV"); assert.equal(context.client, "100");
+    assert.equal(report.conversationList(parsed, context).length, 1);
+    client = "200";
+    assert.equal(report.conversationList(parsed, logs.contextOf()).length, 0);
+    assert.equal(report.conversationList(parsed).length, 1);
+  } finally { logs.configureAccounting(undefined); logs.reset(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("relevant logs exclude unknown contexts and distinguish folders, SAP endpoints and clients", () => {
+  const { matchesContext } = require("../session-log");
+  const folder = { mode: "folder", folder: "C:\\Project\\" };
+  assert.ok(matchesContext([folder], { mode: "folder", folder: "c:/project" }));
+  assert.ok(!matchesContext([folder], { mode: "folder", folder: "c:/project-other" }));
+  assert.ok(!matchesContext([], folder)); assert.ok(matchesContext([], null));
+  const sap = { mode: "sap", system: "DEV", client: "100", url: "https://one" };
+  assert.ok(matchesContext([sap], { ...sap }));
+  assert.ok(!matchesContext([sap], { ...sap, client: "200" }));
+  assert.ok(!matchesContext([sap], { ...sap, url: "https://two" }));
+});
