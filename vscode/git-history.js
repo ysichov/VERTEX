@@ -293,6 +293,7 @@ async function openCommitReview(vscode, folder, commit) {
       context = review.askContext(f.parts, Number.isInteger(message.hunk) ? [message.hunk] : null, f.after, "local", name + " " + f.path);
       context.files = [f.path];
     }
+    context.logContext = { mode: "folder", folder };
     if(!context.blocks.length){vscode.window.showInformationMessage("No text changes to send to AI.");return;}
     const status=(text,state)=>panel.webview.postMessage({promptStatus:{text,state}});
     try{

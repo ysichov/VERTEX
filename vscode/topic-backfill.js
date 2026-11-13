@@ -39,7 +39,7 @@ function request(topics, exchanges) {
 async function tag(vscode, prompts, scope, options = {}) {
   const protection = require("./context-protection").create();
   const connection = await require("./review-jev").connection(vscode);
-  if (!connection) throw new Error("TypeSafe Jev is not configured.");
+  if (!connection) throw new Error("The selected decision provider is not configured.");
   const topics = [];
   const known = id => topics.find(t => t.id === id);
   for (const p of prompts) {
@@ -66,10 +66,10 @@ async function tag(vscode, prompts, scope, options = {}) {
     queue = queue.slice(batch.length);
     options.onProgress?.(report.tagged + report.unclear + batch.length, untagged.length);
     const body = request(topics, batch);
-    const audit = require("./ai-accounting").begin(vscode, "typesafe-api", connection.model, "Topic tagging with Jev", require("./session-log").independentScope());
-    audit.decision({ provider: "typesafe-api", model: connection.model, ...body });
+    const audit = require("./ai-accounting").begin(vscode, connection.provider || "typesafe-api", connection.model, "Topic tagging with Jev", { ...require("./session-log").independentScope(), ...(options.conversation ? { relatedConversation: options.conversation, context: options.context } : {}) });
+    audit.decision({ provider: connection.provider || "typesafe-api", model: connection.model, ...body });
     let result;
-    try { result = await require("./jev").evaluate("typesafe-api", connection.key, connection.model, body.state, body.questions, { ...audit.callbacks, signal: options.signal }); }
+    try { result = await require("./jev").evaluate(connection.provider || "typesafe-api", connection.key, connection.model, body.state, body.questions, { ...audit.callbacks, signal: options.signal }); }
     catch (error) { audit.fail(error); throw error; }
     audit.finish(result);
     report.batches++; report.usage.push(result.usage || {});

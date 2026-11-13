@@ -111,7 +111,8 @@ test("API model list uses the selected provider and labels", async () => {
     calls.push(args); return { data: [{ id: "gemini-z", name: "Z" }, { id: "gemini-a", name: "A" }] };
   });
   assert.deepEqual(calls, [["gemini-api", "secret", "/models"]]);
-  assert.deepEqual(list, [{ id: "gemini-a", label: "A" }, { id: "gemini-z", label: "Z" }]);
+  assert.deepEqual(list.filter(m=>m.modelKind!=="decision"), [{ id: "gemini-a", label: "A" }, { id: "gemini-z", label: "Z" }]);
+  assert.equal(list.find(m=>m.id==="gemini-decision-1").modelKind,"decision");
 });
 
 test("OpenAI-compatible provider executes SAP tools and accepts a final plan", async () => {
@@ -535,4 +536,16 @@ test("checking a local model that is not started does not load it", async () => 
   const lm = async (id, key, route, body) => { sent.push(route); return route === "/models" ? { data: [{ id: "big" }] } : { data: [{ id: "big", state: "not-loaded" }] }; };
   await assert.rejects(api.probe("lmstudio-local", "local", "big", lm), /big is not loaded in LM Studio\. Start it there/);
   assert.ok(!sent.includes("/chat/completions"));
+});
+
+test('Gemini decisions use native URL and x-goog-api-key rather than the chat endpoint',async t=>{
+ const https=require('https'),{EventEmitter}=require('events');let target,headers;
+ t.mock.method(https,'request',(url,options,callback)=>{target=url;headers=options.headers;const req=new EventEmitter();req.setTimeout=()=>{};req.end=()=>{const res=new EventEmitter();res.statusCode=200;res.setEncoding=()=>{};callback(res);res.emit('data',JSON.stringify({answers:{passed:{type:'noul',noul:0.9}},usage:{total_input_tokens:10,total_output_tokens:0}}));res.emit('end');req.emit('close');};return req;});
+ const result=await api.probe('gemini-api','gemini-fixture','gemini-decision-1');assert.equal(target.href,'https://generativelanguage.googleapis.com/v1beta/decisions');assert.equal(headers['x-goog-api-key'],'gemini-fixture');assert.equal(headers.authorization,undefined);assert.equal(result.usage.input_tokens,10);assert.equal(result.usage.cost_usd,undefined);
+ await assert.rejects(api.ask({assistant:'gemini-api',apiKey:'gemini-fixture',model:'gemini-decision-1',prompt:'chat'}),/decision model/);
+});
+
+test('Gemini prefixed Decision ID from its model catalog is classified once and uses the native probe',async()=>{
+ const models=await api.models('gemini-api','key',async()=>({data:[{id:'models/gemini-decision-1',name:'Gemini Decision 1'}]}));assert.equal(models.length,1);assert.equal(models[0].modelKind,'decision');assert.equal(models[0].id,'models/gemini-decision-1');
+ const r=await api.probe('gemini-api','key',models[0].id,async(id,key,route,body)=>{assert.equal(route,'/decisions');assert.equal(body.model,'gemini-decision-1');return{answers:{passed:{type:'noul',noul:0.99}},usage:{total_input_tokens:10,total_output_tokens:0}};});assert.equal(r.model,'gemini-decision-1');assert.equal(r.usage.cost_usd,undefined);
 });

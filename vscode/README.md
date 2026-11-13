@@ -101,7 +101,7 @@ Open Welcome with **VERTEX: Get Started** in the Command Palette.
 
 **Web search** (Vercel AI Gateway): ask explicitly to search the web; only the question is sent, with source links in the answer.
 
-**Usage & Cost** (the **$** icon in the VERTEX title bar) shows tokens and USD cost by date, activity, provider and model. Anthropic API costs in the chat panel and Session Logs are calculated from actual tokens at published list prices, including caching; account discounts are not included. Existing logs are calculated when opened.
+**Usage & Cost** (the **$** icon in the VERTEX title bar) shows tokens and USD cost by date, activity, provider and model. Anthropic API costs in the chat panel and Session Logs are calculated from actual tokens at published list prices, including caching; account discounts are not included. Existing logs are calculated when opened. Screenshot recognition and Jev topic routing/tagging appear inside their parent conversation in Session Logs; conversation totals include these calls, and ≈ marks totals that include estimated Jev costs.
 
 
 ## Local ABAP execution
@@ -509,6 +509,10 @@ requests go directly to the selected provider.
 The panel shows the provider's short name. Changing the provider there
 switches at once and clears the chosen model (`vertex.ai.provider`, `vertex.ai.model`).
 
+#### Decision models: TypeSafe JEV and Gemini
+
+Choose **Auto (Jev)** in the chat to show the decision-model list beside it. It groups all enabled decision models by provider; choose the exact model, for example **Gemini → Gemini Decision 1** or **TypeSafe → jev-preview**. This selection is saved independently of the chat model and is used for topic routing, Tag topics, ASK Jev and block sorting. Add the corresponding key in LLM Providers and enable the model there first. The **◇** marker appears only in LLM Providers. Decision models are excluded from ordinary chat model lists; TypeSafe is excluded from the ordinary chat provider menu. Gemini Decision 1 uses Google's native Decisions API. Gemini cost is shown only when the API reports it; no list-price estimate is added. Free quota depends on the Google project.
+
 #### TypeSafe Jev API
 
 TypeSafe Jev is a decision model, not a chat. Add a TypeSafe API key in LLM Providers, then pick TypeSafe Jev and a Jev model in the panel: it turns into a form with a context, questions (Yes / No, Choose an option, Rate on a scale) and **Run Jev**. Answers come with confidence and probabilities. Only the entered context and questions are sent. Jev is also used by **ASK Jev** in reviews and **Sort blocks with Jev** in Git review.
@@ -585,7 +589,7 @@ them: save or undo yours first.
 
 ## Code reviewer
 
-**ASK Jev** beside ASK AI (when TypeSafe Jev is set up) gives a quick advisory assessment of a block: change type, review priority, whether the context is enough, and a recommendation. It never approves, declines or applies anything.
+**ASK Jev** beside ASK AI (when the selected decision model is set up) gives a quick advisory assessment of a block: change type, review priority, whether the context is enough, and a recommendation. It never approves, declines or applies anything.
 
 Edit SAP source in a VERTEX editor tab, then choose **VERTEX: Review & Activate** in the
 editor title or context menu (or ask the chat to save your edits). The

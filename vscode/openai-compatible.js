@@ -58,10 +58,11 @@ function requestJson(id, apiKey, route, body, maxBytes = 64000, timeoutMs, signa
     return Promise.reject(new Error("VERTEX: request exceeds " + (maxBytes === 64000 ? "64 KB" : (maxBytes / 1024) + " KiB") + "; narrow the context or start a new conversation."));
   }
   const base = baseUrl(id);
-  const url = new URL(base + (provider.routes?.[route] || route));
+  const geminiDecision = id === "gemini-api" && route === "/decisions";
+  const url = new URL(base + (geminiDecision ? "/../decisions" : provider.routes?.[route] || route));
   return new Promise((resolve, reject) => {
     const req = (url.protocol === "http:" ? http : https).request(url, { signal, method: payload ? "POST" : "GET", headers: {
-      ...(apiKey && !provider.local ? { authorization: "Bearer " + apiKey } : {}), ...(payload ? { "content-type": "application/json",
+      ...(apiKey && !provider.local ? geminiDecision ? { "x-goog-api-key": apiKey } : { authorization: "Bearer " + apiKey } : {}), ...(payload ? { "content-type": "application/json",
         "content-length": Buffer.byteLength(payload, "utf8") } : {})
     } }, res => {
       let text = "";
@@ -128,6 +129,11 @@ async function models(id, apiKey, request = requestJson) {
     ...(id === "openrouter-api" ? { free: /:free$/i.test(item.id) || item.id === "openrouter/free" || [item.pricing?.prompt,item.pricing?.completion].every(value => (typeof value === "number" || typeof value === "string" && value.trim() !== "") && Number(value) === 0) && Object.values(item.pricing || {}).every(value => Number(value) === 0) } : {}),
     ...(id === "vercel-api" ? require("./model-capabilities").metadata(item) : {})
   }));
+  if (id === "gemini-api") {
+    let decision = list.find(m => m.id.replace(/^models\//, "") === "gemini-decision-1");
+    if (!decision) { decision = {id:"gemini-decision-1",label:"Gemini Decision 1"}; list.push(decision); }
+    Object.assign(decision,{modelKind:"decision",capabilities:{tools:false,json:true,vision:true,web:false}});
+  }
   if (!list.length) { throw new Error(PROVIDERS[id].label + " returned no models" + (PROVIDERS[id].local ? ". Download or load a model in " + PROVIDERS[id].label + " first." : " for this key.")); }
   if (isLocal(id)) return loadedOnly(id, apiKey, list, request);
   return list.sort((a, b) => a.label.localeCompare(b.label));
@@ -201,6 +207,7 @@ async function rateLimitedRequest(send, options = {}) {
 
 // One minimal paid generation request: no tool schemas, history or agent rounds.
 async function probe(id, apiKey, model, request = requestJson, options = {}) {
+  if (id === "gemini-api" && String(model).replace(/^models\//, "") === "gemini-decision-1") return require("./jev").evaluate(id,apiKey,model,"Synthetic connectivity check: the test passed.",{passed:{type:"noul",instructions:"Did the test pass?"}},{...options,request});
   if (id === "typesafe-api" || id === "opencode-api" && require("./opencode-models").isDecision(model)) {
     const response = await request(id, apiKey, id === "typesafe-api" ? "/systemone" : "/systemone/v1/systemone", {
       model, state: "Synthetic connectivity check: the test passed.",
@@ -271,7 +278,7 @@ function searchCallCount(response) {
 }
 async function ask(options) {
   const id = options.assistant;
-  if (PROVIDERS[id]?.decisionOnly || id === "opencode-api" && require("./opencode-models").isDecision(options.model)) throw new Error("Jev is a decision model. Use Check models in LLM Providers to test its Decision API; choose a language model for chat.");
+  if (id === "gemini-api" && String(options.model).replace(/^models\//, "") === "gemini-decision-1" || PROVIDERS[id]?.decisionOnly || id === "opencode-api" && require("./opencode-models").isDecision(options.model)) throw new Error("Jev is a decision model. Use Check models in LLM Providers to test its Decision API; choose a language model for chat.");
   const request = (id,key,route,body,maxBytes,timeout) => (options.request || requestJson)(id,key,route,body,maxBytes,timeout,options.signal);
   if (options.images?.length && options.capabilities?.vision === false) throw new Error("This model does not accept screenshots. Choose a Vision model or remove the images.");
   if(options.webSearch && id!=="vercel-api")throw new Error("Web mode currently requires Vercel AI Gateway.");

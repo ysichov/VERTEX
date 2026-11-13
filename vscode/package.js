@@ -47,7 +47,6 @@ const required = [
     "extension/worktree-review.js",
     "extension/ai-review.js",
     "extension/context-protection.js",
-    "extension/context-optimizer.js",
     "extension/orchestrator-plan.js",
     "extension/orchestrator-supervisor.js",
     "extension/build-runner.js",

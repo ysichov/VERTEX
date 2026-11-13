@@ -3,7 +3,7 @@ const fs=require("fs"),path=require("path"),crypto=require("crypto");
 const number=value=>value!==null&&value!==undefined&&value!==""&&Number.isFinite(Number(value))?Number(value):null;
 function normalize(usage={}) {
  const cacheRead=number(usage.cache_read_input_tokens??usage.prompt_tokens_details?.cached_tokens??usage.cached_input_tokens)||0,cacheWrite=number(usage.cache_creation_input_tokens)||0;
- return {input:usage.prompt_tokens!=null?Math.max(0,(number(usage.prompt_tokens)||0)-cacheRead-cacheWrite):Math.max(0,(number(usage.input_tokens)||0)-(usage.cached_input_tokens!=null?cacheRead:0)),output:number(usage.output_tokens??usage.completion_tokens)||0,cacheRead,cacheWrite,cost:number(usage.cost_usd??usage.gateway_cost??usage.cost)};
+ return {input:usage.prompt_tokens!=null?Math.max(0,(number(usage.prompt_tokens)||0)-cacheRead-cacheWrite):Math.max(0,(number(usage.input_tokens??usage.total_input_tokens)||0)-(usage.cached_input_tokens!=null?cacheRead:0)),output:number(usage.output_tokens??usage.completion_tokens??usage.total_output_tokens)||0,cacheRead,cacheWrite,cost:number(usage.cost_usd??usage.gateway_cost??usage.cost)};
 }
 function readUsage(root){
  root=require("./session-log").resolveRoot(root);

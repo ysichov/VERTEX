@@ -247,9 +247,10 @@ test("every direct model round is a separate Anthropic-format log entry", async 
   const dir = path.join(root, "claude_compatible");
   const file = fs.readdirSync(dir).find(name => name.endsWith(".jsonl"));
   const lines = fs.readFileSync(path.join(dir, file), "utf8").trim().split("\n").map(JSON.parse);
-  assert.deepEqual(lines.map(line => line.type), ["user", "assistant", "assistant"]);
-  assert.deepEqual(lines.slice(1).map(line => line.message.usage.output_tokens), [2, 3]);
-  assert.equal(lines[2].message.content[0].text, "Done");
+  assert.deepEqual(lines.map(line => line.type), ["user", "vertex_context_size", "assistant", "assistant"]);
+  const answers = lines.filter(line => line.type === "assistant");
+  assert.deepEqual(answers.map(line => line.message.usage.output_tokens), [2, 3]);
+  assert.equal(answers[1].message.content[0].text, "Done");
 });
 
 test("a selected fragment from an external ADT editor is sent to VERTEX chat", async (t) => {
@@ -885,19 +886,6 @@ test('saved historical screenshots keep file references without attaching their 
  await ask('Continue our discussion');
  assert.equal(received.images,undefined);assert.match(received.prompt,/C:\/logs\/session\/screenshot-1.png/);assert.doesNotMatch(received.prompt,/PRIVATE_IMAGE_BYTES/);
  assert.match(received.prompt,/Do not claim to see image pixels/);
-});
-test('Main chat uses the selected history without changing its stored conversation, and logs the selection',async t=>{
- const optimizer=require('../context-optimizer'),logs=require('../session-log'),report=require('../log-report');
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'vx-context-selection-'));logs.reset();
- let received,calls=0;const original=[];
- for(let i=0;i<6;i++)original.push({question:'User constraint '+i,answer:'Earlier answer '+i});
- t.mock.method(optimizer,'optimize',async(_v,question,history)=>{calls++;assert.equal(question,'Explain current behavior');return{history:history.map((m,i)=>i===1?{role:'assistant',content:'[selected history marker]'}:m),report:{status:'optimized',beforeCharacters:1000,afterCharacters:700,savedCharacters:300,savedPercent:30,decisions:[{index:1,action:'omit'}]}};});
- t.mock.method(assistant,'ask',async options=>{received=options;return{plan:{answer:'Done'},model:'test'};});
- const ask=chat.create(fakeVscode({provider:'claude-subscription',model:'test','logPath':root,'log.questions':true,'log.answers':true}),{schemas:[],instructions:'',editorContext:()=>null},{start:async()=>({url:'http://127.0.0.1:1/mcp'}),token:'t'});
- try{ask.restoreConversation(original);await ask('Explain current behavior',{optimizeContext:true});assert.equal(calls,1);assert.match(received.prompt,/selected history marker/);assert.doesNotMatch(received.prompt,/Earlier answer 0/);assert.match(received.prompt,/User constraint 0/);
- const parsed=report.readSessions(root);assert.ok(parsed.sessions[0].prompts[0].details.some(d=>d.type==='Context optimization (Jev)'&&d.text.includes('300')));
- await ask('Show the earlier reasoning',{optimizeContext:false});assert.equal(calls,1);assert.match(received.prompt,/Earlier answer 0/);
- }finally{await ask.dispose();logs.reset();fs.rmSync(root,{recursive:true,force:true});}
 });
 test('stale manual topic options cannot override Full history',async t=>{
  let received;t.mock.method(assistant,'ask',async options=>{received=options;return {plan:{answer:'Answer'},model:'test'};});

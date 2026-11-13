@@ -260,7 +260,7 @@ function markdown(text, target) {
   function costText(u) {
     // Up to ten-thousandths of a dollar: finer digits are float noise, not cost.
     var shown = Number(u.cost).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4, useGrouping: false });
-    return u.cost == null ? "-" : "$" + shown + (u.costMissing ? " (partial)" : "");
+    return u.cost == null ? "-" : (u.costEstimated ? "≈ $" : "$") + shown + (u.costMissing ? " (partial)" : "");
   }
   function usageText(u) {
     return "in " + n(u.input) + " · out " + n(u.output) + " · cache read " + n(u.cacheRead) + " · cache write " + n(u.cacheWrite) + (u.cost != null ? " - cost " + costText(u) : u.costMissing ? " - cost unavailable" : "");
@@ -269,8 +269,9 @@ function markdown(text, target) {
   // holding all of them makes every layout - a filter, a splitter move - lay that text out again. Search reads the
   // full text; an opened question shows it whole.
   function promptPreview(prompts) {
-    if (!prompts.length || !prompts[0].text) return "";
-    var text = String(prompts[0].text).slice(0, 600).replace(/\s+/g, " ").trim();
+    var first = prompts.find(function (p) { return p.operation === "Chat" || p.operation === "Web search"; }) || prompts[0];
+    if (!first || !first.text) return "";
+    var text = String(first.text).slice(0, 600).replace(/\s+/g, " ").trim();
     return text.length > 300 ? text.slice(0, 300) + "…" : text;
   }
 
@@ -743,8 +744,19 @@ function markdown(text, target) {
     if (!report.sessions.length) { status.className = "muted"; status.textContent = "No sessions in " + report.folder + "."; return; }
     // Group at presentation time; keep original file ids for host actions.
     var groups = new Map();
-    report.sessions.forEach(function (source) {
-      var key = source.conversation ? "conversation:" + source.conversation : "file:" + source.id;
+    var internal = function (s) { return s.prompts.length && s.prompts.every(function (p) {
+      return p.operation === "Topic routing with Jev" || p.operation === "Topic tagging with Jev" || p.operation === "Screenshot recognition" || p.operation === "Context optimization with Jev" || p.operation === "AI Review" || p.operation === "Review block with Jev" || p.operation === "Commit message" || p.operation === "Pull request description";
+    }); };
+    var parents = new Set(report.sessions.filter(function (s) { return !internal(s); }).map(function (s) { return s.conversation; }).filter(Boolean));
+    var parentContexts = new Map();
+    report.sessions.filter(function (s) { return !internal(s); }).forEach(function (s) { if (s.context && !parentContexts.has(s.conversation)) parentContexts.set(s.conversation, s.context); });
+    // Parents first: actions and place belong to the chat, even when recognition was logged earlier.
+    report.sessions.slice().sort(function (a, b) { return Number(internal(a)) - Number(internal(b)); }).forEach(function (source) {
+      var parentContext = parentContexts.get(source.relatedConversation);
+      var samePlace = !source.context || !parentContext || contextKey(source.context) === contextKey(parentContext);
+      var related = internal(source) && samePlace && parents.has(source.relatedConversation) ? source.relatedConversation : null;
+      var conversationId = related || source.conversation;
+      var key = conversationId ? "conversation:" + conversationId : "file:" + source.id;
       var group = groups.get(key);
       if (!group) {
         group = { id: source.id, start: source.start, end: source.end, fileIds: [], providers: [], models: [], prompts: [], usage: {}, context: null };
@@ -759,7 +771,7 @@ function markdown(text, target) {
       group.prompts.push.apply(group.prompts, source.prompts.map(function (p, index) {
         return Object.assign({}, p, { provider: source.provider, key: p.key || source.id + ":" + index });
       }));
-      ["input", "output", "cacheRead", "cacheWrite", "cost", "costMissing"].forEach(function (k) {
+      ["input", "output", "cacheRead", "cacheWrite", "cost", "costMissing", "costEstimated"].forEach(function (k) {
         if (source.usage[k] != null) group.usage[k] = (group.usage[k] || 0) + source.usage[k];
       });
     });
@@ -771,7 +783,8 @@ function markdown(text, target) {
     var total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     report.sessions.forEach(function (s) { ["input", "output", "cacheRead", "cacheWrite"].forEach(function(k){total[k] += s.usage[k] || 0;});
       if (s.usage.cost != null) total.cost = (total.cost || 0) + s.usage.cost;
-      if (s.usage.costMissing) total.costMissing = (total.costMissing || 0) + s.usage.costMissing; });
+      if (s.usage.costMissing) total.costMissing = (total.costMissing || 0) + s.usage.costMissing;
+      if (s.usage.costEstimated) total.costEstimated = (total.costEstimated || 0) + s.usage.costEstimated; });
     status.className = "muted";
     status.textContent = report.sessions.length + " conversations in " + report.folder;
     content.appendChild(el("div", "totals", "Total: " + usageText(total)));
@@ -789,9 +802,10 @@ function markdown(text, target) {
     // Technical conversations by kind (topic tagging, context optimization...): a checkbox each shows or hides that kind.
     var kindOf = function (s) { return String((s.prompts[0] && s.prompts[0].operation) || "Technical").replace(/ with Jev.*$/, ""); };
     var kinds = {};
-    report.sessions.forEach(function (s) { if (!s.prompts.some(chat)) kinds[kindOf(s)] = (kinds[kindOf(s)] || 0) + 1; });
+    report.sessions.forEach(function (s) { if (!s.prompts.some(chat) && !internal(s)) kinds[kindOf(s)] = (kinds[kindOf(s)] || 0) + 1; });
     var kindBoxes = {};
     Object.keys(kinds).sort().forEach(function (kind) {
+      if (!Object.prototype.hasOwnProperty.call(listState.hiddenKinds, kind)) listState.hiddenKinds[kind] = kind !== "Jev evaluation";
       var box = el("input"); box.type = "checkbox"; box.checked = !listState.hiddenKinds[kind];
       var label = el("label", "kind-filter");
       label.title = "Show the " + kinds[kind] + " technical conversation(s) of this kind";
@@ -831,7 +845,7 @@ function markdown(text, target) {
     var columns = [
       { name: "", cls: "select-cell", width: 34, nosort: true },
       { name: "Conversation", cls: "", width: null, value: function (s) { return String(promptPreview(s.prompts) || "").toLowerCase(); } },
-      { name: "Prompts", cls: "num", width: 70, num: true, value: function (s) { return s.prompts.length; } },
+      { name: "Prompts", cls: "num", width: 70, num: true, value: function (s) { return s.prompts.filter(chat).length || s.prompts.length; } },
       { name: "Providers", cls: "", width: 170, value: function (s) { return s.provider + " " + (s.models || []).join(" "); } },
       { name: "New in", cls: "num", width: 75, num: true, value: function (s) { return s.usage.input || 0; } },
       { name: "Out", cls: "num", width: 70, num: true, value: function (s) { return s.usage.output || 0; } },
@@ -870,7 +884,7 @@ function markdown(text, target) {
       title.tabIndex = 0;
       main.appendChild(title);
       var actions = el("div", "list-tools");
-      main.appendChild(el("td", "num prompt-count", String(s.prompts.length)));
+      main.appendChild(el("td", "num prompt-count", String(s.prompts.filter(chat).length || s.prompts.length)));
       var models = s.models || [];
       var who = el("td", "identity");
       var whoLabel = el("div", "identity-label");
@@ -923,12 +937,12 @@ function markdown(text, target) {
     });
     var filter = function () {
       listState.query = search.value;
-      Object.keys(kindBoxes).forEach(function (kind) { if (kindBoxes[kind].checked) delete listState.hiddenKinds[kind]; else listState.hiddenKinds[kind] = true; });
+      Object.keys(kindBoxes).forEach(function (kind) { listState.hiddenKinds[kind] = !kindBoxes[kind].checked; });
       if (contextSelect) listState.context = contextSelect.value;
       var q = String(search.value || "").trim().toLowerCase(), shown = 0, want = listState.context || "";
       records.forEach(function (r) {
         var here = !want || (want === "none" ? !r.context : r.context === want);
-        var show = here && (!q || r.text.indexOf(q) >= 0) && !(r.technical && listState.hiddenKinds[r.kind]);
+        var show = here && (!q || r.text.indexOf(q) >= 0) && !(r.technical && (Object.prototype.hasOwnProperty.call(listState.hiddenKinds, r.kind) ? listState.hiddenKinds[r.kind] : r.kind !== "Jev evaluation"));
         if (show) shown++;
         r.rows[0].hidden = !show; r.rows[1].hidden = !show || !r.open;
       });

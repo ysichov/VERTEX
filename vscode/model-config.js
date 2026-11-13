@@ -823,6 +823,7 @@ function fill(id) {
     tr.appendChild(el("td")).appendChild(box);
     const nameCell=tr.appendChild(el("td"));
     if(id==="vercel-api"){const info=el("button",{type:"button",textContent:"ⓘ",title:"Model description from Vercel API",className:"model-info"});info.setAttribute("aria-label","Model information: "+(r.label||r.id));info.addEventListener("click",()=>showModelInfo(r));nameCell.appendChild(info);nameCell.appendChild(document.createTextNode(" "));}
+    if(r.modelKind === "decision") nameCell.appendChild(el("span",{className:"capability",textContent:"◇ ",title:"Decision model — choices, scores and probabilities",tabIndex:0}));
     nameCell.appendChild(document.createTextNode(r.label||r.id));
     if(r.isNew)nameCell.appendChild(el("span",{className:"note",textContent:" · new",title:"Added to the provider's catalog since the table was last saved. Tick it to offer it."}));
     if(r.missing)nameCell.appendChild(el("span",{className:"note",textContent:" · not in catalog",title:"Ticked earlier, but the provider's catalog no longer lists it. It is not offered; untick it and save to drop it."}));

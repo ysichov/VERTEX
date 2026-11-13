@@ -336,3 +336,36 @@ test('continuing an older conversation without a place gives the whole conversat
   // And it is no longer offered as a conversation of nowhere.
   assert.deepEqual(logs.conversationList(report, 'sap:A4H/100'), []);
 });
+
+test('internal routing, tagging and recognition join their parent with totals, files and lazy details intact',()=>{
+ const page=fs.readFileSync(path.join(__dirname,'../../org.vertex.abap.ui/resources/log-report.html'),'utf8');
+ const node=(tag,cls='',text='')=>({tag,cls,text,value:'',children:[],events:{},style:{},classList:{toggle(){},add(){},remove(){}},appendChild(c){this.children.push(c);return c;},setAttribute(){},removeAttribute(){},addEventListener(n,f){this.events[n]=f;}});
+ const content=node('main'),context={content,status:{},selected:new Set(),selectionChanged(){},window:{},el:node,listState:{query:'',hiddenKinds:{}},document:{createTextNode:text=>({text})},time:String,span:()=>'',n:String,costText:()=>'',promptTime:String,usageText:()=>'',promptPreview:p=>p.find(x=>x.operation==='Chat')?.text||p[0]?.text||'',conversation:()=>node('div')};
+ vm.createContext(context);vm.runInContext(page.slice(page.indexOf('  var waitingDetail'),page.indexOf('  function section('))+page.slice(page.indexOf('  function sortableHead('),page.indexOf('  var lastReport = null'))+page.slice(page.indexOf('  function render(report)'),page.indexOf('  window.addEventListener("message"')),context);
+ const session=(id,operation,related)=>({id,conversation:id,relatedConversation:related,provider:id,start:1,end:3,usage:{input:10,cost:0.01},prompts:[{key:id+':0',operation,text:id,time:1,usage:{input:10,cost:0.01}}]});
+ const parent=session('parent','Chat');parent.context={mode:'folder',folder:'C:/project'};
+ const routing=session('routing','Topic routing with Jev','parent'),tagging=session('tagging','Topic tagging with Jev','parent'),recognition=session('image','Screenshot recognition','parent');
+ routing.usage.costEstimated=1;
+ const review=session('review','AI Review','parent');
+ const orphan=session('orphan','Screenshot recognition','missing');
+ const other=session('other','AI Review','parent');other.context={mode:'folder',folder:'C:/other'};
+ const check=session('check','Model check');
+ const evaluation=session('evaluation','Jev evaluation');
+ const records=context.render({configured:true,folder:'logs',sessions:[routing,tagging,recognition,review,orphan,other,check,evaluation,parent]});
+ assert.equal(records.length,5,'linked calls merge, orphan and differently placed review remain separate');
+ assert.equal(records.find(r=>r.item.id==='orphan').rows[0].hidden,true);
+ assert.equal(records.find(r=>r.item.id==='other').rows[0].hidden,true);
+ assert.equal(records.find(r=>r.item.id==='check').rows[0].hidden,true);
+ assert.equal(records.find(r=>r.item.id==='evaluation').rows[0].hidden,false);
+ const group=records.find(r=>r.item.id==='parent').item;
+ assert.equal(group.context.folder,'C:/project');assert.equal(group.prompts.length,5);assert.equal(group.usage.input,50);assert.equal(group.usage.cost,0.05);assert.equal(group.usage.costEstimated,1);
+ assert.deepEqual(Array.from(group.fileIds).sort(),['image','parent','review','routing','tagging']);assert.equal(group.prompts.find(p=>p.provider==='image').key,'image:0');
+ const tools=content.children.find(c=>c.cls==='list-tools');assert.equal(tools.children.filter(c=>c.cls==='kind-filter').length,2,'only standalone evaluation and model-check filters remain');
+ const row=records.find(r=>r.item.id==='parent');row.toggle();assert.equal(row.rows[1].hidden,false);
+});
+
+test('Jev estimates enter report usage once and are marked estimated',()=>{
+ const records=[{type:'user',message:{content:'Routing'}},{type:'assistant',message:{id:'a',usage:{input_tokens:100,output_tokens:2,estimated_cost_usd:0.0000042},content:[]}}];
+ const s=report.parseSession(records.map(r=>JSON.stringify({timestamp:'2026-11-13T14:00:00Z',...r})).join('\n'),'typesafe-api_20261113_160000.jsonl');
+ assert.equal(s.usage.cost,0.0000042);assert.equal(s.usage.costEstimated,1);assert.equal(s.prompts[0].usage.cost,0.0000042);
+});

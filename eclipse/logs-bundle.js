@@ -12,6 +12,7 @@ const EXTERNALS = {
     + " return { toString: function () { return Array.prototype.map.call(bytes, function (b) { return (b < 16 ? '0' : '') + b.toString(16); }).join(''); } }; } }",
   // Choosing the log folder starts from VS Code's settings and assistants (model-config.js): not part of reading a log.
   "./chat": "new Proxy({}, {get: () => () => {throw new Error('Chat actions belong to the host');}})",
+  "./review-jev": "new Proxy({}, {get: () => () => {throw new Error('Decision provider selection belongs to the host');}})",
   "./topic-backfill": "new Proxy({}, {get: () => () => {throw new Error('Topic tagging belongs to the host');}})",
   "./model-config": "new Proxy({}, { get: function () { return function () { throw new Error('Choosing the log folder is VS Code\\'s; Eclipse has its own.'); }; } })"
 };

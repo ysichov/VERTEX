@@ -42,3 +42,11 @@ test("ASK Jev prevents duplicate block requests, rejects stale results and cance
  let signal;const ready2=new Promise(r=>{started=r;});t.mock.method(require("../jev"),"evaluate",async(...args)=>{signal=args[5].signal;started();return new Promise((resolve,reject)=>signal.addEventListener("abort",()=>reject(Error("aborted")),{once:true}));});
  const job2=receive({action:"askJev",id:"three",file:"file",hunk:0});await ready2;dispose();assert.equal(signal.aborted,true);await job2;
 });
+
+test('the selected Gemini decision provider reuses its own key independently of the chat provider',async()=>{
+ const env=await setup();env.values.decisionModel={provider:'gemini-api',model:'gemini-decision-1'};await profiles.save(env.secrets,'gemini-api','GEMINI','gemini-fixture');
+ const c=await service.connection(env.vscode);assert.equal(c.provider,'gemini-api');assert.equal(c.model,'gemini-decision-1');assert.equal(c.key,'gemini-fixture');
+ env.values.modelConfig['typesafe-api'].off=true;assert.equal((await service.connection(env.vscode)).provider,'gemini-api');
+ env.values.modelConfig['gemini-api']={off:true};assert.equal(await service.connection(env.vscode),null);
+ env.values.decisionModel={provider:'typesafe-api',model:'jev-latest'};assert.equal(await service.connection(env.vscode),null);
+});

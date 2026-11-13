@@ -4,17 +4,17 @@ const assert = require("node:assert/strict");
 const Module = require("node:module");
 
 function load(answersFor) {
-  const calls = [];
+  const calls = [], audits = [];
   const original = Module._load;
   Module._load = function (request, parent, isMain) {
     if (request === "./review-jev") return { connection: async () => ({ key: "k", model: "m" }) };
-    if (request === "./ai-accounting") return { begin: () => ({ callbacks: {}, decision() {}, finish() {}, fail() {} }) };
+    if (request === "./ai-accounting") return { begin: (...args) => { audits.push(args[4]); return { callbacks: {}, decision() {}, finish() {}, fail() {} }; } };
     if (request === "./jev") return { evaluate: async (provider, key, model, state, questions) => { calls.push({ state, questions }); return { answers: answersFor(questions), usage: {} }; } };
     return original.call(this, request, parent, isMain);
   };
   delete require.cache[require.resolve("../topic-backfill.js")];
   const backfill = require("../topic-backfill.js");
-  return { backfill, calls, restore: () => { Module._load = original; } };
+  return { backfill, calls, audits, restore: () => { Module._load = original; } };
 }
 
 test("untagged questions get topics: new, previous, an existing one; unclear stays untagged", async () => {
@@ -45,4 +45,10 @@ test("a long conversation goes in several bounded batches", async () => {
   assert.equal(report.batches, calls.length);
   assert.equal(report.unclear, 70);
   for (const call of calls) assert.ok(Buffer.byteLength(JSON.stringify({ model: "m", state: call.state, questions: call.questions })) <= 24000);
+});
+
+test("tagging an old conversation accounts against the selected conversation, not the currently open chat",async()=>{
+ const {backfill,audits,restore}=load(questions=>Object.fromEntries(Object.keys(questions).map(key=>[key,{choice:'new'}])));
+ await backfill.tag({},[{key:'old:0',text:'old question'}],'folder:test',{conversation:'selected-old-conversation'}).finally(restore);
+ assert.equal(audits[0].relatedConversation,'selected-old-conversation');
 });

@@ -1185,15 +1185,18 @@
           "default": "auto",
           "description": "Context source for the VERTEX chat. SAP uses SAP editors and VERTEX analysis/debugger views; Folder uses local project files and Git reviews. Auto initially selects from the active editor; the panel offers SAP / Folder."
         },
-        "vertex.ai.context.optimize": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use configured TypeSafe Jev before ordinary chat requests to select whole older question/answer exchanges. Preserves recent exchanges and asks Jev to retain relevant requirements and dependencies. Falls back to full history on errors. Jev usage is billed separately; savings are measured in characters."
+        "vertex.ai.decisionModel": {
+          "type": "object",
+          "default": {"provider":"typesafe-api","model":"jev-latest"},
+          "properties": {"provider":{"type":"string","enum":["typesafe-api","gemini-api","opencode-api"]},"model":{"type":"string"}},
+          "required": ["provider","model"],
+          "additionalProperties": false,
+          "description": "Decision provider/model used by Auto routing, topic tagging and ASK Jev. Choose from enabled decision models beside Auto. Independent of the chat model. Gemini cost is shown only when returned by the API."
         },
         "vertex.ai.context.routeTopics": {
           "type": "boolean",
           "default": false,
-          "description": "Experimental: use TypeSafe Jev to route ordinary chat requests into stable topic histories with explicit dependencies. The chat panel uses topic routing instead of legacy exchange pruning. Topic IDs and routing usage are logged and restored by Continue. Untagged legacy history is retained; errors use full history. No savings or cache-hit guarantee."
+          "description": "Experimental: use TypeSafe Jev to route ordinary chat requests into stable topic histories with explicit dependencies. The chat panel uses topic routing to select relevant topic histories. Topic IDs and routing usage are logged and restored by Continue. Untagged legacy history is retained; errors use full history. No savings or cache-hit guarantee."
         }
       }
     },

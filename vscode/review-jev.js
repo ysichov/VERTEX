@@ -15,14 +15,23 @@ const questions = {
   context: {type:"choice",instructions:"Is the supplied before/after diff and adjacent context sufficient to assess the local change? Missing requirements or dependencies can require more context.",criteria:{sufficient:"Enough context for a local assessment",insufficient:"Need more method, dependency or requirement context"}},
   recommendation: {type:"choice",instructions:"Are there visible grounds to object to accepting this local change? This is advice to a human, not approval or proof of correctness. Choose missing if necessary context is absent; never treat lack of evidence as proof that code is safe.",criteria:{candidate:"No obvious objection in the supplied fragment; reviewer still decides",manual:"Manual review needed: possible problem in this change",missing:"Cannot recommend acceptance: insufficient context"}}
 };
+function selection(vscode) {
+  const own=vscode.workspace.getConfiguration("vertex.ai").get("decisionModel",null);
+  return own && ["typesafe-api","gemini-api","opencode-api"].includes(own.provider) && typeof own.model === "string"
+    ? {provider:own.provider,model:own.model} : {provider:"typesafe-api",model:"jev-latest"};
+}
+function selectedProvider(vscode) { return selection(vscode).provider; }
+function enabled(vscode) { return require("./model-config").isOn(vscode,selectedProvider(vscode)); }
 async function connection(vscode) {
-  if (!storage?.get || !require("./model-config").isOn(vscode,"typesafe-api")) return null;
-  const {key} = await require("./key-profiles").getActiveKey(storage,"typesafe-api");
+  const {provider,model}=selection(vscode);
+  if (!storage?.get || !enabled(vscode)) return null;
+  const {key}=await require("./key-profiles").getActiveKey(storage,provider);
   if (!key) return null;
-  const config=require("./model-config").read(vscode,"typesafe-api");
-  const ids=(config.enabled||config.known||["jev-latest"]).filter(id=>typeof id==="string"&&/^jev[-\w.]*$/.test(id));
-  const model=ids.includes("jev-latest")?"jev-latest":ids[0];
-  return model?{key,model}:null;
+  const config=require("./model-config").read(vscode,provider);
+  if (config.enabled && !config.enabled.includes(model)) return null;
+  const valid=provider === "typesafe-api" ? /^jev[-\w.]*$/.test(model)
+    : provider === "gemini-api" ? model.replace(/^models\//, "") === "gemini-decision-1" : require("./opencode-models").isDecision(model);
+  return valid?{provider,key,model}:null;
 }
 function validateContext(context) {
   if (!context || !Array.isArray(context.blocks) || context.blocks.length!==1) throw new Error("Select one current diff block for ASK Jev.");
@@ -33,11 +42,11 @@ function validateContext(context) {
 }
 async function assess(vscode,context,options={}) {
   const state=validateContext(context),connected=await connection(vscode);
-  if(!connected)throw new Error("Save a TypeSafe Jev key and enable a Jev model in LLM Providers first.");
-  const audit=require("./ai-accounting").begin(vscode,"typesafe-api",connected.model,"Review block with Jev");
-  audit.decision?.({provider:"typesafe-api",model:connected.model,state,questions});
+  if(!connected)throw new Error("Configure the selected decision provider and its active API key in LLM Providers first.");
+  const audit=require("./ai-accounting").begin(vscode,connected.provider || "typesafe-api",connected.model,"Review block with Jev");
+  audit.decision?.({provider:connected.provider || "typesafe-api",model:connected.model,state,questions});
   try{
-    const result=await require("./jev").evaluate("typesafe-api",connected.key,connected.model,state,questions,{...audit.callbacks,signal:options.signal});
+    const result=await require("./jev").evaluate(connected.provider || "typesafe-api",connected.key,connected.model,state,questions,{...audit.callbacks,signal:options.signal});
     audit.finish(result);
     const titles={change:"Change",priority:"Priority",context:"Context",recommendation:"Recommendation"};
     return {model:result.model,elapsedMs:result.elapsedMs,usage:result.usage,
@@ -85,4 +94,4 @@ function bridge(host) {
     callback(update);if(!update.status)pending.delete(update.id);
   });
 }
-module.exports={configure,connection,rememberSuccess,questions,assess,bind,bridge};
+module.exports={selection,selectedProvider,enabled,configure,connection,rememberSuccess,questions,assess,bind,bridge};

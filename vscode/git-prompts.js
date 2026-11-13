@@ -48,7 +48,7 @@ function triageQuestions(requirements) {
 }
 async function triage(vscode, blocks, requirements, options = {}) {
   const jev = require("./review-jev"), connected = await jev.connection(vscode);
-  if (!connected) throw new Error("Jev is not connected: save a TypeSafe Jev key and enable a Jev model in LLM Providers.");
+  if (!connected) throw new Error("Jev is not connected: configure the selected decision provider and its active key in LLM Providers.");
   const questions = triageQuestions(requirements), results = [];
   for (let i = 0; i < blocks.length; i++) {
     if (options.signal?.aborted) throw new Error("Jev triage was cancelled.");
@@ -57,9 +57,9 @@ async function triage(vscode, blocks, requirements, options = {}) {
     const state = { object: String(b.file || ""), object_type: "", block: { block: b.block, unit: b.unit, line: b.line, before: b.before, after: b.after,
       context_before: b.context_before, context_after: b.context_after },
       scope: "Only the selected before/after block is the review target. Adjacent lines are context." };
-    const audit = require("./ai-accounting").begin(vscode, "typesafe-api", connected.model, "Triage review block with Jev");
+    const audit = require("./ai-accounting").begin(vscode, connected.provider || "typesafe-api", connected.model, "Triage review block with Jev");
     try {
-      const result = await require("./jev").evaluate("typesafe-api", connected.key, connected.model, state, questions, { ...audit.callbacks, signal: options.signal });
+      const result = await require("./jev").evaluate(connected.provider || "typesafe-api", connected.key, connected.model, state, questions, { ...audit.callbacks, signal: options.signal });
       audit.finish(result);
       results.push({ block: b.block, answers: Object.fromEntries(Object.entries(result.answers).map(([k, a]) => [k, a.choice])) });
     } catch (error) { audit.fail(error); throw error; }

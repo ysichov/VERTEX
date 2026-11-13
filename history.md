@@ -1,5 +1,13 @@
 ## 2026-11-13 — Release 0.9.89
 
+Continuing a log now keeps each answer’s Copy button and usage line inside that answer, so topic filtering hides the whole message. Continue opens the full conversation; continuing a topic shows that topic. The empty-chat hint disappears when restored messages arrive.
+
+Auto (Jev) now offers all enabled decision models grouped by provider, including Gemini Decision 1. The selected provider/model is shared by routing, topic tagging and block assessments independently of the chat model. Decision models show ◇ in LLM Providers only. TypeSafe is omitted from the ordinary chat provider menu. Gemini costs are displayed only when reported by its API.
+
+Related AI Review, block review and commit/PR generation are grouped with the chat without sharing model histories. Separate technical filters start off; only chats and manual Jev evaluation are visible by default. Removed the unused legacy Context optimization mode and its setting; Auto (Jev) continues to use topic routing.
+
+Session Logs now groups screenshot recognition and Jev topic routing/tagging inside their parent conversation, includes their usage in conversation totals, and removes their separate type filters. Jev list-price estimates are included and marked with ≈.
+
 Preserved the tested conversation context filtering and Anthropic cost/image fixes while merging the remote branch. MCP servers on macOS can find Node.js in NVM and Homebrew installations. Eclipse Session Logs packaging excludes host-only model transports from its browser bundle.
 
 ## 2026-11-13 — Release 0.9.88: whole tool results, kept questions and a folder filter

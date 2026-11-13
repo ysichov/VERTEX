@@ -111,7 +111,6 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       write({ type: "vertex_request", request, contextSize, vertex_objects: objects, vertex_snapshots: snapshots });
     },
     routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
-    optimization(report) { write({type:"vertex_context_optimization",report}); },
     providerResponse({ provider, scope, response }) {
       // Preserve provider counters verbatim, before normalization. These records
       // are diagnostic evidence, never assistant records (no double counting).

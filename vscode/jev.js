@@ -39,12 +39,15 @@ function priceUsage(provider, usage = {}) {
 }
 async function evaluate(provider, key, model, state, questions, options = {}) {
   validate(state, questions);
+  if (provider === "gemini-api") model = String(model).replace(/^models\//, "");
   const api = require("./openai-compatible");
-  if (provider !== "typesafe-api" && !(provider === "opencode-api" && require("./opencode-models").isDecision(model))) throw new Error("Select a Jev decision model.");
+  if (provider !== "typesafe-api" && !(provider === "gemini-api" && model === "gemini-decision-1") && !(provider === "opencode-api" && require("./opencode-models").isDecision(model))) throw new Error("Select a Jev decision model.");
   const started = Date.now();
-  const response = await (options.request || api.requestJson)(provider, key, provider === "typesafe-api" ? "/systemone" : "/systemone/v1/systemone", {model, state, questions}, 262144, 60000, options.signal);
-  options.onProviderResponse?.({provider, scope:"model_response", response});
-  const usage = priceUsage(provider, response.usage || {});
+  const google = provider === "gemini-api";
+  const response = await (options.request || api.requestJson)(provider, key, google ? "/decisions" : provider === "typesafe-api" ? "/systemone" : "/systemone/v1/systemone", google ? {model,input:typeof state === "string" ? state : JSON.stringify(state),questions} : {model, state, questions}, 262144, 60000, options.signal);
+  options.onProviderResponse?.({provider, scope:"model_response", response:{...response,model:response.model || model}});
+  const raw = response.usage || {};
+  const usage = priceUsage(provider, google ? {...raw,input_tokens:raw.total_input_tokens ?? raw.input_tokens ?? 0,output_tokens:raw.total_output_tokens ?? raw.output_tokens ?? 0} : raw);
   options.onModelCall?.({model:response.model || model, usage, text:formatAnswers(questions, response.answers) + (usage.estimated_cost_usd !== undefined ? "\n\nEstimated cost: $" + usage.estimated_cost_usd + " (input tokens × $0.042 / 1M; output free)" : "")});
   for (const [name, q] of Object.entries(questions)) {
     const a = response.answers?.[name];

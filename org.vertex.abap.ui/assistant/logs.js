@@ -43,6 +43,10 @@ const crypto = ({ randomBytes: function (n) { var bytes = new Uint8Array(n); win
 
 const emptyUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 const sumUsage = (into, usage) => {
+  if (usage.cost_usd == null && Number.isFinite(usage.estimated_cost_usd) && usage.estimated_cost_usd >= 0) {
+    into.cost = (into.cost || 0) + usage.estimated_cost_usd;
+    into.costEstimated = (into.costEstimated || 0) + 1;
+  }
   if (Object.prototype.hasOwnProperty.call(usage, "cost_usd")) {
     if (usage.cost_usd !== null && Number.isFinite(usage.cost_usd)) into.cost = (into.cost || 0) + usage.cost_usd;
     else into.costMissing = (into.costMissing || 0) + 1;
@@ -385,7 +389,7 @@ async function clearConversations(vscode, ids) {
 /* Tag topics (Jev): the conversation's untagged questions get a topic from Jev, in the scope the chat routes in now. */
 async function tagTopics(vscode, sessionId) {
   const modelConfig = (new Proxy({}, { get: function () { return function () { throw new Error('Choosing the log folder is VS Code\'s; Eclipse has its own.'); }; } }));
-  if (!modelConfig.isOn(vscode, "typesafe-api")) throw new Error("TypeSafe Jev is switched off in LLM Providers.");
+  if (!(new Proxy({}, {get: () => () => {throw new Error('Decision provider selection belongs to the host');}})).enabled(vscode)) throw new Error("The selected decision provider is switched off in LLM Providers.");
   const report = readSessions(vscode.workspace.getConfiguration("vertex.ai").get("logPath", ""));
   const session = report.sessions.find(item => item.id === sessionId);
   if (!session?.conversation) throw new Error("That conversation is no longer in the log folder.");
@@ -458,7 +462,7 @@ function observations(content,images=[]){
   const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "VERTEX: tagging topics with Jev", cancellable: true },
     (progress, token) => {
       const controller = new AbortController(); token.onCancellationRequested(() => controller.abort());
-      return backfill.tag(vscode, prompts, scope, { signal: controller.signal, onProgress: (done, total) => progress.report({ message: done + " of " + total + " questions" }) });
+      return backfill.tag(vscode, prompts, scope, { conversation: session.conversation, context: session.context, signal: controller.signal, onProgress: (done, total) => progress.report({ message: done + " of " + total + " questions" }) });
     });
   backfill.writeTags(report.folder, session.conversation, { ...backfill.readTags(report.folder, session.conversation), ...result.tags });
   const r = result.report;
@@ -553,7 +557,7 @@ function open(vscode, options = {}) {
   // The page is shared with Eclipse; only here can a conversation continue in the chat.
   panel.webview.html = fs.readFileSync(path.join(__dirname, "resources", "log-report.html"), "utf8").replaceAll("{{NONCE}}", nonce)
     .replace("</head>", () => "<style>" + __vertexRequire(5).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>")
-    .replace("</head>", () => '<script nonce="' + nonce + '">window.vertexCanContinue = true;window.vertexCanTagTopics = ' + (new Proxy({}, { get: function () { return function () { throw new Error('Choosing the log folder is VS Code\'s; Eclipse has its own.'); }; } })).isOn(vscode, "typesafe-api") + ';</script></head>')
+    .replace("</head>", () => '<script nonce="' + nonce + '">window.vertexCanContinue = true;window.vertexCanTagTopics = ' + (new Proxy({}, {get: () => () => {throw new Error('Decision provider selection belongs to the host');}})).enabled(vscode) + ';</script></head>')
     // VERTEX's one button style, as Eclipse's Session Logs and the other views get it; after the page's own rules, so it wins.
     .replace("</head>", () => "<style>" + __vertexRequire(5).fill(fs.readFileSync(path.join(__dirname, "resources", "vertex-controls.css"), "utf8")) + "</style></head>");
   // The page gets the list only - each prompt without its details, steps and Jev input - and asks for one prompt's
@@ -801,7 +805,6 @@ function create(root, provider, session, include, operation = "Chat", scope = nu
       write({ type: "vertex_request", request, contextSize, vertex_objects: objects, vertex_snapshots: snapshots });
     },
     routing(report) { write({type:"vertex_topic_routing",report:on.questions?protection.protect(report):{status:report.status,basis:report.basis,topic:report.topic?{id:report.topic.id}:null,elapsedMs:report.elapsedMs,usage:report.usage}}); },
-    optimization(report) { write({type:"vertex_context_optimization",report}); },
     providerResponse({ provider, scope, response }) {
       // Preserve provider counters verbatim, before normalization. These records
       // are diagnostic evidence, never assistant records (no double counting).

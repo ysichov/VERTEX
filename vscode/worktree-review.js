@@ -15,7 +15,7 @@ function aiContext(changes, folder, task = "", scope = null) {
       change.after, "local", change.file).blocks.map(block => ({ ...block, file: change.file })));
   blocks.forEach((block, i) => { block.block = i + 1; });
   return { system: "local", object: scope ? scope.file : path.basename(folder), all: true, total: blocks.length,
-    blocks, files: selected.map(change => change.file), task };
+    blocks, files: selected.map(change => change.file), task, logContext: { mode: "folder", folder } };
 }
 
 /** Opens the review of CHANGES (from agent-worktree's changes()); ONDONE gets the outcome after Apply. */

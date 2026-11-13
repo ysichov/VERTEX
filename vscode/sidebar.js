@@ -57,7 +57,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         ? "(request did not complete; your question and available screenshots were restored for the next request)" : "(no answer was logged)")) });
     }
     // Continue on a topic's last question: the whole conversation comes back, and the next question continues that topic.
-    await view.webview.postMessage({ historyContinued: true,...(selectedTopic?{routeTopics:true}:{}),topicList:restoredTopics });
+    await view.webview.postMessage({ historyContinued: true, viewTopic: selectedTopic?.id || "all",...(selectedTopic?{routeTopics:true}:{}),topicList:restoredTopics });
     await showReview();
     view.show(true);
     return count;
@@ -66,7 +66,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
   context.subscriptions.push(vscode.commands.registerCommand("vertex.continueDecision",async input=>{
     if(pendingChat)throw new Error("Wait for the active request to finish before restoring a Jev step.");
     require("./jev").validate(input?.state,input?.questions);
-    if(!["typesafe-api","opencode-api"].includes(input.provider)||typeof input.model!=="string")throw new Error("Invalid Jev provider or model in this step.");
+    if(!["typesafe-api","opencode-api","gemini-api"].includes(input.provider)||typeof input.model!=="string")throw new Error("Invalid Jev provider or model in this step.");
     if(!currentView||!ready){
       await vscode.commands.executeCommand("vertex.launcher.focus");
       for(let waited=0;(!currentView||!ready)&&waited<5000;waited+=100)await new Promise(resolve=>setTimeout(resolve,100));
@@ -152,7 +152,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
       viewNonce = nonce;
       view.webview.options = { enableScripts: true, localResourceRoots: [] };
       view.webview.html = html(nonce);
-      const refresh = (fresh = false) => {
+      const refresh = async (fresh = false) => {
         const chosen = active();
         return view.webview.postMessage({
           system: chosen.error ? "" : chosen.system.name,
@@ -162,7 +162,8 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           // What the list shows: a system reached through SAP's extension says so beside its name.
           labels: systems().map(item => item.name),
           ai: ask.state(),
-          jevOn: require("./model-config").isOn(vscode, "typesafe-api"),
+          jevOn: require("./model-config").isOn(vscode, "typesafe-api") || require("./model-config").isOn(vscode, "gemini-api"),
+          decisionModels: ask.decisionModels ? await ask.decisionModels() : {models:[],selected:require("./review-jev").selection(vscode)},
           // Where the chat's SAP tools come from: VERTEX itself or an MCP server of vertex.chat.mcpServers.
           mcp: chatMcp ? { servers: chatMcp.choices(), selected: chatMcp.selected(),
             updates: chatMcp.overview().filter(s => Array.isArray(s.update) && s.update.length).map(s => s.name) } : null,
@@ -193,7 +194,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
         }
         if (message.action === "ready") {
           ready = true;
-          await view.webview.postMessage({jevOn:require("./model-config").isOn(vscode,"typesafe-api"),topicList:ask.topics?.()||[],routeTopics:vscode.workspace.getConfiguration("vertex.ai").get("context.routeTopics",false),optimizeContext:vscode.workspace.getConfiguration("vertex.ai").get("context.optimize",false)});
+          await view.webview.postMessage({jevOn:require("./model-config").isOn(vscode,"typesafe-api")||require("./model-config").isOn(vscode,"gemini-api"),decisionModels:ask.decisionModels?await ask.decisionModels():{models:[],selected:require("./review-jev").selection(vscode)},topicList:ask.topics?.()||[],routeTopics:vscode.workspace.getConfiguration("vertex.ai").get("context.routeTopics",false)});
           await showFolder();
           await refresh();
           await showReview();
@@ -218,11 +219,13 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
           }
           return;
         }
-        if(message.action==="setRouteTopics"){await vscode.workspace.getConfiguration("vertex.ai").update("context.routeTopics",!!message.value,vscode.ConfigurationTarget.Global);return;}
-        if (message.action === "setOptimizeContext") {
-          await vscode.workspace.getConfiguration("vertex.ai").update("context.optimize",!!message.value,vscode.ConfigurationTarget.Global);
-          return;
+        if(message.action==="setDecisionModel"){
+          const choices=await ask.decisionModels();
+          if(!choices.models.some(m=>m.provider===message.provider && m.model===message.model))return;
+          await vscode.workspace.getConfiguration("vertex.ai").update("decisionModel",{provider:message.provider,model:message.model},vscode.ConfigurationTarget.Global);
+          await view.webview.postMessage({decisionModels:await ask.decisionModels()});return;
         }
+        if(message.action==="setRouteTopics"){await vscode.workspace.getConfiguration("vertex.ai").update("context.routeTopics",!!message.value,vscode.ConfigurationTarget.Global);return;}
         if (message.action === "conversationHistory") {
           try {
             const logs = require("./log-report");
@@ -363,7 +366,7 @@ function register(vscode, context, active, ask, systems, toolContext, clients = 
               delete state.review_source;
               delete state.selected_fragment;
             }
-            const reply = await ask(asked ? review.askRequest(asked.review_result ? shown : message.text, asked) : shown, {model: message.model, state, web,optimizeContext:false,routeTopics:!!message.routeTopics,contextMode:asked?.system==="local"?"folder":asked?"sap":ask.state().contextMode,
+            const reply = await ask(asked ? review.askRequest(asked.review_result ? shown : message.text, asked) : shown, {model: message.model, state, web,routeTopics:!!message.routeTopics,contextMode:asked?.system==="local"?"folder":asked?"sap":ask.state().contextMode,
               ...(images.length ? { images } : {}),
               onProgress: update => { if(pending.cancelled)return; Promise.resolve(view.webview.postMessage({ progress: { id: requestId, kind:taskKind,...update } })).catch(() => {}); } });
             if (pending.cancelled || reply.stopped) { await view.webview.postMessage({progress:{id:requestId,stopped:true,done:true}}); return; }
@@ -663,14 +666,14 @@ ${require(require("path").join(__dirname,"jev-panel")).css}
 </span><span class="note" id="planner-info" hidden></span><span id="folder-line" hidden>Folder <strong id="folder-name"></strong> <button class="secondary" data-action="gitHistory" id="git-history" title="Commits of this folder">Git History</button></span></div></div>
 <details id="conversation-history"><summary>Conversations · Continue a chat<span id="topic-now"></span></summary><div class="history-controls"><input type="search" id="history-search" aria-label="Search conversations" placeholder="Search conversations…"><button type="button" class="secondary" id="history-refresh">Refresh</button></div><p id="history-status" role="status" aria-live="polite"></p><div id="history-list"></div></details>
 <div id="topic-view" class="line" hidden><label for="topic-view-select">Show conversation</label><select id="topic-view-select" aria-label="Visible conversation topic"><option value="current">Current topic</option><option value="all">All topics</option></select></div>
-<main id="messages" aria-live="polite"><p>Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
+<main id="messages" aria-live="polite"><p class="chat-empty">Ask anything — about SAP or any project in your folder. You can paste screenshots here too.</p></main>
 <p id="review-empty">Select ASK AI on assistant changes to attach a file, a block or all changes to this review chat.</p>
 <iframe id="ai-review-frame" title="AI Review chat" hidden></iframe>
 <div class="dock">
 <div class="line chat-head"><select id="provider-select" aria-label="AI provider" title="AI provider"></select><span id="vercel-row-break" aria-hidden="true"></span><select id="subprovider-select" aria-label="Model provider" title="Model provider (model ID prefix)" hidden disabled></select><span class="model-picker"><select id="model-select" aria-label="Model" title="Model · Ctrl+C / Cmd+C copies the model ID"><option>Loading…</option></select><button type="button" class="secondary" id="model-details-button" title="Model capabilities, context and prices" aria-label="Model capabilities, context and prices" aria-haspopup="dialog" hidden disabled>$</button></span><select id="effort-select" aria-label="Effort" title="Effort: how much the model thinks before it answers" hidden></select><button class="secondary" data-action="newConversation" id="new-conversation">New conversation</button></div><div class="note" id="model-status" role="status" aria-live="polite"></div>
 <div id="work-composer">
 ${require(require("path").join(__dirname,"jev-panel")).html}
-<form id="chat"><span id="topic-picker-label" title="Which earlier exchanges go with the question: all of them or the ones Jev routes to its topic. Shown while TypeSafe Jev is on." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select></span><span id="context-optimization-status" class="note" role="status"></span><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
+<form id="chat"><span id="topic-picker-label" title="Which earlier exchanges go with the question: all of them or the ones Jev routes to its topic. Choose the decision model next to Auto." hidden><span class="vertex-segment-toggle" id="history-mode" role="group" aria-label="History"><button type="button" data-history="full" class="active" aria-pressed="true">Full history</button><button type="button" data-history="auto" aria-pressed="false">Auto (Jev)</button></span><select id="topic-picker" hidden aria-hidden="true"><option value="full">Full history</option><option value="auto">Auto (Jev)</option></select><select id="decision-provider" aria-label="Decision model for Auto" title="Decision model for Auto, topic tagging and ASK Jev" hidden></select></span><span id="context-optimization-status" class="note" role="status"></span><div id="review-chip" hidden><span id="review-label"></span><button type="button" id="review-clear" class="secondary" title="Ask without the review's blocks" aria-label="Remove the review context">×</button></div><details id="review-result-preview" hidden><summary>Attached review result</summary><div id="review-result-body"></div></details><div id="image-chips" hidden></div><div class="prompt-box"><button type="button" id="expand-prompt" class="secondary" title="Expand the message field" aria-label="Expand the message field" aria-pressed="false">⤢</button><textarea id="prompt" rows="4" placeholder="Ask VERTEX… (Enter to send · Ctrl+Enter for a new line)" aria-label="Message"></textarea></div><div class="chat-actions"><button type="button" id="chat-stop" class="secondary" title="Stop AI response" aria-label="Stop AI response" hidden><span aria-hidden="true">■</span> Stop</button></div></form>
 <button class="secondary" data-action="tools" id="tools"><span class="tools-logo" aria-hidden="true"></span>VERTEX Tools</button>
 </div>
 </div>
@@ -681,8 +684,9 @@ const api = acquireVsCodeApi();
 let routeMode='full';
 function drawTopicPicker(wanted){const picker=document.getElementById('topic-picker'),chosen=wanted||picker.value||routeMode;picker.replaceChildren();for(const t of [{id:'full',label:'Full history'},{id:'auto',label:'Auto (Jev)'}]){const option=document.createElement('option');option.value=t.id;option.textContent=/^topic_/.test(t.id)?t.id+' · '+t.label:t.label;picker.append(option);}picker.value=Array.from(picker.options).some(x=>x.value===chosen)?chosen:routeMode;paintHistory();}
 /* The toggle shows the choice the hidden list holds: Full history, Auto (Jev), or the topic chosen by hand. */
-function paintHistory(){const value=document.getElementById('topic-picker').value;document.querySelectorAll('[data-history]').forEach(button=>{const on=button.dataset.history===value;button.classList.toggle('active',on);button.setAttribute('aria-pressed',String(on));});}
+function paintHistory(){const value=document.getElementById('topic-picker').value;const decision=document.getElementById('decision-provider');if(decision)decision.hidden=value!=='auto';document.querySelectorAll('[data-history]').forEach(button=>{const on=button.dataset.history===value;button.classList.toggle('active',on);button.setAttribute('aria-pressed',String(on));});}
 document.querySelectorAll('[data-history="full"],[data-history="auto"]').forEach(button=>button.addEventListener('click',()=>{const picker=document.getElementById('topic-picker');picker.value=button.dataset.history;picker.onchange({target:picker});paintHistory();}));
+document.getElementById('decision-provider').onchange=event=>{const [provider,model]=JSON.parse(event.target.value);api.postMessage({action:'setDecisionModel',provider,model});};
 document.getElementById('topic-picker').onchange=event=>{const value=event.target.value;if(value==='full'||value==='auto'){routeMode=value;api.postMessage({action:'setRouteTopics',value:value==='auto'});}};
 let topicCatalog=[];
 let topicViewMode='current';
@@ -697,13 +701,12 @@ function refreshTopicView(){
  for(const item of messages)item.hidden=topicViewMode!=='all'&&(item.dataset.topicId||'')!==selected;
 }
 document.getElementById('topic-view-select').onchange=e=>{topicViewMode=e.target.value;refreshTopicView();};
-window.addEventListener('message',e=>{const d=e.data||{};if(d.chat||d.cleared||d.topicList||d.progress?.topic||d.progress?.done)queueMicrotask(refreshTopicView);});
+window.addEventListener('message',e=>{const d=e.data||{};if(d.historyContinued)topicViewMode=d.viewTopic||'all';if(d.chat||d.cleared||d.topicList||d.historyContinued||d.progress?.topic||d.progress?.done)queueMicrotask(refreshTopicView);});
 function setTopic(item,topic){if(!topic||!/^topic_\\d{4,8}$/.test(topic.id))return;const canonical=typeof topicCatalog!=='undefined'&&topicCatalog.find(t=>t.id===topic.id);if(canonical)topic={...topic,label:canonical.label};item.dataset.topicId=topic.id;const colors=['blue','green','orange','purple','red','yellow'];const color='var(--vscode-charts-'+colors[Number(topic.id.slice(6))%colors.length]+',var(--vscode-focusBorder))';item.style.borderLeft='3px solid '+color;/* The topic is named once, in the Conversations header. A badge on every message said it twice per exchange and the
    working status said it a third time, all repeating the question standing right there; the coloured stripe on the
    left still groups the pair. */
 const now=document.getElementById('topic-now');if(now){const words=topic.label.split(/\\s+/).filter(Boolean).slice(0,6).join(' ');now.textContent=' · '+topic.id+(words?' · '+words+(words.length<topic.label.trim().length?'…':''):'');now.title=topic.label+(topic.dependencies?.length?' · Dependencies: '+topic.dependencies.join(', '):'');}}
-window.addEventListener('message',event=>{const d=event.data||{};if(d.progress?.topic&&!topicCatalog.some(t=>t.id===d.progress.topic.id)){topicCatalog=[...topicCatalog,d.progress.topic];drawTopicPicker();}if(typeof d.routeTopics==='boolean'){const picker=document.getElementById('topic-picker');routeMode=d.routeTopics?'auto':'full';drawTopicPicker(routeMode);}if(typeof d.jevOn==='boolean'){/* Jev switched off in LLM Providers: no history choice, the whole history goes. */document.getElementById('topic-picker-label').hidden=!d.jevOn;if(!d.jevOn)drawTopicPicker('full');}if(Array.isArray(d.topicList)){topicCatalog=d.topicList;drawTopicPicker();for(const item of document.querySelectorAll('[data-topic-id]')){const topic=topicCatalog.find(t=>t.id===item.dataset.topicId);if(topic)setTopic(item,topic);}} if(d.progress?.topicRouting){const r=d.progress.topicRouting;document.getElementById('context-optimization-status').textContent=r.topic?'Topic '+r.topic.id+(r.basis==='manual'?' · manual':' · Jev')+(r.exchangesTotal?' · '+r.exchangesKept+' of '+r.exchangesTotal+' exchanges'+(r.savedPercent>=1?' · history '+Math.round(r.savedPercent)+'% shorter':''):''):'Full history: '+r.reason;}});
-window.addEventListener('message',event=>{const value=event.data?.progress?.contextOptimization;if(value)document.getElementById('context-optimization-status').textContent=value.status==='optimized'?'History: '+Math.round(value.savedPercent)+'% less text ('+value.savedCharacters+' characters)':'Full history'+(value.reason?': '+value.reason:'');});
+window.addEventListener('message',event=>{const d=event.data||{};if(d.decisionModels){const decision=document.getElementById('decision-provider');if(decision){decision.replaceChildren();const groups=new Map();for(const m of d.decisionModels.models){let group=groups.get(m.provider);if(!group){group=document.createElement('optgroup');group.label=m.providerLabel;groups.set(m.provider,group);decision.appendChild(group);}const option=document.createElement('option');option.value=JSON.stringify([m.provider,m.model]);option.textContent=m.label;group.appendChild(option);}const selected=d.decisionModels.selected;decision.value=JSON.stringify([selected.provider,selected.model]);decision.disabled=!decision.options.length;}}if(d.progress?.topic&&!topicCatalog.some(t=>t.id===d.progress.topic.id)){topicCatalog=[...topicCatalog,d.progress.topic];drawTopicPicker();}if(typeof d.routeTopics==='boolean'){const picker=document.getElementById('topic-picker');routeMode=d.routeTopics?'auto':'full';drawTopicPicker(routeMode);}if(typeof d.jevOn==='boolean'){/* Jev switched off in LLM Providers: no history choice, the whole history goes. */document.getElementById('topic-picker-label').hidden=!d.jevOn;if(!d.jevOn)drawTopicPicker('full');}if(Array.isArray(d.topicList)){topicCatalog=d.topicList;drawTopicPicker();for(const item of document.querySelectorAll('[data-topic-id]')){const topic=topicCatalog.find(t=>t.id===item.dataset.topicId);if(topic)setTopic(item,topic);}} if(d.progress?.topicRouting){const r=d.progress.topicRouting;document.getElementById('context-optimization-status').textContent=r.topic?'Topic '+r.topic.id+(r.basis==='manual'?' · manual':' · Jev')+(r.exchangesTotal?' · '+r.exchangesKept+' of '+r.exchangesTotal+' exchanges'+(r.savedPercent>=1?' · history '+Math.round(r.savedPercent)+'% shorter':''):''):'Full history: '+r.reason;}});
 let reviewPageId='',reviewLoaded=false;
 const reviewFrame=document.getElementById('ai-review-frame');
 function chatMode(mode){document.body.dataset.chatMode=mode;document.querySelectorAll('[data-chat-mode]').forEach(button=>{const active=button.dataset.chatMode===mode;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});if(mode==='review'&&reviewPageId&&reviewLoaded)api.postMessage({action:'aiReviewMessage',id:reviewPageId,message:{action:'ready'}});}
@@ -855,7 +858,7 @@ document.getElementById('chat').addEventListener('submit', event => {
   if (images.length && selected?.capabilities?.vision === false) { document.getElementById('model-status').textContent = 'This model does not accept screenshots. Choose a Vision model or remove the images.'; return; }
   setChatRunning(true);
   api.postMessage({ action: 'chat', text, model: document.getElementById('model-select').value,
-    optimizeContext:false,routeTopics:!document.getElementById('topic-picker-label').hidden&&document.getElementById('topic-picker').value==='auto',
+    routeTopics:!document.getElementById('topic-picker-label').hidden&&document.getElementById('topic-picker').value==='auto',
     images: images.map(image => ({ media_type: image.media_type, data: image.data })) });
   field.value = '';
   images = []; drawImages();
@@ -979,11 +982,12 @@ window.addEventListener('message', event => {
     if (event.data.review) field.focus();
   }
   if (event.data && event.data.cleared) {
-    topicCatalog=[];drawTopicPicker(routeMode);document.getElementById('context-optimization-status').textContent='';
+    topicCatalog=[];topicViewMode='current';drawTopicPicker(routeMode);document.getElementById('context-optimization-status').textContent='';
     resetJevDraft();
     const box = document.getElementById('messages');
     box.textContent = '';
     const hint = document.createElement('p');
+    hint.className = 'chat-empty';
     hint.textContent = 'Ask anything — about SAP or any project in your folder. You can paste screenshots here too.';
     box.appendChild(hint);
     progressItems.clear();
@@ -1148,6 +1152,7 @@ window.addEventListener('message', event => {
     const previousProvider=select.value;
     select.replaceChildren(...(event.data.ai.providers || []).map(p => new Option(p.short, p.setting)));
     document.body.classList.toggle('no-providers', !select.options.length);
+    if(!Array.from(select.options).some(o=>o.value===event.data.ai.provider)&&event.data.ai.provider==='typesafe-api'){const option=new Option('TypeSafe JEV · Decision evaluation','typesafe-api');option.hidden=true;select.add(option);}
     select.value = event.data.ai.provider;
     document.body.dataset.provider = select.value;
     if(previousProvider!==select.value){modelCatalog=[];drawModelPickers('');drawModelCapabilities();}
@@ -1183,6 +1188,7 @@ window.addEventListener('message', event => {
     }
   }
   if (event.data && event.data.chat) {
+    document.querySelector('#messages .chat-empty')?.remove();
     const mine = event.data.chat.startsWith('You: ');
     const item = document.createElement(mine ? 'p' : 'div');
     item.className = mine ? 'you' : 'vertex';
@@ -1202,9 +1208,9 @@ window.addEventListener('message', event => {
       const line = document.createElement('p');
       line.className = 'usage';
       line.textContent = event.data.usage;
-      document.getElementById('messages').appendChild(line);
+      item.appendChild(line);
     }
-    if (copy) document.getElementById('messages').appendChild(copy);
+    if (copy) item.appendChild(copy);
     const box = document.getElementById('messages');
     box.scrollTop = box.scrollHeight;
   }
