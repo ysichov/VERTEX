@@ -62,7 +62,12 @@ async function ask(options) {
     input_schema: tool.inputSchema })).concat([{ name: "submit_vertex_answer",
       description: "Submit the final VERTEX answer and navigation plan.", input_schema: options.schema }]);
   let apiTools = toolsNow();
-  const messages = [{ role: "user", content: options.prompt }];
+  const content = options.images?.length ? [
+    { type: "text", text: options.prompt },
+    ...options.images.map(image => ({ type: "image", source: { type: "base64", media_type: image.media_type, data: image.data } }))
+  ] : options.prompt;
+  const messages = [{ role: "user", content }];
+  const imageBytes = (options.images || []).reduce((sum, image) => sum + Buffer.byteLength(image.data || "", "utf8") + 256, 0);
   async function retryAnswer(plan){
     const feedback=await options.onBeforeAnswer?.(plan);
     if(!feedback)return false;
@@ -74,7 +79,7 @@ async function ask(options) {
     const response = await request(options.apiKey, { model: options.model, max_tokens: options.maxOutputTokens || 16000,
       system: options.instructions, messages, ...(options.structuredResult?{tool_choice:{type:"tool",name:"submit_vertex_answer"}}:{}), ...(apiTools.length ? {tools:apiTools} : {}) },
       // The limit is on the conversation and its context; the tool definitions come on top of it.
-      (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 128000)) + (apiTools.length ? Buffer.byteLength(JSON.stringify(apiTools), "utf8") : 0), options.signal);
+      (options.maxInputBytes || (options.localTools ? 2 * 1024 * 1024 : 128000)) + imageBytes + (apiTools.length ? Buffer.byteLength(JSON.stringify(apiTools), "utf8") : 0), options.signal);
     let answer;
     try { answer = JSON.parse(response.text); } catch (_) { answer = null; }
     if (answer && options.onProviderResponse) options.onProviderResponse({

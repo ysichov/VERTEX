@@ -1,3 +1,7 @@
+## 2026-11-13 — Release 0.9.89
+
+Preserved the tested conversation context filtering and Anthropic cost/image fixes while merging the remote branch. MCP servers on macOS can find Node.js in NVM and Homebrew installations. Eclipse Session Logs packaging excludes host-only model transports from its browser bundle.
+
 ## 2026-11-13 — Release 0.9.88: whole tool results, kept questions and a folder filter
 
 Direct Anthropic screenshot recognition now receives the attached image pixels, fixing replies that no image was attached.

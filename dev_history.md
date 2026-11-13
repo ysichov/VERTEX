@@ -1,3 +1,9 @@
+## 2026-11-13 — Release 0.9.89 integration
+
+Validation: 52 focused Anthropic, context, logging and usage tests passed. Universal VSIX 0.9.89 passed the standard archive checks. Eclipse update site 0.9.89.20261113165315 compiled with the installed JDK using --release 21; its install ZIP passed artifact/path verification. Broader testing still reports pre-existing interface/expectation and sandbox-related failures; no claim of a fully green suite.
+
+Resolved divergent main histories by retaining the local log writer, context filter, sidebar and context regression tests as a coherent implementation: the first recorded context owns the conversation; continuing an unplaced conversation places its entire history. Kept remote macOS nodeEnv/MCP PATH discovery, packaging flags and Eclipse browser-bundle externals. Discarded remote contextOf/matchesContext wiring and its alternate history controls. Refreshed generated Eclipse runtime from shared sources.
+
 ## 2026-11-13 — Release 0.9.88: bounded tool results, failed-turn context and the conversation place
 
 Fixed anthropic.ask ignoring options.images: the user message now includes native Anthropic base64 image blocks, with image payload bytes added to the transport budget as in the compatible provider. Regression verifies the serialized image and an attachment larger than the text-only budget.
